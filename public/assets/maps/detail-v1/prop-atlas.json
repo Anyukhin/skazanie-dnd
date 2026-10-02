@@ -1,0 +1,2067 @@
+{
+  "version": "skazanie:map-detail-v1",
+  "image": "prop-atlas.png",
+  "width": 2048,
+  "height": 1465,
+  "cellPixels": 96,
+  "frameCount": 135,
+  "frames": {
+    "ammo_crates": {
+      "x": 972,
+      "y": 824,
+      "w": 192,
+      "h": 124,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 6,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "anvil": {
+      "x": 490,
+      "y": 1374,
+      "w": 96,
+      "h": 85,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 0,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "archery_target": {
+      "x": 486,
+      "y": 1074,
+      "w": 80,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 5,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "armchair": {
+      "x": 568,
+      "y": 1074,
+      "w": 84,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 3,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    },
+    "armor_stand": {
+      "x": 654,
+      "y": 1074,
+      "w": 69,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 0,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "barracks_bed": {
+      "x": 1467,
+      "y": 2,
+      "w": 97,
+      "h": 192,
+      "footprint": {
+        "w": 1,
+        "h": 2
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 7,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "bathtub": {
+      "x": 584,
+      "y": 824,
+      "w": 192,
+      "h": 125,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 5,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    },
+    "bear_pelt": {
+      "x": 972,
+      "y": 486,
+      "w": 192,
+      "h": 187,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 4,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "bell_frame": {
+      "x": 972,
+      "y": 678,
+      "w": 192,
+      "h": 139,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 6,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "bone_heap": {
+      "x": 879,
+      "y": 1276,
+      "w": 96,
+      "h": 92,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 8,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "book_lectern": {
+      "x": 725,
+      "y": 1074,
+      "w": 91,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 0,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "bookcase_tall": {
+      "x": 818,
+      "y": 1074,
+      "w": 192,
+      "h": 96,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 8,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "boulder_split": {
+      "x": 1554,
+      "y": 486,
+      "w": 192,
+      "h": 163,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 3,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "bread_oven": {
+      "x": 1566,
+      "y": 2,
+      "w": 175,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 1,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "butcher_block": {
+      "x": 1012,
+      "y": 1074,
+      "w": 88,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 4,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "candle_desk": {
+      "x": 1360,
+      "y": 824,
+      "w": 192,
+      "h": 119,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 6,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "candle_rack": {
+      "x": 2,
+      "y": 1074,
+      "w": 192,
+      "h": 102,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 2,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "cell_bucket": {
+      "x": 1102,
+      "y": 1074,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 2,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "chicken_coop": {
+      "x": 2,
+      "y": 678,
+      "w": 192,
+      "h": 144,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 5,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "cliff_large": {
+      "x": 2,
+      "y": 2,
+      "w": 286,
+      "h": 288,
+      "footprint": {
+        "w": 3,
+        "h": 3
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 0,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "cliff_long": {
+      "x": 196,
+      "y": 1074,
+      "w": 288,
+      "h": 102,
+      "footprint": {
+        "w": 3,
+        "h": 1
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 2,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "cliff_medium": {
+      "x": 1748,
+      "y": 486,
+      "w": 192,
+      "h": 152,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 1,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "cloth_bolts": {
+      "x": 588,
+      "y": 1374,
+      "w": 96,
+      "h": 85,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 2,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "coal_pile": {
+      "x": 389,
+      "y": 1276,
+      "w": 96,
+      "h": 95,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 5,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "coat_rack": {
+      "x": 1200,
+      "y": 1074,
+      "w": 67,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 8,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    },
+    "cradle": {
+      "x": 1269,
+      "y": 1074,
+      "w": 65,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 6,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    },
+    "crate_stack_goods": {
+      "x": 1743,
+      "y": 2,
+      "w": 185,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 7,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "dead_bramble": {
+      "x": 1336,
+      "y": 1074,
+      "w": 94,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 6,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "display_shelf": {
+      "x": 1650,
+      "y": 955,
+      "w": 192,
+      "h": 105,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 1,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "double_bed": {
+      "x": 2,
+      "y": 292,
+      "w": 169,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 0,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    },
+    "drain_grate": {
+      "x": 1432,
+      "y": 1074,
+      "w": 94,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 7,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "dresser": {
+      "x": 1554,
+      "y": 824,
+      "w": 192,
+      "h": 118,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 1,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    },
+    "fence_gate": {
+      "x": 1466,
+      "y": 1374,
+      "w": 96,
+      "h": 55,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 8,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "fish_rack": {
+      "x": 778,
+      "y": 678,
+      "w": 192,
+      "h": 140,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 6,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "fishing_nets": {
+      "x": 874,
+      "y": 955,
+      "w": 192,
+      "h": 111,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 7,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "floor_crack": {
+      "x": 1528,
+      "y": 1074,
+      "w": 90,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 1,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "flour_bin": {
+      "x": 1855,
+      "y": 1276,
+      "w": 96,
+      "h": 89,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 3,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "flour_spill": {
+      "x": 1757,
+      "y": 1276,
+      "w": 96,
+      "h": 90,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 5,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "flower_bed": {
+      "x": 977,
+      "y": 1276,
+      "w": 192,
+      "h": 92,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 2,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "folding_screen": {
+      "x": 1166,
+      "y": 824,
+      "w": 192,
+      "h": 123,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 4,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    },
+    "font_basin": {
+      "x": 1620,
+      "y": 1074,
+      "w": 82,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 1,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "footlocker": {
+      "x": 100,
+      "y": 1374,
+      "w": 96,
+      "h": 87,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 2,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "forge": {
+      "x": 1360,
+      "y": 486,
+      "w": 192,
+      "h": 170,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 1,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "fountain": {
+      "x": 887,
+      "y": 2,
+      "w": 288,
+      "h": 283,
+      "footprint": {
+        "w": 3,
+        "h": 3
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 0,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "fruit_cart": {
+      "x": 680,
+      "y": 955,
+      "w": 192,
+      "h": 112,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 8,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "garden_bed": {
+      "x": 1068,
+      "y": 955,
+      "w": 192,
+      "h": 111,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 6,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "globe": {
+      "x": 1704,
+      "y": 1074,
+      "w": 93,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 2,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "goods_baskets": {
+      "x": 2,
+      "y": 1374,
+      "w": 96,
+      "h": 89,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 3,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "grain_sacks": {
+      "x": 1799,
+      "y": 1074,
+      "w": 91,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 2,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "grindstone": {
+      "x": 1892,
+      "y": 1074,
+      "w": 77,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 3,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "guard_brazier": {
+      "x": 2,
+      "y": 1178,
+      "w": 78,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 8,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "hanging_pots": {
+      "x": 292,
+      "y": 955,
+      "w": 192,
+      "h": 113,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 6,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "hay_bales": {
+      "x": 1456,
+      "y": 955,
+      "w": 192,
+      "h": 110,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 4,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "hide_rug": {
+      "x": 2,
+      "y": 486,
+      "w": 192,
+      "h": 190,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 8,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "holy_pool": {
+      "x": 196,
+      "y": 486,
+      "w": 192,
+      "h": 190,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 7,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "idol": {
+      "x": 173,
+      "y": 292,
+      "w": 169,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 0,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "incense_burner": {
+      "x": 82,
+      "y": 1178,
+      "w": 72,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 3,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "iron_cage": {
+      "x": 156,
+      "y": 1178,
+      "w": 75,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 5,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "jailer_desk": {
+      "x": 1076,
+      "y": 1374,
+      "w": 96,
+      "h": 76,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 6,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "kitchen_stove": {
+      "x": 778,
+      "y": 824,
+      "w": 192,
+      "h": 125,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 0,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "kneeling_cushions": {
+      "x": 1272,
+      "y": 1374,
+      "w": 192,
+      "h": 72,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 8,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "leaf_litter": {
+      "x": 683,
+      "y": 1276,
+      "w": 96,
+      "h": 94,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 7,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "lily_pads": {
+      "x": 344,
+      "y": 292,
+      "w": 191,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 5,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "lumber_pile": {
+      "x": 1748,
+      "y": 824,
+      "w": 192,
+      "h": 117,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 8,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "map_table": {
+      "x": 1166,
+      "y": 486,
+      "w": 192,
+      "h": 180,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 1,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "market_awning": {
+      "x": 1177,
+      "y": 2,
+      "w": 288,
+      "h": 232,
+      "footprint": {
+        "w": 3,
+        "h": 2
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 4,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "millstone": {
+      "x": 537,
+      "y": 292,
+      "w": 167,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 0,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "mooring_post": {
+      "x": 198,
+      "y": 1374,
+      "w": 96,
+      "h": 87,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 2,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "mossy_rock": {
+      "x": 1171,
+      "y": 1276,
+      "w": 96,
+      "h": 92,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 5,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "notice_board": {
+      "x": 978,
+      "y": 1374,
+      "w": 96,
+      "h": 79,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 5,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "offering_table": {
+      "x": 1262,
+      "y": 955,
+      "w": 192,
+      "h": 111,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 4,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "pantry_shelf": {
+      "x": 784,
+      "y": 1374,
+      "w": 192,
+      "h": 80,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 5,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "paper_scatter": {
+      "x": 1269,
+      "y": 1276,
+      "w": 96,
+      "h": 92,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 6,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "pebbles": {
+      "x": 487,
+      "y": 1276,
+      "w": 96,
+      "h": 95,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 8,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "pillory": {
+      "x": 1748,
+      "y": 678,
+      "w": 192,
+      "h": 133,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 3,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "pottery_stand": {
+      "x": 233,
+      "y": 1178,
+      "w": 90,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 7,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "prayer_rug": {
+      "x": 706,
+      "y": 292,
+      "w": 96,
+      "h": 192,
+      "footprint": {
+        "w": 1,
+        "h": 2
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 7,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "prep_table": {
+      "x": 390,
+      "y": 824,
+      "w": 192,
+      "h": 126,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 2,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "punt": {
+      "x": 290,
+      "y": 2,
+      "w": 87,
+      "h": 288,
+      "footprint": {
+        "w": 1,
+        "h": 3
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 1,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "quench_tub": {
+      "x": 325,
+      "y": 1178,
+      "w": 91,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 2,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "rain_barrel": {
+      "x": 418,
+      "y": 1178,
+      "w": 51,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 6,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "reading_nook": {
+      "x": 1554,
+      "y": 678,
+      "w": 192,
+      "h": 134,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 4,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "reeds": {
+      "x": 1166,
+      "y": 678,
+      "w": 192,
+      "h": 136,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 4,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "river_rocks": {
+      "x": 804,
+      "y": 292,
+      "w": 190,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 3,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "rock_cluster": {
+      "x": 996,
+      "y": 292,
+      "w": 191,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 4,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "root_tangle": {
+      "x": 486,
+      "y": 955,
+      "w": 192,
+      "h": 113,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 7,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "rowboat": {
+      "x": 379,
+      "y": 2,
+      "w": 124,
+      "h": 288,
+      "footprint": {
+        "w": 1,
+        "h": 3
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 0,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "rug_blue": {
+      "x": 390,
+      "y": 486,
+      "w": 192,
+      "h": 189,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 3,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "rug_red_large": {
+      "x": 505,
+      "y": 2,
+      "w": 164,
+      "h": 288,
+      "footprint": {
+        "w": 2,
+        "h": 3
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 0,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "rug_round": {
+      "x": 584,
+      "y": 486,
+      "w": 192,
+      "h": 188,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 2,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "rug_runner": {
+      "x": 671,
+      "y": 2,
+      "w": 89,
+      "h": 288,
+      "footprint": {
+        "w": 1,
+        "h": 3
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 1,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "sawdust": {
+      "x": 1367,
+      "y": 1276,
+      "w": 96,
+      "h": 92,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 4,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "sawhorse": {
+      "x": 196,
+      "y": 678,
+      "w": 192,
+      "h": 144,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 7,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "scales_table": {
+      "x": 471,
+      "y": 1178,
+      "w": 90,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 6,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "scarecrow": {
+      "x": 563,
+      "y": 1178,
+      "w": 92,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 7,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "scorch_mark": {
+      "x": 657,
+      "y": 1178,
+      "w": 94,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 2,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "scree": {
+      "x": 1189,
+      "y": 292,
+      "w": 190,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-35-cliffs.png",
+      "sourceIndex": 8,
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "scroll_rack": {
+      "x": 1563,
+      "y": 1276,
+      "w": 192,
+      "h": 91,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 3,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "shop_counter": {
+      "x": 2,
+      "y": 955,
+      "w": 288,
+      "h": 117,
+      "footprint": {
+        "w": 3,
+        "h": 1
+      },
+      "sheet": "sheet-31-shop.png",
+      "sourceIndex": 0,
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
+    },
+    "sign_post_city": {
+      "x": 1174,
+      "y": 1374,
+      "w": 96,
+      "h": 74,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 8,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "spice_crates": {
+      "x": 753,
+      "y": 1178,
+      "w": 95,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 7,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "standing_mirror": {
+      "x": 850,
+      "y": 1178,
+      "w": 53,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 7,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    },
+    "statue_plinth": {
+      "x": 1381,
+      "y": 292,
+      "w": 165,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 1,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "stocks": {
+      "x": 1844,
+      "y": 955,
+      "w": 192,
+      "h": 105,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 3,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "stone_steps": {
+      "x": 390,
+      "y": 678,
+      "w": 192,
+      "h": 144,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-34-river.png",
+      "sourceIndex": 8,
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
+    },
+    "straw_bed": {
+      "x": 1548,
+      "y": 292,
+      "w": 96,
+      "h": 192,
+      "footprint": {
+        "w": 1,
+        "h": 2
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 0,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "straw_mat": {
+      "x": 905,
+      "y": 1178,
+      "w": 95,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 6,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "straw_scatter": {
+      "x": 585,
+      "y": 1276,
+      "w": 96,
+      "h": 95,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 3,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "street_planter": {
+      "x": 1002,
+      "y": 1178,
+      "w": 87,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 5,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "strongbox": {
+      "x": 686,
+      "y": 1374,
+      "w": 96,
+      "h": 85,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 5,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "telescope": {
+      "x": 1091,
+      "y": 1178,
+      "w": 65,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-32-study.png",
+      "sourceIndex": 7,
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
+    },
+    "temple_lectern": {
+      "x": 1158,
+      "y": 1178,
+      "w": 83,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-38-shrine.png",
+      "sourceIndex": 5,
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
+    },
+    "tool_rack": {
+      "x": 584,
+      "y": 678,
+      "w": 192,
+      "h": 141,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 4,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "torture_rack": {
+      "x": 296,
+      "y": 1374,
+      "w": 192,
+      "h": 86,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 4,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "town_well": {
+      "x": 1646,
+      "y": 292,
+      "w": 163,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-33-town.png",
+      "sourceIndex": 4,
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
+    },
+    "training_dummy": {
+      "x": 1243,
+      "y": 1178,
+      "w": 78,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 4,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "wall_chains": {
+      "x": 1323,
+      "y": 1178,
+      "w": 75,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-37-dungeon.png",
+      "sourceIndex": 1,
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
+    },
+    "wall_joint_beveled_stone": {
+      "x": 1400,
+      "y": 1178,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 8,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "wall_joint_corner_stone": {
+      "x": 1498,
+      "y": 1178,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 0,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "wall_joint_corner_timber": {
+      "x": 1596,
+      "y": 1178,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 6,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "wall_joint_cross_stone": {
+      "x": 1694,
+      "y": 1178,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 2,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "wall_joint_end_stone": {
+      "x": 1792,
+      "y": 1178,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 3,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "wall_joint_pillar_stone": {
+      "x": 1890,
+      "y": 1178,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 4,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "wall_joint_t_stone": {
+      "x": 2,
+      "y": 1276,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 1,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "wall_joint_t_timber": {
+      "x": 100,
+      "y": 1276,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 7,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "wall_joint_tower_stone": {
+      "x": 198,
+      "y": 1276,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-24-wall-joints.png",
+      "sourceIndex": 5,
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
+    },
+    "war_table": {
+      "x": 778,
+      "y": 486,
+      "w": 192,
+      "h": 188,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 3,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "washtub": {
+      "x": 781,
+      "y": 1276,
+      "w": 96,
+      "h": 94,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 3,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "water_barrel": {
+      "x": 296,
+      "y": 1276,
+      "w": 91,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-30-kitchen.png",
+      "sourceIndex": 8,
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "water_wheel": {
+      "x": 762,
+      "y": 2,
+      "w": 123,
+      "h": 288,
+      "footprint": {
+        "w": 1,
+        "h": 3
+      },
+      "sheet": "sheet-28-mill-farm.png",
+      "sourceIndex": 1,
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
+    },
+    "weapon_rack_wall": {
+      "x": 196,
+      "y": 824,
+      "w": 192,
+      "h": 127,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-36-fortress.png",
+      "sourceIndex": 1,
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "wine_stain": {
+      "x": 1465,
+      "y": 1276,
+      "w": 96,
+      "h": 92,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-26-floor-marks.png",
+      "sourceIndex": 0,
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
+    },
+    "wolf_pelt": {
+      "x": 1811,
+      "y": 292,
+      "w": 134,
+      "h": 192,
+      "footprint": {
+        "w": 1,
+        "h": 2
+      },
+      "sheet": "sheet-25-rugs.png",
+      "sourceIndex": 5,
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
+    },
+    "workbench": {
+      "x": 2,
+      "y": 824,
+      "w": 192,
+      "h": 129,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-27-forge.png",
+      "sourceIndex": 6,
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
+    },
+    "writing_desk": {
+      "x": 1360,
+      "y": 678,
+      "w": 192,
+      "h": 136,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-29-bedroom.png",
+      "sourceIndex": 2,
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
+    }
+  },
+  "sources": {
+    "sheet-24-wall-joints.png": {
+      "key": "sheet-24-wall-joints",
+      "file": "sheet-24-wall-joints.png",
+      "type": "sheet",
+      "sourceHash": "d482469d847a7a444875b30a56351f7c69b51fc626019e8e519b0c75f268d58d",
+      "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-25-rugs.png": {
+      "key": "sheet-25-rugs",
+      "file": "sheet-25-rugs.png",
+      "type": "sheet",
+      "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
+      "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-26-floor-marks.png": {
+      "key": "sheet-26-floor-marks",
+      "file": "sheet-26-floor-marks.png",
+      "type": "sheet",
+      "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
+      "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-27-forge.png": {
+      "key": "sheet-27-forge",
+      "file": "sheet-27-forge.png",
+      "type": "sheet",
+      "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
+      "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-28-mill-farm.png": {
+      "key": "sheet-28-mill-farm",
+      "file": "sheet-28-mill-farm.png",
+      "type": "sheet",
+      "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
+      "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-29-bedroom.png": {
+      "key": "sheet-29-bedroom",
+      "file": "sheet-29-bedroom.png",
+      "type": "sheet",
+      "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
+      "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-30-kitchen.png": {
+      "key": "sheet-30-kitchen",
+      "file": "sheet-30-kitchen.png",
+      "type": "sheet",
+      "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
+      "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-31-shop.png": {
+      "key": "sheet-31-shop",
+      "file": "sheet-31-shop.png",
+      "type": "sheet",
+      "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
+      "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-32-study.png": {
+      "key": "sheet-32-study",
+      "file": "sheet-32-study.png",
+      "type": "sheet",
+      "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
+      "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-33-town.png": {
+      "key": "sheet-33-town",
+      "file": "sheet-33-town.png",
+      "type": "sheet",
+      "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
+      "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-34-river.png": {
+      "key": "sheet-34-river",
+      "file": "sheet-34-river.png",
+      "type": "sheet",
+      "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
+      "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-35-cliffs.png": {
+      "key": "sheet-35-cliffs",
+      "file": "sheet-35-cliffs.png",
+      "type": "sheet",
+      "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
+      "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-36-fortress.png": {
+      "key": "sheet-36-fortress",
+      "file": "sheet-36-fortress.png",
+      "type": "sheet",
+      "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
+      "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-37-dungeon.png": {
+      "key": "sheet-37-dungeon",
+      "file": "sheet-37-dungeon.png",
+      "type": "sheet",
+      "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
+      "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-38-shrine.png": {
+      "key": "sheet-38-shrine",
+      "file": "sheet-38-shrine.png",
+      "type": "sheet",
+      "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
+      "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    }
+  }
+}
