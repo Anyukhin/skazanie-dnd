@@ -110,9 +110,22 @@ function applyBuildingShape(map, building, shape, seed, rooms, paint) {
   // самым большим помещением, срез уносит служебные комнаты.
   const hall = rooms.find((room) => room.zoneId === 'hall')
   const hallCenterX = hall ? (hall.minX + hall.maxX) / 2 : (building.minX + building.maxX) / 2
-  const westCut = Math.abs(hallCenterX - (building.minX + building.maxX) / 2) < 1
+  const preferredWest = Math.abs(hallCenterX - (building.minX + building.maxX) / 2) < 1
     ? buildingSeedHash(`${seed}:shape-corner`) % 2 === 0
     : hallCenterX > (building.minX + building.maxX) / 2
+  // Срез не вправе унести комнату целиком: из двух северных углов берётся
+  // тот, после которого у каждой комнаты остаётся не меньше шести клеток
+  // пола вне среза и его кромки. Равенство решает прежнее правило.
+  const lostTo = (/** @type {boolean} */ west) => rooms.filter((room) => {
+    if (room.zoneId === 'hall') return false
+    let left = 0
+    for (let y = room.minY; y <= room.maxY; y += 1) for (let x = room.minX; x <= room.maxX; x += 1) {
+      const inCutX = west ? x <= building.minX + cutW : x >= building.maxX - cutW
+      if (!(inCutX && y <= building.minY + cutH)) left += 1
+    }
+    return left < 6
+  }).length
+  const westCut = shape !== 'L' || lostTo(preferredWest) <= lostTo(!preferredWest) ? preferredWest : !preferredWest
   const centerX = (building.minX + building.maxX + 1) / 2
   const centerY = (building.minY + building.maxY + 1) / 2
   /** @param {number} x @param {number} y */
@@ -258,7 +271,7 @@ function openShapedBackDoorAndWindows(map, rooms) {
   }
   for (const room of rooms) {
     if (room.zoneId === 'courtyard') continue
-    let budget = room.zoneId === 'hall' ? 6 : room.zoneId === 'store' ? 1 : 3
+    let budget = room.zoneId === 'hall' ? 6 : room.zoneId === 'store' || room.zoneId === 'corridor' ? 1 : 3
     const candidates = wallCellsBetween(map, (cell) => cell.zone === room.zoneId, (cell) => cell.zone === 'yard')
     for (const cell of candidates) {
       if (budget <= 0) break
@@ -378,8 +391,22 @@ const BUILDING_USES = new Set(['dwelling', 'tavern', 'shop', 'manor', 'smithy', 
 const BUILDING_CLIMATES = new Set(['temperate', 'arid', 'cold', 'wetland'])
 /** @type {Set<BuildingArchitecture>} */
 const BUILDING_ARCHITECTURES = new Set(['wood', 'stone', 'sand', 'metal', 'marble', 'ice'])
-/** @type {ReadonlyArray<'wing'|'long-hall'|'courtyard'>} */
-const BUILDING_SCHEMES = Object.freeze(['wing', 'long-hall', 'courtyard'])
+/** @type {ReadonlyArray<'wing'|'long-hall'|'courtyard'|'corridor'>} */
+const BUILDING_SCHEMES = Object.freeze(['wing', 'long-hall', 'courtyard', 'corridor'])
+
+/**
+ * Комнаты, которые выходят в коридор, по назначению здания. Дом получает
+ * несколько отдельных спален, а не одну на всех; постоялый двор — гостевые
+ * комнаты; усадьба — салон, кабинет и спальни. Список — по убыванию нужды:
+ * короткий корпус берёт первые, сколько поместится.
+ *
+ * @type {Readonly<Record<string, string[]>>}
+ */
+const CORRIDOR_ROOMS = Object.freeze({
+  dwelling: ['kitchen', 'bedroom', 'bedroom-2', 'store', 'bedroom-3'],
+  tavern: ['kitchen', 'store', 'guest-1', 'guest-2', 'guest-3', 'guest-4'],
+  manor: ['salon', 'kitchen', 'study', 'bedroom', 'store', 'bedroom-2'],
+})
 
 /** @param {unknown} value @returns {number} */
 function buildingSeedHash(value) {
@@ -425,13 +452,49 @@ function designRoomIsUsable(room) {
 /**
  * @param {{minX: number, minY: number, maxX: number, maxY: number}} interior
  * @param {BuildingUse} buildingUse
- * @param {'wing'|'long-hall'|'courtyard'} scheme
+ * @param {'wing'|'long-hall'|'courtyard'|'corridor'} scheme
  * @returns {RoomPlan[]}
  */
 function designRoomsFor(interior, buildingUse, scheme) {
   const { minX, minY, maxX, maxY } = interior
   const width = maxX - minX + 1
   const height = maxY - minY + 1
+  // Коридорная планировка: зал по фасаду, за ним коридор, за коридором — ряд
+  // отдельных комнат, каждая со своей дверью в коридор. В плане коридор в
+  // одну клетку: тонкие стены отдают ему кладку с обеих сторон, и он выходит
+  // в две-три клетки — двоим разойтись, но не зал.
+  // В бою это узкое горло между залом и спальнями и выбор, какую дверь
+  // открывать; в игре — дом, где у каждого своя комната.
+  const corridorRooms = CORRIDOR_ROOMS[buildingUse]
+  // Коридор съедает ряд, и зал небольшого дома становится тесным: четыре
+  // стола трактира в нём уже не встают. Поэтому планировка — только для
+  // корпуса от 14 клеток в ширину и 16 в глубину.
+  if (scheme === 'corridor' && corridorRooms && width >= 14 && height >= 16) {
+    const hallHeight = Math.max(6, Math.floor(height * 0.4))
+    const corridorMinY = minY + hallHeight + 1
+    const roomsMinY = corridorMinY + 2
+    // Комната за коридором — не уже четырёх клеток и не мельче 4×3.
+    const count = Math.min(corridorRooms.length, Math.floor((width + 1) / 5))
+    if (count >= 2 && maxY - roomsMinY + 1 >= 3) {
+      const span = width - (count - 1)
+      const size = Math.floor(span / count)
+      /** @type {RoomPlan[]} */
+      const rear = []
+      let cursor = minX
+      for (let index = 0; index < count; index += 1) {
+        const roomEnd = index === count - 1 ? maxX : cursor + size - 1
+        rear.push(designRoom(cursor, roomsMinY, roomEnd, maxY, corridorRooms[index]))
+        cursor = roomEnd + 2
+      }
+      return [
+        designRoom(minX, minY, maxX, corridorMinY - 2, 'hall'),
+        designRoom(minX, corridorMinY, maxX, corridorMinY, 'corridor'),
+        ...rear,
+      ]
+    }
+  }
+  // Коридор не поместился — дом строится боковым крылом, а не голым запасом.
+  if (scheme === 'corridor') scheme = 'wing'
   const extraIds = buildingUse === 'dwelling'
     ? ['bedroom', 'kitchen', 'store']
     : buildingUse === 'manor'
@@ -548,8 +611,14 @@ function designRoomsFor(interior, buildingUse, scheme) {
 const DESIGN_ROOM_LABELS = Object.freeze({
   hall: 'Общий зал', kitchen: 'Кухня', store: 'Кладовая', bedroom: 'Спальня',
   salon: 'Салон', workshop: 'Мастерская', courtyard: 'Внутренний двор',
-  barracks: 'Спальня стражи', armory: 'Оружейная',
+  barracks: 'Спальня стражи', armory: 'Оружейная', corridor: 'Коридор',
+  study: 'Кабинет', guest: 'Гостевая комната',
 })
+
+/** Подпись помещения: `bedroom-2` — та же спальня, `guest-3` — гостевая. */
+function designRoomLabel(/** @type {string} */ zoneId) {
+  return DESIGN_ROOM_LABELS[zoneId] ?? DESIGN_ROOM_LABELS[zoneId.replace(/-\d+$/u, '')] ?? zoneId
+}
 
 /**
  * Подпись главного помещения по назначению здания: «общий зал» бывает у
@@ -815,6 +884,14 @@ function designPropPlans(design, rooms, includeDecorativeTransition = true) {
     add('kitchen', 'kitchen', ['fireplace', 'cupboard', 'crate'], ['fireplace', 'cupboard', 'cauldron', 'crate', 'shelf_wall'], 'interior', 25)
     add('store', 'store', ['crate_stack', 'barrel_stack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 28)
   }
+  // Комнаты коридорной планировки: вторые спальни, гостевые постоялого
+  // двора, кабинет усадьбы и сам коридор — свет на стене и ничего поперёк.
+  for (const room of rooms) {
+    if (/^bedroom-\d+$/u.test(room.zoneId)) add(room.zoneId, 'bedroom', ['bed', 'chest'], ['bed', 'chest', 'night_table', 'wardrobe', 'candle'], 'interior', 26)
+    if (/^guest-\d+$/u.test(room.zoneId)) add(room.zoneId, 'bedroom', ['bed', 'night_table'], ['bed', 'chest', 'night_table', 'washbasin', 'candle'], 'interior', 26)
+  }
+  add('study', 'study', ['chair'], ['bookshelf', 'chest', 'candle', 'rug'], 'interior', 24)
+  add('corridor', 'corridor', ['lantern_wall'], ['lantern_wall', 'banner', 'chest'], 'interior', 6)
   add('courtyard', 'courtyard', ['well', 'cart'], ['well', 'cart', 'woodpile', 'bush', 'tree_oak', 'tree_birch'], 'yard', 14)
   const yardRequire = design.climate === 'arid' ? ['tree_dead'] : design.climate === 'cold' ? ['tree_pine', 'woodpile'] : ['tree_oak', 'woodpile']
   add('yard', 'exterior', yardRequire, ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'boulder', 'woodpile', 'water_trough', 'barrel'], 'yard', design.climate === 'arid' ? 4 : 6)
@@ -876,11 +953,15 @@ function designedBuildingAttempt({
   const safeWidth = Math.max(minimumSize, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
   const safeHeight = Math.max(minimumSize, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
   // У круглой башни двор внутри не помещается: только крыло или длинный зал.
-  const schemes = /** @type {any} */ (design)?.shape === 'round' ? BUILDING_SCHEMES.filter((name) => name !== 'courtyard') : BUILDING_SCHEMES
+  const schemes = BUILDING_SCHEMES.filter((name) => name !== 'corridor' && (name !== 'courtyard' || /** @type {any} */ (design)?.shape !== 'round'))
+  // Коридор с комнатами — у дома, постоялого двора и усадьбы; кузне и лавке
+  // он ни к чему. Это отдельный бросок примерно на каждое четвёртое здание,
+  // а не четвёртое место в прежнем выборе: прежние сиды сохраняют планировку.
+  const corridorRolled = Boolean(CORRIDOR_ROOMS[normalized.building_use]) && buildingSeedHash(`${seed}:corridor`) % 4 === 0
   const askedScheme = String(/** @type {any} */ (design)?.scheme ?? '')
   const scheme = courtyardRequested ? 'courtyard'
-    : BUILDING_SCHEMES.includes(/** @type {any} */ (askedScheme)) ? /** @type {'wing'|'long-hall'|'courtyard'} */ (askedScheme)
-      : schemes[buildingSeedHash(`${seed}:scheme`) % schemes.length]
+    : BUILDING_SCHEMES.includes(/** @type {any} */ (askedScheme)) ? /** @type {'wing'|'long-hall'|'courtyard'|'corridor'} */ (askedScheme)
+      : corridorRolled ? 'corridor' : schemes[buildingSeedHash(`${seed}:scheme`) % schemes.length]
   const buildingWidth = Math.max(minimumBuilding, Math.min(safeWidth - 4, Math.round(safeWidth * (0.52 + (buildingSeedHash(`${seed}:width`) % 4) * 0.05))))
   const buildingHeight = Math.max(minimumBuilding, Math.min(safeHeight - 4, Math.round(safeHeight * (0.52 + (buildingSeedHash(`${seed}:height`) % 4) * 0.05))))
   const maxMinX = Math.max(2, safeWidth - buildingWidth - 2)
@@ -920,7 +1001,7 @@ function designedBuildingAttempt({
     material: designMaterialFor(normalized.architecture, room.zoneId, yardMaterial),
     lightLevel: room.zoneId === 'store' ? 'dark' : 'dim',
     floorDirection: buildingSeedHash(`${seed}:${room.zoneId}:floor`) % 2 ? 'vertical' : 'horizontal',
-    label: room.zoneId === 'hall' ? HALL_LABELS[normalized.building_use] : DESIGN_ROOM_LABELS[room.zoneId] ?? room.zoneId,
+    label: room.zoneId === 'hall' ? HALL_LABELS[normalized.building_use] : designRoomLabel(room.zoneId),
   })
   addZone(map, { id: 'walls', kind: 'interior', material: wallMaterial, lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
   /** @param {number} x @param {number} y */
@@ -958,11 +1039,16 @@ function designedBuildingAttempt({
   const pathStartY = shapedDoor ? shapedDoor.y + 1 : building.maxY + 1
   const connected = new Set(['hall'])
   if (rooms.some((room) => room.zoneId === 'courtyard') && connectDesignRooms(map, rooms, 'hall', 'courtyard', 'courtyard-door')) connected.add('courtyard')
-  for (const zoneId of ['kitchen', 'store', 'bedroom', 'salon', 'workshop', 'barracks', 'armory']) {
+  // Коридор связывается первым: комнаты за ним входят через него, а не
+  // через зал. Остальные — в порядке плана.
+  const linkOrder = ['corridor', 'kitchen', 'store', 'bedroom', 'salon', 'workshop', 'barracks', 'armory',
+    ...rooms.map((room) => room.zoneId).filter((id) => /-\d+$/u.test(id) || id === 'study')]
+  for (const zoneId of [...new Set(linkOrder)]) {
     if (!rooms.some((room) => room.zoneId === zoneId)) continue
     const doorId = `${zoneId}-door`
     let linked = false
-    for (const source of [...connected]) {
+    const sources = connected.has('corridor') && zoneId !== 'corridor' ? ['corridor', ...[...connected].filter((id) => id !== 'corridor')] : [...connected]
+    for (const source of sources) {
       const joined = shape === 'rect' ? connectDesignRooms(map, rooms, source, zoneId, doorId) : connectShapedRooms(map, source, zoneId, doorId)
       if (!joined) continue
       connected.add(zoneId)
@@ -1055,6 +1141,25 @@ function designedBuildingAttempt({
 
 /** С какой площади помещение здания получает опоры под крышу. */
 const ROOF_POST_HALL_CELLS = 240
+
+/**
+ * Помещения плана без единой клетки пола: зона объявлена, а форма корпуса
+ * её срезала.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @returns {string[]}
+ */
+function emptyRooms(map) {
+  /** @type {Set<string>} */
+  const filled = new Set()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (cell?.passable) filled.add(cell.zone)
+  }
+  return map.zones
+    .filter((zone) => zone.kind === 'interior' && zone.id !== 'walls' && !filled.has(zone.id))
+    .map((zone) => `EMPTY_ROOM:${zone.id}`)
+}
 
 /**
  * Ручей у постройки: две клетки воды вдоль восточного или западного края
@@ -1646,7 +1751,9 @@ export function buildBuildingScene(options = {}) {
     const reachability = reachabilityIssues(map)
     // Первая попытка проходит и проверку играбельности: фигурный корпус без
     // второй комнаты или с запертым залом хуже честного прямоугольника.
-    const quality = attempt.strict ? auditTacticalMap(map).problems.map((problem) => problem.code) : []
+    // Фигурный корпус не вправе съесть помещение целиком: кухня, которую
+    // план объявил, а форма срезала, — потеря назначения, а не вариант.
+    const quality = attempt.strict ? [...auditTacticalMap(map).problems.map((problem) => problem.code), ...emptyRooms(map)] : []
     if (report.ok && !reachability.length && !quality.length) {
       return { map, fallback: attempt.fallback, warnings: tacticalFitnessWarnings(map) }
     }
