@@ -5371,6 +5371,9 @@ function assembleEncounterFromState(state, command) {
     revealed: cell?.revealed === true,
     ...(cell?.feature == null ? {} : { feature: String(cell.feature) }),
     ...(creatureCells.has(`${Number(cell?.x)},${Number(cell?.y)}`) || blockedProps.has(`${Number(cell?.x)},${Number(cell?.y)}`) ? { occupied: true } : {}),
+    // Тонкие стены сборщик видит по клеткам: иначе крупное существо встаёт
+    // поперёк перегородки, и проверка ниже отклоняет всю встречу.
+    ...(typeof cell?.walls === 'string' && /^(?:e|s|es)$/u.test(cell.walls) ? { walls: cell.walls } : {}),
   }))
   return validateEncounterPlacements(assembleEncounter({
     ruleset_id: state.ruleset_id,

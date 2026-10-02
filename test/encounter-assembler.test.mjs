@@ -292,3 +292,17 @@ test('rejects malformed enums, numbers, duplicate positions, sparse arrays, and 
     party: [{ id: 'hero', level: 1, x: 0, y: 0 }],
   })), 'NO_SAFE_PLACEMENT_CELLS')
 })
+
+test('сборщик видит тонкие стены: площадь существа не встаёт поперёк перегородки', () => {
+  // Каждая клетка отгорожена от восточной соседки: любая площадь 2×2
+  // пересекла бы стену, поэтому крупному существу места нет.
+  const walled = cells(12, 10).map((cell) => ({ ...cell, walls: 'e' }))
+  for (const difficulty of ['easy', 'medium', 'hard']) {
+    const result = assembleEncounter(baseInput({ scene: { cells: walled }, difficulty, seed: `walls:${difficulty}` }))
+    for (const enemy of result.enemies) {
+      const size = enemy.footprint?.size ?? 1
+      assert.equal(size, 1, `${difficulty}: ${enemy.stat_block_id ?? enemy.id} площадью ${size} встал поперёк стены`)
+    }
+  }
+  expectCode(() => assembleEncounter(baseInput({ scene: { cells: [{ x: 0, y: 0, type: 'floor', revealed: true, walls: 'n' }] } })), 'INVALID_SCENE_CELL_WALLS')
+})

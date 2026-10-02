@@ -117,6 +117,9 @@ function normalizedSceneCells(value) {
       if (typeof raw[field] === 'string' && /^(?:e|s|es)$/u.test(raw[field])) cell[field] = raw[field]
     }
     if (raw.door_dir === 'e' || raw.door_dir === 's') cell.door_dir = raw.door_dir
+    // Высота помоста и холмов: без неё вернувшийся отряд стоял бы на ровном полу.
+    const elevation = Number(raw.elevation)
+    if (Number.isSafeInteger(elevation) && elevation !== 0) cell.elevation = Math.max(-100, Math.min(100, elevation))
     return [cell]
   })
 }
