@@ -91,7 +91,9 @@ export function sceneMapDesignFor({
   if (!architecture) architecture = climate === 'arid' ? 'sand' : urban || kind === 'fortress' ? 'stone' : 'wood'
   const density = /редк[а-яё]* (?:дом|застрой)|разбросан|маленьк[а-яё]* деревн|хутор/u.test(local) ? 'sparse'
     : /тесн|густ[а-яё]* застрой|плотн[а-яё]* застрой|многолюд|столиц/u.test(local) ? 'dense'
-      : explicit.density || (rural ? 'sparse' : urban ? 'dense' : 'mixed')
+      // Деревня по умолчанию — обычная застройка: «редкая» давала четыре-пять
+      // дворов на карте 36×32. Редкой остаётся хутор, выселки и деревня в пустыне.
+      : explicit.density || (rural ? (climate === 'arid' ? 'sparse' : 'mixed') : urban ? 'dense' : 'mixed')
   const buildingUse = /кузн|кузниц/u.test(local) ? 'smithy'
     : /казарм|караульн|гарнизон|сторожев[а-яё]* башн|дозорн[а-яё]* башн/u.test(local) ? 'barracks'
       : /башн/u.test(local) ? 'manor'

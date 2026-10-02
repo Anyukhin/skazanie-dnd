@@ -1119,6 +1119,58 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
   return map
 }
 
+/** Темы, по которым предмет считается вещью под крышей. */
+const INDOOR_THEMES = new Set(['interior', 'tavern', 'house', 'temple', 'crypt', 'dungeon', 'cave'])
+
+/**
+ * Обещанное сценой: ставит недостающие предметы из списка «вид → штук». Сцена
+ * говорит «три настила и алтарь», тема о них не знает — без этого шага на
+ * карте не было бы ни того, ни другого. Предмет ставится той же расстановкой
+ * как обязательный: двери, проходы и соседство одинаковых соблюдаются.
+ * Предмет под крышу ищет комнату, уличный — двор или улицу; если таких зон
+ * нет, годится любая. Не поместилось — значит, не поместилось: обещание
+ * остаётся невыполненным и видно по `requirementsCoverage`, место не
+ * выдумывается.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {Array<{assets: string[], count: number}>} wanted
+ * @param {{seed: string}} options
+ * @returns {number} сколько предметов поставлено
+ */
+export function placeRequiredProps(map, wanted, { seed }) {
+  let added = 0
+  for (const [index, requirement] of wanted.entries()) {
+    const ids = new Set(requirement.assets)
+    const asset = requirement.assets.map((id) => assetById(id)).find(Boolean)
+    if (!asset) continue
+    let missing = Math.max(1, requirement.count) - map.props.filter((prop) => ids.has(prop.assetId)).length
+    if (missing <= 0) continue
+    const indoor = asset.themes.some((theme) => INDOOR_THEMES.has(theme)) && !asset.themes.includes('exterior')
+    // Зоны с местом: сначала подходящего рода, крупные первыми — там проще
+    // не задеть проход.
+    const sized = map.zones.map((zone) => ({ zone, size: zoneCells(map, zone.id).length })).filter((entry) => entry.size >= 4)
+    const fitting = sized.filter(({ zone }) => (indoor ? zone.kind === 'interior' : zone.kind !== 'interior'))
+    const order = (fitting.length ? fitting : sized).sort((left, right) => right.size - left.size || left.zone.id.localeCompare(right.zone.id))
+    for (let attempt = 0; missing > 0 && attempt < missing + order.length * 2; attempt += 1) {
+      const { zone } = order[attempt % order.length] ?? {}
+      if (!zone) break
+      const before = map.props.length
+      placeProps(map, {
+        seed: `${seed}:required:${index}:${attempt}`,
+        maxProps: before + 1,
+        zones: [{ zoneId: zone.id, theme: asset.themes[0], density: 0, require: [asset.id], caps: { [asset.id]: Number.POSITIVE_INFINITY } }],
+      })
+      const placedNow = map.props.length - before
+      // Свой префикс: номер по счётчику расстановки мог совпасть с предметом,
+      // который ремонт доступа уже убрал и чей номер освободился.
+      for (const prop of map.props.slice(before)) prop.id = `required-${index}-${attempt}-${asset.id}`
+      missing -= placedNow
+      added += placedNow
+    }
+  }
+  return added
+}
+
 /**
  * Колоннада: два ровных ряда опор вдоль длинной оси зала, на шаг от стен и
  * через клетку друг от друга. Случайная расстановка давала «лес» колонн

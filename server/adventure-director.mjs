@@ -8,7 +8,8 @@ import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './
 import { REFERENCE_SIZE } from './building-generator.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { sceneMapDesignFor, worldLocationDesignContext } from './scene-map-design.mjs'
-import { sceneMapRequirementsFor } from './scene-requirements.mjs'
+import { normalizeSceneRequirements, requirementAssets, sceneMapRequirementsFor } from './scene-requirements.mjs'
+import { ensurePropAccess, placeRequiredProps } from './prop-placement.mjs'
 import {
   buildThemedScene,
   isLiveTheme,
@@ -305,6 +306,12 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
       entry: startsOutside ? 'exterior' : 'interior',
     })
     built.map.theme = matched.assetTheme ?? matched.id
+    // Что пообещал текст сцены, встаёт на карту, даже если тема о нём не
+    // знает: «навес над колодцем» — колодец, «три стола» — три стола.
+    const promised = normalizeSceneRequirements(requirements)
+      .map((item) => ({ assets: requirementAssets(item.id), count: item.count }))
+      .filter((item) => item.assets.length)
+    if (promised.length && placeRequiredProps(built.map, promised, { seed: `${seed}:scene-requirements` })) ensurePropAccess(built.map)
     return { cells: legacyCellsFromTacticalMap(built.map), map: built.map }
   }
   // Сейчас сюда не попадает ни одна сцена: `fallbackThemeFor` всегда возвращает

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import { generateSceneGeometry } from '../server/adventure-director.mjs'
 import { MAP_PREVIEW_PRESETS, auditTacticalMap } from '../server/map-quality.mjs'
+import { requirementsCoverage, sceneRequirementsFromText } from '../server/scene-requirements.mjs'
 import { addProp, addSpawnPoint, addZone, cellAt, createTacticalMap, edgeList, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
 
 /**
@@ -97,12 +98,17 @@ test('неф храма делится колоннадой, алтарь сто
     const zoneOf = (prop) => map.zones.find((zone) => zone.id === cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone)?.label
     const altars = map.props.filter((prop) => prop.assetId === 'altar').map(zoneOf)
     assert.ok(altars.length >= 1 && altars.every((label) => label === 'Алтарная'), `${seed}: алтари в ${altars}`)
-    const colonnade = map.props.filter((prop) => prop.id.startsWith('colonnade-'))
-    if (colonnade.length) {
-      // Колонны одного ряда стоят на одной линии.
+    // Колоннада бывает в нескольких залах (просторный зал получает опоры
+    // ради укрытий); в каждом зале колонны стоят двумя ровными рядами.
+    const colonnades = new Map()
+    for (const prop of map.props.filter((entry) => entry.id.startsWith('colonnade-'))) {
+      const hall = prop.id.replace(/-\d+$/u, '')
+      colonnades.set(hall, [...(colonnades.get(hall) ?? []), prop])
+    }
+    for (const [hall, colonnade] of colonnades) {
       const lines = new Set(colonnade.map((prop) => `${Math.floor(prop.x)}`))
       const rows = new Set(colonnade.map((prop) => `${Math.floor(prop.y)}`))
-      assert.ok(Math.min(lines.size, rows.size) <= 2, `${seed}: колонны не в два ряда`)
+      assert.ok(Math.min(lines.size, rows.size) <= 2, `${seed}/${hall}: колонны не в два ряда`)
     }
     assert.ok(map.props.filter((prop) => prop.assetId === 'statue').length <= 5, `${seed}: статуй больше пяти`)
   }
@@ -263,7 +269,7 @@ test('мост через ущелье — провал без клеток, а 
   assert.ok(oasis.labels.includes('Пруд'), 'в оазисе нет воды')
 })
 
-test('город — двенадцать и больше домов вдоль улиц с площадью, деревня — дома вдоль улицы', () => {
+test('город — двенадцать и больше домов вдоль улиц с площадью, деревня — восемь и больше дворов', () => {
   for (const seed of SEEDS) {
     const { map } = generateSceneGeometry({ location: 'Город Вельдбург', theme: 'город', settlementType: 'town', seed: `town:${seed}`, useLibrary: false })
     const houses = map.zones.filter((zone) => /^building-\d+$/u.test(zone.id))
@@ -273,8 +279,15 @@ test('город — двенадцать и больше домов вдоль 
     const square = map.props.filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === 'square').map((prop) => prop.assetId)
     assert.ok(square.includes('well') && square.includes('market_stall'), `${seed}: на площади нет колодца и прилавков`)
   }
-  const { map: village } = generateSceneGeometry({ location: 'Деревня Кленовка', theme: 'деревня', settlementType: 'village', seed: 'village:q1', useLibrary: false })
-  assert.ok(village.zones.filter((zone) => /^building-\d+$/u.test(zone.id)).length >= 5, 'в деревне меньше пяти дворов')
+  // Деревня — не хутор: улица с переулками и второй ряд дворов дают
+  // девять-двенадцать домов на 40×34; хутор остаётся редким.
+  for (const seed of SEEDS) {
+    const { map: village } = generateSceneGeometry({ location: 'Деревня Кленовка', theme: 'деревня', settlementType: 'village', seed: `village:${seed}`, useLibrary: false })
+    const houses = village.zones.filter((zone) => /^building-\d+$/u.test(zone.id)).length
+    assert.ok(houses >= 8, `${seed}: в деревне ${houses} дворов`)
+  }
+  const { map: farmstead } = generateSceneGeometry({ location: 'Хутор у леса', theme: 'хутор', settlementType: 'village', seed: 'farm:q1', useLibrary: false })
+  assert.ok(farmstead.zones.filter((zone) => /^building-\d+$/u.test(zone.id)).length <= 6, 'хутор застроен как деревня')
 })
 
 test('климат не угадывается по кускам слова: Вельдбург — не ледяной город', () => {
@@ -282,4 +295,63 @@ test('климат не угадывается по кускам слова: В�
   let ice = 0
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.material === 'ice') ice += 1
   assert.equal(ice, 0, 'в «Вельдбурге» нашёлся «льд»')
+})
+
+test('генератор ставит то, что пообещал текст сцены, и карта остаётся играбельной', () => {
+  const cases = [
+    ['Таверна «Рыжий рог»', 'таверна', 'В зале очаг, четыре стола, у стойки две бочки и сундук хозяина.'],
+    ['Лесная поляна', 'лес', 'Костёр, старый дуб и телега торговца.'],
+    ['Пещера контрабандистов', 'пещера', 'Ящики, три бочки, сундук и костёр в глубине.'],
+    ['Храм Утренней звезды', 'храм', 'Две статуи у алтаря, жаровни горят, у стены котёл.'],
+  ]
+  for (const [location, theme, text] of cases) {
+    const requirements = sceneRequirementsFromText([text])
+    for (const seed of SEEDS) {
+      const { map } = generateSceneGeometry({ location, theme, seed: `${location}:${seed}`, useLibrary: false, requirements })
+      /** @type {Record<string, number>} */
+      const counts = {}
+      for (const prop of map.props) counts[prop.assetId] = (counts[prop.assetId] ?? 0) + 1
+      assert.deepEqual(requirementsCoverage(requirements, counts).missing, [], `${location}/${seed}: не встало обещанное`)
+      assert.deepEqual(auditTacticalMap(map).problems, [], `${location}/${seed}: обещанное сломало карту`)
+    }
+  }
+  // Котла в теме храма нет — его приносит только обещание сцены.
+  const { map: temple } = generateSceneGeometry({ location: 'Храм Утренней звезды', theme: 'храм', seed: 'cauldron', useLibrary: false, requirements: [{ id: 'cauldron', count: 1 }] })
+  assert.ok(temple.props.some((prop) => prop.assetId === 'cauldron'), 'котёл не встал')
+})
+
+test('подземелье и склеп получают петли, а второй вход в запертую комнату заперт тем же ключом', () => {
+  for (const [location, theme, minimum] of [['Подземелье под замком', 'подземелье', 10], ['Фамильный склеп', 'склеп', 5]]) {
+    let looped = 0
+    for (let index = 0; index < 16; index += 1) {
+      const { map } = generateSceneGeometry({ location, theme, seed: `loops:${index}`, useLibrary: false })
+      const report = auditTacticalMap(map)
+      assert.deepEqual(report.problems, [], `${location}/${index}: ${JSON.stringify(report.problems.slice(0, 3))}`)
+      if (report.stats.loops > 0) looped += 1
+      // Все запертые двери — под один ключ цели: петля не обходит замок.
+      const keys = new Set(map.doors.filter((door) => door.state === 'locked').map((door) => door.keyItemId))
+      assert.ok(keys.size <= 1, `${location}/${index}: замки под разные ключи ${[...keys]}`)
+      for (const door of map.doors.filter((entry) => entry.id.startsWith('loop-door-') && entry.state === 'locked')) {
+        assert.ok(door.keyItemId, `${location}/${index}: запертая петля без ключа`)
+      }
+    }
+    assert.ok(looped >= minimum, `${location}: петли только у ${looped} карт из 16`)
+  }
+})
+
+test('голый просторный зал — замечание: укрыться можно только у стены', () => {
+  const map = createTacticalMap({ width: 18, height: 16, seed: 'hall', generator: { id: 'manual', version: '1' } })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Зал' })
+  for (let y = 0; y < 16; y += 1) for (let x = 0; x < 18; x += 1) {
+    const wall = x === 0 || y === 0 || x === 17 || y === 15
+    setCell(map, x, y, { passable: !wall, material: 'stone', zone: wall ? '' : 'hall', revealed: true })
+  }
+  addSpawnPoint(map, { id: 'party', x: 2, y: 2, role: 'party' })
+  const bare = auditTacticalMap(map)
+  assert.ok(bare.warnings.some((warning) => warning.code === 'HALL_NO_COVER'), JSON.stringify(bare.warnings))
+  // Две колонны посреди зала — уже есть за чем встать.
+  for (const [index, [x, y]] of [[5, 5], [5, 10], [12, 5], [12, 10], [8, 7], [9, 8]].entries()) {
+    addProp(map, { id: `pillar-${index}`, assetId: 'pillar', x: x + 0.5, y: y + 0.5, rotation: 0, scale: 1, footprint: [{ x, y }], zOrder: 0, blocksMove: true, blocksSight: true, cover: 'three_quarters', destructible: false, hp: 0, interactive: false })
+  }
+  assert.ok(!auditTacticalMap(map).warnings.some((warning) => warning.code === 'HALL_NO_COVER'))
 })

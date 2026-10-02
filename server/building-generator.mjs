@@ -32,7 +32,7 @@ import {
  * стены можно будет убрать, а рёбра останутся на месте.
  */
 
-export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '5' })
+export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '6' })
 
 /** Генератор authored-крепости: геометрия одна на все столы, seed меняет только отделку. */
 export const ARES_FORTRESS_GENERATOR = Object.freeze({ id: 'ares-fortress', version: '1' })
@@ -982,6 +982,11 @@ function designedBuildingAttempt({
     const drift = y - pathStartY < 2 ? 0 : Math.round(Math.sin((y - building.maxY) * 0.6 + buildingSeedHash(seed) % 5) * 1.4)
     for (const x of [entranceX + drift, entranceX + drift + 1]) if (cellAt(map, x, y)) setCell(map, x, y, { material: 'earth', surface: 'none', variant: variantAt(x, y) })
   }
+  // Водяная мельница и дом «у реки» стоят у воды: вдоль боковой стороны
+  // участка течёт ручей в две клетки. Сторона — та, где между стеной и краем
+  // карты шире; вход и тропа с юга воду не пересекают.
+  const riverside = normalized.building_use === 'mill' || /** @type {any} */ (design)?.topology === 'river'
+  if (riverside) paintBuildingStream(map, building, entranceX, String(seed))
   const plot = { minX: 1, minY: 1, maxX: safeWidth - 2, maxY: safeHeight - 2 }
   for (let x = plot.minX; x < plot.maxX; x += 1) {
     if (Math.abs(x - entranceX) <= 1) continue
@@ -1014,6 +1019,49 @@ function designedBuildingAttempt({
   ensureDeclaredTransitions(map, levels, 'hall')
   ensurePropAccess(map)
   return map
+}
+
+/**
+ * Ручей у постройки: две клетки воды вдоль восточного или западного края
+ * участка, на всю высоту карты, с отступом от стены не меньше двух клеток.
+ * Вода непроходима и не загораживает взгляд — за ней видно, но не пройти
+ * без моста или брода. Тропа ко входу и место отряда остаются на суше.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{minX: number, minY: number, maxX: number, maxY: number}} building
+ * @param {number} entranceX
+ * @param {string} seed
+ */
+function paintBuildingStream(map, building, entranceX, seed) {
+  const west = building.minX - 1
+  const east = map.width - 2 - building.maxX
+  // Нужно две клетки воды и две клетки берега до стены.
+  if (Math.max(west, east) < 4) return
+  const side = east > west || (east === west && buildingSeedHash(`${seed}:stream`) % 2) ? 'east' : 'west'
+  // Вода идёт до самого края карты: полоска суши за ручьём была бы
+  // недостижимой.
+  const inner = side === 'east' ? map.width - 3 : 2
+  if (Math.abs(inner - entranceX) <= 3) return
+  addZone(map, { id: 'stream', kind: 'exterior', material: 'stone', lightLevel: 'bright', floorDirection: 'vertical', label: 'Ручей' })
+  for (let y = 0; y < map.height; y += 1) {
+    // Русло слегка петляет: на клетку в сторону через каждые несколько рядов.
+    const drift = Math.round(Math.sin(y * 0.5 + (buildingSeedHash(seed) % 7)) * 0.6)
+    const edge = side === 'east' ? inner + Math.min(0, drift) : inner + Math.max(0, drift)
+    const from = side === 'east' ? edge : 0
+    const to = side === 'east' ? map.width - 1 : edge
+    for (let x = from; x <= to; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell || cell.zone !== 'yard') continue
+      setCell(map, x, y, { passable: false, surface: 'water', material: 'stone', zone: 'stream', revealed: true })
+    }
+  }
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (cellAt(map, x, y)?.zone !== 'stream') continue
+    for (const [dx, dy] of [[1, 0], [0, 1]]) {
+      const other = cellAt(map, x + dx, y + dy)
+      if (other && other.zone !== 'stream') setEdge(map, x, y, x + dx, y + dy, { kind: 'none' })
+    }
+  }
 }
 
 /**
@@ -1522,6 +1570,8 @@ export function openWindow(map, x, y) {
  */
 function railBetween(map, ax, ay, bx, by) {
   if (!cellAt(map, ax, ay) || !cellAt(map, bx, by)) return
+  // Забор участка по воде не идёт: ручей сам граница.
+  if (cellAt(map, ax, ay)?.surface === 'water' || cellAt(map, bx, by)?.surface === 'water') return
   if (edgeBetween(map, ax, ay, bx, by)) return
   setEdge(map, ax, ay, bx, by, { kind: 'rail', blocksMove: true, blocksSight: false, cover: 'half' })
 }

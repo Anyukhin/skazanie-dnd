@@ -26,6 +26,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { join } from 'node:path'
 
 import { normalizeSceneRequirements, requirementsCoverage } from './scene-requirements.mjs'
+import { auditTacticalMap } from './map-quality.mjs'
+import { deserializeTacticalMap } from './tactical-map.mjs'
 
 export const MAP_LIBRARY_DIR = 'map-library'
 export const MAP_LIBRARY_SCHEMA_VERSION = 1
@@ -347,6 +349,19 @@ function writeJsonAtomic(file, value) {
   rmSync(temporary, { force: true })
 }
 
+/** Сколько кандидатов перебирает подбор, прежде чем уступить генератору. */
+const LIBRARY_PICK_ATTEMPTS = 6
+
+/**
+ * Изъяны библиотечной карты, с которыми сцену не начать. Остальные замечания
+ * проверки (одна большая комната, нет окон, повтор предметов) — дело вкуса
+ * автора постройки, их библиотека терпит.
+ */
+const LIBRARY_BLOCKING_PROBLEMS = new Set([
+  'NO_PARTY_SPAWN', 'PARTY_SPAWN_BLOCKED', 'UNREACHABLE_FLOOR', 'PROP_OUT_OF_BOUNDS',
+  'PROP_ON_SOLID_CELL', 'DOOR_TO_NOWHERE', 'BUILDING_WITHOUT_EXIT',
+])
+
 export class MapLibrary {
   /** @param {string} storageDir корень хранилища (`DND_STORAGE_DIR`) */
   constructor(storageDir) {
@@ -354,6 +369,8 @@ export class MapLibrary {
     this.indexFile = join(this.dir, 'index.json')
     /** @type {{ mtime: number, entries: LibraryEntry[] }|null} */
     this.cache = null
+    /** @type {{ mtime: number, results: Map<string, boolean> }|null} */
+    this.audits = null
   }
 
   /** @returns {LibraryEntry[]} */
@@ -401,10 +418,41 @@ export class MapLibrary {
    * @param {{ seed: string, usedIds?: Iterable<string> }} options
    */
   pick(request, options) {
-    const entry = chooseLibraryMap(this.entries(), request, options)
-    if (!entry) return null
-    const levels = this.levels(entry.id)
-    return levels?.some((level) => Number(level.index) === 0) ? { entry, levels } : null
+    const rejected = new Set(options.usedIds ?? [])
+    // Неиграбельная карта отбрасывается, и выбор идёт к следующей: отряд не
+    // должен начинать сцену в замурованной комнате или видеть дверь в стену.
+    for (let attempt = 0; attempt < LIBRARY_PICK_ATTEMPTS; attempt += 1) {
+      const entry = chooseLibraryMap(this.entries(), request, { ...options, usedIds: rejected })
+      if (!entry) return null
+      const levels = this.levels(entry.id)
+      const ground = levels?.find((level) => Number(level.index) === 0)
+      if (ground && this.playable(entry.id, ground.map)) return { entry, levels: /** @type {NonNullable<typeof levels>} */ (levels) }
+      rejected.add(entry.id)
+    }
+    return null
+  }
+
+  /**
+   * Проходит ли этаж входа проверку играбельности. Результат запоминается
+   * до смены индекса библиотеки: проверка большой карты — десятки
+   * миллисекунд, а подбор идёт на каждой новой локации.
+   * @param {string} id
+   * @param {Record<string, unknown>} map
+   */
+  playable(id, map) {
+    const mtime = this.cache?.mtime ?? 0
+    if (this.audits?.mtime !== mtime) this.audits = { mtime, results: new Map() }
+    const known = this.audits.results.get(id)
+    if (known !== undefined) return known
+    let ok = false
+    try {
+      const report = auditTacticalMap(deserializeTacticalMap(structuredClone(map)))
+      ok = !report.problems.some((problem) => LIBRARY_BLOCKING_PROBLEMS.has(problem.code))
+    } catch {
+      ok = false
+    }
+    this.audits.results.set(id, ok)
+    return ok
   }
 }
 

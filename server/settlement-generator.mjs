@@ -18,7 +18,7 @@ import {
  * одинаковых домов. Его результат всё ещё обычная TacticalMap, поэтому старые
  * проекция, движение, реквизит и сохранение не получают второго формата.
  */
-export const SETTLEMENT_GENERATOR = Object.freeze({ id: 'settlement-layout', version: '3' })
+export const SETTLEMENT_GENERATOR = Object.freeze({ id: 'settlement-layout', version: '4' })
 
 const TOPOLOGIES = new Set(['organic', 'linear', 'crossroads', 'market', 'courtyard', 'harbor', 'river', 'terraced', 'gate'])
 const CLIMATES = new Set(['temperate', 'arid', 'cold', 'wetland'])
@@ -555,13 +555,17 @@ function frontageSpecs(map, random, target) {
   // оставлял между домами обрезки короче дома, и на улицу вставало вдвое
   // меньше дворов. Сторона выбирается случайно, чтобы деревни различались.
   const sideOrder = shuffled(['-1,0', '1,0', '0,-1', '0,1'], random)
-  fronts.sort((left, right) => sideOrder.indexOf(`${left.dy},${left.dx}`) - sideOrder.indexOf(`${right.dy},${right.dx}`)
+  // Сначала переулки: дом у переулка короче улицы, а главная улица добирает
+  // промежутки между ними.
+  const laneFirst = random() < 0.5
+  fronts.sort((left, right) => (laneFirst ? Number(Boolean(right.dx)) - Number(Boolean(left.dx)) : 0)
+    || sideOrder.indexOf(`${left.dy},${left.dx}`) - sideOrder.indexOf(`${right.dy},${right.dx}`)
     || (left.dy ? left.x - right.x || left.y - right.y : left.y - right.y || left.x - right.x))
   for (const front of fronts) {
     if (specs.length >= target) break
     // Дом деревни просторнее городского: в нём перегородка и спальня,
     // а в амбар встаёт стог.
-    const w = 8 + Math.floor(random() * 3)
+    const w = 7 + Math.floor(random() * 3)
     const h = 5 + Math.floor(random() * 2)
     // Дом стоит в клетке от улицы и смотрит на неё дверью.
     let spec
@@ -586,8 +590,97 @@ function frontageSpecs(map, random, target) {
   return specs
 }
 
+/**
+ * Второй ряд дворов: дома в глубине, за первым рядом вдоль улицы. Дверь
+ * смотрит на сторону, ближайшую к улице, тропу к ней прокладывает общая
+ * проверка достижимости. Двор вокруг — те же две клетки.
+ *
+ * @param {Array<ReturnType<typeof makeSpec>>} specs уже поставленные дома
+ * @returns {Array<ReturnType<typeof makeSpec>>}
+ */
+function backRowSpecs(map, specs, random, target) {
+  const occupied = new Set()
+  const reserve = (/** @type {ReturnType<typeof makeSpec>} */ spec) => {
+    for (const cell of shapeCells(spec)) for (let ry = -2; ry <= 2; ry += 1) for (let rx = -2; rx <= 2; rx += 1) occupied.add(key(cell.x + rx, cell.y + ry))
+  }
+  specs.forEach(reserve)
+  /** @type {Array<{x: number, y: number}>} */
+  const streets = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (['street', 'square'].includes(cellAt(map, x, y)?.zone ?? '')) streets.push({ x, y })
+  }
+  if (!streets.length) return []
+  const result = []
+  const sizes = shuffled([[7, 5], [6, 5], [5, 6], [5, 7], [6, 6]], random)
+  for (let y = 2; y < map.height - 6 && specs.length + result.length < target; y += 1) {
+    for (let x = 2; x < map.width - 6 && specs.length + result.length < target; x += 1) {
+      for (const [w, h] of sizes) {
+        const spec = makeSpec(x, y, w, h)
+        if (!canPlace(spec, occupied, map)) continue
+        // Дверь — посередине стороны, обращённой к ближайшей улице.
+        const center = { x: x + (w - 1) / 2, y: y + (h - 1) / 2 }
+        const nearest = streets.reduce((best, cell) => (Math.abs(cell.x - center.x) + Math.abs(cell.y - center.y) < Math.abs(best.x - center.x) + Math.abs(best.y - center.y) ? cell : best))
+        const dx = nearest.x - center.x
+        const dy = nearest.y - center.y
+        if (Math.abs(dx) > Math.abs(dy)) { spec.doorX = dx > 0 ? x + w - 1 : x; spec.doorY = y + Math.floor(h / 2) }
+        else { spec.doorX = x + Math.floor(w / 2); spec.doorY = dy > 0 ? y + h - 1 : y }
+        result.push(spec)
+        reserve(spec)
+        break
+      }
+    }
+  }
+  return result
+}
+
+/**
+ * Переулки деревни: от улицы вверх и вниз отходят проезды в две клетки, не
+ * ближе дюжины клеток друг к другу и к краю. Переулок идёт до третьей клетки
+ * от края карты и останавливается у воды. Возвращает прежнее состояние
+ * закрашенных клеток, чтобы переулки можно было снять.
+ *
+ * @returns {Array<{x: number, y: number, before: Record<string, any>}>}
+ */
+function paintVillageLanes(map, random, material) {
+  /** @type {Array<{x: number, y: number, before: Record<string, any>}>} */
+  const painted = []
+  const streetAt = (/** @type {number} */ x, /** @type {number} */ y) => ['street', 'square'].includes(cellAt(map, x, y)?.zone ?? '')
+  // Главная улица — самая длинная горизонтальная полоса улицы.
+  const rows = Array.from({ length: map.height }, (_, y) => y)
+    .map((y) => ({ y, count: Array.from({ length: map.width }, (_, x) => x).filter((x) => streetAt(x, y)).length }))
+    .filter((row) => row.count >= map.width * 0.6)
+  if (!rows.length) return painted
+  const top = Math.min(...rows.map((row) => row.y))
+  const bottom = Math.max(...rows.map((row) => row.y))
+  const spacing = 12 + Math.floor(random() * 3)
+  const first = 9 + Math.floor(random() * 4)
+  // Переулок не встаёт рядом с другой поперечной улицей (перекрёсток, мост):
+  // между ними не поместился бы ни один дом.
+  const crossStreetNear = (/** @type {number} */ laneX) => Array.from({ length: map.height }, (_, y) => y)
+    .filter((y) => y < top || y > bottom)
+    .some((y) => Array.from({ length: 22 }, (_, i) => laneX - 10 + i).some((x) => streetAt(x, y)))
+  for (let laneX = first; laneX + 1 < map.width - 8; laneX += spacing) {
+    if (crossStreetNear(laneX)) continue
+    // Переулок идёт в одну сторону или в обе: так деревня не выглядит сеткой.
+    const roll = random()
+    const directions = roll < 0.4 ? [-1, 1] : roll < 0.7 ? [-1] : [1]
+    for (const direction of directions) {
+      for (let y = direction < 0 ? top - 1 : bottom + 1; y >= 3 && y <= map.height - 4; y += direction) {
+        const cells = [laneX, laneX + 1].map((x) => ({ x, cell: cellAt(map, x, y) }))
+        if (cells.some(({ cell }) => !cell || cell.surface === 'water' || !cell.passable)) break
+        for (const { x, cell } of cells) {
+          if (streetAt(x, y)) continue
+          painted.push({ x, y, before: { passable: cell.passable, surface: cell.surface, material: cell.material, zone: cell.zone, revealed: cell.revealed } })
+          paintStreet(map, x, y, material)
+        }
+      }
+    }
+  }
+  return painted
+}
+
 /** Наименьший размер карты поселения по масштабу. */
-const SETTLEMENT_MIN_SIZE = Object.freeze({ village: { width: 36, height: 32 }, town: { width: 48, height: 44 }, city: { width: 56, height: 52 } })
+const SETTLEMENT_MIN_SIZE = Object.freeze({ village: { width: 40, height: 34 }, town: { width: 48, height: 44 }, city: { width: 56, height: 52 } })
 
 /**
  * Город: сетка улиц, площадь в центре, кварталы с домами вдоль улиц.
@@ -865,8 +958,8 @@ export function buildSettlementScene(options = {}) {
 function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, locationId = '', theme = {}, design = {}, planner = 'street' } = {}) {
   const chosen = designFor(theme, seed, design)
   const random = randomFor(`settlement:${seed}:${chosen.topology}`)
-  // Масштаб задаёт наименьший размер: деревня — от 30×28, город — от 44×40,
-  // столица — от 52×48. Прежде любой город сжимался в 26–40 клеток и
+  // Масштаб задаёт наименьший размер: деревня — от 40×34, город — от 48×44,
+  // столица — от 56×52. Прежде любой город сжимался в 26–40 клеток и
   // получал четыре-девять домов.
   const minimum = SETTLEMENT_MIN_SIZE[/** @type {'village'|'town'|'city'} */ (chosen.scale)] ?? { width: 26, height: 26 }
   const safeWidth = clamp(Math.max(integer(width, 30), minimum.width), 26, 60)
@@ -897,9 +990,24 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   // ставятся вдоль них; если по улице встало меньше, остаётся прежний набор.
   const legacy = urban && planner === 'street' ? [] : buildingSpecs(map, chosen, random)
   // Редкая застройка — хутор или выселки: три-пять дворов, а не деревня.
-  const villageTarget = chosen.density === 'dense' ? 12 : chosen.density === 'sparse' ? 5 : 10
-  const alongStreet = planner === 'street' && !urban && chosen.scale === 'village' ? frontageSpecs(map, random, villageTarget) : []
-  const specs = urban && planner === 'street' ? townSpecs(map, chosen, random, materialsForMap) : alongStreet.length > legacy.length ? alongStreet : legacy
+  const villageTarget = chosen.density === 'dense' ? 14 : chosen.density === 'sparse' ? 5 : 12
+  const villageStreet = planner === 'street' && !urban && chosen.scale === 'village'
+  // Переулки от главной улицы: одна улица на 36 клеток вмещает четыре-шесть
+  // дворов, с переулками — вдвое больше. Если и так не вышло больше
+  // прежнего набора, переулки стираются, чтобы не резать его дома.
+  const lanes = villageStreet && chosen.density !== 'sparse' ? paintVillageLanes(map, random, materialsForMap.street) : []
+  // Укладка вдоль улиц зависит от того, с какой стороны начать: из шести
+  // порядков берётся тот, что поставил больше дворов.
+  const alongStreet = villageStreet
+    ? Array.from({ length: 6 }, (_, attempt) => frontageSpecs(map, randomFor(`settlement-frontage:${seed}:${attempt}`), villageTarget))
+      .reduce((best, next) => (next.length > best.length ? next : best), [])
+    : []
+  if (alongStreet.length) alongStreet.push(...backRowSpecs(map, alongStreet, random, villageTarget))
+  if (alongStreet.length < legacy.length) for (const { x, y, before } of lanes) setCell(map, x, y, before)
+  const specs = urban && planner === 'street' ? townSpecs(map, chosen, random, materialsForMap) : alongStreet.length >= legacy.length && alongStreet.length ? alongStreet : legacy
+  // Город не бывает меньше дюжины дворов: если кварталы встали тесно,
+  // добор идёт вторым рядом в глубине кварталов.
+  if (urban && planner === 'street' && specs.length < 12) specs.push(...backRowSpecs(map, specs, random, 12))
   const uses = settlementUses(specs, chosen)
   /** @type {Record<string, string>} */
   const buildingUses = {}

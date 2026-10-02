@@ -782,6 +782,9 @@ export function layoutOrganicCave(theme, {
   return map
 }
 
+/** С какой площади зал подземной темы получает колоннаду ради укрытий. */
+const SPACIOUS_HALL_CELLS = 100
+
 /**
  * Петли по длине пути (приём генератора Brogue): стена между двумя
  * помещениями получает дверь, если обойти её сейчас можно только в
@@ -789,11 +792,15 @@ export function layoutOrganicCave(theme, {
  * кольцо — у отряда появляются отступление и обход с фланга, у врага —
  * засада с двух сторон (Jaquays, «несколько путей к цели»).
  *
+ * Запертая комната в петлю входит только через такую же запертую дверь —
+ * с тем же замком и тем же ключом (`locks`): у сокровищницы может быть два
+ * входа, но оба под ключ, иначе ключ теряет смысл.
+ *
  * @param {import('./tactical-map.mjs').TacticalMap} map
- * @param {{exclude?: string[], limit?: number, minDetour?: number}} [options]
+ * @param {{exclude?: string[], limit?: number, minDetour?: number, locks?: Record<string, {lockDc?: number, keyItemId?: string|null}>}} [options]
  * @returns {number} сколько проходов прорублено
  */
-export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10 } = {}) {
+export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10, locks = {} } = {}) {
   const blocked = new Set(exclude)
   const zoneOf = (/** @type {number} */ x, /** @type {number} */ y) => cellAt(map, x, y)?.zone ?? ''
   /** @param {{x: number, y: number}} from @param {{x: number, y: number}} to */
@@ -820,19 +827,28 @@ export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10 
     }
     return Number.POSITIVE_INFINITY
   }
-  /** @type {Array<{x: number, y: number, a: {x: number, y: number}, b: {x: number, y: number}, pair: string}>} */
+  /** @type {Array<{x: number, y: number, a: {x: number, y: number}, b: {x: number, y: number}, pair: string, wall: Array<{x: number, y: number}>}>} */
   const candidates = []
-  for (let y = 1; y < map.height - 1; y += 1) for (let x = 1; x < map.width - 1; x += 1) {
-    const own = cellAt(map, x, y)
-    if (!own || own.passable) continue
-    for (const [dx, dy] of [[1, 0], [0, 1]]) {
-      const a = { x: x - dx, y: y - dy }
-      const b = { x: x + dx, y: y + dy }
-      const zoneA = zoneOf(a.x, a.y)
-      const zoneB = zoneOf(b.x, b.y)
-      if (!cellAt(map, a.x, a.y)?.passable || !cellAt(map, b.x, b.y)?.passable) continue
-      if (!zoneA || !zoneB || zoneA === zoneB || blocked.has(zoneA) || blocked.has(zoneB)) continue
-      candidates.push({ x, y, a, b, pair: [zoneA, zoneB].sort().join('|') })
+  // Стена между помещениями бывает толщиной в одну клетку и толще: раскладка
+  // графа оставляет между комнатами по две-три клетки камня. Сквозь толстую
+  // стену прорубается короткий лаз, а дверь встаёт на выходе из него. Более
+  // тонкая стена предпочтительнее — она идёт первой.
+  for (const thickness of [1, 2, 3]) {
+    for (let y = 1; y < map.height - 1; y += 1) for (let x = 1; x < map.width - 1; x += 1) {
+      for (const [dx, dy] of [[1, 0], [0, 1]]) {
+        const wall = Array.from({ length: thickness }, (_, step) => ({ x: x + dx * step, y: y + dy * step }))
+        if (wall.some((cell) => !cellAt(map, cell.x, cell.y) || cellAt(map, cell.x, cell.y)?.passable)) continue
+        // Лаз не идёт вдоль чужого помещения: по бокам у него только камень.
+        if (thickness > 1 && wall.some((cell) => [[dy, dx], [-dy, -dx]].some(([sx, sy]) => cellAt(map, cell.x + sx, cell.y + sy)?.passable))) continue
+        const a = { x: x - dx, y: y - dy }
+        const b = { x: x + dx * thickness, y: y + dy * thickness }
+        if (b.x >= map.width - 1 || b.y >= map.height - 1) continue
+        const zoneA = zoneOf(a.x, a.y)
+        const zoneB = zoneOf(b.x, b.y)
+        if (!cellAt(map, a.x, a.y)?.passable || !cellAt(map, b.x, b.y)?.passable) continue
+        if (!zoneA || !zoneB || zoneA === zoneB || blocked.has(zoneA) || blocked.has(zoneB)) continue
+        candidates.push({ x, y, a, b, pair: `${[zoneA, zoneB].sort().join('|')}#${thickness}`, wall })
+      }
     }
   }
   let opened = 0
@@ -840,19 +856,24 @@ export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10 
   // Середина общей стены лучше её края: порядок — по удалённости от углов.
   for (const candidate of candidates) {
     if (opened >= limit) break
-    if (usedPairs.has(candidate.pair)) continue
-    if (distance(candidate.a, candidate.b) <= minDetour) continue
+    const rooms = candidate.pair.split('#')[0]
+    if (usedPairs.has(rooms)) continue
+    const detour = minDetour + candidate.wall.length - 1
+    if (distance(candidate.a, candidate.b) <= detour) continue
     const sameWall = candidates.filter((other) => other.pair === candidate.pair)
     const middle = sameWall[Math.floor(sameWall.length / 2)]
-    if (distance(middle.a, middle.b) <= minDetour) continue
-    setCell(map, middle.x, middle.y, { passable: true, zone: '' })
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      if (cellAt(map, middle.x + dx, middle.y + dy)?.passable) setEdge(map, middle.x, middle.y, middle.x + dx, middle.y + dy, { kind: 'none' })
-    }
-    const dirX = middle.b.x - middle.x
-    const edge = dirX ? { x: middle.x, y: middle.y, dir: /** @type {'e'} */ ('e') } : { x: middle.x, y: middle.y, dir: /** @type {'s'} */ ('s') }
-    setDoor(map, { id: `loop-door-${opened + 1}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
-    usedPairs.add(candidate.pair)
+    if (distance(middle.a, middle.b) <= detour) continue
+    for (const cell of middle.wall) setCell(map, cell.x, cell.y, { passable: true, zone: '' })
+    const path = [middle.a, ...middle.wall, middle.b]
+    for (let step = 1; step < path.length; step += 1) setEdge(map, path[step - 1].x, path[step - 1].y, path[step].x, path[step].y, { kind: 'none' })
+    // Дверь — на выходе из лаза в дальнее помещение.
+    const last = middle.wall[middle.wall.length - 1]
+    const edge = middle.b.x !== last.x ? { x: last.x, y: last.y, dir: /** @type {'e'} */ ('e') } : { x: last.x, y: last.y, dir: /** @type {'s'} */ ('s') }
+    const lock = rooms.split('|').map((zoneId) => locks[zoneId]).find(Boolean)
+    setDoor(map, lock
+      ? { id: `loop-door-${opened + 1}`, ...edge, state: 'locked', ...(lock.lockDc ? { lockDc: lock.lockDc } : {}), ...(lock.keyItemId ? { keyItemId: lock.keyItemId } : {}) }
+      : { id: `loop-door-${opened + 1}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
+    usedPairs.add(rooms)
     opened += 1
   }
   return opened
@@ -1342,8 +1363,18 @@ export function buildThemedScene({
     // решётками, храм смотрит наружу щелями под сводом. Это те же стены —
     // пройти сквозь них нельзя, но видно и укрытие слабее.
     // Петли по образцу Brogue: цепочка помещений получает обходной путь.
-    // Запертая цель в петлю не входит — иначе ключ теряет смысл.
-    addShortcutLoops(built.map, { exclude: definition.locked ? [graph.goalZoneId] : [], limit: 2 })
+    // Запертая цель входит в петлю только второй запертой дверью на тот же
+    // ключ — иначе ключ теряет смысл.
+    const goalDoor = definition.locked
+      // Проём двери — клетка стены без зоны, поэтому дверь цели узнаётся по
+      // замку, а не по зоне своих клеток.
+      ? built.map.doors.find((door) => door.state === 'locked' && door.keyItemId)
+      : null
+    addShortcutLoops(built.map, {
+      exclude: definition.locked && !goalDoor ? [graph.goalZoneId] : [],
+      locks: goalDoor ? { [graph.goalZoneId]: { lockDc: goalDoor.lockDc, keyItemId: goalDoor.keyItemId } } : {},
+      limit: 2,
+    })
     if (definition.id === 'crypt') pierceWalls(built.map, { kind: 'grate', stride: 13, limit: 3 })
     if (definition.id === 'temple') pierceWalls(built.map, { kind: 'loophole', stride: 11, limit: 4 })
     // Камеры тюрьмы — ряд клеток вдоль коридора, а не пустой зал.
@@ -1355,10 +1386,22 @@ export function buildThemedScene({
     const plans = Array.isArray(definition.propPlans) ? definition.propPlans : []
     // Колоннада ставится до общей расстановки: она задаёт структуру зала, а
     // скамьи и жаровни потом встают между колонн, а не наоборот.
-    labelled.forEach((zone, index) => {
-      if (plans.length && plans[index % plans.length]?.colonnade) {
-        placeColonnade(built.map, { zoneId: zone.id, assetId: 'pillar' })
+    // Просторный зал без опор — голое поле боя: от лучника негде укрыться.
+    // Зал от сотни клеток получает колоннаду, даже если план её не просил;
+    // камеры — нет, у них своя структура. Коридор подземелья шириной в зал
+    // получает опоры, как зал.
+    const zoneSize = (/** @type {string} */ zoneId) => {
+      let cells = 0
+      for (let y = 0; y < built.map.height; y += 1) for (let x = 0; x < built.map.width; x += 1) {
+        const cell = cellAt(built.map, x, y)
+        if (cell?.passable && cell.zone === zoneId) cells += 1
       }
+      return cells
+    }
+    labelled.forEach((zone, index) => {
+      const asked = plans.length && plans[index % plans.length]?.colonnade
+      const spacious = zone.label !== 'Камеры' && zoneSize(zone.id) >= SPACIOUS_HALL_CELLS
+      if (asked || spacious) placeColonnade(built.map, { zoneId: zone.id, assetId: 'pillar' })
     })
     const map = placeProps(built.map, {
       seed: `${seed}:props`,

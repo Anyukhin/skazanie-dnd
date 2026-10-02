@@ -32,6 +32,9 @@ import { cellAt, edgeBetween, edgeList, edgeNeighbor, reachableCells } from './t
 /** Постройка от этой площади (клеток пола) обязана делиться на комнаты. */
 export const MULTI_ROOM_MIN_CELLS = 40
 
+/** Доля клеток просторного зала (от сотни клеток), где есть укрытие рядом. */
+const HALL_COVER_SHARE = 0.3
+
 /**
  * Помещения — связные области клеток зон `interior`, разделённые стенами.
  * Возвращаются как компоненты связности по рёбрам без стен (двери соединяют).
@@ -398,6 +401,29 @@ export function playabilityReport(map, blockingAt) {
   }
   const coverShare = open ? covered / open : 1
   if (open >= 150 && coverShare < 0.3) warnings.push({ code: 'OPEN_GROUND_NO_COVER', detail: `${Math.round(coverShare * 100)}%` })
+  // Укрытие в просторном зале: та же мерка по каждой комнате от сотни клеток.
+  // У стены укрытие есть всегда, поэтому голый зал 12×16 даёт около четверти.
+  /** @type {Map<string, {cells: number, covered: number}>} */
+  const halls = new Map()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const zone = cellAt(map, x, y)?.zone ?? ''
+    if (!free(x, y) || zoneKind.get(zone) !== 'interior') continue
+    const hall = halls.get(zone) ?? { cells: 0, covered: 0 }
+    hall.cells += 1
+    const wallNear = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+      const neighbor = cellAt(map, x + dx, y + dy)
+      return neighbor && !neighbor.passable
+    })
+    if (coverAt.has(`${x},${y}`) || wallNear) hall.covered += 1
+    halls.set(zone, hall)
+  }
+  let barestHall = 1
+  for (const [zone, hall] of halls) {
+    if (hall.cells < 100) continue
+    const share = hall.covered / hall.cells
+    barestHall = Math.min(barestHall, share)
+    if (share < HALL_COVER_SHARE) warnings.push({ code: 'HALL_NO_COVER', detail: `${zone} ${Math.round(share * 100)}%` })
+  }
   // Прямой обзор: самая длинная непрерывная линия по строке или столбцу без
   // стен, окон и предметов, закрывающих обзор.
   let sightline = 0
@@ -419,7 +445,7 @@ export function playabilityReport(map, blockingAt) {
   return {
     problems,
     warnings,
-    stats: { spawn_room: spawnRoom, cover_pct: Math.round(coverShare * 100), sightline_ft: sightline * 5 },
+    stats: { spawn_room: spawnRoom, cover_pct: Math.round(coverShare * 100), hall_cover_pct: Math.round(barestHall * 100), sightline_ft: sightline * 5 },
   }
 }
 

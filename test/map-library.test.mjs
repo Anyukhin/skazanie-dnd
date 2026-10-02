@@ -104,6 +104,20 @@ test('хранилище библиотеки: запись, этажи и ис�
   assert.deepEqual([...libraryIdsInUse({ a: { map: { seed: 'library:tt-house:0' } }, b: { map: { seed: 'other' } } })], ['tt-house'])
 })
 
+test('неиграбельная карта библиотеки пропускается: подбор берёт следующую', (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-'))
+  t.after(() => rmSync(storage, { recursive: true, force: true }))
+  const library = new MapLibrary(storage)
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-house' })
+  // Тот же дом без точки появления отряда: сцену на нём не начать.
+  const broken = imported.levels.map((level) => (level.index === 0 ? { ...level, map: { ...level.map, spawnPoints: [] } } : level))
+  library.put(entryFor('tt-broken', { passport: imported.passport }), broken)
+  const request = libraryRequestFor({ themeId: 'building', buildingUse: 'tavern' })
+  assert.equal(library.pick(request, { seed: 'x' }), null, 'единственная карта битая — работает генератор')
+  library.put(entryFor('tt-house', { passport: imported.passport }), imported.levels)
+  for (const seed of ['s1', 's2', 's3', 's4']) assert.equal(library.pick(request, { seed })?.entry.id, 'tt-house', `${seed}: выбрана битая карта`)
+})
+
 function tavernState() {
   const map = generateBuildingScene({ seed: 'прежняя улица', locationId: 'loc-street' })
   return normalizeCampaignState({
