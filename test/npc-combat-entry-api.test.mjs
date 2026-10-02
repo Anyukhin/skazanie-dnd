@@ -174,7 +174,17 @@ test('обычный игрок начинает бой с видимым NPC ч
   })
   assert.equal(first.status, 200, first.text)
   assert.deepEqual(first.body.mechanics.slice(0, 2).map((event) => event.event_type), ['EncounterCreated', 'CombatStarted'])
-  assert.equal(first.body.authoritative_state.mechanics.combat.active, true)
+  // Кости сервера настоящие: «смертельная» встреча может положить отряд из
+  // двух героев 1-го уровня прямо в ответе на первую атаку — павшего
+  // недособранного спутника сервер больше не держит в вечной очереди. Тогда бой
+  // честно кончается поражением (герои убиты или без сознания), а replay
+  // обязан воспроизвести именно его.
+  const combatActive = first.body.authoritative_state.mechanics.combat.active
+  if (!combatActive) {
+    assert.ok(first.body.mechanics.some((event) => event.event_type === 'CombatEnded'
+      && ['party_defeated', 'party_incapacitated'].includes(event.payload?.reason)),
+    'бой может кончиться в первом ответе только поражением отряда')
+  }
   assert.equal(first.body.authoritative_state.enemies[0].id, 'astohan-ares')
   assert.deepEqual(first.body.authoritative_state.mechanics.positions['npc-entry-hero'], beforeHero)
   // После инициативы NPC может походить и открыть дверь: видимость и набор
@@ -192,7 +202,7 @@ test('обычный игрок начинает бой с видимым NPC ч
   })
   assert.equal(duplicate.status, 200, duplicate.text)
   assert.equal(duplicate.body.idempotent_replay, true)
-  assert.equal(duplicate.body.authoritative_state.mechanics.combat.active, true)
+  assert.equal(duplicate.body.authoritative_state.mechanics.combat.active, combatActive)
   const conflict = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
     method: 'POST', cookie, key: 'npc-entry-attack', body: attackBody('npc-entry-attack', 'astohan-oren'),
   })
@@ -215,8 +225,9 @@ test('обычный игрок начинает бой с видимым NPC ч
   await launch()
   const afterRestart = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie })
   assert.equal(afterRestart.status, 200, afterRestart.text)
-  assert.equal(afterRestart.body.state.mechanics.combat.active, true)
-  assert.equal(afterRestart.body.state.enemies[0].id, 'astohan-ares')
+  assert.equal(afterRestart.body.state.mechanics.combat.active, combatActive)
+  assert.equal(afterRestart.body.state.mechanics.combat.active, beforeRestart.body.state.mechanics.combat.active)
+  if (combatActive) assert.equal(afterRestart.body.state.enemies[0].id, 'astohan-ares')
   assert.deepEqual(afterRestart.body.state.scene.map, beforeRestart.body.state.scene.map)
   assert.deepEqual(afterRestart.body.state.mechanics.positions['npc-entry-hero'], beforeHero)
 })
