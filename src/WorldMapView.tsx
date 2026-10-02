@@ -126,6 +126,11 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
   const transitionCount = route.routes.length
   const highestDanger = routeDanger(route.routes)
   const selectedRegion = map.regions.find((region) => region.id === selected?.regionId)
+  const currentRegion = map.regions.find((region) => region.id === current?.regionId)
+  // Отряд первым, дальше посещённые, затем известные по карте — по имени внутри группы.
+  const placeRank = (location: WorldMapLocation) => location.id === current?.id ? 0 : location.visited ? 1 : 2
+  const placeList = [...knownLocations].sort((left, right) => placeRank(left) - placeRank(right) || left.name.localeCompare(right.name, 'ru'))
+  const regionName = (id: string) => map.regions.find((region) => region.id === id)?.name ?? 'Неизведанный регион'
   const viewWidth = map.width / zoom
   const viewHeight = map.height / zoom
   const focusX = pan?.x ?? selected?.x ?? map.width / 2
@@ -149,8 +154,8 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
 
   return <section className="world-map-page">
     <header className="world-map-header">
-      <div><h1>{map.name}</h1><details className="world-map-intro"><summary>Об этом мире</summary><p>{state.campaignConcept?.worldSummary ?? 'Известные земли, дороги и места этой истории.'}</p></details></div>
-      <div className="world-map-stats"><span><MapPin size={14}/>{knownLocations.length} мест</span><span><Route size={14}/>{map.routes.filter((item) => item.discovered).length} путей</span></div>
+      <div>{current && <span className="world-map-eyebrow">{currentRegion ? `${currentRegion.name} · ` : ''}отряд в «{current.name}»</span>}<h1>{map.name}</h1><details className="world-map-intro"><summary>Об этом мире</summary><p>{state.campaignConcept?.worldSummary ?? 'Известные земли, дороги и места этой истории.'}</p></details></div>
+      <div className="world-map-stats"><span><MapPin size={14}/>{knownLocations.length} мест</span><span><Route size={14}/>{map.routes.filter((item) => item.discovered).length} путей</span>{state.weather?.indicator && <span title={state.weather.weather_summary}><Clock3 size={14}/>{state.weather.indicator}</span>}</div>
     </header>
 
     <div className="world-map-layout">
@@ -227,10 +232,11 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
           <button onClick={() => setZoom((value) => Math.min(1.8, value + .2))} disabled={zoom >= 1.8} aria-label="Приблизить карту"><Plus size={17}/></button>
           <button onClick={() => setZoom((value) => Math.max(1, value - .2))} disabled={zoom <= 1} aria-label="Отдалить карту"><Minus size={17}/></button>
         </div>
-        <div className="world-map-legend"><span><i className="legend-current"/>Отряд</span><span><i className="legend-visited"/>Посещено</span><span><i className="legend-road"/>Дорога</span></div>
+        <div className="world-map-legend"><span><i className="legend-current"/>Отряд</span><span><i className="legend-visited"/>Посещено</span><span><i className="legend-known"/>Известно</span><span><i className="legend-road"/>Дорога</span><span><i className="legend-route"/>Маршрут</span></div>
       </div>
 
-      <aside className="world-map-inspector world-map-location-inspector">
+      <aside className="world-map-aside" aria-label="Места карты">
+      <section className="world-map-inspector world-map-location-inspector" aria-label="Выбранное место">
         {!current && <p className="route-missing" role="status">Текущая точка отряда не совпадает с картой мира. Переход временно недоступен — обновите кампанию или обратитесь к мастеру.</p>}
         {selected && <>
           <div className="location-kind"><span>{selected.kind === 'fortress' ? <Castle size={18}/> : selected.kind === 'wilds' ? <Trees size={18}/> : selected.kind === 'ruin' || selected.kind === 'dungeon' ? <Mountain size={18}/> : <MapPin size={18}/>}</span><small>{KIND_LABELS[selected.kind]}</small></div>
@@ -261,6 +267,21 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
           {selected.history && <details className="location-history"><summary>История места</summary><p>{selected.history}</p></details>}
           {!!selected.storyHooks?.length && <details className="location-hooks"><summary>Сюжетные зацепки</summary><ul>{selected.storyHooks.map((hook, index) => <li key={`${selected.id}-hook-${index}`}>{hook}</li>)}</ul></details>}
         </>}
+      </section>
+      {/* Список повторяет метки карты словами: те же известные места из
+          проекции, тот же выбор. Слухов о местах без точки на карте проекция не
+          отдаёт — поэтому и строки «слухи» здесь нет. */}
+      <section className="world-map-places" aria-labelledby="world-map-places-title">
+        <h3 id="world-map-places-title">Известные места</h3>
+        <ul>{placeList.map((location) => {
+          const isCurrent = location.id === current?.id
+          const isSelected = location.id === selected?.id
+          return <li key={location.id}><button type="button" className={`${isCurrent ? 'current' : ''} ${isSelected ? 'selected' : ''} ${location.visited ? 'visited' : ''}`} aria-pressed={isSelected} onClick={() => { setSelectedId(location.id); setPan(null) }}>
+            <i className="place-marker" aria-hidden="true" />
+            <span><strong>{location.name}</strong><small>{regionName(location.regionId)}</small></span>
+            <em>{isCurrent ? 'отряд здесь' : isSelected ? 'выбрано' : location.visited ? 'посещено' : 'известно'}</em>
+          </button></li>
+        })}</ul>
         <details className="world-lore">
           <summary><ScrollText size={15}/>Летопись мира</summary>
           <p>{state.campaignConcept?.worldHistory ?? state.campaignConcept?.worldSummary ?? 'Летопись будет дополняться по мере развития кампании.'}</p>
@@ -269,6 +290,7 @@ export function WorldMapView({ state, busy, onTravel }: { state: GameState; busy
           <strong>Условные обозначения</strong>
           {Object.entries(ROUTE_LABELS).map(([kind, label]) => <span key={kind}><i className={`route-sample ${kind}`}/>{label}</span>)}
         </div>
+      </section>
       </aside>
     </div>
   </section>
