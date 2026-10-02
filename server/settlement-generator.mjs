@@ -13,6 +13,7 @@ import {
   setEdge,
 } from './tactical-map.mjs'
 import { thinWalls } from './thin-walls.mjs'
+import { applyRoomFloors, buildingWallStyleFor } from './room-floors.mjs'
 
 /**
  * Поселение — отдельный генератор геометрии, а не вариант раскраски четырёх
@@ -1122,6 +1123,15 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   ensureBuildingReachability(map, spawn)
   // Стены домов — на рёбрах клеток (`server/thin-walls.mjs`).
   thinWalls(map)
+  // Пол каждой комнаты — по её назначению: кухня трактира каменная, амбар
+  // земляной, зал усадьбы в паркете. Назначение дома знает `buildingUses`.
+  for (const [zoneId, use] of Object.entries(buildingUses)) {
+    applyRoomFloors(map, {
+      use, architecture: materialsForMap.building,
+      wall: buildingWallStyleFor({ use, architecture: materialsForMap.building, urban }),
+      zones: (zone) => zone.id === zoneId || zone.id.startsWith(`${zoneId}-`),
+    })
+  }
   map.overlays = {
     compass: true, scaleBar: true,
     roomLabels: map.zones.filter((zone) => zone.label).map((zone) => ({ zoneId: zone.id, label: zone.label })),

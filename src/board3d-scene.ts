@@ -9,6 +9,7 @@ import {
   drawFog,
   drawGrid,
   terrainKeysFor,
+  wallSideCell,
   visiblePropsOnBoard,
   TILE_CELLS,
   type BoardPalette,
@@ -325,9 +326,11 @@ function edgeSideCell(map: TacticalMap, edge: TacticalEdge) {
   const owner = cellAt(map, edge.x, edge.y)
   const neighbor = edgeNeighbor(edge)
   const other = cellAt(map, neighbor.x, neighbor.y)
-  const visible = [owner, other].filter((cell): cell is TacticalCell => Boolean(cell?.revealed))
-  const built = (cell: TacticalCell | null) => cell && ['stone', 'wood', 'marble', 'metal'].includes(cell.material) ? cell : null
-  return visible.map(built).find(Boolean) ?? visible[0] ?? built(owner) ?? built(other) ?? owner ?? other
+  // Кладка тонкой стены — в материале помещения, а не его пола
+  // (`wallSideCell`); скрытая туманом сторона цвет не выдаёт.
+  const visible = [owner, other].map((cell) => (cell?.revealed ? cell : null))
+  if (visible.some(Boolean)) return wallSideCell(map, visible[0], visible[1])
+  return wallSideCell(map, owner, other)
 }
 
 function doorState(map: TacticalMap, edge: TacticalEdge): TacticalDoorState {

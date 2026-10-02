@@ -37,6 +37,37 @@ export const MULTI_ROOM_MIN_CELLS = 48
 const HALL_COVER_SHARE = 0.3
 
 /**
+ * Внутренние дворы: наружные зоны, со всех сторон окружённые постройкой. Ни
+ * одна их клетка не выходит без стены к другой наружной зоне и к краю карты.
+ *
+ * @param {TacticalMap} map
+ * @param {Map<string, string>} zoneKind
+ * @returns {Set<string>}
+ */
+function enclosedCourtyards(map, zoneKind) {
+  /** @type {Set<string>} */
+  const open = new Set()
+  /** @type {Set<string>} */
+  const seen = new Set()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (!cell?.passable || zoneKind.get(cell.zone) !== 'exterior') continue
+    seen.add(cell.zone)
+    if (open.has(cell.zone)) continue
+    // Поле, обнесённое скалой края карты, — не двор: двор стоит внутри дома.
+    if (x <= 1 || y <= 1 || x >= map.width - 2 || y >= map.height - 2) { open.add(cell.zone); continue }
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = cellAt(map, x + dx, y + dy)
+      if (!next) { open.add(cell.zone); break }
+      if (!next.passable || next.zone === cell.zone || zoneKind.get(next.zone) !== 'exterior') continue
+      const edge = edgeBetween(map, x, y, x + dx, y + dy)
+      if (!edge || !edge.blocksMove || edge.kind === 'door') { open.add(cell.zone); break }
+    }
+  }
+  return new Set([...seen].filter((zone) => !open.has(zone)))
+}
+
+/**
  * Помещения — связные области клеток зон `interior`, разделённые стенами.
  * Возвращаются как компоненты связности по рёбрам без стен (двери соединяют).
  *
@@ -45,9 +76,11 @@ const HALL_COVER_SHARE = 0.3
  */
 function interiorComponents(map, joins) {
   const zoneKind = new Map(map.zones.map((zone) => [zone.id, zone.kind]))
+  const courtyards = enclosedCourtyards(map, zoneKind)
   // Проём между помещениями графовой планировки — проходимая клетка без
-  // зоны. Она соединяет комнаты, а не отделяет их.
-  const inside = (/** @type {any} */ cell) => cell.passable && (zoneKind.get(cell.zone) === 'interior' || cell.zone === '')
+  // зоны. Она соединяет комнаты, а не отделяет их. Внутренний двор — часть
+  // постройки: кладовая с дверью только во двор не отдельный дом.
+  const inside = (/** @type {any} */ cell) => cell.passable && (zoneKind.get(cell.zone) === 'interior' || cell.zone === '' || courtyards.has(cell.zone))
   /** @type {Map<string, number>} */
   const component = new Map()
   /** @type {Array<Array<{x: number, y: number}>>} */

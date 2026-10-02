@@ -32,6 +32,14 @@ export const DOOR_STATES = Object.freeze(['open', 'closed', 'locked', 'broken'])
 export const ZONE_KINDS = Object.freeze(['interior', 'exterior'])
 export const FLOOR_DIRECTIONS = Object.freeze(['horizontal', 'vertical'])
 export const SPAWN_ROLES = Object.freeze(['party', 'enemy', 'neutral'])
+/**
+ * Рисунок пола помещения поверх материала клетки (`zone.floor`). Правила его
+ * не читают — это только фактура набора `public/assets/maps/detail-v1`.
+ * Поле необязательное: карта без него рисуется по материалу, как прежде.
+ */
+export const FLOOR_STYLES = Object.freeze(['planks-dark', 'parquet', 'flagstone', 'checker', 'dungeon', 'mosaic', 'cobble', 'straw', 'dock', 'gravel', 'cave', 'snow'])
+/** Вид кладки стен помещения (`zone.wall`); как и пол, только для отрисовки. */
+export const WALL_STYLES = Object.freeze(['brick', 'fachwerk', 'fortress', 'palisade', 'embankment'])
 
 /**
  * Насколько далеко от этажа входа может уводить переход
@@ -186,6 +194,8 @@ export class TacticalMapError extends Error {
  * @property {string} lightLevel
  * @property {string} floorDirection значение из FLOOR_DIRECTIONS
  * @property {string} label
+ * @property {string} [floor] рисунок пола из FLOOR_STYLES
+ * @property {string} [wall] вид кладки из WALL_STYLES
  */
 
 /**
@@ -1017,6 +1027,10 @@ export function addZone(map, zone) {
     floorDirection: FLOOR_DIRECTIONS.includes(String(zone.floorDirection)) ? String(zone.floorDirection) : 'horizontal',
     label: boundedText(zone.label, 120),
   }
+  // Необязательные поля пишутся, только когда заданы: прежние карты
+  // сериализуются байт в байт.
+  if (FLOOR_STYLES.includes(String(zone.floor))) record.floor = String(zone.floor)
+  if (WALL_STYLES.includes(String(zone.wall))) record.wall = String(zone.wall)
   if (!record.id) throw new TacticalMapError('У зоны должен быть идентификатор', 'ZONE_ID_REQUIRED')
   map.zones.push(record)
   return record

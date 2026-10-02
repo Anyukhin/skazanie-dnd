@@ -6,6 +6,7 @@ import { buildAresFortressScene, buildBuildingScene, ensureDeclaredTransitions }
 import { buildSceneFromGraph } from './graph-layout.mjs'
 import { LARGE_HOUSE_FLOOR, buildSettlementScene } from './settlement-generator.mjs'
 import { thinWalls } from './thin-walls.mjs'
+import { applyRoomFloors } from './room-floors.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
@@ -890,6 +891,10 @@ export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10,
  * разделённые стенами; у каждой камеры дверь в коридор. Зал уже пяти
  * клеток или короче восьми не делится.
  *
+ * Стены камер — тонкие, на рёбрах (`server/thin-walls.mjs`), поэтому деление
+ * идёт после `thinWalls`: клетка кладки внутри одной зоны тонкая стена
+ * поглотила бы целиком, и блок камер стал бы общим залом.
+ *
  * @param {import('./tactical-map.mjs').TacticalMap} map
  * @param {string} zoneId
  */
@@ -917,46 +922,51 @@ function partitionPrisonCells(map, zoneId) {
   const acrossMax = horizontal ? maxY : maxX
   const corridor = twoSided ? Math.floor((acrossMin + acrossMax) / 2) : acrossMin
   const sides = twoSided ? [-1, 1] : [1]
-  // Клетки дверных проёмов в другие зоны не застраиваются: вход в зал
-  // остаётся входом, даже если он не на коридоре.
+  const inZone = (/** @type {{x: number, y: number}} */ point) => {
+    const cell = cellAt(map, point.x, point.y)
+    return Boolean(cell?.passable) && cell?.zone === zoneId
+  }
+  // Клетка у входа из другой зоны не отгораживается: вход в зал остаётся
+  // входом в коридор, даже если он пришёлся не на коридор.
   const doorway = (/** @type {{x: number, y: number}} */ point) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
     const near = cellAt(map, point.x + dx, point.y + dy)
-    return near?.passable && near.zone !== zoneId
+    if (!near?.passable || near.zone === zoneId) return false
+    const edge = edgeBetween(map, point.x, point.y, point.x + dx, point.y + dy)
+    return !edge || edge.kind === 'door' || !edge.blocksMove
   })
-  const wall = (/** @type {{x: number, y: number}} */ point) => {
-    if (cellAt(map, point.x, point.y)?.zone !== zoneId || doorway(point)) return false
-    setCell(map, point.x, point.y, { passable: false, zone: '' })
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      if (cellAt(map, point.x + dx, point.y + dy)?.passable) setEdge(map, point.x, point.y, point.x + dx, point.y + dy, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
-    }
-    return true
+  const wall = (/** @type {{x: number, y: number}} */ a, /** @type {{x: number, y: number}} */ b) => {
+    if (!inZone(a) || !inZone(b) || edgeBetween(map, a.x, a.y, b.x, b.y)?.kind === 'door') return
+    setEdge(map, a.x, a.y, b.x, b.y, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
   }
-  // Стены вдоль коридора по обе стороны.
-  for (let along = alongMin; along <= alongMax; along += 1) for (const side of sides) wall(at(along, corridor + side))
-  // Перегородки между камерами через три клетки.
-  for (let along = alongMin + 3; along < alongMax - 1; along += 4) {
+  // Стена вдоль коридора по обе стороны — на ребре между коридором и камерами.
+  for (let along = alongMin; along <= alongMax; along += 1) {
+    for (const side of sides) {
+      const cellRow = at(along, corridor + side)
+      if (!doorway(cellRow)) wall(at(along, corridor), cellRow)
+    }
+  }
+  // Перегородки между камерами: камера — три клетки вдоль коридора. Хвост
+  // короче двух клеток не отделяется — он достаётся последней камере.
+  const segments = []
+  for (let start = alongMin; start <= alongMax; start += 3) segments.push(start)
+  if (segments.length > 1 && alongMax - segments[segments.length - 1] < 1) segments.pop()
+  for (const start of segments.slice(1)) {
     for (let across = acrossMin; across <= acrossMax; across += 1) {
-      const cellSide = across < corridor - 1 ? -1 : across > corridor + 1 ? 1 : 0
-      if (cellSide && sides.includes(cellSide)) wall(at(along, across))
+      const cellSide = Math.sign(across - corridor)
+      if (cellSide && sides.includes(cellSide)) wall(at(start - 1, across), at(start, across))
     }
   }
   // Дверь каждой камеры — в середине её отрезка, на ребре к коридору.
   let index = 0
-  for (let start = alongMin; start <= alongMax; start += 4) {
+  for (const start of segments) {
     const middle = Math.min(alongMax, start + 1)
     for (const side of sides) {
-      const opening = at(middle, corridor + side)
-      const inside = at(middle, corridor + side * 2)
+      const inside = at(middle, corridor + side)
       const hall = at(middle, corridor)
-      if (!cellAt(map, inside.x, inside.y)?.passable || !cellAt(map, hall.x, hall.y)?.passable) continue
-      setCell(map, opening.x, opening.y, { passable: true, zone: zoneId })
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const near = cellAt(map, opening.x + dx, opening.y + dy)
-        if (near?.passable) setEdge(map, opening.x, opening.y, opening.x + dx, opening.y + dy, { kind: 'none' })
-      }
+      if (!inZone(inside) || !inZone(hall)) continue
       const edge = horizontal
-        ? { x: opening.x, y: Math.min(opening.y, hall.y), dir: /** @type {'s'} */ ('s') }
-        : { x: Math.min(opening.x, hall.x), y: opening.y, dir: /** @type {'e'} */ ('e') }
+        ? { x: inside.x, y: Math.min(inside.y, hall.y), dir: /** @type {'s'} */ ('s') }
+        : { x: Math.min(inside.x, hall.x), y: inside.y, dir: /** @type {'e'} */ ('e') }
       index += 1
       setDoor(map, { id: `cell-door-${index}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
     }
@@ -1383,13 +1393,17 @@ export function buildThemedScene({
     })
     if (definition.id === 'crypt') pierceWalls(built.map, { kind: 'grate', stride: 13, limit: 3 })
     if (definition.id === 'temple') pierceWalls(built.map, { kind: 'loophole', stride: 11, limit: 4 })
-    // Камеры тюрьмы — ряд клеток вдоль коридора, а не пустой зал.
+    // Стены залов — на рёбрах клеток; край карты остаётся скалой.
+    thinWalls(built.map)
+    // Камеры тюрьмы — ряд клеток вдоль коридора, а не пустой зал. Их стены
+    // сразу тонкие, поэтому деление идёт после `thinWalls`.
     if (definition.id === 'dungeon') {
       const cellsZone = built.map.zones.find((zone) => zone.label === 'Камеры')
       if (cellsZone) partitionPrisonCells(built.map, cellsZone.id)
     }
-    // Стены залов — на рёбрах клеток; край карты остаётся скалой.
-    thinWalls(built.map)
+    // Пол по назначению: неф храма в мозаике, камеры на соломе, склеп и
+    // подземелье в истёртой кладке (`server/room-floors.mjs`).
+    applyRoomFloors(built.map, { use: definition.id, architecture: definition.material ?? 'stone' })
     const labelled = built.map.zones.filter((zone) => zone.label)
     const plans = Array.isArray(definition.propPlans) ? definition.propPlans : []
     // Колоннада ставится до общей расстановки: она задаёт структуру зала, а

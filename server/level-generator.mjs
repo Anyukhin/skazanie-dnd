@@ -4,6 +4,7 @@ import { edgesAround, openDoorway, openWindow, planRooms } from './building-gene
 import { placeProps } from './prop-placement.mjs'
 import { SCENE_THEMES, layoutOrganicCave } from './scene-themes.mjs'
 import { thinWalls } from './thin-walls.mjs'
+import { applyRoomFloors } from './room-floors.mjs'
 import {
   MAX_LEVEL_OFFSET,
   SIZE_CLASSES,
@@ -579,6 +580,8 @@ function buildUpperLevel({ baseMap, locationId, index, fromLevel, seed, label, a
       baseMap, locationId, index, seed, label, arrival, outline, interior, partitioned,
     })
     thinWalls(map)
+    // Кабинет — в паркете, спальня — в настиле (`server/room-floors.mjs`).
+    applyRoomFloors(map)
     const transitionPropId = placePairedTransition(map, {
       arrival,
       assetId: 'stairs_down',

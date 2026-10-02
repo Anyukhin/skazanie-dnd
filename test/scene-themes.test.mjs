@@ -464,3 +464,29 @@ test('рельеф открытой местности: холмы в футах
   }
   assert.ok(highGround >= 3, 'холмы обычно дают возвышенность от 5 футов')
 })
+
+test('камеры тюрьмы разделены тонкими стенами, и в каждую ведёт своя дверь из коридора', () => {
+  let checked = 0
+  for (const seed of ['prison-a', 'prison-b', 'prison-c', 'prison-d']) {
+    const map = buildThemedScene({ themeId: 'dungeon', location: 'Темница', seed, width: 26, height: 26 }).map
+    const block = map.zones.find((zone) => zone.label === 'Камеры')
+    const doors = map.doors.filter((door) => door.id.startsWith('cell-door-'))
+    if (!block || !doors.length) continue
+    checked += 1
+    // Тонкая стена внутри блока: клетка остаётся полом, а ребро держит шаг.
+    const inner = edgeList(map).filter((edge) => {
+      if (edge.kind !== 'wall') return false
+      const next = edgeNeighbor(edge)
+      return cellAt(map, edge.x, edge.y)?.zone === block.id && cellAt(map, next.x, next.y)?.zone === block.id
+    })
+    assert.ok(inner.length >= doors.length * 2, `${seed}: перегородок ${inner.length} на ${doors.length} камер`)
+    // Через открытые двери весь блок досягаем от входа.
+    const spawn = map.spawnPoints.find((point) => point.role === 'party')
+    const reached = reachableCells(map, spawn.x, spawn.y, { throughDoors: true })
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (cell?.passable && cell.zone === block.id) assert.ok(reached.has(`${x},${y}`), `${seed}: клетка ${x},${y} камер заперта`)
+    }
+  }
+  assert.ok(checked >= 2, `тюремный блок собран лишь на ${checked} сидах`)
+})

@@ -191,7 +191,10 @@ function absorbDoorCells(map, zoneById) {
       const across = ends[1 - index]
       const beyond = { x: doorway.x * 2 - across.x, y: doorway.y * 2 - across.y }
       const room = cellAt(map, beyond.x, beyond.y)
-      if (!isRoom(room)) continue
+      // За проёмом может быть и двор: дверь кладовой во внутренний двор.
+      // Тогда проём отходит двору, иначе он остаётся клеткой кладки.
+      const outdoors = Boolean(room?.passable) && zoneById.get(room?.zone ?? '')?.kind === 'exterior'
+      if (!isRoom(room) && !outdoors) continue
       setCell(map, doorway.x, doorway.y, { zone: room?.zone, material: room?.material })
       for (const [dx, dy] of DIRECTIONS) {
         const nx = doorway.x + dx

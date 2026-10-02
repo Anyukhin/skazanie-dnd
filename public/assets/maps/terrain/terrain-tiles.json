@@ -10,7 +10,19 @@
     "sand": "maps/terrain/floor-sand.png",
     "marble": "maps/terrain/floor-marble.png",
     "metal": "maps/terrain/floor-metal.png",
-    "ice": "maps/terrain/floor-ice.png"
+    "ice": "maps/terrain/floor-ice.png",
+    "planks-dark": "maps/detail-v1/textures/floor-planks-dark.png",
+    "parquet": "maps/detail-v1/textures/floor-parquet.png",
+    "flagstone": "maps/detail-v1/textures/floor-flagstone.png",
+    "checker": "maps/detail-v1/textures/floor-checker.png",
+    "dungeon": "maps/detail-v1/textures/floor-dungeon.png",
+    "mosaic": "maps/detail-v1/textures/floor-mosaic.png",
+    "cobble": "maps/detail-v1/textures/floor-cobble.png",
+    "straw": "maps/detail-v1/textures/floor-straw.png",
+    "dock": "maps/detail-v1/textures/floor-dock.png",
+    "gravel": "maps/detail-v1/textures/floor-gravel.png",
+    "cave": "maps/detail-v1/textures/floor-cave.png",
+    "snow": "maps/detail-v1/textures/floor-snow.png"
   },
   "surfaces": {
     "water": "maps/terrain/surface-water.png",
@@ -22,6 +34,11 @@
     "stone": "maps/terrain/wall-stone.png",
     "wood": "maps/terrain/wall-timber.png",
     "plaster": "maps/terrain/wall-plaster.png",
-    "cave": "maps/terrain/wall-cave.png"
+    "cave": "maps/terrain/wall-cave.png",
+    "brick": "maps/detail-v1/textures/wall-brick.png",
+    "fachwerk": "maps/detail-v1/textures/wall-fachwerk.png",
+    "fortress": "maps/detail-v1/textures/wall-fortress.png",
+    "palisade": "maps/detail-v1/textures/wall-palisade.png",
+    "embankment": "maps/detail-v1/textures/wall-embankment.png"
   }
 }

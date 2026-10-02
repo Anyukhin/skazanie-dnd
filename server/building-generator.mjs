@@ -1,6 +1,7 @@
 // @ts-check
 import { auditTacticalMap } from './map-quality.mjs'
 import { thinWalls } from './thin-walls.mjs'
+import { applyRoomFloors, buildingWallStyleFor } from './room-floors.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
 import {
   SIZE_CLASSES,
@@ -982,6 +983,13 @@ function designedBuildingAttempt({
   // Стены — на рёбрах клеток: дом получает пол на месте кладки, а
   // перегородка не съедает ряд клеток (`server/thin-walls.mjs`).
   thinWalls(map)
+  // Пол комнаты — по назначению (`server/room-floors.mjs`): кухня и кузня
+  // каменные, кладовая земляная, зал трактира в тёмных досках.
+  // Отдельно стоящий трактир или усадьба из дерева — фахверк, как в городе.
+  applyRoomFloors(map, {
+    use: normalized.building_use, architecture: normalized.architecture,
+    wall: buildingWallStyleFor({ use: normalized.building_use, architecture: normalized.architecture, urban: true }),
+  })
   for (let y = pathStartY; y < safeHeight; y += 1) {
     const drift = y - pathStartY < 2 ? 0 : Math.round(Math.sin((y - building.maxY) * 0.6 + buildingSeedHash(seed) % 5) * 1.4)
     for (const x of [entranceX + drift, entranceX + drift + 1]) if (cellAt(map, x, y)) setCell(map, x, y, { material: 'earth', surface: 'none', variant: variantAt(x, y) })
@@ -1242,6 +1250,8 @@ export function generateAresFortressScene({
   addZone(map, { id: 'storehouse', kind: 'interior', material: 'wood', lightLevel: 'dark', floorDirection: 'vertical', label: 'Военный склад' })
   addZone(map, { id: 'workshop', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Мастерская' })
   addZone(map, { id: 'walls', kind: 'interior', material: 'stone', lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
+  // Крепость сложена крепостной кладкой, а не кладкой жилого дома.
+  for (const zone of map.zones) if (zone.kind === 'interior') zone.wall = 'fortress'
 
   // Трёхклеточный внешний пояс даёт место крупным деревьям и камням. Один
   // срезанный угол с каждой диагонали делает контур крепости менее коробочным,

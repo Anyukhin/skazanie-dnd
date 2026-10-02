@@ -489,8 +489,14 @@ function decodeZone(value: unknown): TacticalZone | null {
       ? raw.floorDirection
       : 'horizontal') as TacticalFloorDirection,
     label: text(raw.label, 120),
+    // Рисунок пола и кладки — ключи фактур; незнакомый ключ доска просто не
+    // найдёт в манифесте и нарисует пол по материалу.
+    ...(typeof raw.floor === 'string' && STYLE_KEY.test(raw.floor) ? { floor: raw.floor } : {}),
+    ...(typeof raw.wall === 'string' && STYLE_KEY.test(raw.wall) ? { wall: raw.wall } : {}),
   }
 }
+
+const STYLE_KEY = /^[a-z][a-z-]{0,23}$/u
 
 function decodeDoor(value: unknown): TacticalDoor | null {
   if (!value || typeof value !== 'object') return null
