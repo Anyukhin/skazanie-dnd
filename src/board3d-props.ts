@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 
 import { propVisualLayout, resolvePropAssetId, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
+import { detailPropAlias } from './detail-props'
 import type { TacticalProp } from './types'
 import { propModelFor, propModelMaxHeight } from './prop-model-catalog'
 import type { PropModelAssets } from './prop-model-assets'
@@ -522,7 +523,13 @@ function applyState(resources: Resources, parent: THREE.Group, layout: Layout, t
 
 /** Возвращает точный вид семантической модели для канонического или legacy id. */
 export function environmentModelKind(assetId: string): string | null {
-  return MODEL_KINDS[resolvePropAssetId(assetId)] ?? null
+  return modelKindOf(resolvePropAssetId(assetId))
+}
+
+/** Процедурный вид предмета; предмет набора детализации берёт вид двойника. */
+function modelKindOf(canonical: string): string | null {
+  const alias = detailPropAlias(canonical)
+  return MODEL_KINDS[canonical] ?? (alias ? MODEL_KINDS[alias] : undefined) ?? null
 }
 
 /** Общий процедурный каталог окружения. Видимость и свет принадлежат вызывающему коду. */
@@ -535,7 +542,7 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
       if (disposed) throw new Error('Каталог моделей окружения уже освобождён')
       const layout = propVisualLayout(prop)
       const canonical = resolvePropAssetId(prop.assetId)
-      const kind = MODEL_KINDS[canonical] ?? 'unknown'
+      const kind = modelKindOf(canonical) ?? 'unknown'
       const group = new THREE.Group()
       group.name = `prop:${prop.id}`
       group.userData.modelKind = kind

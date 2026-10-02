@@ -298,7 +298,7 @@ function disposeObject(object) {
 
 function makeList(filter = '') {
   const needle = filter.trim().toLocaleLowerCase('ru');
-  const selected = list.value;
+  const selected = currentModelId || list.value;
   list.replaceChildren();
   const visible = models.filter((model) => !needle || model.id.toLocaleLowerCase('ru').includes(needle) || model.description.toLocaleLowerCase('ru').includes(needle));
   for (const model of visible) {
@@ -308,7 +308,7 @@ function makeList(filter = '') {
     list.append(option);
   }
   if (visible.some((model) => model.id === selected)) list.value = selected;
-  else if (visible.length) list.value = visible[0].id;
+  else list.selectedIndex = -1;
   modelCount.textContent = visible.length + ' из ' + models.length;
 }
 

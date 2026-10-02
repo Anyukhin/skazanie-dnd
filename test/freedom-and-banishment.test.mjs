@@ -78,7 +78,7 @@ test('Изгнание выключает цель из боя', () => {
   ), /Скорость существа равна 0/u)
 })
 
-test('Аура чистоты даёт сопротивление яду и уверенность в спасбросках', () => {
+test('Аура чистоты даёт сопротивление яду, а преимущество — только против состояний', () => {
   const state = field()
   const pure = replayEvents(state, cast(state, 'aura-of-purity', [], {target_ids: ['hero'] }).events)
   assert.ok(pure.mechanics.conditions.hero.some((condition) => String(condition.id) === 'aura-of-purity'))
@@ -93,9 +93,11 @@ test('Аура чистоты даёт сопротивление яду и ув
   const save = resolveCommand(
     authoritative({ command_type: 'MakeSavingThrow', actor_id: 'hero', ability: 'wis', difficulty: 15 }),
     pure,
-    options(dice([3, 19])),
+    options(dice([19, 3])),
   )
-  assert.equal(save.rolls.at(-1).mode, 'advantage')
+  // Голый спасбросок Мудрости ни от какого состояния не защищает: аура
+  // помогает только против ослепления, очарования, испуга и прочих из списка.
+  assert.equal(save.rolls.at(-1).mode, 'normal')
 })
 
 test('Усиление характеристики выбирает, чему помогать', () => {

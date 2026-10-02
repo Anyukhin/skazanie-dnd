@@ -89,6 +89,36 @@ function diceProblem(expression, label, id) {
  * resource. Everything else may diverge, and the report counts those so the
  * scale of the correction stays visible instead of implicit.
  */
+const UPCAST_FIELDS = Object.freeze([
+  'upcastDicePerLevel', 'upcastHealingDicePerLevel', 'upcastTargetsPerLevel', 'upcastSummonsPerLevel',
+  'summonCountMultiplierBySlotLevel', 'upcastBeamsPerLevel', 'upcastProjectilesPerLevel', 'hitPointPoolUpcastDice',
+  'saveDamageUpcastDicePerLevel', 'temporaryHpPerSlotLevel', 'temporaryHpPerUpcastLevel', 'hitPointMaximumBonusPerSlotLevel',
+  'meleeRetaliationDamagePerSlotLevel', 'delayedDamageUpcastDicePerLevel', 'conditionDurationSecondsBySlotLevel',
+  'upcastDiceEveryLevels', 'conditionsBySlotLevel',
+])
+
+/** Усиление, которое исполняет обработчик, а не поле профиля, — с причиной. */
+const UPCAST_HANDLED_ELSEWHERE = Object.freeze({
+  'summon-undead': 'обобщённый блок духа TCE растёт с ячейкой в обработчике призыва',
+  'summon-construct': 'обобщённый блок духа TCE растёт с ячейкой в обработчике призыва',
+  'summon-elemental': 'обобщённый блок духа TCE растёт с ячейкой в обработчике призыва',
+  'summon-celestial': 'обобщённый блок духа TCE растёт с ячейкой в обработчике призыва',
+  'summon-draconic-spirit': 'обобщённый блок духа TCE растёт с ячейкой в обработчике призыва',
+  'ensnaring-strike': 'урон опутывания растёт с ячейкой в обработчике следующего удара',
+  'hail-of-thorns': 'урон взрыва растёт с ячейкой в обработчике следующего удара',
+  'absorb-elements': 'ячейку выбирает игрок в окне реакции (`slot_level`), кость удара растёт с ней',
+  heal: 'усиление начинается с 7-го круга, а ячейки выше 6-го в игре нет',
+  'mass-suggestion': 'усиление меняет только срок и начинается с 7-го круга',
+})
+
+function hasUpcastField(override, field) {
+  return override[field] != null
+    || override.createsAreaEffect?.[field] != null
+    || override.secondaryBurst?.[field] != null
+    || override.nextWeaponHit?.[field] != null
+    || override.summon?.[field] != null
+}
+
 export function auditSpellOverrides() {
   const problems = []
   const corrections = []
@@ -209,9 +239,24 @@ export function auditSpellOverrides() {
     }
   }
 
+  // Обещание усиления в тексте карточки без поля, которое его исполняет.
+  // Это не блокирующая ошибка: усиление бывает и в обработчике (заговоры,
+  // лучи), но список показывает, где карточка может обещать больше, чем даёт.
+  const upcastGaps = []
+  for (const [id, original] of entries) {
+    const override = original?.mechanics2014 ? { ...original, ...original.mechanics2014 } : original
+    const base = BASE_SPELLS.get(id)
+    if (!base || !isPlainObject(override) || ['heuristic', 'ruling-only'].includes(String(override.mechanicsSupport))) continue
+    const promise = String(base.higherLevels ?? '')
+    if (!/\d+к\d+|целей|цель|существ|хит/iu.test(promise)) continue
+    if (UPCAST_HANDLED_ELSEWHERE[id] || UPCAST_FIELDS.some((field) => hasUpcastField(override, field))) continue
+    upcastGaps.push({ id, higherLevels: promise.slice(0, 160) })
+  }
+
   return {
     ok: problems.length === 0,
     checked: entries.length,
+    upcastGaps,
     catalog: BASE_SPELLS.size,
     corrections: corrections.length,
     correctionsByField: corrections.reduce((total, entry) => ({ ...total, [entry.field]: (total[entry.field] ?? 0) + 1 }), {}),

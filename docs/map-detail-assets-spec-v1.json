@@ -2649,6 +2649,27 @@
     "sheet-46-desert-ruins.png",
     "sheet-47-swamp-marsh.png"
   ],
+  "pendingIntegration": {
+    "sheets": [
+      "sheet-39-dungeon-hazards.png",
+      "sheet-40-depths-mine.png",
+      "sheet-41-military-camp.png",
+      "sheet-42-arcane-lab.png",
+      "sheet-43-sewer-undercity.png",
+      "sheet-44-harbor-docks.png",
+      "sheet-45-snow-ice.png",
+      "sheet-46-desert-ruins.png",
+      "sheet-47-swamp-marsh.png"
+    ],
+    "textures": [
+      "floor-mine-grit.png",
+      "floor-camp-earth.png",
+      "floor-sewer-brick.png",
+      "floor-desert-sandstone.png",
+      "surface-bog-water.png",
+      "surface-cracked-ice.png"
+    ]
+  },
   "modelQuality": {
     "triangleBudget": 50000,
     "materialTextureMaxSide": 512,

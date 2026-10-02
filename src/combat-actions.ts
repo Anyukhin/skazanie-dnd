@@ -142,7 +142,7 @@ export function classFeatureCatalogFor(player?: Player, includeLocked = false, r
 const common: CombatAction[] = [
   { id: 'stand-up', name: 'Встать', category: 'common', target: 'self', actionType: 'free', range: 0, description: 'Потратить половину скорости и прекратить состояние «сбит с ног».' },
   { id: 'break-free', name: 'Высвободиться', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Проверка Силы против Сл удерживающего эффекта, чтобы прекратить опутывание.' },
-  { id: 'steady-nerves', name: 'Совладать со страхом', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Проверка Мудрости против Сл «Гневной кары», чтобы прекратить испуг.' },
+  { id: 'steady-nerves', name: 'Совладать с собой', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Проверка Мудрости против Сл «Гневной кары», чтобы прекратить испуг, или спасбросок действием против «Неудержимой пляски Отто».' },
   { id: 'extinguish-self', name: 'Потушить пламя', category: 'common', target: 'self', actionType: 'action', range: 0, description: 'Потушить на себе пламя «Пылающей кары».' },
   { id: 'extinguish-ally', name: 'Потушить союзника', category: 'common', target: 'ally', actionType: 'action', range: 5, description: 'Потушить пламя «Пылающей кары» на соседнем союзнике.' },
   { id: 'expeditious-retreat-dash', name: 'Стремительный рывок', category: 'common', target: 'self', actionType: 'bonus_action', range: 0, description: 'Пока активно «Поспешное отступление», совершить Рывок бонусным действием.' },

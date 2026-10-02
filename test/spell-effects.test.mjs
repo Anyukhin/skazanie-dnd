@@ -1446,3 +1446,55 @@ test('область от заклинателя строится от клет�
   assert.deepEqual(cells, expected)
   assert.ok(cells.every((cell) => cell.x >= 2 && cell.x <= 4), 'конус идёт от (1,3) на восток')
 })
+
+test('заклинание-реакция получает свою реплику каста: защитное — на себе, остальные — к цели', () => {
+  const reaction = (spellId, targetId) => ({
+    event_id: `reaction-${spellId}`, event_type: 'CombatActionUsed', command_id: `cmd-${spellId}`, actor_id: 'wizard', target_ids: [targetId],
+    payload: { action_id: `cast:${spellId}`, category: 'spell', action_type: 'reaction', spell_id: spellId },
+  })
+  const [shield] = animation.combatAnimationCuesFromEvents([reaction('shield', 'orc')])
+  assert.equal(shield.kind, 'channel')
+  assert.equal(shield.spellId, 'shield')
+  assert.deepEqual(shield.targetIds, ['wizard'], 'Щит рисуется на заклинателе, а не на атакующем')
+  const [rebuke] = animation.combatAnimationCuesFromEvents([reaction('hellish-rebuke', 'orc')])
+  assert.equal(rebuke.spellId, 'hellish-rebuke')
+  assert.deepEqual(rebuke.targetIds, ['orc'])
+  // Обычное действие без заклинания реплики каста не порождает.
+  assert.deepEqual(animation.combatAnimationCuesFromEvents([{ ...reaction('shield', 'orc'), payload: { action_id: 'dodge', category: 'common', action_type: 'action' } }]), [])
+})
+
+test('Контрзаклинание рисуется знаком отмены, а прерванное заклинание не изображается сработавшим', () => {
+  const cues = animation.combatAnimationCuesFromEvents([
+    { event_id: 'countered', event_type: 'SpellCast', command_id: 'reaction', actor_id: 'goblin', target_ids: ['fighter'],
+      payload: { spell_id: 'chromatic-orb', kind: 'attack', countered: true } },
+    { event_id: 'countered-marker', event_type: 'SpellCountered', command_id: 'reaction', actor_id: 'fighter', target_ids: ['goblin'],
+      payload: { spell_id: 'chromatic-orb', spell_level: 1, counterspell_level: 3 } },
+    { event_id: 'counter', event_type: 'CombatActionUsed', command_id: 'reaction', actor_id: 'fighter', target_ids: ['goblin'],
+      payload: { action_id: 'cast:counterspell', category: 'spell', action_type: 'reaction', spell_id: 'counterspell' } },
+  ])
+  assert.equal(cues.some((cue) => cue.spellId === 'chromatic-orb'), false, 'прерванный шарик не летит')
+  const counter = cues.find((cue) => cue.spellId === 'counterspell')
+  assert.equal(counter?.kind, 'channel')
+  assert.deepEqual(counter.targetIds, ['goblin'])
+  assert.equal(effects.spellEffectPalette('counterspell').visualVariant, 'cancellation')
+})
+
+test('касание и рукопашная атака заклинанием вспыхивают на цели, а не летят снарядом', () => {
+  for (const spellId of ['shocking-grasp', 'inflict-wounds', 'primal-savagery', 'vampiric-touch', 'contagion', 'booming-blade']) {
+    assert.equal(effects.spellVisualProfile(spellId).kind, 'channel', spellId)
+  }
+  assert.equal(effects.spellVisualProfile('fire-bolt').kind, 'projectile', 'дальнобойная атака по-прежнему летит')
+  const [touch] = animation.combatAnimationCuesFromEvents([{ event_id: 'grasp', event_type: 'SpellCast', command_id: 'grasp', actor_id: 'mage', target_ids: ['goblin'],
+    payload: { spell_id: 'shocking-grasp', kind: 'attack', damage_type: 'lightning' } }])
+  assert.equal(touch.kind, 'channel')
+  assert.equal(touch.targetId, 'goblin')
+})
+
+test('семьи визуала: колючки, метка, лозы, вода, яд и холодный щит', () => {
+  const expected = { 'hail-of-thorns': 'weapon', 'hunter-s-mark': 'divination', 'ensnaring-strike': 'control', 'tidal-wave': 'water', 'stinking-cloud': 'poison' }
+  for (const [spellId, family] of Object.entries(expected)) assert.equal(effects.spellEffectPalette(spellId).family, family, spellId)
+  const [chill] = animation.combatAnimationCuesFromEvents([{ event_id: 'shield', event_type: 'SpellCast', command_id: 'shield', actor_id: 'mage', target_ids: ['mage'],
+    payload: { spell_id: 'fire-shield', kind: 'buff', damage_type: 'fire', spell_option: 'chill' } }])
+  assert.equal(chill.visualFamily, 'cold')
+  assert.equal(effects.spellEffectPalette('elemental-weapon', { damageType: 'thunder' }).family, 'thunder', 'стихия оружия берётся из выбранного типа')
+})

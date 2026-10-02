@@ -28,6 +28,7 @@ import {
   type BoardDoorSwing,
 } from './board-ambient'
 import { LEGACY_CATALOG_REVISION, loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
+import { DETAIL_ASSET_ROOT, DETAIL_PROP_ATLAS_MANIFEST } from './detail-props'
 import { actorPresentationCenter, boardCameraKey } from './tactical-ui'
 import { revealedAt } from './tactical-map-client'
 import type { CombatAudio } from './combat-audio'
@@ -128,6 +129,8 @@ const loadedTextures = new Map<string, BoardTexture>()
 const loadedArt = new Map<string, BoardTexture>()
 let propAtlas: PropAtlas | null = null
 let propAtlasAsked = false
+let detailAtlas: PropAtlas | null = null
+let detailAtlasAsked = false
 type ModelPropAtlas = { catalog: PropModelCatalog; texture: BoardTexture; key: string; url: string }
 const MODEL_ATLAS_CACHE_LIMIT = 12
 const modelPropAtlases = new Map<string, ModelPropAtlas>()
@@ -194,6 +197,31 @@ function loadTerrainManifest(onReady: () => void) {
       if (!manifest?.cellsPerTile || !manifest?.floors) return
       terrainManifest = manifest
       onReady()
+    })
+    .catch(() => {})
+}
+
+/**
+ * Атлас набора детализации — штампы новых предметов (кузня, темница, кухня).
+ * Он лежит рядом со своим манифестом и называет картинку по имени файла.
+ * Грузится так же один раз и так же молча: без него рисуется вектор двойника.
+ */
+function loadDetailAtlas(onReady: () => void) {
+  if (detailAtlasAsked || typeof fetch !== 'function') return
+  detailAtlasAsked = true
+  void fetch(DETAIL_PROP_ATLAS_MANIFEST, { cache: 'no-cache' })
+    .then((response) => (response.ok ? response.json() : null))
+    .then((manifest) => {
+      const frames = manifest?.frames
+      const image = typeof manifest?.image === 'string' ? manifest.image : ''
+      if (!/^[a-z0-9_-]+\.png$/u.test(image) || !frames || !Object.keys(frames).length) return
+      const url = `${DETAIL_ASSET_ROOT}${image}`
+      loadImage(url, loadedTextures, () => {
+        const texture = loadedTextures.get(url)
+        if (!texture) return
+        detailAtlas = { texture, frames, key: `${url}:${texture.width}x${texture.height}` }
+        onReady()
+      })
     })
     .catch(() => {})
 }
@@ -533,6 +561,7 @@ function TacticalBoard2D({
   useEffect(() => {
     const notify = () => setAssetsVersion((value) => value + 1)
     loadPropAtlas(notify)
+    loadDetailAtlas(notify)
     loadTerrainManifest(notify)
   }, [])
   const modelCatalogRevision = map?.catalogRevision ?? LEGACY_CATALOG_REVISION
@@ -597,6 +626,7 @@ function TacticalBoard2D({
       artKey: artUrl ?? '',
       artMode,
       propAtlas,
+      detailAtlas,
       modelPropAtlas,
       lighting,
     }

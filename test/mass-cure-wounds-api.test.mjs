@@ -196,6 +196,8 @@ test('HTTP Mass Cure Wounds проходит acquisition двух владель
     area_geometry_version: 'legacy-grid-v1', area_grid_origin: { x: point.x + 100, y: point.y + 100 },
     radius: 600, radius_feet: 600, area_shape: 'cube' }
   const beforeSlots = prepared.mechanics.resources[actorId].spell_slots_5.current
+  // Ячейка 5-го круга, полученная с 10-м уровнем, доступна сразу после повышения.
+  assert.equal(beforeSlots, prepared.mechanics.resources[actorId].spell_slots_5.max)
   const beforeSixthSlots = prepared.mechanics.resources[actorId].spell_slots_6.current
 
   expectStatus(await api.command(guestCookie, 'mass-cure-foreign', selected), 403)
@@ -309,6 +311,9 @@ test('HTTP Mass Cure Wounds проходит acquisition двух владель
   assert.equal(npcLog.hpBefore, undefined)
   assert.equal(npcLog.hpAfter, undefined)
   assert.equal(npcLog.healing, npcHealing[0].payload.applied_amount)
+  for (let spare = 1; spare < beforeSlots; spare += 1) {
+    expectStatus(await api.command(playerCookie, `mass-cure-cast-spare-${spare}`, selected))
+  }
   const exhausted = await api.command(playerCookie, 'mass-cure-cast-exhausted', selected)
   expectStatus(exhausted, 400)
   assert.equal(exhausted.body.code, 'INSUFFICIENT_RESOURCE')
@@ -320,7 +325,7 @@ test('HTTP Mass Cure Wounds проходит acquisition двух владель
   for (const targetId of [actorId, secondActorId]) {
     assert.equal(restored.players.find((entry) => entry.id === targetId).hp, first.authoritative_state.players.find((entry) => entry.id === targetId).hp)
   }
-  assert.equal(restored.mechanics.resources[actorId].spell_slots_5.current, beforeSlots - 1)
+  assert.equal(restored.mechanics.resources[actorId].spell_slots_5.current, 0)
   assert.equal(restored.mechanics.resources[actorId].spell_slots_6.current, beforeSixthSlots - 1)
   assert.equal(restored.mechanics.resources[actorId].spell_slots_5.max, prepared.mechanics.resources[actorId].spell_slots_5.max)
   const restoredSpellLog = restored.battleLog.find((entry) => entry.type === 'spell'

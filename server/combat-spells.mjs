@@ -600,3 +600,22 @@ export function spellCatalogInfo(options) {
 export function isPartySummon(actor) {
   return actor?.kind === 'summon' && actor?.faction === 'party' && Boolean(actor?.ownerId || actor?.owner_id)
 }
+
+/**
+ * Призыв, который не подчиняется призвавшему и враждебен всем («Призыв
+ * низших демонов» 2014). Он стоит среди противников (`state.enemies`), ходит
+ * в своей инициативе и бьёт ближайшего не-демона — кого угодно, в том числе
+ * заклинателя и прежних врагов отряда.
+ */
+export function isHostileSummon(actor) {
+  return actor?.kind === 'summon' && actor?.faction === 'hostile' && Boolean(actor?.ownerId || actor?.owner_id)
+}
+
+/**
+ * Призыв, которого нельзя ни атаковать, ни ранить: Духовное оружие — сгусток
+ * силы, а не существо, Верного пса «нельзя ранить». Фишка стоит на карте и
+ * действует, но целью атак и областей не бывает.
+ */
+export function isUntargetableSummon(actor) {
+  return isPartySummon(actor) && actor?.untargetable === true
+}

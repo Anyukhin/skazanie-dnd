@@ -2,7 +2,7 @@ import type { BoardEffectRenderer } from './board-render'
 import type { BoardPoint } from './combat-animation'
 import { circularAreaLineOfEffect } from '../server/circular-area-geometry.mjs'
 import type { ActorFootprint, AreaGeometryVersion, TacticalMap } from './types'
-import { cellAt, edgeBetween, movementStepBlocked, revealedAt } from './tactical-map-client'
+import { cellAt, revealedAt, sightEdgeBlocked } from './tactical-map-client'
 import { actorFootprintCells, actorPresentationSize } from './tactical-ui'
 
 const key = (point: BoardPoint) => `${point.x},${point.y}`
@@ -56,21 +56,6 @@ function lineCells(from: BoardPoint, to: BoardPoint): BoardPoint[] {
     result.push({ x, y })
   }
   return result
-}
-
-function sightEdgeBlocked(map: TacticalMap, from: BoardPoint, to: BoardPoint) {
-  const dx = Math.sign(to.x - from.x)
-  const dy = Math.sign(to.y - from.y)
-  const candidates = Math.abs(dx) + Math.abs(dy) === 1
-    ? [[from, to] as const]
-    : dx && dy
-      ? [[from, { x: from.x + dx, y: from.y }] as const, [from, { x: from.x, y: from.y + dy }] as const]
-      : []
-  return candidates.some(([start, end]) => {
-    const edge = edgeBetween(map, start.x, start.y, end.x, end.y)
-    return edge?.blocksSight === true
-      || edge?.kind === 'door' && movementStepBlocked(map, start.x, start.y, end.x, end.y)
-  })
 }
 
 /**

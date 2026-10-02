@@ -2,6 +2,8 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+import { DETAIL_PROPS } from './detail-props.mjs'
+
 /**
  * Реестр ассетов — единственное место, которое знает, чем рисуется предмет
  * (`docs/tactical-map-plan.md`, решение Р3 и раздел 6).
@@ -346,7 +348,41 @@ export function withAtlasArt(entries, atlas) {
     : { ...record, raster: null, rightsId: null }))
 }
 
-const ENTRIES = Object.freeze(withAtlasArt(/** @type {AssetEntry[]} */ ([...DECLARED]), readPropAtlas()))
+/**
+ * Атлас набора детализации (`public/assets/maps/detail-v1`). Его манифест
+ * называет картинку по имени файла рядом с собой, поэтому путь доводится до
+ * пути внутри `public/assets` — он же `rightsId` в реестре прав.
+ */
+export const DETAIL_ATLAS_FILE = fileURLToPath(new URL('../public/assets/maps/detail-v1/prop-atlas.json', import.meta.url))
+const DETAIL_ATLAS_DIR = 'maps/detail-v1/'
+
+/** @returns {PropAtlas} */
+export function readDetailAtlas(file = DETAIL_ATLAS_FILE) {
+  const atlas = readPropAtlas(file)
+  if (!atlas.image || atlas.image.includes('/')) return atlas
+  return { ...atlas, image: `${DETAIL_ATLAS_DIR}${atlas.image}` }
+}
+
+/**
+ * Предметы набора детализации (`server/detail-props.mjs`). Векторное имя —
+ * их прежний двойник: им рисуется доска без фактур.
+ */
+const DETAIL_DECLARED = Object.freeze(DETAIL_PROPS.map((record) => entry(record.id, {
+  kind: record.kind,
+  themes: [...record.themes],
+  baseFootprint: { ...record.footprint },
+  anchor: record.anchor,
+  vector: record.alias,
+  blocksMove: record.blocksMove,
+  blocksSight: record.blocksSight,
+  cover: record.cover,
+  scaleRange: { ...record.scaleRange },
+})))
+
+const ENTRIES = Object.freeze([
+  ...withAtlasArt(/** @type {AssetEntry[]} */ ([...DECLARED]), readPropAtlas()),
+  ...withAtlasArt(/** @type {AssetEntry[]} */ ([...DETAIL_DECLARED]), readDetailAtlas()),
+])
 
 /** @type {Map<string, AssetEntry>} */
 const BY_ID = new Map(ENTRIES.map((record) => [record.id, record]))

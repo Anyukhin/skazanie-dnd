@@ -5,6 +5,9 @@ import { authoredLocationMapFor } from './authored-location-maps.mjs'
 import { buildAresFortressScene, buildBuildingScene, ensureDeclaredTransitions } from './building-generator.mjs'
 import { buildSceneFromGraph } from './graph-layout.mjs'
 import { LARGE_HOUSE_FLOOR, buildSettlementScene } from './settlement-generator.mjs'
+import { thinWalls } from './thin-walls.mjs'
+import { applyRoomFloors } from './room-floors.mjs'
+import { deepestRoom, raiseDais } from './scene-features.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
@@ -106,9 +109,12 @@ export const SCENE_THEMES = Object.freeze([
     // получали один список «алтарь, колонна, статуя, жаровня»: алтарь стоял в
     // притворе, а тринадцать статуй — где придётся.
     propPlans: [
-      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, ...TEMPLE_INTERIOR_CAPS } },
-      { density: 10, colonnade: true, extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 4, chandelier: 2, candelabra: 2, offering_bowl: 2, ...TEMPLE_INTERIOR_CAPS } },
-      { density: 14, require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3 } },
+      // Притвор: купель со святой водой у входа и колокол.
+      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, kneeling_cushions: 0, ...TEMPLE_INTERIOR_CAPS } },
+      // Неф — шаблон `nave`: скамьи рядами, кафедра, дорожка к алтарной.
+      { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 4, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_INTERIOR_CAPS } },
+      // Алтарная — шаблон `altar`: алтарь, курильница, подушки и свечи вокруг.
+      { density: 14, purpose: 'altar', require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3 } },
       { density: 18, theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1 } },
     ],
   },
@@ -150,10 +156,13 @@ export const SCENE_THEMES = Object.freeze([
     // Тюрьма под замком: стража у входа, коридор с факелами, камеры с
     // нарами и костями, пыточная, склад конфиската.
     propPlans: [
-      { density: 14, extraThemes: ['interior'], require: ['table_small', 'chair', 'chest', 'torch_wall'], prefer: ['barrel', 'crate', 'bench', 'chair', 'torch_wall'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_small: 1, chest: 1, barrel: 2, crate: 2, bench: 1, chair: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0 } },
+      // Караульная — шаблон `guardroom`: стол тюремщика, оружие, жаровня.
+      { density: 14, purpose: 'guardroom', extraThemes: ['interior'], require: ['chair', 'chest', 'torch_wall'], prefer: ['barrel', 'crate', 'bench', 'chair', 'torch_wall'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_small: 1, chest: 1, barrel: 2, crate: 2, bench: 1, chair: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0 } },
       { density: 8, extraThemes: ['interior', 'cave'], require: ['torch_wall', 'cobweb'], prefer: ['torch_wall', 'cobweb', 'rubble_heap', 'bone_pile'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 4, rubble_heap: 2, bone_pile: 2, stalagmite: 0, cave_pool: 0, mushroom_cluster: 0, ore_vein: 0, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
-      { density: 16, extraThemes: ['interior'], require: ['bunk_bed', 'bone_pile', 'bucket'], prefer: ['bunk_bed', 'bone_pile', 'cobweb', 'sack', 'bucket'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 1, bunk_bed: 3, bucket: 2, sack: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
-      { density: 14, extraThemes: ['interior'], require: ['brazier', 'table_long', 'chest'], prefer: ['cauldron', 'bone_pile', 'brazier', 'chest', 'cobweb'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_long: 1, cauldron: 1, chest: 1, brazier: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
+      // Камеры — шаблон `cells`: тюфяк на соломе, ведро в углу, цепи.
+      { density: 16, purpose: 'cells', extraThemes: ['interior'], require: ['bone_pile', 'cobweb'], prefer: ['bone_pile', 'cobweb', 'sack'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 1, bunk_bed: 0, bucket: 0, sack: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
+      // Пыточная — шаблон `torture`: дыба посредине, клетка, цепи, жаровня.
+      { density: 14, purpose: 'torture', extraThemes: ['interior'], require: ['brazier', 'chest'], prefer: ['cauldron', 'bone_pile', 'brazier', 'chest', 'cobweb'], caps: { ...DUNGEON_INTERIOR_CAPS, torch_wall: 2, table_long: 0, cauldron: 1, chest: 1, brazier: 2, sarcophagus: 0, crypt_niche: 0, grave: 0, urn: 0, altar: 0, statue: 0 } },
       { density: 22, theme: 'interior', purpose: 'store', require: ['crate_stack', 'chest'], prefer: ['crate', 'barrel', 'sack', 'chest', 'crate_stack'], caps: { bed: 0, bunk_bed: 0, table_long: 0, table_round: 0, bar_counter: 0, chandelier: 0, rug: 0, fireplace: 0 } },
     ],
   },
@@ -186,10 +195,12 @@ export const SCENE_THEMES = Object.freeze([
     // «Хутор у леса» — хутор. «Бор» с границей слова, иначе «собор» — лес.
     match: /(?<![а-яё])(?:лес(?:а|у|ом|е|ов|ами|ах)?|чащ[аиуеё]\p{L}*|рощ[аиуеё]\p{L}*|бор(?:а|у|ом|е|ы)?|дубрав\p{L}*|пущ[аиуеё]\p{L}*|тайг\p{L}*|опушк\p{L}*|оазис\p{L}*|поляна|поляне|поляну|лагер\p{L}*|стоянк\p{L}*|бивак\p{L}*)(?![а-яё])/iu,
     // Каменная кромка забирает край участка: плотность выше, чтобы чаща
-    // осталась чащей (v3 открытой местности).
-    density: 22,
+    // осталась чащей (v3 открытой местности). Пуассоновский диск держит
+    // деревья врозь, и промежутки занимает подлесок: мшистые камни, бурелом,
+    // корни и опавшая листва из набора детализации.
+    density: 24,
     require: ['tree_oak', 'tree_spruce', 'tree_birch', 'fallen_log', 'campfire'],
-    prefer: ['tree_oak', 'tree_spruce', 'tree_birch', 'tree_pine', 'tree_dead', 'tree_stump', 'bush', 'shrub', 'boulder', 'fern', 'campfire'],
+    prefer: ['tree_oak', 'tree_spruce', 'tree_birch', 'tree_pine', 'tree_dead', 'tree_stump', 'bush', 'shrub', 'boulder', 'fern', 'campfire', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter'],
   },
   {
     id: 'road',
@@ -786,6 +797,20 @@ export function layoutOrganicCave(theme, {
   return map
 }
 
+/**
+ * Наименьшая карта места по его виду. Картограф просит размер наугад, и склеп
+ * 15×11 выходил тремя чуланами без места для боя: три комнаты с коридорами
+ * требуют простора, а дом — ещё и двора вокруг, откуда к нему подходят.
+ * Просьба побольше исполняется как есть; меньше этого — нет.
+ */
+export const THEME_MIN_SIZE = Object.freeze({
+  crypt: { width: 26, height: 26 },
+  dungeon: { width: 26, height: 26 },
+  temple: { width: 26, height: 26 },
+  cave: { width: 22, height: 20 },
+  building: { width: 22, height: 20 },
+})
+
 /** С какой площади зал подземной темы получает колоннаду ради укрытий. */
 const SPACIOUS_HALL_CELLS = 100
 
@@ -800,11 +825,14 @@ const SPACIOUS_HALL_CELLS = 100
  * с тем же замком и тем же ключом (`locks`): у сокровищницы может быть два
  * входа, но оба под ключ, иначе ключ теряет смысл.
  *
+ * `only` — прорубать только стены этого помещения (второй вход в дальнюю
+ * комнату); `idPrefix` — имя дверей.
+ *
  * @param {import('./tactical-map.mjs').TacticalMap} map
- * @param {{exclude?: string[], limit?: number, minDetour?: number, locks?: Record<string, {lockDc?: number, keyItemId?: string|null}>}} [options]
+ * @param {{exclude?: string[], limit?: number, minDetour?: number, locks?: Record<string, {lockDc?: number, keyItemId?: string|null}>, only?: string, idPrefix?: string}} [options]
  * @returns {number} сколько проходов прорублено
  */
-export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10, locks = {} } = {}) {
+export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10, locks = {}, only = '', idPrefix = 'loop-door' } = {}) {
   const blocked = new Set(exclude)
   const zoneOf = (/** @type {number} */ x, /** @type {number} */ y) => cellAt(map, x, y)?.zone ?? ''
   /** @param {{x: number, y: number}} from @param {{x: number, y: number}} to */
@@ -851,6 +879,7 @@ export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10,
         const zoneB = zoneOf(b.x, b.y)
         if (!cellAt(map, a.x, a.y)?.passable || !cellAt(map, b.x, b.y)?.passable) continue
         if (!zoneA || !zoneB || zoneA === zoneB || blocked.has(zoneA) || blocked.has(zoneB)) continue
+        if (only && zoneA !== only && zoneB !== only) continue
         candidates.push({ x, y, a, b, pair: `${[zoneA, zoneB].sort().join('|')}#${thickness}`, wall })
       }
     }
@@ -875,8 +904,8 @@ export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10,
     const edge = middle.b.x !== last.x ? { x: last.x, y: last.y, dir: /** @type {'e'} */ ('e') } : { x: last.x, y: last.y, dir: /** @type {'s'} */ ('s') }
     const lock = rooms.split('|').map((zoneId) => locks[zoneId]).find(Boolean)
     setDoor(map, lock
-      ? { id: `loop-door-${opened + 1}`, ...edge, state: 'locked', ...(lock.lockDc ? { lockDc: lock.lockDc } : {}), ...(lock.keyItemId ? { keyItemId: lock.keyItemId } : {}) }
-      : { id: `loop-door-${opened + 1}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
+      ? { id: `${idPrefix}-${opened + 1}`, ...edge, state: 'locked', ...(lock.lockDc ? { lockDc: lock.lockDc } : {}), ...(lock.keyItemId ? { keyItemId: lock.keyItemId } : {}) }
+      : { id: `${idPrefix}-${opened + 1}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
     usedPairs.add(rooms)
     opened += 1
   }
@@ -888,6 +917,10 @@ export function addShortcutLoops(map, { exclude = [], limit = 2, minDetour = 10,
  * стороны (в узком зале — по одну) — камеры шириной в три клетки,
  * разделённые стенами; у каждой камеры дверь в коридор. Зал уже пяти
  * клеток или короче восьми не делится.
+ *
+ * Стены камер — тонкие, на рёбрах (`server/thin-walls.mjs`), поэтому деление
+ * идёт после `thinWalls`: клетка кладки внутри одной зоны тонкая стена
+ * поглотила бы целиком, и блок камер стал бы общим залом.
  *
  * @param {import('./tactical-map.mjs').TacticalMap} map
  * @param {string} zoneId
@@ -916,46 +949,51 @@ function partitionPrisonCells(map, zoneId) {
   const acrossMax = horizontal ? maxY : maxX
   const corridor = twoSided ? Math.floor((acrossMin + acrossMax) / 2) : acrossMin
   const sides = twoSided ? [-1, 1] : [1]
-  // Клетки дверных проёмов в другие зоны не застраиваются: вход в зал
-  // остаётся входом, даже если он не на коридоре.
+  const inZone = (/** @type {{x: number, y: number}} */ point) => {
+    const cell = cellAt(map, point.x, point.y)
+    return Boolean(cell?.passable) && cell?.zone === zoneId
+  }
+  // Клетка у входа из другой зоны не отгораживается: вход в зал остаётся
+  // входом в коридор, даже если он пришёлся не на коридор.
   const doorway = (/** @type {{x: number, y: number}} */ point) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
     const near = cellAt(map, point.x + dx, point.y + dy)
-    return near?.passable && near.zone !== zoneId
+    if (!near?.passable || near.zone === zoneId) return false
+    const edge = edgeBetween(map, point.x, point.y, point.x + dx, point.y + dy)
+    return !edge || edge.kind === 'door' || !edge.blocksMove
   })
-  const wall = (/** @type {{x: number, y: number}} */ point) => {
-    if (cellAt(map, point.x, point.y)?.zone !== zoneId || doorway(point)) return false
-    setCell(map, point.x, point.y, { passable: false, zone: '' })
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      if (cellAt(map, point.x + dx, point.y + dy)?.passable) setEdge(map, point.x, point.y, point.x + dx, point.y + dy, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
-    }
-    return true
+  const wall = (/** @type {{x: number, y: number}} */ a, /** @type {{x: number, y: number}} */ b) => {
+    if (!inZone(a) || !inZone(b) || edgeBetween(map, a.x, a.y, b.x, b.y)?.kind === 'door') return
+    setEdge(map, a.x, a.y, b.x, b.y, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
   }
-  // Стены вдоль коридора по обе стороны.
-  for (let along = alongMin; along <= alongMax; along += 1) for (const side of sides) wall(at(along, corridor + side))
-  // Перегородки между камерами через три клетки.
-  for (let along = alongMin + 3; along < alongMax - 1; along += 4) {
+  // Стена вдоль коридора по обе стороны — на ребре между коридором и камерами.
+  for (let along = alongMin; along <= alongMax; along += 1) {
+    for (const side of sides) {
+      const cellRow = at(along, corridor + side)
+      if (!doorway(cellRow)) wall(at(along, corridor), cellRow)
+    }
+  }
+  // Перегородки между камерами: камера — три клетки вдоль коридора. Хвост
+  // короче двух клеток не отделяется — он достаётся последней камере.
+  const segments = []
+  for (let start = alongMin; start <= alongMax; start += 3) segments.push(start)
+  if (segments.length > 1 && alongMax - segments[segments.length - 1] < 1) segments.pop()
+  for (const start of segments.slice(1)) {
     for (let across = acrossMin; across <= acrossMax; across += 1) {
-      const cellSide = across < corridor - 1 ? -1 : across > corridor + 1 ? 1 : 0
-      if (cellSide && sides.includes(cellSide)) wall(at(along, across))
+      const cellSide = Math.sign(across - corridor)
+      if (cellSide && sides.includes(cellSide)) wall(at(start - 1, across), at(start, across))
     }
   }
   // Дверь каждой камеры — в середине её отрезка, на ребре к коридору.
   let index = 0
-  for (let start = alongMin; start <= alongMax; start += 4) {
+  for (const start of segments) {
     const middle = Math.min(alongMax, start + 1)
     for (const side of sides) {
-      const opening = at(middle, corridor + side)
-      const inside = at(middle, corridor + side * 2)
+      const inside = at(middle, corridor + side)
       const hall = at(middle, corridor)
-      if (!cellAt(map, inside.x, inside.y)?.passable || !cellAt(map, hall.x, hall.y)?.passable) continue
-      setCell(map, opening.x, opening.y, { passable: true, zone: zoneId })
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const near = cellAt(map, opening.x + dx, opening.y + dy)
-        if (near?.passable) setEdge(map, opening.x, opening.y, opening.x + dx, opening.y + dy, { kind: 'none' })
-      }
+      if (!inZone(inside) || !inZone(hall)) continue
       const edge = horizontal
-        ? { x: opening.x, y: Math.min(opening.y, hall.y), dir: /** @type {'s'} */ ('s') }
-        : { x: Math.min(opening.x, hall.x), y: opening.y, dir: /** @type {'e'} */ ('e') }
+        ? { x: inside.x, y: Math.min(inside.y, hall.y), dir: /** @type {'s'} */ ('s') }
+        : { x: Math.min(inside.x, hall.x), y: inside.y, dir: /** @type {'e'} */ ('e') }
       index += 1
       setDoor(map, { id: `cell-door-${index}`, ...edge, state: 'closed', blocksMove: false, blocksSight: false })
     }
@@ -1191,7 +1229,7 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
       terrainCells.delete(`${cell.x},${cell.y}`)
     }
   } else if (theme.river) {
-    addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Река' })
+    addZone(map, { id: 'water', kind: 'exterior', material: theme.material, lightLevel: 'bright', label: 'Река', floor: 'river' })
     addZone(map, { id: 'crossing', kind: 'exterior', material: theme.bridgeMaterial, lightLevel: 'bright', label: 'Мост' })
     // Река петляет: русло смещается по синусоиде и местами разливается шире.
     const riverX = Math.floor(safeWidth * (0.45 + random() * 0.15))
@@ -1309,6 +1347,11 @@ export function buildThemedScene({
   // повторное опознание здесь её потеряет: `themeFor` читает только слова.
   const chosen = themeId ? themeById(themeId) : null
   const definition = /** @type {any} */ (chosen ?? themeFor({ location, theme, sceneKind }))
+  const minimum = THEME_MIN_SIZE[/** @type {keyof typeof THEME_MIN_SIZE} */ (definition.id)]
+  if (minimum) {
+    width = Math.max(Number(width) || 0, minimum.width)
+    height = Math.max(Number(height) || 0, minimum.height)
+  }
 
   // Известное authored-место сильнее эвристики темы и слов Архитектора. Карта
   // уже собрана офлайн и приходит новой копией на каждый стол, поэтому
@@ -1382,11 +1425,38 @@ export function buildThemedScene({
     })
     if (definition.id === 'crypt') pierceWalls(built.map, { kind: 'grate', stride: 13, limit: 3 })
     if (definition.id === 'temple') pierceWalls(built.map, { kind: 'loophole', stride: 11, limit: 4 })
-    // Камеры тюрьмы — ряд клеток вдоль коридора, а не пустой зал.
+    // Второй вход в самое дальнее помещение (Жакейс): если в него ведёт одна
+    // дверь, общая стена с соседом прорубается ещё раз — короче петли, но
+    // всё ещё обходом. Цель за ключом получает второй вход под тот же ключ.
+    if (definition.id === 'dungeon' || definition.id === 'crypt') {
+      const deepest = deepestRoom(built.map)
+      if (deepest && deepest.doors < 2) {
+        addShortcutLoops(built.map, {
+          only: deepest.zoneId,
+          minDetour: 6,
+          limit: 1,
+          idPrefix: 'second-entrance',
+          locks: goalDoor ? { [graph.goalZoneId]: { lockDc: goalDoor.lockDc, keyItemId: goalDoor.keyItemId } } : {},
+          exclude: definition.locked && !goalDoor ? [graph.goalZoneId] : [],
+        })
+      }
+    }
+    // Стены залов — на рёбрах клеток; край карты остаётся скалой.
+    thinWalls(built.map)
+    // Камеры тюрьмы — ряд клеток вдоль коридора, а не пустой зал. Их стены
+    // сразу тонкие, поэтому деление идёт после `thinWalls`.
     if (definition.id === 'dungeon') {
       const cellsZone = built.map.zones.find((zone) => zone.label === 'Камеры')
       if (cellsZone) partitionPrisonCells(built.map, cellsZone.id)
     }
+    // Помост у дальней стены алтарной и погребальной: алтарь и саркофаг выше
+    // пола, а стрелок на помосте получает высоту.
+    for (const zone of built.map.zones) {
+      if (zone.label === 'Алтарная' || zone.label === 'Погребальная') raiseDais(built.map, zone.id)
+    }
+    // Пол по назначению: неф храма в мозаике, камеры на соломе, склеп и
+    // подземелье в истёртой кладке (`server/room-floors.mjs`).
+    applyRoomFloors(built.map, { use: definition.id, architecture: definition.material ?? 'stone' })
     const labelled = built.map.zones.filter((zone) => zone.label)
     const plans = Array.isArray(definition.propPlans) ? definition.propPlans : []
     // Колоннада ставится до общей расстановки: она задаёт структуру зала, а
@@ -1459,18 +1529,26 @@ export function buildThemedScene({
       zoneId: 'square',
       theme: definition.assetTheme ?? definition.id,
       density: urban ? 9 : 7,
-      require: urban || market ? ['well', 'market_stall', 'market_stall', 'market_stall', 'lamp_post'] : ['well', 'lamp_post'],
-      prefer: ['market_stall', 'lamp_post', 'cart', 'water_trough', 'signpost', 'hitching_post'],
-      caps: { well: 1, market_stall: urban ? 6 : 3, lamp_post: 4, cart: 1, water_trough: 1, signpost: 1, hitching_post: 2, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
+      // Городская площадь: доска объявлений, навесы торговцев, тележка с
+      // фруктами, клумбы; в городе — фонтан или постамент с памятником.
+      extraThemes: ['street'],
+      require: urban ? ['fountain', 'market_stall', 'market_stall', 'market_stall', 'lamp_post', 'notice_board']
+        : market ? ['well', 'market_stall', 'market_stall', 'market_stall', 'lamp_post', 'notice_board'] : ['well', 'lamp_post'],
+      prefer: urban
+        ? ['market_stall', 'market_awning', 'fruit_cart', 'lamp_post', 'notice_board', 'statue_plinth', 'street_planter', 'goods_baskets', 'pottery_stand', 'pillory', 'signpost', 'hitching_post']
+        : ['market_stall', 'lamp_post', 'cart', 'water_trough', 'signpost', 'hitching_post', 'notice_board', 'flower_bed'],
+      caps: { notice_board: 1, market_awning: 2, fruit_cart: 1, statue_plinth: 1, pillory: 1, stocks: 0, fountain: 1, town_well: 0, street_planter: 4, goods_baskets: 3, pottery_stand: 2, crate_stack_goods: 1, flower_bed: 2, rain_barrel: 0, well: urban ? 0 : 1, market_stall: urban ? 6 : 3, lamp_post: 4, cart: 1, water_trough: 1, signpost: 1, hitching_post: 2, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
     }] : []
     // Фонари вдоль городских улиц — редко, по краю, чтобы не мешать проходу.
     const streetPlan = urban ? [{
       zoneId: 'street',
       theme: definition.assetTheme ?? definition.id,
       density: 1.2,
-      require: ['lamp_post', 'signpost'],
-      prefer: ['lamp_post', 'hitching_post', 'water_trough'],
-      caps: { lamp_post: 8, signpost: 2, hitching_post: 2, water_trough: 2, cart: 0, well: 0, market_stall: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
+      // Указатель на перекрёстке, кадки с деревцами и бочки под водостоком.
+      extraThemes: ['street'],
+      require: ['lamp_post', 'signpost', 'sign_post_city'],
+      prefer: ['lamp_post', 'hitching_post', 'water_trough', 'street_planter', 'rain_barrel'],
+      caps: { sign_post_city: 2, street_planter: 4, rain_barrel: 3, notice_board: 0, fountain: 0, town_well: 0, market_awning: 0, fruit_cart: 0, pillory: 0, stocks: 0, statue_plinth: 0, flower_bed: 0, goods_baskets: 0, pottery_stand: 0, crate_stack_goods: 0, lamp_post: 8, signpost: 2, hitching_post: 2, water_trough: 2, cart: 0, well: 0, market_stall: 0, haystack: 0, woodpile: 0, campfire: 0, village_fence: 0, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_dead: 0, tree_spruce: 0, tree_stump: 0, bush: 0, shrub: 0, fallen_log: 0, fern: 0, rock_small: 0, boulder: 0, milestone: 0, roadside_shrine: 0, path_stone: 0, grass_tuft: 0, flowers: 0, wagon_wheel: 0 },
     }] : []
     /**
      * Обстановка дома по комнате: передняя — жилая (очаг, стол, стулья) или
@@ -1485,7 +1563,8 @@ export function buildThemedScene({
       // Третья комната крупного дома: кладовая у жилья, таверны и амбара,
       // мастерская у лавки, спальня у усадьбы и мастерской.
       if (side) {
-        if (use === 'shop') return { purpose: 'workshop', require: ['table_long', 'shelf_wall'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'bucket'] }
+        if (use === 'shop') return { purpose: 'workshop', require: ['shelf_wall'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'bucket'] }
+        if (use === 'manor') return { purpose: 'bedroom', require: ['bed', 'chest'], prefer: ['bed', 'chest', 'night_table', 'wardrobe', 'rug', 'double_bed', 'bathtub'] }
         if (use === 'manor' || use === 'workshop') return { purpose: 'bedroom', require: ['bed', 'chest'], prefer: ['bed', 'chest', 'night_table', 'wardrobe', 'rug'] }
         return { purpose: 'store', require: ['crate_stack', 'barrel'], prefer: ['crate', 'barrel', 'sack', 'chest', 'shelf_wall'] }
       }
@@ -1498,10 +1577,14 @@ export function buildThemedScene({
         : { purpose: 'workshop', require: ['table_long', 'shelf_wall', 'firewood_stack'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'bucket', 'broom'] }
       if (use === 'shop') return back
         ? { purpose: 'store', require: ['crate_stack', 'barrel'], prefer: ['crate', 'barrel', 'sack', 'chest'] }
-        : { purpose: 'workshop', require: ['table_small', 'shelf_wall'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'chair'] }
+        : { purpose: 'shop', require: ['chest'], prefer: ['shelf_wall', 'crate', 'barrel', 'chest', 'chair'] }
       if (use === 'tavern') return back
-        ? { purpose: 'kitchen', require: ['fireplace', 'cupboard'], prefer: ['barrel', 'crate', 'cupboard'] }
+        ? { purpose: 'kitchen', require: ['cupboard'], prefer: ['barrel', 'crate', 'cupboard'] }
         : { purpose: 'gallery', require: ['table_small', 'table_small', 'barrel'], prefer: ['table_small', 'chair', 'stool', 'barrel'] }
+      // Кабинет усадьбы и её зал — шаблоны `study` и `dining`.
+      if (use === 'manor') return back
+        ? { purpose: 'study', require: ['chair'], prefer: ['bookshelf', 'chest', 'candle', 'rug'] }
+        : { purpose: 'dining', require: ['fireplace'], prefer: ['candelabra', 'cupboard', 'banner'] }
       if (back) return { purpose: 'bedroom', require: ['bed', 'chest'], prefer: ['bed', 'chest', 'night_table', 'wardrobe'] }
       // Однокомнатный дом держит всё в одной комнате: и очаг, и кровать.
       const single = !map.zones.some((other) => other.id === `${zone.id}-back`)
@@ -1515,8 +1598,15 @@ export function buildThemedScene({
         theme: definition.assetTheme ?? definition.id,
         density: definition.density ?? 10,
         require: streetRequire,
-        prefer: urban ? ['tree_oak', 'tree_birch', 'bush', 'woodpile', 'flowers', 'village_fence', 'rock_small', 'shrub']
-          : market ? definition.prefer : ['tree_birch', 'tree_oak', 'bush', 'woodpile', 'haystack', 'water_trough', 'village_fence', 'cart', 'flowers'],
+        // Дворы между домами: в городе — клумбы и бочки, в деревне — огород,
+        // курятник, тюки сена и пугало (`farm` из набора детализации). У
+        // воды — сети, сушилка для рыбы, причальные тумбы и лодка на берегу.
+        extraThemes: design.topology === 'river' || design.topology === 'harbor' ? ['farm', 'harbor'] : ['farm'],
+        prefer: [
+          ...(urban ? ['tree_oak', 'tree_birch', 'bush', 'woodpile', 'flowers', 'village_fence', 'rock_small', 'shrub', 'flower_bed', 'rain_barrel']
+            : market ? definition.prefer : ['tree_birch', 'tree_oak', 'bush', 'woodpile', 'haystack', 'water_trough', 'village_fence', 'cart', 'flowers', 'garden_bed', 'chicken_coop', 'hay_bales', 'scarecrow', 'rain_barrel']),
+          ...(design.topology === 'river' || design.topology === 'harbor' ? ['fish_rack', 'fishing_nets', 'mooring_post', 'rowboat'] : []),
+        ],
         caps: hasSquare && !urban ? { ...streetCaps, well: 0 } : urban ? { ...streetCaps, well: 0, market_stall: 0, haystack: 0, cart: 1, wagon_wheel: 1, campfire: 0, village_fence: 8, woodpile: 6 } : streetCaps,
       }, ...squarePlan, ...streetPlan, ...map.zones.filter((zone) => zone.kind === 'interior').map((zone) => ({
         zoneId: zone.id,

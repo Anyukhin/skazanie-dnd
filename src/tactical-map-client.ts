@@ -225,6 +225,25 @@ export function movementStepBlocked(map: TacticalMap, ax: number, ay: number, bx
   return edge.blocksMove === true && cellAt(map, ax, ay)?.passable === true && cellAt(map, bx, by)?.passable === true
 }
 
+/**
+ * Перекрывает ли ребро взгляд на шаге между соседними клетками. На диагонали
+ * проверяются оба угловых ребра: тонкая стена не должна пропускать луч через угол.
+ */
+export function sightEdgeBlocked(map: TacticalMap, from: { x: number, y: number }, to: { x: number, y: number }) {
+  const dx = Math.sign(to.x - from.x)
+  const dy = Math.sign(to.y - from.y)
+  const candidates = Math.abs(dx) + Math.abs(dy) === 1
+    ? [[from, to] as const]
+    : dx && dy
+      ? [[from, { x: from.x + dx, y: from.y }] as const, [from, { x: from.x, y: from.y + dy }] as const]
+      : []
+  return candidates.some(([start, end]) => {
+    const edge = edgeBetween(map, start.x, start.y, end.x, end.y)
+    return edge?.blocksSight === true
+      || edge?.kind === 'door' && movementStepBlocked(map, start.x, start.y, end.x, end.y)
+  })
+}
+
 /** Двери, до которых дотягивается стоящий в клетке: любое из четырёх её рёбер. */
 export function doorsReachableFrom(map: TacticalMap, x: number, y: number) {
   return map.doors.filter((door) => {
@@ -470,8 +489,14 @@ function decodeZone(value: unknown): TacticalZone | null {
       ? raw.floorDirection
       : 'horizontal') as TacticalFloorDirection,
     label: text(raw.label, 120),
+    // Рисунок пола и кладки — ключи фактур; незнакомый ключ доска просто не
+    // найдёт в манифесте и нарисует пол по материалу.
+    ...(typeof raw.floor === 'string' && STYLE_KEY.test(raw.floor) ? { floor: raw.floor } : {}),
+    ...(typeof raw.wall === 'string' && STYLE_KEY.test(raw.wall) ? { wall: raw.wall } : {}),
   }
 }
+
+const STYLE_KEY = /^[a-z][a-z-]{0,23}$/u
 
 function decodeDoor(value: unknown): TacticalDoor | null {
   if (!value || typeof value !== 'object') return null

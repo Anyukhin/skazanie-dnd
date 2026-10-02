@@ -12,6 +12,8 @@ import {
   setDoor,
   setEdge,
 } from './tactical-map.mjs'
+import { thinWalls } from './thin-walls.mjs'
+import { applyRoomFloors, buildingWallStyleFor } from './room-floors.mjs'
 
 /**
  * Поселение — отдельный генератор геометрии, а не вариант раскраски четырёх
@@ -800,6 +802,17 @@ function townSpecs(map, design, random, materialsForMap) {
     for (let y = riverY; y <= riverY + 1; y += 1) for (let x = 0; x < width; x += 1) setCell(map, x, y, { passable: false, surface: 'water', material: 'stone', zone: 'water', revealed: true })
     const bridge = ['stone', 'marble', 'metal'].includes(design.architecture) ? design.architecture : 'wood'
     for (const line of verticals) for (let x = line.from; x <= line.to; x += 1) for (let y = riverY; y <= riverY + 1; y += 1) paintStreet(map, x, y, bridge, true)
+    // Городской канал одет в камень: набережная — кромка на ребре между
+    // мостовой и водой. Пройти по воде и без неё нельзя, кромка — это
+    // отрисовка и укрытие у края, мосты её не получают.
+    for (let x = 0; x < width; x += 1) {
+      for (const [landY, waterY] of [[riverY - 1, riverY], [riverY + 2, riverY + 1]]) {
+        const land = cellAt(map, x, landY)
+        const water = cellAt(map, x, waterY)
+        if (!land?.passable || water?.surface !== 'water' || water.passable) continue
+        setEdge(map, x, landY, x, waterY, { kind: 'ledge', blocksMove: false, blocksSight: false, cover: 'none' })
+      }
+    }
   }
   // Площадь на перекрёстке главной и поперечной.
   const squareW = design.scale === 'city' ? 12 : 10
@@ -966,14 +979,36 @@ function buildingSpecs(map, design, random) {
     return planInRegions(map, random, Math.min(requested, 9), regions, { density: design.density })
   }
   if (design.topology === 'river') {
+    // Река петляет: русло уходит по синусоиде на две клетки вверх и вниз и
+    // местами разливается шире. Прямая полоса через всю карту читалась
+    // каналом, а не деревенской речкой.
     const riverY = centerY
-    for (let y = riverY - 1; y <= riverY + 1; y += 1) for (let x = 0; x < width; x += 1) setCell(map, x, y, { passable: false, surface: 'water', material: 'stone', zone: 'water', revealed: true })
+    const swing = 2
+    const phase = random() * Math.PI * 2
+    /** @param {number} x */
+    const course = (x) => riverY + Math.round(Math.sin((x / Math.max(1, width - 1)) * Math.PI * 2.4 + phase) * swing)
+    /** @param {number} x */
+    const spread = (x) => (Math.sin(x * 0.53 + phase * 1.7) > 0.75 ? 2 : 1)
+    for (let x = 0; x < width; x += 1) {
+      for (let y = course(x) - spread(x); y <= course(x) + spread(x); y += 1) {
+        if (cellAt(map, x, y)) setCell(map, x, y, { passable: false, surface: 'water', material: 'stone', zone: 'water', revealed: true })
+      }
+    }
+    // Пологий берег: полоса песка вдоль воды, где к реке спускаются за водой.
+    for (let x = 0; x < width; x += 1) {
+      for (const y of [course(x) - spread(x) - 1, course(x) + spread(x) + 1]) {
+        const bank = cellAt(map, x, y)
+        if (bank?.passable && bank.surface !== 'water') setCell(map, x, y, { material: 'sand' })
+      }
+    }
     const bridgeXs = [1, Math.max(3, centerX - 1), Math.max(5, width - 4)]
     const bridgeMaterial = ['stone', 'marble', 'metal'].includes(design.architecture) ? design.architecture : 'wood'
     for (const bridgeX of bridgeXs) for (let x = bridgeX; x <= Math.min(width - 1, bridgeX + 2); x += 1) for (let y = 0; y < height; y += 1) paintStreet(map, x, y, bridgeMaterial, true)
-    const bankHeight = Math.max(8, riverY - 5)
-    addRegion(2, 2, outerWidth, bankHeight)
-    addRegion(2, riverY + 4, outerWidth, Math.max(8, height - riverY - 6))
+    // Дома стоят выше и ниже самого дальнего изгиба, берег и проход вдоль
+    // него остаются открытыми.
+    const reach = swing + 2
+    addRegion(2, 2, outerWidth, Math.max(8, riverY - reach - 5))
+    addRegion(2, riverY + reach + 3, outerWidth, Math.max(8, height - riverY - reach - 5))
     return planInRegions(map, random, requested, regions, { density: design.density })
   }
   if (design.topology === 'gate') {
@@ -1062,7 +1097,8 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   if (urban || chosen.topology === 'market' || chosen.topology === 'courtyard') {
     addZone(map, { id: 'square', kind: 'exterior', material: materialsForMap.street, lightLevel: 'bright', floorDirection: 'horizontal', label: chosen.topology === 'market' || urban ? 'Торговая площадь' : 'Площадь' })
   }
-  if (chosen.topology === 'river' || chosen.topology === 'harbor') addZone(map, { id: 'water', kind: 'exterior', material: materialsForMap.surface, lightLevel: 'bright', floorDirection: 'horizontal', label: 'Вода' })
+  // Река течёт: у неё своя фактура струй, у гавани — прежняя стоячая вода.
+  if (chosen.topology === 'river' || chosen.topology === 'harbor') addZone(map, { id: 'water', kind: 'exterior', material: materialsForMap.surface, lightLevel: 'bright', floorDirection: 'horizontal', label: chosen.topology === 'river' ? 'Река' : 'Вода', ...(chosen.topology === 'river' ? { floor: 'river' } : {}) })
   for (let y = 0; y < safeHeight; y += 1) for (let x = 0; x < safeWidth; x += 1) setCell(map, x, y, { passable: true, material: materialsForMap.surface, zone: 'common', revealed: true })
   const centerY = Math.floor(safeHeight / 2)
   if (chosen.topology !== 'organic' && !urban) {
@@ -1119,6 +1155,17 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   setCell(map, spawn.x, spawn.y, { passable: true, surface: 'none', material: materialsForMap.street, zone: 'street', revealed: true })
   addSpawnPoint(map, { id: 'party-entrance', ...spawn, role: 'party' })
   ensureBuildingReachability(map, spawn)
+  // Стены домов — на рёбрах клеток (`server/thin-walls.mjs`).
+  thinWalls(map)
+  // Пол каждой комнаты — по её назначению: кухня трактира каменная, амбар
+  // земляной, зал усадьбы в паркете. Назначение дома знает `buildingUses`.
+  for (const [zoneId, use] of Object.entries(buildingUses)) {
+    applyRoomFloors(map, {
+      use, architecture: materialsForMap.building,
+      wall: buildingWallStyleFor({ use, architecture: materialsForMap.building, urban }),
+      zones: (zone) => zone.id === zoneId || zone.id.startsWith(`${zoneId}-`),
+    })
+  }
   map.overlays = {
     compass: true, scaleBar: true,
     roomLabels: map.zones.filter((zone) => zone.label).map((zone) => ({ zoneId: zone.id, label: zone.label })),

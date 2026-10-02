@@ -585,7 +585,7 @@ export function combatSpellTargetLimit(
 ): number {
   if (spell?.beamScaling === true) {
     const level = Math.max(1, Math.floor(Number(casterLevel) || 1))
-    return level >= 11 ? 3 : level >= 5 ? 2 : 1
+    return level >= 17 ? 4 : level >= 11 ? 3 : level >= 5 ? 2 : 1
   }
   const beams = Math.floor(Number(spell?.beams) || 0)
   if (beams > 0) {
@@ -1185,6 +1185,10 @@ export type TacticalZone = {
   /** Направление непрерывного рисунка настила внутри зоны. */
   floorDirection: TacticalFloorDirection
   label: string
+  /** Рисунок пола помещения (`FLOOR_STYLES` сервера); только для отрисовки. */
+  floor?: string
+  /** Вид кладки стен помещения (`WALL_STYLES` сервера); только для отрисовки. */
+  wall?: string
 }
 
 export type TacticalSpawnPoint = { id: string; x: number; y: number; role: TacticalSpawnRole }

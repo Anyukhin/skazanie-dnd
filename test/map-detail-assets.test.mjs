@@ -52,6 +52,12 @@ test('заказ детализации содержит весь набор и 
   assert.equal(Object.keys(manifest.textures).length, 25)
   assert.equal(Object.keys(manifest.sheets).length, 24)
   assert.deepEqual(new Set(manifest.models.map(model => model.id)), new Set(spec.models.map(model => model.id)))
+  const pendingStamps = spec.rasters.filter(item => spec.pendingIntegration.sheets.includes(item.file)).flatMap(item => item.ids)
+  assert.deepEqual(manifest.pendingIntegration, {
+    stamps: pendingStamps,
+    models: spec.models.filter(model => pendingStamps.includes(model.id)).map(model => model.id),
+    textures: spec.pendingIntegration.textures.map(file => file.replace(/\.png$/u, '')),
+  })
   for (const file of manifest.files) {
     assert.ok(!file.file.includes('..') && !file.file.startsWith('/'))
     const bytes = readFileSync(`${directory}${file.file}`)

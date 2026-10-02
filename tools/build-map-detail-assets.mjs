@@ -23,6 +23,11 @@ export async function buildMapDetailAssets({ specFile, sourceDir, outputDir, mod
   const hasExpansionPreview = Object.keys(expansionFrames).length > 0
   if (hasExpansionPreview) await writeFile(join(outputDir, 'expansion-preview.png'), encodePng(previewSheet(atlas, { frames: expansionFrames })))
   const modelRecords = models.map(model => ({ ...spec.models.find(item => item.id === model.id), ...model }))
+  const pending = spec.pendingIntegration ?? { sheets: [], textures: [] }
+  for (const file of [...pending.sheets, ...pending.textures]) {
+    if (!spec.rasters.some(item => item.file === file && (pending.sheets.includes(file) ? item.type === 'sheet' : item.type !== 'sheet'))) throw new Error(`Неизвестный подготовленный источник: ${file}`)
+  }
+  const pendingStamps = spec.rasters.filter(item => pending.sheets.includes(item.file)).flatMap(item => item.ids)
   if (modelPreviewDir) {
     const previews = JSON.parse(await readFile(join(modelPreviewDir, 'manifest.json'), 'utf8'))
     const image = decodePng(await readFile(join(modelPreviewDir, 'topdown.png')))
@@ -59,6 +64,11 @@ export async function buildMapDetailAssets({ specFile, sourceDir, outputDir, mod
     status: 'prepared',
     counts: raster.manifest.counts,
     promptSpec: 'docs/map-detail-assets-spec-v1.json',
+    pendingIntegration: {
+      stamps: pendingStamps,
+      models: models.filter(model => pendingStamps.includes(model.id)).map(model => model.id),
+      textures: pending.textures.map(file => file.replace(/\.png$/u, '')),
+    },
     provenance: {
       rasterMethod: 'OpenAI built-in image_gen',
       modelMethod: 'original detailed geometry, UV and PBR, Three.js GLTFExporter',

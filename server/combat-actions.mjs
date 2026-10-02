@@ -43,7 +43,7 @@ const action = (id, name, options = {}) => {
 const COMMON_ACTIONS = Object.freeze([
   action('stand-up', 'Встать', { category: 'common', actionType: 'free', description: 'Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».', effect: { kind: 'stand_up' } }),
   action('break-free', 'Высвободиться', { category: 'common', description: 'Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.', effect: { kind: 'break_free' } }),
-  action('steady-nerves', 'Совладать со страхом', { category: 'common', description: 'Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг при успехе.', effect: { kind: 'steady_nerves' } }),
+  action('steady-nerves', 'Совладать с собой', { category: 'common', description: 'Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).', effect: { kind: 'steady_nerves' } }),
   action('extinguish-self', 'Потушить пламя', { category: 'common', description: 'Действием сбить с себя пламя — «Пылающей кары» или алхимического огня.', effect: { kind: 'extinguish_flames' } }),
   action('extinguish-ally', 'Потушить союзника', { category: 'common', target: 'ally', range: 5, description: 'Действием сбить пламя с существа в пределах 5 футов — «Пылающей кары» или алхимического огня.', effect: { kind: 'extinguish_flames' } }),
   action('expeditious-retreat-dash', 'Стремительный рывок', { category: 'common', actionType: 'bonus_action', description: 'Пока активно «Поспешное отступление», совершить Рывок бонусным действием.', effect: { kind: 'dash' } }),

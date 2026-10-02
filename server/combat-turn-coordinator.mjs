@@ -7,6 +7,9 @@ import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { truceHolds } from './parley.mjs'
 
 export const DEFAULT_TURN_TIMEOUT_MS = 120_000
+// Ход героя, которого не занял ни один участник кампании: ждать его некому,
+// поэтому срок короткий — ровно столько, чтобы доска показала очередь.
+export const DEFAULT_UNCLAIMED_TURN_TIMEOUT_MS = 3_000
 export const DEFAULT_RETRY_BASE_DELAY_MS = 250
 export const DEFAULT_RETRY_MAX_DELAY_MS = 30_000
 export const DEFAULT_RETRY_BACKOFF_STEPS = 8
@@ -212,6 +215,8 @@ export class CombatTurnCoordinator {
     rulesEngine,
     npcController = null,
     timeoutMs = DEFAULT_TURN_TIMEOUT_MS,
+    unclaimedTimeoutMs = DEFAULT_UNCLAIMED_TURN_TIMEOUT_MS,
+    isSeatUnclaimed = () => false,
     retryBaseDelayMs = DEFAULT_RETRY_BASE_DELAY_MS,
     retryMaxDelayMs = DEFAULT_RETRY_MAX_DELAY_MS,
     retryBackoffSteps = DEFAULT_RETRY_BACKOFF_STEPS,
@@ -228,6 +233,8 @@ export class CombatTurnCoordinator {
     this.rulesEngine = rulesEngine
     this.npcController = npcController
     this.timeoutMs = positiveTimeout(timeoutMs)
+    this.unclaimedTimeoutMs = Math.min(this.timeoutMs, positiveTimeout(unclaimedTimeoutMs))
+    this.isSeatUnclaimed = isSeatUnclaimed
     this.retryBaseDelayMs = positiveRetryDelay(retryBaseDelayMs, DEFAULT_RETRY_BASE_DELAY_MS)
     this.retryMaxDelayMs = Math.max(
       this.retryBaseDelayMs,
@@ -322,8 +329,10 @@ export class CombatTurnCoordinator {
           await this.onCommitted({ campaignId, state: loaded.state, events: npc.events })
         }
 
+        const turnActorIds = activeTurnActorIds(loaded.state)
+        const unclaimed = turnActorIds.length > 0 && await this.isSeatUnclaimed(campaignId, loaded.state, turnActorIds) === true
         const clock = combatTurnClock(loaded.state, [], {
-          timeoutMs: this.timeoutMs,
+          timeoutMs: unclaimed ? this.unclaimedTimeoutMs : this.timeoutMs,
           now: this.now(),
           previousClock: entry.clock,
         })
