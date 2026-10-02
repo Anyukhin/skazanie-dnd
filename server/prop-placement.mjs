@@ -39,6 +39,23 @@ const SEMANTIC_PROFILES = Object.freeze({
     caps: { bunk_bed: 8, bed: 8, table_long: 0, bench: 0, chair: 0 },
     arrangement: 'rows',
   },
+  // Спальня дома — не казарма: одна-две кровати у стены, сундук, шкаф и
+  // тумбочка. Прежде спальня шла профилем казармы и получала по три
+  // двухъярусные койки.
+  bedroom: {
+    require: ['bed', 'chest'],
+    prefer: ['bed', 'wardrobe', 'night_table', 'chest', 'rug', 'washbasin', 'candle'],
+    caps: { bed: 2, bunk_bed: 0, wardrobe: 1, chest: 1, washbasin: 1, rug: 1, table_long: 0, bench: 0 },
+    arrangement: 'gathered',
+  },
+  // Горница жилого дома: очаг, один стол со стульями, посудный шкаф. Не
+  // трактирный зал с рядами длинных столов и скамей.
+  living: {
+    require: ['fireplace', 'table_small'],
+    prefer: ['table_small', 'chair', 'cupboard', 'rug', 'shelf_wall', 'barrel', 'basket', 'bench', 'firewood_stack'],
+    caps: { table_long: 0, table_round: 1, table_small: 1, bench: 1, fireplace: 1, cupboard: 1, rug: 1, bar_counter: 0, bar_shelf: 0 },
+    arrangement: 'gathered',
+  },
   kitchen: {
     require: ['fireplace', 'cupboard'],
     prefer: ['fireplace', 'cupboard', 'cauldron', 'barrel', 'crate', 'shelf_wall', 'cutting_board', 'pot', 'bucket'],
@@ -82,6 +99,8 @@ const PURPOSE_ALIASES = Object.freeze({
   gallery: 'gallery',
   barracks: 'barracks',
   sleeping: 'barracks',
+  bedroom: 'bedroom',
+  living: 'living',
   kitchen: 'kitchen',
   store: 'store',
   storage: 'store',
@@ -128,6 +147,9 @@ const COMPANIONS = Object.freeze({
   bed: [['night_table', 1]],
   bunk_bed: [['night_table', 1], ['chest', 1]],
   cart: [['wagon_wheel', 1]],
+  // Стог тянет мешок и ставится в первой, крупной очереди: иначе мелочь
+  // занимала амбар раньше, и стогу 2×2 не оставалось места.
+  haystack: [['sack', 1]],
   tree_oak: [['bush', 1]],
 })
 
@@ -168,6 +190,12 @@ function wallSidesAt(map, x, y) {
     return !neighbor || !neighbor.passable
   })
 }
+
+/**
+ * Предметы, которые по смыслу ставятся рядами и группами одного вида: им
+ * соседство с таким же не штрафуется.
+ */
+const CLUSTER_FRIENDLY = new Set(['village_fence', 'rail_fence', 'prayer_bench', 'crypt_niche', 'crate_stack', 'barrel_stack', 'crate', 'barrel', 'bunk_bed', 'bed', 'grave', 'chair', 'stool', 'bench', 'hitching_post', 'sack', 'shelf_wall', 'bookshelf', 'pillar'])
 
 /** Сколько клеток-кандидатов пробуем, прежде чем отказаться от предмета. */
 const PLACEMENT_ATTEMPTS = 16
@@ -235,20 +263,32 @@ function fittingFootprint(map, blocked, anchor, footprint, rotation) {
  * @param {import('./asset-registry.mjs').AssetEntry} asset
  * @param {{x: number, y: number}} cell
  * @param {Array<{assetId: string, x: number, y: number, zoneId?: string}>} placed
- * @param {{zoneId?: string, arrangement?: 'rows'|'gathered'|'stalls', zoneBounds?: {minX: number, maxX: number, minY: number, maxY: number}}} context
+ * @param {{zoneId?: string, arrangement?: 'rows'|'gathered'|'stalls', zoneBounds?: {minX: number, maxX: number, minY: number, maxY: number}, localPlaced?: Array<{assetId: string, x: number, y: number, zoneId?: string}>, sameAsset?: Array<{assetId: string, x: number, y: number, zoneId?: string}>}} context
+ *   `localPlaced` и `sameAsset` вызывающий считает один раз на предмет, а не на каждую клетку-кандидата
  * @param {() => number} random
  * @returns {number}
  */
 function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () => 0) {
   const walls = wallSidesAt(map, cell.x, cell.y).length
   let score = random() * 2
-  const localPlaced = context.zoneId
+  const localPlaced = context.localPlaced ?? (context.zoneId
     ? placed.filter((record) => record.zoneId === context.zoneId)
-    : placed
+    : placed)
 
   if (asset.anchor === 'wall') score += walls * 6
   else if (asset.anchor === 'corner') score += walls >= 2 ? 14 : walls * 2
   else score -= walls * 1.5
+
+  // Одинаковое вплотную — штамп, а не обстановка: три урны в ряд, пять
+  // паутин подряд, куст к кусту. Предметы, которые и стоят рядами (забор,
+  // скамьи, штабели, стулья у стола), правило не трогает.
+  if (!CLUSTER_FRIENDLY.has(asset.id)) {
+    const same = nearestPlaced(context.sameAsset ?? placed, cell, (id) => id === asset.id)
+    // Вплотную — запрет, а не штраф: в тесной зоне штраф проигрывал, и
+    // одинаковое всё равно вставало рядом, а то и в ту же клетку.
+    if (same != null && same <= 1) return Number.NEGATIVE_INFINITY
+    if (same === 2) score -= 6
+  }
 
   // Стул тянется к столу — правило, ради которого расстановка вообще перестаёт
   // выглядеть случайной.
@@ -449,7 +489,10 @@ function doorwayApproaches(map, zoneId, allowed) {
   }
   // Открытая связь графа или старая дверь могут оставить проходимый порог без
   // записи в `doors`. Граница зоны всё равно считается дверным проёмом для расстановки.
-  for (const candidate of allowed) {
+  // Только у помещения: у двора или улицы граница — вся кромка, и такой
+  // резерв отнимал почти все клетки — цветы громоздились в оставшиеся восемь.
+  const interior = map.zones.find((zone) => zone.id === zoneId)?.kind === 'interior'
+  if (interior) for (const candidate of allowed) {
     const [x, y] = candidate.split(',').map(Number)
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const neighbor = cellAt(map, x + dx, y + dy)
@@ -534,7 +577,7 @@ function passageClearance(map, zoneId, cells) {
 }
 
 /** Максимум мебельных предметов, которые может снять один repair-pass. */
-const PROP_ACCESS_REPAIR_LIMIT = 8
+const PROP_ACCESS_REPAIR_LIMIT = 12
 
 /**
  * Соседи клетки в том же порядке, в котором их обходят правила движения.
@@ -545,7 +588,7 @@ const ACCESS_DIRECTIONS = Object.freeze([[1, 0], [0, 1], [-1, 0], [0, -1]])
 
 /**
  * @param {import('./tactical-map.mjs').TacticalMap} map
- * @returns {{baseline: Set<string>, targets: Set<string>}|null}
+ * @returns {{baseline: Set<string>, targets: Set<string>, semantic: Set<string>}|null}
  */
 function propAccessTargets(map) {
   const spawn = Array.isArray(map.spawnPoints)
@@ -558,13 +601,13 @@ function propAccessTargets(map) {
   /** @type {Set<string>} */
   const targets = new Set()
   const blockers = blockingPropsByCell(map)
-  const zoneKinds = new Map(map.zones.map((zone) => [zone.id, zone.kind]))
   for (const key of baseline) {
-    const [x, y] = key.split(',').map(Number)
     // Клетка под мебелью не является целью движения: furniture footprint уже
     // занимает её по правилам тактики. Пороги и spawn добавляются ниже даже
     // если их занял проп — это точки, которые repair обязан освободить.
-    if (zoneKinds.get(cellAt(map, x, y)?.zone ?? '') === 'interior' && !blockers.has(key)) targets.add(key)
+    // Цель — любая свободная клетка, не только в помещении: деревья и телеги
+    // тоже отрезали куски леса, улицы и пещеры, куда отряд не мог дойти.
+    if (!blockers.has(key)) targets.add(key)
   }
   // Дверной порог и клетка по другую сторону двери — семантические цели.
   // В отличие от мебели внутри комнаты, их нужно очистить даже когда проп уже
@@ -577,8 +620,57 @@ function propAccessTargets(map) {
     }
   }
   const spawnKey = cellKey(spawn)
-  if (baseline.has(spawnKey)) targets.add(spawnKey)
-  return { baseline, targets }
+  /** @type {Set<string>} */
+  const semantic = new Set()
+  for (const door of Array.isArray(map.doors) ? map.doors : []) {
+    for (const endpoint of [{ x: door.x, y: door.y }, edgeNeighbor(door)]) if (targets.has(cellKey(endpoint))) semantic.add(cellKey(endpoint))
+  }
+  if (baseline.has(spawnKey)) {
+    targets.add(spawnKey)
+    semantic.add(spawnKey)
+  }
+  return { baseline, targets, semantic }
+}
+
+/** Главная мебель комнаты: ремонт доступа снимает её последней. */
+const KEY_FURNITURE = new Set(['bed', 'bunk_bed', 'bar_counter', 'bar_shelf', 'fireplace', 'altar', 'well', 'stairs_up', 'stairs_down', 'sarcophagus', 'table_long', 'table_round', 'market_stall'])
+const KEY_FURNITURE_COST = 4
+
+/** Закуток меньше этого числа клеток не стоит снятой мебели. */
+const MIN_POCKET_CELLS = 1
+
+/**
+ * Отрезанные клетки, ради которых стоит снимать предмет: пороги дверей,
+ * точка появления и любые закутки: все клетки помещения обязаны быть
+ * досягаемы. Порог оставлен параметром, а беречь кровать помогает цена
+ * пути (`KEY_FURNITURE`), а не отказ от ремонта.
+ *
+ * @param {Set<string>} pending
+ * @param {Set<string>} semantic
+ * @returns {Set<string>}
+ */
+function worthRepair(pending, semantic) {
+  /** @type {Set<string>} */
+  const result = new Set()
+  /** @type {Set<string>} */
+  const seen = new Set()
+  for (const start of pending) {
+    if (seen.has(start)) continue
+    const group = [start]
+    seen.add(start)
+    for (let index = 0; index < group.length; index += 1) {
+      const [x, y] = group[index].split(',').map(Number)
+      for (const [dx, dy] of ACCESS_DIRECTIONS) {
+        const key = `${x + dx},${y + dy}`
+        if (pending.has(key) && !seen.has(key)) {
+          seen.add(key)
+          group.push(key)
+        }
+      }
+    }
+    if (group.length >= MIN_POCKET_CELLS || group.some((key) => semantic.has(key))) for (const key of group) result.add(key)
+  }
+  return result
 }
 
 /**
@@ -617,45 +709,48 @@ function accessRepairPath(map, baseline, reached, targets, blockers) {
   const distance = new Map()
   /** @type {Map<string, string|null>} */
   const previous = new Map()
-  /** @type {Map<number, string>} */
-  const deque = new Map()
-  let head = 0
-  let tail = 0
+  // Дейкстра на корзинах: свободная клетка стоит 0, клетка под мелочью — 1,
+  // под главной мебелью комнаты — `KEY_FURNITURE_COST`. Путь ремонта поэтому
+  // идёт через тумбочку и свечу, а не через кровать и барную стойку: прежде
+  // ради клетки за шкафом из спальни выносили единственную кровать.
+  /** @type {Array<string[]>} */
+  const buckets = []
+  const push = (/** @type {string} */ key, /** @type {number} */ cost) => {
+    if (!buckets[cost]) buckets[cost] = []
+    buckets[cost].push(key)
+  }
   /** @param {string} key */
-  const pushFront = (key) => deque.set(--head, key)
-  /** @param {string} key */
-  const pushBack = (key) => deque.set(tail++, key)
-  const popFront = () => {
-    const key = deque.get(head)
-    deque.delete(head)
-    head += 1
-    return key
+  const stepCostAt = (key) => {
+    const owners = blockers.get(key)
+    if (!owners?.length) return 0
+    return owners.some((index) => KEY_FURNITURE.has(map.props[index]?.assetId)) ? KEY_FURNITURE_COST : 1
   }
 
   for (const key of [...reached].sort(compareCellKeys)) {
     distance.set(key, 0)
     previous.set(key, null)
-    pushBack(key)
+    push(key, 0)
   }
 
-  while (head < tail) {
-    const current = popFront()
-    if (current == null) break
-    const [x, y] = current.split(',').map(Number)
-    const currentDistance = distance.get(current) ?? Number.POSITIVE_INFINITY
-    for (const [dx, dy] of ACCESS_DIRECTIONS) {
-      const next = { x: x + dx, y: y + dy }
-      const nextKey = cellKey(next)
-      if (!baseline.has(nextKey)) continue
-      const edge = edgeBetween(map, x, y, next.x, next.y)
-      if (edge && edge.kind !== 'door' && edge.blocksMove) continue
-      const stepCost = blockers.has(nextKey) ? 1 : 0
-      const nextDistance = currentDistance + stepCost
-      if (nextDistance >= (distance.get(nextKey) ?? Number.POSITIVE_INFINITY)) continue
-      distance.set(nextKey, nextDistance)
-      previous.set(nextKey, current)
-      if (stepCost) pushBack(nextKey)
-      else pushFront(nextKey)
+  for (let cost = 0; cost < buckets.length; cost += 1) {
+    const bucket = buckets[cost]
+    if (!bucket) continue
+    for (let position = 0; position < bucket.length; position += 1) {
+      const current = bucket[position]
+      if ((distance.get(current) ?? Number.POSITIVE_INFINITY) < cost) continue
+      const [x, y] = current.split(',').map(Number)
+      for (const [dx, dy] of ACCESS_DIRECTIONS) {
+        const next = { x: x + dx, y: y + dy }
+        const nextKey = cellKey(next)
+        if (!baseline.has(nextKey)) continue
+        const edge = edgeBetween(map, x, y, next.x, next.y)
+        if (edge && edge.kind !== 'door' && edge.blocksMove) continue
+        const nextDistance = cost + stepCostAt(nextKey)
+        if (nextDistance >= (distance.get(nextKey) ?? Number.POSITIVE_INFINITY)) continue
+        distance.set(nextKey, nextDistance)
+        previous.set(nextKey, current)
+        push(nextKey, nextDistance)
+      }
     }
   }
 
@@ -740,7 +835,7 @@ export function ensurePropAccess(map) {
       continue
     }
     const reached = reachableCells(map, spawn.x, spawn.y, { throughDoors: true, blockedCells })
-    const pending = new Set([...access.targets].filter((key) => !reached.has(key)))
+    const pending = worthRepair(new Set([...access.targets].filter((key) => !reached.has(key))), access.semantic)
     if (!pending.size) break
     const pathProps = accessRepairPath(map, access.baseline, reached, pending, blockers)
     if (!pathProps.length) break
@@ -765,10 +860,12 @@ function compareCellKeys(left, right) {
  * @property {string} zoneId
  * @property {string} theme тема, по которой отбираются ассеты реестра
  * @property {number} density предметов на 100 клеток зоны
- * @property {string} [purpose] назначение комнаты: gallery, barracks, kitchen, store, stable, workshop, courtyard, exterior
+ * @property {string} [purpose] назначение комнаты: gallery, living, bedroom, barracks, kitchen, store, stable, workshop, courtyard, exterior
  * @property {string[]} [tags] необязательные теги; первый известный тег задаёт то же назначение
  * @property {string[]} [require] идентификаторы, которые обязаны появиться
  * @property {string[]} [prefer] из чего добирать остальное; без него — весь каталог темы
+ * @property {Record<string, number>} [caps] потолок числа предметов вида в зоне; сильнее потолков профиля
+ * @property {string[]} [extraThemes] дополнительные темы, чьи предметы тоже допустимы в зоне
  */
 
 /**
@@ -797,6 +894,10 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     zoneId: cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone,
   }))
   let counter = map.props.length
+  // Порог любой двери и клетка за ним по прямой закрыты для мебели всех зон:
+  // двухклеточный прилавок площади или крона дуба во дворе иначе выступали
+  // на подход к двери соседнего дома — резерв зоны их не видел.
+  const thresholds = doorThresholds(map)
 
   for (const plan of zones ?? []) {
     const cells = zoneCells(map, plan.zoneId)
@@ -810,7 +911,11 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       maxY: Math.max(bounds.maxY, cell.y),
     }), { minX: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY })
     const budget = Math.max(0, Math.round(cells.length * Math.max(0, plan.density) / 100))
-    const catalogue = assetsForTheme(plan.theme)
+    // Комната может брать предметы из нескольких тем: склеп — подсвечник и
+    // сундук из интерьера, пещера-логово — ящики и костёр. Основная тема
+    // первой, повторы отброшены.
+    const catalogue = [...new Map([plan.theme, ...(plan.extraThemes ?? [])]
+      .flatMap((theme) => assetsForTheme(theme)).map((record) => [record.id, record])).values()]
     if (!catalogue.length) continue
 
     // Сначала набирается список того, что вообще ставим, и лишь потом он
@@ -822,7 +927,9 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
     // предмет по идентификатору мимо фильтра, и в пещеру могла попасть барная
     // стойка: обязательность не отменяет принадлежность теме.
     const allowed = new Set(catalogue.map((record) => record.id))
-    const profileCaps = semantic?.caps ?? {}
+    // Потолки профиля и плана складываются: план сцены может сказать «не
+    // больше двух телег на деревню», даже если профиля у зоны нет.
+    const profileCaps = { ...(semantic?.caps ?? {}), ...(plan.caps ?? {}) }
     /** @type {Map<string, number>} */
     const counts = new Map()
     /** @type {Map<string, number>} */
@@ -835,7 +942,12 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       // зоны. Общий cap `maxProps` остаётся последним ограничителем уже при
       // фактической расстановке.
       if (!asset || !allowed.has(asset.id) || (!required && wanted.length >= budget)) return false
-      const cap = profileCaps[asset.id]
+      // Плоская мелочь без футпринта (мозаика, паутина, цветы) не перегружает
+      // зону: не больше штуки на шестьдесят клеток, если план не сказал иного.
+      const decalCap = !asset.baseFootprint.w && !TABLEWARE.has(asset.id) && !WALL_MOUNTS.has(asset.id)
+        ? Math.max(2, Math.round(cells.length / 60))
+        : Number.POSITIVE_INFINITY
+      const cap = profileCaps[asset.id] ?? decalCap
       const current = counts.get(asset.id) ?? 0
       if (Number.isFinite(cap) && current >= cap) return false
       wanted.push(asset)
@@ -881,8 +993,17 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         && !(Number.isFinite(profileCaps[asset.id]) && profileCaps[asset.id] <= 0))
     const source = pool.length ? pool : catalogue
     const maxFillAttempts = Math.max(32, budget * 8)
+    // Добор взвешен против уже выбранного: каждый следующий экземпляр того же
+    // предмета вдвое-втрое менее вероятен. Равновероятный выбор давал храм,
+    // где треть предметов — мозаика, и склеп из одной паутины.
     for (let attempt = 0; wanted.length < budget && attempt < maxFillAttempts; attempt += 1) {
-      const pick = source[Math.floor(random() * source.length) % source.length]
+      const weights = source.map((asset) => 1 / ((1 + (counts.get(asset?.id ?? '') ?? 0)) ** 1.6))
+      let roll = random() * weights.reduce((sum, weight) => sum + weight, 0)
+      let pick = source[source.length - 1]
+      for (let index = 0; index < source.length; index += 1) {
+        roll -= weights[index]
+        if (roll <= 0) { pick = source[index]; break }
+      }
       if (!pick) break
       enqueue(pick)
     }
@@ -927,13 +1048,21 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       const stride = cells.length > CANDIDATE_SCAN_LIMIT ? Math.ceil(cells.length / CANDIDATE_SCAN_LIMIT) : 1
       const offset = stride > 1 ? index % stride : 0
       const candidates = []
+      // Списки для оценки — один раз на предмет: фильтр по всем поставленным
+      // предметам на каждую клетку-кандидата делал расстановку квадратичной.
+      const localPlaced = placed.filter((record) => record.zoneId === plan.zoneId)
+      // Соседство одинаковых считается внутри зоны: стог на улице у стены
+      // амбара не мешает стогу внутри.
+      const sameAsset = localPlaced.filter((record) => record.assetId === asset.id)
       for (let position = offset; position < cells.length; position += stride) {
         const cell = cells[position]
-        if (occupied.has(`${cell.x},${cell.y}`) || keepClear.has(`${cell.x},${cell.y}`)) continue
+        if (occupied.has(`${cell.x},${cell.y}`) || keepClear.has(`${cell.x},${cell.y}`) || thresholds.has(`${cell.x},${cell.y}`)) continue
         const score = scoreCellForAsset(map, asset, cell, placed, {
           zoneId: plan.zoneId,
           arrangement: semantic?.arrangement,
           zoneBounds,
+          localPlaced,
+          sameAsset,
         }, random)
         if (score === Number.NEGATIVE_INFINITY) continue
         candidates.push({ cell, score })
@@ -945,7 +1074,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       const candidateLimit = required ? REQUIRED_PLACEMENT_ATTEMPTS : PLACEMENT_ATTEMPTS
       for (const candidate of candidates.slice(0, candidateLimit)) {
         const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random)
-        const blocked = new Set([...occupied, ...keepClear])
+        const blocked = new Set([...occupied, ...keepClear, ...thresholds])
         const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
         if (footprint) {
           chosen = { cell: candidate.cell, rotation, footprint }
@@ -958,7 +1087,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       if (!chosen && required) {
         for (const candidate of candidates.slice(candidateLimit, candidateLimit + REQUIRED_RETRY_ATTEMPTS)) {
           const rotation = rotationFor(map, asset, candidate.cell, placed, plan.zoneId, random)
-          const blocked = new Set([...occupied, ...keepClear])
+          const blocked = new Set([...occupied, ...keepClear, ...thresholds])
           const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
           if (footprint) {
             chosen = { cell: candidate.cell, rotation, footprint }
@@ -992,6 +1121,144 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
   }
   attachPropSupports(map)
   return map
+}
+
+/** Темы, по которым предмет считается вещью под крышей. */
+const INDOOR_THEMES = new Set(['interior', 'tavern', 'house', 'temple', 'crypt', 'dungeon', 'cave'])
+
+/**
+ * Обещанное сценой: ставит недостающие предметы из списка «вид → штук». Сцена
+ * говорит «три настила и алтарь», тема о них не знает — без этого шага на
+ * карте не было бы ни того, ни другого. Предмет ставится той же расстановкой
+ * как обязательный: двери, проходы и соседство одинаковых соблюдаются.
+ * Предмет под крышу ищет комнату, уличный — двор или улицу; если таких зон
+ * нет, годится любая. Не поместилось — значит, не поместилось: обещание
+ * остаётся невыполненным и видно по `requirementsCoverage`, место не
+ * выдумывается.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {Array<{assets: string[], count: number}>} wanted
+ * @param {{seed: string}} options
+ * @returns {number} сколько предметов поставлено
+ */
+export function placeRequiredProps(map, wanted, { seed }) {
+  let added = 0
+  for (const [index, requirement] of wanted.entries()) {
+    const ids = new Set(requirement.assets)
+    const asset = requirement.assets.map((id) => assetById(id)).find(Boolean)
+    if (!asset) continue
+    let missing = Math.max(1, requirement.count) - map.props.filter((prop) => ids.has(prop.assetId)).length
+    if (missing <= 0) continue
+    const indoor = asset.themes.some((theme) => INDOOR_THEMES.has(theme)) && !asset.themes.includes('exterior')
+    // Зоны с местом: сначала подходящего рода, крупные первыми — там проще
+    // не задеть проход.
+    const sized = map.zones.map((zone) => ({ zone, size: zoneCells(map, zone.id).length })).filter((entry) => entry.size >= 4)
+    const fitting = sized.filter(({ zone }) => (indoor ? zone.kind === 'interior' : zone.kind !== 'interior'))
+    const order = (fitting.length ? fitting : sized).sort((left, right) => right.size - left.size || left.zone.id.localeCompare(right.zone.id))
+    for (let attempt = 0; missing > 0 && attempt < missing + order.length * 2; attempt += 1) {
+      const { zone } = order[attempt % order.length] ?? {}
+      if (!zone) break
+      const before = map.props.length
+      placeProps(map, {
+        seed: `${seed}:required:${index}:${attempt}`,
+        maxProps: before + 1,
+        zones: [{ zoneId: zone.id, theme: asset.themes[0], density: 0, require: [asset.id], caps: { [asset.id]: Number.POSITIVE_INFINITY } }],
+      })
+      const placedNow = map.props.length - before
+      // Свой префикс: номер по счётчику расстановки мог совпасть с предметом,
+      // который ремонт доступа уже убрал и чей номер освободился.
+      for (const prop of map.props.slice(before)) prop.id = `required-${index}-${attempt}-${asset.id}`
+      missing -= placedNow
+      added += placedNow
+    }
+  }
+  return added
+}
+
+/**
+ * Клетки у дверей, которые не занимает мебель: обе стороны полотна и по
+ * клетке за каждой стороной по прямой — тот же подход, что проверяет
+ * `auditTacticalMap`.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @returns {Set<string>}
+ */
+function doorThresholds(map) {
+  /** @type {Set<string>} */
+  const cells = new Set()
+  for (const door of Array.isArray(map.doors) ? map.doors : []) {
+    const next = edgeNeighbor(door)
+    const step = { x: next.x - door.x, y: next.y - door.y }
+    for (const point of [{ x: door.x, y: door.y }, next, { x: door.x - step.x, y: door.y - step.y }, { x: next.x + step.x, y: next.y + step.y }]) cells.add(`${point.x},${point.y}`)
+  }
+  return cells
+}
+
+/**
+ * Колоннада: два ровных ряда опор вдоль длинной оси зала, на шаг от стен и
+ * через клетку друг от друга. Случайная расстановка давала «лес» колонн
+ * посреди нефа; настоящий неф делится колоннами на центральный проход и
+ * боковые нефы, и за колонной можно укрыться.
+ *
+ * Ряды не встают на подходы к дверям и на сквозной проход между ними — те
+ * же клетки, которые бережёт обычная расстановка. Зал уже пяти клеток или
+ * короче семи колонн не получает.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{zoneId: string, assetId?: string, idPrefix?: string}} options
+ * @returns {number} сколько опор поставлено
+ */
+export function placeColonnade(map, { zoneId, assetId = 'pillar', idPrefix = 'colonnade' }) {
+  const asset = assetById(assetId)
+  const cells = zoneCells(map, zoneId)
+  if (!asset || cells.length < 35) return 0
+  const minX = Math.min(...cells.map((cell) => cell.x))
+  const maxX = Math.max(...cells.map((cell) => cell.x))
+  const minY = Math.min(...cells.map((cell) => cell.y))
+  const maxY = Math.max(...cells.map((cell) => cell.y))
+  const horizontal = maxX - minX >= maxY - minY
+  const length = (horizontal ? maxX - minX : maxY - minY) + 1
+  const breadth = (horizontal ? maxY - minY : maxX - minX) + 1
+  if (length < 7 || breadth < 5) return 0
+  const inZone = new Set(cells.map(cellKey))
+  const clear = passageClearance(map, zoneId, cells)
+  /** @type {Set<string>} */
+  const occupied = new Set()
+  for (const prop of map.props) for (const cell of prop.footprint) occupied.add(cellKey(cell))
+  // Ряды — на шаг от длинных стен; в широком зале — на два, чтобы боковые
+  // нефы были проходимы для двоих.
+  const inset = breadth >= 9 ? 2 : 1
+  const rows = [(horizontal ? minY : minX) + inset, (horizontal ? maxY : maxX) - inset]
+  let placed = 0
+  for (const row of rows) {
+    for (let along = (horizontal ? minX : minY) + 1; along <= (horizontal ? maxX : maxY) - 1; along += 2) {
+      const cell = horizontal ? { x: along, y: row } : { x: row, y: along }
+      const key = cellKey(cell)
+      if (!inZone.has(key) || clear.has(key) || occupied.has(key)) continue
+      // Колонна не встаёт вплотную к проходу — иначе дверной проём сужается.
+      const touchesClear = ACCESS_DIRECTIONS.some(([dx, dy]) => clear.has(cellKey({ x: cell.x + dx, y: cell.y + dy })))
+      if (touchesClear) continue
+      addProp(map, {
+        id: `${idPrefix}-${zoneId}-${placed + 1}`,
+        assetId: asset.id,
+        x: cell.x + 0.5,
+        y: cell.y + 0.5,
+        rotation: 0,
+        scale: 1,
+        footprint: [cell],
+        zOrder: 0,
+        blocksMove: asset.blocksMove,
+        blocksSight: asset.blocksSight,
+        cover: asset.cover,
+        destructible: asset.destructible,
+        hp: asset.hp,
+        interactive: asset.interactive,
+      })
+      occupied.add(key)
+      placed += 1
+    }
+  }
+  return placed
 }
 
 const TABLEWARE = new Set(['mug', 'plate', 'bowl_stew', 'bottle', 'jug', 'bread_loaf', 'cheese_wheel', 'candle', 'dice_cup', 'coin_pile', 'cutting_board', 'offering_bowl'])

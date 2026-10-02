@@ -759,6 +759,78 @@ export function resolveInventoryTransfer(state = {}, actorId = '', text = '', re
   }
 }
 
+/**
+ * Подъём: глагол подъёма рядом с лестницей, ступенями, этажом или чердаком,
+ * либо «на второй этаж», «на чердак». Голое «наверх» не считается: «поднимаемся
+ * наверх по склону к замку» — переход по местности, а не по лестнице.
+ */
+const LEVEL_UP_PHRASE = /(?<!\p{L})(?:подним\p{L}*|поднял\p{L}*|подняться|взбира\p{L}*|взбер\p{L}*|взобра\p{L}*|карабка\p{L}*)[^.!?]{0,80}(?:лестниц\p{L}*|ступен\p{L}*|этаж\p{L}*|чердак\p{L}*)|(?<!\p{L})(?:на\s+(?:второй|третий|верхний|следующий)\s+этаж|на\s+чердак)(?!\p{L})/iu
+/** Спуск: глагол спуска рядом с лестницей, этажом, подвалом, погребом или люком, либо «в подвал», «в погреб». */
+const LEVEL_DOWN_PHRASE = /(?<!\p{L})(?:спуска\p{L}*|спущ\p{L}*|спуст\p{L}*|сойти|сходим|слеза\p{L}*|слез\p{L}*)[^.!?]{0,80}(?:лестниц\p{L}*|ступен\p{L}*|этаж\p{L}*|подвал\p{L}*|погреб\p{L}*|люк\p{L}*)|(?<!\p{L})(?:вниз\s+по\s+лестниц\p{L}*|в\s+подвал|в\s+погреб|на\s+(?:первый|нижний)\s+этаж)(?!\p{L})/iu
+
+/**
+ * «Поднимаемся по лестнице на второй этаж» — заявка на существующий переход
+ * между этажами, а не на проверку навыка. Прежде она уходила арбитру, и
+ * рассказчик отвечал «Вышло: подняться на второй этаж», хотя карта не
+ * менялась и отряд стоял у ворот (живая сессия 2026-10-02).
+ *
+ * Сервер берёт видимую лестницу в нужную сторону. Рядом — переход; далеко,
+ * но путь по раскрытой карте есть, — подход и переход одним коммитом; иначе
+ * честное уточнение без коммита. Нераскрытая лестница не называется:
+ * заявка не выдаёт планировку, которую отряд ещё не видел.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} actorId
+ * @param {string} value
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}} actorAt
+ */
+function resolveLevelTransitionPhrase(state, actorId, value, map, actorAt) {
+  const up = LEVEL_UP_PHRASE.test(value)
+  const down = !up && LEVEL_DOWN_PHRASE.test(value)
+  if (!up && !down) return null
+  const here = Number(map.levelIndex) || 0
+  const cellsOf = (prop) => (prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }])
+  const visible = map.props.filter((prop) => prop.transition
+    && (up ? Number(prop.transition.toLevel) > here : Number(prop.transition.toLevel) < here)
+    && cellsOf(prop).some((cell) => cellAt(map, cell.x, cell.y)?.revealed === true))
+  if (!visible.length) {
+    return { status: 'clarification', narration: `${up ? 'Лестницы наверх' : 'Спуска вниз'} отсюда не видно. Осмотритесь или пройдите дальше — переход на другой этаж появится на карте, когда отряд его найдёт. Заявка ничего не расходует.` }
+  }
+  const near = (prop, at) => cellsOf(prop).some((cell) => Math.max(Math.abs(cell.x - at.x), Math.abs(cell.y - at.y)) <= 1)
+  const label = (prop) => clean(prop.transition?.label, 120) || (up ? 'верхний этаж' : 'нижний этаж')
+  const use = (prop) => ({ command_type: 'UseLevelTransition', actor_id: String(actorId), prop_id: String(prop.id) })
+  const verb = up ? 'поднимается' : 'спускается'
+  const adjacent = visible.find((prop) => near(prop, actorAt))
+  if (adjacent) return { status: 'command', command: use(adjacent), narration: `Отряд ${verb}: ${label(adjacent)}.` }
+  if (state.mechanics?.combat?.active) {
+    return { status: 'clarification', narration: 'Сначала завершите бой: между этажами в бою не ходят. Заявка ничего не расходует.' }
+  }
+  // Подход: ближайшая раскрытая проходимая клетка рядом с лестницей.
+  const routes = []
+  for (const prop of visible) {
+    for (const cell of cellsOf(prop)) for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
+      if (!dx && !dy) continue
+      const to = { x: cell.x + dx, y: cell.y + dy }
+      const target = cellAt(map, to.x, to.y)
+      if (target?.revealed !== true || !target.passable) continue
+      const path = shortestTacticalPath(state, actorId, to)
+      if (path?.length) routes.push({ prop, to, length: path.length })
+    }
+  }
+  routes.sort((left, right) => left.length - right.length || left.to.y - right.to.y || left.to.x - right.to.x)
+  if (!routes.length) {
+    return { status: 'clarification', narration: `До перехода «${label(visible[0])}» нет свободного пути по раскрытой карте. Выберите маршрут на карте или откройте дверь. Заявка ничего не расходует.` }
+  }
+  const { prop, to } = routes[0]
+  return {
+    status: 'command',
+    commands: [{ command_type: 'MoveActor', actor_id: String(actorId), to, server_authoritative: true }, use(prop)],
+    command: use(prop),
+    narration: `Отряд подходит к лестнице и ${verb}: ${label(prop)}.`,
+  }
+}
+
 /** Свободная фраза выбирает только существующую команду; путь и замок считает движок. */
 export function resolveExplorationCommand(state, actorId, text) {
   const value = clean(text, 2_000)
@@ -799,6 +871,8 @@ export function resolveExplorationCommand(state, actorId, text) {
     if (intent === 'open' && door.state === 'locked') return { status: 'clarification', narration: 'Дверь заперта. Открыть её обычным движением нельзя: можно взломать замок отмычками, выломать дверь с риском шума или поискать другой проход.' }
     return { status: 'command', command: { command_type: 'OperateDoor', actor_id: String(actorId), door_id: door.id, intent }, narration: 'Действие с дверью разрешено по её состоянию.' }
   }
+  const stairs = resolveLevelTransitionPhrase(state, actorId, value, map, actorAt)
+  if (stairs) return stairs
   if (!/^(?:я\s+)?(?:подхожу|приближаюсь|иду)\s+к\s+/iu.test(value) || /(?:затем|потом|и\s+(?:прошу|спрашиваю|атакую|открываю))/iu.test(value)) return null
   if (/не\s+(?:покида|выход|двига)|без\s+перемещ/iu.test(value)) return { status: 'clarification', narration: 'Подход означает перемещение, а вы просите оставаться на месте или под укрытием. Можно обратиться к собеседнику с места; либо уточните, какое перемещение допустимо.' }
   const candidates = namedActors(partyActors(state, actorId), value)

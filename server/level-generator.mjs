@@ -222,7 +222,59 @@ export function interiorOutline(map, arrival = null) {
       if (cell && interiorZones.has(cell.zone)) outline.add(`${x},${y}`)
     }
   }
-  return outline
+  return arrival ? buildingAround(map, outline, arrival) : outline
+}
+
+/**
+ * Тема этажа над или под домом. Этаж дома в поселении — помещение, а не улица:
+ * в теме поселения глухая клетка рисуется валуном кромки карты, и стены
+ * второго этажа выходили каменной осыпью.
+ *
+ * @param {string} theme тема этажа входа
+ * @returns {string}
+ */
+function indoorTheme(theme) {
+  return theme === 'settlement' ? 'building' : theme
+}
+
+/**
+ * Дом, в котором стоит переход. На карте поселения помещений много — это
+ * разные дома через улицу, и второй этаж над всем городом был бы одним
+ * чердаком размером с квартал. Контур сужается до связного куска помещений,
+ * где лежит точка перехода, плюс его кладка (стена дома поселения зоны не
+ * имеет и в общий контур не попадает). Карта из одного здания от этого не
+ * меняется: её помещения и стены уже связны.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {Set<string>} outline
+ * @param {{x: number, y: number}} arrival
+ * @returns {Set<string>}
+ */
+function buildingAround(map, outline, arrival) {
+  const start = `${arrival.x},${arrival.y}`
+  if (!outline.has(start)) return outline
+  /** @type {Set<string>} */
+  const component = new Set([start])
+  const queue = [arrival]
+  for (let index = 0; index < queue.length; index += 1) {
+    const { x, y } = queue[index]
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const key = `${x + dx},${y + dy}`
+      if (!outline.has(key) || component.has(key)) continue
+      component.add(key)
+      queue.push({ x: x + dx, y: y + dy })
+    }
+  }
+  if (component.size === outline.size) return outline
+  // Кладка дома: глухие клетки вплотную к его полу, включая углы.
+  for (const key of [...component]) {
+    const [x, y] = key.split(',').map(Number)
+    for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+      const cell = cellAt(map, x + dx, y + dy)
+      if (cell && !cell.passable) component.add(`${x + dx},${y + dy}`)
+    }
+  }
+  return component
 }
 
 /**
@@ -574,8 +626,8 @@ function paintUpperLevel({ baseMap, locationId, index, seed, label, arrival, out
     levelLabel: label,
     seed: String(seed),
     generator: { ...LEVEL_GENERATOR },
-    theme: baseMap.theme,
-    tilesetId: baseMap.tilesetId,
+    theme: indoorTheme(baseMap.theme),
+    tilesetId: baseMap.theme === 'settlement' ? 'building' : baseMap.tilesetId,
     sizeClass: baseMap.sizeClass,
   })
   addZone(map, { id: 'walls', kind: 'interior', material: 'stone', lightLevel: 'dark', floorDirection: 'horizontal', label: '' })
@@ -676,8 +728,8 @@ function buildCellarLevel({ baseMap, locationId, index, fromLevel, seed, label, 
     levelLabel: label,
     seed: String(seed),
     generator: { ...LEVEL_GENERATOR },
-    theme: baseMap.theme,
-    tilesetId: baseMap.tilesetId,
+    theme: indoorTheme(baseMap.theme),
+    tilesetId: baseMap.theme === 'settlement' ? 'building' : baseMap.tilesetId,
     sizeClass: baseMap.sizeClass,
   })
   addZone(map, { id: 'walls', kind: 'interior', material: 'stone', lightLevel: 'dark', floorDirection: 'horizontal', label: '' })

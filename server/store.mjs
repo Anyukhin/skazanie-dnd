@@ -286,7 +286,12 @@ export function createCampaignInvite({
   })
 }
 
-export function redeemCampaignInvite({ campaignId, token, userId }) {
+/**
+ * @param {{ campaignId: string, token: string, userId: string, unavailableHeroIds?: string[] }} input
+ *   `unavailableHeroIds` — места, где герой уже создан: многоместное
+ *   приглашение их пропускает, явное приглашение на одного героя — нет
+ */
+export function redeemCampaignInvite({ campaignId, token, userId, unavailableHeroIds = [] }) {
   const normalized = normalizeCampaignId(campaignId)
   return withAuthLock(() => {
     const db = readAuth()
@@ -303,7 +308,11 @@ export function redeemCampaignInvite({ campaignId, token, userId }) {
       const assignedElsewhere = new Set(db.memberships
         .filter((item) => item.campaignId === normalized && item.status !== 'revoked')
         .flatMap((item) => item.heroIds ?? []))
-      const heroId = invite.heroIds.find((candidate) => !assignedElsewhere.has(candidate))
+      // Многоместная ссылка раздаёт свободные места, а не чужих готовых
+      // героев: ссылка, выпущенная до закрепления места создателя, иначе
+      // отдавала гостю его героя (живая сессия 2026-10-02).
+      const taken = invite.heroIds.length > 1 ? new Set(normalizeHeroIds(unavailableHeroIds)) : new Set()
+      const heroId = invite.heroIds.find((candidate) => !assignedElsewhere.has(candidate) && !taken.has(candidate))
       if (!heroId) {
         throw Object.assign(new Error('В кампании не осталось свободных героев'), { code: 'CAMPAIGN_FULL' })
       }

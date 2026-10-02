@@ -189,3 +189,42 @@ test('без активного задания третьего варианта
   const card = proposeAgentInteraction('Уходим отсюда', { scene: { location: 'Серая чаща' } })
   assert.deepEqual(card.options, ['Покинуть «Серая чаща»', 'Остаться и исследовать дальше'])
 })
+
+test('подпись маршрута согласована по-русски: падеж игрока или имя точки карты в кавычках', async () => {
+  const { nominativePlacePhrase, partyDestinationLabel } = await import('../server/party-exit-intent.mjs')
+  const { proposeRoutedTravel } = await import('../server/player-request-router.mjs')
+  // Живая сессия 2026-10-02: «идём в старому фамильному склепу за мельницей»,
+  // «идём в водяная мельница у реки», «идём в Кленовка».
+  assert.equal(nominativePlacePhrase('старому фамильному склепу за мельницей'), 'старый фамильный склеп за мельницей')
+  assert.equal(nominativePlacePhrase('водяной мельнице у реки'), 'водяная мельница у реки')
+  assert.equal(nominativePlacePhrase('заброшенную пещеру'), 'заброшенная пещера')
+  // Беглая гласная и мягкая основа не угадываются — фраза остаётся как была.
+  assert.equal(nominativePlacePhrase('старому замку'), 'старому замку')
+  assert.equal(nominativePlacePhrase('старой часовне'), 'старой часовне')
+
+  const known = { knownPlaces: ['Кленовка', 'Вельдбург'] }
+  assert.deepEqual(partyDestinationLabel('Продолжаем путь в Кленовку.', 'Кленовку', known), { phrase: 'в «Кленовка»', place: 'Кленовка' })
+  assert.equal(partyDestinationLabel('Идём к старому фамильному склепу за мельницей, следы ведут туда.', 'старому фамильному склепу за мельницей', known).phrase,
+    'к старому фамильному склепу за мельницей')
+
+  const state = {
+    scene: { title: 'Глава 2', location: 'Водяная мельница', objective: 'Найти возницу' },
+    worldMap: { locations: [{ id: 'veldburg', name: 'Вельдбург', known: true }, { id: 'klenovka', name: 'Кленовка', known: true }] },
+    worldMemory: { quests: [{ id: 'quest:main', title: 'Пропажи в Вельдбурге', status: 'active' }] },
+  }
+  // Судья вернул назначение в дательном падеже; подпись берёт предлог игрока.
+  const card = proposeRoutedTravel({ route: 'travel', destination: 'старому фамильному склепу за мельницей' }, state,
+    'Идём к старому фамильному склепу за мельницей, следы ведут туда.')
+  assert.ok(card, 'карточки нет')
+  assert.equal(card.options[0], 'Уходим из «Водяная мельница» и идём к старому фамильному склепу за мельницей')
+  assert.match(card.options[1], /^Уходим к старому фамильному склепу за мельницей и бросаем задание «Пропажи в Вельдбурге»$/u)
+  for (const option of card.options.slice(0, 2)) {
+    const decision = classifyPartyDecision(option)
+    assert.equal(decision.kind, 'move', option)
+    assert.match(decision.destinationHint, /склеп/u, option)
+  }
+  // Известная точка карты — именем с карты, а не падежом фразы.
+  const village = proposeAgentInteraction('Уходим в Кленовку', state)
+  assert.equal(village?.options[0], 'Уходим из «Водяная мельница» и идём в «Кленовка»')
+  assert.equal(classifyPartyDecision(village.options[0]).destinationHint, 'Кленовка')
+})

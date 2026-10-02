@@ -137,3 +137,22 @@ test('one table invite atomically assigns one free hero to each account', async 
     /не осталось свободных героев/u,
   )
 })
+
+test('многоместная ссылка не отдаёт гостю место с уже созданным героем', async () => {
+  // Живая сессия 2026-10-02: ссылка, выпущенная до закрепления места
+  // создателя, начиналась с его места, и гость получал уже созданного героя.
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-created-seat-'))
+  process.env.DND_STORAGE_DIR = root
+  const store = await import(`../server/store.mjs?created-seat=${Date.now()}`)
+  const admin = await store.registerUser({ name: 'Admin', email: 'admin@created-seat.test', password: 'secure-admin-password' })
+  const guest = await store.registerUser({ name: 'Guest', email: 'guest@created-seat.test', password: 'secure-guest-password' })
+  store.upsertCampaignMembership({ campaignId: 'SEAT-A', userId: admin.id, role: 'owner', heroIds: [] })
+  const issued = store.createCampaignInvite({ campaignId: 'SEAT-A', createdBy: admin.id, heroIds: ['hero-slot-1', 'hero-slot-2'], multiUse: true })
+  const redeemed = store.redeemCampaignInvite({ campaignId: 'SEAT-A', token: issued.token, userId: guest.id, unavailableHeroIds: ['hero-slot-1'] })
+  assert.deepEqual(redeemed.membership.heroIds, ['hero-slot-2'])
+  // Явная ссылка на одного героя остаётся явной: владелец передаёт готового героя.
+  const other = await store.registerUser({ name: 'Other', email: 'other@created-seat.test', password: 'secure-other-password' })
+  store.upsertCampaignMembership({ campaignId: 'SEAT-B', userId: admin.id, role: 'owner', heroIds: [] })
+  const single = store.createCampaignInvite({ campaignId: 'SEAT-B', createdBy: admin.id, heroIds: ['hero-ready'], multiUse: true })
+  assert.deepEqual(store.redeemCampaignInvite({ campaignId: 'SEAT-B', token: single.token, userId: other.id, unavailableHeroIds: ['hero-ready'] }).membership.heroIds, ['hero-ready'])
+})

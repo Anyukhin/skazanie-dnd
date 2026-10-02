@@ -83,6 +83,26 @@ test('3D-сцена создаёт пол только для раскрытых
   scene.dispose()
 })
 
+test('нераскрытые клетки накрыты плитой тумана, а не дырой в столе', () => {
+  const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
+  const scene = scene3d.createBoard3DScene(map)
+  const fog = scene.group.getObjectByName('fog-cap')
+  assert.ok(fog, 'у нераскрытой области нет плиты тумана')
+  const positions = fog.geometry.getAttribute('position')
+  const present = map.width * map.height
+  assert.equal(positions.count, (present - 2) * 4, 'по квадрату на каждую существующую нераскрытую клетку')
+  for (let index = 0; index < positions.count; index += 1) {
+    assert.equal(positions.getY(index), 0, 'плита ровная: туман не выдаёт высоты и планировку')
+    const x = positions.getX(index)
+    const z = positions.getZ(index)
+    assert.ok(!(x > 1 && x < 3 && z > 1 && z < 2), 'раскрытые клетки туманом не накрываются')
+  }
+  scene.dispose()
+  const open = scene3d.createBoard3DScene(mapOf({ revealed: Array.from({ length: map.width * map.height }, (_, index) => ({ x: index % map.width, y: Math.floor(index / map.width) })) }))
+  assert.equal(open.group.getObjectByName('fog-cap'), undefined, 'раскрытая карта тумана не получает')
+  open.dispose()
+})
+
 test('поверхность и обрывы используют высоту раскрытых клеток', () => {
   const map = mapOf({
     width: 3,

@@ -454,10 +454,12 @@ function campaignMembership(user, campaignId) {
 }
 
 function campaignHeroIds(user, campaignId) {
-  if (user?.role === 'admin') return user?.heroIds ?? []
   if (!String(campaignId || '').trim()) return user?.heroIds ?? []
+  // Своё место в кампании задаёт членство — и у администратора: иначе он
+  // действовал от имени активного героя, даже чужого.
   const membership = campaignMembership(user, campaignId)
   if (membership) return membership.heroIds ?? []
+  if (user?.role === 'admin') return user?.heroIds ?? []
   return campaignHasMemberships(campaignId) ? [] : user?.heroIds ?? []
 }
 
@@ -4002,10 +4004,17 @@ const server = createServer((req, res) => {
         enabled_house_rules: state.enabled_house_rules,
       })
       const room = saveRoom(code, { ...initialized.state, engine_mode: 'enforce', state_projector_version: GAME_STATE_PROJECTOR_VERSION }, 0)
-      const ownerHeroIds = creator.role === 'admin'
-        ? []
-        : state.partyMemberIds.slice(0, 1)
-      if (creator.role !== 'admin') {
+      // Первое место — создателя. Мастер создания мира с пустыми местами так
+      // и обещает: «первое место всегда ваше», — поэтому такая кампания
+      // закрепляет его и за администратором. Без этого место 1 уходило в
+      // приглашение, и гость затирал уже созданного героя создателя (живая
+      // сессия 2026-10-02). Администратор, который приносит готовых героев
+      // (импорт состояния или bootstrap с героями), остаётся мастером без
+      // героя и раздаёт их явными приглашениями.
+      const ownerHeroIds = state.partyMemberIds.slice(0, 1)
+      const firstSeat = state.players.find((hero) => String(hero.id) === String(ownerHeroIds[0]))
+      const emptySeats = Boolean(generatedState) && firstSeat?.characterSetupRequired === true
+      if (creator.role !== 'admin' || emptySeats) {
         upsertCampaignMembership({ campaignId: code, userId: creator.id, role: 'owner', heroIds: ownerHeroIds })
       }
       const updatedCreator = userForToken(cookies(req).skazanie_session) ?? creator
@@ -4201,7 +4210,10 @@ const server = createServer((req, res) => {
         : room.state.players.map((hero) => String(hero.id))
       const assigned = new Set(listCampaignMemberships(campaignId).flatMap((item) => item.heroIds ?? []).map(String))
       const requested = Array.isArray(body.hero_ids) ? [...new Set(body.hero_ids.map(String))] : []
-      const heroIds = requested.length ? requested : partyIds.filter((heroId) => !assigned.has(heroId))
+      // Ссылка по умолчанию раздаёт места, где героя ещё нет: готовый герой
+      // уже чей-то, даже если членства на него нет.
+      const created = new Set((room.state.players ?? []).filter((hero) => hero.characterSetupRequired === false).map((hero) => String(hero.id)))
+      const heroIds = requested.length ? requested : partyIds.filter((heroId) => !assigned.has(heroId) && !created.has(heroId))
       if (!heroIds.length) return json(res, 409, { error: 'В кампании не осталось свободных героев' })
       if (heroIds.some((heroId) => !partyIds.includes(heroId) || assigned.has(heroId))) {
         return json(res, 409, { error: 'Приглашение содержит недоступного или уже назначенного героя' })
@@ -4234,7 +4246,8 @@ const server = createServer((req, res) => {
       const body = await readBody(req)
       const token = String(body.invite_token ?? body.inviteToken ?? '')
       if (!token) return json(res, 400, { error: 'Для входа нужна действующая ссылка-приглашение' })
-      const redeemed = redeemCampaignInvite({ campaignId, token, userId: user.id })
+      const createdHeroIds = (room.state.players ?? []).filter((hero) => hero.characterSetupRequired === false).map((hero) => String(hero.id))
+      const redeemed = redeemCampaignInvite({ campaignId, token, userId: user.id, unavailableHeroIds: createdHeroIds })
       const partyIds = new Set((room.state.partyMemberIds?.length ? room.state.partyMemberIds : room.state.players.map((hero) => hero.id)).map(String))
       if (redeemed.membership.heroIds.some((heroId) => !partyIds.has(String(heroId)))) {
         return json(res, 409, { error: 'Приглашение ссылается на героя, которого нет в кампании' })
@@ -5556,7 +5569,7 @@ const server = createServer((req, res) => {
           // (место не прошло словарь, уже открыто другое решение) — остаётся
           // ответ судьи с подсказкой, как заявить уход явно.
           if (result?.free_action_outcome === 'route_travel') {
-            const routedTravel = proposeRoutedTravel(autonomousCampaign.takeRouteHint(campaignId, idempotencyKey), trustedState)
+            const routedTravel = proposeRoutedTravel(autonomousCampaign.takeRouteHint(campaignId, idempotencyKey), trustedState, action)
             if (routedTravel) {
               const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
               executeTool('request_party_decision', routedTravel, effects, trustedState)
