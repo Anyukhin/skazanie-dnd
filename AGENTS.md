@@ -65,6 +65,9 @@ pnpm terrain:tiles    # пересборка фактур пола, поверх
                       # сшивает края, уменьшает, пишет палитровым PNG. Затем pnpm terrain:rights
 pnpm talespire:assets # таблица ассетов TaleSpire для импорта карт (data/talespire-assets-v1.json)
                       # из установленной игры; путь — --dir или TALESPIRE_DIR. Только роли и габариты
+pnpm maps:preview     # сгенерированная карта текстом без кампании: --location, --theme, --seed;
+                      # --preset all --audit — проверка качества (server/map-quality.mjs)
+                      # по всем эталонным сценам. После правки генераторов карт
 pnpm migrate:dry-run  # прогон миграций без записи
 pnpm backup           # зашифрованная копия storage в ./backups/skazanie-<дата>.skzbackup;
                       # каталог источника — DND_STORAGE_DIR, иначе ./storage. Нужен ключ
@@ -152,7 +155,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 Сторож соответствия — `test/security.test.mjs`. **Детерминированные модули без LLM:**
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
-`world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`,
+`world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`, `scene-requirements.mjs`, `map-quality.mjs`,
 `weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`, `tavern-life.mjs`,
 `courier-letters.mjs`, `talespire-slab.mjs`, `talespire-import.mjs`, `map-library.mjs`.
 Не описывать их как «агентов».
@@ -266,6 +269,7 @@ commit, механики он не касается.
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
 | Игрок видит только разрешённое | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
+| Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
 | Корпус тестов не ходит в интернет: каждый запуск `server/index.mjs` либо с пустым `ROUTERAI_API_KEY`, либо с локальным `ROUTERAI_BASE_URL` | `test/test-network-isolation.test.mjs` |
 

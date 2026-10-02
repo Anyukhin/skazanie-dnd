@@ -5,7 +5,9 @@ const FIELDS = Object.freeze({
   climate: ['temperate', 'arid', 'cold', 'wetland'],
   architecture: ['wood', 'stone', 'sand', 'metal', 'marble', 'ice'],
   density: ['sparse', 'mixed', 'dense'],
-  building_use: ['dwelling', 'tavern', 'shop', 'manor'],
+  building_use: ['dwelling', 'tavern', 'shop', 'manor', 'smithy', 'barracks', 'mill'],
+  shape: ['rect', 'L', 'cross', 'round'],
+  scale: ['village', 'town', 'city'],
 })
 
 const clean = (value, limit = 1600) => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase('ru').slice(0, limit)
@@ -27,7 +29,9 @@ function climateFrom(text) {
   /** @type {Array<[RegExp, string]>} */
   const patterns = [
     [/пустын|засушлив|бархан|песчан|\barid\b|\bdesert\b/u, 'arid'],
-    [/снеж|снег|ледян|льд|мерзлот|тундр|арктич|\btundra\b|\bice\b|\bsnow\b/u, 'cold'],
+    // «Льд» — только с начала слова: в «Вельдбурге» те же буквы, и город
+    // посреди умеренного края становился ледяным.
+    [/снеж|снег|ледян|(?<![\p{L}\p{M}])льд|мерзлот|тундр|арктич|\btundra\b|\bice\b|\bsnow\b/u, 'cold'],
     [/болот|топ[ьи]|трясин|мангр|\bswamp\b|\bwetland\b|\bmarsh\b/u, 'wetland'],
   ]
   const climates = patterns.filter(([pattern]) => pattern.test(text)).map(([, climate]) => climate)
@@ -87,13 +91,33 @@ export function sceneMapDesignFor({
   if (!architecture) architecture = climate === 'arid' ? 'sand' : urban || kind === 'fortress' ? 'stone' : 'wood'
   const density = /редк[а-яё]* (?:дом|застрой)|разбросан|маленьк[а-яё]* деревн|хутор/u.test(local) ? 'sparse'
     : /тесн|густ[а-яё]* застрой|плотн[а-яё]* застрой|многолюд|столиц/u.test(local) ? 'dense'
-      : explicit.density || (rural ? 'sparse' : urban ? 'dense' : 'mixed')
-  const buildingUse = /таверн|трактир|постоял|корчм|гостиниц/u.test(local) ? 'tavern'
+      // Деревня по умолчанию — обычная застройка: «редкая» давала четыре-пять
+      // дворов на карте 36×32. Редкой остаётся хутор, выселки и деревня в пустыне.
+      : explicit.density || (rural ? (climate === 'arid' ? 'sparse' : 'mixed') : urban ? 'dense' : 'mixed')
+  const buildingUse = /кузн|кузниц/u.test(local) ? 'smithy'
+    : /казарм|караульн|гарнизон|сторожев[а-яё]* башн|дозорн[а-яё]* башн/u.test(local) ? 'barracks'
+      : /башн/u.test(local) ? 'manor'
+      : /мельниц/u.test(local) ? 'mill'
+        : /таверн|трактир|постоял|корчм|гостиниц/u.test(local) ? 'tavern'
     : /лавк|магазин|мастерск|склад|торгов[а-яё]* ряд|рыночн[а-яё]* набережн/u.test(local) ? 'shop'
       : /особняк|усадьб|дворец|крепост|замок|цитадел|галере|тронн[а-яё]* зал/u.test(local) || kind === 'fortress' || request.pattern === 'keep' ? 'manor'
         : explicit.building_use || 'dwelling'
+  // Форма корпуса — по словам места: башня и ротонда круглые, «Г-образный»
+  // и «крестообразный» говорят сами за себя. Без слов форму выберет генератор.
+  const shape = /кругл[а-яё]* (?:башн|зал|дом|здани)|ротонд|башн[яиюе]/u.test(local) ? 'round'
+    : /г-образн|углом|буквой г/u.test(local) ? 'L'
+    : /крестообразн|крестом/u.test(local) ? 'cross'
+      : explicit.shape
+  // Масштаб поселения: деревня, город, столица. От него зависят размер
+  // карты и число построек — город из четырёх домов городом не выглядит.
+  const scale = kind === 'capital' || /столиц|мегаполис|великий город/u.test(local) ? 'city'
+    : cityKind || urban ? 'town'
+      : rural ? 'village'
+        : explicit.scale
   return {
     topology, climate, architecture, density, building_use: buildingUse,
+    ...(shape ? { shape } : {}),
+    ...(scale ? { scale } : {}),
   }
 }
 

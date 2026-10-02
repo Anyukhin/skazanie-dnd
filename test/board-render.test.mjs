@@ -781,6 +781,37 @@ test('печатные оверлеи не рисуют координаты, н
   assert.equal(labels.includes('Тайник'), false, 'туман не скрывает подпись тайной комнаты')
 })
 
+test('подпись двора-кольца стоит во дворе, а не на доме посередине', () => {
+  // Двор окружает дом со всех сторон: центр его рамки приходится на дом, и
+  // прежде «Участок» печатался поверх кладовой.
+  const map = createTacticalMap({ width: 20, height: 20 })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', label: 'Участок' })
+  addZone(map, { id: 'store', kind: 'interior', material: 'wood', lightLevel: 'dim', label: 'Кладовая' })
+  for (let y = 0; y < 20; y += 1) for (let x = 0; x < 20; x += 1) {
+    const inside = x >= 6 && x <= 13 && y >= 6 && y <= 13
+    setCell(map, x, y, { passable: true, revealed: true, zone: inside ? 'store' : 'yard' })
+  }
+  map.overlays = { compass: false, scaleBar: false, roomLabels: [{ zoneId: 'yard', label: 'Участок' }, { zoneId: 'store', label: 'Кладовая' }] }
+  const placements = render.revealedRoomLabelPlacements(decoded(map))
+  const yard = placements.find((entry) => entry.zoneId === 'yard')
+  const store = placements.find((entry) => entry.zoneId === 'store')
+  assert.equal(serverCellAt(map, Math.floor(yard.x), Math.floor(yard.y))?.zone, 'yard', 'подпись двора легла на дом')
+  assert.deepEqual([store.x, store.y], [10, 10], 'прямоугольная комната подписывается по центру, как раньше')
+})
+
+test('настенный факел у шва тайлов рисуется и в соседнем тайле', () => {
+  // Факел на клетке 15 сдвинут к восточной стене на 0.4 клетки и заходит
+  // рисунком в тайл справа. Охват прежде считался от центра клетки.
+  const map = createTacticalMap({ width: 32, height: 32, fill: { passable: true, revealed: true, material: 'wood' } })
+  addProp(map, {
+    id: 'torch', assetId: 'torch_wall', x: 15.5, y: 8.5, rotation: 270, scale: 1,
+    footprint: [], zOrder: 1, mount: { kind: 'wall', side: 'e' },
+  })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  assert.ok(render.propsInTile(scene.map, { tileX: 1, tileY: 0 }, scene.cellSize).some((prop) => prop.id === 'torch'),
+    'половина факела у шва обрезалась')
+})
+
 test('предмет на шве тайлов не остаётся половиной после смены раскрытия', () => {
   const map = createTacticalMap({ width: 32, height: 32, fill: { passable: true, revealed: true, material: 'wood' } })
   // Стойка 4×1 стоит якорем в тайле 0,0 и заходит рисунком в тайл 1,0.

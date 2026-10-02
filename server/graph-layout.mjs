@@ -139,6 +139,11 @@ export function sharedWall(a, b) {
 export function assignZonesToLeaves(graph, leaves) {
   const order = progressionWaves(graph).flatMap((wave) => wave.zones)
   for (const zone of graph.zones) if (!order.includes(zone.id)) order.push(zone.id)
+  // Сначала — раскладка, где каждая связь графа становится общей стеной.
+  // Жадный выбор ниже брал первый свободный лист, если смежного не было, и
+  // запертый тайник склепа оказывался за глухой стеной: комната без входа.
+  const exact = exactLeafAssignment(graph, order, leaves)
+  if (exact) return exact
   /** @type {Map<string, LeafRect>} */
   const placed = new Map()
   const free = [...leaves]
@@ -159,6 +164,45 @@ export function assignZonesToLeaves(graph, leaves) {
     placed.set(zoneId, free.splice(index, 1)[0])
   }
   return placed
+}
+
+/**
+ * Раскладка с возвратом: зона встаёт только в лист, смежный со всеми уже
+ * размещёнными соседями по графу. Зон немного (до шести), листьев чуть
+ * больше, поэтому перебор ограничен; при неудаче — `null`, и работает
+ * прежний жадный выбор.
+ *
+ * @param {import('./scene-graph.mjs').SceneGraph} graph
+ * @param {string[]} order
+ * @param {LeafRect[]} leaves
+ * @returns {Map<string, LeafRect>|null}
+ */
+function exactLeafAssignment(graph, order, leaves) {
+  /** @type {Map<string, LeafRect>} */
+  const placed = new Map()
+  const used = new Set()
+  let budget = 5000
+  /** @param {number} position @returns {boolean} */
+  const place = (position) => {
+    if (position >= order.length) return true
+    const zoneId = order[position]
+    const neighbours = graph.links
+      .filter((link) => link.from === zoneId || link.to === zoneId)
+      .map((link) => placed.get(link.from === zoneId ? link.to : link.from))
+      .filter(Boolean)
+    for (let index = 0; index < leaves.length; index += 1) {
+      if (used.has(index) || (budget -= 1) <= 0) continue
+      const leaf = leaves[index]
+      if (!neighbours.every((neighbour) => sharedWall(leaf, /** @type {LeafRect} */ (neighbour)))) continue
+      placed.set(zoneId, leaf)
+      used.add(index)
+      if (place(position + 1)) return true
+      placed.delete(zoneId)
+      used.delete(index)
+    }
+    return false
+  }
+  return order.length <= leaves.length && place(0) ? placed : null
 }
 
 /**

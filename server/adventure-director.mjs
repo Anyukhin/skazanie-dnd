@@ -8,6 +8,8 @@ import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './
 import { REFERENCE_SIZE } from './building-generator.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { sceneMapDesignFor, worldLocationDesignContext } from './scene-map-design.mjs'
+import { normalizeSceneRequirements, requirementAssets, sceneMapRequirementsFor } from './scene-requirements.mjs'
+import { ensurePropAccess, placeRequiredProps } from './prop-placement.mjs'
 import {
   buildThemedScene,
   isLiveTheme,
@@ -251,7 +253,7 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
-function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [] }) {
+function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [], requirements = [] }) {
   // Опознание живёт в одном месте — `server/scene-themes.mjs`. Название —
   // не единственный признак: вид точки карты мира, тип поселения и заявка
   // картографа весят не меньше, иначе деревня с «бродом» в имени становилась
@@ -280,7 +282,7 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
     const picked = library.pick(libraryRequestFor({
       themeId: matched.id, buildingUse: design.building_use, topology: design.topology, climate: design.climate,
       worldKind, levels, width: Number(requestedMap.width) || REFERENCE_SIZE.width, height: Number(requestedMap.height) || REFERENCE_SIZE.height,
-      place: `${location} ${theme}`, world: worldDescription,
+      place: `${location} ${theme}`, world: worldDescription, requirements,
     }), { seed, usedIds: usedLibraryIds })
     if (picked) return librarySceneGeometry(picked, { locationId, theme: matched.assetTheme ?? matched.id })
   }
@@ -304,7 +306,14 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
       entry: startsOutside ? 'exterior' : 'interior',
     })
     built.map.theme = matched.assetTheme ?? matched.id
-    return { cells: legacyCellsFromTacticalMap(built.map), map: built.map }
+    // Что пообещал текст сцены, встаёт на карту, даже если тема о нём не
+    // знает: «навес над колодцем» — колодец, «три стола» — три стола.
+    const promised = normalizeSceneRequirements(requirements)
+      .map((item) => ({ assets: requirementAssets(item.id), count: item.count }))
+      .filter((item) => item.assets.length)
+    if (promised.length && placeRequiredProps(built.map, promised, { seed: `${seed}:scene-requirements` })) ensurePropAccess(built.map)
+    // Этажи, которые объявил сам генератор: двухэтажная таверна поселения.
+    return { cells: legacyCellsFromTacticalMap(built.map), map: built.map, ...(built.levels?.length ? { levels: normalizeDeclaredLevels(built.levels) } : {}) }
   }
   // Сейчас сюда не попадает ни одна сцена: `fallbackThemeFor` всегда возвращает
   // тему, а `live` стоит у всех семи. Ветка остаётся предохранителем на случай
@@ -377,11 +386,11 @@ export function librarySceneFields(library) {
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true } = {}) {
+export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, requirements = [] } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
   return generateSceneGeometryFor({
     theme, danger, location, sceneKind, settlementType, worldKind, seed, locationId, requestedMap,
-    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome, useLibrary,
+    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome, useLibrary, requirements,
   })
 }
 
@@ -599,6 +608,11 @@ export function createSceneTransition(input = {}, state = {}) {
     worldKind: knownKind,
     request: requestedMap,
   })
+  // Обязательные объекты — из слов этой сцены, которые видит игрок. Карта
+  // уже знакомого места не перестраивается, поэтому список получает только
+  // сцена с новой картой: он описывает, под что эта карта строилась.
+  const mapRequirements = rememberedMap ? null
+    : sceneMapRequirementsFor([location, theme, title, mood, objective, arrival])
   const generated = rememberedMap ? null : generateSceneGeometryFor({
     theme,
     danger,
@@ -620,8 +634,12 @@ export function createSceneTransition(input = {}, state = {}) {
     worldDescription: [state.campaignConcept?.worldSummary, state.campaignConcept?.premise,
       state.campaignConcept?.setting, state.campaignConcept?.description].filter((value) => typeof value === 'string').join(' ').slice(0, 2400),
     usedLibraryIds: [...libraryIdsInUse(state.locationMaps)],
+    requirements: mapRequirements?.items ?? [],
   })
   const library = generated?.library ?? null
+  // Заявка архитектора на этажи сильнее; без неё сцена получает этажи,
+  // которые поставил генератор (лестница в таверне поселения).
+  const sceneLevels = declaredLevels.length ? declaredLevels : (generated?.levels ?? [])
   const cells = rememberedMap ?? generated.cells
   const mapTheme = text(resolvedTheme?.assetTheme ?? resolvedTheme?.id, 60)
   const tacticalMap = rememberedTacticalMap ?? generated?.map ?? tacticalMapFromLegacyCells(cells, {
@@ -648,10 +666,11 @@ export function createSceneTransition(input = {}, state = {}) {
     // другое — этажи, на которых партия уже побывала, и пополняется механикой
     // перехода на этапе L3. Одноэтажная локация поля не получает вовсе, поэтому
     // сохранённые кампании и старые события читаются как раньше.
-    ...(declaredLevels.length ? { levels: declaredLevels } : {}),
+    ...(sceneLevels.length ? { levels: sceneLevels } : {}),
     // Библиотечная карта приносит свои этажи: заявка архитектора на этажи
     // уступает фактической постройке, иначе подписи разошлись бы с картой.
     ...(library ? librarySceneFields(library) : {}),
+    ...(mapRequirements ? { map_requirements: mapRequirements } : {}),
     cells,
     map: serializedMap,
   }
