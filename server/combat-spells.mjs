@@ -600,3 +600,12 @@ export function spellCatalogInfo(options) {
 export function isPartySummon(actor) {
   return actor?.kind === 'summon' && actor?.faction === 'party' && Boolean(actor?.ownerId || actor?.owner_id)
 }
+
+/**
+ * Призыв, которого нельзя ни атаковать, ни ранить: Духовное оружие — сгусток
+ * силы, а не существо, Верного пса «нельзя ранить». Фишка стоит на карте и
+ * действует, но целью атак и областей не бывает.
+ */
+export function isUntargetableSummon(actor) {
+  return isPartySummon(actor) && actor?.untargetable === true
+}

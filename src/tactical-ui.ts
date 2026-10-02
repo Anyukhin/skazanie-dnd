@@ -604,6 +604,7 @@ const CONDITION_LABELS: Record<string, string> = {
   'bless-d4': 'Благословение',
   'resistance-d4': 'Бонус спасброска: 1к4',
   'vitriolic-acid-covered': 'Едкая кислота (Едкий шар)',
+  'rime-encased': 'Скован льдом',
   longstrider: 'Скороход',
   /* Малое благословение алтаря или жреца (`server/blessings.mjs`). Имя у него
      своё, отдельное от заклинания «Благословение»: у того кость на каждый

@@ -59,7 +59,7 @@ test('Сфера Отилюка обездвиживает и отсекает �
   assert.equal(damage.applied_amount, 0)
 })
 
-test('Облачение пламенем даёт сопротивление и жжёт стоящих рядом', () => {
+test('Облачение пламенем даёт невосприимчивость к огню и жжёт стоящих рядом', () => {
   const state = field({ casterClass: 'druid' })
   const burning = replayEvents(state, cast(state, 'investiture-of-flame', [], { target_id: 'mage' }).events)
   const effect = burning.mechanics.active_effects.find((candidate) => candidate.spell_id === 'investiture-of-flame')
@@ -67,15 +67,22 @@ test('Облачение пламенем даёт сопротивление и
   assert.equal(effect.follows_source, true, 'область едет вместе с ним')
   assert.equal(effect.damage, '1d10')
 
-  // Сопротивление огню: та же кость урона режется вдвое.
+  // Невосприимчивость к огню и сопротивление холоду.
   const scorch = resolveCommand(
     authoritative({ command_type: 'ApplyDamage', actor_id: 'mage', target_id: 'mage', amount: 20, damage_type: 'fire' }),
+    burning,
+    options(dice([18])),
+  )
+  assert.equal(damages(scorch)[0].immune, true)
+  assert.equal(damages(scorch)[0].applied_amount, 0)
+  const chill = resolveCommand(
+    authoritative({ command_type: 'ApplyDamage', actor_id: 'mage', target_id: 'mage', amount: 20, damage_type: 'cold' }),
     burning,
     // Урон по концентрирующемуся тянет за собой проверку концентрации.
     options(dice([18])),
   )
-  assert.equal(damages(scorch)[0].resistant, true)
-  assert.equal(damages(scorch)[0].applied_amount, 10)
+  assert.equal(damages(chill)[0].resistant, true)
+  assert.equal(damages(chill)[0].applied_amount, 10)
 })
 
 test('Облачение льдом покрывает землю наледью', () => {

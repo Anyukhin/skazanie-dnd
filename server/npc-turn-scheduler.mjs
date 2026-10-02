@@ -25,6 +25,7 @@ import {
 } from './rules-engine.mjs'
 import {
   isPartySummon,
+  isUntargetableSummon,
   monsterCombatSpellFor,
   monsterSpellUsesSpentIn,
   monsterSpellcastingFor,
@@ -76,7 +77,7 @@ function actorId(actor) {
 function livingParty(state) {
   const members = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
   const heroes = state.players.filter((actor) => members.has(actorId(actor)) && isCombatCapable(state, actor))
-  const summons = (state.actors ?? []).filter((actor) => isPartySummon(actor) && members.has(String(actor.ownerId ?? actor.owner_id)) && isCombatCapable(state, actor))
+  const summons = (state.actors ?? []).filter((actor) => isPartySummon(actor) && !isUntargetableSummon(actor) && members.has(String(actor.ownerId ?? actor.owner_id)) && isCombatCapable(state, actor))
   return [...heroes, ...summons]
 }
 
