@@ -185,6 +185,23 @@ test('карточка по маршруту судьи: место провер
   assert.equal(travelDestinationIsPlace('таверна «Морской Змей»', exitContextFromState(state)), true)
 })
 
+test('место из цели сцены открывает голосование без «бросаем задание»', () => {
+  // Живой прогон 2026-10-02: «Идём к смотровой дамбе» при цели «Добраться до
+  // смотровой дамбы» отвечало «напишите «Отправляемся в…»», а голосование
+  // предлагало уйти туда, бросив то самое задание.
+  const base = fixtureState()
+  const state = { ...base, scene: { ...base.scene, objective: 'Добраться до смотровой дамбы и понять источник звона' } }
+  const card = proposeRoutedTravel({ route: 'travel', destination: 'смотровая дамба' }, state, 'Идём к смотровой дамбе')
+  assert.equal(card?.type, 'vote')
+  assert.equal(card.options.some((option) => /бросаем задание/u.test(option)), false)
+  assert.equal(classifyPartyDecision(card.options[0]).kind, 'move')
+  // Слово цели без места — по-прежнему не пункт назначения.
+  assert.equal(proposeRoutedTravel({ route: 'travel', destination: 'источник звона у камина' }, state), null)
+  // Текущее место, даже если цель его называет, уходом не становится.
+  const here = { ...state, scene: { ...state.scene, location: 'Смотровая дамба', objective: 'Удержать смотровую дамбу' } }
+  assert.equal(proposeRoutedTravel({ route: 'travel', destination: 'смотровая дамба' }, here), null)
+})
+
 async function orchestratorWith(read, overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-intent-routing-'))
   const initialState = normalizeCampaignState({

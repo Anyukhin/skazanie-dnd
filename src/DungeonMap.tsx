@@ -1055,6 +1055,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const reachable = selected && active && movementAvailable
     ? new Set([...movementPaths.entries()].filter(([, route]) => route.costFeet <= movementLimit).map(([key]) => key))
     : new Set<string>()
+  // Выбранная клетка принадлежит ходу, в котором её выбрали: после смены хода
+  // второй клик по ней не должен двигать уже другого героя.
+  useEffect(() => { setPendingMoveKey(null) }, [turnActorId, selected, combatActive])
+  const pendingMovePoint = combatActive && pendingMoveKey && reachable.has(pendingMoveKey)
+    ? (() => { const [x, y] = pendingMoveKey.split(',').map(Number); return { x, y } })()
+    : null
   const previewMoveKey = pendingMoveKey ?? hoveredMoveKey
   const previewRoute = previewMoveKey ? movementPaths.get(previewMoveKey) ?? null : null
   const maneuverPath = state.pendingAction?.proposal.actor_id === turnActorId ? state.pendingAction.proposal.path : null
@@ -2417,7 +2423,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, player)),
             resourceReady: targetResourceReady, specialBlockReason: playerSpecialBlock,
           })
-          const playerTargetReason = multiTargetSpell && multiTargetSelected
+          // Вне боя и без выбранного заклинания наведение на союзника — просто
+          // взгляд на фишку. Прежде здесь звучал отказ «Сейчас этим участником
+          // нельзя командовать» — даже над собственным героем.
+          const playerIdleHover = !combatActive && combatMode !== 'magic' && !playerCommandAllowed && !areaTargetSelectionActive && !multiTargetSpell
+          const playerTargetReason = playerIdleHover
+            ? player.id === selected ? 'Ваш герой. Клик по клетке карты — перемещение.' : 'Союзник по отряду'
+            : multiTargetSpell && multiTargetSelected
             ? 'Цель выбрана · клик уберёт её'
             : areaTargetSelectionActive && !playerInBlast
               ? 'Существо вне сферы 30 футов'
@@ -2732,6 +2744,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           point: targetSelectionHintOrigin ?? targetSelectionHintPoint,
           ...(targetSelectionHintOrigin ? { anchor: 'grid-intersection' as const } : {}),
           text: spellTargetSelectionText,
+          tone: 'warning',
+        } : pendingMovePoint ? {
+          // В бою первый клик по клетке только показывает маршрут. Без этой
+          // подсказки игрок кликал, видел подсвеченный путь — и ждал хода,
+          // который не наступал. Живой прогон 2026-10-02.
+          point: pendingMovePoint,
+          text: 'Нажмите ещё раз, чтобы идти сюда',
           tone: 'warning',
         } : undefined}
         onCellHover={pointSpellSelected ? (point) => {

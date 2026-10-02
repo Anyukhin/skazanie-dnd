@@ -208,6 +208,14 @@
   border-width: 1px;
   box-shadow: 0 1px 3px #000, 0 0 0 1px rgba(0,0,0,.5);
 }
+/* Фишка врага ужимается вместе с клеткой, как и фишка героя. На крупной карте
+   поселения клетка — 11 px, герой сжимался до неё, а разбойник оставался 44 px
+   и накрывал четыре клетки: не видно, где он стоит и куда по нему кликать. */
+.tactical-scroll .board-cell .enemy-token:not(.large-actor) {
+  width: min(calc(var(--cell) * .9), 44px);
+  height: min(calc(var(--cell) * .98), 48px);
+  border-width: 1px;
+}
 /* Маршрут занимает свою клетку при любом приближении. */
 .tactical-scroll .route-step-badge {
   width: calc(var(--cell) * .68);

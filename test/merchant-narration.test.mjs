@@ -42,7 +42,7 @@ test('merchant lifecycle narration is deterministic and names only committed loc
     event_type: 'MerchantCreated',
     payload: { merchant_id: 'marten', merchant: { name: 'Мартен', location: 'Рыночная площадь' } },
   }], state)
-  assert.equal(created, 'Мартен открывает торговлю в локации «Рыночная площадь». Склад и ценовая политика подтверждены сервером.')
+  assert.equal(created, 'Мартен раскладывает товар: в локации «Рыночная площадь» можно торговать.')
 
   const restocked = merchantNarration([{
     event_type: 'MerchantRestocked', payload: { merchant_id: 'marten', total_quantity_added: 7 },

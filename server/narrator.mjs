@@ -703,21 +703,24 @@ function memoryFocusIsRecalled(narration, focus) {
 
 function memoryFocusReminder(focus, variant = 0) {
   if (!focus) return ''
+  // Имя стоит после тире, в именительном падеже: рода и падежа собеседника
+  // шаблон не знает, и «Мара Трижды-Мерная прежде говорил», «обещанию Мара»
+  // звучали в хронике живой партии 2026-10-02.
   if (focus.kind === 'promise') {
     return [
-      `Открытым остаётся обещание ${focus.label}: ${focus.cue}`,
-      `${focus.label} всё ещё связан открытым обещанием: ${focus.cue}`,
-      `Прежнее обещание от ${focus.label} не закрыто: ${focus.cue}`,
-      `Нынешний шаг возвращает к обещанию ${focus.label}: ${focus.cue}`,
+      `Открытым остаётся обещание — ${focus.label}: ${focus.cue}`,
+      `Обещание всё ещё не закрыто — ${focus.label}: ${focus.cue}`,
+      `Прежнее обещание не исполнено — ${focus.label}: ${focus.cue}`,
+      `Нынешний шаг возвращает к обещанию — ${focus.label}: ${focus.cue}`,
     ][variant % 4]
   }
   if (focus.kind === 'interaction') {
     const cue = focus.cue.replace(/[.!?]+$/u, '')
     return [
-      `${focus.label} прежде говорил: «${cue}»`,
-      `В прошлой беседе ${focus.label} оставил такую деталь: «${cue}»`,
-      `Из прежних слов ${focus.label} важно одно: «${cue}»`,
-      `Ответ ${focus.label} из прошлой встречи звучал так: «${cue}»`,
+      `Прежние слова звучат снова — ${focus.label}: «${cue}»`,
+      `Из прошлой беседы помнится — ${focus.label}: «${cue}»`,
+      `Ещё раньше было сказано — ${focus.label}: «${cue}»`,
+      `В памяти остался прежний ответ — ${focus.label}: «${cue}»`,
     ][variant % 4]
   }
   if (focus.kind === 'decision') {

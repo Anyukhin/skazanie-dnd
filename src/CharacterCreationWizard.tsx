@@ -231,6 +231,8 @@ type CreationDraft = {
   backgroundReplacementSkills: string[]
   starterEquipmentChoices: Record<string, string[]>
   abilities: CharacterAbilityScores
+  /** Игрок сам расставлял значения: тогда смена класса их не трогает. */
+  abilitiesCustomized?: boolean
   classSkillIds: string[]
   selectedFeatureIds: string[]
   knownSpellIds: string[]
@@ -246,11 +248,39 @@ const defaultChoiceRecord = (groups: Array<{ id: string; count: number; options:
   groups.map((group) => [group.id, group.options.slice(0, group.count).map((option) => option.id)]),
 )
 
-function initialDraft(catalog: CharacterCreationCatalog): CreationDraft {
+/**
+ * Порядок характеристик, в который ложится стандартный массив по умолчанию:
+ * ведущая характеристика класса, затем то, без чего класс не выживает. Прежде
+ * массив раскладывался по порядку Сил–Лов–Тел–Инт–Мдр–Хар для любого класса,
+ * и жрец начинал с Мудростью 10 — новичок этого не заметит до первой молитвы.
+ */
+const RECOMMENDED_ABILITY_ORDER: Record<string, Array<(typeof abilityIds)[number]>> = {
+  barbarian: ['str', 'con', 'dex', 'wis', 'cha', 'int'],
+  bard: ['cha', 'dex', 'con', 'wis', 'int', 'str'],
+  cleric: ['wis', 'con', 'str', 'dex', 'int', 'cha'],
+  druid: ['wis', 'con', 'dex', 'int', 'cha', 'str'],
+  fighter: ['str', 'con', 'dex', 'wis', 'int', 'cha'],
+  monk: ['dex', 'wis', 'con', 'str', 'int', 'cha'],
+  paladin: ['str', 'cha', 'con', 'wis', 'dex', 'int'],
+  ranger: ['dex', 'wis', 'con', 'str', 'int', 'cha'],
+  rogue: ['dex', 'con', 'wis', 'int', 'cha', 'str'],
+  sorcerer: ['cha', 'con', 'dex', 'wis', 'int', 'str'],
+  warlock: ['cha', 'con', 'dex', 'wis', 'int', 'str'],
+  wizard: ['int', 'con', 'dex', 'wis', 'cha', 'str'],
+}
+
+function recommendedStandardArray(classId: string, standardArray: number[]): CharacterAbilityScores {
   const assigned = emptyScores()
-  abilityIds.forEach((ability, index) => { assigned[ability] = catalog.ability_policy.standard_array[index] ?? 10 })
+  const order = RECOMMENDED_ABILITY_ORDER[classId] ?? abilityIds
+  const scores = [...standardArray].sort((left, right) => right - left)
+  order.forEach((ability, index) => { assigned[ability] = scores[index] ?? 10 })
+  return assigned
+}
+
+function initialDraft(catalog: CharacterCreationCatalog): CreationDraft {
   const initialSpecies = catalog.ability_policy.species_options[0]
   const initialClass = catalog.classes[0]
+  const assigned = recommendedStandardArray(initialClass?.id ?? '', catalog.ability_policy.standard_array)
   return {
     abilityMethod: 'standard_array',
     equipmentMode: 'standard', purchases: [], purchaseId: '', purchaseQuantity: 1,
@@ -772,6 +802,9 @@ export function CharacterCreationWizard({
     setDraft((current) => ({
       ...current,
       classId,
+      ...(current.abilityMethod === 'standard_array' && !current.abilitiesCustomized
+        ? { abilities: recommendedStandardArray(classId, catalog.ability_policy.standard_array) }
+        : {}),
       phb: { ...current.phb, classChoices: {} },
       subclass: '',
       classSkillIds: [],
@@ -787,9 +820,21 @@ export function CharacterCreationWizard({
     if (draft.abilityMethod === 'rolled' && !abilityRollComplete) return
     setError('')
     setDraft((current) => {
-      if (current.abilityMethod !== 'point_buy' && score !== 0 && (!abilityValues.includes(score)
-        || abilityIds.filter((candidate) => candidate !== ability && current.abilities[candidate] === score).length >= abilityValues.filter((value) => value === score).length)) return current
-      return { ...current, abilities: { ...current.abilities, [ability]: score } }
+      if (current.abilityMethod !== 'point_buy' && score !== 0) {
+        if (!abilityValues.includes(score)) return current
+        const holders = abilityIds.filter((candidate) => candidate !== ability && current.abilities[candidate] === score)
+        // Занятое значение меняется местами с тем, у кого оно стоит: прежде
+        // обмен требовал трёх шагов через «Не выбрано».
+        if (holders.length >= abilityValues.filter((value) => value === score).length) {
+          const holder = holders[0]
+          return {
+            ...current,
+            abilitiesCustomized: true,
+            abilities: { ...current.abilities, [ability]: score, [holder]: current.abilities[ability] },
+          }
+        }
+      }
+      return { ...current, abilitiesCustomized: true, abilities: { ...current.abilities, [ability]: score } }
     })
   }
 
@@ -1227,8 +1272,8 @@ export function CharacterCreationWizard({
               </section>
             </>}
             {draft.abilityMethod === 'point_buy' ? <p>Потрачено {pointBuySpent}/27 очков. Значения 8–13 стоят 0–5 очков, 14 — 7 очков, 15 — 9 очков. Расовые и другие прибавки применяются после покупки.</p>
-              : <p>{draft.abilityMethod === 'rolled' && !abilityRollComplete ? `Сначала сделайте все шесть бросков (${abilityRollCount}/6).` : `Распределите значения ${abilityValues.join(', ') || 'после серверного броска'}. Каждое выпавшее значение используется один раз. Для обмена сначала выберите «Не выбрано».`}</p>}
-            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select disabled={draft.abilityMethod === 'rolled' && !abilityRollComplete} value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}><option value={0}>Не выбрано</option>{abilityChoices.map((score) => <option key={score} value={score} disabled={draft.abilityMethod !== 'point_buy' && abilityIds.filter((other) => other !== ability && draft.abilities[other] === score).length >= abilityValues.filter((value) => value === score).length}>{score}</option>)}</select><b>{draft.abilities[ability] ? signed(abilityModifier(draft.abilities[ability] + originBonusFor(ability))) : '—'}</b><small>{!draft.abilities[ability] ? 'Выберите значение' : originBonusFor(ability) > 0 ? `+ ${originBonusFor(ability)} ${bonusSource === 'species' ? 'раса' : 'предыстория'} · итог ${draft.abilities[ability] + originBonusFor(ability)}` : `без прибавки ${bonusSource === 'species' ? 'расы' : 'предыстории'}`}</small></label>)}</div>
+              : <p>{draft.abilityMethod === 'rolled' && !abilityRollComplete ? `Сначала сделайте все шесть бросков (${abilityRollCount}/6).` : `Распределите значения ${abilityValues.join(', ') || 'после серверного броска'}. Каждое значение используется один раз; занятое меняется местами с той характеристикой, где оно стояло.`}</p>}
+            <div>{abilityIds.map((ability) => <label key={ability}><span>{abilityLabels[ability]}</span><select disabled={draft.abilityMethod === 'rolled' && !abilityRollComplete} value={draft.abilities[ability]} onChange={(event) => assignAbility(ability, Number(event.target.value))}><option value={0}>Не выбрано</option>{abilityChoices.map((score) => <option key={score} value={score}>{score}</option>)}</select><b>{draft.abilities[ability] ? signed(abilityModifier(draft.abilities[ability] + originBonusFor(ability))) : '—'}</b><small>{!draft.abilities[ability] ? 'Выберите значение' : originBonusFor(ability) > 0 ? `+ ${originBonusFor(ability)} ${bonusSource === 'species' ? 'раса' : 'предыстория'} · итог ${draft.abilities[ability] + originBonusFor(ability)}` : `без прибавки ${bonusSource === 'species' ? 'расы' : 'предыстории'}`}</small></label>)}</div>
           </div>}
           {currentStep === 'proficiencies' && <div className="creation-choices">
             {catalog.phb && <PhbCharacterOptions catalog={catalog.phb} classId={draft.classId} subclass={draft.subclass}

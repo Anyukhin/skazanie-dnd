@@ -253,6 +253,28 @@ function abandonLabel(questTitle, destination) {
 }
 
 /**
+ * Называет ли цель сцены это место: «Добраться до смотровой дамбы» и
+ * «смотровая дамба». Слова сравниваются по общему началу — падеж у цели и у
+ * назначения разный. Пустое назначение цель не называет.
+ *
+ * @param {unknown} destination
+ * @param {unknown} objective
+ * @returns {boolean}
+ */
+export function objectiveNamesDestination(destination, objective) {
+  const words = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}+/gu) ?? []
+  const wanted = words(destination).filter((word) => word.length >= 4)
+  const goal = words(objective)
+  if (!wanted.length || !goal.length) return false
+  const sameWord = (left, right) => {
+    let common = 0
+    while (common < left.length && common < right.length && left[common] === right[common]) common += 1
+    return common >= 4 && common >= Math.min(left.length, right.length) - 2
+  }
+  return wanted.every((word) => goal.some((candidate) => sameWord(word, candidate)))
+}
+
+/**
  * @param {unknown} action
  * @param {Record<string, any>} [state]
  * @param {{ sourceText?: string }} [options] `sourceText` — исходная фраза
@@ -298,7 +320,10 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
     // тот же разговор за столом, и разводить его на два голосования незачем.
     // Подпись несёт название задания только для игрока; какое задание закрыть,
     // сервер выбирает сам через `abandonableQuest` в момент исполнения.
-    const quest = abandonableQuest(state)
+    // Идти туда, куда зовёт сама цель сцены, — не отказ от задания: вариант
+    // «уходим к смотровой дамбе и бросаем задание» при цели «добраться до
+    // смотровой дамбы» противоречил сам себе. Живой прогон 2026-10-02.
+    const quest = objectiveNamesDestination(destination, state.scene?.objective) ? null : abandonableQuest(state)
     const abandonOption = quest ? abandonLabel(quest.title, phrase) : ''
     return {
       type: 'vote',
@@ -327,7 +352,12 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
 export function proposeRoutedTravel(hint, state = {}, action = '') {
   if (hint?.route !== 'travel' || state.agentInteraction) return null
   const destination = String(hint.destination ?? '').replace(/[«»]/gu, '').replace(/\s+/gu, ' ').trim().slice(0, 80)
-  if (!travelDestinationIsPlace(destination, exitContextFromState(state))) return null
+  // Место из цели сцены годится и без родового слова: «смотровой дамбы» нет
+  // в словаре мест, но цель прямо зовёт отряд туда, и отвечать «напишите
+  // «Отправляемся в…»» было тупиком.
+  if (!travelDestinationIsPlace(destination, exitContextFromState(state))
+    && !(objectiveNamesDestination(destination, state.scene?.objective)
+      && !objectiveNamesDestination(destination, state.scene?.location))) return null
   const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state, { sourceText: String(action ?? '') })
   if (card?.type !== 'vote') return null
   return {

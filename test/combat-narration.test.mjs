@@ -38,6 +38,30 @@ test('урон и попадание по врагу не называют ег�
   assert.match(text, /7 урона/, 'нанесённый урон игрок видеть обязан')
 })
 
+test('лечение называет, сколько вернулось герою, и не выдаёт ОЗ врага', () => {
+  // Живой прогон 2026-10-02: после «Лечащего слова» хроника писала только
+  // «творит заклинание», и сколько вернулось, приходилось искать в листе.
+  const healed = combatNarration([
+    event('SpellCast', { spell_id: 'healing-word', name: 'Лечащее слово' }, ['hero']),
+    event('HealingApplied', { applied_amount: 9, hp_before: 2, hp_after: 11 }, ['hero']),
+  ], state)
+  assert.match(healed, /Лира восстанавливает 9 ОЗ; ОЗ 2 → 11/u)
+  const enemy = combatNarration([event('HealingApplied', { applied_amount: 5, hp_before: 3, hp_after: 8 }, ['wolf'])], state)
+  assert.match(enemy, /Волк восстанавливает силы/u)
+  assert.doesNotMatch(enemy, /\d/u, 'ОЗ врага в тексте быть не должно')
+})
+
+test('пропуск хода по часам виден в хронике, а обычное завершение остаётся служебным', () => {
+  const skipped = combatNarration([event('TurnEnded', { round: 2, auto_skipped: true, auto_skip_reason: 'turn-timeout' })], state)
+  assert.match(skipped, /Лира: время хода вышло, ход пропущен/u)
+  const withAttack = combatNarration([
+    event('TurnEnded', { round: 2, auto_skipped: true, auto_skip_reason: 'turn-timeout' }),
+    event('DamageApplied', { applied_amount: 9, hp_before: 11, hp_after: 2 }, ['hero']),
+  ], state)
+  assert.match(withAttack, /время хода вышло/u, 'пропуск не вытесняется уроном')
+  assert.match(withAttack, /9 урона/u)
+})
+
 test('залп из нескольких лучей называет заклинание один раз и сохраняет все атаки', () => {
   const spellCast = (commandId, economyConsumed = undefined) => ({
     ...event('SpellCast', {

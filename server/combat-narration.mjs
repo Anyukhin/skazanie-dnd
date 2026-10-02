@@ -386,6 +386,13 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target} приходит в сознание с 1 ОЗ после необходимого времени покоя.`)
     } else if (event.event_type === 'HealingApplied' && payload.spell_id === 'aura-of-life') {
       meaningful.push(`Аура жизни возвращает ${target} 1 ОЗ в начале хода.`)
+    } else if (event.event_type === 'HealingApplied' && Number(payload.applied_amount) > 0) {
+      // Лечение молчало: хроника писала «творит заклинание «Лечащее слово»», и
+      // сколько вернулось, игрок искал в листе. Свои ОЗ отряд видит числом,
+      // чужие — качественно, как и урон.
+      meaningful.push(targetIsEnemy
+        ? `${target} восстанавливает силы.`
+        : `${target} восстанавливает ${Number(payload.applied_amount)} ОЗ; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
     } else if (event.event_type === 'HitPointMaximumReductionPrevented') {
       meaningful.push(`Аура жизни защищает максимум ОЗ ${target} от уменьшения.`)
     } else if (event.event_type === 'HitPointMaximumReduced') {
@@ -534,6 +541,10 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(String(payload.line || `${String(payload.beast_name || 'Зверь')} отгоняет мелкую тварь.`))
     } else if (event.event_type === 'CombatEnded') {
       meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
+    } else if (event.event_type === 'TurnEnded' && payload.auto_skip_reason === 'turn-timeout') {
+      // Пропуск по часам — событие для стола, а не служебная строка: игрок
+      // должен понять, почему за него ничего не сделано.
+      meaningful.push(`${actor}: время хода вышло, ход пропущен.`)
     } else if (event.event_type === 'TurnEnded') {
       turns.push(`${actor} завершает ход.`)
     } else if (event.event_type === 'TurnStarted') {

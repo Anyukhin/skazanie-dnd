@@ -1249,19 +1249,43 @@ function TacticalBoard2D({
   // Мини-карта просит поставить клетку в центр поля. Сдвиг считается по
   // текущему положению рамки на экране: перенос в translate() идёт в
   // экранных пикселях, поэтому масштаб в расчёт не входит.
+  const centreAfterZoom = useRef<(() => void) | null>(null)
+  useEffect(() => {
+    const centre = centreAfterZoom.current
+    centreAfterZoom.current = null
+    if (!centre) return
+    // У `.map-scroll` переход transform .15s: рамка, прочитанная сразу после
+    // смены масштаба, — промежуточная, и герой оказывался за краем поля.
+    const timer = window.setTimeout(centre, 200)
+    return () => window.clearTimeout(timer)
+  }, [zoom])
   useEffect(() => {
     if (!focusRequest) return
-    const frame = frameRef.current
-    const viewport = frame?.closest('.map-scroll')?.parentElement
-    if (!frame || !viewport) return
-    const rect = frame.getBoundingClientRect()
-    const view = viewport.getBoundingClientRect()
-    if (!rect.width || !rect.height || !view.width || !view.height) return
-    const cellX = rect.left + (focusRequest.x + .5) * rect.width / Math.max(1, columns)
-    const cellY = rect.top + (focusRequest.y + .5) * rect.height / Math.max(1, rows)
-    const dx = view.left + view.width / 2 - cellX
-    const dy = view.top + view.height / 2 - cellY
-    setPan((current) => ({ x: Math.round(current.x + dx), y: Math.round(current.y + dy) }))
+    const centre = () => {
+      const frame = frameRef.current
+      const viewport = frame?.closest('.map-scroll')?.parentElement
+      if (!frame || !viewport) return
+      const rect = frame.getBoundingClientRect()
+      const view = viewport.getBoundingClientRect()
+      if (!rect.width || !rect.height || !view.width || !view.height) return
+      const cellX = rect.left + (focusRequest.x + .5) * rect.width / Math.max(1, columns)
+      const cellY = rect.top + (focusRequest.y + .5) * rect.height / Math.max(1, rows)
+      const dx = view.left + view.width / 2 - cellX
+      const dy = view.top + view.height / 2 - cellY
+      setPan((current) => ({ x: Math.round(current.x + dx), y: Math.round(current.y + dy) }))
+    }
+    // Поселение целиком влезает в поле клетками по 10–11 px: «к герою» только
+    // сдвигало камеру, и фишку всё равно было не разглядеть. Мелкую клетку
+    // кнопка сначала приближает до различимой, потом ставит героя в центр.
+    const readableCell = 30
+    if (cellPixels > 0 && cellPixels * zoom < readableCell - 2) {
+      // Центрировать можно только по новой раскладке: сдвиг считается по
+      // рамке на экране, а она меняется вместе с масштабом.
+      centreAfterZoom.current = centre
+      setZoom(Math.min(Math.max(3, 48 / Math.max(6, cellPixels)), Number((readableCell / cellPixels).toFixed(2))))
+      return
+    }
+    centre()
   }, [focusRequest])
 
   const activeByKey = useMemo(() => {

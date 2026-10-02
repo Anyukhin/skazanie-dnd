@@ -13,7 +13,7 @@ import {
   ABILITY_LABELS, DIFFICULTY_LABELS, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
   UI_SCALE_PRESETS, battleEventText, clampUiScale, locationsMatch, useDialogEscape,
 } from './app-shared'
-import { chronicleMatchesFilter, chronicleMessageText, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
+import { chronicleFollowAfterScroll, chronicleMatchesFilter, chronicleMessageText, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
@@ -458,6 +458,7 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
   const [filter, setFilter] = useState<ChronicleFilter>('all')
   const [followLatest, setFollowLatest] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
+  const lastScrollTopRef = useRef(0)
   const visibleMessages = useMemo(
     // Врезка «Пока вас не было…» и конверт почты приходят системной записью, но
     // читаются как рассказ: под фильтром «Бой» им не место.
@@ -465,6 +466,9 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
     [filter, messages],
   )
   const visibleCountRef = useRef(visibleMessages.length)
+  const followLatestRef = useRef(followLatest)
+  followLatestRef.current = followLatest
+  const landedRef = useRef(false)
 
   // Эффект ведёт себя как реакция на приход сообщений, поэтому `followLatest`
   // читается, но в зависимости не входит намеренно: сам по себе возврат к низу
@@ -472,14 +476,44 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
   // Значение при этом свежее — замыкание пересобирается на каждый рендер.
   useEffect(() => {
     const newMessageCount = Math.max(0, visibleMessages.length - visibleCountRef.current)
+    const firstBatch = !landedRef.current && visibleMessages.length > 0
+    if (firstBatch) landedRef.current = true
     visibleCountRef.current = visibleMessages.length
     if (followLatest) {
-      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      // Плавная прокрутка в скрытой вкладке не идёт вовсе: игрок, ушедший в
+      // Discord, возвращался к ленте, застрявшей наверху. Первая загрузка и
+      // скрытая вкладка прыгают к низу сразу.
+      const viewport = messagesRef.current
+      if (viewport && (firstBatch || document.hidden)) viewport.scrollTop = viewport.scrollHeight
+      else endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
       setUnreadCount(0)
     } else if (newMessageCount > 0) {
       setUnreadCount((count) => count + newMessageCount)
     }
   }, [isNarrating, visibleMessages.length])
+
+  // Ответ рассказчика приходит потоком: число записей то же, а текст растёт,
+  // и лента отставала от него на несколько строк. Пока игрок следит за низом,
+  // любое изменение содержимого держит его у последней строки.
+  useEffect(() => {
+    const viewport = messagesRef.current
+    if (!viewport || typeof MutationObserver === 'undefined') return
+    const observer = new MutationObserver(() => {
+      if (followLatestRef.current && !isChronicleNearBottom(viewport, 4)) viewport.scrollTop = viewport.scrollHeight
+    })
+    observer.observe(viewport, { childList: true, subtree: true, characterData: true })
+    return () => observer.disconnect()
+  }, [])
+
+  // Вернувшись во вкладку, игрок видит последнюю запись, если он за лентой следил.
+  useEffect(() => {
+    const onVisible = () => {
+      const viewport = messagesRef.current
+      if (!document.hidden && viewport && followLatestRef.current) viewport.scrollTop = viewport.scrollHeight
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   function chooseFilter(nextFilter: ChronicleFilter) {
     setFilter(nextFilter)
@@ -489,9 +523,10 @@ export function ChatPanel({ messages, isNarrating, interaction, players, typingA
   function handleScroll() {
     const viewport = messagesRef.current
     if (!viewport) return
-    const nearBottom = isChronicleNearBottom(viewport)
-    setFollowLatest(nearBottom)
-    if (nearBottom) setUnreadCount(0)
+    const following = chronicleFollowAfterScroll(viewport, lastScrollTopRef.current, followLatest)
+    lastScrollTopRef.current = viewport.scrollTop
+    setFollowLatest(following)
+    if (isChronicleNearBottom(viewport)) setUnreadCount(0)
   }
 
   function scrollToLatest() {

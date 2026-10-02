@@ -57,10 +57,12 @@ export function merchantNarration(events, state) {
 
   if (businessEvent.event_type === 'MerchantCreated') {
     const location = safeText(payload.merchant?.location ?? merchant?.location, 'текущей локации', 180)
-    return `${merchantName} открывает торговлю в локации «${location}». Склад и ценовая политика подтверждены сервером.`
+    // Текст читает игрок: «склад и ценовая политика подтверждены сервером»
+    // было служебной строкой и звучало в хронике посреди рассказа.
+    return `${merchantName} раскладывает товар: в локации «${location}» можно торговать.`
   }
   if (businessEvent.event_type === 'MerchantConfigured') {
-    return `Профиль и торговая политика «${merchantName}» обновлены сервером.`
+    return `${merchantName} меняет условия торговли.`
   }
   if (businessEvent.event_type === 'MerchantRestocked') {
     const quantity = Math.max(0, safeInteger(payload.total_quantity_added, 0))

@@ -1352,6 +1352,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .modal h2 { margin: 6px 0 8px; font: 700 var(--fs-4xl) var(--f-display); color: color-mix(in srgb, var(--text2) 20%, var(--text)); }
 .modal p { margin: 0 auto 20px; max-width: 340px; color: color-mix(in srgb, var(--panel) 50%, var(--text)); font: var(--fs-xs)/1.55 var(--f-serif); }
 .invite-code { display: flex; align-items: center; justify-content: space-between; height: 50px; padding-left: 16px; border: 1px solid color-mix(in srgb, var(--text) 5.6%, var(--acc) 10.4%); border-radius: 5px; background: rgba(5,4,3,.3); }
+.invite-link { width: 100%; margin-top: 8px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--text) 5.6%, var(--acc) 10.4%); border-radius: 5px; background: rgba(5,4,3,.3); color: #c9b69e; font: var(--fs-sm) var(--f-ui); box-sizing: border-box; }
 .invite-code > span { color: #c9b69e; font: 600 var(--fs-sm) var(--f-ui); letter-spacing: .16em; }
 .invite-code button { height: 34px; display: flex; align-items: center; gap: 7px; margin-right: 7px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--text) 1.5%, var(--acc) 28.5%); border-radius: 4px; background: rgba(180,120,55,.1); color: color-mix(in srgb, var(--text2) 10%, var(--acc)); font-size: var(--fs-md); cursor: pointer; }
 .modal-note { display: block; margin-top: 13px; color: color-mix(in srgb, var(--rail-bg) 65%, var(--text)); font-size: var(--fs-sm); }

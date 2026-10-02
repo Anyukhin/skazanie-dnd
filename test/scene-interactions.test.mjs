@@ -203,6 +203,28 @@ test('свободный текст находит составные вариа
   }
 })
 
+test('глагол без названного предмета не уходит дальнему или неподходящему предмету', () => {
+  // Живой прогон 2026-10-02: «проталкиваюсь к шлюзам и смотрю, кто пытается
+  // их открыть» уезжало ближайшему пропсу с глаголом «открыть», и движок
+  // отвечал «Для этого объекта такое действие недоступно».
+  const text = 'Проталкиваюсь сквозь толпу к шлюзам и смотрю, кто пытается их открыть'
+  assert.equal(nearestSceneObjectCommand({
+    actorPosition: { x: 0, y: 0 }, text,
+    props: [{ id: 'bench', assetId: 'bench', x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }] }],
+  }), null, 'у скамьи нет глагола «открыть»')
+  assert.equal(nearestSceneObjectCommand({
+    actorPosition: { x: 0, y: 0 }, text,
+    props: [{ id: 'far-chest', assetId: 'chest', x: 6.5, y: 0.5, footprint: [{ x: 6, y: 0 }] }],
+  }), null, 'безымянный сундук через площадь не «под рукой»')
+  assert.equal(nearestSceneObjectCommand({
+    actorPosition: { x: 0, y: 0 }, text: 'Открыть',
+    props: [
+      { id: 'bench', assetId: 'bench', x: 0.5, y: 1.5, footprint: [{ x: 0, y: 1 }] },
+      { id: 'chest', assetId: 'chest', x: 1.5, y: 0.5, footprint: [{ x: 1, y: 0 }] },
+    ],
+  })?.prop_id, 'chest', 'рядом стоящий сундук открывается и без названия')
+})
+
 test('дистанция и server-only силовой подход проверяются до броска', () => {
   const far = sceneState({ propX: 4 })
   assert.throws(

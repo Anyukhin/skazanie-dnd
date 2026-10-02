@@ -398,7 +398,20 @@ const combatTurnCoordinator = new CombatTurnCoordinator({
     return actorIds.every((actorId) => heroes.has(String(actorId)) && !assigned.has(String(actorId)))
   },
   onCommitted: ({ campaignId, state, events }) => {
-    persistAuthoritativeProjection(campaignId, state, events)
+    // Ходы врагов после пропуска по часам и сам пропуск идут мимо маршрута
+    // команды, и в хронику не попадали: живой прогон 2026-10-02 — разбойник
+    // снял герою 9 ОЗ, а в ленте не было ни строки. Запись детерминирована по
+    // первому событию, повторная проекция её не удваивает.
+    const { main, sky } = tacticalNarrationParts(events, state)
+    const text = [main, sky].filter(Boolean).join(' ')
+    const anchor = events.find((event) => event?.event_id)?.event_id ?? events[0]?.command_id ?? state?.state_version
+    persistAuthoritativeProjection(campaignId, state, events, text && anchor != null ? {
+      id: combatMessageId(`auto-turn:${anchor}`),
+      text,
+      turnConsumed: true,
+      speaker: 'system',
+      author: 'Система боя',
+    } : null)
   },
   onClockChanged: (campaignId) => {
     broadcastCampaignRoom(campaignId)

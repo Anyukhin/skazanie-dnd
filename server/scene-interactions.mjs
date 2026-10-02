@@ -446,12 +446,20 @@ export function nearestSceneObjectCommand({ props = [], actorPosition, text } = 
     // уезжало бы движку с ближайшей скамьёй в поле `prop_id`: слово отмычки
     // своё, а ближайший поддержанный пропс — какой угодно.
     .filter((prop) => operation.intent !== 'lockpick' || sceneInteractionCatalogEntry(prop?.assetId)?.kind === 'container')
+    // Глагол обязан быть у предмета: «открыть» у скамьи движок отвергнет, и
+    // игрок получал «Для этого объекта такое действие недоступно» вместо
+    // обычного разбора своей фразы. Молитву объявляет святыня, а не каталог.
+    .filter((prop) => operation.intent === 'pray' || (sceneInteractionCatalogEntry(prop?.assetId)?.verbs ?? []).includes(operation.intent))
     .filter((prop) => {
       if (!operation.aliases.length) return true
       const alias = assetAlias(prop.assetId)
       return alias && operation.aliases.includes(alias)
     })
     .map((prop) => ({ prop, distance: sceneObjectDistance(prop, actorPosition) }))
+    // Предмет не назван — значит, речь о том, что под рукой. «Смотрю, кто
+    // пытается их открыть» про шлюзы не должно открывать сундук через площадь.
+    // Святыня исключение: «помолиться» адресовано ей, где бы она ни стояла.
+    .filter((entry) => operation.aliases.length || operation.intent === 'pray' || entry.distance <= 1)
     .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id)))
   const selected = candidates[0]?.prop
   return selected ? {

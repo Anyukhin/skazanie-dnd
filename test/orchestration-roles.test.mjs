@@ -56,6 +56,33 @@ test('Intent Parser узнаёт составное имя короля и ег�
   }
 })
 
+test('собеседника находят по главному слову роли в другом роде и падеже', async () => {
+  // Живой прогон 2026-10-02: пролог называет «смотрителя дамбы», в сцене стоит
+  // «старшая смотрительница дамбы», и реплика уходила в «Назовите по имени».
+  const visibleState = {
+    players: [{ id: 'hero', character: 'Брам' }],
+    scene: { location: 'Вельдбург' },
+    social: { npcs: [
+      { id: 'mara', name: 'Мара Трижды-Мерная', role: 'старшая смотрительница дамбы', location: 'Вельдбург' },
+      { id: 'thorn', name: 'Торн «Без Весла»', role: 'посредник пиратов', location: 'Вельдбург' },
+      { id: 'lamp', name: 'Ив Маячная', role: 'смотрительница маяка', location: 'Вельдбург' },
+    ] },
+  }
+  const intent = await new IntentParser().parse({
+    message: 'Подхожу к смотрителю дамбы и спрашиваю, что означает этот порядок звонов',
+    playerId: 'hero',
+    visibleState,
+  })
+  assert.equal(intent.intent, 'social')
+  assert.deepEqual(intent.targets, ['mara'], 'уточнение «дамбы» отличает её от смотрительницы маяка')
+  assert.deepEqual(resolvePresentSocialActors('Спрашиваю посредника, где пираты', visibleState).map((npc) => npc.id), ['thorn'])
+  // Одно главное слово без уточнения — двое подходят, выбор не молчаливый.
+  assert.deepEqual(resolvePresentSocialActors('Спрашиваю смотрительницу, что случилось', visibleState).map((npc) => npc.id).sort(), ['lamp', 'mara'])
+  assert.deepEqual(resolvePresentSocialActors('Спрашиваю про пиратов', visibleState), [], 'слово из уточнения само по себе роль не называет')
+  // Короткое имя — целым словом: «Ив» сидит подстрокой в «спрашиваю».
+  assert.deepEqual(resolvePresentSocialActors('Ив, что ты видела с маяка?', visibleState).map((npc) => npc.id), ['lamp'])
+})
+
 test('Adjudicator предлагает команду, но не меняет состояние', async () => {
   const intent = await new IntentParser().parse({ message: 'Атакую гоблина мечом', playerId: 'hero', visibleState: state })
   const before = structuredClone(state)

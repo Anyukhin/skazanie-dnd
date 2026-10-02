@@ -13,3 +13,9 @@ export function isChronicleNearBottom(
   viewport: { scrollHeight: number; clientHeight: number; scrollTop: number },
   threshold?: number,
 ): boolean
+
+export function chronicleFollowAfterScroll(
+  viewport: { scrollHeight: number; clientHeight: number; scrollTop: number },
+  previousScrollTop: number,
+  following: boolean,
+): boolean

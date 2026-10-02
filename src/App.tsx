@@ -580,21 +580,50 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Ссылка остаётся на экране: буфер обмена есть не везде. По http с адреса
+  // сети `navigator.clipboard` нет вовсе, и прежде кнопка писала «Скопировано»,
+  // ничего не скопировав, а созданная одноразовая ссылка терялась.
+  const [link, setLink] = useState('')
+  const linkRef = useRef<HTMLInputElement>(null)
   useDialogEscape(onClose)
+  const copyLink = async (value: string) => {
+    try {
+      if (!navigator.clipboard || !window.isSecureContext) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(value)
+      return true
+    } catch {
+      const input = linkRef.current
+      if (!input) return false
+      input.focus()
+      input.select()
+      try { return document.execCommand('copy') } catch { return false }
+    }
+  }
   const copy = async () => {
     setBusy(true)
     setError('')
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/invites`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      })
-      const body = await response.json().catch(() => null) as { token?: string; error?: string } | null
-      if (!response.ok || !body?.token) throw new Error(body?.error || 'Не удалось создать приглашение')
-      await navigator.clipboard?.writeText(`${location.origin}?room=${encodeURIComponent(code)}#invite=${encodeURIComponent(body.token)}`)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
+      let value = link
+      if (!value) {
+        const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+        const body = await response.json().catch(() => null) as { token?: string; error?: string } | null
+        if (!response.ok || !body?.token) throw new Error(body?.error || 'Не удалось создать приглашение')
+        value = `${location.origin}?room=${encodeURIComponent(code)}#invite=${encodeURIComponent(body.token)}`
+        setLink(value)
+        // Поле со ссылкой появляется этим же рендером; ждём его, чтобы запасное
+        // копирование через выделение нашло, что выделять.
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+      }
+      if (await copyLink(value)) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1800)
+      } else {
+        setError('Браузер не дал скопировать автоматически — выделите ссылку в поле и скопируйте вручную.')
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось создать приглашение')
     } finally {
@@ -609,7 +638,8 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
         <span className="eyebrow">ПРИГЛАШЕНИЕ В ОТРЯД</span>
         <h2 id="invite-modal-title">Соберите героев</h2>
         <p>Создайте одноразовую ссылку. Она закрепляет за новым игроком одного свободного героя и действует семь дней.</p>
-        <div className="invite-code"><span>{code}</span><button onClick={copy} disabled={busy}><Copy size={16} />{busy ? 'Создаём…' : copied ? 'Скопировано' : 'Копировать'}</button></div>
+        <div className="invite-code"><span>{code}</span><button onClick={copy} disabled={busy}><Copy size={16} />{busy ? 'Создаём…' : copied ? 'Скопировано' : link ? 'Копировать' : 'Создать и скопировать'}</button></div>
+        {link && <input ref={linkRef} className="invite-link" readOnly value={link} aria-label="Ссылка-приглашение" onFocus={(event) => event.currentTarget.select()} />}
         {error && <p className="error-text">{error}</p>}
         <small className="modal-note">Секрет приглашения передаётся во фрагменте ссылки и удаляется из адреса после входа.</small>
       </div>

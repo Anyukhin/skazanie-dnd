@@ -225,7 +225,9 @@ function sameNameToken(left, right) {
 
 function mentionsName(message, name) {
   const normalized = String(name ?? '').toLocaleLowerCase('ru')
-  if (normalized.length >= 2 && message.includes(normalized)) return true
+  // Имя — целым словом: подстрокой короткое «Ив» сидит в «спрашиваю», «Ян» —
+  // в «янтаре», и реплика уходила не тому собеседнику.
+  if (normalized.length >= 2 && new RegExp(`(?<![\\p{L}\\p{M}])${normalized.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?![\\p{L}\\p{M}])`, 'u').test(message)) return true
   const messageWords = wordTokens(message)
   const nameWords = wordTokens(normalized)
   return nameWords.length > 0 && nameWords.every((word) => messageWords.some((candidate) => sameNameToken(word, candidate)))
@@ -293,11 +295,46 @@ export function resolvePresentSocialActors(message, visibleState) {
         : firstNames.some(name => mentionsName(lower, name)) ? 1.5
       : roleAliases.some((alias) => mentionsName(lower, alias))
         ? 1
-        : 0
+        : Math.max(0, ...roleAliases.map((alias) => roleHeadScore(lower, alias)))
     return { actor, score }
   }).filter((entry) => entry.score > 0)
   const best = Math.max(0, ...scored.map((entry) => entry.score))
   return scored.filter((entry) => entry.score === best).map((entry) => entry.actor)
+}
+
+const ROLE_ADJECTIVE = /(?:ая|яя|ый|ий|ой|ое|ее|ые|ие)$/u
+
+/**
+ * Одно слово роли в другой форме: «смотрителю» и «смотрительница», «посреднику»
+ * и «посредник». Падежная `sameNameToken` род не сводит, поэтому здесь —
+ * общий корень длиной почти во всё короткое слово.
+ */
+function sameRoleWord(left, right) {
+  if (sameNameToken(left, right)) return true
+  if (left.length < 5 || right.length < 5) return false
+  let common = 0
+  while (common < left.length && common < right.length && left[common] === right[common]) common += 1
+  return common >= 6 && common >= Math.min(left.length, right.length) - 3
+}
+
+/**
+ * Роль целиком игрок называет редко: в сцене «старшая смотрительница дамбы»,
+ * а в реплике — «подхожу к смотрителю дамбы». Главное слово роли — первое
+ * существительное после прилагательных; совпало оно — собеседник найден,
+ * совпало ещё и уточнение («дамбы») — найден увереннее. Двое с тем же главным
+ * словом остаются неоднозначными, как и прежде. Живой прогон 2026-10-02.
+ *
+ * @param {string} lowerMessage
+ * @param {string} alias
+ */
+function roleHeadScore(lowerMessage, alias) {
+  const roleWords = wordTokens(alias).filter((word) => /^[а-яё]+$/u.test(word))
+  const headIndex = roleWords.findIndex((word) => word.length >= 4 && !ROLE_ADJECTIVE.test(word))
+  if (headIndex < 0) return 0
+  const messageWords = wordTokens(lowerMessage)
+  if (!messageWords.some((word) => sameRoleWord(roleWords[headIndex], word))) return 0
+  const qualifiers = roleWords.slice(headIndex + 1).filter((word) => word.length >= 4)
+  return qualifiers.some((word) => messageWords.some((candidate) => sameRoleWord(word, candidate))) ? 0.8 : 0.6
 }
 
 function directlyAddressedActors(message, visibleState) {
