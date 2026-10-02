@@ -193,7 +193,8 @@ test('органическая пещера и поселение с домам�
     seed: 'live:cave', locationId: 'cave',
     map: mapRequest({ layout: 'cavern', pattern: 'cave-cluster', width: 20, height: 18 }),
   })
-  assert.equal(cave.length, 20 * 18, 'пещера обязана прийти из полноразмерной тематической карты')
+  // Просьба 20×18 меньше наименьшей пещеры (`THEME_MIN_SIZE`) и растёт до 22×20.
+  assert.equal(cave.length, 22 * 20, 'пещера обязана прийти из полноразмерной тематической карты')
   assert.ok(cave.some((cell) => cell.feature === 'stalagmite'), 'в пещере нет пещерного реквизита')
 
   const settlementInput = {

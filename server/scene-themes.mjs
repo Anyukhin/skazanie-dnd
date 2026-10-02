@@ -788,6 +788,20 @@ export function layoutOrganicCave(theme, {
   return map
 }
 
+/**
+ * Наименьшая карта места по его виду. Картограф просит размер наугад, и склеп
+ * 15×11 выходил тремя чуланами без места для боя: три комнаты с коридорами
+ * требуют простора, а дом — ещё и двора вокруг, откуда к нему подходят.
+ * Просьба побольше исполняется как есть; меньше этого — нет.
+ */
+export const THEME_MIN_SIZE = Object.freeze({
+  crypt: { width: 26, height: 26 },
+  dungeon: { width: 26, height: 26 },
+  temple: { width: 26, height: 26 },
+  cave: { width: 22, height: 20 },
+  building: { width: 22, height: 20 },
+})
+
 /** С какой площади зал подземной темы получает колоннаду ради укрытий. */
 const SPACIOUS_HALL_CELLS = 100
 
@@ -1320,6 +1334,11 @@ export function buildThemedScene({
   // повторное опознание здесь её потеряет: `themeFor` читает только слова.
   const chosen = themeId ? themeById(themeId) : null
   const definition = /** @type {any} */ (chosen ?? themeFor({ location, theme, sceneKind }))
+  const minimum = THEME_MIN_SIZE[/** @type {keyof typeof THEME_MIN_SIZE} */ (definition.id)]
+  if (minimum) {
+    width = Math.max(Number(width) || 0, minimum.width)
+    height = Math.max(Number(height) || 0, minimum.height)
+  }
 
   // Известное authored-место сильнее эвристики темы и слов Архитектора. Карта
   // уже собрана офлайн и приходит новой копией на каждый стол, поэтому

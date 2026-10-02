@@ -490,3 +490,13 @@ test('камеры тюрьмы разделены тонкими стенами
   }
   assert.ok(checked >= 2, `тюремный блок собран лишь на ${checked} сидах`)
 })
+
+test('карта места не меньше наименьшей для его вида, а просьба побольше исполняется как есть', () => {
+  const crypt = buildThemedScene({ themeId: 'crypt', location: 'Склеп', seed: 'min-size', width: 15, height: 11 }).map
+  assert.ok(crypt.width >= 26 && crypt.height >= 26, `склеп ${crypt.width}×${crypt.height}`)
+  const house = buildThemedScene({ themeId: 'building', location: 'Хижина', seed: 'min-size', width: 16, height: 14 }).map
+  assert.ok(house.width >= 22 && house.height >= 20, `дом с двором ${house.width}×${house.height}`)
+  const hall = buildThemedScene({ themeId: 'temple', location: 'Храм', seed: 'min-size', width: 34, height: 30 }).map
+  assert.equal(hall.width, 34)
+  assert.equal(hall.height, 30)
+})
