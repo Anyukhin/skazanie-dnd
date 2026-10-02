@@ -1,5 +1,5 @@
 import { interpretResolvedPartyDecision } from './scene-architect.mjs'
-import { abandonableQuest, detectPartyExitRequest, exitContextFromState, travelDestinationIsPlace } from './party-exit-intent.mjs'
+import { abandonableQuest, detectPartyExitRequest, exitContextFromState, partyDestinationLabel, travelDestinationIsPlace } from './party-exit-intent.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { isSceneObservationRequest } from './intent-parser.mjs'
@@ -236,22 +236,30 @@ const PARTY_OPTION_LIMIT = 100
  * попадёт отряд, а название — только украшение подписи.
  *
  * @param {string} questTitle
- * @param {string} destination
+ * @param {string} destination согласованная фраза назначения: «в «Кленовка»»,
+ *   «к старому склепу» (`partyDestinationLabel`)
  * @returns {string}
  */
 function abandonLabel(questTitle, destination) {
   // Кавычки-ёлочки в подписи значащие: по ним разбирается пункт назначения.
-  // Чужая «ёлочка» внутри названия закрыла бы кавычку не там, где нужно.
+  // Чужая «ёлочка» внутри названия задания закрыла бы кавычку не там.
   const plain = (value) => String(value ?? '').replace(/[«»]/gu, '').trim()
-  const place = plain(destination).slice(0, 60)
-  const lead = place ? `Уходим в «${place}» и бросаем задание` : 'Уходим отсюда и бросаем задание'
+  const phrase = String(destination ?? '').trim().slice(0, 64)
+  const lead = phrase ? `Уходим ${phrase} и бросаем задание` : 'Уходим отсюда и бросаем задание'
   const room = PARTY_OPTION_LIMIT - lead.length - ' «»'.length
   const title = plain(questTitle)
   const fitted = title.length > room ? `${title.slice(0, Math.max(1, room - 1)).trimEnd()}…` : title
   return `${lead} «${fitted}»`
 }
 
-export function proposeAgentInteraction(action, state = {}) {
+/**
+ * @param {unknown} action
+ * @param {Record<string, any>} [state]
+ * @param {{ sourceText?: string }} [options] `sourceText` — исходная фраза
+ *   игрока, когда `action` собран сервером из ответа судьи: по ней подпись
+ *   берёт предлог и падеж самого игрока
+ */
+export function proposeAgentInteraction(action, state = {}, { sourceText = '' } = {}) {
   const text = String(action || '').normalize('NFKC')
   if (!text || /^\s*\[РЕШЕНИЕ ГРУППЫ\]/iu.test(text) || state.agentInteraction) return null
   if (FATE_REQUEST.test(text)) {
@@ -279,8 +287,11 @@ export function proposeAgentInteraction(action, state = {}) {
     const destination = exit.destination
     const knownFrom = String(state.scene?.location || state.scene?.title || '').replace(/\s+/gu, ' ').trim().slice(0, 120)
     const from = knownFrom || 'подземелья'
-    const leaveOption = destination
-      ? knownFrom ? `Уходим из «${from}» и идём в ${destination}` : `Уходим из подземелья и идём в ${destination}`
+    // Назначение согласовано по-русски: имя точки карты в кавычках или фраза
+    // игрока с его предлогом. Прежде было «идём в старому фамильному склепу».
+    const { phrase } = partyDestinationLabel(sourceText || text, destination, exitContext)
+    const leaveOption = phrase
+      ? knownFrom ? `Уходим из «${from}» и идём ${phrase}` : `Уходим из подземелья и идём ${phrase}`
       : knownFrom ? `Покинуть «${from}»` : 'Покинуть подземелье'
     // Отказ от задания — третий вариант того же голосования, а не отдельная
     // карточка: уйти, не закрыв нить, и уйти, отказавшись от неё, — это один и
@@ -288,7 +299,7 @@ export function proposeAgentInteraction(action, state = {}) {
     // Подпись несёт название задания только для игрока; какое задание закрыть,
     // сервер выбирает сам через `abandonableQuest` в момент исполнения.
     const quest = abandonableQuest(state)
-    const abandonOption = quest ? abandonLabel(quest.title, destination) : ''
+    const abandonOption = quest ? abandonLabel(quest.title, phrase) : ''
     return {
       type: 'vote',
       title: knownFrom ? `Покинуть «${from}»?` : 'Покинуть подземелье?',
@@ -313,11 +324,11 @@ export function proposeAgentInteraction(action, state = {}) {
  * @param {{ route?: string, destination?: string }|null} hint
  * @param {Record<string, any>} [state]
  */
-export function proposeRoutedTravel(hint, state = {}) {
+export function proposeRoutedTravel(hint, state = {}, action = '') {
   if (hint?.route !== 'travel' || state.agentInteraction) return null
   const destination = String(hint.destination ?? '').replace(/[«»]/gu, '').replace(/\s+/gu, ' ').trim().slice(0, 80)
   if (!travelDestinationIsPlace(destination, exitContextFromState(state))) return null
-  const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state)
+  const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state, { sourceText: String(action ?? '') })
   if (card?.type !== 'vote') return null
   return {
     ...card,

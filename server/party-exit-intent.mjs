@@ -181,16 +181,28 @@ function nameWords(value) {
  * @param {string[]} knownPlaces
  */
 function namesKnownPlace(phrase, knownPlaces) {
-  if (!phrase || !knownPlaces.length) return false
+  return Boolean(knownPlaceName(phrase, knownPlaces))
+}
+
+/**
+ * Название известной точки карты, которое называет фраза в любом падеже:
+ * «к Кленовке» — «Кленовка». Пустая строка, если такой точки нет.
+ *
+ * @param {string} phrase
+ * @param {string[]} knownPlaces
+ * @returns {string}
+ */
+function knownPlaceName(phrase, knownPlaces) {
+  if (!phrase || !knownPlaces.length) return ''
   const spoken = nameWords(phrase)
-  if (!spoken.distinctive.length) return false
-  return knownPlaces.some((name) => {
+  if (!spoken.distinctive.length) return ''
+  return knownPlaces.find((name) => {
     const place = nameWords(name)
     if (!place.distinctive.length || spoken.distinctive.length > place.distinctive.length + 2) return false
     if (!place.distinctive.every((stem) => spoken.distinctive.some((word) => sameWordInflected(word, stem)))) return false
     return !spoken.generic.length || !place.generic.length
       || place.generic.some((kind) => spoken.generic.some((word) => sameWordInflected(word, kind)))
-  })
+  }) ?? ''
 }
 
 /**
@@ -396,6 +408,105 @@ export function travelDestinationIsPlace(destination, options = {}) {
   const text = compact(destination, 120).replace(/[«»]/gu, '')
   if (!text) return true
   return destinationIn(`Отправляемся в ${text}`, exitContext(options)).isPlace
+}
+
+/** Окончания прилагательного в косвенном падеже → именительный; род — для существительного. */
+const OBLIQUE_ADJECTIVE = /** @type {Array<[RegExp, string, 'm'|'f']>} */ ([
+  [/ому$/u, 'ый', 'm'], [/ему$/u, 'ий', 'm'], [/ого$/u, 'ый', 'm'], [/его$/u, 'ий', 'm'],
+  [/ом$/u, 'ый', 'm'], [/ем$/u, 'ий', 'm'],
+  [/ой$/u, 'ая', 'f'], [/ей$/u, 'яя', 'f'], [/ую$/u, 'ая', 'f'], [/юю$/u, 'яя', 'f'],
+])
+
+/**
+ * Именительный падеж для названия вида «прилагательное + существительное»:
+ * «старому фамильному склепу за мельницей» — «старый фамильный склеп за
+ * мельницей», «к водяной мельнице у реки» — «водяная мельница у реки». Хвост
+ * после существительного («за мельницей») не трогается. Если существительное
+ * меняется не по правилу — беглая гласная «замку → замок», мягкий знак, — фраза
+ * остаётся как была: лучше косвенный падеж в кавычках, чем выдуманное слово.
+ *
+ * @param {string} phrase
+ * @returns {string}
+ */
+export function nominativePlacePhrase(phrase) {
+  const words = compact(phrase, 120).split(' ').filter(Boolean)
+  /** @type {'m'|'f'|''} */
+  let gender = ''
+  let index = 0
+  const result = [...words]
+  for (; index < words.length; index += 1) {
+    const lower = words[index].toLocaleLowerCase('ru')
+    const rule = lower.length > 4 ? OBLIQUE_ADJECTIVE.find(([ending]) => ending.test(lower)) : null
+    if (!rule) break
+    if (gender && gender !== rule[2]) return compact(phrase, 120)
+    gender = rule[2]
+    result[index] = keepCase(words[index], lower.replace(rule[0], rule[1]))
+  }
+  if (!gender || index >= words.length) return compact(phrase, 120)
+  const noun = words[index].toLocaleLowerCase('ru')
+  let nominative = ''
+  if (gender === 'f') {
+    // Однозначно только после шипящих, «ц» и заднеязычных: мельнице, лавке,
+    // реке → -а. «Часовне» и «пещере» по одной букве не различить (часовня,
+    // пещера), поэтому мягкая основа не угадывается. Винительный: пещеру → -а,
+    // деревню → -я.
+    if (/[цкгхжшщч]е$/u.test(noun)) nominative = noun.replace(/е$/u, 'а')
+    else if (/у$/u.test(noun)) nominative = noun.replace(/у$/u, 'а')
+    else if (/ю$/u.test(noun)) nominative = noun.replace(/ю$/u, 'я')
+  } else {
+    // Склепу, склепа, склепе → склеп; беглая гласная (замку, углу) не угадывается.
+    const stem = noun.replace(/[уае]$/u, '')
+    const fleeting = /[бвгджзклмнпрстфхцчшщ][кгцлн]$/u.test(stem) && /[кгцлн]$/u.test(stem) && !/[аеёиоуыэюя][кгцлн]$/u.test(stem)
+    if (stem !== noun && /[бвгджзклмнпрстфхцчшщ]$/u.test(stem) && !fleeting) nominative = stem
+  }
+  if (!nominative) return compact(phrase, 120)
+  result[index] = keepCase(words[index], nominative)
+  return result.join(' ')
+}
+
+/**
+ * Регистр первой буквы исходного слова переносится на новое.
+ * @param {string} original
+ * @param {string} replaced
+ */
+function keepCase(original, replaced) {
+  return original.charAt(0) !== original.charAt(0).toLocaleLowerCase('ru')
+    ? replaced.charAt(0).toLocaleUpperCase('ru') + replaced.slice(1)
+    : replaced
+}
+
+/**
+ * Пункт назначения для подписи варианта «уходим … и идём …».
+ *
+ * Прежде подпись подставляла кусок фразы как есть после «в»: «идём в
+ * старому фамильному склепу за мельницей», «идём в Кленовка» (живая сессия
+ * 2026-10-02). Теперь:
+ * - известная точка карты мира — её имя в кавычках: «в «Кленовка»»;
+ * - место, названное игроком своими словами, — с его же предлогом и в его
+ *   падеже: «к старому фамильному склепу», «в деревню Кленовку»;
+ * - иначе — имя в именительном падеже в кавычках.
+ * `place` — то же место в именительном падеже, для «бросаем задание».
+ * Подпись остаётся разбираемой `classifyPartyDecision`: кавычки и предлоги
+ * те же, что понимает `DESTINATION`.
+ *
+ * @param {string} text исходная фраза игрока или синтезированная заявка
+ * @param {string} destination пункт назначения из разбора
+ * @param {{ knownPlaces?: unknown, presentNames?: unknown }} [options]
+ * @returns {{ phrase: string, place: string }}
+ */
+export function partyDestinationLabel(text, destination, options = {}) {
+  const place = compact(destination, 120).replace(/[«»"]/gu, '').trim()
+  if (!place) return { phrase: '', place: '' }
+  const known = knownPlaceName(place, exitContext(options).knownPlaces)
+  if (known) return { phrase: `в «${known}»`, place: known }
+  const nominative = nominativePlacePhrase(place)
+  const display = nominative.charAt(0).toLocaleUpperCase('ru') + nominative.slice(1)
+  const source = compact(text, 2_000)
+  const at = source.toLocaleLowerCase('ru').indexOf(place.toLocaleLowerCase('ru'))
+  // Предлог игрока прямо перед названием, без кавычек: фраза уже согласована.
+  const preposition = at > 0 ? /(?:^|\s)(в|во|на|к|ко|до)\s+$/iu.exec(source.slice(Math.max(0, at - 6), at))?.[1] : ''
+  if (preposition && source.charAt(at - 1) !== '«') return { phrase: `${preposition.toLocaleLowerCase('ru')} ${source.slice(at, at + place.length)}`, place: display }
+  return { phrase: `в «${display}»`, place: display }
 }
 
 /**
