@@ -793,16 +793,17 @@ node tools/view-map-detail-models.mjs
 ### 6.1 Блок стиля 3D — вставлять в каждый промпт без изменений
 
 ```
-Detailed fantasy game prop with refined silhouettes, bevelled edges,
-connected construction, curved profiles and visible fittings. Textured PBR
-materials in a muted earthy palette (warm wood, grey stone, brass,
-dark iron, faded red and green cloth). No photorealism, no PBR metal shine,
-no fine noise texture. Clean silhouette readable from a top-down camera.
+Детализированный предмет для фэнтезийной игры: выразительный силуэт,
+скруглённые кромки, соединённая конструкция, изогнутые профили и видимая
+фурнитура. Фактурные PBR-материалы в приглушённой землистой палитре:
+тёплое дерево, серый камень, латунь, тёмное железо, выцветшая красная и
+зелёная ткань. Без фотореализма, зеркального блеска и мелкого шумового узора.
+Силуэт чётко читается камерой сверху.
 
-Single isolated object, no ground plane, no base platform unless the object
-itself has one, no background, no people, no animals, no text, no logos.
-Under 50000 triangles. One material with embedded baseColor, normal and
-metallicRoughness atlases, each 512 px or less. Preserve useful UV mapping.
+Один отдельный предмет, без плоскости земли и подставки, если она не часть
+предмета; без фона, людей, животных, текста и логотипов. До 50 000
+треугольников. Один материал со встроенными атласами baseColor, normal и
+metallicRoughness, каждый не больше 512 px. Сохранить полезную UV-развёртку.
 ```
 
 ### 6.2 Технические требования к файлу
