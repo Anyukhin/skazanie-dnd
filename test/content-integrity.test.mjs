@@ -93,7 +93,9 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 7 файлов набора местности (`models/landscape`: 4 GLB, manifest, NOTICE и
   //   указатель ревизии) и 14 файлов выпуска фигурок KayKit 2.0
   //   (`models/kaykit/characters-*`: 10 GLB, 3 лицензии, NOTICE).
-  assert.equal(report.integrity.assets, 1812 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
+  // + 8 файлов выпуска героев реалистичных пропорций
+  //   (`models/quaternius/heroes-*`: 6 GLB, LICENSE, NOTICE).
+  assert.equal(report.integrity.assets, 1820 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 
