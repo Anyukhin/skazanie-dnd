@@ -138,3 +138,26 @@ button.header-chip.earned { border-color: var(--acc-line); color: var(--acc2); }
 .dialogue-composer .request-kind button.active { background: var(--acc-soft); color: var(--acc2); }
 .dialogue-composer .request-kind button:disabled { opacity: .5; cursor: default; }
 .dialogue-composer .rail-free-input > button[type="submit"] { grid-column: 2; grid-row: 2; height: 36px; }
+
+/* ---- колонка героя (вариант «А», 2026-10-02) ----
+   Всё, что относится к ходу, стоит под портретом: камни действия, бонуса и
+   реакции, полоса движения и кнопка завершения хода. Лоток способностей
+   забирает освободившуюся правую колонку. На узких экранах (≤ 760px) действует
+   мобильная раскладка из mockup-pages.css, поэтому правило только для стола. */
+@media (min-width: 761px) {
+  .game-area .turn-rail {
+    grid-template-columns: var(--hero-w) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-areas: 'hero decks' 'hero main' 'side main';
+  }
+  .game-area .turn-rail > .turn-rail-hero > .player-hud { height: auto; }
+  .game-area .turn-rail > .turn-rail-side { gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .game-area .turn-rail-side .hotbar-hero-cluster { gap: 8px; }
+  .game-area .turn-rail-side .hero-cluster-pips { gap: 6px; }
+  .game-area .turn-rail-side .hero-pip { flex-direction: row; justify-content: center; gap: 6px !important; min-height: 30px; padding: 0 4px !important; border: 1px solid var(--line); border-radius: 6px; background: var(--well); }
+  .game-area .turn-rail-side .hero-pip.filtering { border-color: var(--acc2); }
+  .game-area .turn-rail-side .hero-pip .hero-pip-shape { transform: none; margin: 0; }
+  .game-area .turn-rail-side .hero-cluster-speed { display: none; }
+  .game-area .turn-rail-side .end-turn-hotbar { min-height: 40px; }
+  .game-area .turn-rail-side .end-turn-hotbar span { flex-direction: row; gap: 8px; }
+}
