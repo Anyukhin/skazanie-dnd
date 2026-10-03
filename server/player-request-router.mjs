@@ -1,5 +1,5 @@
 import { interpretResolvedPartyDecision } from './scene-architect.mjs'
-import { abandonableQuest, detectPartyExitRequest, exitContextFromState, partyDestinationLabel, travelDestinationIsPlace } from './party-exit-intent.mjs'
+import { abandonableQuest, detectPartyExitRequest, exitContextFromState, objectiveNamesDestination, partyDestinationLabel, travelDestinationIsPlace } from './party-exit-intent.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { isSceneObservationRequest } from './intent-parser.mjs'
@@ -252,27 +252,9 @@ function abandonLabel(questTitle, destination) {
   return `${lead} «${fitted}»`
 }
 
-/**
- * Называет ли цель сцены это место: «Добраться до смотровой дамбы» и
- * «смотровая дамба». Слова сравниваются по общему началу — падеж у цели и у
- * назначения разный. Пустое назначение цель не называет.
- *
- * @param {unknown} destination
- * @param {unknown} objective
- * @returns {boolean}
- */
-export function objectiveNamesDestination(destination, objective) {
-  const words = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}+/gu) ?? []
-  const wanted = words(destination).filter((word) => word.length >= 4)
-  const goal = words(objective)
-  if (!wanted.length || !goal.length) return false
-  const sameWord = (left, right) => {
-    let common = 0
-    while (common < left.length && common < right.length && left[common] === right[common]) common += 1
-    return common >= 4 && common >= Math.min(left.length, right.length) - 2
-  }
-  return wanted.every((word) => goal.some((candidate) => sameWord(word, candidate)))
-}
+// Сверка «цель называет место» живёт в `party-exit-intent.mjs`: её читает и
+// архитектор сцен, а он роутер не импортирует.
+export { objectiveNamesDestination }
 
 /**
  * @param {unknown} action

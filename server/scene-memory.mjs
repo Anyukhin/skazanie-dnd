@@ -123,13 +123,39 @@ export function sceneWorldMemoryEvents(state, transition, { commandId = '', sour
   const previousQuest = memory.quests.find((quest) => quest.id === previousQuestId)
     ?? sceneQuest({ chapter: previousChapter, scene: previousScene, adventure: state.adventure, locationId: previousLocation.id, clockMax })
   const previousStatus = outcome.status === 'abandoned' ? 'abandoned' : outcome.status === 'completed' ? 'completed' : 'active'
-  if (campaignModeFor(state) !== 'persistent') add('QuestUpserted', { quest: {
-    ...clone(previousQuest),
-    summary: clean(outcome.outcome || previousQuest.summary, 1_000),
-    status: previousStatus,
-  } })
+  // Цель продолжается в новом месте (`continued`): то же задание главы, те же
+  // часы, но цель — её остаток, и новое место становится сущностью задания,
+  // чтобы находки здесь засчитывались как продвижение. Второе задание с тем же
+  // номером главы перезаписало бы часы с нуля.
+  const continued = outcome.status === 'continued'
+  if (campaignModeFor(state) !== 'persistent') add('QuestUpserted', { quest: continued
+    ? {
+      ...clone(previousQuest),
+      status: 'active',
+      objectives: clean(nextScene.objective, 300) ? [clean(nextScene.objective, 300)] : clone(previousQuest.objectives ?? []),
+      entity_ids: [...new Set([...(previousQuest.entity_ids ?? []), nextLocation.id])],
+    }
+    : {
+      ...clone(previousQuest),
+      summary: clean(outcome.outcome || previousQuest.summary, 1_000),
+      status: previousStatus,
+    } })
 
-  if (campaignModeFor(state) !== 'persistent' && clean(nextScene.objective, 300)) {
+  // Та же формулировка живёт и в стартовом задании кампании (его цель — цель
+  // первой сцены). Иначе журнал продолжал звать «добраться до дамбы», когда
+  // отряд уже стоит на ней. Меняется только эта цель, а не задание целиком.
+  if (continued && clean(nextScene.objective, 300)) {
+    const before = clean(previousScene.objective, 300)
+    for (const quest of memory.quests) {
+      if (quest.id === previousQuest.id || quest.status !== 'active' || !(quest.objectives ?? []).some((objective) => clean(objective, 300) === before)) continue
+      add('QuestUpserted', { quest: {
+        ...clone(quest),
+        objectives: (quest.objectives ?? []).map((objective) => clean(objective, 300) === before ? clean(nextScene.objective, 300) : objective),
+      } }, quest.visibility === 'gm_only' ? 'gm_only' : 'party')
+    }
+  }
+
+  if (!continued && campaignModeFor(state) !== 'persistent' && clean(nextScene.objective, 300)) {
     const nextQuest = sceneQuest({ chapter: nextChapter, scene: nextScene, adventure: nextAdventure, locationId: nextLocation.id, clockMax })
     add('QuestUpserted', { quest: nextQuest })
   }

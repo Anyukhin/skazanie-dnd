@@ -542,6 +542,64 @@ export function classifyPartyDecision(decision) {
 }
 
 /**
+ * Называет ли цель сцены это место: «Добраться до смотровой дамбы» и
+ * «смотровая дамба». Слова сравниваются по общему началу — падеж у цели и у
+ * назначения разный. Пустое назначение цель не называет.
+ *
+ * @param {unknown} destination
+ * @param {unknown} objective
+ * @returns {boolean}
+ */
+export function objectiveNamesDestination(destination, objective) {
+  const words = (/** @type {unknown} */ value) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}+/gu) ?? []
+  const wanted = words(destination).filter((word) => word.length >= 4)
+  const goal = words(objective)
+  if (!wanted.length || !goal.length) return false
+  const sameWord = (/** @type {string} */ left, /** @type {string} */ right) => {
+    let common = 0
+    while (common < left.length && common < right.length && left[common] === right[common]) common += 1
+    return common >= 4 && common >= Math.min(left.length, right.length) - 2
+  }
+  return wanted.every((word) => goal.some((candidate) => sameWord(word, candidate)))
+}
+
+const SUBORDINATE_START = /^(?:кто|что|чтобы|котор\p{L}*|где|куда|откуда|когда|как|кому|кого|чей|чья|чьё|чьи|пока|если|ведь)(?![\p{L}\p{M}])/iu
+const MOVEMENT_START = /^(?:до(?:браться|йти|ехать|плыть|бежать|лететь|скакать)|при(?:йти|быть|ехать|плыть)|попасть|вернуться|отправиться|пройти|проникнуть|спуститься|подняться|выйти|пробраться|добрести)(?![\p{L}\p{M}])/iu
+
+/**
+ * Что остаётся от цели, когда отряд пришёл в названное ею место: из «Добраться
+ * до смотровой дамбы, понять источник звона и не дать толпе открыть шлюзы»
+ * после прихода на дамбу остаётся «Понять источник звона и не дать толпе
+ * открыть шлюзы». Части цели делятся по запятым и союзу «и»; уходит та, что
+ * называет место. Пустая строка — цель исчерпана самим приходом; `null` — цель
+ * это место не называет.
+ *
+ * @param {unknown} objective
+ * @param {unknown} destination
+ * @returns {string|null}
+ */
+export function objectiveRemainder(objective, destination) {
+  const text = compact(objective, 300).replace(/[.!?…]+$/u, '')
+  if (!text || !objectiveNamesDestination(destination, text)) return null
+  /** @type {string[]} */
+  const parts = []
+  for (const raw of text.split(/\s*[,;]\s*|\s+и\s+/u).map((part) => part.trim()).filter(Boolean)) {
+    // Придаточное («…, кто звонит», «…, чтобы успеть») — часть прежней задачи,
+    // а не новая: оно приклеивается к предыдущей части.
+    if (parts.length && SUBORDINATE_START.test(raw)) parts[parts.length - 1] = `${parts.at(-1)}, ${raw}`
+    else parts.push(raw)
+  }
+  // Приход исполняет только ту часть, что сама о приходе: «добраться до
+  // дамбы». «Решить, кому открыть южные ворота» место называет, но у ворот
+  // ещё ничего не решено.
+  const rest = parts.filter((part) => !(MOVEMENT_START.test(part) && objectiveNamesDestination(destination, part)))
+  if (rest.length === parts.length) return text.charAt(0).toLocaleUpperCase('ru') + text.slice(1)
+  if (!rest.length) return ''
+  const joined = rest.length === 1 ? rest[0] : `${rest.slice(0, -1).join(', ')} и ${rest.at(-1)}`
+  return joined.charAt(0).toLocaleUpperCase('ru') + joined.slice(1)
+}
+
+/**
  * Задание, от которого отряд отказывается. Правило то же, которым автономный
  * контур отличает кампанийную нить от сценической (`docs/known-limitations.md`,
  * раздел «Путешествия по карте мира»): служебный префикс `quest:chapter:` —

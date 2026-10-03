@@ -478,9 +478,15 @@ export function levelSeed(baseSeed, level = 0) {
   return safeLevel === 0 ? base : `${base}@L${safeLevel}`
 }
 
+/**
+ * Судьба цели при переходе. `continued` — цель продолжается в новом месте
+ * (отряд пришёл туда, куда она звала); глава при этом не растёт.
+ */
+export const OBJECTIVE_STATUSES = Object.freeze(['completed', 'unresolved', 'abandoned', 'continued'])
+
 function publicHistoryEntry(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const status = ['completed', 'unresolved', 'abandoned'].includes(value.status) ? value.status : null
+  const status = OBJECTIVE_STATUSES.includes(value.status) ? value.status : null
   return {
     chapter: integer(value.chapter, 1, 1, 999),
     title: publicText(value.title, 80, 'Предыдущая сцена'),
@@ -558,7 +564,12 @@ function generateSceneMapLegacy({ seed, theme = '', danger = 'средняя' } 
 export function createSceneTransition(input = {}, state = {}) {
   const previousScene = state.scene ?? {}
   const previousAdventure = publicAdventureMemory(state.adventure)
-  const chapter = integer(previousAdventure.chapter, 1, 1, 999) + 1
+  const objectiveStatus = OBJECTIVE_STATUSES.includes(input.objective_status) ? input.objective_status : 'completed'
+  // `continued` — отряд пришёл туда, куда звала цель, и дело продолжается на
+  // месте: это шаг той же главы, а не новая. Плейтест 2026-10-02: переход к
+  // смотровой дамбе из цели «добраться до дамбы…» открывал «Главу 2».
+  const currentChapter = integer(previousAdventure.chapter, 1, 1, 999)
+  const chapter = objectiveStatus === 'continued' ? currentChapter : currentChapter + 1
   const title = text(input.title, 80, `Глава ${chapter}`)
   const requestedLocationId = publicText(input.location_id ?? input.locationId, 120)
   const requestedLocation = worldLocationById(state.worldMap, requestedLocationId)
@@ -571,9 +582,8 @@ export function createSceneTransition(input = {}, state = {}) {
   const theme = text(input.theme, 80, location)
   const danger = ['низкая', 'средняя', 'высокая'].includes(input.danger) ? input.danger : 'средняя'
   const completedObjective = text(input.completed_objective, 160, previousScene.objective)
-  const objectiveStatus = ['completed', 'unresolved', 'abandoned'].includes(input.objective_status) ? input.objective_status : 'completed'
   const historyEntry = {
-    chapter: Math.max(1, chapter - 1),
+    chapter: objectiveStatus === 'continued' ? chapter : Math.max(1, chapter - 1),
     title: text(previousScene.title, 80, 'Предыдущая сцена'),
     location: text(previousScene.location, 120),
     ...(publicText(previousScene.location_id ?? previousScene.locationId, 120) ? { location_id: publicText(previousScene.location_id ?? previousScene.locationId, 120) } : {}),
