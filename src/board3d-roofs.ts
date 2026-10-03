@@ -4,6 +4,9 @@ import type { BoardPalette } from './board-render'
 import type { TacticalCell, TacticalMap, TacticalZone } from './types'
 import { cellAt, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 import { terrainHeightAt } from './board3d-terrain'
+import type { GraphicsStylePack } from './board3d-style'
+import { createLookMaterial, createUvLookMaterial, edgeSideCell, lookRepeat, wallLookFor, type WallTextureLoader } from './board3d-walls'
+import { cellKey, createHipDistance, createHipRoofGeometry, hipRoofDepth, hipRoofRafters, hipRoofRuns } from './board3d-hip-roof'
 
 /** Режим оболочки здания. Крышный слой не меняет клеточную механику. */
 export type Board3DRoofMode = 'cutaway' | 'full' | 'hidden'
@@ -12,6 +15,32 @@ export type Board3DRoofOptions = {
   /** Высота существующей срезанной стены, от которой начинается карниз. */
   wallHeight?: number
   mode?: Board3DRoofMode
+  /**
+   * Пакет рисованного стиля: скаты из черепицы или досок, фронтоны и верх стен
+   * — фактурой кладки дома, стропила и конёк — брусом. Без пакета крыши
+   * прежние, однотонные.
+   */
+  stylePack?: GraphicsStylePack | null
+  /** Подгрузилась фактура: доске пора перерисоваться. */
+  onTexture?: () => void
+  /** Подмена загрузчика текстур в тестах. */
+  loadTexture?: WallTextureLoader
+}
+
+/** Материалы крыш из пакета стиля; создаются по требованию и освобождаются с крышами. */
+type RoofStyle = {
+  /** Фактура по мировым координатам (фронтоны, верх стен, брус, своды). */
+  look: (key: string, tint?: string) => THREE.Material
+  /** Фактура по UV ската: ряды черепицы вдоль конька. */
+  covering: (key: string) => THREE.Material
+  repeat: (key: string) => { u: number; v: number }
+}
+
+const ROOF_REQUIRED_LOOKS = ['tiles', 'shingles', 'timber', 'stone'] as const
+
+/** Есть ли в пакете всё, без чего крыши стиля не строятся. */
+export function packHasRoofLooks(pack: GraphicsStylePack | null | undefined): pack is GraphicsStylePack {
+  return Boolean(pack && ROOF_REQUIRED_LOOKS.every((key) => pack.walls[key] && pack.materials[pack.walls[key].material]))
 }
 
 export type Board3DRoofController = {
@@ -34,6 +63,8 @@ type RoofSide = 'north' | 'east' | 'south' | 'west'
 type RoofRect = {
   zone: TacticalZone
   cells: TacticalCell[]
+  /** Клетки, которые считаются «внутри»: комната или весь дом из нескольких комнат. */
+  members: Set<string>
   minX: number
   minY: number
   maxX: number
@@ -49,8 +80,17 @@ const ROOF_THICKNESS = 0.09
 const ROOF_EAVE_HEIGHT = 0.075
 const ROOF_EAVE_WIDTH = 0.105
 const ROOF_PITCH = 0.38
+/**
+ * Рисованная крыша круче: черепица Village рассчитана на скат около 30°, а
+ * почти плоский скат читается сверху как ровный лист. Предел — чтобы крыша
+ * большого зала не вырастала выше двух этажей.
+ */
+const PAINTED_ROOF_PITCH = 1.05
+const PAINTED_ROOF_SLOPE = .3
 const WOOD_ROOF_STRUCTURE_COLOR = '#594630'
 const WOOD_ROOF_STRUCTURE_SIZE = 0.09
+/** На сколько стропило опущено под верх ската: толщина кровли и половина бруса. */
+const RAFTER_DROP = ROOF_THICKNESS + WOOD_ROOF_STRUCTURE_SIZE / 2 + .01
 const ROOF_RIDGE_SIZE = 0.095
 const VAULT_THICKNESS = 0.13
 const VAULT_SEGMENTS = 12
@@ -77,6 +117,35 @@ function roofMaterial(resources: RoofResources, color: string, options: THREE.Me
     fog: true,
     ...options,
   }))
+}
+
+function createRoofStyle(pack: GraphicsStylePack, resources: RoofResources, options: Board3DRoofOptions): RoofStyle {
+  const cache = new Map<string, THREE.Material>()
+  const known = (key: string) => pack.walls[key] ? key : 'stone'
+  const textureOptions = { onTexture: options.onTexture, loadTexture: options.loadTexture }
+  return {
+    look(key, tint = '#ffffff') {
+      const id = `look:${known(key)}:${tint}`
+      let material = cache.get(id)
+      if (!material) {
+        const created = createLookMaterial(pack, known(key), textureOptions)
+        created.color.set(tint)
+        material = ownMaterial(resources, created)
+        cache.set(id, material)
+      }
+      return material
+    },
+    covering(key) {
+      const id = `covering:${known(key)}`
+      let material = cache.get(id)
+      if (!material) {
+        material = ownMaterial(resources, createUvLookMaterial(pack, known(key), textureOptions))
+        cache.set(id, material)
+      }
+      return material
+    },
+    repeat: (key) => lookRepeat(pack, known(key)),
+  }
 }
 
 function roofObject<T extends THREE.Object3D>(object: T): T {
@@ -113,14 +182,20 @@ function addTriangle(positions: number[], a: [number, number, number], b: [numbe
 function geometryFromPositions(positions: number[]) {
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  // Нулевые UV: материалам с картами атрибут нужен, даже если фактура ложится по миру.
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3 * 2), 2))
   geometry.computeVertexNormals()
   geometry.computeBoundingBox()
   geometry.computeBoundingSphere()
   return geometry
 }
 
-/** Замкнутая тонкая призма одного ската. Ось длины лежит вдоль локального X. */
-function createGableSlopeGeometry(length: number, span: number, rise: number, side: -1 | 1, thickness: number) {
+/**
+ * Замкнутая тонкая призма одного ската. Ось длины лежит вдоль локального X.
+ * `covering` задаёт UV для черепицы: u — вдоль конька, v — от карниза вверх по
+ * скату, в повторах фактуры; `across` кладёт доски вдоль ската.
+ */
+function createGableSlopeGeometry(length: number, span: number, rise: number, side: -1 | 1, thickness: number, covering?: { u: number; v: number; across?: boolean }) {
   const halfLength = length / 2
   const halfSpan = span / 2
   const edgeZ = side * halfSpan
@@ -145,7 +220,18 @@ function createGableSlopeGeometry(length: number, span: number, rise: number, si
   addQuad(positions, edgeTop0, ridgeTop0, ridgeBottom0, edgeBottom0)
   addQuad(positions, edgeTop1, edgeBottom1, ridgeBottom1, ridgeTop1)
   addQuad(positions, ridgeTop0, ridgeTop1, ridgeBottom1, ridgeBottom0)
-  return geometryFromPositions(positions)
+  const geometry = geometryFromPositions(positions)
+  if (covering) {
+    const uv = geometry.getAttribute('uv') as THREE.BufferAttribute
+    const slant = Math.hypot(halfSpan, rise) / Math.max(.001, halfSpan)
+    for (let index = 0; index < uv.count; index += 1) {
+      const along = positions[index * 3]
+      const upSlope = Math.abs(positions[index * 3 + 2] - edgeZ) * slant
+      if (covering.across) uv.setXY(index, upSlope / covering.u, along / covering.v)
+      else uv.setXY(index, along / covering.u, upSlope / covering.v)
+    }
+  }
+  return geometry
 }
 
 function createGableEndGeometry(span: number, rise: number, thickness: number) {
@@ -209,7 +295,8 @@ function addRafters(
       const along = positions === 1 ? 0 : (index / (positions - 1) - .5) * (length - .18)
       const beam = roofObject(new THREE.Mesh(geometry, material))
       beam.name = `roof-rafter:${side < 0 ? 'far' : 'near'}:${index}`
-      beam.position.set(along, rise / 2, side * halfSpan / 2)
+      // Стропило под кровлей, а не поверх: иначе брус проступал полосами сквозь скат.
+      beam.position.set(along, rise / 2 - RAFTER_DROP, side * halfSpan / 2)
       beam.rotation.x = side < 0 ? -slopeAngle : slopeAngle
       beam.castShadow = true
       beam.receiveShadow = true
@@ -228,12 +315,22 @@ function addUpperWallPanels(
   cutWallHeight: number,
   fullWallHeight: number,
   seenEdges: Set<string>,
+  style: RoofStyle | null,
 ) {
   const height = fullWallHeight - cutWallHeight
   if (height <= 0) return
   const color = ['wood', 'earth'].includes(rect.zone.material) ? palette.prop : palette.wall
-  const panelMaterial = roofMaterial(resources, color, { roughness: .94 })
+  const plainMaterial = style ? null : roofMaterial(resources, color, { roughness: .94 })
   for (const edge of structuralEdges(map, rect)) {
+    // Стиль продолжает кладку срезанной стены вверх той же фактурой: рисунок
+    // по мировым координатам сходится на линии среза без шва.
+    let panelMaterial = plainMaterial
+    let fachwerk = false
+    if (style) {
+      const look = wallLookFor(map, edgeSideCell(map, edge))
+      panelMaterial = style.look(look.kind === 'palisade' ? 'planks' : look.body, look.tint)
+      fachwerk = look.kind === 'fachwerk'
+    }
     const key = `${edge.x},${edge.y},${edge.dir}`
     if (seenEdges.has(key)) continue
     seenEdges.add(key)
@@ -243,11 +340,53 @@ function addUpperWallPanels(
     const geometry = horizontal
       ? new THREE.BoxGeometry(1, height, 1 / 6)
       : new THREE.BoxGeometry(1 / 6, height, 1)
-    addMesh(resources, parent, `roof-wall-upper:${edge.x},${edge.y},${edge.dir}`, geometry, panelMaterial, [
+    const baseY = edgeBaseY(map, edge)
+    addMesh(resources, parent, `roof-wall-upper:${edge.x},${edge.y},${edge.dir}`, geometry, panelMaterial!, [
       centerX,
-      edgeBaseY(map, edge) + cutWallHeight + height / 2,
+      baseY + cutWallHeight + height / 2,
       centerZ,
     ])
+    if (fachwerk && style) addFachwerkTimbers(resources, parent, edge, style.look('timber'), baseY + cutWallHeight, height, seenEdges)
+  }
+}
+
+/**
+ * Брус фахверка на верхнем этаже: пояс по линии среза, обвязка под карнизом,
+ * стойки на стыках и раскос с обеих сторон — тот же рисунок, что у срезанной стены.
+ */
+function addFachwerkTimbers(
+  resources: RoofResources,
+  parent: THREE.Group,
+  edge: ReturnType<typeof edgeList>[number],
+  material: THREE.Material,
+  bottom: number,
+  height: number,
+  seen: Set<string>,
+) {
+  const horizontal = edge.dir === 's'
+  const centerX = edge.dir === 'e' ? edge.x + 1 : edge.x + .5
+  const centerZ = edge.dir === 'e' ? edge.y + .5 : edge.y + 1
+  const depth = 1 / 6 + .03
+  const beam = (y: number, tall: number) => horizontal ? new THREE.BoxGeometry(1, tall, depth) : new THREE.BoxGeometry(depth, tall, 1)
+  addMesh(resources, parent, 'roof-wall-timber:belt', beam(.08, .08), material, [centerX, bottom + .04, centerZ])
+  addMesh(resources, parent, 'roof-wall-timber:plate', beam(.09, .09), material, [centerX, bottom + height - .045, centerZ])
+  const ends = horizontal ? [[edge.x, centerZ], [edge.x + 1, centerZ]] : [[centerX, edge.y], [centerX, edge.y + 1]]
+  for (const [x, z] of ends) {
+    const key = `post:${x},${z}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    addMesh(resources, parent, 'roof-wall-timber:post', new THREE.BoxGeometry(.12, height, .12 + 1 / 6), material, [x, bottom + height / 2, z])
+  }
+  const rise = height - .17, run = .88
+  const length = Math.hypot(rise, run)
+  const angle = Math.atan2(rise, run) * ((edge.x + edge.y) % 2 ? 1 : -1)
+  for (const side of [-1, 1]) {
+    const offset = side * (1 / 12 + .012)
+    const brace = addMesh(resources, parent, 'roof-wall-timber:brace',
+      horizontal ? new THREE.BoxGeometry(length, .07, .03) : new THREE.BoxGeometry(.03, .07, length), material,
+      [centerX + (horizontal ? 0 : offset), bottom + .08 + rise / 2, centerZ + (horizontal ? offset : 0)])
+    if (horizontal) brace.rotation.z = angle
+    else brace.rotation.x = -angle
   }
 }
 
@@ -288,7 +427,7 @@ function createVaultRibGeometry(span: number, width: number, thickness = .10, se
 }
 
 function isInsideRect(cell: TacticalCell | null, rect: RoofRect) {
-  return Boolean(cell?.revealed && cell.zone === rect.zone.id && cell.passable
+  return Boolean(cell?.revealed && cell.passable && rect.members.has(cellKey(cell.x, cell.y))
     && cell.x >= rect.minX && cell.x <= rect.maxX && cell.y >= rect.minY && cell.y <= rect.maxY)
 }
 
@@ -419,6 +558,16 @@ function roofColors(palette: BoardPalette, zone: TacticalZone, vaulted: boolean)
   }
 }
 
+/**
+ * Вид дома под крышей: срубу — доски, остальным — черепица; фронтон — кладкой
+ * стен этого дома. Материал стены берётся по зоне, а не по полу клетки.
+ */
+function roofLooks(map: TacticalMap, rect: RoofRect) {
+  const look = wallLookFor(map, { ...rect.cells[0], material: rect.zone.material })
+  const wooden = look.kind === 'planks' || look.kind === 'palisade'
+  return { covering: wooden ? 'shingles' : 'tiles', gable: look.kind === 'palisade' ? 'planks' : look.body, tint: look.tint }
+}
+
 function addPitchedRoof(
   resources: RoofResources,
   shellGroup: THREE.Group,
@@ -426,6 +575,8 @@ function addPitchedRoof(
   rect: RoofRect,
   palette: BoardPalette,
   eaveHeight: number,
+  map: TacticalMap,
+  style: RoofStyle | null,
 ) {
   if (!rect.sides.size) return false
   const bounds = roofBounds(rect)
@@ -433,10 +584,13 @@ function addPitchedRoof(
   const centerZ = (bounds.minY + bounds.maxY + 1) / 2
   const rawWidth = bounds.maxX - bounds.minX + 1
   const rawDepth = bounds.maxY - bounds.minY + 1
-  const ridgeAlongX = rect.zone.floorDirection === 'horizontal'
+  // Конёк — вдоль длинной стороны дома; у квадратного — по направлению пола.
+  const ridgeAlongX = rawWidth === rawDepth ? rect.zone.floorDirection === 'horizontal' : rawWidth > rawDepth
   const length = (ridgeAlongX ? rawWidth : rawDepth) + ROOF_OVERHANG * 2
   const span = (ridgeAlongX ? rawDepth : rawWidth) + ROOF_OVERHANG * 2
-  const rise = Math.min(ROOF_PITCH, Math.max(.18, span * .2))
+  const rise = style
+    ? Math.min(PAINTED_ROOF_PITCH, Math.max(.3, span * PAINTED_ROOF_SLOPE))
+    : Math.min(ROOF_PITCH, Math.max(.18, span * .2))
   const colors = roofColors(palette, rect.zone, false)
   const piece = roofObject(new THREE.Group())
   piece.name = `roof-pitched:${rect.zone.id}:${rect.minX},${rect.minY},${rect.maxX},${rect.maxY}`
@@ -446,15 +600,24 @@ function addPitchedRoof(
   far.name = 'roof-shell:far'
   const near = roofObject(new THREE.Group())
   near.name = 'roof-shell:near'
-  const shellMaterial = roofMaterial(resources, colors.shell)
-  const trimMaterial = roofMaterial(resources, colors.trim, { roughness: .82 })
-  const roofStructureMaterial = ['wood', 'earth'].includes(rect.zone.material)
-    ? roofMaterial(resources, WOOD_ROOF_STRUCTURE_COLOR, { roughness: .95 })
-    : trimMaterial
-  addMesh(resources, far, 'roof-slope:far', createGableSlopeGeometry(length, span, rise, -1, ROOF_THICKNESS), shellMaterial)
-  addMesh(resources, near, 'roof-slope:near', createGableSlopeGeometry(length, span, rise, 1, ROOF_THICKNESS), shellMaterial)
-  addShingles(resources, far, length, span, rise, -1, trimMaterial)
-  addShingles(resources, near, length, span, rise, 1, trimMaterial)
+  const looks = style ? roofLooks(map, rect) : null
+  const shellMaterial = style && looks ? style.covering(looks.covering) : roofMaterial(resources, colors.shell)
+  const trimMaterial = style ? style.look('timber') : roofMaterial(resources, colors.trim, { roughness: .82 })
+  const gableMaterial = style && looks ? style.look(looks.gable, looks.tint) : trimMaterial
+  const roofStructureMaterial = style
+    ? trimMaterial
+    : ['wood', 'earth'].includes(rect.zone.material)
+      ? roofMaterial(resources, WOOD_ROOF_STRUCTURE_COLOR, { roughness: .95 })
+      : trimMaterial
+  // Черепица ложится рядами вдоль конька, доски — вдоль ската.
+  const covering = style && looks ? { ...style.repeat(looks.covering), across: looks.covering === 'shingles' } : undefined
+  addMesh(resources, far, 'roof-slope:far', createGableSlopeGeometry(length, span, rise, -1, ROOF_THICKNESS, covering), shellMaterial)
+  addMesh(resources, near, 'roof-slope:near', createGableSlopeGeometry(length, span, rise, 1, ROOF_THICKNESS, covering), shellMaterial)
+  // Полосы гонта нужны только однотонной крыше: у стиля ряды нарисованы фактурой.
+  if (!style) {
+    addShingles(resources, far, length, span, rise, -1, trimMaterial)
+    addShingles(resources, near, length, span, rise, 1, trimMaterial)
+  }
   far.userData.board3dRoof = true
   near.userData.board3dRoof = true
   piece.add(far, near)
@@ -472,8 +635,8 @@ function addPitchedRoof(
   const ridgeGeometry = ownGeometry(resources, new THREE.BoxGeometry(length + .14, ROOF_RIDGE_SIZE, ROOF_RIDGE_SIZE))
   addMesh(resources, structural, 'roof-ridge', ridgeGeometry, roofStructureMaterial, [0, rise + .035, 0])
   const endGeometry = ownGeometry(resources, createGableEndGeometry(span, rise, .045))
-  const endWest = addMesh(resources, structural, 'roof-gable:end-west', endGeometry, trimMaterial, [-length / 2, 0, 0])
-  const endEast = addMesh(resources, structural, 'roof-gable:end-east', endGeometry.clone(), trimMaterial, [length / 2, 0, 0])
+  const endWest = addMesh(resources, structural, 'roof-gable:end-west', endGeometry, gableMaterial, [-length / 2, 0, 0])
+  const endEast = addMesh(resources, structural, 'roof-gable:end-east', endGeometry.clone(), gableMaterial, [length / 2, 0, 0])
   endWest.userData.board3dOpaqueRoof = true
   endEast.userData.board3dOpaqueRoof = true
   if (!ridgeAlongX) structural.rotation.y = Math.PI / 2
@@ -488,6 +651,7 @@ function addVaultRoof(
   rect: RoofRect,
   palette: BoardPalette,
   eaveHeight: number,
+  style: RoofStyle | null,
 ) {
   if (!rect.sides.size) return false
   const bounds = roofBounds(rect)
@@ -504,8 +668,9 @@ function addVaultRoof(
   piece.userData.board3dVault = true
   piece.position.set(centerX, rect.baseY + eaveHeight, centerZ)
   if (!axisX) piece.rotation.y = Math.PI / 2
-  const shellMaterial = roofMaterial(resources, colors.shell, { roughness: .96 })
-  const trimMaterial = roofMaterial(resources, colors.trim, { roughness: .78 })
+  // Свод склепа — тёсаные блоки, рёбра и пяты — неровный камень.
+  const shellMaterial = style ? style.look('fortress') : roofMaterial(resources, colors.shell, { roughness: .96 })
+  const trimMaterial = style ? style.look('stone') : roofMaterial(resources, colors.trim, { roughness: .78 })
   addMesh(resources, piece, 'vault-shell', createVaultShellGeometry(length, span, VAULT_THICKNESS), shellMaterial)
   shellGroup.add(piece)
 
@@ -541,6 +706,7 @@ function buildRoofRects(map: TacticalMap) {
       const candidate: RoofRect = {
         zone,
         cells: rect.cells,
+        members: new Set(rect.cells.map((cell) => cellKey(cell.x, cell.y))),
         minX: rect.minX,
         minY: rect.minY,
         maxX: rect.maxX,
@@ -560,6 +726,153 @@ function buildRoofRects(map: TacticalMap) {
   return result
 }
 
+type RoofBuilding = {
+  /** Прямоугольный дом — двускатная крыша на весь дом. */
+  rect: RoofRect | null
+  /** Дом сложной формы — вальма по клеткам дома вместе с кольцом толстой кладки. */
+  footprint: Set<string>
+  cells: TacticalCell[]
+  zone: TacticalZone
+  baseY: number
+}
+
+/**
+ * Дома для скатных крыш: связные области раскрытых клеток скатных комнат.
+ * Комнаты одного дома за перегородками — одна крыша, а не лоскуты по комнатам;
+ * своды склепов и пещеры сюда не входят, у них своя крыша по комнате.
+ */
+function buildRoofBuildings(map: TacticalMap) {
+  const pitched = new Map<string, TacticalCell>()
+  const zoneById = new Map(map.zones.map((zone) => [zone.id, zone]))
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    const zone = cell?.revealed && cell.passable ? zoneById.get(cell.zone ?? '') : undefined
+    if (cell && zone?.kind === 'interior' && roofStyle(map, zone) === 'gable') pitched.set(cellKey(x, y), cell)
+  }
+  const solid = (x: number, y: number) => {
+    const cell = cellAt(map, x, y)
+    return Boolean(cell && !cell.passable && cell.surface !== 'water')
+  }
+  const buildings: RoofBuilding[] = []
+  const visited = new Set<string>()
+  for (const [start, first] of pitched) {
+    if (visited.has(start)) continue
+    const cells: TacticalCell[] = []
+    const queue = [first]
+    visited.add(start)
+    while (queue.length) {
+      const cell = queue.pop()!
+      cells.push(cell)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = cellKey(cell.x + dx, cell.y + dy)
+        const next = pitched.get(key)
+        if (next && !visited.has(key)) { visited.add(key); queue.push(next) }
+      }
+    }
+    const members = new Set(cells.map((cell) => cellKey(cell.x, cell.y)))
+    // Зона дома — та, что занимает больше клеток: по ней материал и вид кровли.
+    const counts = new Map<string, number>()
+    for (const cell of cells) counts.set(cell.zone ?? '', (counts.get(cell.zone ?? '') ?? 0) + 1)
+    const zone = zoneById.get([...counts].sort((a, b) => b[1] - a[1])[0][0])!
+    const baseY = Math.max(...cells.map((cell) => terrainHeightAt(map, cell.x, cell.y)))
+    const rects = mergeRuns(cells)
+    if (rects.length === 1) {
+      const only = rects[0]
+      const candidate: RoofRect = { zone, cells, members, minX: only.minX, minY: only.minY, maxX: only.maxX, maxY: only.maxY, sides: new Set(), ring: new Set(), baseY }
+      const outline = structuralSides(map, candidate)
+      candidate.sides = outline.sides
+      candidate.ring = outline.ring
+      if (candidate.sides.size) buildings.push({ rect: candidate, footprint: members, cells, zone, baseY })
+      continue
+    }
+    // Без стен на краю это навес или двор, а не дом: крыша не нужна.
+    let walled = false
+    const footprint = new Set(members)
+    for (const cell of cells) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = cell.x + dx, y = cell.y + dy
+      if (members.has(cellKey(x, y))) continue
+      if (solid(x, y)) { footprint.add(cellKey(x, y)); walled = true; continue }
+    }
+    for (const edge of edgeList(map)) {
+      if (!STRUCTURAL_EDGES.has(edge.kind)) continue
+      const neighbor = edgeNeighbor(edge)
+      if (members.has(cellKey(edge.x, edge.y)) !== members.has(cellKey(neighbor.x, neighbor.y))) { walled = true; break }
+    }
+    if (!walled) continue
+    // Угол кольца толстой кладки: клетка по диагонали, если обе соседки уже в кольце.
+    for (const key of [...footprint]) {
+      if (members.has(key)) continue
+      const [x, y] = key.split(',').map(Number)
+      for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        if (footprint.has(cellKey(x + dx, y)) && footprint.has(cellKey(x, y + dy)) && !footprint.has(cellKey(x + dx, y + dy))
+          && solid(x + dx, y + dy) && !members.has(cellKey(x + dx, y)) && !members.has(cellKey(x, y + dy))) footprint.add(cellKey(x + dx, y + dy))
+      }
+    }
+    buildings.push({ rect: null, footprint, cells, zone, baseY })
+  }
+  return buildings
+}
+
+/**
+ * Цельная крыша дома сложной формы: вальмы, коньки и ендовы из одной сетки
+ * (`src/board3d-hip-roof.ts`). Стропила и карнизы — в структуре: их видно и в
+ * срезе крыши.
+ */
+function addHipRoof(
+  resources: RoofResources,
+  shellGroup: THREE.Group,
+  structureGroup: THREE.Group,
+  building: RoofBuilding,
+  palette: BoardPalette,
+  eaveHeight: number,
+  map: TacticalMap,
+  style: RoofStyle | null,
+) {
+  const distance = createHipDistance(building.footprint)
+  const depth = Math.max(.5, hipRoofDepth(building.footprint, distance))
+  const slope = style ? Math.min(PAINTED_ROOF_SLOPE * 2, PAINTED_ROOF_PITCH / depth) : Math.min(.4, ROOF_PITCH / depth)
+  const colors = roofColors(palette, building.zone, false)
+  const looks = style ? roofLooks(map, { zone: building.zone, cells: building.cells } as RoofRect) : null
+  const shellMaterial = style && looks ? style.covering(looks.covering) : roofMaterial(resources, colors.shell)
+  const trimMaterial = style ? style.look('timber') : roofMaterial(resources, colors.trim, { roughness: .82 })
+  const covering = style && looks ? { ...style.repeat(looks.covering), across: looks.covering === 'shingles' } : undefined
+  const keys = [...building.footprint].map((key) => key.split(',').map(Number))
+  const minX = Math.min(...keys.map(([x]) => x)), minY = Math.min(...keys.map(([, y]) => y))
+  const maxX = Math.max(...keys.map(([x]) => x)), maxY = Math.max(...keys.map(([, y]) => y))
+  const y = building.baseY + eaveHeight
+  const piece = roofObject(new THREE.Group())
+  piece.name = `roof-hip:${building.zone.id}:${minX},${minY},${maxX},${maxY}`
+  piece.position.set(0, y, 0)
+  addMesh(resources, piece, 'roof-slope:hip', createHipRoofGeometry(building.footprint, { slope, overhang: ROOF_OVERHANG, covering }), shellMaterial)
+  shellGroup.add(piece)
+
+  const structural = roofObject(new THREE.Group())
+  structural.name = piece.name.replace('roof-hip', 'roof-structure')
+  structural.position.set(0, y, 0)
+  // Карниз: брус под краем свеса, со срезом в углах, как сам свес.
+  for (const run of hipRoofRuns(building.footprint)) {
+    const length = run.start.distanceTo(run.end) + (run.convexStart ? ROOF_OVERHANG : -ROOF_OVERHANG) + (run.convexEnd ? ROOF_OVERHANG : -ROOF_OVERHANG)
+    if (length <= .05) continue
+    const middle = run.start.clone().add(run.end).multiplyScalar(.5)
+      .addScaledVector(run.along, ((run.convexEnd ? 1 : -1) - (run.convexStart ? 1 : -1)) * ROOF_OVERHANG / 2)
+      .addScaledVector(run.outward, ROOF_OVERHANG - ROOF_EAVE_WIDTH / 2)
+    const alongX = Math.abs(run.along.x) > .5
+    const geometry = alongX ? new THREE.BoxGeometry(length, ROOF_EAVE_HEIGHT, ROOF_EAVE_WIDTH) : new THREE.BoxGeometry(ROOF_EAVE_WIDTH, ROOF_EAVE_HEIGHT, length)
+    addMesh(resources, structural, 'roof-eave:hip', geometry, trimMaterial, [middle.x, -ROOF_OVERHANG * slope - .03, middle.z])
+  }
+  const rafterGeometry = ownGeometry(resources, new THREE.BoxGeometry(WOOD_ROOF_STRUCTURE_SIZE, WOOD_ROOF_STRUCTURE_SIZE, 1))
+  hipRoofRafters(building.footprint, slope).forEach((rafter, index) => {
+    const beam = addMesh(resources, structural, `roof-rafter:hip:${index}`, rafterGeometry, trimMaterial)
+    const length = rafter.from.distanceTo(rafter.to)
+    beam.position.copy(rafter.from).add(rafter.to).multiplyScalar(.5)
+    beam.position.y -= RAFTER_DROP
+    beam.scale.z = length
+    beam.lookAt(rafter.to.clone().add(new THREE.Vector3(0, y - RAFTER_DROP, 0)))
+  })
+  structureGroup.add(structural)
+  return true
+}
+
 /** Создаёт видимый слой крыш, не добавляя ничего в TacticalMap и не раскрывая туман. */
 export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, options: Board3DRoofOptions = {}): Board3DRoofController {
   const resources: RoofResources = { geometries: new Set(), materials: new Set() }
@@ -575,12 +888,18 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
   const cutWallHeight = Number.isFinite(options.wallHeight) ? Math.max(.1, options.wallHeight as number) : .68
   const fullWallHeight = Math.max(BOARD3D_FULL_WALL_HEIGHT, cutWallHeight + .8)
   const seenUpperWallEdges = new Set<string>()
+  const painted = packHasRoofLooks(options.stylePack) ? createRoofStyle(options.stylePack, resources, options) : null
+  group.userData.roofStyle = painted ? 'painted' : 'plain'
+  // Верх стен и своды — по комнатам, скатные крыши — по домам целиком.
   for (const rect of buildRoofRects(map)) {
     const style = roofStyle(map, rect.zone)
     if (!style) continue
-    addUpperWallPanels(resources, upperWalls, map, rect, palette, cutWallHeight, fullWallHeight, seenUpperWallEdges)
-    if (style === 'vault') addVaultRoof(resources, shells, structures, rect, palette, fullWallHeight)
-    else if (style === 'gable') addPitchedRoof(resources, shells, structures, rect, palette, fullWallHeight)
+    addUpperWallPanels(resources, upperWalls, map, rect, palette, cutWallHeight, fullWallHeight, seenUpperWallEdges, painted)
+    if (style === 'vault') addVaultRoof(resources, shells, structures, rect, palette, fullWallHeight, painted)
+  }
+  for (const building of buildRoofBuildings(map)) {
+    if (building.rect) addPitchedRoof(resources, shells, structures, building.rect, palette, fullWallHeight, map, painted)
+    else addHipRoof(resources, shells, structures, building, palette, fullWallHeight, map, painted)
   }
 
   let mode: Board3DRoofMode = options.mode ?? 'cutaway'

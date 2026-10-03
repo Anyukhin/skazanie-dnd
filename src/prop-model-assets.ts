@@ -5,7 +5,8 @@ import {
   recordModelAssetParse,
   registerCspSafeEmbeddedTextureLoader,
 } from './model-assets'
-import { loadPropModelCatalog, propModelFor, type PropModelCatalog } from './prop-model-catalog'
+import { loadPropModelCatalog, propModelFor, type PropModelCatalog, type PropModelEntry } from './prop-model-catalog'
+import { createStyleMaterialBinder, type GraphicsStylePack } from './board3d-style'
 import { resolvePropAssetId } from './board-render'
 import type { TacticalProp } from './types'
 
@@ -136,9 +137,36 @@ export function disposePropModelAssets(models: Map<string, THREE.Group>) {
   models.clear()
 }
 
-export async function loadPropModelAssets(props: readonly TacticalProp[], signal: AbortSignal, catalogRevision?: string): Promise<PropModelAssets | null> {
-  const catalog = await loadPropModelCatalog(catalogRevision)
-  if (!catalog || signal.aborted) return null
+/**
+ * Каталог, где виды из пакета стиля указывают на его модели. Вариант для
+ * предмета выбирается по тому же хешу id, поэтому соседние стулья разные.
+ */
+function withStyleProps(catalog: PropModelCatalog, pack: GraphicsStylePack | null | undefined, props: readonly TacticalProp[]): PropModelCatalog {
+  if (!pack) return catalog
+  const styled: PropModelEntry[] = []
+  const seen = new Set<string>()
+  for (const prop of props) {
+    const assetId = resolvePropAssetId(prop.assetId)
+    if (seen.has(assetId)) continue
+    seen.add(assetId)
+    for (const entry of pack.props[assetId] ?? []) {
+      styled.push({ key: entry.key, label: entry.key, category: `style-${pack.style}`, url: entry.url, assetIds: [assetId], yaw: entry.yaw })
+    }
+  }
+  if (!styled.length) return catalog
+  const replaced = new Set(styled.flatMap((entry) => entry.assetIds))
+  const kept = catalog.models.map((entry) => entry.assetIds.some((id) => replaced.has(id))
+    ? { ...entry, assetIds: entry.assetIds.filter((id) => !replaced.has(id)) }
+    : entry)
+  return { ...catalog, models: [...kept, ...styled] }
+}
+
+export async function loadPropModelAssets(props: readonly TacticalProp[], signal: AbortSignal, catalogRevision?: string, stylePack?: GraphicsStylePack | null): Promise<PropModelAssets | null> {
+  const loaded = await loadPropModelCatalog(catalogRevision)
+  if (!loaded || signal.aborted) return null
+  // Пакет стиля подменяет модели тех видов, для которых у него есть своя;
+  // остальные берутся из выпуска карты, как и без стиля.
+  const catalog = withStyleProps(loaded, stylePack, props)
   const models = new Map<string, THREE.Group>()
   const entries = new Map(props.flatMap((prop) => {
     const entry = propModelFor(catalog, resolvePropAssetId(prop.assetId), prop.id)
@@ -147,6 +175,8 @@ export async function loadPropModelAssets(props: readonly TacticalProp[], signal
   if (!entries.size) return null
   const loader = new GLTFLoader()
   registerCspSafeEmbeddedTextureLoader(loader)
+  // Модели пакета стиля без своих текстур: материалы `skz:*` общие на всю загрузку.
+  const bindStyleMaterials = stylePack ? createStyleMaterialBinder(stylePack) : null
   const queue = [...entries.values()]
   // Не загружаем всю библиотеку: только варианты раскрытых предметов, по четыре.
   await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
@@ -161,6 +191,7 @@ export async function loadPropModelAssets(props: readonly TacticalProp[], signal
         root.add(gltf.scene)
         if (signal.aborted) { disposePropModelAssets(new Map([[entry.key, root]])); break }
         bakeSkinnedMeshes(root)
+        bindStyleMaterials?.bind(root)
         root.rotation.y = entry.yaw * Math.PI / 180
         root.updateMatrixWorld(true)
         const bounds = new THREE.Box3().setFromObject(root)
@@ -176,6 +207,8 @@ export async function loadPropModelAssets(props: readonly TacticalProp[], signal
       } catch { /* До успешной загрузки остаётся процедурное представление. */ }
     }
   }))
+  // Модели показываются уже с рисованными фактурами, а не белыми на миг.
+  if (bindStyleMaterials && !signal.aborted) await Promise.race([bindStyleMaterials.ready(), new Promise((resolve) => setTimeout(resolve, 15_000))])
   let disposed = false
   const result = { catalog, models, dispose() { if (!disposed) { disposed = true; disposePropModelAssets(models) } } }
   if (signal.aborted) { result.dispose(); return null }

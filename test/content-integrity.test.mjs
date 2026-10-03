@@ -13,6 +13,21 @@ import {
 // Выпуски добавляются целиком через models:publish. Считаем объявленный состав
 // их manifest, а не реальные файлы или строки реестра: лишний файл по-прежнему
 // нарушает гейт, исходные ассеты остаются фиксированной базой.
+/** Пакеты стилей графики 3D-доски: файлы из манифеста стиля и сам манифест. */
+function declaredGraphicsStyleFiles() {
+  const directory = fileURLToPath(new URL('../public/assets/styles', import.meta.url))
+  if (!existsSync(directory)) return 0
+  let count = 0
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    assert.ok(entry.isDirectory() && entry.name === 'stylized', 'в styles лежит только рисованный стиль')
+    const manifest = JSON.parse(readFileSync(join(directory, entry.name, 'manifest.json'), 'utf8'))
+    assert.equal(manifest.schema, 'graphics-style/v1')
+    assert.equal(manifest.style, entry.name)
+    count += manifest.files.length + 1
+  }
+  return count
+}
+
 function declaredEnvironmentReleaseFiles() {
   const directory = fileURLToPath(new URL('../public/assets/models/environment/releases', import.meta.url))
   if (!existsSync(directory)) return 0
@@ -97,7 +112,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   //   (`models/quaternius/heroes-*`: 6 GLB, LICENSE, NOTICE).
   // + 119 файлов подготовленного набора детализации (`maps/detail-v1`):
   //   88 GLB, 25 фактур, PNG/JSON атласа, manifest и три предпросмотра.
-  assert.equal(report.integrity.assets, 1939 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles())
+  // + пакеты стилей графики (`styles/<стиль>`): файлы манифеста и сам манифест.
+  assert.equal(report.integrity.assets, 1939 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 
