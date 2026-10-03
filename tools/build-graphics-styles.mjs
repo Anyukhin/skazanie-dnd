@@ -30,7 +30,7 @@ const PUBLIC_ROOT = resolve(ROOT, 'public/assets')
 const THREE_ROOT = resolve(ROOT, 'node_modules/three')
 const STAGING = resolve(ROOT, 'tmp/graphics-styles-build', STYLE)
 const OUTPUT = resolve(PUBLIC_ROOT, 'styles', STYLE)
-const OUT_PATH = /^(meta.json|floors\/[a-z-]+\/(color|normal|orm|height)\.jpg|materials\/[a-z0-9-]+\/(color|normal|orm)\.jpg|props\/[a-z0-9_]+\.glb)$/u
+const OUT_PATH = /^(meta\.json|topdown\.png|floors\/[a-z-]+\/(color|normal|orm|height)\.jpg|materials\/[a-z0-9-]+\/(color|normal|orm)\.(?:jpg|png)|props\/[a-z0-9_]+\.glb)$/u
 const TOOL_FILE = /^(map-detail-model-helpers|map-detail-models-[a-z-]+)\.mjs$/u
 const RELEASE_REF = /^(quaternius|quaternius-nature)\/[a-z0-9_]+\.glb$/u
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.gltf': 'model/gltf+json', '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream' }
@@ -54,14 +54,17 @@ const PAGE = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>
 <body><h1>Рисованный стиль</h1><button id="build">Собрать стиль</button><pre id="log"></pre>
 <script type="module" src="/page.js"></script></body></html>`
 
-/** @typedef {{ color: boolean, normal: boolean, orm: boolean, metalness: number, roughness: number, doubleSided: boolean, aspect?: number }} BuiltMaterial */
+/** @typedef {{ color: boolean, normal: boolean, orm: boolean, metalness: number, roughness: number, doubleSided: boolean, aspect?: number, colorFormat?: 'jpg'|'png', alphaTest?: number, transparent?: boolean, opacity?: number, depthWrite?: boolean }} BuiltMaterial */
+
+/** @typedef {{ image: 'topdown.png', key: string, frames: Record<string, { x: number, y: number, w: number, h: number }>, sizes: Record<string, [number, number, number]> }} BuiltAtlas */
 
 /**
  * Манифест из файлов в staging. Готовые модели выпуска (`ref`) указываются
  * абсолютным путём выпуска, собранные — путём внутри пакета.
  * @param {Record<string, BuiltMaterial>} builtMaterials
+ * @param {BuiltAtlas | undefined} atlas
  */
-function finish(builtMaterials) {
+function finish(builtMaterials, atlas) {
   const files = []
   const walk = (/** @type {string} */ folder) => {
     for (const entry of readdirSync(folder, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -80,15 +83,20 @@ function finish(builtMaterials) {
     .filter(([key]) => ['color', 'normal', 'orm', 'height'].every((map) => has(`floors/${key}/${map}.jpg`)))
     .map(([key, floor]) => [key, { color: `floors/${key}/color.jpg`, normal: `floors/${key}/normal.jpg`, orm: `floors/${key}/orm.jpg`, height: `floors/${key}/height.jpg`, cells: floor.cells, relief: floor.relief }]))
   const materials = Object.fromEntries(Object.entries(builtMaterials).sort(([a], [b]) => a.localeCompare(b)).map(([key, built]) => {
-    if (!has(`materials/${key}/color.jpg`)) throw new Error(`нет фактуры материала ${key}`)
+    const colorFile = `materials/${key}/color.${built.colorFormat ?? 'jpg'}`
+    if (!has(colorFile)) throw new Error(`нет фактуры материала ${key}`)
     /** @type {Record<string, unknown>} */
-    const entry = { color: `materials/${key}/color.jpg` }
+    const entry = { color: colorFile }
     if (built.normal && has(`materials/${key}/normal.jpg`)) entry.normal = `materials/${key}/normal.jpg`
     if (built.orm && has(`materials/${key}/orm.jpg`)) entry.orm = `materials/${key}/orm.jpg`
     entry.metalness = +Number(built.metalness ?? 0).toFixed(3)
     entry.roughness = +Number(built.roughness ?? 1).toFixed(3)
     entry.doubleSided = Boolean(built.doubleSided)
     if (built.aspect !== undefined && built.aspect !== 1) entry.aspect = built.aspect
+    if (built.alphaTest !== undefined && built.alphaTest > 0) entry.alphaTest = +Number(built.alphaTest).toFixed(3)
+    if (built.transparent) entry.transparent = true
+    if (built.opacity !== undefined && built.opacity !== 1) entry.opacity = +Number(built.opacity).toFixed(3)
+    if (built.depthWrite === false) entry.depthWrite = false
     return [key, entry]
   }))
   // Виды стен ссылаются на материалы пакета; вид без собранного материала не публикуется.
@@ -98,15 +106,25 @@ function finish(builtMaterials) {
   const props = Object.fromEntries(Object.entries(source.props).map(([assetId, list]) => [assetId, list.flatMap((prop) => {
     if (prop.ref) {
       if (!RELEASE_REF.test(prop.ref) || !existsSync(join(PUBLIC_ROOT, 'models/environment/releases', STYLE_RELEASE, prop.ref))) throw new Error(`нет модели выпуска ${prop.ref}`)
-      return [{ key: `ref-${prop.ref.replace(/\.glb$/u, '').replace(/[^a-z0-9]+/gu, '-')}`, url: `/assets/models/environment/releases/${STYLE_RELEASE}/${prop.ref}`, yaw: prop.yaw ?? 0 }]
+      const key = `ref-${prop.ref.replace(/\.glb$/u, '').replace(/[^a-z0-9]+/gu, '-')}`
+      return [{ key, url: `/assets/models/environment/releases/${STYLE_RELEASE}/${prop.ref}`, yaw: prop.yaw ?? 0, ...(prop.maxHeight !== undefined ? { maxHeight: prop.maxHeight } : {}), ...(atlas?.frames[key] ? { preview: atlas.frames[key] } : {}), ...(atlas?.sizes[key] ? { size: atlas.sizes[key] } : {}) }]
     }
     if (!prop.name || !has(`props/${prop.name}.glb`)) throw new Error(`не собрана модель ${prop.name} (${assetId})`)
-    return [{ key: `style-${prop.name.replace(/_/gu, '-')}`, url: `props/${prop.name}.glb`, yaw: prop.yaw ?? 0 }]
+    const key = `style-${prop.name.replace(/_/gu, '-')}`
+    return [{ key, url: `props/${prop.name}.glb`, yaw: prop.yaw ?? 0, ...(prop.maxHeight !== undefined ? { maxHeight: prop.maxHeight } : {}), ...(atlas?.frames[key] ? { preview: atlas.frames[key] } : {}), ...(atlas?.sizes[key] ? { size: atlas.sizes[key] } : {}) }]
   })]))
   // Ревизия меняется и от файлов, и от масштабов: тот же JPEG с другим
   // повтором — уже другой пол.
   const revision = createHash('sha256').update(files.map((entry) => entry.sha256).join('')).update(JSON.stringify({ floors, materials, walls, props })).digest('hex').slice(0, 16)
-  const manifest = { schema: 'graphics-style/v1', style: STYLE, label: source.label, revision, license: source.license, sources: source.sources, floors, materials, walls, props, files }
+  if (atlas) {
+    if (atlas.image !== 'topdown.png' || !/^[a-f0-9]{64}$/u.test(atlas.key) || !has(atlas.image)) throw new Error('некорректный 2D-атлас стиля')
+    const actual = createHash('sha256').update(readFileSync(join(STAGING, atlas.image))).digest('hex')
+    if (actual !== atlas.key) throw new Error('хеш 2D-атласа стиля не совпадает')
+    for (const list of Object.values(props)) for (const prop of list) {
+      if (!prop.preview || !atlas.sizes[prop.key] || !atlas.sizes[prop.key].every((value) => Number.isFinite(value) && value > 0)) throw new Error(`нет кадра или размера 2D-атласа ${prop.key}`)
+    }
+  }
+  const manifest = { schema: 'graphics-style/v1', style: STYLE, label: source.label, revision, license: source.license, sources: source.sources, floors, materials, walls, props, ...(atlas ? { atlas: { image: atlas.image, key: atlas.key } } : {}), files }
   rmSync(OUTPUT, { recursive: true, force: true })
   mkdirSync(OUTPUT, { recursive: true })
   cpSync(STAGING, OUTPUT, { recursive: true, filter: (path) => path !== join(STAGING, 'meta.json') })
@@ -176,7 +194,8 @@ export function startGraphicsStyleBuilder({ port = 53903 } = {}) {
               return send(200, 'ok')
             }
             if (url.pathname === '/finish') {
-              const result = finish(JSON.parse(body.toString('utf8')).materials)
+              const payload = JSON.parse(body.toString('utf8'))
+              const result = finish(payload.materials, payload.atlas)
               process.stdout.write(`${JSON.stringify(result)}\n`)
               return send(200, JSON.stringify(result), TYPES['.json'])
             }
@@ -206,9 +225,12 @@ export function rebuildManifest() {
   rmSync(STAGING, { recursive: true, force: true })
   cpSync(OUTPUT, STAGING, { recursive: true, filter: (path) => !path.endsWith('manifest.json') })
   // Материал, чьи файлы убраны из пакета, выпадает и из манифеста.
+  const frames = Object.fromEntries(Object.values(previous.props ?? {}).flat().filter((entry) => entry.preview).map((entry) => [entry.key, entry.preview]))
+  const sizes = Object.fromEntries(Object.values(previous.props ?? {}).flat().filter((entry) => entry.size).map((entry) => [entry.key, entry.size]))
   return finish(Object.fromEntries(Object.entries(previous.materials ?? {}).filter(([, entry]) => existsSync(join(OUTPUT, entry.color))).map(([key, entry]) => [key, {
     color: true, normal: Boolean(entry.normal), orm: Boolean(entry.orm), metalness: entry.metalness, roughness: entry.roughness, doubleSided: entry.doubleSided, aspect: entry.aspect,
-  }])))
+    colorFormat: entry.color?.endsWith('.png') ? 'png' : 'jpg', alphaTest: entry.alphaTest, transparent: entry.transparent, opacity: entry.opacity, depthWrite: entry.depthWrite,
+  }])), previous.atlas ? { image: 'topdown.png', key: previous.atlas.key, frames, sizes } : undefined)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv.includes('--manifest-only')) {

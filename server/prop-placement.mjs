@@ -15,7 +15,7 @@ import { addProp, cellAt, edgeBetween, edgeNeighbor, reachableCells } from './ta
  * повороты и масштабы.
  */
 
-export const PROP_PLACEMENT_VERSION = 'skazanie:prop-placement-v3'
+export const PROP_PLACEMENT_VERSION = 'skazanie:prop-placement-v4'
 
 /**
  * Ограниченный словарь назначений комнаты. Это намеренно не новый формат карты:
@@ -40,7 +40,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   },
   barracks: {
     require: ['bunk_bed', 'bunk_bed', 'bunk_bed', 'bunk_bed'],
-    prefer: ['bunk_bed', 'bed', 'night_table', 'chest', 'wardrobe', 'washbasin', 'footlocker', 'armor_stand', 'weapon_rack_wall', 'wolf_pelt', 'straw_mat'],
+    prefer: ['bunk_bed', 'bed', 'night_table', 'chest', 'wardrobe', 'washbasin', 'footlocker', 'armor_stand', 'weapon_rack_wall', 'weapon_rack', 'shield_display', 'ballista', 'wolf_pelt', 'straw_mat'],
     themes: ['barracks'],
     caps: { bunk_bed: 8, bed: 8, table_long: 0, bench: 0, chair: 0, armor_stand: 2, weapon_rack_wall: 2 },
     arrangement: 'rows',
@@ -56,7 +56,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // верстак и стойка инструмента — по стенам.
   forge: {
     require: ['forge', 'anvil', 'quench_tub', 'coal_pile'],
-    prefer: ['tool_rack', 'workbench', 'grindstone', 'firewood_stack', 'barrel', 'crate', 'scorch_mark'],
+    prefer: ['tool_rack', 'workbench', 'grindstone', 'tool_peg_rack', 'chain_coil', 'arcane_coil', 'firewood_stack', 'barrel', 'crate', 'scorch_mark'],
     themes: ['forge', 'workshop'],
     caps: { forge: 1, anvil: 1, quench_tub: 1, coal_pile: 2, workbench: 1, grindstone: 1, fireplace: 0, bed: 0 },
     arrangement: 'gathered',
@@ -80,7 +80,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // Пыточная: дыба посредине, клетка в углу, цепи и жаровня.
   torture: {
     require: ['torture_rack', 'iron_cage', 'wall_chains'],
-    prefer: ['guard_brazier', 'wall_chains', 'scorch_mark', 'bone_heap', 'stocks', 'bucket'],
+    prefer: ['guard_brazier', 'weapon_rack', 'shield_display', 'key_bundle', 'wall_chains', 'scorch_mark', 'bone_heap', 'stocks', 'bucket'],
     themes: ['prison'],
     caps: { torture_rack: 1, iron_cage: 2, stocks: 1 },
     arrangement: 'gathered',
@@ -89,7 +89,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // перед ним, стойка свечей и стол приношений рядом.
   altar: {
     require: ['altar', 'incense_burner', 'kneeling_cushions', 'candle_rack'],
-    prefer: ['offering_table', 'font_basin', 'holy_pool', 'idol', 'statue', 'prayer_rug', 'temple_banner', 'brazier'],
+    prefer: ['offering_table', 'font_basin', 'holy_pool', 'idol', 'crystal_orb', 'ceremonial_chalice', 'scroll_pile', 'book_row', 'single_book', 'statue', 'prayer_rug', 'temple_banner', 'brazier'],
     themes: ['temple'],
     caps: { altar: 1, idol: 1, holy_pool: 1, kneeling_cushions: 3, candle_rack: 2, offering_table: 1, font_basin: 1 },
     arrangement: 'gathered',
@@ -97,7 +97,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // Неф: скамьи рядами, дорожка-ковёр, кафедра и чаша у входа.
   nave: {
     require: ['prayer_bench', 'prayer_bench', 'temple_lectern'],
-    prefer: ['prayer_bench', 'kneeling_cushions', 'candle_rack', 'rug_runner', 'font_basin', 'temple_banner', 'brazier'],
+    prefer: ['prayer_bench', 'kneeling_cushions', 'candle_rack', 'ceremonial_chalice', 'scroll_pile', 'book_row', 'rug_runner', 'font_basin', 'temple_banner', 'brazier'],
     themes: ['temple'],
     caps: { temple_lectern: 1, font_basin: 1, rug_runner: 1, altar: 0 },
     arrangement: 'rows',
@@ -114,7 +114,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // Кабинет: письменный стол, высокие шкафы, глобус и кресло для чтения.
   study: {
     require: ['writing_desk', 'bookcase_tall', 'armchair'],
-    prefer: ['globe', 'scroll_rack', 'candle_desk', 'reading_nook', 'map_table', 'telescope', 'rug_round', 'paper_scatter', 'strongbox', 'book_lectern'],
+    prefer: ['globe', 'alchemy_bottles', 'crystal_orb', 'arcane_coil', 'book_piles', 'book_row', 'scroll_pile', 'single_book', 'desk_candlestick', 'key_bundle', 'coin_pouch', 'arch_shelf', 'vial_display_shelf', 'scroll_rack', 'candle_desk', 'reading_nook', 'map_table', 'telescope', 'rug_round', 'paper_scatter', 'strongbox', 'book_lectern'],
     themes: ['study', 'bedroom'],
     caps: { writing_desk: 1, globe: 1, telescope: 1, map_table: 1, bed: 0, bunk_bed: 0 },
     arrangement: 'gathered',
@@ -122,7 +122,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // Торговый зал лавки: прилавок, витрины по стенам, весы и товар.
   shop: {
     require: ['shop_counter', 'display_shelf'],
-    prefer: ['display_shelf', 'scales_table', 'cloth_bolts', 'goods_baskets', 'pottery_stand', 'spice_crates', 'grain_sacks', 'crate', 'barrel'],
+    prefer: ['display_shelf', 'vial_display_shelf', 'arch_shelf', 'alchemy_bottles', 'key_bundle', 'coin_pouch', 'scales_table', 'cloth_bolts', 'goods_baskets', 'pottery_stand', 'spice_crates', 'grain_sacks', 'crate', 'barrel'],
     themes: ['shop'],
     caps: { shop_counter: 1, scales_table: 1, display_shelf: 3, bar_counter: 0 },
     arrangement: 'gathered',
@@ -149,14 +149,14 @@ const SEMANTIC_PROFILES = Object.freeze({
   // кастрюли на стене, полки с припасами.
   kitchen: {
     require: ['kitchen_stove', 'prep_table', 'pantry_shelf'],
-    prefer: ['cupboard', 'butcher_block', 'hanging_pots', 'bread_oven', 'spice_crates', 'washtub', 'water_barrel', 'cauldron', 'barrel', 'cutting_board', 'pot', 'flour_spill'],
+    prefer: ['cupboard', 'alchemy_table', 'alchemy_bottles', 'cutlery_set', 'butcher_block', 'hanging_pots', 'bread_oven', 'spice_crates', 'washtub', 'water_barrel', 'cauldron', 'barrel', 'cutting_board', 'pot', 'flour_spill'],
     themes: ['kitchen'],
     caps: { kitchen_stove: 1, bread_oven: 1, prep_table: 1, butcher_block: 1, hanging_pots: 2 },
     arrangement: 'gathered',
   },
   store: {
     require: ['crate_stack', 'barrel_stack'],
-    prefer: ['crate_stack', 'barrel_stack', 'crate', 'barrel', 'sack', 'chest', 'shelf_wall', 'grain_sacks', 'spice_crates', 'goods_baskets', 'crate_stack_goods'],
+    prefer: ['crate_stack', 'barrel_stack', 'crate', 'barrel', 'sack', 'chain_coil', 'rope_coils', 'key_bundle', 'coin_pouch', 'chest', 'shelf_wall', 'grain_sacks', 'spice_crates', 'goods_baskets', 'crate_stack_goods'],
     themes: ['shop'],
     caps: { shop_counter: 0, display_shelf: 0, scales_table: 0, cloth_bolts: 0, pottery_stand: 0 },
     arrangement: 'stalls',
@@ -169,7 +169,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   },
   workshop: {
     require: ['workbench', 'tool_rack'],
-    prefer: ['table_long', 'shelf_wall', 'crate', 'barrel', 'chest', 'firewood_stack', 'candle', 'sawhorse', 'lumber_pile', 'grindstone', 'sawdust'],
+    prefer: ['table_long', 'alchemy_table', 'tool_peg_rack', 'chain_coil', 'arcane_coil', 'shelf_wall', 'crate', 'barrel', 'chest', 'firewood_stack', 'candle', 'sawhorse', 'lumber_pile', 'grindstone', 'sawdust'],
     themes: ['workshop'],
     caps: { workbench: 2, sawhorse: 1, grindstone: 1, table_long: 1 },
     arrangement: 'gathered',
@@ -183,7 +183,33 @@ const SEMANTIC_PROFILES = Object.freeze({
   },
   exterior: {
     require: [],
-    prefer: ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter', 'rock_cluster', 'pebbles'],
+    prefer: ['command_tent', 'scout_tent', 'nomad_tent', 'cargo_sled', 'dock_crane', 'capstan', 'anchor', 'snowshoe_pair', 'mine_cart', 'ballista', 'mantlet', 'giant_fungus', 'crystal_cluster', 'obsidian_monolith', 'mangrove_roots', 'clover_patch', 'forest_plant', 'wall_ivy', 'wall_ivy_corner', 'wall_ivy_wide', 'tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter', 'rock_cluster', 'pebbles'],
+    arrangement: 'gathered',
+  },
+  // Эти назначения не появляются случайно: Архитектор/сцена должны назвать
+  // их явно, иначе крупные лагерные и портовые силуэты не засоряют двор.
+  camp: {
+    require: [],
+    prefer: ['command_tent', 'scout_tent', 'nomad_tent', 'rope_coils', 'weapon_rack', 'shield_display'],
+    themes: ['camp', 'barracks'],
+    arrangement: 'gathered',
+  },
+  winter: {
+    require: [],
+    prefer: ['cargo_sled', 'snowshoe_pair'],
+    themes: ['winter'],
+    arrangement: 'gathered',
+  },
+  siege: {
+    require: [],
+    prefer: ['ballista', 'mantlet', 'command_tent'],
+    themes: ['siege', 'barracks'],
+    arrangement: 'gathered',
+  },
+  harbor: {
+    require: [],
+    prefer: ['dock_crane', 'capstan', 'anchor', 'rope_coils'],
+    themes: ['harbor'],
     arrangement: 'gathered',
   },
 })
@@ -241,6 +267,7 @@ const TAG_PURPOSES = Object.freeze({
   horses: 'stable', animals: 'stable', fodder: 'stable',
   forge: 'forge', tools: 'workshop', craft: 'workshop',
   courtyard: 'courtyard', yard: 'courtyard', outside: 'exterior',
+  camp: 'camp', winter: 'winter', snow: 'winter', siege: 'siege', harbor: 'harbor', port: 'harbor',
 })
 
 /**
@@ -279,6 +306,10 @@ const SET_ANCHORS = Object.freeze({
   iron_cage: ['torture_rack'], guard_brazier: ['jailer_desk', 'torture_rack'], strongbox: ['jailer_desk', 'writing_desk'],
   scales_table: ['shop_counter'], armchair: ['writing_desk', 'reading_nook', 'fireplace'], globe: ['writing_desk'],
   chandelier: ['table_long'], candelabra: ['table_long', 'altar'],
+  alchemy_bottles: ['alchemy_table', 'writing_desk', 'shop_counter'], crystal_orb: ['alchemy_table', 'writing_desk'],
+  arcane_coil: ['alchemy_table', 'workbench'], book_piles: ['writing_desk', 'map_table'],
+  cutlery_set: ['table_long', 'table_small'], desk_candlestick: ['writing_desk', 'table_small'],
+  ceremonial_chalice: ['altar', 'offering_table'], scroll_pile: ['writing_desk', 'map_table'],
 })
 
 /** Четыре стороны в порядке n, e, s, w. Поворот 0° смотрит на север. */
@@ -334,7 +365,7 @@ function windowBeside(map, x, y) {
  * Предметы, которые по смыслу ставятся рядами и группами одного вида: им
  * соседство с таким же не штрафуется.
  */
-const CLUSTER_FRIENDLY = new Set(['village_fence', 'rail_fence', 'prayer_bench', 'crypt_niche', 'crate_stack', 'barrel_stack', 'crate', 'barrel', 'bunk_bed', 'bed', 'grave', 'chair', 'stool', 'bench', 'hitching_post', 'sack', 'shelf_wall', 'bookshelf', 'pillar'])
+const CLUSTER_FRIENDLY = new Set(['village_fence', 'rail_fence', 'prayer_bench', 'crypt_niche', 'crate_stack', 'barrel_stack', 'crate', 'barrel', 'bunk_bed', 'bed', 'grave', 'chair', 'stool', 'bench', 'hitching_post', 'sack', 'shelf_wall', 'bookshelf', 'pillar', 'wall_ivy', 'wall_ivy_corner', 'wall_ivy_wide', 'clover_patch', 'forest_plant'])
 
 /** Сколько клеток-кандидатов пробуем, прежде чем отказаться от предмета. */
 const PLACEMENT_ATTEMPTS = 16
@@ -1458,8 +1489,15 @@ export function placeColonnade(map, { zoneId, assetId = 'pillar', idPrefix = 'co
 }
 
 const TABLEWARE = new Set(['mug', 'plate', 'bowl_stew', 'bottle', 'jug', 'bread_loaf', 'cheese_wheel', 'candle', 'dice_cup', 'coin_pile', 'cutting_board', 'offering_bowl'])
+for (const id of [
+  'cutlery_set', 'book_piles', 'arcane_coil', 'alchemy_bottles', 'desk_candlestick', 'single_book',
+  'ceremonial_chalice', 'book_row', 'scroll_pile', 'key_bundle', 'coin_pouch',
+]) TABLEWARE.add(id)
+const NEW_TABLEWARE = new Set(['cutlery_set', 'book_piles', 'arcane_coil', 'alchemy_bottles', 'desk_candlestick', 'single_book', 'ceremonial_chalice', 'book_row', 'scroll_pile', 'key_bundle', 'coin_pouch'])
+// Алхимический стол уже занят колбами и весами внутри GLB: его общий bbox
+// заканчивается над посудой, поэтому новую утварь на него не подсаживаем.
 const SURFACES = new Set(['table_round', 'table_long', 'table_royal', 'table_small', 'bar_counter', 'night_table', 'altar'])
-const WALL_MOUNTS = new Set(['torch_wall', 'lantern_wall', 'banner'])
+const WALL_MOUNTS = new Set(['torch_wall', 'lantern_wall', 'banner', 'arch_shelf', 'tool_peg_rack', 'shield_display', 'weapon_rack', 'vial_display_shelf', 'wall_ivy', 'wall_ivy_corner', 'wall_ivy_wide'])
 const SURFACE_SLOTS = [[-.2, -.2], [.2, .2], [-.2, .2], [.2, -.2], [0, 0], [0, -.25], [0, .25], [.25, 0]]
 
 /**
@@ -1478,6 +1516,8 @@ export function attachPropSupports(map) {
     })
   /** @type {Map<string, number>} */
   const used = new Map()
+  /** @type {Set<string>} */
+  const discard = new Set()
   for (const prop of map.props) if (prop.mount?.kind === 'surface') used.set(prop.mount.propId, (used.get(prop.mount.propId) ?? 0) + 1)
   for (const prop of map.props) {
     if (prop.mount) continue
@@ -1494,7 +1534,13 @@ export function attachPropSupports(map) {
       && (used.get(surface.prop.id) ?? 0) < Math.min(SURFACE_SLOTS.length, Math.max(2, surface.prop.footprint.length * 2)))
     candidates.sort((a, b) => Math.hypot(a.x - prop.x, a.y - prop.y) - Math.hypot(b.x - prop.x, b.y - prop.y) || a.prop.id.localeCompare(b.prop.id))
     const surface = candidates[0]
-    if (!surface) continue
+    if (!surface) {
+      // Новая мелкая утварь не должна тихо падать на пол: без опоры её
+      // присутствие нарушает смысл 0×0 surface-пропа. Старые виды сохраняют
+      // прежнее совместимое поведение.
+      if (NEW_TABLEWARE.has(prop.assetId)) discard.add(prop.id)
+      continue
+    }
     const slot = used.get(surface.prop.id) ?? 0
     const [dx, dy] = SURFACE_SLOTS[slot]
     prop.x = Number((surface.x + dx * surface.width * surface.prop.scale).toFixed(3))
@@ -1503,6 +1549,7 @@ export function attachPropSupports(map) {
     prop.mount = { kind: 'surface', propId: surface.prop.id }
     used.set(surface.prop.id, slot + 1)
   }
+  if (discard.size) map.props = map.props.filter((prop) => !discard.has(prop.id))
   return map
 }
 

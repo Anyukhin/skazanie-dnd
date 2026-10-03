@@ -29,6 +29,8 @@ export type StyleMaterial = {
   metalness: number
   roughness: number
   doubleSided: boolean
+  /** Порог альфа-теста для листвы и других вырезанных деталей. */
+  alphaTest?: number
   /** Высота фактуры к ширине: у вырезок-полос повтор не квадратный. */
   aspect: number
 }
@@ -36,7 +38,9 @@ export type StyleMaterial = {
 /** Вид стены: материал пакета и сколько клеток накрывает его повтор по горизонтали. */
 export type StyleWallLook = { material: string; cells: number }
 
-export type StyleProp = { key: string; url: string; yaw: number }
+export type StylePreview = { x: number; y: number; w: number; h: number }
+export type StyleProp = { key: string; url: string; yaw: number; preview?: StylePreview; maxHeight?: number; size?: [number, number, number] }
+export type StyleAtlas = { image: string; key: string }
 
 export type GraphicsStylePack = {
   style: typeof GRAPHICS_STYLE
@@ -45,6 +49,7 @@ export type GraphicsStylePack = {
   materials: Record<string, StyleMaterial>
   walls: Record<string, StyleWallLook>
   props: Record<string, StyleProp[]>
+  atlas?: StyleAtlas
 }
 
 const ROOT = '/assets/styles/'
@@ -52,7 +57,8 @@ const KEY = /^[a-z][a-z-]{0,23}$/u
 const MATERIAL_KEY = /^[a-z][a-z0-9-]{0,47}$/u
 const ASSET_ID = /^[a-z][a-z0-9_]{0,47}$/u
 const FLOOR_FILE = /^floors\/[a-z-]+\/(?:color|normal|orm|height)\.jpg$/u
-const MATERIAL_FILE = /^materials\/[a-z0-9-]+\/(?:color|normal|orm)\.jpg$/u
+const MATERIAL_FILE = /^materials\/[a-z0-9-]+\/(?:color\.png|(?:color|normal|orm)\.jpg)$/u
+const STYLE_ATLAS_FILE = /^topdown\.png$/u
 const PROP_FILE = /^props\/[a-z0-9_]+\.glb$/u
 /** Готовые модели Quaternius из выпуска окружения: стиль ссылается на них, а не копирует. */
 const RELEASE_FILE = /^\/assets\/models\/environment\/releases\/[a-f0-9]{24}\/(?:quaternius|quaternius-nature)\/[a-z0-9_]+\.glb$/u
@@ -94,12 +100,14 @@ export function validateGraphicsStylePack(raw: unknown): GraphicsStylePack {
       if (file !== undefined && (typeof file !== 'string' || !MATERIAL_FILE.test(file))) throw new Error(`Некорректная карта материала ${key}`)
     }
     if (!finite(material.metalness, 0, 1) || !finite(material.roughness, 0, 1)) throw new Error(`Некорректные свойства материала ${key}`)
+    if (material.alphaTest !== undefined && !finite(material.alphaTest, 0, 1)) throw new Error(`Некорректный альфа-тест материала ${key}`)
     if (material.aspect !== undefined && !finite(material.aspect, .05, 20)) throw new Error(`Некорректная пропорция материала ${key}`)
     materials[key] = {
       color: base + material.color,
       ...(typeof material.normal === 'string' ? { normal: base + material.normal } : {}),
       ...(typeof material.orm === 'string' ? { orm: base + material.orm } : {}),
       metalness: material.metalness as number, roughness: material.roughness as number, doubleSided: material.doubleSided === true,
+      ...(typeof material.alphaTest === 'number' ? { alphaTest: material.alphaTest } : {}),
       aspect: typeof material.aspect === 'number' ? material.aspect : 1,
     }
   }
@@ -115,6 +123,17 @@ export function validateGraphicsStylePack(raw: unknown): GraphicsStylePack {
   const props: Record<string, StyleProp[]> = {}
   const rawProps = (input.props ?? {}) as Record<string, unknown>
   if (typeof rawProps !== 'object' || Object.keys(rawProps).length > 256) throw new Error('Некорректный список предметов')
+  const rawAtlas = input.atlas
+  let atlas: StyleAtlas | undefined
+  if (rawAtlas !== undefined) {
+    if (!rawAtlas || typeof rawAtlas !== 'object' || Array.isArray(rawAtlas)) throw new Error('Некорректный атлас предметов стиля')
+    const atlasInput = rawAtlas as Record<string, unknown>
+    if (typeof atlasInput.image !== 'string' || !STYLE_ATLAS_FILE.test(atlasInput.image)
+      || typeof atlasInput.key !== 'string' || !/^[0-9a-f]{8,64}$/u.test(atlasInput.key)) {
+      throw new Error('Некорректный атлас предметов стиля')
+    }
+    atlas = { image: base + atlasInput.image, key: atlasInput.key }
+  }
   for (const [assetId, list] of Object.entries(rawProps)) {
     if (!ASSET_ID.test(assetId) || !Array.isArray(list) || !list.length || list.length > 8) throw new Error(`Некорректный предмет ${assetId}`)
     props[assetId] = list.map((entry: Record<string, unknown>) => {
@@ -124,10 +143,32 @@ export function validateGraphicsStylePack(raw: unknown): GraphicsStylePack {
         throw new Error(`Некорректная модель предмета ${assetId}`)
       }
       const yaw = finite(entry.yaw, -360, 360) ? entry.yaw as number : 0
-      return { key: entry.key, url: local ? base + url : url, yaw }
+      let preview: StylePreview | undefined
+      if (entry.preview !== undefined) {
+        if (!atlas || !entry.preview || typeof entry.preview !== 'object' || Array.isArray(entry.preview)) throw new Error(`Некорректный preview предмета ${assetId}`)
+        const rawPreview = entry.preview as Record<string, unknown>
+        if (!['x', 'y', 'w', 'h'].every((name) => typeof rawPreview[name] === 'number' && Number.isSafeInteger(rawPreview[name]) && Number(rawPreview[name]) >= 0 && Number(rawPreview[name]) <= 16_384)
+          || Number(rawPreview.w) < 1 || Number(rawPreview.h) < 1
+          || Number(rawPreview.x) + Number(rawPreview.w) > 16_384 || Number(rawPreview.y) + Number(rawPreview.h) > 16_384) {
+          throw new Error(`Некорректный preview предмета ${assetId}`)
+        }
+        preview = { x: Number(rawPreview.x), y: Number(rawPreview.y), w: Number(rawPreview.w), h: Number(rawPreview.h) }
+      }
+      const maxHeight = entry.maxHeight
+      if (maxHeight !== undefined && !finite(maxHeight, 0.0001, 8)) throw new Error(`Некорректная высота модели ${assetId}`)
+      const size = entry.size
+      if (size !== undefined && (!Array.isArray(size) || size.length !== 3 || size.some((value) => !finite(value, 0.0001, 10_000)))) {
+        throw new Error(`Некорректный габарит модели ${assetId}`)
+      }
+      return {
+        key: entry.key, url: local ? base + url : url, yaw,
+        ...(preview ? { preview } : {}),
+        ...(typeof maxHeight === 'number' ? { maxHeight } : {}),
+        ...(Array.isArray(size) ? { size: [size[0] as number, size[1] as number, size[2] as number] } : {}),
+      }
     })
   }
-  return { style: GRAPHICS_STYLE, revision: input.revision, floors, materials, walls, props }
+  return { style: GRAPHICS_STYLE, revision: input.revision, floors, materials, walls, props, ...(atlas ? { atlas } : {}) }
 }
 
 let pack: Promise<GraphicsStylePack | null> | null = null
@@ -217,7 +258,7 @@ export function createStyleMaterialBinder(
         name: `skz:${key}`, vertexColors,
         map: texture(spec.color, true), normalMap: spec.normal ? texture(spec.normal, false) : null,
         roughnessMap: orm, metalnessMap: orm, aoMap: orm, aoMapIntensity: .8,
-        roughness: spec.roughness, metalness: orm ? spec.metalness : 0,
+        roughness: spec.roughness, metalness: orm ? spec.metalness : 0, alphaTest: spec.alphaTest ?? 0,
         side: spec.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
       })
       materials.set(id, result)

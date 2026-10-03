@@ -2,7 +2,7 @@
  "schema": "graphics-style/v1",
  "style": "stylized",
  "label": "Рисованный",
- "revision": "76f74341fd1fac90",
+ "revision": "044c914121e360b4",
  "license": "CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit) и собственные текстуры и модели проекта (data/asset-rights.json)",
  "sources": [
   "https://quaternius.com/packs/fantasypropsmegakit.html",
@@ -224,9 +224,65 @@
    "roughness": 1,
    "doubleSided": true
   },
+  "kit-bark-twistedtree": {
+   "color": "materials/kit-bark-twistedtree/color.jpg",
+   "normal": "materials/kit-bark-twistedtree/normal.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-brick": {
+   "color": "materials/kit-brick/color.jpg",
+   "normal": "materials/kit-brick/normal.jpg",
+   "orm": "materials/kit-brick/orm.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-grass": {
+   "color": "materials/kit-grass/color.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-leaves": {
+   "color": "materials/kit-leaves/color.png",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true,
+   "alphaTest": 0.2
+  },
+  "kit-leaves-normaltree-c": {
+   "color": "materials/kit-leaves-normaltree-c/color.png",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true,
+   "alphaTest": 0.2
+  },
+  "kit-metalornaments": {
+   "color": "materials/kit-metalornaments/color.jpg",
+   "orm": "materials/kit-metalornaments/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-page-noise": {
+   "color": "materials/kit-page-noise/color.jpg",
+   "metalness": 0,
+   "roughness": 0.5,
+   "doubleSided": true
+  },
   "kit-pathrocks": {
    "color": "materials/kit-pathrocks/color.jpg",
    "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-plaster": {
+   "color": "materials/kit-plaster/color.jpg",
+   "normal": "materials/kit-plaster/normal.jpg",
+   "orm": "materials/kit-plaster/orm.jpg",
+   "metalness": 1,
    "roughness": 1,
    "doubleSided": true
   },
@@ -241,6 +297,14 @@
    "normal": "materials/kit-rocktrim/normal.jpg",
    "orm": "materials/kit-rocktrim/orm.jpg",
    "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-roundtiles": {
+   "color": "materials/kit-roundtiles/color.jpg",
+   "normal": "materials/kit-roundtiles/normal.jpg",
+   "orm": "materials/kit-roundtiles/orm.jpg",
+   "metalness": 0,
    "roughness": 1,
    "doubleSided": true
   },
@@ -275,6 +339,21 @@
    "metalness": 1,
    "roughness": 1,
    "doubleSided": true
+  },
+  "kit-unevenbrick": {
+   "color": "materials/kit-unevenbrick/color.jpg",
+   "normal": "materials/kit-unevenbrick/normal.jpg",
+   "orm": "materials/kit-unevenbrick/orm.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-vineleaf-png": {
+   "color": "materials/kit-vineleaf-png/color.png",
+   "metalness": 0,
+   "roughness": 0.5,
+   "doubleSided": true,
+   "alphaTest": 0.5
   },
   "kit-woodtrim": {
    "color": "materials/kit-woodtrim/color.jpg",
@@ -442,1406 +521,4885 @@
    {
     "key": "ref-quaternius-barrel",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
    },
    {
     "key": "ref-quaternius-barrel-apples",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel_apples.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
    }
   ],
   "keg": [
    {
     "key": "ref-quaternius-barrel",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
    }
   ],
   "water_barrel": [
    {
     "key": "ref-quaternius-barrel",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
    }
   ],
   "rain_barrel": [
    {
     "key": "ref-quaternius-barrel",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
    }
   ],
   "chest": [
    {
     "key": "ref-quaternius-chest-wood",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/chest_wood.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 0,
+     "w": 246,
+     "h": 146
+    },
+    "size": [
+     1.276,
+     0.7152,
+     0.7554
+    ]
    }
   ],
   "footlocker": [
    {
     "key": "ref-quaternius-chest-wood",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/chest_wood.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 0,
+     "w": 246,
+     "h": 146
+    },
+    "size": [
+     1.276,
+     0.7152,
+     0.7554
+    ]
    }
   ],
   "strongbox": [
    {
     "key": "ref-quaternius-crate-metal",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/crate_metal.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8639,
+     0.8679,
+     0.8659
+    ]
    }
   ],
   "coin_pile": [
    {
     "key": "ref-quaternius-coin-pile",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/coin_pile.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 0,
+     "w": 246,
+     "h": 192
+    },
+    "size": [
+     0.1975,
+     0.0735,
+     0.1542
+    ]
    },
    {
     "key": "ref-quaternius-coin-pile-2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/coin_pile_2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 0,
+     "w": 246,
+     "h": 178
+    },
+    "size": [
+     0.2787,
+     0.0584,
+     0.2002
+    ]
    }
   ],
   "crate": [
    {
     "key": "ref-quaternius-crate-wooden",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/crate_wooden.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 0,
+     "w": 229,
+     "h": 246
+    },
+    "size": [
+     0.8423,
+     0.9309,
+     0.9083
+    ]
    },
    {
     "key": "style-mvmk-crate",
     "url": "props/mvmk_crate.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.0836,
+     1.0596,
+     1.0836
+    ]
    }
   ],
   "torch_wall": [
    {
     "key": "ref-quaternius-torch-metal",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/torch_metal.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 0,
+     "w": 142,
+     "h": 246
+    },
+    "size": [
+     0.2232,
+     0.6482,
+     0.3884
+    ]
    }
   ],
   "urn": [
    {
     "key": "ref-quaternius-vase-2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/vase_2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.6947,
+     0.5163,
+     0.6947
+    ]
    },
    {
     "key": "ref-quaternius-vase-4",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/vase_4.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.3596,
+     0.4855,
+     0.3596
+    ]
    }
   ],
   "anvil": [
    {
     "key": "ref-quaternius-anvil",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/anvil.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 0,
+     "w": 246,
+     "h": 92
+    },
+    "size": [
+     1.0816,
+     0.556,
+     0.4016
+    ]
    },
    {
     "key": "ref-quaternius-anvil-log",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/anvil_log.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 0,
+     "w": 246,
+     "h": 218
+    },
+    "size": [
+     0.9293,
+     1.0734,
+     0.8214
+    ]
    }
   ],
   "grindstone": [
    {
     "key": "ref-quaternius-whetstone",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/whetstone.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 0,
+     "w": 246,
+     "h": 196
+    },
+    "size": [
+     1.1409,
+     1.1699,
+     0.9018
+    ]
    }
   ],
   "bookcase_tall": [
    {
     "key": "ref-quaternius-bookcase-2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bookcase_2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 0,
+     "w": 246,
+     "h": 74
+    },
+    "size": [
+     1.4612,
+     2.5449,
+     0.429
+    ]
    }
   ],
   "book_lectern": [
    {
     "key": "ref-quaternius-book-stand",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/book_stand.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 0,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     0.5071,
+     1.4468,
+     0.5112
+    ]
    }
   ],
   "temple_lectern": [
    {
     "key": "ref-quaternius-book-stand",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/book_stand.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 0,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     0.5071,
+     1.4468,
+     0.5112
+    ]
    }
   ],
   "barracks_bed": [
    {
     "key": "ref-quaternius-bed-twin2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bed_twin2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 256,
+     "w": 192,
+     "h": 246
+    },
+    "size": [
+     1.8757,
+     0.7596,
+     2.4119
+    ]
    }
   ],
   "weapon_rack_wall": [
    {
     "key": "ref-quaternius-weapon-stand",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/weapon_stand.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 256,
+     "w": 246,
+     "h": 176
+    },
+    "size": [
+     1.3862,
+     1.1093,
+     0.9831
+    ]
    }
   ],
   "training_dummy": [
    {
     "key": "ref-quaternius-dummy",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/dummy.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 256,
+     "w": 246,
+     "h": 178
+    },
+    "size": [
+     0.8085,
+     1.8627,
+     0.5846
+    ]
    }
   ],
   "cell_bucket": [
    {
     "key": "ref-quaternius-bucket-wooden-1",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bucket_wooden_1.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 256,
+     "w": 246,
+     "h": 218
+    },
+    "size": [
+     0.4339,
+     0.2928,
+     0.3835
+    ]
    }
   ],
   "iron_cage": [
    {
     "key": "ref-quaternius-cage-small",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/cage_small.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 256,
+     "w": 238,
+     "h": 246
+    },
+    "size": [
+     0.8549,
+     0.8052,
+     0.8843
+    ]
    }
   ],
   "candle_rack": [
    {
     "key": "ref-quaternius-candle-stick-stand",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/candle_stick_stand.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 256,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.7323,
+     1.3125,
+     0.7313
+    ]
    }
   ],
   "spice_crates": [
    {
     "key": "ref-quaternius-farm-crate-carrot",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/farm_crate_carrot.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 256,
+     "w": 246,
+     "h": 196
+    },
+    "size": [
+     0.7138,
+     0.4113,
+     0.567
+    ]
    },
    {
     "key": "ref-quaternius-farm-crate-apple",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/farm_crate_apple.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 256,
+     "w": 246,
+     "h": 144
+    },
+    "size": [
+     0.7138,
+     0.2438,
+     0.4142
+    ]
    }
   ],
   "village_fence": [
    {
     "key": "style-mvmk-fence-single",
     "url": "props/mvmk_fence_single.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 256,
+     "w": 246,
+     "h": 16
+    },
+    "size": [
+     2.0641,
+     0.8381,
+     0.1198
+    ]
    },
    {
     "key": "style-mvmk-fence-extension",
     "url": "props/mvmk_fence_extension.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 256,
+     "w": 246,
+     "h": 14
+    },
+    "size": [
+     2.045,
+     0.8381,
+     0.1104
+    ]
    }
   ],
   "barrel_stack": [
    {
     "key": "ref-quaternius-barrel-holder",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel_holder.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 256,
+     "w": 246,
+     "h": 134
+    },
+    "size": [
+     1.3592,
+     1.2574,
+     0.741
+    ]
    },
    {
     "key": "style-barrel-pyramid",
     "url": "props/barrel_pyramid.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 256,
+     "w": 219,
+     "h": 110
+    },
+    "size": [
+     1.6148,
+     1.7082,
+     0.8948
+    ]
    }
   ],
   "crate_stack": [
    {
     "key": "style-crate-stack-three",
     "url": "props/crate_stack_three.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 256,
+     "w": 245,
+     "h": 133
+    },
+    "size": [
+     1.8398,
+     1.6934,
+     1.0217
+    ]
    },
    {
     "key": "style-crate-stack-mixed",
     "url": "props/crate_stack_mixed.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 256,
+     "w": 246,
+     "h": 138
+    },
+    "size": [
+     1.8502,
+     1.1444,
+     1.0403
+    ]
    }
   ],
   "ammo_crates": [
    {
     "key": "style-ammo-crates",
     "url": "props/ammo_crates.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 256,
+     "w": 240,
+     "h": 121
+    },
+    "size": [
+     1.9407,
+     1.0356,
+     0.9638
+    ]
    }
   ],
   "crate_stack_goods": [
    {
     "key": "style-crate-stack-goods",
     "url": "props/crate_stack_goods.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 256,
+     "w": 245,
+     "h": 152
+    },
+    "size": [
+     1.5495,
+     1.1747,
+     0.9883
+    ]
    }
   ],
   "goods_baskets": [
    {
     "key": "style-goods-baskets",
     "url": "props/goods_baskets.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 512,
+     "w": 238,
+     "h": 98
+    },
+    "size": [
+     1.5261,
+     0.4876,
+     0.6302
+    ]
    }
   ],
   "grain_sacks": [
    {
     "key": "style-grain-sacks",
     "url": "props/grain_sacks.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 512,
+     "w": 218,
+     "h": 180
+    },
+    "size": [
+     1.4372,
+     0.7992,
+     1.2177
+    ]
    }
   ],
   "pottery_stand": [
    {
     "key": "style-pottery-stand",
     "url": "props/pottery_stand.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 512,
+     "w": 232,
+     "h": 153
+    },
+    "size": [
+     1.2807,
+     0.5163,
+     0.8577
+    ]
    }
   ],
   "workbench": [
    {
     "key": "ref-quaternius-workbench",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/workbench.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 512,
+     "w": 246,
+     "h": 126
+    },
+    "size": [
+     2.0191,
+     0.8946,
+     1.0242
+    ]
    },
    {
     "key": "style-workbench-drawers",
     "url": "props/workbench_drawers.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 512,
+     "w": 245,
+     "h": 122
+    },
+    "size": [
+     2.0941,
+     1.7075,
+     1.0242
+    ]
    }
   ],
   "tool_rack": [
    {
     "key": "style-tool-rack",
     "url": "props/tool_rack.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 512,
+     "w": 246,
+     "h": 164
+    },
+    "size": [
+     1.2679,
+     1.8979,
+     0.871
+    ]
    }
   ],
   "prep_table": [
    {
     "key": "style-prep-table",
     "url": "props/prep_table.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 512,
+     "w": 246,
+     "h": 122
+    },
+    "size": [
+     2.0569,
+     1.1716,
+     1.0188
+    ]
    }
   ],
   "pantry_shelf": [
    {
     "key": "style-pantry-shelf",
     "url": "props/pantry_shelf.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 512,
+     "w": 246,
+     "h": 66
+    },
+    "size": [
+     1.3618,
+     1.3621,
+     0.3571
+    ]
    }
   ],
   "display_shelf": [
    {
     "key": "style-display-shelf",
     "url": "props/display_shelf.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 512,
+     "w": 246,
+     "h": 82
+    },
+    "size": [
+     1.3618,
+     1.6448,
+     0.4452
+    ]
    }
   ],
   "bar_shelf": [
    {
     "key": "style-sk-bar-shelf",
     "url": "props/sk_bar_shelf.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 512,
+     "w": 246,
+     "h": 36
+    },
+    "size": [
+     2.55,
+     1.4675,
+     0.36
+    ]
    },
    {
     "key": "style-bar-shelf-bottles",
     "url": "props/bar_shelf_bottles.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 512,
+     "w": 246,
+     "h": 62
+    },
+    "size": [
+     1.1371,
+     1.3274,
+     0.2846
+    ]
    }
   ],
   "map_table": [
    {
     "key": "style-map-table",
     "url": "props/map_table.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 512,
+     "w": 246,
+     "h": 128
+    },
+    "size": [
+     2.1364,
+     1.0618,
+     1.0967
+    ]
    }
   ],
   "war_table": [
    {
     "key": "style-war-table",
     "url": "props/war_table.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 512,
+     "w": 238,
+     "h": 116
+    },
+    "size": [
+     2.3305,
+     1.0618,
+     1.2481
+    ]
    }
   ],
   "offering_table": [
    {
     "key": "style-offering-table",
     "url": "props/offering_table.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 512,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.82,
+     0.9507,
+     0.82
+    ]
    }
   ],
   "fruit_cart": [
    {
     "key": "style-fruit-cart",
     "url": "props/fruit_cart.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 512,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     3.0205,
+     2.6318,
+     1.0597
+    ]
    }
   ],
   "rubble_heap": [
    {
     "key": "style-brick-rubble",
     "url": "props/brick_rubble.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 512,
+     "w": 246,
+     "h": 197
+    },
+    "size": [
+     1.1322,
+     0.6461,
+     0.9166
+    ]
    },
    {
     "key": "style-sk-rubble-heap",
     "url": "props/sk_rubble_heap.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 768,
+     "w": 246,
+     "h": 217
+    },
+    "size": [
+     0.5835,
+     0.3035,
+     0.513
+    ]
    }
   ],
   "campfire": [
    {
     "key": "style-campfire-ring",
     "url": "props/campfire_ring.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 768,
+     "w": 234,
+     "h": 245
+    },
+    "size": [
+     1.2951,
+     0.7354,
+     1.3551
+    ]
    },
    {
     "key": "style-kenney-campfire-stones",
     "url": "props/kenney_campfire_stones.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 768,
+     "w": 246,
+     "h": 235
+    },
+    "size": [
+     0.5408,
+     0.0778,
+     0.5155
+    ]
    }
   ],
   "dead_bramble": [
    {
     "key": "style-dead-bramble",
     "url": "props/dead_bramble.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 768,
+     "w": 205,
+     "h": 156
+    },
+    "size": [
+     1.945,
+     0.7087,
+     1.6093
+    ]
    }
   ],
   "mossy_rock": [
    {
     "key": "ref-quaternius-nature-rock-medium-1",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_1.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 768,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     3.2251,
+     2.2598,
+     2.9891
+    ]
    },
    {
     "key": "ref-quaternius-nature-rock-medium-2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 768,
+     "w": 246,
+     "h": 200
+    },
+    "size": [
+     3.0488,
+     1.899,
+     2.4791
+    ]
    }
   ],
   "boulder_split": [
    {
     "key": "style-boulder-split",
     "url": "props/boulder_split.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 768,
+     "w": 241,
+     "h": 111
+    },
+    "size": [
+     2.5933,
+     0.8545,
+     1.3398
+    ]
    }
   ],
   "rock_cluster": [
    {
     "key": "style-rock-cluster",
     "url": "props/rock_cluster.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 768,
+     "w": 234,
+     "h": 179
+    },
+    "size": [
+     2.2124,
+     0.7231,
+     1.6926
+    ]
    }
   ],
   "cliff_medium": [
    {
     "key": "style-cliff-medium",
     "url": "props/cliff_medium.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 768,
+     "w": 224,
+     "h": 120
+    },
+    "size": [
+     3.3484,
+     1.7372,
+     1.9294
+    ]
    }
   ],
   "cliff_large": [
    {
     "key": "style-cliff-large",
     "url": "props/cliff_large.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 768,
+     "w": 216,
+     "h": 125
+    },
+    "size": [
+     6.1816,
+     2.0847,
+     3.5579
+    ]
    }
   ],
   "cliff_long": [
    {
     "key": "style-cliff-long",
     "url": "props/cliff_long.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 768,
+     "w": 246,
+     "h": 80
+    },
+    "size": [
+     6.4087,
+     1.7372,
+     2.0521
+    ]
    }
   ],
   "boulder": [
    {
     "key": "ref-quaternius-nature-rock-medium-1",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_1.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 768,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     3.2251,
+     2.2598,
+     2.9891
+    ]
    },
    {
     "key": "ref-quaternius-nature-rock-medium-2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 768,
+     "w": 246,
+     "h": 200
+    },
+    "size": [
+     3.0488,
+     1.899,
+     2.4791
+    ]
    },
    {
     "key": "ref-quaternius-nature-rock-medium-3",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_3.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 768,
+     "w": 242,
+     "h": 246
+    },
+    "size": [
+     3.4201,
+     2.3163,
+     3.4761
+    ]
    }
   ],
   "rock_small": [
    {
     "key": "ref-quaternius-nature-pebble-round-3",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pebble_round_3.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 768,
+     "w": 228,
+     "h": 246
+    },
+    "size": [
+     0.4497,
+     0.0986,
+     0.4848
+    ]
    },
    {
     "key": "ref-quaternius-nature-pebble-square-4",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pebble_square_4.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 768,
+     "w": 246,
+     "h": 212
+    },
+    "size": [
+     0.3399,
+     0.1683,
+     0.2908
+    ]
    }
   ],
   "bush": [
    {
     "key": "ref-quaternius-nature-bush-common",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 768,
+     "w": 218,
+     "h": 226
+    },
+    "size": [
+     1.9148,
+     1.5818,
+     1.9651
+    ]
    },
    {
     "key": "ref-quaternius-nature-bush-common-flowers",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common_flowers.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 768,
+     "w": 227,
+     "h": 239
+    },
+    "size": [
+     1.9148,
+     1.5818,
+     1.9651
+    ]
    }
   ],
   "shrub": [
    {
     "key": "ref-quaternius-nature-bush-common",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 768,
+     "w": 218,
+     "h": 226
+    },
+    "size": [
+     1.9148,
+     1.5818,
+     1.9651
+    ]
    },
    {
     "key": "ref-quaternius-nature-bush-common-flowers",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common_flowers.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 768,
+     "w": 227,
+     "h": 239
+    },
+    "size": [
+     1.9148,
+     1.5818,
+     1.9651
+    ]
    }
   ],
   "fern": [
    {
     "key": "ref-quaternius-nature-fern-1",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/fern_1.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 1024,
+     "w": 238,
+     "h": 223
+    },
+    "size": [
+     2.8269,
+     0.8402,
+     2.6523
+    ]
    }
   ],
   "flowers": [
    {
     "key": "ref-quaternius-nature-flower-3-group",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/flower_3_group.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 1024,
+     "w": 224,
+     "h": 240
+    },
+    "size": [
+     1.4885,
+     2.0548,
+     1.5911
+    ]
    },
    {
     "key": "ref-quaternius-nature-flower-4-group",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/flower_4_group.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 1024,
+     "w": 245,
+     "h": 185
+    },
+    "size": [
+     1.7805,
+     2.4868,
+     1.3675
+    ]
    },
    {
     "key": "ref-quaternius-nature-plant-7-big",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/plant_7_big.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 1024,
+     "w": 230,
+     "h": 243
+    },
+    "size": [
+     1.3108,
+     0.2534,
+     1.3622
+    ]
    }
   ],
   "grass_tuft": [
    {
     "key": "ref-quaternius-nature-grass-common-short",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/grass_common_short.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 1024,
+     "w": 214,
+     "h": 246
+    },
+    "size": [
+     0.6389,
+     1.3341,
+     0.7373
+    ]
    },
    {
     "key": "ref-quaternius-nature-grass-common-tall",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/grass_common_tall.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 1024,
+     "w": 222,
+     "h": 246
+    },
+    "size": [
+     0.8951,
+     1.8727,
+     0.9931
+    ]
+   },
+   {
+    "key": "style-extra-grass-wispy",
+    "url": "props/extra_grass_wispy.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 1024,
+     "w": 238,
+     "h": 245
+    },
+    "size": [
+     1.5401,
+     1.6718,
+     1.5937
+    ]
    }
   ],
   "mushroom_cluster": [
    {
     "key": "ref-quaternius-nature-mushroom-common",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/mushroom_common.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 1024,
+     "w": 178,
+     "h": 246
+    },
+    "size": [
+     0.5637,
+     0.4635,
+     0.7791
+    ]
    },
    {
     "key": "ref-quaternius-nature-mushroom-laetiporus",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/mushroom_laetiporus.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 1024,
+     "w": 246,
+     "h": 200
+    },
+    "size": [
+     1.366,
+     0.767,
+     1.1032
+    ]
    }
   ],
   "tree_oak": [
    {
     "key": "ref-quaternius-nature-common-tree-1",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_1.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 1024,
+     "w": 203,
+     "h": 215
+    },
+    "size": [
+     4.3114,
+     7.2648,
+     4.5777
+    ]
    },
    {
     "key": "ref-quaternius-nature-common-tree-2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 1024,
+     "w": 231,
+     "h": 211
+    },
+    "size": [
+     4.4643,
+     7.643,
+     4.2759
+    ]
    },
    {
     "key": "ref-quaternius-nature-common-tree-5",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_5.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 1024,
+     "w": 195,
+     "h": 218
+    },
+    "size": [
+     3.6712,
+     7.0062,
+     4.2197
+    ]
+   },
+   {
+    "key": "style-extra-twisted-tree-tall",
+    "url": "props/extra_twisted_tree_tall.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 1024,
+     "w": 231,
+     "h": 198
+    },
+    "size": [
+     13.5158,
+     16.7255,
+     11.5494
+    ]
+   },
+   {
+    "key": "style-extra-twisted-tree-broad",
+    "url": "props/extra_twisted_tree_broad.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 1024,
+     "w": 232,
+     "h": 232
+    },
+    "size": [
+     11.3575,
+     16.0725,
+     11.5056
+    ]
    }
   ],
   "tree_birch": [
    {
     "key": "ref-quaternius-nature-common-tree-3",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_3.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 1024,
+     "w": 220,
+     "h": 225
+    },
+    "size": [
+     4.0628,
+     9.4252,
+     4.2411
+    ]
    },
    {
     "key": "ref-quaternius-nature-common-tree-4",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_4.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 1024,
+     "w": 220,
+     "h": 232
+    },
+    "size": [
+     3.8255,
+     9.4384,
+     3.7554
+    ]
    }
   ],
   "tree_pine": [
    {
     "key": "ref-quaternius-nature-pine-1",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_1.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 1280,
+     "w": 238,
+     "h": 219
+    },
+    "size": [
+     4.9447,
+     7.3169,
+     4.5384
+    ]
    },
    {
     "key": "ref-quaternius-nature-pine-3",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_3.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 1280,
+     "w": 215,
+     "h": 238
+    },
+    "size": [
+     3.6114,
+     7.3922,
+     3.9958
+    ]
    },
    {
     "key": "ref-quaternius-nature-pine-4",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_4.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 1280,
+     "w": 238,
+     "h": 221
+    },
+    "size": [
+     5.802,
+     10.2364,
+     5.3708
+    ]
    }
   ],
   "tree_spruce": [
    {
     "key": "ref-quaternius-nature-pine-2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 1280,
+     "w": 238,
+     "h": 217
+    },
+    "size": [
+     5.7281,
+     7.3762,
+     5.2212
+    ]
    },
    {
     "key": "ref-quaternius-nature-pine-5",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_5.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 1280,
+     "w": 239,
+     "h": 230
+    },
+    "size": [
+     6.4201,
+     8.7238,
+     6.222
+    ]
    }
   ],
   "tree_dead": [
    {
     "key": "ref-quaternius-nature-dead-tree-1",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_1.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 1280,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     6.1489,
+     9.4955,
+     5.7487
+    ]
    },
    {
     "key": "ref-quaternius-nature-dead-tree-2",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_2.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 1280,
+     "w": 246,
+     "h": 234
+    },
+    "size": [
+     6.7296,
+     11.4882,
+     6.3785
+    ]
    },
    {
     "key": "ref-quaternius-nature-dead-tree-4",
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_4.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 1280,
+     "w": 246,
+     "h": 240
+    },
+    "size": [
+     7.9609,
+     12.771,
+     7.7324
+    ]
+   },
+   {
+    "key": "style-extra-dead-tree-low",
+    "url": "props/extra_dead_tree_low.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 1280,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     8.3564,
+     16.4374,
+     8.4133
+    ]
+   },
+   {
+    "key": "style-extra-dead-tree-sparse",
+    "url": "props/extra_dead_tree_sparse.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 1280,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     6.3876,
+     13.2804,
+     6.4301
+    ]
    }
   ],
   "altar": [
    {
     "key": "style-sk-altar",
     "url": "props/sk_altar.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 1280,
+     "w": 246,
+     "h": 108
+    },
+    "size": [
+     1.84,
+     0.72,
+     0.795
+    ]
    }
   ],
   "bar_counter": [
    {
     "key": "style-sk-bar-counter",
     "url": "props/sk_bar_counter.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 1280,
+     "w": 246,
+     "h": 60
+    },
+    "size": [
+     3.53,
+     1.169,
+     0.855
+    ]
    }
   ],
   "basket": [
    {
     "key": "style-sk-basket",
     "url": "props/sk_basket.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 1280,
+     "w": 246,
+     "h": 244
+    },
+    "size": [
+     0.6693,
+     0.7817,
+     0.66
+    ]
    }
   ],
   "bone_pile": [
    {
     "key": "style-sk-bone-pile",
     "url": "props/sk_bone_pile.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 1280,
+     "w": 246,
+     "h": 190
+    },
+    "size": [
+     0.7572,
+     0.4795,
+     0.58
+    ]
    }
   ],
   "bone_heap": [
    {
     "key": "style-sk-bone-pile",
     "url": "props/sk_bone_pile.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 1280,
+     "w": 246,
+     "h": 190
+    },
+    "size": [
+     0.7572,
+     0.4795,
+     0.58
+    ]
    }
   ],
   "bowl_stew": [
    {
     "key": "style-sk-bowl-stew",
     "url": "props/sk_bowl_stew.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 1280,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.44,
+     0.2507,
+     0.44
+    ]
    }
   ],
   "brazier": [
    {
     "key": "style-sk-brazier",
     "url": "props/sk_brazier.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 1280,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.73,
+     1.18,
+     0.73
+    ]
    }
   ],
   "guard_brazier": [
    {
     "key": "style-sk-brazier",
     "url": "props/sk_brazier.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 1280,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.73,
+     1.18,
+     0.73
+    ]
    }
   ],
   "bread_loaf": [
    {
     "key": "style-sk-bread-loaf",
     "url": "props/sk_bread_loaf.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 1536,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     0.705,
+     0.2155,
+     0.351
+    ]
    }
   ],
   "broom": [
    {
     "key": "style-sk-broom",
     "url": "props/sk_broom.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 1536,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.19,
+     1.31,
+     0.19
+    ]
    }
   ],
   "bunk_bed": [
    {
     "key": "style-sk-bunk-bed",
     "url": "props/sk_bunk_bed.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 1536,
+     "w": 246,
+     "h": 130
+    },
+    "size": [
+     1.9,
+     2.11,
+     1
+    ]
    }
   ],
   "cheese_wheel": [
    {
     "key": "style-sk-cheese-wheel",
     "url": "props/sk_cheese_wheel.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 1536,
+     "w": 246,
+     "h": 244
+    },
+    "size": [
+     0.436,
+     0.2098,
+     0.4294
+    ]
    }
   ],
   "crypt_niche": [
    {
     "key": "style-sk-crypt-niche",
     "url": "props/sk_crypt_niche.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 1536,
+     "w": 246,
+     "h": 102
+    },
+    "size": [
+     0.88,
+     1.55,
+     0.36
+    ]
    }
   ],
   "cutting_board": [
    {
     "key": "style-sk-cutting-board",
     "url": "props/sk_cutting_board.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 1536,
+     "w": 246,
+     "h": 130
+    },
+    "size": [
+     0.6516,
+     0.101,
+     0.34
+    ]
    }
   ],
   "dice_cup": [
    {
     "key": "style-sk-dice-cup",
     "url": "props/sk_dice_cup.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 1536,
+     "w": 246,
+     "h": 244
+    },
+    "size": [
+     0.326,
+     0.3859,
+     0.321
+    ]
    }
   ],
   "fireplace": [
    {
     "key": "style-sk-fireplace",
     "url": "props/sk_fireplace.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 1536,
+     "w": 246,
+     "h": 94
+    },
+    "size": [
+     1.7,
+     1.63,
+     0.65
+    ]
    }
   ],
   "grave": [
    {
     "key": "style-sk-grave",
     "url": "props/sk_grave.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 1536,
+     "w": 234,
+     "h": 246
+    },
+    "size": [
+     0.88,
+     0.79,
+     0.93
+    ]
    }
   ],
   "haystack": [
    {
     "key": "style-sk-haystack",
     "url": "props/sk_haystack.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 1536,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     1.424,
+     1.2205,
+     1.44
+    ]
    }
   ],
   "hearth_fire": [
    {
     "key": "style-sk-hearth-fire",
     "url": "props/sk_hearth_fire.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 1536,
+     "w": 246,
+     "h": 200
+    },
+    "size": [
+     0.84,
+     0.71,
+     0.68
+    ]
    }
   ],
   "hitching_post": [
    {
     "key": "style-sk-hitching-post",
     "url": "props/sk_hitching_post.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 1536,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     0.51,
+     0.945,
+     0.24
+    ]
    }
   ],
   "jug": [
    {
     "key": "style-sk-jug",
     "url": "props/sk_jug.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 1536,
+     "w": 245,
+     "h": 131
+    },
+    "size": [
+     0.718,
+     0.522,
+     0.38
+    ]
    }
   ],
   "lamp_post": [
    {
     "key": "style-sk-lamp-post",
     "url": "props/sk_lamp_post.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 1536,
+     "w": 234,
+     "h": 246
+    },
+    "size": [
+     0.3424,
+     1.71,
+     0.36
+    ]
    }
   ],
   "lute": [
    {
     "key": "style-sk-lute",
     "url": "props/sk_lute.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 1536,
+     "w": 246,
+     "h": 152
+    },
+    "size": [
+     0.44,
+     1.1062,
+     0.2714
+    ]
    }
   ],
   "milestone": [
    {
     "key": "style-sk-milestone",
     "url": "props/sk_milestone.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 1536,
+     "w": 246,
+     "h": 148
+    },
+    "size": [
+     0.5,
+     0.82,
+     0.3
+    ]
    }
   ],
   "offering_bowl": [
    {
     "key": "style-sk-offering-bowl",
     "url": "props/sk_offering_bowl.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 1792,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     0.535,
+     0.498,
+     0.54
+    ]
    }
   ],
   "pillar": [
    {
     "key": "style-sk-pillar",
     "url": "props/sk_pillar.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 1792,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.72,
+     1.47,
+     0.72
+    ]
    }
   ],
   "reliquary": [
    {
     "key": "style-sk-reliquary",
     "url": "props/sk_reliquary.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 1792,
+     "w": 246,
+     "h": 174
+    },
+    "size": [
+     0.72,
+     0.98,
+     0.505
+    ]
    }
   ],
   "roadside_shrine": [
    {
     "key": "style-sk-roadside-shrine",
     "url": "props/sk_roadside_shrine.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 1792,
+     "w": 246,
+     "h": 144
+    },
+    "size": [
+     0.5845,
+     1.135,
+     0.34
+    ]
    }
   ],
   "royal_throne": [
    {
     "key": "style-sk-royal-throne",
     "url": "props/sk_royal_throne.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 1792,
+     "w": 246,
+     "h": 196
+    },
+    "size": [
+     0.99,
+     1.87,
+     0.787
+    ]
    }
   ],
   "sarcophagus": [
    {
     "key": "style-sk-sarcophagus",
     "url": "props/sk_sarcophagus.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 1792,
+     "w": 246,
+     "h": 110
+    },
+    "size": [
+     1.72,
+     0.74,
+     0.76
+    ]
    }
   ],
   "table_round": [
    {
     "key": "style-sk-table-round",
     "url": "props/sk_table_round.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 1792,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.56,
+     0.735,
+     1.56
+    ]
    }
   ],
   "table_royal": [
    {
     "key": "style-sk-table-royal",
     "url": "props/sk_table_royal.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 1792,
+     "w": 246,
+     "h": 80
+    },
+    "size": [
+     3.48,
+     1.108,
+     1.12
+    ]
    }
   ],
   "table_small": [
    {
     "key": "style-sk-table-small",
     "url": "props/sk_table_small.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 1792,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.82,
+     0.694,
+     0.82
+    ]
    }
   ],
   "wagon_wheel": [
    {
     "key": "style-sk-wagon-wheel",
     "url": "props/sk_wagon_wheel.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 1792,
+     "w": 246,
+     "h": 52
+    },
+    "size": [
+     0.592,
+     0.583,
+     0.122
+    ]
    }
   ],
   "wardrobe": [
    {
     "key": "style-sk-wardrobe",
     "url": "props/sk_wardrobe.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 1792,
+     "w": 246,
+     "h": 146
+    },
+    "size": [
+     1.34,
+     1.92,
+     0.7855
+    ]
    }
   ],
   "washbasin": [
    {
     "key": "style-sk-washbasin",
     "url": "props/sk_washbasin.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 1792,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     0.7919,
+     1.066,
+     0.8
+    ]
    }
   ],
   "water_trough": [
    {
     "key": "style-sk-water-trough",
     "url": "props/sk_water_trough.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 1792,
+     "w": 246,
+     "h": 102
+    },
+    "size": [
+     1.765,
+     0.6125,
+     0.72
+    ]
    }
   ],
   "well": [
    {
     "key": "style-sk-well",
     "url": "props/sk_well.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 1792,
+     "w": 246,
+     "h": 218
+    },
+    "size": [
+     1.6275,
+     1.6,
+     1.4325
+    ]
    }
   ],
   "fallen_log": [
    {
     "key": "style-kenney-log",
     "url": "props/kenney_log.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 1792,
+     "w": 82,
+     "h": 246
+    },
+    "size": [
+     0.234,
+     0.1732,
+     0.71
+    ]
    },
    {
     "key": "style-kenney-log-large",
     "url": "props/kenney_log_large.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 1792,
+     "w": 246,
+     "h": 136
+    },
+    "size": [
+     1,
+     0.4167,
+     0.5493
+    ]
    }
   ],
   "firewood_stack": [
    {
     "key": "style-kenney-log-stack",
     "url": "props/kenney_log_stack.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2048,
+     "w": 148,
+     "h": 246
+    },
+    "size": [
+     0.4247,
+     0.3464,
+     0.71
+    ]
    },
    {
     "key": "style-kenney-log-stack-large",
     "url": "props/kenney_log_stack_large.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 2048,
+     "w": 220,
+     "h": 246
+    },
+    "size": [
+     0.634,
+     0.3464,
+     0.71
+    ]
    }
   ],
   "woodpile": [
    {
     "key": "style-kenney-log-stack",
     "url": "props/kenney_log_stack.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2048,
+     "w": 148,
+     "h": 246
+    },
+    "size": [
+     0.4247,
+     0.3464,
+     0.71
+    ]
    },
    {
     "key": "style-kenney-log-stack-large",
     "url": "props/kenney_log_stack_large.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 2048,
+     "w": 220,
+     "h": 246
+    },
+    "size": [
+     0.634,
+     0.3464,
+     0.71
+    ]
    }
   ],
   "tree_stump": [
    {
     "key": "style-kenney-stump-old",
     "url": "props/kenney_stump_old.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 2048,
+     "w": 238,
+     "h": 246
+    },
+    "size": [
+     0.3565,
+     0.2665,
+     0.371
+    ]
    },
    {
     "key": "style-kenney-stump-round",
     "url": "props/kenney_stump_round.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 2048,
+     "w": 238,
+     "h": 246
+    },
+    "size": [
+     0.3565,
+     0.2065,
+     0.371
+    ]
    },
    {
     "key": "style-kenney-stump-old-tall",
     "url": "props/kenney_stump_old_tall.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 2048,
+     "w": 238,
+     "h": 246
+    },
+    "size": [
+     0.3565,
+     0.6665,
+     0.371
+    ]
    }
   ],
   "signpost": [
    {
     "key": "style-kenney-sign",
     "url": "props/kenney_sign.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 2048,
+     "w": 246,
+     "h": 58
+    },
+    "size": [
+     0.3,
+     0.4088,
+     0.07
+    ]
    }
   ],
   "stalagmite": [
    {
     "key": "style-kenney-rock-tall-c",
     "url": "props/kenney_rock_tall_c.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 2048,
+     "w": 246,
+     "h": 236
+    },
+    "size": [
+     0.4562,
+     0.7829,
+     0.4365
+    ]
    },
    {
     "key": "style-kenney-rock-tall-d",
     "url": "props/kenney_rock_tall_d.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 2048,
+     "w": 236,
+     "h": 246
+    },
+    "size": [
+     0.4428,
+     0.7721,
+     0.4615
+    ]
    },
    {
     "key": "style-kenney-rock-tall-j",
     "url": "props/kenney_rock_tall_j.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 2048,
+     "w": 224,
+     "h": 246
+    },
+    "size": [
+     0.4879,
+     0.62,
+     0.5382
+    ]
    }
   ],
   "statue": [
    {
     "key": "style-kenney-statue-head",
     "url": "props/kenney_statue_head.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 2048,
+     "w": 246,
+     "h": 188
+    },
+    "size": [
+     0.726,
+     1,
+     0.5544
+    ]
    },
    {
     "key": "style-kenney-statue-obelisk",
     "url": "props/kenney_statue_obelisk.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 2048,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.307,
+     0.8754,
+     0.307
+    ]
    },
    {
     "key": "style-kenney-statue-column",
     "url": "props/kenney_statue_column.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 2048,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.3,
+     1,
+     0.3
+    ]
    }
   ],
   "forge": [
    {
     "key": "style-detail-forge",
     "url": "props/detail_forge.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 2048,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     3,
+     1.8,
+     3
+    ]
    }
   ],
   "quench_tub": [
    {
     "key": "style-detail-quench-tub",
     "url": "props/detail_quench_tub.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 2048,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     0.7,
+     1
+    ]
    }
   ],
   "coal_pile": [
    {
     "key": "style-detail-coal-pile",
     "url": "props/detail_coal_pile.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 2048,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     0.4,
+     1.2
+    ]
    }
   ],
   "sawhorse": [
    {
     "key": "style-detail-sawhorse",
     "url": "props/detail_sawhorse.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 2048,
+     "w": 246,
+     "h": 80
+    },
+    "size": [
+     2.5,
+     0.9,
+     0.8
+    ]
    }
   ],
   "lumber_pile": [
    {
     "key": "style-detail-lumber-pile",
     "url": "props/detail_lumber_pile.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2304,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     0.8,
+     1.2
+    ]
    }
   ],
   "kitchen_stove": [
    {
     "key": "style-detail-kitchen-stove",
     "url": "props/detail_kitchen_stove.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 2304,
+     "w": 246,
+     "h": 104
+    },
+    "size": [
+     2.6,
+     1.1,
+     1.1
+    ]
    }
   ],
   "bread_oven": [
    {
     "key": "style-detail-bread-oven",
     "url": "props/detail_bread_oven.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 2304,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.8,
+     2.8
+    ]
    }
   ],
   "butcher_block": [
    {
     "key": "style-detail-butcher-block",
     "url": "props/detail_butcher_block.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 2304,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.9,
+     0.9,
+     0.9
+    ]
    }
   ],
   "hanging_pots": [
    {
     "key": "style-detail-hanging-pots",
     "url": "props/detail_hanging_pots.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 2304,
+     "w": 246,
+     "h": 30
+    },
+    "size": [
+     2.6,
+     1.2,
+     0.3
+    ]
    }
   ],
   "washtub": [
    {
     "key": "style-detail-washtub",
     "url": "props/detail_washtub.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 2304,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     0.6,
+     1
+    ]
    }
   ],
   "double_bed": [
    {
     "key": "style-detail-double-bed",
     "url": "props/detail_double_bed.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 2304,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.2,
+     2.8
+    ]
    }
   ],
   "dresser": [
    {
     "key": "style-detail-dresser",
     "url": "props/detail_dresser.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 2304,
+     "w": 246,
+     "h": 93
+    },
+    "size": [
+     2.4,
+     1.1,
+     0.9
+    ]
    }
   ],
   "armchair": [
    {
     "key": "style-detail-armchair",
     "url": "props/detail_armchair.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 2304,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     1.2,
+     1
+    ]
    }
   ],
   "bathtub": [
    {
     "key": "style-detail-bathtub",
     "url": "props/detail_bathtub.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 2304,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     2.2,
+     0.8,
+     1.1
+    ]
    }
   ],
   "coat_rack": [
    {
     "key": "style-detail-coat-rack",
     "url": "props/detail_coat_rack.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 2304,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.6,
+     1.8,
+     0.6
+    ]
    }
   ],
   "cradle": [
    {
     "key": "style-detail-cradle",
     "url": "props/detail_cradle.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 2304,
+     "w": 246,
+     "h": 174
+    },
+    "size": [
+     1,
+     0.8,
+     0.7
+    ]
    }
   ],
   "folding_screen": [
    {
     "key": "style-detail-folding-screen",
     "url": "props/detail_folding_screen.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 2304,
+     "w": 246,
+     "h": 58
+    },
+    "size": [
+     2.6,
+     1.8,
+     0.6
+    ]
    }
   ],
   "standing_mirror": [
    {
     "key": "style-detail-standing-mirror",
     "url": "props/detail_standing_mirror.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 2304,
+     "w": 246,
+     "h": 154
+    },
+    "size": [
+     0.8,
+     1.8,
+     0.5
+    ]
    }
   ],
   "writing_desk": [
    {
     "key": "style-detail-writing-desk",
     "url": "props/detail_writing_desk.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 2304,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.4,
+     0.8,
+     1.1
+    ]
    }
   ],
   "candle_desk": [
    {
     "key": "style-detail-candle-desk",
     "url": "props/detail_candle_desk.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 2304,
+     "w": 246,
+     "h": 104
+    },
+    "size": [
+     2.4,
+     1,
+     1
+    ]
    }
   ],
   "scroll_rack": [
    {
     "key": "style-detail-scroll-rack",
     "url": "props/detail_scroll_rack.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2560,
+     "w": 246,
+     "h": 38
+    },
+    "size": [
+     2.6,
+     1.6,
+     0.4
+    ]
    }
   ],
   "globe": [
    {
     "key": "style-detail-globe",
     "url": "props/detail_globe.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 2560,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     1.1,
+     0.8
+    ]
    }
   ],
   "reading_nook": [
    {
     "key": "style-detail-reading-nook",
     "url": "props/detail_reading_nook.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 2560,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     2.4,
+     1.2,
+     1.2
+    ]
    }
   ],
   "telescope": [
    {
     "key": "style-detail-telescope",
     "url": "props/detail_telescope.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 2560,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.9,
+     1.6,
+     0.9
+    ]
    }
   ],
   "armor_stand": [
    {
     "key": "style-detail-armor-stand",
     "url": "props/detail_armor_stand.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 2560,
+     "w": 246,
+     "h": 174
+    },
+    "size": [
+     1,
+     1.8,
+     0.7
+    ]
    }
   ],
   "archery_target": [
    {
     "key": "style-detail-archery-target",
     "url": "props/detail_archery_target.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 2560,
+     "w": 246,
+     "h": 164
+    },
+    "size": [
+     1.2,
+     1.6,
+     0.8
+    ]
    }
   ],
   "straw_bed": [
    {
     "key": "style-detail-straw-bed",
     "url": "props/detail_straw_bed.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 2560,
+     "w": 124,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     0.3,
+     2.4
+    ]
    }
   ],
   "wall_chains": [
    {
     "key": "style-detail-wall-chains",
     "url": "props/detail_wall_chains.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 2560,
+     "w": 246,
+     "h": 74
+    },
+    "size": [
+     1,
+     1.6,
+     0.3
+    ]
    }
   ],
   "jailer_desk": [
    {
     "key": "style-detail-jailer-desk",
     "url": "props/detail_jailer_desk.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 2560,
+     "w": 246,
+     "h": 164
+    },
+    "size": [
+     1.2,
+     0.9,
+     0.8
+    ]
    }
   ],
   "torture_rack": [
    {
     "key": "style-detail-torture-rack",
     "url": "props/detail_torture_rack.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 2560,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     1,
+     1.2
+    ]
    }
   ],
   "stocks": [
    {
     "key": "style-detail-stocks",
     "url": "props/detail_stocks.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 2560,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.6,
+     1,
+     1.2
+    ]
    }
   ],
   "idol": [
    {
     "key": "style-detail-idol",
     "url": "props/detail_idol.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 2560,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     3,
+     2.8
+    ]
    }
   ],
   "holy_pool": [
    {
     "key": "style-detail-holy-pool",
     "url": "props/detail_holy_pool.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 2560,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     0.4,
+     2.8
+    ]
    }
   ],
   "font_basin": [
    {
     "key": "style-detail-font-basin",
     "url": "props/detail_font_basin.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 2560,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     1.1,
+     1
+    ]
    }
   ],
   "incense_burner": [
    {
     "key": "style-detail-incense-burner",
     "url": "props/detail_incense_burner.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 2560,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     1.2,
+     0.8
+    ]
    }
   ],
   "kneeling_cushions": [
    {
     "key": "style-detail-kneeling-cushions",
     "url": "props/detail_kneeling_cushions.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 2560,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     2.8,
+     0.3,
+     1
+    ]
    }
   ],
   "bell_frame": [
    {
     "key": "style-detail-bell-frame",
     "url": "props/detail_bell_frame.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2816,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.6,
+     2.6,
+     1.2
+    ]
    }
   ],
   "shop_counter": [
    {
     "key": "style-detail-shop-counter",
     "url": "props/detail_shop_counter.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 2816,
+     "w": 246,
+     "h": 60
+    },
+    "size": [
+     4.2,
+     1,
+     1
+    ]
    }
   ],
   "scales_table": [
    {
     "key": "style-detail-scales-table",
     "url": "props/detail_scales_table.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 2816,
+     "w": 246,
+     "h": 198
+    },
+    "size": [
+     1,
+     1,
+     0.8
+    ]
    }
   ],
   "cloth_bolts": [
    {
     "key": "style-detail-cloth-bolts",
     "url": "props/detail_cloth_bolts.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 2816,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.1,
+     1.4,
+     1.1
+    ]
    }
   ],
   "hay_bales": [
    {
     "key": "style-detail-hay-bales",
     "url": "props/detail_hay_bales.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 2816,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.6,
+     0.7,
+     1.2
+    ]
    }
   ],
   "chicken_coop": [
    {
     "key": "style-detail-chicken-coop",
     "url": "props/detail_chicken_coop.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 2816,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     2.8,
+     1.5,
+     1.4
+    ]
    }
   ],
   "garden_bed": [
    {
     "key": "style-detail-garden-bed",
     "url": "props/detail_garden_bed.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 2816,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     2.8,
+     0.5,
+     1.3
+    ]
    }
   ],
   "scarecrow": [
    {
     "key": "style-detail-scarecrow",
     "url": "props/detail_scarecrow.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 2816,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     1.4,
+     2.2,
+     0.5
+    ]
    }
   ],
   "flour_bin": [
    {
     "key": "style-detail-flour-bin",
     "url": "props/detail_flour_bin.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 2816,
+     "w": 246,
+     "h": 206
+    },
+    "size": [
+     1.2,
+     0.9,
+     1
+    ]
    }
   ],
   "millstone": [
    {
     "key": "style-detail-millstone",
     "url": "props/detail_millstone.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 2816,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.6,
+     2.8
+    ]
    }
   ],
   "water_wheel": [
    {
     "key": "style-detail-water-wheel",
     "url": "props/detail_water_wheel.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 2816,
+     "w": 74,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     4,
+     4
+    ]
    }
   ],
   "fence_gate": [
    {
     "key": "style-detail-fence-gate",
     "url": "props/detail_fence_gate.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 2816,
+     "w": 246,
+     "h": 50
+    },
+    "size": [
+     1.5,
+     1.2,
+     0.3
+    ]
    }
   ],
   "flower_bed": [
    {
     "key": "style-detail-flower-bed",
     "url": "props/detail_flower_bed.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 2816,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     0.6,
+     1.2
+    ]
    }
   ],
   "fountain": [
    {
     "key": "style-detail-fountain",
     "url": "props/detail_fountain.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 2816,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     4.4,
+     2.2,
+     4.4
+    ]
    }
   ],
   "town_well": [
    {
     "key": "style-detail-town-well",
     "url": "props/detail_town_well.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 2816,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     2.6,
+     2.8
+    ]
    }
   ],
   "market_awning": [
    {
     "key": "style-detail-market-awning",
     "url": "props/detail_market_awning.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 2816,
+     "w": 246,
+     "h": 158
+    },
+    "size": [
+     4.4,
+     2.4,
+     2.8
+    ]
    }
   ],
   "notice_board": [
    {
     "key": "style-detail-notice-board",
     "url": "props/detail_notice_board.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 3072,
+     "w": 246,
+     "h": 54
+    },
+    "size": [
+     1.4,
+     2,
+     0.3
+    ]
    }
   ],
   "sign_post_city": [
    {
     "key": "style-detail-sign-post-city",
     "url": "props/detail_sign_post_city.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 256,
+     "y": 3072,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     2.2,
+     0.8
+    ]
    }
   ],
   "pillory": [
    {
     "key": "style-detail-pillory",
     "url": "props/detail_pillory.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 512,
+     "y": 3072,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.6,
+     1.8,
+     1.2
+    ]
    }
   ],
   "statue_plinth": [
    {
     "key": "style-detail-statue-plinth",
     "url": "props/detail_statue_plinth.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 768,
+     "y": 3072,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     3.2,
+     2.8
+    ]
    }
   ],
   "street_planter": [
    {
     "key": "style-detail-street-planter",
     "url": "props/detail_street_planter.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1024,
+     "y": 3072,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     1.6,
+     1
+    ]
    }
   ],
   "mooring_post": [
    {
     "key": "style-detail-mooring-post",
     "url": "props/detail_mooring_post.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 3072,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.6,
+     1,
+     0.6
+    ]
    }
   ],
   "fish_rack": [
    {
     "key": "style-detail-fish-rack",
     "url": "props/detail_fish_rack.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1536,
+     "y": 3072,
+     "w": 246,
+     "h": 76
+    },
+    "size": [
+     2.6,
+     1.6,
+     0.8
+    ]
    }
   ],
   "fishing_nets": [
    {
     "key": "style-detail-fishing-nets",
     "url": "props/detail_fishing_nets.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 1792,
+     "y": 3072,
+     "w": 246,
+     "h": 36
+    },
+    "size": [
+     2.8,
+     1.4,
+     0.4
+    ]
    }
   ],
   "rowboat": [
    {
     "key": "style-detail-rowboat",
     "url": "props/detail_rowboat.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2048,
+     "y": 3072,
+     "w": 86,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     0.7,
+     4
+    ]
    }
   ],
   "punt": [
    {
     "key": "style-detail-punt",
     "url": "props/detail_punt.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2304,
+     "y": 3072,
+     "w": 76,
+     "h": 246
+    },
+    "size": [
+     1.3,
+     0.5,
+     4.2
+    ]
    }
   ],
   "stone_steps": [
    {
     "key": "style-detail-stone-steps",
     "url": "props/detail_stone_steps.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 3072,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     2.8,
+     0.8,
+     1.4
+    ]
    }
   ],
   "root_tangle": [
    {
     "key": "style-detail-root-tangle",
     "url": "props/detail_root_tangle.glb",
-    "yaw": 0
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 3072,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     0.8,
+     1.2
+    ]
+   }
+  ],
+  "cart": [
+   {
+    "key": "ref-quaternius-stall-cart-empty",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/stall_cart_empty.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 3072,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     3.0205,
+     2.6318,
+     1.0597
+    ]
+   },
+   {
+    "key": "style-extra-merchant-wagon",
+    "url": "props/extra_merchant_wagon.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 3072,
+     "w": 246,
+     "h": 120
+    },
+    "size": [
+     4.024,
+     1.5292,
+     1.9514
+    ]
+   }
+  ],
+  "banner": [
+   {
+    "key": "ref-quaternius-banner-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/banner_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 3072,
+     "w": 246,
+     "h": 30
+    },
+    "size": [
+     1.6131,
+     2.3922,
+     0.1906
+    ]
+   },
+   {
+    "key": "style-extra-banner-variant",
+    "url": "props/extra_banner_variant.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 3072,
+     "w": 246,
+     "h": 30
+    },
+    "size": [
+     1.6131,
+     2.0771,
+     0.1906
+    ]
+   }
+  ],
+  "ballista": [
+   {
+    "key": "style-extra-ballista",
+    "url": "props/extra_ballista.glb",
+    "yaw": 0,
+    "maxHeight": 1.1,
+    "preview": {
+     "x": 0,
+     "y": 3328,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.6,
+     2.8
+    ]
+   }
+  ],
+  "command_tent": [
+   {
+    "key": "style-extra-command-tent",
+    "url": "props/extra_command_tent.glb",
+    "yaw": 0,
+    "maxHeight": 1.45,
+    "preview": {
+     "x": 256,
+     "y": 3328,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     2.2,
+     2.8
+    ]
+   }
+  ],
+  "alchemy_table": [
+   {
+    "key": "style-extra-alchemy-table",
+    "url": "props/extra_alchemy_table.glb",
+    "yaw": 0,
+    "maxHeight": 0.72,
+    "preview": {
+     "x": 512,
+     "y": 3328,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     2.8,
+     1,
+     1.3
+    ]
+   }
+  ],
+  "dock_crane": [
+   {
+    "key": "style-extra-dock-crane",
+    "url": "props/extra_dock_crane.glb",
+    "yaw": 0,
+    "maxHeight": 1.7,
+    "preview": {
+     "x": 768,
+     "y": 3328,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     2.6,
+     2.8
+    ]
+   }
+  ],
+  "mine_cart": [
+   {
+    "key": "style-extra-mine-cart",
+    "url": "props/extra_mine_cart.glb",
+    "yaw": 0,
+    "maxHeight": 0.7,
+    "preview": {
+     "x": 1024,
+     "y": 3328,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     1.3,
+     1,
+     1.2
+    ]
+   }
+  ],
+  "rope_bridge": [
+   {
+    "key": "style-extra-rope-bridge",
+    "url": "props/extra_rope_bridge.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1280,
+     "y": 3328,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.8,
+     1,
+     1.3
+    ]
+   }
+  ],
+  "crystal_orb": [
+   {
+    "key": "style-extra-crystal-orb",
+    "url": "props/extra_crystal_orb.glb",
+    "yaw": 0,
+    "maxHeight": 0.8,
+    "preview": {
+     "x": 1536,
+     "y": 3328,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     1.2,
+     1
+    ]
+   }
+  ],
+  "giant_fungus": [
+   {
+    "key": "style-extra-giant-fungus",
+    "url": "props/extra_giant_fungus.glb",
+    "yaw": 0,
+    "maxHeight": 1.6,
+    "preview": {
+     "x": 1792,
+     "y": 3328,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     2.4,
+     2.8
+    ]
+   }
+  ],
+  "sandstone_arch": [
+   {
+    "key": "style-extra-sandstone-arch",
+    "url": "props/extra_sandstone_arch.glb",
+    "yaw": 0,
+    "maxHeight": 1.7,
+    "preview": {
+     "x": 2048,
+     "y": 3328,
+     "w": 246,
+     "h": 72
+    },
+    "size": [
+     2.8,
+     2.6,
+     0.8
+    ]
+   }
+  ],
+  "mantlet": [
+   {
+    "key": "style-extra-mantlet",
+    "url": "props/extra_mantlet.glb",
+    "yaw": 0,
+    "maxHeight": 1.35,
+    "preview": {
+     "x": 2304,
+     "y": 3328,
+     "w": 246,
+     "h": 76
+    },
+    "size": [
+     2.6,
+     2,
+     0.8
+    ]
+   }
+  ],
+  "cargo_sled": [
+   {
+    "key": "style-extra-cargo-sled",
+    "url": "props/extra_cargo_sled.glb",
+    "yaw": 0,
+    "maxHeight": 0.48,
+    "preview": {
+     "x": 2560,
+     "y": 3328,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     2.8,
+     0.7,
+     1.3
+    ]
+   }
+  ],
+  "ruin_wall_arch": [
+   {
+    "key": "style-extra-ruin-wall-arch",
+    "url": "props/extra_ruin_wall_arch.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 3328,
+     "w": 246,
+     "h": 8
+    },
+    "size": [
+     2,
+     3,
+     0.064
+    ]
+   }
+  ],
+  "chimney_brick": [
+   {
+    "key": "style-extra-chimney-brick",
+    "url": "props/extra_chimney_brick.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 3328,
+     "w": 234,
+     "h": 246
+    },
+    "size": [
+     0.9458,
+     3.1779,
+     1
+    ]
+   }
+  ],
+  "ornate_iron_fence": [
+   {
+    "key": "style-extra-ornate-iron-fence",
+    "url": "props/extra_ornate_iron_fence.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3328,
+     "y": 3328,
+     "w": 246,
+     "h": 20
+    },
+    "size": [
+     1.9523,
+     2.8524,
+     0.1561
+    ]
+   }
+  ],
+  "roof_dormer_roundtile": [
+   {
+    "key": "style-extra-roof-dormer-roundtile",
+    "url": "props/extra_roof_dormer_roundtile.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3584,
+     "y": 3328,
+     "w": 200,
+     "h": 246
+    },
+    "size": [
+     1.9664,
+     2.6731,
+     2.4392
+    ]
+   }
+  ],
+  "ruin_corner_brick": [
+   {
+    "key": "style-extra-ruin-corner-brick",
+    "url": "props/extra_ruin_corner_brick.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3840,
+     "y": 3328,
+     "w": 232,
+     "h": 246
+    },
+    "size": [
+     0.7123,
+     3.0428,
+     0.7564
+    ]
+   }
+  ],
+  "round_window_brick": [
+   {
+    "key": "style-extra-round-window-brick",
+    "url": "props/extra_round_window_brick.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 3584,
+     "w": 246,
+     "h": 50
+    },
+    "size": [
+     2,
+     3.1227,
+     0.4065
+    ]
+   }
+  ],
+  "arch_shelf": [
+   {
+    "key": "style-extra-arch-shelf",
+    "url": "props/extra_arch_shelf.glb",
+    "yaw": 0,
+    "maxHeight": 0.7,
+    "preview": {
+     "x": 256,
+     "y": 3584,
+     "w": 246,
+     "h": 62
+    },
+    "size": [
+     1.2452,
+     1.5892,
+     0.3116
+    ]
+   }
+  ],
+  "cutlery_set": [
+   {
+    "key": "style-extra-cutlery-set",
+    "url": "props/extra_cutlery_set.glb",
+    "yaw": 0,
+    "maxHeight": 0.09,
+    "preview": {
+     "x": 512,
+     "y": 3584,
+     "w": 230,
+     "h": 146
+    },
+    "size": [
+     0.7664,
+     0.0292,
+     0.4664
+    ]
+   }
+  ],
+  "tool_peg_rack": [
+   {
+    "key": "style-extra-tool-peg-rack",
+    "url": "props/extra_tool_peg_rack.glb",
+    "yaw": 0,
+    "maxHeight": 0.25,
+    "preview": {
+     "x": 768,
+     "y": 3584,
+     "w": 246,
+     "h": 20
+    },
+    "size": [
+     1.1839,
+     0.3479,
+     0.0957
+    ]
+   }
+  ],
+  "chain_coil": [
+   {
+    "key": "style-extra-chain-coil",
+    "url": "props/extra_chain_coil.glb",
+    "yaw": 0,
+    "maxHeight": 0.13,
+    "preview": {
+     "x": 1024,
+     "y": 3584,
+     "w": 246,
+     "h": 210
+    },
+    "size": [
+     1.0703,
+     0.0872,
+     0.9077
+    ]
+   }
+  ],
+  "book_piles": [
+   {
+    "key": "style-extra-book-piles",
+    "url": "props/extra_book_piles.glb",
+    "yaw": 0,
+    "maxHeight": 0.24,
+    "preview": {
+     "x": 1280,
+     "y": 3584,
+     "w": 244,
+     "h": 92
+    },
+    "size": [
+     0.8219,
+     0.2137,
+     0.3214
+    ]
+   }
+  ],
+  "crystal_cluster": [
+   {
+    "key": "style-extra-crystal-cluster",
+    "url": "props/extra_crystal_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 1.2,
+    "preview": {
+     "x": 1536,
+     "y": 3584,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     1.8,
+     1.4
+    ]
+   }
+  ],
+  "nomad_tent": [
+   {
+    "key": "style-extra-nomad-tent",
+    "url": "props/extra_nomad_tent.glb",
+    "yaw": 0,
+    "maxHeight": 1.2,
+    "preview": {
+     "x": 1792,
+     "y": 3584,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.8,
+     2.8
+    ]
+   }
+  ],
+  "obsidian_monolith": [
+   {
+    "key": "style-extra-obsidian-monolith",
+    "url": "props/extra_obsidian_monolith.glb",
+    "yaw": 0,
+    "maxHeight": 1.8,
+    "preview": {
+     "x": 2048,
+     "y": 3584,
+     "w": 246,
+     "h": 206
+    },
+    "size": [
+     1.2,
+     2.8,
+     1
+    ]
+   }
+  ],
+  "weapon_rack": [
+   {
+    "key": "style-extra-weapon-rack",
+    "url": "props/extra_weapon_rack.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 2304,
+     "y": 3584,
+     "w": 246,
+     "h": 48
+    },
+    "size": [
+     2.6,
+     1.4,
+     0.5
+    ]
+   }
+  ],
+  "scout_tent": [
+   {
+    "key": "style-extra-scout-tent",
+    "url": "props/extra_scout_tent.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 2560,
+     "y": 3584,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     2.8,
+     1.4,
+     1.3
+    ]
+   }
+  ],
+  "timber_shoring": [
+   {
+    "key": "style-extra-timber-shoring",
+    "url": "props/extra_timber_shoring.glb",
+    "yaw": 0,
+    "maxHeight": 1.6,
+    "preview": {
+     "x": 2816,
+     "y": 3584,
+     "w": 246,
+     "h": 44
+    },
+    "size": [
+     2.8,
+     2.4,
+     0.5
+    ]
+   }
+  ],
+  "mine_rail": [
+   {
+    "key": "style-extra-mine-rail",
+    "url": "props/extra_mine_rail.glb",
+    "yaw": 0,
+    "maxHeight": 0.09,
+    "preview": {
+     "x": 3072,
+     "y": 3584,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.8,
+     0.12,
+     1.3
+    ]
+   }
+  ],
+  "shield_display": [
+   {
+    "key": "style-extra-shield-display",
+    "url": "props/extra_shield_display.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 3328,
+     "y": 3584,
+     "w": 246,
+     "h": 72
+    },
+    "size": [
+     0.676,
+     0.683,
+     0.1967
+    ]
+   }
+  ],
+  "arcane_coil": [
+   {
+    "key": "style-extra-arcane-coil",
+    "url": "props/extra_arcane_coil.glb",
+    "yaw": 0,
+    "maxHeight": 0.75,
+    "preview": {
+     "x": 3584,
+     "y": 3584,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     1.1,
+     1.4
+    ]
+   }
+  ],
+  "alchemy_bottles": [
+   {
+    "key": "style-extra-alchemy-bottles",
+    "url": "props/extra_alchemy_bottles.glb",
+    "yaw": 0,
+    "maxHeight": 0.36,
+    "preview": {
+     "x": 3840,
+     "y": 3584,
+     "w": 246,
+     "h": 202
+    },
+    "size": [
+     0.5607,
+     0.2615,
+     0.4576
+    ]
+   }
+  ],
+  "desk_candlestick": [
+   {
+    "key": "style-extra-desk-candlestick",
+    "url": "props/extra_desk_candlestick.glb",
+    "yaw": 0,
+    "maxHeight": 0.3,
+    "preview": {
+     "x": 0,
+     "y": 3840,
+     "w": 222,
+     "h": 148
+    },
+    "size": [
+     0.468,
+     0.2483,
+     0.3675
+    ]
+   }
+  ],
+  "single_book": [
+   {
+    "key": "style-extra-single-book",
+    "url": "props/extra_single_book.glb",
+    "yaw": 0,
+    "maxHeight": 0.28,
+    "preview": {
+     "x": 256,
+     "y": 3840,
+     "w": 138,
+     "h": 240
+    },
+    "size": [
+     0.2021,
+     0.4293,
+     0.3514
+    ]
+   }
+  ],
+  "vial_display_shelf": [
+   {
+    "key": "style-extra-vial-display-shelf",
+    "url": "props/extra_vial_display_shelf.glb",
+    "yaw": 0,
+    "maxHeight": 0.5,
+    "preview": {
+     "x": 512,
+     "y": 3840,
+     "w": 246,
+     "h": 62
+    },
+    "size": [
+     1.1371,
+     0.6474,
+     0.2846
+    ]
+   }
+  ],
+  "ceremonial_chalice": [
+   {
+    "key": "style-extra-ceremonial-chalice",
+    "url": "props/extra_ceremonial_chalice.glb",
+    "yaw": 0,
+    "maxHeight": 0.32,
+    "preview": {
+     "x": 768,
+     "y": 3840,
+     "w": 216,
+     "h": 218
+    },
+    "size": [
+     0.2154,
+     0.4107,
+     0.2237
+    ]
+   }
+  ],
+  "book_row": [
+   {
+    "key": "style-extra-book-row",
+    "url": "props/extra_book_row.glb",
+    "yaw": 0,
+    "maxHeight": 0.3,
+    "preview": {
+     "x": 1024,
+     "y": 3840,
+     "w": 246,
+     "h": 58
+    },
+    "size": [
+     1.222,
+     0.343,
+     0.2846
+    ]
+   }
+  ],
+  "scroll_pile": [
+   {
+    "key": "style-extra-scroll-pile",
+    "url": "props/extra_scroll_pile.glb",
+    "yaw": 0,
+    "maxHeight": 0.16,
+    "preview": {
+     "x": 1280,
+     "y": 3840,
+     "w": 241,
+     "h": 76
+    },
+    "size": [
+     0.7941,
+     0.0941,
+     0.2609
+    ]
+   }
+  ],
+  "rope_coils": [
+   {
+    "key": "style-extra-rope-coils",
+    "url": "props/extra_rope_coils.glb",
+    "yaw": 0,
+    "maxHeight": 0.15,
+    "preview": {
+     "x": 1536,
+     "y": 3840,
+     "w": 224,
+     "h": 140
+    },
+    "size": [
+     1.3923,
+     0.1236,
+     1.0892
+    ]
+   }
+  ],
+  "capstan": [
+   {
+    "key": "style-extra-capstan",
+    "url": "props/extra_capstan.glb",
+    "yaw": 0,
+    "maxHeight": 0.68,
+    "preview": {
+     "x": 1792,
+     "y": 3840,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     1,
+     1.4
+    ]
+   }
+  ],
+  "snowshoe_pair": [
+   {
+    "key": "style-extra-snowshoe-pair",
+    "url": "props/extra_snowshoe_pair.glb",
+    "yaw": 0,
+    "maxHeight": 0.1,
+    "preview": {
+     "x": 2048,
+     "y": 3840,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.3,
+     0.15,
+     1.3
+    ]
+   }
+  ],
+  "anchor": [
+   {
+    "key": "style-extra-anchor",
+    "url": "props/extra_anchor.glb",
+    "yaw": 0,
+    "maxHeight": 0.24,
+    "preview": {
+     "x": 2304,
+     "y": 3840,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     0.35,
+     1.4
+    ]
+   }
+  ],
+  "swamp_boardwalk": [
+   {
+    "key": "style-extra-swamp-boardwalk",
+    "url": "props/extra_swamp_boardwalk.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2560,
+     "y": 3840,
+     "w": 246,
+     "h": 115
+    },
+    "size": [
+     2.8,
+     0.35,
+     1.3
+    ]
+   }
+  ],
+  "path_stone": [
+   {
+    "key": "style-extra-rock-path-square",
+    "url": "props/extra_rock_path_square.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2816,
+     "y": 3840,
+     "w": 243,
+     "h": 148
+    },
+    "size": [
+     3.3731,
+     0.1763,
+     2.0909
+    ]
+   },
+   {
+    "key": "style-extra-rock-path-round",
+    "url": "props/extra_rock_path_round.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3072,
+     "y": 3840,
+     "w": 241,
+     "h": 154
+    },
+    "size": [
+     3.4392,
+     0.1128,
+     2.2301
+    ]
+   }
+  ],
+  "clover_patch": [
+   {
+    "key": "style-extra-clover-patch",
+    "url": "props/extra_clover_patch.glb",
+    "yaw": 0,
+    "maxHeight": 0.2,
+    "preview": {
+     "x": 3328,
+     "y": 3840,
+     "w": 214,
+     "h": 143
+    },
+    "size": [
+     1.3867,
+     1.2638,
+     1.1735
+    ]
+   }
+  ],
+  "forest_plant": [
+   {
+    "key": "style-extra-forest-plant",
+    "url": "props/extra_forest_plant.glb",
+    "yaw": 0,
+    "maxHeight": 0.5,
+    "preview": {
+     "x": 3584,
+     "y": 3840,
+     "w": 205,
+     "h": 181
+    },
+    "size": [
+     1.9632,
+     1.8782,
+     1.8927
+    ]
+   }
+  ],
+  "mangrove_roots": [
+   {
+    "key": "style-extra-mangrove-roots",
+    "url": "props/extra_mangrove_roots.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 3840,
+     "y": 3840,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.4,
+     2.8
+    ]
+   }
+  ],
+  "wall_ivy": [
+   {
+    "key": "style-extra-wall-ivy",
+    "url": "props/extra_wall_ivy.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 0,
+     "y": 4096,
+     "w": 204,
+     "h": 23
+    },
+    "size": [
+     1.5358,
+     2.6026,
+     0.219
+    ]
+   }
+  ],
+  "wall_ivy_corner": [
+   {
+    "key": "style-extra-wall-ivy-corner",
+    "url": "props/extra_wall_ivy_corner.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 256,
+     "y": 4096,
+     "w": 236,
+     "h": 79
+    },
+    "size": [
+     4.137,
+     2.4683,
+     1.4705
+    ]
+   }
+  ],
+  "wall_ivy_wide": [
+   {
+    "key": "style-extra-wall-ivy-wide",
+    "url": "props/extra_wall_ivy_wide.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 512,
+     "y": 4096,
+     "w": 130,
+     "h": 17
+    },
+    "size": [
+     1.0166,
+     1.5882,
+     0.15
+    ]
+   }
+  ],
+  "key_bundle": [
+   {
+    "key": "style-extra-key-bundle",
+    "url": "props/extra_key_bundle.glb",
+    "yaw": 0,
+    "maxHeight": 0.1,
+    "preview": {
+     "x": 768,
+     "y": 4096,
+     "w": 224,
+     "h": 141
+    },
+    "size": [
+     0.4608,
+     0.0273,
+     0.3097
+    ]
+   }
+  ],
+  "coin_pouch": [
+   {
+    "key": "style-extra-coin-pouch",
+    "url": "props/extra_coin_pouch.glb",
+    "yaw": 0,
+    "maxHeight": 0.28,
+    "preview": {
+     "x": 1024,
+     "y": 4096,
+     "w": 234,
+     "h": 144
+    },
+    "size": [
+     0.2936,
+     0.1909,
+     0.1923
+    ]
    }
   ]
+ },
+ "atlas": {
+  "image": "topdown.png",
+  "key": "157021b5ea1dfd294548a68476602d86fb95560af6ecbc3f5cec39a632f5e116"
  },
  "files": [
   {
@@ -2340,9 +5898,79 @@
    "bytes": 174299
   },
   {
+   "file": "materials/kit-bark-twistedtree/color.jpg",
+   "sha256": "a7a6170b59fc53ae32885f21fcd2a8d6141cd698d386586cd7a383bb5039bf58",
+   "bytes": 131385
+  },
+  {
+   "file": "materials/kit-bark-twistedtree/normal.jpg",
+   "sha256": "58a23aca10504a0ec295914734fdbb2e7a35e56b3276f652dfa6c9fac346c75e",
+   "bytes": 174299
+  },
+  {
+   "file": "materials/kit-brick/color.jpg",
+   "sha256": "6581d0ad84a1a9c17294d1bb3a16ed3eb9642afb249f25f37a8c78065a226001",
+   "bytes": 89510
+  },
+  {
+   "file": "materials/kit-brick/normal.jpg",
+   "sha256": "c45b58828581329bf43b46d161c2725f7fded77dbe4fa3908387d8e2b4a5bfaa",
+   "bytes": 217096
+  },
+  {
+   "file": "materials/kit-brick/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/kit-grass/color.jpg",
+   "sha256": "4e8b1c961b97fae35f931881bd74eeb0f85779cf4fd04d0931f1fcc2349f5859",
+   "bytes": 5195
+  },
+  {
+   "file": "materials/kit-leaves/color.png",
+   "sha256": "3a78ad2bbfdd08a2e843f032e83131839863616628b5217e46021cf0d772a335",
+   "bytes": 897760
+  },
+  {
+   "file": "materials/kit-leaves-normaltree-c/color.png",
+   "sha256": "fa9e2c98b6138eff951c17b9338e681c13c33af6f906cced151d842458ffcde1",
+   "bytes": 285162
+  },
+  {
+   "file": "materials/kit-metalornaments/color.jpg",
+   "sha256": "131ab2fae03402f89a6f309b811b59d9332a63b5d4736595addf56a583e97ce3",
+   "bytes": 154744
+  },
+  {
+   "file": "materials/kit-metalornaments/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/kit-page-noise/color.jpg",
+   "sha256": "7041e448b15cf587326e8afc8b364b124ff32f0c9462223b457618d7e8f0345b",
+   "bytes": 83096
+  },
+  {
    "file": "materials/kit-pathrocks/color.jpg",
    "sha256": "851b6c80dd15d9b87a98fa5aa16174aea172a5bcaa2b36bc0a6692f593c3f7ed",
    "bytes": 116165
+  },
+  {
+   "file": "materials/kit-plaster/color.jpg",
+   "sha256": "b4e543f36912e71510b53c662ddcaaf8f75e073e6e7a74d8ca247e72152408df",
+   "bytes": 64651
+  },
+  {
+   "file": "materials/kit-plaster/normal.jpg",
+   "sha256": "62004961331fb12a1a7ae5a4acb75d013192037dfa646c2cb03377ed5dcef365",
+   "bytes": 108451
+  },
+  {
+   "file": "materials/kit-plaster/orm.jpg",
+   "sha256": "1e2339cd4a5f1159d3091d03daa8ba9ca756eb78f5650181a4433b4018e48e25",
+   "bytes": 23151
   },
   {
    "file": "materials/kit-rocks/color.jpg",
@@ -2363,6 +5991,21 @@
    "file": "materials/kit-rocktrim/orm.jpg",
    "sha256": "cc2b21591c473cb1b67b9b7455e9518c3e013a329a42ec793522a811639edd95",
    "bytes": 19286
+  },
+  {
+   "file": "materials/kit-roundtiles/color.jpg",
+   "sha256": "ae1d1e31b63c2158d1c3ed933e5f9de6d3e22abe250c1637183a62ab23581443",
+   "bytes": 79914
+  },
+  {
+   "file": "materials/kit-roundtiles/normal.jpg",
+   "sha256": "ada1fb80b8f9da833af7f7b0ed35d94a37c4715335b2632cbb795c307881d68c",
+   "bytes": 109785
+  },
+  {
+   "file": "materials/kit-roundtiles/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
   },
   {
    "file": "materials/kit-trim-cloth/color.jpg",
@@ -2423,6 +6066,26 @@
    "file": "materials/kit-trim-props/orm.jpg",
    "sha256": "def50a757d5e48812ad7151801c7a8fa2b25d900d22e9a499c4c66d66be97677",
    "bytes": 51129
+  },
+  {
+   "file": "materials/kit-unevenbrick/color.jpg",
+   "sha256": "0d82619b1060c704dc3281e3ae33bc48bdb1ae302484d5a16baa9319248fdae2",
+   "bytes": 96401
+  },
+  {
+   "file": "materials/kit-unevenbrick/normal.jpg",
+   "sha256": "17edd820288af367d84fcb2fd5a43c3d9fd42d1e7d7ae2c76553443813fdd8b6",
+   "bytes": 170121
+  },
+  {
+   "file": "materials/kit-unevenbrick/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/kit-vineleaf-png/color.png",
+   "sha256": "f2aeb48db663d31a4f0506098f832928c75bdbfcc2346ba842fd52608c319009",
+   "bytes": 87120
   },
   {
    "file": "materials/kit-woodtrim/color.jpg",
@@ -3025,6 +6688,306 @@
    "bytes": 351856
   },
   {
+   "file": "props/extra_alchemy_bottles.glb",
+   "sha256": "2f8167148af88633e2c98e7fad51af9e469397cf2d8e5883865fcbb3488b0368",
+   "bytes": 65336
+  },
+  {
+   "file": "props/extra_alchemy_table.glb",
+   "sha256": "36a66dee1fb942eb8a98a122fc0636984fdf1b9070de4c1034a1297e94bb0d3a",
+   "bytes": 607676
+  },
+  {
+   "file": "props/extra_anchor.glb",
+   "sha256": "9860cd1b99aaee316082a3ee972e0595668604ba25e576b731dcf3e9d5308b21",
+   "bytes": 636392
+  },
+  {
+   "file": "props/extra_arcane_coil.glb",
+   "sha256": "64e9ba2239b36ae80a358a7eab0be9b4e856ee451c638fe8a26fc779689de255",
+   "bytes": 304400
+  },
+  {
+   "file": "props/extra_arch_shelf.glb",
+   "sha256": "1d82013fc0c8993add27c9c5988121d65eefca1f9b5ee82744d47a3e6124e45a",
+   "bytes": 68076
+  },
+  {
+   "file": "props/extra_ballista.glb",
+   "sha256": "5974136a08839ab457f471aec5af538993f5814a2f16eb84019cac1c04a98ba7",
+   "bytes": 833316
+  },
+  {
+   "file": "props/extra_banner_variant.glb",
+   "sha256": "982881d1ce337acb7e01a669354d95f54efcf06692800c8dac92179c7663b3b4",
+   "bytes": 24644
+  },
+  {
+   "file": "props/extra_book_piles.glb",
+   "sha256": "01baaafd2770f2bac262d989679dc82453808cf5fa1ae4c111d09a053a2aafa0",
+   "bytes": 41852
+  },
+  {
+   "file": "props/extra_book_row.glb",
+   "sha256": "cd0a1ebb14cdeb1f1239ee91427c097171a9b867587ca24399519b28520d36df",
+   "bytes": 27480
+  },
+  {
+   "file": "props/extra_capstan.glb",
+   "sha256": "1ee80a4bf790656121e71798929343b7f5fde8a10c9b408346ff74ca082813c3",
+   "bytes": 401308
+  },
+  {
+   "file": "props/extra_cargo_sled.glb",
+   "sha256": "36b06b58b2a31d936eaafe7bb29d2049c99f2588e70d56788ae94e911b237491",
+   "bytes": 521492
+  },
+  {
+   "file": "props/extra_ceremonial_chalice.glb",
+   "sha256": "eb53cd398e957bbaf576ec86e1f26414f2a8020958812f46ddeceb9c7861b444",
+   "bytes": 17316
+  },
+  {
+   "file": "props/extra_chain_coil.glb",
+   "sha256": "e2b85ac47223a64f0139d7dd6d1157956c1336b997e183888b7bcfc0b03be7ad",
+   "bytes": 195584
+  },
+  {
+   "file": "props/extra_chimney_brick.glb",
+   "sha256": "8c8e5e18f2583a014e72cf1269a079824528027cd8da966b01c20865f6ecc198",
+   "bytes": 23376
+  },
+  {
+   "file": "props/extra_clover_patch.glb",
+   "sha256": "3338a27defa57b30bfa9f9f16955df2d74761876dd6d77cf18959e7a606b0538",
+   "bytes": 37696
+  },
+  {
+   "file": "props/extra_coin_pouch.glb",
+   "sha256": "fdad3e6dac7773d5c5dbf4fe4aea7d8583e60ee524d21008786770c1f5a61d83",
+   "bytes": 35024
+  },
+  {
+   "file": "props/extra_command_tent.glb",
+   "sha256": "c1e7a9d527dc51aa8362eb5f3029246cbb07723053f697b394cbbf27aae69be1",
+   "bytes": 252728
+  },
+  {
+   "file": "props/extra_crystal_cluster.glb",
+   "sha256": "bd612ded37429b31843fe585ff41fc9a2e55a3f55fc4f6b709fbaf48cbe349c7",
+   "bytes": 135400
+  },
+  {
+   "file": "props/extra_crystal_orb.glb",
+   "sha256": "9afdd1f71e6f8ece5dfb87699fdab8a39455d0e8e5e6754bd467b10843f9da98",
+   "bytes": 750856
+  },
+  {
+   "file": "props/extra_cutlery_set.glb",
+   "sha256": "21e322479d2b4260322b4c3e39515c63adcdb30dbea55fa3624524dd9dcc6399",
+   "bytes": 16600
+  },
+  {
+   "file": "props/extra_dead_tree_low.glb",
+   "sha256": "3ff02c23c60a56cefc50e386c0adbb6bcff0f130125d8bd0257a8168b2e527ba",
+   "bytes": 395828
+  },
+  {
+   "file": "props/extra_dead_tree_sparse.glb",
+   "sha256": "3d023c20b25acd2d1f66d6247b395f5354e522c250b0843f94af05b9ed8e9479",
+   "bytes": 417724
+  },
+  {
+   "file": "props/extra_desk_candlestick.glb",
+   "sha256": "80389f83b74cc22fc437d471f0764e99b02ced4b8fdc884fac4dae49962a21d8",
+   "bytes": 23104
+  },
+  {
+   "file": "props/extra_dock_crane.glb",
+   "sha256": "5fbc7cf44b91f2ddd21ac92ca1e14422b8a6f6e67cbf7c5e195a81a21eeae905",
+   "bytes": 255528
+  },
+  {
+   "file": "props/extra_forest_plant.glb",
+   "sha256": "8bea91be20eef0a15c2a1741ef546a84cc3cce9736365a904df6eb255f6d86dd",
+   "bytes": 25792
+  },
+  {
+   "file": "props/extra_giant_fungus.glb",
+   "sha256": "fb930556714c99258efd9a741afe6221b4f5e6d53759a0ed5b267360d9ef7130",
+   "bytes": 408688
+  },
+  {
+   "file": "props/extra_grass_wispy.glb",
+   "sha256": "3f70cfaa843e31e8ba791e3f7f3a340cdb959b72bbf32e69f2b559290cf59266",
+   "bytes": 58388
+  },
+  {
+   "file": "props/extra_key_bundle.glb",
+   "sha256": "45daa7b640b601f90635124880cd2aa6153963c5d0a6c8440a649a731462c01e",
+   "bytes": 81280
+  },
+  {
+   "file": "props/extra_mangrove_roots.glb",
+   "sha256": "43f13097209009a63bd5a7df24c6b7e80e9fa68ae2a182f4f13decbb78ec6d92",
+   "bytes": 828416
+  },
+  {
+   "file": "props/extra_mantlet.glb",
+   "sha256": "ca672b0fdee4b9e37e881e8900252606754cbba1ef9cf8168a3d96cb90927511",
+   "bytes": 301380
+  },
+  {
+   "file": "props/extra_merchant_wagon.glb",
+   "sha256": "961bea4a39b4d57760d32ae4c57e882ad76087958eb2e07b66335d3f67a39692",
+   "bytes": 105156
+  },
+  {
+   "file": "props/extra_mine_cart.glb",
+   "sha256": "f934f21188a50111ac4ed84792bd110310e4b6954135bfda4b702cd230c26f26",
+   "bytes": 367556
+  },
+  {
+   "file": "props/extra_mine_rail.glb",
+   "sha256": "d0728f27da5ca5d582f61e8c681a5c0263fd13a6d2241f55a432f35b3087a806",
+   "bytes": 601344
+  },
+  {
+   "file": "props/extra_nomad_tent.glb",
+   "sha256": "2c7bc238381429cf6361d6cf5ee1a9e6057dd938129bc39df8dc4b96b08c4974",
+   "bytes": 216560
+  },
+  {
+   "file": "props/extra_obsidian_monolith.glb",
+   "sha256": "526f36073ef81d7dfae0e0c1a03b7a45f0ec1163c973509528658890693920a3",
+   "bytes": 85740
+  },
+  {
+   "file": "props/extra_ornate_iron_fence.glb",
+   "sha256": "a428a709a2ffafde1b5c895d91c1cfb50bcbacca135080c52649184efdf8ccb5",
+   "bytes": 152468
+  },
+  {
+   "file": "props/extra_rock_path_round.glb",
+   "sha256": "c2d3a36be94d5ce7bbf715ed140e0bc3dc76bf19fe9ed86a9270b17855722aa9",
+   "bytes": 410180
+  },
+  {
+   "file": "props/extra_rock_path_square.glb",
+   "sha256": "861031b8c638de0d6a8107f3e9faf430ca3d3a9ced9073d0f603fdc31a2bfb75",
+   "bytes": 297512
+  },
+  {
+   "file": "props/extra_roof_dormer_roundtile.glb",
+   "sha256": "b650cf6dd37f273f0d78a6d01ae1412356e06d54780ae2fa3ba5aa50733e07df",
+   "bytes": 66940
+  },
+  {
+   "file": "props/extra_rope_bridge.glb",
+   "sha256": "897701bf68f6be7295e7637a582ca10a7a4adb19e15f0bd62c1b199f3a8a09da",
+   "bytes": 639644
+  },
+  {
+   "file": "props/extra_rope_coils.glb",
+   "sha256": "b2dfce1f291c3502e6217a68d8382b0a3e3ab0c12bdb7032d6fecb9738f07222",
+   "bytes": 79708
+  },
+  {
+   "file": "props/extra_round_window_brick.glb",
+   "sha256": "8ec6b2520a7e6576e0e7bdb90055853a7510b2d57d0c7de470e548a6f14a2231",
+   "bytes": 9944
+  },
+  {
+   "file": "props/extra_ruin_corner_brick.glb",
+   "sha256": "5936338cd7d5a51af6ef05ec9f4a32c99640cba1527762da3c8c9e540aefcaa7",
+   "bytes": 90976
+  },
+  {
+   "file": "props/extra_ruin_wall_arch.glb",
+   "sha256": "a059f0365e1770ab985d7bee5d2019566b4901d3f78837a338511bae57bf40ad",
+   "bytes": 11000
+  },
+  {
+   "file": "props/extra_sandstone_arch.glb",
+   "sha256": "34ae5ead96d8ccf83b47a1d0a846c7acf4c4ed3a7ef81a873dfaec11c55c0f56",
+   "bytes": 125980
+  },
+  {
+   "file": "props/extra_scout_tent.glb",
+   "sha256": "a2c99ebfb17d40553be15d90cd531282fe5ccafbf5c5034f93376480295ed50c",
+   "bytes": 183376
+  },
+  {
+   "file": "props/extra_scroll_pile.glb",
+   "sha256": "dc60615cd54002150ebd42344474f209e11497ce9bd98893501509a5caf345c4",
+   "bytes": 54964
+  },
+  {
+   "file": "props/extra_shield_display.glb",
+   "sha256": "537d1ee57fd1ed39506ff959e4c6fece250658a901d37c09be4b1e41d68ac385",
+   "bytes": 68880
+  },
+  {
+   "file": "props/extra_single_book.glb",
+   "sha256": "67c2add823336d9f507ec6b1f03e1006a8557877ce8159d40635f369074ee720",
+   "bytes": 5180
+  },
+  {
+   "file": "props/extra_snowshoe_pair.glb",
+   "sha256": "246efa8e3a3cdc7f78c57ddecaec288939d1cdaa7d8c741d4d161b797dd1a1de",
+   "bytes": 298768
+  },
+  {
+   "file": "props/extra_swamp_boardwalk.glb",
+   "sha256": "30a3a2281fe92330eed96f7a624138433f516964cc1641f83cdaf83091cc4618",
+   "bytes": 498756
+  },
+  {
+   "file": "props/extra_timber_shoring.glb",
+   "sha256": "dde1cfff5d5c67242b45dec385a93b651166ebf63817f6798885fd4418226f7e",
+   "bytes": 197856
+  },
+  {
+   "file": "props/extra_tool_peg_rack.glb",
+   "sha256": "34f5beae6af947893d374cf8798ea6654aed21c8e17e2e7be989c6f205157ce1",
+   "bytes": 29424
+  },
+  {
+   "file": "props/extra_twisted_tree_broad.glb",
+   "sha256": "03973568aebf366cc7ec8e366904e87258475c171328d59e58028ac40c2ae4ab",
+   "bytes": 774776
+  },
+  {
+   "file": "props/extra_twisted_tree_tall.glb",
+   "sha256": "45745a21538094e189ae22bbfb71320a37635e40e6bc3421b16e0a71f36ab41e",
+   "bytes": 736060
+  },
+  {
+   "file": "props/extra_vial_display_shelf.glb",
+   "sha256": "e473381cb642e25226e1840089cf12abcca6beb1946e9e06282cb26a60ec8d15",
+   "bytes": 234160
+  },
+  {
+   "file": "props/extra_wall_ivy_corner.glb",
+   "sha256": "07fbe6686164a004f44079ffac3d81f80b31afc5feb5b814eb62fca8b37d1508",
+   "bytes": 8020
+  },
+  {
+   "file": "props/extra_wall_ivy_wide.glb",
+   "sha256": "d5916c69e0dc6d8aa1cf91f011e2c398b7cbe3f6b5a43f8b30bc4217840455e4",
+   "bytes": 3780
+  },
+  {
+   "file": "props/extra_wall_ivy.glb",
+   "sha256": "99d0de581474a7437817adc0c6e37c753bccfbcf05b6c5b0739192d0b139b347",
+   "bytes": 7224
+  },
+  {
+   "file": "props/extra_weapon_rack.glb",
+   "sha256": "73a0d231a49b9aa9459e25436508aa63662d429dbb3c004f6c934c92e1d27086",
+   "bytes": 524384
+  },
+  {
    "file": "props/fruit_cart.glb",
    "sha256": "80cfe5284a2537a9a0a801a58114c0fc1713c34e873b613c0ac44c8535c9c168",
    "bytes": 590356
@@ -3116,8 +7079,8 @@
   },
   {
    "file": "props/map_table.glb",
-   "sha256": "6288392108ffa19edb0d328318403869ecb2657366504add8c0a3c5ee574e553",
-   "bytes": 172612
+   "sha256": "9995aac941bba1fb27518dbe89300ada8d2a06b231b29c678f98a6e57a199952",
+   "bytes": 172620
   },
   {
    "file": "props/mvmk_crate.glb",
@@ -3356,13 +7319,18 @@
   },
   {
    "file": "props/war_table.glb",
-   "sha256": "df2efa6c15d1b7d467d90c3d96bafbdd77d4cd8affe0a76fbd8f8f4f262fce6f",
-   "bytes": 226176
+   "sha256": "67f9fb1e70f2d8270bfbee5467d54196fb604c9b7f3044c67cc76d3cd4f5bcbd",
+   "bytes": 226180
   },
   {
    "file": "props/workbench_drawers.glb",
    "sha256": "187c9f5bb147a95cf0ae4346b91f9ffde689af0c7dfde08852c2aef110205546",
    "bytes": 118732
+  },
+  {
+   "file": "topdown.png",
+   "sha256": "157021b5ea1dfd294548a68476602d86fb95560af6ecbc3f5cec39a632f5e116",
+   "bytes": 14371518
   }
  ]
 }

@@ -2670,6 +2670,62 @@
       "surface-cracked-ice.png"
     ]
   },
+  "integration": {
+    "version": 1,
+    "detailProps": {
+      "models": [
+        "mine_rail",
+        "mine_cart",
+        "timber_shoring",
+        "crystal_cluster",
+        "giant_fungus",
+        "obsidian_monolith",
+        "command_tent",
+        "scout_tent",
+        "weapon_rack",
+        "mantlet",
+        "ballista",
+        "alchemy_table",
+        "crystal_orb",
+        "arcane_coil",
+        "anchor",
+        "capstan",
+        "dock_crane",
+        "cargo_sled",
+        "snowshoe_pair",
+        "nomad_tent",
+        "mangrove_roots"
+      ],
+      "stamps": [
+        "mine_rail",
+        "mine_cart",
+        "timber_shoring",
+        "crystal_cluster",
+        "giant_fungus",
+        "obsidian_monolith",
+        "command_tent",
+        "scout_tent",
+        "weapon_rack",
+        "mantlet",
+        "ballista",
+        "alchemy_table",
+        "crystal_orb",
+        "arcane_coil",
+        "anchor",
+        "capstan",
+        "dock_crane",
+        "cargo_sled",
+        "snowshoe_pair",
+        "nomad_tent",
+        "mangrove_roots"
+      ]
+    },
+    "structural": [
+      { "model": "rope_bridge", "role": "rope_bridge" },
+      { "model": "swamp_boardwalk", "role": "swamp_boardwalk" },
+      { "model": "sandstone_arch", "role": "sandstone_arch" }
+    ]
+  },
   "modelQuality": {
     "triangleBudget": 50000,
     "materialTextureMaxSide": 512,

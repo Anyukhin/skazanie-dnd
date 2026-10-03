@@ -4,6 +4,7 @@ import { cellAt } from './tactical-map-client'
 import { terrainHeightAt } from './board3d-terrain'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import { landscapeModelsOf, pickLandscapeVariant, type LandscapeKit, type LandscapeModel } from './landscape-model-assets'
+import { structuralInstance, structuralTemplate, type StructuralModelAssets, type StructuralRole } from './board3d-structural'
 import type { TacticalCell, TacticalMap, TacticalProp } from './types'
 
 /**
@@ -935,6 +936,43 @@ function bridgeModelInstances(strips: readonly BridgeStrip[], model: LandscapeMo
   })
 }
 
+export function bridgeStructuralRole(map: TacticalMap): 'rope_bridge' | 'swamp_boardwalk' {
+  const theme = `${map.theme ?? ''} ${map.locationId ?? ''} ${map.levelLabel ?? ''}`.toLowerCase()
+  return /swamp|marsh|bog|болот|топь/u.test(theme) ? 'swamp_boardwalk' : 'rope_bridge'
+}
+
+/** Роль моста нужна загрузчику только если на карте есть ровный пролёт. */
+export function structuralBridgeRolesForMap(map: TacticalMap): StructuralRole[] {
+  return bridgeModelStrips(map).length ? [bridgeStructuralRole(map)] : []
+}
+
+function structuralBridgeInstances(
+  strips: readonly BridgeStrip[],
+  assets: StructuralModelAssets,
+  role: 'rope_bridge' | 'swamp_boardwalk',
+) {
+  return strips.flatMap((strip) => {
+    const { x, y, span, width, level } = strip
+    const longitudinalZ = role === 'rope_bridge'
+    const model = structuralInstance(assets, {
+      role,
+      x: x + (span === 'x' ? .5 : width / 2),
+      y: level - .025,
+      z: y + (span === 'x' ? width / 2 : .5),
+      // span — направление движения по мосту, width — поперечная ширина.
+      // У верёвочного моста продольные канаты идут по локальной Z,
+      // у болотного настила продольные лаги — по локальной X.
+      yaw: longitudinalZ === (span === 'x') ? Math.PI / 2 : 0,
+      // Модель моста занимает только игровые клетки, перила остаются внутри
+      // полосы; вода под ней не становится проходимой от одного GLB.
+      width: longitudinalZ ? Math.max(1, width) : .98,
+      height: .62,
+      depth: longitudinalZ ? .98 : Math.max(1, width),
+    })
+    return model ? [model] : []
+  })
+}
+
 /**
  * Кувшинки на глади и тростник у берега — только из набора моделей: у
  * процедурного варианта их нет. Выбор клетки, варианта и поворота —
@@ -1005,10 +1043,12 @@ export function createWaterPlants(map: TacticalMap, detail: LandscapeDetail, kit
  * Перила и балки моста. С набором моделей ровные полосы настила получают
  * секции Kenney, остальные клетки моста — процедурные перила из брусков.
  */
-export function createBridgeRails(map: TacticalMap, kit: LandscapeKit | null = null): LandscapeInstances | null {
+export function createBridgeRails(map: TacticalMap, kit: LandscapeKit | null = null, structuralAssets: StructuralModelAssets | null = null): LandscapeInstances | null {
+  const structuralRole = bridgeStructuralRole(map)
+  const styledBridge = structuralTemplate(structuralAssets, structuralRole)
   const bridgeModels = landscapeModelsOf(kit, 'bridge')
-  const bridgeModel = bridgeModels.find((entry) => entry.key === 'bridge-wood') ?? bridgeModels[0] ?? null
-  const strips = bridgeModel ? bridgeModelStrips(map) : []
+  const bridgeModel = styledBridge ? null : bridgeModels.find((entry) => entry.key === 'bridge-wood') ?? bridgeModels[0] ?? null
+  const strips = styledBridge || bridgeModel ? bridgeModelStrips(map) : []
   const covered = new Set<string>()
   for (const strip of strips) for (let index = 0; index < strip.width; index += 1) {
     covered.add(strip.span === 'x' ? `${strip.x},${strip.y + index}` : `${strip.x + index},${strip.y}`)
@@ -1049,7 +1089,7 @@ export function createBridgeRails(map: TacticalMap, kit: LandscapeKit | null = n
   if (!pieces.length && !strips.length) return null
   const group = new THREE.Group()
   group.name = 'landscape-bridges'
-  group.userData.bridgeSource = strips.length ? 'models' : 'procedural'
+  group.userData.bridgeSource = styledBridge ? 'style-models' : strips.length ? 'models' : 'procedural'
   const geometry = new THREE.BoxGeometry(1, 1, 1)
   const material = new THREE.MeshStandardMaterial({ color: '#6b4b30', roughness: .85, metalness: 0 })
   if (pieces.length) {
@@ -1061,6 +1101,7 @@ export function createBridgeRails(map: TacticalMap, kit: LandscapeKit | null = n
     mesh.computeBoundingSphere()
     group.add(mesh)
   }
+  if (styledBridge) for (const model of structuralBridgeInstances(strips, structuralAssets!, structuralRole)) group.add(model)
   const disposeModels = bridgeModel && strips.length
     ? instanceLandscapeModels(group, bridgeModelInstances(strips, bridgeModel), { cast: true, receive: true }) : null
   return {

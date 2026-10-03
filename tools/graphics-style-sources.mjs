@@ -44,13 +44,13 @@
  * `at` — смещение в метрах, `yaw` — поворот в градусах, `on` — поставить на
  * верх детали с этим номером.
  * `native` — не ставить деталь на землю: она уже на месте в координатах набора.
- * @typedef {{ kit?: string, restyle?: string, detail?: string, at?: [number, number, number], yaw?: number, scale?: number | [number, number, number], on?: number, tilt?: [number, number, number], native?: boolean }} PartSource
+ * @typedef {{ kit?: string, restyle?: string, detail?: string, at?: [number, number, number], yaw?: number, scale?: number | [number, number, number], on?: number, tilt?: [number, number, number], native?: boolean, center?: boolean, imageOverrides?: Record<string, string> }} PartSource
  */
 
 /**
  * Вариант модели вида предмета: готовая модель текущего выпуска (`ref`) или
  * сборная (`name` + `parts`), которая ляжет в пакет как `props/<name>.glb`.
- * @typedef {{ ref?: string, name?: string, parts?: PartSource[], yaw?: number }} PropSource
+ * @typedef {{ ref?: string, name?: string, parts?: PartSource[], yaw?: number, maxHeight?: number }} PropSource
  */
 
 /** @typedef {{ label: string, floors: Record<string, FloorSource>, materials: Record<string, PaintedMaterial>, walls: Record<string, WallLookSource>, props: Record<string, PropSource[]>, license: string, sources: string[] }} StyleSource */
@@ -375,6 +375,73 @@ const PROPS = {
   ],
 }
 for (const id of DETAIL_RECIPES) PROPS[id] = [detail(id)]
+
+// --- Одобренное расширение: предметы, варианты и детали построек (03.10.2026).
+// Мосты, стены и крыши читает структурный рендерер; мебелью они не становятся.
+/** @type {Record<string, PropSource[]>} */
+const EXPANSION_PROPS = {
+  ballista: [{"name":"extra_ballista","parts":[{"detail":"ballista"}],"maxHeight":1.1}],
+  command_tent: [{"name":"extra_command_tent","parts":[{"detail":"command_tent"}],"maxHeight":1.45}],
+  alchemy_table: [{"name":"extra_alchemy_table","parts":[{"detail":"alchemy_table"}],"maxHeight":0.72}],
+  dock_crane: [{"name":"extra_dock_crane","parts":[{"detail":"dock_crane"}],"maxHeight":1.7}],
+  tree_oak: [{"name":"extra_twisted_tree_tall","parts":[{"kit":"snmk/TwistedTree_1","center":true,"imageOverrides":{"Leaves_TwistedTree_C.png":"Leaves_NormalTree_C.png"}}]},{"name":"extra_twisted_tree_broad","parts":[{"kit":"snmk/TwistedTree_3","center":true,"imageOverrides":{"Leaves_TwistedTree_C.png":"Leaves_NormalTree_C.png"}}]}],
+  mine_cart: [{"name":"extra_mine_cart","parts":[{"detail":"mine_cart"}],"maxHeight":0.7}],
+  rope_bridge: [{"name":"extra_rope_bridge","parts":[{"detail":"rope_bridge"}]}],
+  crystal_orb: [{"name":"extra_crystal_orb","parts":[{"detail":"crystal_orb"}],"maxHeight":0.8}],
+  giant_fungus: [{"name":"extra_giant_fungus","parts":[{"detail":"giant_fungus"}],"maxHeight":1.6}],
+  sandstone_arch: [{"name":"extra_sandstone_arch","parts":[{"detail":"sandstone_arch"}],"maxHeight":1.7}],
+  mantlet: [{"name":"extra_mantlet","parts":[{"detail":"mantlet"}],"maxHeight":1.35}],
+  cargo_sled: [{"name":"extra_cargo_sled","parts":[{"detail":"cargo_sled"}],"maxHeight":0.48}],
+  ruin_wall_arch: [{"name":"extra_ruin_wall_arch","parts":[{"kit":"mvmk/Wall_Arch","center":true}]}],
+  chimney_brick: [{"name":"extra_chimney_brick","parts":[{"kit":"mvmk/Prop_Chimney","center":true}]}],
+  ornate_iron_fence: [{"name":"extra_ornate_iron_fence","parts":[{"kit":"mvmk/Prop_MetalFence_Ornament","center":true}]}],
+  roof_dormer_roundtile: [{"name":"extra_roof_dormer_roundtile","parts":[{"kit":"mvmk/Roof_Dormer_RoundTile","center":true}]}],
+  ruin_corner_brick: [{"name":"extra_ruin_corner_brick","parts":[{"kit":"mvmk/Corner_ExteriorWide_Brick","center":true}]}],
+  round_window_brick: [{"name":"extra_round_window_brick","parts":[{"kit":"mvmk/Wall_UnevenBrick_Window_Wide_Round","center":true}]}],
+  arch_shelf: [{"name":"extra_arch_shelf","parts":[{"kit":"fpmk/Shelf_Arch","center":true}],"maxHeight":0.7}],
+  cutlery_set: [{"name":"extra_cutlery_set","parts":[{"kit":"fpmk/Table_Fork","center":true,"at":[-0.22,0,0],"scale":1.6,"yaw":-35},{"kit":"fpmk/Table_Knife","center":true,"at":[0,0,0.04],"scale":1.6,"yaw":12},{"kit":"fpmk/Table_Spoon","center":true,"at":[0.22,0,0.02],"scale":1.6,"yaw":42}],"maxHeight":0.09}],
+  tool_peg_rack: [{"name":"extra_tool_peg_rack","parts":[{"kit":"fpmk/Peg_Rack","center":true,"at":[0,0.95,-0.04]}],"maxHeight":0.25}],
+  chain_coil: [{"name":"extra_chain_coil","parts":[{"kit":"fpmk/Chain_Coil","center":true}],"maxHeight":0.13}],
+  book_piles: [{"name":"extra_book_piles","parts":[{"kit":"fpmk/Book_Stack_1","center":true,"at":[-0.25,0,0],"yaw":-10},{"kit":"fpmk/Book_Stack_2","center":true,"at":[0.25,0,0.04],"yaw":15}],"maxHeight":0.24}],
+  crystal_cluster: [{"name":"extra_crystal_cluster","parts":[{"detail":"crystal_cluster"}],"maxHeight":1.2}],
+  nomad_tent: [{"name":"extra_nomad_tent","parts":[{"detail":"nomad_tent"}],"maxHeight":1.2}],
+  obsidian_monolith: [{"name":"extra_obsidian_monolith","parts":[{"detail":"obsidian_monolith"}],"maxHeight":1.8}],
+  weapon_rack: [{"name":"extra_weapon_rack","parts":[{"detail":"weapon_rack"}],"maxHeight":0.95}],
+  scout_tent: [{"name":"extra_scout_tent","parts":[{"detail":"scout_tent"}],"maxHeight":0.95}],
+  timber_shoring: [{"name":"extra_timber_shoring","parts":[{"detail":"timber_shoring"}],"maxHeight":1.6}],
+  mine_rail: [{"name":"extra_mine_rail","parts":[{"detail":"mine_rail"}],"maxHeight":0.09}],
+  shield_display: [{"name":"extra_shield_display","parts":[{"kit":"fpmk/Shield_Wooden","center":true,"at":[0,0.7,-0.08],"scale":1.1,"yaw":0}],"maxHeight":0.65}],
+  banner: [{"name":"extra_banner_variant","parts":[{"kit":"fpmk/Banner_2","center":true}]}],
+  arcane_coil: [{"name":"extra_arcane_coil","parts":[{"detail":"arcane_coil"}],"maxHeight":0.75}],
+  alchemy_bottles: [{"name":"extra_alchemy_bottles","parts":[{"kit":"fpmk/Potion_1","center":true,"at":[-0.24,0,0]},{"kit":"fpmk/Potion_2","center":true,"at":[0.2,0,0.06]},{"kit":"fpmk/Potion_4","center":true,"at":[0,0,-0.26]}],"maxHeight":0.36}],
+  desk_candlestick: [{"name":"extra_desk_candlestick","parts":[{"kit":"fpmk/CandleStick","center":true,"scale":1.6,"yaw":-12}],"maxHeight":0.3}],
+  single_book: [{"name":"extra_single_book","parts":[{"kit":"fpmk/Book_Simplified_Single","center":true,"scale":1.6,"yaw":18}],"maxHeight":0.28}],
+  vial_display_shelf: [{"name":"extra_vial_display_shelf","parts":[{"kit":"fpmk/Shelf_Small_Bottles","center":true,"at":[0,0.8,-0.04]}],"maxHeight":0.5}],
+  ceremonial_chalice: [{"name":"extra_ceremonial_chalice","parts":[{"kit":"fpmk/Chalice","center":true,"scale":1.6,"yaw":8}],"maxHeight":0.32}],
+  book_row: [{"name":"extra_book_row","parts":[{"kit":"fpmk/BookGroup_Medium_1","center":true,"scale":1.15,"yaw":0}],"maxHeight":0.3}],
+  scroll_pile: [{"name":"extra_scroll_pile","parts":[{"kit":"fpmk/Scroll_1","center":true,"at":[-0.2,0,0],"scale":1.6,"yaw":-15},{"kit":"fpmk/Scroll_2","center":true,"at":[0.2,0,0.05],"scale":1.6,"yaw":20}],"maxHeight":0.16}],
+  rope_coils: [{"name":"extra_rope_coils","parts":[{"kit":"fpmk/Rope_1","center":true,"at":[-0.28,0,0]},{"kit":"fpmk/Rope_2","center":true,"at":[0.28,0,0.1],"yaw":65}],"maxHeight":0.15}],
+  capstan: [{"name":"extra_capstan","parts":[{"detail":"capstan"}],"maxHeight":0.68}],
+  snowshoe_pair: [{"name":"extra_snowshoe_pair","parts":[{"detail":"snowshoe_pair"}],"maxHeight":0.1}],
+  anchor: [{"name":"extra_anchor","parts":[{"detail":"anchor"}],"maxHeight":0.24}],
+  swamp_boardwalk: [{"name":"extra_swamp_boardwalk","parts":[{"detail":"swamp_boardwalk"}]}],
+  path_stone: [{"name":"extra_rock_path_square","parts":[{"kit":"snmk/RockPath_Square_Wide","center":true},{"kit":"snmk/RockPath_Square_Thin","center":true,"at":[1.5,0,0.02],"yaw":-4}]},{"name":"extra_rock_path_round","parts":[{"kit":"snmk/RockPath_Round_Wide","center":true},{"kit":"snmk/RockPath_Round_Thin","center":true,"at":[1.55,0,0.04],"yaw":6}]}],
+  clover_patch: [{"name":"extra_clover_patch","parts":[{"kit":"snmk/Clover_1","center":true,"at":[-0.2,0,0]},{"kit":"snmk/Clover_2","center":true,"at":[0.2,0,0.08],"yaw":35}],"maxHeight":0.2}],
+  forest_plant: [{"name":"extra_forest_plant","parts":[{"kit":"snmk/Plant_1","center":true},{"kit":"snmk/Plant_1_Big","center":true,"at":[0.28,0,0.1],"scale":0.8,"yaw":70}],"maxHeight":0.5}],
+  mangrove_roots: [{"name":"extra_mangrove_roots","parts":[{"detail":"mangrove_roots"}],"maxHeight":0.95}],
+  tree_dead: [{"name":"extra_dead_tree_low","parts":[{"kit":"snmk/DeadTree_5","center":true}]},{"name":"extra_dead_tree_sparse","parts":[{"kit":"snmk/DeadTree_3","center":true}]}],
+  wall_ivy: [{"name":"extra_wall_ivy","parts":[{"kit":"mvmk/Prop_Vine1","center":true}],"maxHeight":0.65}],
+  wall_ivy_corner: [{"name":"extra_wall_ivy_corner","parts":[{"kit":"mvmk/Prop_Vine6","center":true}],"maxHeight":0.65}],
+  grass_tuft: [{"name":"extra_grass_wispy","parts":[{"kit":"snmk/Grass_Wispy_Short","center":true},{"kit":"snmk/Grass_Wispy_Tall","center":true}]}],
+  wall_ivy_wide: [{"name":"extra_wall_ivy_wide","parts":[{"kit":"mvmk/Prop_Vine4","center":true}],"maxHeight":0.65}],
+  cart: [{"name":"extra_merchant_wagon","parts":[{"kit":"mvmk/Prop_Wagon","center":true,"yaw":90}]}],
+  key_bundle: [{"name":"extra_key_bundle","parts":[{"kit":"fpmk/Key_Gold","center":true,"at":[-0.12,0,0],"scale":2.2,"yaw":35},{"kit":"fpmk/Key_Metal","center":true,"at":[0.12,0,0.03],"scale":2.2,"yaw":-20}],"maxHeight":0.1}],
+  coin_pouch: [{"name":"extra_coin_pouch","parts":[{"kit":"fpmk/Pouch_Large","center":true,"scale":1.2,"yaw":12}],"maxHeight":0.28}],
+}
+// Ранее доступные варианты телеги и знамени остаются рядом с новыми.
+PROPS.cart = [ref('quaternius/stall_cart_empty.glb')]
+PROPS.banner = [ref('quaternius/banner_1.glb')]
+for (const [id, recipes] of Object.entries(EXPANSION_PROPS)) PROPS[id] = [...(PROPS[id] ?? []), ...recipes]
 
 /** @type {Readonly<Record<string, StyleSource>>} */
 export const GRAPHICS_STYLE_SOURCES = Object.freeze({

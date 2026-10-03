@@ -11,6 +11,10 @@ export type PropModelEntry = {
   /** Предел высоты модели в клетках до масштаба предмета; перекрывает PROP_MODEL_MAX_HEIGHTS. */
   maxHeight?: number
   preview?: { x: number; y: number; w: number; h: number }
+  /** Реальный bbox модели после entry.yaw: ширина, высота, глубина. */
+  size?: [number, number, number]
+  /** Модель пришла из style pack, а не из выпуска окружения. */
+  source?: 'style'
 }
 
 /**
@@ -49,11 +53,29 @@ export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.f
 })
 
 const MAX_HEIGHT_LIMIT = 8
+const MAX_SIZE_LIMIT = 10_000
 
 /** Предел высоты модели предмета в клетках; `null` — высота не ограничена. */
 export function propModelMaxHeight(assetId: string, entry?: Pick<PropModelEntry, 'maxHeight'> | null): number | null {
   if (entry?.maxHeight !== undefined) return entry.maxHeight
   return Object.prototype.hasOwnProperty.call(PROP_MODEL_MAX_HEIGHTS, assetId) ? PROP_MODEL_MAX_HEIGHTS[assetId] : null
+}
+
+/** Масштаб GLB в footprint до применения `prop.scale`. */
+export function propModelFit(
+  assetId: string,
+  entry: Pick<PropModelEntry, 'size' | 'maxHeight'> | null | undefined,
+  width: number,
+  depth: number,
+  fill: number,
+  actualSize?: [number, number, number],
+): number | null {
+  const size = entry?.size ?? actualSize
+  if (!size || !size.every((value) => Number.isFinite(value) && value > 0)) return null
+  if (!Number.isFinite(width) || !Number.isFinite(depth) || !Number.isFinite(fill) || width <= 0 || depth <= 0 || fill <= 0) return null
+  const footprintFit = Math.min(width / size[0], depth / size[2]) * fill
+  const maxHeight = propModelMaxHeight(assetId, entry)
+  return maxHeight === null ? footprintFit : Math.min(footprintFit, maxHeight / size[1])
 }
 
 export type PropModelCatalog = {
@@ -118,6 +140,12 @@ export function validatePropModelCatalog(value: unknown, revision?: string): Pro
       const p = entry.preview as Record<string, unknown>
       if (['x', 'y', 'w', 'h'].every((k) => typeof p[k] === 'number' && Number.isInteger(p[k]) && Number(p[k]) >= 0 && Number(p[k]) <= 8192)
         && Number(p.w) > 0 && Number(p.h) > 0) result.preview = { x: Number(p.x), y: Number(p.y), w: Number(p.w), h: Number(p.h) }
+    }
+    if (entry.size !== undefined) {
+      if (!Array.isArray(entry.size) || entry.size.length !== 3 || entry.size.some((value) => typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || value > MAX_SIZE_LIMIT)) {
+        throw new Error('Некорректный габарит модели окружения')
+      }
+      result.size = [entry.size[0] as number, entry.size[1] as number, entry.size[2] as number]
     }
     return result
   })

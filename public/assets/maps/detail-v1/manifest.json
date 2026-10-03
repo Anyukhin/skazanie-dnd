@@ -6461,31 +6461,17 @@
       "tripwire_bells",
       "cavern_chasm",
       "rope_bridge",
-      "mine_rail",
-      "mine_cart",
-      "timber_shoring",
-      "crystal_cluster",
-      "giant_fungus",
       "spore_cloud",
-      "obsidian_monolith",
-      "command_tent",
-      "scout_tent",
       "bedroll_cluster",
-      "weapon_rack",
       "shield_rack",
       "camp_dummy",
-      "mantlet",
       "spiked_beam_barrier",
-      "ballista",
-      "alchemy_table",
       "alchemy_cauldron",
       "arcane_lectern",
-      "crystal_orb",
       "ritual_circle",
       "arcane_stone",
       "potion_cabinet",
       "magic_mirror",
-      "arcane_coil",
       "sewer_grate",
       "drain_channel",
       "slime_puddle",
@@ -6496,12 +6482,9 @@
       "plank_crossing",
       "valve_wheel",
       "harbor_rowboat",
-      "anchor",
-      "capstan",
       "mooring_bollard",
       "cargo_net",
       "fishing_crates",
-      "dock_crane",
       "lobster_cage",
       "sail_bundle",
       "snowdrift",
@@ -6509,8 +6492,6 @@
       "frozen_pool",
       "ice_pillars",
       "snowy_boulder",
-      "cargo_sled",
-      "snowshoe_pair",
       "winter_cache",
       "snow_cairn",
       "sand_dune",
@@ -6520,11 +6501,9 @@
       "oasis_pool",
       "sandstone_arch",
       "broken_obelisk",
-      "nomad_tent",
       "desert_fire_bowl",
       "bog_pool",
       "lily_pad_cluster",
-      "mangrove_roots",
       "reed_cluster",
       "rotten_log",
       "mud_patch",
@@ -6532,32 +6511,7 @@
       "swamp_totem",
       "peat_mound"
     ],
-    "models": [
-      "rope_bridge",
-      "mine_rail",
-      "mine_cart",
-      "timber_shoring",
-      "crystal_cluster",
-      "giant_fungus",
-      "obsidian_monolith",
-      "command_tent",
-      "scout_tent",
-      "weapon_rack",
-      "mantlet",
-      "ballista",
-      "alchemy_table",
-      "crystal_orb",
-      "arcane_coil",
-      "anchor",
-      "capstan",
-      "dock_crane",
-      "cargo_sled",
-      "snowshoe_pair",
-      "sandstone_arch",
-      "nomad_tent",
-      "mangrove_roots",
-      "swamp_boardwalk"
-    ],
+    "models": [],
     "textures": [
       "floor-mine-grit",
       "floor-camp-earth",
@@ -6660,15 +6614,22 @@
       },
       {
         "file": "tools/build-map-detail-assets.mjs",
-        "sha256": "4ba48966ca880734e46e7aa46d0b3d27bfae3a41d2ebb3b4e4435f85e5a80e56",
-        "bytes": 6290
+        "sha256": "904e7d680831bd8d7212b1c62f656229c607691fa7753829370f7ba3138341f3",
+        "bytes": 11245
       },
       {
         "file": "tools/build-map-detail-rasters.mjs",
         "sha256": "04fb03945175385d7e087b040c83d282750090b45435f171e48c6276bf33190a",
         "bytes": 22761
       }
-    ]
+    ],
+    "sourceSpec": {
+      "file": "docs/map-detail-assets-spec-v1.json",
+      "sha256": "a4abb4155fcfa3ec4663d2d689fe62aad624a29bc98e8a4f8888d2dc111cf404",
+      "bytes": 266774
+    },
+    "sourceSha256": "a4abb4155fcfa3ec4663d2d689fe62aad624a29bc98e8a4f8888d2dc111cf404",
+    "generatorSha256": "904e7d680831bd8d7212b1c62f656229c607691fa7753829370f7ba3138341f3"
   },
   "previews": {
     "raster": "raster-preview.png",
@@ -7266,5 +7227,12 @@
       "sha256": "4170de6a2b41da8c3d3960e34b3c9fb2c6788a911c4ab9a4d2a37751217c17a8",
       "bytes": 223528
     }
-  ]
+  ],
+  "structuralIntegration": {
+    "models": [
+      "rope_bridge",
+      "swamp_boardwalk",
+      "sandstone_arch"
+    ]
+  }
 }
