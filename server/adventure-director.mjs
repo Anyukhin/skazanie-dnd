@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
-import { SIZE_CLASSES, deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
+import { SIZE_CLASSES, deserializeTacticalMap, legacyCellsFromTacticalMap, orientTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
 import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
 import { LIBRARY_SEED_PREFIX, activeMapLibrary, libraryIdsInUse, libraryRequestFor } from './map-library.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
@@ -9,7 +9,7 @@ import { REFERENCE_SIZE } from './building-generator.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { sceneMapDesignFor, worldLocationDesignContext } from './scene-map-design.mjs'
 import { normalizeSceneRequirements, sceneMapRequirementsFor } from './scene-requirements.mjs'
-import { applyScenePlan } from './scene-program-layout.mjs'
+import { applyScenePlan, programFocusOutdoors } from './scene-program-layout.mjs'
 import { SETTLEMENT_MIN_SIZE, programReport } from './map-quality.mjs'
 import {
   buildThemedScene,
@@ -263,6 +263,27 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
+/**
+ * Сторона карты сцены, с которой отряд входит: в сторону места, откуда он
+ * пришёл, по координатам карты мира (ось y там, как и на доске, смотрит вниз).
+ * Пусто — прежнего места на карте нет, вход остаётся у западного края.
+ *
+ * @param {Record<string, any>|undefined} worldMap
+ * @param {string} toId
+ * @param {unknown} fromId
+ * @returns {'west'|'east'|'north'|'south'|''}
+ */
+export function entrySideToward(worldMap, toId, fromId) {
+  const to = worldLocationById(worldMap, toId)
+  const from = worldLocationById(worldMap, String(fromId ?? ''))
+  if (!to || !from || to === from) return ''
+  const dx = Number(from.x) - Number(to.x)
+  const dy = Number(from.y) - Number(to.y)
+  if (!Number.isFinite(dx) || !Number.isFinite(dy) || (!dx && !dy)) return ''
+  if (Math.abs(dx) >= Math.abs(dy)) return dx < 0 ? 'west' : 'east'
+  return dy < 0 ? 'north' : 'south'
+}
+
 /** Сколько раз генератор пробует карту, прежде чем взять лучшую из неудачных. */
 const MAP_CHECK_ATTEMPTS = 4
 
@@ -279,7 +300,7 @@ function mapCheckFor(theme, _plan) {
   return { minSize: settlement ? SETTLEMENT_MIN_SIZE : null, openScene: settlement }
 }
 
-function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [], requirements = [], program = null }) {
+function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [], requirements = [], program = null, entrySide = '' }) {
   // Программа сцены (`scene.map_requirements`); старый вызов с одним списком
   // читается как программа без центра и постов.
   const plan = program && typeof program === 'object' ? program
@@ -344,7 +365,9 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
         width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
         height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
         levels,
-        design,
+        // Центр сцены под открытым небом просит у деревни площадь: вокруг неё
+        // встанут дома дверями к ней (план карт, «дома к площади»).
+        design: programFocusOutdoors(plan) ? { ...design, square: true } : design,
         // Сцена «таверна/галерея» начинается в помещении. Явное прибытие к
         // фасаду оставляет отряд снаружи; закрытая дверь сохраняет своё значение.
         entry: startsOutside ? 'exterior' : 'interior',
@@ -359,6 +382,14 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
       if (!report.problems.length) break
     }
     const { built, report } = /** @type {NonNullable<typeof best>} */ (best)
+    // Вход по дороге: улица и поле строят вход отряда у западного края, а
+    // отряд пришёл с той стороны, где на карте мира лежит прежнее место.
+    // Карта поворачивается целиком — та же карта, иначе лежащая. Здание и
+    // подземелье входят через свою дверь, авторская карта — как задумана.
+    const party = built.map.spawnPoints.find((point) => point.role === 'party')
+    if (entrySide && ['settlement', 'open'].includes(String(matched.kind)) && !String(matched.id).startsWith('authored-') && party && party.x <= 1) {
+      built.map = orientTacticalMap(built.map, entrySide)
+    }
     // Этажи, которые объявил сам генератор: двухэтажная таверна поселения.
     return {
       cells: legacyCellsFromTacticalMap(built.map),
@@ -439,11 +470,11 @@ export function librarySceneFields(library) {
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, requirements = [], program = null } = {}) {
+export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, requirements = [], program = null, entrySide = '' } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
   return generateSceneGeometryFor({
     theme, danger, location, sceneKind, settlementType, worldKind, seed, locationId, requestedMap,
-    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome, useLibrary, requirements, program,
+    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome, useLibrary, requirements, program, entrySide,
   })
 }
 
@@ -706,6 +737,8 @@ export function createSceneTransition(input = {}, state = {}) {
     usedLibraryIds: [...libraryIdsInUse(state.locationMaps)],
     requirements: mapRequirements?.items ?? [],
     program: mapRequirements,
+    // Сторона, откуда отряд пришёл: к прежнему месту на карте мира.
+    entrySide: entrySideToward(worldMap, locationId, previousScene.location_id ?? previousScene.locationId),
   })
   const library = generated?.library ?? null
   // Заявка архитектора на этажи сильнее; без неё сцена получает этажи,

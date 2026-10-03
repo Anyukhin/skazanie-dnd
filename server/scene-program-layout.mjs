@@ -120,6 +120,20 @@ function clearance(map, point, taken, limit) {
 }
 
 /**
+ * Стоит ли центр программы под открытым небом: навес, колодец, костёр — да,
+ * очаг и алтарь — под крышей. Тем же правилом `placeSceneFocus` выбирает,
+ * где искать место, а генератор поселения решает, нужна ли деревне площадь.
+ *
+ * @param {unknown} program
+ * @returns {boolean}
+ */
+export function programFocusOutdoors(program) {
+  const focus = program && typeof program === 'object' ? String(/** @type {any} */ (program).focus ?? '') : ''
+  const asset = focus ? requirementAssets(focus).map((id) => assetById(id)).find(Boolean) : null
+  return Boolean(asset && !(asset.themes.some((theme) => INDOOR_THEMES.has(theme)) && !asset.themes.includes('exterior')))
+}
+
+/**
  * Центр сцены: предмет из `assets` посреди самой открытой площадки, в 6–10
  * шагах от входа отряда. Уже стоящий на открытом месте предмет того же вида
  * засчитывается — второй колодец на площадь не ставится.
@@ -167,8 +181,10 @@ export function placeSceneFocus(map, assets, { seed }) {
     if (room < 1) continue
     const steps = party ? Math.abs(cell.x - party.x) + Math.abs(cell.y - party.y) : FOCUS_DISTANCE.min
     const away = steps < FOCUS_DISTANCE.min ? FOCUS_DISTANCE.min - steps : steps > FOCUS_DISTANCE.max ? steps - FOCUS_DISTANCE.max : 0
-    // Простор важнее расстояния: площадь посреди деревни лучше пятачка у входа.
-    const score = room * 10 - away * 2 - ((index + tie) % 7) / 10
+    // Простор важнее расстояния: площадь посреди деревни лучше пятачка у входа,
+    // а сама площадь — лучше любой улицы: на ней и стоит центр сцены.
+    const onSquare = footprint.every((point) => cellAt(map, point.x, point.y)?.zone === 'square') ? 30 : 0
+    const score = room * 10 - away * 2 + onSquare - ((index + tie) % 7) / 10
     if (!best || score > best.score) best = { x: cell.x, y: cell.y, score, footprint }
   }
   if (!best) return null

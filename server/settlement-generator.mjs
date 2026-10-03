@@ -73,7 +73,9 @@ function designFor(theme, seed, input = {}) {
   const density = DENSITIES.has(input.density) ? input.density : random() < 0.25 ? 'sparse' : random() < 0.75 ? 'mixed' : 'dense'
   const buildingUse = BUILDING_USES.has(input.building_use) ? input.building_use : /таверн|трактир/u.test(value) ? 'tavern' : /рынок|торгов|лавк/u.test(value) ? 'shop' : 'dwelling'
   const scale = ['village', 'town', 'city'].includes(input.scale) ? input.scale : ''
-  return { topology, climate, architecture: pickArchitecture(theme, input), density, building_use: buildingUse, scale }
+  // Площадь посреди деревни: её просит центр программы сцены — навес,
+  // колодец, костёр, вокруг которых стоят люди (`server/scene-program-layout.mjs`).
+  return { topology, climate, architecture: pickArchitecture(theme, input), density, building_use: buildingUse, scale, square: input.square === true }
 }
 
 function materials(design, theme) {
@@ -611,7 +613,11 @@ function frontageSpecs(map, random, target) {
   // Сначала переулки: дом у переулка короче улицы, а главная улица добирает
   // промежутки между ними.
   const laneFirst = random() < 0.5
-  fronts.sort((left, right) => (laneFirst ? Number(Boolean(right.dx)) - Number(Boolean(left.dx)) : 0)
+  // Дворы у площади — первыми: дом у площади смотрит на неё дверью, а не
+  // на боковую улицу (план карт, «дома к площади»).
+  const onSquare = (/** @type {{x: number, y: number}} */ front) => Number(cellAt(map, front.x, front.y)?.zone === 'square')
+  fronts.sort((left, right) => onSquare(right) - onSquare(left)
+    || (laneFirst ? Number(Boolean(right.dx)) - Number(Boolean(left.dx)) : 0)
     || sideOrder.indexOf(`${left.dy},${left.dx}`) - sideOrder.indexOf(`${right.dy},${right.dx}`)
     || (left.dy ? left.x - right.x || left.y - right.y : left.y - right.y || left.x - right.x))
   for (const front of fronts) {
@@ -850,6 +856,29 @@ function paintVillageLanes(map, random, material) {
     }
   }
   return painted
+}
+
+/**
+ * Площадь посреди деревни: прямоугольник 9×7 вокруг клетки улицы, ближайшей
+ * к середине карты. Деревня с навесом или колодцем в центре сцены прежде
+ * ставила его прямо на проезжую улицу — площади у деревни не было вовсе.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} material
+ */
+function carveVillageSquare(map, material) {
+  const middle = { x: Math.floor(map.width / 2), y: Math.floor(map.height / 2) }
+  let center = null
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (cellAt(map, x, y)?.zone !== 'street') continue
+    const distance = Math.abs(x - middle.x) + Math.abs(y - middle.y)
+    if (!center || distance < center.distance) center = { x, y, distance }
+  }
+  if (!center) return
+  for (let y = center.y - 3; y <= center.y + 3; y += 1) for (let x = center.x - 4; x <= center.x + 4; x += 1) {
+    if (x < 2 || y < 2 || x > map.width - 3 || y > map.height - 3) continue
+    paintSquare(map, x, y, material)
+  }
 }
 
 /** Наименьший размер карты поселения по масштабу. */
@@ -1211,7 +1240,8 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   const urban = chosen.scale === 'town' || chosen.scale === 'city'
   // Площадь посреди поселения — площадь, а не «внутренний двор»: так
   // называется двор внутри одного дома.
-  if (urban || chosen.topology === 'market' || chosen.topology === 'courtyard') {
+  const villageSquare = chosen.square && !urban && chosen.topology !== 'market' && chosen.topology !== 'courtyard'
+  if (urban || chosen.topology === 'market' || chosen.topology === 'courtyard' || villageSquare) {
     addZone(map, { id: 'square', kind: 'exterior', material: materialsForMap.street, lightLevel: 'bright', floorDirection: 'horizontal', label: chosen.topology === 'market' || urban ? 'Торговая площадь' : 'Площадь' })
   }
   // Река течёт: у неё своя фактура струй, у гавани — прежняя стоячая вода.
@@ -1226,6 +1256,9 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   // Деревня: улицы прокладывает прежний планировщик своей топологии, а дома
   // ставятся вдоль них; если по улице встало меньше, остаётся прежний набор.
   const legacy = urban && planner === 'street' ? [] : buildingSpecs(map, chosen, random)
+  // Площадь вырезается по уже проложенной улице и до домов: дома встают
+  // вдоль улиц и площади, поэтому дома у площади смотрят на неё дверью.
+  if (villageSquare) carveVillageSquare(map, materialsForMap.street)
   // Редкая застройка — хутор или выселки: три-пять дворов, а не деревня.
   const villageTarget = chosen.density === 'dense' ? 14 : chosen.density === 'sparse' ? 5 : 12
   const villageStreet = planner === 'street' && !urban && chosen.scale === 'village'
