@@ -286,31 +286,48 @@ function jailerDesk() {
 
 function idol() {
   const m = new Model('idol')
-  m.cylinder('idol-base', 0.82, 0.9, 0.28, [0, 0.14, 0], C.stoneDark, 12)
-  m.cylinder('idol-pedestal', 0.64, 0.7, 0.28, [0, 0.42, 0], C.stoneLight, 12)
-  m.beam('idol-left-leg', [-0.34, 0.63, -0.02], [0.34, 0.64, -0.25], 0.16, C.stone)
-  m.beam('idol-right-leg', [0.34, 0.64, 0.02], [-0.34, 0.68, -0.25], 0.16, C.stoneLight)
-  lathe(m, 'idol-robe', [[0, 0.66], [0.27, 0.66], [0.48, 0.72], [0.52, 0.92], [0.40, 1.42], [0.56, 1.52], [0.48, 1.60], [0.22, 1.60], [0, 1.60]], C.stone, 16)
-  m.sphere('idol-shoulders', [0.94, 0.34, 0.54], [0, 1.52, 0.01], C.stone)
-  m.torus('idol-robe-collar', 0.27, 0.04, [0, 1.61, 0], C.stoneDark)
-  for (const x of [-0.25, 0, 0.25]) m.beam('idol-robe-fold', [x, 0.72, -0.38], [x * 0.86, 1.45, -0.31], 0.022, C.stoneDark)
-  m.beam('idol-arm-left', [-0.36, 1.45, -0.04], [-0.18, 1.1, -0.3], 0.1, C.stoneLight)
-  m.beam('idol-arm-right', [0.36, 1.45, -0.04], [0.18, 1.1, -0.3], 0.1, C.stone)
-  m.beam('idol-folded-hands', [-0.18, 1.1, -0.3], [0.18, 1.1, -0.3], 0.085, C.stoneLight)
-  m.torus('idol-hand-cuff', 0.10, 0.018, [-0.18, 1.10, -0.30], C.stoneDark, [Math.PI / 2, 0, 0])
-  m.cylinder('idol-neck', 0.18, 0.2, 0.18, [0, 1.78, 0], C.stoneDark, 10)
-  m.sphere('idol-head', [0.58, 0.62, 0.54], [0, 2.1, -0.01], C.stoneLight)
-  m.sphere('idol-headdress', [0.70, 0.27, 0.50], [0, 2.34, 0.04], C.stoneDark)
-  m.torus('idol-halo', 0.56, 0.045, [0, 2.05, 0.18], C.bronze, [Math.PI / 2, 0, 0])
-  for (const x of [-0.35, 0.35]) m.sphere('idol-ear', [0.10, 0.16, 0.08], [x, 2.10, -0.01], C.stone)
-  m.box('idol-nose', [0.09, 0.13, 0.12], [0, 2.12, -0.31], C.stoneDark)
-  for (const x of [-0.13, 0.13]) {
-    m.sphere('idol-eye', [0.045, 0.045, 0.03], [x, 2.21, -0.285], C.dark)
-    m.box('idol-brow', [0.14, 0.04, 0.04], [x, 2.29, -0.27], C.stoneDark, [0, 0, x < 0 ? -0.12 : 0.12])
+  // Ступенчатый круглый постамент с лепестками лотоса; божество сидит
+  // со скрещёнными ногами, руки сложены на коленях, за головой — нимб.
+  lathe(m, 'idol-pedestal', [[1.2, 0], [1.2, 0.18], [1.05, 0.2], [1.05, 0.45], [0.95, 0.5], [0.95, 0.62], [0, 0.62]], C.stone, 40)
+  for (let index = 0; index < 14; index += 1) {
+    const angle = index / 14 * Math.PI * 2
+    m.mesh('idol-lotus-petal', new THREE.SphereGeometry(0.5, 14, 8), [Math.cos(angle) * 0.86, 0.63, Math.sin(angle) * 0.86], C.stoneLight, [0, -angle, 0.25]).scale.set(0.3, 0.07, 0.16)
   }
-  m.slab('idol-mouth', 0.20, 0.04, 0.035, [0, 2.00, -0.30], C.stoneDark)
-  m.sphere('idol-third-eye', [0.05, 0.05, 0.04], [0, 2.24, -0.29], C.bronze)
-  m.slab('idol-crown-front', 0.44, 0.08, 0.10, [0, 2.48, -0.06], C.bronze)
+  const y0 = 0.62
+  m.lumpy('idol-crossed-legs', new THREE.SphereGeometry(0.5, 28, 16), [0, y0 + 0.14, -0.05], C.stone, { size: [1.3, 0.32, 0.82], amount: 0.02, frequency: 4, seed: 91 })
+  for (const side of [-1, 1]) m.lumpy('idol-knee', new THREE.SphereGeometry(0.5, 16, 12), [side * 0.48, y0 + 0.16, -0.26], C.stone, { size: [0.36, 0.26, 0.36], amount: 0.01, frequency: 6, seed: 92 + side })
+  const torso = lathe(m, 'idol-torso', [[0.36, y0 + 0.2], [0.41, y0 + 0.45], [0.38, y0 + 0.75], [0.43, y0 + 1.0], [0.30, y0 + 1.12], [0.12, y0 + 1.18]], C.stoneLight, 32)
+  torso.scale.set(1, 1, 0.72)
+  m.sphere('idol-belly', [0.5, 0.42, 0.34], [0, y0 + 0.5, -0.1], C.stoneLight)
+  m.taperTube('idol-sash', [[-0.3, y0 + 1.06, -0.2], [0, y0 + 0.8, -0.3], [0.32, y0 + 0.52, -0.25]], 0.035, 0.035, C.bronze, 16, 8)
+  for (const side of [-1, 1]) {
+    m.taperTube('idol-arm', [[side * 0.4, y0 + 1.02, 0], [side * 0.48, y0 + 0.66, -0.06], [side * 0.14, y0 + 0.42, -0.3]], 0.11, 0.085, C.stoneLight, 16, 14)
+  }
+  m.lumpy('idol-folded-hands', new THREE.SphereGeometry(0.5, 16, 10), [0, y0 + 0.42, -0.33], C.stoneLight, { size: [0.34, 0.12, 0.2], amount: 0.008, frequency: 12, seed: 95 })
+  m.cylinder('idol-neck', 0.12, 0.14, 0.14, [0, y0 + 1.2, 0], C.stoneLight, 24)
+  m.lumpy('idol-head', new THREE.SphereGeometry(0.5, 24, 20), [0, y0 + 1.44, -0.01], C.stoneLight, { size: [0.42, 0.5, 0.42], amount: 0.006, frequency: 8, seed: 96 })
+  for (const side of [-1, 1]) m.sphere('idol-ear', [0.08, 0.24, 0.07], [side * 0.21, y0 + 1.38, 0.0], C.stone)
+  lathe(m, 'idol-topknot', [[0.15, y0 + 1.6], [0.13, y0 + 1.68], [0.08, y0 + 1.76], [0, y0 + 1.82]], C.stone, 24)
+  for (const side of [-1, 1]) {
+    m.box('idol-closed-eye', [0.09, 0.016, 0.02], [side * 0.08, y0 + 1.48, -0.205], C.dark, [0, 0, side * -0.18])
+    m.box('idol-brow', [0.11, 0.02, 0.025], [side * 0.085, y0 + 1.53, -0.2], C.stone, [0, 0, side * 0.12])
+  }
+  m.box('idol-nose', [0.05, 0.1, 0.05], [0, y0 + 1.42, -0.215], C.stone)
+  m.box('idol-mouth', [0.09, 0.014, 0.02], [0, y0 + 1.335, -0.2], C.dark)
+  m.sphere('idol-urna', [0.03, 0.03, 0.02], [0, y0 + 1.56, -0.2], C.bronze)
+  m.torus('idol-halo', 0.46, 0.035, [0, y0 + 1.46, 0.22], C.bronze)
+  for (let index = 0; index < 12; index += 1) {
+    const angle = index / 12 * Math.PI * 2
+    m.sphere('idol-halo-ray', [0.07, 0.07, 0.04], [Math.cos(angle) * 0.52, y0 + 1.46 + Math.sin(angle) * 0.52, 0.22], C.bronze)
+  }
+  // Подношения на нижней ступени: чаши и свечи.
+  for (const [x, z] of [[-0.36, -1.1], [0.36, -1.1]]) {
+    lathe(m, 'idol-offering-bowl', [[0.04, 0.2], [0.1, 0.21], [0.13, 0.26], [0.12, 0.28]], C.bronze, 20).position.set(x, 0, z + 1.1 - 1.1)
+  }
+  for (const [x, z, h] of [[-0.6, -0.95, 0.16], [0, -1.12, 0.22], [0.6, -0.95, 0.13]]) {
+    m.cylinder('idol-candle', 0.035, 0.04, h, [x, 0.2 + h / 2, z], C.strawLight, 24)
+    m.sphere('idol-candle-flame', [0.035, 0.07, 0.035], [x, 0.2 + h + 0.04, z], C.bronze)
+  }
   return finish(m)
 }
 
@@ -332,20 +349,28 @@ function fontBasin() {
 
 function incenseBurner() {
   const m = new Model('incense_burner')
-  for (const [x, z] of [[-0.24, -0.15], [0.24, -0.15], [0, 0.22]]) {
-    m.beam('burner-tripod-leg', [x, 0.06, z], [0, 0.46, 0], 0.025, C.bronze)
-    m.sphere('burner-tripod-foot', [0.05, 0.035, 0.05], [x, 0.04, z], C.ironLight)
+  // Котелок на трёх гнутых ножках с лапами, ажурная крышка и клубящийся дым.
+  for (let index = 0; index < 3; index += 1) {
+    const angle = index / 3 * Math.PI * 2 + Math.PI / 2
+    const dx = Math.cos(angle), dz = Math.sin(angle)
+    m.taperTube('burner-tripod-leg', [[dx * 0.13, 0.5, dz * 0.13], [dx * 0.25, 0.36, dz * 0.25], [dx * 0.22, 0.18, dz * 0.22], [dx * 0.3, 0.05, dz * 0.3]], 0.04, 0.028, C.bronze, 20, 10)
+    m.lumpy('burner-paw', new THREE.SphereGeometry(0.5, 12, 8), [dx * 0.31, 0.035, dz * 0.31], C.bronze, { size: [0.09, 0.06, 0.1], amount: 0.006, frequency: 20, seed: 101 + index })
   }
-  lathe(m, 'burner-bowl', [[0.08, 0.46], [0.19, 0.46], [0.25, 0.54], [0.22, 0.66], [0.12, 0.70], [0.08, 0.65]], C.bronze, 16)
-  m.torus('burner-rim', 0.22, 0.025, [0, 0.64, 0], C.ironLight, [Math.PI / 2, 0, 0])
-  m.cylinder('burner-lid', 0.13, 0.18, 0.1, [0, 0.69, 0], C.bronze, 10)
-  m.cylinder('burner-finial', 0.035, 0.035, 0.1, [0, 0.79, 0], C.bronze, 8)
-  for (const angle of [0, Math.PI / 3, Math.PI * 2 / 3, Math.PI, Math.PI * 4 / 3, Math.PI * 5 / 3]) {
-    m.sphere('burner-lid-hole', [0.018, 0.018, 0.018], [Math.cos(angle) * 0.08, 0.73, Math.sin(angle) * 0.08], C.dark)
+  lathe(m, 'burner-bowl', [[0.05, 0.44], [0.2, 0.46], [0.27, 0.55], [0.28, 0.63], [0.25, 0.68], [0.28, 0.7], [0.28, 0.72]], C.bronze, 32)
+  for (const side of [-1, 1]) m.torus('burner-handle-ring', 0.06, 0.013, [side * 0.31, 0.62, 0], C.ironLight, [0, Math.PI / 2, 0])
+  m.torus('burner-band', 0.278, 0.012, [0, 0.6, 0], C.ironLight, [Math.PI / 2, 0, 0])
+  lathe(m, 'burner-lid', [[0.27, 0.72], [0.25, 0.77], [0.19, 0.84], [0.1, 0.89], [0.04, 0.92], [0, 0.93]], C.bronze, 32)
+  for (let index = 0; index < 10; index += 1) {
+    const angle = index / 10 * Math.PI * 2
+    m.sphere('burner-lid-hole', [0.035, 0.03, 0.035], [Math.cos(angle) * 0.2, 0.83, Math.sin(angle) * 0.2], C.dark)
   }
-  m.beam('smoke-lower', [0, 0.86, 0], [0.04, 1.0, 0.01], 0.018, C.smoke)
-  m.beam('smoke-upper', [0.04, 1.0, 0.01], [-0.03, 1.13, -0.02], 0.014, C.smoke)
-  tube(m, 'smoke-wisp', [[-0.03, 1.13, -0.02], [0.08, 1.23, -0.01], [0.00, 1.34, 0.01]], 0.011, C.smoke, 10, 6)
+  m.sphere('burner-finial', [0.08, 0.08, 0.08], [0, 0.96, 0], C.bronze)
+  // Дым: цепочка мягких клубов, которые растут и светлеют кверху.
+  const path = new THREE.CatmullRomCurve3([[0, 0.99, 0], [0.04, 1.08, 0.02], [-0.03, 1.18, 0.0], [0.05, 1.29, -0.03], [0.0, 1.4, 0.02]].map(([x, y, z]) => new THREE.Vector3(x, y, z)))
+  for (let index = 0; index < 13; index += 1) {
+    const t = index / 12, point = path.getPointAt(t), s = 0.06 + t * 0.08
+    m.lumpy('burner-smoke', new THREE.SphereGeometry(0.5, 14, 10), point.toArray(), t > 0.5 ? C.stoneLight : C.smoke, { size: [s, s * 0.8, s], amount: s * 0.12, frequency: 14, seed: 110 + index })
+  }
   return finish(m)
 }
 

@@ -59,9 +59,11 @@ test('профиль качества сохраняет событие и не 
   assert.equal(quality.board3DQuality('corrupt-setting'), 'balanced')
 })
 
-test('профили качества: AO только на высоком, экономное без постобработки и теней', () => {
+test('профили качества: обычное считает AO на половинном разрешении, экономное без постобработки и теней', () => {
   const { high, balanced, low } = quality.BOARD3D_QUALITY
-  assert.deepEqual([high.ambientOcclusion, balanced.ambientOcclusion, low.ambientOcclusion], [true, false, false])
+  assert.deepEqual([high.ambientOcclusion, balanced.ambientOcclusion, low.ambientOcclusion], [true, true, false])
+  assert.deepEqual([high.ambientOcclusionScale, balanced.ambientOcclusionScale], [1, .5])
+  assert.deepEqual([high.tiltShift, balanced.tiltShift, low.tiltShift], [true, true, false])
   assert.deepEqual([high.bloom, balanced.bloom, low.bloom], [true, true, false])
   assert.equal(low.shadows, false)
 })

@@ -710,6 +710,9 @@ function createGroundCanvasTexture(resources: OwnedResources, map: TacticalMap, 
   }
 }
 
+/** Сила рельефа пола из раскраски плиток; 0 — плоский пол. */
+export const BOARD3D_GROUND_RELIEF = 2.2
+
 function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette: BoardPalette, terrain: TerrainTiles) {
   if (typeof document === 'undefined' || typeof document.createElement !== 'function') return null
   try {
@@ -1053,6 +1056,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
           groundMaterial.map.dispose()
         }
         groundMaterial.map = texture
+        groundMaterial.bumpMap = null
         groundMaterial.needsUpdate = true
       }
     }, callReady, () => disposed)
@@ -1073,6 +1077,10 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       groundMaterial.map.dispose()
     }
     groundMaterial.map = texture
+    // Рельеф берётся из той же раскраски плиток: камни брусчатки, дёрн и швы
+    // между клетками ловят свет и тень, как объёмные плитки настольной диорамы.
+    groundMaterial.bumpMap = texture
+    groundMaterial.bumpScale = BOARD3D_GROUND_RELIEF
     groundMaterial.needsUpdate = true
     if (!disposed) options.onReady?.()
   }, () => disposed)

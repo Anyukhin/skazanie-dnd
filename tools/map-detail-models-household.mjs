@@ -105,11 +105,13 @@ function buildBathtub() {
     m.box('short-leg', [0.1, 0.18, 0.1], v(x, 0.09, z), C.iron)
     m.sphere('claw-foot-brass', [0.12, 0.08, 0.12], v(x, 0.04, z), C.brass)
   }
-  m.cylinder('drain', 0.05, 0.06, 0.03, v(0.35, 0.675, 0.16), C.iron, 10)
-  m.beam('faucet-neck', v(0.72, 0.69, 0.4), v(0.72, 0.98, 0.4), 0.035, C.brass)
-  m.beam('faucet-spout', v(0.72, 0.98, 0.4), v(0.5, 0.98, 0.4), 0.035, C.brass)
-  m.beam('faucet-manifold-brass', v(0.6, 0.7, 0.4), v(0.84, 0.7, 0.4), 0.025, C.brass)
-  for (const x of [0.6, 0.84]) m.cylinder('faucet-handle-brass', 0.05, 0.05, 0.16, v(x, 0.78, 0.4), C.brass, 8)
+  // Вместо крана — ведро у торца и полотенце, переброшенное через борт.
+  m.cylinder('bucket', 0.17, 0.14, 0.3, v(1.22, 0.15, 0.1), C.woodLight, 24)
+  m.torus('bucket-hoop', 0.165, 0.012, v(1.22, 0.24, 0.1), C.iron, [Math.PI / 2, 0, 0])
+  m.cylinder('bucket-water', 0.15, 0.15, 0.01, v(1.22, 0.29, 0.1), C.water, 24)
+  m.torus('bucket-handle', 0.15, 0.01, v(1.22, 0.31, 0.1), C.iron, [0, 0, 0])
+  const towel = m.drape('towel-cloth', 0.36, 0.5, (x, z) => (z > 0 ? 0.04 : 0.04 + z * 2.2) - Math.abs(x) * 0.03, C.cream, { segments: [6, 12], thickness: 0.015 })
+  towel.position.set(-0.5, 0.69, -0.40)
   return m
 }
 

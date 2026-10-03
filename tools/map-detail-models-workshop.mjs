@@ -146,21 +146,25 @@ function sawhorse(m) {
 
 /** Аккуратный штабель досок на двух опорных брёвнах. */
 function lumberPile(m) {
-  for (const z of [-0.1, 0.1]) m.cylinder('штабель:опорное-бревно', 0.1, 0.12, 2.5, [0, 0.18, z], C.woodDark, 10, [0, 0, Math.PI / 2])
-  for (let row = 0; row < 5; row += 1) {
-    const z = (row % 2 ? -0.04 : 0.04)
-    m.box('штабель:доска', [2.55, 0.13, 0.28], [0, 0.28 + row * 0.14, z], row % 2 ? C.wood : C.woodLight)
+  // Доски уложены слоями на поперечные лаги, между слоями — прокладки,
+  // чтобы штабель проветривался; доски чуть разной длины и тона.
+  const next = random(141)
+  for (const x of [-1.0, 0, 1.0]) m.cylinder('штабель:лага', 0.08, 0.08, 1.1, [x, 0.08, 0], C.woodDark, 24, [Math.PI / 2, 0, 0])
+  let y = 0.16
+  for (let layer = 0; layer < 5; layer += 1) {
+    const count = layer === 4 ? 3 : 5
+    for (let index = 0; index < count; index += 1) {
+      const z = (index - (count - 1) / 2) * 0.215, length = 2.36 + next() * 0.24, shift = (next() - 0.5) * 0.12
+      m.box('штабель:доска', [length, 0.06, 0.2], [shift, y + 0.03, z], next() > 0.5 ? C.woodLight : C.wood)
+      for (const side of [-1, 1]) m.box('штабель:торец-доски', [0.006, 0.05, 0.18], [shift + side * length / 2, y + 0.03, z], C.straw)
+    }
+    y += 0.06
+    if (layer < 4) {
+      for (const x of [-1.0, 0, 1.0]) m.box('штабель:прокладка', [0.05, 0.04, 1.08], [x, y + 0.02, 0], C.woodDark)
+      y += 0.04
+    }
   }
-  for (const y of [0.28, 0.84]) {
-    m.beam('штабель:стяжка-metal', [-1.27, y, -0.18], [-1.27, y, 0.18], 0.025, C.iron)
-    m.beam('штабель:стяжка-metal', [1.27, y, -0.18], [1.27, y, 0.18], 0.025, C.iron)
-  }
-  m.box('штабель:торец', [0.04, 0.58, 0.34], [-1.28, 0.53, 0.03], C.woodDark)
-  m.box('штабель:торец', [0.04, 0.58, 0.34], [1.28, 0.53, 0.03], C.woodDark)
-  for (const y of [0.34, 0.62, 0.9]) {
-    m.torus('штабель:годовое-кольцо', 0.08, 0.012, [-1.31, y, 0.04], C.woodLight, [0, Math.PI / 2, 0])
-  }
-  m.box('штабель:маркировочная-планка', [0.42, 0.08, 0.03], [0, 0.94, -0.115], C.paper)
+  m.box('штабель:маркировочная-планка', [0.3, 0.12, 0.012], [-0.6, 0.4, -0.54], C.paper)
 }
 
 /** Пара жерновов на помосте и деревянный короб-воронка сверху. */
@@ -233,14 +237,28 @@ function flourBin(m) {
 
 /** Два тюка сена с поперечными перевязями. */
 function hayBales(m) {
-  for (const x of [-0.68, 0.68]) {
-    m.box('тюк-сена:тюк', [1.16, 0.62, 1.0], [x, 0.35, 0], C.straw)
-    m.box('тюк-сена:верёвка', [0.07, 0.67, 1.04], [x - 0.2, 0.35, 0], C.woodDark)
-    m.box('тюк-сена:верёвка', [0.07, 0.67, 1.04], [x + 0.2, 0.35, 0], C.woodDark)
-    m.box('тюк-сена:торцевая-перевязь', [1.05, 0.07, 0.07], [x, 0.35, -0.51], C.woodDark)
-    m.box('тюк-сена:солома', [0.08, 0.24, 0.08], [x - 0.37, 0.69, -0.45], C.straw)
-    m.beam('тюк-сена:боковая-верёвка', [x - 0.2, 0.05, -0.5], [x - 0.2, 0.65, -0.5], 0.018, C.woodDark)
+  // Тюк — неровный прессованный брус с торчащей соломой и двумя бечёвками.
+  const next = random(23)
+  for (const [x, turn, seed] of [[-0.64, 0.05, 31], [0.66, -0.08, 32]]) {
+    m.group('тюк-сена', [x, 0, 0], [0, turn, 0], () => {
+      m.lumpy('тюк-сена:тюк', new THREE.BoxGeometry(1, 1, 1, 6, 4, 8), [0, 0.31, 0], C.straw, { size: [1.18, 0.62, 1.02], amount: 0.025, frequency: 7, seed })
+      for (const z of [-0.26, 0.26]) {
+        m.box('тюк-сена:бечёвка', [1.22, 0.025, 0.035], [0, 0.625, z], C.woodDark)
+        for (const side of [-1, 1]) m.box('тюк-сена:бечёвка', [0.025, 0.62, 0.035], [side * 0.6, 0.31, z], C.woodDark)
+      }
+      for (let index = 0; index < 26; index += 1) {
+        const side = index % 2 ? 1 : -1
+        const y = 0.06 + next() * 0.52, z = (next() - 0.5) * 0.9
+        const reach = 0.06 + next() * 0.1
+        m.beam('тюк-сена:соломинка', [side * 0.56, y, z], [side * (0.59 + reach), y + (next() - 0.5) * 0.12, z + (next() - 0.5) * 0.1], 0.007, next() > 0.5 ? C.straw : C.flour)
+      }
+      for (let index = 0; index < 10; index += 1) {
+        const x = (next() - 0.5) * 1.0, z = (next() - 0.5) * 0.85
+        m.beam('тюк-сена:соломинка', [x, 0.61, z], [x + (next() - 0.5) * 0.2, 0.66, z + (next() - 0.5) * 0.2], 0.007, C.flour)
+      }
+    })
   }
+  m.lumpy('тюк-сена:россыпь', new THREE.SphereGeometry(0.5, 20, 6, 0, Math.PI * 2, 0, Math.PI / 2), [0.02, 0, 0.42], C.straw, { size: [0.5, 0.06, 0.3], amount: 0.012, frequency: 10, seed: 33 })
 }
 
 /** Небольшой курятник на ножках с покатой крышей и лесенкой. */
@@ -255,11 +273,19 @@ function chickenCoop(m) {
   m.box('курятник:гнездо', [0.62, 0.35, 0.38], [0.78, 0.58, 0.18], C.woodDark)
   m.sphere('курятник:яйцо', [0.1, 0.13, 0.1], [0.78, 0.82, 0.18], C.paper)
   m.box('курятник:защёлка-metal', [0.12, 0.05, 0.04], [0.2, 0.73, 0.64], C.iron)
-  m.beam('курятник:раскос-крыши', [-1.08, 1.2, -0.5], [-0.7, 1.56, -0.5], 0.04, C.woodDark)
-  m.beam('курятник:раскос-крыши', [1.08, 1.2, -0.5], [0.7, 1.56, -0.5], 0.04, C.woodDark)
-  m.box('курятник:скат-крыши', [1.45, 0.1, 0.92], [-0.63, 1.45, 0], C.woodLight, [0, 0, 0.5])
-  m.box('курятник:скат-крыши', [1.45, 0.1, 0.92], [0.63, 1.45, 0], C.woodLight, [0, 0, -0.5])
-  m.beam('курятник:конёк', [0, 1.78, -0.46], [0, 1.78, 0.46], 0.07, C.woodDark)
+  // Двускатная кровля с выносом за стены и закрытыми фронтонами.
+  const gable = new THREE.Shape([new THREE.Vector2(-1.175, 0), new THREE.Vector2(1.175, 0), new THREE.Vector2(0, 0.52)])
+  for (const z of [-0.56, 0.56]) {
+    const wall = new THREE.ExtrudeGeometry(gable, { depth: 0.05, bevelEnabled: false })
+    wall.translate(0, 0, -0.025)
+    m.mesh('курятник:фронтон', wall, [0, 1.23, z], C.wood)
+  }
+  const pitch = Math.atan2(0.58, 1.3), slope = Math.hypot(0.58, 1.3)
+  for (const side of [-1, 1]) {
+    m.box('курятник:скат-крыши', [slope, 0.07, 1.36], [side * 0.65, 1.52 + 0.035, 0], C.woodLight, [0, 0, -side * pitch])
+    for (let index = 1; index < 4; index += 1) m.box('курятник:нахлёст-доски', [0.02, 0.025, 1.36], [side * index * 0.32, 1.81 - index * 0.32 * Math.tan(pitch) + 0.06, 0], C.wood, [0, 0, -side * pitch])
+  }
+  m.beam('курятник:конёк', [0, 1.84, -0.7], [0, 1.84, 0.7], 0.05, C.woodDark)
   m.box('курятник:вентиляция', [0.42, 0.22, 0.04], [0, 1.3, -0.58], C.iron)
   for (let index = 0; index < 4; index += 1) {
     m.box('курятник:лесенка', [0.48, 0.06, 0.09], [0, 0.56 - index * 0.12, 0.62 + index * 0.16], C.woodLight, [0.28, 0, 0])
@@ -270,19 +296,37 @@ function chickenCoop(m) {
 
 /** Грядка с тёмной землёй, рамой, капустой и рядами моркови. */
 function gardenBed(m) {
-  m.slab('грядка:земля', 2.45, 0.98, 0.22, [0, 0.18, 0], C.earth)
-  m.box('грядка:борт', [2.65, 0.28, 0.12], [0, 0.32, -0.55], C.wood)
-  m.box('грядка:борт', [2.65, 0.28, 0.12], [0, 0.32, 0.55], C.wood)
-  for (const x of [-1.16, 1.16]) for (const z of [-0.48, 0.48]) {
-    m.beam('грядка:угловой-колышек', [x, 0.2, z], [x, 0.7, z], 0.045, C.woodDark)
+  // Рама из досок на угловых колышках, бугристая земля с бороздами,
+  // передний ряд — кочаны из листьев, задний — перистая ботва моркови.
+  for (const z of [-0.58, 0.58]) {
+    m.box('грядка:борт', [2.66, 0.13, 0.07], [0, 0.10, z], C.wood)
+    m.box('грядка:борт', [2.66, 0.13, 0.07], [0, 0.235, z], C.woodLight)
   }
-  for (const x of [-0.6, 0, 0.6]) m.box('грядка:борозда', [0.07, 0.025, 0.82], [x, 0.31, 0], C.stoneDark)
-  m.beam('грядка:поливной-жёлоб', [-1.05, 0.32, 0], [1.05, 0.32, 0], 0.025, C.woodDark)
-  for (const x of [-0.85, -0.28, 0.28, 0.85]) {
-    m.sphere('грядка:капуста', [0.34, 0.26, 0.34], [x, 0.43, -0.24], C.green)
-    m.sphere('грядка:капуста', [0.3, 0.23, 0.3], [x + 0.12, 0.4, 0.25], C.greenLight)
-    m.beam('грядка:морковь', [x - 0.1, 0.34, 0.28], [x - 0.12, 0.58, 0.28], 0.025, C.greenLight)
-    m.beam('грядка:лист', [x - 0.1, 0.4, -0.24], [x - 0.2, 0.58, -0.28], 0.022, C.greenLight)
+  for (const x of [-1.30, 1.30]) {
+    m.box('грядка:борт', [0.07, 0.13, 1.16], [x, 0.10, 0], C.wood)
+    m.box('грядка:борт', [0.07, 0.13, 1.16], [x, 0.235, 0], C.woodLight)
+  }
+  for (const x of [-1.30, 1.30]) for (const z of [-0.58, 0.58]) m.box('грядка:угловой-колышек', [0.09, 0.40, 0.09], [x, 0.20, z], C.woodDark)
+  m.lumpy('грядка:земля', new THREE.BoxGeometry(1, 1, 1, 16, 2, 8), [0, 0.18, 0], C.earth, { size: [2.54, 0.16, 1.1], amount: 0.02, frequency: 6, seed: 41 })
+  for (const z of [-0.26, 0.26]) m.box('грядка:борозда', [2.4, 0.02, 0.06], [0, 0.262, z * 0.02], C.stoneDark)
+  const next = random(43)
+  for (const x of [-0.95, -0.32, 0.32, 0.95]) {
+    // Кочан: ядро и шесть отогнутых листьев.
+    m.lumpy('грядка:кочан', new THREE.SphereGeometry(0.5, 18, 12), [x, 0.36, -0.28], C.greenLight, { size: [0.22, 0.2, 0.22], amount: 0.01, frequency: 12, seed: 44 })
+    for (let leaf = 0; leaf < 6; leaf += 1) {
+      const angle = leaf / 6 * Math.PI * 2 + x
+      m.mesh('грядка:лист-капусты', new THREE.SphereGeometry(0.5, 14, 8), [x + Math.cos(angle) * 0.13, 0.32, -0.28 + Math.sin(angle) * 0.13], C.green, [0.5 * Math.sin(angle), -angle, 0.5 * Math.cos(angle)]).scale.set(0.24, 0.05, 0.16)
+    }
+  }
+  for (let index = 0; index < 7; index += 1) {
+    const x = -1.05 + index * 0.35, z = 0.28
+    for (let blade = 0; blade < 6; blade += 1) {
+      const angle = blade / 6 * Math.PI * 2 + next()
+      const tip = [x + Math.cos(angle) * 0.1, 0.48 + next() * 0.06, z + Math.sin(angle) * 0.08]
+      m.beam('грядка:ботва', [x, 0.27, z], tip, 0.008, C.green)
+      m.mesh('грядка:ботва-перо', new THREE.SphereGeometry(0.5, 8, 6), tip, C.greenLight).scale.set(0.06, 0.035, 0.06)
+    }
+    m.cylinder('грядка:морковь', 0.022, 0.03, 0.03, [x, 0.27, z], C.ember, 24)
   }
 }
 
