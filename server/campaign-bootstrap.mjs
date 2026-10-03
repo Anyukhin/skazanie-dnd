@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { generateSceneGeometry, levelKey, librarySceneFields, rememberSceneMap } from './adventure-director.mjs'
+import { generateSceneGeometry, levelKey, librarySceneFields, openingEntrySide, rememberSceneMap } from './adventure-director.mjs'
 import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioning.mjs'
 import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
@@ -570,6 +570,9 @@ export class CampaignBootstrapper {
       useLibrary: !worldTemplate,
       requirements: mapRequirements?.items ?? [],
       program: mapRequirements,
+      // В стартовое место отряд пришёл по дороге: вход — со стороны ближайшего
+      // места, связанного со стартовым дорогой карты мира.
+      entrySide: openingEntrySide(campaignWorldMap, campaignWorldMap.currentLocationId),
     })
     const cells = geometry.cells
     const positions = startingCells(cells, heroes.length, {

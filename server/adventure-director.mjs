@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { generateDynamicSceneMap } from './dynamic-map.mjs'
 import { reconcileWorldMap, worldLocationById } from './world-map.mjs'
-import { SIZE_CLASSES, deserializeTacticalMap, legacyCellsFromTacticalMap, orientTacticalMap, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
+import { SIZE_CLASSES, cellAt, deserializeTacticalMap, legacyCellsFromTacticalMap, orientTacticalMap, reachableCells, serializeTacticalMap, tacticalMapFromLegacyCells } from './tactical-map.mjs'
 import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
 import { LIBRARY_SEED_PREFIX, activeMapLibrary, libraryIdsInUse, libraryRequestFor } from './map-library.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
@@ -282,6 +282,69 @@ export function entrySideToward(worldMap, toId, fromId) {
   if (!Number.isFinite(dx) || !Number.isFinite(dy) || (!dx && !dy)) return ''
   if (Math.abs(dx) >= Math.abs(dy)) return dx < 0 ? 'west' : 'east'
   return dy < 0 ? 'north' : 'south'
+}
+
+/**
+ * Сторона входа в первую сцену кампании. Откуда отряд пришёл, неизвестно, но
+ * в стартовое место он пришёл по дороге: берётся ближайшее место, связанное
+ * со стартовым открытой дорогой карты мира (дорога — раньше тропы и реки), и
+ * вход — с его стороны. Нет дорог — вход остаётся у западного края.
+ *
+ * @param {Record<string, any>|undefined} worldMap
+ * @param {string} locationId стартовое место
+ * @returns {'west'|'east'|'north'|'south'|''}
+ */
+export function openingEntrySide(worldMap, locationId) {
+  const routes = (Array.isArray(worldMap?.routes) ? worldMap.routes : [])
+    .filter((route) => route?.discovered !== false && (route.from === locationId || route.to === locationId))
+    .map((route) => ({ route, neighbor: route.from === locationId ? route.to : route.from }))
+    .sort((left, right) => Number(left.route.kind !== 'road') - Number(right.route.kind !== 'road')
+      || (Number(left.route.distance) || 0) - (Number(right.route.distance) || 0)
+      || String(left.neighbor).localeCompare(String(right.neighbor)))
+  return routes.length ? entrySideToward(worldMap, locationId, routes[0].neighbor) : ''
+}
+
+/**
+ * Точка входа на уже знакомую карту со стороны `side`. Знакомую карту не
+ * поворачивают — игроки её видели, — а вход ищут на её краю: клетка у края
+ * той стороны, проходимая, без мебели, связанная без дверей с прежним входом
+ * (значит, с той же частью карты). Дорога, улица, площадь и тропа — раньше
+ * травы, и ближе к середине края. Нет такой клетки (здание, подземелье) —
+ * `null`, и вход остаётся прежним.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} side
+ * @returns {{x: number, y: number}|null}
+ */
+export function entranceOnSide(map, side) {
+  if (!['west', 'east', 'north', 'south'].includes(side)) return null
+  const party = map.spawnPoints?.find((point) => point.role === 'party')
+  if (!party) return null
+  const blocked = new Set()
+  for (const prop of map.props ?? []) {
+    if (!prop.blocksMove || prop.mount) continue
+    for (const point of prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]) blocked.add(`${point.x},${point.y}`)
+  }
+  const reached = reachableCells(map, party.x, party.y, { throughDoors: false, blockedCells: blocked })
+  const kind = new Map((map.zones ?? []).map((zone) => [zone.id, zone.kind]))
+  const roads = new Set(['street', 'square', 'path', 'road'])
+  const horizontal = side === 'west' || side === 'east'
+  /** @type {{x: number, y: number, score: number}|null} */
+  let best = null
+  for (let depth = 0; depth <= 1; depth += 1) {
+    const length = horizontal ? map.height : map.width
+    for (let along = 0; along < length; along += 1) {
+      const x = side === 'west' ? depth : side === 'east' ? map.width - 1 - depth : along
+      const y = side === 'north' ? depth : side === 'south' ? map.height - 1 - depth : along
+      const cell = cellAt(map, x, y)
+      if (!cell?.passable || cell.surface === 'water' || blocked.has(`${x},${y}`) || !reached.has(`${x},${y}`)) continue
+      if (kind.get(cell.zone) === 'interior') continue
+      const middle = (length - 1) / 2
+      const score = (roads.has(cell.zone) ? 0 : 1000) + depth * 100 + Math.abs(along - middle)
+      if (!best || score < best.score) best = { x, y, score }
+    }
+  }
+  return best ? { x: best.x, y: best.y } : null
 }
 
 /** Сколько раз генератор пробует карту, прежде чем взять лучшую из неудачных. */
@@ -752,9 +815,24 @@ export function createSceneTransition(input = {}, state = {}) {
   })
   if (!rememberedTacticalMap && mapTheme) tacticalMap.theme = mapTheme
   const serializedMap = rememberedTacticalMap ?? serializeTacticalMap(tacticalMap)
-  const partySpawn = Array.isArray(tacticalMap.spawnPoints)
-    ? tacticalMap.spawnPoints.find((point) => point?.role === 'party')
+  // Вход при возвращении: знакомая карта не поворачивается, а вход ищется на
+  // её краю со стороны, откуда отряд пришёл на этот раз (план карт, «вход по
+  // дороге»). Новая карта уже повёрнута генератором — её вход и так верный.
+  const returnEntrance = rememberedTacticalMap
+    ? (() => {
+        const side = entrySideToward(worldMap, locationId, previousScene.location_id ?? previousScene.locationId)
+        if (!side) return null
+        try {
+          const live = rememberedTacticalMap.layers?.present instanceof Uint8Array ? rememberedTacticalMap : deserializeTacticalMap(clone(rememberedTacticalMap))
+          return entranceOnSide(live, side)
+        } catch {
+          return null
+        }
+      })()
     : null
+  const partySpawn = returnEntrance ?? (Array.isArray(tacticalMap.spawnPoints)
+    ? tacticalMap.spawnPoints.find((point) => point?.role === 'party')
+    : null)
   const scene = {
     title,
     location,

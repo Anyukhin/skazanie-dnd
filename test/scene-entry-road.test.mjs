@@ -70,3 +70,37 @@ test('центр сцены под открытым небом даёт дере
   })
   assert.ok(facing.length >= 2, `дверью к площади — хотя бы два дома, а не ни одного (${facing.length})`)
 })
+
+test('первая сцена: вход со стороны ближайшего места, связанного дорогой', async () => {
+  const { openingEntrySide } = await import('../server/adventure-director.mjs')
+  const world = {
+    ...structuredClone(WORLD),
+    currentLocationId: 'olsh',
+    routes: [
+      { id: 'r-east', from: 'olsh', to: 'east', kind: 'path', distance: 2, discovered: true },
+      { id: 'r-brod', from: 'brod', to: 'olsh', kind: 'road', distance: 6, discovered: true },
+    ],
+  }
+  assert.equal(openingEntrySide(world, 'olsh'), 'north', 'дорога — раньше тропы, даже если тропа короче')
+  assert.equal(openingEntrySide({ ...world, routes: [world.routes[0]] }, 'olsh'), 'east', 'есть только тропа — по тропе')
+  assert.equal(openingEntrySide({ ...world, routes: [] }, 'olsh'), '', 'дорог нет — вход по умолчанию')
+})
+
+test('при возвращении с другой стороны знакомая карта не поворачивается, а вход — на её краю с той стороны', async () => {
+  const { rememberCurrentSceneMap } = await import('../server/adventure-director.mjs')
+  const input = {
+    title: 'Ольшанка', location: 'Ольшанка', location_id: 'olsh', theme: 'деревня', objective: 'Найти старосту',
+    arrival: 'Дорога выводит отряд к деревне.', objective_status: 'completed',
+  }
+  const first = createSceneTransition(input, stateAt('brod', 'Старый Брод'))
+  const firstMap = deserializeTacticalMap(first.scene.map)
+  assert.equal(partyEdge(firstMap), 'north')
+  // Отряд ушёл из Ольшанки на восточный хутор и вернулся оттуда.
+  const visited = rememberCurrentSceneMap({ ...stateAt('olsh', 'Ольшанка'), worldMap: first.worldMap, scene: first.scene, adventure: first.adventure })
+  const away = { ...visited, worldMap: { ...visited.worldMap, currentLocationId: 'east' }, scene: { title: 'Восточный хутор', location: 'Восточный хутор', location_id: 'east', turn: 3 } }
+  const back = createSceneTransition({ ...input, objective_status: 'unresolved' }, away)
+  assert.deepEqual(back.scene.map, first.scene.map, 'карта та же, что в первый раз')
+  const map = deserializeTacticalMap(back.scene.map)
+  assert.ok(back.entrance.x >= map.width - 2, `вход у восточного края: ${back.entrance.x},${back.entrance.y} на ${map.width}×${map.height}`)
+  assert.equal(cellAt(map, back.entrance.x, back.entrance.y)?.passable, true)
+})
