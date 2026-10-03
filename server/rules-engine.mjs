@@ -875,6 +875,10 @@ const SCENE_ADVANCE_FIELDS = new Set([
   // `outcome`: тот короткой строкой уходит в летопись приключения (240 знаков),
   // а сводке нужно несколько предложений с перечнем заметных событий.
   'scene_summary',
+  // Заготовки ведущего новой области (map_architect/v7). Форму проверяет
+  // `normalizeGmSecrets` в `sceneWorldMemoryEvents`; в `SceneAdvanced` поле не
+  // попадает, только скрытыми фактами `gm_secret`.
+  'secrets',
 ])
 
 const SCENE_MAP_FIELDS = new Set(['layout', 'scale', 'pattern', 'material', 'width', 'height', 'openness', 'water', 'featureCount'])
@@ -20357,7 +20361,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }, []))
         }
       }
-      for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId })) {
+      for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId, secrets: command.scene_args?.secrets })) {
         events.push(eventFrom({ ...command, visibility: memoryEvent.visibility }, memoryEvent.event_type, memoryEvent.payload, memoryEvent.target_ids))
       }
       const priorTitle = String(state.scene?.title || state.scene?.location || 'Предыдущая сцена').slice(0, 180)

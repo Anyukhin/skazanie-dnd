@@ -21,7 +21,7 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
   narrator: { id: 'narrator', prompt_id: 'narrator/v11', purpose: 'Финальное повествование из подтверждённых результатов' },
-  map_architect: { id: 'map_architect', prompt_id: 'map_architect/v6', purpose: 'Динамическая архитектура новой локации и игровой карты' },
+  map_architect: { id: 'map_architect', prompt_id: 'map_architect/v7', purpose: 'Динамическая архитектура новой локации и игровой карты' },
   action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v8', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })
 

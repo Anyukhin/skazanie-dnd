@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { campaignArcPlan } from './campaign-loop-policy.mjs'
-import { normalizeWorldMemory } from './world-memory.mjs'
+import { gmSecretFact, normalizeGmSecrets, normalizeWorldMemory } from './world-memory.mjs'
 import { campaignModeFor } from './campaign-stories.mjs'
 
 const clone = (value) => structuredClone(value)
@@ -93,9 +93,11 @@ export function sceneWorldMemoryEventId(commandId) {
 
 /**
  * Derives bounded canonical memory updates from an already validated scene transition.
- * It never accepts a free-form memory payload from the model.
+ * It never accepts a free-form memory payload from the model. Единственный текст
+ * модели здесь — заготовки ведущего (`secrets`): они проходят тот же
+ * `normalizeGmSecrets`, что и стартовые, и пишутся только скрытыми фактами.
  */
-export function sceneWorldMemoryEvents(state, transition, { commandId = '', sourceEventId = '' } = {}) {
+export function sceneWorldMemoryEvents(state, transition, { commandId = '', sourceEventId = '', secrets = [] } = {}) {
   const memory = ensureSceneWorldMemory(state.worldMemory, state)
   const clockMax = campaignArcPlan(state)?.chapter_clock_max ?? 4
   const previousScene = state.scene ?? {}
@@ -159,5 +161,18 @@ export function sceneWorldMemoryEvents(state, transition, { commandId = '', sour
   }
   if (!memory.facts.some((fact) => fact.id === transitionFact.id)) add('WorldFactRecorded', { fact: transitionFact })
   if (!memory.facts.some((fact) => fact.id === arrivalFact.id)) add('WorldFactRecorded', { fact: arrivalFact })
+  // Заготовки ведущего новой области (map_architect/v7): скрытые факты места,
+  // которые открывает удачный поиск. Событие и факт — gm_only: игрок узнаёт
+  // тайну только находкой. Без этого в каждой области после первой удачная
+  // проверка открывала разве что знающего собеседника.
+  for (const [index, secret] of normalizeGmSecrets(secrets, { limit: 3 }).entries()) {
+    const fact = gmSecretFact({ ...secret, holder: '' }, {
+      subjectId: nextLocation.id,
+      salt: `scene:${clean(commandId, 160)}:${nextLocation.id}`,
+      index,
+      sourceCommandId: clean(commandId, 160),
+    })
+    if (!memory.facts.some((existing) => existing.id === fact.id)) add('WorldFactRecorded', { fact }, 'gm_only')
+  }
   return events
 }

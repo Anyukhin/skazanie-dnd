@@ -74,6 +74,60 @@ function topicStems(value) {
  * лежит улика, кто лжёт. `object` — JSON `{ topic, skills, holder }`.
  */
 const GM_SECRET_PREDICATES = new Set(['gm_secret'])
+
+/** Навыки, которыми можно открыть заготовку ведущего. */
+export const GM_SECRET_SKILLS = Object.freeze(['investigation', 'perception', 'survival', 'insight', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+
+/**
+ * Заготовки ведущего из ответа модели — `campaign_creator` для первой сцены и
+ * `map_architect` для новой области. Один нормализатор на оба пути: модель
+ * задаёт только текст находки, тему, навыки и знающего NPC, а что и когда
+ * раскрыть, решает `freeActionDiscoveryCommands`. Короче двенадцати знаков —
+ * не находка; навык вне списка отбрасывается, без навыков — поиск и осмотр.
+ *
+ * @param {unknown} value
+ * @param {{ limit?: number }} [options]
+ * @returns {Array<{ clue: string, topic: string, skills: string[], holder: string }>}
+ */
+export function normalizeGmSecrets(value, { limit = 4 } = {}) {
+  if (!Array.isArray(value)) return []
+  const allowed = new Set(GM_SECRET_SKILLS)
+  return value.slice(0, Math.max(0, limit)).map((entry) => {
+    const source = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}
+    const skills = [...new Set((Array.isArray(source.skills) ? source.skills : [])
+      .map((skill) => text(skill, 40).toLocaleLowerCase('en').replace(/[\s-]+/gu, '_'))
+      .filter((skill) => allowed.has(skill)))].slice(0, 3)
+    return {
+      clue: text(source.clue, 600),
+      topic: text(source.topic, 160),
+      skills: skills.length ? skills : ['investigation', 'perception'],
+      holder: text(source.holder, 120),
+    }
+  }).filter((secret) => secret.clue.length >= 12)
+}
+
+/**
+ * Скрытый факт заготовки. Id детерминирован от пространства, соли и текста:
+ * повтор того же коммита не заводит второй тайны.
+ *
+ * @param {{ clue: string, topic: string, skills: string[], holder: string }} secret
+ * @param {{ subjectId: string, salt: string, index: number, sourceCommandId?: string, recordedAtMinutes?: number }} input
+ */
+export function gmSecretFact(secret, { subjectId, salt, index, sourceCommandId = '', recordedAtMinutes = 0 }) {
+  return {
+    id: `fact:secret:${createHash('sha256').update(`gm-secret\u0000${salt}\u0000${index}\u0000${secret.clue}`).digest('hex').slice(0, 24)}`,
+    subject_id: subjectId,
+    predicate: 'gm_secret',
+    object: JSON.stringify({ topic: secret.topic, skills: secret.skills.map((skill) => skill.replace(/_/gu, '-')), holder: secret.holder }),
+    summary: secret.clue,
+    visibility: 'gm_only',
+    source_event_ids: [],
+    source_command_id: sourceCommandId,
+    supersedes_fact_id: '',
+    status: 'active',
+    recorded_at_minutes: recordedAtMinutes,
+  }
+}
 // «Осматриваюсь», «ищу что-нибудь», «изучаю место» — общий поиск без темы.
 const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|прислуш\p{L}*|смотр\p{L}*|высматр\p{L}*|наблюда\p{L}*|пригляд\p{L}*)(?![\p{L}\p{M}])/iu
 

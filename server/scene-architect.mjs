@@ -11,6 +11,7 @@ import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { SCENE_THEME_IDS } from './scene-themes.mjs'
 import { worldLocationById } from './world-map.mjs'
+import { normalizeGmSecrets } from './world-memory.mjs'
 
 /**
  * Один идентификатор роли на код и на новые трассы. Прежнее имя
@@ -21,7 +22,7 @@ import { worldLocationById } from './world-map.mjs'
 export const SCENE_ARCHITECT_AGENT_ID = 'scene_architect'
 export const LEGACY_SCENE_ARCHITECT_AGENT_ID = 'AgentCartographer'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v6.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v7.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -521,6 +522,15 @@ function normalizePlan(value, fallback) {
     objective_status: fallback.objective_status,
     carry_unresolved: fallback.carry_unresolved,
     ...(levels.length ? { levels } : {}),
+    // Заготовки ведущего новой области (map_architect/v7). Хранителя у них нет:
+    // жителей сцены расставляет сервер, и называть их архитектор не вправе.
+    // Поле `secrets` вырезается из трасс и `/why` фильтром тайных ключей, а в
+    // `SceneAdvanced` не попадает — его пишет `sceneWorldMemoryEvents` скрытыми
+    // фактами.
+    ...(() => {
+      const secrets = normalizeGmSecrets(source.secrets, { limit: 3 }).map((secret) => ({ ...secret, holder: '' }))
+      return secrets.length ? { secrets } : {}
+    })(),
     map: {
       ...(typeof mapSource.theme_id === 'string' && SCENE_THEME_IDS.has(mapSource.theme_id)
         ? { theme_id: mapSource.theme_id }

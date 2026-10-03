@@ -9,6 +9,7 @@ import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './
 import { withStarterKit } from './starter-kit.mjs'
 import { MAX_CHARACTER_LEVEL, partyPresentationFor } from './character-lifecycle.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
+import { gmSecretFact, normalizeGmSecrets } from './world-memory.mjs'
 import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
@@ -354,46 +355,26 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
   }
 }
 
-const SECRET_SKILLS = new Set(['investigation', 'perception', 'survival', 'insight', 'history', 'arcana', 'religion', 'nature', 'medicine'])
-
 /**
  * Заготовки ведущего (campaign_creator/v7): то, что уже правда в первой сцене
  * и спрятано от героев. Без них удачное расследование возвращало пустую
  * «зацепку», а собеседникам нечего было открыть, кроме пролога. Модель задаёт
  * только текст, тему, навыки и знающего NPC; что и когда раскрыть, решает
- * сервер (`world-memory.mjs`, `freeActionDiscoveryCommands`).
+ * сервер (`world-memory.mjs`, `freeActionDiscoveryCommands`). Нормализатор
+ * общий с заготовками новой области (`map_architect/v7`).
  */
 function normalizeOpeningSecrets(value) {
-  if (!Array.isArray(value)) return []
-  return value.slice(0, 4).map((entry) => {
-    const source = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}
-    const skills = [...new Set((Array.isArray(source.skills) ? source.skills : [])
-      .map((skill) => clean(skill, 40).toLocaleLowerCase('en').replace(/[\s-]+/gu, '_'))
-      .filter((skill) => SECRET_SKILLS.has(skill)))].slice(0, 3)
-    return {
-      clue: prose(source.clue, 600),
-      topic: clean(source.topic, 160),
-      skills: skills.length ? skills : ['investigation', 'perception'],
-      holder: clean(source.holder, 120),
-    }
-  }).filter((secret) => secret.clue.length >= 12)
+  return normalizeGmSecrets(value, { limit: 4 })
 }
 
 /** Скрытые факты из заготовок; id детерминирован от кампании и текста. */
 function openingSecretFacts(opening, locationEntity, campaignCode) {
   if (!locationEntity?.id) return []
-  return (opening?.secrets ?? []).map((secret, index) => ({
-    id: `fact:secret:${createHash('sha256').update(`gm-secret\0${campaignCode}\0${index}\0${secret.clue}`).digest('hex').slice(0, 24)}`,
-    subject_id: locationEntity.id,
-    predicate: 'gm_secret',
-    object: JSON.stringify({ topic: secret.topic, skills: secret.skills.map((skill) => skill.replace(/_/gu, '-')), holder: secret.holder }),
-    summary: secret.clue,
-    visibility: 'gm_only',
-    source_event_ids: [],
-    source_command_id: `campaign-bootstrap:${campaignCode}`,
-    supersedes_fact_id: '',
-    status: 'active',
-    recorded_at_minutes: 0,
+  return (opening?.secrets ?? []).map((secret, index) => gmSecretFact(secret, {
+    subjectId: locationEntity.id,
+    salt: campaignCode,
+    index,
+    sourceCommandId: `campaign-bootstrap:${campaignCode}`,
   }))
 }
 

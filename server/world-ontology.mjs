@@ -116,9 +116,9 @@ export const PREDICATES = Object.freeze({
   }),
   gm_secret: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'JSON { topic, skills, holder }',
-    producers: ['campaign-bootstrap'], consumers: ['world-memory'],
+    producers: ['world-memory'], consumers: ['world-memory'],
     visibility: 'gm_only',
-    description_ru: 'Заготовка ведущего: то, что уже правда в первой сцене и скрыто от героев. Удачная проверка подходящего навыка заменяет её фактом отряда discovery; знающий NPC может выдать её в разговоре.',
+    description_ru: 'Заготовка ведущего: то, что уже правда в первой сцене (campaign_creator/v7 или авторский мир) или в новой области (map_architect/v7) и скрыто от героев. Факт строит `gmSecretFact`. Удачная проверка подходящего навыка заменяет её фактом отряда discovery; знающий NPC может выдать её в разговоре.',
   }),
   band_camp: Object.freeze({
     record: 'fact', subject_kinds: ['npc'], object: 'id ватаги',

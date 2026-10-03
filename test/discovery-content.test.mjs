@@ -10,7 +10,11 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
+import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { narratorResponsePlan } from '../server/narrator.mjs'
+import { normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
+import { SceneArchitectAgent } from '../server/scene-architect.mjs'
+import { campaignStateForViewer, mechanicsForViewer, turnExplanationForViewer } from '../server/viewer-projection.mjs'
 import { listWorldTemplates, worldTemplateOpening } from '../server/world-template-catalog.mjs'
 import {
   applyWorldMemoryEvent,
@@ -122,6 +126,68 @@ test('без заготовки удачный поиск называет зн�
   const again = freeActionDiscoveryCommands(after, { ...input, checkEvent: check('check-lead-2') })
   assert.ok(again.every((entry) => !/удержать людей подальше/u.test(entry.fact.summary)))
   assert.deepEqual(freeActionDiscoveryCommands(state, { ...input, actionText: 'Смотрю на чаек над водой' }), [], 'без связи со сценой находка не выдумывается')
+})
+
+test('архитектор новой области приносит заготовки, но не хранителя и не лишнее', async () => {
+  const architect = new SceneArchitectAgent({ llmClient: { completeJson: async () => ({
+    location: 'Затопленная часовня',
+    secrets: [
+      { clue: 'На алтаре свежий воск, хотя часовню затопило полвека назад: здесь молились этой ночью.', topic: 'алтарь воск свечи', skills: ['perception', 'athletics'], holder: 'Мара' },
+      { clue: 'Под кафедрой спрятан ящик с картами прилива, подписанными чужой рукой.', topic: 'кафедра ящик карты', skills: ['investigation'] },
+      { clue: 'коротко', topic: 'мусор', skills: [] },
+      { clue: 'Четвёртый секрет сверх лимита не проходит, даже если длинный.', topic: 'лишний', skills: ['history'] },
+      { clue: 'Пятый тоже лишний и тоже длинный, чтобы проверить срез.', topic: 'лишний', skills: ['history'] },
+    ],
+  }) } })
+  const { sceneArgs } = await architect.plan({ state: { scene: { location: 'Вельдбург', objective: 'Найти часовню' } }, decision: 'Идём к часовне', destinationHint: 'Затопленная часовня' })
+  assert.equal(sceneArgs.secrets.length, 2, 'короткая отбрасывается, сверх трёх не берётся')
+  assert.deepEqual(sceneArgs.secrets[0].skills, ['perception'], 'Атлетика — не навык поиска')
+  assert.ok(sceneArgs.secrets.every((secret) => secret.holder === ''), 'жителей сцены расставляет сервер, архитектор их не называет')
+  const fallback = await new SceneArchitectAgent().plan({ state: { scene: { location: 'Вельдбург' } }, decision: 'Идём к часовне', destinationHint: 'Затопленная часовня' })
+  assert.equal(fallback.sceneArgs.secrets, undefined, 'без модели заготовок не выдумываем')
+})
+
+test('переход в новую область прячет её заготовки, а удачный поиск там их открывает', () => {
+  const initial = normalizeCampaignState({
+    sessionCode: 'AREA-SECRETS', activePlayerId: 'hero', partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Ада', hp: 10, maxHp: 10, inventory: [] }],
+    scene: { title: 'Вельдбург', location: 'Вельдбург', mood: 'Тревога', objective: 'Найти часовню', turn: 1, cells: [{ x: 1, y: 1, type: 'floor', revealed: true }] },
+    adventure: { chapter: 1, currentHook: 'Колокол звонит из часовни', unresolvedThreads: [], visitedLocations: ['Вельдбург'], history: [] },
+  })
+  const secrets = [
+    { clue: 'На алтаре свежий воск, хотя часовню затопило полвека назад: здесь молились этой ночью.', topic: 'алтарь воск свечи', skills: ['perception'], holder: '' },
+  ]
+  const result = resolveCommands([{
+    command_type: 'AdvanceScene',
+    command_id: 'advance-chapel',
+    scene_args: {
+      title: 'Затопленная часовня', location: 'Затопленная часовня', mood: 'Капли с потолка', objective: 'Понять, кто звонит',
+      hook: 'Колокол часовни молчит', transition: 'Отряд идёт к часовне.', arrival: 'Часовня стоит по колено в воде.',
+      completed_objective: 'Найти часовню', objective_status: 'completed', outcome: 'Часовня найдена.', carry_unresolved: false,
+      theme: 'затопленная часовня', danger: 'средняя', secrets,
+    },
+  }], initial, { diceService: new DiceService({ rng: new SequenceDiceRng([]) }), context: { isAdmin: true } })
+
+  const scene = result.events.find((event) => event.event_type === 'SceneAdvanced')
+  assert.equal(JSON.stringify(scene.payload).includes('свежий воск'), false, 'заготовка не едет в публичном событии перехода')
+  const secretEvent = result.events.find((event) => event.event_type === 'WorldFactRecorded' && event.payload?.fact?.predicate === 'gm_secret')
+  assert.equal(secretEvent.visibility, 'gm_only')
+  const chapel = result.state.worldMemory.entities.find((entity) => entity.name === 'Затопленная часовня')
+  assert.equal(secretEvent.payload.fact.subject_id, chapel.id)
+
+  const player = { role: 'player', heroIds: ['hero'] }
+  assert.equal(JSON.stringify(campaignStateForViewer(result.state, player, 'hero')).includes('свежий воск'), false, 'тайна не видна в комнате')
+  assert.equal(JSON.stringify(mechanicsForViewer(result.events, player, 'hero', result.state)).includes('свежий воск'), false, 'тайна не видна в событиях хода')
+  const why = turnExplanationForViewer({ commands: [{ command_type: 'AdvanceScene', scene_args: { location: 'Затопленная часовня', secrets } }] }, player, 'hero', result.state)
+  assert.equal(JSON.stringify(why).includes('свежий воск'), false, 'тайна не видна в разборе «Почему так?»')
+
+  const [found] = freeActionDiscoveryCommands(result.state, { checkEvent: check('chapel-look'), skill: 'perception', actionText: 'Осматриваю алтарь и свечи' })
+  assert.match(found.fact.summary, /свежий воск/u)
+  assert.equal(found.fact.supersedes_fact_id, secretEvent.payload.fact.id)
+
+  // Replay даёт ту же тайну и тот же id — заготовка не плодится на повторе.
+  const replayed = replayEvents(initial, result.events)
+  assert.deepEqual(replayed.worldMemory.facts.filter((fact) => fact.predicate === 'gm_secret'), result.state.worldMemory.facts.filter((fact) => fact.predicate === 'gm_secret'))
 })
 
 test('рассказчик обязан назвать находку, если она записана событием', () => {
