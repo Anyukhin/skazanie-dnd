@@ -9831,8 +9831,18 @@ function isOwnCombatTurn(state, id) {
 }
 
 function assertBonusActionSpellAllowed(state, id, spell, actionType) {
-  if (!usesDnd2014(state) || !isOwnCombatTurn(state, id)) return
+  if (!isOwnCombatTurn(state, id)) return
   const economy = state.mechanics.combat.action_economy[id] ?? {}
+  if (!usesDnd2014(state)) {
+    // Редакция 2024: «за ход тратится только одна ячейка заклинания» — магия
+    // действием и бонусным действием с ячейками в один ход невозможна. До
+    // боевого плейтеста 2026-10-03 правило не проверялось, и жрец творил
+    // «Направляющий снаряд» и «Лечащее слово» одним ходом.
+    if (spell?.slotResource && economy.slot_spell_cast_2024) {
+      throw new RulesValidationError('На этом ходу ячейка заклинания уже потрачена: за ход тратится только одна', 'ONE_SPELL_SLOT_PER_TURN')
+    }
+    return
+  }
   if (actionType === 'bonus_action' && economy.other_spell_cast_2014
     || actionType !== 'bonus_action' && economy.bonus_spell_cast_2014 && !(spell.level === 0 && actionType === 'action')) {
     throw new RulesValidationError('После магии бонусным действием на этом ходу разрешён только заговор со временем накладывания «1 действие»', 'BONUS_ACTION_SPELL_RESTRICTION')
@@ -15284,6 +15294,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           kind: spell.kind,
           action_type: effectiveActionType,
           ...(usesDnd2014(state) ? { spellcasting_2014_version: 1 } : {}),
+          // Метка версии, а не вывод из ResourceSpent: старые события её не
+          // несут, и replay сохранённых кампаний не меняет экономику хода.
+          ...(!usesDnd2014(state) && spentSlotResource ? { slot_spell_2024_version: 1 } : {}),
           ...((context.additionalBeam || context.readiedRelease) ? { economy_consumed: false } : {}),
           level: spell.level,
           slot_level: command.slot_level ?? spell.level,
@@ -23560,6 +23573,9 @@ function applyGameEventCurrent(rawState, event) {
         const economy = state.mechanics.combat.action_economy[event.actor_id] ??= actionEconomy()
         if (payload.action_type === 'bonus_action') economy.bonus_spell_cast_2014 = true
         else if (payload.level !== 0 || payload.action_type !== 'action') economy.other_spell_cast_2014 = true
+      }
+      if (payload.slot_spell_2024_version === 1 && isOwnCombatTurn(state, event.actor_id)) {
+        (state.mechanics.combat.action_economy[event.actor_id] ??= actionEconomy()).slot_spell_cast_2024 = true
       }
       if (state.mechanics.combat.active && event.actor_id && payload.economy_consumed !== false) {
         const resource = payload.action_type === 'bonus_action' ? 'bonus_action' : payload.action_type === 'reaction' ? 'reaction' : 'action'

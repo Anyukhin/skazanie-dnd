@@ -896,11 +896,17 @@ export function CharacterCreationWizard({
     if (abilitiesReached && draft.abilityMethod !== 'point_buy' && [...abilityIds.map((ability) => draft.abilities[ability])].sort((a, b) => a - b).join(',') !== [...abilityValues].sort((a, b) => a - b).join(',')) return 'Распределите все шесть полученных значений характеристик.'
     if (!classOption) return 'Выберите поддерживаемый класс.'
     if ((currentStep === 'race' || currentStep === 'subrace') && (!speciesOption || !selectedSpecies)) return currentStep === 'subrace' ? 'Выберите подрасу.' : 'Выберите вид.'
-    if ((currentStep === 'subrace' || (currentStep === 'race' && !hasSubraceStep)) && !originBonusReady) {
-      const count = bonusSource === 'species' ? speciesChoiceCount : originIncreases.length
-      return `Отметьте ${count} ${plural(count, ['характеристику', 'характеристики', 'характеристик'])} для прибавок ${bonusSource === 'species' ? 'вида' : 'предыстории'}.`
+    // Прибавки вида (редакция 2014) отмечаются на шаге вида, прибавки
+    // предыстории (2024) — на шаге предыстории. Прежде шаг вида требовал и
+    // прибавки предыстории, которую выбрать на нём нельзя: в кампании 2024
+    // ручное создание героя вставало на втором шаге (боевой плейтест 2026-10-03).
+    if (bonusSource === 'species' && (currentStep === 'subrace' || (currentStep === 'race' && !hasSubraceStep)) && !originBonusReady) {
+      return `Отметьте ${speciesChoiceCount} ${plural(speciesChoiceCount, ['характеристику', 'характеристики', 'характеристик'])} для прибавок вида.`
     }
     if (currentStep === 'background' && !draft.backgroundId) return 'Выберите предысторию.'
+    if (bonusSource === 'background' && currentStep === 'background' && !originBonusReady) {
+      return `Отметьте ${originIncreases.length} ${plural(originIncreases.length, ['характеристику', 'характеристики', 'характеристик'])} для прибавок предыстории.`
+    }
     if (currentStep === 'background' && !backgroundChoicesReady) return 'Завершите выбор языков и инструментов предыстории.'
     if (currentStep === 'background' && draft.customBackground && (draft.customBackgroundSkills.length !== 2 || !draft.customFeatureBackground)) return 'Для своей предыстории выберите два навыка и особенность.'
     if ((currentStep === 'background' || currentStep === 'proficiencies') && duplicateBackgroundLanguage) return 'Язык предыстории уже известен от расы. Вернитесь к предыстории и выберите другой.'

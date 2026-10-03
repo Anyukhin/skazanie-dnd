@@ -49,6 +49,7 @@ import {
 } from './npc-equipment.mjs'
 import { truceHolds } from './parley.mjs'
 import { footprintCellsFor, footprintDistanceFeet } from './actor-footprint.mjs'
+import { occupiedPositions, positionKey } from './rules/tactical-geometry.mjs'
 
 const CELL_FEET = 5
 
@@ -353,12 +354,13 @@ function candidatePositions(state, enemy, budgetFeet, anchor, prefer = 'near') {
   const occupied = new Set([...livingParty(state), ...livingEnemies(state)]
     .flatMap((actor) => footprintCellsFor(actor, actorPosition(state, actorId(actor))))
     .map((position) => `${position.x}:${position.y}`))
+  const stopBlocked = stopBlockedFor(state, actorId(enemy))
   const cellByKey = new Map((state.scene?.cells ?? []).map((cell) => [`${Number(cell.x)}:${Number(cell.y)}`, cell]))
   const reachable = (state.scene?.cells ?? [])
     .filter((cell) => cell.revealed && ['floor', 'door'].includes(cell.type))
     .map((cell) => ({ x: Number(cell.x), y: Number(cell.y) }))
     .filter((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)) <= maximumSteps)
-    .filter((cell) => footprintCellsFor(enemy, cell).every((point) => {
+    .filter((cell) => !stopBlocked(cell) && footprintCellsFor(enemy, cell).every((point) => {
       const key = `${point.x}:${point.y}`
       return cellByKey.get(key)?.revealed && ['floor', 'door'].includes(cellByKey.get(key)?.type) && !occupied.has(key)
     }))
@@ -596,16 +598,34 @@ function targetCandidates(state, enemy) {
  */
 function affordablePathPrefix(state, actorIdValue, path, maximumSteps, budgetFeet) {
   const { stepCost } = movementStepCostFor(state, String(actorIdValue))
+  const stopBlocked = stopBlockedFor(state, actorIdValue)
   const limit = Math.min(Math.max(0, maximumSteps), Array.isArray(path) ? path.length : 0)
   let steps = 0
   let costFeet = 0
+  let walkedFeet = 0
   for (let index = 0; index < limit; index += 1) {
-    const next = costFeet + stepCost(path[index])
+    const next = walkedFeet + stepCost(path[index])
     if (next > budgetFeet) break
-    costFeet = next
+    walkedFeet = next
+    // Сквозь клетку мирного NPC или союзника путь идёт, но остановиться в ней
+    // нельзя: отрезок кончается на последней клетке, где ход законно завершить.
+    if (stopBlocked(path[index])) continue
+    costFeet = walkedFeet
     steps = index + 1
   }
   return { steps, costFeet }
+}
+
+/**
+ * Где ходу нельзя закончиться: тот же набор занятых клеток, что проверяет
+ * `MoveActor`, — живые участники боя и мирные NPC сцены. Планировщик знал
+ * только героев и врагов и вёл ветерана в клетку жительницы; движок отвергал
+ * ход, и бой вставал навсегда (боевой плейтест 2026-10-03).
+ */
+function stopBlockedFor(state, actorIdValue) {
+  const occupied = occupiedPositions(state, String(actorIdValue))
+  const actor = findActor(state, String(actorIdValue))
+  return (position) => footprintCellsFor(actor, position).some((cell) => occupied.has(positionKey(cell)))
 }
 
 function retreatDestination(state, enemy, target, profile) {
@@ -616,9 +636,11 @@ function retreatDestination(state, enemy, target, profile) {
   const maximumSteps = Math.max(0, Math.floor(budgetFeet / CELL_FEET))
   if (!maximumSteps) return null
   const { stepCost } = movementStepCostFor(state, actorId(enemy))
+  const stopBlocked = stopBlockedFor(state, actorId(enemy))
   let best = null
   for (const cell of state.scene?.cells ?? []) {
     if (!cell.revealed || !['floor', 'door'].includes(cell.type)) continue
+    if (stopBlocked({ x: Number(cell.x), y: Number(cell.y) })) continue
     const path = shortestTacticalPath(state, actorId(enemy), { x: Number(cell.x), y: Number(cell.y) })
     if (!path?.length || path.length > maximumSteps) continue
     // Отступление тоже платит за местность. Кандидаты по-прежнему ищутся

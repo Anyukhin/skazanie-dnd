@@ -780,6 +780,7 @@
         "guiding-bolt-advantage"
       ],
       "durationRounds": 1,
+      "conditionDuration": "source-turns:2",
       "upcastDicePerLevel": 1,
       "description": "Дальнобойная атака заклинанием наносит 4к6 урона излучением; следующая атака по цели до конца следующего хода совершается с преимуществом.",
       "mechanics2014": {

@@ -181,6 +181,27 @@ test('Противник под управлением сервера встаё
   assert.notEqual(planNpcTurn(state, 'enemy')[0].action_id, 'stand-up', 'без половины скорости существо действует лёжа')
 })
 
+test('2024: преимущество Направляющего снаряда переживает ход цели', () => {
+  // Боевой плейтест 2026-10-03: в редакции 2024 условие получало `rounds:1` и
+  // сгорало в начале хода цели, поэтому воин, ходивший после неё, бил без
+  // преимущества. Текст карточки тот же, что в 2014: «до конца вашего
+  // следующего хода».
+  const { state, command } = spellRuntimeFixture('guiding-bolt')
+  state.players[1].inventory = [{ id: 'ally-sword', catalog_id: 'srd_5_2_1:longsword', name: 'Длинный меч', type: 'weapon', damage: '1d8', damage_type: 'slashing', equipped: true, quantity: 1 }]
+  let live = normalizeCampaignState({ ...structuredClone(state), ruleset_id: 'srd_5_2_1', ruleset_version: undefined, enabled_house_rules: [] })
+  const run = (raw, actorId) => {
+    const result = resolveCommand({ server_authoritative: true, ...raw, actor_id: actorId }, live, { diceService: dice('high'), context: context(actorId) })
+    live = result.events.reduce(applyGameEvent, live)
+    return result.events
+  }
+  const cast = run(command, 'caster')
+  assert.equal(cast.find((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'guiding-bolt-advantage')?.payload.duration, 'source-turns:2')
+  run({ command_type: 'EndTurn' }, 'caster')
+  run({ command_type: 'EndTurn' }, 'enemy')
+  const attack = run({ command_type: 'MakeAttack', target_id: 'enemy' }, 'ally')
+  assert.equal(attack.find((event) => event.event_type === 'AttackResolved').payload.mode, 'advantage')
+})
+
 test('Прежняя редакция и сохранённые события не меняются', () => {
   const { state, command } = spellRuntimeFixture('vicious-mockery')
   const legacy = normalizeCampaignState({ ...structuredClone(state), ruleset_id: 'srd_5_2_1', ruleset_version: undefined, enabled_house_rules: [] })

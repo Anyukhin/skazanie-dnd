@@ -1679,7 +1679,13 @@ function reactionActionText(payload) {
  */
 function qualitativeEventSummary(event, resolveName) {
   const payload = event?.payload ?? {}
-  const named = (id, fallback) => sceneText(id ? resolveName(id) : fallback, 120)
+  // Неразрешённый идентификатор — не имя. Резолвер отдаёт сам id, если брифу
+  // участник неизвестен (призыв), и в рассказ попадало «summon-hero-slot-…
+  // завершает ход» — ещё и без цифр после чистки (плейтест 2026-10-03).
+  const named = (id, fallback) => {
+    const resolved = id ? resolveName(id) : ''
+    return sceneText(resolved && resolved !== String(id) ? resolved : fallback, 120)
+  }
   const actor = named(event?.actor_id, 'Участник')
   const target = named((event?.target_ids ?? [])[0], 'Цель')
   switch (event?.event_type) {
@@ -1714,6 +1720,17 @@ function qualitativeEventSummary(event, resolveName) {
         : `${target} получает урон`
     case 'HealingApplied':
       return `${target} получает лечение`
+    case 'TimeAdvanced':
+      // Сводка «Проходит 6 сек.» после чистки чисел становилась «Проходит
+      // сек.» (плейтест 2026-10-03). Ход времени виден по часам сцены, а
+      // смену времени суток рассказывает своё событие.
+      return ''
+    case 'HitPointsReducedToZero':
+      // Смерть рассказчик не объявляет. Герой со счётчиком спасбросков
+      // остаётся на поле без сознания, остальные просто выбывают из боя.
+      return payload.successes != null || payload.failures != null
+        ? `${target} падает без сознания`
+        : `${target} выбывает из боя`
     case 'HitPointMaximumReduced':
       return `Запас сил ${target} ограничен`
     case 'ActorMoved':
@@ -1836,7 +1853,10 @@ function qualitativeEventSummary(event, resolveName) {
     case 'SocialSceneOpened':
       return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
     default:
-      return playerFacingSummary(eventSummary(event, resolveName), event?.event_type)
+      return playerFacingSummary(eventSummary(event, (id) => {
+        const resolved = resolveName(id)
+        return resolved === String(id) ? '' : resolved
+      }), event?.event_type)
   }
 }
 
@@ -1868,6 +1888,9 @@ function withoutVisibleNumbers(value) {
     .trim()
 }
 
+/** События хода, которые запасной рассказчик опускает, когда фраз не хватает. */
+const ROUTINE_NARRATION_EVENTS = new Set(['TurnStarted', 'TurnEnded', 'DieRolled', 'CombatRoundTimeMarked', 'ResourceSpent'])
+
 function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const responsePlan = narratorResponsePlan(brief)
   const allOutcomeEvents = brief.visible_events.filter(event => !isDeclarationEvent(event))
@@ -1877,9 +1900,14 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const outcomeEvents = discovery
     ? allOutcomeEvents.filter(event => !['AbilityCheckResolved', 'DieRolled', 'RollResolved'].includes(event?.event_type))
     : allOutcomeEvents
-  const summaries = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
+  const ordered = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
     // Подтверждённая судьба NPC не должна исчезнуть за расходом ячейки и бросками.
     .sort((left, right) => Number(right.event_type === 'NpcDied') - Number(left.event_type === 'NpcDied'))
+  // В рассказ идут четыре фразы. Когда событий больше, служебные уступают
+  // место значимым: раньше «оружие завершает ход, начинается ход ветерана»
+  // съедали место, и падение героя без сознания не звучало вовсе.
+  const essential = ordered.filter((event) => !ROUTINE_NARRATION_EVENTS.has(String(event?.event_type ?? '')))
+  const summaries = (ordered.length > 4 && essential.length ? essential : ordered)
     .map((event) => withoutVisibleNumbers(qualitativeEventSummary(event, resolve)))
     .filter(Boolean)
   const { opening, quest } = responsePlan.include_scene_detail ? deterministicFraming(brief, variant) : {}

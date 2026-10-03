@@ -286,6 +286,9 @@ test('Маяк надежды максимизирует кости получа
     diceService: dice(), context: { serverAuthoritativeCombat: true },
   })
   const protectedState = applyAll(initial, cast.events)
+  // Лечит медик уже следующим ходом: в редакции 2024 за ход тратится одна
+  // ячейка, и «Маяк» с «Лечащим словом» одним ходом сервер не примет.
+  protectedState.mechanics.combat.action_economy.medic = { ...protectedState.mechanics.combat.action_economy.medic, slot_spell_cast_2024: false, bonus_action: true }
   const healed = resolveCommand({ command_type: 'CastSpell', actor_id: 'medic', spell_id: 'healing-word', target_id: 'fallen', server_authoritative: true }, protectedState, {
     diceService: dice([1]), context: { serverAuthoritativeCombat: true },
   })
