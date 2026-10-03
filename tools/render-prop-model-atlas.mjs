@@ -208,6 +208,7 @@ function page(manifest, token) {
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
 const models = ${models};
 const button = document.querySelector('#render'), status = document.querySelector('#status');
 function disposeGroup(group) {
@@ -229,6 +230,9 @@ button.onclick = async () => {
    renderer.outputColorSpace = THREE.SRGBColorSpace;
    renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.25;
    const scene = new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xfff4df,0x574637,2.2));
+   const room = new RoomEnvironment(), pmrem = new THREE.PMREMGenerator(renderer);
+   scene.environment = pmrem.fromScene(room,.04).texture; scene.environmentIntensity=.65;
+   room.dispose(); pmrem.dispose();
    const light = new THREE.DirectionalLight(0xffffff,3); light.position.set(-3,8,-5); scene.add(light);
    const camera = new THREE.OrthographicCamera(-1,1,1,-1,.01,10000); camera.up.set(0,0,-1);
    const loader = new GLTFLoader();

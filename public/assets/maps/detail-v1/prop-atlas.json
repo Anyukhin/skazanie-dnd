@@ -2,13 +2,41 @@
   "version": "skazanie:map-detail-v1",
   "image": "prop-atlas.png",
   "width": 2048,
-  "height": 1465,
+  "height": 1942,
   "cellPixels": 96,
-  "frameCount": 135,
+  "frameCount": 216,
   "frames": {
+    "alchemy_cauldron": {
+      "x": 1176,
+      "y": 1722,
+      "w": 96,
+      "h": 84,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 1,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
+    "alchemy_table": {
+      "x": 584,
+      "y": 852,
+      "w": 192,
+      "h": 129,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 0,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
     "ammo_crates": {
-      "x": 972,
-      "y": 824,
+      "x": 1748,
+      "y": 852,
       "w": 192,
       "h": 124,
       "footprint": {
@@ -20,9 +48,23 @@
       "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
     },
+    "anchor": {
+      "x": 486,
+      "y": 1230,
+      "w": 80,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 1,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
     "anvil": {
-      "x": 490,
-      "y": 1374,
+      "x": 686,
+      "y": 1722,
       "w": 96,
       "h": 85,
       "footprint": {
@@ -34,9 +76,51 @@
       "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
       "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
     },
+    "arcane_coil": {
+      "x": 568,
+      "y": 1230,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 8,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
+    "arcane_lectern": {
+      "x": 1172,
+      "y": 1811,
+      "w": 96,
+      "h": 71,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 2,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
+    "arcane_stone": {
+      "x": 1274,
+      "y": 1722,
+      "w": 96,
+      "h": 84,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 5,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
     "archery_target": {
-      "x": 486,
-      "y": 1074,
+      "x": 666,
+      "y": 1230,
       "w": 80,
       "h": 96,
       "footprint": {
@@ -49,8 +133,8 @@
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
     },
     "armchair": {
-      "x": 568,
-      "y": 1074,
+      "x": 748,
+      "y": 1230,
       "w": 84,
       "h": 96,
       "footprint": {
@@ -63,8 +147,8 @@
       "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
     },
     "armor_stand": {
-      "x": 654,
-      "y": 1074,
+      "x": 834,
+      "y": 1230,
       "w": 69,
       "h": 96,
       "footprint": {
@@ -75,6 +159,20 @@
       "sourceIndex": 0,
       "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
+    },
+    "ballista": {
+      "x": 905,
+      "y": 1230,
+      "w": 88,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 8,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
     },
     "barracks_bed": {
       "x": 1467,
@@ -91,8 +189,8 @@
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
     },
     "bathtub": {
-      "x": 584,
-      "y": 824,
+      "x": 1360,
+      "y": 852,
       "w": 192,
       "h": 125,
       "footprint": {
@@ -105,7 +203,7 @@
       "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
     },
     "bear_pelt": {
-      "x": 972,
+      "x": 1467,
       "y": 486,
       "w": 192,
       "h": 187,
@@ -118,9 +216,23 @@
       "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
       "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
     },
+    "bedroll_cluster": {
+      "x": 995,
+      "y": 1230,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 2,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
+    },
     "bell_frame": {
-      "x": 972,
-      "y": 678,
+      "x": 1554,
+      "y": 680,
       "w": 192,
       "h": 139,
       "footprint": {
@@ -132,9 +244,37 @@
       "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
+    "blade_trap": {
+      "x": 784,
+      "y": 1722,
+      "w": 96,
+      "h": 85,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 7,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
+    },
+    "bog_pool": {
+      "x": 778,
+      "y": 1530,
+      "w": 96,
+      "h": 95,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 0,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
+    },
     "bone_heap": {
-      "x": 879,
-      "y": 1276,
+      "x": 1856,
+      "y": 1530,
       "w": 96,
       "h": 92,
       "footprint": {
@@ -147,8 +287,8 @@
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
     "book_lectern": {
-      "x": 725,
-      "y": 1074,
+      "x": 1093,
+      "y": 1230,
       "w": 91,
       "h": 96,
       "footprint": {
@@ -161,8 +301,8 @@
       "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
     },
     "bookcase_tall": {
-      "x": 818,
-      "y": 1074,
+      "x": 1186,
+      "y": 1230,
       "w": 192,
       "h": 96,
       "footprint": {
@@ -175,8 +315,8 @@
       "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
     },
     "boulder_split": {
-      "x": 1554,
-      "y": 486,
+      "x": 196,
+      "y": 680,
       "w": 192,
       "h": 163,
       "footprint": {
@@ -202,9 +342,37 @@
       "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
       "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
     },
+    "broken_obelisk": {
+      "x": 394,
+      "y": 1894,
+      "w": 96,
+      "h": 29,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 6,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
+    "broken_pipe": {
+      "x": 1758,
+      "y": 1811,
+      "w": 96,
+      "h": 51,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 4,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
     "butcher_block": {
-      "x": 1012,
-      "y": 1074,
+      "x": 1380,
+      "y": 1230,
       "w": 88,
       "h": 96,
       "footprint": {
@@ -216,9 +384,37 @@
       "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
       "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
     },
+    "cactus_cluster": {
+      "x": 1470,
+      "y": 1230,
+      "w": 72,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 2,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
+    "camp_dummy": {
+      "x": 1544,
+      "y": 1230,
+      "w": 64,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 5,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
+    },
     "candle_desk": {
-      "x": 1360,
-      "y": 824,
+      "x": 196,
+      "y": 990,
       "w": 192,
       "h": 119,
       "footprint": {
@@ -232,7 +428,7 @@
     },
     "candle_rack": {
       "x": 2,
-      "y": 1074,
+      "y": 1230,
       "w": 192,
       "h": 102,
       "footprint": {
@@ -244,9 +440,65 @@
       "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
+    "capstan": {
+      "x": 1610,
+      "y": 1230,
+      "w": 92,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 2,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
+    "cargo_net": {
+      "x": 1268,
+      "y": 1530,
+      "w": 96,
+      "h": 94,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 4,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
+    "cargo_sled": {
+      "x": 294,
+      "y": 1811,
+      "w": 192,
+      "h": 79,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 5,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
+    "cavern_chasm": {
+      "x": 588,
+      "y": 1628,
+      "w": 96,
+      "h": 91,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 0,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
     "cell_bucket": {
-      "x": 1102,
-      "y": 1074,
+      "x": 1704,
+      "y": 1230,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -259,8 +511,8 @@
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
     "chicken_coop": {
-      "x": 2,
-      "y": 678,
+      "x": 584,
+      "y": 680,
       "w": 192,
       "h": 144,
       "footprint": {
@@ -288,7 +540,7 @@
     },
     "cliff_long": {
       "x": 196,
-      "y": 1074,
+      "y": 1230,
       "w": 288,
       "h": 102,
       "footprint": {
@@ -301,8 +553,8 @@
       "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
     },
     "cliff_medium": {
-      "x": 1748,
-      "y": 486,
+      "x": 390,
+      "y": 680,
       "w": 192,
       "h": 152,
       "footprint": {
@@ -315,8 +567,8 @@
       "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
     },
     "cloth_bolts": {
-      "x": 588,
-      "y": 1374,
+      "x": 882,
+      "y": 1722,
       "w": 96,
       "h": 85,
       "footprint": {
@@ -329,8 +581,8 @@
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
     "coal_pile": {
-      "x": 389,
-      "y": 1276,
+      "x": 876,
+      "y": 1530,
       "w": 96,
       "h": 95,
       "footprint": {
@@ -343,8 +595,8 @@
       "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
     },
     "coat_rack": {
-      "x": 1200,
-      "y": 1074,
+      "x": 1802,
+      "y": 1230,
       "w": 67,
       "h": 96,
       "footprint": {
@@ -356,9 +608,23 @@
       "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
       "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
     },
+    "command_tent": {
+      "x": 1743,
+      "y": 2,
+      "w": 172,
+      "h": 192,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 0,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
+    },
     "cradle": {
-      "x": 1269,
-      "y": 1074,
+      "x": 1871,
+      "y": 1230,
       "w": 65,
       "h": 96,
       "footprint": {
@@ -371,8 +637,8 @@
       "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
     },
     "crate_stack_goods": {
-      "x": 1743,
-      "y": 2,
+      "x": 2,
+      "y": 292,
       "w": 185,
       "h": 192,
       "footprint": {
@@ -384,9 +650,37 @@
       "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
+    "crystal_cluster": {
+      "x": 1568,
+      "y": 1722,
+      "w": 96,
+      "h": 83,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 5,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
+    "crystal_orb": {
+      "x": 1860,
+      "y": 1628,
+      "w": 96,
+      "h": 87,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 3,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
     "dead_bramble": {
-      "x": 1336,
-      "y": 1074,
+      "x": 1938,
+      "y": 1230,
       "w": 94,
       "h": 96,
       "footprint": {
@@ -398,9 +692,51 @@
       "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
       "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
     },
+    "dead_scrub": {
+      "x": 1372,
+      "y": 1722,
+      "w": 96,
+      "h": 84,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 3,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
+    "desert_boulders": {
+      "x": 1470,
+      "y": 1722,
+      "w": 96,
+      "h": 84,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 1,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
+    "desert_fire_bowl": {
+      "x": 2,
+      "y": 1334,
+      "w": 94,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 8,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
     "display_shelf": {
-      "x": 1650,
-      "y": 955,
+      "x": 1554,
+      "y": 1115,
       "w": 192,
       "h": 105,
       "footprint": {
@@ -412,8 +748,22 @@
       "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
+    "dock_crane": {
+      "x": 980,
+      "y": 1722,
+      "w": 96,
+      "h": 85,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 6,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
     "double_bed": {
-      "x": 2,
+      "x": 189,
       "y": 292,
       "w": 169,
       "h": 192,
@@ -426,9 +776,23 @@
       "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
       "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
     },
+    "drain_channel": {
+      "x": 1764,
+      "y": 1722,
+      "w": 192,
+      "h": 81,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 1,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
     "drain_grate": {
-      "x": 1432,
-      "y": 1074,
+      "x": 98,
+      "y": 1334,
       "w": 94,
       "h": 96,
       "footprint": {
@@ -441,8 +805,8 @@
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
     "dresser": {
-      "x": 1554,
-      "y": 824,
+      "x": 390,
+      "y": 990,
       "w": 192,
       "h": 118,
       "footprint": {
@@ -454,9 +818,23 @@
       "sourceHash": "ac7d67e3c3529422905b159e95485d2e0fd5fb8e407683b5b5439f100adb7308",
       "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
     },
+    "dungeon_rack": {
+      "x": 1456,
+      "y": 990,
+      "w": 192,
+      "h": 114,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 2,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
+    },
     "fence_gate": {
-      "x": 1466,
-      "y": 1374,
+      "x": 1562,
+      "y": 1811,
       "w": 96,
       "h": 55,
       "footprint": {
@@ -469,8 +847,8 @@
       "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
     },
     "fish_rack": {
-      "x": 778,
-      "y": 678,
+      "x": 1360,
+      "y": 680,
       "w": 192,
       "h": 140,
       "footprint": {
@@ -482,9 +860,23 @@
       "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
+    "fishing_crates": {
+      "x": 1366,
+      "y": 1530,
+      "w": 96,
+      "h": 94,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 5,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
     "fishing_nets": {
-      "x": 874,
-      "y": 955,
+      "x": 584,
+      "y": 1115,
       "w": 192,
       "h": 111,
       "footprint": {
@@ -497,8 +889,8 @@
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
     "floor_crack": {
-      "x": 1528,
-      "y": 1074,
+      "x": 194,
+      "y": 1334,
       "w": 90,
       "h": 96,
       "footprint": {
@@ -511,8 +903,8 @@
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
     "flour_bin": {
-      "x": 1855,
-      "y": 1276,
+      "x": 1370,
+      "y": 1628,
       "w": 96,
       "h": 89,
       "footprint": {
@@ -525,8 +917,8 @@
       "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
     },
     "flour_spill": {
-      "x": 1757,
-      "y": 1276,
+      "x": 1174,
+      "y": 1628,
       "w": 96,
       "h": 90,
       "footprint": {
@@ -539,8 +931,8 @@
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
     "flower_bed": {
-      "x": 977,
-      "y": 1276,
+      "x": 2,
+      "y": 1628,
       "w": 192,
       "h": 92,
       "footprint": {
@@ -553,8 +945,8 @@
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
     "folding_screen": {
-      "x": 1166,
-      "y": 824,
+      "x": 2,
+      "y": 990,
       "w": 192,
       "h": 123,
       "footprint": {
@@ -567,8 +959,8 @@
       "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
     },
     "font_basin": {
-      "x": 1620,
-      "y": 1074,
+      "x": 286,
+      "y": 1334,
       "w": 82,
       "h": 96,
       "footprint": {
@@ -581,8 +973,8 @@
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
     "footlocker": {
-      "x": 100,
-      "y": 1374,
+      "x": 2,
+      "y": 1722,
       "w": 96,
       "h": 87,
       "footprint": {
@@ -595,8 +987,8 @@
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
     },
     "forge": {
-      "x": 1360,
-      "y": 486,
+      "x": 2,
+      "y": 680,
       "w": 192,
       "h": 170,
       "footprint": {
@@ -622,9 +1014,23 @@
       "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
+    "frozen_pool": {
+      "x": 370,
+      "y": 1334,
+      "w": 95,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 2,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
     "fruit_cart": {
-      "x": 680,
-      "y": 955,
+      "x": 390,
+      "y": 1115,
       "w": 192,
       "h": 112,
       "footprint": {
@@ -637,8 +1043,8 @@
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
     "garden_bed": {
-      "x": 1068,
-      "y": 955,
+      "x": 778,
+      "y": 1115,
       "w": 192,
       "h": 111,
       "footprint": {
@@ -650,9 +1056,23 @@
       "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
       "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
     },
+    "giant_fungus": {
+      "x": 686,
+      "y": 1628,
+      "w": 96,
+      "h": 91,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 6,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
     "globe": {
-      "x": 1704,
-      "y": 1074,
+      "x": 467,
+      "y": 1334,
       "w": 93,
       "h": 96,
       "footprint": {
@@ -665,8 +1085,8 @@
       "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
     },
     "goods_baskets": {
-      "x": 2,
-      "y": 1374,
+      "x": 1468,
+      "y": 1628,
       "w": 96,
       "h": 89,
       "footprint": {
@@ -679,8 +1099,8 @@
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
     "grain_sacks": {
-      "x": 1799,
-      "y": 1074,
+      "x": 562,
+      "y": 1334,
       "w": 91,
       "h": 96,
       "footprint": {
@@ -693,8 +1113,8 @@
       "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
     },
     "grindstone": {
-      "x": 1892,
-      "y": 1074,
+      "x": 655,
+      "y": 1334,
       "w": 77,
       "h": 96,
       "footprint": {
@@ -707,8 +1127,8 @@
       "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
     },
     "guard_brazier": {
-      "x": 2,
-      "y": 1178,
+      "x": 734,
+      "y": 1334,
       "w": 78,
       "h": 96,
       "footprint": {
@@ -721,8 +1141,8 @@
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
     },
     "hanging_pots": {
-      "x": 292,
-      "y": 955,
+      "x": 2,
+      "y": 1115,
       "w": 192,
       "h": 113,
       "footprint": {
@@ -734,9 +1154,23 @@
       "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
       "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
     },
+    "harbor_rowboat": {
+      "x": 360,
+      "y": 292,
+      "w": 95,
+      "h": 192,
+      "footprint": {
+        "w": 1,
+        "h": 2
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 0,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
     "hay_bales": {
-      "x": 1456,
-      "y": 955,
+      "x": 1166,
+      "y": 1115,
       "w": 192,
       "h": 110,
       "footprint": {
@@ -749,7 +1183,7 @@
       "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
     },
     "hide_rug": {
-      "x": 2,
+      "x": 497,
       "y": 486,
       "w": 192,
       "h": 190,
@@ -763,7 +1197,7 @@
       "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
     },
     "holy_pool": {
-      "x": 196,
+      "x": 691,
       "y": 486,
       "w": 192,
       "h": 190,
@@ -776,8 +1210,36 @@
       "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
+    "ice_patch": {
+      "x": 1464,
+      "y": 1811,
+      "w": 96,
+      "h": 69,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 1,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
+    "ice_pillars": {
+      "x": 974,
+      "y": 1530,
+      "w": 96,
+      "h": 95,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 3,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
     "idol": {
-      "x": 173,
+      "x": 457,
       "y": 292,
       "w": 169,
       "h": 192,
@@ -791,8 +1253,8 @@
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
     "incense_burner": {
-      "x": 82,
-      "y": 1178,
+      "x": 814,
+      "y": 1334,
       "w": 72,
       "h": 96,
       "footprint": {
@@ -805,8 +1267,8 @@
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
     "iron_cage": {
-      "x": 156,
-      "y": 1178,
+      "x": 888,
+      "y": 1334,
       "w": 75,
       "h": 96,
       "footprint": {
@@ -818,9 +1280,23 @@
       "sourceHash": "d3d65334eb8416d2723166aa1307604be442cb08ea23ffb5f135543a1d11646f",
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
+    "iron_maiden": {
+      "x": 965,
+      "y": 1334,
+      "w": 51,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 3,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
+    },
     "jailer_desk": {
-      "x": 1076,
-      "y": 1374,
+      "x": 586,
+      "y": 1811,
       "w": 96,
       "h": 76,
       "footprint": {
@@ -833,8 +1309,8 @@
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
     "kitchen_stove": {
-      "x": 778,
-      "y": 824,
+      "x": 1554,
+      "y": 852,
       "w": 192,
       "h": 125,
       "footprint": {
@@ -847,8 +1323,8 @@
       "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
     },
     "kneeling_cushions": {
-      "x": 1272,
-      "y": 1374,
+      "x": 978,
+      "y": 1811,
       "w": 192,
       "h": 72,
       "footprint": {
@@ -861,8 +1337,8 @@
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
     "leaf_litter": {
-      "x": 683,
-      "y": 1276,
+      "x": 1464,
+      "y": 1530,
       "w": 96,
       "h": 94,
       "footprint": {
@@ -874,8 +1350,22 @@
       "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
+    "lily_pad_cluster": {
+      "x": 100,
+      "y": 1722,
+      "w": 96,
+      "h": 87,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 1,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
+    },
     "lily_pads": {
-      "x": 344,
+      "x": 628,
       "y": 292,
       "w": 191,
       "h": 192,
@@ -888,9 +1378,23 @@
       "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
+    "lobster_cage": {
+      "x": 782,
+      "y": 1811,
+      "w": 96,
+      "h": 74,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 7,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
     "lumber_pile": {
-      "x": 1748,
-      "y": 824,
+      "x": 584,
+      "y": 990,
       "w": 192,
       "h": 117,
       "footprint": {
@@ -902,8 +1406,78 @@
       "sourceHash": "d87ea91e5174121010c7d6b9fd4a368566dafda0e1ef88633b940556b2d299ea",
       "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
     },
+    "magic_mirror": {
+      "x": 1018,
+      "y": 1334,
+      "w": 76,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 7,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
+    "maintenance_ladder": {
+      "x": 1096,
+      "y": 1334,
+      "w": 63,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 6,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
+    "manacle_post": {
+      "x": 1161,
+      "y": 1334,
+      "w": 92,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 4,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
+    },
+    "mangrove_roots": {
+      "x": 1255,
+      "y": 1334,
+      "w": 95,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 2,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
+    },
+    "mantlet": {
+      "x": 198,
+      "y": 1722,
+      "w": 96,
+      "h": 87,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 6,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
+    },
     "map_table": {
-      "x": 1166,
+      "x": 1661,
       "y": 486,
       "w": 192,
       "h": 180,
@@ -931,7 +1505,7 @@
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
     "millstone": {
-      "x": 537,
+      "x": 821,
       "y": 292,
       "w": 167,
       "h": 192,
@@ -944,9 +1518,51 @@
       "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
       "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
     },
+    "mine_cart": {
+      "x": 1352,
+      "y": 1334,
+      "w": 74,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 3,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
+    "mine_rail": {
+      "x": 1262,
+      "y": 990,
+      "w": 192,
+      "h": 115,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 2,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
+    "mooring_bollard": {
+      "x": 1428,
+      "y": 1334,
+      "w": 87,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 3,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
     "mooring_post": {
-      "x": 198,
-      "y": 1374,
+      "x": 296,
+      "y": 1722,
       "w": 96,
       "h": 87,
       "footprint": {
@@ -959,8 +1575,8 @@
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
     "mossy_rock": {
-      "x": 1171,
-      "y": 1276,
+      "x": 196,
+      "y": 1628,
       "w": 96,
       "h": 92,
       "footprint": {
@@ -972,9 +1588,37 @@
       "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
       "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
     },
+    "mud_patch": {
+      "x": 1566,
+      "y": 1628,
+      "w": 96,
+      "h": 89,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 5,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
+    },
+    "nomad_tent": {
+      "x": 303,
+      "y": 486,
+      "w": 192,
+      "h": 191,
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 7,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
     "notice_board": {
-      "x": 978,
-      "y": 1374,
+      "x": 488,
+      "y": 1811,
       "w": 96,
       "h": 79,
       "footprint": {
@@ -986,9 +1630,37 @@
       "sourceHash": "cdec46fd3eeac1ac68dd1ae34db04242d63ba692331145aa76849cf6a2a691e4",
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
+    "oasis_pool": {
+      "x": 394,
+      "y": 1722,
+      "w": 96,
+      "h": 86,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 4,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
+    "obsidian_monolith": {
+      "x": 1664,
+      "y": 1628,
+      "w": 96,
+      "h": 89,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 8,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
     "offering_table": {
-      "x": 1262,
-      "y": 955,
+      "x": 972,
+      "y": 1115,
       "w": 192,
       "h": 111,
       "footprint": {
@@ -1001,8 +1673,8 @@
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
     "pantry_shelf": {
-      "x": 784,
-      "y": 1374,
+      "x": 100,
+      "y": 1811,
       "w": 192,
       "h": 80,
       "footprint": {
@@ -1015,8 +1687,8 @@
       "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
     },
     "paper_scatter": {
-      "x": 1269,
-      "y": 1276,
+      "x": 294,
+      "y": 1628,
       "w": 96,
       "h": 92,
       "footprint": {
@@ -1028,9 +1700,23 @@
       "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
+    "peat_mound": {
+      "x": 784,
+      "y": 1628,
+      "w": 96,
+      "h": 91,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 8,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
+    },
     "pebbles": {
-      "x": 487,
-      "y": 1276,
+      "x": 1072,
+      "y": 1530,
       "w": 96,
       "h": 95,
       "footprint": {
@@ -1043,8 +1729,8 @@
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
     "pillory": {
-      "x": 1748,
-      "y": 678,
+      "x": 390,
+      "y": 852,
       "w": 192,
       "h": 133,
       "footprint": {
@@ -1056,9 +1742,51 @@
       "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
+    "plank_crossing": {
+      "x": 1360,
+      "y": 1115,
+      "w": 192,
+      "h": 107,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 7,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
+    "portcullis": {
+      "x": 1517,
+      "y": 1334,
+      "w": 95,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 0,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
+    },
+    "potion_cabinet": {
+      "x": 684,
+      "y": 1811,
+      "w": 96,
+      "h": 75,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 6,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
     "pottery_stand": {
-      "x": 233,
-      "y": 1178,
+      "x": 1614,
+      "y": 1334,
       "w": 90,
       "h": 96,
       "footprint": {
@@ -1071,7 +1799,7 @@
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
     "prayer_rug": {
-      "x": 706,
+      "x": 990,
       "y": 292,
       "w": 96,
       "h": 192,
@@ -1085,8 +1813,8 @@
       "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
     },
     "prep_table": {
-      "x": 390,
-      "y": 824,
+      "x": 1166,
+      "y": 852,
       "w": 192,
       "h": 126,
       "footprint": {
@@ -1097,6 +1825,34 @@
       "sourceIndex": 2,
       "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
       "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
+    },
+    "pressure_plate": {
+      "x": 1706,
+      "y": 1334,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 6,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
+    },
+    "prison_cage": {
+      "x": 1804,
+      "y": 1334,
+      "w": 82,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 1,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
     },
     "punt": {
       "x": 290,
@@ -1113,8 +1869,8 @@
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
     "quench_tub": {
-      "x": 325,
-      "y": 1178,
+      "x": 1888,
+      "y": 1334,
       "w": 91,
       "h": 96,
       "footprint": {
@@ -1127,8 +1883,8 @@
       "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
     },
     "rain_barrel": {
-      "x": 418,
-      "y": 1178,
+      "x": 1981,
+      "y": 1334,
       "w": 51,
       "h": 96,
       "footprint": {
@@ -1141,8 +1897,8 @@
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
     "reading_nook": {
-      "x": 1554,
-      "y": 678,
+      "x": 196,
+      "y": 852,
       "w": 192,
       "h": 134,
       "footprint": {
@@ -1154,9 +1910,23 @@
       "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
       "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
     },
+    "reed_cluster": {
+      "x": 2,
+      "y": 1432,
+      "w": 95,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 3,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
+    },
     "reeds": {
-      "x": 1166,
-      "y": 678,
+      "x": 1748,
+      "y": 680,
       "w": 192,
       "h": 136,
       "footprint": {
@@ -1168,8 +1938,36 @@
       "sourceHash": "59f484fafbb97bf307d1941cf6467b0bd556173cfa4731d9e377a1de7c0de191",
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
+    "refuse_heap": {
+      "x": 882,
+      "y": 1628,
+      "w": 96,
+      "h": 91,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 3,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
+    "ritual_circle": {
+      "x": 99,
+      "y": 1432,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-42-arcane-lab.png",
+      "sourceIndex": 4,
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a"
+    },
     "river_rocks": {
-      "x": 804,
+      "x": 1088,
       "y": 292,
       "w": 190,
       "h": 192,
@@ -1183,7 +1981,7 @@
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
     "rock_cluster": {
-      "x": 996,
+      "x": 1280,
       "y": 292,
       "w": 191,
       "h": 192,
@@ -1197,8 +1995,8 @@
       "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
     },
     "root_tangle": {
-      "x": 486,
-      "y": 955,
+      "x": 196,
+      "y": 1115,
       "w": 192,
       "h": 113,
       "footprint": {
@@ -1209,6 +2007,34 @@
       "sourceIndex": 7,
       "sourceHash": "946018263d595c247238eefc3e238273d3921fdbc4eb5b2720e425d3004e031d",
       "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
+    },
+    "rope_bridge": {
+      "x": 1068,
+      "y": 990,
+      "w": 192,
+      "h": 116,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 1,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
+    "rotten_log": {
+      "x": 1270,
+      "y": 1811,
+      "w": 192,
+      "h": 70,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 4,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
     },
     "rowboat": {
       "x": 379,
@@ -1225,7 +2051,7 @@
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
     "rug_blue": {
-      "x": 390,
+      "x": 885,
       "y": 486,
       "w": 192,
       "h": 189,
@@ -1253,7 +2079,7 @@
       "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
     },
     "rug_round": {
-      "x": 584,
+      "x": 1079,
       "y": 486,
       "w": 192,
       "h": 188,
@@ -1280,9 +2106,51 @@
       "sourceHash": "160e3f63a756ca7524f27ee583a35f6ffc6b4e31fb8a3b63a08a21c3ca199370",
       "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
     },
+    "sail_bundle": {
+      "x": 2,
+      "y": 1894,
+      "w": 96,
+      "h": 46,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-44-harbor-docks.png",
+      "sourceIndex": 8,
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b"
+    },
+    "sand_dune": {
+      "x": 100,
+      "y": 1894,
+      "w": 96,
+      "h": 42,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 0,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
+    "sandstone_arch": {
+      "x": 2,
+      "y": 1811,
+      "w": 96,
+      "h": 81,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-46-desert-ruins.png",
+      "sourceIndex": 5,
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a"
+    },
     "sawdust": {
-      "x": 1367,
-      "y": 1276,
+      "x": 392,
+      "y": 1628,
       "w": 96,
       "h": 92,
       "footprint": {
@@ -1295,8 +2163,8 @@
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
     "sawhorse": {
-      "x": 196,
-      "y": 678,
+      "x": 778,
+      "y": 680,
       "w": 192,
       "h": 144,
       "footprint": {
@@ -1309,8 +2177,8 @@
       "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
     },
     "scales_table": {
-      "x": 471,
-      "y": 1178,
+      "x": 197,
+      "y": 1432,
       "w": 90,
       "h": 96,
       "footprint": {
@@ -1323,8 +2191,8 @@
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
     "scarecrow": {
-      "x": 563,
-      "y": 1178,
+      "x": 289,
+      "y": 1432,
       "w": 92,
       "h": 96,
       "footprint": {
@@ -1337,8 +2205,8 @@
       "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
     },
     "scorch_mark": {
-      "x": 657,
-      "y": 1178,
+      "x": 383,
+      "y": 1432,
       "w": 94,
       "h": 96,
       "footprint": {
@@ -1350,8 +2218,22 @@
       "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
+    "scout_tent": {
+      "x": 479,
+      "y": 1432,
+      "w": 62,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 1,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
+    },
     "scree": {
-      "x": 1189,
+      "x": 1473,
       "y": 292,
       "w": 190,
       "h": 192,
@@ -1365,8 +2247,8 @@
       "promptHash": "a23146e1eb6a3f9c227ab0f0dd9744e1b2d88b330ff28e7a9b1fd41c9fd6e1e5"
     },
     "scroll_rack": {
-      "x": 1563,
-      "y": 1276,
+      "x": 980,
+      "y": 1628,
       "w": 192,
       "h": 91,
       "footprint": {
@@ -1378,9 +2260,37 @@
       "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
       "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
     },
+    "sewer_grate": {
+      "x": 543,
+      "y": 1432,
+      "w": 95,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 0,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
+    "shield_rack": {
+      "x": 1666,
+      "y": 1722,
+      "w": 96,
+      "h": 83,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 4,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
+    },
     "shop_counter": {
-      "x": 2,
-      "y": 955,
+      "x": 778,
+      "y": 990,
       "w": 288,
       "h": 117,
       "footprint": {
@@ -1393,8 +2303,8 @@
       "promptHash": "dc9218692a80c6384ea254fe482e9e8e96f8cfa04b4d6b8870567831a04c9a6e"
     },
     "sign_post_city": {
-      "x": 1174,
-      "y": 1374,
+      "x": 880,
+      "y": 1811,
       "w": 96,
       "h": 74,
       "footprint": {
@@ -1406,9 +2316,93 @@
       "sourceHash": "389494926e592067719e079d98530af5d4aa3e8bc6b8db999eaab51e791a5855",
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
+    "slime_puddle": {
+      "x": 1758,
+      "y": 1530,
+      "w": 96,
+      "h": 93,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 2,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
+    "sluice_gate": {
+      "x": 1650,
+      "y": 990,
+      "w": 192,
+      "h": 114,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 5,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
+    "snow_cairn": {
+      "x": 640,
+      "y": 1432,
+      "w": 60,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 8,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
+    "snowdrift": {
+      "x": 1660,
+      "y": 1811,
+      "w": 96,
+      "h": 55,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 0,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
+    "snowshoe_pair": {
+      "x": 702,
+      "y": 1432,
+      "w": 89,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 6,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
+    "snowy_boulder": {
+      "x": 1272,
+      "y": 1628,
+      "w": 96,
+      "h": 90,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 4,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
     "spice_crates": {
-      "x": 753,
-      "y": 1178,
+      "x": 793,
+      "y": 1432,
       "w": 95,
       "h": 96,
       "footprint": {
@@ -1420,9 +2414,51 @@
       "sourceHash": "56663f20b458fa3dbdf2eeb1a9576c72dec2535dbb637255bbc74f00626ad06b",
       "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
     },
+    "spike_pit": {
+      "x": 890,
+      "y": 1432,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 5,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
+    },
+    "spiked_beam_barrier": {
+      "x": 1762,
+      "y": 1628,
+      "w": 96,
+      "h": 89,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 7,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
+    },
+    "spore_cloud": {
+      "x": 1562,
+      "y": 1530,
+      "w": 96,
+      "h": 94,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 7,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
     "standing_mirror": {
-      "x": 850,
-      "y": 1178,
+      "x": 988,
+      "y": 1432,
       "w": 53,
       "h": 96,
       "footprint": {
@@ -1435,7 +2471,7 @@
       "promptHash": "477fbc8935c43c5d840f33c8df5f2bc073f365de8d0775cfbbdf7717985b781e"
     },
     "statue_plinth": {
-      "x": 1381,
+      "x": 1665,
       "y": 292,
       "w": 165,
       "h": 192,
@@ -1449,8 +2485,8 @@
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
     "stocks": {
-      "x": 1844,
-      "y": 955,
+      "x": 1748,
+      "y": 1115,
       "w": 192,
       "h": 105,
       "footprint": {
@@ -1463,8 +2499,8 @@
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
     "stone_steps": {
-      "x": 390,
-      "y": 678,
+      "x": 972,
+      "y": 680,
       "w": 192,
       "h": 144,
       "footprint": {
@@ -1477,7 +2513,7 @@
       "promptHash": "ad010f79f926be0be397ab54e12ea0fd4126628058f3ca64b76691195e594728"
     },
     "straw_bed": {
-      "x": 1548,
+      "x": 1832,
       "y": 292,
       "w": 96,
       "h": 192,
@@ -1491,8 +2527,8 @@
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
     "straw_mat": {
-      "x": 905,
-      "y": 1178,
+      "x": 1043,
+      "y": 1432,
       "w": 95,
       "h": 96,
       "footprint": {
@@ -1505,8 +2541,8 @@
       "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
     },
     "straw_scatter": {
-      "x": 585,
-      "y": 1276,
+      "x": 1170,
+      "y": 1530,
       "w": 96,
       "h": 95,
       "footprint": {
@@ -1519,8 +2555,8 @@
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
     "street_planter": {
-      "x": 1002,
-      "y": 1178,
+      "x": 1140,
+      "y": 1432,
       "w": 87,
       "h": 96,
       "footprint": {
@@ -1533,8 +2569,8 @@
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
     "strongbox": {
-      "x": 686,
-      "y": 1374,
+      "x": 1078,
+      "y": 1722,
       "w": 96,
       "h": 85,
       "footprint": {
@@ -1546,9 +2582,37 @@
       "sourceHash": "8d00a945ebcc1b3cdd4536c1f3f65d4d0a514e99d3fd6ed73f9171a9e13d0716",
       "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
     },
+    "swamp_boardwalk": {
+      "x": 1844,
+      "y": 990,
+      "w": 192,
+      "h": 114,
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 6,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
+    },
+    "swamp_totem": {
+      "x": 1229,
+      "y": 1432,
+      "w": 49,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-47-swamp-marsh.png",
+      "sourceIndex": 7,
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9"
+    },
     "telescope": {
-      "x": 1091,
-      "y": 1178,
+      "x": 1280,
+      "y": 1432,
       "w": 65,
       "h": 96,
       "footprint": {
@@ -1561,8 +2625,8 @@
       "promptHash": "bcd7cfd54ffadaa54e4af8d6dea08eb3fde90a6d09dd90fae19b4cab152297ad"
     },
     "temple_lectern": {
-      "x": 1158,
-      "y": 1178,
+      "x": 1347,
+      "y": 1432,
       "w": 83,
       "h": 96,
       "footprint": {
@@ -1574,9 +2638,23 @@
       "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc"
     },
+    "timber_shoring": {
+      "x": 198,
+      "y": 1894,
+      "w": 96,
+      "h": 39,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-40-depths-mine.png",
+      "sourceIndex": 4,
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559"
+    },
     "tool_rack": {
-      "x": 584,
-      "y": 678,
+      "x": 1166,
+      "y": 680,
       "w": 192,
       "h": 141,
       "footprint": {
@@ -1589,8 +2667,8 @@
       "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
     },
     "torture_rack": {
-      "x": 296,
-      "y": 1374,
+      "x": 492,
+      "y": 1722,
       "w": 192,
       "h": 86,
       "footprint": {
@@ -1603,8 +2681,8 @@
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
     "town_well": {
-      "x": 1646,
-      "y": 292,
+      "x": 2,
+      "y": 486,
       "w": 163,
       "h": 192,
       "footprint": {
@@ -1617,8 +2695,8 @@
       "promptHash": "e4af0fb855d0d3b853e23a94e8cfde11508f87c138d0d83081394b1a860997cc"
     },
     "training_dummy": {
-      "x": 1243,
-      "y": 1178,
+      "x": 1432,
+      "y": 1432,
       "w": 78,
       "h": 96,
       "footprint": {
@@ -1630,9 +2708,37 @@
       "sourceHash": "195c3e999fb35cef734c5012fac95b351bf9cc3ac713ad662dd6a82d4e54e006",
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
     },
+    "tripwire_bells": {
+      "x": 296,
+      "y": 1894,
+      "w": 96,
+      "h": 30,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-39-dungeon-hazards.png",
+      "sourceIndex": 8,
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24"
+    },
+    "valve_wheel": {
+      "x": 1512,
+      "y": 1432,
+      "w": 96,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-43-sewer-undercity.png",
+      "sourceIndex": 8,
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577"
+    },
     "wall_chains": {
-      "x": 1323,
-      "y": 1178,
+      "x": 1610,
+      "y": 1432,
       "w": 75,
       "h": 96,
       "footprint": {
@@ -1645,8 +2751,8 @@
       "promptHash": "d5617965dcc3040762ce1e556c1af8faff725c5e875d538500f0907301c17d88"
     },
     "wall_joint_beveled_stone": {
-      "x": 1400,
-      "y": 1178,
+      "x": 1687,
+      "y": 1432,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1659,8 +2765,8 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "wall_joint_corner_stone": {
-      "x": 1498,
-      "y": 1178,
+      "x": 1785,
+      "y": 1432,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1673,8 +2779,8 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "wall_joint_corner_timber": {
-      "x": 1596,
-      "y": 1178,
+      "x": 1883,
+      "y": 1432,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1687,8 +2793,8 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "wall_joint_cross_stone": {
-      "x": 1694,
-      "y": 1178,
+      "x": 2,
+      "y": 1530,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1701,8 +2807,8 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "wall_joint_end_stone": {
-      "x": 1792,
-      "y": 1178,
+      "x": 100,
+      "y": 1530,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1715,8 +2821,8 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "wall_joint_pillar_stone": {
-      "x": 1890,
-      "y": 1178,
+      "x": 198,
+      "y": 1530,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1729,8 +2835,8 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "wall_joint_t_stone": {
-      "x": 2,
-      "y": 1276,
+      "x": 296,
+      "y": 1530,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1743,8 +2849,8 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "wall_joint_t_timber": {
-      "x": 100,
-      "y": 1276,
+      "x": 394,
+      "y": 1530,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1757,8 +2863,8 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "wall_joint_tower_stone": {
-      "x": 198,
-      "y": 1276,
+      "x": 492,
+      "y": 1530,
       "w": 96,
       "h": 96,
       "footprint": {
@@ -1771,7 +2877,7 @@
       "promptHash": "b588ae60a054e46b3f28a911ce181d3e4ea6efafc17502e8f16486bf071fb011"
     },
     "war_table": {
-      "x": 778,
+      "x": 1273,
       "y": 486,
       "w": 192,
       "h": 188,
@@ -1785,8 +2891,8 @@
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
     },
     "washtub": {
-      "x": 781,
-      "y": 1276,
+      "x": 1660,
+      "y": 1530,
       "w": 96,
       "h": 94,
       "footprint": {
@@ -1799,8 +2905,8 @@
       "promptHash": "a8ddd316b1f098ba811701423f851e493405aae98d8a7bbdc29e6dd5b3396ef9"
     },
     "water_barrel": {
-      "x": 296,
-      "y": 1276,
+      "x": 590,
+      "y": 1530,
       "w": 91,
       "h": 96,
       "footprint": {
@@ -1826,9 +2932,23 @@
       "sourceHash": "791d324ac325fe11fd2acc08c9f0db731e7f9743a91a794f2a926a26a84b5581",
       "promptHash": "a73db3c84e13c51e765e9b37d53b5e7e62761bb2be5a7edfd40b2b1feceeaa5b"
     },
+    "weapon_rack": {
+      "x": 683,
+      "y": 1530,
+      "w": 93,
+      "h": 96,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-41-military-camp.png",
+      "sourceIndex": 3,
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19"
+    },
     "weapon_rack_wall": {
-      "x": 196,
-      "y": 824,
+      "x": 972,
+      "y": 852,
       "w": 192,
       "h": 127,
       "footprint": {
@@ -1841,8 +2961,8 @@
       "promptHash": "25bf2eaeb45b655ea660d82d5a0c399f07b452d3144d6798decb58dadf0eb756"
     },
     "wine_stain": {
-      "x": 1465,
-      "y": 1276,
+      "x": 490,
+      "y": 1628,
       "w": 96,
       "h": 92,
       "footprint": {
@@ -1854,9 +2974,23 @@
       "sourceHash": "37d4f81a9c8073e975578aa15899b265d570ada4259c7f4f087d550852982100",
       "promptHash": "898c3ca786abf2e6549ca4d0fa302c4a90d8091578f5021b4bcbaa66837d6919"
     },
+    "winter_cache": {
+      "x": 1856,
+      "y": 1811,
+      "w": 96,
+      "h": 48,
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "sheet": "sheet-45-snow-ice.png",
+      "sourceIndex": 7,
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2"
+    },
     "wolf_pelt": {
-      "x": 1811,
-      "y": 292,
+      "x": 167,
+      "y": 486,
       "w": 134,
       "h": 192,
       "footprint": {
@@ -1869,8 +3003,8 @@
       "promptHash": "231db3f34d461adc21aa4f8030bb5bcfd377585bc31cdbf607261d364612cf24"
     },
     "workbench": {
-      "x": 2,
-      "y": 824,
+      "x": 778,
+      "y": 852,
       "w": 192,
       "h": 129,
       "footprint": {
@@ -1883,8 +3017,8 @@
       "promptHash": "e0a6a85ebacf4afe8144e6a1cf4c2d84fdb0df98063fbe03023c8664fdc54664"
     },
     "writing_desk": {
-      "x": 1360,
-      "y": 678,
+      "x": 2,
+      "y": 852,
       "w": 192,
       "h": 136,
       "footprint": {
@@ -2058,6 +3192,105 @@
       "type": "sheet",
       "sourceHash": "96565daaece5267770a17177afef4e7c2c20affe7c235014166dbc048f917669",
       "promptHash": "2a889b513e92141258ccce1319c52233a729966a565a5a13ae3ce83c6b60d6fc",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-39-dungeon-hazards.png": {
+      "key": "sheet-39-dungeon-hazards",
+      "file": "sheet-39-dungeon-hazards.png",
+      "type": "sheet",
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-40-depths-mine.png": {
+      "key": "sheet-40-depths-mine",
+      "file": "sheet-40-depths-mine.png",
+      "type": "sheet",
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-41-military-camp.png": {
+      "key": "sheet-41-military-camp",
+      "file": "sheet-41-military-camp.png",
+      "type": "sheet",
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-42-arcane-lab.png": {
+      "key": "sheet-42-arcane-lab",
+      "file": "sheet-42-arcane-lab.png",
+      "type": "sheet",
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-43-sewer-undercity.png": {
+      "key": "sheet-43-sewer-undercity",
+      "file": "sheet-43-sewer-undercity.png",
+      "type": "sheet",
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-44-harbor-docks.png": {
+      "key": "sheet-44-harbor-docks",
+      "file": "sheet-44-harbor-docks.png",
+      "type": "sheet",
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-45-snow-ice.png": {
+      "key": "sheet-45-snow-ice",
+      "file": "sheet-45-snow-ice.png",
+      "type": "sheet",
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-46-desert-ruins.png": {
+      "key": "sheet-46-desert-ruins",
+      "file": "sheet-46-desert-ruins.png",
+      "type": "sheet",
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-47-swamp-marsh.png": {
+      "key": "sheet-47-swamp-marsh",
+      "file": "sheet-47-swamp-marsh.png",
+      "type": "sheet",
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9",
       "nativeDimensions": {
         "width": 1254,
         "height": 1254

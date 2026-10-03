@@ -875,7 +875,7 @@ export default function TacticalBoard3D(props: Props) {
         // Карта теней пересоздаётся под новый размер при следующем кадре.
         sun.shadow.mapSize.set(profile.shadowSize, profile.shadowSize)
         sun.shadow.dispose(); sun.shadow.map = null; sun.shadow.mapPass = null
-        pipeline.configure({ ambientOcclusion: profile.ambientOcclusion, bloom: profile.bloom })
+        pipeline.configure({ ambientOcclusion: profile.ambientOcclusion, ambientOcclusionScale: profile.ambientOcclusionScale, bloom: profile.bloom, tiltShift: profile.tiltShift })
         pipeline.refresh()
         lastQuality = qualityKey
         measuredFrames = 0; measuredRenderMs = 0; measuredSince = performance.now()
