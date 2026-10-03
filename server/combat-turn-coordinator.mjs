@@ -11,6 +11,11 @@ export const DEFAULT_TURN_TIMEOUT_MS = 120_000
 // поэтому срок короткий — ровно столько, чтобы доска показала очередь.
 export const DEFAULT_UNCLAIMED_TURN_TIMEOUT_MS = 3_000
 export const DEFAULT_RETRY_BASE_DELAY_MS = 250
+// Действующий игрок не теряет ход: каждое его действие отсчитывает срок
+// заново (плейтест 2026-10-02 — двое новичков теряли ходы, пока искали врага
+// на карте). Потолок — столько сроков от начала хода, чтобы один ход не
+// растягивался без конца.
+export const ACTIVE_TURN_LIMIT_FACTOR = 3
 export const DEFAULT_RETRY_MAX_DELAY_MS = 30_000
 export const DEFAULT_RETRY_BACKOFF_STEPS = 8
 
@@ -67,10 +72,28 @@ function timedTurnActorIds(state) {
     : actorIds
 }
 
+/**
+ * Отпечаток экономики хода у владельцев часов: движение, действие, бонус,
+ * атаки. Меняется только тогда, когда эти участники что-то сделали, — ход
+ * соседа по групповой фазе и чужая реакция его не трогают.
+ *
+ * @param {Record<string, any>} rawState
+ * @returns {string}
+ */
+export function turnActivityKey(rawState) {
+  const state = normalizeCampaignState(rawState)
+  const economy = state.mechanics?.combat?.action_economy ?? {}
+  return JSON.stringify(timedTurnActorIds(state).map((actorId) => {
+    const entry = economy[actorId] ?? {}
+    return [actorId, entry.action, entry.bonus_action, entry.movement_spent, entry.attacks_used, entry.object_interaction, entry.extra_actions]
+  }))
+}
+
 export function combatTurnClock(rawState, events, {
   timeoutMs = DEFAULT_TURN_TIMEOUT_MS,
   now = Date.now(),
   previousClock = null,
+  activityAt = null,
 } = {}) {
   const state = normalizeCampaignState(rawState)
   const combat = state.mechanics?.combat
@@ -115,6 +138,12 @@ export function combatTurnClock(rawState, events, {
   const startedMs = Date.parse(String(startedAt ?? ''))
   const safeStartedMs = Number.isFinite(startedMs) ? startedMs : Number(now)
   const durationMs = positiveTimeout(timeoutMs)
+  // Последнее действие владельца часов сдвигает срок, но не дальше потолка.
+  const activityMs = Date.parse(String(activityAt ?? ''))
+  const activeMs = Number.isFinite(activityMs) && activityMs > safeStartedMs ? activityMs : null
+  const deadlineMs = activeMs == null
+    ? safeStartedMs + durationMs
+    : Math.min(activeMs + durationMs, safeStartedMs + durationMs * ACTIVE_TURN_LIMIT_FACTOR)
   // Координаты round/index повторяются в каждом новом бою. Durable event_id
   // отличает одинаковый состав и порядок инициативы в разных encounters и не
   // даёт idempotency key второго боя вернуть commit первого.
@@ -127,8 +156,9 @@ export function combatTurnClock(rawState, events, {
     active_index: Number(combat.active_index) || 0,
     turn_id: turnId,
     started_at: new Date(safeStartedMs).toISOString(),
-    deadline_at: new Date(safeStartedMs + durationMs).toISOString(),
+    deadline_at: new Date(deadlineMs).toISOString(),
     duration_ms: durationMs,
+    ...(activeMs == null ? {} : { activity_at: new Date(activeMs).toISOString() }),
     ...(reactionWindowId ? { reaction_window_id: reactionWindowId } : {}),
   }
 }
@@ -331,11 +361,20 @@ export class CombatTurnCoordinator {
 
         const turnActorIds = activeTurnActorIds(loaded.state)
         const unclaimed = turnActorIds.length > 0 && await this.isSeatUnclaimed(campaignId, loaded.state, turnActorIds) === true
-        const clock = combatTurnClock(loaded.state, [], {
-          timeoutMs: unclaimed ? this.unclaimedTimeoutMs : this.timeoutMs,
-          now: this.now(),
-          previousClock: entry.clock,
-        })
+        const timeoutMs = unclaimed ? this.unclaimedTimeoutMs : this.timeoutMs
+        const baseClock = combatTurnClock(loaded.state, [], { timeoutMs, now: this.now(), previousClock: entry.clock })
+        // Тот же ход, а экономика его владельца изменилась — значит, игрок
+        // действует, и срок отсчитывается от этого действия. Отпечаток держит
+        // координатор, а не часы: в комнату он не уезжает.
+        const activityKey = turnActivityKey(loaded.state)
+        const sameTurn = Boolean(baseClock && entry.clock && entry.clock.turn_id === baseClock.turn_id)
+        const activityAt = !sameTurn ? null
+          : entry.activityKey != null && entry.activityKey !== activityKey ? new Date(this.now()).toISOString()
+            : entry.clock.activity_at ?? null
+        entry.activityKey = activityKey
+        const clock = activityAt
+          ? combatTurnClock(loaded.state, [], { timeoutMs, now: this.now(), previousClock: entry.clock, activityAt })
+          : baseClock
         entry.clock = clock
         await this.onClockChanged(campaignId, clock)
         if (!clock) {

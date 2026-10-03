@@ -229,6 +229,27 @@ export function damageAmountText(amount: number | null | undefined, damageType?:
  * существа — из его действия стат-блока. Без этого поля (бой, сыгранный до
  * появления признака) глагол остаётся прежним нейтральным «атакует».
  */
+/**
+ * Винительный падеж цели: «бьёт Разбойника 1», «стреляет в Гиену». То же
+ * консервативное правило, что `accusativeName` в `server/combat-narration.mjs`:
+ * склоняется только однословное имя с однозначным окончанием, остальное — как
+ * есть. Модули разных сред, поэтому правило повторено, а сверяет их
+ * `test/combat-narration.test.mjs`.
+ */
+export function accusativeName(name: string) {
+  const match = /^([А-ЯЁа-яё]+(?:-[А-ЯЁа-яё]+)*)(\s+\d+)?$/u.exec(String(name ?? '').trim())
+  if (!match) return String(name ?? '')
+  const declined = match[1].split('-').map((part) => {
+    const lower = part.toLocaleLowerCase('ru')
+    if (/[бвгджзклмнпрстфхцчшщ]$/u.test(lower)) return `${part}а`
+    if (/[^и]а$/u.test(lower)) return `${part.slice(0, -1)}у`
+    if (/я$/u.test(lower) && lower.length > 2) return `${part.slice(0, -1)}ю`
+    return null
+  })
+  if (declined.some((part) => part == null)) return String(name ?? '')
+  return `${declined.join('-')}${match[2] ?? ''}`
+}
+
 const ATTACK_VERB_LABELS: Record<'melee' | 'ranged' | 'thrown', string> = {
   melee: 'бьёт', ranged: 'стреляет в', thrown: 'мечет в',
 }
@@ -429,7 +450,7 @@ export function battleEventText(state: GameState, event: BattleLogEvent) {
     // остаётся ровно прежней.
     const kind = event.attackKind
     const verb = kind ? ATTACK_VERB_LABELS[kind] : 'атакует'
-    const head = `${actorName(event.actorId)} ${verb} ${actorName(event.targetId)}${attackAimText(event, kind)}`
+    const head = `${actorName(event.actorId)} ${verb} ${accusativeName(actorName(event.targetId))}${attackAimText(event, kind)}`
     const damage = event.roll?.hit && event.damage != null ? `, ${damageAmountText(event.damage, event.damageType)}` : ''
     const outcome = `${event.roll?.hit ? 'попадание' : 'промах'}${rollModeText(event)}${damage}`
     const hp = !hideTargetFacts && event.hpAfter != null ? ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter}` : ''

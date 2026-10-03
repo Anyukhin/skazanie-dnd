@@ -1573,6 +1573,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const mapSummon = state.actors?.find((actor) => actor.id === mapActorId && actor.alive)
 
   const canControlHero = Boolean(mapHero && partyIdSet.has(mapActorId) && (isAdmin || accessibleHeroIds.includes(mapActorId)))
+  // Лист героя внизу — свой, пока ходит чужой. Прежде второй игрок в чужой ход
+  // видел портрет, хиты и движение того, кто ходит (плейтест 2026-10-02), и
+  // свой лист мог открыть только дождавшись очереди.
+  const hudHero = mapHero && canControlHero ? mapHero : activePlayer
   const summonControllerIds = mapSummon ? [mapSummon.ownerId, mapSummon.controllerId] : []
   const canControlSummon = Boolean(mapSummon && mapSummon.faction === 'party' && (isAdmin || summonControllerIds.some((id) => accessibleHeroIds.includes(id))))
   const canAct = !tacticalBusy && !directorBusy && !pendingTacticalCommand && !mapHero?.characterSetupRequired && lifecycleStatus === 'active' && !partyDefeated && !deadHeroIds.has(mapActorId) && (canControlHero || canControlSummon)
@@ -1771,7 +1775,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            playerHud={<PlayerHud player={mapHero ?? activePlayer} combatActive={combatActive} status={heroStatusByHero[(mapHero ?? activePlayer).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(mapHero ?? activePlayer).id] ?? [])} onCharacter={() => openHeroEditor((mapHero ?? activePlayer).id)} onInventory={() => navigate('inventory')} />}
+            playerHud={<PlayerHud player={hudHero} combatActive={combatActive} status={heroStatusByHero[(hudHero).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(hudHero).id] ?? [])} onCharacter={() => openHeroEditor((hudHero).id)} onInventory={() => navigate('inventory')} />}
             statusContent={<><SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />{roomHeaderBar}</>}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueSceneInteraction} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />

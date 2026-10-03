@@ -2762,6 +2762,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         visualBatch={visualBatch}
         animationActors={animationActors}
         focusActorId={typingActorId}
+        autoFocusKey={combatActive ? (turnActorId === typingActorId ? `turn:${combat.round ?? 1}:${turnActorId}` : 'combat') : ''}
         animationsEnabled={combatAnimations}
         combatAudio={combatAudio}
         conditions={state.mechanics?.conditions}

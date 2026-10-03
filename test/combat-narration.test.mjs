@@ -5,9 +5,10 @@
 //
 // Здесь он под тестом впервые.
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { COMBAT_NARRATION_EVENT_TYPES, combatNarration, combatNarrator, hasCombatNarrationEvent } from '../server/combat-narration.mjs'
+import { COMBAT_NARRATION_EVENT_TYPES, accusativeName, combatNarration, combatNarrator, hasCombatNarrationEvent } from '../server/combat-narration.mjs'
 import { assertNarratorContract } from '../server/deterministic-narration.mjs'
 
 const state = {
@@ -84,7 +85,7 @@ test('залп из нескольких лучей называет закли�
     attack('rays:beam:3'),
   ], state)
   assert.equal((text.match(/творит заклинание «Палящий луч»/gu) ?? []).length, 1)
-  assert.equal((text.match(/атакует Волк/gu) ?? []).length, 3)
+  assert.equal((text.match(/атакует Волка/gu) ?? []).length, 3)
 })
 
 test('persisted beam events use canonical event_id while command_id is shared', () => {
@@ -242,4 +243,17 @@ test('поднятый максимум ОЗ получает свою стро�
   ], state)
   assert.match(enemy, /Волк/u)
   assert.doesNotMatch(enemy, /20|25/u, 'числа чужого листа за столом не называют')
+})
+
+test('цель атаки склоняется, только когда окончание однозначно', () => {
+  // Плейтест 2026-10-02: «Фарн Оникс атакует Разбойник 1».
+  assert.equal(accusativeName('Разбойник 1'), 'Разбойника 1')
+  assert.equal(accusativeName('Гоблин-воин'), 'Гоблина-воина')
+  assert.equal(accusativeName('Гиена'), 'Гиену')
+  assert.equal(accusativeName('Гарпия'), 'Гарпию')
+  for (const name of ['Тень', 'Зомби', 'Брам Тихий Молот', 'Торн «Без Весла»']) assert.equal(accusativeName(name), name, name)
+  // Клиентская строка боя держит то же правило отдельной копией.
+  const client = readFileSync(new URL('../src/app-shared.tsx', import.meta.url), 'utf8')
+  assert.match(client, /export function accusativeName/u)
+  assert.ok(client.includes('/[бвгджзклмнпрстфхцчшщ]$/u.test(lower)'), 'правило мужского рода совпадает с серверным')
 })

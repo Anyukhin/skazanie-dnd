@@ -26,6 +26,34 @@ function tacticalActorName(state, id) {
   return String(actor?.character || actor?.name || expected || 'Участник')
 }
 
+const MASCULINE_CONSONANT = /[бвгджзклмнпрстфхцчшщ]$/u
+
+/**
+ * Винительный падеж имени цели для «атакует …»: «Разбойника 1», «Гоблина-воина»,
+ * «Гиену». Склоняется только однословное имя (через дефис — по частям, номер
+ * не трогается) с однозначным окончанием: мужское на согласную и женское на
+ * «-а/-я». Многословные имена, мягкий знак и прочее остаются как есть —
+ * лучше «атакует Тень», чем «атакует Теня». Плейтест 2026-10-02: «атакует
+ * Разбойник 1».
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function accusativeName(name) {
+  const match = /^([А-ЯЁа-яё]+(?:-[А-ЯЁа-яё]+)*)(\s+\d+)?$/u.exec(String(name ?? '').trim())
+  if (!match) return String(name ?? '')
+  const parts = match[1].split('-')
+  const declined = parts.map((part) => {
+    const lower = part.toLocaleLowerCase('ru')
+    if (MASCULINE_CONSONANT.test(lower)) return `${part}а`
+    if (/[^и]а$/u.test(lower)) return `${part.slice(0, -1)}у`
+    if (/я$/u.test(lower) && lower.length > 2) return `${part.slice(0, -1)}ю`
+    return null
+  })
+  if (declined.some((part) => part == null)) return String(name ?? '')
+  return `${declined.join('-')}${match[2] ?? ''}`
+}
+
 function tacticalActorIsEnemy(state, id) {
   const expected = String(id || '')
   return (state?.enemies ?? []).some((candidate) => String(candidate.id ?? candidate.actor_id ?? '') === expected)
@@ -259,8 +287,8 @@ function tacticalNarrationLines(events, state) {
           : payload.critical ? 'критическое попадание' : 'попадание'
         : 'промах'
       meaningful.push(targetIsEnemy
-        ? `${actor} атакует ${target}${reason}: ${outcome}.`
-        : `${actor} атакует ${target}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
+        ? `${actor} атакует ${accusativeName(target)}${reason}: ${outcome}.`
+        : `${actor} атакует ${accusativeName(target)}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
     } else if (event.event_type === 'NpcItemUsed') {
       // Подпись приходит готовой из закрытой таблицы тактик
       // (`NPC_ITEM_TACTICS`, `server/npc-equipment.mjs`) и намеренно

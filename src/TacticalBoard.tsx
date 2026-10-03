@@ -69,6 +69,18 @@ export function TacticalBoard(props: TacticalBoardProps) {
   const [focusRequest, setFocusRequest] = useState<{ x: number; y: number; nonce: number } | null>(null)
   const focusCell = useCallback((x: number, y: number) => setFocusRequest((current) => ({ x, y, nonce: (current?.nonce ?? 0) + 1 })), [])
   const focusActor = props.focusActorId ? props.animationActors?.find((actor) => actor.id === props.focusActorId) : undefined
+  const focusActorRef = useRef(focusActor)
+  focusActorRef.current = focusActor
+  // Один раз на ключ, но не раньше, чем фишка героя появилась на поле: при
+  // открытии комнаты в бою ключ уже стоит, а фишек ещё нет.
+  const autoFocusedKey = useRef('')
+  const focusActorReady = Boolean(focusActor)
+  useEffect(() => {
+    const actor = focusActorRef.current
+    if (!props.autoFocusKey || !actor || autoFocusedKey.current === props.autoFocusKey) return
+    autoFocusedKey.current = props.autoFocusKey
+    focusCell(actor.x, actor.y)
+  }, [props.autoFocusKey, focusActorReady, focusCell])
   return <>
     <div className="board-view-controls" role="group" aria-label="Вид карты">
       <button type="button" aria-pressed={view === '2d'} onClick={() => changeView('2d')}>2D</button>
@@ -458,6 +470,12 @@ export type TacticalBoardProps = {
   focusRequest?: { x: number; y: number; nonce: number } | null
   /** Герой зрителя: его фишка выделена на мини-карте, к нему ведёт кнопка «К герою». */
   focusActorId?: string
+  /**
+   * Смена ключа сама наводит камеру на героя зрителя — как кнопка «К герою».
+   * Пустой ключ ничего не делает. Им пользуются начало боя и начало своего
+   * хода: на карте поселения клетка мелкая, и игрок искал свою фишку.
+   */
+  autoFocusKey?: string
   /** В прокручиваемом стенде колесо страницы не должно случайно увеличивать карту. */
   wheelZoomRequiresAltKey?: boolean
   trajectory?: { x1: number; y1: number; x2: number; y2: number } | null
@@ -1259,13 +1277,26 @@ function TacticalBoard2D({
     const timer = window.setTimeout(centre, 200)
     return () => window.clearTimeout(timer)
   }, [zoom])
+  // Запрос исполняется один раз, но не раньше, чем поле измерило клетку: при
+  // открытии комнаты в бою он приходит до первой раскладки.
+  const handledFocusNonce = useRef(0)
+  const cellMeasured = cellPixels > 0
   useEffect(() => {
-    if (!focusRequest) return
+    if (!focusRequest || !cellMeasured || handledFocusNonce.current === focusRequest.nonce) return
+    handledFocusNonce.current = focusRequest.nonce
     const centre = () => {
       const frame = frameRef.current
-      const viewport = frame?.closest('.map-scroll')?.parentElement
-      if (!frame || !viewport) return
+      const scroll = frame?.closest('.map-scroll')
+      const viewport = scroll?.parentElement
+      if (!frame || !scroll || !viewport) return
+      // Рамка читается по конечному положению, а не по середине анимации:
+      // у `.map-scroll` переход transform, и в фоновой вкладке он не доигрывает,
+      // поэтому автонаведение в начале боя ставило героя за край поля.
+      const scrollElement = scroll as HTMLElement
+      const transition = scrollElement.style.transition
+      scrollElement.style.transition = 'none'
       const rect = frame.getBoundingClientRect()
+      scrollElement.style.transition = transition
       const view = viewport.getBoundingClientRect()
       if (!rect.width || !rect.height || !view.width || !view.height) return
       const cellX = rect.left + (focusRequest.x + .5) * rect.width / Math.max(1, columns)
@@ -1286,7 +1317,7 @@ function TacticalBoard2D({
       return
     }
     centre()
-  }, [focusRequest])
+  }, [focusRequest, cellMeasured])
 
   const activeByKey = useMemo(() => {
     const index = new Map<string, BoardCellNode>()
