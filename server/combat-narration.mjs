@@ -26,6 +26,34 @@ function tacticalActorName(state, id) {
   return String(actor?.character || actor?.name || expected || 'Участник')
 }
 
+/**
+ * Причина конца боя — служебный код (`enemies_defeated`, `party_defeated`…),
+ * а читает её игрок. Плейтест 2026-10-03: «Столкновение завершено: resolved».
+ * Незнакомый код не печатается: лучше общее «исход подтверждён», чем латиница.
+ */
+const ENCOUNTER_END_TEXT = Object.freeze({
+  resolved: 'исход подтверждён',
+  victory: 'победа',
+  enemies_defeated: 'противники повержены',
+  party_defeated: 'отряд пал',
+  party_incapacitated: 'отряд не может продолжать бой',
+  surrendered: 'противник сдался',
+  truce: 'стороны заключили перемирие',
+  parley: 'стороны договорились',
+  fled: 'противник бежал',
+})
+
+/**
+ * @param {unknown} reason
+ * @returns {string}
+ */
+export function encounterEndText(reason) {
+  const code = String(reason ?? '').trim()
+  if (Object.hasOwn(ENCOUNTER_END_TEXT, code)) return ENCOUNTER_END_TEXT[/** @type {keyof typeof ENCOUNTER_END_TEXT} */ (code)]
+  // Свободный русский текст ведущего (ruling) проходит как есть.
+  return /[а-яё]/iu.test(code) && !/[a-z]/iu.test(code) ? code.slice(0, 120) : ENCOUNTER_END_TEXT.resolved
+}
+
 const MASCULINE_CONSONANT = /[бвгджзклмнпрстфхцчшщ]$/u
 
 /**
@@ -230,7 +258,7 @@ function tacticalNarrationLines(events, state) {
       const names = (payload.encounter?.enemies ?? []).map((enemy) => String(enemy?.name ?? '')).filter(Boolean).slice(0, 12)
       meaningful.push(`На поле появляются противники: ${names.join(', ')}.`)
     } else if (event.event_type === 'EncounterEnded') {
-      meaningful.push(`Столкновение завершено: ${String(payload.reason ?? payload.outcome ?? 'resolved')}.`)
+      meaningful.push(`Столкновение завершено: ${encounterEndText(payload.reason ?? payload.outcome)}.`)
     } else if (event.event_type === 'CombatStarted') {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
       const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))

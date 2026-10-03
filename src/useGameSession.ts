@@ -1326,14 +1326,15 @@ export function useGameSession(options: { accountId?: string } = {}) {
     }
   }, [applyRemote, responseCommandError])
 
-  const continueAgentInteraction = useCallback((playerId?: string) => {
+  const continueAgentInteraction = useCallback(async (playerId?: string): Promise<CommandOutcome> => {
     const interaction = state.agentInteraction
-    if (!interaction || interaction.status !== 'resolved') return
+    const idle: CommandOutcome = { ok: false, error: 'Нет принятого решения, которое можно продолжить.' }
+    if (!interaction || interaction.status !== 'resolved') return idle
     // Типизированное решение исполняет сервер и восстанавливает при reconnect.
-    if (interaction.questAbandonment || interaction.questAcceptance) return
+    if (interaction.questAbandonment || interaction.questAcceptance) return idle
     const winner = interaction.options.find((option) => option.id === interaction.resolvedOptionId)
-    if (!winner) return
-    void submitAction(`[РЕШЕНИЕ ГРУППЫ] ${winner.label}`, playerId)
+    if (!winner) return idle
+    return submitAction(`[РЕШЕНИЕ ГРУППЫ] ${winner.label}`, playerId)
   }, [state.agentInteraction, submitAction])
 
   // Возвращает исход, а не только пишет его в tacticalError: вызывающему коду

@@ -28,7 +28,7 @@ import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { DiceRollScene, type DiceRollResult } from './DiceRollScene'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
-import { isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
+import { awaitsDecisionContinuation, isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
 import { createScreenMusic, type ScreenMusicPlayer } from './screen-music'
@@ -1614,14 +1614,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const canAnswerReaction = Boolean(reactionWindow && lifecycleStatus === 'active' && (isAdmin || accessibleHeroIds.includes(reactionWindow.actor_id) || accessibleHeroIds.includes(reactionControllerId)))
   const visibleTypingActorIds = (state.presence?.typing_actor_ids ?? []).filter((actorId) => actorId !== activePlayer.id)
   const narratorAvailability = narratorAvailabilityMessage(aiHealth, campaignAi?.settings.model)
-  const continueSceneInteraction = () => {
+  const continueSceneInteraction = (): Promise<CommandOutcome> => {
     if (isDirectorPartyDecision(state.agentInteraction)) {
-      if (state.agentInteraction?.status === 'resolved') {
-        void advanceAdventure('Продолжить подтверждённый переход.', activePlayer.id, state.agentInteraction.id)
-      }
-      return
+      return state.agentInteraction?.status === 'resolved'
+        ? advanceAdventure('Продолжить подтверждённый переход.', activePlayer.id, state.agentInteraction.id)
+        : Promise.resolve({ ok: false, error: 'Голосование ещё не завершено.' })
     }
-    continueAgentInteraction(activePlayer.id)
+    return continueAgentInteraction(activePlayer.id)
   }
 
   const roomHeaderBar = <RoomHeaderBar
@@ -1751,7 +1750,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             leaveLocationDisabled={travelBlocked}
             onOpenMerchant={openMerchant}
             onFinishTurn={finishMapTurn}
-            onFreeAction={(text, kind) => (isAdventureContinuation(text, { requestKind: kind ?? 'action' })
+            onFreeAction={(text, kind) => isAdventureContinuation(text, { requestKind: kind ?? 'action' }) && awaitsDecisionContinuation(state.agentInteraction)
+              ? continueSceneInteraction()
+              : (isAdventureContinuation(text, { requestKind: kind ?? 'action' })
               || (!combatActive && !(state.enemies ?? []).some((enemy) => enemy.alive !== false)
                 && isEncounterRequest(text, { requestKind: kind ?? 'action' })))
               ? advanceAdventure(text, activePlayer.id)
@@ -1779,7 +1780,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             playerHud={<PlayerHud player={hudHero} combatActive={combatActive} status={heroStatusByHero[(hudHero).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(hudHero).id] ?? [])} onCharacter={() => openHeroEditor((hudHero).id)} onInventory={() => navigate('inventory')} />}
             statusContent={<><SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />{roomHeaderBar}</>}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueSceneInteraction} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => { void continueSceneInteraction() }} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
           </DungeonMap>
         </div>}
         {view === 'world-map' && <WorldMapView state={state} busy={travelBlocked} onTravel={(action) => {

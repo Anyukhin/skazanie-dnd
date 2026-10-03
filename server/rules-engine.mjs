@@ -492,6 +492,7 @@ import {
   weatherRangedPenalty,
   worldClockEventDrafts,
 } from './weather.mjs'
+import { encounterEndText } from './combat-narration.mjs'
 import { DEFAULT_RULESET_ID, RulesValidationError, safeInteger, usesDnd2014 } from './rules/core.mjs'
 import { actorHp, actorId, actorPosition, findActor, isEnemyActor, isLivingActor, listActors } from './rules/actors.mjs'
 import {
@@ -24830,8 +24831,8 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'RandomEncounterTriggered': return `В пути возникла случайная встреча: ${payload.theme || 'unknown'} (${payload.difficulty || 'medium'})`
     case 'SceneAdvanced': return `Сцена перемещена из ${payload.location_before || 'прежней локации'} в ${payload.location_after || payload.scene?.location || 'новую локацию'}`
     case 'EncounterCreated': return `Создано столкновение: ${(payload.encounter?.enemies ?? []).map((enemy) => enemy.name).join(', ')}`
-    case 'EncounterEnded': return `Столкновение завершено: ${payload.reason || payload.outcome || 'resolved'}`
-    case 'EncounterOutcomeRecorded': return `Исход встречи подтверждён сервером: ${payload.outcome || 'resolved'}`
+    case 'EncounterEnded': return `Столкновение завершено: ${encounterEndText(payload.reason || payload.outcome)}`
+    case 'EncounterOutcomeRecorded': return `Исход встречи подтверждён сервером: ${encounterEndText(payload.outcome)}`
     case 'EncounterCoinsRolled': return `С противников собрано ${safeInteger(payload.total_cp, 0)} мм`
     case 'ServerLootGenerated': return `Найдена добыча: ${(payload.loot ?? []).map((item) => `${item.name} ×${item.quantity ?? 1}`).join(', ') || 'нет предметов'}`
     case 'EncounterRewardsDistributed': return `Награда распределена между ${(payload.allocations ?? []).map((allocation) => named(allocation.recipient_id)).join(', ') || 'никем; всё осталось нераспределённым'}`

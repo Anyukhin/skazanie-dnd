@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { COMBAT_NARRATION_EVENT_TYPES, accusativeName, combatNarration, combatNarrator, hasCombatNarrationEvent } from '../server/combat-narration.mjs'
+import { COMBAT_NARRATION_EVENT_TYPES, accusativeName, combatNarration, encounterEndText, combatNarrator, hasCombatNarrationEvent } from '../server/combat-narration.mjs'
 import { assertNarratorContract } from '../server/deterministic-narration.mjs'
 
 const state = {
@@ -256,4 +256,18 @@ test('цель атаки склоняется, только когда окон
   const client = readFileSync(new URL('../src/app-shared.tsx', import.meta.url), 'utf8')
   assert.match(client, /export function accusativeName/u)
   assert.ok(client.includes('/[бвгджзклмнпрстфхцчшщ]$/u.test(lower)'), 'правило мужского рода совпадает с серверным')
+})
+
+test('конец боя называется по-русски, служебный код игроку не печатается', () => {
+  // Плейтест 2026-10-03: «Столкновение завершено: resolved», а в обычной
+  // победе — «enemies_defeated».
+  assert.equal(encounterEndText('enemies_defeated'), 'противники повержены')
+  assert.equal(encounterEndText('party_defeated'), 'отряд пал')
+  assert.equal(encounterEndText('resolved'), 'исход подтверждён')
+  assert.equal(encounterEndText(undefined), 'исход подтверждён')
+  assert.equal(encounterEndText('some_new_code'), 'исход подтверждён')
+  assert.equal(encounterEndText('стража разняла драку'), 'стража разняла драку')
+  const text = combatNarration([{ event_type: 'EncounterEnded', payload: { reason: 'enemies_defeated', outcome: 'enemies_defeated' } }], {})
+  assert.match(text, /Столкновение завершено: противники повержены\./u)
+  assert.doesNotMatch(text, /[a-z]_[a-z]/u)
 })
