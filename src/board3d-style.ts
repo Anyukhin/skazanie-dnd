@@ -29,7 +29,12 @@ export type StyleMaterial = {
   metalness: number
   roughness: number
   doubleSided: boolean
+  /** Высота фактуры к ширине: у вырезок-полос повтор не квадратный. */
+  aspect: number
 }
+
+/** Вид стены: материал пакета и сколько клеток накрывает его повтор по горизонтали. */
+export type StyleWallLook = { material: string; cells: number }
 
 export type StyleProp = { key: string; url: string; yaw: number }
 
@@ -38,6 +43,7 @@ export type GraphicsStylePack = {
   revision: string
   floors: Record<string, StyleFloor>
   materials: Record<string, StyleMaterial>
+  walls: Record<string, StyleWallLook>
   props: Record<string, StyleProp[]>
 }
 
@@ -88,12 +94,23 @@ export function validateGraphicsStylePack(raw: unknown): GraphicsStylePack {
       if (file !== undefined && (typeof file !== 'string' || !MATERIAL_FILE.test(file))) throw new Error(`Некорректная карта материала ${key}`)
     }
     if (!finite(material.metalness, 0, 1) || !finite(material.roughness, 0, 1)) throw new Error(`Некорректные свойства материала ${key}`)
+    if (material.aspect !== undefined && !finite(material.aspect, .05, 20)) throw new Error(`Некорректная пропорция материала ${key}`)
     materials[key] = {
       color: base + material.color,
       ...(typeof material.normal === 'string' ? { normal: base + material.normal } : {}),
       ...(typeof material.orm === 'string' ? { orm: base + material.orm } : {}),
       metalness: material.metalness as number, roughness: material.roughness as number, doubleSided: material.doubleSided === true,
+      aspect: typeof material.aspect === 'number' ? material.aspect : 1,
     }
+  }
+  const walls: Record<string, StyleWallLook> = {}
+  const rawWalls = (input.walls ?? {}) as Record<string, Record<string, unknown>>
+  if (typeof rawWalls !== 'object' || Object.keys(rawWalls).length > 32) throw new Error('Некорректный список стен')
+  for (const [key, look] of Object.entries(rawWalls)) {
+    if (!KEY.test(key) || !look || typeof look !== 'object' || typeof look.material !== 'string' || !materials[look.material] || !finite(look.cells, .1, 8)) {
+      throw new Error(`Некорректный вид стены ${key}`)
+    }
+    walls[key] = { material: look.material, cells: look.cells as number }
   }
   const props: Record<string, StyleProp[]> = {}
   const rawProps = (input.props ?? {}) as Record<string, unknown>
@@ -110,10 +127,19 @@ export function validateGraphicsStylePack(raw: unknown): GraphicsStylePack {
       return { key: entry.key, url: local ? base + url : url, yaw }
     })
   }
-  return { style: GRAPHICS_STYLE, revision: input.revision, floors, materials, props }
+  return { style: GRAPHICS_STYLE, revision: input.revision, floors, materials, walls, props }
 }
 
 let pack: Promise<GraphicsStylePack | null> | null = null
+let loadedPack: GraphicsStylePack | null = null
+
+/**
+ * Уже загруженный пакет без ожидания: сцена, пересобранная после первой,
+ * строит стены и двери стиля сразу, а не прежними на один кадр.
+ */
+export function peekGraphicsStylePack(): GraphicsStylePack | null {
+  return loadedPack
+}
 
 /** Пакет стиля, один запрос на сессию; при ошибке — null и повтор при следующем обращении. */
 export function loadGraphicsStylePack(): Promise<GraphicsStylePack | null> {
@@ -129,6 +155,7 @@ export function loadGraphicsStylePack(): Promise<GraphicsStylePack | null> {
     .catch(() => null)
     .then((result) => {
       if (!result && pack === promise) pack = null
+      if (result) loadedPack = result
       return result
     })
   pack = promise

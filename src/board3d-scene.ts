@@ -9,7 +9,6 @@ import {
   drawFog,
   drawGrid,
   terrainKeysFor,
-  wallSideCell,
   visiblePropsOnBoard,
   TILE_CELLS,
   type BoardPalette,
@@ -17,7 +16,7 @@ import {
   type BoardTexture,
   type TerrainTiles,
 } from './board-render'
-import type { TacticalCell, TacticalDoorState, TacticalEdge, TacticalMap } from './types'
+import type { TacticalCell, TacticalEdge, TacticalMap } from './types'
 import { cellAt, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 import { createEnvironmentModels } from './board3d-props'
 import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
@@ -28,7 +27,8 @@ import { createBoard3DRoofs, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
-import { loadGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
+import { loadGraphicsStylePack, peekGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
+import { buildStyledEdges, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, packHasWallLooks, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
 import { buildStyledFloors } from './board3d-floor-tiles'
 
 /** Высота срезанной стены в мировых единицах клетки. */
@@ -322,56 +322,6 @@ function addInstancedPieces(
     meshes.push(instanced)
   }
   return meshes
-}
-
-function edgeVisible(map: TacticalMap, edge: TacticalEdge) {
-  const neighbor = edgeNeighbor(edge)
-  // Ребро видно, как только раскрыта любая его сторона. Это правило 2D-доски
-  // не даёт заглянуть сквозь границу ещё не открытой комнаты.
-  return revealedAt(map, edge.x, edge.y) || revealedAt(map, neighbor.x, neighbor.y)
-}
-
-function edgeSideCell(map: TacticalMap, edge: TacticalEdge) {
-  const owner = cellAt(map, edge.x, edge.y)
-  const neighbor = edgeNeighbor(edge)
-  const other = cellAt(map, neighbor.x, neighbor.y)
-  // Кладка тонкой стены — в материале помещения, а не его пола
-  // (`wallSideCell`); скрытая туманом сторона цвет не выдаёт.
-  const visible = [owner, other].map((cell) => (cell?.revealed ? cell : null))
-  if (visible.some(Boolean)) return wallSideCell(map, visible[0], visible[1])
-  return wallSideCell(map, owner, other)
-}
-
-function doorState(map: TacticalMap, edge: TacticalEdge): TacticalDoorState {
-  const door = map.doors.find((entry) => entry.id === edge.doorId
-    || (entry.x === edge.x && entry.y === edge.y && entry.dir === edge.dir))
-  return door?.state ?? 'closed'
-}
-
-function edgeCenter(edge: TacticalEdge) {
-  return edge.dir === 'e'
-    ? { x: edge.x + 1, z: edge.y + 0.5 }
-    : { x: edge.x + 0.5, z: edge.y + 1 }
-}
-
-function wallEdgeEndpoints(edge: TacticalEdge) {
-  return edge.dir === 'e'
-    ? [{ x: edge.x + 1, z: edge.y }, { x: edge.x + 1, z: edge.y + 1 }]
-    : [{ x: edge.x, z: edge.y + 1 }, { x: edge.x + 1, z: edge.y + 1 }]
-}
-
-function wallEndpointKey(x: number, z: number) {
-  return `${x},${z}`
-}
-
-/** Высота ребра принадлежит только раскрытым соседям, никогда туманной клетке. */
-function edgeFloorHeight(map: TacticalMap, edge: TacticalEdge) {
-  const neighbor = edgeNeighbor(edge)
-  const heights = [[edge.x, edge.y], [neighbor.x, neighbor.y]]
-    .filter(([x, y]) => revealedAt(map, x, y))
-    .map(([x, y]) => terrainHeightAt(map, x, y))
-    .filter(Number.isFinite)
-  return heights.length ? Math.max(...heights) : 0
 }
 
 function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette, detail: LandscapeDetail = 'reduced') {
@@ -994,7 +944,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   }
   // Скалы, мосты и растения у воды: сначала процедурные; по загрузке набора
   // моделей пересобираются только эти слои, как предметы по загрузке GLB.
-  let rocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT)
+  // Стены, двери и клетки-кладка в рисованном стиле, если пакет уже загружен:
+  // пересобранная доска (каждое открытие двери) сразу рисует их фактурами.
+  const initialPack = options.graphicsStyle !== false ? peekGraphicsStylePack() : null
+  let styledEdges: StyledEdges | null = null
+  let rocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, null, { skipMasonry: packHasWallLooks(initialPack) })
   if (rocks.group.children.length) group.add(rocks.group)
   const grass = createGrassTufts(map, visiblePropsOnBoard(map), landscapeDetail)
   if (grass) group.add(grass.group)
@@ -1008,7 +962,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       if (!kit) return
       if (disposed) { kit.release(); return }
       landscapeKit = kit
-      const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, kit)
+      const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, kit, { skipMasonry: Boolean(styledEdges) })
       rocks.dispose()
       rocks = nextRocks
       if (rocks.group.children.length) group.add(rocks.group)
@@ -1024,7 +978,16 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
 
   const roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode })
   group.add(roofs.group)
-  addEdgeScene(resources, map, group, palette, options.landscapeDetail ?? 'reduced')
+  const edgeLayer = new THREE.Group()
+  edgeLayer.name = 'edge-layer'
+  const styledEdgeOptions = { wallHeight: BOARD3D_WALL_HEIGHT, thickness: BOARD3D_WALL_THICKNESS, onTexture: () => { if (!disposed) options.onReady?.() } }
+  if (packHasWallLooks(initialPack)) {
+    styledEdges = buildStyledEdges(map, initialPack, styledEdgeOptions)
+    group.add(styledEdges.group)
+  } else {
+    addEdgeScene(resources, map, edgeLayer, palette, options.landscapeDetail ?? 'reduced')
+    group.add(edgeLayer)
+  }
   const darkness = Math.max(0, Math.min(1, options.darkness ?? 0))
   let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness)
   let propAssets: PropModelAssets | null = null
@@ -1115,6 +1078,22 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     styledFloors = null
     groundOverlay?.removeFromParent()
   }
+  // Первая доска сессии: пакет пришёл после сборки — прежние стены и кладка
+  // уступают место стенам стиля.
+  void stylePack.then((pack) => {
+    if (disposed || styledEdges || !packHasWallLooks(pack)) return
+    // Прежние стены снимаются только после удачной сборки новых: доска без
+    // стен хуже доски со стенами прежнего вида.
+    const nextEdges = buildStyledEdges(map, pack, styledEdgeOptions)
+    const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, landscapeKit, { skipMasonry: true })
+    edgeLayer.removeFromParent()
+    styledEdges = nextEdges
+    group.add(styledEdges.group)
+    rocks.dispose()
+    rocks = nextRocks
+    if (rocks.group.children.length) group.add(rocks.group)
+    options.onReady?.()
+  }).catch((error: unknown) => console.warn('Стены стиля не собрались, остаются прежние', error))
   void stylePack.then((pack) => {
     if (!pack || disposed || authoritativeArtLoaded || typeof document === 'undefined') return
     const loader = new THREE.TextureLoader()
@@ -1164,6 +1143,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     roofs.dispose()
     landscapeAbort.abort()
     rocks.dispose()
+    styledEdges?.dispose()
     grass?.dispose()
     bridges?.dispose()
     waterPlants?.dispose()

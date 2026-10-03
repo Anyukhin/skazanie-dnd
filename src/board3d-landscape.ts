@@ -474,7 +474,11 @@ export function landscapeRockModels(kit: LandscapeKit | null | undefined) {
  * С набором моделей валуны и толща — текстурированные камни Quaternius; без
  * него (загрузка, отказ, тесты) — процедурные икосаэдры.
  */
-export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wallHeight = .68, kit: LandscapeKit | null = null): LandscapeInstances {
+/**
+ * `skipMasonry` — клетки-кладку рисуют стены стиля (`src/board3d-walls.ts`):
+ * здесь остаётся только порода.
+ */
+export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wallHeight = .68, kit: LandscapeKit | null = null, { skipMasonry = false }: { skipMasonry?: boolean } = {}): LandscapeInstances {
   const group = new THREE.Group()
   group.name = 'landscape-rocks'
   const kitRocks = landscapeRockModels(kit)
@@ -500,6 +504,7 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
     const cell = cellAt(map, x, y)
     if (!cell) continue
     const level = terrainHeightAt(map, x, y)
+    if (skipMasonry && isMasonryCell(map, x, y)) continue
     // Глухая толща постройки (вокруг только непроходимое): каменная площадка
     // из плит со швами — одна плита на клетку вместо десятка камней кладки.
     if (isMasonryCell(map, x, y) && isSolidMass(map, x, y)) {

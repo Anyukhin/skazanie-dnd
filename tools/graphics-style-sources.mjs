@@ -15,11 +15,20 @@
 /** @typedef {{ quaternius?: string, painted?: string, cells: number, relief: number }} FloorSource */
 
 /**
- * Рисованный материал для перекраски чужих моделей: вырезка из фактуры
- * Quaternius, сшитая в бесшовный повтор. `rect` — x, y, ширина, высота в
- * пикселях исходника; `meters` — сколько метров модели накрывает повтор по
- * длинной стороне вырезки.
- * @typedef {{ color: string, normal?: string, orm?: string, roughness?: string, rect: [number, number, number, number], meters: number, metalness?: number, roughnessValue?: number, along?: 'u' | 'v' }} PaintedMaterial
+ * Рисованный материал: вырезка из фактуры Quaternius, сшитая в бесшовный
+ * повтор. `rect` — x, y, ширина, высота в пикселях исходника (наборы Village и
+ * Fantasy Props — 2048 px); `meters` — сколько метров модели накрывает повтор
+ * по длинной стороне вырезки. `seam` — по каким осям сшивать края (трим-полосы
+ * Quaternius уже повторяются по горизонтали). `neutral: false` оставляет
+ * собственный цвет фактуры: так красятся стены, а не перекрашенные модели,
+ * чей оттенок задают цвета вершин.
+ * @typedef {{ color: string, normal?: string, orm?: string, roughness?: string, rect: [number, number, number, number], meters: number, metalness?: number, roughnessValue?: number, along?: 'u' | 'v', seam?: '' | 'x' | 'y' | 'xy', neutral?: boolean }} PaintedMaterial
+ */
+
+/**
+ * Вид стены 3D-доски: материал пакета и сколько клеток накрывает его повтор
+ * по горизонтали (по вертикали — с пропорцией фактуры).
+ * @typedef {{ material: string, cells: number }} WallLookSource
  */
 
 /**
@@ -40,7 +49,7 @@
  * @typedef {{ ref?: string, name?: string, parts?: PartSource[], yaw?: number }} PropSource
  */
 
-/** @typedef {{ label: string, floors: Record<string, FloorSource>, materials: Record<string, PaintedMaterial>, props: Record<string, PropSource[]>, license: string, sources: string[] }} StyleSource */
+/** @typedef {{ label: string, floors: Record<string, FloorSource>, materials: Record<string, PaintedMaterial>, walls: Record<string, WallLookSource>, props: Record<string, PropSource[]>, license: string, sources: string[] }} StyleSource */
 
 /** Выпуск окружения, из которого берутся готовые модели Quaternius. */
 export const STYLE_RELEASE = '5f884daa35bf2ebe49f61f75'
@@ -402,14 +411,33 @@ export const GRAPHICS_STYLE_SOURCES = Object.freeze({
     },
     // Вырезки из фактур Quaternius; координаты — пиксели исходника.
     materials: {
-      wood: { color: 'fpmk/T_Trim_Furniture_BaseColor.png', normal: 'fpmk/T_Trim_Furniture_Normal.png', orm: 'fpmk/T_Trim_Furniture_ORM.png', rect: [0, 165, 2048, 680], meters: 1.6 },
-      straw: { color: 'mvmk/T_WoodTrim_BaseColor.png', normal: 'mvmk/T_WoodTrim_Normal.png', roughness: 'mvmk/T_WoodTrim_Roughness.png', rect: [0, 0, 1024, 310], meters: .9 },
-      stone: { color: 'mvmk/T_RockTrim_BaseColor.png', normal: 'mvmk/T_RockTrim_Normal.png', orm: 'mvmk/T_RockTrim_ORM.png', rect: [0, 345, 1024, 245], meters: 1.6 },
-      brick: { color: 'mvmk/T_RockTrim_BaseColor.png', normal: 'mvmk/T_RockTrim_Normal.png', orm: 'mvmk/T_RockTrim_ORM.png', rect: [0, 605, 1024, 412], meters: 1.2 },
-      metal: { color: 'fpmk/T_Trim_Metal_BaseColor.png', normal: 'fpmk/T_Trim_Metal_Normal.png', orm: 'fpmk/T_Trim_Metal_ORM.png', rect: [0, 40, 2048, 680], meters: 1.2, metalness: .55 },
-      cloth: { color: 'fpmk/T_Trim_Cloth_BaseColor.png', normal: 'fpmk/T_Trim_Cloth_Normal.png', orm: 'fpmk/T_Trim_Cloth_ORM.png', rect: [72, 20, 340, 900], meters: .9, along: 'v' },
-      bark: { color: 'snmk/Bark_NormalTree.png', normal: 'snmk/Bark_NormalTree_Normal.png', rect: [0, 0, 2048, 2048], meters: 1.4, along: 'v', roughnessValue: .9 },
-      plaster: { color: 'mvmk/T_Plaster_BaseColor.png', normal: 'mvmk/T_Plaster_Normal.png', orm: 'mvmk/T_Plaster_ORM.png', rect: [0, 0, 2048, 2048], meters: 2 },
+      wood: { color: 'fpmk/T_Trim_Furniture_BaseColor.png', normal: 'fpmk/T_Trim_Furniture_Normal.png', orm: 'fpmk/T_Trim_Furniture_ORM.png', rect: [0, 165, 2048, 680], meters: 1.6, seam: 'y' },
+      straw: { color: 'mvmk/T_WoodTrim_BaseColor.png', normal: 'mvmk/T_WoodTrim_Normal.png', roughness: 'mvmk/T_WoodTrim_Roughness.png', rect: [0, 0, 2048, 620], meters: .9, seam: 'y' },
+      stone: { color: 'mvmk/T_RockTrim_BaseColor.png', normal: 'mvmk/T_RockTrim_Normal.png', orm: 'mvmk/T_RockTrim_ORM.png', rect: [0, 690, 2048, 490], meters: 1.6, seam: 'y' },
+      brick: { color: 'mvmk/T_RockTrim_BaseColor.png', normal: 'mvmk/T_RockTrim_Normal.png', orm: 'mvmk/T_RockTrim_ORM.png', rect: [0, 1210, 2048, 824], meters: 1.2, seam: 'y' },
+      metal: { color: 'fpmk/T_Trim_Metal_BaseColor.png', normal: 'fpmk/T_Trim_Metal_Normal.png', orm: 'fpmk/T_Trim_Metal_ORM.png', rect: [0, 40, 2048, 680], meters: 1.2, metalness: .55, seam: 'y' },
+      cloth: { color: 'fpmk/T_Trim_Cloth_BaseColor.png', normal: 'fpmk/T_Trim_Cloth_Normal.png', orm: 'fpmk/T_Trim_Cloth_ORM.png', rect: [72, 20, 340, 900], meters: .9, along: 'v', seam: 'xy' },
+      bark: { color: 'snmk/Bark_NormalTree.png', normal: 'snmk/Bark_NormalTree_Normal.png', rect: [0, 0, 2048, 2048], meters: 1.4, along: 'v', roughnessValue: .9, seam: '' },
+      plaster: { color: 'mvmk/T_Plaster_BaseColor.png', normal: 'mvmk/T_Plaster_Normal.png', orm: 'mvmk/T_Plaster_ORM.png', rect: [0, 0, 2048, 2048], meters: 2, seam: '' },
+      // Стены: собственный цвет фактур Village, без перекраски.
+      'wall-stone': { color: 'mvmk/T_UnevenBrick_BaseColor.png', normal: 'mvmk/T_UnevenBrick_Normal.png', roughness: 'mvmk/T_UnevenBrick_Roughness.png', rect: [0, 0, 2048, 2048], meters: 2, seam: '', neutral: false },
+      'wall-brick': { color: 'mvmk/T_RedBrick_BaseColor.png', normal: 'mvmk/T_Brick_Normal.png', roughness: 'mvmk/T_Brick_Roughness.png', rect: [0, 0, 2048, 2048], meters: 2, seam: '', neutral: false },
+      'wall-ashlar': { color: 'mvmk/T_Brick_BaseColor.png', normal: 'mvmk/T_Brick_Normal.png', roughness: 'mvmk/T_Brick_Roughness.png', rect: [0, 0, 2048, 2048], meters: 2, seam: '', neutral: false },
+      'wall-plaster': { color: 'mvmk/T_Plaster_BaseColor.png', normal: 'mvmk/T_Plaster_Normal.png', orm: 'mvmk/T_Plaster_ORM.png', rect: [0, 0, 2048, 2048], meters: 2, seam: '', neutral: false },
+      'wall-planks': { color: 'fpmk/T_Trim_Furniture_BaseColor.png', normal: 'fpmk/T_Trim_Furniture_Normal.png', orm: 'fpmk/T_Trim_Furniture_ORM.png', rect: [0, 165, 2048, 680], meters: 1.6, seam: 'y', neutral: false },
+      'wall-timber': { color: 'mvmk/T_WoodTrim_BaseColor.png', normal: 'mvmk/T_WoodTrim_Normal.png', roughness: 'mvmk/T_WoodTrim_Roughness.png', rect: [0, 640, 2048, 620], meters: 1.2, seam: 'y', neutral: false },
+      'wall-log': { color: 'snmk/Bark_NormalTree.png', normal: 'snmk/Bark_NormalTree_Normal.png', rect: [0, 0, 2048, 2048], meters: 1.4, roughnessValue: .9, seam: '', neutral: false },
+    },
+    // Виды стен доски. Клетка — 1,5 м, стена в разрезе — 0,95 клетки.
+    walls: {
+      stone: { material: 'wall-stone', cells: 1.2 },
+      brick: { material: 'wall-brick', cells: 1 },
+      fortress: { material: 'wall-ashlar', cells: 1.5 },
+      plaster: { material: 'wall-plaster', cells: 1.6 },
+      planks: { material: 'wall-planks', cells: 1.4 },
+      timber: { material: 'wall-timber', cells: 1 },
+      log: { material: 'wall-log', cells: .8 },
+      iron: { material: 'metal', cells: .8 },
     },
     props: PROPS,
   },

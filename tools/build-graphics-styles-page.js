@@ -158,32 +158,34 @@ function neutralize(canvas) {
 /** Средний тон нейтральной фактуры в линейном пространстве: sRGB 0.8. */
 const NEUTRAL_LINEAR = Math.pow((.8 + .055) / 1.055, 2.4)
 
-const SEAMS = { wood: 'y', straw: 'y', stone: 'y', brick: 'y', metal: 'y', cloth: 'xy', bark: '', plaster: '' }
 
 async function buildPaintedMaterial(key, spec) {
   const [w, h] = [spec.rect[2], spec.rect[3]]
   const long = Math.max(w, h)
   const width = Math.round(1024 * w / long), height = Math.round(1024 * h / long)
+  const seams = spec.seam ?? 'xy'
   const source = await image(`/source/${spec.color}`)
-  const color = neutralize(seamless(canvasOf(source, width, height, spec.rect), SEAMS[key] ?? 'xy'))
-  const normal = spec.normal ? seamless(canvasOf(await image(`/source/${spec.normal}`), width, height, spec.rect), SEAMS[key] ?? 'xy') : null
+  const seamed = seamless(canvasOf(source, width, height, spec.rect), seams)
+  // Стены сохраняют цвет фактуры; перекрашенные модели получают нейтральную.
+  const color = spec.neutral === false ? seamed : neutralize(seamed)
+  const normal = spec.normal ? seamless(canvasOf(await image(`/source/${spec.normal}`), width, height, spec.rect), seams) : null
   const ow = Math.max(64, Math.round(width / 2)), oh = Math.max(64, Math.round(height / 2))
   let orm
   if (spec.orm) {
-    orm = seamless(canvasOf(await image(`/source/${spec.orm}`), ow, oh, spec.rect), SEAMS[key] ?? 'xy')
+    orm = seamless(canvasOf(await image(`/source/${spec.orm}`), ow, oh, spec.rect), seams)
     if (spec.metalness !== undefined) {
       const context = orm.getContext('2d'); const data = context.getImageData(0, 0, ow, oh)
       for (let i = 0; i < data.data.length; i += 4) data.data[i + 2] = Math.round(Math.max(data.data[i + 2], spec.metalness * 255))
       context.putImageData(data, 0, 0)
     }
   } else {
-    const roughness = spec.roughness ? seamless(canvasOf(await image(`/source/${spec.roughness}`), ow, oh, spec.rect), SEAMS[key] ?? 'xy') : null
+    const roughness = spec.roughness ? seamless(canvasOf(await image(`/source/${spec.roughness}`), ow, oh, spec.rect), seams) : null
     orm = ormFrom(ow, oh, { roughness, metal: spec.metalness ?? 0, roughnessValue: spec.roughnessValue ?? .85 })
   }
   await post(`materials/${key}/color.jpg`, await blob(color, .86))
   if (normal) await post(`materials/${key}/normal.jpg`, await blob(normal, .9))
   await post(`materials/${key}/orm.jpg`, await blob(orm, .85))
-  return { color: true, normal: Boolean(normal), orm: true, metalness: 1, roughness: 1, doubleSided: false }
+  return { color: true, normal: Boolean(normal), orm: true, metalness: 1, roughness: 1, doubleSided: false, aspect: +(height / width).toFixed(4) }
 }
 
 /** Материалы наборов Quaternius: исходные карты, только уменьшенные. */
@@ -529,6 +531,8 @@ async function build() {
     }
   }
   const materials = {}
+  // Материалы видов стен собираются, даже если ни одна модель их не берёт.
+  for (const look of Object.values(source.walls ?? {})) if (source.materials[look.material]) plan.usedPainted.add(look.material)
   for (const key of [...plan.usedPainted].sort()) { materials[key] = await buildPaintedMaterial(key, source.materials[key]); log(`материал ${key}`) }
   for (const [key, kit] of [...plan.kits].sort()) { materials[key] = await buildKitMaterial(key, kit); log(`материал ${key}`) }
   await post('meta.json', JSON.stringify({ materials, built }))

@@ -53,7 +53,7 @@ const PAGE = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>
 <body><h1>Рисованный стиль</h1><button id="build">Собрать стиль</button><pre id="log"></pre>
 <script type="module" src="/page.js"></script></body></html>`
 
-/** @typedef {{ color: boolean, normal: boolean, orm: boolean, metalness: number, roughness: number, doubleSided: boolean }} BuiltMaterial */
+/** @typedef {{ color: boolean, normal: boolean, orm: boolean, metalness: number, roughness: number, doubleSided: boolean, aspect?: number }} BuiltMaterial */
 
 /**
  * Манифест из файлов в staging. Готовые модели выпуска (`ref`) указываются
@@ -87,8 +87,13 @@ function finish(builtMaterials) {
     entry.metalness = +Number(built.metalness ?? 0).toFixed(3)
     entry.roughness = +Number(built.roughness ?? 1).toFixed(3)
     entry.doubleSided = Boolean(built.doubleSided)
+    if (built.aspect !== undefined && built.aspect !== 1) entry.aspect = built.aspect
     return [key, entry]
   }))
+  // Виды стен ссылаются на материалы пакета; вид без собранного материала не публикуется.
+  const walls = Object.fromEntries(Object.entries(source.walls ?? {})
+    .filter(([, look]) => Object.hasOwn(materials, look.material))
+    .map(([key, look]) => [key, { material: look.material, cells: look.cells }]))
   const props = Object.fromEntries(Object.entries(source.props).map(([assetId, list]) => [assetId, list.flatMap((prop) => {
     if (prop.ref) {
       if (!RELEASE_REF.test(prop.ref) || !existsSync(join(PUBLIC_ROOT, 'models/environment/releases', STYLE_RELEASE, prop.ref))) throw new Error(`нет модели выпуска ${prop.ref}`)
@@ -99,14 +104,14 @@ function finish(builtMaterials) {
   })]))
   // Ревизия меняется и от файлов, и от масштабов: тот же JPEG с другим
   // повтором — уже другой пол.
-  const revision = createHash('sha256').update(files.map((entry) => entry.sha256).join('')).update(JSON.stringify({ floors, materials, props })).digest('hex').slice(0, 16)
-  const manifest = { schema: 'graphics-style/v1', style: STYLE, label: source.label, revision, license: source.license, sources: source.sources, floors, materials, props, files }
+  const revision = createHash('sha256').update(files.map((entry) => entry.sha256).join('')).update(JSON.stringify({ floors, materials, walls, props })).digest('hex').slice(0, 16)
+  const manifest = { schema: 'graphics-style/v1', style: STYLE, label: source.label, revision, license: source.license, sources: source.sources, floors, materials, walls, props, files }
   rmSync(OUTPUT, { recursive: true, force: true })
   mkdirSync(OUTPUT, { recursive: true })
   cpSync(STAGING, OUTPUT, { recursive: true, filter: (path) => path !== join(STAGING, 'meta.json') })
   writeFileSync(join(OUTPUT, 'manifest.json'), `${JSON.stringify(manifest, null, 1)}\n`)
   const total = files.reduce((sum, entry) => sum + entry.bytes, 0)
-  return { style: STYLE, revision, floors: Object.keys(floors).length, materials: Object.keys(materials).length, props: Object.keys(props).length, files: files.length, megabytes: +(total / 1048576).toFixed(2) }
+  return { style: STYLE, revision, floors: Object.keys(floors).length, materials: Object.keys(materials).length, walls: Object.keys(walls).length, props: Object.keys(props).length, files: files.length, megabytes: +(total / 1048576).toFixed(2) }
 }
 
 export function startGraphicsStyleBuilder({ port = 53903 } = {}) {
@@ -194,7 +199,7 @@ export function rebuildManifest() {
   rmSync(STAGING, { recursive: true, force: true })
   cpSync(OUTPUT, STAGING, { recursive: true, filter: (path) => !path.endsWith('manifest.json') })
   return finish(Object.fromEntries(Object.entries(previous.materials ?? {}).map(([key, entry]) => [key, {
-    color: true, normal: Boolean(entry.normal), orm: Boolean(entry.orm), metalness: entry.metalness, roughness: entry.roughness, doubleSided: entry.doubleSided,
+    color: true, normal: Boolean(entry.normal), orm: Boolean(entry.orm), metalness: entry.metalness, roughness: entry.roughness, doubleSided: entry.doubleSided, aspect: entry.aspect,
   }])))
 }
 

@@ -2,7 +2,7 @@
  "schema": "graphics-style/v1",
  "style": "stylized",
  "label": "Рисованный",
- "revision": "50aa651f7f6002b3",
+ "revision": "72edcf70ccc96ecd",
  "license": "CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit) и собственные текстуры и модели проекта (data/asset-rights.json)",
  "sources": [
   "https://quaternius.com/packs/fantasypropsmegakit.html",
@@ -205,7 +205,8 @@
    "orm": "materials/brick/orm.jpg",
    "metalness": 1,
    "roughness": 1,
-   "doubleSided": false
+   "doubleSided": false,
+   "aspect": 0.4023
   },
   "cloth": {
    "color": "materials/cloth/color.jpg",
@@ -213,7 +214,8 @@
    "orm": "materials/cloth/orm.jpg",
    "metalness": 1,
    "roughness": 1,
-   "doubleSided": false
+   "doubleSided": false,
+   "aspect": 2.646
   },
   "kit-bark-deadtree": {
    "color": "materials/kit-bark-deadtree/color.jpg",
@@ -288,7 +290,8 @@
    "orm": "materials/metal/orm.jpg",
    "metalness": 1,
    "roughness": 1,
-   "doubleSided": false
+   "doubleSided": false,
+   "aspect": 0.332
   },
   "plaster": {
    "color": "materials/plaster/color.jpg",
@@ -304,7 +307,8 @@
    "orm": "materials/stone/orm.jpg",
    "metalness": 1,
    "roughness": 1,
-   "doubleSided": false
+   "doubleSided": false,
+   "aspect": 0.2393
   },
   "straw": {
    "color": "materials/straw/color.jpg",
@@ -312,7 +316,66 @@
    "orm": "materials/straw/orm.jpg",
    "metalness": 1,
    "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.3027
+  },
+  "wall-ashlar": {
+   "color": "materials/wall-ashlar/color.jpg",
+   "normal": "materials/wall-ashlar/normal.jpg",
+   "orm": "materials/wall-ashlar/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
    "doubleSided": false
+  },
+  "wall-brick": {
+   "color": "materials/wall-brick/color.jpg",
+   "normal": "materials/wall-brick/normal.jpg",
+   "orm": "materials/wall-brick/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-log": {
+   "color": "materials/wall-log/color.jpg",
+   "normal": "materials/wall-log/normal.jpg",
+   "orm": "materials/wall-log/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-planks": {
+   "color": "materials/wall-planks/color.jpg",
+   "normal": "materials/wall-planks/normal.jpg",
+   "orm": "materials/wall-planks/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.332
+  },
+  "wall-plaster": {
+   "color": "materials/wall-plaster/color.jpg",
+   "normal": "materials/wall-plaster/normal.jpg",
+   "orm": "materials/wall-plaster/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-stone": {
+   "color": "materials/wall-stone/color.jpg",
+   "normal": "materials/wall-stone/normal.jpg",
+   "orm": "materials/wall-stone/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-timber": {
+   "color": "materials/wall-timber/color.jpg",
+   "normal": "materials/wall-timber/normal.jpg",
+   "orm": "materials/wall-timber/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.3027
   },
   "wood": {
    "color": "materials/wood/color.jpg",
@@ -320,7 +383,42 @@
    "orm": "materials/wood/orm.jpg",
    "metalness": 1,
    "roughness": 1,
-   "doubleSided": false
+   "doubleSided": false,
+   "aspect": 0.332
+  }
+ },
+ "walls": {
+  "stone": {
+   "material": "wall-stone",
+   "cells": 1.2
+  },
+  "brick": {
+   "material": "wall-brick",
+   "cells": 1
+  },
+  "fortress": {
+   "material": "wall-ashlar",
+   "cells": 1.5
+  },
+  "plaster": {
+   "material": "wall-plaster",
+   "cells": 1.6
+  },
+  "planks": {
+   "material": "wall-planks",
+   "cells": 1.4
+  },
+  "timber": {
+   "material": "wall-timber",
+   "cells": 1
+  },
+  "log": {
+   "material": "wall-log",
+   "cells": 0.8
+  },
+  "iron": {
+   "material": "metal",
+   "cells": 0.8
   }
  },
  "props": {
@@ -2187,18 +2285,18 @@
   },
   {
    "file": "materials/brick/color.jpg",
-   "sha256": "bbadcd3dfafe26f9a00c7a5fb92487433ba28bafa79aec382a60f46cdc74d99a",
-   "bytes": 15991
+   "sha256": "b8a313e31ffe395b1b9175b2fbb0c2969aeba02965ef0a17e48f4c47a21cced1",
+   "bytes": 45657
   },
   {
    "file": "materials/brick/normal.jpg",
-   "sha256": "2e30ecbdeb5a9fb0510b9b6402df8b5d1cec355e290f6088ec9c514ee529ed5e",
-   "bytes": 27071
+   "sha256": "0e8586a985d783b9b03bd1a3be2d93109a17c595c2b2f492c6cc89bb64021784",
+   "bytes": 91812
   },
   {
    "file": "materials/brick/orm.jpg",
-   "sha256": "94c66ee680d8bbdfa5e353687328bff7f65a7974c73f6daecf4e7a4fff9a21a0",
-   "bytes": 2061
+   "sha256": "e15c903487bf28b0424df314c64a4e23ff69a35649d402d1443ad40d49e4ec89",
+   "bytes": 13827
   },
   {
    "file": "materials/cloth/color.jpg",
@@ -2357,31 +2455,136 @@
   },
   {
    "file": "materials/stone/color.jpg",
-   "sha256": "11681812e7b0d8cebae6bde05fc65fdd0e89e3a3de9964a1c69735466a121e83",
-   "bytes": 22913
+   "sha256": "1296ab49e53736288604337c5e0f95a4840be7a325c4cbda43ff36cff6fc9456",
+   "bytes": 13999
   },
   {
    "file": "materials/stone/normal.jpg",
-   "sha256": "a6aa5745f54fa7391c7fb1b5ee54c75e4361671f122a6525059abed88449e915",
-   "bytes": 26709
+   "sha256": "88e1d75b1f02a56695fba026cc336c0f391e9b312fb4726afa7e6cf1a14baf85",
+   "bytes": 23059
   },
   {
    "file": "materials/stone/orm.jpg",
-   "sha256": "98ed2da8b5a030e2ebbde5b0c263071480af7890bab4d07770212000e198b97b",
-   "bytes": 3242
+   "sha256": "9dd4dabfc173956209ada93ff4f05d434c320c3f4795e1afb367816adcd91e99",
+   "bytes": 2560
   },
   {
    "file": "materials/straw/color.jpg",
-   "sha256": "a989b14359f9871c78e40617a3fe96dc3e13035fc5b35a18cbe4d32b0a107050",
-   "bytes": 37190
+   "sha256": "5802d306b761558dc4ad464e65c88ed67761e7064e94709d7347f50333d86fd0",
+   "bytes": 54017
   },
   {
    "file": "materials/straw/normal.jpg",
-   "sha256": "8c2c2fc4d6f4f016ef3701820a4eafd80ed2fc74adc4c1fb040496bb1f47f042",
-   "bytes": 48639
+   "sha256": "c48df9de710626e8189b07e9928c5c04e6c028de9e7f5c656a14cb0eacf7df82",
+   "bytes": 62498
   },
   {
    "file": "materials/straw/orm.jpg",
+   "sha256": "e4a932e153fda9bf108aba3eb036423ae1c585ce5ac225b077c343de31687cd3",
+   "bytes": 1242
+  },
+  {
+   "file": "materials/wall-ashlar/color.jpg",
+   "sha256": "6581d0ad84a1a9c17294d1bb3a16ed3eb9642afb249f25f37a8c78065a226001",
+   "bytes": 89510
+  },
+  {
+   "file": "materials/wall-ashlar/normal.jpg",
+   "sha256": "c45b58828581329bf43b46d161c2725f7fded77dbe4fa3908387d8e2b4a5bfaa",
+   "bytes": 217096
+  },
+  {
+   "file": "materials/wall-ashlar/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/wall-brick/color.jpg",
+   "sha256": "7817b69d614f44a713e1e6406e012cf023934c20d31c44d1e1247cc8af2018f6",
+   "bytes": 107107
+  },
+  {
+   "file": "materials/wall-brick/normal.jpg",
+   "sha256": "c45b58828581329bf43b46d161c2725f7fded77dbe4fa3908387d8e2b4a5bfaa",
+   "bytes": 217096
+  },
+  {
+   "file": "materials/wall-brick/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/wall-log/color.jpg",
+   "sha256": "2950579d52496aef36336746fef8e3347decbc5c9cbbab5285c89df86798478c",
+   "bytes": 99283
+  },
+  {
+   "file": "materials/wall-log/normal.jpg",
+   "sha256": "0832293f3110bff197ec7e14a8939a043392d3cff1465408cf4b2982c59ebe2f",
+   "bytes": 123479
+  },
+  {
+   "file": "materials/wall-log/orm.jpg",
+   "sha256": "4c9d5ce0cffc50ca37bb6cd3fd57a160006a9ca457b0d6a4c29c9c6a91ae8870",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/wall-planks/color.jpg",
+   "sha256": "3805d70b38c1e54d2878f17a9db10888f55fec8d009257da997c1bebd6ee4e89",
+   "bytes": 35281
+  },
+  {
+   "file": "materials/wall-planks/normal.jpg",
+   "sha256": "14a996082a342df26a769fc4c2c55e3d9bfc8a518de37a65e373e00ee2e61122",
+   "bytes": 56281
+  },
+  {
+   "file": "materials/wall-planks/orm.jpg",
+   "sha256": "5b628296f92262e4c9bcc4d754cd8e665e95775153d050609d6d55a994394473",
+   "bytes": 12013
+  },
+  {
+   "file": "materials/wall-plaster/color.jpg",
+   "sha256": "b4e543f36912e71510b53c662ddcaaf8f75e073e6e7a74d8ca247e72152408df",
+   "bytes": 64651
+  },
+  {
+   "file": "materials/wall-plaster/normal.jpg",
+   "sha256": "62004961331fb12a1a7ae5a4acb75d013192037dfa646c2cb03377ed5dcef365",
+   "bytes": 108451
+  },
+  {
+   "file": "materials/wall-plaster/orm.jpg",
+   "sha256": "1e2339cd4a5f1159d3091d03daa8ba9ca756eb78f5650181a4433b4018e48e25",
+   "bytes": 23151
+  },
+  {
+   "file": "materials/wall-stone/color.jpg",
+   "sha256": "0d82619b1060c704dc3281e3ae33bc48bdb1ae302484d5a16baa9319248fdae2",
+   "bytes": 96401
+  },
+  {
+   "file": "materials/wall-stone/normal.jpg",
+   "sha256": "17edd820288af367d84fcb2fd5a43c3d9fd42d1e7d7ae2c76553443813fdd8b6",
+   "bytes": 170121
+  },
+  {
+   "file": "materials/wall-stone/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/wall-timber/color.jpg",
+   "sha256": "494f536a133f7b9b9f33ed49c5477615c101ac405b9f1b0d7ce3cfb1226f4499",
+   "bytes": 21448
+  },
+  {
+   "file": "materials/wall-timber/normal.jpg",
+   "sha256": "59a64fde9ae4f98f1ce222c95ebef29d16b6954418a0aea73c81a290eb57f30f",
+   "bytes": 58441
+  },
+  {
+   "file": "materials/wall-timber/orm.jpg",
    "sha256": "e4a932e153fda9bf108aba3eb036423ae1c585ce5ac225b077c343de31687cd3",
    "bytes": 1242
   },

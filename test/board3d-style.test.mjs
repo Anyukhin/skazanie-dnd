@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
 
-import { createTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
+import { addZone, canonicalEdge, createTacticalMap, serializeTacticalMap, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
 import { DETAIL_PROPS } from '../server/detail-props.mjs'
 import { GRAPHICS_STYLE_SOURCES, STYLE_RELEASE } from '../tools/graphics-style-sources.mjs'
 
@@ -17,7 +17,7 @@ const outputDir = join(buildDir, 'src')
 mkdirSync(join(buildDir, 'server'), { recursive: true })
 copyFileSync(join(root, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
 const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board3d-style.ts', '../src/board3d-floor-tiles.ts', '../src/tactical-map-client.ts']
+const sources = ['../src/board3d-style.ts', '../src/board3d-floor-tiles.ts', '../src/board3d-walls.ts', '../src/tactical-map-client.ts']
   .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
 const compiled = spawnSync(process.execPath, [
   compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
@@ -34,6 +34,7 @@ const style = await import(pathToFileURL(join(outputDir, 'board3d-style.mjs')).h
 const floors = await import(pathToFileURL(join(outputDir, 'board3d-floor-tiles.mjs')).href)
 const landscape = await import(pathToFileURL(join(outputDir, 'board3d-landscape.mjs')).href)
 const mapClient = await import(pathToFileURL(join(outputDir, 'tactical-map-client.mjs')).href)
+const walls = await import(pathToFileURL(join(outputDir, 'board3d-walls.mjs')).href)
 const THREE = await import('three')
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
@@ -89,7 +90,8 @@ test('каждый файл пакета лежит на месте с объя�
 
 test('модели пакета без своих текстур: каждый материал skz:* есть среди общих материалов пакета', () => {
   const data = manifest()
-  const used = new Set()
+  // Материалы видов стен берут стены доски, а не модели.
+  const used = new Set(Object.values(data.walls).map((look) => look.material))
   for (const list of Object.values(data.props)) for (const prop of list) {
     if (prop.url.startsWith('/')) continue
     const json = glbJson(readFileSync(join(STYLE_ROOT, prop.url)))
@@ -237,4 +239,123 @@ test('пол стиля — по сетке на покрытие из паке�
   const flat = floors.buildStyledFloors(map, pack, { parallax: false, loadTexture: () => new THREE.Texture() })
   assert.ok(flat.group.children.every((mesh) => mesh.material.customProgramCacheKey() !== 'board3d-floor-parallax-v1'))
   flat.dispose()
+})
+
+// --------------------------------------------------------------- стены
+
+function wallMap() {
+  const map = createTacticalMap({ width: 8, height: 6, seed: 'style-walls', theme: 'building' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', wall: 'fachwerk' })
+  addZone(map, { id: 'keep', kind: 'interior', material: 'stone' })
+  for (let y = 0; y < 6; y += 1) for (let x = 0; x < 8; x += 1) setCell(map, x, y, { passable: true, revealed: true, material: 'grass', zone: 'yard' })
+  for (let y = 1; y < 4; y += 1) for (let x = 1; x < 3; x += 1) setCell(map, x, y, { material: 'wood', zone: 'hall' })
+  for (let y = 1; y < 4; y += 1) for (let x = 4; x < 6; x += 1) setCell(map, x, y, { material: 'stone', zone: 'keep' })
+  for (let x = 1; x < 3; x += 1) setEdge(map, x, 0, x, 1, { kind: 'wall' })
+  for (let x = 4; x < 6; x += 1) setEdge(map, x, 0, x, 1, { kind: 'wall' })
+  setEdge(map, 0, 2, 1, 2, { kind: 'window' })
+  setEdge(map, 3, 2, 4, 2, { kind: 'grate' })
+  setDoor(map, { id: 'hall-door', ...canonicalEdge(1, 3, 1, 4), state: 'closed' })
+  setDoor(map, { id: 'keep-door', ...canonicalEdge(4, 3, 4, 4), state: 'open' })
+  // Ребро между двумя туманными клетками не рисуется.
+  setCell(map, 7, 4, { revealed: false })
+  setCell(map, 7, 5, { revealed: false })
+  setEdge(map, 7, 4, 7, 5, { kind: 'wall' })
+  return mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+}
+
+test('вид стены: кладка помещения главнее материала, непостроенный материал — камень с оттенком', () => {
+  const map = wallMap()
+  const at = (x, y) => mapClient.cellAt(map, x, y)
+  assert.deepEqual(walls.wallLookFor(map, at(1, 1)), { kind: 'fachwerk', body: 'plaster', tint: '#f4efe6' })
+  assert.equal(walls.wallLookFor(map, at(4, 1)).body, 'stone')
+  assert.equal(walls.wallLookFor(map, { ...at(4, 1), zone: undefined, material: 'wood' }).kind, 'planks')
+  assert.equal(walls.wallLookFor(map, { ...at(4, 1), zone: undefined, material: 'marble' }).body, 'plaster')
+  assert.notEqual(walls.wallLookFor(map, { ...at(4, 1), zone: undefined, material: 'earth' }).tint, '#ffffff')
+})
+
+test('пакет несёт все обязательные виды стен; без бруса или железа стиль стен не включается', () => {
+  const pack = style.validateGraphicsStylePack(manifest())
+  assert.equal(walls.packHasWallLooks(pack), true)
+  for (const key of ['stone', 'planks', 'timber', 'iron']) {
+    const broken = structuredClone(pack)
+    delete broken.walls[key]
+    assert.equal(walls.packHasWallLooks(broken), false, key)
+  }
+  assert.equal(walls.packHasWallLooks(null), false)
+  const bad = structuredClone(manifest())
+  bad.walls.stone.material = 'nonexistent'
+  assert.throws(() => style.validateGraphicsStylePack(bad))
+})
+
+test('стены стиля: прежние имена групп, двери отдельно, туман и фактуры пакета соблюдены', () => {
+  const pack = style.validateGraphicsStylePack(manifest())
+  const map = wallMap()
+  const requested = []
+  const built = walls.buildStyledEdges(map, pack, { wallHeight: .95, thickness: 1 / 6, loadTexture: (url, done) => { requested.push(url); done(); return new THREE.Texture() } })
+  const wallsGroup = built.group.getObjectByName('cutaway-walls')
+  const doors = built.group.getObjectByName('doors')
+  assert.ok(wallsGroup && doors)
+  const names = (group) => group.children.map((mesh) => mesh.name).sort()
+  // Фахверк: штукатурка и брус; каменная комната — камень; решётка — железо.
+  for (const name of ['wall-box:plaster', 'wall-box:timber', 'wall-box:stone', 'wall-box:iron']) assert.ok(names(wallsGroup).includes(name), name)
+  // Доски створки повёрнуты рисунком вдоль (swap), кольца — отдельная форма.
+  assert.ok(names(doors).includes('wall-box:planks:swap'))
+  assert.ok(names(doors).includes('wall-ring:iron'))
+  for (const mesh of [...wallsGroup.children, ...doors.children]) {
+    assert.ok(mesh.isInstancedMesh)
+    assert.equal(mesh.castShadow, true)
+    assert.ok(mesh.instanceColor, mesh.name)
+  }
+  // Ни один экземпляр не стоит на ребре в тумане (x = 7..8, z = 5).
+  const matrix = new THREE.Matrix4(), position = new THREE.Vector3()
+  for (const mesh of wallsGroup.children) for (let index = 0; index < mesh.count; index += 1) {
+    mesh.getMatrixAt(index, matrix)
+    position.setFromMatrixPosition(matrix)
+    assert.ok(!(position.x > 7 && position.z > 4.5), `${mesh.name} в тумане`)
+  }
+  assert.ok(requested.length > 0)
+  assert.ok(requested.every((url) => url.startsWith('/assets/styles/stylized/materials/')))
+  assert.equal(new Set(requested).size, requested.length, 'текстура запрошена один раз')
+  let disposed = 0
+  for (const mesh of [...wallsGroup.children, ...doors.children]) mesh.geometry.addEventListener('dispose', () => { disposed += 1 })
+  built.dispose()
+  assert.ok(disposed > 0)
+  assert.equal(built.group.parent, null)
+})
+
+test('открытая дверь уходит створкой в соседнюю клетку, закрытая стоит в проёме', () => {
+  const pack = style.validateGraphicsStylePack(manifest())
+  const map = wallMap()
+  const built = walls.buildStyledEdges(map, pack, { wallHeight: .95, thickness: 1 / 6, loadTexture: (_url, done) => { done(); return new THREE.Texture() } })
+  const planks = built.group.getObjectByName('doors').children.find((mesh) => mesh.name === 'wall-box:planks:swap')
+  const matrix = new THREE.Matrix4(), position = new THREE.Vector3()
+  const leaves = []
+  for (let index = 0; index < planks.count; index += 1) { planks.getMatrixAt(index, matrix); leaves.push(position.setFromMatrixPosition(matrix).clone()) }
+  // Двери на рёбрах (1,3)-(1,4) и (4,3)-(4,4): граница z = 4.
+  const closed = leaves.filter((point) => point.x < 3)
+  const open = leaves.filter((point) => point.x > 3)
+  assert.equal(closed.length, 4)
+  assert.equal(open.length, 4)
+  assert.ok(closed.every((point) => Math.abs(point.z - 4) < .01), 'закрытая створка в проёме')
+  assert.ok(open.every((point) => point.z > 4.01 && Math.abs(point.x - 4.25) < .01), 'открытая створка у петли и в соседней клетке')
+  assert.ok(Math.max(...open.map((point) => point.z)) > 4.4, 'створка развёрнута поперёк проёма')
+  built.dispose()
+})
+
+test('материал стены кладёт фактуру по мировым координатам во всех картах', () => {
+  const pack = style.validateGraphicsStylePack(manifest())
+  const spec = pack.materials[pack.walls.stone.material]
+  const material = walls.createTriplanarMaterial(spec, 1.2, { color: new THREE.Texture(), normal: new THREE.Texture(), orm: new THREE.Texture() })
+  const shader = { uniforms: {}, vertexShader: THREE.ShaderLib.physical.vertexShader, fragmentShader: THREE.ShaderLib.physical.fragmentShader }
+  material.onBeforeCompile(shader, null)
+  assert.ok(shader.uniforms.skzScale.value.y > 0)
+  assert.match(shader.vertexShader, /vSkzWorld = skzWorld\.xyz/u)
+  assert.match(shader.fragmentShader, /vec2 skzUv = skzTriplanarUv\(\)/u)
+  for (const chunk of ['map_fragment', 'normal_fragment_begin', 'normal_fragment_maps', 'roughnessmap_fragment', 'aomap_fragment']) {
+    assert.ok(!shader.fragmentShader.includes(`#include <${chunk}>`), chunk)
+  }
+  assert.ok(!/texture2D\(\s*map\s*,\s*vMapUv/u.test(shader.fragmentShader))
+  assert.equal(material.customProgramCacheKey(), 'board3d-wall-triplanar-v1')
+  material.dispose()
 })
