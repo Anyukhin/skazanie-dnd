@@ -177,14 +177,14 @@ function buildCrystalOrb() {
     const x = Math.cos(angle), z = Math.sin(angle)
     m.cylinder('orb-metal-seat-rivet', .025, .025, .035, [x * .24, .58, z * .24], C.ironLight, 12)
   }
-  m.mesh('orb-crystal', new THREE.IcosahedronGeometry(.55, 4), [0, .98, 0], C.blue)
-  ring(m, 'orb-brass-meridian', .31, .018, [0, .98, 0], C.brass, [0, 0, 0], 7, 32)
-  ring(m, 'orb-brass-equator', .30, .016, [0, .98, 0], C.brass, [PI / 2, 0, 0], 7, 32)
+  m.mesh('orb-crystal', new THREE.IcosahedronGeometry(.30, 5), [0, .92, 0], C.blue)
+  ring(m, 'orb-brass-equator', .312, .016, [0, .92, 0], C.brass, [PI / 2, 0, 0], 7, 40)
   for (const angle of [PI / 4, 3 * PI / 4, 5 * PI / 4, 7 * PI / 4]) {
     const x = Math.cos(angle), z = Math.sin(angle)
-    tube(m, 'orb-brass-cage-rib', [[x * .15, .50, z * .15], [x * .43, .76, z * .43], [x * .48, 1.18, z * .48]], .018, C.brass, 16, 7)
+    tube(m, 'orb-brass-cage-rib', [[x * .22, .64, z * .22], [x * .315, .86, z * .315], [x * .27, 1.06, z * .27], [x * .08, 1.22, z * .08]], .014, C.brass, 20, 7)
   }
-  tube(m, 'orb-brass-axis-top', [[0, 1.43, 0], [0, 1.55, 0]], .018, C.brass, 8, 6)
+  m.sphere('orb-brass-finial', [.07, .07, .07], [0, 1.23, 0], C.brass)
+  tube(m, 'orb-brass-axis-top', [[0, 1.25, 0], [0, 1.33, 0]], .014, C.brass, 8, 6)
   return finish(m, [1, 1, 1.2])
 }
 
@@ -229,18 +229,39 @@ function addAnchorLink(model, name, x, y, z, rotation, radius = .075) {
 
 function buildAnchor() {
   const m = new Model('anchor')
-  const y = .16
-  tube(m, 'anchor-iron-shank', [[0, y, .50], [0, y, .30], [0, y, -.05], [0, y, -.38]], .062, C.iron, 24, 8)
-  ring(m, 'anchor-iron-crown-ring', .105, .028, [0, y, .51], C.ironLight, [PI / 2, 0, 0], 8, 24)
-  tube(m, 'anchor-iron-stock', [[-.54, y, .29], [-.25, y, .34], [0, y, .29], [.25, y, .34], [.54, y, .29]], .060, C.ironLight, 24, 8)
-  for (const side of [-1, 1]) {
-    tube(m, `anchor-iron-fluke-${side}`, [[0, y, .46], [side * .24, y, .32], [side * .45, y, .13], [side * .58, y, -.06]], .068, C.iron, 24, 8)
-    tube(m, `anchor-iron-fluke-hook-${side}`, [[side * .58, y, -.06], [side * .54, y, -.18], [side * .43, y, -.22]], .052, C.iron, 16, 7)
-    m.cylinder(`anchor-iron-fluke-cap-${side}`, .06, .03, .12, [side * .42, y, -.22], C.ironLight, 8, [PI / 2, 0, 0])
+  // Якорь лежит плашмя: веретено вдоль Z, дуга рогов внизу, шток и рым у вершины.
+  const y = .065
+  m.taperTube('anchor-iron-shank', [[0, y, -.40], [0, y, .10], [0, y, .50]], .068, .055, C.iron, 18, 14)
+  ring(m, 'anchor-iron-ring', .12, .026, [0, .145, .62], C.ironLight, [0, 0, 0], 10, 32)
+  m.taperTube('anchor-iron-stock', [[-.46, y, .40], [0, y, .43], [.46, y, .40]], .045, .045, C.ironLight, 16, 12)
+  for (const side of [-1, 1]) m.sphere('anchor-iron-stock-ball', [.11, .11, .11], [side * .46, y, .40], C.ironLight)
+  const arc = []
+  for (let step = 0; step <= 8; step += 1) {
+    const angle = PI + step / 8 * PI
+    arc.push([Math.cos(angle) * .50, y, .02 + Math.sin(angle) * .44])
   }
-  lathe(m, 'anchor-iron-collar', [[.07, 0], [.10, .04], [.105, .13], [.07, .18]], [0, y, .26], C.ironLight, 18)
-  const chain = [[0, y, .58], [.08, y, .54], [.16, y, .46], [.18, y, .35], [.16, y, .24], [.09, y, .14], [.01, y, .08], [-.05, y, 0]]
-  for (const [index, [x, chainY, z]] of chain.entries()) addAnchorLink(m, 'anchor-chain-link', x, chainY + .008, z, index % 2 ? [PI / 2, 0, 0] : [0, 0, 0])
+  for (const side of [-1, 1]) {
+    const half = side < 0 ? arc.slice(0, 5).reverse() : arc.slice(4)
+    m.taperTube('anchor-iron-arm', half, .075, .05, C.iron, 18, 14)
+    const tip = half.at(-1), before = half.at(-2)
+    const dx = tip[0] - before[0], dz = tip[2] - before[2], length = Math.hypot(dx, dz)
+    const ux = dx / length, uz = dz / length, nx = -uz * side, nz = ux * side
+    // Лапа — плоский треугольник на конце рога, остриём вдоль рога.
+    const outline = [[tip[0] + ux * .20, tip[2] + uz * .20], [tip[0] - ux * .10 + nx * .13, tip[2] - uz * .10 + nz * .13], [tip[0] - ux * .10 - nx * .13, tip[2] - uz * .10 - nz * .13]]
+    const fluke = prism(m, 'anchor-iron-fluke', outline.map(([px, pz]) => [px, -pz]), .05, [0, y, 0], C.iron, .012)
+    fluke.rotation.x = -PI / 2
+  }
+  m.sphere('anchor-iron-crown', [.17, .13, .17], [0, y, -.42], C.iron)
+  // Цепь: от рыма уходит вбок и свёрнута кольцами рядом с веретеном.
+  const path = [[0, 0, .70], [.18, 0, .66], [.30, 0, .50], [.40, 0, .30], [.50, 0, .12], [.40, 0, -.08], [.22, 0, -.04], [.18, 0, .14], [.30, 0, .24], [.36, 0, .10], [.28, 0, .04]]
+  const curve = new THREE.CatmullRomCurve3(path.map(([px, py, pz]) => new THREE.Vector3(px, py, pz)), false, 'centripetal')
+  const count = Math.floor(curve.getLength() / .085)
+  for (let index = 0; index <= count; index += 1) {
+    const t = index / count, point = curve.getPointAt(t), tangent = curve.getTangentAt(t)
+    const heading = Math.atan2(tangent.z, tangent.x)
+    const link = ring(m, 'anchor-chain-link', .052, .016, [point.x, index % 2 ? .02 : .068, point.z], C.ironLight, index % 2 ? [PI / 2, 0, heading] : [0, -heading, 0], 8, 20)
+    link.scale.set(1.35, 1, 1)
+  }
   return finish(m, [1.4, 1.4, .35])
 }
 
@@ -278,39 +299,34 @@ function buildCapstan() {
 
 function buildDockCrane() {
   const m = new Model('dock_crane')
-  plank(m, 'crane-foot-front', [1.65, .13, .18], [0, .065, -.58], C.woodDark)
-  plank(m, 'crane-foot-back', [1.65, .13, .18], [0, .065, .58], C.woodDark)
-  for (const z of [-.46, .46]) {
-    tube(m, 'crane-upright', [[-.68, .12, z], [-.68, 1.10, z], [-.62, 2.15, z]], .085, C.wood, 24, 8)
-    tube(m, 'crane-rear-brace', [[.50, .12, z], [.12, .87, z], [-.62, 2.05, z]], .052, C.woodDark, 18, 7)
-    m.slab('crane-upright-foot', .24, .24, .12, [-.68, .12, z], C.woodEdge)
+  // Поворотная мачта на крестовине, стрела вперёд (-Z), ворот на мачте, крюк на тросе.
+  plank(m, 'crane-base-beam', [2.5, .16, .22], [0, .08, 0], C.woodDark)
+  plank(m, 'crane-base-beam', [.22, .16, 2.5], [0, .08, 0], C.woodDark)
+  for (const [x, z] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    tube(m, 'crane-base-brace', [[x * 1.0, .16, z * 1.0], [x * .12, .95, z * .12]], .045, C.wood, 6, 8)
+    addNail(m, 'crane-metal-plate-rivet', [x * 1.0, .17, z * 1.0])
   }
-  plank(m, 'crane-bottom-crossbar', [1.36, .13, .13], [-.08, .74, -.50], C.woodLight)
-  plank(m, 'crane-bottom-crossbar-back', [1.36, .13, .13], [-.08, .74, .50], C.woodLight)
-  tube(m, 'crane-metal-frame-tie-low', [[-.68, .92, -.46], [-.68, .92, .46]], .035, C.iron, 16, 7)
-  tube(m, 'crane-metal-frame-tie-high', [[-.65, 1.52, -.46], [-.65, 1.52, .46]], .032, C.iron, 16, 7)
-  plank(m, 'crane-top-crossbar', [1.48, .14, .14], [-.68, 2.16, 0], C.woodLight)
-  ring(m, 'crane-metal-swivel-plate', .28, .035, [-.62, 2.25, 0], C.iron, [PI / 2, 0, 0], 8, 24)
-  tube(m, 'crane-boom', [[-.62, 2.24, 0], [-.62, 2.12, -.55], [-.62, 1.95, -1.22]], .10, C.woodLight, 24, 8)
-  tube(m, 'crane-metal-boom-side-brace', [[-.62, 2.10, .40], [-.62, 2.02, -.35], [-.62, 1.92, -1.16]], .036, C.iron, 18, 7)
-  tube(m, 'crane-guy-rope-front', [[-.62, 2.16, .42], [-.62, 2.02, -.30], [-.62, 1.94, -1.20]], .018, C.rope, 20, 6)
-  tube(m, 'crane-guy-rope-back', [[-.62, 2.16, -.42], [-.62, 2.02, -.30], [-.62, 1.94, -1.20]], .018, C.rope, 20, 6)
-  m.cylinder('crane-metal-end-pin', .08, .08, .30, [-.62, 1.94, -1.20], C.ironLight, 16, [0, PI / 2, 0])
-  for (const x of [-.76, -.48]) plank(m, 'crane-pulley-cheek', [.08, .30, .32], [x, 1.82, -1.20], C.woodDark)
-  ring(m, 'crane-pulley', .16, .042, [-.62, 1.82, -1.20], C.woodDark, [0, PI / 2, 0], 8, 28)
-  ring(m, 'crane-metal-pulley-hub', .065, .018, [-.62, 1.82, -1.20], C.ironLight, [0, PI / 2, 0], 7, 20)
-  tube(m, 'crane-rope-over-block', [[-.62, 1.98, -1.20], [-.62, 1.88, -1.20], [-.62, 1.66, -1.20]], .018, C.rope, 18, 7)
-  tube(m, 'crane-rope', [[-.62, 1.66, -1.20], [-.62, 1.38, -1.20], [-.62, 1.06, -1.20]], .018, C.rope, 24, 7)
-  ring(m, 'crane-metal-hook-eye', .09, .020, [-.62, 1.00, -1.20], C.iron, [PI / 2, 0, 0], 7, 20)
-  m.cylinder('crane-rope-hook-thimble', .035, .040, .11, [-.62, 1.02, -1.20], C.rope, 12)
-  tube(m, 'crane-rope-eye-link', [[-.62, 1.07, -1.20], [-.62, 1.01, -1.20]], .024, C.rope, 10, 6)
-  tube(m, 'crane-metal-hook', [[-.62, 1.00, -1.20], [-.62, .83, -1.20], [-.52, .77, -1.20], [-.47, .82, -1.20]], .026, C.iron, 20, 7)
-  m.cylinder('crane-winch-drum', .13, .13, .48, [-.68, 1.18, -.10], C.woodDark, 20, [PI / 2, 0, 0])
-  m.cylinder('crane-winch-axle', .038, .038, .72, [-.68, 1.18, -.10], C.iron, 12, [PI / 2, 0, 0])
-  for (const z of [-.30, .10]) ring(m, 'crane-winch-rope-wrap', .13, .015, [-.68, 1.18, z], C.rope, [0, 0, 0], 6, 18)
-  for (const x of [-1.02, -.34]) ring(m, 'crane-metal-winch-side', .15, .024, [x, 1.18, -.10], C.ironLight, [PI / 2, 0, 0], 7, 22)
-  tube(m, 'crane-winch-handle', [[-1.04, 1.18, -.10], [-1.13, 1.36, -.10], [-1.13, 1.48, -.10]], .025, C.ironLight, 14, 7)
-  for (const x of [-.60, -.18]) addNail(m, 'crane-metal-plate-rivet', [x, .16, -.60])
+  m.cylinder('crane-metal-swivel-ring', .26, .28, .10, [0, .21, 0], C.iron, 28)
+  m.cylinder('crane-mast', .14, .16, 2.30, [0, 1.40, 0], C.wood, 24)
+  m.cylinder('crane-metal-mast-band', .17, .17, .06, [0, .40, 0], C.iron, 24)
+  m.cylinder('crane-metal-mast-band', .155, .155, .06, [0, 2.40, 0], C.iron, 24)
+  // Стрела с противовесом сзади и подкосом снизу.
+  plank(m, 'crane-boom', [.18, .20, 2.10], [0, 2.38, -.42], C.woodLight)
+  tube(m, 'crane-boom-strut', [[0, 1.55, -.12], [0, 2.02, -.70], [0, 2.28, -1.10]], .05, C.wood, 12, 8)
+  plank(m, 'crane-counterweight', [.42, .34, .34], [0, 2.20, .45], C.stone)
+  tube(m, 'crane-metal-counterweight-strap', [[-.22, 2.40, .40], [-.22, 2.04, .40], [.22, 2.04, .40], [.22, 2.40, .40]], .018, C.iron, 12, 6)
+  for (const x of [-.12, .12]) plank(m, 'crane-pulley-cheek', [.04, .30, .30], [x, 2.26, -1.38], C.woodDark)
+  ring(m, 'crane-pulley', .12, .04, [0, 2.26, -1.38], C.woodDark, [0, PI / 2, 0], 8, 28)
+  // Трос: с барабана вверх по мачте, по стреле к блоку и вниз к крюку.
+  tube(m, 'crane-rope', [[0, 1.08, -.20], [0, 2.20, -.22], [0, 2.50, -.40], [0, 2.40, -1.30], [0, 2.30, -1.50], [0, 1.80, -1.50], [0, 1.22, -1.50]], .016, C.rope, 60, 6)
+  ring(m, 'crane-metal-hook-eye', .07, .018, [0, 1.16, -1.50], C.iron, [0, PI / 2, 0], 7, 20)
+  tube(m, 'crane-metal-hook', [[0, 1.10, -1.50], [0, .92, -1.50], [0, .84, -1.42], [0, .87, -1.33], [0, .95, -1.33]], .026, C.iron, 20, 8)
+  // Ворот: барабан на двух щеках, прикреплённых к мачте, и рукоять сбоку.
+  for (const x of [-.26, .26]) plank(m, 'crane-winch-cheek', [.05, .42, .40], [x, 1.02, -.20], C.woodDark)
+  m.cylinder('crane-winch-drum', .12, .12, .48, [0, 1.02, -.24], C.woodDark, 24, [0, 0, PI / 2])
+  for (const x of [-.12, 0, .12]) ring(m, 'crane-winch-rope-wrap', .125, .014, [x, 1.02, -.24], C.rope, [0, PI / 2, 0], 6, 24)
+  m.cylinder('crane-winch-axle', .03, .03, .70, [0, 1.02, -.24], C.iron, 12, [0, 0, PI / 2])
+  tube(m, 'crane-winch-handle', [[.35, 1.02, -.24], [.35, 1.22, -.24], [.45, 1.22, -.24]], .022, C.ironLight, 10, 7)
   return finish(m, [2.8, 2.8, 2.6])
 }
 
@@ -392,26 +408,24 @@ function archWedge(model, name, centerY, innerRadius, outerRadius, start, end, d
 
 function buildSandstoneArch() {
   const m = new Model('sandstone_arch')
-  for (const side of [-1, 1]) {
-    const x = side * 1.03
-    for (let index = 0; index < 3; index += 1) plank(m, 'arch-pillar-block', [.52, .55, .70], [x + (index % 2 ? side * .025 : 0), .36 + index * .52, 0], index % 2 ? C.stoneLight : C.stone)
-    for (const y of [.635, 1.155, 1.675]) plank(m, 'arch-pillar-mortar-joint', [.55, .018, .715], [x, y, 0], C.stoneDark)
-    plank(m, 'arch-foundation', [.70, .78, .24], [x, .12, 0], C.stoneDark)
+  // Пята свода совпадает с верхом опор: камни кладутся ровно на столбы.
+  const inner = .80, outer = 1.22, mid = (inner + outer) / 2, width = outer - inner, springing = 1.38
+  for (const side of [-1, 1]) plank(m, 'arch-foundation', [width + .16, .12, .80], [side * mid, .06, 0], C.stoneDark)
+  for (let index = 0; index < 3; index += 1) {
+    plank(m, 'arch-pillar-block', [width, .42, .70], [-mid + (index % 2 ? .015 : -.01), .12 + .21 + index * .42, 0], index % 2 ? C.stoneLight : C.stone)
+    if (index < 2) plank(m, 'arch-pillar-block', [width, .42, .70], [mid + (index % 2 ? -.015 : .01), .12 + .21 + index * .42, 0], index % 2 ? C.stone : C.stoneLight)
   }
-  const centerY = 1.24
-  for (let index = 0; index < 9; index += 1) {
-    const start = (18 + index * 16) * PI / 180
-    const end = (18 + (index + 1) * 16 - 2) * PI / 180
-    archWedge(m, 'arch-vault-stone', centerY, .54, .96, start, end, .70, index % 3 === 1 ? C.stoneLight : C.stone)
-    if (index % 2 === 0) ring(m, 'arch-stone-chisel-mark', .035, .008, [Math.cos((start + end) / 2) * .76, centerY + Math.sin((start + end) / 2) * .76, -.37], C.stoneDark, [PI / 2, 0, 0], 5, 12)
-    const face = archWedge(m, 'arch-front-voussoir-face', centerY, .57, .92, start, end, .065, index % 3 === 1 ? C.stoneLight : C.stoneDark)
-    face.position.z = -.36
-    archWedge(m, 'arch-inner-lining-stone', centerY, .51, .59, start, end, .72, C.stoneDark)
-    const backFace = archWedge(m, 'arch-back-voussoir-face', centerY, .57, .92, start, end, .065, index % 3 === 1 ? C.stoneLight : C.stoneDark)
-    backFace.position.z = .36
+  m.lumpy('arch-broken-pillar-top', new THREE.DodecahedronGeometry(.5, 1), [mid + .03, .98, .02], C.stone, { size: [width * .95, .22, .62], amount: .035, frequency: 6, seed: 21 })
+  // Девять клиньев по полукругу; три правых обрушены, от свода остался консольный край.
+  for (let index = 3; index < 9; index += 1) {
+    const start = index * PI / 9 + .006, end = (index + 1) * PI / 9 - .006
+    archWedge(m, 'arch-vault-stone', springing, inner, outer, start, end, .70, index % 3 === 1 ? C.stoneLight : C.stone)
   }
-  prism(m, 'arch-broken-cap', [[.66, 1.74], [1.02, 1.92], [1.17, 1.67], [.84, 1.52]], .70, [0, 0, 0], C.stoneDark, .015)
-  for (const [x, y, z, size, color] of [[.70, .12, -.35, .16, C.stoneLight], [.91, .10, -.22, .13, C.stone], [1.16, .16, .28, .18, C.stoneDark], [-.80, .11, .32, .11, C.stoneLight]]) m.mesh('arch-rubble', new THREE.DodecahedronGeometry(size, 1), [x, y, z], color)
+  m.lumpy('arch-broken-edge', new THREE.DodecahedronGeometry(.5, 1), [Math.cos(PI / 3 + .02) * mid, springing + Math.sin(PI / 3 + .02) * mid, 0], C.stone, { size: [.20, .40, .66], amount: .03, frequency: 7, seed: 22 })
+  // Обломки свода и опоры лежат у разрушенной стороны.
+  for (const [x, z, w, h, d, turn, color, seed] of [[.70, -.38, .40, .30, .34, .4, C.stone, 23], [1.18, .34, .44, .32, .40, -.3, C.stoneLight, 24], [.32, .28, .28, .22, .26, .9, C.stone, 25], [1.30, -.26, .26, .2, .24, .2, C.stoneDark, 26]]) {
+    m.lumpy('arch-rubble', new THREE.DodecahedronGeometry(.5, 1), [x, h / 2 - .02, z], color, { size: [w, h, d], amount: .03, frequency: 6, seed, rotation: [0, turn, 0] })
+  }
   return finish(m, [2.8, .8, 2.6])
 }
 
@@ -486,29 +500,21 @@ function buildNomadTent() {
 
 function buildMangroveRoots() {
   const m = new Model('mangrove_roots')
-  lathe(m, 'mangrove-stump', [[.15, 0], [.30, .05], [.34, .20], [.29, .55], [.25, .80], [.21, .88]], [0, .02, 0], C.woodDark, 28)
-  ring(m, 'mangrove-stump-growth-ring', .20, .018, [0, .88, 0], C.woodLight, [PI / 2, 0, 0], 7, 24)
-  const roots = [
-    [[0, .18, 0], [-.26, .20, -.18], [-.55, .33, -.32], [-.98, .18, -.60], [-1.32, .08, -.74]],
-    [[0, .17, 0], [.30, .27, -.12], [.66, .36, -.27], [1.05, .16, -.46], [1.34, .07, -.58]],
-    [[0, .20, 0], [.18, .36, .34], [.46, .52, .65], [.70, .23, 1.04], [.96, .08, 1.28]],
-    [[0, .20, 0], [-.25, .32, .31], [-.56, .45, .54], [-.92, .19, .83], [-1.22, .08, 1.08]],
-    [[0, .28, 0], [-.14, .54, -.10], [-.22, .78, -.28], [-.52, .33, -.78], [-.74, .08, -1.26]],
-    [[0, .28, 0], [.16, .56, .12], [.27, .80, .25], [.46, .36, .71], [.60, .08, 1.26]],
-    [[-.05, .17, 0], [-.47, .18, .05], [-.78, .28, .10], [-1.12, .14, .28], [-1.34, .08, .34]],
-    [[.05, .17, 0], [.44, .18, .05], [.78, .25, .10], [1.12, .14, .27], [1.35, .08, .35]],
-  ]
-  for (const [rootIndex, path] of roots.entries()) {
-    const radius = rootIndex < 4 ? .125 : .092
-    taperedTube(m, `mangrove-root-${rootIndex + 1}`, path, radius, radius * .38, rootIndex % 2 ? C.wood : C.woodLight, 34, 9)
-    if (rootIndex < 4) {
-      const branch = path[2]
-      const end = [branch[0] * 1.12, branch[1] + .10, branch[2] * 1.08]
-      taperedTube(m, `mangrove-root-branch-${rootIndex + 1}`, [branch, [branch[0] * 1.08, branch[1] + .12, branch[2] * 1.03], end], .060, .020, C.woodDark, 22, 8)
-      m.mesh('mangrove-root-junction', new THREE.DodecahedronGeometry(.105, 1), branch, C.wood)
-    }
+  // Пень и ходульные корни: каждый корень отходит от ствола и дугой уходит в ил.
+  lathe(m, 'mangrove-stump', [[.30, 0], [.33, .08], [.29, .30], [.25, .70], [.22, 1.10], [.21, 1.24], [.0, 1.25]], [0, 0, 0], C.woodDark, 32)
+  ring(m, 'mangrove-stump-growth-ring', .14, .014, [0, 1.25, 0], C.woodLight, [PI / 2, 0, 0], 7, 24)
+  m.cylinder('mangrove-stump-cut', .205, .205, .012, [0, 1.25, 0], C.woodLight, 32)
+  ring(m, 'mangrove-stump-bark-lip', .21, .03, [0, 1.235, 0], C.wood, [PI / 2, 0, 0], 8, 32)
+  for (let index = 0; index < 9; index += 1) {
+    const angle = index / 9 * PI * 2 + (index % 2) * .2
+    const startY = .35 + (index % 3) * .28, reach = 1.05 + (index % 2) * .2
+    const dx = Math.cos(angle), dz = Math.sin(angle)
+    const startR = .26 - startY * .04
+    m.taperTube('mangrove-root', [[dx * startR * .7, startY, dz * startR * .7], [dx * (startR + .30), startY + .16, dz * (startR + .30)], [dx * reach * .75, startY * .62 + .12, dz * reach * .75], [dx * reach, .04, dz * reach]],
+      .085 - (index % 3) * .012, .05, index % 2 ? C.wood : C.woodLight, 28, 12)
+    m.lumpy('mangrove-mud', new THREE.SphereGeometry(.5, 20, 8, 0, PI * 2, 0, PI / 2), [dx * reach, 0, dz * reach], C.stoneDark, { size: [.30, .14, .30], amount: .015, frequency: 9, seed: 40 + index })
   }
-  ring(m, 'mangrove-root-collar', .34, .075, [0, .20, 0], C.wood, [PI / 2, 0, 0], 8, 28)
+  m.lumpy('mangrove-mud', new THREE.SphereGeometry(.5, 28, 8, 0, PI * 2, 0, PI / 2), [0, 0, 0], C.stoneDark, { size: [.95, .18, .95], amount: .02, frequency: 6, seed: 39 })
   return finish(m, [2.8, 2.8, 1.4])
 }
 

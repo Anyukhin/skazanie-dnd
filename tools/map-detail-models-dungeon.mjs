@@ -1,5 +1,5 @@
 /** Авторские низкополигональные предметы для темниц и храмов. */
-import { Model, THREE } from './map-detail-model-helpers.mjs'
+import { Model, THREE, random } from './map-detail-model-helpers.mjs'
 
 const C = Object.freeze({
   stone: '#746f65',
@@ -20,6 +20,7 @@ const C = Object.freeze({
   dark: '#242a28',
   rope: '#5b4938',
   smoke: '#8b8d86',
+  earth: '#4d3d2e',
 })
 
 /** Профильная геометрия делает камень, металл и чаши читаемыми в силуэте. */
@@ -72,92 +73,129 @@ function stoneSteps() {
   return finish(m)
 }
 
+/** Низкий бугор земли: полусфера с неровной поверхностью. */
+function mound(m, name, size, position, color, seed) {
+  return m.lumpy(name, new THREE.SphereGeometry(0.5, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), position, color, { size, amount: 0.025, frequency: 5, seed })
+}
+
 function rootTangle() {
   const m = new Model('root_tangle')
-  const paths = [
-    [[-0.08, 0.08, 0], [-0.38, 0.27, -0.03], [-0.77, 0.5, -0.27], [-1.18, 0.2, -0.42]],
-    [[0.02, 0.08, 0.02], [0.31, 0.31, 0.08], [0.72, 0.56, 0.24], [1.22, 0.27, 0.4]],
-    [[0.03, 0.1, -0.01], [-0.05, 0.36, 0.23], [0.08, 0.61, 0.46], [0.33, 0.36, 0.53]],
-    [[-0.05, 0.09, 0], [-0.28, 0.2, 0.18], [-0.55, 0.28, 0.36]],
-    [[0.02, 0.09, 0], [0.28, 0.19, -0.18], [0.54, 0.29, -0.39]],
+  // Каждый корень выходит из земли толстым концом, выгибается дугой и уходит
+  // обратно тонким: концы прикрыты земляными буграми, торцов труб не видно.
+  const roots = [
+    [[-1.30, 0.04, -0.20], [-0.95, 0.42, -0.12], [-0.45, 0.62, 0.02], [0.05, 0.38, 0.12], [0.30, 0.03, 0.18]],
+    [[1.32, 0.04, 0.22], [0.95, 0.50, 0.12], [0.40, 0.70, -0.02], [-0.10, 0.44, -0.16], [-0.38, 0.03, -0.24]],
+    [[-1.05, 0.04, 0.34], [-0.62, 0.30, 0.26], [-0.18, 0.40, 0.08], [0.22, 0.22, -0.18], [0.48, 0.02, -0.36]],
+    [[1.00, 0.04, -0.34], [0.72, 0.28, -0.20], [0.42, 0.34, 0.06], [0.12, 0.16, 0.30], [-0.05, 0.02, 0.42]],
   ]
-  for (const [pathIndex, path] of paths.entries()) {
-    for (let index = 1; index < path.length; index += 1) {
-      const radius = Math.max(0.035, 0.095 - index * 0.018)
-      m.beam(`root-${pathIndex + 1}-${index}`, path[index - 1], path[index], radius, pathIndex % 2 ? C.wood : C.woodDark)
-    }
-    tube(m, `root-smooth-${pathIndex + 1}`, path, Math.max(0.028, 0.075 - pathIndex * 0.008), pathIndex % 2 ? C.wood : C.woodDark, 12, 6)
+  roots.forEach((points, index) => {
+    m.taperTube(`root-${index + 1}`, points, 0.15 - index * 0.015, 0.035, index % 2 ? C.wood : C.woodDark, 26, 12)
+  })
+  const rootlets = [
+    [[-0.62, 0.55, 0.06], [-0.55, 0.30, 0.30], [-0.48, 0.02, 0.46]],
+    [[0.62, 0.62, 0.06], [0.70, 0.36, -0.22], [0.78, 0.02, -0.44]],
+    [[0.10, 0.36, 0.20], [0.24, 0.18, 0.40], [0.30, 0.02, 0.52]],
+    [[-0.20, 0.42, -0.10], [-0.36, 0.22, -0.34], [-0.40, 0.02, -0.50]],
+  ]
+  rootlets.forEach((points, index) => m.taperTube(`rootlet-${index + 1}`, points, 0.045, 0.015, C.wood, 14, 8))
+  for (const [x, z, w, d, seed] of [[-1.30, -0.20, 0.55, 0.42, 1], [1.32, 0.22, 0.55, 0.44, 2], [-1.05, 0.34, 0.40, 0.32, 3],
+    [1.00, -0.34, 0.42, 0.34, 4], [0.32, 0.18, 0.30, 0.26, 5], [-0.38, -0.24, 0.30, 0.28, 6], [0.48, -0.36, 0.26, 0.24, 7], [-0.05, 0.42, 0.26, 0.24, 8]]) {
+    mound(m, 'root-soil-mound', [w, 0.16, d], [x, 0, z], C.earth, seed)
   }
-  m.sphere('root-knot', [0.34, 0.25, 0.3], [0, 0.14, 0], C.wood)
-  m.sphere('root-soil-mound', [0.82, 0.10, 0.58], [0, 0.04, 0.08], C.stoneDark)
-  for (const [x, z] of [[-0.88, -0.24], [-0.42, 0.32], [0.50, 0.28], [0.88, -0.18]]) {
-    m.sphere('root-bark-knot', [0.08, 0.06, 0.08], [x, 0.08, z], C.woodLight)
+  for (const [x, y, z] of [[-0.70, 0.56, -0.06], [0.68, 0.64, 0.08], [0.02, 0.38, 0.10]]) {
+    m.sphere('root-bark-knot', [0.13, 0.10, 0.12], [x, y, z], C.woodLight)
   }
   return finish(m)
 }
 
 function armorStand() {
   const m = new Model('armor_stand')
-  m.slab('stand-foot', 0.72, 0.42, 0.08, [0, 0.04, 0.12], C.woodDark)
-  m.beam('stand-left-leg', [0, 0.08, 0.12], [-0.31, 0.38, 0.12], 0.035, C.wood)
-  m.beam('stand-right-leg', [0, 0.08, 0.12], [0.31, 0.38, 0.12], 0.035, C.wood)
-  m.cylinder('stand-post', 0.045, 0.055, 1.18, [0, 0.72, 0.12], C.woodDark, 8)
-  m.box('stand-shoulder-bar', [0.7, 0.07, 0.08], [0, 1.27, 0.12], C.wood)
-  m.cylinder('chainmail-shirt', 0.2, 0.27, 0.56, [0, 1.02, -0.01], C.iron, 10)
-  for (const y of [0.84, 1.01, 1.18]) m.torus('chainmail-ring', 0.2, 0.018, [0, y, -0.01], C.ironLight, [Math.PI / 2, 0, 0])
-  m.slab('breastplate', 0.34, 0.10, 0.40, [0, 1.13, -0.21], C.ironLight)
-  m.box('breastplate-ridge', [0.04, 0.34, 0.03], [0, 1.14, -0.27], C.iron)
-  for (const x of [-0.26, 0.26]) {
-    m.sphere('shoulder-guard', [0.20, 0.12, 0.20], [x, 1.28, 0.12], C.ironLight)
-    m.beam('arm-guard', [x, 1.18, 0.12], [x * 1.05, 0.82, 0.12], 0.055, C.iron)
+  // Крестовина, стойка и плечики — одна деревянная конструкция; кольчуга
+  // надета на плечики, шлем сидит на верхушке стойки.
+  m.slab('stand-foot', 0.92, 0.16, 0.09, [0, 0.045, 0], C.woodDark)
+  m.slab('stand-foot-cross', 0.16, 0.66, 0.09, [0, 0.045, 0], C.woodDark)
+  for (const [x, z] of [[-0.44, 0], [0.44, 0], [0, -0.31], [0, 0.31]]) m.slab('stand-foot-pad', 0.12, 0.12, 0.04, [x, 0.02, z], C.wood)
+  m.cylinder('stand-post', 0.05, 0.06, 1.52, [0, 0.85, 0], C.wood, 16)
+  for (const [x, z] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) m.beam('stand-post-brace', [x * 0.30, 0.09, z * 0.22], [0, 0.42, 0], 0.028, C.wood)
+  m.box('stand-shoulder-bar', [0.64, 0.07, 0.08], [0, 1.36, 0], C.wood)
+  m.sphere('stand-post-knob', [0.10, 0.08, 0.10], [0, 1.62, 0], C.woodDark)
+  // Кольчуга: тело вращения, сплющенное спереди назад, с плечами по перекладине.
+  const shirt = lathe(m, 'chainmail-shirt', [[0.30, 0.70], [0.29, 0.74], [0.25, 0.92], [0.26, 1.06], [0.29, 1.26], [0.28, 1.36], [0.20, 1.42], [0.10, 1.47]], C.iron, 28)
+  shirt.scale.set(1, 1, 0.62)
+  for (const y of [0.78, 0.90, 1.02, 1.14, 1.26]) {
+    m.torus('chainmail-ring', [0.290, 0.262, 0.265, 0.280, 0.298][[0.78, 0.90, 1.02, 1.14, 1.26].indexOf(y)], 0.01, [0, y, 0], C.ironLight, [Math.PI / 2, 0, 0]).scale.set(1, 0.62, 1)
   }
-  m.cylinder('armor-stand-neck', 0.11, 0.13, 0.24, [0, 1.37, 0.02], C.iron, 10)
-  m.torus('armor-stand-collar', 0.15, 0.025, [0, 1.30, 0.02], C.ironLight, [Math.PI / 2, 0, 0])
-  m.sphere('helmet', [0.32, 0.24, 0.29], [0, 1.57, -0.01], C.iron)
-  m.torus('helmet-rim', 0.17, 0.028, [0, 1.53, -0.01], C.ironLight, [Math.PI / 2, 0, 0])
-  m.box('helmet-visor', [0.2, 0.07, 0.035], [0, 1.56, -0.16], C.ironLight)
-  m.slab('helmet-crest', 0.08, 0.2, 0.07, [0, 1.70, -0.01], C.iron)
-  m.beam('armor-stand-sword-grip', [0.35, 0.24, 0.14], [0.35, 0.49, 0.14], 0.030, C.woodDark)
-  m.box('armor-stand-sword-guard', [0.20, 0.035, 0.04], [0.35, 0.50, 0.14], C.bronze)
-  m.beam('armor-stand-sword-blade', [0.35, 0.52, 0.14], [0.35, 1.16, 0.14], 0.022, C.ironLight)
-  m.sphere('armor-stand-sword-pommel', [0.045, 0.045, 0.045], [0.35, 0.21, 0.14], C.bronze)
+  m.torus('chainmail-hem', 0.30, 0.022, [0, 0.71, 0], C.ironLight, [Math.PI / 2, 0, 0]).scale.set(1, 0.62, 1)
+  m.torus('chainmail-collar', 0.11, 0.025, [0, 1.46, 0], C.ironLight, [Math.PI / 2, 0, 0])
+  for (const side of [-1, 1]) {
+    m.taperTube('chainmail-sleeve', [[side * 0.24, 1.33, 0], [side * 0.34, 1.20, 0], [side * 0.39, 1.04, 0]], 0.10, 0.085, C.iron, 10, 14)
+    m.torus('chainmail-sleeve-hem', 0.085, 0.016, [side * 0.39, 1.04, 0], C.ironLight, [Math.PI / 2, 0, side * 0.3])
+  }
+  m.box('chainmail-belt', [0.50, 0.05, 0.36], [0, 0.95, 0], C.woodDark)
+  m.box('chainmail-belt-buckle', [0.07, 0.07, 0.03], [0, 0.95, -0.18], C.bronze)
+  // Шлем с наносником сидит на верхушке стойки.
+  lathe(m, 'helmet', [[0.175, 1.57], [0.168, 1.58], [0.165, 1.63], [0.155, 1.72], [0.12, 1.80], [0.06, 1.85], [0.0, 1.86]], C.iron, 28)
+  m.torus('helmet-rim', 0.172, 0.018, [0, 1.575, 0], C.ironLight, [Math.PI / 2, 0, 0])
+  m.box('helmet-nasal', [0.045, 0.16, 0.03], [0, 1.52, -0.175], C.iron)
   return finish(m)
 }
 
 function archeryTarget() {
   const m = new Model('archery_target')
-  m.beam('target-leg-left', [0, 0.49, 0.12], [-0.45, 0.06, 0.3], 0.035, C.wood)
-  m.beam('target-leg-right', [0, 0.49, 0.12], [0.45, 0.06, 0.3], 0.035, C.wood)
-  m.beam('target-leg-back', [0, 0.49, 0.12], [0, 0.06, -0.34], 0.035, C.woodDark)
-  m.beam('target-disc-support', [0, 0.49, 0.12], [0, 0.94, 0.08], 0.045, C.woodDark)
-  m.cylinder('target-disc', 0.43, 0.43, 0.16, [0, 1.01, 0], C.straw, 12, [Math.PI / 2, 0, 0])
-  m.torus('target-outer-ring', 0.35, 0.035, [0, 1.01, -0.09], C.strawLight, [Math.PI / 2, 0, 0])
-  m.torus('target-middle-ring', 0.29, 0.025, [0, 1.01, -0.10], C.red, [Math.PI / 2, 0, 0])
-  m.torus('target-inner-ring', 0.22, 0.03, [0, 1.01, -0.1], C.strawLight, [Math.PI / 2, 0, 0])
-  m.cylinder('target-bullseye', 0.11, 0.11, 0.18, [0, 1.01, -0.01], C.red, 10, [Math.PI / 2, 0, 0])
-  for (const angle of [0, Math.PI / 2, Math.PI, Math.PI * 1.5]) {
-    const x = Math.cos(angle) * 0.31
-    const y = 1.01 + Math.sin(angle) * 0.31
-    m.beam('target-straw-binding', [x, y, -0.10], [x * 0.90, y, -0.14], 0.012, C.rope)
-  }
-  for (const [x, y, dx] of [[-0.2, 1.17, -0.02], [0.15, 0.87, 0.01], [0.23, 1.05, 0.025]]) {
-    m.beam('target-arrow-shaft', [x, y, -0.08], [x + dx, y + 0.02, -0.32], 0.014, C.iron)
-    m.slab('target-arrow-fletching', 0.10, 0.05, 0.025, [x, y, -0.09], C.woodLight)
-  }
+  // Тренога: две передние ноги и задняя подпорка сходятся у перекладины,
+  // на которую опирается наклонённый соломенный щит.
+  m.beam('target-leg-left', [-0.50, 0.03, 0.02], [-0.30, 1.32, 0.22], 0.035, C.wood)
+  m.beam('target-leg-right', [0.50, 0.03, 0.02], [0.30, 1.32, 0.22], 0.035, C.wood)
+  m.beam('target-leg-back', [0, 0.03, 0.62], [0, 1.25, 0.24], 0.035, C.woodDark)
+  m.beam('target-top-bar', [-0.33, 1.22, 0.204], [0.33, 1.22, 0.204], 0.03, C.woodDark)
+  for (const side of [-1, 1]) m.beam('target-rest-peg', [side * 0.427, 0.50, 0.093], [side * 0.36, 0.50, -0.12], 0.035, C.woodDark)
+  m.group('target-face', [0, 0.96, 0.06], [0.20, 0, 0], () => {
+    // Щит смотрит вперёд (-Z); кольца лежат на лицевой стороне ступенькой.
+    m.cylinder('target-disc', 0.44, 0.44, 0.16, [0, 0, 0], C.straw, 40, [Math.PI / 2, 0, 0])
+    m.torus('target-straw-rim', 0.44, 0.05, [0, 0, 0], C.strawLight, [0, 0, 0])
+    for (const z of [-0.06, 0.06]) m.torus('target-straw-binding', 0.452, 0.012, [0, 0, z], C.rope)
+    const rings = [[0.40, C.strawLight], [0.31, C.red], [0.22, C.strawLight], [0.13, C.red], [0.055, C.bronze]]
+    rings.forEach(([radius, color], index) => {
+      m.cylinder('target-ring', radius, radius, 0.012, [0, 0, -0.082 - index * 0.006], color, 40, [Math.PI / 2, 0, 0])
+    })
+    for (const [x, y, ax, ay] of [[-0.17, 0.13, 0.10, -0.05], [0.08, -0.20, -0.06, 0.08], [0.19, 0.06, 0.04, 0.10]]) {
+      const tail = [x + ax, y + ay, -0.56]
+      m.beam('target-arrow-shaft', [x, y, -0.06], tail, 0.011, C.woodLight)
+      for (const turn of [0, 2.09, 4.19]) {
+        m.box('target-arrow-fletching', [0.006, 0.035, 0.09], [tail[0] + Math.cos(turn) * 0.018, tail[1] + Math.sin(turn) * 0.018, tail[2] + 0.04], C.red, [0, 0, turn])
+      }
+    }
+  })
   return finish(m)
 }
 
 function strawBed() {
   const m = new Model('straw_bed')
-  for (const [index, z] of [-0.7, -0.18, 0.38, 0.78].entries()) {
-    m.sphere(`straw-bundle-${index + 1}`, [0.72, 0.2, 0.62], [index % 2 ? 0.16 : -0.14, 0.1, z], index % 2 ? C.straw : C.strawLight)
-    m.torus('straw-bundle-tie', 0.12, 0.014, [index % 2 ? 0.16 : -0.14, 0.10, z], C.rope, [0, 0, 0])
+  // Куча соломы — неровный низкий купол; одеяло ложится по её поверхности.
+  const halfX = 0.54, halfZ = 1.12, top = 0.17
+  const heap = (x, z) => top * Math.sqrt(Math.max(0, 1 - (x / halfX) ** 2 - (z / halfZ) ** 2))
+  m.lumpy('straw-heap', new THREE.SphereGeometry(0.5, 40, 14, 0, Math.PI * 2, 0, Math.PI / 2), [0, 0, 0], C.straw, { size: [halfX * 2, top, halfZ * 2], amount: 0.018, frequency: 7, seed: 11 })
+  for (const [x, z, w, d, seed] of [[-0.40, -0.80, 0.42, 0.50, 12], [0.42, -0.30, 0.36, 0.56, 13], [-0.44, 0.52, 0.34, 0.50, 14], [0.36, 0.86, 0.40, 0.42, 15]]) {
+    m.lumpy('straw-tuft', new THREE.SphereGeometry(0.5, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2), [x, 0, z], C.strawLight, { size: [w, 0.10, d], amount: 0.015, frequency: 9, seed })
   }
-  m.sphere('straw-pillow', [0.52, 0.16, 0.40], [-0.10, 0.28, 0.70], C.strawLight)
-  m.torus('straw-pillow-seam', 0.22, 0.015, [-0.10, 0.28, 0.70], C.rope, [Math.PI / 2, 0, 0])
-  m.box('blanket-front', [0.86, 0.055, 0.46], [-0.08, 0.255, -0.48], C.blanket, [0.04, 0.05, -0.1])
-  m.box('blanket-middle', [0.72, 0.055, 0.52], [0.13, 0.25, 0.02], C.blanket, [-0.03, -0.06, 0.08])
-  m.box('blanket-torn-end', [0.45, 0.05, 0.32], [-0.19, 0.245, 0.58], C.blanket, [0.02, 0.08, -0.13])
+  const next = random(41)
+  for (let index = 0; index < 46; index += 1) {
+    const angle = next() * Math.PI * 2
+    const ring = 0.86 + next() * 0.22
+    const x = Math.cos(angle) * halfX * ring, z = Math.sin(angle) * halfZ * ring
+    const length = 0.16 + next() * 0.14
+    const turn = angle + (next() - 0.5) * 1.4
+    const y = heap(x * 0.92, z * 0.92) * 0.5 + 0.012
+    m.beam('straw-strand', [x, y, z], [x + Math.cos(turn) * length, 0.01, z + Math.sin(turn) * length], 0.006, next() > 0.5 ? C.strawLight : C.straw)
+  }
+  m.lumpy('straw-pillow', new THREE.SphereGeometry(0.5, 28, 14), [0.02, 0.17, 0.78], C.strawLight, { size: [0.56, 0.14, 0.36], amount: 0.012, frequency: 8, seed: 16 })
+  // Рваное одеяло наискось поверх кучи: высота повторяет купол с небольшими складками.
+  const blanket = m.drape('blanket', 0.92, 1.30, (x, z) => {
+    const wx = x * Math.cos(0.18) - z * Math.sin(0.18) + 0.04, wz = x * Math.sin(0.18) + z * Math.cos(0.18) - 0.22
+    return heap(wx, wz) + 0.02 + Math.sin(x * 9 + z * 3) * 0.012 - Math.max(0, Math.abs(x) - 0.38) * 0.35
+  }, C.blanket, { segments: [18, 24], ragged: 0.08, seed: 17 })
+  blanket.position.set(0.04, 0, -0.22)
+  blanket.rotation.y = -0.18
   return finish(m)
 }
 

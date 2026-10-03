@@ -141,40 +141,48 @@ function buildCradle() {
 
 function buildStandingMirror() {
   const m = new Model('standing_mirror')
-  m.slab('mirror-glass', 0.56, 0.06, 1.34, v(0, 1.03, 0), C.blue)
-  m.box('frame-top', [0.76, 0.1, 0.1], v(0, 1.75, 0), C.woodDark)
-  m.box('frame-bottom', [0.76, 0.1, 0.1], v(0, 0.31, 0), C.woodDark)
-  m.box('frame-left', [0.1, 1.45, 0.1], v(-0.33, 1.03, 0), C.woodLight)
-  m.box('frame-right', [0.1, 1.45, 0.1], v(0.33, 1.03, 0), C.woodLight)
-  m.box('inner-frame-top', [0.52, 0.035, 0.04], v(0, 1.68, -0.055), C.brass)
-  m.box('inner-frame-bottom', [0.52, 0.035, 0.04], v(0, 0.38, -0.055), C.brass)
-  m.slab('base', 0.78, 0.42, 0.1, v(0, 0.05, 0.04), C.woodDark)
-  m.slab('left-foot', 0.28, 0.46, 0.08, v(-0.25, 0.08, 0.04), C.wood)
-  m.slab('right-foot', 0.28, 0.46, 0.08, v(0.25, 0.08, 0.04), C.wood)
-  m.beam('rear-brace', v(0, 0.08, 0.18), v(0, 1.2, 0.08), 0.045, C.wood)
-  m.box('ornament', [0.16, 0.07, 0.05], v(0, 1.78, -0.02), C.brass)
-  m.sphere('ornament-gem', [0.05, 0.05, 0.025], v(0, 1.79, -0.055), C.red)
+  // Псише: две стойки на ножках, между ними на шпильках качается рама.
+  for (const x of [-0.34, 0.34]) {
+    m.slab('foot', 0.10, 0.50, 0.07, v(x, 0.035, 0.02), C.woodDark)
+    m.box('post', [0.07, 1.40, 0.07], v(x, 0.76, 0.02), C.wood)
+    m.sphere('post-finial', [0.09, 0.09, 0.09], v(x, 1.48, 0.02), C.brass)
+    m.beam('pivot-pin-metal', v(x, 0.98, 0.02), v(x * 0.78, 0.98, 0.02), 0.018, C.brass)
+  }
+  m.box('lower-rail', [0.62, 0.06, 0.05], v(0, 0.20, 0.02), C.wood)
+  m.group('mirror-frame', [0, 0.98, 0.02], [0.07, 0, 0], () => {
+    for (const x of [-0.24, 0.24]) m.box('frame-side', [0.06, 1.46, 0.06], v(x, 0, 0), C.woodLight)
+    for (const y of [-0.70, 0.70]) m.box('frame-rail', [0.54, 0.06, 0.06], v(0, y, 0), C.woodLight)
+    m.slab('mirror-glass', 0.43, 0.018, 1.36, v(0, 0, -0.012), C.blue)
+    m.slab('frame-back-panel', 0.46, 0.02, 1.38, v(0, 0, 0.022), C.woodDark)
+    m.box('inner-bead', [0.43, 0.025, 0.02], v(0, 0.665, -0.028), C.brass)
+    m.box('inner-bead', [0.43, 0.025, 0.02], v(0, -0.665, -0.028), C.brass)
+    m.box('crest', [0.30, 0.08, 0.05], v(0, 0.77, 0), C.woodLight)
+    m.sphere('crest-gem', [0.05, 0.05, 0.03], v(0, 0.77, -0.03), C.red)
+  })
   return m
 }
 
 function buildCoatRack() {
   const m = new Model('coat_rack')
-  m.cylinder('post', 0.055, 0.075, 1.55, v(0, 0.82, 0), C.woodDark, 10)
-  m.slab('foot', 0.48, 0.42, 0.08, v(0, 0.04, 0), C.wood)
-  for (const [x, z] of [[-0.18, 0], [0.18, 0], [0, -0.17], [0, 0.17]]) {
-    m.beam('foot-spoke', v(0, 0.09, 0), v(x, 0.09, z), 0.035, C.woodLight)
+  m.cylinder('post', 0.045, 0.06, 1.55, v(0, 0.82, 0), C.woodDark, 24)
+  m.cylinder('foot-hub', 0.09, 0.11, 0.12, v(0, 0.10, 0), C.wood, 24)
+  for (let index = 0; index < 4; index += 1) {
+    const angle = index * Math.PI / 2 + Math.PI / 4
+    m.beam('foot-spoke', v(0, 0.10, 0), v(Math.cos(angle) * 0.27, 0.03, Math.sin(angle) * 0.27), 0.03, C.woodLight)
   }
-  m.beam('hook-left', v(0, 1.48, 0), v(-0.24, 1.66, 0), 0.035, C.woodLight)
-  m.beam('hook-right', v(0, 1.48, 0), v(0.24, 1.66, 0), 0.035, C.woodLight)
-  m.beam('hook-front', v(0, 1.5, 0), v(0, 1.68, -0.2), 0.035, C.woodLight)
-  // Плащ и шляпа делают силуэт стойки различимым сверху.
-  m.box('cloak', [0.3, 0.7, 0.08], v(-0.18, 1.18, -0.02), C.red, [0, 0, -0.08])
-  m.box('cloak-collar', [0.24, 0.08, 0.1], v(-0.2, 1.5, -0.03), C.woodDark, [0, 0, -0.08])
-  for (const y of [1.2, 1.38]) m.sphere('cloak-button', [0.035, 0.035, 0.025], [-0.2, y, -0.08], C.brass)
-  m.sphere('hat-crown', [0.2, 0.12, 0.2], v(0.22, 1.72, 0), C.woodDark)
-  m.cylinder('hat-brim', 0.15, 0.15, 0.035, v(0.22, 1.66, 0), C.woodDark, 10)
-  m.torus('hat-band', 0.12, 0.018, v(0.22, 1.7, 0), C.red, [Math.PI / 2, 0, 0])
-  m.sphere('post-finial', [0.09, 0.09, 0.09], v(0, 1.66, 0), C.brass)
+  m.beam('hook-left', v(0, 1.46, 0), v(-0.22, 1.60, 0), 0.025, C.woodLight)
+  m.beam('hook-right', v(0, 1.46, 0), v(0.22, 1.60, 0), 0.025, C.woodLight)
+  m.beam('hook-front', v(0, 1.48, 0), v(0, 1.62, -0.2), 0.025, C.woodLight)
+  m.sphere('post-finial', [0.09, 0.09, 0.09], v(0, 1.62, 0), C.brass)
+  // Плащ висит капюшоном на левом крючке и касается стойки подолом.
+  const cloak = m.mesh('cloak', new THREE.CylinderGeometry(0.07, 0.19, 1.0, 28, 1, true), v(-0.19, 1.08, 0), C.red)
+  cloak.scale.set(1, 1, 0.5)
+  m.lumpy('cloak-hood', new THREE.SphereGeometry(0.5, 20, 12), v(-0.21, 1.60, 0.01), C.red, { size: [0.17, 0.13, 0.12], amount: 0.008, frequency: 10, seed: 5 })
+  for (const y of [1.32, 1.46]) m.sphere('cloak-clasp', [0.03, 0.03, 0.02], v(-0.19, y, -0.05), C.brass)
+  // Шляпа надета на правый крючок.
+  m.cylinder('hat-brim', 0.16, 0.16, 0.025, v(0.23, 1.61, 0), C.woodDark, 32)
+  m.mesh('hat-crown', new THREE.LatheGeometry([[0.105, 1.62], [0.10, 1.70], [0.08, 1.75], [0, 1.77]].map(([r, y]) => new THREE.Vector2(r, y)), 24), v(0.23, 0, 0), C.woodDark)
+  m.torus('hat-band', 0.104, 0.013, v(0.23, 1.64, 0), C.red, [Math.PI / 2, 0, 0])
   return m
 }
 
@@ -202,20 +210,27 @@ function buildKitchenStove() {
 
 function buildBreadOven() {
   const m = new Model('bread_oven')
-  m.slab('oven-floor', 2.48, 2.3, 0.22, v(0, 0.11, 0), C.stoneDark)
-  m.sphere('stone-dome', [2.55, 1.72, 2.2], v(0, 0.92, 0.06), C.stoneLight)
-  m.slab('front-apron', 2.72, 0.2, 0.38, v(0, 0.3, -1.12), C.stone)
-  m.slab('arch-opening', 0.92, 0.06, 0.76, v(0, 0.53, -1.17), C.dark)
-  m.sphere('opening-top', [0.92, 0.54, 0.08], v(0, 0.91, -1.18), C.dark)
-  m.box('arch-left', [0.14, 0.78, 0.14], v(-0.57, 0.54, -1.15), C.stone)
-  m.box('arch-right', [0.14, 0.78, 0.14], v(0.57, 0.54, -1.15), C.stone)
-  for (const [x, y] of [[-0.4, 0.97], [0.4, 0.97], [-0.25, 1.14], [0.25, 1.14], [0, 1.24]]) {
-    m.box('arch-voussoir', [0.23, 0.16, 0.16], [x, y, -1.19], C.stoneLight, [0, 0, x * 0.45])
+  m.slab('oven-floor', 2.6, 2.5, 0.22, v(0, 0.11, 0.05), C.stoneDark)
+  // Купол стоит на основании, устье — короткий свод, врезанный в купол спереди.
+  m.lumpy('stone-dome', new THREE.SphereGeometry(0.5, 40, 16, 0, Math.PI * 2, 0, Math.PI / 2), v(0, 0.22, 0.12), C.stoneLight,
+    { size: [2.3, 2.9, 2.2], amount: 0.025, frequency: 4, seed: 8 })
+  m.box('mouth-vault', [1.0, 0.62, 0.62], v(0, 0.53, -0.92), C.stone)
+  m.mesh('mouth-vault-arch', new THREE.CylinderGeometry(0.5, 0.5, 0.62, 28, 1, false, 0, Math.PI), v(0, 0.84, -0.92), C.stone, [Math.PI / 2, 0, Math.PI / 2])
+  m.slab('arch-opening', 0.56, 0.03, 0.42, v(0, 0.45, -1.235), C.dark)
+  m.mesh('opening-top', new THREE.CylinderGeometry(0.28, 0.28, 0.03, 24, 1, false, 0, Math.PI), v(0, 0.66, -1.235), C.dark, [Math.PI / 2, 0, Math.PI / 2])
+  for (let index = 0; index < 7; index += 1) {
+    const angle = Math.PI * index / 6
+    m.box('arch-voussoir', [0.14, 0.12, 0.08], v(Math.cos(angle) * 0.38, 0.66 + Math.sin(angle) * 0.38, -1.24), C.stoneLight, [0, 0, angle - Math.PI / 2])
   }
-  m.cylinder('oven-fire', 0.16, 0.2, 0.04, [0, 0.36, -1.21], C.red, 10)
-  m.beam('oven-chimney', v(0.7, 1.55, 0.18), v(0.7, 1.96, 0.18), 0.1, C.stoneDark)
-  m.beam('wooden-peel', v(0.88, 0.08, -0.9), v(1.23, 1.22, -1.36), 0.035, C.woodLight)
-  m.box('peel-blade', [0.33, 0.025, 0.24], v(1.23, 1.22, -1.36), C.woodLight, [0.35, 0, 0])
+  m.box('mouth-sill', [0.7, 0.06, 0.22], v(0, 0.25, -1.28), C.stoneLight)
+  m.cylinder('oven-fire', 0.16, 0.2, 0.04, v(0, 0.26, -1.18), C.red, 24)
+  m.cylinder('oven-chimney', 0.12, 0.14, 0.42, v(0, 1.28, -0.78), C.stoneDark, 24)
+  m.cylinder('oven-chimney-cap', 0.17, 0.17, 0.05, v(0, 1.50, -0.78), C.stoneDark, 24)
+  // Лопата для хлеба стоит черенком на полу и опирается лопастью о купол.
+  const from = new THREE.Vector3(1.40, 0.24, -0.62), to = new THREE.Vector3(0.88, 1.02, -0.38)
+  m.beam('wooden-peel', from.toArray(), to.toArray(), 0.03, C.woodLight)
+  const blade = m.mesh('peel-blade', new THREE.BoxGeometry(0.32, 0.38, 0.025), to.clone().add(to.clone().sub(from).normalize().multiplyScalar(0.17)).toArray(), C.woodLight)
+  blade.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize())
   return m
 }
 
@@ -223,7 +238,6 @@ function buildWashtub() {
   const m = new Model('washtub')
   m.barrel('washtub-body', 0.46, 0.48, v(0, 0.24, 0), C.wood)
   m.torus('washtub-rim', 0.43, 0.035, v(0, 0.73, 0), C.woodLight, [Math.PI / 2, 0, 0])
-  for (const y of [0.12, 0.36]) m.torus('washtub-hoop', 0.42, 0.022, v(0, y, 0), C.iron, [Math.PI / 2, 0, 0])
   m.cylinder('soapy-water', 0.36, 0.4, 0.025, v(0, 0.73, 0), C.water, 16)
   m.torus('water-suds', 0.26, 0.035, v(-0.08, 0.755, 0.03), C.cream, [Math.PI / 2, 0, 0])
   m.cylinder('plate', 0.16, 0.16, 0.035, v(0.18, 0.78, -0.03), C.stoneLight, 12)
@@ -231,7 +245,7 @@ function buildWashtub() {
   m.box('washboard', [0.28, 0.45, 0.05], v(-0.35, 0.76, -0.1), C.woodLight, [0.24, 0, 0])
   for (const y of [0.62, 0.73, 0.84]) m.box('washboard-rib', [0.24, 0.025, 0.06], v(-0.35, y, -0.15), C.woodDark, [0.24, 0, 0])
   m.cylinder('soap', 0.09, 0.1, 0.07, v(0.26, 0.8, 0.08), C.cream, 10)
-  for (const x of [-0.3, 0.3]) m.box('wooden-leg', [0.09, 0.16, 0.09], v(x, 0.08, 0), C.woodDark)
+  for (const x of [-0.3, 0.3]) m.box('wooden-leg', [0.09, 0.26, 0.09], v(x, 0.13, 0), C.woodDark)
   return m
 }
 

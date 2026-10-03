@@ -649,13 +649,13 @@
         "h": 2
       },
       "file": "models/forge.glb",
-      "triangles": 13676,
+      "triangles": 12948,
       "textureSize": [
         512,
         512
       ],
-      "sha256": "11b44aae7023d5424208ac26dcf6daec751e627ee8a2707f4bc4b6b0c68a5fb5",
-      "bytes": 1051616,
+      "sha256": "53675b1d42112571a57852d92194d3ba6cfd6a809e9839debbeba4c1c09d438c",
+      "bytes": 1030792,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -781,13 +781,13 @@
         "h": 1
       },
       "file": "models/coal_pile.glb",
-      "triangles": 6792,
+      "triangles": 3184,
       "textureSize": [
         512,
         256
       ],
-      "sha256": "9c947f78e2dcf9b405a468de41f9706a4a72c51103600f41eabafdc691a60fac",
-      "bytes": 501596,
+      "sha256": "66ba13fefb15a46d23fda0a2ba7231b65510c66d9c8f76d125b4f1d251740524",
+      "bytes": 377524,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -847,13 +847,13 @@
         "h": 1
       },
       "file": "models/sawhorse.glb",
-      "triangles": 3672,
+      "triangles": 8368,
       "textureSize": [
         512,
         256
       ],
-      "sha256": "cf2f9f5de568bb9211323af551766c6126f807a2bfa2ae8385d2607a29c23323",
-      "bytes": 376652,
+      "sha256": "da304ecb0237861ed4e8084f995eb530975616f09385cb9fb2b28a6ccf7d246e",
+      "bytes": 523148,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -1045,13 +1045,13 @@
         "h": 3
       },
       "file": "models/water_wheel.glb",
-      "triangles": 9608,
+      "triangles": 11868,
       "textureSize": [
         512,
-        512
+        256
       ],
-      "sha256": "ce47b8d7cf5fa8557a986a44debca05339475c703d33d4b240369838361114b2",
-      "bytes": 768920,
+      "sha256": "8d7d2339d4986fe00a46f932081dcffad6ef3c2483cef01a74c30adfa6e61c2e",
+      "bytes": 683616,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -1375,13 +1375,13 @@
         "h": 1
       },
       "file": "models/scarecrow.glb",
-      "triangles": 5440,
+      "triangles": 17444,
       "textureSize": [
-        256,
+        512,
         256
       ],
-      "sha256": "228316ea1951d0634159bfc2ff64238db710c081d442c65163e0c13a4959390f",
-      "bytes": 301568,
+      "sha256": "9d76f2e2c32675a2d4f1a86e2ecf8ac16dd29b9cb26aeb7652f2d62e896bcc7b",
+      "bytes": 892612,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -1969,13 +1969,13 @@
         "h": 1
       },
       "file": "models/standing_mirror.glb",
-      "triangles": 3684,
+      "triangles": 6584,
       "textureSize": [
-        256,
+        512,
         256
       ],
-      "sha256": "fafeec9e593136813d87fdf42a05698c2eda97ca5475b9006035ac0b2becfbcf",
-      "bytes": 245152,
+      "sha256": "c24a24c0559ef11ca8f0af3591437bec0b47177575d988c623c5b9f4b5a93039",
+      "bytes": 465868,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -2035,13 +2035,13 @@
         "h": 1
       },
       "file": "models/coat_rack.glb",
-      "triangles": 4884,
+      "triangles": 3800,
       "textureSize": [
         256,
         256
       ],
-      "sha256": "e04240a4d77a57ae1519d3611574502df44f1a126efa920261015c2b988ba6a8",
-      "bytes": 287656,
+      "sha256": "7ecbc9bc23a7f61f6f978eb725808b98c835697ea8fc72bc7ee860bdd943f26c",
+      "bytes": 251584,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -2167,13 +2167,13 @@
         "h": 2
       },
       "file": "models/bread_oven.glb",
-      "triangles": 5492,
+      "triangles": 5144,
       "textureSize": [
         512,
         512
       ],
-      "sha256": "9edfc430ad6957d1b829ba6d8d7b79e4d70521a5d0691bf86b21927e6e27bd07",
-      "bytes": 605840,
+      "sha256": "3fd6a76fd5e7dc1c198bece3b3db74e6129943feb302b44352e7ef3828b0b183",
+      "bytes": 598780,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -2233,13 +2233,13 @@
         "h": 1
       },
       "file": "models/washtub.glb",
-      "triangles": 7464,
+      "triangles": 5736,
       "textureSize": [
         512,
         256
       ],
-      "sha256": "955123b86beb6bf4a942ae90fdb806478ddd34a6686469c01e19503687694a86",
-      "bytes": 531520,
+      "sha256": "3d31bc6a938070123b797445160d5ada53971198bf18f9320ba1a62b917e1e17",
+      "bytes": 478820,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -3949,13 +3949,13 @@
         "h": 1
       },
       "file": "models/root_tangle.glb",
-      "triangles": 7680,
+      "triangles": 21928,
       "textureSize": [
-        512,
+        256,
         256
       ],
-      "sha256": "369a5973b97b99b492f857052b1954c8003b587bda312de240f4efca61a2c4a1",
-      "bytes": 552324,
+      "sha256": "396630d01eecdf6d6d04983cf9d16f6b20c6da854620ff84e760d18f8c29c0e4",
+      "bytes": 788920,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -4015,13 +4015,13 @@
         "h": 1
       },
       "file": "models/armor_stand.glb",
-      "triangles": 9756,
+      "triangles": 16376,
       "textureSize": [
         512,
         512
       ],
-      "sha256": "d7b95f51c83bf7a4f646ca88c760222dac617205456e98ed1a4ae51119288194",
-      "bytes": 742896,
+      "sha256": "8903de5ade46f935b2e9761c1c1d15e22d93806a446adfa7da08a7a5d61d27ab",
+      "bytes": 946608,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -4081,13 +4081,13 @@
         "h": 1
       },
       "file": "models/archery_target.glb",
-      "triangles": 4740,
+      "triangles": 6668,
       "textureSize": [
-        512,
+        256,
         256
       ],
-      "sha256": "597f4e7812ff6870554c3a6b913e168b3fe39d717155af9ad2c52489c19dd580",
-      "bytes": 461208,
+      "sha256": "8adfb9b649e6f82c0eff4bddc490a3410e64cab70108e6db61d9c27b445548ed",
+      "bytes": 370524,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -4147,13 +4147,13 @@
         "h": 2
       },
       "file": "models/straw_bed.glb",
-      "triangles": 8860,
+      "triangles": 9560,
       "textureSize": [
         512,
         256
       ],
-      "sha256": "bcad4a7d2ccd672685ce48cc7d2dfe51513aac7f273200cfba93a914c998cd9c",
-      "bytes": 556972,
+      "sha256": "8bd82050bf9630ff0017580a608df46e23e6df6f1a12acbb959a321f8c62c163",
+      "bytes": 651600,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -5269,13 +5269,13 @@
         "h": 1
       },
       "file": "models/obsidian_monolith.glb",
-      "triangles": 2008,
+      "triangles": 2436,
       "textureSize": [
         256,
         256
       ],
-      "sha256": "6775bbeffc786eb48539ed671fcfacd02c56bca42824936fa6034113e62164f2",
-      "bytes": 228628,
+      "sha256": "08a9e158bafe9b6fd4857e4839aedf24f82078452cde1103363637754f866f89",
+      "bytes": 220592,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -5401,13 +5401,13 @@
         "h": 1
       },
       "file": "models/scout_tent.glb",
-      "triangles": 4392,
+      "triangles": 3870,
       "textureSize": [
         512,
         256
       ],
-      "sha256": "412f9c35af8f1db4bf541af76aaa5a367d5848776eaac6355e56bfc64ce4a2ba",
-      "bytes": 476220,
+      "sha256": "bec5250830dd44c7cdbcf9d69e63db69d9e783c7d11672409d5036f18354c356",
+      "bytes": 445632,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -5451,7 +5451,7 @@
         "x": 0,
         "y": 2304,
         "w": 246,
-        "h": 114
+        "h": 116
       }
     },
     {
@@ -5731,13 +5731,13 @@
         "h": 1
       },
       "file": "models/crystal_orb.glb",
-      "triangles": 5620,
+      "triangles": 6680,
       "textureSize": [
         256,
         256
       ],
-      "sha256": "7a45a02076abdfa2b5687e6e5960b4be25df68f0c0cacd9b2d6f7cdc68c57253",
-      "bytes": 304232,
+      "sha256": "b100e5796bf01e2a3ecc843d64ddf38608453d52bb75f307f070c5eabe7d9cbd",
+      "bytes": 336420,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -5863,13 +5863,13 @@
         "h": 1
       },
       "file": "models/anchor.glb",
-      "triangles": 5740,
+      "triangles": 20088,
       "textureSize": [
         256,
         256
       ],
-      "sha256": "3599e8e51ba6fcc7940e035a36284cfca4817b17057bf880119d2d15edcb018b",
-      "bytes": 296588,
+      "sha256": "62f27d99b8b71ff646292a76337de4b07d041334a0029316dec62fdd1a5dca7a",
+      "bytes": 722588,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -5995,13 +5995,13 @@
         "h": 1
       },
       "file": "models/dock_crane.glb",
-      "triangles": 9736,
+      "triangles": 6868,
       "textureSize": [
         512,
         512
       ],
-      "sha256": "f40d6bdc2a5d1969a1a62c302a7cce1135aadb2175a50aa3bc187459c69ce9df",
-      "bytes": 731404,
+      "sha256": "49b469109f890bb46bf4eaf0de17e3f42b0cc676bbe1af088070519086856bfd",
+      "bytes": 646216,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -6193,13 +6193,13 @@
         "h": 1
       },
       "file": "models/sandstone_arch.glb",
-      "triangles": 6412,
+      "triangles": 3132,
       "textureSize": [
         512,
         256
       ],
-      "sha256": "5cf6f9c14a240a91ff66c00d45d21dd73f461ee3f0a4dd06681b2158cab179ce",
-      "bytes": 601456,
+      "sha256": "6ebe2bd868a1383cbaaa7544e67827815b85f279af17b49b0d6bf20d6712885a",
+      "bytes": 406280,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -6325,13 +6325,13 @@
         "h": 1
       },
       "file": "models/mangrove_roots.glb",
-      "triangles": 7944,
+      "triangles": 27664,
       "textureSize": [
         256,
         256
       ],
-      "sha256": "7fe4d0e9f9eebae06010f3bed5d8fa8c1fa436a781cbee1160d2434a7e4b8128",
-      "bytes": 362160,
+      "sha256": "9ad4501066ad564d38b4bcb5f971a30759368d8f6f4d2f8524182c64a047f861",
+      "bytes": 972148,
       "method": "authored-detailed-pbr",
       "materialSources": [
         {
@@ -6625,18 +6625,18 @@
       },
       {
         "file": "tools/map-detail-model-helpers.mjs",
-        "sha256": "df2a38540243a6ae76ff24ba8aa9d7efb174a1445dec7787337f88acaa9a3448",
-        "bytes": 4555
+        "sha256": "7f2bd06d420f13724743434f44d16bc81afff0d456a14b36fd9eb1b0db44ef9a",
+        "bytes": 10395
       },
       {
         "file": "tools/map-detail-models-workshop.mjs",
-        "sha256": "3e62e868b7a059e9d4caa641106e3bc35728bfbccc0102b282b5fb444934e905",
-        "bytes": 27826
+        "sha256": "18c287a492d793000589c3f9ebfe13f8c4e7c517ef2e2bd029dbea176b937389",
+        "bytes": 32195
       },
       {
         "file": "tools/map-detail-models-household.mjs",
-        "sha256": "f4e91b0da9f678e725d8288fdb2481c2247683308695c03fbfbcc083305cfb2f",
-        "bytes": 21387
+        "sha256": "7f02fb6c33a36b6af541c8c544cab3b89285c5004006f48e30637be18864ef9b",
+        "bytes": 22960
       },
       {
         "file": "tools/map-detail-models-town.mjs",
@@ -6645,18 +6645,18 @@
       },
       {
         "file": "tools/map-detail-models-dungeon.mjs",
-        "sha256": "7f78da511abf89e9090fc98e630ad171b4bf92f9d52d8e7a1401fd680de5e2b3",
-        "bytes": 21132
+        "sha256": "ea94d4c0b3d37b813f8f0980ae7c37078b84b52f7cdc732da1c9e58735f09d61",
+        "bytes": 24758
       },
       {
         "file": "tools/map-detail-models-mine-camp.mjs",
-        "sha256": "4603a0d6a47b1f6d226e914f41b0e8cfbf1e6cbdca5f68087ba616f64cba55c4",
-        "bytes": 34195
+        "sha256": "9bf459d3b83e99703894d6a93d6cdb44e9a071520ed65174afc1c6f47c5c4a4b",
+        "bytes": 35459
       },
       {
         "file": "tools/map-detail-models-urban-wilderness.mjs",
-        "sha256": "be0bea9cdb8bd1cc4ca4a44336cc34e90268b586926dadb8c670b10f0b90ae5f",
-        "bytes": 34038
+        "sha256": "51d87da0e7bc05d74f95bd6d18340074319bad5a5912ac17625c3f02a12f57af",
+        "bytes": 35019
       },
       {
         "file": "tools/build-map-detail-assets.mjs",
@@ -6683,8 +6683,8 @@
     },
     {
       "file": "model-preview.png",
-      "sha256": "431ad363a4b0afa827a4f2055884eb2df1c85ac24de0205f2bcc1d72ee003140",
-      "bytes": 2866993
+      "sha256": "e135d2c937936f4857708a5e9aea501c0b7d286d6a8b2358d8968949927c3c72",
+      "bytes": 2862271
     },
     {
       "file": "models/alchemy_table.glb",
@@ -6693,8 +6693,8 @@
     },
     {
       "file": "models/anchor.glb",
-      "sha256": "3599e8e51ba6fcc7940e035a36284cfca4817b17057bf880119d2d15edcb018b",
-      "bytes": 296588
+      "sha256": "62f27d99b8b71ff646292a76337de4b07d041334a0029316dec62fdd1a5dca7a",
+      "bytes": 722588
     },
     {
       "file": "models/arcane_coil.glb",
@@ -6703,8 +6703,8 @@
     },
     {
       "file": "models/archery_target.glb",
-      "sha256": "597f4e7812ff6870554c3a6b913e168b3fe39d717155af9ad2c52489c19dd580",
-      "bytes": 461208
+      "sha256": "8adfb9b649e6f82c0eff4bddc490a3410e64cab70108e6db61d9c27b445548ed",
+      "bytes": 370524
     },
     {
       "file": "models/armchair.glb",
@@ -6713,8 +6713,8 @@
     },
     {
       "file": "models/armor_stand.glb",
-      "sha256": "d7b95f51c83bf7a4f646ca88c760222dac617205456e98ed1a4ae51119288194",
-      "bytes": 742896
+      "sha256": "8903de5ade46f935b2e9761c1c1d15e22d93806a446adfa7da08a7a5d61d27ab",
+      "bytes": 946608
     },
     {
       "file": "models/ballista.glb",
@@ -6733,8 +6733,8 @@
     },
     {
       "file": "models/bread_oven.glb",
-      "sha256": "9edfc430ad6957d1b829ba6d8d7b79e4d70521a5d0691bf86b21927e6e27bd07",
-      "bytes": 605840
+      "sha256": "3fd6a76fd5e7dc1c198bece3b3db74e6129943feb302b44352e7ef3828b0b183",
+      "bytes": 598780
     },
     {
       "file": "models/butcher_block.glb",
@@ -6768,13 +6768,13 @@
     },
     {
       "file": "models/coal_pile.glb",
-      "sha256": "9c947f78e2dcf9b405a468de41f9706a4a72c51103600f41eabafdc691a60fac",
-      "bytes": 501596
+      "sha256": "66ba13fefb15a46d23fda0a2ba7231b65510c66d9c8f76d125b4f1d251740524",
+      "bytes": 377524
     },
     {
       "file": "models/coat_rack.glb",
-      "sha256": "e04240a4d77a57ae1519d3611574502df44f1a126efa920261015c2b988ba6a8",
-      "bytes": 287656
+      "sha256": "7ecbc9bc23a7f61f6f978eb725808b98c835697ea8fc72bc7ee860bdd943f26c",
+      "bytes": 251584
     },
     {
       "file": "models/command_tent.glb",
@@ -6793,13 +6793,13 @@
     },
     {
       "file": "models/crystal_orb.glb",
-      "sha256": "7a45a02076abdfa2b5687e6e5960b4be25df68f0c0cacd9b2d6f7cdc68c57253",
-      "bytes": 304232
+      "sha256": "b100e5796bf01e2a3ecc843d64ddf38608453d52bb75f307f070c5eabe7d9cbd",
+      "bytes": 336420
     },
     {
       "file": "models/dock_crane.glb",
-      "sha256": "f40d6bdc2a5d1969a1a62c302a7cce1135aadb2175a50aa3bc187459c69ce9df",
-      "bytes": 731404
+      "sha256": "49b469109f890bb46bf4eaf0de17e3f42b0cc676bbe1af088070519086856bfd",
+      "bytes": 646216
     },
     {
       "file": "models/double_bed.glb",
@@ -6848,8 +6848,8 @@
     },
     {
       "file": "models/forge.glb",
-      "sha256": "11b44aae7023d5424208ac26dcf6daec751e627ee8a2707f4bc4b6b0c68a5fb5",
-      "bytes": 1051616
+      "sha256": "53675b1d42112571a57852d92194d3ba6cfd6a809e9839debbeba4c1c09d438c",
+      "bytes": 1030792
     },
     {
       "file": "models/fountain.glb",
@@ -6918,8 +6918,8 @@
     },
     {
       "file": "models/mangrove_roots.glb",
-      "sha256": "7fe4d0e9f9eebae06010f3bed5d8fa8c1fa436a781cbee1160d2434a7e4b8128",
-      "bytes": 362160
+      "sha256": "9ad4501066ad564d38b4bcb5f971a30759368d8f6f4d2f8524182c64a047f861",
+      "bytes": 972148
     },
     {
       "file": "models/mantlet.glb",
@@ -6963,8 +6963,8 @@
     },
     {
       "file": "models/obsidian_monolith.glb",
-      "sha256": "6775bbeffc786eb48539ed671fcfacd02c56bca42824936fa6034113e62164f2",
-      "bytes": 228628
+      "sha256": "08a9e158bafe9b6fd4857e4839aedf24f82078452cde1103363637754f866f89",
+      "bytes": 220592
     },
     {
       "file": "models/pillory.glb",
@@ -6988,8 +6988,8 @@
     },
     {
       "file": "models/root_tangle.glb",
-      "sha256": "369a5973b97b99b492f857052b1954c8003b587bda312de240f4efca61a2c4a1",
-      "bytes": 552324
+      "sha256": "396630d01eecdf6d6d04983cf9d16f6b20c6da854620ff84e760d18f8c29c0e4",
+      "bytes": 788920
     },
     {
       "file": "models/rope_bridge.glb",
@@ -7003,13 +7003,13 @@
     },
     {
       "file": "models/sandstone_arch.glb",
-      "sha256": "5cf6f9c14a240a91ff66c00d45d21dd73f461ee3f0a4dd06681b2158cab179ce",
-      "bytes": 601456
+      "sha256": "6ebe2bd868a1383cbaaa7544e67827815b85f279af17b49b0d6bf20d6712885a",
+      "bytes": 406280
     },
     {
       "file": "models/sawhorse.glb",
-      "sha256": "cf2f9f5de568bb9211323af551766c6126f807a2bfa2ae8385d2607a29c23323",
-      "bytes": 376652
+      "sha256": "da304ecb0237861ed4e8084f995eb530975616f09385cb9fb2b28a6ccf7d246e",
+      "bytes": 523148
     },
     {
       "file": "models/scales_table.glb",
@@ -7018,13 +7018,13 @@
     },
     {
       "file": "models/scarecrow.glb",
-      "sha256": "228316ea1951d0634159bfc2ff64238db710c081d442c65163e0c13a4959390f",
-      "bytes": 301568
+      "sha256": "9d76f2e2c32675a2d4f1a86e2ecf8ac16dd29b9cb26aeb7652f2d62e896bcc7b",
+      "bytes": 892612
     },
     {
       "file": "models/scout_tent.glb",
-      "sha256": "412f9c35af8f1db4bf541af76aaa5a367d5848776eaac6355e56bfc64ce4a2ba",
-      "bytes": 476220
+      "sha256": "bec5250830dd44c7cdbcf9d69e63db69d9e783c7d11672409d5036f18354c356",
+      "bytes": 445632
     },
     {
       "file": "models/scroll_rack.glb",
@@ -7048,8 +7048,8 @@
     },
     {
       "file": "models/standing_mirror.glb",
-      "sha256": "fafeec9e593136813d87fdf42a05698c2eda97ca5475b9006035ac0b2becfbcf",
-      "bytes": 245152
+      "sha256": "c24a24c0559ef11ca8f0af3591437bec0b47177575d988c623c5b9f4b5a93039",
+      "bytes": 465868
     },
     {
       "file": "models/statue_plinth.glb",
@@ -7068,8 +7068,8 @@
     },
     {
       "file": "models/straw_bed.glb",
-      "sha256": "bcad4a7d2ccd672685ce48cc7d2dfe51513aac7f273200cfba93a914c998cd9c",
-      "bytes": 556972
+      "sha256": "8bd82050bf9630ff0017580a608df46e23e6df6f1a12acbb959a321f8c62c163",
+      "bytes": 651600
     },
     {
       "file": "models/street_planter.glb",
@@ -7108,13 +7108,13 @@
     },
     {
       "file": "models/washtub.glb",
-      "sha256": "955123b86beb6bf4a942ae90fdb806478ddd34a6686469c01e19503687694a86",
-      "bytes": 531520
+      "sha256": "3d31bc6a938070123b797445160d5ada53971198bf18f9320ba1a62b917e1e17",
+      "bytes": 478820
     },
     {
       "file": "models/water_wheel.glb",
-      "sha256": "ce47b8d7cf5fa8557a986a44debca05339475c703d33d4b240369838361114b2",
-      "bytes": 768920
+      "sha256": "8d7d2339d4986fe00a46f932081dcffad6ef3c2483cef01a74c30adfa6e61c2e",
+      "bytes": 683616
     },
     {
       "file": "models/weapon_rack.glb",

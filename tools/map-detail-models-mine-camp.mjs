@@ -295,28 +295,33 @@ function buildGiantFungus() {
 
 function buildObsidianMonolith() {
   const m = new Model('obsidian_monolith')
-  m.slab('monolith-foot', 1.02, 0.82, 0.12, [0, 0.06, 0], C.obsidianLight)
-  m.cylinder('monolith-base', 0.48, 0.55, 0.82, [0, 0.41, 0], C.obsidian, 7, [0.03, 0.05, -0.04])
-  m.cylinder('monolith-middle', 0.34, 0.46, 0.92, [0.05, 1.28, 0.02], C.obsidianLight, 6, [-0.04, -0.10, 0.08])
-  m.cylinder('monolith-top', 0.18, 0.35, 0.92, [-0.04, 2.20, -0.01], C.obsidian, 6, [0.07, 0.02, -0.06])
-  m.torus('monolith-foot-ring', 0.46, 0.025, [0, 0.12, 0], C.obsidianLight, [PI / 2, 0, 0])
-  for (const [x, y, z, size, rotation] of [
-    [-0.47, 0.18, -0.06, 0.16, [0.10, 0.20, -0.10]],
-    [0.38, 0.64, 0.08, 0.12, [-0.12, 0.24, 0.08]],
-    [-0.28, 1.70, 0.11, 0.10, [0.16, -0.20, 0.12]],
-    [0.20, 2.64, -0.02, 0.12, [-0.10, 0.18, -0.08]],
-  ]) {
-    const chip = m.mesh('monolith-chipped-fragment', new THREE.DodecahedronGeometry(size, 0), [x, y, z], C.obsidianLight)
-    chip.rotation.set(...rotation)
+  // Цельная плита, сужающаяся кверху, со скошенным сколом на вершине и
+  // отбитым углом; мох лежит по поверхности грани, а не висит перед ней.
+  const width = 0.80, depth = 0.58, height = 2.5
+  const geometry = new THREE.BoxGeometry(width, height, depth, 4, 14, 3)
+  const pos = geometry.attributes.position
+  for (let index = 0; index < pos.count; index += 1) {
+    let x = pos.getX(index), y = pos.getY(index), z = pos.getZ(index)
+    const t = (y + height / 2) / height
+    const top = height / 2 - 0.34 * (x / width + 0.5)
+    y = -height / 2 + t * (top + height / 2)
+    x *= 1 - 0.30 * t
+    z *= 1 - 0.24 * t
+    if (x > 0.12 && z < -0.10 && t > 0.55) { x -= (x - 0.12) * 0.55; z += (z + 0.10) * 0.45 }
+    pos.setXYZ(index, x, y, z)
   }
-  // Мох лежит в неровных рисках на передней грани, а не висит зелёными брусками.
-  addTube(m, 'moss-crack-left', [[-0.26, 0.80, -0.43], [-0.18, 1.02, -0.47], [-0.28, 1.25, -0.43], [-0.20, 1.38, -0.39]], 0.019, C.moss, 8, 5)
-  addTube(m, 'moss-crack-center', [[0.10, 1.44, -0.37], [0.17, 1.67, -0.39], [0.07, 1.88, -0.35], [0.13, 2.04, -0.31]], 0.017, C.moss, 8, 5)
-  addTube(m, 'moss-crack-top', [[-0.10, 2.12, -0.31], [-0.04, 2.31, -0.28], [0.11, 2.46, -0.23], [0.14, 2.56, -0.19]], 0.016, C.moss, 8, 5)
-  m.beam('obsidian-facet-line', [-0.26, 0.84, -0.44], [0.11, 1.48, -0.34], 0.012, C.obsidianLight)
-  m.beam('obsidian-facet-line', [0.04, 1.50, -0.34], [-0.11, 2.05, -0.25], 0.010, C.obsidian)
-  m.beam('moss-crack-branch-left', [-0.22, 1.22, -0.44], [-0.42, 1.36, -0.30], 0.018, C.moss)
-  m.beam('moss-crack-branch-top', [0.08, 2.24, -0.27], [0.28, 2.38, -0.18], 0.016, C.moss)
+  m.lumpy('monolith-body', geometry, [0, height / 2 + 0.06, 0], C.obsidian, { amount: 0.028, frequency: 2.6, seed: 61 })
+  const front = (y) => -depth / 2 * (1 - 0.24 * (y - 0.06) / height) - 0.006
+  const crack = [[-0.18, 0.55], [-0.10, 0.85], [-0.16, 1.15], [-0.04, 1.45], [-0.08, 1.75], [0.02, 2.0]]
+  m.taperTube('moss-crack', crack.map(([x, y]) => [x, y, front(y)]), 0.024, 0.012, C.moss, 24, 8)
+  m.taperTube('moss-crack-branch', [[-0.12, 1.20, front(1.20)], [-0.24, 1.32, front(1.32)], [-0.28, 1.46, front(1.46)]], 0.018, 0.01, C.moss, 10, 6)
+  m.lumpy('monolith-ground', new THREE.SphereGeometry(0.5, 28, 8, 0, PI * 2, 0, PI / 2), [0, 0, 0], C.stone, { size: [1.15, 0.16, 0.95], amount: 0.02, frequency: 5, seed: 62 })
+  for (const [x, z, s, seed] of [[-0.42, -0.30, 0.16, 63], [0.46, 0.10, 0.12, 64], [0.30, -0.40, 0.10, 65], [-0.36, 0.34, 0.12, 66]]) {
+    m.lumpy('monolith-chipped-fragment', new THREE.DodecahedronGeometry(0.5, 0), [x, 0.06, z], C.obsidianLight, { size: [s, s * 0.7, s], amount: 0.01, frequency: 8, seed })
+  }
+  for (const [x, z, w, d, seed] of [[-0.30, -0.36, 0.34, 0.20, 67], [0.38, 0.28, 0.30, 0.24, 68]]) {
+    m.lumpy('moss-patch', new THREE.SphereGeometry(0.5, 16, 6, 0, PI * 2, 0, PI / 2), [x, 0.05, z], C.moss, { size: [w, 0.06, d], amount: 0.01, frequency: 10, seed })
+  }
   return root(m)
 }
 
@@ -354,31 +359,48 @@ function buildCommandTent() {
 
 function buildScoutTent() {
   const m = new Model('scout_tent')
-  m.box('scout-roof-left', [2.62, 0.075, 0.76], [0, 0.93, -0.29], C.canvas, [0.56, 0, 0])
-  m.box('scout-roof-right', [2.62, 0.075, 0.76], [0, 0.93, 0.29], C.canvasLight, [-0.56, 0, 0])
-  m.beam('scout-ridge', [-1.32, 1.34, 0], [1.32, 1.34, 0], 0.045, C.woodDark)
-  m.box('scout-front-wall', [2.42, 0.38, 0.06], [0, 0.32, -0.55], C.canvasDark)
-  m.box('scout-back-wall', [2.42, 0.38, 0.06], [0, 0.32, 0.55], C.canvas)
-  m.box('scout-entrance-opening', [0.78, 0.44, 0.025], [0, 0.35, -0.59], C.canvasDark)
-  m.beam('scout-hem-left', [-1.30, 0.52, -0.56], [1.30, 0.52, -0.56], 0.020, C.canvasDark)
-  m.beam('scout-hem-right', [-1.30, 0.52, 0.56], [1.30, 0.52, 0.56], 0.020, C.canvasLight)
-  for (const x of [-0.88, -0.44, 0, 0.44, 0.88]) {
-    m.beam('scout-roof-fold-left', [x, 1.31, 0], [x * 0.94, 0.57, -0.53], 0.012, C.canvasLight)
-    m.beam('scout-roof-fold-right', [x, 1.31, 0], [x * 0.94, 0.57, 0.53], 0.012, C.canvasDark)
+  // Двускатный полог — одно цельное тело: треугольное сечение с лёгким провисом,
+  // вытянутое вдоль конька. Вход — на переднем скате (-Z).
+  const ridge = 1.30, eave = 0.12, half = 0.60, length = 2.46
+  const shape = new THREE.Shape()
+  const slope = []
+  for (let step = 0; step <= 6; step += 1) {
+    const t = step / 6
+    slope.push([-half * (1 - t), eave + (ridge - eave) * t - Math.sin(t * PI) * 0.05])
   }
-  m.box('scout-front-flap', [0.66, 0.68, 0.04], [0, 0.64, -0.58], C.canvasDark)
-  for (const x of [-1.27, 1.27]) {
-    m.beam('scout-front-rope', [x, 0.54, -0.53], [x * 1.04, 0.10, -0.68], 0.018, C.rope)
-    m.beam('scout-back-rope', [x, 0.54, 0.53], [x * 1.04, 0.10, 0.68], 0.018, C.rope)
-    m.cylinder('scout-tent-peg', 0.028, 0.045, 0.18, [x * 1.04, 0.09, -0.68], C.woodDark, 8)
-    m.cylinder('scout-tent-peg', 0.028, 0.045, 0.18, [x * 1.04, 0.09, 0.68], C.woodDark, 8)
+  const outline = [...slope, ...slope.slice(0, -1).reverse().map(([z, y]) => [-z, y])]
+  // Сечение строится в координатах (−z, y): поворот вокруг Y переносит выдавливание на ось X.
+  outline.forEach(([z, y], index) => index ? shape.lineTo(-z, y) : shape.moveTo(-z, y))
+  shape.closePath()
+  const canvas = new THREE.ExtrudeGeometry(shape, { depth: length, bevelEnabled: false, curveSegments: 1, steps: 6 })
+  canvas.translate(0, 0, -length / 2)
+  m.mesh('scout-canvas', canvas, [0, 0, 0], C.canvas, [0, PI / 2, 0])
+  m.beam('scout-ridge', [-1.36, ridge + 0.03, 0], [1.36, ridge + 0.03, 0], 0.035, C.woodDark)
+  for (const x of [-1.30, 1.30]) {
+    m.beam('scout-end-pole', [x, 0, 0], [x, ridge + 0.03, 0], 0.035, C.wood)
+    m.beam('scout-ridge-guy', [x, ridge + 0.02, 0], [x * 1.07, 0.03, -0.30], 0.012, C.rope)
+    m.cylinder('scout-tent-peg', 0.022, 0.035, 0.12, [x * 1.07, 0.06, -0.30], C.woodDark, 8)
   }
-  m.beam('scout-front-pole', [-1.30, 0.08, -0.58], [-1.30, 1.30, 0], 0.035, C.wood)
-  m.beam('scout-front-pole', [1.30, 0.08, -0.58], [1.30, 1.30, 0], 0.035, C.wood)
-  m.beam('scout-ridge-guy-front', [0, 1.34, 0], [0, 0.08, -0.86], 0.016, C.rope)
-  m.beam('scout-ridge-guy-back', [0, 1.34, 0], [0, 0.08, 0.86], 0.016, C.rope)
-  m.cylinder('scout-ridge-peg-front', 0.028, 0.045, 0.18, [0, 0.09, -0.86], C.woodDark, 8)
-  m.cylinder('scout-ridge-peg-back', 0.028, 0.045, 0.18, [0, 0.09, 0.86], C.woodDark, 8)
+  // Швы и подол лежат прямо на скатах.
+  const angle = Math.atan2(ridge - eave, half)
+  for (const side of [-1, 1]) {
+    m.beam('scout-hem', [-1.23, eave + 0.02, side * (half + 0.01)], [1.23, eave + 0.02, side * (half + 0.01)], 0.02, C.canvasDark)
+    for (const x of [-0.82, 0.82]) {
+      m.beam('scout-roof-seam', [x, ridge, side * 0.01], [x, eave + 0.02, side * (half + 0.012)], 0.010, C.canvasLight)
+    }
+    for (const x of [-1.15, -0.4, 0.4, 1.15]) m.cylinder('scout-tent-peg', 0.022, 0.035, 0.12, [x, 0.06, side * (half + 0.08)], C.woodDark, 8)
+  }
+  // Вход: тёмный проём и скатанный полог сбоку от него на переднем скате.
+  const dir = [0, Math.sin(angle), Math.cos(angle)]
+  const normal = [0, Math.cos(angle), -Math.sin(angle)]
+  const at = (along, out) => [0, eave + dir[1] * along + normal[1] * out, -half + dir[2] * along + normal[2] * out]
+  m.box('scout-entrance-opening', [0.62, 0.02, 0.78], at(0.42, 0.012), C.canvasDark, [-angle, 0, 0])
+  const roll = at(0.42, 0.04)
+  m.cylinder('scout-rolled-flap', 0.045, 0.045, 0.78, [0.38, roll[1], roll[2]], C.canvasLight, 16, [PI / 2 - angle, 0, 0])
+  for (const along of [0.22, 0.62]) {
+    const tie = at(along, 0.04)
+    m.torus('scout-flap-tie', 0.05, 0.010, [0.38, tie[1], tie[2]], C.rope, [0, PI / 2, 0])
+  }
   return root(m)
 }
 
