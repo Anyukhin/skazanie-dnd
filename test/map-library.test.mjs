@@ -221,6 +221,34 @@ test('ферма деревней не считается, даже если б�
     'хутор из нескольких построек деревней остаётся — по своему второму тегу')
 })
 
+test('библиотечная карта, чей паспорт обещает навес, а карта его не держит, проверку не проходит', (t) => {
+  // Этап 4 плана карт: готовая карта проходит ту же проверку по программе,
+  // что и сгенерированная. Паспорт говорит «навес есть», подбор её выбирает,
+  // но на самой карте навеса нет — сцену строит генератор.
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-check-'))
+  t.after(() => {
+    setActiveMapLibrary(null)
+    rmSync(storage, { recursive: true, force: true })
+  })
+  const library = new MapLibrary(storage)
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-awning' })
+  const entry = yardEntry('tt-awning', { cells: 600, props: { market_awning: 1 } })
+  library.put(entry, imported.levels)
+  setActiveMapLibrary(library)
+  const request = libraryRequestFor({ themeId: 'settlement', requirements: [{ id: 'shelter', count: 1 }] })
+  assert.equal(chooseLibraryMap([entry], request, { seed: 'a' })?.id, 'tt-awning', 'по паспорту карта подходит')
+  const dice = new DiceService({ rng: new SequenceDiceRng([]), idFactory: () => 'roll', now: () => '2026-10-02T00:00:00.000Z' })
+  const advanced = resolveCommand({
+    command_type: 'AdvanceScene',
+    command_id: 'awning',
+    scene_args: { title: 'Кленовка', location: 'Деревня Кленовка', theme: 'деревня', settlement_type: 'village', objective: 'Найти старосту', arrival: 'Посреди деревни — общий навес.' },
+  }, tavernState(), { diceService: dice, context: { isAdmin: true } }).events.find((event) => event.event_type === 'SceneAdvanced')
+  assert.equal(advanced.payload.scene.map_source, undefined, 'карта без навеса не выбрана')
+  assert.equal(advanced.payload.scene.map_requirements.focus, 'shelter')
+  assert.equal(advanced.payload.scene.map_requirements.missing, undefined, 'генератор навес поставил')
+  assert.ok(deserializeTacticalMap(advanced.payload.scene.map).props.some((prop) => prop.assetId === 'market_awning'))
+})
+
 test('уличной сцене нужна площадь её вида места: двор 16×16 — не деревня', () => {
   const village = libraryRequestFor({ themeId: 'settlement' })
   assert.equal(chooseLibraryMap([yardEntry('yard', { cells: 256 })], village, { seed: 'a' }), null, '80×80 футов — двор одного дома')
@@ -277,7 +305,7 @@ test('деревня с обещанным навесом строится ге�
   const promised = advance('promised', 'Посреди деревни — общий навес, под ним ящик с документами; к реке ведут три настила.')
   assert.equal(promised.payload.scene.map_source, undefined, 'обещанного навеса на библиотечной карте нет')
   assert.deepEqual(promised.payload.scene.map_requirements, {
-    version: 'scene-requirements/v2',
+    version: 'scene-requirements/v3',
     items: [{ id: 'shelter', count: 1 }, { id: 'crate', count: 1 }, { id: 'platform', count: 3 }],
     focus: 'shelter',
   })

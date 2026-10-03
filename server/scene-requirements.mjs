@@ -28,7 +28,18 @@
 // v2 (2026-10-03, этап 1 плана `docs/map-generation-plan.md`): к списку
 // добавлены центр сцены (`focus`) и посты жителей (`posts`). Сохранённые
 // сцены v1 читаются как раньше — без центра и постов.
-export const SCENE_REQUIREMENTS_VERSION = 'scene-requirements/v2'
+// v3 (этапы 2–4): якоря модели (`landmarks` в `map.design`), улики (`clues`)
+// и то, что карта не смогла воплотить (`missing`). v2 читается как v3 без них.
+export const SCENE_REQUIREMENTS_VERSION = 'scene-requirements/v3'
+
+/**
+ * Роль якоря в программе сцены. Обязательны центр, пост жителя и улика:
+ * без них сцена не держит обещание. Вход и обстановка — по возможности.
+ */
+export const LANDMARK_ROLES = Object.freeze(['focus', 'npc_post', 'clue', 'entry', 'dressing'])
+
+/** Сколько якорей модель может назвать для одной сцены. */
+const MAX_LANDMARKS = 6
 
 /** Сколько видов объектов держит одна сцена и сколько штук одного вида. */
 const MAX_ITEMS = 12
@@ -42,6 +53,8 @@ const MAX_COUNT = 6
  * @property {RegExp} pattern слово в тексте; левая граница проверяется отдельно
  * @property {string[]} assets предметы реестра, которые воплощают объект; пустой
  *   список — у реестра такого предмета ещё нет, и карта обещание не выполнит
+ * @property {'platform'} [terrain] объект строится не предметом, а клетками
+ *   карты: настил — приподнятый деревянный пол (`server/prop-placement.mjs`)
  */
 
 /**
@@ -51,8 +64,8 @@ const MAX_COUNT = 6
  */
 export const SCENE_REQUIREMENT_KINDS = Object.freeze([
   { id: 'shelter', label: 'навес', pattern: /навес(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})/u, assets: ['market_awning'] },
-  { id: 'platform', label: 'настил', pattern: /(?:настил|помост)(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})|мостк(?:и|ов|ам|ами|ах)(?!\p{L})/u, assets: [] },
-  { id: 'threshold_stone', label: 'камни на пороге', pattern: /(?:камн(?:и|ей|ям|ями|ях)|камень|камнем|камня)\s+(?:у|на|перед|под)\s+порог\p{L}*|порожн\p{L}*\s+камн\p{L}*/u, assets: ['path_stone', 'ledge_step'] },
+  { id: 'platform', label: 'настил', pattern: /(?:настил|помост)(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})|мостк(?:и|ов|ам|ами|ах)(?!\p{L})/u, assets: [], terrain: 'platform' },
+  { id: 'threshold_stone', label: 'камни на пороге', pattern: /(?:камн(?:и|ей|ям|ями|ях)|камень|камнем|камня)\s+(?:у|на|перед|под)\s+порог\p{L}*|порожн\p{L}*\s+камн\p{L}*|порог(?:е|ах|ам|и|а|у)?\s+(?:\p{L}+\s+){0,2}камн(?:и|ей|ям|ями|ях)(?!\p{L})/u, assets: ['path_stone', 'ledge_step'] },
   { id: 'crate', label: 'ящик', pattern: /ящик(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})/u, assets: ['crate', 'crate_stack', 'chest'] },
   { id: 'chest', label: 'сундук', pattern: /сундук(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})|лар(?:ец|ца|цу|цом|це|цы|цов)(?!\p{L})|шкатулк\p{L}*/u, assets: ['chest'] },
   { id: 'campfire', label: 'костёр', pattern: /кост(?:ёр|ер|ра|ру|ром|ре|ры|ров|рам|рами|рах)(?!\p{L})|кострищ\p{L}*/u, assets: ['campfire'] },
@@ -200,30 +213,117 @@ export function sceneRequirementsFromText(texts) {
  * обещанное: хранитель записей без ящика на карте стоял бы где попало
  * (живая кампания 2026-10-02 — жители у края поля без якоря).
  *
+ * Якоря модели (`landmarks`, этап 2) сливаются с текстом по виду: количество
+ * берётся большее, роль — у модели. Модель выбирает вид только из закрытого
+ * словаря, а пост — только для жителя, который в этой сцене виден: иначе
+ * программа сцены назвала бы игрокам того, кого они ещё не встретили.
+ *
  * @param {Array<unknown>|string} texts
- * @param {{ npcs?: Array<{ name?: unknown, role?: unknown, summary?: unknown }> }} [options]
- *   жители, которые стоят в этой сцене
- * @returns {{ version: string, items: Array<{ id: string, count: number }>, focus?: string, posts?: Array<{ npc: string, id: string }> }|null}
+ * @param {{ npcs?: Array<{ name?: unknown, role?: unknown, summary?: unknown }>, landmarks?: unknown }} [options]
+ *   жители, которые стоят в этой сцене, и якоря из заявки картографа
+ * @returns {ScenePlanProgram|null}
  */
-export function sceneMapRequirementsFor(texts, { npcs = [] } = {}) {
+export function sceneMapRequirementsFor(texts, { npcs = [], landmarks = [] } = {}) {
   const items = sceneRequirementsFromText(texts)
-  const focus = items.find((item) => FOCUS_KINDS.includes(item.id))?.id ?? null
+  const marks = normalizeLandmarks(landmarks)
+  for (const mark of marks) {
+    const item = items.find((entry) => entry.id === mark.id)
+    if (item) item.count = Math.max(item.count, mark.count)
+    else if (items.length < MAX_ITEMS) items.push({ id: mark.id, count: mark.count })
+  }
+  const focus = marks.find((mark) => mark.role === 'focus')?.id
+    ?? items.find((item) => FOCUS_KINDS.includes(item.id))?.id ?? null
+  const visible = (Array.isArray(npcs) ? npcs : [])
+    .map((npc) => ({ npc, name: cleanName(npc?.name) }))
+    .filter((entry) => entry.name)
   /** @type {Array<{ npc: string, id: string }>} */
   const posts = []
-  for (const npc of Array.isArray(npcs) ? npcs : []) {
-    const name = String(npc?.name ?? '').replace(/\s+/gu, ' ').trim().slice(0, 120)
-    const kind = name ? postKindFor(npc, focus) : null
-    if (!kind || posts.some((post) => post.npc === name)) continue
+  for (const mark of marks) {
+    if (mark.role !== 'npc_post' || !mark.npc) continue
+    const wanted = mark.npc.toLocaleLowerCase('ru')
+    const resident = visible.find((entry) => entry.name.toLocaleLowerCase('ru') === wanted)
+    if (resident && !posts.some((post) => post.npc === resident.name)) posts.push({ npc: resident.name, id: mark.id })
+  }
+  for (const { npc, name } of visible) {
+    if (posts.some((post) => post.npc === name)) continue
+    const kind = postKindFor(npc, focus)
+    if (!kind) continue
     posts.push({ npc: name, id: kind })
     if (!items.some((item) => item.id === kind) && items.length < MAX_ITEMS) items.push({ id: kind, count: 1 })
   }
+  const clues = [...new Set(marks.filter((mark) => mark.role === 'clue').map((mark) => mark.id))]
   if (!items.length) return null
   return {
     version: SCENE_REQUIREMENTS_VERSION,
     items,
     ...(focus ? { focus } : {}),
     ...(posts.length ? { posts } : {}),
+    ...(clues.length ? { clues } : {}),
   }
+}
+
+/**
+ * Программа сцены в `scene.map_requirements`.
+ * @typedef {object} ScenePlanProgram
+ * @property {string} version
+ * @property {Array<{ id: string, count: number }>} items
+ * @property {string} [focus]
+ * @property {Array<{ npc: string, id: string }>} [posts]
+ * @property {string[]} [clues]
+ * @property {string[]} [missing] обязательные виды, которые карта не воплотила
+ */
+
+/** @param {unknown} value */
+const cleanName = (value) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, 120)
+
+/**
+ * Якоря из заявки картографа (`map.design.landmarks`). Неизвестный вид, роль
+ * вне перечня и мусор отбрасываются; примечание модели не хранится — в
+ * программе только то, что сервер умеет проверить на карте.
+ *
+ * @param {unknown} value
+ * @returns {Array<{ id: string, role: string, count: number, npc?: string }>}
+ */
+export function normalizeLandmarks(value) {
+  /** @type {Array<{ id: string, role: string, count: number, npc?: string }>} */
+  const result = []
+  for (const entry of Array.isArray(value) ? value : []) {
+    if (result.length >= MAX_LANDMARKS) break
+    const id = String(entry?.kind ?? '')
+    if (!KINDS_BY_ID.has(id) || result.some((mark) => mark.id === id)) continue
+    const role = LANDMARK_ROLES.includes(entry?.role) ? String(entry.role) : 'dressing'
+    const count = Number(entry?.count)
+    const npc = role === 'npc_post' ? cleanName(entry?.npc) : ''
+    result.push({ id, role, count: Number.isSafeInteger(count) && count > 0 ? Math.min(MAX_COUNT, count) : 1, ...(npc ? { npc } : {}) })
+  }
+  return result
+}
+
+/**
+ * Обязательные виды программы: центр, посты жителей и улики. Их отсутствие на
+ * карте — провал проверки (`programReport` в `server/map-quality.mjs`);
+ * остальное обещанное — по возможности.
+ *
+ * @param {unknown} program `scene.map_requirements`
+ * @returns {string[]}
+ */
+export function requiredProgramKinds(program) {
+  const source = program && typeof program === 'object' ? /** @type {Record<string, any>} */ (program) : {}
+  const ids = [
+    source.focus,
+    ...normalizeScenePosts(source).map((post) => post.id),
+    ...(Array.isArray(source.clues) ? source.clues : []),
+  ].map((id) => String(id ?? '')).filter((id) => KINDS_BY_ID.has(id))
+  return [...new Set(ids)]
+}
+
+/**
+ * Каким клеточным объектом воплощается вид: настил — приподнятым полом.
+ * @param {string} id
+ * @returns {'platform'|null}
+ */
+export function requirementTerrain(id) {
+  return KINDS_BY_ID.get(id)?.terrain ?? null
 }
 
 /**
@@ -290,15 +390,18 @@ export function requirementLabel(id) {
  *
  * @param {Array<{ id: string, count: number }>} requirements
  * @param {Record<string, number>} props счётчик `assetId → штук`
+ * @param {Record<string, number>} [terrain] счётчик клеточных объектов: `platform → штук`
  * @returns {{ met: string[], missing: string[] }}
  */
-export function requirementsCoverage(requirements, props) {
+export function requirementsCoverage(requirements, props, terrain = {}) {
   /** @type {string[]} */
   const met = []
   /** @type {string[]} */
   const missing = []
   for (const requirement of requirements) {
-    const have = requirementAssets(requirement.id).reduce((sum, assetId) => sum + (Number(props?.[assetId]) || 0), 0)
+    const kind = requirementTerrain(requirement.id)
+    const have = kind ? Number(terrain?.[kind]) || 0
+      : requirementAssets(requirement.id).reduce((sum, assetId) => sum + (Number(props?.[assetId]) || 0), 0)
     if (have >= Math.max(1, requirement.count)) met.push(requirement.id)
     else missing.push(requirement.id)
   }

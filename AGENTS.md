@@ -138,8 +138,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
 | `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v6.txt` | социальные сцены |
 | `server/narrator.mjs` | `prompts/narrator/v11.txt` | текст после commit |
-| `server/scene-architect.mjs` | `prompts/map_architect/v7.txt` | новые области и их заготовки ведущего (`secrets`) |
-| `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v7.txt` | исходная ситуация кампании и заготовки ведущего (`secrets`) |
+| `server/scene-architect.mjs` | `prompts/map_architect/v8.txt` | новые области, их заготовки ведущего (`secrets`) и якоря карты (`map.design.landmarks`) |
+| `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v8.txt` | исходная ситуация кампании, заготовки ведущего (`secrets`) и якоря первой карты |
 | `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v8.txt` | прочтение свободного действия и его маршрут (`check`/`travel`/`talk`/`clarify`) |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» после перерыва |
 
@@ -147,7 +147,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 Режиссёр держит по файлу на режим импровизации кампании (`improv_mode`), и
 вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
 рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`—`v7`,
-`campaign_creator/v1`—`v6`, `director/v1`—`v3`, `map_architect/v1`—`v6`,
+`campaign_creator/v1`—`v7`, `director/v1`—`v3`, `map_architect/v1`—`v7`,
 `narrator/v1`—`v10`, `npc_controller/social_v1`—`social_v5`) плюс
 `narrator/few-shot-v1.json` и `few-shot-v2.json`. Актуальна та
 версия, которую действительно читает модуль из таблицы, — остальные оставлены
@@ -155,7 +155,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 Сторож соответствия — `test/security.test.mjs`. **Детерминированные модули без LLM:**
 `adjudicator.mjs`, `intent-parser.mjs`, `world-memory.mjs`,
 `projection-integrity.mjs`, `npc-turn-scheduler.mjs`, `campaign-loop-policy.mjs`,
-`world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`, `scene-requirements.mjs`, `map-quality.mjs`,
+`world-deeds.mjs`, `captives.mjs`, `parley.mjs`, `law-and-order.mjs`, `scene-requirements.mjs`, `scene-program-layout.mjs`, `map-quality.mjs`,
 `weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`, `tavern-life.mjs`,
 `courier-letters.mjs`, `talespire-slab.mjs`, `talespire-import.mjs`, `map-library.mjs`,
 `thin-walls.mjs`, `room-floors.mjs`, `detail-props.mjs`, `scene-features.mjs`.
@@ -271,6 +271,7 @@ commit, механики он не касается.
 | Игрок видит только разрешённое | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
+| Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
 | Корпус тестов не ходит в интернет: каждый запуск `server/index.mjs` либо с пустым `ROUTERAI_API_KEY`, либо с локальным `ROUTERAI_BASE_URL` | `test/test-network-isolation.test.mjs` |
 

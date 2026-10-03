@@ -51,7 +51,7 @@ test('предыстория героя уходит автору кампани
   assert.ok(campaign)
   assert.ok(client.captured.messages, 'модель должна была быть вызвана')
   const [system, user] = client.captured.messages
-  assert.match(system.content, /PROMPT_ID: campaign_creator\/v7/)
+  assert.match(system.content, /PROMPT_ID: campaign_creator\/v8/)
   assert.match(system.content, /UNTRUSTED_DATA/)
   assertInsideUntrustedData(user.content, INJECTION)
 })
@@ -68,7 +68,7 @@ test('решение партии уходит картографу только
   assert.ok(plan)
   assert.ok(client.captured.messages, 'модель должна была быть вызвана')
   const [system, user] = client.captured.messages
-  assert.match(system.content, /PROMPT_ID: map_architect\/v7/)
+  assert.match(system.content, /PROMPT_ID: map_architect\/v8/)
   assert.match(system.content, /UNTRUSTED_DATA/)
   assertInsideUntrustedData(user.content, INJECTION)
 })

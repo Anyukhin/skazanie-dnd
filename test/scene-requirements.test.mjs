@@ -113,7 +113,7 @@ test('программа сцены: центр, посты жителей и п
       { name: 'Гость', role: 'странник', summary: 'Молча слушает.' },
     ],
   })
-  assert.equal(field.version, 'scene-requirements/v2')
+  assert.equal(field.version, 'scene-requirements/v3')
   assert.equal(field.focus, 'shelter')
   assert.deepEqual(field.posts, [
     { npc: 'Илва', id: 'shelter' },

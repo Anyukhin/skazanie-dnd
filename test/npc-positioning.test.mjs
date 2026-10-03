@@ -888,3 +888,15 @@ test('пост из программы сцены важнее догадки п
   const plain = planSceneNpcPlacementEvents(npcState()).find((event) => event.payload.npc_id === 'marta')
   assert.equal(plain.payload.anchor_prop_id, 'bar-1', 'без программы — прежняя расстановка')
 })
+
+test('пост у настила ставит жителя на сам настил', () => {
+  // Этап 3 плана карт: у настила нет предмета, это приподнятый деревянный
+  // пол. Мастер настилов стоит на нём, а не у стойки по догадке.
+  const state = npcState()
+  const map = openMap()
+  for (const x of [5, 6, 7]) for (const y of [4, 5]) setCell(map, x, y, { material: 'wood', elevation: 2 })
+  state.scene.map = serializeTacticalMap(map)
+  state.scene.map_requirements = { version: 'scene-requirements/v3', items: [{ id: 'platform', count: 1 }], posts: [{ npc: 'Марта', id: 'platform' }] }
+  const marta = planSceneNpcPlacementEvents(state).find((event) => event.payload.npc_id === 'marta')
+  assert.ok([5, 6, 7].includes(marta.payload.x) && [4, 5].includes(marta.payload.y), `Марта на настиле: ${marta.payload.x},${marta.payload.y}`)
+})

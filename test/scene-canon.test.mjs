@@ -223,7 +223,7 @@ test('Рассказчик получает канон отдельным бло
 test('автор кампании получает серверные часы и небо первого утра по краям', async () => {
   const { state, llm } = await pierCampaign()
   const content = llm.requests[0].messages[1].content
-  assert.match(llm.requests[0].messages[0].content, /PROMPT_ID: campaign_creator\/v7/u)
+  assert.match(llm.requests[0].messages[0].content, /PROMPT_ID: campaign_creator\/v8/u)
   const clock = untrustedPayload(content, 'starting_world_clock')
   assert.deepEqual(clock, { day: 1, clock: '08:00', time_of_day: 'morning', time_of_day_label: 'Утро' })
   const table = untrustedPayload(content, 'starting_weather_by_biome')

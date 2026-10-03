@@ -24,7 +24,7 @@ import { normalizeSceneMapDesign, worldLocationDesignContext } from './scene-map
 import { campaignStartCanon } from './scene-canon.mjs'
 import { sceneMapRequirementsFor } from './scene-requirements.mjs'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v7.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v8.txt', import.meta.url)), 'utf8')
 
 /**
  * Создание кампании — не ход. Оно просит у модели на порядок больше текста
@@ -549,6 +549,8 @@ export class CampaignBootstrapper {
       // записей — у ящика, кузнец — у кузницы, староста — в центре сцены.
       npcs: (Array.isArray(opening.npcs) ? opening.npcs : []).filter((npc) => !npc?.location
         || String(npc.location).toLocaleLowerCase('ru') === String(opening.scene.location ?? '').toLocaleLowerCase('ru')),
+      // Якоря создателя кампании (campaign_creator/v8).
+      landmarks: opening.scene.map?.design?.landmarks,
     })
     const geometry = generateSceneGeometry({
       seed: sceneSeed,
@@ -567,6 +569,7 @@ export class CampaignBootstrapper {
       // поэтому библиотека готовых карт подключается только к свободным мирам.
       useLibrary: !worldTemplate,
       requirements: mapRequirements?.items ?? [],
+      program: mapRequirements,
     })
     const cells = geometry.cells
     const positions = startingCells(cells, heroes.length, {
@@ -685,7 +688,7 @@ export class CampaignBootstrapper {
       ])),
     }
     const placementDraft = {
-      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...(geometry.levels?.length ? { levels: geometry.levels } : {}), ...librarySceneExtras, ...(mapRequirements ? { map_requirements: mapRequirements } : {}), cells, map: sceneTacticalMap },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...(geometry.levels?.length ? { levels: geometry.levels } : {}), ...librarySceneExtras, ...(mapRequirements ? { map_requirements: { ...mapRequirements, ...(geometry.missing?.length ? { missing: geometry.missing } : {}) } } : {}), cells, map: sceneTacticalMap },
       social: { npcs: openingNpcs },
       players: positionedHeroes,
       npc_world: emptyNpcWorld,
@@ -769,7 +772,7 @@ export class CampaignBootstrapper {
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },
       isNarrating: false, pendingCheck: null, agentInteraction: null, lastDiceRoll: null,
-      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...(geometry.levels?.length ? { levels: geometry.levels } : {}), ...librarySceneExtras, ...(mapRequirements ? { map_requirements: mapRequirements } : {}), cells, map: sceneTacticalMap },
+      scene: { title: opening.scene.title, location: opening.scene.location, location_id: startingLocationId, mood: opening.scene.mood, objective: opening.scene.objective, turn: 1, ...(geometry.levels?.length ? { levels: geometry.levels } : {}), ...librarySceneExtras, ...(mapRequirements ? { map_requirements: { ...mapRequirements, ...(geometry.missing?.length ? { missing: geometry.missing } : {}) } } : {}), cells, map: sceneTacticalMap },
       npc_world: npcWorld,
       ...(libraryMemory.locationMaps ? { locationMaps: libraryMemory.locationMaps } : {}),
       adventure: { chapter: 1, currentHook: opening.hook, visitedLocations: [opening.scene.location], unresolvedThreads: [opening.hook], history: [] },

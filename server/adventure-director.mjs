@@ -8,8 +8,9 @@ import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './
 import { REFERENCE_SIZE } from './building-generator.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { sceneMapDesignFor, worldLocationDesignContext } from './scene-map-design.mjs'
-import { normalizeSceneRequirements, requirementAssets, sceneMapRequirementsFor } from './scene-requirements.mjs'
-import { ensurePropAccess, placeRequiredProps } from './prop-placement.mjs'
+import { normalizeSceneRequirements, sceneMapRequirementsFor } from './scene-requirements.mjs'
+import { applyScenePlan } from './scene-program-layout.mjs'
+import { SETTLEMENT_MIN_SIZE, programReport } from './map-quality.mjs'
 import {
   buildThemedScene,
   isLiveTheme,
@@ -262,7 +263,25 @@ export function rememberCurrentSceneMap(state) {
  * «явная просьба сильнее догадки» сохранён, но выражен иначе: просьба теперь
  * ведёт к теме, а не мимо неё.
  */
-function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [], requirements = [] }) {
+/** Сколько раз генератор пробует карту, прежде чем взять лучшую из неудачных. */
+const MAP_CHECK_ATTEMPTS = 4
+
+/**
+ * Мерка проверки карты (`programReport`) под тему сцены: поселение не меньше
+ * 24×20 и не глухое; сцена с центром — тоже место сбора и глухой быть не должна.
+ * @param {{ kind?: string }} theme
+ * @param {Record<string, any>|null} plan
+ */
+function mapCheckFor(theme, plan) {
+  const settlement = theme?.kind === 'settlement'
+  return { minSize: settlement ? SETTLEMENT_MIN_SIZE : null, openScene: settlement || Boolean(plan?.focus) }
+}
+
+function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [], requirements = [], program = null }) {
+  // Программа сцены (`scene.map_requirements`); старый вызов с одним списком
+  // читается как программа без центра и постов.
+  const plan = program && typeof program === 'object' ? program
+    : normalizeSceneRequirements(requirements).length ? { items: normalizeSceneRequirements(requirements) } : null
   // Опознание живёт в одном месте — `server/scene-themes.mjs`. Название —
   // не единственный признак: вид точки карты мира, тип поселения и заявка
   // картографа весят не меньше, иначе деревня с «бродом» в имени становилась
@@ -293,36 +312,58 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
       worldKind, levels, width: Number(requestedMap.width) || REFERENCE_SIZE.width, height: Number(requestedMap.height) || REFERENCE_SIZE.height,
       place: `${location} ${theme}`, world: worldDescription, requirements,
     }), { seed, usedIds: usedLibraryIds })
-    if (picked) return librarySceneGeometry(picked, { locationId, theme: matched.assetTheme ?? matched.id })
+    if (picked) {
+      const geometry = librarySceneGeometry(picked, { locationId, theme: matched.assetTheme ?? matched.id })
+      // Готовая карта проходит ту же мерку, что и сгенерированная. Провал —
+      // и карта просто не выбирается: сцену строит генератор по программе.
+      if (!plan || !programReport(geometry.map, plan, mapCheckFor(matched, plan)).problems.length) return geometry
+    }
   }
   if (matched) {
     const exteriorCue = /снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей)/iu
     const startsOutside = exteriorCue.test(`${location} ${theme}`)
       || /(?:отряд|герои|путники|вы)[^.!?]{0,50}(?:снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей))/iu.test(description)
-    const built = buildThemedScene({
-      location,
-      theme: text(theme, 60, matched.id),
-      sceneKind,
-      themeId: matched.id,
-      seed,
-      locationId,
-      width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
-      height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
-      levels,
-      design,
-      // Сцена «таверна/галерея» начинается в помещении. Явное прибытие к
-      // фасаду оставляет отряд снаружи; закрытая дверь сохраняет своё значение.
-      entry: startsOutside ? 'exterior' : 'interior',
-    })
-    built.map.theme = matched.assetTheme ?? matched.id
-    // Что пообещал текст сцены, встаёт на карту, даже если тема о нём не
-    // знает: «навес над колодцем» — колодец, «три стола» — три стола.
-    const promised = normalizeSceneRequirements(requirements)
-      .map((item) => ({ assets: requirementAssets(item.id), count: item.count }))
-      .filter((item) => item.assets.length)
-    if (promised.length && placeRequiredProps(built.map, promised, { seed: `${seed}:scene-requirements` })) ensurePropAccess(built.map)
+    const check = mapCheckFor(matched, plan)
+    /** @type {{ built: ReturnType<typeof buildThemedScene>, report: ReturnType<typeof programReport> }|null} */
+    let best = null
+    // Этап 4 плана карт: провалившую проверку карту генератор строит заново
+    // со следующим подсидом, до четырёх раз, и берёт лучшую. Первая попытка —
+    // прежний сид, поэтому удачная карта не меняется.
+    for (let attempt = 0; attempt < MAP_CHECK_ATTEMPTS; attempt += 1) {
+      const attemptSeed = attempt ? `${seed}:attempt-${attempt}` : seed
+      const built = buildThemedScene({
+        location,
+        theme: text(theme, 60, matched.id),
+        sceneKind,
+        themeId: matched.id,
+        seed: attemptSeed,
+        locationId,
+        width: integer(requestedMap.width, REFERENCE_SIZE.width, 16, SIZE_CLASSES.area.maxWidth),
+        height: integer(requestedMap.height, REFERENCE_SIZE.height, 16, SIZE_CLASSES.area.maxHeight),
+        levels,
+        design,
+        // Сцена «таверна/галерея» начинается в помещении. Явное прибытие к
+        // фасаду оставляет отряд снаружи; закрытая дверь сохраняет своё значение.
+        entry: startsOutside ? 'exterior' : 'interior',
+      })
+      built.map.theme = matched.assetTheme ?? matched.id
+      // Что пообещал текст сцены, встаёт на карту, даже если тема о нём не
+      // знает: центр — посреди площади, настилы — приподнятым полом, камни —
+      // у порогов, остальное — обычной расстановкой (этап 3).
+      if (plan) applyScenePlan(built.map, plan, { seed: attemptSeed })
+      const report = programReport(built.map, plan, check)
+      if (!best || report.problems.length < best.report.problems.length) best = { built, report }
+      if (!report.problems.length) break
+    }
+    const { built, report } = /** @type {NonNullable<typeof best>} */ (best)
     // Этажи, которые объявил сам генератор: двухэтажная таверна поселения.
-    return { cells: legacyCellsFromTacticalMap(built.map), map: built.map, ...(built.levels?.length ? { levels: normalizeDeclaredLevels(built.levels) } : {}) }
+    return {
+      cells: legacyCellsFromTacticalMap(built.map),
+      map: built.map,
+      ...(built.levels?.length ? { levels: normalizeDeclaredLevels(built.levels) } : {}),
+      // Обязательное, что карта так и не воплотила: Рассказчику о нём молчать.
+      ...(plan && report.missing.length ? { missing: report.missing } : {}),
+    }
   }
   // Сейчас сюда не попадает ни одна сцена: `fallbackThemeFor` всегда возвращает
   // тему, а `live` стоит у всех семи. Ветка остаётся предохранителем на случай
@@ -395,11 +436,11 @@ export function librarySceneFields(library) {
  * @param {object} input
  * @returns {ReturnType<typeof generateDynamicSceneMap>}
  */
-export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, requirements = [] } = {}) {
+export function generateSceneGeometry({ theme = '', danger = 'средняя', location = '', sceneKind = '', settlementType = '', worldKind = '', seed = 'scene', locationId = '', map = {}, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, requirements = [], program = null } = {}) {
   const requestedMap = map && typeof map === 'object' && !Array.isArray(map) ? map : {}
   return generateSceneGeometryFor({
     theme, danger, location, sceneKind, settlementType, worldKind, seed, locationId, requestedMap,
-    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome, useLibrary, requirements,
+    levels: normalizeDeclaredLevels(levels), description, worldDescription, biome, useLibrary, requirements, program,
   })
 }
 
@@ -636,6 +677,8 @@ export function createSceneTransition(input = {}, state = {}) {
       npcs: (Array.isArray(state.social?.npcs) ? state.social.npcs : [])
         .filter((npc) => npc?.available !== false && String(npc?.location ?? '').toLocaleLowerCase('ru') === location.toLocaleLowerCase('ru'))
         .map((npc) => ({ name: npc.name, role: npc.role, summary: npc.public_summary })),
+      // Якоря картографа (map_architect/v8) — с ролью и постом жителя.
+      landmarks: requestedMap.design?.landmarks,
     })
   const generated = rememberedMap ? null : generateSceneGeometryFor({
     theme,
@@ -659,6 +702,7 @@ export function createSceneTransition(input = {}, state = {}) {
       state.campaignConcept?.setting, state.campaignConcept?.description].filter((value) => typeof value === 'string').join(' ').slice(0, 2400),
     usedLibraryIds: [...libraryIdsInUse(state.locationMaps)],
     requirements: mapRequirements?.items ?? [],
+    program: mapRequirements,
   })
   const library = generated?.library ?? null
   // Заявка архитектора на этажи сильнее; без неё сцена получает этажи,
@@ -694,7 +738,7 @@ export function createSceneTransition(input = {}, state = {}) {
     // Библиотечная карта приносит свои этажи: заявка архитектора на этажи
     // уступает фактической постройке, иначе подписи разошлись бы с картой.
     ...(library ? librarySceneFields(library) : {}),
-    ...(mapRequirements ? { map_requirements: mapRequirements } : {}),
+    ...(mapRequirements ? { map_requirements: { ...mapRequirements, ...(generated?.missing?.length ? { missing: generated.missing } : {}) } } : {}),
     cells,
     map: serializedMap,
   }

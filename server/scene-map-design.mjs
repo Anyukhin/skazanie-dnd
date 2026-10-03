@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { normalizeLandmarks } from './scene-requirements.mjs'
 
 const FIELDS = Object.freeze({
   topology: ['organic', 'linear', 'crossroads', 'market', 'courtyard', 'harbor', 'river', 'terraced', 'gate'],
@@ -12,12 +13,20 @@ const FIELDS = Object.freeze({
 
 const clean = (value, limit = 1600) => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase('ru').slice(0, limit)
 
-/** Только замысел места. Геометрия, проходимость и численные правила принадлежат генератору. */
+/**
+ * Только замысел места. Геометрия, проходимость и численные правила принадлежат генератору.
+ * Якоря (`landmarks`, этап 2 `docs/map-generation-plan.md`) — виды из закрытого
+ * словаря `server/scene-requirements.mjs` с ролью: что обязано стоять на карте.
+ */
 export function normalizeSceneMapDesign(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return Object.fromEntries(Object.entries(FIELDS)
-    .filter(([key, allowed]) => allowed.includes(value[key]))
-    .map(([key]) => [key, value[key]]))
+  const landmarks = normalizeLandmarks(value.landmarks)
+  return {
+    ...Object.fromEntries(Object.entries(FIELDS)
+      .filter(([key, allowed]) => allowed.includes(value[key]))
+      .map(([key]) => [key, value[key]])),
+    ...(landmarks.length ? { landmarks } : {}),
+  }
 }
 
 function seededChoice(values, seed, purpose) {
