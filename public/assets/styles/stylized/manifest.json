@@ -1,0 +1,632 @@
+{
+ "schema": "graphics-style/v1",
+ "style": "stylized",
+ "label": "Рисованный",
+ "revision": "2bceac81beb615cb",
+ "license": "CC0 (Quaternius Medieval Village MegaKit) и собственные текстуры проекта (data/asset-rights.json)",
+ "sources": [
+  "https://quaternius.com/packs/medievalvillagemegakit.html",
+  "public/assets/maps/terrain/terrain-tiles.json"
+ ],
+ "floors": {
+  "stone": {
+   "color": "floors/stone/color.jpg",
+   "normal": "floors/stone/normal.jpg",
+   "orm": "floors/stone/orm.jpg",
+   "height": "floors/stone/height.jpg",
+   "cells": 4,
+   "relief": 0.03
+  },
+  "wood": {
+   "color": "floors/wood/color.jpg",
+   "normal": "floors/wood/normal.jpg",
+   "orm": "floors/wood/orm.jpg",
+   "height": "floors/wood/height.jpg",
+   "cells": 8,
+   "relief": 0.015
+  },
+  "earth": {
+   "color": "floors/earth/color.jpg",
+   "normal": "floors/earth/normal.jpg",
+   "orm": "floors/earth/orm.jpg",
+   "height": "floors/earth/height.jpg",
+   "cells": 8,
+   "relief": 0.025
+  },
+  "grass": {
+   "color": "floors/grass/color.jpg",
+   "normal": "floors/grass/normal.jpg",
+   "orm": "floors/grass/orm.jpg",
+   "height": "floors/grass/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "sand": {
+   "color": "floors/sand/color.jpg",
+   "normal": "floors/sand/normal.jpg",
+   "orm": "floors/sand/orm.jpg",
+   "height": "floors/sand/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "marble": {
+   "color": "floors/marble/color.jpg",
+   "normal": "floors/marble/normal.jpg",
+   "orm": "floors/marble/orm.jpg",
+   "height": "floors/marble/height.jpg",
+   "cells": 4,
+   "relief": 0.006
+  },
+  "metal": {
+   "color": "floors/metal/color.jpg",
+   "normal": "floors/metal/normal.jpg",
+   "orm": "floors/metal/orm.jpg",
+   "height": "floors/metal/height.jpg",
+   "cells": 4,
+   "relief": 0.01
+  },
+  "ice": {
+   "color": "floors/ice/color.jpg",
+   "normal": "floors/ice/normal.jpg",
+   "orm": "floors/ice/orm.jpg",
+   "height": "floors/ice/height.jpg",
+   "cells": 8,
+   "relief": 0.01
+  },
+  "planks-dark": {
+   "color": "floors/planks-dark/color.jpg",
+   "normal": "floors/planks-dark/normal.jpg",
+   "orm": "floors/planks-dark/orm.jpg",
+   "height": "floors/planks-dark/height.jpg",
+   "cells": 8,
+   "relief": 0.015
+  },
+  "parquet": {
+   "color": "floors/parquet/color.jpg",
+   "normal": "floors/parquet/normal.jpg",
+   "orm": "floors/parquet/orm.jpg",
+   "height": "floors/parquet/height.jpg",
+   "cells": 8,
+   "relief": 0.008
+  },
+  "flagstone": {
+   "color": "floors/flagstone/color.jpg",
+   "normal": "floors/flagstone/normal.jpg",
+   "orm": "floors/flagstone/orm.jpg",
+   "height": "floors/flagstone/height.jpg",
+   "cells": 3,
+   "relief": 0.045
+  },
+  "checker": {
+   "color": "floors/checker/color.jpg",
+   "normal": "floors/checker/normal.jpg",
+   "orm": "floors/checker/orm.jpg",
+   "height": "floors/checker/height.jpg",
+   "cells": 8,
+   "relief": 0.008
+  },
+  "dungeon": {
+   "color": "floors/dungeon/color.jpg",
+   "normal": "floors/dungeon/normal.jpg",
+   "orm": "floors/dungeon/orm.jpg",
+   "height": "floors/dungeon/height.jpg",
+   "cells": 3,
+   "relief": 0.04
+  },
+  "mosaic": {
+   "color": "floors/mosaic/color.jpg",
+   "normal": "floors/mosaic/normal.jpg",
+   "orm": "floors/mosaic/orm.jpg",
+   "height": "floors/mosaic/height.jpg",
+   "cells": 8,
+   "relief": 0.008
+  },
+  "cobble": {
+   "color": "floors/cobble/color.jpg",
+   "normal": "floors/cobble/normal.jpg",
+   "orm": "floors/cobble/orm.jpg",
+   "height": "floors/cobble/height.jpg",
+   "cells": 2.4,
+   "relief": 0.05
+  },
+  "straw": {
+   "color": "floors/straw/color.jpg",
+   "normal": "floors/straw/normal.jpg",
+   "orm": "floors/straw/orm.jpg",
+   "height": "floors/straw/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "dock": {
+   "color": "floors/dock/color.jpg",
+   "normal": "floors/dock/normal.jpg",
+   "orm": "floors/dock/orm.jpg",
+   "height": "floors/dock/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "gravel": {
+   "color": "floors/gravel/color.jpg",
+   "normal": "floors/gravel/normal.jpg",
+   "orm": "floors/gravel/orm.jpg",
+   "height": "floors/gravel/height.jpg",
+   "cells": 8,
+   "relief": 0.03
+  },
+  "cave": {
+   "color": "floors/cave/color.jpg",
+   "normal": "floors/cave/normal.jpg",
+   "orm": "floors/cave/orm.jpg",
+   "height": "floors/cave/height.jpg",
+   "cells": 8,
+   "relief": 0.05
+  },
+  "snow": {
+   "color": "floors/snow/color.jpg",
+   "normal": "floors/snow/normal.jpg",
+   "orm": "floors/snow/orm.jpg",
+   "height": "floors/snow/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "mud": {
+   "color": "floors/mud/color.jpg",
+   "normal": "floors/mud/normal.jpg",
+   "orm": "floors/mud/orm.jpg",
+   "height": "floors/mud/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "rubble": {
+   "color": "floors/rubble/color.jpg",
+   "normal": "floors/rubble/normal.jpg",
+   "orm": "floors/rubble/orm.jpg",
+   "height": "floors/rubble/height.jpg",
+   "cells": 8,
+   "relief": 0.05
+  }
+ },
+ "props": {},
+ "files": [
+  {
+   "file": "floors/cave/color.jpg",
+   "sha256": "91a091a74c1351d08a8d49026778365dd97ed11b6555b00498d0d626da91ac3d",
+   "bytes": 82646
+  },
+  {
+   "file": "floors/cave/height.jpg",
+   "sha256": "6325bbf556af79a8cce1fbea8d9c3640cec7c8b2949280957b15f01c99d24c99",
+   "bytes": 61712
+  },
+  {
+   "file": "floors/cave/normal.jpg",
+   "sha256": "63b28e987f4fbd0273235970d620ed71f29a50fae992f5808031799929a5ca88",
+   "bytes": 137243
+  },
+  {
+   "file": "floors/cave/orm.jpg",
+   "sha256": "db1faa1767ffd7076b095deb54430ba5e2b5299b3c845b4726b3d4e493c4b025",
+   "bytes": 20216
+  },
+  {
+   "file": "floors/checker/color.jpg",
+   "sha256": "3ee994365035725c6d9ddae46a033ecfc42febff2af215936ece025c4cf3244f",
+   "bytes": 60337
+  },
+  {
+   "file": "floors/checker/height.jpg",
+   "sha256": "714a81bad61eb2e088ddcd30e2920275487bdfd595afbf36b6f894ae7ef99920",
+   "bytes": 49495
+  },
+  {
+   "file": "floors/checker/normal.jpg",
+   "sha256": "8c2ed3db26ea9f96f84be4f7b9d3ecda38e603e3ea5c30a09b2475f11fc6bc36",
+   "bytes": 100547
+  },
+  {
+   "file": "floors/checker/orm.jpg",
+   "sha256": "ab41048aaa471a328230a1127c87d6c82751ed3ba1cdfc2bc507667698425bf3",
+   "bytes": 21057
+  },
+  {
+   "file": "floors/cobble/color.jpg",
+   "sha256": "0d82619b1060c704dc3281e3ae33bc48bdb1ae302484d5a16baa9319248fdae2",
+   "bytes": 96401
+  },
+  {
+   "file": "floors/cobble/height.jpg",
+   "sha256": "59f34405a96926f7a852f89c8c90d24d0c480657479a2a17526097a09b230b5e",
+   "bytes": 39215
+  },
+  {
+   "file": "floors/cobble/normal.jpg",
+   "sha256": "17edd820288af367d84fcb2fd5a43c3d9fd42d1e7d7ae2c76553443813fdd8b6",
+   "bytes": 170121
+  },
+  {
+   "file": "floors/cobble/orm.jpg",
+   "sha256": "29db0f1d7ad36a1d609cf7d81bec9aa480606fdb1e8c8af852f277815a9f9ff9",
+   "bytes": 15197
+  },
+  {
+   "file": "floors/dock/color.jpg",
+   "sha256": "2c136b2e843b42b65e422480af137c1929a745d73a1c4ea38d20941ded479971",
+   "bytes": 80494
+  },
+  {
+   "file": "floors/dock/height.jpg",
+   "sha256": "fe912d0e28567dcbe8bbaa43f3aee7b35b89615eb89793918130627edad2e6f0",
+   "bytes": 57762
+  },
+  {
+   "file": "floors/dock/normal.jpg",
+   "sha256": "a3fd3830eb31b661f48e28b962a0849f8cf55483d6d27cf3f053e6f52e70841d",
+   "bytes": 115434
+  },
+  {
+   "file": "floors/dock/orm.jpg",
+   "sha256": "99f6c5542c5ae5daad24535cb2a6e4037d629c78834bfdeb6885bc6682043b0f",
+   "bytes": 20125
+  },
+  {
+   "file": "floors/dungeon/color.jpg",
+   "sha256": "6581d0ad84a1a9c17294d1bb3a16ed3eb9642afb249f25f37a8c78065a226001",
+   "bytes": 89510
+  },
+  {
+   "file": "floors/dungeon/height.jpg",
+   "sha256": "b8789db3b4c574e070b1fd77aae48c9074a5ff0a91a8cc2ccaef2eb2806cf43c",
+   "bytes": 40771
+  },
+  {
+   "file": "floors/dungeon/normal.jpg",
+   "sha256": "c45b58828581329bf43b46d161c2725f7fded77dbe4fa3908387d8e2b4a5bfaa",
+   "bytes": 217096
+  },
+  {
+   "file": "floors/dungeon/orm.jpg",
+   "sha256": "5808acfd34b9524b5b7e472e5225233c9a5ef01c8c428dfb205fed184a3b1d02",
+   "bytes": 15960
+  },
+  {
+   "file": "floors/earth/color.jpg",
+   "sha256": "7f23c379d6fa419f83197d3a74402dcb57382791862f785a135cde0128beea20",
+   "bytes": 84409
+  },
+  {
+   "file": "floors/earth/height.jpg",
+   "sha256": "b30b23d848e2225f2f933e515333e3b64845e1987a913f31584343b9e05200cf",
+   "bytes": 61209
+  },
+  {
+   "file": "floors/earth/normal.jpg",
+   "sha256": "6c2620eae5d05357b2201e880d57438a3389fa29efc70dbb6933a64384e46e1f",
+   "bytes": 138024
+  },
+  {
+   "file": "floors/earth/orm.jpg",
+   "sha256": "3ef84ddb075ec365c3704e3bdc3d03e2d8ff2744683d7d5d53638dc6ba3753e5",
+   "bytes": 14654
+  },
+  {
+   "file": "floors/flagstone/color.jpg",
+   "sha256": "0d82619b1060c704dc3281e3ae33bc48bdb1ae302484d5a16baa9319248fdae2",
+   "bytes": 96401
+  },
+  {
+   "file": "floors/flagstone/height.jpg",
+   "sha256": "59f34405a96926f7a852f89c8c90d24d0c480657479a2a17526097a09b230b5e",
+   "bytes": 39215
+  },
+  {
+   "file": "floors/flagstone/normal.jpg",
+   "sha256": "17edd820288af367d84fcb2fd5a43c3d9fd42d1e7d7ae2c76553443813fdd8b6",
+   "bytes": 170121
+  },
+  {
+   "file": "floors/flagstone/orm.jpg",
+   "sha256": "29db0f1d7ad36a1d609cf7d81bec9aa480606fdb1e8c8af852f277815a9f9ff9",
+   "bytes": 15197
+  },
+  {
+   "file": "floors/grass/color.jpg",
+   "sha256": "18d5f34d142806ea0fab55b6876e3871cae1135900aba67d156eb2652e4e50eb",
+   "bytes": 96891
+  },
+  {
+   "file": "floors/grass/height.jpg",
+   "sha256": "91782460252fdb41b44320cc6ed1d36cbf91b43aeba30c1bbce3b9e8a33406b8",
+   "bytes": 95270
+  },
+  {
+   "file": "floors/grass/normal.jpg",
+   "sha256": "e4bf901ecf940740c8195539d7b269bd92463e5bc6d91ec2128379548d7fb6db",
+   "bytes": 182902
+  },
+  {
+   "file": "floors/grass/orm.jpg",
+   "sha256": "8e0b7d22826131d9967c795e21f2b915e256742c8288009e59921040baabb53c",
+   "bytes": 25879
+  },
+  {
+   "file": "floors/gravel/color.jpg",
+   "sha256": "913035ef69fdc1ad47a1df402dedaab169edea31f26e532e12a6618dcb7043a6",
+   "bytes": 131481
+  },
+  {
+   "file": "floors/gravel/height.jpg",
+   "sha256": "6ded7a81dd381c99c49b25381fc34332bcc59714ace6d62242bbab3c128619b1",
+   "bytes": 79446
+  },
+  {
+   "file": "floors/gravel/normal.jpg",
+   "sha256": "9e2924da1ed3676c2afd28be8a98a53aa63c7dc8260b82c7bdba1c23a9352da9",
+   "bytes": 165084
+  },
+  {
+   "file": "floors/gravel/orm.jpg",
+   "sha256": "14fd64de4daf6ab6ca78601265a05101fa2b24cbfb33bd31227f3cb3efb0dd01",
+   "bytes": 27150
+  },
+  {
+   "file": "floors/ice/color.jpg",
+   "sha256": "24e47cb835c7271bc7a82700f5eed98ab46877e9e246782c1fa499f9b2b5a874",
+   "bytes": 62807
+  },
+  {
+   "file": "floors/ice/height.jpg",
+   "sha256": "af9e21317bbf4d536fab3ca53b878209092cb0829a3e72be3b9cbfb703621436",
+   "bytes": 57787
+  },
+  {
+   "file": "floors/ice/normal.jpg",
+   "sha256": "7fa503f4b476c3b898f1182b666043551b38ae8c420f86ebbee182011a0b1f9e",
+   "bytes": 129653
+  },
+  {
+   "file": "floors/ice/orm.jpg",
+   "sha256": "814d3fab33165995eae4f4df30a200f09f08ef170df226eae02f628a64257ea3",
+   "bytes": 18824
+  },
+  {
+   "file": "floors/marble/color.jpg",
+   "sha256": "675e1a0b73151e3ddd449afd9a0571bca969296b439df9e8cedc6e9761d8bb8e",
+   "bytes": 48692
+  },
+  {
+   "file": "floors/marble/height.jpg",
+   "sha256": "6663f734c8e50b255b3562809d6adcbbda56642a9e0b89ae7cb6e27a4dbc2284",
+   "bytes": 51193
+  },
+  {
+   "file": "floors/marble/normal.jpg",
+   "sha256": "e3d8de2df960729a1076969413787f3ad3e463c3c639417dd090947c810336a4",
+   "bytes": 111377
+  },
+  {
+   "file": "floors/marble/orm.jpg",
+   "sha256": "3a2f6fce943897892c65e19a0d6e483ef42847a18c1d382209ce14d07fe98225",
+   "bytes": 17971
+  },
+  {
+   "file": "floors/metal/color.jpg",
+   "sha256": "13abe7d6a5e17854e37c405f59452f6b776d426279741a61beb11c891609b79a",
+   "bytes": 39880
+  },
+  {
+   "file": "floors/metal/height.jpg",
+   "sha256": "589e610ffb55ddbdb856b7cba8d375ceeada8c712415a158f78f10a4caf4d25d",
+   "bytes": 54669
+  },
+  {
+   "file": "floors/metal/normal.jpg",
+   "sha256": "67265ed33b81d8c9deaec2f0dc6271282e29e1c2a65398734f7c9fc2e155fd74",
+   "bytes": 117446
+  },
+  {
+   "file": "floors/metal/orm.jpg",
+   "sha256": "d3f6491f508577c763c20a9dcff631506762ec7cff2a0563a362167eaa782639",
+   "bytes": 18803
+  },
+  {
+   "file": "floors/mosaic/color.jpg",
+   "sha256": "70e90222d04c4f59ce82da846da312bcea5162e76d4d4aac43c2ff1bd6792da8",
+   "bytes": 97089
+  },
+  {
+   "file": "floors/mosaic/height.jpg",
+   "sha256": "5892e48f52d3e2171bd9d3d95d0d1548c8c3ef8cbad641af38d62812e049ed37",
+   "bytes": 72820
+  },
+  {
+   "file": "floors/mosaic/normal.jpg",
+   "sha256": "81f59f5cfc39377059e9ad7b025457f37b993a2d9bd4111491253fadfbd1aad2",
+   "bytes": 141241
+  },
+  {
+   "file": "floors/mosaic/orm.jpg",
+   "sha256": "8defea8bc0ea39fb5ae8e269b56f78e96b9c3d069db03025d85d675b5dbea5f4",
+   "bytes": 27618
+  },
+  {
+   "file": "floors/mud/color.jpg",
+   "sha256": "9515e9f4b6543b50e7a2ee8af7c1f4a02735b20507bd3cf95fdbb62ca242cb43",
+   "bytes": 60806
+  },
+  {
+   "file": "floors/mud/height.jpg",
+   "sha256": "a0948921db0879747aae9d81a7cb1dd98e20e9ae9536bf7193e500af7d6f3465",
+   "bytes": 70737
+  },
+  {
+   "file": "floors/mud/normal.jpg",
+   "sha256": "b9170e0e4ead8971fa62a4e03672cb3ef213ff50a6028f113499807ee0d415bd",
+   "bytes": 150278
+  },
+  {
+   "file": "floors/mud/orm.jpg",
+   "sha256": "1bc0f1ecdb2f3aa50323d2150e5ae2ba5d00c418f77daaf0494da4c7518d146c",
+   "bytes": 22212
+  },
+  {
+   "file": "floors/parquet/color.jpg",
+   "sha256": "acbf2c9474502fda66d048e232aa18ec2a02e6ec0399417499263f4f2d233355",
+   "bytes": 88352
+  },
+  {
+   "file": "floors/parquet/height.jpg",
+   "sha256": "ad07b603d3aff45152b1cdbf747c3356a535d2ede47907e0601963398654868b",
+   "bytes": 65560
+  },
+  {
+   "file": "floors/parquet/normal.jpg",
+   "sha256": "f069907181b88a8c5e8b4c6d66c6ba1677ca21ac8477d63282b071b923a01615",
+   "bytes": 127908
+  },
+  {
+   "file": "floors/parquet/orm.jpg",
+   "sha256": "5080a2631c0c6f43452623a235110326b52dd46cc1ee5f97dbcb14777ddadf34",
+   "bytes": 25161
+  },
+  {
+   "file": "floors/planks-dark/color.jpg",
+   "sha256": "7068eff73eaa46ad5687f629e9aa80cb1e3ac3969e381195bed0625b9587039e",
+   "bytes": 54599
+  },
+  {
+   "file": "floors/planks-dark/height.jpg",
+   "sha256": "eb62d3917d5c23c239ff99928d874cb65443c5d7c78e2ca6e1c79a137416ca9e",
+   "bytes": 60802
+  },
+  {
+   "file": "floors/planks-dark/normal.jpg",
+   "sha256": "7d44c4b4a3a7dfbe790114858cffa9687759fc6f6dc5e552980726c3a73ad26e",
+   "bytes": 121754
+  },
+  {
+   "file": "floors/planks-dark/orm.jpg",
+   "sha256": "c77e6b866072cbc030b5ce0564ce2c12655980589e0f57b5333b216d2a551c8d",
+   "bytes": 21588
+  },
+  {
+   "file": "floors/rubble/color.jpg",
+   "sha256": "7a7e6cb8ff27b501ddef7b6adb5849ff2e6904d59b4b727a04d0c6784981cd81",
+   "bytes": 108133
+  },
+  {
+   "file": "floors/rubble/height.jpg",
+   "sha256": "9aeb3fc935c0d01bc8854d112392ee6753f82e1e1ea8e440b8e17656d90e13c3",
+   "bytes": 72503
+  },
+  {
+   "file": "floors/rubble/normal.jpg",
+   "sha256": "98eda4e9e0b4c62954c16adeb675d5273b9520f3917d27eefbca951a50c5823b",
+   "bytes": 149410
+  },
+  {
+   "file": "floors/rubble/orm.jpg",
+   "sha256": "e76dcba5b71fc620fbbfdf151e269408a6dd2b488ed692239f3e97038c60a372",
+   "bytes": 24756
+  },
+  {
+   "file": "floors/sand/color.jpg",
+   "sha256": "b9ac90c8288860795cfbdede068ed7429ccc4547850333f9b074cc6d57e8e652",
+   "bytes": 62364
+  },
+  {
+   "file": "floors/sand/height.jpg",
+   "sha256": "0deadbb809564c6ab931aa898c60f612e5cf5d6af7b7c5ab9472a704a96054b4",
+   "bytes": 71542
+  },
+  {
+   "file": "floors/sand/normal.jpg",
+   "sha256": "94735898d94b44a0b632b793b82f35f42995c3d5c8d3a54628d15473232138a7",
+   "bytes": 150849
+  },
+  {
+   "file": "floors/sand/orm.jpg",
+   "sha256": "8fb7bf16baa96b3689853d80846f9388a5dcc6b9cb2a12298e0163aab4af7a53",
+   "bytes": 20948
+  },
+  {
+   "file": "floors/snow/color.jpg",
+   "sha256": "f1c1f8df0fdae6a6232a5cd5248ce58ad72535e4169136e9653aa9169adc2e90",
+   "bytes": 54042
+  },
+  {
+   "file": "floors/snow/height.jpg",
+   "sha256": "89a094b46e79a3dd0586a010430c44fe6cf1ac517288f203e5401019cec809e2",
+   "bytes": 53481
+  },
+  {
+   "file": "floors/snow/normal.jpg",
+   "sha256": "8f4ea19e7fbd104a72c333a4611ee30da78b0980442a21fc161a87a3f1e50979",
+   "bytes": 117678
+  },
+  {
+   "file": "floors/snow/orm.jpg",
+   "sha256": "00d763103e5091c6a2fc781c17a81ee4b724bee95effe0467f0d6aea7f084e9d",
+   "bytes": 20010
+  },
+  {
+   "file": "floors/stone/color.jpg",
+   "sha256": "ff53b203c21ffbd7c9c945fbca673f45a599ec83cd5d1bc22b9488d7e03e2c4b",
+   "bytes": 69673
+  },
+  {
+   "file": "floors/stone/height.jpg",
+   "sha256": "4e6f0041499d1b7dfea9fad8a238bef642357b98cd8e8f8824c523e9767c4c3f",
+   "bytes": 57074
+  },
+  {
+   "file": "floors/stone/normal.jpg",
+   "sha256": "7c81d023e3449481cab7120d7ceb15ef2d4296dd560c62c23ec40cfc4060ab12",
+   "bytes": 121811
+  },
+  {
+   "file": "floors/stone/orm.jpg",
+   "sha256": "e6bb98ba9948f565347ca603e667d803faf72f37a07ad35d450e6be5d89c62a4",
+   "bytes": 19374
+  },
+  {
+   "file": "floors/straw/color.jpg",
+   "sha256": "97cb20868d1582d439981b89abe32b1aa595af2d7fb3e43bdb8f39f227588f0a",
+   "bytes": 123658
+  },
+  {
+   "file": "floors/straw/height.jpg",
+   "sha256": "56b54cbe0f7483a3a3401b3b62c112901a23ec95f98b1822d1143bf69e48065c",
+   "bytes": 80739
+  },
+  {
+   "file": "floors/straw/normal.jpg",
+   "sha256": "f3249e2c81ef05e59e686327fd62a34343f812fc877584623ea00716c4d4e461",
+   "bytes": 164867
+  },
+  {
+   "file": "floors/straw/orm.jpg",
+   "sha256": "40e93b6e5e783245d97794381d51cd3403c3fef152490c32db81dbb50d405b97",
+   "bytes": 25277
+  },
+  {
+   "file": "floors/wood/color.jpg",
+   "sha256": "cbab112d5506b44280314eedf8133b5cc562edd35c4c162de165e78f746b8464",
+   "bytes": 43367
+  },
+  {
+   "file": "floors/wood/height.jpg",
+   "sha256": "35762871d72253573cb902adf2f2fca3300b8101c88b2a9694b24150fdb549d5",
+   "bytes": 54522
+  },
+  {
+   "file": "floors/wood/normal.jpg",
+   "sha256": "a730ec1215d59374e2a8347ecf6cc5583ecfc4b9d96ff1a856106a4613424173",
+   "bytes": 107334
+  },
+  {
+   "file": "floors/wood/orm.jpg",
+   "sha256": "1a5b1a43a7f70660defa5759df65e27675a8f321473ea3fa91545e0ffa5030ad",
+   "bytes": 20189
+  }
+ ]
+}

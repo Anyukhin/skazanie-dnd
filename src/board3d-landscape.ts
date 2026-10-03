@@ -4,7 +4,7 @@ import { cellAt } from './tactical-map-client'
 import { terrainHeightAt } from './board3d-terrain'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import { landscapeModelsOf, pickLandscapeVariant, type LandscapeKit, type LandscapeModel } from './landscape-model-assets'
-import type { TacticalMap, TacticalProp } from './types'
+import type { TacticalCell, TacticalMap, TacticalProp } from './types'
 
 /**
  * Объёмная местность доски в духе настольных диорам (TaleSpire): пол
@@ -135,14 +135,19 @@ type Side = 'n' | 'e' | 's' | 'w'
  * соседней плитки. UV — по мировым координатам, поэтому рисунок пола с
  * canvas ложится непрерывно, как и раньше. Цвет вершин затемняет дно и
  * чуть разнит плитки между собой.
+ *
+ * `include` оставляет только часть клеток — так пол стиля графики режется
+ * по видам покрытия. `uvCells` переводит UV в повторы текстуры: один повтор
+ * на столько клеток, по мировым X и Z.
  */
-export function createTileGroundGeometry(map: TacticalMap): THREE.BufferGeometry {
+export function createTileGroundGeometry(map: TacticalMap, options: { include?: (x: number, y: number, cell: TacticalCell) => boolean, uvCells?: number } = {}): THREE.BufferGeometry {
   const positions: number[] = [], uvs: number[] = [], colors: number[] = [], indices: number[] = []
   const width = Math.max(1, map.width), height = Math.max(1, map.height)
   let vertex = 0
   const push = (x: number, y: number, z: number, shade: [number, number, number]) => {
     positions.push(x, y, z)
-    uvs.push(x / width, 1 - z / height)
+    if (options.uvCells) uvs.push(x / options.uvCells, z / options.uvCells)
+    else uvs.push(x / width, 1 - z / height)
     colors.push(...shade)
     return vertex++
   }
@@ -150,6 +155,7 @@ export function createTileGroundGeometry(map: TacticalMap): THREE.BufferGeometry
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
     const cell = cellAt(map, x, y)
     if (!cell?.revealed) continue
+    if (options.include && !options.include(x, y, cell)) continue
     const level = terrainHeightAt(map, x, y)
     const water = cell.surface === 'water'
     const tint = 1 - cellNoise(x, y, 7) * .08
