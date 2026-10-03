@@ -114,10 +114,24 @@ export function ErrorToasts({ sources }: { sources: ErrorToastSource[] }) {
     // прежним, тост не дублируется.
     const fresh = incoming.filter((source, index) => source.text && source.text !== previous[index])
     if (!fresh.length) return
-    setToasts((current) => [
-      ...current,
-      ...fresh.map((source) => ({ id: ++nextIdRef.current, text: String(source.text), onDismiss: source.onDismiss })),
-    ].slice(-ERROR_TOAST_LIMIT))
+    // Один отказ часто приходит сразу двумя источниками — ответом команды и
+    // ошибкой доски, — и висел двумя одинаковыми тостами (плейтест 2026-10-03).
+    // Текст, который уже на экране или уже взят в эту пачку, не повторяется, а
+    // снятие тоста снимает отказ у обоих источников.
+    setToasts((current) => {
+      const next = current.map((toast) => ({ ...toast }))
+      for (const source of fresh) {
+        const text = String(source.text)
+        const same = next.find((toast) => toast.text === text)
+        if (!same) {
+          next.push({ id: ++nextIdRef.current, text, onDismiss: source.onDismiss })
+          continue
+        }
+        const before = same.onDismiss
+        if (source.onDismiss) same.onDismiss = () => { before?.(); source.onDismiss?.() }
+      }
+      return next.slice(-ERROR_TOAST_LIMIT)
+    })
   }, [sourcesKey])
   // Гасим по одному с головы очереди: следующий отсчёт начинается, когда
   // предыдущий тост ушёл, и три отказа подряд не исчезают одним махом.

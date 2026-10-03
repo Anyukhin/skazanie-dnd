@@ -208,6 +208,27 @@
   border-width: 1px;
   box-shadow: 0 1px 3px #000, 0 0 0 1px rgba(0,0,0,.5);
 }
+/* Тело и метка добычи ужимаются вместе с клеткой, как и фишки: в пикселях
+   они жили внутри масштабированного поля и при приближении накрывали соседние
+   клетки вместе с фишками героев (плейтест 2026-10-03). */
+.tactical-scroll .board-cell .fallen-token {
+  width: min(calc(var(--cell) * .8), 38px);
+  height: min(calc(var(--cell) * .8), 38px);
+}
+.tactical-scroll .board-cell .loot-pin {
+  right: 3%;
+  bottom: 3%;
+  max-width: 94%;
+  min-height: 0;
+  height: min(calc(var(--cell) * .42), 17px);
+  gap: 1px;
+  padding: 0 min(calc(var(--cell) * .08), 4px);
+  font-size: min(calc(var(--cell) * .32), 11px);
+}
+.tactical-scroll .board-cell .loot-pin svg {
+  width: min(calc(var(--cell) * .32), 12px);
+  height: min(calc(var(--cell) * .32), 12px);
+}
 /* Фишка врага ужимается вместе с клеткой, как и фишка героя. На крупной карте
    поселения клетка — 11 px, герой сжимался до неё, а разбойник оставался 44 px
    и накрывал четыре клетки: не видно, где он стоит и куда по нему кликать. */

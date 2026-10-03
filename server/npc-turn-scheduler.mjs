@@ -229,6 +229,28 @@ function averageDamage(expression, flat = 0) {
   return Number(match[1]) * (Number(match[2]) + 1) / 2 + Number(match[3] || 0)
 }
 
+/**
+ * «Держит дистанцию» — тактика стрелка, а не всякого, у кого за спиной
+ * арбалет. Черта стоит и у ветерана, рыцаря, холмового великана, чей главный
+ * удар — ближний; с ней ветеран пятился от воина восемнадцать раундов
+ * (плейтест 2026-10-03). Отходит тот, чей лучший дальний удар против средней
+ * брони (КД 15) не слабее лучшего ближнего, или у кого ближнего удара нет.
+ */
+function prefersRangedCombat(enemy) {
+  const expected = (profile) => {
+    const hitChance = Math.min(.95, Math.max(.05, (6 + (Number(profile?.attack_modifier) || 0)) / 20))
+    return averageDamage(profile?.damage_expression, profile?.damage_amount) * hitChance
+  }
+  const profiles = Array.isArray(enemy?.action_profiles) ? enemy.action_profiles : []
+  const best = (kind) => profiles.filter((profile) => profile?.kind === kind).reduce((top, profile) => Math.max(top, expected(profile)), -1)
+  const melee = best('melee')
+  return melee < 0 || best('ranged') >= melee
+}
+
+function keepsDistance(enemy) {
+  return hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance) && prefersRangedCombat(enemy)
+}
+
 function adjacentEnemyAlly(state, enemy, target) {
   const targetId = actorId(target)
   return livingEnemies(state).some((ally) => actorId(ally) !== actorId(enemy)
@@ -400,9 +422,11 @@ function firingPositionFor(state, enemy, target, profile) {
   if (!from || !targetAt) return null
   const budgetFeet = remainingMovementFeet(state, enemy)
   const threats = rangedThreats(state, enemy)
+  const staysInReach = withinReachOfAdjacentHostiles(state, enemy)
   const positionScore = (position) => {
     const distanceFeet = distanceFeetBetweenActors(state, actorId(enemy), actorId(target), position, targetAt)
     if (distanceFeet < CELL_FEET || distanceFeet > profile.range_feet) return null
+    if (!staysInReach(position)) return null
     if (!hasClearActorTrajectory(state, actorId(enemy), actorId(target), position, targetAt)) return null
     const cover = targetCoverLevel(state, actorId(enemy), actorId(target), position, targetAt)
     return (cover === 'none' ? CLEAR_SHOT_BONUS : 0)
@@ -425,6 +449,24 @@ function firingPositionFor(state, enemy, target, profile) {
   // Отбор по близости к цели прятал бы от стрелка высоту у него под ногами.
   const ranked = rankedPositions(state, enemy, budgetFeet, from, positionScore, current)
   return firstAffordable(state, enemy, ranked, budgetFeet)
+}
+
+/**
+ * Клетки, куда можно отойти, не выходя из досягаемости соседей-противников.
+ * Шаг за пределы чужой досягаемости — это атака по возможности, а огневая
+ * позиция её не стоит: в плейтесте 2026-10-03 ветеран, стоя вплотную к воину,
+ * отступил на клетку ради выстрела из арбалета и подставился под удар.
+ * Досягаемость считается в пять футов — так её видит большинство героев.
+ */
+function withinReachOfAdjacentHostiles(state, enemy) {
+  const enemyId = actorId(enemy)
+  const from = actorPosition(state, enemyId)
+  const adjacent = from
+    ? attackableTargetsFor(state, enemy)
+      .map((hostile) => ({ id: actorId(hostile), at: actorPosition(state, actorId(hostile)) }))
+      .filter((hostile) => hostile.at && distanceFeetBetweenActors(state, enemyId, hostile.id, from, hostile.at) <= CELL_FEET)
+    : []
+  return (position) => adjacent.every((hostile) => distanceFeetBetweenActors(state, enemyId, hostile.id, position, hostile.at) <= CELL_FEET)
 }
 
 /**
@@ -574,11 +616,15 @@ function targetCandidates(state, enemy) {
         && distanceFeet >= CELL_FEET && distanceFeet <= profile.range_feet
         && !hasClearActorTrajectory(state, actorId(enemy), actorId(target), enemyAt, targetAt)
       const relentlessPursuit = hasTrait(enemy, NPC_BEHAVIOR_POLICIES.relentlessPursuit)
+      // «Добить» — только тем, что попадёт без помехи: выстрел в упор её
+      // получает, и ветеран менял меч на арбалет ради выстрела, который
+      // скорее промажет (плейтест 2026-10-03).
+      const finishingBlow = damage >= targetHp && !rangedAtMeleePenalty
       // Демон не выбирает — он бьёт ближайшего.
       const score = hostileToAll ? Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 - pathDistance * 50 : Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 + Math.min(300, damage * 12)
         + (relentlessPursuit
           ? Math.max(0, 800 - pathDistance * 80)
-          : damage >= targetHp ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))
+          : finishingBlow ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))
         + (relentlessPursuit ? 0 : Math.max(0, 22 - targetArmor) * 4 + controlValue + packValue) + rechargeValue
         - pathDistance * 3 - rangedAtMeleePenalty - coverPenalty + highGround
       candidates.push({ actor: target, path, inRange: inRange && !blockedShot, blockedShot, coverLevel, distance: pathDistance, profile, score })
@@ -1206,7 +1252,7 @@ export function planNpcTurn(rawState, enemyId) {
     movementOnlyPhase = true
   } else if (candidate.inRange
     && profile.kind === 'ranged'
-    && hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance)
+    && keepsDistance(enemy)
     && !adjacentPartyMember(state, enemy)
     && meleeThreatWithinReach(state, enemy)) {
     const retreat = retreatDestination(state, enemy, candidate.actor, profile)
@@ -1216,7 +1262,7 @@ export function planNpcTurn(rawState, enemyId) {
     } else {
       commands.push(...attackCommands(state, enemy, targetId, profile))
     }
-  } else if (candidate.inRange && profile.kind === 'ranged' && hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance) && adjacent && !hasTrait(enemy, 'nimble-escape')) {
+  } else if (candidate.inRange && profile.kind === 'ranged' && keepsDistance(enemy) && adjacent && !hasTrait(enemy, 'nimble-escape')) {
     const retreat = retreatDestination(state, enemy, candidate.actor, profile)
     if (retreat) {
       commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: retreat, monster_ability: 'keep-distance' })
@@ -1262,9 +1308,20 @@ export function planNpcTurn(rawState, enemyId) {
     const approachSteps = Math.max(0, candidate.path.length - rangeCells)
     const affordable = affordablePathPrefix(state, enemyId, candidate.path, approachSteps, availableFeet)
     const needsAggressive = aggressiveAvailable && affordable.steps < approachSteps
-    const reach = needsAggressive
+    // Рывок — когда и вся скорость не доводит до удара: действие всё равно
+    // пропадёт, так лучше бежать. Без него враг вне досягаемости полз по
+    // тридцать футов за ход (плейтест 2026-10-03). Начатая атака действие уже
+    // заняла — тогда только шаг. Склянка, долетающая с места, ценнее бега.
+    const needsDash = !needsAggressive && affordable.steps < approachSteps
+      && actionEconomy.action !== false && usedBeforePlan === 0
+      && !thrownFlaskCommandFor(state, enemy, usableEquipment, currentEconomy, enemyAt)
+    const reach = needsAggressive || needsDash
       ? affordablePathPrefix(state, enemyId, candidate.path, approachSteps, availableFeet + speedFeet)
       : affordable
+    if (needsDash && reach.steps > affordable.steps) {
+      commands.push({ command_type: 'UseCombatAction', actor_id: String(enemyId), action_id: 'dash' })
+    }
+    const dashed = needsDash && reach.steps > affordable.steps
     if (reach.steps > 0) {
       plannedMovementFeet = reach.costFeet
       plannedPosition = candidate.path[reach.steps - 1]
@@ -1275,7 +1332,7 @@ export function planNpcTurn(rawState, enemyId) {
     const distanceAfterMove = destination && targetAt
       ? distanceFeetBetweenActors(state, enemyId, targetId, destination, targetAt)
       : Number.MAX_SAFE_INTEGER
-    if (profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet
+    if (!dashed && profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet
       && (profile.range_feet <= CELL_FEET || hasClearActorTrajectory(state, enemyId, targetId, destination, targetAt))) {
       commands.push(...attackCommands(state, enemy, targetId, profile))
     }

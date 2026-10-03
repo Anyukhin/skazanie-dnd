@@ -112,7 +112,7 @@ import {
   pointInAreaEffect,
   type MovementPath,
 } from './tactical-ui'
-import { fallbackCombatActions } from './combat-actions'
+import { SUPERSEDED_FEATURE_POOLS, fallbackCombatActions } from './combat-actions'
 import { allCatalogCombatSpells, fallbackCombatSpells } from './combat-spells'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -239,7 +239,7 @@ const REQUEST_KIND_OPTIONS: ReadonlyArray<readonly [PlayerRequestKind, string, s
 function heroClassPoolRowsFrom(resources: Record<string, { current?: number; max?: number } | undefined>) {
   return Object.entries(resources)
     .map(([key, pool]) => ({ key, current: Math.max(0, Number(pool?.current ?? 0)), max: Math.max(0, Number(pool?.max ?? 0)) }))
-    .filter((entry) => entry.max > 0)
+    .filter((entry) => entry.max > 0 && !SUPERSEDED_FEATURE_POOLS.has(entry.key))
     .sort((left, right) => heroResourceRank(left.key) - heroResourceRank(right.key) || left.key.localeCompare(right.key, 'ru'))
     .reduce<Array<{ keys: string[]; current: number; max: number }>>((rows, entry) => {
       const twin = rows.find((row) => row.current === entry.current && row.max === entry.max
@@ -2806,6 +2806,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         visualBatch={visualBatch}
         animationActors={animationActors}
         focusActorId={typingActorId}
+        passClickThroughAnimation={combatActive}
         autoFocusKey={combatActive ? (turnActorId === typingActorId ? `turn:${combat.round ?? 1}:${turnActorId}` : 'combat') : ''}
         animationsEnabled={combatAnimations}
         combatAudio={combatAudio}

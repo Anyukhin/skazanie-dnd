@@ -145,7 +145,7 @@ export function combatEventChecker(initial) {
   let initiative = []
   let active = null
   const spend = (id, kind) => {
-    const budget = economies.get(id) ?? { action: 0, bonus_action: 0, reaction: 0, movement: 0 }
+    const budget = economies.get(id) ?? { action: 0, bonus_action: 0, reaction: 0, movement: 0, dashes: 0 }
     budget[kind]++
     assert.ok(budget[kind] <= 1, `${id}: повторно потрачено ${kind} до следующего хода`)
     if (kind !== 'reaction') assert.equal(id, active, `${id}: действие вне своего хода`)
@@ -158,7 +158,7 @@ export function combatEventChecker(initial) {
       if (event.event_type === 'CombatStarted') initiative = p.initiative.map((entry) => entry.actor_id)
       if (event.event_type === 'TurnStarted') {
         active = initiative[p.active_index]
-        economies.set(active, { action: 0, bonus_action: 0, reaction: 0, movement: 0 })
+        economies.set(active, { action: 0, bonus_action: 0, reaction: 0, movement: 0, dashes: 0 })
       }
       if (event.event_type === 'AttackResolved') {
         if (!p.reaction_attack) spend(id, 'action')
@@ -173,6 +173,8 @@ export function combatEventChecker(initial) {
       if (event.event_type === 'ItemUsed') spend(id, p.combat_action)
       if (event.event_type === 'CombatActionUsed' && ['action', 'bonus_action', 'reaction'].includes(p.action_type)) spend(id, p.action_type)
       if (event.event_type === 'CombatActionUsed' && p.action_id === 'opportunity-attack') opportunityAttacks.set(id, p.target_id)
+      // Рывок даёт ещё столько же скорости — считаем сами, не по полю события.
+      if (event.event_type === 'CombatActionUsed' && p.action_id === 'dash') economies.get(id).dashes++
       if (event.event_type === 'ActorMoved') {
         assert.deepEqual(p.from, positions.get(id), 'Перемещение начинается не из текущей клетки')
         assert.deepEqual(p.path.at(-1), p.to, 'Конец пути расходится с целью')
@@ -189,7 +191,7 @@ export function combatEventChecker(initial) {
         if (p.spend_movement) {
           const budget = economies.get(id)
           budget.movement += cost
-          assert.ok(budget.movement <= actors.get(id).speed, `${id}: превышена скорость`)
+          assert.ok(budget.movement <= actors.get(id).speed * (1 + budget.dashes), `${id}: превышена скорость`)
         }
         positions.set(id, p.to)
       }

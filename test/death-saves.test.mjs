@@ -319,6 +319,7 @@ test('Охрана от смерти один раз оставляет цель
   assert.deepEqual(replayEvents(warded, protectedHit.events), protectedState)
 
   const secondHit = resolveCommand({ command_type: 'ApplyDamage', actor_id: 'foe', target_id: 'fallen', amount: 1, damage_type: 'slashing' }, protectedState, { diceService: dice() })
-  assert.deepEqual(secondHit.events.map((event) => event.event_type), ['DamageApplied', 'HitPointsReducedToZero'])
+  assert.deepEqual(secondHit.events.map((event) => event.event_type), ['DamageApplied', 'HitPointsReducedToZero', 'ConditionAdded'])
+  assert.equal(secondHit.events[2].payload.condition, 'prone', 'упавший без сознания лежит')
   assert.equal(applyAll(protectedState, secondHit.events).players.find((hero) => hero.id === 'fallen').hp, 0)
 })

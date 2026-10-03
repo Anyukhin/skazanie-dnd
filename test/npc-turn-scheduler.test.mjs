@@ -231,8 +231,10 @@ test('план NPC оплачивает трудную местность и н�
   const commands = planNpcTurn(state, 'wolf')
   const move = commands.find((command) => command.command_type === 'MoveActor')
   assert.ok(move, 'волк всё ещё идёт к герою, просто не дальше оплаченного')
-  // Скорость 10 футов: единственный шаг в грязь стоит 5 за шаг и 5 за местность.
-  assert.deepEqual(move.to, { x: 2, y: 1 })
+  // Скорость 10 футов до удара не довозит, поэтому волк бежит Рывком: 20
+  // футов, из них шаг в грязь стоит 10, следующий шаг — 5.
+  assert.equal(commands[0].action_id, 'dash')
+  assert.deepEqual(move.to, { x: 1, y: 1 })
 
   const resolved = resolveCommands(
     commands.map((command, index) => ({ ...command, server_authoritative: true, command_id: `plan:${index}` })),
@@ -240,8 +242,8 @@ test('план NPC оплачивает трудную местность и н�
     { diceService: boundedDice(), context: { isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true } },
   )
   const moved = resolved.events.find((event) => event.event_type === 'ActorMoved')
-  assert.equal(moved.payload.movement_cost, 10)
-  assert.equal(moved.payload.movement_spent, 10)
+  assert.equal(moved.payload.movement_cost, 15)
+  assert.equal(moved.payload.movement_spent, 15)
 })
 
 test('authoritative movement rejects unrevealed and unsupported terrain', () => {
@@ -1278,7 +1280,10 @@ test('NPC prefers a reachable target over a geometrically closer unreachable one
   state.enemies[0].y = 1
   state.mechanics.positions.wolf = { x: 6, y: 1 }
   const commands = planNpcTurn(state, 'wolf')
-  assert.equal(commands[0].command_type, 'MoveActor')
+  // До героя далеко — волк бежит Рывком, но идёт именно к достижимой цели.
+  const moves = commands.filter((command) => command.action_id !== 'dash')
+  assert.equal(moves[0].command_type, 'MoveActor')
+  assert.ok(moves[0].to.x < 6, 'волк идёт к герою на суше')
   assert.equal(commands.at(-1).command_type, 'EndTurn')
 })
 

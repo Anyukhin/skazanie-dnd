@@ -57,8 +57,9 @@ type Runtime = {
   reset: () => void
   turn: (angle: number) => void
   zoom: (factor: number) => void
-  /** Сдвинуть камеру так, чтобы клетка оказалась в центре (мини-карта). */
-  focus: (x: number, y: number) => void
+  /** Сдвинуть камеру так, чтобы клетка оказалась в центре (мини-карта). С
+   *  `onlyIfHidden` — только если клетка ушла из кадра (камера за героем). */
+  focus: (x: number, y: number, onlyIfHidden?: boolean) => void
 }
 
 function readModels(key: string): Record<string, string> {
@@ -1142,7 +1143,13 @@ export default function TacticalBoard3D(props: Props) {
     const click = (event: MouseEvent) => {
       if (down?.moved || (down && down.button !== 0)) { down = null; return }
       down = null
-      if (active && latest.current.animationsEnabled !== false) { skip(); return }
+      if (active && latest.current.animationsEnabled !== false) {
+        skip()
+        // Щелчок по пустой клетке в бою — ещё и выбор клетки (см. passClickThroughAnimation).
+        if (!latest.current.passClickThroughAnimation) return
+        pointerRay(event)
+        if (actorAtPointer() || propAtPointer()) return
+      }
       pointerRay(event)
       const actorId = actorAtPointer()
       if (actorId) { activateActor(actorId); return }
@@ -1205,7 +1212,12 @@ export default function TacticalBoard3D(props: Props) {
     runtime.current = { sync, refresh: invalidate, skip, reset,
       turn(angle) { camera.position.sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), angle).add(controls.target); controls.update(); invalidate() },
       zoom(factor) { labelsDirty = true; camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); invalidate() },
-      focus(x, y) { const shift = new THREE.Vector3(x + .5 - controls.target.x, 0, y + .5 - controls.target.z); controls.target.add(shift); camera.position.add(shift); controls.update(); labelsDirty = true; invalidate() },
+      focus(x, y, onlyIfHidden) {
+        if (onlyIfHidden) {
+          const onScreen = new THREE.Vector3(x + .5, controls.target.y, y + .5).project(camera)
+          if (Math.abs(onScreen.x) < .6 && Math.abs(onScreen.y) < .6) return
+        }
+        const shift = new THREE.Vector3(x + .5 - controls.target.x, 0, y + .5 - controls.target.z); controls.target.add(shift); camera.position.add(shift); controls.update(); labelsDirty = true; invalidate() },
     }
     resize()
     if (saved) { camera.position.copy(saved.position); camera.zoom = saved.zoom; controls.target.copy(saved.target); camera.updateProjectionMatrix(); controls.update() }
@@ -1237,7 +1249,7 @@ export default function TacticalBoard3D(props: Props) {
 
   useEffect(() => { runtime.current?.sync() }, [props, models, catalog, quality, roofMode])
   useEffect(() => { if (props.viewResetKey !== undefined) runtime.current?.reset() }, [props.viewResetKey])
-  useEffect(() => { if (props.focusRequest) runtime.current?.focus(props.focusRequest.x, props.focusRequest.y) }, [props.focusRequest])
+  useEffect(() => { if (props.focusRequest) runtime.current?.focus(props.focusRequest.x, props.focusRequest.y, props.focusRequest.onlyIfHidden) }, [props.focusRequest])
   const chooseModel = (value: string) => {
     const next = { ...models }
     if (value) next[selectedModelActor] = value; else delete next[selectedModelActor]

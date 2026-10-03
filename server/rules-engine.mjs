@@ -8260,6 +8260,22 @@ function deathSavingThrowAtTurnStart(state, command, actorIdValue, diceService) 
   return { events, rolls: [...modifierRolls, roll] }
 }
 
+/**
+ * «Без сознания» по правилам обеих редакций — ещё и «сбит с ног»: упавший на
+ * нуле герой лежит, и поднятый лечением встаёт за половину скорости. Отдельным
+ * `ConditionAdded`, а не флагом падения: прежние события падения в replay ничью
+ * позу не меняют, и снять «сбит с ног» можно тем же путём, что всегда.
+ * Плейтест 2026-10-03: упавший герой лежал на доске стоя — без «сбит с ног».
+ */
+function fallsProneEvents(state, command, targetIdValue) {
+  if ((state.mechanics.conditions[targetIdValue] ?? []).some((condition) => condition.id === 'prone')) return []
+  return [eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+    condition: 'prone',
+    duration: null,
+    trigger: 'unconscious',
+  }, [targetIdValue])]
+}
+
 function zeroHitPointDamageConsequences(state, command, targetIdValue, payload, { critical = false } = {}) {
   if (safeInteger(payload?.applied_amount, 0) <= 0 || safeInteger(payload?.hp_after, -1) !== 0) return []
   const target = findActor(state, targetIdValue)
@@ -8303,11 +8319,14 @@ function zeroHitPointDamageConsequences(state, command, targetIdValue, payload, 
     }, [targetIdValue])]
   }
   if (hpBefore > 0) {
-    return [eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', {
-      condition: 'unconscious',
-      successes: 0,
-      failures: 0,
-    }, [targetIdValue])]
+    return [
+      eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', {
+        condition: 'unconscious',
+        successes: 0,
+        failures: 0,
+      }, [targetIdValue]),
+      ...fallsProneEvents(state, command, targetIdValue),
+    ]
   }
 
   const tracker = deathSaveTracker(state, targetIdValue)
@@ -13233,6 +13252,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           && payload.hp_after > 0 && finalPayload.hp_after === 0 && playerActor(state, targetId)
         if (poisonStabilizes) {
           events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [targetId]))
+          events.push(...fallsProneEvents(state, attackCommand, targetId))
           events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.zeroHp), 'HeroStabilized', { method: 'monster-poison' }, [targetId]))
           const minutes = Math.max(1, safeInteger(onHit.poison_on_zero.poisoned_minutes, 60))
           for (const condition of ['poisoned', ...(onHit.poison_on_zero.paralyzed_while_poisoned ? ['paralyzed'] : [])]) {

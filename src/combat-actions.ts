@@ -237,6 +237,15 @@ export function fallbackCombatActions(player: Player): CombatAction[] {
   }))
 }
 
+/**
+ * Каталожные пулы, чей запас ведёт curated-ресурс: «Божественный канал» dnd.su
+ * — счётчик, который тратит `channel_divinity`. Сервер их больше не заводит
+ * (`GENERATED_POOLS_OWNED_BY_CURATED`, server/combat-actions.mjs) и прячет от
+ * игрока, но в сохранённых кампаниях пул остался в состоянии, а ведущий видит
+ * состояние целиком — колонка ресурсов не должна показывать его вторым.
+ */
+export const SUPERSEDED_FEATURE_POOLS: ReadonlySet<string> = new Set(['feature_cleric-bozhestvennyy-kanal'])
+
 export function fallbackCombatResources(player?: Player): Record<string, { current: number; max: number }> {
   if (!player) return {}
   const role = roleSignature(player)
@@ -262,6 +271,7 @@ export function fallbackCombatResources(player?: Player): Record<string, { curre
   const selectedSubclass = normalizedName(player.subclass)
   for (const entry of generatedClasses.get(classKey ?? '')?.actions ?? []) {
     if (!entry.uses || (entry.minimumLevel && level < entry.minimumLevel) || (entry.subclass && normalizedName(entry.subclass) !== selectedSubclass)) continue
+    if (SUPERSEDED_FEATURE_POOLS.has(`feature_${entry.id}`)) continue
     const maximum = entry.uses.maximum === 'proficiency' ? proficiency
       : String(entry.uses.maximum).startsWith('ability:')
         ? Math.max(1, Math.floor(((player.abilities?.[String(entry.uses.maximum).slice(8) as keyof Player['abilities']] ?? 10) - 10) / 2))

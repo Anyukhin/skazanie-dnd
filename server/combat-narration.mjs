@@ -27,6 +27,18 @@ function tacticalActorName(state, id) {
 }
 
 /**
+ * Выбывший противник: место в инициативе за ним остаётся — по его ходам
+ * считаются сроки наложенных им эффектов, — но рассказывать о его ходе
+ * нечего. Плейтест 2026-10-03: убитый хобгоблин каждый раунд «завершал ход».
+ * Герой на нуле не выбывший: его ход — спасбросок от смерти.
+ */
+function defeatedEnemy(state, id) {
+  const expected = String(id || '')
+  const enemy = (state?.enemies ?? []).find((candidate) => String(candidate.id ?? '') === expected)
+  return Boolean(enemy) && Number(enemy.hp) <= 0
+}
+
+/**
  * Причина конца боя — служебный код (`enemies_defeated`, `party_defeated`…),
  * а читает её игрок. Плейтест 2026-10-03: «Столкновение завершено: resolved».
  * Незнакомый код не печатается: лучше общее «исход подтверждён», чем латиница.
@@ -464,7 +476,7 @@ function tacticalNarrationLines(events, state) {
     } else if (event.event_type === 'HeroDied') {
       meaningful.push(partyFailed
         ? `${target} погибает. Последний герой отряда пал, и история завершилась поражением.`
-        : `${target} погибает. Его судьбу нужно разрешить: воскресить героя или заменить новым.`)
+        : `${target} погибает. Судьбу героя нужно разрешить: воскресить или заменить новым.`)
     } else if (event.event_type === 'HeroResurrected') {
       meaningful.push(`${target} возвращается к жизни с 1 ОЗ.`)
     } else if (event.event_type === 'HeroReplaced') {
@@ -602,9 +614,9 @@ function tacticalNarrationLines(events, state) {
       // должен понять, почему за него ничего не сделано.
       meaningful.push(`${actor}: время хода вышло, ход пропущен.`)
     } else if (event.event_type === 'TurnEnded') {
-      turns.push(`${actor} завершает ход.`)
+      if (!defeatedEnemy(state, event.actor_id)) turns.push(`${actor} завершает ход.`)
     } else if (event.event_type === 'TurnStarted') {
-      turns.push(`Начинается ход ${target}, раунд ${Number(payload.round) || 1}.`)
+      if (!defeatedEnemy(state, targetId)) turns.push(`Начинается ход ${target}, раунд ${Number(payload.round) || 1}.`)
     }
   }
   // Небо дописывается последним и в порядке приоритета не участвует: сначала

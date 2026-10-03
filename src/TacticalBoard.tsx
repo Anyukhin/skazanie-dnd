@@ -66,7 +66,7 @@ export function TacticalBoard(props: TacticalBoardProps) {
   // Мини-карта и кнопка «К герою» принадлежат зрителю, как и вид: команды
   // они не отправляют, только двигают камеру своего поля.
   const [minimapVisible, toggleMinimap] = useMinimapPreference()
-  const [focusRequest, setFocusRequest] = useState<{ x: number; y: number; nonce: number } | null>(null)
+  const [focusRequest, setFocusRequest] = useState<BoardFocusRequest | null>(null)
   const focusCell = useCallback((x: number, y: number) => setFocusRequest((current) => ({ x, y, nonce: (current?.nonce ?? 0) + 1 })), [])
   const focusActor = props.focusActorId ? props.animationActors?.find((actor) => actor.id === props.focusActorId) : undefined
   const focusActorRef = useRef(focusActor)
@@ -81,6 +81,18 @@ export function TacticalBoard(props: TacticalBoardProps) {
     autoFocusedKey.current = props.autoFocusKey
     focusCell(actor.x, actor.y)
   }, [props.autoFocusKey, focusActorReady, focusCell])
+  // Камера идёт за героем, только если он ушёл из кадра: после длинного
+  // перехода фишка оказывалась за краем поля, и её искали вручную (плейтест
+  // 2026-10-03). Короткий шаг в пределах видимого камеру не дёргает.
+  const followKey = focusActor ? `${focusActor.id}@${focusActor.x},${focusActor.y}` : ''
+  const followedKey = useRef(followKey)
+  useEffect(() => {
+    const previous = followedKey.current
+    followedKey.current = followKey
+    const actor = focusActorRef.current
+    if (!actor || !previous || previous === followKey || previous.split('@')[0] !== String(actor.id)) return
+    setFocusRequest((current) => ({ x: actor.x, y: actor.y, nonce: (current?.nonce ?? 0) + 1, onlyIfHidden: true }))
+  }, [followKey])
   return <>
     <div className="board-view-controls" role="group" aria-label="Вид карты">
       <button type="button" aria-pressed={view === '2d'} onClick={() => changeView('2d')}>2D</button>
@@ -405,6 +417,19 @@ export type BoardAnimationActor = {
 type BoardConditionState = Record<string, Array<{ id: string }>>
 
 /**
+ * Запрос камеры к клетке. `onlyIfHidden` — мягкий запрос «следовать за
+ * героем»: камера сдвигается, только если клетка вышла из кадра.
+ */
+export type BoardFocusRequest = { x: number; y: number; nonce: number; onlyIfHidden?: boolean }
+
+/** Клетка в кадре с запасом в пятую часть поля от каждого края. */
+function cellInsideView(view: DOMRect, x: number, y: number) {
+  const marginX = view.width * .2
+  const marginY = view.height * .2
+  return x >= view.left + marginX && x <= view.right - marginX && y >= view.top + marginY && y <= view.bottom - marginY
+}
+
+/**
  * Камера доски, пережившая размонтирование.
  *
  * Масштаб и панорама жили в состоянии компонента, а компонент умирает при уходе
@@ -467,7 +492,15 @@ export type TacticalBoardProps = {
   /** Внешняя кнопка «Вся карта»; обычная карта сохраняет камеру без этого ключа. */
   viewResetKey?: string | number
   /** Просьба мини-карты поставить клетку в центр поля; `nonce` различает повторные клики. */
-  focusRequest?: { x: number; y: number; nonce: number } | null
+  focusRequest?: BoardFocusRequest | null
+  /**
+   * Щелчок по пустой клетке во время анимации не только пропускает её, но и
+   * доходит до клетки. Только для боя: там ход в клетку всё равно ждёт
+   * подтверждения, а вне боя щелчок сразу повёл бы отряд. Плейтест 2026-10-03:
+   * после хода врага первый щелчок уходил на пропуск, и перемещение просило
+   * третьего. По фишке щелчок по-прежнему только пропускает — она ещё в пути.
+   */
+  passClickThroughAnimation?: boolean
   /** Герой зрителя: его фишка выделена на мини-карте, к нему ведёт кнопка «К герою». */
   focusActorId?: string
   /**
@@ -498,7 +531,7 @@ export type TacticalBoardProps = {
 function TacticalBoard2D({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
   effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, combatAudio, conditions, conditionVersion, onBackgroundActivate, onCellHover, onCancelAiming, targetHint,
-  levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false, focusRequest,
+  levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false, focusRequest, passClickThroughAnimation = false,
 }: TacticalBoardProps) {
   const cameraKey = boardCameraKey(map?.locationId, levelIndex, campaignId)
   const [zoom, setZoom] = useState(() => cameraByLocation.get(cameraKey)?.zoom ?? 1)
@@ -1301,6 +1334,7 @@ function TacticalBoard2D({
       if (!rect.width || !rect.height || !view.width || !view.height) return
       const cellX = rect.left + (focusRequest.x + .5) * rect.width / Math.max(1, columns)
       const cellY = rect.top + (focusRequest.y + .5) * rect.height / Math.max(1, rows)
+      if (focusRequest.onlyIfHidden && cellInsideView(view, cellX, cellY)) return
       const dx = view.left + view.width / 2 - cellX
       const dy = view.top + view.height / 2 - cellY
       setPan((current) => ({ x: Math.round(current.x + dx), y: Math.round(current.y + dy) }))
@@ -1309,7 +1343,7 @@ function TacticalBoard2D({
     // сдвигало камеру, и фишку всё равно было не разглядеть. Мелкую клетку
     // кнопка сначала приближает до различимой, потом ставит героя в центр.
     const readableCell = 30
-    if (cellPixels > 0 && cellPixels * zoom < readableCell - 2) {
+    if (!focusRequest.onlyIfHidden && cellPixels > 0 && cellPixels * zoom < readableCell - 2) {
       // Центрировать можно только по новой раскладке: сдвиг считается по
       // рамке на экране, а она меняется вместе с масштабом.
       centreAfterZoom.current = centre
@@ -1439,9 +1473,13 @@ function TacticalBoard2D({
       onClickCapture={(event) => {
         if (animationsEnabled !== false && activeAnimationRef.current) {
           skipAnimations()
-          event.preventDefault()
-          event.stopPropagation()
-          return
+          const emptyCell = passClickThroughAnimation
+            && !(event.target as HTMLElement).closest('button:not(.board-cell), [role="button"], .map-token')
+          if (!emptyCell) {
+            event.preventDefault()
+            event.stopPropagation()
+            return
+          }
         }
         if (suppressClick.current) {
           // Конец перетаскивания. Одного `return` мало: флаг уже сброшен, и

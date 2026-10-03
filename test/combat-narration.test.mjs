@@ -271,3 +271,18 @@ test('конец боя называется по-русски, служебны
   assert.match(text, /Столкновение завершено: противники повержены\./u)
   assert.doesNotMatch(text, /[a-z]_[a-z]/u)
 })
+
+test('ход выбывшего противника в хронику не попадает, ход упавшего героя — попадает', () => {
+  // Плейтест 2026-10-03: убитый хобгоблин каждый раунд «завершал ход», и
+  // между ходами героев в ленте стояли строки о мёртвом.
+  const fallen = { ...state, players: [{ id: 'hero', character: 'Лира', hp: 0, maxHp: 24 }], enemies: [{ id: 'wolf', name: 'Волк', hp: 0, maxHp: 20 }] }
+  const wolfTurn = [
+    { event_type: 'TurnEnded', actor_id: 'wolf', target_ids: ['wolf'], payload: { round: 3 } },
+    { event_type: 'TurnStarted', actor_id: 'wolf', target_ids: ['hero'], payload: { round: 4 } },
+  ]
+  const text = combatNarration(wolfTurn, fallen)
+  assert.doesNotMatch(text, /Волк/u)
+  assert.match(text, /Начинается ход Лира, раунд 4/u)
+  const alive = combatNarration(wolfTurn, state)
+  assert.match(alive, /Волк завершает ход/u)
+})

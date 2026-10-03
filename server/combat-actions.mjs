@@ -245,6 +245,21 @@ function curatedActionNamesFor(curated) {
 }
 
 /**
+ * Каталожная «шапка» умения, чей запас уже ведёт curated-пул под другим
+ * именем. «Божественный канал» dnd.su — не действие, а счётчик «Изгнания
+ * нежити» и «Божественной искры», которые тратят `channel_divinity`; его
+ * собственный `feature_*` был вторым, недостижимым запасом — в бою жрец видел
+ * «1/1» и «3/3» (плейтест 2026-10-03).
+ */
+const GENERATED_POOLS_OWNED_BY_CURATED = Object.freeze({
+  'cleric-bozhestvennyy-kanal': 'channel_divinity',
+})
+
+function generatedPoolSuperseded(entry, curatedNames) {
+  return curatedNames.has(normalizedName(entry.name)) || Object.hasOwn(GENERATED_POOLS_OWNED_BY_CURATED, entry.id)
+}
+
+/**
  * Каталожные пулы, заменённые реализованными действиями, определяются
  * той же политикой, что и список `combatActionsFor`.
  *
@@ -256,7 +271,7 @@ export function supersededFeatureResourceIdsFor(actor) {
   const subclass = actorSubclass(actor, classKey)
   const curatedNames = curatedActionNamesFor(curatedActionsFor(actor, classKey, subclass))
   return generatedActionsFor(classKey, subclass)
-    .filter((entry) => entry.uses && curatedNames.has(normalizedName(entry.name)))
+    .filter((entry) => entry.uses && generatedPoolSuperseded(entry, curatedNames))
     .map((entry) => `feature_${entry.id}`)
 }
 
@@ -355,7 +370,7 @@ export function combatResourceMaximumsFor(actor) {
   if (classKey === 'sorcerer' && level >= 2) resources.sorcery_points = level
   if (classKey === 'wizard') resources.arcane_recovery = 1
   for (const entry of generatedActionsFor(classKey, subclass)) {
-    if (!entry.uses || level < entry.minimumLevel || curatedNames.has(normalizedName(entry.name))) continue
+    if (!entry.uses || level < entry.minimumLevel || generatedPoolSuperseded(entry, curatedNames)) continue
     const maximum = entry.uses.maximum === 'proficiency' ? proficiency
       : String(entry.uses.maximum).startsWith('ability:')
         ? Math.max(1, Math.floor((Number(actor?.abilities?.[String(entry.uses.maximum).slice(8)]) - 10) / 2))
@@ -401,7 +416,7 @@ export function combatResourceRecoveryFor(actor) {
   if (classKey === 'sorcerer' && level >= 2) recovery.sorcery_points = 'long'
   if (classKey === 'wizard') recovery.arcane_recovery = 'long'
   for (const entry of generatedActionsFor(classKey, subclass)) {
-    if (!entry.uses || level < entry.minimumLevel || curatedNames.has(normalizedName(entry.name))) continue
+    if (!entry.uses || level < entry.minimumLevel || generatedPoolSuperseded(entry, curatedNames)) continue
     recovery[`feature_${entry.id}`] = entry.uses.recovery === 'short_or_long' ? 'short_or_long' : 'long'
   }
   for (const spell of [...(Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []), ...(actor?.creationSpellGrants ?? [])]) {

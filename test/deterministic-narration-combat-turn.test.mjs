@@ -69,3 +69,16 @@ test('враг на нуле выбывает из боя, а смерть ра�
   assert.match(narration, /Ветеран выбывает из боя/u)
   assert.doesNotMatch(narration, /погиб|умер|мёртв|убит/iu)
 })
+
+test('ход боя без обстановки сцены, цель удара и источник спасброска склоняются', () => {
+  const { narration } = deterministicNarration(brief([
+    event('AttackResolved', 'fighter', ['veteran'], { hit: true }),
+    event('SpellSavingThrowResolved', 'fighter', ['veteran'], { spell_id: 'sacred-flame', name: 'Священное пламя', saved: false }),
+  ]))
+  assert.match(narration, /Торвальд поражает Ветерана/u)
+  assert.match(narration, /спасбросок от заклинания «Священное пламя»/u)
+  assert.doesNotMatch(narration, /Пограничный город|тревожно/u, 'обстановка сцены к удару не дописывается')
+  // Вне боя обстановка по-прежнему звучит.
+  const calm = deterministicNarration(brief([event('ActorMoved', 'fighter')])).narration
+  assert.match(calm, /Пограничный город/u)
+})

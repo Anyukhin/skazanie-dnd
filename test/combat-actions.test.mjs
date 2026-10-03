@@ -66,6 +66,24 @@ test('нормализация выдаёт воину классовые дей
   assert.equal(state.mechanics.resources.fighter['feature_fighter-vtoroe-dyhanie'], undefined, 'каталожный дубль Второго дыхания не создаёт отдельный запас')
 })
 
+test('у жреца один запас Божественного канала: каталожная «шапка» не заводит второй', () => {
+  // Плейтест 2026-10-03: в бою жрец 3-го уровня видел «1/1» и «3/3» — второй
+  // пул был недостижим, его не тратило ни одно действие.
+  const cleric = { id: 'cleric', characterClass: 'cleric', subclass: 'Домен жизни', level: 3, abilities: { wis: 16 } }
+  const maxima = combatResourceMaximumsFor(cleric)
+  assert.equal(maxima.channel_divinity, 1)
+  assert.equal(maxima['feature_cleric-bozhestvennyy-kanal'], undefined)
+  assert.equal(combatResourceRecoveryFor(cleric)['feature_cleric-bozhestvennyy-kanal'], undefined)
+  // Сохранённая кампания с прежним пулом его больше не показывает.
+  const source = combatState()
+  source.players[0] = { ...source.players[0], ...cleric, id: 'fighter', character: 'Бранда', role: 'Жрец · ур. 3' }
+  const state = normalizeCampaignState(source)
+  state.mechanics.resources.fighter['feature_cleric-bozhestvennyy-kanal'] = { current: 3, max: 3 }
+  const projected = campaignStateForViewer(state, { role: 'player', heroIds: ['fighter'] }, 'fighter')
+  assert.equal(projected.mechanics.resources.fighter['feature_cleric-bozhestvennyy-kanal'], undefined)
+  assert.deepEqual(projected.mechanics.resources.fighter.channel_divinity, { current: 1, max: 1 })
+})
+
 test('варвар первого уровня получает ровно два использования Ярости, тратит rage и восстанавливает его отдыхом', () => {
   const source = combatState()
   source.players[0] = {
