@@ -402,19 +402,25 @@ test('3D-фактура пола загружается по ключу и кэ�
   }
 })
 
-test('3D-фактура не печатает высоту на уже поднятом полу, 2D сохраняет подпись', () => {
-  const map = mapOf({ revealed: [{ x: 1, y: 1 }], elevationAt: (x, y) => x === 1 && y === 1 ? 2 : 0 })
-  const calls = []
-  const context = new Proxy({ fillText: (...args) => calls.push(args) }, {
+test('3D-фактура не рисует рельеф на уже поднятом полу, 2D рисует его без подписей', () => {
+  const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }], elevationAt: (x, y) => x === 1 && y === 1 ? 5 : 0 })
+  const calls = { text: 0, paint: 0 }
+  const context = new Proxy({
+    fillText: () => { calls.text += 1 },
+    fillRect: () => { calls.paint += 1 },
+    stroke: () => { calls.paint += 1 },
+  }, {
     get(target, key) { return key in target ? target[key] : () => undefined },
     set(target, key, value) { target[key] = value; return true },
   })
   const base = { map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
   render.drawCellFeatures(context, base, { tileX: 0, tileY: 0 })
-  assert.equal(calls.length, 1, 'обычная 2D-доска подписывает высоту')
-  calls.length = 0
-  render.drawCellFeatures(context, { ...base, showElevationLabels: false }, { tileX: 0, tileY: 0 })
-  assert.equal(calls.length, 0, '3D-текстура не дублирует высоту текстом')
+  render.drawElevationRelief(context, base, { tileX: 0, tileY: 0 })
+  assert.equal(calls.text, 0, 'высота не подписывается текстом')
+  assert.ok(calls.paint > 0, 'обычная 2D-доска рисует рельеф')
+  calls.paint = 0
+  render.drawElevationRelief(context, { ...base, showElevationRelief: false }, { tileX: 0, tileY: 0 })
+  assert.equal(calls.paint, 0, '3D-текстура не дублирует рельеф поверх геометрии')
 })
 
 test('dispose освобождает созданные ресурсы и отменяет готовность поздней текстуры', () => {

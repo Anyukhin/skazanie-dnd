@@ -1059,6 +1059,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .legend-swatch.spell { border: 2px dashed rgba(203,184,221,.78); background: color-mix(in srgb, var(--well) 6.4%, var(--react) 9.6%); }
 .legend-mark { flex: 0 0 17px; width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid rgba(210,180,136,.38); border-radius: 50%; color: color-mix(in srgb, var(--text2) 45%, var(--acc2)); font: 800 10px/1 var(--f-ui); font-style: normal; }
 .legend-mark.elevation { width: 24px; border-radius: 3px; color: color-mix(in srgb, var(--text) 30%, var(--acc2)); }
+/* Горизонталь: светлая кромка поверх тёмной линии, как ступень на доске. */
+.legend-swatch.contour { background: linear-gradient(180deg, color-mix(in srgb, var(--well) 40%, transparent) 0 45%, rgba(255,241,212,.72) 45% 58%, rgba(46,31,19,.8) 58% 72%, transparent 72%); }
+/* Обрыв: тёмная бровка и бергштрихи вниз по склону. */
+.legend-swatch.cliff { background: linear-gradient(180deg, rgba(34,22,13,.82) 0 22%, transparent 22%), repeating-linear-gradient(90deg, rgba(34,22,13,.7) 0 1.5px, transparent 1.5px 4px); background-size: 100% 100%, 100% 60%; background-repeat: no-repeat; background-position: 0 0, 0 22%; }
+/* Метка высоты клетки под курсором: над клеткой, не перехватывает мышь. */
+.cell-elevation-tip {
+  z-index: 6; align-self: start; justify-self: center; display: flex; align-items: center; gap: 3px;
+  padding: 2px 6px; border: 1px solid color-mix(in srgb, var(--text2) 10%, var(--acc2) 30%); border-radius: 4px;
+  background: color-mix(in srgb, var(--rail-bg) 92%, transparent); color: color-mix(in srgb, var(--text) 70%, var(--acc));
+  font: 700 var(--fs-xs) var(--f-ui); white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none;
+  transform: translateY(-105%) scale(var(--counter-scale, 1)); transform-origin: bottom center; box-shadow: 0 4px 10px rgba(0,0,0,.35);
+}
+.cell-elevation-tip span { font-size: .8em; opacity: .8; }
 .legend-mark.cover { border-color: rgba(136,176,193,.48); color: #a9cedb; }
 /* Поверхности: те же тона, что SURFACE_COLORS в src/board-render.ts. */
 .legend-swatch.surface-water { background: #3f7d84; }
