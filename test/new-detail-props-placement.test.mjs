@@ -116,6 +116,7 @@ test('климат открытой местности открывает сво
   assert.ok(arid.get('cactus_cluster') > 0 && arid.get('sand_dune') > 0, 'кактусы и барханы')
   const wet = sceneCounts({ location: 'Гнилое болото', theme: 'топкое болото с камышом', seed: 'climate-wet' })
   assert.ok(wet.get('reed_cluster') > 0 && wet.get('mud_patch') > 0, 'камыш и грязь')
+  assert.ok((wet.get('mangrove_roots') ?? 0) <= 3, 'корни мангров не застилают болото')
   const temperate = sceneCounts({ location: 'Лесная опушка', theme: 'светлый лес', seed: 'climate-temperate' })
   for (const id of ['snowy_boulder', 'cactus_cluster', 'reed_cluster', 'scout_tent', 'command_tent', 'dock_crane', 'ballista']) {
     assert.equal(temperate.get(id) ?? 0, 0, `${id} не попадает в обычный лес`)

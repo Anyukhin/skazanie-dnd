@@ -186,6 +186,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   exterior: {
     require: [],
     prefer: ['giant_fungus', 'mangrove_roots', 'clover_patch', 'forest_plant', 'wall_ivy', 'wall_ivy_corner', 'wall_ivy_wide', 'tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter', 'rock_cluster', 'pebbles'],
+    caps: { mangrove_roots: 2, giant_fungus: 2 },
     arrangement: 'gathered',
   },
   // Эти назначения не появляются случайно: Архитектор/сцена должны назвать
