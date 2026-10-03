@@ -2784,7 +2784,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <span><i className="legend-swatch hazard" />Пунктир · опасность</span>
           <span><i className="legend-swatch spell" />Контур · длящееся заклинание</span>
           <span><i className="legend-mark concentration">К</i>Концентрация владельца</span>
-          <span><i className="legend-mark elevation">+5</i>Высота в футах</span>
+          <span><i className="legend-swatch contour" />Горизонталь · каждые 5 футов высоты</span>
+          <span><i className="legend-swatch cliff" />Обрыв · перепад от 10 футов</span>
+          <span><i className="legend-mark elevation">▲</i>Высота клетки — под курсором</span>
           <span><i className="legend-mark cover">½</i>Укрытие от линии огня</span>
           {/* Поверхности: цвета повторяют SURFACE_COLORS из src/board-render.ts —
               по ним игрок читает, где вода, где лёд, а где месиво. */}
