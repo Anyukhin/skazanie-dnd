@@ -188,10 +188,27 @@ export function sightEdgeBlocked(map, from, to) {
   })
 }
 
-export function occupiedPositions(state, exceptActorId = null) {
+/**
+ * Герой на нуле хитов, пока он не погиб, — всё ещё существо на своей клетке:
+ * закончить на ней ход нельзя. Прежде клетка умирающего считалась свободной,
+ * враг вставал на неё, и поднятый лечением герой делил клетку с врагом
+ * (массовый прогон боевого стенда 2026-10-04, сценарий «healing»). Пройти
+ * сквозь клетку недееспособного можно — набор для прохода просит
+ * `includeDowned: false`.
+ */
+function occupiesSpace(state, actor, includeDowned) {
+  if (isLivingActor(actor)) return true
+  if (!includeDowned) return false
+  const id = actorId(actor)
+  return actor?.alive !== false
+    && (state?.players ?? []).some((player) => actorId(player) === id)
+    && state?.mechanics?.death?.heroes?.[id]?.status !== 'dead'
+}
+
+export function occupiedPositions(state, exceptActorId = null, { includeDowned = true } = {}) {
   const occupied = new Set()
   for (const actor of listActors(state)) {
-    if (actorId(actor) === String(exceptActorId ?? '') || !isLivingActor(actor)) continue
+    if (actorId(actor) === String(exceptActorId ?? '') || !occupiesSpace(state, actor, includeDowned)) continue
     for (const cell of actorFootprintCellsAt(state, actorId(actor))) occupied.add(positionKey(cell))
   }
   // Социальные NPC не входят в listActors, но их сохранённые посты занимают
@@ -280,6 +297,8 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
   const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const propOccupied = map ? propMovementPositions(map) : new Set()
   const occupied = occupiedPositions(state, actorIdValue)
+  // Сквозь умирающего героя проходят, остановиться на нём — нельзя.
+  const passOccupied = occupiedPositions(state, actorIdValue, { includeDowned: false })
   const hasSceneNpcs = Boolean(state?.npc_world?.placements?.length || state?.scene_npcs?.length)
   const npcTransit = hasSceneNpcs ? sceneNpcTransitCells(state) : new Set()
   const npcOccupied = hasSceneNpcs ? sceneNpcOccupiedCells(state) : new Set()
@@ -325,17 +344,18 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
       if (npcOccupied.has(key) && (key === target || !npcTransit.has(key))) return false
       if (allowTarget) return true
       if (key === target && occupied.has(key)) return false
-      return !occupied.has(key) || npcTransit.has(key) || canPassOccupied(position)
+      return !passOccupied.has(key) || npcTransit.has(key) || canPassOccupied(position)
     }
     const footprint = footprintCellsFor(mover, position)
     if (!footprint.length) return false
     if (map && footprintPlacementEdgesBlocked(map, mover, position)) return false
     const passThroughLarger = canPassOccupied(position)
+    const blocking = positionKey(position) === target ? occupied : passOccupied
     for (const cell of footprint) {
       const key = positionKey(cell)
       if (!isWalkableCell(cells.get(key)) || propOccupied.has(key)) return false
       if (npcOccupied.has(key) && (key === target || !npcTransit.has(key))) return false
-      if (!occupied.has(key)) continue
+      if (!blocking.has(key)) continue
       if (npcTransit.has(key)) continue
       if (allowTarget) continue
       if (!passThroughLarger) return false

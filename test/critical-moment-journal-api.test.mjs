@@ -104,6 +104,9 @@ test('враг, сваленный своим ударом: в хронике и
   }
   const created = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: adminCookie, body: { code: 'CRIT-JOURNAL', name: initial.campaign, state: initial } })
   assertStatus(created, 201, log)
+  // Импорт состояния без журнала получает пустой журнал: клиент перебирает его
+  // на первом рендере и падал на «messages is not iterable».
+  assert.deepEqual(created.body.state.messages, [])
   const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
   const playerUser = users.body.users.find((entry) => entry.email === 'player@critical-journal.test')
   assertStatus(await request(baseUrl, `/api/admin/users/${playerUser.id}`, { method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero'] } }), 200, log)

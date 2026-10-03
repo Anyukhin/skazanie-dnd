@@ -105,3 +105,23 @@ test('стрелок вплотную к герою не ищет огневую
     assert.ok(Math.max(Math.abs(move.to.x - 6), Math.abs(move.to.y - 1)) <= 1, `шаг ${JSON.stringify(move.to)} выводит из досягаемости героя`)
   }
 })
+
+test('с десяти футов ветеран подходит рубить мечом, а не стреляет из арбалета', () => {
+  // Плейтест 2026-10-03: арбалет (+3, 2к10+1) выигрывал у меча (+5, 2к6+3)
+  // средним уроном и тем, что «в досягаемости» с места. Ожидаемый урон по КД 16
+  // у меча выше, а два шага до него — своя скорость.
+  const state = arena({ enemyAt: { x: 5, y: 1 }, heroAt: { x: 7, y: 1 }, height: 6, enemy: VETERAN })
+  const plan = planNpcTurn(state, 'foe')
+  assert.equal(plan[0].command_type, 'MoveActor', JSON.stringify(plan))
+  assert.equal(plan.find((command) => command.command_type === 'MakeAttack')?.action_id, 'greatsword')
+})
+
+test('стрелок с равным ближним оружием стреляет с места, а не бежит в рукопашную', () => {
+  const skirmisher = { traits: [], action_profiles: [
+    { id: 'scimitar', name: 'Скимитар', kind: 'melee', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'slashing', range_feet: 5 },
+    { id: 'shortbow', name: 'Короткий лук', kind: 'ranged', attack_modifier: 4, damage_expression: '1d6+2', damage_type: 'piercing', range_feet: 320, normal_range_feet: 80 },
+  ] }
+  const plan = planNpcTurn(arena({ enemyAt: { x: 5, y: 1 }, heroAt: { x: 8, y: 1 }, height: 6, enemy: skirmisher }), 'foe')
+  assert.ok(!plan.some((command) => command.command_type === 'MoveActor' && !command.monster_ability), JSON.stringify(plan))
+  assert.equal(plan.find((command) => command.command_type === 'MakeAttack')?.action_id, 'shortbow')
+})

@@ -576,6 +576,39 @@ function bloodiedRetreatFor(state, enemy) {
   return firstAffordable(state, enemy, ranked, budgetFeet)?.destination ?? null
 }
 
+/**
+ * Ближний удар после подхода. Существо, которое рубит не хуже, чем стреляет,
+ * идёт к удару охотнее, чем стоит и стреляет; стрелок — наоборот, при равном
+ * уроне остаётся на месте.
+ */
+function reachableMeleeScore(enemy) {
+  return prefersRangedCombat(enemy) ? 980 : 1_010
+}
+
+/**
+ * Шанс попасть по КД цели; выстрел в упор — с помехой. Профиль без бонуса
+ * атаки (спасбросок, область) оценивается средним шансом: сравнивать его
+ * с атакой по КД не на чем.
+ */
+function hitChanceFor(profile, targetArmor, disadvantage) {
+  // Профиль движка (`attackProfileFor`) несёт бонус в `modifier`, сырой
+  // профиль стат-блока — в `attack_modifier`.
+  const modifier = Number(profile?.modifier ?? profile?.attack_modifier)
+  if (!['melee', 'ranged'].includes(String(profile?.kind)) || !Number.isFinite(modifier)) return .6
+  const chance = Math.min(.95, Math.max(.05, (21 + modifier - targetArmor) / 20))
+  return disadvantage ? chance * chance : chance
+}
+
+/** Дойдёт ли существо до удара своей скоростью этого хода, без Рывка. */
+function meleeReachableThisTurn(state, enemy, path, profile) {
+  if (!Array.isArray(path) || !path.length) return false
+  if (state.mechanics?.combat?.action_economy?.[actorId(enemy)]?.action === false) return false
+  const rangeCells = Math.max(1, Math.floor((profile?.range_feet ?? CELL_FEET) / CELL_FEET))
+  const approachSteps = Math.max(0, path.length - rangeCells)
+  if (!approachSteps) return false
+  return affordablePathPrefix(state, actorId(enemy), path, approachSteps, remainingMovementFeet(state, enemy)).steps >= approachSteps
+}
+
 function targetCandidates(state, enemy) {
   const enemyAt = actorPosition(state, actorId(enemy))
   const profiles = actionProfiles(state, enemy)
@@ -620,8 +653,15 @@ function targetCandidates(state, enemy) {
       // получает, и ветеран менял меч на арбалет ради выстрела, который
       // скорее промажет (плейтест 2026-10-03).
       const finishingBlow = damage >= targetHp && !rangedAtMeleePenalty
+      // Урон сравнивается ожидаемый — средний на шанс попасть по КД цели, —
+      // а ближний удар, до которого существо дойдёт своей скоростью, почти
+      // равен удару с места. Иначе ветеран с десяти футов стрелял из арбалета
+      // (+3) вместо двух шагов к мечу (+5): средний урон арбалета выше, а
+      // «в досягаемости» было только оно (плейтест 2026-10-03).
+      const expectedDamage = damage * hitChanceFor(profile, targetArmor, Boolean(rangedAtMeleePenalty))
+      const reachableMelee = !inRange && profile.kind === 'melee' && meleeReachableThisTurn(state, enemy, path, profile)
       // Демон не выбирает — он бьёт ближайшего.
-      const score = hostileToAll ? Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 - pathDistance * 50 : Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 + Math.min(300, damage * 12)
+      const score = hostileToAll ? Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 - pathDistance * 50 : Number(inRange && !blockedShot) * 1_000 + (reachableMelee ? reachableMeleeScore(enemy) : 0) + Number(Boolean(path)) * 400 + Math.min(300, expectedDamage * 24)
         + (relentlessPursuit
           ? Math.max(0, 800 - pathDistance * 80)
           : finishingBlow ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))

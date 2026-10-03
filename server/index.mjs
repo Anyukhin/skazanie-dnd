@@ -4017,7 +4017,14 @@ const server = createServer((req, res) => {
         enabled_rule_packs: state.enabled_rule_packs,
         enabled_house_rules: state.enabled_house_rules,
       })
-      const room = saveRoom(code, { ...initialized.state, engine_mode: 'enforce', state_projector_version: GAME_STATE_PROJECTOR_VERSION }, 0)
+      // Журнал принадлежит комнате, а не движку: импорт состояния без него
+      // ронял клиент на первом же рендере («messages is not iterable»).
+      const room = saveRoom(code, {
+        ...initialized.state,
+        messages: Array.isArray(initialized.state?.messages) ? initialized.state.messages : [],
+        engine_mode: 'enforce',
+        state_projector_version: GAME_STATE_PROJECTOR_VERSION,
+      }, 0)
       // Первое место — создателя. Мастер создания мира с пустыми местами так
       // и обещает: «первое место всегда ваше», — поэтому такая кампания
       // закрепляет его и за администратором. Без этого место 1 уходило в
