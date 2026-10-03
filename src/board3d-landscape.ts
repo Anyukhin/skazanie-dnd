@@ -27,6 +27,16 @@ export const WATER_SURFACE_DEPTH = .07
 export const WATER_BANK_INSET = .2
 
 /** Детерминированный шум клетки: тот же рисунок при каждой пересборке. */
+/** Плавный шум: билинейная смесь значений решётки — пятна размером в несколько клеток. */
+export function smoothNoise(x: number, y: number, salt = 0): number {
+  const x0 = Math.floor(x), y0 = Math.floor(y)
+  const fx = x - x0, fy = y - y0
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy)
+  const a = cellNoise(x0, y0, salt), b = cellNoise(x0 + 1, y0, salt)
+  const c = cellNoise(x0, y0 + 1, salt), d = cellNoise(x0 + 1, y0 + 1, salt)
+  return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy
+}
+
 export function cellNoise(x: number, y: number, salt = 0): number {
   const value = Math.sin(x * 127.1 + y * 311.7 + salt * 74.7) * 43758.5453
   return value - Math.floor(value)
@@ -139,8 +149,18 @@ type Side = 'n' | 'e' | 's' | 'w'
  * `include` оставляет только часть клеток — так пол стиля графики режется
  * по видам покрытия. `uvCells` переводит UV в повторы текстуры: один повтор
  * на столько клеток, по мировым X и Z.
+ *
+ * `seamless` — естественное покрытие (газон, земля, песок): соседние такие
+ * клетки стыкуются вплотную, без фаски, шва и случайного подъёма, и рисунок
+ * идёт сплошным ковром; кромка со швом остаётся только к мощёной плитке.
+ * `neutralShade` убирает зелёный сдвиг газона: у пола стиля цвет даёт фактура.
  */
-export function createTileGroundGeometry(map: TacticalMap, options: { include?: (x: number, y: number, cell: TacticalCell) => boolean, uvCells?: number } = {}): THREE.BufferGeometry {
+export function createTileGroundGeometry(map: TacticalMap, options: {
+  include?: (x: number, y: number, cell: TacticalCell) => boolean
+  uvCells?: number
+  seamless?: (cell: TacticalCell) => boolean
+  neutralShade?: boolean
+} = {}): THREE.BufferGeometry {
   const positions: number[] = [], uvs: number[] = [], colors: number[] = [], indices: number[] = []
   const width = Math.max(1, map.width), height = Math.max(1, map.height)
   let vertex = 0
@@ -158,19 +178,27 @@ export function createTileGroundGeometry(map: TacticalMap, options: { include?: 
     if (options.include && !options.include(x, y, cell)) continue
     const level = terrainHeightAt(map, x, y)
     const water = cell.surface === 'water'
-    const tint = 1 - cellNoise(x, y, 7) * .08
-    const top = water ? level - WATER_BED_DEPTH : level + tileLift(x, y)
+    const smooth = !water && Boolean(options.seamless?.(cell))
+    const tint = smooth ? 1 : 1 - cellNoise(x, y, 7) * .08
+    // Ровный ковёр лежит над самым высоким случайным подъёмом подложки: иначе
+    // приподнятые плитки старого пола проступали сквозь него квадратами.
+    const top = water ? level - WATER_BED_DEPTH : smooth ? level + TILE_JITTER + .002 : level + tileLift(x, y)
     const border = level - TILE_SEAM_DEPTH
     // Трава диорамы сочнее рисунка 2D: зелёный сдвиг верха плитки.
-    const grass = !water && cell.material === 'grass'
+    const grass = !water && !options.neutralShade && cell.material === 'grass'
     const topShade: [number, number, number] = water ? [.42, .5, .48] : grass ? [tint * .96, tint * 1.12, tint * .78] : [tint, tint, tint]
     const edgeShade: [number, number, number] = water ? [.6, .62, .55] : grass ? [tint * .72, tint * .84, tint * .58] : [tint * .82, tint * .8, tint * .76]
     // Отступ верха и высота внешнего края по каждой стороне.
     const neighborWater: Record<Side, boolean> = {
       n: isWaterCell(map, x, y - 1), e: isWaterCell(map, x + 1, y), s: isWaterCell(map, x, y + 1), w: isWaterCell(map, x - 1, y),
     }
-    const inset = (side: Side) => water ? (neighborWater[side] ? 0 : WATER_BANK_INSET) : TILE_BEVEL
-    const edgeHeight = (side: Side) => water && neighborWater[side] ? top : border
+    const offsets: Record<Side, [number, number]> = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] }
+    const smoothNeighbor = (side: Side) => {
+      const next = cellAt(map, x + offsets[side][0], y + offsets[side][1])
+      return Boolean(next?.revealed && next.surface !== 'water' && options.seamless?.(next) && terrainHeightAt(map, next.x, next.y) === level)
+    }
+    const inset = (side: Side) => water ? (neighborWater[side] ? 0 : WATER_BANK_INSET) : smooth ? 0 : TILE_BEVEL
+    const edgeHeight = (side: Side) => water && neighborWater[side] ? top : smooth && smoothNeighbor(side) ? top : border
     const inN = inset('n'), inE = inset('e'), inS = inset('s'), inW = inset('w')
     // Верх: свои четыре вершины, нормаль строго вверх.
     const t0 = push(x + inW, top, y + inN, topShade)
@@ -642,44 +670,82 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
   }
 }
 
-/** Пучок травы: несколько узких лезвий-конусов в одной геометрии. */
+/** Основание травинки и её кончик (sRGB): тёмная зелень у земли, светлая на солнце. */
+const GRASS_BASE = new THREE.Color('#2f5a1f')
+const GRASS_TIP = new THREE.Color('#a6d265')
+
+/**
+ * Пучок травы в духе Stylized Nature MegaKit: девять изогнутых травинок,
+ * сужающихся к кончику, с переходом от тёмного основания к светлому кончику.
+ * Нормали смотрят вверх: тонкая травинка освещается как газон, а не темнеет
+ * изнанкой, и пучок не мерцает при повороте камеры.
+ */
 export function createGrassTuftGeometry(): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = []
-  const blades = 6
-  for (let index = 0; index < blades; index += 1) {
-    const blade = new THREE.ConeGeometry(.035, .24 + cellNoise(index, 1, 5) * .12, 3, 1)
-    const angle = index / blades * Math.PI * 2
-    blade.rotateZ((cellNoise(index, 2, 5) - .5) * .7)
-    blade.rotateY(angle)
-    blade.translate(Math.cos(angle) * .05, .12, Math.sin(angle) * .05)
-    parts.push(blade)
-  }
-  const positions: number[] = [], colors: number[] = [], indices: number[] = []
-  let offset = 0
-  for (const part of parts) {
-    const position = part.getAttribute('position') as THREE.BufferAttribute
-    for (let index = 0; index < position.count; index += 1) {
-      positions.push(position.getX(index), position.getY(index), position.getZ(index))
-      // Основание темнее, кончики светлее — пучок объёмный и без текстуры.
-      const lift = Math.min(1, Math.max(0, position.getY(index) / .36))
-      colors.push(.28 + lift * .3, .48 + lift * .34, .16 + lift * .1)
+  const positions: number[] = [], colors: number[] = [], normals: number[] = [], indices: number[] = []
+  const blades = 9, segments = 3
+  const color = new THREE.Color()
+  for (let blade = 0; blade < blades; blade += 1) {
+    const n = (salt: number) => cellNoise(blade, salt, 41)
+    const yaw = blade / blades * Math.PI * 2 + n(1) * .9
+    const lean = .35 + n(2) * .5
+    const height = .2 + n(3) * .24
+    const width = .036 + n(4) * .02
+    const root = .015 + n(5) * .06
+    const dirX = Math.cos(yaw), dirZ = Math.sin(yaw)
+    // Плоскость травинки поперёк наклона: так изгиб виден сверху.
+    const sideX = -dirZ, sideZ = dirX
+    const first = positions.length / 3
+    for (let step = 0; step <= segments; step += 1) {
+      const t = step / segments
+      const bend = t * t * lean * height
+      const cx = dirX * (root + bend), cz = dirZ * (root + bend), cy = height * t * (1 - .25 * t * lean)
+      const half = width * (1 - t) * .5 + (step === segments ? 0 : .002)
+      color.copy(GRASS_BASE).lerp(GRASS_TIP, Math.pow(t, .8))
+      for (const side of [-1, 1]) {
+        positions.push(cx + sideX * half * side, cy, cz + sideZ * half * side)
+        colors.push(color.r, color.g, color.b)
+        normals.push(dirX * .243, .97, dirZ * .243)
+      }
     }
-    const index = part.getIndex()!
-    for (let item = 0; item < index.count; item += 1) indices.push(index.getX(item) + offset)
-    offset += position.count
-    part.dispose()
+    for (let step = 0; step < segments; step += 1) {
+      const a = first + step * 2
+      indices.push(a, a + 1, a + 3, a, a + 3, a + 2)
+    }
   }
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
   geometry.setIndex(indices)
-  geometry.computeVertexNormals()
   return geometry
 }
 
+/** Цветок в траве: пять лепестков-ромбов вокруг серединки, лицом вверх. */
+export function createGrassFlowerGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [], indices: number[] = []
+  positions.push(0, .006, 0)
+  for (let petal = 0; petal < 5; petal += 1) {
+    const angle = petal / 5 * Math.PI * 2
+    const base = positions.length / 3
+    for (const [radius, offset] of [[.012, -.5], [.03, 0], [.012, .5]] as const) {
+      positions.push(Math.cos(angle + offset * .7) * radius, 0, Math.sin(angle + offset * .7) * radius)
+    }
+    indices.push(0, base + 2, base + 1, 0, base + 1, base)
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(positions.map((_, index) => index % 3 === 1 ? 1 : 0), 3))
+  geometry.setIndex(indices)
+  return geometry
+}
+
+const FLOWER_COLORS = ['#f4f1e4', '#f2d24b', '#c9a6e8', '#f0a4b4'].map((value) => new THREE.Color(value))
+
 /**
- * Трава на проходимых травяных клетках без предметов. Густота по детализации:
- * на «Экономном» травы нет вовсе.
+ * Трава на проходимых травяных клетках без предметов. Густота не ровная:
+ * пятна гуще и реже по низкочастотному шуму, а у края газона — у дороги,
+ * стены, мостовой или предмета — трава всегда гуще и прячет прямую кромку
+ * клетки. Изредка в траве цветы. На «Экономном» травы нет вовсе.
  */
 export function createGrassTufts(map: TacticalMap, props: readonly TacticalProp[], detail: LandscapeDetail): LandscapeInstances | null {
   if (detail === 'minimal') return null
@@ -687,34 +753,87 @@ export function createGrassTufts(map: TacticalMap, props: readonly TacticalProp[
   for (const prop of props) {
     for (const point of prop.footprint.length ? prop.footprint : [{ x: prop.x, y: prop.y }]) occupied.add(`${Math.floor(point.x)},${Math.floor(point.y)}`)
   }
-  const perCell = detail === 'full' ? 3 : 1.5
-  const matrices: THREE.Matrix4[] = []
-  const object = new THREE.Object3D()
-  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+  const lawn = (x: number, y: number) => {
     const cell = cellAt(map, x, y)
-    if (!cell?.revealed || !cell.passable || cell.material !== 'grass' || cell.surface !== 'none' || occupied.has(`${x},${y}`)) continue
-    const count = Math.floor(perCell + cellNoise(x, y, 21))
-    for (let index = 0; index < count; index += 1) {
+    return Boolean(cell?.revealed && cell.passable && cell.material === 'grass' && cell.surface === 'none')
+  }
+  const density = detail === 'full' ? 1 : .55
+  const tufts: Array<{ matrix: THREE.Matrix4; color: THREE.Color }> = []
+  const flowers: Array<{ matrix: THREE.Matrix4; color: THREE.Color }> = []
+  const object = new THREE.Object3D()
+  const tint = new THREE.Color()
+  const place = (x: number, y: number, px: number, pz: number, scale: number, salt: number) => {
+    const n = (value: number) => cellNoise(x, y, salt + value)
+    object.position.set(px, terrainHeightAt(map, x, y) + tileLift(x, y), pz)
+    object.rotation.set(0, n(3) * Math.PI * 2, 0)
+    object.scale.set(scale, scale * (.85 + n(5) * .4), scale)
+    object.updateMatrix()
+    // Пучки чуть разнятся: свежие, потемнее, изредка подсохшие.
+    const dry = n(6) > .9
+    tint.setRGB(dry ? 1.15 : .88 + n(7) * .24, dry ? 1.02 : .92 + n(8) * .16, dry ? .62 : .85 + n(9) * .2)
+    tufts.push({ matrix: object.matrix.clone(), color: tint.clone() })
+  }
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (!lawn(x, y) || occupied.has(`${x},${y}`)) continue
+    // Пятна: плавный шум на сетке в три клетки.
+    const patch = smoothNoise(x / 3.2, y / 3.2, 23)
+    const base = Math.floor((patch * 4 + cellNoise(x, y, 21)) * density)
+    for (let index = 0; index < base; index += 1) {
       const n = (salt: number) => cellNoise(x, y, salt + index * 17)
-      object.position.set(x + .12 + n(1) * .76, terrainHeightAt(map, x, y) + tileLift(x, y), y + .12 + n(2) * .76)
-      object.rotation.set(0, n(3) * Math.PI * 2, 0)
-      const size = .7 + n(4) * .6
-      object.scale.set(size, .8 + n(5) * .6, size)
-      object.updateMatrix()
-      matrices.push(object.matrix.clone())
+      place(x, y, x + .1 + n(1) * .8, y + .1 + n(2) * .8, .75 + n(4) * .55, index * 17)
+    }
+    // Кромка газона: у каждой стороны, где кончается трава, — пучки вдоль края.
+    const sides = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const
+    sides.forEach(([dx, dy], side) => {
+      const open = lawn(x + dx, y + dy) && !occupied.has(`${x + dx},${y + dy}`)
+      if (open) return
+      const count = Math.round((2 + cellNoise(x, y, 60 + side)) * density)
+      for (let index = 0; index < count; index += 1) {
+        const n = (salt: number) => cellNoise(x, y, 70 + side * 13 + index * 7 + salt)
+        const along = .12 + n(1) * .76
+        const inset = .05 + n(2) * .12
+        const px = dx ? (dx > 0 ? x + 1 - inset : x + inset) : x + along
+        const pz = dy ? (dy > 0 ? y + 1 - inset : y + inset) : y + along
+        place(x, y, px, pz, .9 + n(3) * .5, 200 + side * 31 + index * 7)
+      }
+    })
+    // Цветы: редкие поляны, по два-три цветка рядом.
+    if (detail === 'full' && smoothNoise(x / 2.5, y / 2.5, 91) > .62 && cellNoise(x, y, 93) > .45) {
+      const color = FLOWER_COLORS[Math.floor(cellNoise(x, y, 94) * FLOWER_COLORS.length) % FLOWER_COLORS.length]
+      const count = 2 + Math.floor(cellNoise(x, y, 95) * 3)
+      for (let index = 0; index < count; index += 1) {
+        const n = (salt: number) => cellNoise(x, y, 100 + index * 11 + salt)
+        object.position.set(x + .15 + n(1) * .7, terrainHeightAt(map, x, y) + tileLift(x, y) + .1 + n(2) * .1, y + .15 + n(3) * .7)
+        object.rotation.set((n(4) - .5) * .4, n(5) * Math.PI * 2, (n(6) - .5) * .4)
+        object.scale.setScalar(.8 + n(7) * .5)
+        object.updateMatrix()
+        flowers.push({ matrix: object.matrix.clone(), color })
+      }
     }
   }
-  if (!matrices.length) return null
+  if (!tufts.length) return null
   const group = new THREE.Group()
   group.name = 'landscape-grass'
   const geometry = createGrassTuftGeometry()
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .95, metalness: 0 })
-  const mesh = new THREE.InstancedMesh(geometry, material, matrices.length)
-  matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix))
+  const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .85, metalness: 0, side: THREE.DoubleSide })
+  const mesh = new THREE.InstancedMesh(geometry, material, tufts.length)
+  tufts.forEach((tuft, index) => { mesh.setMatrixAt(index, tuft.matrix); mesh.setColorAt(index, tuft.color) })
   mesh.instanceMatrix.needsUpdate = true
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   mesh.receiveShadow = true
   mesh.computeBoundingSphere()
   group.add(mesh)
+  const flowerGeometry = flowers.length ? createGrassFlowerGeometry() : null
+  const flowerMaterial = flowers.length ? new THREE.MeshStandardMaterial({ roughness: .7, metalness: 0, side: THREE.DoubleSide, emissive: '#ffffff', emissiveIntensity: .06 }) : null
+  if (flowerGeometry && flowerMaterial) {
+    const blossoms = new THREE.InstancedMesh(flowerGeometry, flowerMaterial, flowers.length)
+    blossoms.name = 'landscape-flowers'
+    flowers.forEach((flower, index) => { blossoms.setMatrixAt(index, flower.matrix); blossoms.setColorAt(index, flower.color) })
+    blossoms.instanceMatrix.needsUpdate = true
+    if (blossoms.instanceColor) blossoms.instanceColor.needsUpdate = true
+    blossoms.computeBoundingSphere()
+    group.add(blossoms)
+  }
   return {
     group,
     dispose() {
@@ -722,6 +841,8 @@ export function createGrassTufts(map: TacticalMap, props: readonly TacticalProp[
       group.clear()
       geometry.dispose()
       material.dispose()
+      flowerGeometry?.dispose()
+      flowerMaterial?.dispose()
     },
   }
 }

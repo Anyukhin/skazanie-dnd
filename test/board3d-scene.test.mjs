@@ -570,6 +570,45 @@ test('трава только на свободных травяных клет�
   full.dispose()
 })
 
+
+test('трава: изогнутые травинки, гуще у кромки газона, цветы только на «Высоком»', () => {
+  const map = terrainMap({ width: 7, height: 7, cell: (x) => x === 6 ? { material: 'stone' } : {} })
+  const full = landscape.createGrassTufts(map, [], 'full')
+  const tufts = full.group.children.find((mesh) => mesh.name !== 'landscape-flowers')
+  assert.ok(tufts.instanceColor, 'пучки разнятся оттенком')
+  assert.ok(tufts.geometry.getAttribute('position').count >= 9 * 8, 'девять травинок по четыре пары вершин')
+  const position = new THREE.Vector3()
+  const perColumn = new Map()
+  for (let index = 0; index < tufts.count; index += 1) {
+    tufts.getMatrixAt(index, new THREE.Matrix4()).decompose(position, new THREE.Quaternion(), new THREE.Vector3())
+    const column = Math.floor(position.x), row = Math.floor(position.z)
+    assert.ok(column < 6, 'на камне травы нет')
+    if (row >= 1 && row <= 5) perColumn.set(column, (perColumn.get(column) ?? 0) + 1)
+  }
+  assert.ok((perColumn.get(5) ?? 0) > (perColumn.get(3) ?? 0), 'у мостовой трава гуще, чем посреди газона')
+  const reduced = landscape.createGrassTufts(map, [], 'reduced')
+  assert.ok(reduced.group.children[0].count < tufts.count, 'на «Обычном» реже')
+  assert.equal(reduced.group.getObjectByName('landscape-flowers'), undefined, 'цветы только на «Высоком»')
+  full.dispose()
+  reduced.dispose()
+})
+
+test('газон без швов: соседние естественные клетки стыкуются вплотную, кромка — только к плитке', () => {
+  const map = terrainMap({ width: 3, height: 3, cell: () => ({}) })
+  const tiled = landscape.createTileGroundGeometry(map)
+  const seamless = landscape.createTileGroundGeometry(map, { seamless: () => true, neutralShade: true })
+  // Верх девяти клеток — 9 квадов; кромка остаётся только по краю карты: 12 сторон.
+  assert.equal(seamless.getIndex().count, (9 + 12) * 6)
+  assert.ok(tiled.getIndex().count > seamless.getIndex().count)
+  const position = seamless.getAttribute('position')
+  const tops = new Set()
+  for (let index = 0; index < position.count; index += 1) if (position.getY(index) > -.01) tops.add(position.getY(index).toFixed(5))
+  assert.equal(tops.size, 1, 'верх ровный, без случайного подъёма плиток')
+  assert.ok(Math.abs([...tops][0] - (landscape.TILE_JITTER + .002)) < 1e-4, 'ковёр выше самого высокого подъёма подложки')
+  const color = seamless.getAttribute('color')
+  assert.equal(color.getX(0), color.getY(0), 'у пола стиля нет зелёного сдвига: цвет даёт фактура')
+  tiled.dispose(); seamless.dispose()
+})
 const masonry = await import(pathToFileURL(join(outputDir, 'board3d-masonry.mjs')).href)
 
 test('кладка: камни вразбежку в пределах прогона, плахи у дерева, без теней от камней', () => {

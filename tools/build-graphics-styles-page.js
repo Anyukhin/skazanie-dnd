@@ -95,9 +95,178 @@ function ormFrom(width, height, { roughness, ao, metal = 0, roughnessValue = .85
   return canvas
 }
 
+/** Детерминированный генератор: та же фактура при каждой сборке. */
+function seeded(seed) {
+  let state = seed >>> 0
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+    return state / 4294967296
+  }
+}
+
+/** Периодический плавный шум: решётка cells×cells, края сшиты, значения 0..1. */
+function periodicNoise(side, cells, seed) {
+  const random = seeded(seed)
+  const lattice = Array.from({ length: cells * cells }, () => random())
+  const out = new Float32Array(side * side)
+  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+    const gx = x / side * cells, gy = y / side * cells
+    const x0 = Math.floor(gx), y0 = Math.floor(gy)
+    const fx = gx - x0, fy = gy - y0
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy)
+    const at = (cx, cy) => lattice[((cy % cells + cells) % cells) * cells + ((cx % cells + cells) % cells)]
+    const a = at(x0, y0), b = at(x0 + 1, y0), c = at(x0, y0 + 1), d = at(x0 + 1, y0 + 1)
+    out[y * side + x] = (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy
+  }
+  return out
+}
+
+/**
+ * Рисованная трава в духе Stylized Nature MegaKit: пятна сочной зелени трёх
+ * масштабов, тысячи мазков-травинок светлее и темнее основы, редкие точки
+ * цветов. Повтор бесшовный: всё у края рисуется и со сдвигом на сторону.
+ */
+function paintGrass(side) {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = side
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  const large = periodicNoise(side, 3, 11), middle = periodicNoise(side, 7, 12), small = periodicNoise(side, 17, 13)
+  // Цвета в sRGB, как их рисует художник: смешиваются прямо в байтах холста.
+  const hex = (value) => [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16))
+  const dark = hex('#41702a'), light = hex('#6f9a3f'), dry = hex('#9aa34c')
+  const mix = (a, b, t) => a.map((channel, index) => channel + (b[index] - channel) * t)
+  const data = context.createImageData(side, side)
+  for (let i = 0; i < side * side; i++) {
+    const value = large[i] * .5 + middle[i] * .32 + small[i] * .18
+    let color = mix(dark, light, Math.min(1, Math.max(0, (value - .22) * 1.6)))
+    color = mix(color, dry, Math.min(1, Math.max(0, (middle[i] - .66) / .2)) * .4)
+    data.data[i * 4] = color[0]; data.data[i * 4 + 1] = color[1]; data.data[i * 4 + 2] = color[2]; data.data[i * 4 + 3] = 255
+  }
+  context.putImageData(data, 0, 0)
+  const random = seeded(7)
+  const wrapped = (x, y, reach, draw) => {
+    for (const dx of [-side, 0, side]) for (const dy of [-side, 0, side]) {
+      if (x + dx < -reach || x + dx > side + reach || y + dy < -reach || y + dy > side + reach) continue
+      draw(x + dx, y + dy)
+    }
+  }
+  // Тёмные «ямки» под гуще растущей травой.
+  for (let i = 0; i < 26; i++) {
+    const x = random() * side, y = random() * side, radius = side * (.03 + random() * .05)
+    wrapped(x, y, radius, (px, py) => {
+      const gradient = context.createRadialGradient(px, py, 0, px, py, radius)
+      gradient.addColorStop(0, 'rgba(44, 84, 28, .2)'); gradient.addColorStop(1, 'rgba(44, 84, 28, 0)')
+      context.fillStyle = gradient
+      context.fillRect(px - radius, py - radius, radius * 2, radius * 2)
+    })
+  }
+  // Травинки: короткие изогнутые мазки, светлые сверху тёмных.
+  const strokes = [
+    { count: 2600, colors: ['rgba(44, 82, 26, .45)', 'rgba(52, 92, 30, .4)'], width: [2.4, 3.6], length: [8, 15] },
+    { count: 4200, colors: ['rgba(108, 156, 60, .5)', 'rgba(120, 166, 68, .45)', 'rgba(96, 144, 52, .5)'], width: [2, 3.2], length: [7, 14] },
+    { count: 1500, colors: ['rgba(152, 192, 92, .42)', 'rgba(170, 202, 108, .36)'], width: [1.6, 2.4], length: [5, 10] },
+  ]
+  context.lineCap = 'round'
+  for (const layer of strokes) {
+    for (let i = 0; i < layer.count; i++) {
+      const x = random() * side, y = random() * side
+      const length = (layer.length[0] + random() * (layer.length[1] - layer.length[0])) * side / 1024
+      const angle = -Math.PI / 2 + (random() - .5) * 1.1
+      const bend = (random() - .5) * length * .6
+      const tipX = Math.cos(angle) * length, tipY = Math.sin(angle) * length
+      context.strokeStyle = layer.colors[Math.floor(random() * layer.colors.length)]
+      context.lineWidth = (layer.width[0] + random() * (layer.width[1] - layer.width[0])) * side / 1024
+      wrapped(x, y, length + 4, (px, py) => {
+        context.beginPath()
+        context.moveTo(px, py)
+        context.quadraticCurveTo(px + tipX * .5 + bend, py + tipY * .5, px + tipX, py + tipY)
+        context.stroke()
+      })
+    }
+  }
+  // Редкие цветы: две-три точки рядом.
+  for (let i = 0; i < 46; i++) {
+    const x = random() * side, y = random() * side
+    const tone = ['#f4ecc8', '#f1d150', '#e8e4f2'][Math.floor(random() * 3)]
+    for (let k = 0; k < 2 + Math.floor(random() * 3); k++) {
+      const px = x + (random() - .5) * 18, py = y + (random() - .5) * 18, radius = (1.6 + random() * 1.4) * side / 1024
+      wrapped(px, py, radius + 1, (qx, qy) => {
+        context.fillStyle = tone
+        context.beginPath(); context.arc(qx, qy, radius, 0, Math.PI * 2); context.fill()
+      })
+    }
+  }
+  return canvas
+}
+
+/**
+ * Рисованная утоптанная земля: пятна охры и бурого, мягкие мазки, россыпь
+ * гальки с тенью и бликом. Тот же повтор без шва, что у травы.
+ */
+function paintDirt(side) {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = side
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  const large = periodicNoise(side, 3, 21), middle = periodicNoise(side, 8, 22), small = periodicNoise(side, 19, 23)
+  const hex = (value) => [1, 3, 5].map((at) => parseInt(value.slice(at, at + 2), 16))
+  const dark = hex('#6a5038'), light = hex('#8e7353')
+  const data = context.createImageData(side, side)
+  for (let i = 0; i < side * side; i++) {
+    const value = large[i] * .5 + middle[i] * .3 + small[i] * .2
+    const t = Math.min(1, Math.max(0, (value - .2) * 1.6))
+    for (let c = 0; c < 3; c++) data.data[i * 4 + c] = dark[c] + (light[c] - dark[c]) * t
+    data.data[i * 4 + 3] = 255
+  }
+  context.putImageData(data, 0, 0)
+  const random = seeded(31)
+  const wrapped = (x, y, reach, draw) => {
+    for (const dx of [-side, 0, side]) for (const dy of [-side, 0, side]) {
+      if (x + dx < -reach || x + dx > side + reach || y + dy < -reach || y + dy > side + reach) continue
+      draw(x + dx, y + dy)
+    }
+  }
+  context.lineCap = 'round'
+  for (const layer of [
+    { count: 1300, colors: ['rgba(98, 70, 44, .3)', 'rgba(88, 62, 40, .26)'], width: [7, 13], length: [2, 7] },
+    { count: 1000, colors: ['rgba(176, 146, 102, .28)', 'rgba(190, 160, 114, .24)'], width: [6, 11], length: [2, 6] },
+  ]) {
+    for (let i = 0; i < layer.count; i++) {
+      const x = random() * side, y = random() * side
+      const length = (layer.length[0] + random() * (layer.length[1] - layer.length[0])) * side / 1024
+      const angle = random() * Math.PI * 2
+      context.strokeStyle = layer.colors[Math.floor(random() * layer.colors.length)]
+      context.lineWidth = (layer.width[0] + random() * (layer.width[1] - layer.width[0])) * side / 1024
+      wrapped(x, y, length + 6, (px, py) => {
+        context.beginPath(); context.moveTo(px, py); context.lineTo(px + Math.cos(angle) * length, py + Math.sin(angle) * length); context.stroke()
+      })
+    }
+  }
+  // Галька: тень вниз-вправо, камешек, блик сверху-слева.
+  for (let i = 0; i < 170; i++) {
+    const x = random() * side, y = random() * side
+    const rx = (3 + random() * 6) * side / 1024, ry = rx * (.6 + random() * .35), turn = random() * Math.PI
+    const tone = ['#9d9282', '#b4a894', '#8a7e70', '#a89a84'][Math.floor(random() * 4)]
+    wrapped(x, y, rx + 3, (px, py) => {
+      context.fillStyle = 'rgba(64, 46, 30, .45)'
+      context.beginPath(); context.ellipse(px + rx * .25, py + rx * .3, rx, ry, turn, 0, Math.PI * 2); context.fill()
+      context.fillStyle = tone
+      context.beginPath(); context.ellipse(px, py, rx, ry, turn, 0, Math.PI * 2); context.fill()
+      context.fillStyle = 'rgba(255, 248, 230, .35)'
+      context.beginPath(); context.ellipse(px - rx * .3, py - ry * .35, rx * .45, ry * .35, turn, 0, Math.PI * 2); context.fill()
+    })
+  }
+  return canvas
+}
+
 async function buildFloor(key, floor) {
   let color, normal, orm, height
-  if (floor.quaternius) {
+  if (floor.procedural === 'dirt') {
+    color = paintDirt(1024); height = heightFromColor(color, 1024)
+    normal = normalFromHeight(height, 3); orm = ormFrom(512, 512, { ao: canvasOf(height, 512), roughnessValue: .95 })
+    height = canvasOf(height, 512)
+  } else if (floor.procedural === 'grass') {
+    color = paintGrass(1024); height = heightFromColor(color, 1024)
+    normal = normalFromHeight(height, 2.6); orm = ormFrom(512, 512, { ao: canvasOf(height, 512), roughnessValue: .92 })
+    height = canvasOf(height, 512)
+  } else if (floor.quaternius) {
     const base = `/source/quaternius-village/tex/${floor.quaternius}_`
     const [c, n, r] = await Promise.all(['BaseColor', 'Normal', 'Roughness'].map((map) => image(`${base}${map}.png`)))
     color = canvasOf(c, 1024); normal = canvasOf(n, 1024); height = heightFromColor(color, 512)
@@ -541,5 +710,20 @@ async function build() {
   log(`Готово: ${await response.text()}`)
 }
 
+async function rebuildFloors(keys) {
+  const plan = await (await fetch('/plan.json')).json()
+  for (const key of keys) { await buildFloor(key, plan.style.floors[key]); log(`пол ${key}`) }
+  const response = await fetch('/merge', { method: 'POST' })
+  log(`Готово: ${await response.text()}`)
+  document.title = 'done'
+}
+
 document.getElementById('build').addEventListener('click', () => build().catch((error) => log(`Ошибка: ${error.stack ?? error}`)))
+if (new URLSearchParams(location.search).has('floors')) rebuildFloors(new URLSearchParams(location.search).get('floors').split(',')).catch((error) => log(`Ошибка: ${error.stack ?? error}`))
 if (new URLSearchParams(location.search).has('auto')) build().catch((error) => log(`Ошибка: ${error.stack ?? error}`)).finally(() => { document.title = 'done' })
+// ?paint — снимок рисованной травы без сборки пакета: для подбора цветов.
+if (new URLSearchParams(location.search).has('paint')) {
+  const kind = new URLSearchParams(location.search).get('paint') === 'dirt' ? 'dirt' : 'grass'
+  const canvas = kind === 'dirt' ? paintDirt(1024) : paintGrass(1024)
+  canvas.toBlob((png) => fetch(`/shot?name=${kind}-paint`, { method: 'POST', body: png }).then(() => { document.title = 'painted' }), 'image/png')
+}

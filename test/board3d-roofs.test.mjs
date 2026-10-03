@@ -312,3 +312,98 @@ test('без бруса или черепицы в пакете крыши ос�
   controller.dispose()
   assert.ok([...disposed.values()].every((count) => count === 1), 'каждый материал и сетка освобождены ровно один раз')
 })
+
+// ------------------------------------------------- цельная крыша дома
+
+const hip = await import(pathToFileURL(join(outputDir, 'board3d-hip-roof.mjs')).href)
+const footprintOf = (cells) => new Set(cells.map(([x, y]) => `${x},${y}`))
+const rectCells = (x0, y0, w, h) => Array.from({ length: w * h }, (_, index) => [x0 + index % w, y0 + Math.floor(index / w)])
+
+test('вальма: высота — расстояние L∞ до края, у Г-образного дома ендова во внутреннем углу', () => {
+  // Г: полоса 6×3 и нога 3×3 под её левым краем.
+  const footprint = footprintOf([...rectCells(0, 0, 6, 3), ...rectCells(0, 3, 3, 3)])
+  const distance = hip.createHipDistance(footprint)
+  assert.equal(distance(0, 0), 0, 'угол дома — карниз')
+  assert.equal(distance(1.5, 1.5), 1.5, 'середина квадрата 3×3 — макушка')
+  assert.equal(distance(4.5, 1.5), 1.5, 'конёк полосы на полуширине')
+  // Внутренний угол (3, 3): по диагонали внутрь высота растёт одинаково — ендова.
+  assert.equal(distance(2.5, 2.5), .5)
+  assert.equal(distance(2, 2), 1)
+  const runs = hip.hipRoofRuns(footprint)
+  assert.equal(runs.length, 6, 'у Г шесть отрезков края')
+  const reflex = runs.filter((run) => !run.convexStart || !run.convexEnd)
+  assert.equal(reflex.length, 2, 'внутренний угол — у двух отрезков')
+  assert.equal(hip.hipRoofDepth(footprint), 1.5)
+})
+
+test('вальма: ровные скаты лицом вверх, свес ниже карниза, UV в повторах фактуры', () => {
+  const footprint = footprintOf([...rectCells(0, 0, 7, 3), ...rectCells(2, 3, 3, 4)])
+  const geometry = hip.createHipRoofGeometry(footprint, { slope: .6, overhang: .12, covering: { u: 1.7, v: 1.7 } })
+  const position = geometry.getAttribute('position'), normal = geometry.getAttribute('normal'), uv = geometry.getAttribute('uv')
+  let maxY = -Infinity, minY = Infinity
+  for (let index = 0; index < position.count; index += 1) {
+    maxY = Math.max(maxY, position.getY(index)); minY = Math.min(minY, position.getY(index))
+    assert.ok(normal.getY(index) > 0, 'каждый треугольник смотрит вверх')
+    assert.ok(Number.isFinite(uv.getX(index)) && Number.isFinite(uv.getY(index)))
+  }
+  assert.ok(Math.abs(maxY - 1.5 * .6) < 1e-6, 'макушка — полуширина крыла на уклон')
+  assert.ok(Math.abs(minY + .12 * .6) < 1e-6, 'свес продолжает скат ниже карниза')
+  geometry.dispose()
+})
+
+test('стропила вальмы идут от карниза до ребра и не выходят за дом', () => {
+  const footprint = footprintOf(rectCells(0, 0, 4, 2))
+  const rafters = hip.hipRoofRafters(footprint, .5)
+  assert.ok(rafters.length >= 4)
+  for (const rafter of rafters) {
+    assert.equal(rafter.from.y, 0)
+    assert.ok(rafter.to.y > 0 && rafter.to.y <= .5 + 1e-6, 'конец на высоте ската, не выше конька')
+    assert.ok(rafter.to.x >= 0 && rafter.to.x <= 4 && rafter.to.z >= 0 && rafter.to.z <= 2)
+  }
+})
+
+function houseMap(cells, zones = { main: cells }) {
+  const all = Object.values(zones).flat()
+  const map = createTacticalMap({ width: 12, height: 12, seed: 'house-roof', theme: 'building' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass' })
+  for (const id of Object.keys(zones)) addZone(map, { id, kind: 'interior', material: 'stone', label: id })
+  for (let y = 0; y < 12; y += 1) for (let x = 0; x < 12; x += 1) setCell(map, x, y, { passable: true, revealed: true, material: 'grass', zone: 'yard' })
+  for (const [id, list] of Object.entries(zones)) for (const [x, y] of list) setCell(map, x, y, { material: 'stone', zone: id })
+  const set = footprintOf(all)
+  for (const [x, y] of all) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    if (!set.has(`${x + dx},${y + dy}`)) setEdge(map, x, y, x + dx, y + dy, { kind: 'wall', blocksMove: true, blocksSight: true })
+  }
+  // Перегородка между комнатами — тоже стена, но крышу она не делит.
+  if (Object.keys(zones).length > 1) {
+    const [first, second] = Object.values(zones)
+    const firstSet = footprintOf(first)
+    for (const [x, y] of second) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (firstSet.has(`${x + dx},${y + dy}`)) setEdge(map, x, y, x + dx, y + dy, { kind: 'wall', blocksMove: true, blocksSight: true })
+    }
+  }
+  return mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+}
+
+test('Г-образный дом получает одну цельную крышу, а не две пересекающиеся', () => {
+  const map = houseMap([...rectCells(1, 1, 6, 3), ...rectCells(1, 4, 3, 4)])
+  const controller = roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  try {
+    assert.equal(meshesNamed(controller.group, 'roof-hip:').length, 1)
+    assert.equal(meshesNamed(controller.group, 'roof-pitched:').length, 0, 'прямоугольных кусков нет')
+    assert.equal(meshesNamed(controller.group, 'roof-slope:hip').length, 1)
+    assert.ok(meshesNamed(controller.group, 'roof-rafter:hip:').length > 0, 'в срезе видны стропила')
+    controller.setMode('cutaway')
+    assert.equal(controller.group.getObjectByName('roof-shells').visible, false)
+  } finally { controller.dispose() }
+})
+
+test('дом из двух комнат за перегородкой — одна двускатная крыша вдоль длинной стороны', () => {
+  const map = houseMap(null, { hall: rectCells(1, 1, 4, 3), kitchen: rectCells(5, 1, 3, 3) })
+  const controller = roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  try {
+    const pitched = meshesNamed(controller.group, 'roof-pitched:')
+    assert.equal(pitched.length, 1, 'одна крыша на весь дом')
+    assert.equal(pitched[0].rotation.y, 0, 'конёк вдоль длинной стороны (по X)')
+    assert.equal(meshesNamed(controller.group, 'roof-hip:').length, 0)
+  } finally { controller.dispose() }
+})

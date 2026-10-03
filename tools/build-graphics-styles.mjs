@@ -12,7 +12,8 @@
  *
  *   node tools/build-graphics-styles.mjs [--port 53903]
  *   → открыть адрес, нажать «Собрать стиль»; пакет ляжет в public/assets/styles/stylized/.
- *   Адрес с `?only=<регулярка>` собирает только подходящие модели и ничего не публикует.
+ *   Адрес с `?only=<регулярка>` собирает только подходящие модели и ничего не публикует;
+ *   `?floors=grass,earth` пересобирает только эти полы и сразу обновляет пакет.
  *   Затем: node tools/register-asset-rights.mjs --all-under styles
  */
 import { createHash } from 'node:crypto'
@@ -163,6 +164,12 @@ export function startGraphicsStyleBuilder({ port = 53903 } = {}) {
               mkdirSync(resolve(ROOT, 'tmp/graphics-style-shots'), { recursive: true })
               writeFileSync(resolve(ROOT, 'tmp/graphics-style-shots', `${name}.png`), body)
               return send(200, 'ok')
+            }
+            if (url.pathname === '/merge') {
+              // Частичная пересборка (`?floors=`): новые файлы поверх пакета и пересчёт манифеста.
+              cpSync(STAGING, OUTPUT, { recursive: true, filter: (path) => path !== join(STAGING, 'meta.json') })
+              const result = rebuildManifest()
+              return send(200, JSON.stringify(result), TYPES['.json'])
             }
             if (url.pathname === '/reset') {
               rmSync(STAGING, { recursive: true, force: true })

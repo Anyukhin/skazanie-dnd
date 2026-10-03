@@ -12,7 +12,11 @@
  * текстуры пола. `relief` — глубина рельефа в мировых единицах (клетка = 1).
  */
 
-/** @typedef {{ quaternius?: string, painted?: string, cells: number, relief: number }} FloorSource */
+/**
+ * `procedural` — фактура рисуется сборщиком (`paintGrass`, `paintDirt` в
+ * `tools/build-graphics-styles-page.js`), без исходной картинки.
+ * @typedef {{ quaternius?: string, painted?: string, procedural?: 'grass' | 'dirt', cells: number, relief: number }} FloorSource
+ */
 
 /**
  * Рисованный материал: вырезка из фактуры Quaternius, сшитая в бесшовный
@@ -388,8 +392,8 @@ export const GRAPHICS_STYLE_SOURCES = Object.freeze({
     floors: {
       stone: { painted: 'maps/terrain/floor-stone.png', cells: 4, relief: .03 },
       wood: { painted: 'maps/terrain/floor-wood.png', cells: 8, relief: .015 },
-      earth: { painted: 'maps/terrain/floor-earth.png', cells: 8, relief: .025 },
-      grass: { painted: 'maps/terrain/floor-grass.png', cells: 8, relief: .02 },
+      earth: { procedural: 'dirt', cells: 5, relief: .03 },
+      grass: { procedural: 'grass', cells: 5, relief: .025 },
       sand: { painted: 'maps/terrain/floor-sand.png', cells: 8, relief: .02 },
       marble: { painted: 'maps/terrain/floor-marble.png', cells: 4, relief: .006 },
       metal: { painted: 'maps/terrain/floor-metal.png', cells: 4, relief: .01 },

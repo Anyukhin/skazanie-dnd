@@ -2,7 +2,7 @@
  "schema": "graphics-style/v1",
  "style": "stylized",
  "label": "Рисованный",
- "revision": "93f9471687f3750c",
+ "revision": "76f74341fd1fac90",
  "license": "CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit) и собственные текстуры и модели проекта (data/asset-rights.json)",
  "sources": [
   "https://quaternius.com/packs/fantasypropsmegakit.html",
@@ -34,16 +34,16 @@
    "normal": "floors/earth/normal.jpg",
    "orm": "floors/earth/orm.jpg",
    "height": "floors/earth/height.jpg",
-   "cells": 8,
-   "relief": 0.025
+   "cells": 5,
+   "relief": 0.03
   },
   "grass": {
    "color": "floors/grass/color.jpg",
    "normal": "floors/grass/normal.jpg",
    "orm": "floors/grass/orm.jpg",
    "height": "floors/grass/height.jpg",
-   "cells": 8,
-   "relief": 0.02
+   "cells": 5,
+   "relief": 0.025
   },
   "sand": {
    "color": "floors/sand/color.jpg",
@@ -1946,23 +1946,23 @@
   },
   {
    "file": "floors/earth/color.jpg",
-   "sha256": "7f23c379d6fa419f83197d3a74402dcb57382791862f785a135cde0128beea20",
-   "bytes": 84409
+   "sha256": "d0b7dc6c92069f8ecf677889af8bb769c352255eb919f7592bb00eec4f998592",
+   "bytes": 93130
   },
   {
    "file": "floors/earth/height.jpg",
-   "sha256": "b30b23d848e2225f2f933e515333e3b64845e1987a913f31584343b9e05200cf",
-   "bytes": 61209
+   "sha256": "99952c2e3272a3367687fea1b5be2d0fb5b519f4511321c531c6759f76a0db74",
+   "bytes": 41743
   },
   {
    "file": "floors/earth/normal.jpg",
-   "sha256": "6c2620eae5d05357b2201e880d57438a3389fa29efc70dbb6933a64384e46e1f",
-   "bytes": 138024
+   "sha256": "6c4c5a6e4af732ffc28275f68e2ba052bcdd942eb05425967519b6550dad498c",
+   "bytes": 213588
   },
   {
    "file": "floors/earth/orm.jpg",
-   "sha256": "640971e777b4bfb4051ae2f4be626b51bc95424220006aa319b556cd09027eab",
-   "bytes": 14656
+   "sha256": "430f51cbe1c0f86ce033ac0f4ef0c570538cc16b32d4508359cddb3ead67b247",
+   "bytes": 13954
   },
   {
    "file": "floors/flagstone/color.jpg",
@@ -1986,23 +1986,23 @@
   },
   {
    "file": "floors/grass/color.jpg",
-   "sha256": "18d5f34d142806ea0fab55b6876e3871cae1135900aba67d156eb2652e4e50eb",
-   "bytes": 96891
+   "sha256": "9cc4d343f07f49292fc880cde32df746f5468ac9a546b1b74b26952e05ea60fb",
+   "bytes": 152417
   },
   {
    "file": "floors/grass/height.jpg",
-   "sha256": "91782460252fdb41b44320cc6ed1d36cbf91b43aeba30c1bbce3b9e8a33406b8",
-   "bytes": 95270
+   "sha256": "55809732addcade68df1554cd3b0048606236a06e1ffe444e574e698c5e35087",
+   "bytes": 45366
   },
   {
    "file": "floors/grass/normal.jpg",
-   "sha256": "e4bf901ecf940740c8195539d7b269bd92463e5bc6d91ec2128379548d7fb6db",
-   "bytes": 182902
+   "sha256": "5fe873c5771c07d81e62fbae01d5f86384ce64357f1ef2099fdd894398edc3c0",
+   "bytes": 243597
   },
   {
    "file": "floors/grass/orm.jpg",
-   "sha256": "96953282a90e4423c85a0b8d427466500a49d12eb6ff6e9bae71acaaa3dcc464",
-   "bytes": 26046
+   "sha256": "01265a860b1c9421d7c7c03cd794719695d4352b9a039b52210247dca3a06a19",
+   "bytes": 12537
   },
   {
    "file": "floors/gravel/color.jpg",

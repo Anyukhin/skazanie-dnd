@@ -6,6 +6,7 @@ import { cellAt, edgeList, edgeNeighbor, revealedAt } from './tactical-map-clien
 import { terrainHeightAt } from './board3d-terrain'
 import type { GraphicsStylePack } from './board3d-style'
 import { createLookMaterial, createUvLookMaterial, edgeSideCell, lookRepeat, wallLookFor, type WallTextureLoader } from './board3d-walls'
+import { cellKey, createHipDistance, createHipRoofGeometry, hipRoofDepth, hipRoofRafters, hipRoofRuns } from './board3d-hip-roof'
 
 /** Режим оболочки здания. Крышный слой не меняет клеточную механику. */
 export type Board3DRoofMode = 'cutaway' | 'full' | 'hidden'
@@ -62,6 +63,8 @@ type RoofSide = 'north' | 'east' | 'south' | 'west'
 type RoofRect = {
   zone: TacticalZone
   cells: TacticalCell[]
+  /** Клетки, которые считаются «внутри»: комната или весь дом из нескольких комнат. */
+  members: Set<string>
   minX: number
   minY: number
   maxX: number
@@ -86,6 +89,8 @@ const PAINTED_ROOF_PITCH = 1.05
 const PAINTED_ROOF_SLOPE = .3
 const WOOD_ROOF_STRUCTURE_COLOR = '#594630'
 const WOOD_ROOF_STRUCTURE_SIZE = 0.09
+/** На сколько стропило опущено под верх ската: толщина кровли и половина бруса. */
+const RAFTER_DROP = ROOF_THICKNESS + WOOD_ROOF_STRUCTURE_SIZE / 2 + .01
 const ROOF_RIDGE_SIZE = 0.095
 const VAULT_THICKNESS = 0.13
 const VAULT_SEGMENTS = 12
@@ -290,7 +295,8 @@ function addRafters(
       const along = positions === 1 ? 0 : (index / (positions - 1) - .5) * (length - .18)
       const beam = roofObject(new THREE.Mesh(geometry, material))
       beam.name = `roof-rafter:${side < 0 ? 'far' : 'near'}:${index}`
-      beam.position.set(along, rise / 2, side * halfSpan / 2)
+      // Стропило под кровлей, а не поверх: иначе брус проступал полосами сквозь скат.
+      beam.position.set(along, rise / 2 - RAFTER_DROP, side * halfSpan / 2)
       beam.rotation.x = side < 0 ? -slopeAngle : slopeAngle
       beam.castShadow = true
       beam.receiveShadow = true
@@ -421,7 +427,7 @@ function createVaultRibGeometry(span: number, width: number, thickness = .10, se
 }
 
 function isInsideRect(cell: TacticalCell | null, rect: RoofRect) {
-  return Boolean(cell?.revealed && cell.zone === rect.zone.id && cell.passable
+  return Boolean(cell?.revealed && cell.passable && rect.members.has(cellKey(cell.x, cell.y))
     && cell.x >= rect.minX && cell.x <= rect.maxX && cell.y >= rect.minY && cell.y <= rect.maxY)
 }
 
@@ -578,7 +584,8 @@ function addPitchedRoof(
   const centerZ = (bounds.minY + bounds.maxY + 1) / 2
   const rawWidth = bounds.maxX - bounds.minX + 1
   const rawDepth = bounds.maxY - bounds.minY + 1
-  const ridgeAlongX = rect.zone.floorDirection === 'horizontal'
+  // Конёк — вдоль длинной стороны дома; у квадратного — по направлению пола.
+  const ridgeAlongX = rawWidth === rawDepth ? rect.zone.floorDirection === 'horizontal' : rawWidth > rawDepth
   const length = (ridgeAlongX ? rawWidth : rawDepth) + ROOF_OVERHANG * 2
   const span = (ridgeAlongX ? rawDepth : rawWidth) + ROOF_OVERHANG * 2
   const rise = style
@@ -699,6 +706,7 @@ function buildRoofRects(map: TacticalMap) {
       const candidate: RoofRect = {
         zone,
         cells: rect.cells,
+        members: new Set(rect.cells.map((cell) => cellKey(cell.x, cell.y))),
         minX: rect.minX,
         minY: rect.minY,
         maxX: rect.maxX,
@@ -718,6 +726,153 @@ function buildRoofRects(map: TacticalMap) {
   return result
 }
 
+type RoofBuilding = {
+  /** Прямоугольный дом — двускатная крыша на весь дом. */
+  rect: RoofRect | null
+  /** Дом сложной формы — вальма по клеткам дома вместе с кольцом толстой кладки. */
+  footprint: Set<string>
+  cells: TacticalCell[]
+  zone: TacticalZone
+  baseY: number
+}
+
+/**
+ * Дома для скатных крыш: связные области раскрытых клеток скатных комнат.
+ * Комнаты одного дома за перегородками — одна крыша, а не лоскуты по комнатам;
+ * своды склепов и пещеры сюда не входят, у них своя крыша по комнате.
+ */
+function buildRoofBuildings(map: TacticalMap) {
+  const pitched = new Map<string, TacticalCell>()
+  const zoneById = new Map(map.zones.map((zone) => [zone.id, zone]))
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    const zone = cell?.revealed && cell.passable ? zoneById.get(cell.zone ?? '') : undefined
+    if (cell && zone?.kind === 'interior' && roofStyle(map, zone) === 'gable') pitched.set(cellKey(x, y), cell)
+  }
+  const solid = (x: number, y: number) => {
+    const cell = cellAt(map, x, y)
+    return Boolean(cell && !cell.passable && cell.surface !== 'water')
+  }
+  const buildings: RoofBuilding[] = []
+  const visited = new Set<string>()
+  for (const [start, first] of pitched) {
+    if (visited.has(start)) continue
+    const cells: TacticalCell[] = []
+    const queue = [first]
+    visited.add(start)
+    while (queue.length) {
+      const cell = queue.pop()!
+      cells.push(cell)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = cellKey(cell.x + dx, cell.y + dy)
+        const next = pitched.get(key)
+        if (next && !visited.has(key)) { visited.add(key); queue.push(next) }
+      }
+    }
+    const members = new Set(cells.map((cell) => cellKey(cell.x, cell.y)))
+    // Зона дома — та, что занимает больше клеток: по ней материал и вид кровли.
+    const counts = new Map<string, number>()
+    for (const cell of cells) counts.set(cell.zone ?? '', (counts.get(cell.zone ?? '') ?? 0) + 1)
+    const zone = zoneById.get([...counts].sort((a, b) => b[1] - a[1])[0][0])!
+    const baseY = Math.max(...cells.map((cell) => terrainHeightAt(map, cell.x, cell.y)))
+    const rects = mergeRuns(cells)
+    if (rects.length === 1) {
+      const only = rects[0]
+      const candidate: RoofRect = { zone, cells, members, minX: only.minX, minY: only.minY, maxX: only.maxX, maxY: only.maxY, sides: new Set(), ring: new Set(), baseY }
+      const outline = structuralSides(map, candidate)
+      candidate.sides = outline.sides
+      candidate.ring = outline.ring
+      if (candidate.sides.size) buildings.push({ rect: candidate, footprint: members, cells, zone, baseY })
+      continue
+    }
+    // Без стен на краю это навес или двор, а не дом: крыша не нужна.
+    let walled = false
+    const footprint = new Set(members)
+    for (const cell of cells) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = cell.x + dx, y = cell.y + dy
+      if (members.has(cellKey(x, y))) continue
+      if (solid(x, y)) { footprint.add(cellKey(x, y)); walled = true; continue }
+    }
+    for (const edge of edgeList(map)) {
+      if (!STRUCTURAL_EDGES.has(edge.kind)) continue
+      const neighbor = edgeNeighbor(edge)
+      if (members.has(cellKey(edge.x, edge.y)) !== members.has(cellKey(neighbor.x, neighbor.y))) { walled = true; break }
+    }
+    if (!walled) continue
+    // Угол кольца толстой кладки: клетка по диагонали, если обе соседки уже в кольце.
+    for (const key of [...footprint]) {
+      if (members.has(key)) continue
+      const [x, y] = key.split(',').map(Number)
+      for (const [dx, dy] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        if (footprint.has(cellKey(x + dx, y)) && footprint.has(cellKey(x, y + dy)) && !footprint.has(cellKey(x + dx, y + dy))
+          && solid(x + dx, y + dy) && !members.has(cellKey(x + dx, y)) && !members.has(cellKey(x, y + dy))) footprint.add(cellKey(x + dx, y + dy))
+      }
+    }
+    buildings.push({ rect: null, footprint, cells, zone, baseY })
+  }
+  return buildings
+}
+
+/**
+ * Цельная крыша дома сложной формы: вальмы, коньки и ендовы из одной сетки
+ * (`src/board3d-hip-roof.ts`). Стропила и карнизы — в структуре: их видно и в
+ * срезе крыши.
+ */
+function addHipRoof(
+  resources: RoofResources,
+  shellGroup: THREE.Group,
+  structureGroup: THREE.Group,
+  building: RoofBuilding,
+  palette: BoardPalette,
+  eaveHeight: number,
+  map: TacticalMap,
+  style: RoofStyle | null,
+) {
+  const distance = createHipDistance(building.footprint)
+  const depth = Math.max(.5, hipRoofDepth(building.footprint, distance))
+  const slope = style ? Math.min(PAINTED_ROOF_SLOPE * 2, PAINTED_ROOF_PITCH / depth) : Math.min(.4, ROOF_PITCH / depth)
+  const colors = roofColors(palette, building.zone, false)
+  const looks = style ? roofLooks(map, { zone: building.zone, cells: building.cells } as RoofRect) : null
+  const shellMaterial = style && looks ? style.covering(looks.covering) : roofMaterial(resources, colors.shell)
+  const trimMaterial = style ? style.look('timber') : roofMaterial(resources, colors.trim, { roughness: .82 })
+  const covering = style && looks ? { ...style.repeat(looks.covering), across: looks.covering === 'shingles' } : undefined
+  const keys = [...building.footprint].map((key) => key.split(',').map(Number))
+  const minX = Math.min(...keys.map(([x]) => x)), minY = Math.min(...keys.map(([, y]) => y))
+  const maxX = Math.max(...keys.map(([x]) => x)), maxY = Math.max(...keys.map(([, y]) => y))
+  const y = building.baseY + eaveHeight
+  const piece = roofObject(new THREE.Group())
+  piece.name = `roof-hip:${building.zone.id}:${minX},${minY},${maxX},${maxY}`
+  piece.position.set(0, y, 0)
+  addMesh(resources, piece, 'roof-slope:hip', createHipRoofGeometry(building.footprint, { slope, overhang: ROOF_OVERHANG, covering }), shellMaterial)
+  shellGroup.add(piece)
+
+  const structural = roofObject(new THREE.Group())
+  structural.name = piece.name.replace('roof-hip', 'roof-structure')
+  structural.position.set(0, y, 0)
+  // Карниз: брус под краем свеса, со срезом в углах, как сам свес.
+  for (const run of hipRoofRuns(building.footprint)) {
+    const length = run.start.distanceTo(run.end) + (run.convexStart ? ROOF_OVERHANG : -ROOF_OVERHANG) + (run.convexEnd ? ROOF_OVERHANG : -ROOF_OVERHANG)
+    if (length <= .05) continue
+    const middle = run.start.clone().add(run.end).multiplyScalar(.5)
+      .addScaledVector(run.along, ((run.convexEnd ? 1 : -1) - (run.convexStart ? 1 : -1)) * ROOF_OVERHANG / 2)
+      .addScaledVector(run.outward, ROOF_OVERHANG - ROOF_EAVE_WIDTH / 2)
+    const alongX = Math.abs(run.along.x) > .5
+    const geometry = alongX ? new THREE.BoxGeometry(length, ROOF_EAVE_HEIGHT, ROOF_EAVE_WIDTH) : new THREE.BoxGeometry(ROOF_EAVE_WIDTH, ROOF_EAVE_HEIGHT, length)
+    addMesh(resources, structural, 'roof-eave:hip', geometry, trimMaterial, [middle.x, -ROOF_OVERHANG * slope - .03, middle.z])
+  }
+  const rafterGeometry = ownGeometry(resources, new THREE.BoxGeometry(WOOD_ROOF_STRUCTURE_SIZE, WOOD_ROOF_STRUCTURE_SIZE, 1))
+  hipRoofRafters(building.footprint, slope).forEach((rafter, index) => {
+    const beam = addMesh(resources, structural, `roof-rafter:hip:${index}`, rafterGeometry, trimMaterial)
+    const length = rafter.from.distanceTo(rafter.to)
+    beam.position.copy(rafter.from).add(rafter.to).multiplyScalar(.5)
+    beam.position.y -= RAFTER_DROP
+    beam.scale.z = length
+    beam.lookAt(rafter.to.clone().add(new THREE.Vector3(0, y - RAFTER_DROP, 0)))
+  })
+  structureGroup.add(structural)
+  return true
+}
+
 /** Создаёт видимый слой крыш, не добавляя ничего в TacticalMap и не раскрывая туман. */
 export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, options: Board3DRoofOptions = {}): Board3DRoofController {
   const resources: RoofResources = { geometries: new Set(), materials: new Set() }
@@ -735,12 +890,16 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
   const seenUpperWallEdges = new Set<string>()
   const painted = packHasRoofLooks(options.stylePack) ? createRoofStyle(options.stylePack, resources, options) : null
   group.userData.roofStyle = painted ? 'painted' : 'plain'
+  // Верх стен и своды — по комнатам, скатные крыши — по домам целиком.
   for (const rect of buildRoofRects(map)) {
     const style = roofStyle(map, rect.zone)
     if (!style) continue
     addUpperWallPanels(resources, upperWalls, map, rect, palette, cutWallHeight, fullWallHeight, seenUpperWallEdges, painted)
     if (style === 'vault') addVaultRoof(resources, shells, structures, rect, palette, fullWallHeight, painted)
-    else if (style === 'gable') addPitchedRoof(resources, shells, structures, rect, palette, fullWallHeight, map, painted)
+  }
+  for (const building of buildRoofBuildings(map)) {
+    if (building.rect) addPitchedRoof(resources, shells, structures, building.rect, palette, fullWallHeight, map, painted)
+    else addHipRoof(resources, shells, structures, building, palette, fullWallHeight, map, painted)
   }
 
   let mode: Board3DRoofMode = options.mode ?? 'cutaway'

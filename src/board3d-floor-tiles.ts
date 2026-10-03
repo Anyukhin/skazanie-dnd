@@ -23,6 +23,12 @@ export function floorKeyForCell(map: TacticalMap, cell: TacticalCell | null | un
   return zoneOfCell(map, cell)?.floor ?? cell.material
 }
 
+/**
+ * Естественные покрытия лежат сплошным ковром: швы плиток на газоне и дороге
+ * читались сверху сеткой. Мощёные полы остаются плитками с фаской.
+ */
+export const NATURAL_FLOORS: ReadonlySet<string> = new Set(['grass', 'earth', 'sand', 'mud', 'snow', 'gravel'])
+
 const PARALLAX_CHUNK = /* glsl */`
 uniform sampler2D uFloorHeight;
 uniform float uFloorParallax;
@@ -132,7 +138,12 @@ export function buildStyledFloors(map: TacticalMap, pack: GraphicsStylePack, { p
   const owned: { dispose(): void }[] = []
   for (const key of [...keys].sort()) {
     const floor = pack.floors[key]
-    const geometry = createTileGroundGeometry(map, { include: (_x, _y, cell) => floorKeyForCell(map, cell) === key, uvCells: floor.cells })
+    const geometry = createTileGroundGeometry(map, {
+      include: (_x, _y, cell) => floorKeyForCell(map, cell) === key,
+      uvCells: floor.cells,
+      seamless: (cell) => NATURAL_FLOORS.has(floorKeyForCell(map, cell) ?? ''),
+      neutralShade: true,
+    })
     geometry.setAttribute('uv1', geometry.attributes.uv)
     const textures = loadFloorTextures(floor, loadTexture)
     const material = createStyledFloorMaterial(floor, textures, { parallax })
