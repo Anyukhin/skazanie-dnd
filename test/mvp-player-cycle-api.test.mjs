@@ -496,20 +496,20 @@ async function runMvpScenario(t) {
   assert.equal(characterReplayMismatch.status, 409, characterReplayMismatch.text)
 
   const forgedItemOwner = await playerCommand(baseUrl, guestCookie, 'item-owner-forgery', {
-    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-longsword', equipped: false,
+    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-kit2024-1', equipped: false,
   })
   assert.equal(forgedItemOwner.status, 403, forgedItemOwner.text)
 
   const unequippedItem = await playerCommand(baseUrl, ownerCookie, 'item-unequip-1', {
-    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-longsword', equipped: false,
+    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-kit2024-1', equipped: false,
   })
   assert.equal(unequippedItem.status, 200, unequippedItem.text)
-  assert.equal(unequippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, false)
+  assert.equal(unequippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-kit2024-1').equipped, false)
   const equippedItem = await playerCommand(baseUrl, ownerCookie, 'item-equip-1', {
-    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-longsword', equipped: true,
+    command_type: 'EquipItem', actor_id: 'mvp-hero-1', item_id: 'mvp-hero-1-starter-kit2024-1', equipped: true,
   })
   assert.equal(equippedItem.status, 200, equippedItem.text)
-  assert.equal(equippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, true)
+  assert.equal(equippedItem.body.authoritative_state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-kit2024-1').equipped, true)
 
   mvpStage('character import and choices')
   const importDocument = characterDocument('Герой 1', 225)
@@ -521,7 +521,7 @@ async function runMvpScenario(t) {
   assert.equal(importedHero.characterClass, 'barbarian')
   assert.equal(importedHero.experience, 225)
   assert.equal(importedHero.proficiency, 2)
-  assert.equal(importedHero.inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, true)
+  assert.equal(importedHero.inventory.find((item) => item.id === 'mvp-hero-1-starter-kit2024-1').equipped, true)
   const forgedImport = await playerCommand(baseUrl, ownerCookie, 'character-import-forged', {
     command_type: 'ImportCharacter', actor_id: 'mvp-hero-1',
     document: { ...importDocument, character: { ...importDocument.character, hp: 999, gold: 999 } },
@@ -614,7 +614,7 @@ async function runMvpScenario(t) {
   assert.equal(restored.status, 200, restored.text)
   assert.deepEqual(restored.body.state.mechanics.combat, stableCombat)
   assert.equal(restored.body.state.enemies.length, combatRoom.body.state.enemies.length)
-  assert.equal(restored.body.state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-longsword').equipped, true)
+  assert.equal(restored.body.state.players.find((player) => player.id === 'mvp-hero-1').inventory.find((item) => item.id === 'mvp-hero-1-starter-kit2024-1').equipped, true)
   const repeatedRead = await request(baseUrl, '/api/rooms/PLAYER-MVP', { cookie: guestCookie })
   assert.equal(repeatedRead.body.version, restored.body.version, 'GET must not mutate the room projection')
   assert.deepEqual(repeatedRead.body.state.mechanics.combat, restored.body.state.mechanics.combat)
@@ -721,7 +721,7 @@ async function runMvpScenario(t) {
         for (const candidate of candidates) {
           const attempted = await playerCommand(baseUrl, actorCookie, `player-attack-${++commandIndex}`, {
             command_type: 'MakeAttack', actor_id: actorId, target_id: candidate.enemy.id,
-            item_id: `${actorId}-starter-longsword`,
+            item_id: `${actorId}-starter-kit2024-1`,
           })
           if (attempted.status === 200) {
             attacked = attempted

@@ -193,6 +193,71 @@ const CLASS_PROFILES = Object.freeze([
   { key: 'wizard', pattern: /волшеб|wizard|маг\b/u, weapon: 'dagger', gear: [], abilities: { str: 8, dex: 14, con: 13, int: 16, wis: 15, cha: 10 } },
 ])
 
+/**
+ * Стартовое снаряжение редакции 2024 — вариант A класса из SRD 5.2.1. Прежний
+ * набор 2024 был упрощён до «оружие, кожаный доспех, щит»: жрец выходил с
+ * кинжалом и КД 14, воин с КД 15, у заклинателей не было фокусировки (боевой
+ * плейтест 2026-10-03). Компоненты заклинаний движок пока проверяет только в
+ * редакции 2014, так что фокусировка здесь — снаряжение по правилам, а не
+ * пропуск к заклинаниям.
+ *
+ * Набор выдаётся событием создания героя, поэтому новая политика узнаётся по
+ * метке в событии: прежние события в replay дают прежний набор. Золото остаётся
+ * общим `STARTING_GOLD` — экономика стартовых кошельков здесь не меняется.
+ * Строка набора: [идентификатор каталога, количество, надето]. Предметы вне
+ * каталога (наборы, колчан, воровские инструменты) — описательные.
+ */
+export const STARTER_KIT_2024_POLICY = Object.freeze({ policy_id: 'srd_5_2_1:starter-equipment-option-a', policy_version: 1 })
+
+const KITS_2024 = Object.freeze({
+  barbarian: { items: [['greataxe', 1, true], ['handaxe', 4], ['explorers-pack', 1]], gear: [] },
+  bard: { items: [['leather-armor', 1, true], ['dagger', 2, true], ['lute', 1]], gear: ['Набор артиста'] },
+  cleric: { items: [['chain-shirt', 1, true], ['shield', 1, true], ['mace', 1, true], ['holy-symbol-amulet', 1, true]], gear: ['Набор священника'] },
+  druid: { items: [['leather-armor', 1, true], ['shield', 1, true], ['druidic-focus-wooden-staff', 1, true], ['sickle', 1], ['explorers-pack', 1], ['herbalism-kit', 1]], gear: [] },
+  fighter: { items: [['chain-mail', 1, true], ['greatsword', 1, true], ['flail', 1], ['javelin', 8]], gear: ['Набор исследователя подземелий'] },
+  // Вариант B воина — для ловкого бойца: кольчуга без Силы 13 замедлила бы его.
+  'fighter-dex': { items: [['studded-leather-armor', 1, true], ['longbow', 1, true], ['arrows-20', 1], ['scimitar', 1], ['shortsword', 1]], gear: ['Колчан', 'Набор исследователя подземелий'] },
+  monk: { items: [['spear', 1, true], ['dagger', 5], ['explorers-pack', 1]], gear: ['Инструменты ремесленника'] },
+  paladin: { items: [['chain-mail', 1, true], ['shield', 1, true], ['longsword', 1, true], ['javelin', 6], ['holy-symbol-amulet', 1, true]], gear: ['Набор священника'] },
+  ranger: { items: [['studded-leather-armor', 1, true], ['longbow', 1, true], ['arrows-20', 1], ['scimitar', 1], ['shortsword', 1], ['druidic-focus-mistletoe', 1], ['explorers-pack', 1]], gear: ['Колчан'] },
+  rogue: { items: [['leather-armor', 1, true], ['shortsword', 1, true], ['dagger', 2], ['shortbow', 1], ['arrows-20', 1]], gear: ['Воровские инструменты', 'Колчан', 'Набор взломщика'] },
+  sorcerer: { items: [['spear', 1, true], ['dagger', 2], ['arcane-focus-crystal', 1, true]], gear: ['Набор исследователя подземелий'] },
+  warlock: { items: [['leather-armor', 1, true], ['sickle', 1, true], ['dagger', 2], ['arcane-focus-orb', 1, true]], gear: ['Книга оккультных знаний', 'Набор учёного'] },
+  wizard: { items: [['dagger', 2, true], ['arcane-focus-staff', 1, true]], gear: ['Мантия', 'Книга заклинаний', 'Набор учёного'] },
+})
+
+function kit2024For(classKey, abilities = {}) {
+  if (classKey === 'fighter' && Number(abilities.dex ?? 10) > Number(abilities.str ?? 10)) return KITS_2024['fighter-dex']
+  return KITS_2024[classKey] ?? null
+}
+
+/**
+ * Состав набора 2024 для мастера создания — только показ: выдаёт набор событие
+ * создания, а выбора внутри варианта A нет. Ловкий воин получит вариант B, о чём
+ * говорит подпись.
+ */
+export function starterKit2024Preview(classKey) {
+  const kit = KITS_2024[classKey]
+  if (!kit) return null
+  return {
+    class_id: classKey,
+    policy_id: STARTER_KIT_2024_POLICY.policy_id,
+    summary: classKey === 'fighter'
+      ? 'Вариант A из SRD 5.2.1. Если Ловкость выше Силы — вариант B: клёпаный кожаный доспех, длинный лук, стрелы, скимитар и короткий меч.'
+      : 'Вариант A из SRD 5.2.1.',
+    fixed_items: kit.items.map(([id, quantity]) => ({ catalog_id: `srd_5_2_1:${id}`, name: catalogItem(`srd_5_2_1:${id}`)?.name ?? id, quantity })),
+    fixed_narrative_items: kit.gear.map((name) => ({ name })),
+    choice_groups: [],
+  }
+}
+
+function kit2024Inventory(heroId, kit) {
+  return [
+    ...kit.items.map(([id, quantity, equipped], index) => classicStarterItem(heroId, { catalog_id: `srd_5_2_1:${id}`, quantity, equipped: equipped === true }, index, 'kit2024')),
+    ...kit.gear.map((name, index) => narrativeStarterItem(heroId, { name }, index, 'kit2024-gear')),
+  ]
+}
+
 function totalCurrency(currency = {}) {
   return Number(currency.copper || 0) + Number(currency.silver || 0) * 10 + Number(currency.gold || 0) * 100 + Number(currency.platinum || 0) * 1_000
 }
@@ -657,7 +722,7 @@ function classicStarterInventory(hero, profile, { policyVersion = classicEquipme
 
 /** Supplies only missing first-session essentials; imported, already-built
  * character sheets keep their money, abilities and equipment unchanged. */
-export function withStarterKit(hero, { rulesetId = LEGACY_DEFAULT_RULESET_ID, starterPolicyVersion = classicEquipment.policy_version, complete = false } = {}) {
+export function withStarterKit(hero, { rulesetId = LEGACY_DEFAULT_RULESET_ID, starterPolicyVersion = classicEquipment.policy_version, starterPolicyId = null, complete = false } = {}) {
   const role = `${hero?.role ?? ''} ${hero?.characterClass ?? ''}`.toLocaleLowerCase('ru')
   const profile = CLASS_PROFILES.find((entry) => entry.key === hero?.characterClass || entry.pattern.test(role))
   const heroId = String(hero?.id || 'hero')
@@ -667,9 +732,17 @@ export function withStarterKit(hero, { rulesetId = LEGACY_DEFAULT_RULESET_ID, st
   const selectedStarterChoices = hero?.phbCreation?.classEquipmentChoices
     ?? hero?.starterEquipmentChoices
     ?? defaultStarterEquipmentChoices(hero?.characterClass ?? profile?.key, DND_2014_RULESET_ID, { complete: useComplete })
+  const abilities = abilityScoresAreBlank(hero?.abilities) && profile
+    ? structuredClone(profile.abilities)
+    : structuredClone(hero?.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
+  const kit2024 = rulesetId !== DND_2014_RULESET_ID && starterPolicyId === STARTER_KIT_2024_POLICY.policy_id
+    ? kit2024For(hero?.characterClass ?? profile?.key, abilities)
+    : null
   const inventory = Array.isArray(hero?.inventory) && hero.inventory.length
     ? structuredClone(hero.inventory)
-    : rulesetId === DND_2014_RULESET_ID
+    : kit2024
+      ? kit2024Inventory(heroId, kit2024)
+      : rulesetId === DND_2014_RULESET_ID
       ? classicProfile
         ? classicStarterInventory(hero, classicProfile, { policyVersion: starterPolicyVersion, complete: useComplete })
         : [starterWeapon(heroId, profile?.weapon ?? 'dagger')]
@@ -683,9 +756,6 @@ export function withStarterKit(hero, { rulesetId = LEGACY_DEFAULT_RULESET_ID, st
     : rulesetId === DND_2014_RULESET_ID
       ? { copper: 0, silver: 0, gold: Math.max(0, Number(backgroundById(hero?.backgroundId, DND_2014_RULESET_ID)?.equipment?.gold) || 0), platinum: 0 }
       : { copper: 0, silver: 0, gold: STARTING_GOLD, platinum: 0 }
-  const abilities = abilityScoresAreBlank(hero?.abilities) && profile
-    ? structuredClone(profile.abilities)
-    : structuredClone(hero?.abilities ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 })
   return {
     ...hero,
     ...(profile && !hero?.characterClass ? { characterClass: profile.key } : {}),

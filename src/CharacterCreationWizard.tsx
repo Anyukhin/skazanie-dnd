@@ -1339,6 +1339,7 @@ export function CharacterCreationWizard({
                   ...(starterProfile.fixed_items ?? []).map((item) => `${item.name ?? 'Предмет'}${(item.quantity ?? 1) > 1 ? ` ×${item.quantity}` : ''}`),
                   ...(starterProfile.fixed_narrative_items ?? []).map((item) => item.name),
                 ].filter(Boolean).join(' · ')}</p>
+                {starterProfile.summary && <small>{starterProfile.summary}</small>}
               </section> : null}
               {starterGroups.map((group) => <section key={group.id} className="creation-equipment-group">
                 <header><span>{group.label}</span><b aria-live="polite">{(draft.starterEquipmentChoices[group.id] ?? []).length}/{group.count}</b></header>

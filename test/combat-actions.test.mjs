@@ -510,3 +510,16 @@ test('Отход врага не открывает игроку окно ата
   assert.equal(afterMove.enemies[0].x, 5)
   assert.equal(afterMove.mechanics.combat.action_economy.fighter.reaction, true)
 })
+
+test('промах Подсекающей атакой не сжигает кость превосходства', () => {
+  // Плейтест 2026-10-03: манёвр — надбавка к попаданию, а кость списывалась
+  // до броска атаки и пропадала на промахе.
+  const initial = combatState()
+  const result = resolveCommand({ command_type: 'UseCombatAction', actor_id: 'fighter', action_id: 'trip-attack', target_id: 'goblin', item_id: 'sword', server_authoritative: true }, initial, { diceService: dice([2, 1, 4, 2]), context: { serverAuthoritativeCombat: true } })
+  assert.equal(result.events.find((event) => event.event_type === 'AttackResolved').payload.hit, false)
+  assert.equal(result.events.some((event) => event.event_type === 'ResourceSpent'), false)
+  const after = applyAll(initial, result.events)
+  assert.equal(after.mechanics.resources.fighter.superiority_dice.current, 4)
+  assert.equal(after.mechanics.combat.action_economy.fighter.action, false, 'атака действия всё равно потрачена')
+  assert.ok(!(after.mechanics.conditions.goblin ?? []).some((condition) => condition.id === 'prone'))
+})

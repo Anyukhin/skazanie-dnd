@@ -5153,14 +5153,21 @@ const server = createServer((req, res) => {
         creative_provider: creativeMoment?.provider ?? null,
       }
       else if (journalNarration) result = { ...result, narration_message_id: narrationMessageId }
+      // Критический момент не стирает боевой лог из хроники: строка с бросками и
+      // уроном ложится перед текстом рассказчика. Иначе свой удар, сваливший
+      // врага, игрок видел без единого числа, а удары врага — с числами
+      // (плейтест 2026-10-03).
+      const combatLog = creativeMoment && tactical.main
+        ? { id: combatMessageId(`${idempotencyKey}:log`), text: tactical.main, turnConsumed: false, speaker: 'system', author: 'Система боя' }
+        : null
       const projected = result.authoritative_state
-        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? {
+        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? [combatLog, {
           id: narrationMessageId,
           text: journalNarration,
           turnConsumed: types.has('EndTurn'),
           speaker: creativeMoment ? 'narrator' : 'system',
           author: creativeMoment ? 'Рассказчик' : 'Система боя',
-        } : null, { awaitProjection: true })
+        }].filter(Boolean) : null, { awaitProjection: true })
         : null
       if (projected?.projectionAck) await projected.projectionAck
       const responseState = projected?.state ?? result.authoritative_state

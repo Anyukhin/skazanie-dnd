@@ -401,9 +401,11 @@ import {
 import {
   combatActionFor,
   combatActionsFor,
+  classResourceOptionsFor,
   combatResourceMaximumsFor,
   combatResourceRecoveryFor,
   normalizedCombatSubclassFor,
+  ONE_ON_SHORT_REST,
   weaponAttacksPerActionFor,
 } from './combat-actions.mjs'
 import { characterClassKey, isSkillProficient, normalizedClassSkillProficiencies, normalizedSelectedFeatureIds, skillAbility } from './character-progression.mjs'
@@ -2005,7 +2007,7 @@ export function normalizeCampaignState(input = {}) {
     }
     let characterSheet = null
     try {
-      characterSheet = deriveCharacterSheet(normalizedActor)
+      characterSheet = deriveCharacterSheet(normalizedActor, classResourceOptionsFor(state))
     } catch {
       // Old snapshots without a supported class remain replayable; the
       // normalized sheet becomes available once the build is migrated.
@@ -2045,7 +2047,7 @@ export function normalizeCampaignState(input = {}) {
     for (const [resource, maximum] of Object.entries(spellSlotMaximumsFor(actor))) {
       if (!mechanics.resources[id][resource]) mechanics.resources[id][resource] = { current: maximum, max: maximum }
     }
-    for (const [resource, maximum] of Object.entries(combatResourceMaximumsFor(actor))) {
+    for (const [resource, maximum] of Object.entries(combatResourceMaximumsFor(actor, classResourceOptionsFor(state)))) {
       if (!mechanics.resources[id][resource]) mechanics.resources[id][resource] = { current: maximum, max: maximum }
     }
     const x = Number(actor?.x)
@@ -14925,7 +14927,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', { requested_amount: amount, applied_amount: after - before, hp_before: before, hp_after: after, ...healing }, [actionTargetId]))
         events.push(actionEvent())
       } else if (action.effect?.kind === 'weapon_attack') {
-        spendActionResource()
+        // Манёвр мастера боевых искусств — надбавка к попаданию: кость
+        // превосходства тратится, когда удар попал, а промах её не сжигает
+        // (плейтест 2026-10-03). Прочие удары с запасом платят заранее.
+        const spendOnHit = action.resource === 'superiority_dice'
+        if (!spendOnHit) spendActionResource()
+        let resourceSpent = !spendOnHit
         const level = Math.max(1, safeInteger(actor?.level, 1))
         const tier = Object.entries(action.effect.attacksByLevel ?? {}).sort(([left], [right]) => Number(right) - Number(left)).find(([minimum]) => level >= Number(minimum))
         const attacks = Math.max(1, safeInteger(tier?.[1] ?? action.effect.attacks, 1))
@@ -14952,6 +14959,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const attackEvent = attackResult.events.find((event) => event.event_type === 'AttackResolved')
           const hit = Boolean(attackEvent?.payload?.hit)
           landed ||= hit
+          if (hit && !resourceSpent) {
+            const spent = events.length
+            spendActionResource()
+            attackResult.events.splice(attackResult.events.indexOf(attackEvent) + 1, 0, ...events.splice(spent))
+            resourceSpent = true
+          }
           if (hit) {
             let extraExpression = action.effect.extraDamage
             if (action.effect.extraDamageByLevel === 'sneak') extraExpression = `${Math.ceil(level / 2)}d6`
@@ -21331,7 +21344,7 @@ function refreshPlayerDerivedState(state, actorIds) {
     if (requested.size && !requested.has(actorId(actor))) return actor
     let characterSheet = actor.characterSheet ?? null
     try {
-      characterSheet = deriveCharacterSheet(actor)
+      characterSheet = deriveCharacterSheet(actor, classResourceOptionsFor(state))
     } catch {}
     return {
       ...actor,
@@ -24141,12 +24154,15 @@ function applyGameEventCurrent(rawState, event) {
       const actor = findActor(state, target)
       const kind = payload.kind === 'long' ? 'long' : 'short'
       const pools = state.mechanics.resources[target] ?? {}
-      const recovery = actor ? combatResourceRecoveryFor(actor) : {}
+      const recovery = actor ? combatResourceRecoveryFor(actor, classResourceOptionsFor(state)) : {}
       state.mechanics.resources[target] = Object.fromEntries(Object.entries(pools).map(([resource, pool]) => [resource, {
         ...pool,
         current: kind === 'long' || resource === 'pact_slots' || recovery[resource] === 'short_or_long'
           ? Math.max(0, safeInteger(pool.max, 0))
-          : Math.max(0, safeInteger(pool.current, 0)),
+          // Редакция 2024: короткий отдых возвращает один заряд, а не все.
+          : kind === 'short' && recovery[resource] === ONE_ON_SHORT_REST
+            ? Math.min(Math.max(0, safeInteger(pool.max, 0)), Math.max(0, safeInteger(pool.current, 0)) + 1)
+            : Math.max(0, safeInteger(pool.current, 0)),
       }]))
       if (kind === 'long' && actor) {
         replaceActor(state, target, (candidate) => ({ ...candidate, hp: actorMaxHp(candidate) }))
@@ -24452,7 +24468,7 @@ function applyGameEventCurrent(rawState, event) {
         const actor = state.players.find((candidate) => actorId(candidate) === String(target))
         if (actor && Number(payload.schema_version) >= 2 && payload.creation_benefits && typeof payload.creation_benefits === 'object') {
           try {
-            const sheet = deriveCharacterSheet(actor, { rulesetId: state.ruleset_id })
+            const sheet = deriveCharacterSheet(actor, { rulesetId: state.ruleset_id, ...classResourceOptionsFor(state) })
             state.players = state.players.map((candidate) => actorId(candidate) === String(target)
               ? {
                   ...candidate,
@@ -24492,7 +24508,7 @@ function applyGameEventCurrent(rawState, event) {
       }
       let leveledActor = state.players.find((actor) => actorId(actor) === String(target))
       if (leveledActor) {
-        const sheet = deriveCharacterSheet(leveledActor)
+        const sheet = deriveCharacterSheet(leveledActor, classResourceOptionsFor(state))
         state.players = state.players.map((actor) => actorId(actor) === String(target) ? {
           ...actor,
           proficiency: sheet.proficiency_bonus,
@@ -24503,7 +24519,7 @@ function applyGameEventCurrent(rawState, event) {
           combatActions: combatActionsFor(actor),
         } : actor)
         leveledActor = state.players.find((actor) => actorId(actor) === String(target))
-        const plan = classResourcePlan(leveledActor)
+        const plan = classResourcePlan(leveledActor, classResourceOptionsFor(state))
         const resources = state.mechanics.resources[target] ?? {}
         // Ячейка, полученная с уровнем, доступна сразу: прибавка максимума
         // прибавляется и к текущему запасу. Без версии — прежнее правило.

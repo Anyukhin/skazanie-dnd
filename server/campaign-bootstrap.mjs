@@ -6,7 +6,7 @@ import { generateSceneGeometry, levelKey, librarySceneFields, openingEntrySide, 
 import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioning.mjs'
 import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
-import { withStarterKit } from './starter-kit.mjs'
+import { STARTER_KIT_2024_POLICY, withStarterKit } from './starter-kit.mjs'
 import { MAX_CHARACTER_LEVEL, partyPresentationFor } from './character-lifecycle.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
 import { gmSecretFact, normalizeGmSecrets } from './world-memory.mjs'
@@ -431,7 +431,7 @@ export class CampaignBootstrapper {
     const selectedRuleset = rulesetLock(ruleset_id ?? rulesetId, { fallback: LEGACY_DEFAULT_RULESET_ID, requireCreation: true })
     const heroes = rawPlayers.map(normalizeHero).map((hero) => hero.characterSetupRequired
       ? hero
-      : withStarterKit(hero, { rulesetId: selectedRuleset.ruleset_id }))
+      : withStarterKit(hero, { rulesetId: selectedRuleset.ruleset_id, starterPolicyId: STARTER_KIT_2024_POLICY.policy_id }))
     if (new Set(heroes.map((hero) => hero.id)).size !== heroes.length) throw new Error('В кампании повторяются id героев')
     const requestedWorldTemplateId = clean(world_template_id ?? worldTemplateId, 80)
     const worldTemplate = requestedWorldTemplateId ? getWorldTemplate(requestedWorldTemplateId) : null
