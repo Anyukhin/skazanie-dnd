@@ -50,7 +50,9 @@
 /**
  * Вариант модели вида предмета: готовая модель текущего выпуска (`ref`) или
  * сборная (`name` + `parts`), которая ляжет в пакет как `props/<name>.glb`.
- * @typedef {{ ref?: string, name?: string, parts?: PartSource[], yaw?: number, maxHeight?: number }} PropSource
+ * `surface` — модель служит опорой для утвари: сборщик ставит метку
+ * `surface-top` на столешницу, и доска сажает посуду на неё, а не на перо.
+ * @typedef {{ ref?: string, name?: string, parts?: PartSource[], yaw?: number, maxHeight?: number, surface?: boolean }} PropSource
  */
 
 /** @typedef {{ label: string, floors: Record<string, FloorSource>, materials: Record<string, PaintedMaterial>, walls: Record<string, WallLookSource>, props: Record<string, PropSource[]>, license: string, sources: string[] }} StyleSource */
@@ -442,6 +444,31 @@ const EXPANSION_PROPS = {
 PROPS.cart = [ref('quaternius/stall_cart_empty.glb')]
 PROPS.banner = [ref('quaternius/banner_1.glb')]
 for (const [id, recipes] of Object.entries(EXPANSION_PROPS)) PROPS[id] = [...(PROPS[id] ?? []), ...recipes]
+
+// Столы с вещами из рецепта, на которые сервер ставит утварь (`SURFACES` в
+// `server/prop-placement.mjs`): их столешница отмечается лучом сверху.
+for (const id of ['writing_desk', 'jailer_desk', 'shop_counter']) PROPS[id] = PROPS[id].map((prop) => ({ ...prop, surface: true }))
+
+// --- Подготовленные штампы набора детализации получают модели (04.10.2026).
+// Рецепты — `tools/map-detail-models-frontier.mjs`; предел высоты в клетках
+// держит их по шкале доски (стена 0,95, герой 1,25–1,4).
+/** @type {Record<string, number>} */
+const FRONTIER_HEIGHTS = {
+  snowdrift: .25, snowy_boulder: .65, ice_pillars: 1.1, frozen_pool: .12, winter_cache: .45, snow_cairn: .9,
+  sand_dune: .22, desert_boulders: .6, cactus_cluster: 1.1, dead_scrub: .5, oasis_pool: .15, broken_obelisk: .3,
+  bog_pool: .12, lily_pad_cluster: .08, reed_cluster: 1, rotten_log: .45, mud_patch: .06, swamp_totem: 1.3, peat_mound: .3,
+  mooring_bollard: .6, cargo_net: .45, lobster_cage: .45, sail_bundle: .25,
+  bedroll_cluster: .25, shield_rack: .95, camp_dummy: 1.25, spiked_beam_barrier: .65,
+  alchemy_cauldron: .6, arcane_lectern: .95, ritual_circle: .05, arcane_stone: .2, potion_cabinet: 1.2, magic_mirror: 1.3,
+  prison_cage: 1.2, dungeon_rack: .7, iron_maiden: 1.4, manacle_post: .85,
+}
+for (const [id, maxHeight] of Object.entries(FRONTIER_HEIGHTS)) PROPS[id] = [{ ...detail(id), maxHeight }]
+// Ящики рыбаков — из тех же ящиков набора, что и в лавках: штабель на трёх.
+PROPS.fishing_crates = [{ name: 'fishing_crates', maxHeight: .75, parts: [
+  { kit: `${FPMK}Crate_Wooden`, at: [-.32, 0, .18], yaw: 6 },
+  { kit: `${FPMK}Crate_Wooden`, at: [.34, 0, .2], yaw: -8 },
+  { kit: `${FPMK}Crate_Wooden`, on: 0, at: [.02, 0, .04], yaw: 3, scale: .92 },
+] }]
 
 /** @type {Readonly<Record<string, StyleSource>>} */
 export const GRAPHICS_STYLE_SOURCES = Object.freeze({

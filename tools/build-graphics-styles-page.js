@@ -386,7 +386,7 @@ async function buildKitMaterial(key, kit) {
 
 // --------------------------------------------------- классы материалов
 
-const FLAT = /flame|ember|glow|lava|coal-glow|glass|water|liquid|orb|crystal|opening|recess|cavity|shadow|hole|pool|wick|^dark$/i
+const FLAT = /flame|ember|glow|lava|coal-glow|glass|water|liquid|orb|crystal|opening|recess|cavity|shadow|hole|pool|wick|(?:^|[-\s:_])ice(?:[-\s:_]|$)|^dark$/i
 const CLASS_RULES = [
   ['bark', /bark|кора/i],
   ['plaster', /statue|idol|figure|bust|sculpt|статуя|идол|фигур|бюст|изваян/i],
@@ -395,7 +395,7 @@ const CLASS_RULES = [
   ['cloth', /cloth|fabric|canvas|blanket|pillow|cushion|curtain|tent|sail|leather|rope|cord|twine|thread|banner|rug|felt|cork|mattress|sheet|sack|bag|net|upholster|сиден|подушк|подлокот|спинк|обивк|матрас|покрыв|простын|ковр|мешк|мешок|ткан|одеял|подуш|полот|штор|кожа|канат|верёв|бечев/i],
   ['stone', /coal|уголь/i],
   ['brick', /brick|masonry|hearth|fireplace|chimney|oven|forge|furnace|кирп/i],
-  ['plaster', /ceramic|clay|pottery|porcelain|bone|skull|plaster|food|bread|cheese|stew|dough|wax|candle|leaf|leaves|grass|moss|plant|flower|petal|fruit|apple|carrot|cabbage|paper|parchment|scroll|map|page|globe/i],
+  ['plaster', /ceramic|clay|pottery|porcelain|bone|skull|plaster|food|bread|cheese|stew|dough|wax|candle|leaf|leaves|grass|moss|plant|flower|petal|fruit|apple|carrot|cabbage|paper|parchment|scroll|map|page|globe|(?:^|[-\s:_])snow(?:[-\s:_]|$)|снег|сугроб/i],
   ['stone', /stone|rock|marble|granite|slab|pillar|capital|groove|niche|grave|tomb|sarcoph|statue|carving|altar|dirt|earth|mortar|cobble|coal|кам|скал|плит|уголь/i],
   ['wood', /wood|plank|board|table|shelf|counter|log|stump|beam|post|frame|leg|handle|lid|seat|chair|wheel|barrel|crate|дерев|доск|ножк|рама|полк|стол|брус|балк|столб|бочк|ящик/i],
 ]
@@ -641,7 +641,7 @@ async function restylePart(path, plan) {
   return restyle(gltf.scene, plan)
 }
 
-const detailModules = ['workshop', 'household', 'town', 'dungeon', 'mine-camp', 'urban-wilderness']
+const detailModules = ['workshop', 'household', 'town', 'dungeon', 'mine-camp', 'urban-wilderness', 'frontier']
 let detailFactories = null
 async function detailPart(id, plan) {
   detailFactories ??= await Promise.all(detailModules.map((name) => import(`/tools/map-detail-models-${name}.mjs`)))
@@ -689,6 +689,25 @@ async function buildRecipe(recipe, plan) {
     root.add(holder)
     holder.updateMatrixWorld(true)
     placed.push(new THREE.Box3().setFromObject(holder, true))
+  }
+  // Опора без деталей `on`: столешница — самое низкое попадание лучей сверху
+  // в середину первой детали. Перо, чернильница и книга на краю выше неё.
+  if (recipe.surface && !root.getObjectByName('surface-top')) {
+    root.updateMatrixWorld(true)
+    const box = placed[0], size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3())
+    const raycaster = new THREE.Raycaster()
+    let lowest = Infinity
+    for (const dx of [-.3, 0, .3]) for (const dz of [-.3, 0, .3]) {
+      raycaster.set(new THREE.Vector3(center.x + dx * size.x / 2, box.max.y + 1, center.z + dz * size.z / 2), new THREE.Vector3(0, -1, 0))
+      const hit = raycaster.intersectObject(root, true)[0]
+      if (hit && hit.point.y > box.min.y + size.y * .2) lowest = Math.min(lowest, hit.point.y)
+    }
+    if (!Number.isFinite(lowest)) throw new Error('не найдена столешница опоры')
+    const top = new THREE.Object3D()
+    top.name = 'surface-top'
+    top.userData = { role: 'support-surface' }
+    top.position.set(center.x, lowest, center.z)
+    root.add(top)
   }
   // Стол с вещами сверху: высота столешницы — верх опоры, а не макушка свечи.
   if (recipe.parts.some((part) => part.on === 0) && !root.getObjectByName('surface-top')) {
@@ -747,10 +766,7 @@ async function sha256Hex(value) {
  */
 async function renderTopdownAtlas(source, plan, builtMaterials) {
   const entries = styleAtlasEntries(source, plan)
-  const tile = 256, columns = 16, rows = Math.ceil(entries.length / columns)
-  if (rows * tile > 8192) throw new Error(`2D-атлас стиля превышает 8192 px: ${rows * tile}`)
-  const atlas = document.createElement('canvas'); atlas.width = tile * columns; atlas.height = Math.max(tile, rows * tile)
-  const context = atlas.getContext('2d'); if (!context) throw new Error('не создан холст 2D-атласа')
+  const tile = 256
   const pixels = document.createElement('canvas'); pixels.width = pixels.height = tile
   const pixelContext = pixels.getContext('2d', { willReadFrequently: true }); if (!pixelContext) throw new Error('не создан буфер 2D-атласа')
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
@@ -803,7 +819,7 @@ async function renderTopdownAtlas(source, plan, builtMaterials) {
       }
     })
   }
-  const frames = {}, sizes = {}
+  const frames = {}, sizes = {}, crops = []
   try {
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index]; log(`2D: ${index + 1}/${entries.length} — ${entry.key}`)
@@ -836,17 +852,36 @@ async function renderTopdownAtlas(source, plan, builtMaterials) {
         left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y)
       }
       if (right < left) throw new Error(`пустой вид сверху: ${entry.key}`)
-      const x = (index % columns) * tile, y = Math.floor(index / columns) * tile, w = right - left + 1, h = bottom - top + 1
-      context.drawImage(pixels, left, top, w, h, x, y, w, h); frames[entry.key] = { x, y, w, h }
+      const w = right - left + 1, h = bottom - top + 1
+      const crop = document.createElement('canvas'); crop.width = w; crop.height = h
+      crop.getContext('2d').drawImage(pixels, left, top, w, h, 0, 0, w, h)
+      crops.push({ key: entry.key, crop })
       scene.remove(group); disposeModel(group)
     }
   } finally {
     renderer.dispose(); scene.environment?.dispose?.(); sharedTextures.forEach((url) => textureCache.get(url)?.dispose())
   }
-  const png = await new Promise((resolve) => atlas.toBlob(resolve, 'image/png'))
-  if (!png) throw new Error('не создан PNG 2D-атласа')
-  await post('topdown.png', png)
-  return { image: 'topdown.png', key: await sha256Hex(png), frames, sizes }
+  // Кадры укладываются полками по убыванию высоты, с зазором против
+  // затекания соседа при сглаживании: сетка 256×256 оставляла пустой
+  // половину атласа. WebP с альфой вместо PNG — в разы легче для доски 2D.
+  const width = 4096, gap = 2
+  const order = [...crops].sort((a, b) => b.crop.height - a.crop.height || a.key.localeCompare(b.key))
+  let shelfX = 0, shelfY = 0, shelfH = 0
+  for (const { key, crop } of order) {
+    if (shelfX + crop.width > width) { shelfY += shelfH + gap; shelfX = 0; shelfH = 0 }
+    frames[key] = { x: shelfX, y: shelfY, w: crop.width, h: crop.height }
+    shelfX += crop.width + gap
+    shelfH = Math.max(shelfH, crop.height)
+  }
+  const height = Math.ceil((shelfY + shelfH) / 4) * 4
+  if (height > 16_000) throw new Error(`2D-атлас стиля превышает 16000 px: ${height}`)
+  const atlas = document.createElement('canvas'); atlas.width = width; atlas.height = Math.max(4, height)
+  const context = atlas.getContext('2d'); if (!context) throw new Error('не создан холст 2D-атласа')
+  for (const { key, crop } of crops) context.drawImage(crop, frames[key].x, frames[key].y)
+  const image = await new Promise((resolve) => atlas.toBlob(resolve, 'image/webp', .9))
+  if (!image || image.type !== 'image/webp') throw new Error('браузер не создал WebP 2D-атласа')
+  await post('topdown.webp', image)
+  return { image: 'topdown.webp', key: await sha256Hex(image), frames, sizes }
 }
 
 // ----------------------------------------------------------- сборка

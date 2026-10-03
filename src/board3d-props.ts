@@ -68,6 +68,9 @@ const LIGHT_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
   chandelier: 0.48, candle: 0.46, 'lamp-post': 0.91,
 })
 
+/** Верх висящей настенной вещи, в клетках: чуть ниже кромки стены доски (0,95). */
+const WALL_MOUNT_TOP = 0.8
+
 function tones(palette: BoardPalette): Tones {
   return {
     wood: palette.prop,
@@ -578,10 +581,17 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         model.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2)
         fitted.add(model)
         fitted.scale.setScalar(fit)
+        // Модель ставится на пол. Настенную вещь, собранную висящей (в GLB она
+        // над нулём: полочка, щит, стойка с крюками), поднимаем так, чтобы верх
+        // пришёлся на WALL_MOUNT_TOP: иначе щит лежал у стены на полу.
+        const hung = prop.mount?.kind === 'wall' && box.min.y > Math.max(.05, size.y * .1)
+        const lift = hung ? Math.max(0, WALL_MOUNT_TOP / layout.scale - size.y * fit) : 0
+        fitted.position.y = lift
+        if (hung) group.userData.wallLift = lift
         group.add(fitted)
         group.userData.modelKey = entry!.key
         group.userData.modelSource = 'glb'
-        if (lightHeight !== undefined) group.userData.lightHeight = size.y * fit * .8
+        if (lightHeight !== undefined) group.userData.lightHeight = size.y * fit * .8 + lift
       } else if (kind === 'unknown') buildUnknown(owned, group, t)
       else buildModel(owned, group, layout, t, kind)
       applyContainerState(group, kind, prop.state)

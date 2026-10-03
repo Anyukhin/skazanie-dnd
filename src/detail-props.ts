@@ -44,6 +44,16 @@ export const DETAIL_PROP_ALIASES: Readonly<Record<string, string>> = Object.free
   ceremonial_chalice: 'offering_bowl', book_row: 'mug', scroll_pile: 'mug', rope_coils: 'woodpile', capstan: 'well',
   snowshoe_pair: 'mug', anchor: 'milestone', clover_patch: 'flowers', forest_plant: 'fern', mangrove_roots: 'fallen_log',
   wall_ivy: 'cobweb', wall_ivy_corner: 'cobweb', wall_ivy_wide: 'cobweb', key_bundle: 'mug', coin_pouch: 'coin_pile',
+  snowdrift: 'floor_stain', snowy_boulder: 'boulder', ice_pillars: 'stalagmite', frozen_pool: 'cave_pool',
+  winter_cache: 'crate', snow_cairn: 'milestone', sand_dune: 'floor_stain', desert_boulders: 'boulder',
+  cactus_cluster: 'bush', dead_scrub: 'bush', oasis_pool: 'cave_pool', broken_obelisk: 'pillar',
+  bog_pool: 'cave_pool', lily_pad_cluster: 'fern', reed_cluster: 'grass_tuft', rotten_log: 'fallen_log',
+  mud_patch: 'floor_stain', swamp_totem: 'signpost', peat_mound: 'rubble_heap', mooring_bollard: 'hitching_post',
+  cargo_net: 'sack', fishing_crates: 'crate', lobster_cage: 'basket', sail_bundle: 'woodpile',
+  bedroll_cluster: 'sack', shield_rack: 'shelf_wall', camp_dummy: 'statue', spiked_beam_barrier: 'village_fence',
+  alchemy_cauldron: 'cauldron', arcane_lectern: 'reliquary', ritual_circle: 'mosaic', arcane_stone: 'mosaic',
+  potion_cabinet: 'cupboard', magic_mirror: 'cupboard', prison_cage: 'crate', dungeon_rack: 'table_long',
+  iron_maiden: 'wardrobe', manacle_post: 'pillar',
 })
 
 /** Предметы набора, у которых есть авторская GLB-модель (`models/<id>.glb`). */

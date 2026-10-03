@@ -46,12 +46,21 @@ export function resolveMapDetailIntegration(spec) {
     if (!sourceStampSet.has(id)) throw new Error(`Модель интеграции без исходного pending-штампа: ${id}`)
   }
   for (const id of activatedStamps) if (!sourceStampSet.has(id)) throw new Error(`Неизвестный pending-штамп интеграции: ${id}`)
-  const pendingStamps = sourcePendingStamps.filter(id => !activatedStampSet.has(id))
+  // Штампы, у которых 3D-модель есть только в пакете стиля (рецепт
+  // tools/map-detail-models-frontier.mjs), а GLB в наборе нет.
+  const styleStamps = uniqueStrings(integration.styleProps?.stamps ?? [], 'integration.styleProps.stamps')
+  for (const id of styleStamps) {
+    if (!sourceStampSet.has(id)) throw new Error(`Неизвестный pending-штамп стиля: ${id}`)
+    if (activatedStampSet.has(id) || structuralModelSet.has(id)) throw new Error(`Штамп подключён дважды: ${id}`)
+  }
+  const styleStampSet = new Set(styleStamps)
+  const pendingStamps = sourcePendingStamps.filter(id => !activatedStampSet.has(id) && !styleStampSet.has(id))
   const pendingModels = spec.models.filter(model => pendingStamps.includes(model.id) && !activatedModelSet.has(model.id) && !structuralModelSet.has(model.id)).map(model => model.id)
   const pendingTextures = (spec.pendingIntegration?.textures ?? []).map(file => file.replace(/\.png$/u, ''))
   return {
     pendingIntegration: { stamps: pendingStamps, models: pendingModels, textures: pendingTextures },
     structuralIntegration: { models: structuralModels },
+    styleIntegration: { stamps: styleStamps },
     structural,
   }
 }
@@ -88,6 +97,7 @@ export async function updateMapDetailAssetManifest({ specFile, manifestFile }) {
     ...manifest,
     pendingIntegration: integration.pendingIntegration,
     structuralIntegration: integration.structuralIntegration,
+    styleIntegration: integration.styleIntegration,
     provenance: provenanceWithIntegration(manifest.provenance ?? {}, specBytes, sources),
   }
   await writeFile(manifestFile, `${JSON.stringify(next, null, 2)}\n`)
@@ -145,6 +155,7 @@ export async function buildMapDetailAssets({ specFile, sourceDir, outputDir, mod
     promptSpec: 'docs/map-detail-assets-spec-v1.json',
     pendingIntegration: integration.pendingIntegration,
     structuralIntegration: integration.structuralIntegration,
+    styleIntegration: integration.styleIntegration,
     provenance: {
       rasterMethod: 'OpenAI built-in image_gen',
       modelMethod: 'original detailed geometry, UV and PBR, Three.js GLTFExporter',

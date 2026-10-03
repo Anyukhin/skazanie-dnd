@@ -19,7 +19,7 @@ async function listing() {
   const files = await (await fetch('/staging-list.json')).json()
   const meta = files.includes('meta.json') ? await (await fetch('/staging/meta.json')).json() : { materials: {} }
   const materials = Object.fromEntries(Object.entries(meta.materials).map(([key, spec]) => [key, {
-    ...spec, color: `materials/${key}/color.jpg`, normal: spec.normal ? `materials/${key}/normal.jpg` : undefined, orm: spec.orm ? `materials/${key}/orm.jpg` : undefined,
+    ...spec, color: `materials/${key}/color.${spec.colorFormat ?? 'jpg'}`, normal: spec.normal ? `materials/${key}/normal.jpg` : undefined, orm: spec.orm ? `materials/${key}/orm.jpg` : undefined,
   }]))
   return { base: '/staging/', materials, models: files.filter((file) => file.startsWith('props/')).map((file) => [file.slice(6, -4), `/staging/${file}`]) }
 }

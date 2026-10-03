@@ -968,6 +968,8 @@ function structuralBridgeInstances(
       width: longitudinalZ ? Math.max(1, width) : .98,
       height: .62,
       depth: longitudinalZ ? .98 : Math.max(1, width),
+      // Настил обязан закрыть пролёт от края до края: здесь растяжение — суть.
+      fit: 'stretch',
     })
     return model ? [model] : []
   })

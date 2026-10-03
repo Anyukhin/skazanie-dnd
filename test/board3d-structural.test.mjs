@@ -10,6 +10,7 @@ import { createModel as createMineModel } from '../tools/map-detail-models-mine-
 import { createModel as createWildModel } from '../tools/map-detail-models-urban-wilderness.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+mkdirSync(join(root, 'tmp'), { recursive: true })
 const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-structural-test-'))
 const outputDir = join(buildDir, 'src')
 mkdirSync(outputDir, { recursive: true })
@@ -56,11 +57,11 @@ function structuralAssets(roles) {
   return { catalog: { version: 1, models: entries }, models }
 }
 
-function mapWithEdges({ theme = 'building', reveal = true } = {}) {
+function mapWithEdges({ theme = 'ruins', reveal = true, material = 'stone' } = {}) {
   const map = createTacticalMap({ width: 5, height: 4, theme, catalogRevision: null })
   addZone(map, { id: 'room', kind: 'interior', material: 'stone', wall: 'brick', floorDirection: 'horizontal', label: 'Кирпичная комната' })
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
-    setCell(map, x, y, { passable: true, material: 'stone', zone: 'room', revealed: reveal })
+    setCell(map, x, y, { passable: true, material, zone: 'room', revealed: reveal })
   }
   setEdge(map, 1, 1, 1, 0, { kind: 'door', doorId: 'door-1' })
   setEdge(map, 2, 1, 2, 0, { kind: 'window' })
@@ -95,7 +96,7 @@ test('структурный шаблон вписывается в якорь, 
   const assets = structuralAssets(['rope_bridge'])
   const template = assets.models.get('extra-rope_bridge')
   const instance = structural.structuralInstance(assets, {
-    role: 'rope_bridge', x: 3, y: 4, z: 5, yaw: Math.PI / 2, width: 1, height: .5, depth: 2,
+    role: 'rope_bridge', x: 3, y: 4, z: 5, yaw: Math.PI / 2, width: 1, height: .5, depth: 2, fit: 'stretch',
   })
   assert.ok(instance)
   assert.equal(instance.userData.board3dStructural, true)
@@ -150,6 +151,35 @@ test('мост использует собственные GLB-оси для о�
   }
 })
 
+test('без режима stretch модель вписывается без искажения, а ограда повторяется по ширине', () => {
+  const assets = structuralAssets(['round_window_brick', 'ornate_iron_fence', 'chimney_brick'])
+  const ratio = (object) => {
+    const size = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3())
+    return size.y / size.x
+  }
+  // Образец 2.8×2×1.3: лицо X/Y сохраняет пропорцию, глубина подгоняется к стене.
+  const window = structural.structuralInstance(assets, {
+    role: 'round_window_brick', x: 0, y: 0, z: 0, width: 1.04, height: .5, depth: .3, fit: 'face',
+  })
+  assert.ok(Math.abs(ratio(window) - 2 / 2.8) < 1e-6, 'круглое окно не становится овалом')
+  assert.ok(window.userData.fittedWidth < 1.04, 'узкая модель сообщает свою ширину для добора кладкой')
+  const windowSize = new THREE.Box3().setFromObject(window).getSize(new THREE.Vector3())
+  assert.ok(Math.abs(windowSize.z - .3) < 1e-6, 'глубина равна толщине стены')
+  const chimney = structural.structuralInstance(assets, {
+    role: 'chimney_brick', x: 0, y: 0, z: 0, width: .42, height: .92, depth: .42,
+  })
+  const chimneySize = new THREE.Box3().setFromObject(chimney).getSize(new THREE.Vector3())
+  assert.ok(chimneySize.x <= .42 + 1e-6 && chimneySize.y <= .92 + 1e-6 && chimneySize.z <= .42 + 1e-6, 'contain не выходит за габарит')
+  assert.ok(Math.abs(chimneySize.y / chimneySize.x - 2 / 2.8) < 1e-6, 'contain сохраняет пропорции')
+  // Высокая секция в низких перилах: копии закрывают всю ширину ребра.
+  const fence = structural.structuralInstance(assets, {
+    role: 'ornate_iron_fence', x: 0, y: 0, z: 0, width: 2, height: .5, depth: .18, fit: 'face', repeat: true,
+  })
+  const fenceSize = new THREE.Box3().setFromObject(fence).getSize(new THREE.Vector3())
+  assert.ok(fence.children.length > 1, 'секция ограды повторяется')
+  assert.ok(Math.abs(fenceSize.x - 2) < 1e-6 && fenceSize.y <= .5 + 1e-6, 'ряд секций закрывает ребро и не выше перил')
+})
+
 test('служебная загрузка ограничивается ролями, у которых есть опора на карте', () => {
   const swamp = bridgeMap({ span: 'x', theme: 'swamp' })
   assert.deepEqual(landscape.structuralBridgeRolesForMap(swamp), ['swamp_boardwalk'])
@@ -161,6 +191,13 @@ test('служебная загрузка ограничивается роля�
   const props = structural.structuralLoadProps(packWithStructuralProps(), edgeRoles)
   assert.deepEqual(props.map((prop) => prop.assetId), edgeRoles)
   assert.deepEqual(structural.structuralLoadProps(packWithStructuralProps(), []), [])
+  // Целый городской дом руинных арок и углов не получает, деревенский
+  // участок с земляным двором остаётся с жердями вместо кованой ограды.
+  const intact = walls.structuralEdgeRolesForMap(mapWithEdges({ theme: 'building' }))
+  assert.ok(!intact.includes('ruin_wall_arch') && !intact.includes('ruin_corner_brick'))
+  assert.ok(intact.includes('round_window_brick'))
+  const village = walls.structuralEdgeRolesForMap(mapWithEdges({ theme: 'building', material: 'earth' }))
+  assert.ok(!village.includes('ornate_iron_fence'))
 })
 
 test('стены привязывают арку, окно, угол и ограду к раскрытым рёбрам, а hidden edge не даёт модели', () => {
@@ -180,6 +217,17 @@ test('стены привязывают арку, окно, угол и огра
   assert.equal(snapshot(), before, 'визуальный слой не меняет карту')
   styled.dispose()
   assert.equal(styled.group.children.length, 0)
+
+  // Загрузка и сборка спрашивают один классификатор: что не грузится, то и не ставится.
+  const intactMap = mapWithEdges({ theme: 'building' })
+  const intact = walls.buildStyledEdges(intactMap, stylePack(), {
+    wallHeight: .95, thickness: 1 / 6, structuralAssets: assets, loadTexture,
+  })
+  const intactRoles = new Set()
+  intact.group.traverse((object) => { if (object.userData.structuralRole) intactRoles.add(object.userData.structuralRole) })
+  assert.deepEqual([...intactRoles].sort(), walls.structuralEdgeRolesForMap(intactMap).filter((role) => intactRoles.has(role)).sort())
+  assert.ok(!intactRoles.has('ruin_wall_arch') && !intactRoles.has('ruin_corner_brick'))
+  intact.dispose()
 
   const hidden = walls.buildStyledEdges(mapWithEdges({ reveal: false }), stylePack(), {
     wallHeight: .95, thickness: 1 / 6, structuralAssets: assets, loadTexture,

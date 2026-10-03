@@ -58,7 +58,7 @@ const MATERIAL_KEY = /^[a-z][a-z0-9-]{0,47}$/u
 const ASSET_ID = /^[a-z][a-z0-9_]{0,47}$/u
 const FLOOR_FILE = /^floors\/[a-z-]+\/(?:color|normal|orm|height)\.jpg$/u
 const MATERIAL_FILE = /^materials\/[a-z0-9-]+\/(?:color\.png|(?:color|normal|orm)\.jpg)$/u
-const STYLE_ATLAS_FILE = /^topdown\.png$/u
+const STYLE_ATLAS_FILE = /^topdown\.(?:png|webp)$/u
 const PROP_FILE = /^props\/[a-z0-9_]+\.glb$/u
 /** Готовые модели Quaternius из выпуска окружения: стиль ссылается на них, а не копирует. */
 const RELEASE_FILE = /^\/assets\/models\/environment\/releases\/[a-f0-9]{24}\/(?:quaternius|quaternius-nature)\/[a-z0-9_]+\.glb$/u
@@ -122,7 +122,8 @@ export function validateGraphicsStylePack(raw: unknown): GraphicsStylePack {
   }
   const props: Record<string, StyleProp[]> = {}
   const rawProps = (input.props ?? {}) as Record<string, unknown>
-  if (typeof rawProps !== 'object' || Object.keys(rawProps).length > 256) throw new Error('Некорректный список предметов')
+  // Защитный предел, а не смысловой: в пакете 264 вида, место для роста есть.
+  if (typeof rawProps !== 'object' || Object.keys(rawProps).length > 512) throw new Error('Некорректный список предметов')
   const rawAtlas = input.atlas
   let atlas: StyleAtlas | undefined
   if (rawAtlas !== undefined) {

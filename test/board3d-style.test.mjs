@@ -166,6 +166,12 @@ test('style atlas, preview, maxHeight и alphaTest валидируются и �
   assert.deepEqual(parsed.props[firstAsset][0].size, [.8, 3, .2])
   assert.equal(parsed.materials[materialKey].alphaTest, .5)
   assert.equal(style.validateGraphicsStylePack(good).atlas, undefined, 'старый manifest без atlas остаётся совместимым')
+  const webp = structuredClone(rich)
+  webp.atlas.image = 'topdown.webp'
+  assert.equal(style.validateGraphicsStylePack(webp).atlas?.image, '/assets/styles/stylized/topdown.webp', 'атлас стиля — WebP')
+  const foreign = structuredClone(rich)
+  foreign.atlas.image = 'atlas.gif'
+  assert.throws(() => style.validateGraphicsStylePack(foreign), /атлас/u)
   const noAtlasPreview = structuredClone(good)
   noAtlasPreview.props[firstAsset][0].preview = { x: 0, y: 0, w: 1, h: 1 }
   assert.throws(() => style.validateGraphicsStylePack(noAtlasPreview), /preview/u)

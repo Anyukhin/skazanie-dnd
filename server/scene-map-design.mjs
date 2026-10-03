@@ -114,10 +114,14 @@ export function sceneMapDesignFor({
     : cityKind || urban ? 'town'
       : rural ? 'village'
         : explicit.scale
+  // Дом мага или алхимика: гостиная и кабинет становятся лабораторией.
+  // «Маг» — отдельным словом: в «магазине» те же буквы.
+  const arcane = /(?<![\p{L}\p{M}])маг(?:а|у|ом|е|и|ов|ам|ами|ах)?(?![\p{L}\p{M}])|магическ|магии|чароде|колдун|волшебник|алхими|лаборатор|чернокниж|некромант|\b(?:wizard|mage|alchemist)\b/u.test(local)
   return {
     topology, climate, architecture, density, building_use: buildingUse,
     ...(shape ? { shape } : {}),
     ...(scale ? { scale } : {}),
+    ...(arcane ? { arcane: true } : {}),
   }
 }
 

@@ -64,7 +64,7 @@ const SEMANTIC_PROFILES = Object.freeze({
   // Камеры темницы: соломенный тюфяк, ведро в углу, цепи на стене.
   cells: {
     require: ['straw_bed', 'cell_bucket'],
-    prefer: ['straw_bed', 'cell_bucket', 'wall_chains', 'straw_mat', 'straw_scatter', 'bone_heap', 'floor_crack', 'drain_grate'],
+    prefer: ['straw_bed', 'cell_bucket', 'wall_chains', 'prison_cage', 'manacle_post', 'straw_mat', 'straw_scatter', 'bone_heap', 'floor_crack', 'drain_grate'],
     themes: ['prison'],
     caps: { straw_bed: 8, iron_cage: 1, torture_rack: 0, jailer_desk: 0, bed: 0, bunk_bed: 0 },
     arrangement: 'stalls',
@@ -80,9 +80,9 @@ const SEMANTIC_PROFILES = Object.freeze({
   // Пыточная: дыба посредине, клетка в углу, цепи и жаровня.
   torture: {
     require: ['torture_rack', 'iron_cage', 'wall_chains'],
-    prefer: ['guard_brazier', 'weapon_rack', 'shield_display', 'key_bundle', 'wall_chains', 'scorch_mark', 'bone_heap', 'stocks', 'bucket'],
+    prefer: ['guard_brazier', 'dungeon_rack', 'iron_maiden', 'manacle_post', 'weapon_rack', 'shield_display', 'key_bundle', 'wall_chains', 'scorch_mark', 'bone_heap', 'stocks', 'bucket'],
     themes: ['prison'],
-    caps: { torture_rack: 1, iron_cage: 2, stocks: 1 },
+    caps: { torture_rack: 1, iron_cage: 2, stocks: 1, dungeon_rack: 1, iron_maiden: 1 },
     arrangement: 'gathered',
   },
   // Алтарная: алтарь у стены, курильница и подушки для коленопреклонения
@@ -181,35 +181,64 @@ const SEMANTIC_PROFILES = Object.freeze({
     caps: { well: 1, cart: 2, water_trough: 1, haystack: 1, hitching_post: 4, woodpile: 1, campfire: 1 },
     arrangement: 'gathered',
   },
+  // Обычная улица: только природа и плющ. Палатки, краны, баллисты и сани
+  // приходят назначениями ниже, а не случайным добором во дворе.
   exterior: {
     require: [],
-    prefer: ['command_tent', 'scout_tent', 'nomad_tent', 'cargo_sled', 'dock_crane', 'capstan', 'anchor', 'snowshoe_pair', 'mine_cart', 'ballista', 'mantlet', 'giant_fungus', 'crystal_cluster', 'obsidian_monolith', 'mangrove_roots', 'clover_patch', 'forest_plant', 'wall_ivy', 'wall_ivy_corner', 'wall_ivy_wide', 'tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter', 'rock_cluster', 'pebbles'],
+    prefer: ['giant_fungus', 'mangrove_roots', 'clover_patch', 'forest_plant', 'wall_ivy', 'wall_ivy_corner', 'wall_ivy_wide', 'tree_oak', 'tree_birch', 'tree_pine', 'bush', 'shrub', 'rock_small', 'boulder', 'mossy_rock', 'dead_bramble', 'root_tangle', 'leaf_litter', 'rock_cluster', 'pebbles'],
     arrangement: 'gathered',
   },
   // Эти назначения не появляются случайно: Архитектор/сцена должны назвать
   // их явно, иначе крупные лагерные и портовые силуэты не засоряют двор.
   camp: {
     require: [],
-    prefer: ['command_tent', 'scout_tent', 'nomad_tent', 'rope_coils', 'weapon_rack', 'shield_display'],
+    prefer: ['command_tent', 'scout_tent', 'nomad_tent', 'bedroll_cluster', 'shield_rack', 'camp_dummy', 'spiked_beam_barrier', 'rope_coils', 'weapon_rack', 'shield_display'],
     themes: ['camp', 'barracks'],
+    caps: { command_tent: 1, nomad_tent: 1, spiked_beam_barrier: 3 },
     arrangement: 'gathered',
   },
   winter: {
     require: [],
-    prefer: ['cargo_sled', 'snowshoe_pair'],
+    prefer: ['snowdrift', 'snowy_boulder', 'ice_pillars', 'snow_cairn', 'frozen_pool', 'winter_cache', 'cargo_sled', 'snowshoe_pair'],
     themes: ['winter'],
+    caps: { cargo_sled: 1, winter_cache: 2, frozen_pool: 1 },
     arrangement: 'gathered',
   },
   siege: {
     require: [],
-    prefer: ['ballista', 'mantlet', 'command_tent'],
-    themes: ['siege', 'barracks'],
+    prefer: ['ballista', 'mantlet', 'spiked_beam_barrier', 'command_tent'],
+    themes: ['siege', 'barracks', 'camp'],
+    caps: { command_tent: 1 },
     arrangement: 'gathered',
   },
   harbor: {
     require: [],
-    prefer: ['dock_crane', 'capstan', 'anchor', 'rope_coils'],
+    prefer: ['dock_crane', 'capstan', 'anchor', 'mooring_bollard', 'cargo_net', 'fishing_crates', 'lobster_cage', 'sail_bundle', 'rope_coils'],
     themes: ['harbor'],
+    caps: { dock_crane: 1, capstan: 1, anchor: 1 },
+    arrangement: 'gathered',
+  },
+  desert: {
+    require: [],
+    prefer: ['sand_dune', 'desert_boulders', 'cactus_cluster', 'dead_scrub', 'broken_obelisk', 'oasis_pool', 'nomad_tent'],
+    themes: ['desert'],
+    caps: { nomad_tent: 1, oasis_pool: 1, broken_obelisk: 1 },
+    arrangement: 'gathered',
+  },
+  swamp: {
+    require: [],
+    prefer: ['bog_pool', 'lily_pad_cluster', 'reed_cluster', 'rotten_log', 'mud_patch', 'peat_mound', 'swamp_totem', 'mangrove_roots', 'giant_fungus'],
+    themes: ['swamp'],
+    caps: { swamp_totem: 1 },
+    arrangement: 'gathered',
+  },
+  // Лаборатория мага: котёл и кафедра посредине, шкаф с зельями и зеркало у
+  // стены, круг призыва на полу; мелочь — на письменном столе.
+  laboratory: {
+    require: ['alchemy_cauldron', 'writing_desk', 'potion_cabinet'],
+    prefer: ['arcane_lectern', 'ritual_circle', 'arcane_stone', 'magic_mirror', 'crystal_orb', 'alchemy_table', 'alchemy_bottles', 'arcane_coil', 'book_piles', 'scroll_pile', 'desk_candlestick', 'bookcase_tall', 'vial_display_shelf', 'candle'],
+    themes: ['arcane', 'study'],
+    caps: { alchemy_cauldron: 1, arcane_lectern: 1, ritual_circle: 1, arcane_stone: 1, magic_mirror: 1, potion_cabinet: 2, alchemy_table: 1, bed: 0, bunk_bed: 0 },
     arrangement: 'gathered',
   },
 })
@@ -250,6 +279,15 @@ const PURPOSE_ALIASES = Object.freeze({
   courtyard: 'courtyard',
   yard: 'courtyard',
   exterior: 'exterior',
+  laboratory: 'laboratory',
+  lab: 'laboratory',
+  alchemy: 'laboratory',
+  encampment: 'camp',
+  docks: 'harbor',
+  pier: 'harbor',
+  marsh: 'swamp',
+  bog: 'swamp',
+  dunes: 'desert',
 })
 
 /**
@@ -267,7 +305,9 @@ const TAG_PURPOSES = Object.freeze({
   horses: 'stable', animals: 'stable', fodder: 'stable',
   forge: 'forge', tools: 'workshop', craft: 'workshop',
   courtyard: 'courtyard', yard: 'courtyard', outside: 'exterior',
-  camp: 'camp', winter: 'winter', snow: 'winter', siege: 'siege', harbor: 'harbor', port: 'harbor',
+  camp: 'camp', winter: 'winter', snow: 'winter', siege: 'siege', harbor: 'harbor', port: 'harbor', docks: 'harbor',
+  desert: 'desert', sand: 'desert', dunes: 'desert', swamp: 'swamp', marsh: 'swamp', bog: 'swamp',
+  laboratory: 'laboratory', lab: 'laboratory', alchemy: 'laboratory', arcane: 'laboratory', wizard: 'laboratory',
 })
 
 /**
@@ -306,10 +346,19 @@ const SET_ANCHORS = Object.freeze({
   iron_cage: ['torture_rack'], guard_brazier: ['jailer_desk', 'torture_rack'], strongbox: ['jailer_desk', 'writing_desk'],
   scales_table: ['shop_counter'], armchair: ['writing_desk', 'reading_nook', 'fireplace'], globe: ['writing_desk'],
   chandelier: ['table_long'], candelabra: ['table_long', 'altar'],
-  alchemy_bottles: ['alchemy_table', 'writing_desk', 'shop_counter'], crystal_orb: ['alchemy_table', 'writing_desk'],
-  arcane_coil: ['alchemy_table', 'workbench'], book_piles: ['writing_desk', 'map_table'],
+  // Утварь тянется только к тем столам, которые служат опорой (`SURFACES`):
+  // иначе она встаёт рядом с опорой, которой нет, и снимается в attachPropSupports.
+  alchemy_bottles: ['writing_desk', 'shop_counter', 'table_small'], crystal_orb: ['alchemy_table', 'writing_desk'],
+  arcane_coil: ['writing_desk', 'table_long', 'map_table'], book_piles: ['writing_desk', 'map_table'],
   cutlery_set: ['table_long', 'table_small'], desk_candlestick: ['writing_desk', 'table_small'],
   ceremonial_chalice: ['altar', 'offering_table'], scroll_pile: ['writing_desk', 'map_table'],
+  single_book: ['writing_desk', 'map_table', 'table_small'], book_row: ['writing_desk', 'map_table', 'table_small'],
+  key_bundle: ['jailer_desk', 'writing_desk', 'shop_counter'], coin_pouch: ['shop_counter', 'writing_desk', 'table_small'],
+  alchemy_cauldron: ['alchemy_table', 'potion_cabinet'], arcane_lectern: ['ritual_circle', 'alchemy_cauldron'],
+  magic_mirror: ['arcane_lectern', 'writing_desk'], arcane_stone: ['ritual_circle'],
+  iron_maiden: ['torture_rack', 'dungeon_rack'], manacle_post: ['torture_rack', 'straw_bed'],
+  camp_dummy: ['shield_rack', 'weapon_rack'], bedroll_cluster: ['scout_tent', 'command_tent', 'campfire'],
+  mooring_bollard: ['capstan', 'dock_crane'], lobster_cage: ['fishing_crates', 'cargo_net'], sail_bundle: ['cargo_net', 'rope_coils'],
 })
 
 /** Четыре стороны в порядке n, e, s, w. Поворот 0° смотрит на север. */
@@ -1208,6 +1257,10 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         && !(Number.isFinite(profileCaps[asset.id]) && profileCaps[asset.id] <= 0))
     const source = pool.length ? pool : catalogue
     const maxFillAttempts = Math.max(32, budget * 8)
+    // Новая утварь без опоры снимается в attachPropSupports. Без стола в зоне
+    // её не берём вовсе: иначе она съедала бюджет, и комната пустела.
+    const surfaceAhead = () => wanted.some((asset) => SURFACES.has(asset.id))
+      || placed.some((record) => record.zoneId === plan.zoneId && SURFACES.has(record.assetId))
     // Добор взвешен против уже выбранного: каждый следующий экземпляр того же
     // предмета вдвое-втрое менее вероятен. Равновероятный выбор давал храм,
     // где треть предметов — мозаика, и склеп из одной паутины.
@@ -1220,6 +1273,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         if (roll <= 0) { pick = source[index]; break }
       }
       if (!pick) break
+      if (NEW_TABLEWARE.has(pick.id) && !surfaceAhead()) continue
       enqueue(pick)
     }
 
@@ -1488,15 +1542,22 @@ export function placeColonnade(map, { zoneId, assetId = 'pillar', idPrefix = 'co
   return placed
 }
 
-const TABLEWARE = new Set(['mug', 'plate', 'bowl_stew', 'bottle', 'jug', 'bread_loaf', 'cheese_wheel', 'candle', 'dice_cup', 'coin_pile', 'cutting_board', 'offering_bowl'])
-for (const id of [
+/**
+ * Утварь набора детализации: без опоры она не ставится вовсе. Прежняя утварь
+ * (`TABLEWARE` ниже) без опоры по-старому остаётся на полу.
+ */
+const NEW_TABLEWARE = new Set([
   'cutlery_set', 'book_piles', 'arcane_coil', 'alchemy_bottles', 'desk_candlestick', 'single_book',
   'ceremonial_chalice', 'book_row', 'scroll_pile', 'key_bundle', 'coin_pouch',
-]) TABLEWARE.add(id)
-const NEW_TABLEWARE = new Set(['cutlery_set', 'book_piles', 'arcane_coil', 'alchemy_bottles', 'desk_candlestick', 'single_book', 'ceremonial_chalice', 'book_row', 'scroll_pile', 'key_bundle', 'coin_pouch'])
-// Алхимический стол уже занят колбами и весами внутри GLB: его общий bbox
-// заканчивается над посудой, поэтому новую утварь на него не подсаживаем.
-const SURFACES = new Set(['table_round', 'table_long', 'table_royal', 'table_small', 'bar_counter', 'night_table', 'altar'])
+])
+const TABLEWARE = new Set(['mug', 'plate', 'bowl_stew', 'bottle', 'jug', 'bread_loaf', 'cheese_wheel', 'candle', 'dice_cup', 'coin_pile', 'cutting_board', 'offering_bowl', ...NEW_TABLEWARE])
+// Опоры — столы с ровной столешницей. У рецептов стиля с вещами сверху она
+// помечена `surface-top`, и 3D ставит утварь на столешницу, а не на макушку
+// свечи. Алхимический стол сюда не входит: его колбы и весы — часть модели.
+const SURFACES = new Set([
+  'table_round', 'table_long', 'table_royal', 'table_small', 'bar_counter', 'night_table', 'altar',
+  'writing_desk', 'map_table', 'war_table', 'offering_table', 'shop_counter', 'prep_table', 'jailer_desk',
+])
 const WALL_MOUNTS = new Set(['torch_wall', 'lantern_wall', 'banner', 'arch_shelf', 'tool_peg_rack', 'shield_display', 'weapon_rack', 'vial_display_shelf', 'wall_ivy', 'wall_ivy_corner', 'wall_ivy_wide'])
 const SURFACE_SLOTS = [[-.2, -.2], [.2, .2], [-.2, .2], [.2, -.2], [0, 0], [0, -.25], [0, .25], [.25, 0]]
 

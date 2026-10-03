@@ -3314,14 +3314,19 @@ export function resolvePropAssetId(assetId: string): string {
 /**
  * Общий каталог выбора для 2D и 3D. Style-варианты помечены источником,
  * чтобы 2D мог выбрать их собственный atlas, а базовые модели оставить на
- * старом PNG каталога окружения.
+ * старом PNG каталога окружения. 3D передаёт только виды своей сцены (грузит
+ * лишь их GLB), 2D — весь пакет: атлас один, а каталог не зависит от того,
+ * какие предметы уже раскрыты.
  */
 export function withStyleProps(catalog: PropModelCatalog, pack: GraphicsStylePack | null | undefined, props: readonly TacticalProp[]): PropModelCatalog {
+  return withStyleAssets(catalog, pack, props.map((prop) => resolvePropAssetId(prop.assetId)))
+}
+
+export function withStyleAssets(catalog: PropModelCatalog, pack: GraphicsStylePack | null | undefined, assetIds: Iterable<string>): PropModelCatalog {
   if (!pack) return catalog
   const styled: PropModelCatalog['models'] = []
   const seen = new Set<string>()
-  for (const prop of props) {
-    const assetId = resolvePropAssetId(prop.assetId)
+  for (const assetId of assetIds) {
     if (seen.has(assetId)) continue
     seen.add(assetId)
     for (const entry of pack.props[assetId] ?? []) {
@@ -3552,7 +3557,7 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
       : null
     const styleEntry = styleCandidate?.source === 'style' ? styleCandidate : null
     const modelAtlas = styleEntry ? scene.styleModelPropAtlas : scene.modelPropAtlas
-    const modelEntry = modelAtlas ? propModelFor(modelAtlas.catalog, canonical, prop.id) : null
+    const modelEntry = styleEntry ?? (modelAtlas ? propModelFor(modelAtlas.catalog, canonical, prop.id) : null)
     const detailed = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
     const modelPreview = detailed ? modelEntry?.preview : undefined
     const modelBox = modelPreview ? propModelPlacementBox(prop, drawing, modelEntry, frame.size) : placement.box

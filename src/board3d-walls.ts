@@ -304,10 +304,81 @@ function cellNoise(x: number, y: number, salt = 0) {
   return value - Math.floor(value)
 }
 
+function contextText(map: TacticalMap, side: TacticalCell | null | undefined) {
+  const zone = zoneOfCell(map, side)
+  return `${map.theme ?? ''} ${map.locationId ?? ''} ${map.levelLabel ?? ''} ${zone?.label ?? ''}`.toLowerCase()
+}
+
+/** Песчаниковая арка — у пустынной кладки: песок под ногами или пустыня в названии места. */
 function sandstoneContext(map: TacticalMap, side: TacticalCell | null | undefined) {
   const zone = zoneOfCell(map, side)
-  const haystack = `${map.theme} ${map.locationId} ${map.levelLabel} ${zone?.label ?? ''}`.toLowerCase()
-  return side?.material === 'sand' || zone?.material === 'sand' || /desert|ruin|пустын|руин/u.test(haystack)
+  return side?.material === 'sand' || zone?.material === 'sand' || /desert|oasis|пустын|оазис|барханн/u.test(contextText(map, side))
+}
+
+/** Руинные арки и углы — только в развалинах; целый городской дом их не получает. */
+function ruinContext(map: TacticalMap, side: TacticalCell | null | undefined) {
+  return /ruin|руин|развалин|разрушен|заброшен/u.test(contextText(map, side))
+}
+
+/**
+ * Кованая ограда — у мощёного двора, на кладбище и у храма; деревенский
+ * участок остаётся с жердями. Смотрим на сам грунт по обе стороны ребра:
+ * сторона стены подменила бы его материалом внутренней зоны.
+ */
+function ironFenceContext(map: TacticalMap, edge: TacticalEdge) {
+  const neighbor = edgeNeighbor(edge)
+  const paved = [cellAt(map, edge.x, edge.y), cellAt(map, neighbor.x, neighbor.y)]
+    .some((cell) => cell?.material === 'stone' || cell?.material === 'marble')
+  return paved || ['graveyard', 'temple', 'crypt'].includes(map.theme ?? '')
+}
+
+/**
+ * Какая структурная модель ложится на проём ребра. Одна функция и для списка
+ * загрузки, и для сборки стен: иначе роль грузилась бы зря или не ставилась.
+ */
+function edgeStructuralRole(map: TacticalMap, edge: TacticalEdge, look: WallLook): StructuralRole | null {
+  const side = edgeSideCell(map, edge)
+  if (edge.kind === 'rail') return ironFenceContext(map, edge) ? 'ornate_iron_fence' : null
+  if (edge.kind === 'window') return look.kind !== 'palisade' && look.body === 'brick' ? 'round_window_brick' : null
+  if (edge.kind === 'door' && look.kind === 'masonry') {
+    return sandstoneContext(map, side) ? 'sandstone_arch' : ruinContext(map, side) ? 'ruin_wall_arch' : null
+  }
+  return null
+}
+
+type WallEndpoint = { x: number; z: number; count: number; directions: Set<TacticalEdge['dir']>; floorY: number; look: WallLook; ruin: boolean }
+
+/** Концы и повороты видимых стен: здесь ставятся стойки и угловые столбы. */
+function wallEndpoints(map: TacticalMap) {
+  const endpoints = new Map<string, WallEndpoint>()
+  if (!map.edges) return endpoints
+  for (const edge of edgeList(map)) {
+    if (edge.kind !== 'wall' || !edgeVisible(map, edge) || edgeAgainstRock(map, edge)) continue
+    const floorY = edgeFloorHeight(map, edge)
+    const side = edgeSideCell(map, edge)
+    const look = wallLookFor(map, side)
+    const ruin = ruinContext(map, side)
+    for (const point of wallEdgeEndpoints(edge)) {
+      const key = wallEndpointKey(point.x, point.z)
+      const current = endpoints.get(key) ?? { ...point, count: 0, directions: new Set(), floorY, look, ruin }
+      current.count += 1
+      current.directions.add(edge.dir)
+      current.floorY = Math.max(current.floorY, floorY)
+      current.ruin ||= ruin
+      // Брус фахверка и стойки дощатой стены главнее камня на стыке.
+      if (look.kind === 'fachwerk' || look.kind === 'planks') current.look = look
+      endpoints.set(key, current)
+    }
+  }
+  return endpoints
+}
+
+/**
+ * Кирпичный угловой столб — на настоящем повороте кладки в руинах. Конец стены
+ * у двери или окна столба не получает: он заходил бы в проём.
+ */
+function cornerStructuralRole(point: WallEndpoint): StructuralRole | null {
+  return point.directions.size >= 2 && point.look.body === 'brick' && point.ruin ? 'ruin_corner_brick' : null
 }
 
 /**
@@ -316,29 +387,14 @@ function sandstoneContext(map: TacticalMap, side: TacticalCell | null | undefine
  */
 export function structuralEdgeRolesForMap(map: TacticalMap): StructuralRole[] {
   const wanted = new Set<StructuralRole>()
-  const endpoints = new Map<string, { count: number; directions: Set<TacticalEdge['dir']>; look: WallLook }>()
   for (const edge of edgeList(map)) {
     if (!edgeVisible(map, edge) || edge.kind === 'none') continue
-    const side = edgeSideCell(map, edge)
-    const look = wallLookFor(map, side)
-    if (edge.kind === 'rail') wanted.add('ornate_iron_fence')
-    if (edge.kind === 'window' && look.body === 'brick') wanted.add('round_window_brick')
-    if (edge.kind === 'door' && look.kind === 'masonry') {
-      wanted.add('ruin_wall_arch')
-      if (sandstoneContext(map, side)) wanted.add('sandstone_arch')
-    }
-    if (edge.kind !== 'wall' || edgeAgainstRock(map, edge)) continue
-    for (const point of wallEdgeEndpoints(edge)) {
-      const key = wallEndpointKey(point.x, point.z)
-      const current = endpoints.get(key) ?? { count: 0, directions: new Set(), look }
-      current.count += 1
-      current.directions.add(edge.dir)
-      if (look.kind === 'fachwerk' || look.kind === 'planks') current.look = look
-      endpoints.set(key, current)
-    }
+    const role = edgeStructuralRole(map, edge, wallLookFor(map, edgeSideCell(map, edge)))
+    if (role) wanted.add(role)
   }
-  if ([...endpoints.values()].some((point) => (point.count === 1 || point.directions.size >= 2) && point.look.body === 'brick')) {
-    wanted.add('ruin_corner_brick')
+  for (const point of wallEndpoints(map).values()) {
+    const role = cornerStructuralRole(point)
+    if (role) wanted.add(role)
   }
   return STRUCTURAL_ROLES.filter((role) => wanted.has(role))
 }
@@ -379,27 +435,8 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
   structuralGroup.name = 'structural-edges'
   const structural = options.structuralAssets
 
-  const walls = map.edges ? edgeList(map).filter((edge) => edge.kind === 'wall' && edgeVisible(map, edge) && !edgeAgainstRock(map, edge)) : []
   // Стойки в концах и на поворотах: прямой ряд — без стоек, как и прежде.
-  const endpoints = new Map<string, { x: number; z: number; count: number; directions: Set<TacticalEdge['dir']>; vectors: Array<[number, number]>; floorY: number; look: WallLook }>()
-  for (const edge of walls) {
-    const floorY = edgeFloorHeight(map, edge)
-    const look = wallLookFor(map, edgeSideCell(map, edge))
-    for (const point of wallEdgeEndpoints(edge)) {
-      const key = wallEndpointKey(point.x, point.z)
-      const current = endpoints.get(key) ?? { ...point, count: 0, directions: new Set(), vectors: [], floorY, look }
-      current.count += 1
-      current.directions.add(edge.dir)
-      current.vectors.push([
-        edge.dir === 's' ? (point.x === edge.x ? 1 : -1) : 0,
-        edge.dir === 'e' ? (point.z === edge.y ? 1 : -1) : 0,
-      ])
-      current.floorY = Math.max(current.floorY, floorY)
-      // Брус фахверка и стойки дощатой стены главнее камня на стыке.
-      if (look.kind === 'fachwerk' || look.kind === 'planks') current.look = look
-      endpoints.set(key, current)
-    }
-  }
+  const endpoints = wallEndpoints(map)
   const identity = new THREE.Matrix4()
   for (const point of endpoints.values()) {
     const corner = point.count === 1 || point.directions.size >= 2
@@ -414,17 +451,24 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
     box(identity, 'timber', [point.x, point.floorY + (H + .04) / 2, point.z], [.12, H + .04, T + .05], TIMBER)
   }
   // Кирпичный угол — только в вершине уже существующей стены. Он не создаёт
-  // новую стену и не меняет ни клетку, ни линию прохода.
+  // новую стену и не меняет ни клетку, ни линию прохода; почти квадратный
+  // столб вписывается целиком, поэтому поворот ему не нужен.
   if (structuralTemplate(structural, 'ruin_corner_brick')) for (const point of endpoints.values()) {
-    const corner = point.count === 1 || point.directions.size >= 2
-    if (!corner || point.look.body !== 'brick') continue
-    const direction = point.vectors.find(([x, z]) => x || z) ?? [1, 0]
+    if (cornerStructuralRole(point) !== 'ruin_corner_brick') continue
     const model = structuralInstance(structural, {
       role: 'ruin_corner_brick', x: point.x, y: point.floorY, z: point.z,
-      yaw: Math.abs(direction[0]) > .5 ? 0 : Math.PI / 2,
       width: .78, height: H + .08, depth: .78,
     })
     if (model) structuralGroup.add(model)
+  }
+  /**
+   * Модель на ребре вписывается по высоте стены и не сплющивается; если она
+   * уже клетки, остаток ребра по бокам закрывается той же кладкой.
+   */
+  const fillEdge = (frame: THREE.Matrix4, fitted: number, look: string, tint: THREE.Color) => {
+    const rest = (1 - fitted) / 2
+    if (rest <= .01) return
+    for (const side of [-1, 1]) box(frame, look, [side * (.5 - rest / 2), H / 2, 0], [rest, H, T], tint)
   }
 
   for (const edge of edgeList(map)) {
@@ -471,12 +515,14 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
       continue
     }
 
+    const structuralRole = edgeStructuralRole(map, edge, look)
     if (edge.kind === 'rail') {
-      const model = structuralInstance(structural, {
+      // Высокая секция кованой ограды в низких перилах повторяется по ширине ребра.
+      const model = structuralRole === 'ornate_iron_fence' ? structuralInstance(structural, {
         role: 'ornate_iron_fence', x: edgeCenter(edge).x, y: floorY, z: edgeCenter(edge).z,
         yaw: edge.dir === 's' ? 0 : Math.PI / 2,
-        width: 1.04, height: .56, depth: .18,
-      })
+        width: 1.04, height: .56, depth: .18, fit: 'face', repeat: true,
+      }) : null
       if (model) {
         structuralGroup.add(model)
         continue
@@ -494,14 +540,16 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
     if (edge.kind === 'window' || edge.kind === 'loophole' || edge.kind === 'grate') {
       // Фрагмент стены с круглым окном заменяет только существующее кирпичное
       // окно; без такого ребра модель никогда не становится проходом.
-      if (edge.kind === 'window' && body === 'brick') {
+      if (structuralRole === 'round_window_brick') {
         const model = structuralInstance(structural, {
           role: 'round_window_brick', x: edgeCenter(edge).x, y: floorY, z: edgeCenter(edge).z,
           yaw: edge.dir === 's' ? 0 : Math.PI / 2,
-          width: 1.04, height: H + .06, depth: Math.max(.22, T * 1.6),
+          width: 1.04, height: H + .06, depth: Math.max(.22, T * 1.6), fit: 'face',
         })
         if (model) {
           structuralGroup.add(model)
+          fillEdge(frame, Number(model.userData.fittedWidth) || 1, body, tint)
+          box(frame, body, [0, H + .025, 0], [1, .05, T + .04], tint.clone().multiplyScalar(1.12))
           continue
         }
       }
@@ -532,20 +580,17 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
     }
 
     if (edge.kind !== 'door') continue
-    const sandstoneArch = look.kind === 'masonry' && sandstoneContext(map, edgeSideCell(map, edge))
-      ? structuralInstance(structural, {
-        role: 'sandstone_arch', x: edgeCenter(edge).x, y: floorY, z: edgeCenter(edge).z,
-        yaw: edge.dir === 's' ? 0 : Math.PI / 2,
-        // Модель ограничена существующим дверным пролётом и не создаёт
-        // отдельную 2×2 арку поверх соседних клеток.
-        width: 1.14, height: H + .08, depth: Math.max(.22, T * 1.8),
-      }) : null
-    const arch = sandstoneArch ?? (look.kind === 'masonry' ? structuralInstance(structural, {
-      role: 'ruin_wall_arch', x: edgeCenter(edge).x, y: floorY, z: edgeCenter(edge).z,
+    // Арка ограничена существующим дверным пролётом и не создаёт отдельную
+    // 2×2 арку поверх соседних клеток; узкую арку добирает кладка по бокам.
+    const arch = structuralRole === 'sandstone_arch' || structuralRole === 'ruin_wall_arch' ? structuralInstance(structural, {
+      role: structuralRole, x: edgeCenter(edge).x, y: floorY, z: edgeCenter(edge).z,
       yaw: edge.dir === 's' ? 0 : Math.PI / 2,
-      width: 1.14, height: H + .08, depth: Math.max(.22, T * 1.8),
-    }) : null)
-    if (arch) structuralGroup.add(arch)
+      width: 1.14, height: H + .08, depth: Math.max(.22, T * 1.8), fit: 'face',
+    }) : null
+    if (arch) {
+      structuralGroup.add(arch)
+      fillEdge(frame, Number(arch.userData.fittedWidth) || 1, look.body, tint)
+    }
     const state = doorState(map, edge)
     // Коробка двери: брусья по бокам и притолока, как у Door Frame Quaternius.
     for (const side of [-1, 1]) box(frame, 'timber', [side * .28, H / 2, 0], [.1, H, T + .04], TIMBER, undefined, false, 'doors')

@@ -476,3 +476,41 @@ test('реальные тонкие GLB библиотеки не выраста
     assetsModule.disposePropModelAssets(new Map([[key, template]]))
   }
 })
+
+test('настенная модель, собранная висящей, не садится на пол, а повисает у верха стены', () => {
+  const catalog = catalogModule.validatePropModelCatalog({ version: 1, models: [entry('peg-rack', ['tool_peg_rack'])] })
+  // Как стойка с крюками из пакета стиля: деталь поднята над нулём ещё в GLB.
+  const hung = fakeTemplate(1.2, .35, .1)
+  hung.children[0].position.y = 1.1
+  const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog, models: new Map([['peg-rack', hung]]) })
+  const onWall = environment.create(prop({ id: 'rack-wall', assetId: 'tool_peg_rack', footprint: [{ x: 10, y: 20 }, { x: 11, y: 20 }], mount: { kind: 'wall', side: 'n' } }))
+  onWall.updateMatrixWorld(true)
+  const wallBounds = new THREE.Box3().setFromObject(onWall)
+  assert.ok(wallBounds.min.y > .3, 'висящая вещь поднята над полом')
+  assert.ok(Math.abs(wallBounds.max.y - .8) < 1e-6, 'верх — у кромки стены доски')
+  // Та же модель без крепления к стене стоит на полу, как и прежде.
+  const loose = environment.create(prop({ id: 'rack-floor', assetId: 'tool_peg_rack', footprint: [{ x: 10, y: 20 }, { x: 11, y: 20 }] }))
+  loose.updateMatrixWorld(true)
+  assert.ok(Math.abs(new THREE.Box3().setFromObject(loose).min.y) < 1e-6)
+  environment.dispose()
+})
+
+test('2D-каталог из всего пакета выбирает тот же style-вариант, что 3D для предметов сцены', () => {
+  const base = catalogModule.validatePropModelCatalog(validCatalog([entry('barrel-base', ['barrel'], 11), entry('crate-base', ['crate'], 12)]))
+  const stylePack = {
+    style: 'stylized', revision: 'd'.repeat(16), floors: {}, materials: {}, walls: {},
+    atlas: { image: '/assets/styles/stylized/topdown.webp', key: 'e'.repeat(16) },
+    props: {
+      barrel: [
+        { key: 'style-barrel-a', url: '/assets/styles/stylized/props/barrel_a.glb', yaw: 0, preview: { x: 1, y: 1, w: 8, h: 8 } },
+        { key: 'style-barrel-b', url: '/assets/styles/stylized/props/barrel_b.glb', yaw: 0, preview: { x: 9, y: 1, w: 8, h: 8 } },
+      ],
+      crate: [{ key: 'style-crate', url: '/assets/styles/stylized/props/crate.glb', yaw: 0, preview: { x: 17, y: 1, w: 8, h: 8 } }],
+    },
+  }
+  const props = ['b-1', 'b-2', 'b-3', 'b-4'].map((id) => prop({ id, assetId: 'barrel' }))
+  const scene = render.withStyleProps(base, stylePack, props)
+  const whole = render.withStyleAssets(base, stylePack, Object.keys(stylePack.props))
+  for (const value of props) assert.equal(catalogModule.propModelFor(whole, 'barrel', value.id)?.key, catalogModule.propModelFor(scene, 'barrel', value.id)?.key, value.id)
+  assert.equal(catalogModule.propModelFor(whole, 'crate', 'c-1')?.source, 'style', 'вид, ещё не раскрытый на сцене, уже в каталоге 2D')
+})

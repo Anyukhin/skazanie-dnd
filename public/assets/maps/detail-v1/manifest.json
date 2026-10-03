@@ -6451,10 +6451,6 @@
   "pendingIntegration": {
     "stamps": [
       "portcullis",
-      "prison_cage",
-      "dungeon_rack",
-      "iron_maiden",
-      "manacle_post",
       "spike_pit",
       "pressure_plate",
       "blade_trap",
@@ -6462,16 +6458,6 @@
       "cavern_chasm",
       "rope_bridge",
       "spore_cloud",
-      "bedroll_cluster",
-      "shield_rack",
-      "camp_dummy",
-      "spiked_beam_barrier",
-      "alchemy_cauldron",
-      "arcane_lectern",
-      "ritual_circle",
-      "arcane_stone",
-      "potion_cabinet",
-      "magic_mirror",
       "sewer_grate",
       "drain_channel",
       "slime_puddle",
@@ -6482,34 +6468,10 @@
       "plank_crossing",
       "valve_wheel",
       "harbor_rowboat",
-      "mooring_bollard",
-      "cargo_net",
-      "fishing_crates",
-      "lobster_cage",
-      "sail_bundle",
-      "snowdrift",
       "ice_patch",
-      "frozen_pool",
-      "ice_pillars",
-      "snowy_boulder",
-      "winter_cache",
-      "snow_cairn",
-      "sand_dune",
-      "desert_boulders",
-      "cactus_cluster",
-      "dead_scrub",
-      "oasis_pool",
       "sandstone_arch",
-      "broken_obelisk",
       "desert_fire_bowl",
-      "bog_pool",
-      "lily_pad_cluster",
-      "reed_cluster",
-      "rotten_log",
-      "mud_patch",
-      "swamp_boardwalk",
-      "swamp_totem",
-      "peat_mound"
+      "swamp_boardwalk"
     ],
     "models": [],
     "textures": [
@@ -6614,8 +6576,8 @@
       },
       {
         "file": "tools/build-map-detail-assets.mjs",
-        "sha256": "904e7d680831bd8d7212b1c62f656229c607691fa7753829370f7ba3138341f3",
-        "bytes": 11245
+        "sha256": "1196a512a9f985f587a48b2036526ad94f4084b7f1a0aa60b37abfd3fe11d5ed",
+        "bytes": 12049
       },
       {
         "file": "tools/build-map-detail-rasters.mjs",
@@ -6625,11 +6587,11 @@
     ],
     "sourceSpec": {
       "file": "docs/map-detail-assets-spec-v1.json",
-      "sha256": "a4abb4155fcfa3ec4663d2d689fe62aad624a29bc98e8a4f8888d2dc111cf404",
-      "bytes": 266774
+      "sha256": "16d76aac5c038625cc838f12b0274f9da787ad6c428f1af8a771648824eb669f",
+      "bytes": 265042
     },
-    "sourceSha256": "a4abb4155fcfa3ec4663d2d689fe62aad624a29bc98e8a4f8888d2dc111cf404",
-    "generatorSha256": "904e7d680831bd8d7212b1c62f656229c607691fa7753829370f7ba3138341f3"
+    "sourceSha256": "16d76aac5c038625cc838f12b0274f9da787ad6c428f1af8a771648824eb669f",
+    "generatorSha256": "1196a512a9f985f587a48b2036526ad94f4084b7f1a0aa60b37abfd3fe11d5ed"
   },
   "previews": {
     "raster": "raster-preview.png",
@@ -7233,6 +7195,48 @@
       "rope_bridge",
       "swamp_boardwalk",
       "sandstone_arch"
+    ]
+  },
+  "styleIntegration": {
+    "stamps": [
+      "snowdrift",
+      "snowy_boulder",
+      "ice_pillars",
+      "frozen_pool",
+      "winter_cache",
+      "snow_cairn",
+      "sand_dune",
+      "desert_boulders",
+      "cactus_cluster",
+      "dead_scrub",
+      "oasis_pool",
+      "broken_obelisk",
+      "bog_pool",
+      "lily_pad_cluster",
+      "reed_cluster",
+      "rotten_log",
+      "mud_patch",
+      "swamp_totem",
+      "peat_mound",
+      "mooring_bollard",
+      "cargo_net",
+      "fishing_crates",
+      "lobster_cage",
+      "sail_bundle",
+      "bedroll_cluster",
+      "shield_rack",
+      "camp_dummy",
+      "spiked_beam_barrier",
+      "alchemy_cauldron",
+      "arcane_lectern",
+      "ritual_circle",
+      "arcane_stone",
+      "potion_cabinet",
+      "magic_mirror",
+      "prison_cage",
+      "dungeon_rack",
+      "iron_maiden",
+      "manacle_post"
     ]
   }
 }

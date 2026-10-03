@@ -2,7 +2,7 @@
  "schema": "graphics-style/v1",
  "style": "stylized",
  "label": "Рисованный",
- "revision": "044c914121e360b4",
+ "revision": "0ec520fe74fe0588",
  "license": "CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit) и собственные текстуры и модели проекта (data/asset-rights.json)",
  "sources": [
   "https://quaternius.com/packs/fantasypropsmegakit.html",
@@ -539,7 +539,7 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel_apples.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
+     "x": 248,
      "y": 0,
      "w": 246,
      "h": 246
@@ -611,8 +611,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/chest_wood.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 0,
+     "x": 0,
+     "y": 2549,
      "w": 246,
      "h": 146
     },
@@ -629,8 +629,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/chest_wood.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 0,
+     "x": 0,
+     "y": 2549,
      "w": 246,
      "h": 146
     },
@@ -647,7 +647,7 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/crate_metal.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
+     "x": 1424,
      "y": 0,
      "w": 246,
      "h": 246
@@ -665,8 +665,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/coin_pile.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 0,
+     "x": 992,
+     "y": 2174,
      "w": 246,
      "h": 192
     },
@@ -681,8 +681,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/coin_pile_2.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 0,
+     "x": 2646,
+     "y": 2174,
      "w": 246,
      "h": 178
     },
@@ -699,7 +699,7 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/crate_wooden.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
+     "x": 1672,
      "y": 0,
      "w": 229,
      "h": 246
@@ -715,8 +715,8 @@
     "url": "props/mvmk_crate.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 0,
+     "x": 3068,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -733,7 +733,7 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/torch_metal.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
+     "x": 2997,
      "y": 0,
      "w": 142,
      "h": 246
@@ -751,7 +751,7 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/vase_2.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
+     "x": 3141,
      "y": 0,
      "w": 246,
      "h": 246
@@ -767,7 +767,7 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/vase_4.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
+     "x": 3389,
      "y": 0,
      "w": 246,
      "h": 246
@@ -785,8 +785,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/anvil.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 0,
+     "x": 248,
+     "y": 3063,
      "w": 246,
      "h": 92
     },
@@ -801,8 +801,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/anvil_log.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 0,
+     "x": 2154,
+     "y": 1730,
      "w": 246,
      "h": 218
     },
@@ -819,8 +819,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/whetstone.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 0,
+     "x": 496,
+     "y": 2174,
      "w": 246,
      "h": 196
     },
@@ -837,8 +837,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bookcase_2.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 0,
+     "x": 491,
+     "y": 3158,
      "w": 246,
      "h": 74
     },
@@ -855,7 +855,7 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/book_stand.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
+     "x": 690,
      "y": 0,
      "w": 244,
      "h": 246
@@ -873,7 +873,7 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/book_stand.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
+     "x": 690,
      "y": 0,
      "w": 244,
      "h": 246
@@ -891,8 +891,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bed_twin2.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 256,
+     "x": 496,
+     "y": 0,
      "w": 192,
      "h": 246
     },
@@ -909,8 +909,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/weapon_stand.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 256,
+     "x": 3142,
+     "y": 2174,
      "w": 246,
      "h": 176
     },
@@ -927,8 +927,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/dummy.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 256,
+     "x": 2894,
+     "y": 2174,
      "w": 246,
      "h": 178
     },
@@ -945,8 +945,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bucket_wooden_1.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 256,
+     "x": 2402,
+     "y": 1730,
      "w": 246,
      "h": 218
     },
@@ -963,8 +963,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/cage_small.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 256,
+     "x": 936,
+     "y": 0,
      "w": 238,
      "h": 246
     },
@@ -981,8 +981,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/candle_stick_stand.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 256,
+     "x": 1176,
+     "y": 0,
      "w": 246,
      "h": 246
     },
@@ -999,8 +999,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/farm_crate_carrot.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 256,
+     "x": 248,
+     "y": 2174,
      "w": 246,
      "h": 196
     },
@@ -1015,8 +1015,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/farm_crate_apple.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 256,
+     "x": 728,
+     "y": 2549,
      "w": 246,
      "h": 144
     },
@@ -1033,8 +1033,8 @@
     "url": "props/mvmk_fence_single.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 256,
+     "x": 3810,
+     "y": 3236,
      "w": 246,
      "h": 16
     },
@@ -1049,8 +1049,8 @@
     "url": "props/mvmk_fence_extension.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 256,
+     "x": 0,
+     "y": 3292,
      "w": 246,
      "h": 14
     },
@@ -1067,8 +1067,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel_holder.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 256,
+     "x": 3120,
+     "y": 2549,
      "w": 246,
      "h": 134
     },
@@ -1083,8 +1083,8 @@
     "url": "props/barrel_pyramid.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 256,
+     "x": 0,
+     "y": 2951,
      "w": 219,
      "h": 110
     },
@@ -1101,8 +1101,8 @@
     "url": "props/crate_stack_three.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 256,
+     "x": 3368,
+     "y": 2549,
      "w": 245,
      "h": 133
     },
@@ -1117,8 +1117,8 @@
     "url": "props/crate_stack_mixed.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 256,
+     "x": 2624,
+     "y": 2549,
      "w": 246,
      "h": 138
     },
@@ -1135,8 +1135,8 @@
     "url": "props/ammo_crates.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 256,
+     "x": 3441,
+     "y": 2697,
      "w": 240,
      "h": 121
     },
@@ -1153,8 +1153,8 @@
     "url": "props/crate_stack_goods.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 256,
+     "x": 2667,
+     "y": 2373,
      "w": 245,
      "h": 152
     },
@@ -1171,8 +1171,8 @@
     "url": "props/goods_baskets.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 512,
+     "x": 3197,
+     "y": 2951,
      "w": 238,
      "h": 98
     },
@@ -1189,8 +1189,8 @@
     "url": "props/grain_sacks.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 512,
+     "x": 2190,
+     "y": 2174,
      "w": 218,
      "h": 180
     },
@@ -1207,8 +1207,8 @@
     "url": "props/pottery_stand.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 512,
+     "x": 2433,
+     "y": 2373,
      "w": 232,
      "h": 153
     },
@@ -1225,8 +1225,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/workbench.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 512,
+     "x": 744,
+     "y": 2697,
      "w": 246,
      "h": 126
     },
@@ -1241,8 +1241,8 @@
     "url": "props/workbench_drawers.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 512,
+     "x": 3194,
+     "y": 2697,
      "w": 245,
      "h": 122
     },
@@ -1259,8 +1259,8 @@
     "url": "props/tool_rack.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 512,
+     "x": 1239,
+     "y": 2373,
      "w": 246,
      "h": 164
     },
@@ -1277,8 +1277,8 @@
     "url": "props/prep_table.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 512,
+     "x": 2946,
+     "y": 2697,
      "w": 246,
      "h": 122
     },
@@ -1295,8 +1295,8 @@
     "url": "props/pantry_shelf.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 512,
+     "x": 1483,
+     "y": 3158,
      "w": 246,
      "h": 66
     },
@@ -1313,8 +1313,8 @@
     "url": "props/display_shelf.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 512,
+     "x": 2230,
+     "y": 3063,
      "w": 246,
      "h": 82
     },
@@ -1331,8 +1331,8 @@
     "url": "props/sk_bar_shelf.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 512,
+     "x": 1984,
+     "y": 3236,
      "w": 246,
      "h": 36
     },
@@ -1347,8 +1347,8 @@
     "url": "props/bar_shelf_bottles.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 512,
+     "x": 1731,
+     "y": 3158,
      "w": 246,
      "h": 62
     },
@@ -1365,8 +1365,8 @@
     "url": "props/map_table.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 512,
+     "x": 496,
+     "y": 2697,
      "w": 246,
      "h": 128
     },
@@ -1383,8 +1383,8 @@
     "url": "props/war_table.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 512,
+     "x": 1488,
+     "y": 2829,
      "w": 238,
      "h": 116
     },
@@ -1401,8 +1401,8 @@
     "url": "props/offering_table.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 512,
+     "x": 3316,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -1419,8 +1419,8 @@
     "url": "props/fruit_cart.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 512,
+     "x": 1982,
+     "y": 3063,
      "w": 246,
      "h": 88
     },
@@ -1437,8 +1437,8 @@
     "url": "props/brick_rubble.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 512,
+     "x": 0,
+     "y": 2174,
      "w": 246,
      "h": 197
     },
@@ -1453,8 +1453,8 @@
     "url": "props/sk_rubble_heap.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 768,
+     "x": 3553,
+     "y": 1730,
      "w": 246,
      "h": 217
     },
@@ -1471,8 +1471,8 @@
     "url": "props/campfire_ring.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 768,
+     "x": 2202,
+     "y": 1240,
      "w": 234,
      "h": 245
     },
@@ -1487,8 +1487,8 @@
     "url": "props/kenney_campfire_stones.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 768,
+     "x": 1060,
+     "y": 1488,
      "w": 246,
      "h": 235
     },
@@ -1505,8 +1505,8 @@
     "url": "props/dead_bramble.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 768,
+     "x": 1735,
+     "y": 2373,
      "w": 205,
      "h": 156
     },
@@ -1523,8 +1523,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_1.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 768,
+     "x": 3741,
+     "y": 1488,
      "w": 246,
      "h": 228
     },
@@ -1539,8 +1539,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_2.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 768,
+     "x": 2961,
+     "y": 1960,
      "w": 246,
      "h": 200
     },
@@ -1557,8 +1557,8 @@
     "url": "props/boulder_split.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 768,
+     "x": 3712,
+     "y": 2829,
      "w": 241,
      "h": 111
     },
@@ -1575,8 +1575,8 @@
     "url": "props/rock_cluster.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 768,
+     "x": 2410,
+     "y": 2174,
      "w": 234,
      "h": 179
     },
@@ -1593,8 +1593,8 @@
     "url": "props/cliff_medium.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 768,
+     "x": 3683,
+     "y": 2697,
      "w": 224,
      "h": 120
     },
@@ -1611,8 +1611,8 @@
     "url": "props/cliff_large.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 768,
+     "x": 992,
+     "y": 2697,
      "w": 216,
      "h": 125
     },
@@ -1629,8 +1629,8 @@
     "url": "props/cliff_long.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 768,
+     "x": 2478,
+     "y": 3063,
      "w": 246,
      "h": 80
     },
@@ -1647,8 +1647,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_1.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 768,
+     "x": 3741,
+     "y": 1488,
      "w": 246,
      "h": 228
     },
@@ -1663,8 +1663,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_2.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 768,
+     "x": 2961,
+     "y": 1960,
      "w": 246,
      "h": 200
     },
@@ -1679,8 +1679,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_3.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 768,
+     "x": 2753,
+     "y": 0,
      "w": 242,
      "h": 246
     },
@@ -1697,8 +1697,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pebble_round_3.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 768,
+     "x": 2523,
+     "y": 0,
      "w": 228,
      "h": 246
     },
@@ -1713,8 +1713,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pebble_square_4.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 768,
+     "x": 0,
+     "y": 1960,
      "w": 246,
      "h": 212
     },
@@ -1731,8 +1731,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 768,
+     "x": 992,
+     "y": 1730,
      "w": 218,
      "h": 226
     },
@@ -1747,8 +1747,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common_flowers.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 768,
+     "x": 366,
+     "y": 1488,
      "w": 227,
      "h": 239
     },
@@ -1765,8 +1765,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 768,
+     "x": 992,
+     "y": 1730,
      "w": 218,
      "h": 226
     },
@@ -1781,8 +1781,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common_flowers.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 768,
+     "x": 366,
+     "y": 1488,
      "w": 227,
      "h": 239
     },
@@ -1799,8 +1799,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/fern_1.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 1024,
+     "x": 1434,
+     "y": 1730,
      "w": 238,
      "h": 223
     },
@@ -1817,8 +1817,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/flower_3_group.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 1024,
+     "x": 0,
+     "y": 1488,
      "w": 224,
      "h": 240
     },
@@ -1833,8 +1833,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/flower_4_group.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 1024,
+     "x": 1736,
+     "y": 2174,
      "w": 245,
      "h": 185
     },
@@ -1849,8 +1849,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/plant_7_big.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 1024,
+     "x": 3422,
+     "y": 1240,
      "w": 230,
      "h": 243
     },
@@ -1867,8 +1867,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/grass_common_short.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 1024,
+     "x": 1903,
+     "y": 0,
      "w": 214,
      "h": 246
     },
@@ -1883,8 +1883,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/grass_common_tall.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 1024,
+     "x": 2119,
+     "y": 0,
      "w": 222,
      "h": 246
     },
@@ -1899,8 +1899,8 @@
     "url": "props/extra_grass_wispy.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 1024,
+     "x": 2438,
+     "y": 1240,
      "w": 238,
      "h": 245
     },
@@ -1917,8 +1917,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/mushroom_common.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 1024,
+     "x": 2343,
+     "y": 0,
      "w": 178,
      "h": 246
     },
@@ -1933,8 +1933,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/mushroom_laetiporus.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 1024,
+     "x": 2713,
+     "y": 1960,
      "w": 246,
      "h": 200
     },
@@ -1951,8 +1951,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_1.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 1024,
+     "x": 3801,
+     "y": 1730,
      "w": 203,
      "h": 215
     },
@@ -1967,8 +1967,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_2.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 1024,
+     "x": 744,
+     "y": 1960,
      "w": 231,
      "h": 211
     },
@@ -1983,8 +1983,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_5.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 1024,
+     "x": 2650,
+     "y": 1730,
      "w": 195,
      "h": 218
     },
@@ -1999,8 +1999,8 @@
     "url": "props/extra_twisted_tree_tall.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 1024,
+     "x": 3705,
+     "y": 1960,
      "w": 231,
      "h": 198
     },
@@ -2015,8 +2015,8 @@
     "url": "props/extra_twisted_tree_broad.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 1024,
+     "x": 1778,
+     "y": 1488,
      "w": 232,
      "h": 232
     },
@@ -2033,8 +2033,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_3.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 1024,
+     "x": 1212,
+     "y": 1730,
      "w": 220,
      "h": 225
     },
@@ -2049,8 +2049,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_4.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 1024,
+     "x": 1556,
+     "y": 1488,
      "w": 220,
      "h": 232
     },
@@ -2067,8 +2067,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_1.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 1280,
+     "x": 1914,
+     "y": 1730,
      "w": 238,
      "h": 219
     },
@@ -2083,8 +2083,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_3.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 1280,
+     "x": 595,
+     "y": 1488,
      "w": 215,
      "h": 238
     },
@@ -2099,8 +2099,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_4.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 1280,
+     "x": 1674,
+     "y": 1730,
      "w": 238,
      "h": 221
     },
@@ -2117,8 +2117,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_2.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 1280,
+     "x": 3313,
+     "y": 1730,
      "w": 238,
      "h": 217
     },
@@ -2133,8 +2133,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_5.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 1280,
+     "x": 2260,
+     "y": 1488,
      "w": 239,
      "h": 230
     },
@@ -2151,8 +2151,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_1.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 1280,
+     "x": 2012,
+     "y": 1488,
      "w": 246,
      "h": 230
     },
@@ -2167,8 +2167,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_2.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 1280,
+     "x": 1308,
+     "y": 1488,
      "w": 246,
      "h": 234
     },
@@ -2183,8 +2183,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_4.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 1280,
+     "x": 3654,
+     "y": 1240,
      "w": 246,
      "h": 240
     },
@@ -2199,8 +2199,8 @@
     "url": "props/extra_dead_tree_low.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 1280,
+     "x": 2792,
+     "y": 744,
      "w": 244,
      "h": 246
     },
@@ -2215,8 +2215,8 @@
     "url": "props/extra_dead_tree_sparse.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 1280,
+     "x": 3038,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -2233,8 +2233,8 @@
     "url": "props/sk_altar.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 1280,
+     "x": 469,
+     "y": 2951,
      "w": 246,
      "h": 108
     },
@@ -2251,8 +2251,8 @@
     "url": "props/sk_bar_counter.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 1280,
+     "x": 2971,
+     "y": 3158,
      "w": 246,
      "h": 60
     },
@@ -2269,8 +2269,8 @@
     "url": "props/sk_basket.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 1280,
+     "x": 2678,
+     "y": 1240,
      "w": 246,
      "h": 244
     },
@@ -2287,8 +2287,8 @@
     "url": "props/sk_bone_pile.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 1280,
+     "x": 1240,
+     "y": 2174,
      "w": 246,
      "h": 190
     },
@@ -2305,8 +2305,8 @@
     "url": "props/sk_bone_pile.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 1280,
+     "x": 1240,
+     "y": 2174,
      "w": 246,
      "h": 190
     },
@@ -2323,8 +2323,8 @@
     "url": "props/sk_bowl_stew.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 1280,
+     "x": 3564,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -2341,8 +2341,8 @@
     "url": "props/sk_brazier.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 1280,
+     "x": 3812,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -2359,8 +2359,8 @@
     "url": "props/sk_brazier.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 1280,
+     "x": 3812,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -2377,8 +2377,8 @@
     "url": "props/sk_bread_loaf.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 1536,
+     "x": 2698,
+     "y": 2697,
      "w": 246,
      "h": 124
     },
@@ -2395,8 +2395,8 @@
     "url": "props/sk_broom.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 1536,
+     "x": 0,
+     "y": 1240,
      "w": 246,
      "h": 246
     },
@@ -2413,8 +2413,8 @@
     "url": "props/sk_bunk_bed.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 1536,
+     "x": 0,
+     "y": 2697,
      "w": 246,
      "h": 130
     },
@@ -2431,8 +2431,8 @@
     "url": "props/sk_cheese_wheel.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 1536,
+     "x": 2926,
+     "y": 1240,
      "w": 246,
      "h": 244
     },
@@ -2449,8 +2449,8 @@
     "url": "props/sk_crypt_niche.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 1536,
+     "x": 2701,
+     "y": 2951,
      "w": 246,
      "h": 102
     },
@@ -2467,8 +2467,8 @@
     "url": "props/sk_cutting_board.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 1536,
+     "x": 248,
+     "y": 2697,
      "w": 246,
      "h": 130
     },
@@ -2485,8 +2485,8 @@
     "url": "props/sk_dice_cup.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 1536,
+     "x": 3174,
+     "y": 1240,
      "w": 246,
      "h": 244
     },
@@ -2503,8 +2503,8 @@
     "url": "props/sk_fireplace.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 1536,
+     "x": 3685,
+     "y": 2951,
      "w": 246,
      "h": 94
     },
@@ -2521,8 +2521,8 @@
     "url": "props/sk_grave.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 1536,
+     "x": 248,
+     "y": 1240,
      "w": 234,
      "h": 246
     },
@@ -2539,8 +2539,8 @@
     "url": "props/sk_haystack.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 1536,
+     "x": 484,
+     "y": 1240,
      "w": 244,
      "h": 246
     },
@@ -2557,8 +2557,8 @@
     "url": "props/sk_hearth_fire.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 1536,
+     "x": 3209,
+     "y": 1960,
      "w": 246,
      "h": 200
     },
@@ -2575,8 +2575,8 @@
     "url": "props/sk_hitching_post.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 1536,
+     "x": 1240,
+     "y": 2829,
      "w": 246,
      "h": 116
     },
@@ -2593,8 +2593,8 @@
     "url": "props/sk_jug.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 1536,
+     "x": 3615,
+     "y": 2549,
      "w": 245,
      "h": 131
     },
@@ -2611,8 +2611,8 @@
     "url": "props/sk_lamp_post.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 1536,
+     "x": 730,
+     "y": 1240,
      "w": 234,
      "h": 246
     },
@@ -2629,8 +2629,8 @@
     "url": "props/sk_lute.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 1536,
+     "x": 2914,
+     "y": 2373,
      "w": 246,
      "h": 152
     },
@@ -2647,8 +2647,8 @@
     "url": "props/sk_milestone.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 1536,
+     "x": 3631,
+     "y": 2373,
      "w": 246,
      "h": 148
     },
@@ -2665,8 +2665,8 @@
     "url": "props/sk_offering_bowl.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 1792,
+     "x": 966,
+     "y": 1240,
      "w": 244,
      "h": 246
     },
@@ -2683,8 +2683,8 @@
     "url": "props/sk_pillar.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 1792,
+     "x": 1212,
+     "y": 1240,
      "w": 246,
      "h": 246
     },
@@ -2701,8 +2701,8 @@
     "url": "props/sk_reliquary.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 1792,
+     "x": 0,
+     "y": 2373,
      "w": 246,
      "h": 174
     },
@@ -2719,8 +2719,8 @@
     "url": "props/sk_roadside_shrine.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 1792,
+     "x": 1212,
+     "y": 2549,
      "w": 246,
      "h": 144
     },
@@ -2737,8 +2737,8 @@
     "url": "props/sk_royal_throne.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 1792,
+     "x": 744,
+     "y": 2174,
      "w": 246,
      "h": 196
     },
@@ -2755,8 +2755,8 @@
     "url": "props/sk_sarcophagus.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 1792,
+     "x": 221,
+     "y": 2951,
      "w": 246,
      "h": 110
     },
@@ -2773,8 +2773,8 @@
     "url": "props/sk_table_round.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 1792,
+     "x": 1460,
+     "y": 1240,
      "w": 246,
      "h": 246
     },
@@ -2791,8 +2791,8 @@
     "url": "props/sk_table_royal.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 1792,
+     "x": 3222,
+     "y": 3063,
      "w": 246,
      "h": 80
     },
@@ -2809,8 +2809,8 @@
     "url": "props/sk_table_small.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 1792,
+     "x": 1708,
+     "y": 1240,
      "w": 246,
      "h": 246
     },
@@ -2827,8 +2827,8 @@
     "url": "props/sk_wagon_wheel.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 1792,
+     "x": 248,
+     "y": 3236,
      "w": 246,
      "h": 52
     },
@@ -2845,8 +2845,8 @@
     "url": "props/sk_wardrobe.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 1792,
+     "x": 480,
+     "y": 2549,
      "w": 246,
      "h": 146
     },
@@ -2863,8 +2863,8 @@
     "url": "props/sk_washbasin.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 1792,
+     "x": 1956,
+     "y": 1240,
      "w": 244,
      "h": 246
     },
@@ -2881,8 +2881,8 @@
     "url": "props/sk_water_trough.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 1792,
+     "x": 2949,
+     "y": 2951,
      "w": 246,
      "h": 102
     },
@@ -2899,8 +2899,8 @@
     "url": "props/sk_well.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 1792,
+     "x": 3065,
+     "y": 1730,
      "w": 246,
      "h": 218
     },
@@ -2917,8 +2917,8 @@
     "url": "props/kenney_log.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 1792,
+     "x": 932,
+     "y": 992,
      "w": 82,
      "h": 246
     },
@@ -2933,8 +2933,8 @@
     "url": "props/kenney_log_large.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 1792,
+     "x": 2872,
+     "y": 2549,
      "w": 246,
      "h": 136
     },
@@ -2951,8 +2951,8 @@
     "url": "props/kenney_log_stack.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 2048,
+     "x": 1016,
+     "y": 992,
      "w": 148,
      "h": 246
     },
@@ -2967,8 +2967,8 @@
     "url": "props/kenney_log_stack_large.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 2048,
+     "x": 1166,
+     "y": 992,
      "w": 220,
      "h": 246
     },
@@ -2985,8 +2985,8 @@
     "url": "props/kenney_log_stack.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 2048,
+     "x": 1016,
+     "y": 992,
      "w": 148,
      "h": 246
     },
@@ -3001,8 +3001,8 @@
     "url": "props/kenney_log_stack_large.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 2048,
+     "x": 1166,
+     "y": 992,
      "w": 220,
      "h": 246
     },
@@ -3019,8 +3019,8 @@
     "url": "props/kenney_stump_old.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 2048,
+     "x": 2348,
+     "y": 992,
      "w": 238,
      "h": 246
     },
@@ -3035,8 +3035,8 @@
     "url": "props/kenney_stump_round.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 2048,
+     "x": 2828,
+     "y": 992,
      "w": 238,
      "h": 246
     },
@@ -3051,8 +3051,8 @@
     "url": "props/kenney_stump_old_tall.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 2048,
+     "x": 2588,
+     "y": 992,
      "w": 238,
      "h": 246
     },
@@ -3069,8 +3069,8 @@
     "url": "props/kenney_sign.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 2048,
+     "x": 3715,
+     "y": 3158,
      "w": 246,
      "h": 58
     },
@@ -3087,8 +3087,8 @@
     "url": "props/kenney_rock_tall_c.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 2048,
+     "x": 812,
+     "y": 1488,
      "w": 246,
      "h": 236
     },
@@ -3103,8 +3103,8 @@
     "url": "props/kenney_rock_tall_d.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 2048,
+     "x": 1388,
+     "y": 992,
      "w": 236,
      "h": 246
     },
@@ -3119,8 +3119,8 @@
     "url": "props/kenney_rock_tall_j.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 2048,
+     "x": 1626,
+     "y": 992,
      "w": 224,
      "h": 246
     },
@@ -3137,8 +3137,8 @@
     "url": "props/kenney_statue_head.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 2048,
+     "x": 1488,
+     "y": 2174,
      "w": 246,
      "h": 188
     },
@@ -3153,8 +3153,8 @@
     "url": "props/kenney_statue_obelisk.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 2048,
+     "x": 2100,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -3169,8 +3169,8 @@
     "url": "props/kenney_statue_column.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 2048,
+     "x": 1852,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -3187,8 +3187,8 @@
     "url": "props/detail_forge.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 2048,
+     "x": 2708,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3205,8 +3205,8 @@
     "url": "props/detail_quench_tub.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 2048,
+     "x": 1814,
+     "y": 496,
      "w": 246,
      "h": 246
     },
@@ -3223,8 +3223,8 @@
     "url": "props/detail_coal_pile.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 2048,
+     "x": 1716,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3241,8 +3241,8 @@
     "url": "props/detail_sawhorse.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 2048,
+     "x": 2974,
+     "y": 3063,
      "w": 246,
      "h": 80
     },
@@ -3259,8 +3259,8 @@
     "url": "props/detail_lumber_pile.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 2304,
+     "x": 1213,
+     "y": 2951,
      "w": 246,
      "h": 106
     },
@@ -3277,8 +3277,8 @@
     "url": "props/detail_kitchen_stove.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 2304,
+     "x": 2453,
+     "y": 2951,
      "w": 246,
      "h": 104
     },
@@ -3295,8 +3295,8 @@
     "url": "props/detail_bread_oven.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 2304,
+     "x": 248,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3313,8 +3313,8 @@
     "url": "props/detail_butcher_block.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 2304,
+     "x": 496,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3331,8 +3331,8 @@
     "url": "props/detail_hanging_pots.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 2304,
+     "x": 2480,
+     "y": 3236,
      "w": 246,
      "h": 30
     },
@@ -3349,8 +3349,8 @@
     "url": "props/detail_washtub.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 2304,
+     "x": 496,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -3367,8 +3367,8 @@
     "url": "props/detail_double_bed.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 2304,
+     "x": 2212,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3385,8 +3385,8 @@
     "url": "props/detail_dresser.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 2304,
+     "x": 0,
+     "y": 3063,
      "w": 246,
      "h": 93
     },
@@ -3403,8 +3403,8 @@
     "url": "props/detail_armchair.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 2304,
+     "x": 0,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3421,8 +3421,8 @@
     "url": "props/detail_bathtub.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 2304,
+     "x": 1210,
+     "y": 2697,
      "w": 246,
      "h": 124
     },
@@ -3439,8 +3439,8 @@
     "url": "props/detail_coat_rack.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 2304,
+     "x": 1964,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3457,8 +3457,8 @@
     "url": "props/detail_cradle.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 2304,
+     "x": 3638,
+     "y": 2174,
      "w": 246,
      "h": 174
     },
@@ -3475,8 +3475,8 @@
     "url": "props/detail_folding_screen.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 2304,
+     "x": 3219,
+     "y": 3158,
      "w": 246,
      "h": 58
     },
@@ -3493,8 +3493,8 @@
     "url": "props/detail_standing_mirror.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 2304,
+     "x": 1942,
+     "y": 2373,
      "w": 246,
      "h": 154
     },
@@ -3511,8 +3511,8 @@
     "url": "props/detail_writing_desk.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 2304,
+     "x": 2968,
+     "y": 2829,
      "w": 246,
      "h": 114
     },
@@ -3529,8 +3529,8 @@
     "url": "props/detail_candle_desk.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 2304,
+     "x": 2205,
+     "y": 2951,
      "w": 246,
      "h": 104
     },
@@ -3547,8 +3547,8 @@
     "url": "props/detail_scroll_rack.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 2560,
+     "x": 1488,
+     "y": 3236,
      "w": 246,
      "h": 38
     },
@@ -3565,8 +3565,8 @@
     "url": "props/detail_globe.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 2560,
+     "x": 3452,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3583,8 +3583,8 @@
     "url": "props/detail_reading_nook.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 2560,
+     "x": 1954,
+     "y": 2697,
      "w": 246,
      "h": 124
     },
@@ -3601,8 +3601,8 @@
     "url": "props/detail_telescope.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 2560,
+     "x": 0,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -3619,8 +3619,8 @@
     "url": "props/detail_armor_stand.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 2560,
+     "x": 3390,
+     "y": 2174,
      "w": 246,
      "h": 174
     },
@@ -3637,8 +3637,8 @@
     "url": "props/detail_archery_target.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 2560,
+     "x": 743,
+     "y": 2373,
      "w": 246,
      "h": 164
     },
@@ -3655,8 +3655,8 @@
     "url": "props/detail_straw_bed.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 2560,
+     "x": 3390,
+     "y": 496,
      "w": 124,
      "h": 246
     },
@@ -3673,8 +3673,8 @@
     "url": "props/detail_wall_chains.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 2560,
+     "x": 739,
+     "y": 3158,
      "w": 246,
      "h": 74
     },
@@ -3691,8 +3691,8 @@
     "url": "props/detail_jailer_desk.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 2560,
+     "x": 991,
+     "y": 2373,
      "w": 246,
      "h": 164
     },
@@ -3709,8 +3709,8 @@
     "url": "props/detail_torture_rack.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 2560,
+     "x": 1957,
+     "y": 2951,
      "w": 246,
      "h": 106
     },
@@ -3727,8 +3727,8 @@
     "url": "props/detail_stocks.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 2560,
+     "x": 2720,
+     "y": 2829,
      "w": 246,
      "h": 114
     },
@@ -3745,8 +3745,8 @@
     "url": "props/detail_idol.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 2560,
+     "x": 0,
+     "y": 496,
      "w": 246,
      "h": 246
     },
@@ -3763,8 +3763,8 @@
     "url": "props/detail_holy_pool.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 2560,
+     "x": 3700,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3781,8 +3781,8 @@
     "url": "props/detail_font_basin.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 2560,
+     "x": 2460,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3799,8 +3799,8 @@
     "url": "props/detail_incense_burner.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 2560,
+     "x": 248,
+     "y": 496,
      "w": 246,
      "h": 246
     },
@@ -3817,8 +3817,8 @@
     "url": "props/detail_kneeling_cushions.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 2560,
+     "x": 990,
+     "y": 3063,
      "w": 246,
      "h": 88
     },
@@ -3835,8 +3835,8 @@
     "url": "props/detail_bell_frame.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 2816,
+     "x": 1976,
+     "y": 2829,
      "w": 246,
      "h": 114
     },
@@ -3853,8 +3853,8 @@
     "url": "props/detail_shop_counter.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 2816,
+     "x": 2723,
+     "y": 3158,
      "w": 246,
      "h": 60
     },
@@ -3871,8 +3871,8 @@
     "url": "props/detail_scales_table.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 2816,
+     "x": 3457,
+     "y": 1960,
      "w": 246,
      "h": 198
     },
@@ -3889,8 +3889,8 @@
     "url": "props/detail_cloth_bolts.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 2816,
+     "x": 1468,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -3907,8 +3907,8 @@
     "url": "props/detail_hay_bales.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 2816,
+     "x": 2224,
+     "y": 2829,
      "w": 246,
      "h": 114
     },
@@ -3925,8 +3925,8 @@
     "url": "props/detail_chicken_coop.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 2816,
+     "x": 1458,
+     "y": 2697,
      "w": 246,
      "h": 124
     },
@@ -3943,8 +3943,8 @@
     "url": "props/detail_garden_bed.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 2816,
+     "x": 248,
+     "y": 2829,
      "w": 246,
      "h": 116
     },
@@ -3961,8 +3961,8 @@
     "url": "props/detail_scarecrow.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 2816,
+     "x": 1486,
+     "y": 3063,
      "w": 246,
      "h": 88
     },
@@ -3979,8 +3979,8 @@
     "url": "props/detail_flour_bin.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 2816,
+     "x": 1969,
+     "y": 1960,
      "w": 246,
      "h": 206
     },
@@ -3997,8 +3997,8 @@
     "url": "props/detail_millstone.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 2816,
+     "x": 744,
+     "y": 496,
      "w": 246,
      "h": 246
     },
@@ -4015,8 +4015,8 @@
     "url": "props/detail_water_wheel.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 2816,
+     "x": 744,
+     "y": 744,
      "w": 74,
      "h": 246
     },
@@ -4033,8 +4033,8 @@
     "url": "props/detail_fence_gate.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 2816,
+     "x": 496,
+     "y": 3236,
      "w": 246,
      "h": 50
     },
@@ -4051,8 +4051,8 @@
     "url": "props/detail_flower_bed.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 2816,
+     "x": 965,
+     "y": 2951,
      "w": 246,
      "h": 106
     },
@@ -4069,8 +4069,8 @@
     "url": "props/detail_fountain.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 2816,
+     "x": 2956,
+     "y": 248,
      "w": 246,
      "h": 246
     },
@@ -4087,8 +4087,8 @@
     "url": "props/detail_town_well.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 2816,
+     "x": 248,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -4105,8 +4105,8 @@
     "url": "props/detail_market_awning.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 2816,
+     "x": 1487,
+     "y": 2373,
      "w": 246,
      "h": 158
     },
@@ -4124,7 +4124,7 @@
     "yaw": 0,
     "preview": {
      "x": 0,
-     "y": 3072,
+     "y": 3236,
      "w": 246,
      "h": 54
     },
@@ -4141,8 +4141,8 @@
     "url": "props/detail_sign_post_city.glb",
     "yaw": 0,
     "preview": {
-     "x": 256,
-     "y": 3072,
+     "x": 2646,
+     "y": 496,
      "w": 246,
      "h": 246
     },
@@ -4159,8 +4159,8 @@
     "url": "props/detail_pillory.glb",
     "yaw": 0,
     "preview": {
-     "x": 512,
-     "y": 3072,
+     "x": 2472,
+     "y": 2829,
      "w": 246,
      "h": 114
     },
@@ -4177,8 +4177,8 @@
     "url": "props/detail_statue_plinth.glb",
     "yaw": 0,
     "preview": {
-     "x": 768,
-     "y": 3072,
+     "x": 3142,
+     "y": 496,
      "w": 246,
      "h": 246
     },
@@ -4195,8 +4195,8 @@
     "url": "props/detail_street_planter.glb",
     "yaw": 0,
     "preview": {
-     "x": 1024,
-     "y": 3072,
+     "x": 3516,
+     "y": 496,
      "w": 246,
      "h": 246
     },
@@ -4213,8 +4213,8 @@
     "url": "props/detail_mooring_post.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 3072,
+     "x": 1240,
+     "y": 496,
      "w": 246,
      "h": 246
     },
@@ -4231,8 +4231,8 @@
     "url": "props/detail_fish_rack.glb",
     "yaw": 0,
     "preview": {
-     "x": 1536,
-     "y": 3072,
+     "x": 3708,
+     "y": 3063,
      "w": 246,
      "h": 76
     },
@@ -4249,8 +4249,8 @@
     "url": "props/detail_fishing_nets.glb",
     "yaw": 0,
     "preview": {
-     "x": 1792,
-     "y": 3072,
+     "x": 1736,
+     "y": 3236,
      "w": 246,
      "h": 36
     },
@@ -4267,8 +4267,8 @@
     "url": "props/detail_rowboat.glb",
     "yaw": 0,
     "preview": {
-     "x": 2048,
-     "y": 3072,
+     "x": 2558,
+     "y": 496,
      "w": 86,
      "h": 246
     },
@@ -4285,8 +4285,8 @@
     "url": "props/detail_punt.glb",
     "yaw": 0,
     "preview": {
-     "x": 2304,
-     "y": 3072,
+     "x": 1736,
+     "y": 496,
      "w": 76,
      "h": 246
     },
@@ -4303,8 +4303,8 @@
     "url": "props/detail_stone_steps.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 3072,
+     "x": 2202,
+     "y": 2697,
      "w": 246,
      "h": 124
     },
@@ -4321,8 +4321,8 @@
     "url": "props/detail_root_tangle.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 3072,
+     "x": 1461,
+     "y": 2951,
      "w": 246,
      "h": 106
     },
@@ -4339,8 +4339,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/stall_cart_empty.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 3072,
+     "x": 742,
+     "y": 3063,
      "w": 246,
      "h": 88
     },
@@ -4355,8 +4355,8 @@
     "url": "props/extra_merchant_wagon.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 3072,
+     "x": 0,
+     "y": 2829,
      "w": 246,
      "h": 120
     },
@@ -4373,8 +4373,8 @@
     "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/banner_1.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 3072,
+     "x": 2232,
+     "y": 3236,
      "w": 246,
      "h": 30
     },
@@ -4389,8 +4389,8 @@
     "url": "props/extra_banner_variant.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 3072,
+     "x": 2728,
+     "y": 3236,
      "w": 246,
      "h": 30
     },
@@ -4408,8 +4408,8 @@
     "yaw": 0,
     "maxHeight": 1.1,
     "preview": {
-     "x": 0,
-     "y": 3328,
+     "x": 1316,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -4427,8 +4427,8 @@
     "yaw": 0,
     "maxHeight": 1.45,
     "preview": {
-     "x": 256,
-     "y": 3328,
+     "x": 2048,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -4446,8 +4446,8 @@
     "yaw": 0,
     "maxHeight": 0.72,
     "preview": {
-     "x": 512,
-     "y": 3328,
+     "x": 496,
+     "y": 2829,
      "w": 246,
      "h": 116
     },
@@ -4465,8 +4465,8 @@
     "yaw": 0,
     "maxHeight": 1.7,
     "preview": {
-     "x": 768,
-     "y": 3328,
+     "x": 3286,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -4484,8 +4484,8 @@
     "yaw": 0,
     "maxHeight": 0.7,
     "preview": {
-     "x": 1024,
-     "y": 3328,
+     "x": 744,
+     "y": 1730,
      "w": 246,
      "h": 228
     },
@@ -4502,8 +4502,8 @@
     "url": "props/extra_rope_bridge.glb",
     "yaw": 0,
     "preview": {
-     "x": 1280,
-     "y": 3328,
+     "x": 3464,
+     "y": 2829,
      "w": 246,
      "h": 114
     },
@@ -4521,8 +4521,8 @@
     "yaw": 0,
     "maxHeight": 0.8,
     "preview": {
-     "x": 1536,
-     "y": 3328,
+     "x": 2544,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -4540,8 +4540,8 @@
     "yaw": 0,
     "maxHeight": 1.6,
     "preview": {
-     "x": 1792,
-     "y": 3328,
+     "x": 3534,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -4559,8 +4559,8 @@
     "yaw": 0,
     "maxHeight": 1.7,
     "preview": {
-     "x": 2048,
-     "y": 3328,
+     "x": 987,
+     "y": 3158,
      "w": 246,
      "h": 72
     },
@@ -4578,8 +4578,8 @@
     "yaw": 0,
     "maxHeight": 1.35,
     "preview": {
-     "x": 2304,
-     "y": 3328,
+     "x": 0,
+     "y": 3158,
      "w": 246,
      "h": 76
     },
@@ -4597,8 +4597,8 @@
     "yaw": 0,
     "maxHeight": 0.48,
     "preview": {
-     "x": 2560,
-     "y": 3328,
+     "x": 744,
+     "y": 2829,
      "w": 246,
      "h": 116
     },
@@ -4615,8 +4615,8 @@
     "url": "props/extra_ruin_wall_arch.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 3328,
+     "x": 248,
+     "y": 3292,
      "w": 246,
      "h": 8
     },
@@ -4633,8 +4633,8 @@
     "url": "props/extra_chimney_brick.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 3328,
+     "x": 1812,
+     "y": 744,
      "w": 234,
      "h": 246
     },
@@ -4651,8 +4651,8 @@
     "url": "props/extra_ornate_iron_fence.glb",
     "yaw": 0,
     "preview": {
-     "x": 3328,
-     "y": 3328,
+     "x": 3182,
+     "y": 3236,
      "w": 246,
      "h": 20
     },
@@ -4669,8 +4669,8 @@
     "url": "props/extra_roof_dormer_roundtile.glb",
     "yaw": 0,
     "preview": {
-     "x": 3584,
-     "y": 3328,
+     "x": 248,
+     "y": 992,
      "w": 200,
      "h": 246
     },
@@ -4687,8 +4687,8 @@
     "url": "props/extra_ruin_corner_brick.glb",
     "yaw": 0,
     "preview": {
-     "x": 3840,
-     "y": 3328,
+     "x": 450,
+     "y": 992,
      "w": 232,
      "h": 246
     },
@@ -4705,8 +4705,8 @@
     "url": "props/extra_round_window_brick.glb",
     "yaw": 0,
     "preview": {
-     "x": 0,
-     "y": 3584,
+     "x": 744,
+     "y": 3236,
      "w": 246,
      "h": 50
     },
@@ -4724,8 +4724,8 @@
     "yaw": 0,
     "maxHeight": 0.7,
     "preview": {
-     "x": 256,
-     "y": 3584,
+     "x": 2227,
+     "y": 3158,
      "w": 246,
      "h": 62
     },
@@ -4743,8 +4743,8 @@
     "yaw": 0,
     "maxHeight": 0.09,
     "preview": {
-     "x": 512,
-     "y": 3584,
+     "x": 248,
+     "y": 2549,
      "w": 230,
      "h": 146
     },
@@ -4762,8 +4762,8 @@
     "yaw": 0,
     "maxHeight": 0.25,
     "preview": {
-     "x": 768,
-     "y": 3584,
+     "x": 3430,
+     "y": 3236,
      "w": 246,
      "h": 20
     },
@@ -4781,8 +4781,8 @@
     "yaw": 0,
     "maxHeight": 0.13,
     "preview": {
-     "x": 1024,
-     "y": 3584,
+     "x": 1721,
+     "y": 1960,
      "w": 246,
      "h": 210
     },
@@ -4800,8 +4800,8 @@
     "yaw": 0,
     "maxHeight": 0.24,
     "preview": {
-     "x": 1280,
-     "y": 3584,
+     "x": 496,
+     "y": 3063,
      "w": 244,
      "h": 92
     },
@@ -4819,8 +4819,8 @@
     "yaw": 0,
     "maxHeight": 1.2,
     "preview": {
-     "x": 1536,
-     "y": 3584,
+     "x": 2296,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -4838,8 +4838,8 @@
     "yaw": 0,
     "maxHeight": 1.2,
     "preview": {
-     "x": 1792,
-     "y": 3584,
+     "x": 0,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -4857,8 +4857,8 @@
     "yaw": 0,
     "maxHeight": 1.8,
     "preview": {
-     "x": 2048,
-     "y": 3584,
+     "x": 2217,
+     "y": 1960,
      "w": 246,
      "h": 206
     },
@@ -4876,8 +4876,8 @@
     "yaw": 0,
     "maxHeight": 0.95,
     "preview": {
-     "x": 2304,
-     "y": 3584,
+     "x": 992,
+     "y": 3236,
      "w": 246,
      "h": 48
     },
@@ -4895,8 +4895,8 @@
     "yaw": 0,
     "maxHeight": 0.95,
     "preview": {
-     "x": 2560,
-     "y": 3584,
+     "x": 992,
+     "y": 2829,
      "w": 246,
      "h": 116
     },
@@ -4914,8 +4914,8 @@
     "yaw": 0,
     "maxHeight": 1.6,
     "preview": {
-     "x": 2816,
-     "y": 3584,
+     "x": 1240,
+     "y": 3236,
      "w": 246,
      "h": 44
     },
@@ -4933,8 +4933,8 @@
     "yaw": 0,
     "maxHeight": 0.09,
     "preview": {
-     "x": 3072,
-     "y": 3584,
+     "x": 3216,
+     "y": 2829,
      "w": 246,
      "h": 114
     },
@@ -4952,8 +4952,8 @@
     "yaw": 0,
     "maxHeight": 0.65,
     "preview": {
-     "x": 3328,
-     "y": 3584,
+     "x": 1235,
+     "y": 3158,
      "w": 246,
      "h": 72
     },
@@ -4971,8 +4971,8 @@
     "yaw": 0,
     "maxHeight": 0.75,
     "preview": {
-     "x": 3584,
-     "y": 3584,
+     "x": 1068,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -4990,8 +4990,8 @@
     "yaw": 0,
     "maxHeight": 0.36,
     "preview": {
-     "x": 3840,
-     "y": 3584,
+     "x": 2465,
+     "y": 1960,
      "w": 246,
      "h": 202
     },
@@ -5009,8 +5009,8 @@
     "yaw": 0,
     "maxHeight": 0.3,
     "preview": {
-     "x": 0,
-     "y": 3840,
+     "x": 3162,
+     "y": 2373,
      "w": 222,
      "h": 148
     },
@@ -5028,8 +5028,8 @@
     "yaw": 0,
     "maxHeight": 0.28,
     "preview": {
-     "x": 256,
-     "y": 3840,
+     "x": 226,
+     "y": 1488,
      "w": 138,
      "h": 240
     },
@@ -5047,8 +5047,8 @@
     "yaw": 0,
     "maxHeight": 0.5,
     "preview": {
-     "x": 512,
-     "y": 3840,
+     "x": 2475,
+     "y": 3158,
      "w": 246,
      "h": 62
     },
@@ -5066,8 +5066,8 @@
     "yaw": 0,
     "maxHeight": 0.32,
     "preview": {
-     "x": 768,
-     "y": 3840,
+     "x": 2847,
+     "y": 1730,
      "w": 216,
      "h": 218
     },
@@ -5085,8 +5085,8 @@
     "yaw": 0,
     "maxHeight": 0.3,
     "preview": {
-     "x": 1024,
-     "y": 3840,
+     "x": 3467,
+     "y": 3158,
      "w": 246,
      "h": 58
     },
@@ -5104,8 +5104,8 @@
     "yaw": 0,
     "maxHeight": 0.16,
     "preview": {
-     "x": 1280,
-     "y": 3840,
+     "x": 248,
+     "y": 3158,
      "w": 241,
      "h": 76
     },
@@ -5123,8 +5123,8 @@
     "yaw": 0,
     "maxHeight": 0.15,
     "preview": {
-     "x": 1536,
-     "y": 3840,
+     "x": 2398,
+     "y": 2549,
      "w": 224,
      "h": 140
     },
@@ -5142,8 +5142,8 @@
     "yaw": 0,
     "maxHeight": 0.68,
     "preview": {
-     "x": 1792,
-     "y": 3840,
+     "x": 1564,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -5161,8 +5161,8 @@
     "yaw": 0,
     "maxHeight": 0.1,
     "preview": {
-     "x": 2048,
-     "y": 3840,
+     "x": 684,
+     "y": 992,
      "w": 246,
      "h": 246
     },
@@ -5180,8 +5180,8 @@
     "yaw": 0,
     "maxHeight": 0.24,
     "preview": {
-     "x": 2304,
-     "y": 3840,
+     "x": 820,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -5198,8 +5198,8 @@
     "url": "props/extra_swamp_boardwalk.glb",
     "yaw": 0,
     "preview": {
-     "x": 2560,
-     "y": 3840,
+     "x": 1728,
+     "y": 2829,
      "w": 246,
      "h": 115
     },
@@ -5216,8 +5216,8 @@
     "url": "props/extra_rock_path_square.glb",
     "yaw": 0,
     "preview": {
-     "x": 2816,
-     "y": 3840,
+     "x": 3386,
+     "y": 2373,
      "w": 243,
      "h": 148
     },
@@ -5232,8 +5232,8 @@
     "url": "props/extra_rock_path_round.glb",
     "yaw": 0,
     "preview": {
-     "x": 3072,
-     "y": 3840,
+     "x": 2190,
+     "y": 2373,
      "w": 241,
      "h": 154
     },
@@ -5251,8 +5251,8 @@
     "yaw": 0,
     "maxHeight": 0.2,
     "preview": {
-     "x": 3328,
-     "y": 3840,
+     "x": 1460,
+     "y": 2549,
      "w": 214,
      "h": 143
     },
@@ -5270,8 +5270,8 @@
     "yaw": 0,
     "maxHeight": 0.5,
     "preview": {
-     "x": 3584,
-     "y": 3840,
+     "x": 1983,
+     "y": 2174,
      "w": 205,
      "h": 181
     },
@@ -5289,8 +5289,8 @@
     "yaw": 0,
     "maxHeight": 0.95,
     "preview": {
-     "x": 3840,
-     "y": 3840,
+     "x": 3782,
+     "y": 744,
      "w": 246,
      "h": 246
     },
@@ -5308,8 +5308,8 @@
     "yaw": 0,
     "maxHeight": 0.65,
     "preview": {
-     "x": 0,
-     "y": 4096,
+     "x": 2976,
+     "y": 3236,
      "w": 204,
      "h": 23
     },
@@ -5327,8 +5327,8 @@
     "yaw": 0,
     "maxHeight": 0.65,
     "preview": {
-     "x": 256,
-     "y": 4096,
+     "x": 3470,
+     "y": 3063,
      "w": 236,
      "h": 79
     },
@@ -5346,8 +5346,8 @@
     "yaw": 0,
     "maxHeight": 0.65,
     "preview": {
-     "x": 512,
-     "y": 4096,
+     "x": 3678,
+     "y": 3236,
      "w": 130,
      "h": 17
     },
@@ -5365,8 +5365,8 @@
     "yaw": 0,
     "maxHeight": 0.1,
     "preview": {
-     "x": 768,
-     "y": 4096,
+     "x": 2172,
+     "y": 2549,
      "w": 224,
      "h": 141
     },
@@ -5384,8 +5384,8 @@
     "yaw": 0,
     "maxHeight": 0.28,
     "preview": {
-     "x": 1024,
-     "y": 4096,
+     "x": 976,
+     "y": 2549,
      "w": 234,
      "h": 144
     },
@@ -5395,11 +5395,733 @@
      0.1923
     ]
    }
+  ],
+  "snowdrift": [
+   {
+    "key": "style-detail-snowdrift",
+    "url": "props/detail_snowdrift.glb",
+    "yaw": 0,
+    "maxHeight": 0.25,
+    "preview": {
+     "x": 1676,
+     "y": 2549,
+     "w": 246,
+     "h": 142
+    },
+    "size": [
+     1.4,
+     0.32,
+     0.8
+    ]
+   }
+  ],
+  "snowy_boulder": [
+   {
+    "key": "style-detail-snowy-boulder",
+    "url": "props/detail_snowy_boulder.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 496,
+     "y": 1730,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     1.3,
+     0.9,
+     1.2
+    ]
+   }
+  ],
+  "ice_pillars": [
+   {
+    "key": "style-detail-ice-pillars",
+    "url": "props/detail_ice_pillars.glb",
+    "yaw": 0,
+    "maxHeight": 1.1,
+    "preview": {
+     "x": 248,
+     "y": 1730,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     1.3,
+     1.4,
+     1.2
+    ]
+   }
+  ],
+  "frozen_pool": [
+   {
+    "key": "style-detail-frozen-pool",
+    "url": "props/detail_frozen_pool.glb",
+    "yaw": 0,
+    "maxHeight": 0.12,
+    "preview": {
+     "x": 3204,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     0.14,
+     1.4
+    ]
+   }
+  ],
+  "winter_cache": [
+   {
+    "key": "style-detail-winter-cache",
+    "url": "props/detail_winter_cache.glb",
+    "yaw": 0,
+    "maxHeight": 0.45,
+    "preview": {
+     "x": 2450,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     1.4,
+     0.55,
+     0.7
+    ]
+   }
+  ],
+  "snow_cairn": [
+   {
+    "key": "style-detail-snow-cairn",
+    "url": "props/detail_snow_cairn.glb",
+    "yaw": 0,
+    "maxHeight": 0.9,
+    "preview": {
+     "x": 2894,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     1.3,
+     0.8
+    ]
+   }
+  ],
+  "sand_dune": [
+   {
+    "key": "style-detail-sand-dune",
+    "url": "props/detail_sand_dune.glb",
+    "yaw": 0,
+    "maxHeight": 0.22,
+    "preview": {
+     "x": 1709,
+     "y": 2951,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     1.4,
+     0.3,
+     0.6
+    ]
+   }
+  ],
+  "desert_boulders": [
+   {
+    "key": "style-detail-desert-boulders",
+    "url": "props/detail_desert_boulders.glb",
+    "yaw": 0,
+    "maxHeight": 0.6,
+    "preview": {
+     "x": 248,
+     "y": 1960,
+     "w": 246,
+     "h": 212
+    },
+    "size": [
+     1.4,
+     0.8,
+     1.2
+    ]
+   }
+  ],
+  "cactus_cluster": [
+   {
+    "key": "style-detail-cactus-cluster",
+    "url": "props/detail_cactus_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 1.1,
+    "preview": {
+     "x": 744,
+     "y": 248,
+     "w": 226,
+     "h": 246
+    },
+    "size": [
+     1.1,
+     1.4,
+     1.2
+    ]
+   }
+  ],
+  "dead_scrub": [
+   {
+    "key": "style-detail-dead-scrub",
+    "url": "props/detail_dead_scrub.glb",
+    "yaw": 0,
+    "maxHeight": 0.5,
+    "preview": {
+     "x": 977,
+     "y": 1960,
+     "w": 246,
+     "h": 210
+    },
+    "size": [
+     1.4,
+     0.7,
+     1.2
+    ]
+   }
+  ],
+  "oasis_pool": [
+   {
+    "key": "style-detail-oasis-pool",
+    "url": "props/detail_oasis_pool.glb",
+    "yaw": 0,
+    "maxHeight": 0.15,
+    "preview": {
+     "x": 1225,
+     "y": 1960,
+     "w": 246,
+     "h": 210
+    },
+    "size": [
+     1.4,
+     0.2,
+     1.2
+    ]
+   }
+  ],
+  "broken_obelisk": [
+   {
+    "key": "style-detail-broken-obelisk",
+    "url": "props/detail_broken_obelisk.glb",
+    "yaw": 0,
+    "maxHeight": 0.3,
+    "preview": {
+     "x": 2726,
+     "y": 3063,
+     "w": 246,
+     "h": 80
+    },
+    "size": [
+     1.4,
+     0.4,
+     0.45
+    ]
+   }
+  ],
+  "bog_pool": [
+   {
+    "key": "style-detail-bog-pool",
+    "url": "props/detail_bog_pool.glb",
+    "yaw": 0,
+    "maxHeight": 0.12,
+    "preview": {
+     "x": 2749,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     1.4,
+     0.14,
+     1.3
+    ]
+   }
+  ],
+  "lily_pad_cluster": [
+   {
+    "key": "style-detail-lily-pad-cluster",
+    "url": "props/detail_lily_pad_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 0.08,
+    "preview": {
+     "x": 2997,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     1.4,
+     0.08,
+     1.3
+    ]
+   }
+  ],
+  "reed_cluster": [
+   {
+    "key": "style-detail-reed-cluster",
+    "url": "props/detail_reed_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 1,
+    "preview": {
+     "x": 2062,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     1.3,
+     1.2
+    ]
+   }
+  ],
+  "rotten_log": [
+   {
+    "key": "style-detail-rotten-log",
+    "url": "props/detail_rotten_log.glb",
+    "yaw": 0,
+    "maxHeight": 0.45,
+    "preview": {
+     "x": 1979,
+     "y": 3158,
+     "w": 246,
+     "h": 62
+    },
+    "size": [
+     2.8,
+     0.6,
+     0.7
+    ]
+   }
+  ],
+  "mud_patch": [
+   {
+    "key": "style-detail-mud-patch",
+    "url": "props/detail_mud_patch.glb",
+    "yaw": 0,
+    "maxHeight": 0.06,
+    "preview": {
+     "x": 3493,
+     "y": 1488,
+     "w": 246,
+     "h": 229
+    },
+    "size": [
+     1.4,
+     0.08,
+     1.3
+    ]
+   }
+  ],
+  "swamp_totem": [
+   {
+    "key": "style-detail-swamp-totem",
+    "url": "props/detail_swamp_totem.glb",
+    "yaw": 0,
+    "maxHeight": 1.3,
+    "preview": {
+     "x": 3764,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.7,
+     1.6,
+     0.7
+    ]
+   }
+  ],
+  "peat_mound": [
+   {
+    "key": "style-detail-peat-mound",
+    "url": "props/detail_peat_mound.glb",
+    "yaw": 0,
+    "maxHeight": 0.3,
+    "preview": {
+     "x": 3245,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     1.4,
+     0.4,
+     1.3
+    ]
+   }
+  ],
+  "mooring_bollard": [
+   {
+    "key": "style-detail-mooring-bollard",
+    "url": "props/detail_mooring_bollard.glb",
+    "yaw": 0,
+    "maxHeight": 0.6,
+    "preview": {
+     "x": 992,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.9,
+     0.8,
+     0.9
+    ]
+   }
+  ],
+  "cargo_net": [
+   {
+    "key": "style-detail-cargo-net",
+    "url": "props/detail_cargo_net.glb",
+    "yaw": 0,
+    "maxHeight": 0.45,
+    "preview": {
+     "x": 1220,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.3,
+     0.6,
+     1.3
+    ]
+   }
+  ],
+  "lobster_cage": [
+   {
+    "key": "style-detail-lobster-cage",
+    "url": "props/detail_lobster_cage.glb",
+    "yaw": 0,
+    "maxHeight": 0.45,
+    "preview": {
+     "x": 1924,
+     "y": 2549,
+     "w": 246,
+     "h": 141
+    },
+    "size": [
+     1.4,
+     0.6,
+     0.8
+    ]
+   }
+  ],
+  "sail_bundle": [
+   {
+    "key": "style-detail-sail-bundle",
+    "url": "props/detail_sail_bundle.glb",
+    "yaw": 0,
+    "maxHeight": 0.25,
+    "preview": {
+     "x": 1238,
+     "y": 3063,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     1.4,
+     0.35,
+     0.5
+    ]
+   }
+  ],
+  "bedroll_cluster": [
+   {
+    "key": "style-detail-bedroll-cluster",
+    "url": "props/detail_bedroll_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 0.25,
+    "preview": {
+     "x": 0,
+     "y": 1730,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     1.3,
+     0.35,
+     1.2
+    ]
+   }
+  ],
+  "shield_rack": [
+   {
+    "key": "style-detail-shield-rack",
+    "url": "props/detail_shield_rack.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 1734,
+     "y": 3063,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     1.4,
+     1.2,
+     0.5
+    ]
+   }
+  ],
+  "camp_dummy": [
+   {
+    "key": "style-detail-camp-dummy",
+    "url": "props/detail_camp_dummy.glb",
+    "yaw": 0,
+    "maxHeight": 1.25,
+    "preview": {
+     "x": 972,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     1.6,
+     0.8
+    ]
+   }
+  ],
+  "spiked_beam_barrier": [
+   {
+    "key": "style-detail-spiked-beam-barrier",
+    "url": "props/detail_spiked_beam_barrier.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 1473,
+     "y": 1960,
+     "w": 246,
+     "h": 210
+    },
+    "size": [
+     1.4,
+     0.9,
+     1.2
+    ]
+   }
+  ],
+  "alchemy_cauldron": [
+   {
+    "key": "style-detail-alchemy-cauldron",
+    "url": "props/detail_alchemy_cauldron.glb",
+    "yaw": 0,
+    "maxHeight": 0.6,
+    "preview": {
+     "x": 3637,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     0.8,
+     1.2
+    ]
+   }
+  ],
+  "arcane_lectern": [
+   {
+    "key": "style-detail-arcane-lectern",
+    "url": "props/detail_arcane_lectern.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 248,
+     "y": 2373,
+     "w": 246,
+     "h": 173
+    },
+    "size": [
+     1,
+     1.2,
+     0.7
+    ]
+   }
+  ],
+  "ritual_circle": [
+   {
+    "key": "style-detail-ritual-circle",
+    "url": "props/detail_ritual_circle.glb",
+    "yaw": 0,
+    "maxHeight": 0.05,
+    "preview": {
+     "x": 2310,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     0.05,
+     1.4
+    ]
+   }
+  ],
+  "arcane_stone": [
+   {
+    "key": "style-detail-arcane-stone",
+    "url": "props/detail_arcane_stone.glb",
+    "yaw": 0,
+    "maxHeight": 0.2,
+    "preview": {
+     "x": 2501,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     1.4,
+     0.25,
+     1.3
+    ]
+   }
+  ],
+  "potion_cabinet": [
+   {
+    "key": "style-detail-potion-cabinet",
+    "url": "props/detail_potion_cabinet.glb",
+    "yaw": 0,
+    "maxHeight": 1.2,
+    "preview": {
+     "x": 3437,
+     "y": 2951,
+     "w": 246,
+     "h": 96
+    },
+    "size": [
+     1.3,
+     1.6,
+     0.5
+    ]
+   }
+  ],
+  "magic_mirror": [
+   {
+    "key": "style-detail-magic-mirror",
+    "url": "props/detail_magic_mirror.glb",
+    "yaw": 0,
+    "maxHeight": 1.3,
+    "preview": {
+     "x": 1706,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     0.8,
+     1.7,
+     0.4
+    ]
+   }
+  ],
+  "prison_cage": [
+   {
+    "key": "style-detail-prison-cage",
+    "url": "props/detail_prison_cage.glb",
+    "yaw": 0,
+    "maxHeight": 1.2,
+    "preview": {
+     "x": 1488,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.3,
+     1.6,
+     1.3
+    ]
+   }
+  ],
+  "dungeon_rack": [
+   {
+    "key": "style-detail-dungeon-rack",
+    "url": "props/detail_dungeon_rack.glb",
+    "yaw": 0,
+    "maxHeight": 0.7,
+    "preview": {
+     "x": 717,
+     "y": 2951,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     1,
+     1.2
+    ]
+   }
+  ],
+  "iron_maiden": [
+   {
+    "key": "style-detail-iron-maiden",
+    "url": "props/detail_iron_maiden.glb",
+    "yaw": 0,
+    "maxHeight": 1.4,
+    "preview": {
+     "x": 496,
+     "y": 1960,
+     "w": 246,
+     "h": 212
+    },
+    "size": [
+     0.7,
+     1.9,
+     0.6
+    ]
+   }
+  ],
+  "manacle_post": [
+   {
+    "key": "style-detail-manacle-post",
+    "url": "props/detail_manacle_post.glb",
+    "yaw": 0,
+    "maxHeight": 0.85,
+    "preview": {
+     "x": 496,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.9,
+     1.2,
+     0.9
+    ]
+   }
+  ],
+  "fishing_crates": [
+   {
+    "key": "style-fishing-crates",
+    "url": "props/fishing_crates.glb",
+    "yaw": 0,
+    "maxHeight": 0.75,
+    "preview": {
+     "x": 496,
+     "y": 2373,
+     "w": 245,
+     "h": 166
+    },
+    "size": [
+     1.5998,
+     1.7874,
+     1.1031
+    ]
+   }
   ]
  },
  "atlas": {
-  "image": "topdown.png",
-  "key": "157021b5ea1dfd294548a68476602d86fb95560af6ecbc3f5cec39a632f5e116"
+  "image": "topdown.webp",
+  "key": "cbe773b6115c222493a533da9e5c85a368b1bd2e25fdf3ab1565c4a8036caa6b"
  },
  "files": [
   {
@@ -6363,6 +7085,21 @@
    "bytes": 1245684
   },
   {
+   "file": "props/detail_alchemy_cauldron.glb",
+   "sha256": "bd4859231d4c41d4a74d63e53b2ed934a20d99cdf1b1442176659baddc29b7b6",
+   "bytes": 324800
+  },
+  {
+   "file": "props/detail_arcane_lectern.glb",
+   "sha256": "1ed4a40af8ef1f0e6764706f18e5f5e17371231b00c6ba8b68c383bb07c4848e",
+   "bytes": 81504
+  },
+  {
+   "file": "props/detail_arcane_stone.glb",
+   "sha256": "a465b3031480400bbfdf9fee7ad41dc943403072fcaea4547fe315be3184b206",
+   "bytes": 49996
+  },
+  {
    "file": "props/detail_archery_target.glb",
    "sha256": "f09e8357ceca8aba8aaaa4c2b3e981fe4713ec9785358d49f576966e1972410c",
    "bytes": 242880
@@ -6383,9 +7120,19 @@
    "bytes": 461948
   },
   {
+   "file": "props/detail_bedroll_cluster.glb",
+   "sha256": "a0a44a2122bff927cee4b9f534f3ba468ae3405abf39877dabdcce57055358ac",
+   "bytes": 229312
+  },
+  {
    "file": "props/detail_bell_frame.glb",
    "sha256": "d4ef49311db7c330e0627a541d369b9eac47d3e8d921ae444e2481f092a18258",
    "bytes": 299120
+  },
+  {
+   "file": "props/detail_bog_pool.glb",
+   "sha256": "7732b42e4ed13431eb51f80ef5c5b264206cb894c9c8c6c939cd945fa81f8494",
+   "bytes": 317872
   },
   {
    "file": "props/detail_bread_oven.glb",
@@ -6393,14 +7140,34 @@
    "bytes": 207588
   },
   {
+   "file": "props/detail_broken_obelisk.glb",
+   "sha256": "56158f3008631bdd4c8aea6f48d1ec171d9f86bfd2b71188e388d5172ef7bcf6",
+   "bytes": 110708
+  },
+  {
    "file": "props/detail_butcher_block.glb",
    "sha256": "d36b38878c87363bd5615a1724b7964dfc155a122ff6cd80e7352062dae40090",
    "bytes": 164064
   },
   {
+   "file": "props/detail_cactus_cluster.glb",
+   "sha256": "0dad99826f69c4f69d34c3b7f24520b20d2481f0492bd0f64adaf74c06b3c1fb",
+   "bytes": 511740
+  },
+  {
+   "file": "props/detail_camp_dummy.glb",
+   "sha256": "4381fafc94501307fcd510cd3a2dc27107cd996951262fc0b43f22f8121cc87a",
+   "bytes": 141656
+  },
+  {
    "file": "props/detail_candle_desk.glb",
    "sha256": "13b9a7336673c343c2e1ddbd602d57682368d3122864207b7de115f054f28d54",
    "bytes": 170880
+  },
+  {
+   "file": "props/detail_cargo_net.glb",
+   "sha256": "572f906ab4c1beb6c9dc7e0564949ab208451be843815bd6696f7cabc9c94bf0",
+   "bytes": 381876
   },
   {
    "file": "props/detail_chicken_coop.glb",
@@ -6428,6 +7195,16 @@
    "bytes": 243644
   },
   {
+   "file": "props/detail_dead_scrub.glb",
+   "sha256": "9933b98394ba3aa123effdaede0e517457a067f357671099e32897e67c6af738",
+   "bytes": 221636
+  },
+  {
+   "file": "props/detail_desert_boulders.glb",
+   "sha256": "4def966586140e76140030d403e62506867cab7c4a8e99eb9a40db7ae8c4d1ed",
+   "bytes": 60180
+  },
+  {
    "file": "props/detail_double_bed.glb",
    "sha256": "47fa47f6021d934744bbfefbe9a73ad34d51f17650dfe77bcb09f320026172d1",
    "bytes": 247124
@@ -6436,6 +7213,11 @@
    "file": "props/detail_dresser.glb",
    "sha256": "14165b816c1726baf534e079566a5104ff019abcfdbb31f40a9c342418a2d457",
    "bytes": 221960
+  },
+  {
+   "file": "props/detail_dungeon_rack.glb",
+   "sha256": "cb7ec19ddc7424d7524290af7a295aec446a84932f28c9e79ce430c14f823d86",
+   "bytes": 362592
   },
   {
    "file": "props/detail_fence_gate.glb",
@@ -6483,6 +7265,11 @@
    "bytes": 348704
   },
   {
+   "file": "props/detail_frozen_pool.glb",
+   "sha256": "eb1608208804c3a6f170b4b2871b7ea32e725cf13006513d69e7f5709fe6bd1b",
+   "bytes": 552088
+  },
+  {
    "file": "props/detail_garden_bed.glb",
    "sha256": "9429bbaf28d41e91df371747592b5424033e1416716a336c5e7e38f9dda2d1d3",
    "bytes": 697620
@@ -6508,6 +7295,11 @@
    "bytes": 1013960
   },
   {
+   "file": "props/detail_ice_pillars.glb",
+   "sha256": "cc3670770f8d843cf5eae39230e4878cd0d92b06c93ab1fc48d23303e08be8c0",
+   "bytes": 115748
+  },
+  {
    "file": "props/detail_idol.glb",
    "sha256": "445f8c4c7776462a17e62b126372948755fe89a6424e7610897fe3e807fef861",
    "bytes": 1241288
@@ -6518,9 +7310,14 @@
    "bytes": 713244
   },
   {
+   "file": "props/detail_iron_maiden.glb",
+   "sha256": "6333a78044a58ed1b4e332822985c83f5e7d02e2904722cbd67064a48d92b0ca",
+   "bytes": 330472
+  },
+  {
    "file": "props/detail_jailer_desk.glb",
-   "sha256": "bbc317e377bf4bbb58278c2d008d30750568d7f1948dd7b54576e30c7d258152",
-   "bytes": 183544
+   "sha256": "2c344fe207ae0385d00d832fd430722e0d7cc18d0f4eb103f0767851f870b670",
+   "bytes": 183664
   },
   {
    "file": "props/detail_kitchen_stove.glb",
@@ -6533,9 +7330,29 @@
    "bytes": 329276
   },
   {
+   "file": "props/detail_lily_pad_cluster.glb",
+   "sha256": "259717397d454b08b3c3eef38d99685e726f849b82e73cdf2e8ffffaca7c5da5",
+   "bytes": 347228
+  },
+  {
+   "file": "props/detail_lobster_cage.glb",
+   "sha256": "d61e9067449531a0b8d3b2d23c64a29ed24a856e39b4171f73731f7215b0d559",
+   "bytes": 206728
+  },
+  {
    "file": "props/detail_lumber_pile.glb",
    "sha256": "b238a4102cab4295455df3b2d6b7609adc04542e09ef25af0cef7fabc0e1e4f1",
    "bytes": 823676
+  },
+  {
+   "file": "props/detail_magic_mirror.glb",
+   "sha256": "2c8d86cc802a552fc32527bbeca23db0e4b8da2a2ae1cac7e81b43eeab88ed6d",
+   "bytes": 363664
+  },
+  {
+   "file": "props/detail_manacle_post.glb",
+   "sha256": "27de4c27f1902ec45671014687cb2e8caf1fb1a5b4ffe8a224071dfa6fcc6c72",
+   "bytes": 285460
   },
   {
    "file": "props/detail_market_awning.glb",
@@ -6548,9 +7365,19 @@
    "bytes": 233308
   },
   {
+   "file": "props/detail_mooring_bollard.glb",
+   "sha256": "a83df0821f1b5672fede52649146b446340a7194df3baaf01d9d9f9e14af6800",
+   "bytes": 335600
+  },
+  {
    "file": "props/detail_mooring_post.glb",
    "sha256": "3db60334c9187e3accbf017193be6f64152d2badc6e57bcb85bc831159ac2be8",
    "bytes": 294588
+  },
+  {
+   "file": "props/detail_mud_patch.glb",
+   "sha256": "afc6c990fe203d0c718b72d2aab9666f79f805327a525a60382a86bf47cc06e2",
+   "bytes": 242212
   },
   {
    "file": "props/detail_notice_board.glb",
@@ -6558,9 +7385,29 @@
    "bytes": 214200
   },
   {
+   "file": "props/detail_oasis_pool.glb",
+   "sha256": "90b41316873abed8f796e4fa8f29d45c006b37a61201069540f53577ef426ccb",
+   "bytes": 310732
+  },
+  {
+   "file": "props/detail_peat_mound.glb",
+   "sha256": "1ef626e12f5e3ea76efc3d3805f3874bafc9b2cd5a195563e2da412106b100c8",
+   "bytes": 203608
+  },
+  {
    "file": "props/detail_pillory.glb",
    "sha256": "a7d066918c305d62156687e5e6020922b7009e53eb836249978f62fceb16b706",
    "bytes": 202208
+  },
+  {
+   "file": "props/detail_potion_cabinet.glb",
+   "sha256": "057bc2e480b1ce9480e3493c345653d6fc1bbe96a0c9348647998107193a3244",
+   "bytes": 532276
+  },
+  {
+   "file": "props/detail_prison_cage.glb",
+   "sha256": "ae0127bf0654f50c1c8b920fe49a6dc96236adbab7f2a5a5378ad6f90c420e87",
+   "bytes": 267428
   },
   {
    "file": "props/detail_punt.glb",
@@ -6578,14 +7425,39 @@
    "bytes": 295312
   },
   {
+   "file": "props/detail_reed_cluster.glb",
+   "sha256": "163579b531a31a91061e1c37ef8c9b14841a927e459db44611b49bd5097399e4",
+   "bytes": 311992
+  },
+  {
+   "file": "props/detail_ritual_circle.glb",
+   "sha256": "f1103ce8d77a9962f8cabfdc5d494162044ee7f1c0b7dc3862436fb7a3f47993",
+   "bytes": 189420
+  },
+  {
    "file": "props/detail_root_tangle.glb",
    "sha256": "c93debea4253705fca1408605eb55bb3fd54258656a9a8c7ae837c0559f71764",
    "bytes": 646088
   },
   {
+   "file": "props/detail_rotten_log.glb",
+   "sha256": "72d9de6d9462a968bcae3c821b3553bb7602b6cc4e2888c3646b03d94d8e3dbe",
+   "bytes": 287716
+  },
+  {
    "file": "props/detail_rowboat.glb",
    "sha256": "9a96a5d16c1af4b57d56d12b98988f6f08d3d43ef352f415148f71242db4af7f",
    "bytes": 497316
+  },
+  {
+   "file": "props/detail_sail_bundle.glb",
+   "sha256": "35cc2371fd4c8cd706da623508b7448b7b140114b2523696b14c958c1bfaabee",
+   "bytes": 165636
+  },
+  {
+   "file": "props/detail_sand_dune.glb",
+   "sha256": "13feafb1fb3e750796d7880da7f7339c8ce11be28a7cd4a8a3fae50abb07f3f6",
+   "bytes": 123236
   },
   {
    "file": "props/detail_sawhorse.glb",
@@ -6608,14 +7480,39 @@
    "bytes": 240284
   },
   {
+   "file": "props/detail_shield_rack.glb",
+   "sha256": "c3bf79213112dfc61a3a32ebe10bec3da504ae58ff238cc269d79d784d72a504",
+   "bytes": 391648
+  },
+  {
    "file": "props/detail_shop_counter.glb",
-   "sha256": "3742169cf4d63e0c4c38250daaab497f9999ba11369e64da8994cf38528d9078",
-   "bytes": 280036
+   "sha256": "f267d65d9a541bd9d9315741f6a6ee811d787c7603f6307cb4ff169c1c1ec968",
+   "bytes": 280176
   },
   {
    "file": "props/detail_sign_post_city.glb",
    "sha256": "81504aa5954822808394fdad235c358a9d129cc63d2c9a383d1ded47a7793f4e",
    "bytes": 123256
+  },
+  {
+   "file": "props/detail_snow_cairn.glb",
+   "sha256": "36bfbcdb1da1334da297911b6c25214b8453de13e6b9552df8226c380b5cdbca",
+   "bytes": 118444
+  },
+  {
+   "file": "props/detail_snowdrift.glb",
+   "sha256": "e9eed4366444494aca70b44c8f1f444d5676e74024ec6d6eb10a81cce93a6442",
+   "bytes": 133540
+  },
+  {
+   "file": "props/detail_snowy_boulder.glb",
+   "sha256": "478f83fe01b4afa3214f50ba9c214812048a19c7473da6e9ca5767dc477cdbe9",
+   "bytes": 53972
+  },
+  {
+   "file": "props/detail_spiked_beam_barrier.glb",
+   "sha256": "c3d5ca0d3f4f318190163415582edad9d9839baae47d5512c4876c0b9fc9bb63",
+   "bytes": 126324
   },
   {
    "file": "props/detail_standing_mirror.glb",
@@ -6648,6 +7545,11 @@
    "bytes": 315104
   },
   {
+   "file": "props/detail_swamp_totem.glb",
+   "sha256": "232af25456e180735cf3e2237b1166679821ffda92a4528d0ca44dfe63d1fb04",
+   "bytes": 282588
+  },
+  {
    "file": "props/detail_telescope.glb",
    "sha256": "b77499edb2dcb1336eff5ae7c4184a88fba130e7bfa04d83e3570123a7d33b5e",
    "bytes": 134156
@@ -6678,9 +7580,14 @@
    "bytes": 409452
   },
   {
+   "file": "props/detail_winter_cache.glb",
+   "sha256": "283daf36154105b100d011549240f7a8e1dc5cb4142cff8db0ef58125654d5aa",
+   "bytes": 275516
+  },
+  {
    "file": "props/detail_writing_desk.glb",
-   "sha256": "546a0d1e1a2d265ed9aa5ceaad946d709eec1c63065586b8b4e25a7b752fc2d1",
-   "bytes": 148372
+   "sha256": "0b27c1b4f7fd30b0473ab726e24f0c41d14cbaefc6bef7df268457eca5974943",
+   "bytes": 148492
   },
   {
    "file": "props/display_shelf.glb",
@@ -6986,6 +7893,11 @@
    "file": "props/extra_weapon_rack.glb",
    "sha256": "73a0d231a49b9aa9459e25436508aa63662d429dbb3c004f6c934c92e1d27086",
    "bytes": 524384
+  },
+  {
+   "file": "props/fishing_crates.glb",
+   "sha256": "cbdc31fd846661d992a43e9aa20bbd8aca3cda3b729a4545d2d2e0975d452198",
+   "bytes": 71808
   },
   {
    "file": "props/fruit_cart.glb",
@@ -7328,9 +8240,9 @@
    "bytes": 118732
   },
   {
-   "file": "topdown.png",
-   "sha256": "157021b5ea1dfd294548a68476602d86fb95560af6ecbc3f5cec39a632f5e116",
-   "bytes": 14371518
+   "file": "topdown.webp",
+   "sha256": "cbe773b6115c222493a533da9e5c85a368b1bd2e25fdf3ab1565c4a8036caa6b",
+   "bytes": 1990906
   }
  ]
 }

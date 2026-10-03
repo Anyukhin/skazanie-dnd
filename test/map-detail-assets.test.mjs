@@ -56,6 +56,7 @@ test('заказ детализации содержит весь набор и 
   const integration = resolveMapDetailIntegration(spec)
   assert.deepEqual(manifest.pendingIntegration, integration.pendingIntegration)
   assert.deepEqual(manifest.structuralIntegration, integration.structuralIntegration)
+  assert.deepEqual(manifest.styleIntegration, integration.styleIntegration)
   const sourceSpec = readFileSync(`${root}docs/map-detail-assets-spec-v1.json`)
   assert.equal(manifest.provenance.sourceSpec.file, 'docs/map-detail-assets-spec-v1.json')
   assert.equal(manifest.provenance.sourceSpec.sha256, hash(sourceSpec))

@@ -153,12 +153,34 @@ visibility и scale остаются ответственностью канон
 blocksMove, blocksSight, cover или интерактивность: рендерер вписывает их в
 якорь стены, пролёта или крыши, а карта и правила остаются авторитетными.
 
-Сборщик рисованного stylepack теперь создаёт общий `topdown.png` из тех же GLB
-и материалов, что идут в 3D. В manifest для варианта записываются `preview`,
-`size` и, где нужен предел, `maxHeight`; alpha-test и прозрачность материалов
-сохраняются. Поэтому 2D и 3D используют один вариант модели и одинаковый
+Сборщик рисованного stylepack теперь создаёт общий `topdown.webp` из тех же GLB
+и материалов, что идут в 3D: кадры уложены полками без пустых ячеек сетки. В
+manifest для варианта записываются `preview`, `size` и, где нужен предел,
+`maxHeight`; alpha-test вырезанных материалов сохраняется. Поэтому 2D и 3D используют один вариант модели и одинаковый
 масштаб после поворота footprint. Старый manifest без этого атласа остаётся
 совместимым.
+
+## Подготовленные штампы с моделями стиля (04.10.2026)
+
+38 штампов набора детализации, которые были подготовлены без 3D, объявлены в
+`DETAIL_PROPS` и получили процедурные рецепты `tools/map-detail-models-frontier.mjs`
+(ящики рыбаков — из ящиков Fantasy Props). GLB набора у них нет: 3D и 2D-превью
+приходят из stylepack, а 2D без пакета рисует прежний штамп. Список фиксирует
+`integration.styleProps` заказа и `styleIntegration` паспорта набора.
+
+| Место | Предметы | Где появляются |
+| --- | --- | --- |
+| Зима | snowdrift, snowy_boulder, ice_pillars, frozen_pool, winter_cache, snow_cairn | холодный климат открытой местности, назначение `winter` |
+| Пустыня | sand_dune, desert_boulders, cactus_cluster, dead_scrub, oasis_pool, broken_obelisk | засушливый климат, назначение `desert` |
+| Болото | bog_pool, lily_pad_cluster, reed_cluster, rotten_log, mud_patch, swamp_totem, peat_mound | болотистый климат, назначение `swamp` |
+| Гавань | mooring_bollard, cargo_net, fishing_crates, lobster_cage, sail_bundle | портовое поселение, назначение `harbor` |
+| Лагерь | bedroll_cluster, shield_rack, camp_dummy, spiked_beam_barrier | сцена лагеря или стоянки, назначения `camp` и `siege` |
+| Лаборатория | alchemy_cauldron, arcane_lectern, ritual_circle, arcane_stone, potion_cabinet, magic_mirror | дом мага или алхимика, назначение `laboratory` |
+| Темница | prison_cage, dungeon_rack, iron_maiden, manacle_post | камеры и пыточная |
+
+Механики у них нет: лёд не скользит, вода в луже не мочит, клетка не держит,
+шипы не ранят. Ловушки, канализация, опускная решётка, шлюз и прочие 22
+подготовленных штампа остаются вне каталога, пока для них нет правил.
 
 Сохранённые кампании и карты не мигрируются. Вариант стиля не меняет смысл
 существующего `assetId`, а новая визуальная модель сама по себе не добавляет

@@ -407,3 +407,35 @@ test('дом из двух комнат за перегородкой — одн
     assert.equal(meshesNamed(controller.group, 'roof-hip:').length, 0)
   } finally { controller.dispose() }
 })
+
+test('труба и слуховое окно садятся на готовую кровлю, а не висят над скатом', () => {
+  const models = new Map()
+  const entries = ['chimney_brick', 'roof_dormer_roundtile'].map((role) => {
+    const template = new THREE.Group()
+    template.add(new THREE.Mesh(new THREE.BoxGeometry(1, 3, 1), new THREE.MeshBasicMaterial()))
+    models.set(`extra-${role}`, template)
+    return { key: `extra-${role}`, label: role, category: 'style-stylized', url: `props/extra_${role}.glb`, assetIds: [role], yaw: 0, source: 'style' }
+  })
+  const structuralAssets = { catalog: { version: 1, models: entries }, models }
+  const ray = new THREE.Raycaster()
+  const roofHeightAt = (group, x, z) => {
+    group.updateMatrixWorld(true)
+    ray.set(new THREE.Vector3(x, 50, z), new THREE.Vector3(0, -1, 0))
+    const hit = ray.intersectObject(group.getObjectByName('roof-shells'), true)[0]
+    assert.ok(hit, `кровля над ${x},${z}`)
+    return hit.point.y
+  }
+  // Двускатная крыша прямоугольного дома и вальма Г-образного: деталь по
+  // нижнему краю в кровле, не глубже десятой доли клетки и не над ней.
+  for (const map of [withZoneMaterial(mapFor(), 'stone'), houseMap([...rectCells(1, 1, 6, 3), ...rectCells(1, 4, 3, 4)])]) {
+    const controller = paintedRoofs(map, { structuralAssets })
+    try {
+      const chimney = controller.group.getObjectByName('structural:chimney_brick')
+      assert.ok(chimney, 'труба поставлена')
+      const surface = roofHeightAt(controller.group, chimney.position.x, chimney.position.z)
+      assert.ok(chimney.position.y <= surface + 1e-6 && chimney.position.y >= surface - .15, `труба на кровле: ${chimney.position.y} при кровле ${surface}`)
+      const dormer = controller.group.getObjectByName('structural:roof_dormer_roundtile')
+      if (dormer) assert.ok(dormer.position.y < roofHeightAt(controller.group, dormer.position.x, dormer.position.z), 'окно врезано в скат')
+    } finally { controller.dispose() }
+  }
+})

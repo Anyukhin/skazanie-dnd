@@ -30,10 +30,10 @@ const PUBLIC_ROOT = resolve(ROOT, 'public/assets')
 const THREE_ROOT = resolve(ROOT, 'node_modules/three')
 const STAGING = resolve(ROOT, 'tmp/graphics-styles-build', STYLE)
 const OUTPUT = resolve(PUBLIC_ROOT, 'styles', STYLE)
-const OUT_PATH = /^(meta\.json|topdown\.png|floors\/[a-z-]+\/(color|normal|orm|height)\.jpg|materials\/[a-z0-9-]+\/(color|normal|orm)\.(?:jpg|png)|props\/[a-z0-9_]+\.glb)$/u
+const OUT_PATH = /^(meta\.json|topdown\.webp|floors\/[a-z-]+\/(color|normal|orm|height)\.jpg|materials\/[a-z0-9-]+\/(color|normal|orm)\.(?:jpg|png)|props\/[a-z0-9_]+\.glb)$/u
 const TOOL_FILE = /^(map-detail-model-helpers|map-detail-models-[a-z-]+)\.mjs$/u
 const RELEASE_REF = /^(quaternius|quaternius-nature)\/[a-z0-9_]+\.glb$/u
-const TYPES = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.gltf': 'model/gltf+json', '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream' }
+const TYPES = { '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.gltf': 'model/gltf+json', '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream' }
 
 /** @param {string} base @param {string} target */
 function inside(base, target) {
@@ -56,7 +56,7 @@ const PAGE = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>
 
 /** @typedef {{ color: boolean, normal: boolean, orm: boolean, metalness: number, roughness: number, doubleSided: boolean, aspect?: number, colorFormat?: 'jpg'|'png', alphaTest?: number, transparent?: boolean, opacity?: number, depthWrite?: boolean }} BuiltMaterial */
 
-/** @typedef {{ image: 'topdown.png', key: string, frames: Record<string, { x: number, y: number, w: number, h: number }>, sizes: Record<string, [number, number, number]> }} BuiltAtlas */
+/** @typedef {{ image: 'topdown.webp', key: string, frames: Record<string, { x: number, y: number, w: number, h: number }>, sizes: Record<string, [number, number, number]> }} BuiltAtlas */
 
 /**
  * Манифест из файлов в staging. Готовые модели выпуска (`ref`) указываются
@@ -117,7 +117,7 @@ function finish(builtMaterials, atlas) {
   // повтором — уже другой пол.
   const revision = createHash('sha256').update(files.map((entry) => entry.sha256).join('')).update(JSON.stringify({ floors, materials, walls, props })).digest('hex').slice(0, 16)
   if (atlas) {
-    if (atlas.image !== 'topdown.png' || !/^[a-f0-9]{64}$/u.test(atlas.key) || !has(atlas.image)) throw new Error('некорректный 2D-атлас стиля')
+    if (atlas.image !== 'topdown.webp' || !/^[a-f0-9]{64}$/u.test(atlas.key) || !has(atlas.image)) throw new Error('некорректный 2D-атлас стиля')
     const actual = createHash('sha256').update(readFileSync(join(STAGING, atlas.image))).digest('hex')
     if (actual !== atlas.key) throw new Error('хеш 2D-атласа стиля не совпадает')
     for (const list of Object.values(props)) for (const prop of list) {
@@ -230,7 +230,7 @@ export function rebuildManifest() {
   return finish(Object.fromEntries(Object.entries(previous.materials ?? {}).filter(([, entry]) => existsSync(join(OUTPUT, entry.color))).map(([key, entry]) => [key, {
     color: true, normal: Boolean(entry.normal), orm: Boolean(entry.orm), metalness: entry.metalness, roughness: entry.roughness, doubleSided: entry.doubleSided, aspect: entry.aspect,
     colorFormat: entry.color?.endsWith('.png') ? 'png' : 'jpg', alphaTest: entry.alphaTest, transparent: entry.transparent, opacity: entry.opacity, depthWrite: entry.depthWrite,
-  }])), previous.atlas ? { image: 'topdown.png', key: previous.atlas.key, frames, sizes } : undefined)
+  }])), previous.atlas ? { image: 'topdown.webp', key: previous.atlas.key, frames, sizes } : undefined)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv.includes('--manifest-only')) {

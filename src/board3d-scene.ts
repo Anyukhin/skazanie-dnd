@@ -30,7 +30,7 @@ import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-
 import { loadGraphicsStylePack, peekGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
 import { buildStyledEdges, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, packHasWallLooks, structuralEdgeRolesForMap, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
 import { buildStyledFloors } from './board3d-floor-tiles'
-import { structuralLoadProps, type StructuralRole } from './board3d-structural'
+import { structuralLoadProps, structuralTemplate, type StructuralRole } from './board3d-structural'
 
 /** Высота срезанной стены в мировых единицах клетки. */
 /** Высота стены: выше пояса фигурки, как у наборных диорам, но не закрывает поле при взгляде сверху. */
@@ -999,11 +999,10 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   const stylePack: Promise<GraphicsStylePack | null> = options.graphicsStyle !== false && typeof window !== 'undefined'
     ? loadGraphicsStylePack()
     : Promise.resolve(null)
-  const structuralRoles = [...new Set<StructuralRole>([
-    ...structuralBridgeRolesForMap(map),
-    ...structuralEdgeRolesForMap(map),
-    ...structuralRoofRolesForMap(map),
-  ])]
+  const bridgeRoles = structuralBridgeRolesForMap(map)
+  const edgeRoles = structuralEdgeRolesForMap(map)
+  const roofRoles = structuralRoofRolesForMap(map)
+  const structuralRoles = [...new Set<StructuralRole>([...bridgeRoles, ...edgeRoles, ...roofRoles])]
   let resolvedStylePack = initialPack
   if (typeof window !== 'undefined') {
     const visibleProps = visiblePropsOnBoard(map)
@@ -1020,15 +1019,23 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       propAssets = assets
       structuralAssets = assets
       styledEdgeOptions.structuralAssets = assets
-      const nextBridges = createBridgeRails(map, landscapeKit, structuralAssets)
-      bridges?.dispose()
-      bridges = nextBridges
-      if (bridges) group.add(bridges.group)
-      if (styledEdges && packHasWallLooks(resolvedStylePack)) {
+      // Слой пересобирается, только если для него пришла хоть одна модель:
+      // доска пересобирается на каждой двери, и пустая пересборка стен и
+      // крыш удваивала бы эту работу.
+      const loaded = (roles: readonly StructuralRole[]) => roles.some((role) => structuralTemplate(assets, role))
+      if (loaded(bridgeRoles)) {
+        const nextBridges = createBridgeRails(map, landscapeKit, structuralAssets)
+        bridges?.dispose()
+        bridges = nextBridges
+        if (bridges) group.add(bridges.group)
+      }
+      if (styledEdges && packHasWallLooks(resolvedStylePack) && loaded(edgeRoles)) {
         const nextEdges = buildStyledEdges(map, resolvedStylePack, styledEdgeOptions)
         styledEdges.dispose()
         styledEdges = nextEdges
         group.add(styledEdges.group)
+      }
+      if (styledEdges && packHasWallLooks(resolvedStylePack) && loaded(roofRoles)) {
         const nextRoofs = createBoard3DRoofs(map, palette, {
           wallHeight: BOARD3D_WALL_HEIGHT, mode: roofs.getMode(), stylePack: resolvedStylePack,
           structuralAssets, onTexture: roofTextureReady,

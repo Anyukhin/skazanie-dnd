@@ -114,9 +114,9 @@ function assertPositionAndRotation(group, prop) {
 }
 
 test('каждый canonical prop/decal из реестра получает известный вид 3D-модели', () => {
-  // 105 прежних предметов и 168 из набора детализации (`server/detail-props.mjs`):
+  // 105 прежних предметов и 206 из набора детализации (`server/detail-props.mjs`):
   // у новых вид 3D берётся у двойника, пока не загружена их GLB.
-  assert.equal(CANONICAL_ASSETS.length, 273, 'ожидались 105 прежних prop/decal и 168 из набора детализации')
+  assert.equal(CANONICAL_ASSETS.length, 311, 'ожидались 105 прежних prop/decal и 206 из набора детализации')
   const unknown = CANONICAL_ASSETS.filter((asset) => {
     const kind = props3d.environmentModelKind(asset.id)
     return !kind || kind === 'generic' || kind === 'unknown'
