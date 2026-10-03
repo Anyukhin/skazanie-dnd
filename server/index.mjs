@@ -135,7 +135,7 @@ import {
   courierLetterPromiseFrom,
   courierToneFor,
 } from './courier-letters.mjs'
-import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
+import { DEADLY_ENCOUNTER_WARNING, assembleEncounter, encounterBarrierSides } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
@@ -322,6 +322,7 @@ setActiveMapLibrary(String(process.env.DND_MAP_LIBRARY ?? '').toLowerCase() === 
 const handleMapImportRoute = createMapImportRoutes({
   requireUser, getRoom, campaignMembershipFor, readBody, json, eventStore, authoritativeExecutor,
   persistAuthoritativeProjection, campaignHeroIds, viewerStateFor,
+  hasOpenCheck: (campaignId, stateVersion) => rollRegistry.hasOpenCheck({ campaignId, stateVersion }),
 })
 
 /**
@@ -4743,6 +4744,9 @@ const server = createServer((req, res) => {
           x: Number(cell.x), y: Number(cell.y), type: String(cell.type ?? 'floor'), revealed: cell.revealed === true,
           ...(cell.feature == null ? {} : { feature: String(cell.feature) }),
           ...(previewOccupiedCells.has(`${Number(cell.x)},${Number(cell.y)}`) ? { occupied: true } : {}),
+          // Предпросмотр видит те же стены и окна, что и движок, — иначе оценка
+          // угрозы считалась бы по другой расстановке.
+          ...(encounterBarrierSides(cell) ? { walls: encounterBarrierSides(cell) } : {}),
         })) },
         party,
         difficulty,

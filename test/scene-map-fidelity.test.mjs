@@ -62,3 +62,28 @@ test('максимальный отряд появляется на разных
     assert.ok(!occupied.has(`${player.x},${player.y}`))
   }
 })
+
+test('этап 7 плана карт: Рассказчик получает якоря карты — что видно и где, и чего на карте нет', () => {
+  const map = createTacticalMap({ width: 12, height: 10, locationId: 'yard', seed: 'landmarks' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', label: 'Двор' })
+  for (let y = 0; y < 10; y += 1) for (let x = 0; x < 12; x += 1) setCell(map, x, y, { passable: true, material: 'grass', zone: 'yard', revealed: x < 9 })
+  addProp(map, { id: 'well-1', assetId: 'well', x: 7.5, y: 4.5, footprint: [{ x: 7, y: 4 }], blocksMove: true })
+  addProp(map, { id: 'chest-hidden', assetId: 'chest', x: 10.5, y: 4.5, footprint: [{ x: 10, y: 4 }], blocksMove: true })
+  const state = {
+    sessionCode: 'LANDMARKS',
+    activePlayerId: 'hero',
+    players: [{ id: 'hero', character: 'Лира', x: 1, y: 4 }],
+    mechanics: { positions: { hero: { x: 1, y: 4 } } },
+    scene: {
+      title: 'Двор', location: 'Двор', location_id: 'yard',
+      map: serializeTacticalMap(map),
+      map_requirements: { version: 'scene-requirements/v3', items: [{ id: 'well', count: 1 }, { id: 'chest', count: 1 }, { id: 'shelter', count: 1 }], focus: 'well' },
+    },
+  }
+  const context = sceneContextForAgent(state, 'hero')
+  assert.deepEqual(context.landmarks, [{ kind: 'well', label: 'колодец', count: 1, where: 'к востоку', focus: true }],
+    'сундук за туманом не назван, колодец — с направлением от героя')
+  assert.deepEqual(context.landmarks_absent, [{ kind: 'shelter', label: 'навес' }], 'навеса на карте нет вовсе')
+  const plain = sceneContextForAgent({ ...state, scene: { ...state.scene, map_requirements: undefined } }, 'hero')
+  assert.equal(plain.landmarks, undefined, 'сцена без программы — без поля')
+})

@@ -15,8 +15,9 @@ import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { worldClockNarration } from './weather.mjs'
 import { sceneCanonFromEnvironment, sensoryAnchorConflicts } from './scene-canon.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
+import { requirementMention } from './scene-requirements.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v11'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v12'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v2'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
@@ -38,7 +39,7 @@ export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
 export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
 export const NARRATOR_DEFAULT_TIMEOUT_MS = 12_000
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v11.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v12.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v2.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
@@ -1364,6 +1365,13 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
 
   for (const violation of contentBoundaryViolations(text, narratorContentDirectives(brief))) {
     add(violation.code, violation.message, violation.match)
+  }
+  // Карта и слова говорят одно (этап 7 `docs/map-generation-plan.md`): то,
+  // что текст сцены обещал, а на карте не встало, Рассказчик не описывает.
+  const absent = brief.known_environment?.scene?.landmarks_absent
+  for (const landmark of Array.isArray(absent) ? absent : []) {
+    const mention = requirementMention(currentText, String(landmark?.kind ?? ''))
+    if (mention) add('ABSENT_LANDMARK_MENTIONED', `Повествование описывает то, чего нет на карте: ${sceneText(landmark?.label, 60)}`, mention)
   }
   const arcRecap = narratorArcRecap(brief, { recentNarrations })
   if (!arcRecapIsPresent(text, arcRecap)) {

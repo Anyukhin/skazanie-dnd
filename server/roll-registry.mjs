@@ -115,6 +115,18 @@ export class RollRegistry {
     return structuredClone(visible)
   }
 
+  /**
+   * Есть ли у кампании открытая проверка на этой версии состояния: заявленная,
+   * не отменённая и ещё не брошенная. Перестройка карты ждёт её завершения.
+   */
+  hasOpenCheck({ campaignId, stateVersion } = {}) {
+    this.cleanup()
+    return [...this.checks.values()].some((check) => check.campaign_id === String(campaignId)
+      && check.invalidated_at == null
+      && Number(check.context?.state_version) === Number(stateVersion)
+      && (!check.issued_roll_id || !this.rolls.get(check.issued_roll_id)?.consumed_by))
+  }
+
   pendingNarrationCheck({ campaignId, actorId, stateVersion } = {}) {
     this.cleanup()
     const entry = [...this.checks.values()].reverse().find(check => check.campaign_id === String(campaignId)

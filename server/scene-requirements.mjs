@@ -68,7 +68,7 @@ export const SCENE_REQUIREMENT_KINDS = Object.freeze([
   { id: 'threshold_stone', label: 'камни на пороге', pattern: /(?:камн(?:и|ей|ям|ями|ях)|камень|камнем|камня)\s+(?:у|на|перед|под)\s+порог\p{L}*|порожн\p{L}*\s+камн\p{L}*|порог(?:е|ах|ам|и|а|у)?\s+(?:\p{L}+\s+){0,2}камн(?:и|ей|ям|ями|ях)(?!\p{L})/u, assets: ['path_stone', 'ledge_step'] },
   { id: 'crate', label: 'ящик', pattern: /ящик(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})/u, assets: ['crate', 'crate_stack', 'chest'] },
   { id: 'chest', label: 'сундук', pattern: /сундук(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})|лар(?:ец|ца|цу|цом|це|цы|цов)(?!\p{L})|шкатулк\p{L}*/u, assets: ['chest'] },
-  { id: 'campfire', label: 'костёр', pattern: /кост(?:ёр|ер|ра|ру|ром|ре|ры|ров|рам|рами|рах)(?!\p{L})|кострищ\p{L}*/u, assets: ['campfire'] },
+  { id: 'campfire', label: 'костёр', pattern: /кост(?:ёр|ер|ра|ру|ром|ре|ры|ров|рам|рами|рах)(?!\p{L})|кострищ\p{L}*|костровищ\p{L}*/u, assets: ['campfire'] },
   { id: 'hearth', label: 'очаг', pattern: /очаг(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})|камин(?:а|у|ом|е|ы|ов)?(?!\p{L})/u, assets: ['fireplace', 'hearth_fire'] },
   { id: 'well', label: 'колодец', pattern: /колод(?:ец|ца|цу|цем|це|цы|цев|цам|цами|цах)(?!\p{L})/u, assets: ['well'] },
   { id: 'statue', label: 'статуя', pattern: /стату(?:я|и|ю|ей|е|й|ям|ями|ях)(?!\p{L})|изваян\p{L}*|идол(?:а|у|ом|е|ы|ов)?(?!\p{L})/u, assets: ['statue'] },
@@ -315,6 +315,67 @@ export function requiredProgramKinds(program) {
     ...(Array.isArray(source.clues) ? source.clues : []),
   ].map((id) => String(id ?? '')).filter((id) => KINDS_BY_ID.has(id))
   return [...new Set(ids)]
+}
+
+/**
+ * Упоминает ли текст объект этого вида — тем же словарём, по которому
+ * программа читала сцену. Отрицание рядом («без навеса») упоминанием не
+ * считается. Нужен Рассказчику (этап 7): то, чего на карте нет, он не
+ * описывает.
+ *
+ * @param {unknown} text
+ * @param {string} id
+ * @returns {string} найденное слово или пустая строка
+ */
+export function requirementMention(text, id) {
+  const kind = KINDS_BY_ID.get(id)
+  const source = clean(text)
+  if (!kind || !source) return ''
+  for (const match of source.matchAll(new RegExp(kind.pattern.source, 'gu'))) {
+    const at = match.index ?? 0
+    if (at > 0 && /\p{L}/u.test(source[at - 1])) continue
+    if (NEGATION_BEFORE.test(source.slice(Math.max(0, at - 64), at))) continue
+    return match[0]
+  }
+  return ''
+}
+
+/**
+ * Паспорт якорей карты (этап 5): сколько объектов каждого вида словаря на ней
+ * есть. Считается по полному счётчику предметов, а не по двадцати частым из
+ * паспорта, и по клеточным объектам — настилам.
+ *
+ * @param {Record<string, number>} props счётчик `assetId → штук`
+ * @param {Record<string, number>} [terrain] `platform → штук`
+ * @returns {Record<string, number>} только виды, что есть на карте
+ */
+export function anchorCountsFor(props, terrain = {}) {
+  /** @type {Record<string, number>} */
+  const result = {}
+  for (const kind of SCENE_REQUIREMENT_KINDS) {
+    const count = kind.terrain ? Number(terrain?.[kind.terrain]) || 0
+      : kind.assets.reduce((sum, assetId) => sum + (Number(props?.[assetId]) || 0), 0)
+    if (count > 0) result[kind.id] = count
+  }
+  return result
+}
+
+/**
+ * Что из обещанного держит карта по её паспорту якорей.
+ * @param {Array<{ id: string, count: number }>} requirements
+ * @param {Record<string, number>} anchors
+ * @returns {{ met: string[], missing: string[] }}
+ */
+export function anchorCoverage(requirements, anchors) {
+  /** @type {string[]} */
+  const met = []
+  /** @type {string[]} */
+  const missing = []
+  for (const requirement of requirements) {
+    if ((Number(anchors?.[requirement.id]) || 0) >= Math.max(1, requirement.count)) met.push(requirement.id)
+    else missing.push(requirement.id)
+  }
+  return { met, missing }
 }
 
 /**

@@ -560,6 +560,65 @@ function buildRoofRects(map: TacticalMap) {
   return result
 }
 
+/**
+ * Нераскрытые помещения: связные области нераскрытых клеток, со всех сторон
+ * закрытые стенами, дверями, окнами или кладкой. Их пол игроку не виден, и
+ * прежде на их месте в 3D зиял чёрный провал (этап 5
+ * `docs/map-generation-plan.md`). Сюда идёт только то, что проекция и так
+ * отдаёт игроку снаружи, — рёбра стен и форма клеток; область, открытая в
+ * туман улицы, крышки не получает, чтобы не выдать, где стоит постройка.
+ */
+export function closedUnrevealedRegions(map: TacticalMap): TacticalCell[][] {
+  const regions: TacticalCell[][] = []
+  const seen = new Set<string>()
+  const hidden = (x: number, y: number) => {
+    const cell = cellAt(map, x, y)
+    return Boolean(cell && !cell.revealed && cell.passable)
+  }
+  const border = (x: number, y: number) => x <= 0 || y <= 0 || x >= map.width - 1 || y >= map.height - 1
+  const walls = new Set<string>()
+  for (const edge of edgeList(map)) {
+    if (!STRUCTURAL_EDGES.has(edge.kind)) continue
+    const other = edgeNeighbor(edge)
+    walls.add(`${edge.x},${edge.y}|${other.x},${other.y}`)
+    walls.add(`${other.x},${other.y}|${edge.x},${edge.y}`)
+  }
+  const structural = (x: number, y: number, nx: number, ny: number) => walls.has(`${x},${y}|${nx},${ny}`)
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (seen.has(`${x},${y}`) || !hidden(x, y)) continue
+    const queue: Array<{ x: number; y: number }> = [{ x, y }]
+    seen.add(`${x},${y}`)
+    let closed = true
+    let walled = false
+    for (let index = 0; index < queue.length; index += 1) {
+      const current = queue[index]
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = current.x + dx
+        const ny = current.y + dy
+        const neighbor = cellAt(map, nx, ny)
+        if (!neighbor) { closed = false; continue }
+        const wall = structural(current.x, current.y, nx, ny)
+        if (wall) { walled = true; continue }
+        if (hidden(nx, ny)) {
+          if (!seen.has(`${nx},${ny}`)) {
+            seen.add(`${nx},${ny}`)
+            queue.push({ x: nx, y: ny })
+          }
+          continue
+        }
+        // Глухая клетка — кладка вокруг комнаты, но скала у края карты —
+        // это туман за околицей, а не стена дома. Раскрытая проходимая без
+        // стены между — область открыта в видимый мир.
+        if (neighbor.passable) closed = false
+        else if (!neighbor.revealed && border(nx, ny)) closed = false
+        else walled = true
+      }
+    }
+    if (closed && walled) regions.push(queue.map((point) => cellAt(map, point.x, point.y)).filter((cell): cell is TacticalCell => Boolean(cell)))
+  }
+  return regions
+}
+
 /** Создаёт видимый слой крыш, не добавляя ничего в TacticalMap и не раскрывая туман. */
 export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, options: Board3DRoofOptions = {}): Board3DRoofController {
   const resources: RoofResources = { geometries: new Set(), materials: new Set() }
@@ -571,9 +630,24 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
   structures.name = 'roof-structures'
   const upperWalls = roofObject(new THREE.Group())
   upperWalls.name = 'roof-upper-walls'
-  group.add(shells, structures, upperWalls)
+  // Крышки нераскрытых помещений видны в обоих режимах крыш: под ними пол
+  // игроку неизвестен, и срезать нечего.
+  const closedCaps = roofObject(new THREE.Group())
+  closedCaps.name = 'roof-closed-caps'
+  group.add(shells, structures, upperWalls, closedCaps)
   const cutWallHeight = Number.isFinite(options.wallHeight) ? Math.max(.1, options.wallHeight as number) : .68
   const fullWallHeight = Math.max(BOARD3D_FULL_WALL_HEIGHT, cutWallHeight + .8)
+  const capMaterial = roofMaterial(resources, palette.prop, { roughness: .95 })
+  for (const region of closedUnrevealedRegions(map)) {
+    for (const rect of mergeRuns(region)) {
+      const width = rect.maxX - rect.minX + 1
+      const depth = rect.maxY - rect.minY + 1
+      const baseY = Math.max(...rect.cells.map((cell) => terrainHeightAt(map, cell.x, cell.y)))
+      addMesh(resources, closedCaps, `roof-closed:${rect.minX},${rect.minY},${rect.maxX},${rect.maxY}`,
+        new THREE.BoxGeometry(width, ROOF_THICKNESS, depth), capMaterial,
+        [rect.minX + width / 2, baseY + cutWallHeight + ROOF_THICKNESS / 2, rect.minY + depth / 2])
+    }
+  }
   const seenUpperWallEdges = new Set<string>()
   for (const rect of buildRoofRects(map)) {
     const style = roofStyle(map, rect.zone)

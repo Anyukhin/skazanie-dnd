@@ -20,9 +20,9 @@
  */
 import { createHash } from 'node:crypto'
 import { assetById } from './asset-registry.mjs'
-import { ensurePropAccess, placeRequiredProps } from './prop-placement.mjs'
+import { INDOOR_THEMES, ensurePropAccess, placeRequiredProps } from './prop-placement.mjs'
 import { normalizeSceneRequirements, requirementAssets, requirementTerrain } from './scene-requirements.mjs'
-import { addProp, cellAt, edgeNeighbor, reachableCells, setCell } from './tactical-map.mjs'
+import { addProp, cellAt, edgeBetween, edgeNeighbor, reachableCells, setCell } from './tactical-map.mjs'
 
 /** @typedef {import('./tactical-map.mjs').TacticalMap} TacticalMap */
 
@@ -90,7 +90,8 @@ function openGround(map) {
   const cells = []
   for (let y = 1; y < map.height - 1; y += 1) for (let x = 1; x < map.width - 1; x += 1) {
     const cell = cellAt(map, x, y)
-    if (!cell?.passable || cell.surface === 'water' || kind.get(cell.zone) === 'interior') continue
+    // Тропа к двери остаётся проходом: ни навеса, ни настила на ней.
+    if (!cell?.passable || cell.surface === 'water' || kind.get(cell.zone) === 'interior' || cell.zone === 'path') continue
     if (reached && !reached.has(`${x},${y}`)) continue
     cells.push({ x, y })
   }
@@ -132,6 +133,16 @@ export function placeSceneFocus(map, assets, { seed }) {
   const asset = assets.map((id) => assetById(id)).find(Boolean)
   if (!asset) return null
   const ids = new Set(assets)
+  // Очаг, алтарь, стол — вещи под крышей. Им не место посреди двора: такой
+  // центр ставит обычная расстановка в комнату, к стене, как и положено очагу
+  // (корпус программ: камин усадьбы встал на улице перед окном).
+  if (asset.themes.some((theme) => INDOOR_THEMES.has(theme)) && !asset.themes.includes('exterior')) {
+    const inside = map.props.find((prop) => ids.has(prop.assetId))
+    if (inside) return inside.id
+    const before = map.props.length
+    placeRequiredProps(map, [{ assets, count: 1 }], { seed })
+    return map.props.slice(before).find((prop) => ids.has(prop.assetId))?.id ?? null
+  }
   const { cells, party } = openGround(map)
   const open = new Set(cells.map((cell) => `${cell.x},${cell.y}`))
   const existing = map.props.find((prop) => ids.has(prop.assetId) && open.has(`${Math.floor(prop.x)},${Math.floor(prop.y)}`))
@@ -147,6 +158,9 @@ export function placeSceneFocus(map, assets, { seed }) {
     const footprint = []
     for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) footprint.push({ x: cell.x + dx, y: cell.y + dy })
     if (footprint.some((point) => !open.has(`${point.x},${point.y}`) || taken.has(`${point.x},${point.y}`))) continue
+    // Высокий предмет перед окном заслоняет и свет, и обзор.
+    if (asset.blocksSight && footprint.some((point) => [[1, 0], [-1, 0], [0, 1], [0, -1]]
+      .some(([dx, dy]) => edgeBetween(map, point.x, point.y, point.x + dx, point.y + dy)?.kind === 'window'))) continue
     // Простор считается от каждой клетки предмета: навес 3×2 не встаёт в
     // проулок, где свободна лишь одна его клетка.
     const room = Math.min(...footprint.map((point) => clearance(map, point, taken, 4)))

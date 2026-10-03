@@ -25,3 +25,8 @@
 .map-import-warnings { display: block; color: #c9a26b; }
 .map-import-warnings li::before { content: '! '; }
 @media (max-width: 640px) { .modal.map-import-modal { padding: 26px 16px 20px; } .map-import-preview { height: 46vh; } }
+
+/* Перестройка карты по описанию сцены (этап 8): отдельный блок под импортом. */
+.map-import-rebuild { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line, rgba(255,255,255,.12)); display: grid; gap: 8px; }
+.map-import-rebuild h3 { margin: 0; font: 600 var(--fs-md, 15px) var(--f-ui, inherit); }
+.map-import-rebuild p { margin: 0; color: var(--muted, #a99f8c); font-size: var(--fs-sm, 13px); }

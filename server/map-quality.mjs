@@ -187,6 +187,26 @@ export function auditTacticalMap(map) {
     }
   }
 
+  // --- двери поселения выходят к дороге -------------------------------------
+  // В поселении (у карты есть зона улицы) дверь дома ведёт на улицу, площадь
+  // или тропу, а не в чужой двор: «Дом 9» стоял в углу деревни дверью в поле,
+  // без единой дорожки (замечание владельца 2026-10-03).
+  if (map.zones.some((zone) => zone.id === 'street')) {
+    const road = (/** @type {number} */ x, /** @type {number} */ y) => ['street', 'square', 'path'].includes(cellAt(map, x, y)?.zone ?? '')
+    for (const door of map.doors) {
+      const next = edgeNeighbor(door)
+      const sides = [{ x: door.x, y: door.y }, next]
+      const outside = sides.find((point) => kindAt(point.x, point.y) === 'exterior' && cellAt(map, point.x, point.y)?.passable)
+      if (!outside || !sides.some((point) => kindAt(point.x, point.y) === 'interior')) continue
+      const touches = road(outside.x, outside.y) || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => road(outside.x + dx, outside.y + dy))
+      if (!touches) add('DOOR_OFF_ROAD', `${door.id}@${outside.x},${outside.y}`)
+    }
+    // Тропа — проход: предмет, мешающий шагу, на ней перекрыл бы путь к двери.
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      if (cellAt(map, x, y)?.zone === 'path' && blockingAt.has(`${x},${y}`)) add('PATH_BLOCKED', `${blockingAt.get(`${x},${y}`)}@${x},${y}`)
+    }
+  }
+
   // --- постройки и комнаты --------------------------------------------------
   // Постройка — помещения, связанные любым ребром, кроме глухой стены и окна.
   const buildings = interiorComponents(map, (edge) => !edge || edge.kind === 'door' || edge.kind === 'none')
@@ -555,6 +575,10 @@ const OPEN_SCENE_BLOCKED_SHARE = 0.35
 /** Закуток недосягаемых клеток больше этого — уже не огрех, а потерянная часть карты. */
 const POCKET_LIMIT = 4
 
+/** Простор у центра сцены: свободных досягаемых клеток в двух шагах вокруг предмета. */
+const FOCUS_RADIUS = 2
+const FOCUS_MIN_ROOM = 6
+
 /**
  * Проверка карты против программы сцены (`scene.map_requirements`): обещанное
  * стоит на карте и до него можно дойти от входа отряда. Одна мерка для
@@ -616,6 +640,29 @@ export function programReport(map, program, { minSize = null, openScene = false 
       : map.props.filter((prop) => assets.has(prop.assetId))
         .map((prop) => (prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]))
     if (!anchors.some(near)) problems.push({ code: 'PROGRAM_ANCHOR_UNREACHABLE', detail: id })
+  }
+
+  // Центр сцены — место, где стоят люди: вокруг него нужен простор. Лагерь в
+  // лесу густ, но у костра — поляна; навес не втиснут между сараями.
+  const focus = typeof (/** @type {any} */ (program)?.focus) === 'string' ? /** @type {any} */ (program).focus : ''
+  if (focus && coverage.met.includes(focus) && !requirementTerrain(focus)) {
+    const assets = new Set(requirementAssets(focus))
+    let roomiest = 0
+    for (const prop of map.props) {
+      if (!assets.has(prop.assetId)) continue
+      const own = new Set((prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]).map((point) => `${point.x},${point.y}`))
+      /** @type {Set<string>} */
+      const around = new Set()
+      for (const key of own) {
+        const [x, y] = key.split(',').map(Number)
+        for (let dy = -FOCUS_RADIUS; dy <= FOCUS_RADIUS; dy += 1) for (let dx = -FOCUS_RADIUS; dx <= FOCUS_RADIUS; dx += 1) {
+          const at = `${x + dx},${y + dy}`
+          if (!own.has(at) && reached.has(at) && !blocked.has(at)) around.add(at)
+        }
+      }
+      roomiest = Math.max(roomiest, around.size)
+    }
+    if (roomiest < FOCUS_MIN_ROOM) problems.push({ code: 'FOCUS_CRAMPED', detail: `${focus}: ${roomiest} кл.` })
   }
 
   let edgeProps = 0

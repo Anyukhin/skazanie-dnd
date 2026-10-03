@@ -3,8 +3,9 @@ import test from 'node:test'
 import { gzipSync } from 'node:zlib'
 
 import { decodeSlab, SLAB_MAX_TEXT_LENGTH } from '../server/talespire-slab.mjs'
-import { importTaleSpireSlab, roomLabelFor } from '../server/talespire-import.mjs'
-import { cellAt, deserializeTacticalMap, edgeList, validateTacticalMap } from '../server/tactical-map.mjs'
+import { importTaleSpireSlab, repairImportedLevel, roomLabelFor } from '../server/talespire-import.mjs'
+import { addProp, cellAt, createTacticalMap, deserializeTacticalMap, edgeList, reachableCells, setCell, validateTacticalMap } from '../server/tactical-map.mjs'
+import { DOORWAY_SIGHT_CELLS, cellsVisibleFrom } from '../server/rules/tactical-geometry.mjs'
 import { ASSETS, HOUSE_SLAB, encodeSlabV1, encodeSlabV2, housePlacements } from './talespire-fixtures.mjs'
 
 /**
@@ -109,12 +110,19 @@ test('двухэтажный дом: этажи, стены, дверь, пре�
   assert.ok(entrance)
   assert.equal(cellAt(ground, entrance.x, entrance.y)?.passable, true)
   assert.equal(cellAt(ground, entrance.x, entrance.y)?.revealed, true)
-  // За дверью — нераскрытая комната.
-  const door = ground.doors[0]
-  const behind = door.dir === 'e' ? cellAt(ground, door.x + 1, door.y) : cellAt(ground, door.x, door.y + 1)
-  const before = cellAt(ground, door.x, door.y)
-  assert.ok(behind && before)
-  assert.notEqual(behind.revealed, before.revealed, 'дверь разделяет раскрытую и нераскрытую части')
+  // Раскрыто ровно то, куда можно дойти без дверей, и то, что видно от входа
+  // правилом движка (`cellsVisibleFrom`): сквозь решётку и окно — да, сквозь
+  // закрытую дверь и стену — нет. Остальное остаётся туманом.
+  const walk = reachableCells(ground, entrance.x, entrance.y, { throughDoors: false })
+  const seen = new Set(cellsVisibleFrom(ground, entrance, { radius: DOORWAY_SIGHT_CELLS }).map((cell) => `${cell.x},${cell.y}`))
+  let hidden = 0
+  for (let y = 0; y < ground.height; y += 1) for (let x = 0; x < ground.width; x += 1) {
+    const cell = cellAt(ground, x, y)
+    if (!cell) continue
+    if (!cell.revealed) hidden += 1
+    else assert.ok(walk.has(`${x},${y}`) || seen.has(`${x},${y}`) || (x === entrance.x && y === entrance.y), `клетка ${x},${y} раскрыта без причины`)
+  }
+  assert.ok(hidden > 0, 'за закрытой дверью остаётся туман')
 })
 
 test('подписи комнат следуют обстановке, а один череп склепа не делает', () => {
@@ -161,4 +169,53 @@ test('незнакомые ассеты пропускаются с предуп
   assert.throws(() => importTaleSpireSlab(encodeSlabV2([{ asset: ASSETS.wallAlongZ, x: 0, y: 0, z: 0 }])), (error) => error.code === 'TALESPIRE_NO_FLOOR')
   const strip = Array.from({ length: 101 }, (_, x) => ({ asset: ASSETS.floor, x, y: 0, z: 0 }))
   assert.throws(() => importTaleSpireSlab(encodeSlabV2(strip)), (error) => error.code === 'TALESPIRE_MAP_TOO_LARGE')
+})
+
+test('этап 5: паспорт карты считает якоря программы сцены и оценку качества импорта', () => {
+  const result = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'loc-house' })
+  assert.equal(result.passport.version, 2)
+  assert.equal(typeof result.passport.anchors, 'object')
+  for (const [kind, count] of Object.entries(result.passport.anchors)) assert.ok(count > 0, kind)
+  const { quality } = result.passport
+  assert.ok(quality.score >= 0 && quality.score <= 1)
+  assert.ok(quality.reachable > 0.9, 'пол дома досягаем от входа')
+  assert.ok(quality.cells > 0)
+})
+
+/** Поле 10×8 из травы без зон: основа ручных карт ремонта импорта. */
+function grassLevel() {
+  const map = createTacticalMap({ width: 10, height: 8, locationId: 'repair', seed: 'repair' })
+  for (let y = 0; y < 8; y += 1) for (let x = 0; x < 10; x += 1) setCell(map, x, y, { passable: true, material: 'grass' })
+  return map
+}
+
+test('этап 5: перепад без лестницы получает пандус, высокий островок замуровывается', () => {
+  const ramp = grassLevel()
+  for (const [x, y] of [[5, 3], [6, 3], [5, 4], [6, 4]]) setCell(ramp, x, y, { elevation: 5 })
+  const stats = {}
+  repairImportedLevel(ramp, stats)
+  assert.equal(stats.ramps, 1)
+  const steps = []
+  for (let y = 0; y < 8; y += 1) for (let x = 0; x < 9; x += 1) steps.push(Math.abs(cellAt(ramp, x, y).elevation - cellAt(ramp, x + 1, y).elevation))
+  assert.ok(steps.some((step) => step > 0 && step <= 3), 'на помост в пять футов ведёт шаг не выше трёх')
+
+  const tower = grassLevel()
+  for (const [x, y] of [[5, 3], [6, 3]]) setCell(tower, x, y, { elevation: 15 })
+  const towerStats = {}
+  repairImportedLevel(tower, towerStats)
+  assert.equal(towerStats.sealedCells, 2)
+  assert.equal(cellAt(tower, 5, 3).passable, false, 'на площадку в пятнадцать футов без лестницы не встать — она глухая')
+})
+
+test('этап 5: предмет на крайней клетке сдвигается внутрь, а если некуда — убирается', () => {
+  const map = grassLevel()
+  addProp(map, { id: 'barrel-edge', assetId: 'barrel', x: 0.5, y: 3.5, footprint: [{ x: 0, y: 3 }], blocksMove: true })
+  addProp(map, { id: 'statue-corner', assetId: 'statue', x: 9.5, y: 7.5, footprint: [{ x: 9, y: 7 }], blocksMove: true })
+  addProp(map, { id: 'crate-blocker', assetId: 'crate', x: 8.5, y: 6.5, footprint: [{ x: 8, y: 6 }], blocksMove: true })
+  const stats = {}
+  repairImportedLevel(map, stats)
+  assert.deepEqual(map.props.find((prop) => prop.id === 'barrel-edge')?.footprint, [{ x: 1, y: 3 }])
+  assert.equal(map.props.some((prop) => prop.id === 'statue-corner'), false, 'угол занят ящиком — статуя убрана')
+  assert.equal(stats.edgePropsMoved, 1)
+  assert.equal(stats.edgePropsDropped, 1)
 })

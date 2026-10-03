@@ -137,7 +137,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | `server/director-agent.mjs` | `prompts/director/v4_story.txt`, `prompts/director/v4_chaos.txt` | темп, развилки, переходы |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
 | `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v6.txt` | социальные сцены |
-| `server/narrator.mjs` | `prompts/narrator/v11.txt` | текст после commit |
+| `server/narrator.mjs` | `prompts/narrator/v12.txt` | текст после commit; якоря карты сцены (`landmarks`, `landmarks_absent`) |
 | `server/scene-architect.mjs` | `prompts/map_architect/v8.txt` | новые области, их заготовки ведущего (`secrets`) и якоря карты (`map.design.landmarks`) |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v8.txt` | исходная ситуация кампании, заготовки ведущего (`secrets`) и якоря первой карты |
 | `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v8.txt` | прочтение свободного действия и его маршрут (`check`/`travel`/`talk`/`clarify`) |
@@ -148,7 +148,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
 рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`—`v7`,
 `campaign_creator/v1`—`v7`, `director/v1`—`v3`, `map_architect/v1`—`v7`,
-`narrator/v1`—`v10`, `npc_controller/social_v1`—`social_v5`) плюс
+`narrator/v1`—`v11`, `npc_controller/social_v1`—`social_v5`) плюс
 `narrator/few-shot-v1.json` и `few-shot-v2.json`. Актуальна та
 версия, которую действительно читает модуль из таблицы, — остальные оставлены
 как история контракта.
@@ -271,7 +271,11 @@ commit, механики он не касается.
 | Игрок видит только разрешённое | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
-| Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs` |
+| Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |
+| В поселении у каждой двери дома есть дорога, на тропе ничего не стоит | `test/settlement-generator.test.mjs` (`DOOR_OFF_ROAD`, `PATH_BLOCKED`) |
+| Рассказчик не описывает то, что сцена обещала, а карта не держит | `test/narrator.test.mjs` (`ABSENT_LANDMARK_MENTIONED`) |
+| Перестройка карты — только ведущему, вне боя, голосования и открытой проверки; та же схема события, что у импорта, replay сходится | `test/map-import-command.test.mjs`, `test/map-import-api.test.mjs` |
+| Враг встречи появляется по эту сторону дверей и окон от отряда | `test/encounter-assembler.test.mjs` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
 | Корпус тестов не ходит в интернет: каждый запуск `server/index.mjs` либо с пустым `ROUTERAI_API_KEY`, либо с локальным `ROUTERAI_BASE_URL` | `test/test-network-isolation.test.mjs` |
 

@@ -8,6 +8,7 @@ import { levelKey } from '../server/adventure-director.mjs'
 import { generateBuildingScene } from '../server/building-generator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
+  MIN_LIBRARY_QUALITY,
   MIN_LIBRARY_SCORE,
   MapLibrary,
   chooseLibraryMap,
@@ -316,4 +317,43 @@ test('деревня с обещанным навесом строится ге�
   assert.deepEqual(normalizeCampaignState(after).scene.map_requirements, promised.payload.scene.map_requirements, 'нормализация состояния поле не теряет')
   const view = campaignStateForViewer(after, { id: 'player', role: 'player' }, 'hero-a')
   assert.equal(view.scene.map_requirements, undefined, 'служебный список карты игроку не отдаётся')
+})
+
+test('этап 5: обязательные якоря программы отбирают карту, оценка качества импорта — тоже', () => {
+  const program = { items: [{ id: 'shelter', count: 1 }, { id: 'well', count: 1 }, { id: 'chest', count: 1 }], focus: 'shelter', posts: [{ npc: 'Терен', id: 'chest' }], clues: ['well'] }
+  const request = libraryRequestFor({ themeId: 'settlement', requirements: program.items, program })
+  assert.deepEqual(request.required.sort(), ['chest', 'shelter', 'well'])
+  // Паспорт якорей: у одной карты два обязательных из трёх, у другой — один.
+  const two = yardEntry('two-of-three', { cells: 600 })
+  two.passport.anchors = { shelter: 1, well: 1 }
+  const one = yardEntry('one-of-three', { cells: 600 })
+  one.passport.anchors = { shelter: 1 }
+  assert.equal(chooseLibraryMap([one], request, { seed: 'a' }), null, 'меньше 60% обязательного — карта не годится')
+  assert.equal(chooseLibraryMap([one, two], request, { seed: 'a' })?.id, 'two-of-three')
+  // Старый паспорт без якорей: якоря выводятся из счётчика предметов.
+  const legacy = yardEntry('legacy', { cells: 600, props: { market_awning: 1, well: 1, chest: 1 } })
+  assert.equal(chooseLibraryMap([legacy], request, { seed: 'a' })?.id, 'legacy')
+  // Карта с плохой оценкой импорта в автоподбор не идёт.
+  const poor = yardEntry('poor', { cells: 600, props: { market_awning: 1, well: 1, chest: 1 } })
+  poor.passport.quality = { score: MIN_LIBRARY_QUALITY - 0.1, reachable: 0.6, dropped: 0.4, cells: 600 }
+  assert.equal(chooseLibraryMap([poor], request, { seed: 'a' }), null)
+})
+
+test('этап 5: карта, не прошедшая проверку программы, уступает следующей, а не сразу генератору', (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-next-'))
+  t.after(() => rmSync(storage, { recursive: true, force: true }))
+  const library = new MapLibrary(storage)
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-next' })
+  library.put(yardEntry('tt-first', { cells: 600 }), imported.levels)
+  library.put(yardEntry('tt-second', { cells: 600 }), imported.levels)
+  const seen = []
+  const picked = library.pick(libraryRequestFor({ themeId: 'settlement' }), {
+    seed: 'next',
+    check: () => {
+      seen.push('check')
+      return seen.length > 1
+    },
+  })
+  assert.ok(picked, 'вторая карта выбрана')
+  assert.equal(seen.length, 2, 'первую отбросила проверка, вторую она пропустила')
 })

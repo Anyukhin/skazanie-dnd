@@ -35,6 +35,9 @@ import { fileURLToPath } from 'node:url'
 
 import { assetById } from './asset-registry.mjs'
 import { levelLabelFor } from './level-generator.mjs'
+import { countPlatforms } from './map-quality.mjs'
+import { anchorCountsFor } from './scene-requirements.mjs'
+import { DOORWAY_SIGHT_CELLS, cellsVisibleFrom } from './rules/tactical-geometry.mjs'
 import { decodeSlab } from './talespire-slab.mjs'
 import {
   MAX_LEVEL_OFFSET,
@@ -126,7 +129,7 @@ export class TaleSpireImportError extends Error {
 /**
  * @typedef {object} TaleSpireImportResult
  * @property {ImportedLevel[]} levels
- * @property {ReturnType<typeof mapPassport> & { genre: 'scifi'|'fantasy' }} passport
+ * @property {ReturnType<typeof mapPassport> & { genre: 'scifi'|'fantasy', quality: ReturnType<typeof importQuality> }} passport
  * @property {Record<string, number>} stats
  * @property {string[]} warnings
  * @property {{ format: string, version: number, sha256: string, instances: number }} source
@@ -439,6 +442,7 @@ export function importTaleSpireSlab(text, { locationId = 'talespire-import', the
   }
   for (const [level, map] of maps) {
     assignRooms(map, /** @type {Map<string, Surface>} */ (levelCells.get(level)), ceilings, { toX, toY, level, underground })
+    repairImportedLevel(map, stats)
   }
 
   // --- вход, раскрытие, проверка ---------------------------------------------
@@ -447,6 +451,12 @@ export function importTaleSpireSlab(text, { locationId = 'talespire-import', the
   if (!entrance) throw new TaleSpireImportError('На этаже входа нет свободной клетки для отряда', 'TALESPIRE_NO_ENTRANCE')
   addSpawnPoint(ground, { id: 'talespire-entrance', x: entrance.x, y: entrance.y, role: 'party' })
   revealAround(ground, entrance)
+  // Сквозь окна и открытые двери от входа видно и то, что за ними: тем же
+  // правилом, что раскрывает клетки при шаге героя (`cellsVisibleFrom`).
+  // Прежде дом за окном оставался чёрным провалом, хотя отряд смотрит прямо
+  // в него (этап 5 `docs/map-generation-plan.md`). Закрытая дверь и стена
+  // взгляд по-прежнему держат.
+  for (const cell of cellsVisibleFrom(ground, entrance, { radius: DOORWAY_SIGHT_CELLS })) setCell(ground, cell.x, cell.y, { revealed: true })
   for (const map of maps.values()) {
     if (map === ground) continue
     const arrival = map.props.find((prop) => prop.transition)?.footprint[0]
@@ -464,7 +474,11 @@ export function importTaleSpireSlab(text, { locationId = 'talespire-import', the
   }
   return {
     levels: imported,
-    passport: { ...mapPassport([...maps.values()]), genre: boxes.filter((box) => box.genre === 's').length > boxes.length * 0.2 ? 'scifi' : 'fantasy' },
+    passport: {
+      ...mapPassport([...maps.values()]),
+      genre: boxes.filter((box) => box.genre === 's').length > boxes.length * 0.2 ? 'scifi' : 'fantasy',
+      quality: importQuality(ground, stats),
+    },
     stats,
     warnings,
     source: { format: 'talespire-slab', version: slab.version, sha256: sha256(String(text)), instances: slab.instances.length },
@@ -1071,6 +1085,14 @@ export function mapPassport(maps) {
     ['doors', doors > 0], ['windows', windows > 0],
   ]
   for (const [feature, present] of checks) if (present) features.add(feature)
+  // Паспорт якорей (этап 5 `docs/map-generation-plan.md`): виды словаря
+  // программы сцены на этаже входа — по всем его предметам и настилам, а не по
+  // двадцати частым из `props`. По нему библиотека сверяет обещанное сценой.
+  const entryMap = maps.find((map) => map.levelIndex === 0) ?? maps[0]
+  /** @type {Record<string, number>} */
+  const entryProps = {}
+  for (const prop of entryMap?.props ?? []) if (!prop.transition) entryProps[prop.assetId] = (entryProps[prop.assetId] ?? 0) + 1
+  const anchors = entryMap ? anchorCountsFor(entryProps, { platform: countPlatforms(entryMap) }) : {}
   const interiorShare = floorCells ? interiorCells / floorCells : 0
   features.add(interiorShare >= 0.5 ? 'interior' : 'exterior')
   const dominantMaterial = Object.entries(materials).sort((left, right) => right[1] - left[1])[0]?.[0] ?? 'stone'
@@ -1089,7 +1111,7 @@ export function mapPassport(maps) {
   ].filter(Boolean)
   const summary = `${parts.join('; ')}.`
   return {
-    version: 1,
+    version: 2,
     summary: summary.charAt(0).toLocaleUpperCase('ru') + summary.slice(1),
     features: [...features].sort(),
     levels,
@@ -1101,5 +1123,157 @@ export function mapPassport(maps) {
     doors,
     windows,
     props: Object.fromEntries(Object.entries(props).sort((left, right) => right[1] - left[1]).slice(0, 20)),
+    anchors,
+  }
+}
+
+/**
+ * Оценка качества импорта: досягаема ли суша этажа входа и сколько ассетов
+ * пришлось отбросить. Карта ниже порога `MIN_LIBRARY_QUALITY`
+ * (`server/map-library.mjs`) в автоподбор не идёт — только в ручной импорт
+ * ведущего, где он видит её сам.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} ground этаж входа
+ * @param {Record<string, number>} stats счётчики импорта
+ * @returns {{ score: number, reachable: number, dropped: number, cells: number }}
+ */
+export function importQuality(ground, stats) {
+  /** @type {Set<string>} */
+  const blocked = new Set()
+  for (const prop of ground.props) {
+    if (!prop.blocksMove || prop.mount) continue
+    for (const point of prop.footprint) blocked.add(cellKey(point.x, point.y))
+  }
+  const party = ground.spawnPoints.find((point) => point.role === 'party')
+  const reached = party ? reachableCells(ground, party.x, party.y, { blockedCells: blocked }) : new Set()
+  let land = 0
+  let reachable = 0
+  for (let y = 0; y < ground.height; y += 1) for (let x = 0; x < ground.width; x += 1) {
+    const cell = cellAt(ground, x, y)
+    if (!cell?.passable || cell.surface === 'water' || blocked.has(cellKey(x, y))) continue
+    land += 1
+    if (reached.has(cellKey(x, y))) reachable += 1
+  }
+  const reachableShare = land ? reachable / land : 0
+  // Отброшенное — незнакомые ассеты и предметы, которые некуда было поставить.
+  const dropped = Math.min(1, ((Number(stats.unknown) || 0) + (Number(stats.propsSkipped) || 0)) / Math.max(1, Number(stats.instances) || 1))
+  const round = (/** @type {number} */ value) => Math.round(value * 100) / 100
+  return {
+    score: round(reachableShare * (1 - Math.min(0.5, dropped))),
+    reachable: round(reachableShare),
+    dropped: round(dropped),
+    cells: land,
+  }
+}
+
+/** Наибольший шаг между соседними клетками без лазания, в футах. */
+const IMPORT_STEP_FEET = 3
+
+/** Островок выше этой площади не замуровывается, даже если к нему нет подхода. */
+const SEALED_ISLAND_CELLS = 8
+
+/**
+ * Перепады и края этажа после импорта (этап 5):
+ *
+ * - пол, поднятый над соседним больше чем на три фута без лестницы,
+ *   получает пандус — одну клетку посередине высоты, если перепад не больше
+ *   шести футов; при большем перепаде маленький островок становится глухим,
+ *   чтобы карта не обещала площадку, на которую не подняться;
+ * - предмет на крайней клетке сдвигается на клетку внутрь, а если там занято —
+ *   убирается: на краю доски его не видно и к нему не подойти.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {Record<string, number>} stats
+ */
+export function repairImportedLevel(map, stats) {
+  const free = (/** @type {number} */ x, /** @type {number} */ y) => {
+    const cell = cellAt(map, x, y)
+    return Boolean(cell?.passable) && cell?.surface !== 'water'
+  }
+  const level = (/** @type {number} */ x, /** @type {number} */ y) => cellAt(map, x, y)?.elevation ?? 0
+  const propCells = () => new Set(map.props.flatMap((prop) => prop.footprint.map((point) => cellKey(point.x, point.y))))
+  for (let pass = 0; pass < 12; pass += 1) {
+    // Связные площадки: соседи с шагом не больше трёх футов.
+    /** @type {Map<string, number>} */
+    const component = new Map()
+    /** @type {Array<string[]>} */
+    const components = []
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      if (!free(x, y) || component.has(cellKey(x, y))) continue
+      const id = components.length
+      const queue = [cellKey(x, y)]
+      component.set(queue[0], id)
+      for (let index = 0; index < queue.length; index += 1) {
+        const [cx, cy] = queue[index].split(',').map(Number)
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const key = cellKey(cx + dx, cy + dy)
+          if (component.has(key) || !free(cx + dx, cy + dy) || Math.abs(level(cx + dx, cy + dy) - level(cx, cy)) > IMPORT_STEP_FEET) continue
+          if (edgeBetween(map, cx, cy, cx + dx, cy + dy)?.blocksMove) continue
+          component.set(key, id)
+          queue.push(key)
+        }
+      }
+      components.push(queue)
+    }
+    if (components.length < 2) break
+    const largest = components.reduce((best, cells, id) => (cells.length > components[best].length ? id : best), 0)
+    const occupied = propCells()
+    let changed = false
+    for (const [id, cells] of components.entries()) {
+      if (id === largest) continue
+      // Ближайший шов с главной площадкой — самый низкий перепад через ребро без стены.
+      /** @type {{ x: number, y: number, other: { x: number, y: number }, diff: number }|null} */
+      let seam = null
+      for (const key of cells) {
+        const [x, y] = key.split(',').map(Number)
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const other = { x: x + dx, y: y + dy }
+          if (!free(other.x, other.y) || component.get(cellKey(other.x, other.y)) === id) continue
+          if (edgeBetween(map, x, y, other.x, other.y)?.blocksMove) continue
+          const diff = Math.abs(level(x, y) - level(other.x, other.y))
+          if (!seam || diff < seam.diff) seam = { x, y, other, diff }
+        }
+      }
+      if (!seam) continue
+      if (seam.diff <= IMPORT_STEP_FEET * 2) {
+        const middle = Math.round((level(seam.x, seam.y) + level(seam.other.x, seam.other.y)) / 2)
+        // Пандус — на той стороне шва, где клетка свободна от предметов.
+        const spot = [seam.other, { x: seam.x, y: seam.y }].find((point) => !occupied.has(cellKey(point.x, point.y)))
+        if (spot) {
+          setCell(map, spot.x, spot.y, { elevation: middle })
+          stats.ramps = (Number(stats.ramps) || 0) + 1
+          changed = true
+        }
+      } else if (cells.length <= SEALED_ISLAND_CELLS && !cells.some((key) => occupied.has(key))) {
+        for (const key of cells) {
+          const [x, y] = key.split(',').map(Number)
+          setCell(map, x, y, { passable: false })
+        }
+        stats.sealedCells = (Number(stats.sealedCells) || 0) + cells.length
+        changed = true
+      }
+    }
+    if (!changed) break
+  }
+
+  // Предметы на крайних клетках: внутрь на клетку или прочь.
+  const edge = (/** @type {{x: number, y: number}} */ point) => point.x <= 0 || point.y <= 0 || point.x >= map.width - 1 || point.y >= map.height - 1
+  for (const prop of [...map.props]) {
+    if (prop.transition || !prop.footprint.some(edge)) continue
+    const others = new Set(map.props.filter((other) => other !== prop).flatMap((other) => other.footprint.map((point) => cellKey(point.x, point.y))))
+    const shift = {
+      x: prop.footprint.some((point) => point.x <= 0) ? 1 : prop.footprint.some((point) => point.x >= map.width - 1) ? -1 : 0,
+      y: prop.footprint.some((point) => point.y <= 0) ? 1 : prop.footprint.some((point) => point.y >= map.height - 1) ? -1 : 0,
+    }
+    const moved = prop.footprint.map((point) => ({ x: point.x + shift.x, y: point.y + shift.y }))
+    if (moved.every((point) => !edge(point) && free(point.x, point.y) && !others.has(cellKey(point.x, point.y)))) {
+      prop.footprint = moved
+      prop.x += shift.x
+      prop.y += shift.y
+      stats.edgePropsMoved = (Number(stats.edgePropsMoved) || 0) + 1
+    } else {
+      map.props = map.props.filter((candidate) => candidate !== prop)
+      stats.edgePropsDropped = (Number(stats.edgePropsDropped) || 0) + 1
+    }
   }
 }

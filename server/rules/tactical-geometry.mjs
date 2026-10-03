@@ -10,7 +10,7 @@
  */
 import { footprintCellsFor, footprintDistanceFeet, footprintSizeFor } from '../actor-footprint.mjs'
 import { sceneNpcOccupiedCells, sceneNpcTransitCells } from '../npc-positioning.mjs'
-import { deserializeTacticalMap, edgeBetween, movementStepBlocked } from '../tactical-map.mjs'
+import { cellAt, deserializeTacticalMap, edgeBetween, movementStepBlocked } from '../tactical-map.mjs'
 import { actorId, actorPosition, findActor, isLivingActor, listActors } from './actors.mjs'
 import { RulesValidationError, safeInteger, usesDnd2014 } from './core.mjs'
 
@@ -105,6 +105,65 @@ export function isTransparentCell(cell) {
 export function isTransparentMapCell(cell) {
   if (!cell) return false
   return cell.passable === true || cell.surface === 'water'
+}
+
+/** Дальность обзора, на которую распахнутая дверь открывает соседнее помещение. */
+export const DOORWAY_SIGHT_CELLS = 9
+
+/**
+ * Дальность разведки при перемещении. Меньше дверной: дверь открывает целое
+ * помещение разом, а шаг — только то, что вокруг героя, иначе карта
+ * раскрывалась бы вперёд отряда и исследовать было бы нечего.
+ */
+export const MOVEMENT_SIGHT_CELLS = 6
+
+/**
+ * Клетки, которые видны от `origin` после того, как проём открылся: обход в
+ * ширину по проходимым клеткам, не пересекающий ни глухие рёбра, ни закрытые
+ * двери. Это не полноценный расчёт линии обзора — он и не нужен: задача узкая,
+ * открыть игроку ровно то помещение, куда теперь ведёт открытая дверь, вместо
+ * чёрного пятна, в которое нельзя даже шагнуть (`isWalkableCell` считает
+ * нераскрытую клетку непроходимой).
+ *
+ * Вынесено из `rules-engine.mjs` 2026-10-03: тем же правилом импорт карты
+ * TaleSpire раскрывает то, что видно от входа сквозь окна и открытые двери.
+ *
+ * @param {import('../tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}} origin
+ * @param {{ radius?: number, openedDoorId?: string|null }} [options]
+ * @returns {Array<{x: number, y: number}>}
+ */
+export function cellsVisibleFrom(map, origin, { radius = DOORWAY_SIGHT_CELLS, openedDoorId = null } = {}) {
+  const opened = openedDoorId == null ? '' : String(openedDoorId)
+  const start = { x: Math.floor(Number(origin?.x)), y: Math.floor(Number(origin?.y)) }
+  if (!Number.isSafeInteger(start.x) || !Number.isSafeInteger(start.y)) return []
+  if (!cellAt(map, start.x, start.y)) return []
+  const seen = new Map([[`${start.x},${start.y}`, 0]])
+  const queue = [start]
+  const found = [start]
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const current = queue[cursor]
+    const distance = seen.get(`${current.x},${current.y}`) ?? 0
+    if (distance >= radius) continue
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = { x: current.x + dx, y: current.y + dy }
+      const key = `${next.x},${next.y}`
+      if (seen.has(key)) continue
+      const cell = cellAt(map, next.x, next.y)
+      if (!cell) continue
+      const edge = edgeBetween(map, current.x, current.y, next.x, next.y)
+      // Дверь, которую открывают прямо сейчас, ещё числится закрытой: событие
+      // состояния применится позже, а раскрытие считается по будущей карте.
+      const justOpened = opened && String(edge?.doorId ?? '') === opened
+      if (edge?.blocksSight === true && !justOpened) continue
+      seen.set(key, distance + 1)
+      found.push(next)
+      // Стену видно, но сквозь неё не смотрят: дальше обход не идёт. Воду —
+      // смотрят: правило прозрачности то же, что у линии действия.
+      if (isTransparentMapCell(cell)) queue.push(next)
+    }
+  }
+  return found
 }
 
 /**

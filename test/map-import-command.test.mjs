@@ -179,3 +179,54 @@ test('игрок видит факт импорта текущей сцены, �
   assert.deepEqual(visible.payload.levels, [{ index: 0, label: 'Первый этаж' }, { index: 1, label: 'Второй этаж' }])
   for (const key of ['relocations', 'party_positions', 'warnings', 'stats', 'source']) assert.equal(visible.payload[key], undefined, key)
 })
+
+test('этап 8: ведущий перестраивает карту текущей сцены по программе — отряд у входа, прежняя карта в журнале', () => {
+  const state = sceneState({
+    scene: {
+      title: 'Скит Трёх Настилов', location: 'Дом на холме', location_id: 'loc-house', turn: 1, theme: 'деревня',
+      map: sceneState().scene.map, cells: sceneState().scene.cells,
+      map_source: { kind: 'map-library', id: 'tt-japanese-farmhouse', title: 'Japanese Farmhouse' },
+      layout: 'Открытая местность; внизу: поляна и спальня.',
+    },
+  })
+  const before = state.scene.map
+  const command = {
+    command_type: 'RebuildLocationMap', command_id: 'rebuild-1', actor_id: PARTY[0],
+    text: 'В центре — общий навес, у ближайших домов на порогах лежат камни, к реке ведут три настила.',
+  }
+  const result = resolveCommand(command, state, options(AUTHORIZED))
+  const event = result.events.find((entry) => entry.event_type === 'LocationMapImported')
+  assert.ok(event, 'перестройка пишет то же событие, что импорт: один reducer')
+  assert.equal(event.payload.source.format, 'scene-program-rebuild')
+  assert.equal(event.payload.schema_version, 2)
+  assert.equal(event.payload.map_requirements.focus, 'shelter')
+  assert.deepEqual(event.payload.warnings, [], 'обязательное встало на карту')
+
+  const after = applyGameEvent(state, event)
+  assert.notDeepEqual(after.scene.map, before, 'карта новая')
+  assert.equal(after.scene.map_requirements.focus, 'shelter', 'сцена получила программу')
+  assert.equal(after.scene.map_source, undefined, 'атрибуция прежней готовой карты снята')
+  assert.equal(after.scene.layout, undefined)
+  const map = deserializeTacticalMap(after.scene.map)
+  assert.ok(map.props.some((prop) => prop.assetId === 'market_awning'), 'навес на новой карте')
+  for (const id of PARTY) {
+    const position = after.mechanics.positions[id]
+    assert.equal(cellAt(map, position.x, position.y)?.passable, true, `${id} стоит на проходимой клетке новой карты`)
+  }
+  // Replay того же журнала даёт ту же сцену; прежняя карта осталась в истории.
+  const replayed = replayEvents(state, result.events)
+  assert.deepEqual(deserializeTacticalMap(replayed.scene.map).props.map((prop) => prop.id), map.props.map((prop) => prop.id))
+  assert.equal(replayed.scene.map.width, after.scene.map.width)
+  assert.deepEqual(replayed.scene.map_requirements, after.scene.map_requirements)
+  assert.ok(result.events.length >= 1 && state.scene.map === before, 'прежняя карта не тронута: она в состоянии до события')
+})
+
+test('этап 8: перестройка — только ведущему, не в бою и не при открытом голосовании', () => {
+  const command = { command_type: 'RebuildLocationMap', command_id: 'rebuild-2', actor_id: PARTY[0] }
+  assert.throws(() => resolveCommand(command, sceneState(), options()), { code: 'MAP_IMPORT_FORBIDDEN' })
+  const fighting = sceneState()
+  fighting.mechanics.combat.active = true
+  assert.throws(() => resolveCommand(command, fighting, options(AUTHORIZED)), { code: 'MAP_REBUILD_DURING_COMBAT' })
+  const voting = sceneState({ agentInteraction: { id: 'vote-1', type: 'vote', status: 'open', options: [] } })
+  assert.throws(() => resolveCommand(command, voting, options(AUTHORIZED)), { code: 'MAP_REBUILD_DECISION_OPEN' })
+})

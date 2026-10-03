@@ -25,7 +25,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { normalizeSceneRequirements, requirementsCoverage } from './scene-requirements.mjs'
+import { anchorCountsFor, anchorCoverage, normalizeSceneRequirements, requiredProgramKinds } from './scene-requirements.mjs'
 import { auditTacticalMap } from './map-quality.mjs'
 import { deserializeTacticalMap } from './tactical-map.mjs'
 
@@ -142,10 +142,13 @@ export function climateFor(terrains, passport) {
  * `requirements` — обязательные объекты сцены (`server/scene-requirements.mjs`):
  * что текст сцены уже пообещал увидеть на карте.
  *
- * @param {{ themeId: string, buildingUse?: string, topology?: string, climate?: string, worldKind?: string, levels?: Array<{ offset: number }>, width?: number, height?: number, place?: string, world?: string, requirements?: unknown }} input
- * @returns {{ placeKinds: PlaceKind[], exterior: boolean, climate: string, genre: 'scifi'|'fantasy', wantsCellar: boolean, wantsUpstairs: boolean, area: number, requirements: Array<{ id: string, count: number }> }}
+ * `program` — вся программа сцены: её центр, посты и улики обязательны, и
+ * карта без большей их части не выбирается (этап 5 `docs/map-generation-plan.md`).
+ *
+ * @param {{ themeId: string, buildingUse?: string, topology?: string, climate?: string, worldKind?: string, levels?: Array<{ offset: number }>, width?: number, height?: number, place?: string, world?: string, requirements?: unknown, program?: unknown }} input
+ * @returns {{ placeKinds: PlaceKind[], exterior: boolean, climate: string, genre: 'scifi'|'fantasy', wantsCellar: boolean, wantsUpstairs: boolean, area: number, requirements: Array<{ id: string, count: number }>, required: string[] }}
  */
-export function libraryRequestFor({ themeId, buildingUse = '', topology = '', climate = '', worldKind = '', levels = [], width = 26, height = 22, place = '', world = '', requirements = [] }) {
+export function libraryRequestFor({ themeId, buildingUse = '', topology = '', climate = '', worldKind = '', levels = [], width = 26, height = 22, place = '', world = '', requirements = [], program = null }) {
   /** @type {PlaceKind[]} */
   let placeKinds = []
   let exterior = false
@@ -178,6 +181,7 @@ export function libraryRequestFor({ themeId, buildingUse = '', topology = '', cl
     wantsUpstairs: levels.some((level) => Number(level.offset) > 0),
     area: Math.max(256, width * height),
     requirements: normalizeSceneRequirements(requirements),
+    required: requiredProgramKinds(program),
   }
 }
 
@@ -191,6 +195,32 @@ export const MIN_LIBRARY_SCORE = 7
 
 /** Сколько очков снимает каждый обещанный сценой объект, которого на карте нет. */
 const MISSING_REQUIREMENT_PENALTY = 3
+
+/** Сколько очков даёт каждый обязательный якорь программы, который на карте есть. */
+const REQUIRED_ANCHOR_BONUS = 3
+
+/** Доля обязательных якорей программы, без которой карта не выбирается вовсе. */
+const REQUIRED_ANCHOR_SHARE = 0.6
+
+/**
+ * Нижняя оценка качества импорта (`passport.quality.score`): досягаемость пола
+ * и доля отброшенных ассетов. Карта ниже — только для ручного
+ * `ImportLocationMap` ведущего, не для автоподбора. У старых записей оценки
+ * нет, их держит проверка играбельности при выборе.
+ */
+export const MIN_LIBRARY_QUALITY = 0.6
+
+/**
+ * Паспорт якорей записи: сохранённый при импорте или выведенный из счётчика
+ * предметов старого паспорта — тогда без настилов и только по двадцати частым.
+ * @param {LibraryEntry} entry
+ * @returns {Record<string, number>}
+ */
+export function libraryAnchors(entry) {
+  const passport = /** @type {Record<string, any>} */ (entry.passport ?? {})
+  if (passport.anchors && typeof passport.anchors === 'object') return /** @type {Record<string, number>} */ (passport.anchors)
+  return anchorCountsFor(/** @type {Record<string, number>} */ (passport.props ?? {}))
+}
 
 /**
  * Наименьшая площадь этажа входа для уличной сцены, в клетках по 5 футов.
@@ -300,11 +330,22 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
     const area = Math.max(1, Number(entry.passport.floor_cells) || 1)
     score -= Math.min(3, Math.abs(Math.log2(area / request.area)))
     score += Math.min(2, Math.log10(1 + (Number(entry.source.downloads) || 0)) / 2)
-    // Обещанное сценой сверяется с предметами карты: навес, которого нет,
+    // Обещанное сценой сверяется с якорями карты: навес, которого нет,
     // не появится оттого, что карта популярна.
+    const quality = Number(/** @type {Record<string, any>} */ (entry.passport).quality?.score)
+    if (Number.isFinite(quality) && quality < MIN_LIBRARY_QUALITY) continue
+    const anchors = libraryAnchors(entry)
     if (requirements.length) {
-      const { met, missing } = requirementsCoverage(requirements, /** @type {Record<string, number>} */ (entry.passport.props ?? {}))
+      const { met, missing } = anchorCoverage(requirements, anchors)
       score += met.length - missing.length * MISSING_REQUIREMENT_PENALTY
+    }
+    // Обязательное программы — центр, посты, улики — весит больше: карта без
+    // большей их части сцену не держит, сколько бы ни совпало прочего.
+    const required = request.required ?? []
+    if (required.length) {
+      const covered = required.filter((id) => (Number(anchors[id]) || 0) > 0).length
+      if (covered / required.length < REQUIRED_ANCHOR_SHARE) continue
+      score += covered * REQUIRED_ANCHOR_BONUS
     }
     if (score < MIN_LIBRARY_SCORE) continue
     scored.push({ entry, score })
@@ -424,8 +465,13 @@ export class MapLibrary {
 
   /**
    * Карта под заявку сцены вместе с этажами, или `null`.
+   *
+   * `check` — проверка этажа входа сверх играбельности: программа сцены
+   * (`programReport`). Провалившая её карта отбрасывается, и выбор идёт к
+   * следующей, а не сразу к генератору.
+   *
    * @param {ReturnType<typeof libraryRequestFor>} request
-   * @param {{ seed: string, usedIds?: Iterable<string> }} options
+   * @param {{ seed: string, usedIds?: Iterable<string>, check?: (map: Record<string, unknown>) => boolean }} options
    */
   pick(request, options) {
     const rejected = new Set(options.usedIds ?? [])
@@ -436,7 +482,9 @@ export class MapLibrary {
       if (!entry) return null
       const levels = this.levels(entry.id)
       const ground = levels?.find((level) => Number(level.index) === 0)
-      if (ground && this.playable(entry.id, ground.map)) return { entry, levels: /** @type {NonNullable<typeof levels>} */ (levels) }
+      if (ground && this.playable(entry.id, ground.map) && (!options.check || options.check(ground.map))) {
+        return { entry, levels: /** @type {NonNullable<typeof levels>} */ (levels) }
+      }
       rejected.add(entry.id)
     }
     return null

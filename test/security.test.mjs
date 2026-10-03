@@ -562,7 +562,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
   const prompts = [
     ['npc_controller/v1', 'npc_controller/v1'],
     ['npc_controller/social_v6', 'npc_controller/social-v6'],
-    ['narrator/v11', 'narrator/v11'],
+    ['narrator/v12', 'narrator/v12'],
     ['director/v4_story', 'director/v4_story'],
     ['director/v4_chaos', 'director/v4_chaos'],
     ['action_adjudicator/v8', 'action_adjudicator/v8'],

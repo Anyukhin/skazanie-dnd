@@ -566,3 +566,28 @@ test('бюджеты классов размеров согласованы ме
   }
   assert.equal(SIZE_CLASSES.region.maxCells, 10_000, 'целевой предел плана — 10 000 клеток')
 })
+
+test('карта сцены по программе с проверкой укладывается в 150 мс медианы корпуса', async () => {
+  // Этап 6 `docs/map-generation-plan.md`: генерация с проверкой по программе
+  // и повторами на провал. Меряется медиана по двадцати местам корпуса —
+  // деревня тяжелее таверны втрое, и порог «на карту» поймал бы не регресс,
+  // а размер деревни. Детерминированный сторож рядом — корпусной тест: все
+  // двадцать карт проходят проверку с первой попытки, то есть повторов нет.
+  const { generateSceneGeometry } = await import('../server/adventure-director.mjs')
+  const { sceneMapRequirementsFor } = await import('../server/scene-requirements.mjs')
+  const corpus = JSON.parse(readFileSync(new URL('./fixtures/scene-programs/corpus.json', import.meta.url), 'utf8'))
+  const timings = []
+  for (const scene of corpus.scenes) {
+    const program = sceneMapRequirementsFor([scene.location, scene.text], { npcs: scene.npcs })
+    const input = { location: scene.location, theme: scene.theme, settlementType: scene.settlementType ?? '', useLibrary: false, requirements: program?.items ?? [], program }
+    generateSceneGeometry({ ...input, seed: `budget-warm:${scene.id}` })
+    const started = performance.now()
+    const built = generateSceneGeometry({ ...input, seed: `corpus:${scene.id}` })
+    timings.push(performance.now() - started)
+    assert.ok(!String(built.map.seed).includes(':attempt-'), `${scene.id}: карта прошла проверку с первой попытки`)
+  }
+  timings.sort((left, right) => left - right)
+  const median = timings[Math.floor(timings.length / 2)]
+  console.log(`  программа сцены: медиана ${median.toFixed(1)} мс, худшая ${timings.at(-1).toFixed(1)} мс`)
+  assertWallClock(median, 150, 'медиана корпуса')
+})

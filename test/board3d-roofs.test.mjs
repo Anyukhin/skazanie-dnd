@@ -221,3 +221,35 @@ test('освобождение крыш идемпотентно и не ост�
   assert.equal(controller.group.children.length, 0)
   assert.ok([...disposed.values()].every((count) => count === 1), 'каждый ресурс крыши освобождён ровно один раз')
 })
+
+test('нераскрытое помещение за стенами закрыто крышкой, а не чёрным провалом', () => {
+  // Этап 5 плана карт: пол дома не раскрыт, и в 3D на его месте зиял провал.
+  // Крышка встаёт только над областью, со всех сторон закрытой стенами:
+  // одна нераскрытая клетка посреди видимой комнаты остаётся туманом.
+  const closedRoom = createTacticalMap({ width: 8, height: 7, seed: 'closed-room', theme: 'building' })
+  addZone(closedRoom, { id: 'room', kind: 'interior', material: 'wood', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Комната' })
+  addZone(closedRoom, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: '' })
+  for (let y = 0; y < 7; y += 1) for (let x = 0; x < 8; x += 1) setCell(closedRoom, x, y, { passable: true, material: 'grass', zone: 'yard', revealed: true })
+  for (let y = 2; y <= 4; y += 1) for (let x = 2; x <= 5; x += 1) setCell(closedRoom, x, y, { passable: true, material: 'wood', zone: 'room', revealed: false })
+  for (let x = 2; x <= 5; x += 1) {
+    setEdge(closedRoom, x, 2, x, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+    setEdge(closedRoom, x, 4, x, 5, { kind: 'wall', blocksMove: true, blocksSight: true })
+  }
+  for (let y = 2; y <= 4; y += 1) {
+    setEdge(closedRoom, 2, y, 1, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+    setEdge(closedRoom, 5, y, 6, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+  }
+  const decoded = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(closedRoom))))
+  assert.equal(roofs3d.closedUnrevealedRegions(decoded).length, 1)
+  const controller = roofs3d.createBoard3DRoofs(decoded, render.DEFAULT_BOARD_PALETTE, { wallHeight: .68 })
+  try {
+    const caps = meshesNamed(controller.group, 'roof-closed:')
+    assert.ok(caps.length >= 1, 'над нераскрытой комнатой есть крышка')
+    const bounds = new THREE.Box3().setFromObject(controller.group.getObjectByName('roof-closed-caps'))
+    assert.ok(bounds.min.x >= 2 - 1e-6 && bounds.max.x <= 6 + 1e-6, 'крышка не шире комнаты')
+  } finally {
+    controller.dispose()
+  }
+  // Одна нераскрытая клетка в видимой комнате — туман, а не дом.
+  assert.equal(roofs3d.closedUnrevealedRegions(mapFor({ hidden: { x: 3, y: 3 } })).length, 0)
+})

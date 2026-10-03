@@ -268,13 +268,15 @@ const MAP_CHECK_ATTEMPTS = 4
 
 /**
  * Мерка проверки карты (`programReport`) под тему сцены: поселение не меньше
- * 24×20 и не глухое; сцена с центром — тоже место сбора и глухой быть не должна.
+ * 24×20 и не глухое. Простор вокруг центра сцены `programReport` проверяет
+ * сам: лагерь в лесу густ по природе, и мерка глухоты всей карты ему не
+ * подходит — нужна поляна у костра, а не вырубленный лес (корпус программ).
  * @param {{ kind?: string }} theme
- * @param {Record<string, any>|null} plan
+ * @param {Record<string, any>|null} _plan
  */
-function mapCheckFor(theme, plan) {
+function mapCheckFor(theme, _plan) {
   const settlement = theme?.kind === 'settlement'
-  return { minSize: settlement ? SETTLEMENT_MIN_SIZE : null, openScene: settlement || Boolean(plan?.focus) }
+  return { minSize: settlement ? SETTLEMENT_MIN_SIZE : null, openScene: settlement }
 }
 
 function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [], requirements = [], program = null }) {
@@ -310,14 +312,15 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
     const picked = library.pick(libraryRequestFor({
       themeId: matched.id, buildingUse: design.building_use, topology: design.topology, climate: design.climate,
       worldKind, levels, width: Number(requestedMap.width) || REFERENCE_SIZE.width, height: Number(requestedMap.height) || REFERENCE_SIZE.height,
-      place: `${location} ${theme}`, world: worldDescription, requirements,
-    }), { seed, usedIds: usedLibraryIds })
-    if (picked) {
-      const geometry = librarySceneGeometry(picked, { locationId, theme: matched.assetTheme ?? matched.id })
-      // Готовая карта проходит ту же мерку, что и сгенерированная. Провал —
-      // и карта просто не выбирается: сцену строит генератор по программе.
-      if (!plan || !programReport(geometry.map, plan, mapCheckFor(matched, plan)).problems.length) return geometry
-    }
+      place: `${location} ${theme}`, world: worldDescription, requirements, program: plan,
+    }), {
+      seed,
+      usedIds: usedLibraryIds,
+      // Готовая карта проходит ту же мерку, что и сгенерированная. Провал — и
+      // выбор идёт к следующей записи, а без неё сцену строит генератор.
+      ...(plan ? { check: (/** @type {Record<string, unknown>} */ map) => !programReport(deserializeTacticalMap(clone(map)), plan, mapCheckFor(matched, plan)).problems.length } : {}),
+    })
+    if (picked) return librarySceneGeometry(picked, { locationId, theme: matched.assetTheme ?? matched.id })
   }
   if (matched) {
     const exteriorCue = /снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей)/iu
