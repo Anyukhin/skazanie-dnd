@@ -408,7 +408,8 @@ test('Magic Initiate druid grant supplies Wisdom to a non-druid caster; unavaila
 test('conditional nonmagical defense covers unarmed, monk, and catalog-backed NPC attacks', () => {
   const unarmed = field()
   unarmed.players[0].inventory = []
-  unarmed.enemies[0].damage_resistances = [{ types: ['slashing'], condition: 'nonmagical-attacks' }]
+  // Безоружный удар героя — дробящий урон (раньше движок по умолчанию писал рубящий).
+  unarmed.enemies[0].damage_resistances = [{ types: ['bludgeoning'], condition: 'nonmagical-attacks' }]
   const unarmedAttack = resolveCommand({
     command_type: 'MakeAttack', command_id: 'unarmed-defense', actor_id: 'caster', target_id: 'foe', server_authoritative: true,
   }, combatState(unarmed), { diceService: dice([18]), context })

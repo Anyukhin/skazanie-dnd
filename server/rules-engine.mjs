@@ -3023,6 +3023,7 @@ function trustedAttackProfile(state, actor, actionId = null) {
   const explicitFlatDamage = profile.damage_amount ?? profile.damageAmount
   let expression
   let flatDamage = null
+  let unarmedStrike = false
   if (Number.isFinite(Number(explicitFlatDamage))) {
     expression = null
     flatDamage = Math.max(0, safeInteger(explicitFlatDamage, 0))
@@ -3030,8 +3031,10 @@ function trustedAttackProfile(state, actor, actionId = null) {
     try { expression = parseDiceExpression(damageExpression).canonical }
     catch { expression = diceExpression(damageDice, Number.isSafeInteger(Number(damageBonus)) ? Number(damageBonus) : strength, enemy ? 6 : 1) }
   } else if (!enemy && !Number.isSafeInteger(Number(damageDice))) {
+    // Безоружный удар героя: 1 + модификатор Силы, дробящий урон.
     expression = null
     flatDamage = Math.max(0, 1 + strength)
+    unarmedStrike = true
   } else {
     expression = diceExpression(damageDice, Number.isSafeInteger(Number(damageBonus)) ? Number(damageBonus) : strength, 6)
   }
@@ -3043,7 +3046,7 @@ function trustedAttackProfile(state, actor, actionId = null) {
     modifier: Math.max(-100, Math.min(100, modifier)),
     damage_expression: expression,
     damage_amount: flatDamage,
-    damage_type: String(profile.damage_type ?? profile.damageType ?? actor?.damageType ?? 'slashing').slice(0, 40),
+    damage_type: String(profile.damage_type ?? profile.damageType ?? actor?.damageType ?? (unarmedStrike ? 'bludgeoning' : 'slashing')).slice(0, 40),
     range_feet: Math.max(5, Math.min(600, range)),
     normal_range_feet: Math.max(5, Math.min(600, safeInteger(profile.normal_range_feet ?? profile.normalRangeFeet, range))),
     advantage: Boolean(profile.advantage ?? actor?.attackAdvantage),
@@ -3550,6 +3553,34 @@ function assertVoluntaryMovementPath(state, actorIdValue, from, to, path) {
   }
 }
 
+/**
+ * Оружие героя для атаки, которую он не уточнил: свободная заявка «бью
+ * гоблина» и «подбегаю и бью». Без `item_id` движок честно считает безоружный
+ * удар (1 + модификатор Силы), и плут с коротким мечом в руке бил на 0 урона
+ * (HTTP-прогон боёв 2026-10-04). Берётся надетое оружие: для ближнего манёвра —
+ * ближнее, для удара с места — первое, которым цель достаётся отсюда.
+ */
+function equippedWeaponAttacks(state, actor) {
+  if (!(state.players ?? []).some((player) => actorId(player) === actorId(actor))) return []
+  const result = []
+  for (const item of Array.isArray(actor?.inventory) ? actor.inventory : []) {
+    if (!item?.equipped || item.type !== 'weapon' || Number(item.quantity ?? 1) <= 0) continue
+    let profile = null
+    try { profile = itemAttackProfile(state, actor, item.id) } catch (error) { if (!(error instanceof RulesValidationError)) throw error }
+    if (profile) result.push({ itemId: String(item.id), profile })
+  }
+  return result
+}
+
+export function defaultAttackItemIdFor(rawState, actorIdValue, targetIdValue) {
+  const state = normalizeCampaignState(rawState)
+  const actor = findActor(state, actorIdValue)
+  if (!actor || !findActor(state, targetIdValue)) return null
+  const usable = equippedWeaponAttacks(state, actor)
+    .filter(({ itemId }) => attackForecast(state, actorIdValue, targetIdValue, { itemId })?.in_range)
+  return (usable.find(({ profile }) => profile.kind === 'melee') ?? usable[0])?.itemId ?? null
+}
+
 /** Маршрут составной ближней атаки. Числа, путь и клетки выбирает движок. */
 export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   const state = normalizeCampaignState(rawState)
@@ -3559,7 +3590,9 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   if (!actor || !target || !isEnemyActor(state, targetIdValue) || !isLivingActor(target)) {
     throw new RulesValidationError('Выберите живого противника на карте', 'INVALID_TARGET')
   }
-  const profile = trustedAttackProfile(state, actor)
+  const weapon = equippedWeaponAttacks(state, actor).find(({ profile: candidate }) => candidate.kind === 'melee') ?? null
+  const profile = weapon?.profile ?? trustedAttackProfile(state, actor)
+  const weaponOption = weapon ? { itemId: weapon.itemId } : {}
   if (!profile || profile.kind !== 'melee') throw new RulesValidationError('Для этого манёвра нужно оружие ближнего боя', 'MELEE_WEAPON_REQUIRED')
   const from = actorPosition(state, actorIdValue)
   const targetAt = actorPosition(state, targetIdValue)
@@ -3575,7 +3608,7 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   const budget = movementForActor(state, actorIdValue).movement_remaining
   const radius = Math.max(1, Math.min(6, Math.floor(Number(profile.range_feet || 5) / 5)))
   const candidates = []
-  const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }
+  const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, ...(weapon ? { item_id: weapon.itemId } : {}), server_authoritative: true }
   let attackRefusal = null
   for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
     for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
@@ -3588,7 +3621,7 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
       const cost = path.reduce((total, step) => total + stepCost(step, map), 0)
       if (cost > budget) continue
       const atDestination = { ...state, mechanics: { ...state.mechanics, positions: { ...state.mechanics.positions, [actorIdValue]: to } } }
-      if (!attackForecast(atDestination, actorIdValue, targetIdValue)?.in_range) continue
+      if (!attackForecast(atDestination, actorIdValue, targetIdValue, weaponOption)?.in_range) continue
       try { validateCommand(attack, atDestination, { allowedActorIds: [actorIdValue] }) }
       catch (error) { if (!(error instanceof RulesValidationError)) throw error; attackRefusal ??= error; continue }
       candidates.push({ to, path, cost })
