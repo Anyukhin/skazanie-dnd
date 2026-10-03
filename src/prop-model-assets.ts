@@ -6,7 +6,7 @@ import {
   registerCspSafeEmbeddedTextureLoader,
 } from './model-assets'
 import { loadPropModelCatalog, propModelFor, type PropModelCatalog, type PropModelEntry } from './prop-model-catalog'
-import type { GraphicsStylePack } from './board3d-style'
+import { createStyleMaterialBinder, type GraphicsStylePack } from './board3d-style'
 import { resolvePropAssetId } from './board-render'
 import type { TacticalProp } from './types'
 
@@ -175,6 +175,8 @@ export async function loadPropModelAssets(props: readonly TacticalProp[], signal
   if (!entries.size) return null
   const loader = new GLTFLoader()
   registerCspSafeEmbeddedTextureLoader(loader)
+  // Модели пакета стиля без своих текстур: материалы `skz:*` общие на всю загрузку.
+  const bindStyleMaterials = stylePack ? createStyleMaterialBinder(stylePack) : null
   const queue = [...entries.values()]
   // Не загружаем всю библиотеку: только варианты раскрытых предметов, по четыре.
   await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
@@ -189,6 +191,7 @@ export async function loadPropModelAssets(props: readonly TacticalProp[], signal
         root.add(gltf.scene)
         if (signal.aborted) { disposePropModelAssets(new Map([[entry.key, root]])); break }
         bakeSkinnedMeshes(root)
+        bindStyleMaterials?.bind(root)
         root.rotation.y = entry.yaw * Math.PI / 180
         root.updateMatrixWorld(true)
         const bounds = new THREE.Box3().setFromObject(root)
@@ -204,6 +207,8 @@ export async function loadPropModelAssets(props: readonly TacticalProp[], signal
       } catch { /* До успешной загрузки остаётся процедурное представление. */ }
     }
   }))
+  // Модели показываются уже с рисованными фактурами, а не белыми на миг.
+  if (bindStyleMaterials && !signal.aborted) await Promise.race([bindStyleMaterials.ready(), new Promise((resolve) => setTimeout(resolve, 15_000))])
   let disposed = false
   const result = { catalog, models, dispose() { if (!disposed) { disposed = true; disposePropModelAssets(models) } } }
   if (signal.aborted) { result.dispose(); return null }

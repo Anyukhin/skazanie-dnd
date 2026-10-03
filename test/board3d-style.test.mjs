@@ -7,7 +7,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
 
 import { createTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
-import { GRAPHICS_STYLE_SOURCES } from '../tools/graphics-style-sources.mjs'
+import { DETAIL_PROPS } from '../server/detail-props.mjs'
+import { GRAPHICS_STYLE_SOURCES, STYLE_RELEASE } from '../tools/graphics-style-sources.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 mkdirSync(join(root, 'tmp'), { recursive: true })
@@ -36,80 +37,150 @@ const mapClient = await import(pathToFileURL(join(outputDir, 'tactical-map-clien
 const THREE = await import('three')
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
-const STYLES_ROOT = join(root, 'public', 'assets', 'styles')
-const manifestOf = (name) => JSON.parse(readFileSync(join(STYLES_ROOT, name, 'manifest.json'), 'utf8'))
+const STYLE_ROOT = join(root, 'public', 'assets', 'styles', 'stylized')
+const manifest = () => JSON.parse(readFileSync(join(STYLE_ROOT, 'manifest.json'), 'utf8'))
 
-test('настройка стиля: по умолчанию рисованный, мусор из хранилища не ломает выбор', () => {
-  assert.equal(style.board3DGraphicsStyle('realistic'), 'realistic')
-  assert.equal(style.board3DGraphicsStyle('stylized'), 'stylized')
-  for (const value of [null, '', 'photo', 42, undefined]) assert.equal(style.board3DGraphicsStyle(value), 'stylized')
-  assert.deepEqual(Object.keys(style.BOARD3D_GRAPHICS_STYLES), ['stylized', 'realistic'])
+/** Таблица GLB: JSON-чанк без разбора бинарной части. */
+function glbJson(bytes) {
+  assert.equal(bytes.readUInt32LE(0), 0x46546c67, 'не GLB')
+  const length = bytes.readUInt32LE(12)
+  return JSON.parse(bytes.subarray(20, 20 + length).toString('utf8'))
+}
+
+test('стиль один — рисованный; реалистичного пакета больше нет', () => {
+  assert.equal(style.GRAPHICS_STYLE, 'stylized')
+  assert.deepEqual(Object.keys(GRAPHICS_STYLE_SOURCES), ['stylized'])
+  assert.deepEqual(readdirSync(join(root, 'public', 'assets', 'styles')), ['stylized'])
 })
 
-test('опубликованные пакеты стилей проходят проверку клиента, а пути ведут внутрь своего стиля', () => {
-  for (const name of ['stylized', 'realistic']) {
-    const pack = style.validateGraphicsStylePack(manifestOf(name), name)
-    assert.ok(Object.keys(pack.floors).length >= 20, name)
-    for (const floor of Object.values(pack.floors)) {
-      for (const url of [floor.color, floor.normal, floor.orm, floor.height]) assert.ok(url.startsWith(`/assets/styles/${name}/floors/`), url)
-    }
-    for (const list of Object.values(pack.props)) for (const prop of list) assert.ok(prop.url.startsWith(`/assets/styles/${name}/props/`), prop.url)
+test('опубликованный пакет проходит проверку клиента, а пути ведут внутрь пакета или к моделям Quaternius выпуска', () => {
+  const pack = style.validateGraphicsStylePack(manifest())
+  assert.ok(Object.keys(pack.floors).length >= 20)
+  for (const floor of Object.values(pack.floors)) {
+    for (const url of [floor.color, floor.normal, floor.orm, floor.height]) assert.ok(url.startsWith('/assets/styles/stylized/floors/'), url)
+  }
+  for (const material of Object.values(pack.materials)) {
+    for (const url of [material.color, material.normal, material.orm].filter(Boolean)) assert.ok(url.startsWith('/assets/styles/stylized/materials/'), url)
+  }
+  for (const list of Object.values(pack.props)) for (const prop of list) {
+    assert.ok(prop.url.startsWith('/assets/styles/stylized/props/') || prop.url.startsWith(`/assets/models/environment/releases/${STYLE_RELEASE}/quaternius`), prop.url)
   }
 })
 
 test('каждый файл пакета лежит на месте с объявленным хешем, и всё, на что ссылается манифест, объявлено', () => {
-  for (const name of ['stylized', 'realistic']) {
-    const manifest = manifestOf(name)
-    const declared = new Set(manifest.files.map((file) => file.file))
-    for (const file of manifest.files) {
-      const bytes = readFileSync(join(STYLES_ROOT, name, file.file))
-      assert.equal(bytes.length, file.bytes, file.file)
-      assert.equal(createHash('sha256').update(bytes).digest('hex'), file.sha256, file.file)
-    }
-    for (const floor of Object.values(manifest.floors)) for (const map of ['color', 'normal', 'orm', 'height']) assert.ok(declared.has(floor[map]), floor[map])
-    for (const list of Object.values(manifest.props)) for (const prop of list) assert.ok(declared.has(prop.url), prop.url)
-    // Лишних файлов в каталоге стиля нет: всё, что лежит, объявлено.
-    const walk = (folder, prefix = '') => readdirSync(folder, { withFileTypes: true }).flatMap((entry) => entry.isDirectory()
-      ? walk(join(folder, entry.name), `${prefix}${entry.name}/`) : [`${prefix}${entry.name}`])
-    for (const file of walk(join(STYLES_ROOT, name))) if (file !== 'manifest.json') assert.ok(declared.has(file), `не объявлен ${file}`)
+  const data = manifest()
+  const declared = new Set(data.files.map((file) => file.file))
+  for (const file of data.files) {
+    const bytes = readFileSync(join(STYLE_ROOT, file.file))
+    assert.equal(bytes.length, file.bytes, file.file)
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), file.sha256, file.file)
   }
+  for (const floor of Object.values(data.floors)) for (const map of ['color', 'normal', 'orm', 'height']) assert.ok(declared.has(floor[map]), floor[map])
+  for (const material of Object.values(data.materials)) for (const map of ['color', 'normal', 'orm']) if (material[map]) assert.ok(declared.has(material[map]), material[map])
+  for (const list of Object.values(data.props)) for (const prop of list) {
+    if (prop.url.startsWith('/')) assert.ok(existsSync(join(root, 'public', prop.url)), prop.url)
+    else assert.ok(declared.has(prop.url), prop.url)
+  }
+  // Лишних файлов в каталоге стиля нет: всё, что лежит, объявлено.
+  const walk = (folder, prefix = '') => readdirSync(folder, { withFileTypes: true }).flatMap((entry) => entry.isDirectory()
+    ? walk(join(folder, entry.name), `${prefix}${entry.name}/`) : [`${prefix}${entry.name}`])
+  for (const file of walk(STYLE_ROOT)) if (file !== 'manifest.json') assert.ok(declared.has(file), `не объявлен ${file}`)
 })
 
-test('пакеты собраны из текущих источников: каждый пол и предмет из graphics-style-sources попал в манифест', () => {
-  for (const [name, source] of Object.entries(GRAPHICS_STYLE_SOURCES)) {
-    const manifest = manifestOf(name)
-    for (const [key, floor] of Object.entries(source.floors)) {
-      assert.ok(manifest.floors[key], `${name}: нет пола ${key}`)
-      assert.equal(manifest.floors[key].cells, floor.cells, `${name}/${key}: масштаб`)
-      assert.equal(manifest.floors[key].relief, floor.relief, `${name}/${key}: рельеф`)
-    }
-    for (const assetId of Object.keys(source.props)) assert.ok(manifest.props[assetId]?.length, `${name}: нет предмета ${assetId}`)
+test('модели пакета без своих текстур: каждый материал skz:* есть среди общих материалов пакета', () => {
+  const data = manifest()
+  const used = new Set()
+  for (const list of Object.values(data.props)) for (const prop of list) {
+    if (prop.url.startsWith('/')) continue
+    const json = glbJson(readFileSync(join(STYLE_ROOT, prop.url)))
+    assert.equal(json.images?.length ?? 0, 0, `${prop.url}: встроенные картинки`)
+    for (const material of json.materials ?? []) if (material.name?.startsWith('skz:')) used.add(material.name.slice(4))
   }
+  for (const key of used) assert.ok(data.materials[key], `нет общего материала ${key}`)
+  for (const key of Object.keys(data.materials)) assert.ok(used.has(key), `материал ${key} никем не используется`)
+})
+
+test('пакет собран из текущих источников: каждый пол и предмет из graphics-style-sources попал в манифест', () => {
+  const data = manifest()
+  const source = GRAPHICS_STYLE_SOURCES.stylized
+  for (const [key, floor] of Object.entries(source.floors)) {
+    assert.ok(data.floors[key], `нет пола ${key}`)
+    assert.equal(data.floors[key].cells, floor.cells, `${key}: масштаб`)
+    assert.equal(data.floors[key].relief, floor.relief, `${key}: рельеф`)
+  }
+  for (const [assetId, list] of Object.entries(source.props)) assert.equal(data.props[assetId]?.length, list.length, `предмет ${assetId}`)
   assert.ok(existsSync(join(root, 'tools', 'build-graphics-styles-page.js')))
 })
 
-test('проверка пакета отклоняет чужой стиль, выход из каталога и бессмысленный масштаб', () => {
-  const good = manifestOf('realistic')
-  assert.throws(() => style.validateGraphicsStylePack(good, 'stylized'))
-  assert.throws(() => style.validateGraphicsStylePack({ ...good, schema: 'graphics-style/v0' }, 'realistic'))
+test('у каждого предмета набора детализации есть модель стиля, кроме плоских наклеек', () => {
+  const data = manifest()
+  for (const prop of DETAIL_PROPS) {
+    if (prop.kind === 'decal') continue
+    assert.ok(data.props[prop.id]?.length, `нет модели стиля для ${prop.id}`)
+  }
+})
+
+test('проверка пакета отклоняет чужой стиль, выход из каталога, чужие адреса и бессмысленный масштаб', () => {
+  const good = manifest()
+  assert.throws(() => style.validateGraphicsStylePack({ ...good, style: 'realistic' }))
+  assert.throws(() => style.validateGraphicsStylePack({ ...good, schema: 'graphics-style/v0' }))
   const escape = structuredClone(good)
   escape.floors.stone.color = 'floors/../../../index.html'
-  assert.throws(() => style.validateGraphicsStylePack(escape, 'realistic'))
+  assert.throws(() => style.validateGraphicsStylePack(escape))
   const remote = structuredClone(good)
-  remote.props.chair[0].url = 'https://example.com/chair.glb'
-  assert.throws(() => style.validateGraphicsStylePack(remote, 'realistic'))
+  remote.props.chest[0].url = 'https://example.com/chest.glb'
+  assert.throws(() => style.validateGraphicsStylePack(remote))
+  const foreignFamily = structuredClone(good)
+  foreignFamily.props.chest[0].url = `/assets/models/environment/releases/${STYLE_RELEASE}/kenney/log.glb`
+  assert.throws(() => style.validateGraphicsStylePack(foreignFamily))
+  const materialEscape = structuredClone(good)
+  materialEscape.materials.wood.color = '../wood.jpg'
+  assert.throws(() => style.validateGraphicsStylePack(materialEscape))
   const flat = structuredClone(good)
   flat.floors.stone.cells = 0
-  assert.throws(() => style.validateGraphicsStylePack(flat, 'realistic'))
+  assert.throws(() => style.validateGraphicsStylePack(flat))
 })
 
 test('вариант модели выбирается по id предмета: повторяемо и с разнообразием', () => {
-  const pack = style.validateGraphicsStylePack(manifestOf('realistic'), 'realistic')
-  assert.equal(style.stylePropFor(pack, 'chair', 'chair-1')?.key, style.stylePropFor(pack, 'chair', 'chair-1')?.key)
-  const variants = new Set(Array.from({ length: 24 }, (_, index) => style.stylePropFor(pack, 'chair', `chair-${index}`)?.key))
+  const pack = style.validateGraphicsStylePack(manifest())
+  assert.equal(style.stylePropFor(pack, 'barrel', 'barrel-1')?.key, style.stylePropFor(pack, 'barrel', 'barrel-1')?.key)
+  const variants = new Set(Array.from({ length: 24 }, (_, index) => style.stylePropFor(pack, 'barrel', `barrel-${index}`)?.key))
   assert.ok(variants.size > 1)
-  assert.equal(style.stylePropFor(pack, 'market_stall', 'stall-1'), null)
-  assert.equal(style.stylePropFor(null, 'chair', 'chair-1'), null)
+  assert.equal(style.stylePropFor(pack, 'chair', 'chair-1'), null, 'стул Quaternius остаётся моделью выпуска')
+  assert.equal(style.stylePropFor(null, 'barrel', 'barrel-1'), null)
+})
+
+test('материалы skz:* заменяются общими материалами пакета, один экземпляр на ключ и вид вершин', async () => {
+  const pack = style.validateGraphicsStylePack(manifest())
+  const requested = []
+  const binder = style.createStyleMaterialBinder(pack, (url, done) => { requested.push(url); queueMicrotask(done); return new THREE.Texture() })
+  const geometry = (withColor) => {
+    const result = new THREE.BoxGeometry()
+    if (withColor) result.setAttribute('color', new THREE.BufferAttribute(new Float32Array(result.attributes.position.count * 3).fill(1), 3))
+    return result
+  }
+  const model = (withColor) => {
+    const group = new THREE.Group()
+    group.add(new THREE.Mesh(geometry(withColor), new THREE.MeshStandardMaterial({ name: 'skz:wood' })))
+    group.add(new THREE.Mesh(geometry(withColor), new THREE.MeshStandardMaterial({ name: 'flat-flame' })))
+    group.add(new THREE.Mesh(geometry(withColor), new THREE.MeshStandardMaterial({ name: 'skz:unknown' })))
+    return group
+  }
+  const first = model(true), second = model(true), plain = model(false)
+  assert.equal(binder.bind(first), 1)
+  assert.equal(binder.bind(second), 1)
+  assert.equal(binder.bind(plain), 1)
+  const wood = first.children[0].material
+  assert.equal(second.children[0].material, wood, 'общий материал на все модели')
+  assert.notEqual(plain.children[0].material, wood, 'без цветов вершин — свой экземпляр')
+  assert.equal(wood.vertexColors, true)
+  assert.equal(plain.children[0].material.vertexColors, false)
+  assert.equal(wood.map.flipY, false)
+  assert.equal(wood.map.colorSpace, THREE.SRGBColorSpace)
+  assert.equal(first.children[1].material.name, 'flat-flame', 'обычный материал не трогается')
+  assert.equal(first.children[2].material.name, 'skz:unknown', 'неизвестный ключ остаётся материалом файла')
+  assert.equal(new Set(requested).size, requested.length, 'каждая текстура запрошена один раз')
+  await binder.ready()
 })
 
 function mapWith(cells) {
@@ -145,7 +216,7 @@ test('плитки пола режутся по покрытию, а UV счит
 
 test('пол стиля — по сетке на покрытие из пакета; покрытия без пакета не строятся, ресурсы освобождаются', () => {
   const map = mapWith([[1, 0, { material: 'grass' }], [2, 0, { material: 'grass' }], [3, 0, { material: 'metal' }]])
-  const pack = style.validateGraphicsStylePack(manifestOf('stylized'), 'stylized')
+  const pack = style.validateGraphicsStylePack(manifest())
   delete pack.floors.metal
   const loaded = []
   const built = floors.buildStyledFloors(map, pack, { parallax: true, loadTexture: (url) => { loaded.push(url); return new THREE.Texture() } })

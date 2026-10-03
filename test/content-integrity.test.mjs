@@ -19,7 +19,7 @@ function declaredGraphicsStyleFiles() {
   if (!existsSync(directory)) return 0
   let count = 0
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    assert.ok(entry.isDirectory() && /^(?:stylized|realistic)$/u.test(entry.name), 'в styles лежат только объявленные стили')
+    assert.ok(entry.isDirectory() && entry.name === 'stylized', 'в styles лежит только рисованный стиль')
     const manifest = JSON.parse(readFileSync(join(directory, entry.name, 'manifest.json'), 'utf8'))
     assert.equal(manifest.schema, 'graphics-style/v1')
     assert.equal(manifest.style, entry.name)

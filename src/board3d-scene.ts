@@ -28,7 +28,7 @@ import { createBoard3DRoofs, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
-import { loadGraphicsStylePack, type Board3DGraphicsStyle, type GraphicsStylePack } from './board3d-style'
+import { loadGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
 import { buildStyledFloors } from './board3d-floor-tiles'
 
 /** Высота срезанной стены в мировых единицах клетки. */
@@ -61,10 +61,10 @@ export type Board3DOptions = {
   /** Сумрак карты 0..1: в подземелье огни ярче, шире и их больше. */
   darkness?: number
   /**
-   * Стиль графики игрока: пол и модели предметов из пакета стиля. Без него —
-   * прежний пол с рисунком и модели основного выпуска.
+   * Рисованный стиль: пол и модели предметов из пакета стиля. По умолчанию
+   * включён; `false` оставляет прежний пол с рисунком и модели выпуска.
    */
-  graphicsStyle?: Board3DGraphicsStyle
+  graphicsStyle?: boolean
   /** Рельеф плиток параллаксом; на «Экономном» выключен. */
   floorParallax?: boolean
   onReady?: () => void
@@ -1030,8 +1030,8 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   let propAssets: PropModelAssets | null = null
   const propAbort = new AbortController()
   // Пакет стиля нужен и полу, и предметам: один запрос на оба.
-  const stylePack: Promise<GraphicsStylePack | null> = options.graphicsStyle && typeof window !== 'undefined'
-    ? loadGraphicsStylePack(options.graphicsStyle)
+  const stylePack: Promise<GraphicsStylePack | null> = options.graphicsStyle !== false && typeof window !== 'undefined'
+    ? loadGraphicsStylePack()
     : Promise.resolve(null)
   if (typeof window !== 'undefined') {
     const visibleProps = visiblePropsOnBoard(map)

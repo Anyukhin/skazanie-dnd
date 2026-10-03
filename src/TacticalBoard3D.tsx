@@ -18,7 +18,6 @@ import { createActorModel, createProceduralActorModel, getModelAssetDiagnostics,
 import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
 import { mapSignaturesFor } from './board3d-scene-signature'
 import { BOARD3D_QUALITY, board3DQuality, cueForQuality, type Board3DQuality } from './board3d-quality'
-import { BOARD3D_GRAPHICS_STYLES, GRAPHICS_STYLE_STORAGE_KEY, board3DGraphicsStyle, type Board3DGraphicsStyle } from './board3d-style'
 import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, fitSunShadow } from './board3d-graphics'
 import type { TacticalMap } from './types'
 
@@ -168,11 +167,8 @@ export default function TacticalBoard3D(props: Props) {
   const [roofMode, setRoofMode] = useState<Board3DRoofMode>(() => {
     try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'hidden' }
   })
-  const [graphicsStyle, setGraphicsStyle] = useState<Board3DGraphicsStyle>(() => {
-    try { return board3DGraphicsStyle(localStorage.getItem(GRAPHICS_STYLE_STORAGE_KEY)) } catch { return 'stylized' }
-  })
-  const settings = useRef({ models, catalog, quality, roofMode, graphicsStyle })
-  settings.current = { models, catalog, quality, roofMode, graphicsStyle }
+  const settings = useRef({ models, catalog, quality, roofMode })
+  settings.current = { models, catalog, quality, roofMode }
   const [playing, setPlaying] = useState(false)
   const [modelActor, setModelActor] = useState('')
   const [modelWarning, setModelWarning] = useState('')
@@ -889,7 +885,7 @@ export default function TacticalBoard3D(props: Props) {
         resize()
       }
       renderer.shadowMap.enabled = current.lighting !== false && profile.shadows
-      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}:${settings.current.graphicsStyle}`
+      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}`
       const signatures = mapSignaturesFor(map)
       const referenceSame = lastMap === map
       const contentChanged = Boolean(terrainSignature && terrainSignature !== signatures.staticKey)
@@ -922,7 +918,7 @@ export default function TacticalBoard3D(props: Props) {
         renderer.toneMappingExposure = ambience.exposure
         renderer.domElement.dataset.darkness = darkness.toFixed(2)
         renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
-        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, graphicsStyle: settings.current.graphicsStyle, floorParallax: profile.detail !== 'minimal', onReady: invalidate })
+        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', onReady: invalidate })
         diagnostics.created += 1
         diagnostics.rebuilds += 1
         diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'
@@ -1239,7 +1235,7 @@ export default function TacticalBoard3D(props: Props) {
     }
   }, [cameraKey, props.onUnavailable])
 
-  useEffect(() => { runtime.current?.sync() }, [props, models, catalog, quality, roofMode, graphicsStyle])
+  useEffect(() => { runtime.current?.sync() }, [props, models, catalog, quality, roofMode])
   useEffect(() => { if (props.viewResetKey !== undefined) runtime.current?.reset() }, [props.viewResetKey])
   useEffect(() => { if (props.focusRequest) runtime.current?.focus(props.focusRequest.x, props.focusRequest.y) }, [props.focusRequest])
   const chooseModel = (value: string) => {
@@ -1269,11 +1265,6 @@ export default function TacticalBoard3D(props: Props) {
         setQuality(next)
         try { localStorage.setItem(QUALITY_STORAGE_KEY, next) } catch { /* Профиль работает без сохранения. */ }
       }}>{Object.entries(BOARD3D_QUALITY).map(([key, profile]) => <option key={key} value={key}>{profile.label}</option>)}</select>
-      <select className="board3d-graphics-style" aria-label="Стиль графики" title="Стиль графики: пол и предметы" value={graphicsStyle} onChange={(event) => {
-        const next = board3DGraphicsStyle(event.target.value)
-        setGraphicsStyle(next)
-        try { localStorage.setItem(GRAPHICS_STYLE_STORAGE_KEY, next) } catch { /* Стиль работает без сохранения. */ }
-      }}>{Object.entries(BOARD3D_GRAPHICS_STYLES).map(([key, style]) => <option key={key} value={key}>{style.label}</option>)}</select>
       <select className="board3d-roof-mode" aria-label="Крыша" title="Отображение крыши и сводов" value={roofMode} onChange={(event) => {
         const next = roofModeValue(event.target.value)
         setRoofMode(next)
