@@ -143,6 +143,49 @@ test('проверка пакета отклоняет чужой стиль, в
   assert.throws(() => style.validateGraphicsStylePack(flat))
 })
 
+test('style atlas, preview, maxHeight и alphaTest валидируются и остаются optional для старого пакета', () => {
+  const good = manifest()
+  delete good.atlas
+  for (const list of Object.values(good.props)) for (const prop of list) {
+    delete prop.preview
+    delete prop.size
+    delete prop.maxHeight
+  }
+  const rich = structuredClone(good)
+  rich.atlas = { image: 'topdown.png', key: 'a'.repeat(16) }
+  const firstAsset = Object.keys(rich.props)[0]
+  rich.props[firstAsset][0].preview = { x: 1, y: 2, w: 3, h: 4 }
+  rich.props[firstAsset][0].maxHeight = 2
+  rich.props[firstAsset][0].size = [.8, 3, .2]
+  const materialKey = Object.keys(rich.materials)[0]
+  rich.materials[materialKey].alphaTest = .5
+  const parsed = style.validateGraphicsStylePack(rich)
+  assert.equal(parsed.atlas?.image, '/assets/styles/stylized/topdown.png')
+  assert.deepEqual(parsed.props[firstAsset][0].preview, { x: 1, y: 2, w: 3, h: 4 })
+  assert.equal(parsed.props[firstAsset][0].maxHeight, 2)
+  assert.deepEqual(parsed.props[firstAsset][0].size, [.8, 3, .2])
+  assert.equal(parsed.materials[materialKey].alphaTest, .5)
+  assert.equal(style.validateGraphicsStylePack(good).atlas, undefined, 'старый manifest без atlas остаётся совместимым')
+  const webp = structuredClone(rich)
+  webp.atlas.image = 'topdown.webp'
+  assert.equal(style.validateGraphicsStylePack(webp).atlas?.image, '/assets/styles/stylized/topdown.webp', 'атлас стиля — WebP')
+  const foreign = structuredClone(rich)
+  foreign.atlas.image = 'atlas.gif'
+  assert.throws(() => style.validateGraphicsStylePack(foreign), /атлас/u)
+  const noAtlasPreview = structuredClone(good)
+  noAtlasPreview.props[firstAsset][0].preview = { x: 0, y: 0, w: 1, h: 1 }
+  assert.throws(() => style.validateGraphicsStylePack(noAtlasPreview), /preview/u)
+  const badBounds = structuredClone(rich)
+  badBounds.props[firstAsset][0].preview = { x: 16_384, y: 0, w: 1, h: 1 }
+  assert.throws(() => style.validateGraphicsStylePack(badBounds), /preview/u)
+  const badAlpha = structuredClone(rich)
+  badAlpha.materials[materialKey].alphaTest = 1.1
+  assert.throws(() => style.validateGraphicsStylePack(badAlpha), /альфа/u)
+  const badSize = structuredClone(rich)
+  badSize.props[firstAsset][0].size = [.8, 0, .2]
+  assert.throws(() => style.validateGraphicsStylePack(badSize), /габарит/u)
+})
+
 test('вариант модели выбирается по id предмета: повторяемо и с разнообразием', () => {
   const pack = style.validateGraphicsStylePack(manifest())
   assert.equal(style.stylePropFor(pack, 'barrel', 'barrel-1')?.key, style.stylePropFor(pack, 'barrel', 'barrel-1')?.key)

@@ -5,7 +5,9 @@ import {
   syncTileCache, terrainKeysFor, visibleTiles,
   type BoardEffectRenderer, type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture,
   type BoardViewport, type PropAtlas, type TerrainTiles, type TileSurface,
+  withStyleAssets,
 } from './board-render'
+import { loadGraphicsStylePack } from './board3d-style'
 import {
   COMBAT_ANIMATION_QUEUE_LIMIT,
   combatAnimationCuesFromBattleLog,
@@ -251,7 +253,13 @@ function loadPropAtlas(onReady: () => void) {
 }
 
 /** Картинка атласа моделей разделяется между ревизиями, даже если путь совпал. */
-function loadModelTexture(url: string): Promise<BoardTexture | null> {
+/**
+ * Атлас стиля весит несколько мегабайт: на медленном канале 15 секунд не
+ * хватает, и обрыв по таймауту каждый раз начинал загрузку заново.
+ */
+const STYLE_ATLAS_TIMEOUT_MS = 120_000
+
+function loadModelTexture(url: string, timeoutMs = 15_000): Promise<BoardTexture | null> {
   const loaded = loadedTextures.get(url)
   if (loaded) return Promise.resolve(loaded)
   const pending = pendingModelTextures.get(url)
@@ -266,7 +274,7 @@ function loadModelTexture(url: string): Promise<BoardTexture | null> {
       image.onload = null; image.onerror = null
       resolve(texture)
     }
-    const timeout = setTimeout(() => { finish(null); image.src = '' }, 15_000)
+    const timeout = setTimeout(() => { finish(null); image.src = '' }, timeoutMs)
     image.onload = () => {
       if (!image.naturalWidth || !image.naturalHeight) { finish(null); return }
       const texture = { image, width: image.naturalWidth, height: image.naturalHeight }
@@ -579,6 +587,32 @@ function TacticalBoard2D({
     }
     return loadPropModelAtlas(modelCatalogRevision, notify)
   }, [modelCatalogRevision])
+  // Атлас стиля один на ревизию каталога: каталог строится из всего пакета,
+  // поэтому раскрытие новых предметов не сбрасывает атлас и не перерисовывает
+  // все тайлы заново.
+  const [styleModelAtlasState, setStyleModelAtlasState] = useState<{ revision: string; atlas: ModelPropAtlas | null }>({ revision: modelCatalogRevision, atlas: null })
+  const styleModelPropAtlas = styleModelAtlasState.revision === modelCatalogRevision ? styleModelAtlasState.atlas : null
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([loadGraphicsStylePack(), loadPropModelCatalog(modelCatalogRevision)]).then(async ([pack, catalog]) => {
+      if (cancelled || !pack?.atlas || !catalog) return null
+      const url = `${pack.atlas.image}?v=${encodeURIComponent(pack.atlas.key)}`
+      const texture = await loadModelTexture(url, STYLE_ATLAS_TIMEOUT_MS)
+      if (cancelled || !texture) return null
+      return {
+        catalog: withStyleAssets(catalog, pack, Object.keys(pack.props)),
+        texture,
+        url,
+        key: `style:${pack.revision}:${pack.atlas.key}`,
+      }
+    }).then((atlas) => {
+      if (!cancelled && atlas) {
+        setStyleModelAtlasState({ revision: modelCatalogRevision, atlas })
+        setAssetsVersion((value) => value + 1)
+      }
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [modelCatalogRevision])
   useEffect(() => {
     if (artUrl) loadImage(artUrl, loadedArt, () => setAssetsVersion((value) => value + 1))
   }, [artUrl])
@@ -628,9 +662,10 @@ function TacticalBoard2D({
       propAtlas,
       detailAtlas,
       modelPropAtlas,
+      styleModelPropAtlas,
       lighting,
     }
-  }, [map, terrain, artUrl, artMode, lighting, modelPropAtlas])
+  }, [map, terrain, artUrl, artMode, lighting, modelPropAtlas, styleModelPropAtlas])
 
   /**
    * Видимое окно в координатах клеток. Холст лежит внутри трансформированного
@@ -1368,6 +1403,7 @@ function TacticalBoard2D({
       data-overview={cellPixels * zoom < 24 ? 'true' : undefined}
       data-catalog-revision={modelCatalogRevision}
       data-model-atlas-ready={modelPropAtlas ? 'true' : 'false'}
+      data-style-model-atlas-ready={styleModelPropAtlas ? 'true' : 'false'}
       style={{
         transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
         '--counter-scale': 1 / zoom,

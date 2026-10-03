@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { propVisualLayout, resolvePropAssetId, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import { detailPropAlias } from './detail-props'
 import type { TacticalProp } from './types'
-import { propModelFor, propModelMaxHeight } from './prop-model-catalog'
+import { propModelFit, propModelFor } from './prop-model-catalog'
 import type { PropModelAssets } from './prop-model-assets'
 
 type Layout = ReturnType<typeof propVisualLayout>
@@ -67,6 +67,9 @@ const LIGHT_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
   'wall-torch': 0.86, 'wall-lantern': 0.66, 'stand-light': 0.84,
   chandelier: 0.48, candle: 0.46, 'lamp-post': 0.91,
 })
+
+/** Верх висящей настенной вещи, в клетках: чуть ниже кромки стены доски (0,95). */
+const WALL_MOUNT_TOP = 0.8
 
 function tones(palette: BoardPalette): Tones {
   return {
@@ -565,11 +568,11 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         model.updateMatrixWorld(true)
         const box = new THREE.Box3().setFromObject(model)
         const size = box.getSize(new THREE.Vector3())
-        // Футпринт ограничивает ширину и глубину, предел вида — высоту: тонкая
-        // модель, вписанная в клетку по ширине, иначе вырастала в несколько клеток.
-        const footprintFit = Math.min(layout.width / Math.max(.01, size.x), layout.depth / Math.max(.01, size.z)) * PROP_FOOTPRINT_FILL
-        const maxHeight = propModelMaxHeight(canonical, entry)
-        const fit = maxHeight === null ? footprintFit : Math.min(footprintFit, maxHeight / Math.max(.01, size.y))
+        // Футпринт ограничивает ширину и глубину, предел вида — высоту. Для
+        // нового manifest берём зафиксированный bbox после yaw; старые записи
+        // сохраняют fallback по реально загруженной геометрии.
+        const fit = propModelFit(canonical, entry, layout.width, layout.depth, PROP_FOOTPRINT_FILL, [size.x, size.y, size.z])
+          ?? Math.min(layout.width / Math.max(.01, size.x), layout.depth / Math.max(.01, size.z)) * PROP_FOOTPRINT_FILL
         if (group.userData.surfaceHeight !== undefined) {
           const top = model.getObjectByName('surface-top')
           group.userData.surfaceHeight = ((top ? top.getWorldPosition(new THREE.Vector3()).y : box.max.y) - box.min.y) * fit
@@ -578,10 +581,17 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         model.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2)
         fitted.add(model)
         fitted.scale.setScalar(fit)
+        // Модель ставится на пол. Настенную вещь, собранную висящей (в GLB она
+        // над нулём: полочка, щит, стойка с крюками), поднимаем так, чтобы верх
+        // пришёлся на WALL_MOUNT_TOP: иначе щит лежал у стены на полу.
+        const hung = prop.mount?.kind === 'wall' && box.min.y > Math.max(.05, size.y * .1)
+        const lift = hung ? Math.max(0, WALL_MOUNT_TOP / layout.scale - size.y * fit) : 0
+        fitted.position.y = lift
+        if (hung) group.userData.wallLift = lift
         group.add(fitted)
         group.userData.modelKey = entry!.key
         group.userData.modelSource = 'glb'
-        if (lightHeight !== undefined) group.userData.lightHeight = size.y * fit * .8
+        if (lightHeight !== undefined) group.userData.lightHeight = size.y * fit * .8 + lift
       } else if (kind === 'unknown') buildUnknown(owned, group, t)
       else buildModel(owned, group, layout, t, kind)
       applyContainerState(group, kind, prop.state)

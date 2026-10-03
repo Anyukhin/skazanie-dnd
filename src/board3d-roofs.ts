@@ -5,6 +5,7 @@ import type { TacticalCell, TacticalMap, TacticalZone } from './types'
 import { cellAt, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 import { terrainHeightAt } from './board3d-terrain'
 import type { GraphicsStylePack } from './board3d-style'
+import { STRUCTURAL_ROLES, structuralInstance, type StructuralModelAssets, type StructuralRole } from './board3d-structural'
 import { createLookMaterial, createUvLookMaterial, edgeSideCell, lookRepeat, wallLookFor, type WallTextureLoader } from './board3d-walls'
 import { cellKey, createHipDistance, createHipRoofGeometry, hipRoofDepth, hipRoofRafters, hipRoofRuns } from './board3d-hip-roof'
 
@@ -21,6 +22,8 @@ export type Board3DRoofOptions = {
    * прежние, однотонные.
    */
   stylePack?: GraphicsStylePack | null
+  /** Модели, которые можно поставить только на уже построенную крышу. */
+  structuralAssets?: StructuralModelAssets | null
   /** Подгрузилась фактура: доске пора перерисоваться. */
   onTexture?: () => void
   /** Подмена загрузчика текстур в тестах. */
@@ -568,6 +571,19 @@ function roofLooks(map: TacticalMap, rect: RoofRect) {
   return { covering: wooden ? 'shingles' : 'tiles', gable: look.kind === 'palisade' ? 'planks' : look.body, tint: look.tint }
 }
 
+/**
+ * Готовая кровля дома: её считает сама крыша, а детали на ней (труба,
+ * слуховое окно) спрашивают высоту, а не выводят скат заново.
+ */
+type RoofSurface = {
+  /** Высота кровли над карнизом в точке плана, в клетках. */
+  heightAt: (x: number, z: number) => number
+  /** Подъём ската на клетку по горизонтали. */
+  slope: number
+  /** Место слухового окна у двускатной крыши: середина ближнего ската. */
+  dormer?: { x: number; z: number; yaw: number }
+}
+
 function addPitchedRoof(
   resources: RoofResources,
   shellGroup: THREE.Group,
@@ -641,7 +657,16 @@ function addPitchedRoof(
   endEast.userData.board3dOpaqueRoof = true
   if (!ridgeAlongX) structural.rotation.y = Math.PI / 2
   structureGroup.add(structural)
-  return true
+  const half = span / 2
+  const surface: RoofSurface = {
+    heightAt: (x, z) => Math.max(0, rise * (1 - Math.abs(ridgeAlongX ? z - centerZ : x - centerX) / half)),
+    slope: rise / half,
+    // Окно смотрит на ближний скат; сдвиг от края держит модель внутри крыши.
+    dormer: ridgeAlongX
+      ? { x: centerX, z: bounds.maxY + .08, yaw: 0 }
+      : { x: bounds.maxX + .08, z: centerZ, yaw: Math.PI / 2 },
+  }
+  return surface
 }
 
 function addVaultRoof(
@@ -813,6 +838,15 @@ function buildRoofBuildings(map: TacticalMap) {
   return buildings
 }
 
+/** Крышные роли загружаются только для домов с уже валидным контуром крыши. */
+export function structuralRoofRolesForMap(map: TacticalMap): StructuralRole[] {
+  const buildings = buildRoofBuildings(map).filter((building) => building.cells.length >= 3)
+  if (!buildings.length) return []
+  const wanted = new Set<StructuralRole>(['chimney_brick'])
+  if (buildings.some((building) => Boolean(building.rect))) wanted.add('roof_dormer_roundtile')
+  return STRUCTURAL_ROLES.filter((role) => wanted.has(role))
+}
+
 /**
  * Цельная крыша дома сложной формы: вальмы, коньки и ендовы из одной сетки
  * (`src/board3d-hip-roof.ts`). Стропила и карнизы — в структуре: их видно и в
@@ -870,7 +904,53 @@ function addHipRoof(
     beam.lookAt(rafter.to.clone().add(new THREE.Vector3(0, y - RAFTER_DROP, 0)))
   })
   structureGroup.add(structural)
-  return true
+  const surface: RoofSurface = { heightAt: (x, z) => slope * distance(x, z), slope }
+  return surface
+}
+
+function roofDecorationCell(building: RoofBuilding) {
+  if (!building.cells.length) return null
+  const centerX = building.cells.reduce((sum, cell) => sum + cell.x + .5, 0) / building.cells.length
+  const centerY = building.cells.reduce((sum, cell) => sum + cell.y + .5, 0) / building.cells.length
+  return [...building.cells].sort((a, b) => (
+    Math.hypot(a.x + .5 - centerX, a.y + .5 - centerY)
+      - Math.hypot(b.x + .5 - centerX, b.y + .5 - centerY)
+      || a.y - b.y || a.x - b.x
+  ))[0]
+}
+
+/**
+ * Крышные детали ставятся только после того, как для дома уже создан скат или
+ * вальма, и садятся на его кровлю. Их скрывает cutaway так же, как сплошную
+ * оболочку крыши.
+ */
+function addRoofDecorations(
+  parent: THREE.Group,
+  building: RoofBuilding,
+  assets: StructuralModelAssets | null | undefined,
+  eaveHeight: number,
+  roof: RoofSurface,
+) {
+  const anchor = roofDecorationCell(building)
+  if (!anchor || building.cells.length < 3) return
+  const base = building.baseY + eaveHeight
+  const x = anchor.x + .5, z = anchor.y + .5
+  // Труба утоплена в кровлю на долю клетки: на скате под ней нет щели.
+  const chimney = structuralInstance(assets, {
+    role: 'chimney_brick', x, y: base + roof.heightAt(x, z) - .1, z,
+    width: .42, height: .92, depth: .42, opaqueRoof: true,
+  })
+  if (chimney) parent.add(chimney)
+
+  if (roof.dormer) {
+    const spot = roof.dormer
+    // Передний низ окна лежит на кровле: центр опущен на полглубины по уклону.
+    const model = structuralInstance(assets, {
+      role: 'roof_dormer_roundtile', x: spot.x, y: base + roof.heightAt(spot.x, spot.z) - roof.slope * .39, z: spot.z,
+      yaw: spot.yaw, width: .84, height: .84, depth: .78, opaqueRoof: true,
+    })
+    if (model) parent.add(model)
+  }
 }
 
 /** Создаёт видимый слой крыш, не добавляя ничего в TacticalMap и не раскрывая туман. */
@@ -898,8 +978,10 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
     if (style === 'vault') addVaultRoof(resources, shells, structures, rect, palette, fullWallHeight, painted)
   }
   for (const building of buildRoofBuildings(map)) {
-    if (building.rect) addPitchedRoof(resources, shells, structures, building.rect, palette, fullWallHeight, map, painted)
-    else addHipRoof(resources, shells, structures, building, palette, fullWallHeight, map, painted)
+    const built = building.rect
+      ? addPitchedRoof(resources, shells, structures, building.rect, palette, fullWallHeight, map, painted)
+      : addHipRoof(resources, shells, structures, building, palette, fullWallHeight, map, painted)
+    if (built && painted) addRoofDecorations(structures, building, options.structuralAssets, fullWallHeight, built)
   }
 
   let mode: Board3DRoofMode = options.mode ?? 'cutaway'

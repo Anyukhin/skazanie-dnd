@@ -6,6 +6,7 @@ import test from 'node:test'
 import { decodePng, encodePng } from '../tools/png-codec.mjs'
 import { inspectModelFile } from '../tools/import-environment-models.mjs'
 import { createMapDetailModel } from '../tools/build-map-detail-models.mjs'
+import { resolveMapDetailIntegration } from '../tools/build-map-detail-assets.mjs'
 import { THREE } from '../tools/map-detail-model-helpers.mjs'
 import { compactModelMaterialAtlas } from '../tools/map-detail-model-textures.mjs'
 
@@ -52,12 +53,16 @@ test('заказ детализации содержит весь набор и 
   assert.equal(Object.keys(manifest.textures).length, 25)
   assert.equal(Object.keys(manifest.sheets).length, 24)
   assert.deepEqual(new Set(manifest.models.map(model => model.id)), new Set(spec.models.map(model => model.id)))
-  const pendingStamps = spec.rasters.filter(item => spec.pendingIntegration.sheets.includes(item.file)).flatMap(item => item.ids)
-  assert.deepEqual(manifest.pendingIntegration, {
-    stamps: pendingStamps,
-    models: spec.models.filter(model => pendingStamps.includes(model.id)).map(model => model.id),
-    textures: spec.pendingIntegration.textures.map(file => file.replace(/\.png$/u, '')),
-  })
+  const integration = resolveMapDetailIntegration(spec)
+  assert.deepEqual(manifest.pendingIntegration, integration.pendingIntegration)
+  assert.deepEqual(manifest.structuralIntegration, integration.structuralIntegration)
+  assert.deepEqual(manifest.styleIntegration, integration.styleIntegration)
+  const sourceSpec = readFileSync(`${root}docs/map-detail-assets-spec-v1.json`)
+  assert.equal(manifest.provenance.sourceSpec.file, 'docs/map-detail-assets-spec-v1.json')
+  assert.equal(manifest.provenance.sourceSpec.sha256, hash(sourceSpec))
+  assert.equal(manifest.provenance.sourceSha256, hash(sourceSpec))
+  const assetGenerator = manifest.provenance.generators.find(generator => generator.file === 'tools/build-map-detail-assets.mjs')
+  assert.equal(manifest.provenance.generatorSha256, assetGenerator.sha256)
   for (const file of manifest.files) {
     assert.ok(!file.file.includes('..') && !file.file.startsWith('/'))
     const bytes = readFileSync(`${directory}${file.file}`)

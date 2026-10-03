@@ -2,6 +2,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 
 const log = (line) => { document.getElementById('log').textContent += `${line}\n` }
@@ -26,7 +27,14 @@ function canvasOf(source, width, height = width, rect = null) {
   return canvas
 }
 
-const blob = (canvas, quality) => new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', quality))
+const blob = (canvas, quality, type = 'image/jpeg') => new Promise((ok) => canvas.toBlob(ok, type, quality))
+
+function imageCanvas(source, maxSide) {
+  const width = source.naturalWidth || source.width
+  const height = source.naturalHeight || source.height
+  const scale = Math.min(1, maxSide / Math.max(width, height))
+  return canvasOf(source, Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)))
+}
 
 async function post(path, body) {
   const response = await fetch(`/out?path=${encodeURIComponent(path)}`, { method: 'POST', body })
@@ -360,20 +368,25 @@ async function buildPaintedMaterial(key, spec) {
 /** Материалы наборов Quaternius: исходные карты, только уменьшенные. */
 async function buildKitMaterial(key, kit) {
   const color = await image(kit.color)
-  const side = Math.min(1024, color.naturalWidth)
-  await post(`materials/${key}/color.jpg`, await blob(canvasOf(color, side), .86))
-  if (kit.normal) await post(`materials/${key}/normal.jpg`, await blob(canvasOf(await image(kit.normal), side), .9))
-  const half = Math.max(64, side / 2)
+  const colorCanvas = imageCanvas(color, 1024)
+  const colorFormat = kit.alphaTest > 0 || kit.transparent ? 'png' : 'jpg'
+  await post(`materials/${key}/color.${colorFormat}`, await blob(colorCanvas, .86, colorFormat === 'png' ? 'image/png' : 'image/jpeg'))
+  if (kit.normal) await post(`materials/${key}/normal.jpg`, await blob(imageCanvas(await image(kit.normal), 1024), .9))
+  const halfWidth = Math.max(64, Math.round(colorCanvas.width / 2)), halfHeight = Math.max(64, Math.round(colorCanvas.height / 2))
   let orm = null
-  if (kit.orm && kit.ormKind === 'orm') orm = canvasOf(await image(kit.orm), half)
-  else if (kit.orm) orm = ormFrom(half, half, { roughness: canvasOf(await image(kit.orm), half) })
+  if (kit.orm && kit.ormKind === 'orm') orm = canvasOf(await image(kit.orm), halfWidth, halfHeight)
+  else if (kit.orm) orm = ormFrom(halfWidth, halfHeight, { roughness: canvasOf(await image(kit.orm), halfWidth, halfHeight) })
   if (orm) await post(`materials/${key}/orm.jpg`, await blob(orm, .85))
-  return { color: true, normal: Boolean(kit.normal), orm: Boolean(orm), metalness: kit.metalness, roughness: kit.roughness, doubleSided: kit.doubleSided }
+  return {
+    color: true, colorFormat, normal: Boolean(kit.normal), orm: Boolean(orm), metalness: kit.metalness, roughness: kit.roughness,
+    doubleSided: kit.doubleSided, aspect: +(colorCanvas.height / colorCanvas.width).toFixed(4),
+    alphaTest: kit.alphaTest, transparent: kit.transparent, opacity: kit.opacity, depthWrite: kit.depthWrite,
+  }
 }
 
 // --------------------------------------------------- классы материалов
 
-const FLAT = /flame|ember|glow|lava|coal-glow|glass|water|liquid|orb|crystal|opening|recess|cavity|shadow|hole|pool|wick|^dark$/i
+const FLAT = /flame|ember|glow|lava|coal-glow|glass|water|liquid|orb|crystal|opening|recess|cavity|shadow|hole|pool|wick|(?:^|[-\s:_])ice(?:[-\s:_]|$)|^dark$/i
 const CLASS_RULES = [
   ['bark', /bark|кора/i],
   ['plaster', /statue|idol|figure|bust|sculpt|статуя|идол|фигур|бюст|изваян/i],
@@ -382,7 +395,7 @@ const CLASS_RULES = [
   ['cloth', /cloth|fabric|canvas|blanket|pillow|cushion|curtain|tent|sail|leather|rope|cord|twine|thread|banner|rug|felt|cork|mattress|sheet|sack|bag|net|upholster|сиден|подушк|подлокот|спинк|обивк|матрас|покрыв|простын|ковр|мешк|мешок|ткан|одеял|подуш|полот|штор|кожа|канат|верёв|бечев/i],
   ['stone', /coal|уголь/i],
   ['brick', /brick|masonry|hearth|fireplace|chimney|oven|forge|furnace|кирп/i],
-  ['plaster', /ceramic|clay|pottery|porcelain|bone|skull|plaster|food|bread|cheese|stew|dough|wax|candle|leaf|leaves|grass|moss|plant|flower|petal|fruit|apple|carrot|cabbage|paper|parchment|scroll|map|page|globe/i],
+  ['plaster', /ceramic|clay|pottery|porcelain|bone|skull|plaster|food|bread|cheese|stew|dough|wax|candle|leaf|leaves|grass|moss|plant|flower|petal|fruit|apple|carrot|cabbage|paper|parchment|scroll|map|page|globe|(?:^|[-\s:_])snow(?:[-\s:_]|$)|снег|сугроб/i],
   ['stone', /stone|rock|marble|granite|slab|pillar|capital|groove|niche|grave|tomb|sarcoph|statue|carving|altar|dirt|earth|mortar|cobble|coal|кам|скал|плит|уголь/i],
   ['wood', /wood|plank|board|table|shelf|counter|log|stump|beam|post|frame|leg|handle|lid|seat|chair|wheel|barrel|crate|дерев|доск|ножк|рама|полк|стол|брус|балк|столб|бочк|ящик/i],
 ]
@@ -564,33 +577,57 @@ function restyleMeshes(root, plan, skip) {
 const loader = new GLTFLoader()
 const kitCache = new Map()
 
+/**
+ * Реальное имя PNG из image.uri. В Medieval Village name у картинки может
+ * быть `T_VineLeaf.png`, а файл на диске — `T_VineLeaf_png.png`.
+ */
+function kitTextureName(texture, imageOverrides = {}, imageFiles = new Map()) {
+  const name = texture.name || texture.image?.src?.split('/').pop() || 'unknown'
+  const candidates = [name, `${name}.png`, name.replace(/\.png$/i, '')]
+  const actual = candidates.map((candidate) => imageFiles.get(candidate)).find(Boolean) ?? name
+  const actualCandidates = [actual, actual.replace(/\.png$/i, ''), name, name.replace(/\.png$/i, '')]
+  const override = actualCandidates.map((candidate) => imageOverrides[candidate]).find(Boolean)
+  return override || actual
+}
+
 /** Ключ общего материала набора по имени текстуры цвета: T_Trim_Furniture_BaseColor → kit-trim-furniture. */
-function kitKey(texture) {
-  const name = (texture.name || texture.image?.src?.split('/').pop() || 'unknown').replace(/\.png$/i, '')
+function kitKey(texture, imageOverrides = {}, imageFiles = new Map()) {
+  const name = kitTextureName(texture, imageOverrides, imageFiles).replace(/\.png$/i, '')
   return `kit-${name.replace(/^T_/, '').replace(/_(BaseColor|Diffuse)$/i, '').replace(/_/g, '-').toLowerCase()}`
 }
 
-async function kitPart(path, plan) {
+async function kitPart(path, plan, imageOverrides = {}) {
   // GLTFLoader в Chrome декодирует в ImageBitmap без адреса: файл восстанавливается по имени картинки.
   const folder = path.split('/')[0]
-  const imageUrl = (texture) => texture?.name ? `/source/${folder}/${texture.name}.png` : null
   if (!kitCache.has(path)) kitCache.set(path, loader.loadAsync(`/source/${path}.gltf`))
   const gltf = await kitCache.get(path)
+  const imageFiles = new Map()
+  for (const image of gltf.parser.json.images ?? []) {
+    const name = String(image.name ?? '')
+    const uri = typeof image.uri === 'string' ? decodeURIComponent(image.uri).split(/[\\/]/u).at(-1) : ''
+    if (!uri) continue
+    for (const key of [name, `${name}.png`, name.replace(/\.png$/i, ''), uri]) if (key) imageFiles.set(key, uri)
+  }
+  const imageUrl = (texture) => texture?.name ? `/source/${folder}/${kitTextureName(texture, imageOverrides, imageFiles)}` : null
   const scene = gltf.scene.clone(true)
   scene.traverse((object) => {
     if (!object.isMesh) return
     const convert = (material) => {
       if (!material.map) return material.clone()
-      const key = kitKey(material.map)
+      const key = kitKey(material.map, imageOverrides, imageFiles)
       if (!plan.kits.has(key)) {
         const ormTexture = material.metalnessMap ?? material.roughnessMap
         plan.kits.set(key, {
           color: imageUrl(material.map), normal: imageUrl(material.normalMap), orm: imageUrl(ormTexture),
           ormKind: /orm/i.test(ormTexture?.name ?? imageUrl(ormTexture) ?? '') ? 'orm' : 'roughness',
           metalness: material.metalnessMap ? material.metalness : 0, roughness: material.roughness, doubleSided: material.side === THREE.DoubleSide,
+          alphaTest: material.alphaTest ?? 0, transparent: material.transparent, opacity: material.opacity, depthWrite: material.depthWrite,
         })
       }
-      return new THREE.MeshStandardMaterial({ name: `skz:${key}`, vertexColors: Boolean(object.geometry.attributes.color), side: material.side })
+      return new THREE.MeshStandardMaterial({
+        name: `skz:${key}`, vertexColors: Boolean(object.geometry.attributes.color), side: material.side,
+        alphaTest: material.alphaTest, transparent: material.transparent, opacity: material.opacity, depthWrite: material.depthWrite,
+      })
     }
     object.material = Array.isArray(object.material) ? object.material.map(convert) : convert(object.material)
   })
@@ -604,7 +641,7 @@ async function restylePart(path, plan) {
   return restyle(gltf.scene, plan)
 }
 
-const detailModules = ['workshop', 'household', 'town', 'dungeon', 'mine-camp', 'urban-wilderness']
+const detailModules = ['workshop', 'household', 'town', 'dungeon', 'mine-camp', 'urban-wilderness', 'frontier']
 let detailFactories = null
 async function detailPart(id, plan) {
   detailFactories ??= await Promise.all(detailModules.map((name) => import(`/tools/map-detail-models-${name}.mjs`)))
@@ -628,9 +665,15 @@ async function buildRecipe(recipe, plan) {
   const root = new THREE.Group()
   const placed = []
   for (const part of recipe.parts) {
-    const object = part.kit ? await kitPart(part.kit, plan) : part.restyle ? await restylePart(part.restyle, plan) : await detailPart(part.detail, plan)
+    const object = part.kit ? await kitPart(part.kit, plan, part.imageOverrides) : part.restyle ? await restylePart(part.restyle, plan) : await detailPart(part.detail, plan)
     const holder = new THREE.Group()
     holder.add(object)
+    if (part.center) {
+      object.updateMatrixWorld(true)
+      const bounds = new THREE.Box3().setFromObject(object, true)
+      object.position.x -= (bounds.min.x + bounds.max.x) / 2
+      object.position.z -= (bounds.min.z + bounds.max.z) / 2
+    }
     if (part.tilt) object.rotation.set(...part.tilt.map((degrees) => degrees * Math.PI / 180))
     const scale = part.scale ?? 1
     holder.scale.set(...(Array.isArray(scale) ? scale : [scale, scale, scale]))
@@ -646,6 +689,25 @@ async function buildRecipe(recipe, plan) {
     root.add(holder)
     holder.updateMatrixWorld(true)
     placed.push(new THREE.Box3().setFromObject(holder, true))
+  }
+  // Опора без деталей `on`: столешница — самое низкое попадание лучей сверху
+  // в середину первой детали. Перо, чернильница и книга на краю выше неё.
+  if (recipe.surface && !root.getObjectByName('surface-top')) {
+    root.updateMatrixWorld(true)
+    const box = placed[0], size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3())
+    const raycaster = new THREE.Raycaster()
+    let lowest = Infinity
+    for (const dx of [-.3, 0, .3]) for (const dz of [-.3, 0, .3]) {
+      raycaster.set(new THREE.Vector3(center.x + dx * size.x / 2, box.max.y + 1, center.z + dz * size.z / 2), new THREE.Vector3(0, -1, 0))
+      const hit = raycaster.intersectObject(root, true)[0]
+      if (hit && hit.point.y > box.min.y + size.y * .2) lowest = Math.min(lowest, hit.point.y)
+    }
+    if (!Number.isFinite(lowest)) throw new Error('не найдена столешница опоры')
+    const top = new THREE.Object3D()
+    top.name = 'surface-top'
+    top.userData = { role: 'support-surface' }
+    top.position.set(center.x, lowest, center.z)
+    root.add(top)
   }
   // Стол с вещами сверху: высота столешницы — верх опоры, а не макушка свечи.
   if (recipe.parts.some((part) => part.on === 0) && !root.getObjectByName('surface-top')) {
@@ -668,6 +730,158 @@ async function exportProp(name, root) {
   const glb = await new GLTFExporter().parseAsync(root, { binary: true, onlyVisible: true })
   await post(`props/${name}.glb`, glb)
   return glb.byteLength
+}
+
+function stylePropKey(prop) {
+  if (prop.ref) return `ref-${prop.ref.replace(/\.glb$/u, '').replace(/[^a-z0-9]+/gu, '-')}`
+  return `style-${prop.name.replace(/_/gu, '-')}`
+}
+
+function stylePropUrl(prop, plan) {
+  return prop.ref
+    ? `/public/models/environment/releases/${plan.release}/${prop.ref}`
+    : `/staging/props/${prop.name}.glb`
+}
+
+function styleAtlasEntries(source, plan) {
+  const entries = [], seen = new Set()
+  for (const list of Object.values(source.props)) for (const prop of list) {
+    const key = stylePropKey(prop)
+    if (seen.has(key)) continue
+    seen.add(key)
+    entries.push({ key, url: stylePropUrl(prop, plan), yaw: prop.yaw ?? 0 })
+  }
+  return entries
+}
+
+async function sha256Hex(value) {
+  const bytes = await crypto.subtle.digest('SHA-256', await value.arrayBuffer())
+  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Рендерит тот же GLB, который попадёт в каталог стиля. В отличие от прежнего
+ * сборщика атласа, здесь skz:* получает общие фактуры пакета, поэтому 2D и 3D
+ * смотрят на один материал и одну альфа-маску.
+ */
+async function renderTopdownAtlas(source, plan, builtMaterials) {
+  const entries = styleAtlasEntries(source, plan)
+  const tile = 256
+  const pixels = document.createElement('canvas'); pixels.width = pixels.height = tile
+  const pixelContext = pixels.getContext('2d', { willReadFrequently: true }); if (!pixelContext) throw new Error('не создан буфер 2D-атласа')
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
+  renderer.setSize(tile, tile); renderer.setPixelRatio(1); renderer.setClearColor(0, 0)
+  renderer.outputColorSpace = THREE.SRGBColorSpace
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.25
+  renderer.shadowMap.enabled = true
+  const scene = new THREE.Scene(); scene.add(new THREE.HemisphereLight(0xfff4df, 0x574637, 2.2))
+  const room = new RoomEnvironment(), pmrem = new THREE.PMREMGenerator(renderer)
+  scene.environment = pmrem.fromScene(room, .04).texture; scene.environmentIntensity = .65
+  room.dispose(); pmrem.dispose()
+  const light = new THREE.DirectionalLight(0xffffff, 3); light.position.set(-3, 8, -5); light.castShadow = true; scene.add(light)
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, .01, 10000); camera.up.set(0, 0, -1)
+  const textureLoader = new THREE.TextureLoader(), materialCache = new Map(), sharedMaterials = new Set(), sharedTextures = new Set()
+  const loaderForAtlas = new GLTFLoader()
+  const texture = async (url, color) => {
+    if (!sharedTextures.has(url)) {
+      const map = await textureLoader.loadAsync(url)
+      map.flipY = false; map.wrapS = map.wrapT = THREE.RepeatWrapping; map.anisotropy = 4
+      if (color) map.colorSpace = THREE.SRGBColorSpace
+      sharedTextures.add(url); textureCache.set(url, map)
+    }
+    return textureCache.get(url)
+  }
+  const textureCache = new Map()
+  const sharedMaterial = async (key, vertexColors) => {
+    const id = `${key}:${vertexColors}`
+    if (materialCache.has(id)) return materialCache.get(id)
+    const spec = builtMaterials[key]
+    if (!spec) return null
+    const format = spec.colorFormat ?? 'jpg'
+    const map = await texture(`/staging/materials/${key}/color.${format}`, true)
+    const normalMap = spec.normal ? await texture(`/staging/materials/${key}/normal.jpg`, false) : null
+    const orm = spec.orm ? await texture(`/staging/materials/${key}/orm.jpg`, false) : null
+    const material = new THREE.MeshStandardMaterial({
+      name: `skz:${key}`, vertexColors, map, normalMap, roughnessMap: orm, metalnessMap: orm, aoMap: orm,
+      roughness: spec.roughness ?? 1, metalness: spec.metalness ?? 0, side: spec.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+      alphaTest: spec.alphaTest ?? 0, transparent: spec.transparent ?? false, opacity: spec.opacity ?? 1, depthWrite: spec.depthWrite ?? true,
+    })
+    materialCache.set(id, material); sharedMaterials.add(material); return material
+  }
+  const disposeModel = (root) => {
+    root.traverse((object) => {
+      if (!object.isMesh) return
+      object.geometry?.dispose()
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        if (!material || sharedMaterials.has(material)) continue
+        for (const value of Object.values(material)) if (value?.isTexture) value.dispose()
+        material.dispose()
+      }
+    })
+  }
+  const frames = {}, sizes = {}, crops = []
+  try {
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index]; log(`2D: ${index + 1}/${entries.length} — ${entry.key}`)
+      const gltf = await loaderForAtlas.loadAsync(entry.url), group = new THREE.Group()
+      group.add(gltf.scene); group.rotation.y = entry.yaw * Math.PI / 180
+      const meshes = []
+      group.traverse((object) => { if (object.isMesh) meshes.push(object) })
+      for (const object of meshes) {
+        const replace = async (current) => {
+          if (!current.name?.startsWith('skz:')) return current
+          const material = await sharedMaterial(current.name.slice(4), Boolean(object.geometry.getAttribute('color')))
+          if (!material) return current
+          current.dispose(); return material
+        }
+        object.material = Array.isArray(object.material)
+          ? await Promise.all(object.material.map(replace))
+          : await replace(object.material)
+      }
+      group.updateMatrixWorld(true)
+      const box = new THREE.Box3().setFromObject(group), center = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3())
+      sizes[entry.key] = [+size.x.toFixed(4), +size.y.toFixed(4), +size.z.toFixed(4)]
+      const span = Math.max(size.x, size.z, .01) * 1.04
+      camera.left = -span / 2; camera.right = span / 2; camera.top = span / 2; camera.bottom = -span / 2
+      camera.position.set(center.x, box.max.y + Math.max(10, span), center.z); camera.lookAt(center); camera.updateProjectionMatrix()
+      scene.add(group); renderer.render(scene, camera)
+      pixelContext.clearRect(0, 0, tile, tile); pixelContext.drawImage(renderer.domElement, 0, 0)
+      const rgba = pixelContext.getImageData(0, 0, tile, tile).data
+      let left = tile, top = tile, right = -1, bottom = -1
+      for (let y = 0; y < tile; y += 1) for (let x = 0; x < tile; x += 1) if (rgba[(y * tile + x) * 4 + 3] > 8) {
+        left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y)
+      }
+      if (right < left) throw new Error(`пустой вид сверху: ${entry.key}`)
+      const w = right - left + 1, h = bottom - top + 1
+      const crop = document.createElement('canvas'); crop.width = w; crop.height = h
+      crop.getContext('2d').drawImage(pixels, left, top, w, h, 0, 0, w, h)
+      crops.push({ key: entry.key, crop })
+      scene.remove(group); disposeModel(group)
+    }
+  } finally {
+    renderer.dispose(); scene.environment?.dispose?.(); sharedTextures.forEach((url) => textureCache.get(url)?.dispose())
+  }
+  // Кадры укладываются полками по убыванию высоты, с зазором против
+  // затекания соседа при сглаживании: сетка 256×256 оставляла пустой
+  // половину атласа. WebP с альфой вместо PNG — в разы легче для доски 2D.
+  const width = 4096, gap = 2
+  const order = [...crops].sort((a, b) => b.crop.height - a.crop.height || a.key.localeCompare(b.key))
+  let shelfX = 0, shelfY = 0, shelfH = 0
+  for (const { key, crop } of order) {
+    if (shelfX + crop.width > width) { shelfY += shelfH + gap; shelfX = 0; shelfH = 0 }
+    frames[key] = { x: shelfX, y: shelfY, w: crop.width, h: crop.height }
+    shelfX += crop.width + gap
+    shelfH = Math.max(shelfH, crop.height)
+  }
+  const height = Math.ceil((shelfY + shelfH) / 4) * 4
+  if (height > 16_000) throw new Error(`2D-атлас стиля превышает 16000 px: ${height}`)
+  const atlas = document.createElement('canvas'); atlas.width = width; atlas.height = Math.max(4, height)
+  const context = atlas.getContext('2d'); if (!context) throw new Error('не создан холст 2D-атласа')
+  for (const { key, crop } of crops) context.drawImage(crop, frames[key].x, frames[key].y)
+  const image = await new Promise((resolve) => atlas.toBlob(resolve, 'image/webp', .9))
+  if (!image || image.type !== 'image/webp') throw new Error('браузер не создал WebP 2D-атласа')
+  await post('topdown.webp', image)
+  return { image: 'topdown.webp', key: await sha256Hex(image), frames, sizes }
 }
 
 // ----------------------------------------------------------- сборка
@@ -704,9 +918,10 @@ async function build() {
   for (const look of Object.values(source.walls ?? {})) if (source.materials[look.material]) plan.usedPainted.add(look.material)
   for (const key of [...plan.usedPainted].sort()) { materials[key] = await buildPaintedMaterial(key, source.materials[key]); log(`материал ${key}`) }
   for (const [key, kit] of [...plan.kits].sort()) { materials[key] = await buildKitMaterial(key, kit); log(`материал ${key}`) }
-  await post('meta.json', JSON.stringify({ materials, built }))
+  const atlas = only ? undefined : await renderTopdownAtlas(source, plan, materials)
+  await post('meta.json', JSON.stringify({ materials, built, ...(atlas ? { atlas } : {}) }))
   if (only) { log('Частичная сборка: пакет не публикуется'); document.title = 'done'; return }
-  const response = await fetch('/finish', { method: 'POST', body: JSON.stringify({ materials, built }) })
+  const response = await fetch('/finish', { method: 'POST', body: JSON.stringify({ materials, built, atlas }) })
   log(`Готово: ${await response.text()}`)
 }
 

@@ -1,6 +1,6 @@
 # Покрытие 3D-реквизита
 
-Срез за 2 октября 2026 зафиксирован в immutable public release
+Базовый срез за 2 октября 2026 зафиксирован в immutable public release
 [`5f884daa35bf2ebe49f61f75`](../public/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/manifest.json).
 Источник игровых видов — `server/asset-registry.mjs`; источник моделей и кадров —
 manifest выпуска.
@@ -16,8 +16,11 @@ assetId с GLB**. Ещё **10 видов намеренно остаются п�
 settlement; семь из них хранятся без assetIds — их виды перешли к вариантам
 CC0-наборов Stylized Nature MegaKit, KayKit Dungeon и Graveyard Kit.
 
-Таблица показывает фактические ключи из immutable manifest выпуска. GLB отвечает
-только за внешний вид; игровое поведение берётся из реестра ассетов.
+Таблица ниже показывает фактические ключи базового immutable manifest выпуска.
+GLB отвечает только за внешний вид; игровое поведение берётся из реестра
+ассетов. Утверждённое расширение 3D-реквизита 03.10.2026 описано после таблицы:
+его новые модели входят в текущий stylepack и не переписывают этот исторический
+срез.
 
 ## Таблица 105 видов
 
@@ -132,6 +135,57 @@ visibility и scale остаются ответственностью канон
 | roadside_shrine / Придорожная часовня | prop | GLB / авторская модель — household/settlement | sk-roadside-shrine | канон 1×1; anchor=wall, blocksMove, interactive, cover=half; GLB визуален; gameplay/scale/visibility остаются в реестре. |
 | market_stall / Торговая стойка | prop | GLB / выпущенная модель — есть в immutable release | q-stall_empty | канон 2×2; blocksMove, interactive, cover=half; GLB визуален, gameplay/scale/visibility остаются в реестре. |
 | village_fence / Деревенская изгородь | prop | GLB / выпущенный GLB — источник Nature Kit | k-fence_simple<br>k-fence_planks | канон 2×1; anchor=wall, cover=half; provenance выпуска сохранён; gameplay остаётся в реестре. |
+
+## Утверждённое расширение 3D-реквизита (03.10.2026)
+
+Волна расширения содержит 60 моделей и композиций из 73 исходных частей.
+Девять строк добавляют варианты уже существующих `assetId`; 42 новых вида
+объявлены в `server/detail-props.mjs` и зеркале `src/detail-props.ts`; ещё девять
+ролей не являются предметами карты и крепятся к существующим рёбрам, мостам и
+крышам через `src/board3d-structural.ts` и `src/board3d-walls.ts`:
+
+`rope_bridge`, `swamp_boardwalk`, `sandstone_arch`, `ruin_wall_arch`,
+`ruin_corner_brick`, `round_window_brick`, `chimney_brick`,
+`roof_dormer_roundtile`, `ornate_iron_fence`.
+
+Новые `DETAIL_PROPS` получают канонические темы, footprint, anchor и alias;
+их GLB остаётся представлением. Структурные роли не получают footprint,
+blocksMove, blocksSight, cover или интерактивность: рендерер вписывает их в
+якорь стены, пролёта или крыши, а карта и правила остаются авторитетными.
+
+Сборщик рисованного stylepack теперь создаёт общий `topdown.webp` из тех же GLB
+и материалов, что идут в 3D: кадры уложены полками без пустых ячеек сетки. В
+manifest для варианта записываются `preview`, `size` и, где нужен предел,
+`maxHeight`; alpha-test вырезанных материалов сохраняется. Поэтому 2D и 3D используют один вариант модели и одинаковый
+масштаб после поворота footprint. Старый manifest без этого атласа остаётся
+совместимым.
+
+## Подготовленные штампы с моделями стиля (04.10.2026)
+
+38 штампов набора детализации, которые были подготовлены без 3D, объявлены в
+`DETAIL_PROPS` и получили процедурные рецепты `tools/map-detail-models-frontier.mjs`
+(ящики рыбаков — из ящиков Fantasy Props). GLB набора у них нет: 3D и 2D-превью
+приходят из stylepack, а 2D без пакета рисует прежний штамп. Список фиксирует
+`integration.styleProps` заказа и `styleIntegration` паспорта набора.
+
+| Место | Предметы | Где появляются |
+| --- | --- | --- |
+| Зима | snowdrift, snowy_boulder, ice_pillars, frozen_pool, winter_cache, snow_cairn | холодный климат открытой местности, назначение `winter` |
+| Пустыня | sand_dune, desert_boulders, cactus_cluster, dead_scrub, oasis_pool, broken_obelisk | засушливый климат, назначение `desert` |
+| Болото | bog_pool, lily_pad_cluster, reed_cluster, rotten_log, mud_patch, swamp_totem, peat_mound | болотистый климат, назначение `swamp` |
+| Гавань | mooring_bollard, cargo_net, fishing_crates, lobster_cage, sail_bundle | портовое поселение, назначение `harbor` |
+| Лагерь | bedroll_cluster, shield_rack, camp_dummy, spiked_beam_barrier | сцена лагеря или стоянки, назначения `camp` и `siege` |
+| Лаборатория | alchemy_cauldron, arcane_lectern, ritual_circle, arcane_stone, potion_cabinet, magic_mirror | дом мага или алхимика, назначение `laboratory` |
+| Темница | prison_cage, dungeon_rack, iron_maiden, manacle_post | камеры и пыточная |
+
+Механики у них нет: лёд не скользит, вода в луже не мочит, клетка не держит,
+шипы не ранят. Ловушки, канализация, опускная решётка, шлюз и прочие 22
+подготовленных штампа остаются вне каталога, пока для них нет правил.
+
+Сохранённые кампании и карты не мигрируются. Вариант стиля не меняет смысл
+существующего `assetId`, а новая визуальная модель сама по себе не добавляет
+атаку баллисты, алхимию, управление телегой, хождение по воде у моста или
+другую механику. Такие действия требуют отдельных серверных правил и событий.
 
 ## Граница визуальной метаинформации
 

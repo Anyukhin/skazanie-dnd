@@ -23,13 +23,14 @@ import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
-import { createBoard3DRoofs, type Board3DRoofMode } from './board3d-roofs'
+import { createBoard3DRoofs, structuralRoofRolesForMap, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
-import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
+import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, structuralBridgeRolesForMap, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
 import { loadGraphicsStylePack, peekGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
-import { buildStyledEdges, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, packHasWallLooks, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
+import { buildStyledEdges, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, packHasWallLooks, structuralEdgeRolesForMap, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
 import { buildStyledFloors } from './board3d-floor-tiles'
+import { structuralLoadProps, structuralTemplate, type StructuralRole } from './board3d-structural'
 
 /** Высота срезанной стены в мировых единицах клетки. */
 /** Высота стены: выше пояса фигурки, как у наборных диорам, но не закрывает поле при взгляде сверху. */
@@ -948,11 +949,12 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   // пересобранная доска (каждое открытие двери) сразу рисует их фактурами.
   const initialPack = options.graphicsStyle !== false ? peekGraphicsStylePack() : null
   let styledEdges: StyledEdges | null = null
+  let structuralAssets: PropModelAssets | null = null
   let rocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, null, { skipMasonry: packHasWallLooks(initialPack) })
   if (rocks.group.children.length) group.add(rocks.group)
   const grass = createGrassTufts(map, visiblePropsOnBoard(map), landscapeDetail)
   if (grass) group.add(grass.group)
-  let bridges = createBridgeRails(map)
+  let bridges = createBridgeRails(map, null, structuralAssets)
   if (bridges) group.add(bridges.group)
   let waterPlants: LandscapeInstances | null = null
   let landscapeKit: LandscapeKitHandle | null = null
@@ -966,7 +968,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       rocks.dispose()
       rocks = nextRocks
       if (rocks.group.children.length) group.add(rocks.group)
-      const nextBridges = createBridgeRails(map, kit)
+      const nextBridges = createBridgeRails(map, kit, structuralAssets)
       bridges?.dispose()
       bridges = nextBridges
       if (bridges) group.add(bridges.group)
@@ -977,11 +979,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   }
 
   const roofTextureReady = () => { if (!disposed) options.onReady?.() }
-  let roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode, stylePack: initialPack, onTexture: roofTextureReady })
+  let roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode, stylePack: initialPack, structuralAssets, onTexture: roofTextureReady })
   group.add(roofs.group)
   const edgeLayer = new THREE.Group()
   edgeLayer.name = 'edge-layer'
-  const styledEdgeOptions = { wallHeight: BOARD3D_WALL_HEIGHT, thickness: BOARD3D_WALL_THICKNESS, onTexture: () => { if (!disposed) options.onReady?.() } }
+  const styledEdgeOptions = { wallHeight: BOARD3D_WALL_HEIGHT, thickness: BOARD3D_WALL_THICKNESS, structuralAssets: structuralAssets as PropModelAssets | null, onTexture: () => { if (!disposed) options.onReady?.() } }
   if (packHasWallLooks(initialPack)) {
     styledEdges = buildStyledEdges(map, initialPack, styledEdgeOptions)
     group.add(styledEdges.group)
@@ -997,15 +999,51 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   const stylePack: Promise<GraphicsStylePack | null> = options.graphicsStyle !== false && typeof window !== 'undefined'
     ? loadGraphicsStylePack()
     : Promise.resolve(null)
+  const bridgeRoles = structuralBridgeRolesForMap(map)
+  const edgeRoles = structuralEdgeRolesForMap(map)
+  const roofRoles = structuralRoofRolesForMap(map)
+  const structuralRoles = [...new Set<StructuralRole>([...bridgeRoles, ...edgeRoles, ...roofRoles])]
+  let resolvedStylePack = initialPack
   if (typeof window !== 'undefined') {
     const visibleProps = visiblePropsOnBoard(map)
-    void stylePack.then((pack) => disposed ? null : loadPropModelAssets(visibleProps, propAbort.signal, map.catalogRevision, pack)).then((assets) => {
+    void stylePack.then(async (pack) => {
+      resolvedStylePack = pack
+      if (disposed) return null
+      return loadPropModelAssets([...visibleProps, ...structuralLoadProps(pack, structuralRoles)], propAbort.signal, map.catalogRevision, pack)
+    }).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
       const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness)
       props.dispose()
       props = replacement
       propAssets = assets
+      structuralAssets = assets
+      styledEdgeOptions.structuralAssets = assets
+      // Слой пересобирается, только если для него пришла хоть одна модель:
+      // доска пересобирается на каждой двери, и пустая пересборка стен и
+      // крыш удваивала бы эту работу.
+      const loaded = (roles: readonly StructuralRole[]) => roles.some((role) => structuralTemplate(assets, role))
+      if (loaded(bridgeRoles)) {
+        const nextBridges = createBridgeRails(map, landscapeKit, structuralAssets)
+        bridges?.dispose()
+        bridges = nextBridges
+        if (bridges) group.add(bridges.group)
+      }
+      if (styledEdges && packHasWallLooks(resolvedStylePack) && loaded(edgeRoles)) {
+        const nextEdges = buildStyledEdges(map, resolvedStylePack, styledEdgeOptions)
+        styledEdges.dispose()
+        styledEdges = nextEdges
+        group.add(styledEdges.group)
+      }
+      if (styledEdges && packHasWallLooks(resolvedStylePack) && loaded(roofRoles)) {
+        const nextRoofs = createBoard3DRoofs(map, palette, {
+          wallHeight: BOARD3D_WALL_HEIGHT, mode: roofs.getMode(), stylePack: resolvedStylePack,
+          structuralAssets, onTexture: roofTextureReady,
+        })
+        roofs.dispose()
+        roofs = nextRoofs
+        group.add(roofs.group)
+      }
       options.onReady?.()
     }).catch(() => {})
   }
@@ -1085,10 +1123,13 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     if (disposed || styledEdges || !packHasWallLooks(pack)) return
     // Прежние стены снимаются только после удачной сборки новых: доска без
     // стен хуже доски со стенами прежнего вида.
+    resolvedStylePack = pack
     const nextEdges = buildStyledEdges(map, pack, styledEdgeOptions)
     const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, landscapeKit, { skipMasonry: true })
     // Крыши того же стиля, в том же режиме, что выбран сейчас.
-    const nextRoofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: roofs.getMode(), stylePack: pack, onTexture: roofTextureReady })
+    const nextRoofs = createBoard3DRoofs(map, palette, {
+      wallHeight: BOARD3D_WALL_HEIGHT, mode: roofs.getMode(), stylePack: pack, structuralAssets, onTexture: roofTextureReady,
+    })
     roofs.dispose()
     roofs = nextRoofs
     group.add(roofs.group)

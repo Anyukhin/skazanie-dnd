@@ -5,9 +5,9 @@ import {
   recordModelAssetParse,
   registerCspSafeEmbeddedTextureLoader,
 } from './model-assets'
-import { loadPropModelCatalog, propModelFor, type PropModelCatalog, type PropModelEntry } from './prop-model-catalog'
+import { loadPropModelCatalog, propModelFor, type PropModelCatalog } from './prop-model-catalog'
 import { createStyleMaterialBinder, type GraphicsStylePack } from './board3d-style'
-import { resolvePropAssetId } from './board-render'
+import { resolvePropAssetId, withStyleProps } from './board-render'
 import type { TacticalProp } from './types'
 
 export type PropModelAssets = {
@@ -135,30 +135,6 @@ export function disposePropModelAssets(models: Map<string, THREE.Group>) {
   materials.forEach((material) => material.dispose())
   geometries.forEach((geometry) => geometry.dispose())
   models.clear()
-}
-
-/**
- * Каталог, где виды из пакета стиля указывают на его модели. Вариант для
- * предмета выбирается по тому же хешу id, поэтому соседние стулья разные.
- */
-function withStyleProps(catalog: PropModelCatalog, pack: GraphicsStylePack | null | undefined, props: readonly TacticalProp[]): PropModelCatalog {
-  if (!pack) return catalog
-  const styled: PropModelEntry[] = []
-  const seen = new Set<string>()
-  for (const prop of props) {
-    const assetId = resolvePropAssetId(prop.assetId)
-    if (seen.has(assetId)) continue
-    seen.add(assetId)
-    for (const entry of pack.props[assetId] ?? []) {
-      styled.push({ key: entry.key, label: entry.key, category: `style-${pack.style}`, url: entry.url, assetIds: [assetId], yaw: entry.yaw })
-    }
-  }
-  if (!styled.length) return catalog
-  const replaced = new Set(styled.flatMap((entry) => entry.assetIds))
-  const kept = catalog.models.map((entry) => entry.assetIds.some((id) => replaced.has(id))
-    ? { ...entry, assetIds: entry.assetIds.filter((id) => !replaced.has(id)) }
-    : entry)
-  return { ...catalog, models: [...kept, ...styled] }
 }
 
 export async function loadPropModelAssets(props: readonly TacticalProp[], signal: AbortSignal, catalogRevision?: string, stylePack?: GraphicsStylePack | null): Promise<PropModelAssets | null> {

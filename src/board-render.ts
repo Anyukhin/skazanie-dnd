@@ -7,7 +7,8 @@ import {
   LIGHT_FULL, lightAt, lightGridFor, lightSourceVisibilityFor, lightSourcesOf,
   type LightSource,
 } from './board-lighting'
-import { LEGACY_CATALOG_REVISION, propModelFor, type PropModelCatalog } from './prop-model-catalog'
+import { LEGACY_CATALOG_REVISION, propModelFit, propModelFor, type PropModelCatalog } from './prop-model-catalog'
+import type { GraphicsStylePack } from './board3d-style'
 import { detailPropAlias } from './detail-props'
 import { cellAt, cellIndex, doorStates, edgeBetween, edgeList, edgeNeighbor, passableAt, revealedAt } from './tactical-map-client'
 
@@ -381,6 +382,8 @@ export type BoardScene = {
   detailAtlas?: PropAtlas | null
   /** Preview-атлас моделей окружения; при отсутствии кадра используется propAtlas. */
   modelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
+  /** Атлас style pack: выбирается только для style-варианта, базовый atlas не подменяется. */
+  styleModelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
   /** Подписывать ли высоту поверх клетки; у объёмного пола высота уже видна геометрией. */
   showElevationLabels?: boolean
   /**
@@ -569,11 +572,12 @@ export function tileKey(scene: BoardScene, tile: BoardTile) {
   const stamps = `${scene.propAtlas?.key ?? ''}${scene.detailAtlas ? `+${scene.detailAtlas.key}` : ''}`
   const modelCatalogRevision = scene.map.catalogRevision ?? LEGACY_CATALOG_REVISION
   const modelStamps = scene.modelPropAtlas?.key ?? ''
+  const styleModelStamps = scene.styleModelPropAtlas?.key ?? ''
   const tiles = scene.terrain?.key ?? ''
   // Свет запечён в тайл, поэтому его выключение обязано обесценить кэш: без
   // этой буквы тумблер настроек не менял бы уже нарисованные тайлы вовсе.
   const light = scene.lighting === false ? 'n' : 'l'
-  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${modelCatalogRevision}:${modelStamps}:${tiles}:${light}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
+  return `${scene.map.terrainHash}:${scene.map.levelIndex}:${scene.cellSize}:${textures}:${art}:${stamps}:${modelCatalogRevision}:${modelStamps}:${styleModelStamps}:${tiles}:${light}:${tile.tileX}:${tile.tileY}:${tileRevealSignature(scene.map, tile)}`
 }
 
 /**
@@ -3307,6 +3311,42 @@ export function resolvePropAssetId(assetId: string): string {
   return LEGACY_PROP_ASSETS[id] ?? id
 }
 
+/**
+ * Общий каталог выбора для 2D и 3D. Style-варианты помечены источником,
+ * чтобы 2D мог выбрать их собственный atlas, а базовые модели оставить на
+ * старом PNG каталога окружения. 3D передаёт только виды своей сцены (грузит
+ * лишь их GLB), 2D — весь пакет: атлас один, а каталог не зависит от того,
+ * какие предметы уже раскрыты.
+ */
+export function withStyleProps(catalog: PropModelCatalog, pack: GraphicsStylePack | null | undefined, props: readonly TacticalProp[]): PropModelCatalog {
+  return withStyleAssets(catalog, pack, props.map((prop) => resolvePropAssetId(prop.assetId)))
+}
+
+export function withStyleAssets(catalog: PropModelCatalog, pack: GraphicsStylePack | null | undefined, assetIds: Iterable<string>): PropModelCatalog {
+  if (!pack) return catalog
+  const styled: PropModelCatalog['models'] = []
+  const seen = new Set<string>()
+  for (const assetId of assetIds) {
+    if (seen.has(assetId)) continue
+    seen.add(assetId)
+    for (const entry of pack.props[assetId] ?? []) {
+      styled.push({
+        key: entry.key, label: entry.key, category: `style-${pack.style}`, url: entry.url, assetIds: [assetId], yaw: entry.yaw,
+        source: 'style',
+        ...(entry.preview ? { preview: entry.preview } : {}),
+        ...(entry.maxHeight !== undefined ? { maxHeight: entry.maxHeight } : {}),
+        ...(entry.size ? { size: entry.size } : {}),
+      })
+    }
+  }
+  if (!styled.length) return catalog
+  const replaced = new Set(styled.flatMap((entry) => entry.assetIds))
+  const kept = catalog.models.map((entry) => entry.assetIds.some((id) => replaced.has(id))
+    ? { ...entry, assetIds: entry.assetIds.filter((id) => !replaced.has(id)) }
+    : entry)
+  return { ...catalog, models: [...kept, ...styled] }
+}
+
 export function propDrawingFor(assetId: string): PropDrawing {
   const id = resolvePropAssetId(assetId)
   // Предмет набора детализации без своего вектора рисуется прежним двойником.
@@ -3393,6 +3433,19 @@ function propPlacement(prop: TacticalProp, drawing: PropDrawing, cellSize: numbe
   const layout = propVisualLayout(prop, drawing)
   const half = (cells: number) => Math.max(1, (cells * cellSize * PROP_FOOTPRINT_FILL * layout.scale) / 2)
   return { x: layout.x, y: layout.y, box: { hw: half(layout.width), hh: half(layout.depth) } }
+}
+
+/** Габарит top-down frame после того же height/footprint fit, что и 3D GLB. */
+function propModelPlacementBox(prop: TacticalProp, drawing: PropDrawing, entry: PropModelCatalog['models'][number] | null, cellSize: number) {
+  const fallback = propPlacement(prop, drawing, cellSize).box
+  if (!entry?.size) return fallback
+  const layout = propVisualLayout(prop, drawing)
+  const fit = propModelFit(resolvePropAssetId(prop.assetId), entry, layout.width, layout.depth, PROP_FOOTPRINT_FILL)
+  if (fit === null) return fallback
+  return {
+    hw: Math.max(1, entry.size[0] * fit * layout.scale * cellSize / 2),
+    hh: Math.max(1, entry.size[2] * fit * layout.scale * cellSize / 2),
+  }
 }
 
 export type PropDetailLevel = 'full' | 'simple' | 'mark'
@@ -3498,11 +3551,16 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     }
     const drawing = propDrawingFor(prop.assetId)
     const placement = propPlacement(prop, drawing, frame.size)
-    const modelEntry = scene.modelPropAtlas
-      ? propModelFor(scene.modelPropAtlas.catalog, resolvePropAssetId(prop.assetId), prop.id)
+    const canonical = resolvePropAssetId(prop.assetId)
+    const styleCandidate = scene.styleModelPropAtlas
+      ? propModelFor(scene.styleModelPropAtlas.catalog, canonical, prop.id)
       : null
+    const styleEntry = styleCandidate?.source === 'style' ? styleCandidate : null
+    const modelAtlas = styleEntry ? scene.styleModelPropAtlas : scene.modelPropAtlas
+    const modelEntry = styleEntry ?? (modelAtlas ? propModelFor(modelAtlas.catalog, canonical, prop.id) : null)
     const detailed = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
     const modelPreview = detailed ? modelEntry?.preview : undefined
+    const modelBox = modelPreview ? propModelPlacementBox(prop, drawing, modelEntry, frame.size) : placement.box
     // Штамп берётся только на полной детализации: ниже её предмет занимает
     // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
     const stamped = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
@@ -3517,7 +3575,7 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     // Декаль лежит на полу: прозрачность возвращается руками, а не `restore`, —
     // поддельный контекст тестов не обязан хранить стек состояний.
     if (drawing.flat) context.globalAlpha = PROP_DECAL_ALPHA
-    if (modelPreview && scene.modelPropAtlas) drawStamp(context, placement.box, scene.modelPropAtlas.texture, modelPreview)
+    if (modelPreview && modelAtlas) drawStamp(context, modelBox, modelAtlas.texture, modelPreview)
     else if (stamp && stampAtlas) drawStamp(context, placement.box, stampAtlas.texture, stamp)
     else if (level === 'full') drawing.paint(context, placement.box, scene.palette)
     else if (level === 'simple') drawSilhouette(context, placement.box, scene.palette, drawing)

@@ -38,6 +38,7 @@ for (const path of emittedFiles(buildDir).filter((candidate) => candidate.endsWi
 }
 const catalogModule = await import(pathToFileURL(join(buildDir, 'prop-model-catalog.mjs')).href)
 const assetsModule = await import(pathToFileURL(join(buildDir, 'prop-model-assets.mjs')).href)
+const styleModule = await import(pathToFileURL(join(buildDir, 'board3d-style.mjs')).href)
 const propsModule = await import(pathToFileURL(join(buildDir, 'board3d-props.mjs')).href)
 const batchModule = await import(pathToFileURL(join(buildDir, 'board3d-batching.mjs')).href)
 const render = await import(pathToFileURL(join(buildDir, 'board-render.mjs')).href)
@@ -116,6 +117,67 @@ test('2D preview и 3D GLB используют один детерминиро�
   assert.equal(calls.length, 1)
   assert.equal(calls[0][1], selected.preview.x)
   environment.dispose()
+})
+
+test('style catalog, 2D preview и 3D выбирают один style-вариант по prop id', () => {
+  const base = catalogModule.validatePropModelCatalog(validCatalog([entry('barrel-base', ['barrel'], 11)]))
+  const stylePack = {
+    style: 'stylized', revision: 'a'.repeat(16), floors: {}, materials: {}, walls: {},
+    atlas: { image: '/assets/styles/stylized/topdown.png', key: 'b'.repeat(16) },
+    props: { barrel: [
+      { key: 'style-barrel-a', url: '/assets/styles/stylized/props/barrel_a.glb', yaw: 0, preview: { x: 17, y: 19, w: 23, h: 29 }, maxHeight: .75 },
+      { key: 'style-barrel-b', url: '/assets/styles/stylized/props/barrel_b.glb', yaw: 90, preview: { x: 43, y: 47, w: 31, h: 37 } },
+    ] },
+  }
+  const value = prop({ id: 'shared-style-choice', assetId: 'barrel' })
+  const styled = render.withStyleProps(base, stylePack, [value])
+  const chosenBy3d = catalogModule.propModelFor(styled, 'barrel', value.id)
+  const chosenByStyle = styleModule.stylePropFor(stylePack, 'barrel', value.id)
+  assert.equal(chosenBy3d?.source, 'style')
+  assert.equal(chosenBy3d?.key, chosenByStyle?.key)
+  assert.deepEqual(chosenBy3d?.preview, chosenByStyle?.preview)
+})
+
+test('2D берёт style atlas для style preview и не берёт базовый model atlas без frame', () => {
+  const base = catalogModule.validatePropModelCatalog(validCatalog([entry('barrel-base', ['barrel'], 11)]))
+  const value = prop({ id: 'style-preview-choice', assetId: 'barrel' })
+  const stylePack = {
+    style: 'stylized', revision: 'c'.repeat(16), floors: {}, materials: {}, walls: {},
+    props: { barrel: [{ key: 'style-barrel', url: '/assets/styles/stylized/props/barrel.glb', yaw: 0, preview: { x: 17, y: 19, w: 23, h: 29 } }] },
+  }
+  const styled = render.withStyleProps(base, stylePack, [value])
+  const atlas = (catalog, image, key) => ({ catalog, texture: { image, width: 128, height: 128 }, key })
+  const map = createTacticalMap({ width: 12, height: 22, fill: { passable: true, revealed: true, material: 'stone' } })
+  addProp(map, value)
+  const trace = () => {
+    const calls = []
+    const context = new Proxy({ drawImage: (...args) => calls.push(args) }, {
+      get(target, key) { return key in target ? target[key] : () => undefined },
+      set(target, key, next) { target[key] = next; return true },
+    })
+    render.drawProps(context, {
+      map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32,
+      propAtlas: { texture: { image: 'fallback-preview', width: 256, height: 256 }, frames: { barrel: { x: 1, y: 2, w: 30, h: 31 } }, key: 'fallback' },
+      modelPropAtlas: atlas(base, 'base-model-preview', 'base'), styleModelPropAtlas: atlas(styled, 'style-model-preview', 'style'),
+    }, { tileX: 0, tileY: 1 })
+    return calls.find((args) => args[0] === 'style-model-preview' || args[0] === 'base-model-preview' || args[0] === 'fallback-preview')
+  }
+  assert.equal(trace()?.[0], 'style-model-preview')
+  const withoutPreview = structuredClone(stylePack)
+  withoutPreview.props.barrel[0] = { key: 'style-barrel-no-preview', url: '/assets/styles/stylized/props/barrel.glb', yaw: 0 }
+  const noPreviewCatalog = render.withStyleProps(base, withoutPreview, [value])
+  const calls = []
+  const context = new Proxy({ drawImage: (...args) => calls.push(args) }, {
+    get(target, key) { return key in target ? target[key] : () => undefined },
+    set(target, key, next) { target[key] = next; return true },
+  })
+  render.drawProps(context, {
+    map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32,
+    propAtlas: { texture: { image: 'fallback-preview', width: 256, height: 256 }, frames: { barrel: { x: 1, y: 2, w: 30, h: 31 } }, key: 'fallback' },
+    modelPropAtlas: atlas(base, 'base-model-preview', 'base'), styleModelPropAtlas: atlas(noPreviewCatalog, 'style-model-preview', 'style'),
+  }, { tileX: 0, tileY: 1 })
+  assert.equal(calls.find((args) => args[0] === 'base-model-preview')?.[0], undefined)
+  assert.equal(calls.find((args) => args[0] === 'fallback-preview')?.[0], 'fallback-preview')
 })
 
 test('GLB-шаблон сохраняет неравный footprint, поворот и масштаб', () => {
@@ -362,6 +424,41 @@ test('предел высоты: запись манифеста перекры�
   }
 })
 
+test('bbox и maxHeight дают одинаковый tall-thin fit в 2D и 3D после поворота footprint', () => {
+  const tall = {
+    key: 'bottle-tall', label: 'Tall bottle', category: 'test', url: '/assets/models/environment/bottle-tall.glb',
+    assetIds: ['bottle'], yaw: 0, maxHeight: .6, size: [.8, 3, .2], preview: { x: 0, y: 0, w: 80, h: 20 },
+  }
+  const catalog = catalogModule.validatePropModelCatalog({ version: 1, models: [tall] })
+  assert.ok(Math.abs(catalogModule.propModelFit('bottle', catalog.models[0], 1, 2, render.PROP_FOOTPRINT_FILL) - .2) < 1e-12)
+  const template = fakeTemplate(.8, 3, .2)
+  const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog, models: new Map([['bottle-tall', template]]) })
+  const value = prop({ id: 'tall-bottle', assetId: 'bottle', rotation: 90, footprint: [{ x: 10, y: 20 }, { x: 11, y: 20 }] })
+  const model = environment.create(value)
+  model.updateMatrixWorld(true)
+  const bounds = new THREE.Box3().setFromObject(model)
+  const modelSize = bounds.getSize(new THREE.Vector3())
+  assert.ok(Math.abs(modelSize.z / modelSize.x - 4) < .01, '3D сохраняет повернутый узкий footprint')
+  assert.ok(Math.abs(modelSize.y - .6) < 1e-6, '3D применяет maxHeight')
+
+  const calls = []
+  const context = new Proxy({ drawImage: (...args) => calls.push(args) }, {
+    get(target, key) { return key in target ? target[key] : () => undefined },
+    set(target, key, next) { target[key] = next; return true },
+  })
+  const map = createTacticalMap({ width: 12, height: 22, fill: { passable: true, revealed: true, material: 'stone' } })
+  addProp(map, value)
+  render.drawProps(context, {
+    map, palette: render.DEFAULT_BOARD_PALETTE, cellSize: 48,
+    modelPropAtlas: { catalog, texture: { image: 'model-preview', width: 256, height: 256 }, key: 'model-atlas' },
+  }, { tileX: 0, tileY: 1 })
+  const image = calls.find((args) => args[0] === 'model-preview')
+  assert.ok(image, '2D использует preview модели')
+  assert.ok(Math.abs(image[7] / image[8] - 4) < .01, '2D сохраняет тот же узкий габарит после поворота')
+  assert.ok(Math.abs(image[7] - 7.68) < .05 && Math.abs(image[8] - 1.92) < .05, '2D применяет тот же maxHeight fit')
+  environment.dispose()
+})
+
 test('реальные тонкие GLB библиотеки не вырастают выше предела вида', async () => {
   const cases = [['sk-household-broom', 'broom'], ['sk-lamp-post', 'lamp_post'], ['qn-pine_4', 'tree_pine'], ['q-bottle_1', 'bottle']]
   for (const [key, assetId] of cases) {
@@ -378,4 +475,42 @@ test('реальные тонкие GLB библиотеки не выраста
     environment.dispose()
     assetsModule.disposePropModelAssets(new Map([[key, template]]))
   }
+})
+
+test('настенная модель, собранная висящей, не садится на пол, а повисает у верха стены', () => {
+  const catalog = catalogModule.validatePropModelCatalog({ version: 1, models: [entry('peg-rack', ['tool_peg_rack'])] })
+  // Как стойка с крюками из пакета стиля: деталь поднята над нулём ещё в GLB.
+  const hung = fakeTemplate(1.2, .35, .1)
+  hung.children[0].position.y = 1.1
+  const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, { catalog, models: new Map([['peg-rack', hung]]) })
+  const onWall = environment.create(prop({ id: 'rack-wall', assetId: 'tool_peg_rack', footprint: [{ x: 10, y: 20 }, { x: 11, y: 20 }], mount: { kind: 'wall', side: 'n' } }))
+  onWall.updateMatrixWorld(true)
+  const wallBounds = new THREE.Box3().setFromObject(onWall)
+  assert.ok(wallBounds.min.y > .3, 'висящая вещь поднята над полом')
+  assert.ok(Math.abs(wallBounds.max.y - .8) < 1e-6, 'верх — у кромки стены доски')
+  // Та же модель без крепления к стене стоит на полу, как и прежде.
+  const loose = environment.create(prop({ id: 'rack-floor', assetId: 'tool_peg_rack', footprint: [{ x: 10, y: 20 }, { x: 11, y: 20 }] }))
+  loose.updateMatrixWorld(true)
+  assert.ok(Math.abs(new THREE.Box3().setFromObject(loose).min.y) < 1e-6)
+  environment.dispose()
+})
+
+test('2D-каталог из всего пакета выбирает тот же style-вариант, что 3D для предметов сцены', () => {
+  const base = catalogModule.validatePropModelCatalog(validCatalog([entry('barrel-base', ['barrel'], 11), entry('crate-base', ['crate'], 12)]))
+  const stylePack = {
+    style: 'stylized', revision: 'd'.repeat(16), floors: {}, materials: {}, walls: {},
+    atlas: { image: '/assets/styles/stylized/topdown.webp', key: 'e'.repeat(16) },
+    props: {
+      barrel: [
+        { key: 'style-barrel-a', url: '/assets/styles/stylized/props/barrel_a.glb', yaw: 0, preview: { x: 1, y: 1, w: 8, h: 8 } },
+        { key: 'style-barrel-b', url: '/assets/styles/stylized/props/barrel_b.glb', yaw: 0, preview: { x: 9, y: 1, w: 8, h: 8 } },
+      ],
+      crate: [{ key: 'style-crate', url: '/assets/styles/stylized/props/crate.glb', yaw: 0, preview: { x: 17, y: 1, w: 8, h: 8 } }],
+    },
+  }
+  const props = ['b-1', 'b-2', 'b-3', 'b-4'].map((id) => prop({ id, assetId: 'barrel' }))
+  const scene = render.withStyleProps(base, stylePack, props)
+  const whole = render.withStyleAssets(base, stylePack, Object.keys(stylePack.props))
+  for (const value of props) assert.equal(catalogModule.propModelFor(whole, 'barrel', value.id)?.key, catalogModule.propModelFor(scene, 'barrel', value.id)?.key, value.id)
+  assert.equal(catalogModule.propModelFor(whole, 'crate', 'c-1')?.source, 'style', 'вид, ещё не раскрытый на сцене, уже в каталоге 2D')
 })

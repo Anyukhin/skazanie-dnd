@@ -17,3 +17,6 @@ data/** -text
 # Паспорт набора детализации закрепляет SHA-256 геометрических рецептов.
 # Их байты должны совпадать после выгрузки на Windows и Linux.
 tools/*map-detail*.mjs text eol=lf
+# Тот же паспорт закрепляет SHA-256 заказа набора: с CRLF на Windows хеш
+# расходился с выгрузкой на Linux, и CI падал на сверке провенанса.
+docs/map-detail-assets-spec-v1.json text eol=lf

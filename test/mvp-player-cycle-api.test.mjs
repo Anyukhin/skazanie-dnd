@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url'
 import { freePort } from './free-port.mjs'
 import { addProp, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 import { actorPosition, findActor, shortestTacticalPath } from '../server/rules-engine.mjs'
+import { footprintCellsFor, footprintDistanceFeet } from '../server/actor-footprint.mjs'
 import { publicSceneFor } from '../server/viewer-projection.mjs'
 
 const MVP_REQUEST_TIMEOUT_MS = 30_000
@@ -286,13 +287,22 @@ function livingEnemies(state) {
   return (state.enemies ?? []).filter((enemy) => enemy.alive !== false)
 }
 
-function nearestEnemy(state, actorId) {
+/**
+ * Дистанция как у браузерного клиента: между занятыми площадями, а не между
+ * якорями. Медведь 2×2 стоит в четырёх клетках, и «рядом с якорем» бывает
+ * внутри его самого.
+ */
+function enemyDistance(state, actorId, enemy) {
   const from = actorPosition(state, actorId)
-  if (!from) return null
-  return livingEnemies(state).map((enemy) => {
-    const to = actorPosition(state, enemy.id)
-    return { enemy, distance: to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : Infinity }
-  }).sort((left, right) => left.distance - right.distance || String(left.enemy.id).localeCompare(String(right.enemy.id)))[0] ?? null
+  const to = actorPosition(state, enemy.id)
+  if (!from || !to) return Infinity
+  return footprintDistanceFeet(findActor(state, actorId), enemy, from, to) ?? Infinity
+}
+
+function nearestEnemy(state, actorId) {
+  if (!actorPosition(state, actorId)) return null
+  return livingEnemies(state).map((enemy) => ({ enemy, distance: enemyDistance(state, actorId, enemy) }))
+    .sort((left, right) => left.distance - right.distance || String(left.enemy.id).localeCompare(String(right.enemy.id)))[0] ?? null
 }
 
 function publicMovementBlockedKeys(state) {
@@ -322,7 +332,16 @@ function approachPath(state, actorId, targetId) {
   const target = actorPosition(state, targetId)
   if (!target) return null
   const pathState = stateForProjectedMovement(state)
-  return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => shortestTacticalPath(pathState, actorId, { x: target.x + dx, y: target.y + dy }))
+  // Цель — клетка вплотную к площади врага, а не к его якорю: у крупного
+  // существа соседняя с якорем клетка занята им самим.
+  const occupied = footprintCellsFor(findActor(state, targetId), target)
+  const taken = new Set(occupied.map((cell) => `${cell.x},${cell.y}`))
+  const goals = new Map()
+  for (const cell of occupied) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const goal = { x: cell.x + dx, y: cell.y + dy }
+    if (!taken.has(`${goal.x},${goal.y}`)) goals.set(`${goal.x},${goal.y}`, goal)
+  }
+  return [...goals.values()].map((goal) => shortestTacticalPath(pathState, actorId, goal))
     .filter((path) => Array.isArray(path))
     .sort((left, right) => left.length - right.length)[0] ?? null
 }
@@ -711,12 +730,9 @@ async function runMvpScenario(t) {
       const actionReady = battleState.mechanics.combat.action_economy?.[actorId]?.action !== false
       let attacked = null
       if (battleState.mechanics.combat.active && actionReady) {
-        const from = actorPosition(battleState, actorId)
-        const candidates = livingEnemies(battleState).map((enemy) => {
-          const to = actorPosition(battleState, enemy.id)
-          const distance = from && to ? Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y)) * 5 : Infinity
-          return { enemy, distance }
-        }).filter((candidate) => candidate.distance === 5)
+        const candidates = livingEnemies(battleState)
+          .map((enemy) => ({ enemy, distance: enemyDistance(battleState, actorId, enemy) }))
+          .filter((candidate) => candidate.distance === 5)
           .sort((left, right) => left.distance - right.distance)
         for (const candidate of candidates) {
           const attempted = await playerCommand(baseUrl, actorCookie, `player-attack-${++commandIndex}`, {

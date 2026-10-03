@@ -1606,6 +1606,7 @@ export function buildThemedScene({
           ...(urban ? ['tree_oak', 'tree_birch', 'bush', 'woodpile', 'flowers', 'village_fence', 'rock_small', 'shrub', 'flower_bed', 'rain_barrel']
             : market ? definition.prefer : ['tree_birch', 'tree_oak', 'bush', 'woodpile', 'haystack', 'water_trough', 'village_fence', 'cart', 'flowers', 'garden_bed', 'chicken_coop', 'hay_bales', 'scarecrow', 'rain_barrel']),
           ...(design.topology === 'river' || design.topology === 'harbor' ? ['fish_rack', 'fishing_nets', 'mooring_post', 'rowboat'] : []),
+          ...(design.topology === 'harbor' ? ['mooring_bollard', 'cargo_net', 'fishing_crates', 'lobster_cage', 'sail_bundle'] : []),
         ],
         caps: hasSquare && !urban ? { ...streetCaps, well: 0 } : urban ? { ...streetCaps, well: 0, market_stall: 0, haystack: 0, cart: 1, wagon_wheel: 1, campfire: 0, village_fence: 8, woodpile: 6 } : streetCaps,
       }, ...squarePlan, ...streetPlan, ...map.zones.filter((zone) => zone.kind === 'interior').map((zone) => ({
@@ -1673,19 +1674,23 @@ export function buildThemedScene({
       ? arid && pondScene ? 'Оазис' : arid ? 'Сухое редколесье' : cold ? 'Заснеженный лес' : wetland ? 'Заболоченная чаща' : definition.label
       : definition.label,
     // Оазис в пустыне — зелень вокруг воды; без воды — сухостой и валуны.
-    ...(arid && pondScene ? { require: ['bush', 'shrub', 'tree_dead'], prefer: ['bush', 'shrub', 'grass_tuft', 'flowers', 'fern', 'boulder', 'tree_dead'] }
-      : arid ? { require: ['tree_dead', 'boulder'], prefer: ['tree_dead', 'tree_stump', 'boulder', 'bush', 'woodpile'] }
-      : cold ? { require: ['tree_pine', 'tree_spruce', 'fallen_log'], prefer: ['tree_pine', 'tree_spruce', 'tree_dead', 'boulder'] }
-        : wetland ? { require: ['tree_dead', 'fallen_log', 'bush'], prefer: ['tree_dead', 'bush', 'fern', 'fallen_log'] } : {}),
+    // Климат открывает свой набор детализации (`server/detail-props.mjs`):
+    // кактусы и песчаник в пустыне, сугробы и лёд в снегах, камыш и торф на болоте.
+    ...(arid && pondScene ? { require: ['bush', 'shrub', 'tree_dead'], prefer: ['bush', 'shrub', 'grass_tuft', 'flowers', 'fern', 'boulder', 'tree_dead', 'cactus_cluster', 'desert_boulders'] }
+      : arid ? { require: ['tree_dead', 'boulder', 'cactus_cluster'], prefer: ['tree_dead', 'tree_stump', 'boulder', 'bush', 'woodpile', 'desert_boulders', 'cactus_cluster', 'dead_scrub', 'sand_dune', 'broken_obelisk'] }
+      : cold ? { require: ['tree_pine', 'tree_spruce', 'fallen_log', 'snowy_boulder'], prefer: ['tree_pine', 'tree_spruce', 'tree_dead', 'boulder', 'snowy_boulder', 'snowdrift', 'ice_pillars', 'snow_cairn'] }
+        : wetland ? { require: ['tree_dead', 'fallen_log', 'bush', 'reed_cluster'], prefer: ['tree_dead', 'bush', 'fern', 'fallen_log', 'reed_cluster', 'bog_pool', 'mud_patch', 'peat_mound', 'rotten_log', 'lily_pad_cluster', 'mangrove_roots', 'swamp_totem'] } : {}),
+    climateThemes: arid ? ['desert'] : cold ? ['winter'] : wetland ? ['swamp'] : [],
   }
   const map = layoutOpenTerrain(terrain, { seed, width, height, locationId })
   if (definition.graves) placeGraveRows(map, seed)
   // Дикая местность — не склад реквизита: костёр один (в лагере — два),
   // телега и колесо — от силы по одному, колодца и прилавков в лесу нет.
-  const wildCaps = { campfire: campScene ? 2 : 1, cart: 1, wagon_wheel: 1, well: 0, haystack: 0, hitching_post: 0, water_trough: 0, lamp_post: 0, market_stall: 0, village_fence: 0, signpost: 1, roadside_shrine: definition.graves ? 2 : 1, milestone: 2, woodpile: 2 }
+  const wildCaps = { campfire: campScene ? 2 : 1, cart: 1, wagon_wheel: 1, well: 0, haystack: 0, hitching_post: 0, water_trough: 0, lamp_post: 0, market_stall: 0, village_fence: 0, signpost: 1, roadside_shrine: definition.graves ? 2 : 1, milestone: 2, woodpile: 2, broken_obelisk: 1, swamp_totem: 1, snow_cairn: 2, scout_tent: 2, bog_pool: 2, ice_pillars: 3, snowy_boulder: 5, desert_boulders: 4, cactus_cluster: 4, dead_scrub: 4, rotten_log: 3, reed_cluster: 5, peat_mound: 3, camp_dummy: 2, shield_rack: 2, spiked_beam_barrier: 3, mangrove_roots: 3, giant_fungus: 2 }
+  // Лагерь — палатки, скатки и снаряжение из набора `camp` поверх ящиков и мешков.
   const camp = campScene
-    ? { extraThemes: ['interior'], require: [...(terrain.require ?? []), 'campfire', 'crate', 'sack', 'chest', 'woodpile'], prefer: [...(terrain.prefer ?? []), 'crate', 'sack', 'barrel'], caps: { ...wildCaps, ...CAMP_INTERIOR_OFF } }
-    : {}
+    ? { extraThemes: ['interior', 'camp', ...terrain.climateThemes], require: [...(terrain.require ?? []), 'campfire', 'crate', 'sack', 'chest', 'woodpile', 'scout_tent', 'bedroll_cluster'], prefer: [...(terrain.prefer ?? []), 'crate', 'sack', 'barrel', 'bedroll_cluster', 'shield_rack', 'camp_dummy', 'spiked_beam_barrier', ...(cold ? ['winter_cache'] : [])], caps: { ...wildCaps, ...CAMP_INTERIOR_OFF } }
+    : terrain.climateThemes.length ? { extraThemes: terrain.climateThemes } : {}
   placeProps(map, {
     seed: `${seed}:props`,
     maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
