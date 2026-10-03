@@ -72,7 +72,7 @@ test('подбор: вид места обязателен, климат не с
     entryFor('tavern-desert', { climate: 'arid' }),
     entryFor('cave-a', { place_kinds: ['cave'], types: ['caves'] }),
     entryFor('tavern-scifi', { passport: { features: ['common_room'], interior_share: 0.8, floor_cells: 500, material: 'metal', summary: '', genre: 'scifi' } }),
-    entryFor('glade', { place_kinds: ['wilds'], types: ['nature'], passport: { features: ['exterior'], interior_share: 0.05, floor_cells: 600, material: 'grass', summary: '' } }),
+    entryFor('glade', { place_kinds: ['wilds'], types: ['nature'], passport: { features: ['exterior', 'grove'], interior_share: 0.05, floor_cells: 600, material: 'grass', summary: '' } }),
   ]
   const tavern = libraryRequestFor({ themeId: 'building', buildingUse: 'tavern' })
   assert.equal(chooseLibraryMap(entries, tavern, { seed: 'a' })?.id, 'tavern-a', 'пустынная таверна в умеренном мире не встаёт')
@@ -81,6 +81,10 @@ test('подбор: вид места обязателен, климат не с
   assert.equal(chooseLibraryMap(entries, libraryRequestFor({ themeId: 'temple' }), { seed: 'a' }), null, 'нет храма — генератор сам')
   assert.equal(chooseLibraryMap(entries, libraryRequestFor({ themeId: 'forest', climate: 'arid' }), { seed: 'a' }), null, 'лесная поляна в пустыню не попадает')
   assert.equal(chooseLibraryMap(entries, libraryRequestFor({ themeId: 'forest' }), { seed: 'a' })?.id, 'glade')
+  // Уличная сцена требует признака вида места: «природа» по метке автора без
+  // рощи и стоянки на карте — не лес (этап 0 плана карт).
+  const bare = [entryFor('bare-field', { place_kinds: ['wilds'], types: ['nature'], passport: { features: ['exterior'], interior_share: 0.05, floor_cells: 600, material: 'grass', summary: '' } })]
+  assert.equal(chooseLibraryMap(bare, libraryRequestFor({ themeId: 'forest' }), { seed: 'a' }), null)
   assert.equal(chooseLibraryMap(entries, libraryRequestFor({ themeId: 'building', buildingUse: 'tavern', world: 'орбитальная станция будущего' }), { seed: 'a' })?.id, 'tavern-scifi', 'бар станции — из научно-фантастического набора')
   // Выбор среди равных детерминирован по сиду места.
   const twins = [entryFor('twin-a'), entryFor('twin-b'), entryFor('twin-c')]
@@ -273,8 +277,9 @@ test('деревня с обещанным навесом строится ге�
   const promised = advance('promised', 'Посреди деревни — общий навес, под ним ящик с документами; к реке ведут три настила.')
   assert.equal(promised.payload.scene.map_source, undefined, 'обещанного навеса на библиотечной карте нет')
   assert.deepEqual(promised.payload.scene.map_requirements, {
-    version: 'scene-requirements/v1',
+    version: 'scene-requirements/v2',
     items: [{ id: 'shelter', count: 1 }, { id: 'crate', count: 1 }, { id: 'platform', count: 3 }],
+    focus: 'shelter',
   })
   const initial = tavernState()
   const after = applyGameEvent(initial, promised)

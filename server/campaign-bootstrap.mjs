@@ -544,7 +544,12 @@ export class CampaignBootstrapper {
     const mapRequirements = sceneMapRequirementsFor([
       opening.scene.location, opening.scene.theme, opening.scene.title, opening.scene.mood,
       opening.scene.objective, world.startingLocation, opening.openingNarration,
-    ])
+    ], {
+      // Жители первой сцены получают посты у своих предметов: хранитель
+      // записей — у ящика, кузнец — у кузницы, староста — в центре сцены.
+      npcs: (Array.isArray(opening.npcs) ? opening.npcs : []).filter((npc) => !npc?.location
+        || String(npc.location).toLocaleLowerCase('ru') === String(opening.scene.location ?? '').toLocaleLowerCase('ru')),
+    })
     const geometry = generateSceneGeometry({
       seed: sceneSeed,
       theme: opening.scene.theme,

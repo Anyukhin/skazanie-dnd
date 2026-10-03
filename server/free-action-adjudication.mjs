@@ -521,6 +521,9 @@ function actionTargets(state, actorId) {
  * связывает их с текущим состоянием, выводит отсутствующие ссылки из текста и
  * всегда перезаписывает уровень владения значением из листа героя.
  */
+const OBSERVATION_PURPOSE_PATTERN = /(?<![\p{L}\p{M}])(?:смотр\p{L}*|высматрива\p{L}*|наблюда\p{L}*|присматрива\p{L}*|разглядыва\p{L}*|замеча\p{L}*|заметить|увидеть|прислушива\p{L}*)(?![\p{L}\p{M}])/iu
+const MUNDANE_APPROACH_PATTERN = /(?<![\p{L}\p{M}])(?:протискива\p{L}*|проталкива\p{L}*|пробира\p{L}*|подбира\p{L}*|подхож\p{L}*|подойти|иду|идём|прохож\p{L}*|пройти|проход\p{L}*|приближа\p{L}*|пробегаю|добира\p{L}*)(?![\p{L}\p{M}])/iu
+const STUNT_WORD_PATTERN = /(?<![\p{L}\p{M}])(?:прыг\p{L}*|перепрыг\p{L}*|перелез\p{L}*|карабка\p{L}*|лезу|взбира\p{L}*|цепля\p{L}*|балансир\p{L}*|кувыр\p{L}*|сальто|скольз\p{L}*|по\s+(?:канату|перилам|крыше|карнизу|балке)|обрыв\p{L}*|пропаст\p{L}*|ныря\p{L}*)(?![\p{L}\p{M}])/iu
 const AFFECTION_GESTURE_PATTERN = /(?<![\p{L}\p{M}])(?:целу\p{L}*|поцел\p{L}*|чмока\p{L}*|обнима\p{L}*|обним\p{L}*|пожима\p{L}*\s+(?:\p{L}+\s+)?рук\p{L}*|глажу|глади\p{L}*|похлопыва\p{L}*|кланя\p{L}*|подмигива\p{L}*)(?![\p{L}\p{M}])/iu
 const SOCIAL_AIM_PATTERN = /(?<![\p{L}\p{M}])(?:чтобы|убеди|уговор|обман|отвлеч|выкра|стащ|незамет)/iu
 
@@ -552,6 +555,19 @@ export function bindFreeActionReadingToState(state = {}, actorId = '', text = ''
       reading.duration_class = 'instant'
       reading.skill = 'performance'
       reading.ability = 'cha'
+    }
+    // Цель важнее способа: «проталкиваюсь к шлюзам и смотрю, кто их открывает»
+    // — это наблюдение, а толпа — обстановка, не трюк. Модель изредка судила
+    // такое Акробатикой, и даже успех ничего не открывал (живой прогон
+    // 2026-10-03). Настоящий трюк — прыжок, лазание, перила — остаётся трюком.
+    if (OBSERVATION_PURPOSE_PATTERN.test(text) && MUNDANE_APPROACH_PATTERN.test(text) && !STUNT_WORD_PATTERN.test(text)
+      && ['acrobatics', 'athletics'].includes(reading.skill) && !reading.hazard && reading.effect === 'none'
+      && !reading.target_id && !reading.effect_target) {
+      reading.skill = 'perception'
+      reading.ability = 'wis'
+      reading.activity_kind = 'knowledge'
+      if (reading.risk !== 'none') reading.risk = 'minor'
+      reading.consequence_type = 'time'
     }
     const social = ['animal-handling', 'deception', 'intimidation', 'performance', 'persuasion'].includes(reading.skill)
     const physical = ['acrobatics', 'athletics'].includes(reading.skill)

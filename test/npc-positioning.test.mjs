@@ -877,3 +877,14 @@ test('planAuthoredNpcWorldEvents writes death facts once and respects knockout o
   }], { commandId: 'surrender-authored-marta', actorId: 'hero' })
   assert.equal(surrenderBridge.some((event) => event.event_type === 'NpcDied'), false)
 })
+
+test('пост из программы сцены важнее догадки по роли', () => {
+  // Этап 1 плана карт: программа сцены знает, у какого предмета стоит житель.
+  // Трактирщица по роли встала бы у стойки; программа ставит её у алтаря.
+  const state = npcState()
+  state.scene.map_requirements = { version: 'scene-requirements/v2', items: [{ id: 'altar', count: 1 }], posts: [{ npc: 'Марта', id: 'altar' }] }
+  const marta = planSceneNpcPlacementEvents(state).find((event) => event.payload.npc_id === 'marta')
+  assert.equal(marta.payload.anchor_prop_id, 'altar-1')
+  const plain = planSceneNpcPlacementEvents(npcState()).find((event) => event.payload.npc_id === 'marta')
+  assert.equal(plain.payload.anchor_prop_id, 'bar-1', 'без программы — прежняя расстановка')
+})

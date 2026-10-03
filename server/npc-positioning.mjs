@@ -7,6 +7,7 @@ import {
   normalizeInventoryItem,
 } from './merchant-economy.mjs'
 import { factionIdsForNpc } from './reputation-policy.mjs'
+import { normalizeScenePosts, requirementAssets } from './scene-requirements.mjs'
 import { retentionMode } from './retention-context.mjs'
 import { cellAt, deserializeTacticalMap, movementStepBlocked } from './tactical-map.mjs'
 import { footprintCellsFor, footprintDistanceFeet, footprintMetadataForSize, normalizeFootprintMetadata } from './actor-footprint.mjs'
@@ -325,6 +326,13 @@ function actorOccupiedCells(state) {
 }
 
 function preferredAssets(npc = {}) {
+  // Пост из программы сцены (`scene.map_requirements.posts`) точнее догадки
+  // по роли: «хранитель записей стоит у запертого ящика» — значит, у ящика.
+  const post = Array.isArray(npc.post_assets) ? npc.post_assets.map(String) : []
+  return [...post, ...roleAssets(npc).filter((asset) => !post.includes(asset))]
+}
+
+function roleAssets(npc = {}) {
   const role = `${text(npc.role, 160)} ${(Array.isArray(npc.tags) ? npc.tags : []).join(' ')}`.toLocaleLowerCase('ru')
   if (/корол|правител|king|ruler|marshal|archivist|messenger/iu.test(role)) return ['table_royal', 'table_long', 'table_small', 'table_round', 'bookshelf']
   if (/торгов|merchant|трактир|innkeep|бармен|barkeep/iu.test(role)) return ['bar_counter', 'table_long', 'table_round', 'stall', 'counter']
@@ -467,7 +475,10 @@ export function planSceneNpcPlacementEvents(state = {}) {
     }
   }
   const events = []
-  for (const npc of present) {
+  const posts = normalizeScenePosts(state.scene?.map_requirements)
+  for (const presentNpc of present) {
+    const post = posts.find((entry) => entry.npc === text(presentNpc.name, 120))
+    const npc = post ? { ...presentNpc, post_assets: requirementAssets(post.id) } : presentNpc
     const existing = world.placements.find((placement) => placement.npc_id === String(npc.id) && placement.location_id === locationId)
     const footprint = existing ? existing.footprint ?? null : npcSpawnFootprintFor(state, npc.id)
     if (existing && placementCellAllowed(map, existing, occupied, propOccupied, footprint)) {

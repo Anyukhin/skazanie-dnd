@@ -70,7 +70,9 @@ export function sceneMapDesignFor({
   const river = !dryWatercourse && /речн|междуреч|дельт|\b(?:river|canal)\b|(?<![\p{L}\p{M}])рек(?:а|и|у|е|ой|ою|ам|ах)?(?![\p{L}\p{M}])|канал|двух берег|два берег/u.test(local)
   let topology
   if (river) topology = 'river'
-  else if (kind === 'port' || /(?<![\p{L}\p{M}])порт(?:а|у|ом|е|ы|ов[а-яё]*|ами|ах)?(?![\p{L}\p{M}])|гаван|пристан|верф|причал|морск.*берег|\b(?:harbou?r|port)\b/u.test(local)) topology = 'harbor'
+  // Дамба, плотина, шлюз, набережная — тоже край воды: плейтест 2026-10-02,
+  // «Смотровая дамба над соляными полями» строилась сухой деревней.
+  else if (kind === 'port' || /(?<![\p{L}\p{M}])порт(?:а|у|ом|е|ы|ов[а-яё]*|ами|ах)?(?![\p{L}\p{M}])|гаван|пристан|верф|причал|морск.*берег|(?<![\p{L}\p{M}])(?:дамб|плотин|шлюз|набережн|волнолом)|\b(?:harbou?r|port)\b/u.test(local)) topology = 'harbor'
   else if (/(?<![\p{L}\p{M}])(?:ворот|врат)|застав|приврат/u.test(local)) topology = 'gate'
   else if (/террас|горн|склон|кряж|на скал|\bmountains\b/u.test(local)) topology = 'terraced'
   else if (/рыноч|рынок|базар|торгов[а-яё]* площад/u.test(local)) topology = 'market'

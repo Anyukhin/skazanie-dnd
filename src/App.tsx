@@ -1775,6 +1775,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
+            foreignTurn={combatActive && !canControlHero ? { turnName: turnActorName, heroName: activePlayer.character } : null}
             playerHud={<PlayerHud player={hudHero} combatActive={combatActive} status={heroStatusByHero[(hudHero).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(hudHero).id] ?? [])} onCharacter={() => openHeroEditor((hudHero).id)} onInventory={() => navigate('inventory')} />}
             statusContent={<><SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />{roomHeaderBar}</>}
           >

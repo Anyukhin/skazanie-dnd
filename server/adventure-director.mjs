@@ -631,7 +631,12 @@ export function createSceneTransition(input = {}, state = {}) {
   // уже знакомого места не перестраивается, поэтому список получает только
   // сцена с новой картой: он описывает, под что эта карта строилась.
   const mapRequirements = rememberedMap ? null
-    : sceneMapRequirementsFor([location, theme, title, mood, objective, arrival])
+    : sceneMapRequirementsFor([location, theme, title, mood, objective, arrival], {
+      // Посты жителей, которые уже числятся в этом месте (`social.npcs`).
+      npcs: (Array.isArray(state.social?.npcs) ? state.social.npcs : [])
+        .filter((npc) => npc?.available !== false && String(npc?.location ?? '').toLocaleLowerCase('ru') === location.toLocaleLowerCase('ru'))
+        .map((npc) => ({ name: npc.name, role: npc.role, summary: npc.public_summary })),
+    })
   const generated = rememberedMap ? null : generateSceneGeometryFor({
     theme,
     danger,

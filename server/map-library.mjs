@@ -283,10 +283,17 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
       const minimum = Math.max(MIN_EXTERIOR_CELLS[request.placeKinds[primary]] ?? 0, Math.floor(request.area / 2))
       if (groundCells(entry) < minimum) continue
     }
+    const features = new Set(entry.passport.features)
+    // Уличная сцена требует, чтобы паспорт подтвердил вид места хотя бы одним
+    // признаком: улицей или двором у деревни, рощей или стоянкой у дикой
+    // местности. Метка автора здесь не довод — так одинокий дом с тегом
+    // «ферма» становился деревней (этап 0 `docs/map-generation-plan.md`).
+    // У построек паспорт ошибается чаще автора, поэтому там метки хватает.
+    const evidence = KIND_EVIDENCE[request.placeKinds[primary]] ?? []
+    if (request.exterior && evidence.length && !evidence.some((feature) => features.has(feature))) continue
     let score = 10 - primary * 2
     // Карта своего климата лучше нейтральной: пустынный трактир в пустыне.
     if (request.climate && entry.climate === request.climate) score += 3
-    const features = new Set(entry.passport.features)
     for (const kind of request.placeKinds) for (const feature of KIND_EVIDENCE[kind] ?? []) if (features.has(feature)) score += 1
     if (request.wantsCellar) score += features.has('cellar') ? 3 : -3
     if (request.wantsUpstairs) score += features.has('upstairs') ? 2 : -2
@@ -307,7 +314,10 @@ export function chooseLibraryMap(entries, request, { seed, usedIds = [] }) {
   // Из близких по качеству — по сиду места, чтобы две таверны одного мира
   // не оказывались одной и той же лучшей картой.
   const top = scored.filter((candidate) => candidate.score >= scored[0].score - 2).slice(0, 4)
-  return top[hashNumber(`${seed}:map-library/v1`) % top.length].entry
+  // v2 — с требованием признака у уличных сцен. Выбор случается только при
+  // первом посещении места, дальше карта лежит в памяти локации, поэтому
+  // смена версии не трогает сохранённые кампании и replay.
+  return top[hashNumber(`${seed}:map-library/v2`) % top.length].entry
 }
 
 /**

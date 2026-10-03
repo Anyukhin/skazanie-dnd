@@ -341,3 +341,22 @@ test('повтор того же подхода в неизменившейся 
   const otherApproach = attemptFingerprint({ actorId: 'hero', approach: 'подобрать замок', obstacle: 'дверь' })
   assert.equal(previousFailedAttempt(state, otherApproach), null)
 })
+
+test('цель важнее способа: наблюдение сквозь толпу — Восприятие, а прыжок остаётся трюком', () => {
+  // Живой прогон 2026-10-03: модель судила «проталкиваюсь к шлюзам и смотрю,
+  // кто их открывает» Акробатикой, и успех ничего не открывал.
+  const state = normalizeCampaignState({
+    partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Ада', characterClass: 'cleric', level: 1, abilities: { str: 10, dex: 12, con: 12, int: 10, wis: 16, cha: 10 }, inventory: [] }],
+  })
+  const modelSaid = (text) => ({ ...interpretFreeAction(text), skill: 'acrobatics', ability: 'dex', activity_kind: 'stunt', plausibility: 'plausible', risk: 'minor', effect: 'none', hazard: '' })
+  const crowd = 'Проталкиваюсь сквозь толпу к шлюзам и смотрю, кто пытается их открыть'
+  const watched = bindFreeActionReadingToState(state, 'hero', crowd, modelSaid(crowd))
+  assert.equal(watched.skill, 'perception')
+  assert.equal(watched.ability, 'wis')
+  assert.notEqual(watched.activity_kind, 'stunt')
+  assert.notEqual(watched.consequence_type, 'injury', 'наблюдение не грозит травмой')
+
+  const jump = 'Перепрыгиваю через перила к шлюзу и смотрю, кто его открывает'
+  assert.equal(bindFreeActionReadingToState(state, 'hero', jump, modelSaid(jump)).skill, 'acrobatics', 'настоящий трюк остаётся трюком')
+})

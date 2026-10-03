@@ -25,7 +25,10 @@
  * Replay от него не зависит — список записан в событие вместе со сценой.
  */
 
-export const SCENE_REQUIREMENTS_VERSION = 'scene-requirements/v1'
+// v2 (2026-10-03, этап 1 плана `docs/map-generation-plan.md`): к списку
+// добавлены центр сцены (`focus`) и посты жителей (`posts`). Сохранённые
+// сцены v1 читаются как раньше — без центра и постов.
+export const SCENE_REQUIREMENTS_VERSION = 'scene-requirements/v2'
 
 /** Сколько видов объектов держит одна сцена и сколько штук одного вида. */
 const MAX_ITEMS = 12
@@ -47,7 +50,7 @@ const MAX_COUNT = 6
  * @type {readonly RequirementKind[]}
  */
 export const SCENE_REQUIREMENT_KINDS = Object.freeze([
-  { id: 'shelter', label: 'навес', pattern: /навес(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})/u, assets: [] },
+  { id: 'shelter', label: 'навес', pattern: /навес(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})/u, assets: ['market_awning'] },
   { id: 'platform', label: 'настил', pattern: /(?:настил|помост)(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})|мостк(?:и|ов|ам|ами|ах)(?!\p{L})/u, assets: [] },
   { id: 'threshold_stone', label: 'камни на пороге', pattern: /(?:камн(?:и|ей|ям|ями|ях)|камень|камнем|камня)\s+(?:у|на|перед|под)\s+порог\p{L}*|порожн\p{L}*\s+камн\p{L}*/u, assets: ['path_stone', 'ledge_step'] },
   { id: 'crate', label: 'ящик', pattern: /ящик(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})/u, assets: ['crate', 'crate_stack', 'chest'] },
@@ -73,7 +76,44 @@ export const SCENE_REQUIREMENT_KINDS = Object.freeze([
   { id: 'brazier', label: 'жаровня', pattern: /жаровн\p{L}*/u, assets: ['brazier'] },
   { id: 'cauldron', label: 'котёл', pattern: /кот(?:ёл|ел|ла|лу|лом|ле|лы|лов)(?!\p{L})/u, assets: ['cauldron'] },
   { id: 'oak', label: 'дуб', pattern: /дуб(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})/u, assets: ['tree_oak'] },
+  { id: 'notice_board', label: 'доска объявлений', pattern: /доск(?:а|и|е|у|ой)\s+(?:объявлений|указов|приказов|вестей)(?!\p{L})/u, assets: ['notice_board'] },
+  { id: 'forge', label: 'кузница', pattern: /кузн(?:ица|ицы|ице|ицу|ицей|ечн\p{L}*)(?!\p{L})|наковальн\p{L}*/u, assets: ['forge', 'anvil'] },
 ])
+
+/**
+ * Что может быть центром сцены: место, вокруг которого собираются люди и
+ * идёт действие. Центр — первое по тексту из этих мест.
+ */
+const FOCUS_KINDS = Object.freeze(['shelter', 'well', 'campfire', 'market_stall', 'statue', 'altar', 'shrine', 'hearth', 'notice_board', 'oak', 'table'])
+
+/** Глава общины стоит в центре сцены. */
+const LEADER_ROLE = /(?<!\p{L})(?:старост\p{L}*|старейшин\p{L}*|вожд\p{L}*|вождь|(?:голов|глав)(?:а|ы|е|у|ой)\s+(?:деревни|общины|посёлка|поселка|совета|скита))(?!\p{L})/u
+
+/** Роль жителя называет его рабочее место. */
+const ROLE_KINDS = /** @type {ReadonlyArray<[RegExp, string]>} */ (Object.freeze([
+  [/(?<!\p{L})(?:хранител\p{L}*\s+(?:записей|архива|документов|бумаг|грамот)|архивариус\p{L}*|писар\p{L}*|летописц\p{L}*)/u, 'chest'],
+  [/(?<!\p{L})кузнец\p{L}*/u, 'forge'],
+  [/(?<!\p{L})(?:торгов(?:ец|ка|цы)|лавочни\p{L}*|продав\p{L}*|купе(?:ц|чих)\p{L}*)/u, 'market_stall'],
+  [/(?<!\p{L})(?:жрец\p{L}*|жриц\p{L}*|священник\p{L}*|настоятел\p{L}*|монах\p{L}*|послушни\p{L}*)/u, 'altar'],
+  [/(?<!\p{L})мастер\p{L}*\s+(?:настил|помост|мостк)\p{L}*/u, 'platform'],
+]))
+
+/**
+ * Рабочее место жителя: предмет из его собственного описания («стоит у
+ * запертого ящика»), иначе — из роли («кузнец» — кузница), а у главы общины —
+ * центр сцены. `null` — жителю пост не положен, и его ставят как раньше.
+ *
+ * @param {{ name?: unknown, role?: unknown, summary?: unknown }} npc
+ * @param {string|null} focus
+ * @returns {string|null}
+ */
+function postKindFor(npc, focus) {
+  const own = sceneRequirementsFromText([String(npc?.summary ?? '')])[0]?.id
+  if (own) return own
+  const role = clean(npc?.role)
+  for (const [pattern, kind] of ROLE_KINDS) if (pattern.test(role)) return kind
+  return focus && LEADER_ROLE.test(role) ? focus : null
+}
 
 const KINDS_BY_ID = new Map(SCENE_REQUIREMENT_KINDS.map((kind) => [kind.id, kind]))
 
@@ -155,12 +195,54 @@ export function sceneRequirementsFromText(texts) {
  * Поле сцены со списком или `null`, когда обещать нечего: сцена без
  * объектов поля не получает, и сохранённые кампании читаются как раньше.
  *
+ * Программа сцены: кроме обещанного списка — центр (`focus`, место, вокруг
+ * которого идёт действие) и посты жителей (`posts`). Пост тянет свой предмет в
+ * обещанное: хранитель записей без ящика на карте стоял бы где попало
+ * (живая кампания 2026-10-02 — жители у края поля без якоря).
+ *
  * @param {Array<unknown>|string} texts
- * @returns {{ version: string, items: Array<{ id: string, count: number }> }|null}
+ * @param {{ npcs?: Array<{ name?: unknown, role?: unknown, summary?: unknown }> }} [options]
+ *   жители, которые стоят в этой сцене
+ * @returns {{ version: string, items: Array<{ id: string, count: number }>, focus?: string, posts?: Array<{ npc: string, id: string }> }|null}
  */
-export function sceneMapRequirementsFor(texts) {
+export function sceneMapRequirementsFor(texts, { npcs = [] } = {}) {
   const items = sceneRequirementsFromText(texts)
-  return items.length ? { version: SCENE_REQUIREMENTS_VERSION, items } : null
+  const focus = items.find((item) => FOCUS_KINDS.includes(item.id))?.id ?? null
+  /** @type {Array<{ npc: string, id: string }>} */
+  const posts = []
+  for (const npc of Array.isArray(npcs) ? npcs : []) {
+    const name = String(npc?.name ?? '').replace(/\s+/gu, ' ').trim().slice(0, 120)
+    const kind = name ? postKindFor(npc, focus) : null
+    if (!kind || posts.some((post) => post.npc === name)) continue
+    posts.push({ npc: name, id: kind })
+    if (!items.some((item) => item.id === kind) && items.length < MAX_ITEMS) items.push({ id: kind, count: 1 })
+  }
+  if (!items.length) return null
+  return {
+    version: SCENE_REQUIREMENTS_VERSION,
+    items,
+    ...(focus ? { focus } : {}),
+    ...(posts.length ? { posts } : {}),
+  }
+}
+
+/**
+ * Посты жителей из сохранённой сцены; v1 и мусор дают пустой список.
+ * @param {unknown} value `scene.map_requirements`
+ * @returns {Array<{ npc: string, id: string }>}
+ */
+export function normalizeScenePosts(value) {
+  const posts = value && typeof value === 'object' && Array.isArray(/** @type {any} */ (value).posts) ? /** @type {any} */ (value).posts : []
+  /** @type {Array<{ npc: string, id: string }>} */
+  const result = []
+  for (const post of posts) {
+    const npc = String(post?.npc ?? '').replace(/\s+/gu, ' ').trim().slice(0, 120)
+    const id = String(post?.id ?? '')
+    if (!npc || !KINDS_BY_ID.has(id) || result.some((entry) => entry.npc === npc)) continue
+    result.push({ npc, id })
+    if (result.length >= MAX_ITEMS) break
+  }
+  return result
 }
 
 /**

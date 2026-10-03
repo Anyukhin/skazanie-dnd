@@ -226,7 +226,7 @@ const REQUEST_KIND_OPTIONS: ReadonlyArray<readonly [PlayerRequestKind, string, s
   ['discussion', 'Отряду', 'Обсуждение с отрядом — план без действия героя'],
 ]
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -281,6 +281,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
   playerHud?: ReactNode
+  /** Ходит не герой зрителя: вместо чужих неактивных плиток — кто ходит и чей лист внизу. */
+  foreignTurn?: { turnName: string; heroName: string } | null
   statusContent: React.ReactNode
   children?: React.ReactNode
 }) {
@@ -3647,7 +3649,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               пипса: снять её можно и мышью, и Escape. Чип стоит у нижней
               кромки карточки, а не строкой кластера: это контекст колоды. */}
           {combatActive && costFilter && <p className="hero-cluster-filter" role="status">Показаны: {HOTBAR_COST_FILTER_LABELS[costFilter]} · <button type="button" onClick={() => setCostFilter(null)} title="Снять фильтр стоимости (Escape)">сбросить</button></p>}
-          <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия" ref={hotbarActionsRef} style={{ '--tile-cols': tileColumns } as React.CSSProperties}>
+          {/* Чужой ход: плитки ходящего героя второму игроку не нужны — нажать
+              их он всё равно не может, а читал как свои (плейтест 2026-10-02). */}
+          {combatActive && foreignTurn && <p className="hotbar-foreign-turn" role="status">Сейчас ходит <b>{foreignTurn.turnName}</b>. Ваш герой — {foreignTurn.heroName}: действия героя откроются в ваш ход.</p>}
+          <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия" ref={hotbarActionsRef} hidden={Boolean(combatActive && foreignTurn)} style={{ '--tile-cols': tileColumns } as React.CSSProperties}>
             {visibleTiles.map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
               key: id,
               draggable: !tilesLocked,

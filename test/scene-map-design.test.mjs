@@ -46,3 +46,10 @@ test('публичные сведения относятся к выбранно
   assert.deepEqual(worldLocationDesignContext(map, 'hidden'), { description: '', biome: '' })
   assert.deepEqual(sceneMapDesignFor({ location: 'Трактир у дороги', seed: 'repeat' }), sceneMapDesignFor({ location: 'Трактир у дороги', seed: 'repeat' }))
 })
+
+test('дамба и шлюзы — край воды, а не сухая деревня', () => {
+  // Плейтест 2026-10-02: «Смотровая дамба» строилась улицами без воды.
+  assert.equal(sceneMapDesignFor({ location: 'Смотровая дамба', description: 'Кирпичная дамба над соляными полями, у шлюзов толпа.' }).topology, 'harbor')
+  assert.equal(sceneMapDesignFor({ location: 'Старая плотина' }).topology, 'harbor')
+  assert.notEqual(sceneMapDesignFor({ location: 'Амбары у мельницы' }).topology, 'harbor', '«амбар» не «дамба»')
+})
