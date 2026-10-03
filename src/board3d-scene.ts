@@ -976,7 +976,8 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     }).catch(() => {})
   }
 
-  const roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode })
+  const roofTextureReady = () => { if (!disposed) options.onReady?.() }
+  let roofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: options.roofMode, stylePack: initialPack, onTexture: roofTextureReady })
   group.add(roofs.group)
   const edgeLayer = new THREE.Group()
   edgeLayer.name = 'edge-layer'
@@ -1086,6 +1087,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     // стен хуже доски со стенами прежнего вида.
     const nextEdges = buildStyledEdges(map, pack, styledEdgeOptions)
     const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, landscapeKit, { skipMasonry: true })
+    // Крыши того же стиля, в том же режиме, что выбран сейчас.
+    const nextRoofs = createBoard3DRoofs(map, palette, { wallHeight: BOARD3D_WALL_HEIGHT, mode: roofs.getMode(), stylePack: pack, onTexture: roofTextureReady })
+    roofs.dispose()
+    roofs = nextRoofs
+    group.add(roofs.group)
     edgeLayer.removeFromParent()
     styledEdges = nextEdges
     group.add(styledEdges.group)

@@ -221,3 +221,94 @@ test('освобождение крыш идемпотентно и не ост�
   assert.equal(controller.group.children.length, 0)
   assert.ok([...disposed.values()].every((count) => count === 1), 'каждый ресурс крыши освобождён ровно один раз')
 })
+
+// ------------------------------------------------------ рисованный стиль
+
+const stylePackModule = await import(pathToFileURL(join(outputDir, 'board3d-style.mjs')).href)
+const paintedPack = stylePackModule.validateGraphicsStylePack(JSON.parse(readFileSync(join(root, 'public', 'assets', 'styles', 'stylized', 'manifest.json'), 'utf8')))
+const fakeTextures = { loadTexture: (_url, done) => { done(); return new THREE.Texture() } }
+
+function paintedRoofs(map, options = {}) {
+  return roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { mode: 'full', stylePack: paintedPack, ...fakeTextures, ...options })
+}
+
+function withZoneMaterial(map, material) {
+  map.zones.find((zone) => zone.id === 'room').material = material
+  return map
+}
+
+test('рисованная крыша: черепица по UV ската, фронтоны кладкой дома, брус на стропилах, без полос гонта', () => {
+  const controller = paintedRoofs(withZoneMaterial(mapFor(), 'stone'))
+  try {
+    assert.equal(roofs3d.packHasRoofLooks(paintedPack), true)
+    assert.equal(controller.group.userData.roofStyle, 'painted')
+    const slopes = meshesNamed(controller.group, 'roof-slope:')
+    assert.equal(slopes.length, 2)
+    for (const slope of slopes) {
+      assert.equal(slope.material.name, 'roof:tiles')
+      // UV в повторах фактуры: ряды по длине конька, от карниза вверх по скату.
+      const uv = slope.geometry.getAttribute('uv')
+      let maxU = -Infinity, minU = Infinity, maxV = -Infinity, minV = Infinity
+      for (let index = 0; index < uv.count; index += 1) {
+        maxU = Math.max(maxU, uv.getX(index)); minU = Math.min(minU, uv.getX(index))
+        maxV = Math.max(maxV, uv.getY(index)); minV = Math.min(minV, uv.getY(index))
+      }
+      assert.ok(maxU - minU > 2, 'по длине конька несколько повторов черепицы')
+      assert.ok(minV >= 0 && maxV > .5, 'по скату — от карниза вверх')
+    }
+    assert.equal(meshesNamed(controller.group, 'roof-shingle:').length, 0, 'полосы гонта нарисованы фактурой')
+    assert.equal(controller.group.getObjectByName('roof-gable:end-west').material.name, 'wall:stone')
+    assert.ok(meshesNamed(controller.group, 'roof-rafter:').every((mesh) => mesh.material.name === 'wall:timber'))
+    assert.ok(meshesNamed(controller.group, 'roof-wall-upper:').every((mesh) => mesh.material.name === 'wall:stone'), 'верх стен продолжает кладку')
+  } finally { controller.dispose() }
+})
+
+test('у сруба крыша дощатая, у фахверка — черепица и брус на верхнем этаже', () => {
+  const wooden = paintedRoofs(mapFor())
+  try {
+    assert.ok(meshesNamed(wooden.group, 'roof-slope:').every((mesh) => mesh.material.name === 'roof:shingles'))
+    assert.equal(wooden.group.getObjectByName('roof-gable:end-west').material.name, 'wall:planks')
+  } finally { wooden.dispose() }
+  const map = mapFor()
+  map.zones.find((zone) => zone.id === 'room').wall = 'fachwerk'
+  const fachwerk = paintedRoofs(map)
+  try {
+    assert.ok(meshesNamed(fachwerk.group, 'roof-slope:').every((mesh) => mesh.material.name === 'roof:tiles'))
+    assert.ok(meshesNamed(fachwerk.group, 'roof-wall-upper:').every((mesh) => mesh.material.name === 'wall:plaster'))
+    assert.ok(meshesNamed(fachwerk.group, 'roof-wall-timber:brace').length > 0, 'раскосы фахверка и наверху')
+    assert.ok(meshesNamed(fachwerk.group, 'roof-wall-timber:post').length > 0)
+  } finally { fachwerk.dispose() }
+})
+
+test('рисованная крыша круче прежней, свод склепа — тёсаный камень', () => {
+  const plain = roofs3d.createBoard3DRoofs(withZoneMaterial(mapFor(), 'stone'), render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  const painted = paintedRoofs(withZoneMaterial(mapFor(), 'stone'))
+  try {
+    assert.equal(plain.group.userData.roofStyle, 'plain')
+    assert.ok(meshesNamed(plain.group, 'roof-shingle:').length > 0, 'без пакета крыша прежняя')
+    const top = (controller) => new THREE.Box3().setFromObject(controller.group.getObjectByName('roof-shells')).max.y
+    assert.ok(top(painted) > top(plain) + .2, 'скат рисованной крыши круче')
+  } finally { plain.dispose(); painted.dispose() }
+  const crypt = paintedRoofs(mapFor({ theme: 'crypt', levelIndex: -1 }))
+  try {
+    assert.equal(crypt.group.getObjectByName('vault-shell').material.name, 'wall:fortress')
+    assert.ok(meshesNamed(crypt.group, 'vault-rib:').every((mesh) => mesh.material.name === 'wall:stone'))
+  } finally { crypt.dispose() }
+})
+
+test('без бруса или черепицы в пакете крыши остаются прежними; ресурсы рисованных крыш освобождаются', () => {
+  for (const key of ['tiles', 'timber']) {
+    const broken = structuredClone(paintedPack)
+    delete broken.walls[key]
+    assert.equal(roofs3d.packHasRoofLooks(broken), false, key)
+    const controller = roofs3d.createBoard3DRoofs(mapFor(), render.DEFAULT_BOARD_PALETTE, { stylePack: broken, ...fakeTextures })
+    assert.equal(controller.group.userData.roofStyle, 'plain')
+    controller.dispose()
+  }
+  const controller = paintedRoofs(mapFor())
+  const resources = resourcesIn(controller.group)
+  const disposed = new Map([...resources].map((resource) => [resource, 0]))
+  for (const resource of resources) resource.addEventListener('dispose', () => disposed.set(resource, disposed.get(resource) + 1))
+  controller.dispose()
+  assert.ok([...disposed.values()].every((count) => count === 1), 'каждый материал и сетка освобождены ровно один раз')
+})

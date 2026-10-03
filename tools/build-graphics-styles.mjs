@@ -198,7 +198,8 @@ export function rebuildManifest() {
   const previous = JSON.parse(readFileSync(join(OUTPUT, 'manifest.json'), 'utf8'))
   rmSync(STAGING, { recursive: true, force: true })
   cpSync(OUTPUT, STAGING, { recursive: true, filter: (path) => !path.endsWith('manifest.json') })
-  return finish(Object.fromEntries(Object.entries(previous.materials ?? {}).map(([key, entry]) => [key, {
+  // Материал, чьи файлы убраны из пакета, выпадает и из манифеста.
+  return finish(Object.fromEntries(Object.entries(previous.materials ?? {}).filter(([, entry]) => existsSync(join(OUTPUT, entry.color))).map(([key, entry]) => [key, {
     color: true, normal: Boolean(entry.normal), orm: Boolean(entry.orm), metalness: entry.metalness, roughness: entry.roughness, doubleSided: entry.doubleSided, aspect: entry.aspect,
   }])))
 }

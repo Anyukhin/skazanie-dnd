@@ -26,8 +26,8 @@
  */
 
 /**
- * Вид стены 3D-доски: материал пакета и сколько клеток накрывает его повтор
- * по горизонтали (по вертикали — с пропорцией фактуры).
+ * Вид стены или ската крыши 3D-доски: материал пакета и сколько клеток
+ * накрывает его повтор по горизонтали (по вертикали — с пропорцией фактуры).
  * @typedef {{ material: string, cells: number }} WallLookSource
  */
 
@@ -427,6 +427,8 @@ export const GRAPHICS_STYLE_SOURCES = Object.freeze({
       'wall-planks': { color: 'fpmk/T_Trim_Furniture_BaseColor.png', normal: 'fpmk/T_Trim_Furniture_Normal.png', orm: 'fpmk/T_Trim_Furniture_ORM.png', rect: [0, 165, 2048, 680], meters: 1.6, seam: 'y', neutral: false },
       'wall-timber': { color: 'mvmk/T_WoodTrim_BaseColor.png', normal: 'mvmk/T_WoodTrim_Normal.png', roughness: 'mvmk/T_WoodTrim_Roughness.png', rect: [0, 640, 2048, 620], meters: 1.2, seam: 'y', neutral: false },
       'wall-log': { color: 'snmk/Bark_NormalTree.png', normal: 'snmk/Bark_NormalTree_Normal.png', rect: [0, 0, 2048, 2048], meters: 1.4, roughnessValue: .9, seam: '', neutral: false },
+      // Крыши: глиняная черепица Village; деревянным домам — доски стен.
+      'roof-tiles': { color: 'mvmk/T_RoundTiles_BaseColor.png', normal: 'mvmk/T_RoundTiles_Normal.png', roughness: 'mvmk/T_RoundTiles_Roughness.png', rect: [0, 0, 2048, 2048], meters: 2, seam: '', neutral: false },
     },
     // Виды стен доски. Клетка — 1,5 м, стена в разрезе — 0,95 клетки.
     walls: {
@@ -438,6 +440,9 @@ export const GRAPHICS_STYLE_SOURCES = Object.freeze({
       timber: { material: 'wall-timber', cells: 1 },
       log: { material: 'wall-log', cells: .8 },
       iron: { material: 'metal', cells: .8 },
+      // Скаты крыш: повтор по длине конька; по скату — с пропорцией фактуры.
+      tiles: { material: 'roof-tiles', cells: 1.7 },
+      shingles: { material: 'wall-planks', cells: 1.2 },
     },
     props: PROPS,
   },

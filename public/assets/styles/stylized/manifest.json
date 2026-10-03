@@ -2,7 +2,7 @@
  "schema": "graphics-style/v1",
  "style": "stylized",
  "label": "Рисованный",
- "revision": "72edcf70ccc96ecd",
+ "revision": "93f9471687f3750c",
  "license": "CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit) и собственные текстуры и модели проекта (data/asset-rights.json)",
  "sources": [
   "https://quaternius.com/packs/fantasypropsmegakit.html",
@@ -301,6 +301,14 @@
    "roughness": 1,
    "doubleSided": false
   },
+  "roof-tiles": {
+   "color": "materials/roof-tiles/color.jpg",
+   "normal": "materials/roof-tiles/normal.jpg",
+   "orm": "materials/roof-tiles/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
   "stone": {
    "color": "materials/stone/color.jpg",
    "normal": "materials/stone/normal.jpg",
@@ -419,6 +427,14 @@
   "iron": {
    "material": "metal",
    "cells": 0.8
+  },
+  "tiles": {
+   "material": "roof-tiles",
+   "cells": 1.7
+  },
+  "shingles": {
+   "material": "wall-planks",
+   "cells": 1.2
   }
  },
  "props": {
@@ -2452,6 +2468,21 @@
    "file": "materials/plaster/orm.jpg",
    "sha256": "1e2339cd4a5f1159d3091d03daa8ba9ca756eb78f5650181a4433b4018e48e25",
    "bytes": 23151
+  },
+  {
+   "file": "materials/roof-tiles/color.jpg",
+   "sha256": "ae1d1e31b63c2158d1c3ed933e5f9de6d3e22abe250c1637183a62ab23581443",
+   "bytes": 79914
+  },
+  {
+   "file": "materials/roof-tiles/normal.jpg",
+   "sha256": "ada1fb80b8f9da833af7f7b0ed35d94a37c4715335b2632cbb795c307881d68c",
+   "bytes": 109785
+  },
+  {
+   "file": "materials/roof-tiles/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
   },
   {
    "file": "materials/stone/color.jpg",

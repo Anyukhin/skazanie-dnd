@@ -205,6 +205,61 @@ export function createTriplanarMaterial(spec: StyleMaterial, cells: number, maps
   return material
 }
 
+export type LookMaterialOptions = {
+  /** Повернуть рисунок на четверть: доски сверху вниз. */
+  swap?: boolean
+  onTexture?: () => void
+  loadTexture?: WallTextureLoader
+}
+
+function lookMaps(pack: GraphicsStylePack, look: string, options: LookMaterialOptions) {
+  const spec = pack.materials[pack.walls[look].material]
+  const onTexture = () => options.onTexture?.()
+  return {
+    spec,
+    maps: {
+      color: cachedTexture(spec.color, true, onTexture, options.loadTexture),
+      normal: spec.normal ? cachedTexture(spec.normal, false, onTexture, options.loadTexture) : null,
+      orm: spec.orm ? cachedTexture(spec.orm, false, onTexture, options.loadTexture) : null,
+    },
+  }
+}
+
+/** Материал вида пакета с фактурой по мировым координатам: стены, фронтоны, своды. */
+export function createLookMaterial(pack: GraphicsStylePack, look: string, options: LookMaterialOptions = {}) {
+  const { spec, maps } = lookMaps(pack, look, options)
+  const material = createTriplanarMaterial(spec, pack.walls[look].cells, maps, options.swap)
+  material.name = `wall:${look}${options.swap ? ':swap' : ''}`
+  return material
+}
+
+/**
+ * Материал вида пакета по UV самой сетки: скат крыши знает, где карниз и где
+ * конёк, и черепица ложится рядами вдоль конька, а не проекцией сверху. UV
+ * сетки задаются в повторах фактуры (`lookRepeat`), текстуры общие.
+ */
+export function createUvLookMaterial(pack: GraphicsStylePack, look: string, options: LookMaterialOptions = {}) {
+  const { spec, maps } = lookMaps(pack, look, options)
+  const material = new THREE.MeshStandardMaterial({
+    map: maps.color,
+    normalMap: maps.normal,
+    roughnessMap: maps.orm,
+    metalnessMap: maps.orm,
+    aoMap: maps.orm,
+    aoMapIntensity: .8,
+    roughness: spec.roughness,
+    metalness: maps.orm ? spec.metalness : 0,
+  })
+  material.name = `roof:${look}`
+  return material
+}
+
+/** Сколько мировых единиц накрывает один повтор фактуры вида: по ширине и по высоте. */
+export function lookRepeat(pack: GraphicsStylePack, look: string) {
+  const wall = pack.walls[look]
+  return { u: wall.cells, v: wall.cells * pack.materials[wall.material].aspect }
+}
+
 // -------------------------------------------------------------- сборка
 
 type Shape = 'box' | 'log' | 'tip' | 'ring'
@@ -451,19 +506,11 @@ export function buildStyledEdges(map: TacticalMap, pack: GraphicsStylePack, opti
   doorsGroup.name = 'doors'
   const geometries = new Map<Shape, THREE.BufferGeometry>()
   const materials = new Map<string, THREE.MeshStandardMaterial>()
-  const onTexture = () => options.onTexture?.()
   const materialFor = (look: string, swap: boolean) => {
     const key = `${look}:${swap}`
     let material = materials.get(key)
     if (!material) {
-      const wall = pack.walls[look]
-      const spec = pack.materials[wall.material]
-      material = createTriplanarMaterial(spec, wall.cells, {
-        color: cachedTexture(spec.color, true, onTexture, options.loadTexture),
-        normal: spec.normal ? cachedTexture(spec.normal, false, onTexture, options.loadTexture) : null,
-        orm: spec.orm ? cachedTexture(spec.orm, false, onTexture, options.loadTexture) : null,
-      }, swap)
-      material.name = `wall:${look}${swap ? ':swap' : ''}`
+      material = createLookMaterial(pack, look, { swap, onTexture: options.onTexture, loadTexture: options.loadTexture })
       materials.set(key, material)
     }
     return material
