@@ -267,11 +267,12 @@ commit, механики он не касается.
 | Инвариант | Сторож |
 | --- | --- |
 | Replay потока событий даёт то же состояние | `test/event-store.test.mjs`, `pnpm cutover:audit` |
+| Потеря хвоста журнала или seed-снимка — явный отказ `CAMPAIGN_RECOVERY_REQUIRED`, а не тихая загрузка старого состояния; отказ одной кампании не роняет сервер | `test/event-store.test.mjs`, `test/recovery-required-api.test.mjs` |
 | Повтор с тем же `idempotency_key` возвращает прежний commit | `test/api-integration.test.mjs`, `test/game-flow-integration.test.mjs` |
-| Все броски серверные, один бросок не применяется дважды | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs` |
+| Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs`, `test/roll-binding.test.mjs` |
 | Клиентские поля недоверенные (путь, дальность, цель) | `test/tactical-command-guard.test.mjs` |
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
-| Игрок видит только разрешённое | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs` |
+| Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
 | Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |
@@ -281,6 +282,8 @@ commit, механики он не касается.
 | Враг встречи появляется по эту сторону дверей и окон от отряда | `test/encounter-assembler.test.mjs` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
 | Корпус тестов не ходит в интернет: каждый запуск `server/index.mjs` либо с пустым `ROUTERAI_API_KEY`, либо с локальным `ROUTERAI_BASE_URL` | `test/test-network-isolation.test.mjs` |
+| Запрос не роняет сервер: тело — только JSON-объект, необработанная ошибка маршрута завершает свой запрос ответом 500 | `test/map-import-api.test.mjs`, `test/recovery-required-api.test.mjs` |
+| Весь вызов модели и картинок идёт через учёт расхода; известный usage непригодного ответа тоже записывается | `test/usage-ledger.test.mjs`, `test/item-images-api.test.mjs` |
 
 Если новый инвариант нельзя привязать к тесту — он ещё не инвариант, а намерение.
 
