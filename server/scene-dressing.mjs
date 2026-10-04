@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 
 import { assetById } from './asset-registry.mjs'
-import { addProp, cellAt, edgeNeighbor, setCell, setEdge } from './tactical-map.mjs'
+import { addProp, cellAt, edgeList, edgeNeighbor, setCell, setEdge } from './tactical-map.mjs'
 
 /**
  * Глубина карты поверх планировки: сюжетные виньетки, трудная местность и
@@ -14,13 +14,20 @@ import { addProp, cellAt, edgeNeighbor, setCell, setEdge } from './tactical-map.
  *
  * Приёмы — из практики разметки боевых карт: «история в обстановке»
  * (брошенный лагерь, разорённое погребение), трудная местность как
- * тактический выбор (подлесок, завал) и развалины как укрытие и узкое место
- * на открытой местности.
+ * тактический выбор (подлесок, завал, низкая мебель) и развалины как укрытие
+ * и узкое место на открытой местности.
  */
 
 /** @typedef {import('./tactical-map.mjs').TacticalMap} TacticalMap */
 /** @typedef {{ asset: string, dx: number, dy: number, rotation?: number, state?: string }} VignettePart */
-/** @typedef {{ id: string, parts: VignettePart[], nearRoad?: boolean }} Vignette */
+/**
+ * `cue` — корни слов, по которым сцену узнают в тексте места, заголовке,
+ * настроении и прибытии. `ambient` — тихая примета без события (старая могила,
+ * грибной грот): она может встать и без слов. Виньетка с событием (брошенный
+ * лагерь, драка, обряд) встаёт только по слову описания — иначе карта
+ * рассказывала бы историю, которой нет ни у Рассказчика, ни у ведущего.
+ * @typedef {{ id: string, parts: VignettePart[], nearRoad?: boolean, cue?: RegExp, ambient?: boolean }} Vignette
+ */
 
 /**
  * Виньетки по обстановке. Сломанным или опрокинутым ставится только
@@ -31,54 +38,68 @@ import { addProp, cellAt, edgeNeighbor, setCell, setEdge } from './tactical-map.
 export const VIGNETTES = Object.freeze({
   wild: Object.freeze([
     // Костёр ещё горит, а хозяев нет: скатка, мешок, бревно вместо скамьи.
-    { id: 'abandoned-camp', parts: [
+    { id: 'abandoned-camp', cue: /кострищ|костёр|костер|костра|ночлег|ночёвк|ночевк|следы (?:[а-яё]+ )?(?:стоянки|привала)|брошенн[а-яё]* (?:стоянк|лагер)/u, parts: [
       { asset: 'campfire', dx: 0, dy: 0 },
       { asset: 'bedroll_cluster', dx: 1, dy: 1 },
       { asset: 'sack', dx: 1, dy: -1 },
       { asset: 'fallen_log', dx: -2, dy: 1 },
     ] },
     // Телега у обочины: колесо отлетело, мешок распорот.
-    { id: 'cart-wreck', nearRoad: true, parts: [
+    { id: 'cart-wreck', nearRoad: true, cue: /телег|повозк|обоз|фургон|караван|опрокинут|засад/u, parts: [
       { asset: 'cart', dx: 0, dy: 0 },
       { asset: 'wagon_wheel', dx: 2, dy: 1, rotation: 90, state: 'broken' },
       { asset: 'sack', dx: -1, dy: 1, state: 'broken' },
       { asset: 'pebbles', dx: 1, dy: 1 },
     ] },
-    // Могила у дороги: цветы и свеча — за ней кто-то ходит.
-    { id: 'wayside-grave', nearRoad: true, parts: [
+    // Могила у дороги — тихая примета: цветы и свеча, за ней кто-то ходит.
+    { id: 'wayside-grave', nearRoad: true, ambient: true, cue: /могил|надгроб|похорон|погост|памятн/u, parts: [
       { asset: 'grave', dx: 0, dy: 0 },
       { asset: 'flowers', dx: 0, dy: 1 },
       { asset: 'candle', dx: 1, dy: 1 },
       { asset: 'rock_small', dx: 2, dy: 0 },
     ] },
     // Лёжка зверя: кости, палая листва, бурелом.
-    { id: 'beast-lair', parts: [
+    { id: 'beast-lair', cue: /звер|волк|волч|медвед|берлог|логов|хищн|чудищ|чудовищ|твар[ьи]/u, parts: [
       { asset: 'bone_pile', dx: 0, dy: 0 },
       { asset: 'bone_pile', dx: 1, dy: 1 },
       { asset: 'leaf_litter', dx: -1, dy: 0 },
       { asset: 'dead_bramble', dx: 1, dy: -1 },
       { asset: 'fallen_log', dx: -1, dy: 2 },
     ] },
+    // Бурелом — тихая примета леса: ствол поперёк, пень, листва и папоротник.
+    { id: 'fallen-tree', ambient: true, cue: /бурелом|поваленн|упавш[а-яё]* (?:дерев|ствол)|ветровал/u, parts: [
+      { asset: 'fallen_log', dx: 0, dy: 0 },
+      { asset: 'tree_stump', dx: 2, dy: 0 },
+      { asset: 'leaf_litter', dx: 0, dy: 1 },
+      { asset: 'fern', dx: 1, dy: 1 },
+    ] },
   ]),
   cave: Object.freeze([
     // Тот, кто дошёл сюда раньше: кости, распоротый мешок, рассыпанные монеты.
-    { id: 'fallen-adventurer', parts: [
+    { id: 'fallen-adventurer', cue: /искател|авантюрист|пропавш|погибш|сгинул|останк|скелет|экспедиц/u, parts: [
       { asset: 'bone_pile', dx: 0, dy: 0 },
       { asset: 'sack', dx: 1, dy: 0, state: 'broken' },
       { asset: 'coin_pile', dx: 0, dy: 1 },
       { asset: 'rock_small', dx: -1, dy: 1 },
     ] },
     // Тайник контрабандистов: ящик, бочка, мешки и огарок.
-    { id: 'smuggler-cache', parts: [
+    { id: 'smuggler-cache', cue: /контрабанд|тайник|схрон|награбл|разбойн|бандит|краден/u, parts: [
       { asset: 'crate', dx: 0, dy: 0 },
       { asset: 'barrel', dx: 1, dy: 0 },
       { asset: 'sack', dx: 0, dy: 1 },
       { asset: 'candle', dx: 1, dy: 1 },
     ] },
+    // Грибной грот — тихая примета сырой пещеры.
+    { id: 'mushroom-grotto', ambient: true, cue: /гриб|плесен|сырост/u, parts: [
+      { asset: 'giant_fungus', dx: 0, dy: 0 },
+      { asset: 'mushroom_cluster', dx: 2, dy: 0 },
+      { asset: 'mushroom_cluster', dx: 0, dy: 2 },
+      { asset: 'pebbles', dx: 2, dy: 2 },
+    ] },
   ]),
   crypt: Object.freeze([
     // Разорённое погребение: урны разбиты, кости разбросаны, монеты обронены.
-    { id: 'looted-burial', parts: [
+    { id: 'looted-burial', cue: /разграбл|разорен|разорён|мародёр|мародер|грабител|осквернён|осквернен|вскрыт/u, parts: [
       { asset: 'urn', dx: 0, dy: 0, state: 'broken' },
       { asset: 'bone_pile', dx: 1, dy: 0 },
       { asset: 'urn', dx: 1, dy: 1, rotation: 90, state: 'toppled' },
@@ -86,18 +107,25 @@ export const VIGNETTES = Object.freeze({
       { asset: 'rubble_heap', dx: -1, dy: 0 },
     ] },
     // Место обряда: круг на полу, свечи по краю, кости в стороне.
-    { id: 'ritual-site', parts: [
+    { id: 'ritual-site', cue: /обряд|ритуал|культ|жертвоприн|некромант|сектант|призыв|колдовск|чернокниж/u, parts: [
       { asset: 'ritual_circle', dx: 0, dy: 0 },
       { asset: 'candle', dx: -1, dy: -1 },
       { asset: 'candle', dx: 1, dy: -1 },
       { asset: 'candle', dx: 0, dy: 1 },
       { asset: 'bone_heap', dx: 2, dy: 1 },
     ] },
+    // Поминальное место — тихая примета: урна, свечи и чаша подношений.
+    { id: 'memorial', ambient: true, cue: /помин|памят|предк|родов/u, parts: [
+      { asset: 'urn', dx: 0, dy: 0 },
+      { asset: 'candle', dx: 1, dy: 0 },
+      { asset: 'candle', dx: -1, dy: 0 },
+      { asset: 'offering_bowl', dx: 0, dy: 1 },
+    ] },
   ]),
   tavern: Object.freeze([
-    // Общий зал после вчерашней драки: стулья опрокинуты, вино разлито,
-    // бутылка разбита, кружка закатилась под стол.
-    { id: 'after-brawl', parts: [
+    // Общий зал после драки: стулья опрокинуты, вино разлито, бутылка
+    // разбита, кружка закатилась под стол.
+    { id: 'after-brawl', cue: /драк|потасовк|поножовщ|дебош|буян|разгром|погром|скандал|мордобо/u, parts: [
       { asset: 'chair', dx: 0, dy: 0, rotation: 90, state: 'toppled' },
       { asset: 'wine_stain', dx: 1, dy: 0 },
       { asset: 'stool', dx: 2, dy: 1, state: 'toppled' },
@@ -106,10 +134,17 @@ export const VIGNETTES = Object.freeze({
     ] },
   ]),
   settlement: Object.freeze([
-    { id: 'cart-wreck', nearRoad: true, parts: [
+    { id: 'cart-wreck', nearRoad: true, cue: /телег|повозк|обоз|фургон|караван|опрокинут/u, parts: [
       { asset: 'cart', dx: 0, dy: 0 },
       { asset: 'wagon_wheel', dx: 2, dy: 1, rotation: 90, state: 'broken' },
       { asset: 'sack', dx: -1, dy: 1, state: 'broken' },
+    ] },
+    // Дровяной двор — тихая примета деревни: козлы, пень и поленница.
+    { id: 'woodcutting', ambient: true, cue: /дров|лесоруб|плотник|пилорам/u, parts: [
+      { asset: 'sawhorse', dx: 0, dy: 0 },
+      { asset: 'tree_stump', dx: 2, dy: 0 },
+      { asset: 'woodpile', dx: 0, dy: 2 },
+      { asset: 'sawdust', dx: 2, dy: 1 },
     ] },
   ]),
 })
@@ -174,7 +209,13 @@ function reservedCells(map, spawnRadius) {
   return reserved
 }
 
-/** @param {TacticalMap} map @returns {Set<string>} */
+/**
+ * Клетки под предметами и у рёбер-стен: виньетка не встаёт ни на предмет, ни
+ * вплотную к стене (иначе встаёт поперёк прохода в пролом), а второй остов
+ * развалин — на первый.
+ * @param {TacticalMap} map
+ * @returns {Set<string>}
+ */
 function occupiedCells(map) {
   /** @type {Set<string>} */
   const occupied = new Set()
@@ -182,19 +223,27 @@ function occupiedCells(map) {
     const footprint = prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
     for (const point of footprint) occupied.add(cellKey(point.x, point.y))
   }
+  for (const edge of edgeList(map)) {
+    if (edge.kind === 'door') continue
+    const next = edgeNeighbor(edge)
+    occupied.add(cellKey(edge.x, edge.y))
+    occupied.add(cellKey(next.x, next.y))
+  }
   return occupied
 }
 
 /**
- * Дорога открытой местности — утоптанная земля поверх иного покрытия поля.
- * Где земля и есть покрытие (болото), дороги отдельно не видно.
+ * Дорога: утоптанная земля поверх иного покрытия поля, а в поселении — улица
+ * и площадь. Где земля и есть покрытие (болото), дороги отдельно не видно.
  * @param {TacticalMap} map
  * @param {number} x
  * @param {number} y
  */
 function onRoad(map, x, y) {
   const cell = cellAt(map, x, y)
-  if (!cell || cell.material !== 'earth') return false
+  if (!cell) return false
+  if (cell.zone === 'street' || cell.zone === 'square') return true
+  if (cell.material !== 'earth') return false
   const zone = map.zones.find((entry) => entry.id === cell.zone)
   return Boolean(zone && zone.material !== 'earth')
 }
@@ -234,18 +283,37 @@ function partCells(part, ax, ay) {
 }
 
 /**
- * Сюжетные виньетки: небольшие группы готовых предметов, которые читаются
- * историей места. Ставятся до обычной расстановки, поэтому её случайный
- * добор обходит их стороной. Возвращает идентификаторы поставленных.
- *
- * @param {TacticalMap} map
- * @param {{ seed: string|number, set: keyof typeof VIGNETTES, zones?: string[]|null, limit?: number }} options
+ * Какие виньетки набора названы текстом сцены.
+ * @param {keyof typeof VIGNETTES} set
+ * @param {string} text
  * @returns {string[]}
  */
-export function placeVignettes(map, { seed, set, zones = null, limit = 1 }) {
+export function vignettesNamedBy(set, text) {
+  const lower = String(text ?? '').toLocaleLowerCase('ru')
+  return (VIGNETTES[set] ?? []).filter((recipe) => recipe.cue?.test(lower)).map((recipe) => recipe.id)
+}
+
+/**
+ * Сюжетные виньетки: небольшие группы готовых предметов, которые читаются
+ * историей места. Названное текстом сцены (`text`: место, заголовок,
+ * настроение, прибытие) встаёт всегда, сколько бы его ни было; свободные
+ * места до `limit` занимают только тихие приметы. Ставятся до обычной
+ * расстановки, поэтому её случайный добор обходит их стороной. Возвращает
+ * идентификаторы поставленных.
+ *
+ * @param {TacticalMap} map
+ * @param {{ seed: string|number, set: keyof typeof VIGNETTES, zones?: string[]|null, limit?: number, text?: string }} options
+ * @returns {string[]}
+ */
+export function placeVignettes(map, { seed, set, zones = null, limit = 1, text = '' }) {
   const recipes = VIGNETTES[set] ?? []
-  if (!recipes.length || limit <= 0) return []
+  if (!recipes.length) return []
   const random = randomFor(`vignettes:${set}:${seed}`)
+  const named = new Set(vignettesNamedBy(set, text))
+  const wanted = shuffled(recipes.filter((recipe) => named.has(recipe.id)), random)
+  const quiet = shuffled(recipes.filter((recipe) => recipe.ambient && !named.has(recipe.id)), random)
+  const budget = Math.max(limit, wanted.length)
+  if (budget <= 0) return []
   const reserved = reservedCells(map, 3)
   const occupied = occupiedCells(map)
   const allowed = zones ? new Set(zones) : null
@@ -258,8 +326,9 @@ export function placeVignettes(map, { seed, set, zones = null, limit = 1 }) {
   const placed = []
   /** @type {Array<{x: number, y: number}>} */
   const anchors = []
-  for (const recipe of shuffled([...recipes], random)) {
-    if (placed.length >= limit) break
+  for (const recipe of [...wanted, ...quiet]) {
+    // Тихая примета — только на свободное место в пределе; названное — сверх.
+    if (placed.length >= (named.has(recipe.id) ? budget : limit)) continue
     for (const anchor of shuffled(ground, random)) {
       // Виньетки — не кучей: каждая своя история и своё место.
       if (anchors.some((other) => Math.abs(other.x - anchor.x) + Math.abs(other.y - anchor.y) < 7)) continue
@@ -322,13 +391,19 @@ const ROUGH_DECALS = Object.freeze({
   rubble: ['scree', 'pebbles'],
   snow: ['snowdrift'],
   sand: ['sand_dune'],
+  mud: ['mud_patch'],
 })
 
+/** Покрытие клетки под трудной местностью; подлесок и наносы его не меняют. */
+const ROUGH_SURFACES = Object.freeze({ rubble: 'rubble', mud: 'mud' })
+
 /**
- * Трудная местность пятнами: подлесок в лесу и у дороги, завал в пещере и
- * склепе, снежные заносы зимой и песчаные наносы в пустыне. Шаг по такой клетке стоит вдвое (`moveCost` 2, правило движка), и
- * доска штрихует её в 2D и 3D. Пятно — несколько клеток, а не полоса: обойти
- * можно, но обход стоит хода. Дорога, вход и подходы к дверям не трогаются.
+ * Трудная местность пятнами: подлесок в лесу и у дороги, завал в пещере,
+ * склепе, тюрьме и разрушенном храме, снежные заносы зимой, песчаные наносы
+ * в пустыне, грязь во дворах деревни. Шаг по такой клетке стоит вдвое
+ * (`moveCost` 2, правило движка), и доска штрихует её в 2D и 3D. Пятно —
+ * несколько клеток, а не полоса: обойти можно, но обход стоит хода. Дорога,
+ * улица, вход и подходы к дверям не трогаются.
  *
  * @param {TacticalMap} map
  * @param {{ seed: string|number, kind: keyof typeof ROUGH_DECALS, zones?: string[]|null, patches?: number }} options
@@ -351,6 +426,7 @@ export function roughenGround(map, { seed, kind, zones = null, patches = 2 }) {
   const centers = []
   let changed = 0
   const busy = occupiedCells(map)
+  const surface = ROUGH_SURFACES[/** @type {keyof typeof ROUGH_SURFACES} */ (kind)]
   for (const center of shuffled(ground, random)) {
     if (centers.length >= patches) break
     if (centers.some((other) => Math.abs(other.x - center.x) + Math.abs(other.y - center.y) < 6)) continue
@@ -368,7 +444,7 @@ export function roughenGround(map, { seed, kind, zones = null, patches = 2 }) {
     if (cells.length < 3) continue
     centers.push(center)
     for (const point of cells) {
-      setCell(map, point.x, point.y, { moveCost: 2, ...(kind === 'rubble' ? { surface: 'rubble' } : {}) })
+      setCell(map, point.x, point.y, { moveCost: 2, ...(surface ? { surface } : {}) })
       changed += 1
     }
     // Чем пятно трудно — видно и без штриховки: папоротник и листва в
@@ -377,10 +453,16 @@ export function roughenGround(map, { seed, kind, zones = null, patches = 2 }) {
     const decals = ROUGH_DECALS[kind]
     /** @type {Array<{x: number, y: number}>} */
     const chosen = []
+    /** @param {{x: number, y: number}} a @param {{x: number, y: number}} b */
+    const touching = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= 1
     for (const point of shuffled(cells, random)) {
       if (chosen.length >= Math.min(3, Math.ceil(cells.length / 3))) break
       if (busy.has(cellKey(point.x, point.y))) continue
-      if (chosen.some((other) => Math.max(Math.abs(other.x - point.x), Math.abs(other.y - point.y)) <= 1)) continue
+      if (chosen.some((other) => touching(other, point))) continue
+      // Такой же предмет рядом — и по диагонали — уже стоит: третий в ряд
+      // проверка карты считает кучей.
+      const assetId = decals[chosen.length % decals.length]
+      if (map.props.some((prop) => prop.assetId === assetId && touching({ x: Math.floor(prop.x), y: Math.floor(prop.y) }, point))) continue
       chosen.push(point)
     }
     chosen.forEach((point, index) => {
@@ -409,74 +491,98 @@ export function roughenGround(map, { seed, kind, zones = null, patches = 2 }) {
 }
 
 /**
- * Развалины на открытой местности: остов постройки — обрывки стен по
- * периметру с проломами, плиты пола местами, завал внутри и уцелевшая
- * колонна. Это укрытие и узкие места посреди поля, где иначе укрыться можно
- * только за деревом. Стены — рёбра клеток, как у построек; в каждый остов
- * ведут минимум два пролома шириной от двух клеток, поэтому досягаемость не
- * меняется. Зона остаётся наружной: это не дом, у него нет ни двери, ни окон.
+ * Низкая мебель — трудная местность (5e): клетки под скамьями и подушками для
+ * коленопреклонения, через которые проходят, но не шагают свободно. Мебель,
+ * которая держит шаг целиком, сюда не входит — её клетка и так непроходима.
  *
  * @param {TacticalMap} map
- * @param {{ seed: string|number, zone?: string }} options
- * @returns {{ x: number, y: number, width: number, height: number }|null}
+ * @param {readonly string[]} assetIds
+ * @returns {number} сколько клеток стало трудными
  */
-export function placeRuins(map, { seed, zone = 'field' }) {
+export function markLowFurniture(map, assetIds) {
+  const ids = new Set(assetIds)
+  const reserved = reservedCells(map, 1)
+  let changed = 0
+  for (const prop of map.props) {
+    if (!ids.has(prop.assetId) || prop.blocksMove) continue
+    for (const point of prop.footprint ?? []) {
+      const cell = cellAt(map, point.x, point.y)
+      if (!cell?.passable || cell.moveCost > 1 || reserved.has(cellKey(point.x, point.y))) continue
+      setCell(map, point.x, point.y, { moveCost: 2 })
+      changed += 1
+    }
+  }
+  return changed
+}
+
+/**
+ * Остов развалин в виде рамки или линии стен-рёбер. `house` — дом без крыши,
+ * `tower` — квадрат сторожевой башни, где уцелело почти всё, `wall` —
+ * обрывок крепостной стены.
+ * @typedef {'house'|'tower'|'wall'} RuinShape
+ */
+
+/** @type {readonly RuinShape[]} */
+const RUIN_SHAPES = Object.freeze(['house', 'house', 'tower', 'wall'])
+
+/**
+ * Развалины: остов постройки — обрывки стен по периметру с проломами, плиты
+ * пола местами, завал внутри и уцелевшая колонна, либо обрывок крепостной
+ * стены. Это укрытие и узкие места на открытом месте, где иначе укрыться
+ * можно только за деревом. Стены — рёбра клеток, как у построек; в остов
+ * ведут проломы шириной от двух клеток, поэтому досягаемость не меняется.
+ * Зона остаётся прежней: это не дом, у него нет ни двери, ни окон, ни крыши.
+ *
+ * @param {TacticalMap} map
+ * @param {{ seed: string|number, zone?: string, shape?: RuinShape|null, index?: number }} options
+ * @returns {{ x: number, y: number, width: number, height: number, shape: RuinShape }|null}
+ */
+export function placeRuins(map, { seed, zone = 'field', shape = null, index = 1 }) {
   const random = randomFor(`ruins:${seed}`)
-  const width = 5 + Math.floor(random() * 3)
-  const height = 4 + Math.floor(random() * 3)
+  const form = shape ?? RUIN_SHAPES[Math.floor(random() * RUIN_SHAPES.length)]
+  const preferAlong = random() < 0.5
+  const span = form === 'tower' ? 4 + Math.floor(random() * 2) : form === 'wall' ? 8 + Math.floor(random() * 4) : 5 + Math.floor(random() * 3)
+  const depth = form === 'tower' ? span : form === 'wall' ? 1 : 4 + Math.floor(random() * 3)
   const reserved = reservedCells(map, 6)
   const occupied = occupiedCells(map)
   const allowed = new Set([zone])
-  /** @param {number} x0 @param {number} y0 */
-  const fits = (x0, y0) => {
-    // Остов и клетка вокруг — свободная земля: стена не встаёт вплотную к воде,
-    // скале или дороге.
-    for (let y = y0 - 1; y <= y0 + height; y += 1) for (let x = x0 - 1; x <= x0 + width; x += 1) {
-      if (!freeGround(map, x, y, { zones: allowed, occupied, reserved })) return false
+  // Обрывок стены пробует обе ориентации: поперёк дороги он не встаёт, а
+  // вдоль — встанет. Остов дома и башни лежат так, как выпали.
+  const orientations = form === 'wall' ? [preferAlong, !preferAlong] : [true]
+  /** @type {{x: number, y: number}|null} */
+  let origin = null
+  let along = preferAlong
+  let width = span
+  let height = depth
+  for (const option of orientations) {
+    along = option
+    width = form === 'wall' && !along ? 1 : span
+    height = form === 'wall' && !along ? span : depth
+    /** @param {number} x0 @param {number} y0 */
+    const fits = (x0, y0) => {
+      // Остов и клетка вокруг — свободная земля: стена не встаёт вплотную к
+      // воде, скале, дороге, дому или другим развалинам.
+      for (let y = y0 - 1; y <= y0 + height; y += 1) for (let x = x0 - 1; x <= x0 + width; x += 1) {
+        if (!freeGround(map, x, y, { zones: allowed, occupied, reserved })) return false
+      }
+      return true
     }
-    return true
+    /** @type {Array<{x: number, y: number}>} */
+    const corners = []
+    for (let y = 2; y + height + 2 <= map.height; y += 1) for (let x = 2; x + width + 2 <= map.width; x += 1) corners.push({ x, y })
+    origin = shuffled(corners, random).find((corner) => fits(corner.x, corner.y)) ?? null
+    if (origin) break
   }
-  /** @type {Array<{x: number, y: number}>} */
-  const corners = []
-  for (let y = 2; y + height + 2 <= map.height; y += 1) for (let x = 2; x + width + 2 <= map.width; x += 1) corners.push({ x, y })
-  const origin = shuffled(corners, random).find((corner) => fits(corner.x, corner.y))
   if (!origin) return null
   const { x: x0, y: y0 } = origin
-  // Периметр — по сторонам, каждая сторона — ряд рёбер изнутри наружу.
-  /** @type {Array<Array<{x: number, y: number, nx: number, ny: number}>>} */
-  const sides = [
-    Array.from({ length: width }, (_, index) => ({ x: x0 + index, y: y0, nx: x0 + index, ny: y0 - 1 })),
-    Array.from({ length: width }, (_, index) => ({ x: x0 + index, y: y0 + height - 1, nx: x0 + index, ny: y0 + height })),
-    Array.from({ length: height }, (_, index) => ({ x: x0, y: y0 + index, nx: x0 - 1, ny: y0 + index })),
-    Array.from({ length: height }, (_, index) => ({ x: x0 + width - 1, y: y0 + index, nx: x0 + width, ny: y0 + index })),
-  ]
-  // Углы держатся дольше всего; середина стен выкрошена.
-  const standing = sides.map((side) => side.map((_, index) => index === 0 || index === side.length - 1 || random() < 0.55))
-  // Два гарантированных пролома по две клетки на разных сторонах.
-  const breached = shuffled([0, 1, 2, 3], random).slice(0, 2)
-  for (const sideIndex of breached) {
-    const side = standing[sideIndex]
-    const start = 1 + Math.floor(random() * Math.max(1, side.length - 3))
-    side[start] = false
-    side[Math.min(side.length - 2, start + 1)] = false
-  }
-  sides.forEach((side, sideIndex) => side.forEach((edge, index) => {
-    if (!standing[sideIndex][index]) return
-    setEdge(map, edge.x, edge.y, edge.nx, edge.ny, { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' })
-  }))
-  // Пол: плиты местами уцелели, остальное заросло. В углу — завал.
-  for (let y = y0; y < y0 + height; y += 1) for (let x = x0; x < x0 + width; x += 1) {
-    if (random() < 0.7) setCell(map, x, y, { material: 'stone' })
-  }
-  const rubbleCorner = { x: random() < 0.5 ? x0 : x0 + width - 2, y: random() < 0.5 ? y0 : y0 + height - 2 }
-  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1]]) setCell(map, rubbleCorner.x + dx, rubbleCorner.y + dy, { surface: 'rubble', moveCost: 2, material: 'stone' })
-  /** @param {string} assetId @param {number} x @param {number} y @param {number} index */
-  const place = (assetId, x, y, index) => {
+  const wall = { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' }
+  /** @param {string} assetId @param {number} x @param {number} y @param {number} number */
+  const place = (assetId, x, y, number) => {
     const asset = assetById(assetId)
     if (!asset) return
     const flat = !asset.baseFootprint.w
     addProp(map, {
-      id: `ruins-${assetId}-${index}`,
+      id: `ruins-${index}-${assetId}-${number}`,
       assetId,
       x: x + 0.5,
       y: y + 0.5,
@@ -492,13 +598,88 @@ export function placeRuins(map, { seed, zone = 'field' }) {
       interactive: asset.interactive,
     })
   }
+  if (form === 'wall') {
+    // Обрывок стены: рёбра вдоль линии, два-три пролома. Обломки кладки и
+    // щебень — по обе стороны.
+    const cells = along
+      ? Array.from({ length: width }, (_, step) => ({ x: x0 + step, y: y0, nx: x0 + step, ny: y0 + 1 }))
+      : Array.from({ length: height }, (_, step) => ({ x: x0, y: y0 + step, nx: x0 + 1, ny: y0 + step }))
+    const standing = cells.map(() => random() < 0.8)
+    for (let gap = 0; gap < 2 + Math.floor(random() * 2); gap += 1) {
+      const start = 1 + Math.floor(random() * Math.max(1, cells.length - 3))
+      standing[start] = false
+      standing[start + 1] = false
+    }
+    cells.forEach((edge, step) => { if (standing[step]) setEdge(map, edge.x, edge.y, edge.nx, edge.ny, wall) })
+    const scatter = shuffled(cells.filter((_, step) => !standing[step]), random)
+    if (scatter[0]) place('rubble_heap', scatter[0].x, scatter[0].y, 1)
+    if (scatter[1]) place('scree', scatter[1].nx, scatter[1].ny, 1)
+    const ends = [cells[0], cells[cells.length - 1]]
+    place('mossy_rock', along ? ends[0].x - 1 : ends[0].x, along ? ends[0].y : ends[0].y - 1, 1)
+    return { x: x0, y: y0, width, height, shape: form }
+  }
+  // Периметр — по сторонам, каждая сторона — ряд рёбер изнутри наружу.
+  /** @type {Array<Array<{x: number, y: number, nx: number, ny: number}>>} */
+  const sides = [
+    Array.from({ length: width }, (_, step) => ({ x: x0 + step, y: y0, nx: x0 + step, ny: y0 - 1 })),
+    Array.from({ length: width }, (_, step) => ({ x: x0 + step, y: y0 + height - 1, nx: x0 + step, ny: y0 + height })),
+    Array.from({ length: height }, (_, step) => ({ x: x0, y: y0 + step, nx: x0 - 1, ny: y0 + step })),
+    Array.from({ length: height }, (_, step) => ({ x: x0 + width - 1, y: y0 + step, nx: x0 + width, ny: y0 + step })),
+  ]
+  // Углы держатся дольше всего; середина стен выкрошена. Башня уцелела почти
+  // вся: у неё один пролом, у дома — два.
+  const keep = form === 'tower' ? 0.9 : 0.55
+  const standing = sides.map((side) => side.map((_, step) => step === 0 || step === side.length - 1 || random() < keep))
+  for (const sideIndex of shuffled([0, 1, 2, 3], random).slice(0, form === 'tower' ? 1 : 2)) {
+    const side = standing[sideIndex]
+    const start = 1 + Math.floor(random() * Math.max(1, side.length - 3))
+    side[start] = false
+    side[Math.min(side.length - 2, start + 1)] = false
+  }
+  sides.forEach((side, sideIndex) => side.forEach((edge, step) => {
+    if (standing[sideIndex][step]) setEdge(map, edge.x, edge.y, edge.nx, edge.ny, wall)
+  }))
+  // Пол: плиты местами уцелели, остальное заросло. В углу — завал.
+  for (let y = y0; y < y0 + height; y += 1) for (let x = x0; x < x0 + width; x += 1) {
+    if (random() < 0.7) setCell(map, x, y, { material: 'stone' })
+  }
+  const rubbleCorner = { x: random() < 0.5 ? x0 : x0 + width - 2, y: random() < 0.5 ? y0 : y0 + height - 2 }
+  for (const [dx, dy] of [[0, 0], [1, 0], [0, 1]]) setCell(map, rubbleCorner.x + dx, rubbleCorner.y + dy, { surface: 'rubble', moveCost: 2, material: 'stone' })
   place('rubble_heap', rubbleCorner.x + 1, rubbleCorner.y + 1, 1)
   place('scree', rubbleCorner.x, rubbleCorner.y, 1)
-  // Уцелевшая колонна — в углу напротив завала, не в проходе.
+  // Уцелевшая колонна — в углу напротив завала, не в проходе. В башне её
+  // место занимает обломок кладки.
   const pillar = { x: rubbleCorner.x === x0 ? x0 + width - 1 : x0, y: rubbleCorner.y === y0 ? y0 + height - 1 : y0 }
-  place('pillar', pillar.x, pillar.y, 1)
+  place(form === 'tower' ? 'mossy_rock' : 'pillar', pillar.x, pillar.y, 1)
   // Камни у стен снаружи — обломки кладки.
   const outside = sides.flat().filter((edge) => freeGround(map, edge.nx, edge.ny, { zones: allowed, occupied: occupiedCells(map), reserved }))
-  shuffled(outside, random).slice(0, 2).forEach((edge, index) => place(index === 0 ? 'mossy_rock' : 'pebbles', edge.nx, edge.ny, index + 2))
-  return { x: x0, y: y0, width, height }
+  shuffled(outside, random).slice(0, 2).forEach((edge, number) => place(number === 0 ? 'mossy_rock' : 'pebbles', edge.nx, edge.ny, number + 2))
+  return { x: x0, y: y0, width, height, shape: form }
+}
+
+/**
+ * Несколько остовов на карту: по размеру участка, а названные текстом
+ * развалины — всегда хотя бы один. Каждый следующий встаёт поодаль от
+ * прежних (`occupiedCells` видит их стены).
+ *
+ * @param {TacticalMap} map
+ * @param {{ seed: string|number, zone?: string, asked?: boolean, chance?: number }} options
+ * @returns {number} сколько остовов поставлено
+ */
+export function placeRuinsField(map, { seed, zone = 'field', asked = false, chance = 0.4 }) {
+  const random = randomFor(`ruins-field:${seed}`)
+  const area = map.width * map.height
+  // Карта до 900 клеток держит один остов, больше — до трёх.
+  const most = area >= 1500 ? 3 : area >= 900 ? 2 : 1
+  let wanted = asked ? 1 : 0
+  for (let roll = wanted; roll < most; roll += 1) {
+    if (random() < (roll === 0 ? chance : chance * 0.6)) wanted += 1
+    else break
+  }
+  if (asked && most > 1 && random() < 0.5) wanted = Math.max(wanted, 2)
+  let placed = 0
+  for (let index = 0; index < Math.min(wanted, most); index += 1) {
+    if (placeRuins(map, { seed: `${seed}:${index}`, zone, index: index + 1 })) placed += 1
+  }
+  return placed
 }

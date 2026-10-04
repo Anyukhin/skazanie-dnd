@@ -20,6 +20,7 @@
  */
 import { createHash } from 'node:crypto'
 import { assetById } from './asset-registry.mjs'
+import { FOCUS_MIN_ROOM, focusRoom } from './map-quality.mjs'
 import { INDOOR_THEMES, ensurePropAccess, placeRequiredProps } from './prop-placement.mjs'
 import { normalizeSceneRequirements, requirementAssets, requirementTerrain } from './scene-requirements.mjs'
 import { addProp, cellAt, edgeBetween, edgeNeighbor, reachableCells, setCell } from './tactical-map.mjs'
@@ -78,9 +79,10 @@ function doorApproaches(map) {
 }
 
 /**
- * Наружные проходимые клетки, досягаемые от входа отряда.
+ * Наружные проходимые клетки, досягаемые от входа отряда, и вся досягаемая
+ * область (`reached`, `null` без входа отряда) — по ней меряется простор центра.
  * @param {TacticalMap} map
- * @returns {{ cells: Array<{x: number, y: number}>, party: {x: number, y: number}|null }}
+ * @returns {{ cells: Array<{x: number, y: number}>, party: {x: number, y: number}|null, reached: Set<string>|null }}
  */
 function openGround(map) {
   const party = map.spawnPoints.find((point) => point.role === 'party') ?? null
@@ -95,7 +97,7 @@ function openGround(map) {
     if (reached && !reached.has(`${x},${y}`)) continue
     cells.push({ x, y })
   }
-  return { cells, party }
+  return { cells, party, reached }
 }
 
 /**
@@ -200,7 +202,7 @@ export function placeSceneFocus(map, assets, { seed }) {
     placeRequiredProps(map, [{ assets, count: 1 }], { seed })
     return map.props.slice(before).find((prop) => ids.has(prop.assetId))?.id ?? null
   }
-  const { cells, party } = openGround(map)
+  const { cells, party, reached } = openGround(map)
   const open = new Set(cells.map((cell) => `${cell.x},${cell.y}`))
   // Свой предмет занимает клетку, и открытая земля его клетку обходит: колодец
   // площади не находился, и рядом с ним вставал второй. Стоящий предмет
@@ -209,9 +211,18 @@ export function placeSceneFocus(map, assets, { seed }) {
     const footprint = prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
     return footprint.some((point) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => open.has(`${point.x + dx},${point.y + dy}`)))
   }
-  const existing = map.props.find((prop) => ids.has(prop.assetId) && !prop.mount && reachable(prop))
+  // Засчитывается только стоящий просторно: часовня, прижатая к краю карты,
+  // проходила здесь и проваливала проверку программы (FOCUS_CRAMPED) — та же
+  // мерка, что у проверки. Тесный предмет-декор того же вида уступает место
+  // центру ниже, чтобы у дороги не встало две часовни.
+  const blocked = blockedByProps(map)
+  const roomy = (/** @type {import('./tactical-map.mjs').TacticalProp} */ prop) => !reached
+    || focusRoom(prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }], reached, blocked) >= FOCUS_MIN_ROOM
+  const standing = map.props.filter((prop) => ids.has(prop.assetId) && !prop.mount && reachable(prop))
+  const existing = standing.find(roomy)
   if (existing) return existing.id
-  const taken = new Set([...blockedByProps(map), ...doorApproaches(map)])
+  const cramped = new Set(standing.filter((prop) => !/^(required|program)-/u.test(String(prop.id))))
+  const taken = new Set([...blocked, ...doorApproaches(map)])
   const width = Math.max(1, asset.baseFootprint.w || 1)
   const height = Math.max(1, asset.baseFootprint.h || 1)
   const tie = hashNumber(`${seed}:${SCENE_PROGRAM_LAYOUT_VERSION}:focus`)
@@ -248,6 +259,13 @@ export function placeSceneFocus(map, assets, { seed }) {
     }
   }
   if (!best) return null
+  if (cramped.size) {
+    for (const prop of map.props) {
+      const mount = prop.mount
+      if (mount?.kind === 'surface' && [...cramped].some((under) => under.id === mount.propId)) cramped.add(prop)
+    }
+    map.props = map.props.filter((prop) => !cramped.has(prop))
+  }
   const span = asset.scaleRange.max - asset.scaleRange.min
   const prop = addProp(map, {
     id: `program-focus-${asset.id}`,

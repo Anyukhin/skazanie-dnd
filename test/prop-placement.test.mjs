@@ -232,6 +232,22 @@ test('плотность задаётся зоной, а не общим счё�
   assert.ok(inHall > inYard * 2, `в зале ${inHall}, во дворе ${inYard} — плотность зон не различается`)
 })
 
+test('широкие одинаковые предметы не смыкаются следами', () => {
+  // Площадь 12×12 и шесть прилавков 2×2: запрет «одинаковое вплотную» мерил
+  // опорные клетки, и прилавки вставали сплошным рядом.
+  const map = createTacticalMap({ width: 12, height: 12, seed: 'stalls' })
+  addZone(map, { id: 'square', kind: 'exterior', material: 'stone', label: 'Площадь' })
+  for (let y = 0; y < 12; y += 1) for (let x = 0; x < 12; x += 1) setCell(map, x, y, { passable: true, revealed: true, material: 'stone', zone: 'square' })
+  addProp(map, { id: 'stall-old', assetId: 'market_stall', x: 6, y: 6, footprint: [{ x: 5, y: 5 }, { x: 6, y: 5 }, { x: 5, y: 6 }, { x: 6, y: 6 }], blocksMove: true })
+  placeProps(map, { seed: 'stalls', zones: [{ zoneId: 'square', theme: 'settlement', density: 40, require: Array(6).fill('market_stall'), caps: { market_stall: 6 } }] })
+  const stalls = map.props.filter((prop) => prop.assetId === 'market_stall')
+  assert.ok(stalls.length >= 2, `прилавков ${stalls.length}`)
+  for (const [index, left] of stalls.entries()) for (const right of stalls.slice(index + 1)) {
+    const touching = left.footprint.some((a) => right.footprint.some((b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= 1))
+    assert.equal(touching, false, `${left.id} вплотную к ${right.id}`)
+  }
+})
+
 test('бюджет предметов соблюдается', () => {
   const map = placeProps(tavernWithYard(), { seed: 'budget', zones: PLAN, maxProps: 5 })
   assert.ok(map.props.length <= 5, `расставлено ${map.props.length} предметов при бюджете 5`)

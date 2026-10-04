@@ -11,7 +11,7 @@ import { deepestRoom, raiseDais } from './scene-features.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
-import { placeRuins, placeVignettes, roughenGround } from './scene-dressing.mjs'
+import { markLowFurniture, placeRuinsField, placeVignettes, roughenGround } from './scene-dressing.mjs'
 import {
   SIZE_CLASSES,
   addProp,
@@ -221,9 +221,10 @@ export const SCENE_THEMES = Object.freeze([
     density: 12,
     require: ['milestone', 'tree_birch', 'cart', 'roadside_shrine'],
     // Обочина тракта — не одни кусты и валуны: указатель, пни, поваленное
-    // дерево, луговые цветы и клевер, мелкие камни. Прежде на всю дорогу
-    // приходилось десять видов предметов.
-    prefer: ['tree_birch', 'tree_dead', 'bush', 'boulder', 'fern', 'path_stone', 'milestone', 'signpost', 'tree_stump', 'fallen_log', 'flowers', 'shrub', 'rock_small', 'tree_oak', 'clover_patch', 'forest_plant', 'grass_tuft', 'woodpile'],
+    // дерево, луговые цветы, мелкие камни. Прежде на всю дорогу приходилось
+    // десять видов предметов. Клевер и лесные травы сюда не входят: расстановка
+    // ставит их ковром, а проверка карты считает три вплотную кучей.
+    prefer: ['tree_birch', 'tree_dead', 'bush', 'boulder', 'fern', 'path_stone', 'milestone', 'signpost', 'tree_stump', 'fallen_log', 'flowers', 'shrub', 'rock_small', 'tree_oak', 'grass_tuft', 'woodpile'],
     road: true,
   },
   {
@@ -1072,6 +1073,9 @@ export function dressWaterEdges(map, seed) {
       const roll = random()
       const assetId = roll < 0.22 ? 'reeds' : roll < 0.32 ? 'river_rocks' : null
       if (!assetId || counts[assetId] >= SHORE_CAPS[/** @type {keyof typeof SHORE_CAPS} */ (assetId)]) continue
+      // Одинаковое не жмётся даже по диагонали: три камыша в ряд проверка
+      // карты считает кучей, а не берегом.
+      if (map.props.some((prop) => prop.assetId === assetId && Math.max(Math.abs(Math.floor(prop.x) - x), Math.abs(Math.floor(prop.y) - y)) <= 1)) continue
       const asset = assetById(assetId)
       if (!asset) continue
       counts[assetId] += 1
@@ -1392,13 +1396,22 @@ export function layoutSettlement(theme, { seed = 'settlement', width = 26, heigh
  * @param {Record<string, any>} [options.design] пространственный замысел выбранного места
  * @param {'interior'|'exterior'} [options.entry] сторона входа в сцену здания
  * @param {Array<{offset?: number, label?: string}>} [options.levels] объявленные этажи локации
+ * @param {string} [options.description] текст сцены для обстановки
  * @returns {{map: import('./tactical-map.mjs').TacticalMap, theme: string, warnings: string[], levels?: Array<{offset: number, hint: string, label: string}>}}
  *   `levels` — этажи, которые объявил сам генератор (двухэтажная постройка поселения)
+ *
+ * `description` — текст сцены (описание места, заголовок, настроение,
+ * прибытие). По нему обстановка (`server/scene-dressing.mjs`) ставит
+ * названное: брошенный лагерь, драку в трактире, развалины, обряд.
  */
 export function buildThemedScene({
   location = '', theme = '', sceneKind = '', seed = 'scene', width = 26, height = 26, locationId = '', themeId = '', design = {},
-  levels = [], entry = 'exterior',
+  levels = [], entry = 'exterior', description = '',
 } = {}) {
+  // Текст сцены целиком: название, тема и описание. Обстановка ставит то,
+  // о чём он говорит, а события без слов не выдумывает.
+  const sceneText = `${location} ${theme} ${description}`.toLocaleLowerCase('ru')
+  const ruinsAsked = /руин|развалин|заброшен|древн|остов|пепелищ|сгоревш/u.test(sceneText)
   // Тему могли опознать не по названию, а по узору из заявки картографа. Тогда
   // повторное опознание здесь её потеряет: `themeFor` читает только слова.
   const chosen = themeId ? themeById(themeId) : null
@@ -1428,7 +1441,7 @@ export function buildThemedScene({
     // Общий зал трактира помнит вчерашний вечер (`server/scene-dressing.mjs`):
     // трактир узнаётся по стойке в зале, а не по подписи — её носят и другие.
     const tavernHall = built.map.props.some((prop) => prop.assetId === 'bar_counter') ? built.map.zones.find((zone) => zone.id === 'hall') : null
-    if (tavernHall && placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 1 }).length) ensurePropAccess(built.map)
+    if (tavernHall && placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 0, text: sceneText }).length) ensurePropAccess(built.map)
     return { map: built.map, theme: definition.id, warnings: built.warnings }
   }
 
@@ -1438,7 +1451,7 @@ export function buildThemedScene({
       // Пещера — не пустой ход: завал щебня пятнами и след прежних гостей
       // (`server/scene-dressing.mjs`). До расстановки, чтобы добор их обходил.
       roughenGround(map, { seed, kind: 'rubble', patches: 2 })
-      placeVignettes(map, { seed, set: 'cave', limit: 1 })
+      placeVignettes(map, { seed, set: 'cave', limit: 1, text: sceneText })
       // Каменный уступ в зале: пять футов над полом, ступени в середине
       // кромки. Стрелок на уступе получает высоту — как на помосте храма.
       const hall = map.zones.find((zone) => zone.label === 'Зал')
@@ -1555,8 +1568,10 @@ export function buildThemedScene({
     // разорённое погребение или место обряда, в склепе и тюрьме — завал в
     // одном зале. Цель и камеры не трогаются.
     const dressedZones = labelled.filter((zone) => zone.id !== graph.goalZoneId && zone.label !== 'Камеры').map((zone) => zone.id)
-    if (definition.id === 'crypt') placeVignettes(built.map, { seed, set: 'crypt', zones: dressedZones, limit: 2 })
+    if (definition.id === 'crypt') placeVignettes(built.map, { seed, set: 'crypt', zones: dressedZones, limit: 1, text: sceneText })
     if (definition.id === 'crypt' || definition.id === 'dungeon') roughenGround(built.map, { seed, kind: 'rubble', zones: dressedZones, patches: 1 })
+    // Храм, названный заброшенным или разрушенным, — с обвалами свода.
+    if (definition.id === 'temple' && /заброш|разруш|руин|развалин|осквер|обвал|древн/u.test(sceneText)) roughenGround(built.map, { seed, kind: 'rubble', zones: dressedZones, patches: 3 })
     const map = placeProps(built.map, {
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (built.map.sizeClass)].maxProps,
@@ -1576,6 +1591,10 @@ export function buildThemedScene({
           }
         }),
     })
+    // Скамьи нефа и подушки для коленопреклонения — низкая мебель: через неё
+    // проходят, но шаг стоит вдвое (5e). Клетки под ними ставит расстановка,
+    // поэтому отметка — после неё.
+    if (definition.id === 'temple') markLowFurniture(map, ['prayer_bench', 'kneeling_cushions'])
     ensurePropAccess(map)
     return {
       map,
@@ -1675,6 +1694,14 @@ export function buildThemedScene({
       const single = !map.zones.some((other) => other.id === `${zone.id}-back`)
       return { purpose: 'living', require: single ? ['fireplace', 'table_small', 'bed'] : ['fireplace', 'table_small'], prefer: ['chair', 'cupboard', 'barrel', 'basket'] }
     }
+    // Обстановка дворов (`server/scene-dressing.mjs`): развалины — заброшенный
+    // двор или пепелище, если о них сказано, и изредка без слов; грязь у
+    // колодцев и в огородах (зимой — снег, в пустыне — песок) — трудная
+    // местность, но не на улице; тихая примета или названная сцена.
+    // До расстановки, чтобы её добор обходил их стороной.
+    placeRuinsField(map, { seed, zone: 'common', asked: ruinsAsked, chance: 0.25 })
+    roughenGround(map, { seed, kind: design.climate === 'cold' ? 'snow' : design.climate === 'arid' ? 'sand' : 'mud', zones: ['common'], patches: 3 })
+    placeVignettes(map, { seed, set: 'settlement', zones: ['common'], limit: 1, text: sceneText })
     placeProps(map, {
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
@@ -1773,19 +1800,20 @@ export function buildThemedScene({
   const map = layoutOpenTerrain(terrain, { seed, width, height, locationId })
   if (definition.graves) placeGraveRows(map, seed)
   // Глубина открытой местности (`server/scene-dressing.mjs`): остов
-  // постройки в лесу и у дороги — укрытие посреди поля, подлесок пятнами —
-  // трудная местность, и сюжетная виньетка. Всё до расстановки: её добор
-  // обходит их стороной. Развалины встают всегда, если о них сказано, и
-  // примерно на каждой второй-третьей карте без слов.
-  const ruinsAsked = /руин|развалин|заброшен|древн|остов/u.test(placeText)
+  // постройки — укрытие посреди поля, подлесок пятнами — трудная местность,
+  // и сюжетная виньетка. Всё до расстановки: её добор обходит их стороной.
+  // Развалины встают в любой дикой местности и любом климате: всегда, если о
+  // них сказано, и примерно на двух картах из пяти без слов; на большой карте
+  // их бывает до трёх.
   const temperate = !arid && !cold && !wetland
   const wooded = definition.id === 'forest' || definition.id === 'road'
-  if (wooded && !campScene && !terrain.chasm && (ruinsAsked || randomFor(`ruins-roll:${seed}`)() < 0.4)) placeRuins(map, { seed })
-  if (wooded && temperate) roughenGround(map, { seed, kind: 'undergrowth', zones: ['field'], patches: definition.id === 'forest' ? 3 : 2 })
+  if (!campScene) placeRuinsField(map, { seed, asked: ruinsAsked, chance: 0.4 })
+  // Кладбище зарастает так же, как лес: бурьян между рядами могил.
+  if ((wooded || definition.graves) && temperate) roughenGround(map, { seed, kind: 'undergrowth', zones: ['field'], patches: definition.id === 'forest' ? 3 : 2 })
   // Глубокий снег и сыпучий песок — тоже трудная местность (5e): заносы
   // зимой, наносы в пустыне. На болоте весь грунт и так вязкий.
   if (cold || arid) roughenGround(map, { seed, kind: cold ? 'snow' : 'sand', zones: ['field'], patches: 2 })
-  if (!campScene) placeVignettes(map, { seed, set: 'wild', zones: ['field'], limit: definition.id === 'forest' ? 2 : 1 })
+  if (!campScene) placeVignettes(map, { seed, set: 'wild', zones: ['field'], limit: 1, text: sceneText })
   // Дикая местность — не склад реквизита: костёр один (в лагере — два),
   // телега и колесо — от силы по одному, колодца и прилавков в лесу нет.
   // Виньетка уже поставила костёр или телегу — общий предел их учитывает:
