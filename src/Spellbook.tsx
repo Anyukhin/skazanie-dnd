@@ -11,6 +11,12 @@ const readerDetails = (spellDescriptionCatalog as unknown as ReaderDescriptionCa
 export type SpellbookProps = {
   spells: readonly SpellbookSpell[]
   catalogSpells?: readonly SpellbookSpell[]
+  /**
+   * Разведённые счётчики героя: «Заговоры 3 · книга 6 · подготовлено 3 ·
+   * список класса 45» (`src/spellbook-summary.mjs`). Без них заголовок
+   * называет только длину списка.
+   */
+  heroSummary?: string
   activeName?: string
   open?: boolean
   initialSpellId?: string | null
@@ -26,7 +32,7 @@ export type SpellbookProps = {
 const normalized = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase('ru')
 const cleanReason = (value: unknown) => String(value ?? '').trim().replace(/[.!?]+$/u, '')
 
-export function Spellbook({ spells, catalogSpells = spells, activeName = 'Герой', open = true, initialSpellId, pinnedSpellIds = [], onClose, onSelect, onPin, isPinDisabled, isSelectionDisabled, blockedReasonFor }: SpellbookProps) {
+export function Spellbook({ spells, catalogSpells = spells, heroSummary, activeName = 'Герой', open = true, initialSpellId, pinnedSpellIds = [], onClose, onSelect, onPin, isPinDisabled, isSelectionDisabled, blockedReasonFor }: SpellbookProps) {
   const [query, setQuery] = useState('')
   const [level, setLevel] = useState<number | 'all'>('all')
   const [scope, setScope] = useState<'hero' | 'catalog'>('hero')
@@ -55,17 +61,20 @@ export function Spellbook({ spells, catalogSpells = spells, activeName = 'Гер
   if (!open) return null
   return <section className="spellbook-catalog" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}>
     <header className="spellbook-catalog-header">
-      <div><h1>Книга заклинаний</h1><p>{scope === 'hero' ? `${activeName} · ${spells.length} в списке` : `Весь каталог · ${catalogSpells.length} карточек`}</p></div>
+      {/* Плейтест 2026-10-04, OB-02 / MG-02: «45 в списке» читалось как сорок
+          пять заклинаний героя. Список класса — не владение героя, поэтому
+          заголовок разводит заговоры, книгу, подготовленные и сам список. */}
+      <div><h1>Книга заклинаний</h1><p>{scope === 'hero' ? `${activeName} · ${heroSummary || `${spells.length} в списке`}` : `Весь каталог · ${catalogSpells.length} карточек`}</p></div>
       {onClose && <button type="button" onClick={onClose} aria-label="Закрыть книгу заклинаний">Закрыть</button>}
     </header>
     <div className="spellbook-catalog-tools">
       <label><span>Поиск</span><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, школа или описание" /></label>
-      <nav aria-label="Область каталога"><button type="button" className={scope === 'hero' ? 'active' : ''} aria-pressed={scope === 'hero'} onClick={() => switchScope('hero')}>Героя</button><button type="button" className={scope === 'catalog' ? 'active' : ''} aria-pressed={scope === 'catalog'} onClick={() => switchScope('catalog')}>Весь каталог</button></nav>
+      <nav aria-label="Область каталога"><button type="button" className={scope === 'hero' ? 'active' : ''} aria-pressed={scope === 'hero'} onClick={() => switchScope('hero')}>Список класса</button><button type="button" className={scope === 'catalog' ? 'active' : ''} aria-pressed={scope === 'catalog'} onClick={() => switchScope('catalog')}>Весь каталог</button></nav>
       <nav aria-label="Фильтр по кругу">
         <button type="button" className={level === 'all' ? 'active' : ''} onClick={() => setLevel('all')}>Все</button>
         {levels.map((entry) => <button type="button" key={entry} className={level === entry ? 'active' : ''} onClick={() => setLevel(entry)}>{entry === 0 ? 'Заговоры' : entry}</button>)}
       </nav>
-      <span aria-live="polite">{filtered.length} из {visibleSpells.length}</span>
+      <span aria-live="polite">Показано {filtered.length} из {visibleSpells.length}</span>
     </div>
     <div className="spellbook-catalog-body">
       <div className="spellbook-catalog-list" aria-label="Список заклинаний">

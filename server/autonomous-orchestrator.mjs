@@ -30,6 +30,7 @@ import {
   planServerTravel,
 } from './campaign-loop-policy.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
+import { unknownDestinationReply } from './player-request-router.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
 import { planHeroReaction, planHeroTurn } from './party-tactics.mjs'
 import {
@@ -1516,11 +1517,16 @@ export class AutonomousCampaignOrchestrator {
     if (!storedReading
       && String(reading.source ?? '').startsWith('deterministic-default')
       && !hasRecognizedFreeActionApproach(text)) {
+      // Герой идёт к месту, которого нет ни на карте мира, ни в сцене: способ
+      // понятен, неизвестно место. Честный ответ с тем, что можно сделать,
+      // вместо общего «не понял» (плейтест 2026-10-04, QP-06). Раскрытие
+      // предметов — по авторитетной карте, как у разбора пропсов выше.
+      const unknownPlace = unknownDestinationReply(text, loaded.state, { isRevealed: revealedPropPredicate(loaded.state) })
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification',
-        clarification_question: 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться.',
-        narration: 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться. Попытка ничего не расходует.',
+        clarification_question: unknownPlace || 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться.',
+        narration: unknownPlace || 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться. Попытка ничего не расходует.',
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,

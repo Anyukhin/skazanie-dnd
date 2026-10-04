@@ -222,6 +222,55 @@ test('world-map destination ID survives proposal and resolved vote', () => {
   assert.equal(result.destinationLocationId, 'estwood')
 })
 
+// Плейтест 2026-10-04, SE-11: на промежуточной точке маршрута «продолжим»
+// получало «Пока ничего не меняется», и путь продолжала только кнопка
+// «Решение группы». Теперь фраза открывает ту же карточку, что и выбор
+// следующего пункта в этой кнопке.
+const airTower = {
+  scene: { title: 'Глава 2 · Айрская башня', location: 'Айрская башня', location_id: 'air-tower', objective: 'Продолжить путь из Айрская башня к «Дормар»' },
+  adventure: { chapter: 2 },
+  worldMap: {
+    currentLocationId: 'air-tower',
+    locations: [
+      { id: 'rivermark', name: 'Ночной район Ривермарк', kind: 'city', known: true, visited: true },
+      { id: 'air-tower', name: 'Айрская башня', kind: 'landmark', known: true, visited: true },
+      { id: 'dormar', name: 'Дормар', kind: 'village', known: true, visited: false },
+    ],
+    routes: [
+      { id: 'route-1', from: 'rivermark', to: 'air-tower', discovered: true },
+      { id: 'route-2', from: 'air-tower', to: 'dormar', discovered: true },
+    ],
+  },
+}
+
+test('«продолжим» на промежуточной точке открывает ту же карточку ухода, что и кнопка «Решение группы»', () => {
+  const fromButton = proposeAgentInteraction('[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=dormar] Отряд предлагает отправиться из «Айрская башня» в «Дормар». Выбранный путь: Айрская башня → Дормар.', airTower)
+  assert.equal(fromButton.type, 'vote')
+  assert.equal(fromButton.destinationLocationId, 'dormar')
+  for (const text of ['продолжим', 'Продолжаем путь.', 'идём дальше', 'Ну, в путь!']) {
+    assert.deepEqual(proposeAgentInteraction(text, airTower), fromButton, text)
+  }
+  // Принятый вариант исполняется общим разбором решения — к Дормару.
+  const interaction = {
+    ...fromButton, id: 'route-dormar', status: 'resolved', resolvedOptionId: 'option-1',
+    options: fromButton.options.map((label, index) => ({ id: `option-${index + 1}`, label })),
+  }
+  const resolved = resolvePartyDecision(`[РЕШЕНИЕ ГРУППЫ] ${interaction.options[0].label}`, { ...airTower, agentInteraction: interaction })
+  assert.equal(resolved.type, 'scene_request')
+  assert.equal(resolved.destinationLocationId, 'dormar')
+})
+
+test('«продолжим» без следующего пункта маршрута уходом не становится', () => {
+  assert.equal(proposeAgentInteraction('продолжим разговор', airTower), null, 'не просьба о дороге')
+  assert.equal(proposeAgentInteraction('продолжим', { ...airTower, scene: { ...airTower.scene, objective: 'Найти пропавшего курьера' } }), null, 'не промежуточная точка')
+  // Цель, сохранённая до исправления SE-14: отряд уже в Дормаре — звать некуда.
+  assert.equal(proposeAgentInteraction('продолжим', { ...airTower, scene: { ...airTower.scene, location: 'Дормар', location_id: 'dormar' } }), null)
+  const hidden = structuredClone(airTower)
+  hidden.worldMap.locations[2].known = false
+  assert.equal(proposeAgentInteraction('продолжим', hidden), null, 'неизвестная точка карты оракулом не становится')
+  assert.equal(proposeAgentInteraction('продолжим', { ...airTower, agentInteraction: { id: 'open', status: 'open' } }), null, 'уже открыто другое решение')
+})
+
 test('resolved stay decision continues current scene', () => {
   const result = resolvePartyDecision('[\u0420\u0415\u0428\u0415\u041D\u0418\u0415 \u0413\u0420\u0423\u041F\u041F\u042B] \u041E\u0441\u0442\u0430\u0442\u044C\u0441\u044F', {
     agentInteraction: { resolvedOptionId: 'option-2', options: [{ id: 'option-2', label: '\u041E\u0441\u0442\u0430\u0442\u044C\u0441\u044F \u0438 \u0438\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u0442\u044C \u0434\u0430\u043B\u044C\u0448\u0435' }] },

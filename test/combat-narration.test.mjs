@@ -272,6 +272,61 @@ test('конец боя называется по-русски, служебны
   assert.doesNotMatch(text, /[a-z]_[a-z]/u)
 })
 
+// Плейтест 2026-10-04, MC-03: после победы «Продолжим» по политике
+// `post_encounter_recovery` проматывал 8 часов долгого отдыха, а игрок узнавал
+// об этом задним числом. Политика та же — строка победы называет её заранее.
+const party = {
+  partyMemberIds: ['hero', 'ally'],
+  players: [{ id: 'hero', character: 'Лира', hp: 9, maxHp: 24 }, { id: 'ally', character: 'Бор', hp: 6, maxHp: 12 }],
+  enemies: [{ id: 'wolf', name: 'Волк', hp: 0, maxHp: 11 }],
+  actors: [],
+  mechanics: { death: { heroes: {} } },
+}
+const victory = { event_type: 'EncounterEnded', payload: { reason: 'enemies_defeated', outcome: 'enemies_defeated' } }
+
+test('победа заранее называет отдых, который начнётся с продолжением истории — MC-03', () => {
+  assert.match(combatNarration([victory], party),
+    /Столкновение завершено: противники повержены\. Когда отряд продолжит историю \(«продолжим»\), он сначала отдохнёт 8 часов и восстановит силы\./u)
+  // Выживший на нуле сначала приходит в себя: политика добавляет 4 часа.
+  const wounded = { ...party, players: [party.players[0], { ...party.players[1], hp: 0 }] }
+  assert.match(combatNarration([victory], wounded), /отдохнёт 12 часов/u)
+  // Нет отдыха — нет обещания: поражение, погибший отряд, герой вне отряда.
+  assert.doesNotMatch(combatNarration([{ event_type: 'EncounterEnded', payload: { reason: 'party_defeated', outcome: 'party_defeated' } }], party), /отдохн/u)
+  const fallen = { ...party, mechanics: { death: { heroes: { hero: { status: 'dead' }, ally: { status: 'dead' } } } } }
+  assert.doesNotMatch(combatNarration([victory], fallen), /отдохн/u)
+  assert.doesNotMatch(combatNarration([victory], { ...party, partyMemberIds: [] }), /отдохн/u)
+})
+
+test('отдых после победы — одна строка за отряд с длительностью — MC-03', () => {
+  const text = combatNarration([
+    event('RestStarted', { kind: 'long' }, ['hero']),
+    { ...event('RestStarted', { kind: 'long' }, ['ally']), actor_id: 'ally' },
+    event('RestCompleted', { kind: 'long', duration_minutes: 480 }, ['hero']),
+    { ...event('RestCompleted', { kind: 'long', duration_minutes: 480 }, ['ally']), actor_id: 'ally' },
+    { event_type: 'DowntimeResolved', actor_id: null, target_ids: ['ally', 'hero'], payload: {
+      kind: 'long_rest', duration_minutes: 480, participant_ids: ['ally', 'hero'], reason: 'post_encounter_recovery',
+    } },
+  ], party)
+  assert.equal(text, 'После победы отряд отдыхает 8 часов и восстанавливает силы: продолжительный отдых завершён.')
+  assert.equal(hasCombatNarrationEvent([event('DowntimeResolved')]), true)
+})
+
+test('награда встречи называет вещи, монеты и опыт только из события — MC-05', () => {
+  // Плейтест 2026-10-04, MC-05: после победы над волком в инвентаре появились
+  // короткий лук и стрелы, а откуда — нигде не говорилось.
+  const text = combatNarration([{ event_type: 'EncounterRewardsDistributed', actor_id: null, target_ids: ['hero', 'ally'], payload: {
+    allocations: [
+      { recipient_id: 'hero', xp: 25, coins_cp: 105, items: [{ id: 'loot-1', name: 'Короткий лук', quantity: 1 }, { id: 'loot-2', name: 'Стрелы, 20 штук', quantity: 1 }] },
+      { recipient_id: 'ally', xp: 25, coins_cp: 104, items: [{ id: 'loot-3', name: 'Кинжал', quantity: 1 }, { id: 'loot-4', name: 'Кинжал', quantity: 1 }] },
+    ],
+    unassigned: { xp: 0, coins_cp: 0, items: [] },
+  } }], party)
+  assert.equal(text, 'Награда встречи — доля отряда за победу: Лира — «Короткий лук», «Стрелы, 20 штук»; Бор — «Кинжал» (2 шт.); монеты поровну: 2 зм 9 мм; опыт поровну: 50.')
+  assert.equal(hasCombatNarrationEvent([event('EncounterRewardsDistributed')]), true)
+  // Пустая доля строки не даёт: «награда» без содержимого — шум.
+  assert.equal(combatNarration([{ event_type: 'EncounterRewardsDistributed', payload: { allocations: [{ recipient_id: 'hero', xp: 0, coins_cp: 0, items: [] }] } }], party), '')
+})
+
 test('ход выбывшего противника в хронику не попадает, ход упавшего героя — попадает', () => {
   // Плейтест 2026-10-03: убитый хобгоблин каждый раунд «завершал ход», и
   // между ходами героев в ленте стояли строки о мёртвом.

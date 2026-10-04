@@ -73,7 +73,7 @@ export const NPC_PROMISE_DIRECTIONS = Object.freeze(['npc_to_party', 'party_to_n
 
 /**
  * Ответ NPC в социальной сцене: ровно `NPC_SOCIAL_RESPONSE_FIELDS`. `promise`
- * — объект или `null`, как в промпте `social_v6`. Диапазон
+ * — объект или `null`, как в промпте `social_v7`. Диапазон
  * `relationship_delta` (−2…2) и допустимые id фактов держит сервер.
  */
 export const NPC_SOCIAL_RESPONSE_JSON_SCHEMA = deepFreeze({

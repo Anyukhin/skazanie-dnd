@@ -63,24 +63,29 @@ export function useMinimapPreference() {
   return [visible, toggle] as const
 }
 
-const MINIMAP_WIDTH = 168
-const MINIMAP_HEIGHT = 108
+// Круг, как в макете стола: квадратный холст, а карта вписана в круг целиком —
+// по диагонали, чтобы углы локации не срезало кольцом.
+const MINIMAP_WIDTH = 176
+const MINIMAP_HEIGHT = 176
+const MINIMAP_INNER = MINIMAP_WIDTH - 10
 
 /**
  * Мини-карта поверх поля: раскрытые клетки (проходимые светлее стен) и фишки
  * тех, кого игрок и так видит на доске. Нераскрытое не рисуется — туман войны
  * на мини-карте тот же, что на поле. Клик ставит выбранную клетку в центр поля.
  */
-export function BoardMiniMap({ map, actors, focusActorId, onPick }: {
+export function BoardMiniMap({ map, actors, focusActorId, onPick, caption }: {
   map: TacticalMap
   actors: readonly BoardAnimationActor[]
   focusActorId?: string
   onPick: (x: number, y: number) => void
+  /** Где отряд — подписью под кругом. */
+  caption?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const probeRef = useRef<HTMLSpanElement | null>(null)
   const paletteVersion = usePaletteVersion()
-  const scale = Math.max(1, Math.min(MINIMAP_WIDTH / Math.max(1, map.width), MINIMAP_HEIGHT / Math.max(1, map.height)))
+  const scale = Math.max(1, MINIMAP_INNER / Math.max(1, Math.hypot(map.width, map.height)))
   const offsetX = (MINIMAP_WIDTH - map.width * scale) / 2
   const offsetY = (MINIMAP_HEIGHT - map.height * scale) / 2
   const actorSignature = actors.map((actor) => `${actor.id}:${actor.x},${actor.y}:${actor.kind}:${actor.defeated ? 1 : 0}`).join('|')
@@ -136,6 +141,7 @@ export function BoardMiniMap({ map, actors, focusActorId, onPick }: {
 
   return <div className="board-minimap">
     <span ref={probeRef} className="board-minimap-probe" aria-hidden="true" />
+    <span className="board-minimap-disc">
     <canvas
       ref={canvasRef}
       style={{ width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT }}
@@ -144,6 +150,8 @@ export function BoardMiniMap({ map, actors, focusActorId, onPick }: {
       aria-label="Мини-карта: раскрытая часть локации и участники. Щелчок ставит место в центр поля"
       title="Мини-карта. Щелчок — показать это место на поле"
     />
+    </span>
+    {caption && <span className="board-minimap-caption">{caption}</span>}
   </div>
 }
 
