@@ -376,6 +376,7 @@ import {
   combatSpellFor,
   combatSpellsFor,
   fixedSpellSlotLevelFor,
+  heroSpellAttackModifier,
   isHostileSummon,
   isPartySummon,
   isUntargetableSummon,
@@ -15275,7 +15276,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const monsterSpell = spell.monsterSpell ?? null
         const spellAttackModifier = monsterSpell
           ? monsterSpell.attackBonus
-          : spellModifier + Math.max(0, safeInteger(actor?.proficiency, 0))
+          : heroSpellAttackModifier(actor, spellAbility)
         const spellSaveDc = monsterSpell ? monsterSpell.saveDc : 8 + spellAttackModifier
         // «X в день» тратится маркером состояния — тем же способом, что и
         // потраченный приём стат-блока (`monster-action-used`). Порядковый

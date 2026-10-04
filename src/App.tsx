@@ -538,6 +538,9 @@ function PlayerHud({ player, hazards = [], combatActive = false, status, onChara
   const barScale = Math.max(maxHp, hp + temporaryHp)
   const barPercent = (value: number) => Math.round(Math.max(0, Math.min(1, value / barScale)) * 1000) / 10
   const passivePerception = player.characterSheet?.passive_perception
+  const initiative = player.characterSheet?.initiative
+  const spellcasting = player.characterSheet?.spellcasting
+  const signedNumber = (value: number) => `${value >= 0 ? '+' : '−'}${Math.abs(value)}`
   // Подкласс показываем, только если сервер отдал человеческое название, а не ключ.
   const subclassLabel = player.subclass && /[А-Яа-яЁё]/u.test(player.subclass) ? player.subclass : ''
   const roleLine = [player.species, playerRoleLabel(player), subclassLabel].filter(Boolean).join(' · ')
@@ -558,9 +561,16 @@ function PlayerHud({ player, hazards = [], combatActive = false, status, onChara
       </div>
       <dl className="hud-stats" aria-label="Характеристики героя">
         <div title={`Класс доспеха ${player.armor}`}><dt>КД</dt><dd>{player.armor}</dd></div>
+        {initiative != null && <div title="Инициатива: прибавка к броску очерёдности"><dt>Иниц.</dt><dd>{signedNumber(initiative)}</dd></div>}
         <div title={`Скорость ${player.speed} футов`}><dt>Скор.</dt><dd>{player.speed}</dd></div>
-        {passivePerception != null && <div title="Пассивная внимательность: что герой замечает, не тратя действий"><dt>Вним.</dt><dd>{passivePerception}</dd></div>}
-        <div title={`Уровень ${player.level}`}><dt>Ур.</dt><dd>{player.level}</dd></div>
+        {/* Заклинателю — СЛ и бонус атаки из проекции (та же функция, что у
+            CastSpell); остальным — пассивная внимательность. */}
+        {spellcasting
+          ? <>
+              <div title="Сложность спасброска от заклинаний героя"><dt>СЛ</dt><dd>{spellcasting.save_dc}</dd></div>
+              <div title="Бонус атаки заклинанием"><dt>Атака</dt><dd>{signedNumber(spellcasting.attack_bonus)}</dd></div>
+            </>
+          : passivePerception != null && <div title="Пассивная внимательность: что герой замечает, не тратя действий"><dt>Вним.</dt><dd>{passivePerception}</dd></div>}
       </dl>
       {/* Что герой держит в руках — из серверного инвентаря, без своей логики. */}
       {equippedWeapons.length > 0 && <div className="hud-weapons" role="group" aria-label="Оружие в руках">

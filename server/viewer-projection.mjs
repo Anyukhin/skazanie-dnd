@@ -11,6 +11,7 @@ import { actorAppearanceFor, normalizeAttackVisual, publicAppearanceRecord } fro
 import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
 import { supersededFeatureResourceIdsFor } from './combat-actions.mjs'
+import { heroSpellcastingSummaryFor } from './combat-spells.mjs'
 import { RULE_IDS, hitPointDicePoolForActor, spellComponentAvailabilityFor, movementForActor, effectiveSpeedFeet, positionInEffect } from './rules-engine.mjs'
 import {
   MATERIALS,
@@ -1595,8 +1596,12 @@ function playerItemsWithCapabilities(players, viewerId = '', rulesetId = '', sta
     const visibleCombatActions = !own && Array.isArray(publicPlayer.combatActions)
       ? publicPlayer.combatActions.filter((action) => String(action?.id ?? '') !== 'enervation-repeat')
       : publicPlayer.combatActions
+    // Сводка заклинателя — своему герою: СЛ и бонус атаки у портрета считаются
+    // той же функцией, что и в CastSpell, а не арифметикой клиента.
+    const spellcasting = own && publicPlayer.characterSheet ? heroSpellcastingSummaryFor(player) : null
     return {
       ...publicPlayer,
+      ...(spellcasting ? { characterSheet: { ...publicPlayer.characterSheet, spellcasting } } : {}),
       ...(Array.isArray(visibleCombatActions) ? { combatActions: visibleCombatActions } : {}),
       ...(own && state && rulesetId === 'dnd_5e_2014' && Array.isArray(publicPlayer.combatSpells) ? {
         combatSpells: publicPlayer.combatSpells.map((/** @type {Loose} */ spell) => ({

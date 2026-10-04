@@ -242,6 +242,10 @@ export type Player = {
     experience_for_next_level: number | null
     proficiency_bonus: number
     passive_perception: number
+    /** Инициатива из листа: модификатор Ловкости и бонусы происхождения. */
+    initiative?: number
+    /** Сводка заклинателя — только своему герою, та же формула, что у CastSpell. */
+    spellcasting?: { ability: string; attack_bonus: number; save_dc: number } | null
     armor_class: { value: number }
     speed: { value: number }
     hit_points: { value: number; hitDie: number }
