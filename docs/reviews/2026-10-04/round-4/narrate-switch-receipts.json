@@ -1,0 +1,14 @@
+[
+  {
+    "path": "/api/narrate",
+    "status": 200,
+    "dropped": false,
+    "response_status": null,
+    "held": true,
+    "key": "3335df29-f39d-4c4a-a7f6-6dc752d28d0d",
+    "type": "narrate",
+    "replayed": null,
+    "state_version": null,
+    "position": null
+  }
+]

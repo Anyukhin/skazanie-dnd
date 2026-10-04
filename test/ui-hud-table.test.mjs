@@ -45,3 +45,30 @@ test('элементы HUD читают серверную проекцию и �
   assert.doesNotMatch(app + map, /Вдохновение: (есть|нет)/)
   assert.doesNotMatch(app + map, /Набор оружия/)
 })
+
+test('высота нижней панели меняется целыми рядами плиток, а не пикселями', async () => {
+  const [parts, map, css] = await Promise.all([read('../src/dungeon-map-parts.tsx'), read('../src/DungeonMap.tsx'), read('../src/bg3-hud.css')])
+  // Предел рядов зависит от окна: панель не выше 40 % высоты, от двух до пяти рядов.
+  const limitSource = /export function hudRowsLimit\(viewportHeight: number\) \{([\s\S]*?)\n\}/.exec(parts)
+  assert.ok(limitSource, 'hudRowsLimit объявлена')
+  const constants = Object.fromEntries([...parts.matchAll(/export const (HUD_ROWS_(?:MIN|MAX|DEFAULT)) = (\d+)/g)].map((match) => [match[1], Number(match[2])]))
+  assert.deepEqual(constants, { HUD_ROWS_MIN: 2, HUD_ROWS_MAX: 5, HUD_ROWS_DEFAULT: 3 })
+  const hudRowsLimit = new Function('HUD_ROWS_MIN', 'HUD_ROWS_MAX', 'viewportHeight', limitSource[1])
+    .bind(null, constants.HUD_ROWS_MIN, constants.HUD_ROWS_MAX)
+  assert.equal(hudRowsLimit(1080), 5)
+  assert.equal(hudRowsLimit(900), 4)
+  assert.equal(hudRowsLimit(768), 3)
+  assert.equal(hudRowsLimit(500), 2)
+  // Ручка, «+ / −» и стрелки меняют одно число рядов; пиксельной высоты больше нет.
+  assert.match(map, /className="rail-resize"[^\n]*aria-valuenow=\{hudRows\}[^\n]*onKeyDown=\{resizeRailWithKeys\}/)
+  assert.match(map, /aria-label="Добавить ряд"/)
+  assert.match(map, /aria-label="Убрать ряд"/)
+  assert.doesNotMatch(map, /setProperty\('--ui-rail-height'/)
+  assert.match(map, /<section className="turn-rail" ref=\{turnRailRef\} data-rows=\{hudRows\}/)
+  // Панель — по содержимому: плитки задают высоту рядами, колонки сбоку — во всю высоту.
+  const panel = /\.game-area \.turn-rail \{\n    --hud-line:[\s\S]*?\n  \}/.exec(css.replace(/\r\n/g, '\n'))
+  assert.ok(panel, 'блок раскладки панели найден')
+  assert.match(panel[0], /height: auto; min-height: 0; max-height: none; overflow: visible;/)
+  assert.match(panel[0], /grid-template-areas: 'hero \. side' 'hero tray side' 'hero main side' 'hero decks side' 'hero \. side';/)
+  assert.match(css, /grid-template-rows: repeat\(var\(--hud-rows, 3\), var\(--hud-cell\)\);/)
+})

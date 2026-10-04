@@ -36,7 +36,7 @@ const profiles = [
     version: '2014.1.0',
     edition_family: '5e_2014',
     label: 'D&D 5e 2014',
-    description: 'Классическая пятая редакция по локальному профилю 5e14.dnd.su.',
+    description: 'Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.',
     mechanics_status: 'partial',
     availability: 'preview',
     creation_enabled: true,
@@ -44,8 +44,8 @@ const profiles = [
     enabled_rule_packs: ['dnd_5e_2014'],
     default_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1', BG3_OPENING_STRIKE_HOUSE_RULE_ID],
     limitations: [
-      'Предметы и бестиарий ещё переводятся на отдельные каталоги 2014; стартовые наборы пока ссылаются на совместимые item IDs SRD 5.2.1.',
-      'Неперенесённые различия остаются partial и перечислены в аудите cutover.',
+      'Снаряжение и монстры пока общие с правилами 2024 года.',
+      'Часть различий между редакциями ещё не перенесена: такие правила работают по-2024.',
     ],
   },
   {
@@ -53,7 +53,7 @@ const profiles = [
     version: '5.2.1',
     edition_family: '5e_2024',
     label: 'D&D 2024',
-    description: 'Текущий стабильный runtime-профиль на основе SRD 5.2.1.',
+    description: 'Правила 2024 года — поддерживаются лучше всего.',
     mechanics_status: 'partial',
     availability: 'active',
     creation_enabled: true,
@@ -61,7 +61,7 @@ const profiles = [
     enabled_rule_packs: ['srd_5_2_1'],
     default_house_rules: [CLASS_RESOURCES_2024_POLICY_ID, BG3_OPENING_STRIKE_HOUSE_RULE_ID],
     limitations: [
-      'Покрытие классов, заклинаний, существ и предметов остаётся частичным.',
+      'Часть классовых умений, заклинаний и существ пока объявляется словами.',
     ],
   },
 ]

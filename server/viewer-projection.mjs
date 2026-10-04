@@ -1693,6 +1693,20 @@ export function actorAppearancesForViewer(visible = {}) {
 }
 
 /**
+ * Ведущий тоже играет своим героем: «Что можно сделать» собирается той же
+ * функцией, что у игрока, но из комнаты ведущего. UX-обход 2026-10-04: владелец
+ * стола не видел подсказок вовсе. Ведущему и так открыта вся сцена, поэтому
+ * своей фильтрации здесь нет.
+ *
+ * @param {Loose} room
+ * @param {string} actorId
+ * @returns {any}
+ */
+function withAdminSuggestedActions(room, actorId) {
+  return { ...room, suggested_actions: suggestedActionsFor(room, actorId) }
+}
+
+/**
  * Produces a non-admin campaign projection shared by room, command and narration
  * responses. It is deliberately stricter than the internal event-sourced state.
  *
@@ -1703,7 +1717,7 @@ export function actorAppearancesForViewer(visible = {}) {
  */
 export function campaignStateForViewer(state, user, actorId = '') {
   if (!state || typeof state !== 'object') return state
-  if (user?.role === 'admin') return {
+  if (user?.role === 'admin') return withAdminSuggestedActions({
     ...state,
     ...(state.world_offices ? { world_offices: officesForViewer(state, { isAdmin: true }) } : {}),
     actor_appearances: actorAppearancesForViewer({ ...state, scene_npcs: sceneNpcsForViewer(state) }),
@@ -1772,7 +1786,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
         .map((/** @type {Loose} */ actor) => [String(actor.id), movementForActor(state, String(actor.id))])),
       hit_point_dice: Object.fromEntries((state.players ?? []).map((/** @type {Loose} */ player) => [String(player.id), hitPointDicePoolForActor(state, player.id)])),
     },
-  }
+  }, String(actorId ?? ''))
   state = questStateForViewer(state, viewerFor(state, user, actorId))
   // `locationMaps` содержит ещё одну полную копию каждой тактической карты, а
   // `scene` ниже всё равно пересобирается строгим whitelist-проектором.

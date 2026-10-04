@@ -625,6 +625,55 @@ export function planCaptiveNeglectCommands(state = {}, { worldMinute } = {}) {
   return commands
 }
 
+/**
+ * Полезная нагрузка `CaptiveNeglected` — одна форма на оба пути: команду
+ * `NeglectCaptive` (догон внешних часов) и мировые часы внутри скачка времени.
+ *
+ * @param {Record<string, any>} captive нормализованная запись пленного
+ * @param {number} minute минута кампании, на которую голод фиксируется
+ */
+export function captiveNeglectedPayload(captive, minute) {
+  const at = Math.max(0, integer(minute, 0))
+  return {
+    captive_id: captive.id,
+    npc_id: captive.npc_id,
+    captive_name: captive.name,
+    hours_without_food: Math.floor(Math.max(0, at - captive.last_fed_at_minutes) / 60),
+    at_minutes: at,
+    policy_id: CAPTIVES_POLICY_ID,
+  }
+}
+
+/**
+ * Голод пленных в том же коммите, что и прошедшие сутки (аудит PR #131, WT-03).
+ *
+ * Раньше сутки без еды фиксировал только внешний такт после сохранения комнаты
+ * (`runCaptiveClock`, `server/index.mjs`) — вторым коммитом. Между ними было
+ * наблюдаемое состояние «сутки прошли, а голода нет», а replay одной команды
+ * времени не содержал обещанного последствия. Теперь `appendWorldTimeConsequences`
+ * (`server/rules-engine.mjs`) пишет эти черновики рядом с остальными минутными
+ * последствиями. Отбор тот же, что у команд такта (`planCaptiveNeglectCommands`),
+ * поэтому внешний такт после такого коммита уже ничего не находит и остаётся
+ * идемпотентным догоном для кампаний, где время прошло до этой правки.
+ *
+ * @param {Record<string, any>} state состояние до скачка
+ * @param {{ worldMinute?: number }} [options] минута конца скачка
+ * @returns {Array<{ event_type: string, visibility: string, payload: Record<string, any>, target_ids: string[] }>}
+ */
+export function planCaptiveNeglectDrafts(state = {}, { worldMinute } = {}) {
+  const minute = Math.max(0, integer(worldMinute ?? state?.mechanics?.world_time?.elapsed_minutes, 0))
+  return planCaptiveNeglectCommands(state, { worldMinute: minute }).flatMap((command) => {
+    const captive = captiveFor(state, command.captive_id)
+    if (!captive) return []
+    return [{
+      event_type: 'CaptiveNeglected',
+      visibility: 'party',
+      payload: captiveNeglectedPayload(captive, minute),
+      target_ids: [captive.npc_id],
+    }]
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Проекция и редьюсер
 // ---------------------------------------------------------------------------

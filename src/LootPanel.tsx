@@ -194,7 +194,7 @@ export function LootPanel({
   containers: readonly LootContainerCard[]
   ghosts: readonly LootGhost[]
   reachFeet: number
-  actionCost: 'action' | null
+  actionCost: 'action' | 'object_interaction' | null
   /** Действие героя в этом ходу уже потрачено — решил сервер, не браузер. */
   actionSpent: boolean
   players: readonly Player[]
@@ -299,7 +299,7 @@ export function LootPanel({
         canInspect: container.can_inspect,
         distanceFeet,
         reachFeet,
-        actionCost,
+        actionCost: container.action_cost ?? actionCost,
         actionSpent,
         overloaded: forecast.overloaded,
         chosenCount: chosen.length,
@@ -463,6 +463,7 @@ export function PostCombatLootSummary({ containers, onClose, onFocus }: {
       <div><dt>Тел не обыскано</dt><dd>{aftermath.bodies.length}</dd></div>
       {aftermath.captiveGear.length > 0 && <div><dt>Оружие пленных</dt><dd>{aftermath.captiveGear.length}</dd></div>}
       {aftermath.caches.length > 0 && <div><dt>Тайники и тюки</dt><dd>{aftermath.caches.length}</dd></div>}
+      {aftermath.thrownWeapons.length > 0 && <div><dt>Брошенное оружие</dt><dd>{aftermath.thrownWeapons.length}</dd></div>}
     </dl>
     <ul className="loot-aftermath-list">
       {containers.map((container) => <li key={container.id}>

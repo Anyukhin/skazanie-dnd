@@ -166,3 +166,23 @@ test('retrieval памяти сохраняет один и тот же поря
   assert.deepEqual(second, first)
   assert.deepEqual(first.filter((entry) => entry.kind === 'fact').map((entry) => entry.id), ['fact:party-route'])
 })
+
+test('без совпадений с памятью рассказчик не получает случайных фактов', async () => {
+  // Реплика и сцена не пересекаются ни с одной записью памяти. Раньше retrieval
+  // в режиме 'all' отдавал первые факты по id — чужой долг шёл в brief как будто
+  // относящийся к делу (исследование PR #136, N11).
+  const unrelated = {
+    entities: [{ id: 'npc:a-smith', kind: 'npc', name: 'Кузнец Брам', summary: '', visibility: 'party' }],
+    facts: [{
+      id: 'fact:a-debt', subject_id: 'npc:a-smith', predicate: 'owes', object: 'Брам должен отряду 20 зм',
+      summary: 'Брам должен отряду 20 зм', visibility: 'party', source_event_ids: ['event:debt'], recorded_at_minutes: 0,
+    }],
+    relationships: [], quests: [], threads: [], epistemic_claims: [], summaries: [], knowledge_ledger: [],
+  }
+  // Сцена без цели: иначе из цели рождается квест главы, и запрос рассказчика
+  // всегда совпадает хотя бы с ним — тогда режим 'all' не включался.
+  const state = campaign({ worldMemory: unrelated, scene: { title: 'Тракт', location: 'Тракт', cells: [] } })
+  const { brief } = await runNarration(state, 'hero', { command_type: 'ApplyHealing', actor_id: 'hero', amount: 1 })
+  assert.deepEqual(brief.known_environment.world_memory.facts, [])
+  assert.doesNotMatch(JSON.stringify(brief.known_environment.world_memory), /Брам должен/u)
+})

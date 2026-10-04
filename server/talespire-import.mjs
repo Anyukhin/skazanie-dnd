@@ -74,6 +74,17 @@ const MIN_LEVEL_CELLS = 6
 const MIN_MAP_SIDE = 16
 const EPSILON = 0.02
 
+/**
+ * Бюджет площади исходных коробок: сумма клеток, которые обойдут
+ * `coveredCells` и раскладка поверхностей (аудит PR #131, MAP-BOUNDARY-01/02).
+ * Предел готовой карты (`SIZE_CLASSES`) проверяется позже, когда обход уже
+ * сделан, и не спасает от слэба из десятков тысяч коробок по полсотни клеток.
+ *
+ * Запас: семь этажей по 100×100 — 70 тысяч клеток пола, больше импорт не
+ * примет; подложки, стены и предметы добавляют к этому разы, а не порядок.
+ */
+export const TALESPIRE_MAX_SOURCE_CELLS = 400_000
+
 export class TaleSpireImportError extends Error {
   /**
    * @param {string} message
@@ -240,13 +251,63 @@ function walkableSurfaces(boxes) {
       byCell.set(key, list)
     }
   }
+  // Поверхность отбрасывается, если над ней выше EPSILON лежит другая, чья
+  // нижняя грань ближе 1,2 к её верху. Прежде каждая сверялась с каждой, и
+  // стопка из тысяч плит в одной клетке давала квадрат (аудит PR #131,
+  // MAP-BOUNDARY-01). Теперь клетка идёт сверху вниз: для каждой поверхности
+  // известна самая низкая нижняя грань среди тех, что выше неё, — правило то же.
   for (const [key, list] of byCell) {
-    const kept = list.filter((surface) => !list.some((other) => other !== surface
-      && other.top > surface.top + EPSILON
-      && other.bottom < surface.top + 1.2))
-    byCell.set(key, kept)
+    if (list.length < 2) continue
+    const order = list.map((_, index) => index).sort((left, right) => list[right].top - list[left].top)
+    /** @type {Set<number>} */
+    const under = new Set()
+    let lowestAbove = Infinity
+    let above = 0
+    for (const index of order) {
+      const surface = list[index]
+      while (above < order.length && list[order[above]].top > surface.top + EPSILON) {
+        lowestAbove = Math.min(lowestAbove, list[order[above]].bottom)
+        above += 1
+      }
+      if (lowestAbove < surface.top + 1.2) under.add(index)
+    }
+    if (under.size) byCell.set(key, list.filter((_, index) => !under.has(index)))
   }
   return byCell
+}
+
+/**
+ * Охват клеток списка. Не через `Math.min(...список)`: у большого слэба в
+ * списке сотни тысяч поверхностей, а число аргументов вызова упирается в стек.
+ * @param {Array<{ x: number, z: number }>} cells
+ */
+function cellBounds(cells) {
+  let minX = Infinity
+  let maxX = -Infinity
+  let minZ = Infinity
+  let maxZ = -Infinity
+  for (const cell of cells) {
+    if (cell.x < minX) minX = cell.x
+    if (cell.x > maxX) maxX = cell.x
+    if (cell.z < minZ) minZ = cell.z
+    if (cell.z > maxZ) maxZ = cell.z
+  }
+  return { minX, maxX, minZ, maxZ }
+}
+
+/**
+ * Сколько клеток обойдут коробки слэба. Считается по охвату каждой коробки —
+ * тем же округлением, что у `coveredCells`, — до первого обхода.
+ * @param {WorldBox[]} boxes
+ */
+function sourceCells(boxes) {
+  let cells = 0
+  for (const box of boxes) {
+    const sideX = Math.ceil(box.maxX - EPSILON) - Math.floor(box.minX + EPSILON)
+    const sideZ = Math.ceil(box.maxZ - EPSILON) - Math.floor(box.minZ + EPSILON)
+    cells += Math.max(0, sideX) * Math.max(0, sideZ)
+  }
+  return cells
 }
 
 /**
@@ -292,10 +353,7 @@ function entryFloorHeight(flat) {
     if (band) band.tops.add(top)
     else bands.push({ anchor: top, tops: new Set([top]) })
   }
-  const minX = Math.min(...flat.map((surface) => surface.x))
-  const maxX = Math.max(...flat.map((surface) => surface.x))
-  const minZ = Math.min(...flat.map((surface) => surface.z))
-  const maxZ = Math.max(...flat.map((surface) => surface.z))
+  const { minX, maxX, minZ, maxZ } = cellBounds(flat)
   const scored = bands.map((band) => {
     const cells = flat.filter((surface) => band.tops.has(surface.top))
     const border = cells.filter((surface) => surface.x === minX || surface.x === maxX || surface.z === minZ || surface.z === maxZ).length
@@ -327,6 +385,12 @@ export function importTaleSpireSlab(text, { locationId = 'talespire-import', the
   const warnings = []
   if (unknown) warnings.push(`Незнакомых ассетов: ${unknown} — это пользовательские наборы или ассеты новее таблицы; они пропущены`)
   if (!boxes.length) throw new TaleSpireImportError('В слэбе нет ни одного известного ассета TaleSpire', 'TALESPIRE_NOTHING_KNOWN')
+  // Бюджет — до первого обхода клеток: размер готовой карты известен только
+  // после него (аудит PR #131, MAP-BOUNDARY-01/02).
+  const footprint = sourceCells(boxes)
+  if (!(footprint <= TALESPIRE_MAX_SOURCE_CELLS)) {
+    throw new TaleSpireImportError(`Объекты слэба покрывают ${footprint} клеток — больше предела ${TALESPIRE_MAX_SOURCE_CELLS}: скопируйте часть доски`, 'TALESPIRE_SLAB_TOO_COMPLEX')
+  }
 
   // --- поверхности и этажи --------------------------------------------------
   const surfaces = walkableSurfaces(boxes)
@@ -365,10 +429,7 @@ export function importTaleSpireSlab(text, { locationId = 'talespire-import', the
 
   // --- общая система координат всех этажей -----------------------------------
   const allCells = [...levelCells.values()].flatMap((cells) => [...cells.values()])
-  const minX = Math.min(...allCells.map((cell) => cell.x))
-  const maxX = Math.max(...allCells.map((cell) => cell.x))
-  const minZ = Math.min(...allCells.map((cell) => cell.z))
-  const maxZ = Math.max(...allCells.map((cell) => cell.z))
+  const { minX, maxX, minZ, maxZ } = cellBounds(allCells)
   const spanX = maxX - minX + 1
   const spanZ = maxZ - minZ + 1
   if (spanX > SIZE_CLASSES.region.maxWidth || spanZ > SIZE_CLASSES.region.maxHeight) {
@@ -436,8 +497,12 @@ export function importTaleSpireSlab(text, { locationId = 'talespire-import', the
   for (const box of boxes) {
     if (box.kind !== 't' || !['roof', 'floor', 'wallfloor'].includes(box.role)) continue
     for (const cell of coveredCells(box, 0.4)) {
+      // Дописываем в тот же список, а не копируем его: у стопки плит в одной
+      // клетке копирование давало квадрат (аудит PR #131, MAP-BOUNDARY-01).
       const key = cellKey(cell.x, cell.z)
-      ceilings.set(key, [...(ceilings.get(key) ?? []), box.minY])
+      const list = ceilings.get(key)
+      if (list) list.push(box.minY)
+      else ceilings.set(key, [box.minY])
     }
   }
   for (const [level, map] of maps) {
@@ -719,21 +784,38 @@ function linkLevels(maps, levelCells, boxes, { toX, toY, levelOf, stats }) {
   }
   /** @type {Set<string>} */
   const seen = new Set()
+  // Соседи ступени ищутся по ключу, а не перебором всех ступеней: поле из
+  // тысяч ступеней давало квадрат (аудит PR #131, MAP-BOUNDARY-01). Порядок
+  // прежний — порядок вставки в `steps`: от него зависит, какая из равных по
+  // высоте ступеней станет нижней или верхней парой перехода.
+  const position = new Map([...steps.keys()].map((key, index) => [key, index]))
+  const stepLevels = [...levelCells.keys()]
   for (const [key, start] of steps) {
     if (seen.has(key)) continue
     /** @type {Array<Surface & {level:number}>} */
     const run = []
     const queue = [start]
     seen.add(key)
-    while (queue.length) {
-      const surface = /** @type {Surface} */ (queue.shift())
+    for (let head = 0; head < queue.length; head += 1) {
+      const surface = queue[head]
       run.push({ ...surface, level: levelOf(surface.top) })
-      for (const [otherKey, other] of steps) {
-        if (seen.has(otherKey)) continue
-        if (Math.max(Math.abs(other.x - surface.x), Math.abs(other.z - surface.z)) > 1) continue
-        if (Math.abs(other.top - surface.top) > 1.01) continue
+      /** @type {string[]} */
+      const near = []
+      for (const level of stepLevels) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          for (let dz = -1; dz <= 1; dz += 1) {
+            const otherKey = `${level}:${cellKey(surface.x + dx, surface.z + dz)}`
+            const other = steps.get(otherKey)
+            if (!other || seen.has(otherKey)) continue
+            if (Math.abs(other.top - surface.top) > 1.01) continue
+            near.push(otherKey)
+          }
+        }
+      }
+      near.sort((left, right) => /** @type {number} */ (position.get(left)) - /** @type {number} */ (position.get(right)))
+      for (const otherKey of near) {
         seen.add(otherKey)
-        queue.push(other)
+        queue.push(/** @type {Surface} */ (steps.get(otherKey)))
       }
     }
     const levelsInRun = [...new Set(run.map((step) => step.level))].sort((left, right) => left - right)
@@ -766,23 +848,39 @@ function linkLevels(maps, levelCells, boxes, { toX, toY, levelOf, stats }) {
     if (low && high) links.push({ low: { level: lowLevel, x: low.x, z: low.z }, high: { level: highLevel, x: high.x, z: high.z } })
   }
 
+  // Занятые предметами клетки каждого этажа собираются один раз и дополняются
+  // поставленными лестницами. Прежде `freeSpot` пересобирал их на каждый
+  // переход, и поле одиночных ступеней давало квадрат (аудит PR #131,
+  // MAP-BOUNDARY-01).
+  /** @type {Map<import('./tactical-map.mjs').TacticalMap, Set<string>>} */
+  const occupiedOn = new Map()
+  const occupied = (/** @type {import('./tactical-map.mjs').TacticalMap} */ map) => {
+    let cells = occupiedOn.get(map)
+    if (!cells) {
+      cells = new Set(map.props.flatMap((prop) => prop.footprint.map((cell) => `${cell.x},${cell.y}`)))
+      occupiedOn.set(map, cells)
+    }
+    return cells
+  }
   for (const link of links) {
     const lowMap = maps.get(link.low.level)
     const highMap = maps.get(link.high.level)
     if (!lowMap || !highMap) continue
-    const lowSpot = freeSpot(lowMap, toX(link.low.x), toY(link.low.z))
-    const highSpot = freeSpot(highMap, toX(link.high.x), toY(link.high.z))
+    const lowSpot = freeSpot(lowMap, toX(link.low.x), toY(link.low.z), occupied(lowMap))
+    const highSpot = freeSpot(highMap, toX(link.high.x), toY(link.high.z), occupied(highMap))
     if (!lowSpot || !highSpot) continue
-    addProp(lowMap, {
+    const up = addProp(lowMap, {
       id: `ts-stairs-up-${lowMap.props.length + 1}`, assetId: 'stairs_up', x: lowSpot.x + 0.5, y: lowSpot.y + 0.5,
       footprint: [lowSpot], blocksMove: false, blocksSight: false, cover: 'none', interactive: true,
       transition: { toLevel: link.high.level, label: highMap.levelLabel || levelLabelFor(link.high.level) },
     })
-    addProp(highMap, {
+    const down = addProp(highMap, {
       id: `ts-stairs-down-${highMap.props.length + 1}`, assetId: 'stairs_down', x: highSpot.x + 0.5, y: highSpot.y + 0.5,
       footprint: [highSpot], blocksMove: false, blocksSight: false, cover: 'none', interactive: true,
       transition: { toLevel: link.low.level, label: lowMap.levelLabel || levelLabelFor(link.low.level) },
     })
+    for (const cell of up.footprint) occupied(lowMap).add(`${cell.x},${cell.y}`)
+    for (const cell of down.footprint) occupied(highMap).add(`${cell.x},${cell.y}`)
     stats.transitions += 1
   }
 }
@@ -811,10 +909,10 @@ function nearestFloor(cells, x, z) {
  * @param {import('./tactical-map.mjs').TacticalMap} map
  * @param {number} x
  * @param {number} y
+ * @param {Set<string>} occupied клетки под предметами этажа
  * @returns {{x:number, y:number}|null}
  */
-function freeSpot(map, x, y) {
-  const occupied = new Set(map.props.flatMap((prop) => prop.footprint.map((cell) => `${cell.x},${cell.y}`)))
+function freeSpot(map, x, y, occupied) {
   for (let radius = 0; radius <= 2; radius += 1) {
     for (let dy = -radius; dy <= radius; dy += 1) {
       for (let dx = -radius; dx <= radius; dx += 1) {

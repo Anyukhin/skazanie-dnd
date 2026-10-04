@@ -26,6 +26,7 @@ export const LOOT_KIND_LABELS = {
   captive: 'ОРУЖИЕ ПЛЕННОГО',
   abandoned: 'БРОШЕНО',
   cache: 'СХРОН',
+  dropped: 'БРОШЕННОЕ ОРУЖИЕ',
 }
 
 /** Чем подписан контейнер в сводке: «тело», «схрон» — счётным словом. */
@@ -34,6 +35,7 @@ export const LOOT_KIND_NOUNS = {
   captive: 'оружие пленного',
   abandoned: 'брошенный тюк',
   cache: 'схрон',
+  dropped: 'брошенное оружие',
 }
 
 export const LOOT_ITEM_TYPE_LABELS = {
@@ -173,6 +175,9 @@ export function lootTakeButtonState(input) {
     }
     return { label: 'Взять — действие', title: 'В бою обыск одного контейнера стоит действия (правило стола)', disabled: false, tone: 'action' }
   }
+  if (input.actionCost === 'object_interaction') {
+    return { label: 'Поднять — взаимодействие', title: 'Своё брошенное оружие поднимается взаимодействием с предметом: первое за ход бесплатно', disabled: false, tone: 'action' }
+  }
   return { label: 'Взять', title: 'Вне боя обыск не стоит ни действия, ни хода', disabled: false, tone: 'ready' }
 }
 
@@ -243,10 +248,14 @@ export function lootAftermath(containers) {
   const bodies = list.filter((container) => container.kind === 'corpse')
   const caches = list.filter((container) => container.kind === 'cache' || container.kind === 'abandoned')
   const captiveGear = list.filter((container) => container.kind === 'captive')
+  // Метнутое героями оружие лежит у целей — отдельной строкой, чтобы его не
+  // забыли на поле боя вместе с пустыми телами.
+  const thrownWeapons = list.filter((container) => container.kind === 'dropped')
   return {
     bodies,
     caches,
     captiveGear,
+    thrownWeapons,
     itemCount: list.reduce((total, container) => total + Math.max(0, container.item_count), 0),
     weight: round2(list.reduce((total, container) => total + Math.max(0, container.total_weight), 0)),
     empty: list.length === 0,

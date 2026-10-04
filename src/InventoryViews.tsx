@@ -439,7 +439,7 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
           return { ...next, selectedFeatureIds: normalizedSelectedFeatures(next) }
         })
       }}><option value="">Выберите подкласс</option>{subclasses.map((entry) => <option key={entry.id} value={entry.name}>{entry.name}</option>)}</select></label>
-      <p>Выбор сохраняется в листе героя и используется сервером при проверке доступных особенностей.</p>
+      <p>Подкласс — ваша специализация: от него зависят умения на следующих уровнях.</p>
     </section>}
     {developmentStage === 'abilities' && <section className="advancement-block ability-score-development">
       <header><div><Sparkles size={17} /><span><strong>Развитие · {stagedAbilityScoreLevel} уровень</strong><small>Улучшение характеристик{rulesetId === 'dnd_5e_2014' ? ' или черта PHB 2014' : ''}</small></span></div><b className={!abilityScoreChoicesValid ? 'invalid' : ''}>{improvementMode === 'feat' ? featResult?.ok ? 'готово' : 'выберите черту' : `${abilityScoreChoice.length}/2`}</b></header>
@@ -982,7 +982,7 @@ export function InventoryView({
           <p>{catalogDescription}</p>
         </details>}
         {item.capabilities?.mechanics_status && item.capabilities.mechanics_status !== 'verified' && item.capabilities.limitation && <details className="item-mechanics-limitation">
-          <summary><strong>{item.capabilities.mechanics_status === 'ruling-only' ? 'Требует решения ведущего' : 'Частично поддерживается'}</strong><span>Подробнее</span></summary>
+          <summary><strong>{item.capabilities.mechanics_status === 'ruling-only' ? 'Требует решения ведущего' : 'Есть ограничение'}</strong><span>Подробнее</span></summary>
           <p>{item.capabilities.limitation}</p>
         </details>}
         {item.capabilities?.charges && <div className="item-charge-state">Применения: <b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b></div>}

@@ -3,6 +3,7 @@ import { BLESSING_CONDITION } from './blessings.mjs'
 import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { sceneInteractionNarration } from './scene-interactions.mjs'
 import { WORLD_CLOCK_EVENT_TYPES, worldClockNarration } from './weather.mjs'
+import { concentrationEndReasonLabel } from './concentration-end-reasons.mjs'
 
 /**
  * Боевой текст для ленты: удары, состояния, спасброски, ход времени.
@@ -218,9 +219,6 @@ const DAMAGE_TYPE_LABELS = Object.freeze({
   radiant: 'Свет', slashing: 'Рубящий удар', thunder: 'Грохот',
 })
 
-const CONCENTRATION_END_REASON_LABELS = Object.freeze({
-  'resistance-used': 'бонус спасброска использован',
-})
 
 const REACTION_ACTION_LABELS = Object.freeze({
   'opportunity-attack': 'Атака по возможности',
@@ -422,6 +420,10 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(payload.success === true
         ? `${actor} удерживается за люстру и продолжает манёвр.`
         : `${actor} срывается при попытке ухватиться за люстру и падает ничком у опоры; удар не происходит.`)
+    } else if (event.event_type === 'ActorMoved' && payload.forced_movement === true && targetId && String(targetId) !== String(event.actor_id ?? '')) {
+      // Вынужденное перемещение двигает цель, а не того, кто толкнул или
+      // наложил заклинание: раньше хроника писала «Боец перемещается на 5 фт».
+      meaningful.push(`${target} ${payload.pulled ? 'притянут' : 'отброшен'} на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
     } else if (event.event_type === 'ActorMoved') {
       meaningful.push(`${actor} перемещается на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
     } else if (event.event_type === 'MapLevelChanged') {
@@ -580,13 +582,16 @@ function tacticalNarrationLines(events, state) {
         : `${target} проверяет концентрацию: ${rollText} против СЛ ${Number(payload.difficulty) || 10} — ${payload.saved ? 'успех' : 'провал'}.${auraText}`)
     } else if (event.event_type === 'ConcentrationEnded') {
       const reason = String(payload.reason ?? '')
-      meaningful.push(`Концентрация ${target} прекращается (${CONCENTRATION_END_REASON_LABELS[reason] ?? (reason || 'эффект завершён')}).`)
+      meaningful.push(`Концентрация ${target} прекращается (${concentrationEndReasonLabel(reason)}).`)
     } else if (event.event_type === 'ActionReadied') {
       meaningful.push(`${target} замирает с оружием наготове и ждёт, когда ${String(payload.trigger_label ?? 'сработает выбранный триггер')}.`)
     } else if (event.event_type === 'ReadiedActionExpired') {
       // Про использованную заготовку расскажет сам удар, а вот сгоревшую иначе
       // никто не заметит: игрок просто не поймёт, куда делось действие.
-      if (payload.reason !== 'used') meaningful.push(`${target} так и не дождался повода: заготовленный удар пропадает.`)
+      if (payload.reason === 'concentration-lost') meaningful.push(`${target} теряет сосредоточенность: заготовленное заклинание рассеивается.`)
+      else if (payload.reason !== 'used') meaningful.push(payload.spell_id
+        ? `${target} так и не дождался повода: заготовленное заклинание рассеивается.`
+        : `${target} так и не дождался повода: заготовленный удар пропадает.`)
     } else if (event.event_type === 'DeathSaveFailureRecorded') {
       meaningful.push(`${target} получает ${Number(payload.failure_increment) === 2 ? 'два провала' : 'провал'} спасброска от смерти из-за урона.`)
     } else if (event.event_type === 'HeroStabilized') {

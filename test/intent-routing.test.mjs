@@ -284,3 +284,15 @@ test('в бою маршрут travel не предлагается: заявк�
   assert.notEqual(result.free_action_outcome, 'route_travel')
   assert.equal(orchestrator.unknownActionHandler.takeRouteHint('ROUTING', 'route-combat-1'), null)
 })
+
+test('описание пути не становится частью имени новой локации', () => {
+  // «Идём в Заречье через лес» заводило локацию «Заречье через лес»
+  // (исследование PR #136, M05). Предлог места («за мельницей») — часть
+  // имени и остаётся.
+  assert.deepEqual(detectPartyExitRequest('Отправляемся в Заречье через лес'), { destination: 'Заречье', source: 'text' })
+  assert.deepEqual(detectPartyExitRequest('Идём к старой мельнице вдоль реки'), { destination: 'старой мельнице', source: 'text' })
+  assert.deepEqual(detectPartyExitRequest('Идём в деревню Кленовку по тракту'), { destination: 'деревню Кленовку', source: 'text' })
+  assert.deepEqual(detectPartyExitRequest('Идём к старому склепу за мельницей'), { destination: 'старому склепу за мельницей', source: 'text' })
+  // Живой плейтест 2026-10-03: так называлось новое место.
+  assert.deepEqual(detectPartyExitRequest('Идём к смотровой дамбе по маршруту от Высокой пристани вдоль соляных складов'), { destination: 'смотровой дамбе', source: 'text' })
+})

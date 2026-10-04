@@ -430,9 +430,8 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   assert.equal(repeatedCompletion.duplicate, true)
   assert.deepEqual(repeatedCompletion.reward, completed.reward)
   assert.equal(repeatedCompletion.state_version, completed.state_version)
-  await autonomy.registerNpcSchedule('AUTONOMY-30', { npcId: 'marta', entries: [{ at_minutes: 540, action: 'move', location: 'North Gate', summary: 'Marta begins her patrol.' }], idempotencyKey: 'turn-schedule' })
-  turns.push({ key: 'turn-schedule', intent: 'npc-schedule' })
   const advanced = await autonomy.advanceTime('AUTONOMY-30', { amount: 60, unit: 'minute', idempotencyKey: 'turn-time' })
+  assert.equal(advanced.after - advanced.before, 60)
   turns.push({ key: 'turn-time', intent: 'advance-time' })
   const pendingTransition = await run({ type: 'end_scene', destination: 'North Gate' }, 'turn-transition')
   assert.equal(pendingTransition.pending_party_decision, true)
@@ -465,7 +464,7 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   const loaded = await eventStore.load('AUTONOMY-30')
   const eventTypes = (await eventStore.getEvents('AUTONOMY-30')).map((event) => event.event_type)
   assert.ok(turns.length >= 30)
-  for (const required of ['SceneAdvanced', 'AbilityCheckResolved', 'NpcPromiseResolved', 'EncounterCreated', 'CombatStarted', 'AttackResolved', 'EncounterEnded', 'EncounterOutcomeRecorded', 'ExperienceAwarded', 'EncounterCoinsRolled', 'ServerLootGenerated', 'EncounterRewardsDistributed', 'QuestClockAdvanced', 'WorldFactRecorded', 'TransitionUnlocked', 'NpcScheduleRegistered', 'CampaignPacingAdvanced', 'TravelResolved', 'DowntimeResolved']) {
+  for (const required of ['SceneAdvanced', 'AbilityCheckResolved', 'NpcPromiseResolved', 'EncounterCreated', 'CombatStarted', 'AttackResolved', 'EncounterEnded', 'EncounterOutcomeRecorded', 'ExperienceAwarded', 'EncounterCoinsRolled', 'ServerLootGenerated', 'EncounterRewardsDistributed', 'QuestClockAdvanced', 'WorldFactRecorded', 'TransitionUnlocked', 'CampaignPacingAdvanced', 'TravelResolved', 'DowntimeResolved']) {
     assert.ok(eventTypes.includes(required), `missing event ${required}`)
   }
   for (const exactlyOnce of ['EncounterOutcomeRecorded', 'ExperienceAwarded', 'EncounterCoinsRolled', 'ServerLootGenerated', 'EncounterRewardsDistributed', 'TransitionUnlocked']) {
@@ -476,11 +475,9 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
     completed.reward.loot.reduce((sum, item) => sum + item.quantity, 0))
   assert.ok(eventTypes.filter((type) => type === 'AbilityCheckResolved').length >= 3)
   assert.equal(loaded.state.social.promises.find((promise) => promise.id === 'promise-ledger').status, 'fulfilled')
-  assert.equal(loaded.state.social.npcs.find((npc) => npc.id === 'marta').location, 'North Gate')
   assert.ok(loaded.state.players[0].inventory.some((item) => String(item.id).startsWith('loot-')))
   assert.ok(loaded.state.worldMemory.quests.find((quest) => quest.id === 'ledger-quest').clock.current >= 2)
   assert.ok(cleanObjective(loaded.state.scene.objective))
-  assert.equal(advanced.scheduled_actions, 1)
   assert.ok(loaded.state.autonomy.pacing.beat >= 7)
   assert.equal(loaded.state.autonomy.travel_history.length, 1)
   assert.equal(loaded.state.autonomy.downtime_history.length, 1)

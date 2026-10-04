@@ -1,0 +1,44 @@
+{
+  "baseline": "88c620e6011ae607913efb224cb8f850b4ee5028",
+  "browser": "Codex In-app Browser",
+  "synthetic_data": true,
+  "no_llm": true,
+  "fixture": "16x16 open map, one ordinary legacy player",
+  "document_visibility_at_start": "visible",
+  "document_visibility_at_end": "visible",
+  "start_heading": "Тихая площадь",
+  "end_heading": "Тихая площадь",
+  "action_enabled_at_end": true,
+  "user_game_actions_during_observation": 0,
+  "sse_open_ms": 70021,
+  "sse_close_ms": 191464,
+  "window_ms": 121443,
+  "poll_count": 8,
+  "poll_intervals_ms": [
+    14984,
+    14999,
+    15000,
+    15001,
+    15000,
+    15000,
+    15002
+  ],
+  "poll_total_body_bytes": 300392,
+  "poll_body_sizes": [
+    37549
+  ],
+  "room_versions": [
+    1
+  ],
+  "state_versions": [
+    0
+  ],
+  "all_polls_map_unchanged": true,
+  "all_polls_have_state": true,
+  "sse_comments_during_window": 6,
+  "notes": [
+    "Метаданные HTTP собраны внешним proxy; тела ответов, cookie и содержимое состояния не сохранены.",
+    "Это ручное наблюдение через настоящий браузер; скрытая document.visibilityState и многопользовательская нагрузка не проверялись.",
+    "Браузер закрыт после последней проверки DOM; серверы стенда завершены, собственный временный каталог удалён."
+  ]
+}

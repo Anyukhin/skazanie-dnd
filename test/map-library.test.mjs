@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -14,6 +14,7 @@ import {
   chooseLibraryMap,
   climateFor,
   libraryIdsInUse,
+  libraryLevelProblems,
   libraryPlaceKinds,
   libraryRequestFor,
   placeKindsFor,
@@ -21,7 +22,7 @@ import {
 } from '../server/map-library.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 import { importTaleSpireSlab } from '../server/talespire-import.mjs'
-import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
+import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
 import { HOUSE_SLAB } from './talespire-fixtures.mjs'
 
@@ -337,6 +338,109 @@ test('этап 5: обязательные якоря программы отб�
   const poor = yardEntry('poor', { cells: 600, props: { market_awning: 1, well: 1, chest: 1 } })
   poor.passport.quality = { score: MIN_LIBRARY_QUALITY - 0.1, reachable: 0.6, dropped: 0.4, cells: 600 }
   assert.equal(chooseLibraryMap([poor], request, { seed: 'a' }), null)
+})
+
+/**
+ * Дом `HOUSE_SLAB`, у которого испорчен второй этаж. Первый этаж остаётся
+ * целым — прежняя проверка видела только его и выбирала такую карту.
+ * @param {(map: Record<string, any>) => Record<string, any>} spoil
+ */
+function houseWithSpoiledUpper(spoil) {
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-house' })
+  return imported.levels.map((level) => (level.index === 0 ? level : { ...level, map: spoil(structuredClone(level.map)) }))
+}
+
+test('аудит PR #131, AI-06: битый верхний этаж не выбирается, целая постройка с лестницей — выбирается', (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-upper-'))
+  t.after(() => rmSync(storage, { recursive: true, force: true }))
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-house' })
+  assert.deepEqual(libraryLevelProblems(imported.levels), [], 'целый дом: второй этаж без точки появления, но с обратной лестницей')
+
+  // Воспроизведение аудита: предмет второго этажа за краем карты.
+  const outOfBounds = houseWithSpoiledUpper((map) => ({
+    ...map,
+    props: [...map.props, { ...map.props[0], id: 'probe-out-of-bounds', x: -0.5, y: -0.5, footprint: [{ x: -1, y: -1 }] }],
+  }))
+  assert.deepEqual(libraryLevelProblems(outOfBounds).map((problem) => [problem.level, problem.code]), [[1, 'PROP_OUT_OF_BOUNDS']])
+  // Лестница наверху выводит в глухую клетку.
+  const walledArrival = houseWithSpoiledUpper((map) => {
+    const upper = deserializeTacticalMap(map)
+    const stairs = upper.props.find((prop) => prop.transition)
+    setCell(upper, stairs.footprint[0].x, stairs.footprint[0].y, { passable: false })
+    return serializeTacticalMap(upper)
+  })
+  assert.deepEqual(libraryLevelProblems(walledArrival).map((problem) => [problem.level, problem.code]), [[1, 'PARTY_SPAWN_BLOCKED']])
+  // Обратной лестницы нет: подняться можно, встать наверху — негде.
+  const noReturn = houseWithSpoiledUpper((map) => ({ ...map, props: map.props.filter((prop) => !prop.transition) }))
+  assert.deepEqual(libraryLevelProblems(noReturn).map((problem) => [problem.level, problem.code]),
+    [[0, 'TRANSITION_WITHOUT_RETURN'], [1, 'LEVEL_UNREACHABLE']])
+  // Лестница ведёт на этаж, которого в записи нет.
+  assert.deepEqual(libraryLevelProblems(imported.levels.filter((level) => level.index === 0)).map((problem) => problem.code), ['TRANSITION_BROKEN'])
+
+  const library = new MapLibrary(storage)
+  const request = libraryRequestFor({ themeId: 'building', buildingUse: 'tavern' })
+  library.put(entryFor('tt-bad-upper', { passport: imported.passport }), outOfBounds)
+  library.put(entryFor('tt-no-return', { passport: imported.passport }), noReturn)
+  const indexBefore = readFileSync(join(storage, 'map-library', 'index.json'), 'utf8')
+  const mapBefore = readFileSync(join(storage, 'map-library', 'maps', 'tt-bad-upper.json'), 'utf8')
+  for (const seed of ['s1', 's2', 's3', 's4']) assert.equal(library.pick(request, { seed }), null, `${seed}: выбрана постройка с битым этажом`)
+  assert.equal(readFileSync(join(storage, 'map-library', 'index.json'), 'utf8'), indexBefore, 'подбор библиотеку не переписывает')
+  assert.equal(readFileSync(join(storage, 'map-library', 'maps', 'tt-bad-upper.json'), 'utf8'), mapBefore, 'запись битой не помечается')
+
+  library.put(entryFor('tt-house', { passport: imported.passport }), imported.levels)
+  for (const seed of ['s1', 's2', 's3', 's4']) {
+    const picked = library.pick(request, { seed })
+    assert.equal(picked?.entry.id, 'tt-house', `${seed}: целая постройка не выбрана`)
+    assert.deepEqual(picked.levels.map((level) => level.index), [0, 1])
+    assert.equal(library.pick(request, { seed })?.entry.id, picked.entry.id, 'выбор по сиду детерминирован')
+  }
+})
+
+test('аудит PR #131, AI-06: библиотечный дом — подъём по лестнице на второй этаж и replay', (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-stairs-'))
+  t.after(() => {
+    setActiveMapLibrary(null)
+    rmSync(storage, { recursive: true, force: true })
+  })
+  const library = new MapLibrary(storage)
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-house' })
+  // Рядом лежит та же постройка с битым вторым этажом: выбрана должна быть целая.
+  library.put(entryFor('tt-bad-upper', { passport: imported.passport }), houseWithSpoiledUpper((map) => ({
+    ...map,
+    props: [...map.props, { ...map.props[0], id: 'probe-out-of-bounds', x: -0.5, y: -0.5, footprint: [{ x: -1, y: -1 }] }],
+  })))
+  library.put(entryFor('tt-house', { passport: imported.passport }), imported.levels)
+  setActiveMapLibrary(library)
+
+  const initial = tavernState()
+  const dice = new DiceService({ rng: new SequenceDiceRng([]), idFactory: () => 'roll', now: () => '2026-10-02T00:00:00.000Z' })
+  const advanced = resolveCommand({
+    command_type: 'AdvanceScene',
+    command_id: 'to-tavern',
+    scene_args: { title: 'Таверна «Рог»', location: 'Таверна «Рог»', theme: 'таверна', objective: 'Найти хозяина' },
+  }, initial, { diceService: dice, context: { isAdmin: true } })
+  const scene = advanced.events.find((event) => event.event_type === 'SceneAdvanced')
+  assert.equal(scene.payload.scene.map_source.id, 'tt-house')
+  const inTavern = advanced.events.reduce((state, event) => applyGameEvent(state, event), initial)
+  const stairs = deserializeTacticalMap(inTavern.scene.map).props.find((prop) => prop.transition?.toLevel === 1)
+  assert.ok(stairs, 'на первом этаже есть лестница наверх')
+
+  const climbed = resolveCommand({
+    command_type: 'UseLevelTransition',
+    command_id: 'climb',
+    actor_id: 'hero-a',
+    prop_id: stairs.id,
+  }, normalizeCampaignState(inTavern), { diceService: dice, context: { isAdmin: true } })
+  const changed = climbed.events.find((event) => event.event_type === 'MapLevelChanged')
+  assert.ok(changed, 'отряд поднялся')
+  assert.equal(changed.payload.to_level, 1)
+  assert.equal(changed.payload.map, undefined, 'этаж взят из памяти локации, а не построен заново')
+  const upstairs = climbed.events.reduce((state, event) => applyGameEvent(state, event), normalizeCampaignState(inTavern))
+  assert.equal(deserializeTacticalMap(upstairs.scene.map).levelIndex, 1)
+  assert.ok(String(deserializeTacticalMap(upstairs.scene.map).seed).startsWith('library:tt-house:1'))
+  const replayed = replayEvents(initial, [...advanced.events, ...climbed.events])
+  assert.deepEqual(replayed.scene.map, upstairs.scene.map, 'replay приводит на тот же второй этаж')
+  assert.deepEqual(replayed.locationMaps, upstairs.locationMaps)
 })
 
 test('этап 5: карта, не прошедшая проверку программы, уступает следующей, а не сразу генератору', (t) => {

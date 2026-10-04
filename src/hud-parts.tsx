@@ -206,9 +206,11 @@ export function spellSlotPools(resources: Readonly<Record<string, { current?: nu
  * Щелчок по кругу оставляет в колоде заклинаний только заклинания, которые
  * этим кругом можно сотворить, — это экранная выборка, ресурс не тратится.
  */
-export function SpellSlotBar({ resources, filterLevel, concentration, onToggleLevel }: {
+export function SpellSlotBar({ resources, filterLevel, spendLevel = null, concentration, onToggleLevel }: {
   resources: Readonly<Record<string, { current?: number; max?: number } | undefined>>
   filterLevel: number | null
+  /** Круг ячейки, которую потратит выбранное заклинание: её ромб — пунктиром. */
+  spendLevel?: number | null
   concentration?: string | null
   onToggleLevel: (level: number) => void
 }) {
@@ -243,7 +245,7 @@ export function SpellSlotBar({ resources, filterLevel, concentration, onToggleLe
         onClick={() => onToggleLevel(pool.level)}
         title={`Ячейки ${roman} круга: ${pool.current} из ${pool.max}. ${pressed ? 'Щелчок — показать все заклинания' : 'Щелчок — показать заклинания, доступные этому кругу'}`}
         aria-label={`Ячейки ${roman} круга: ${pool.current} из ${pool.max}`}
-      >{roman}{Array.from({ length: pool.max }, (_, index) => <i key={index} className={index < pool.current ? '' : 'off'} aria-hidden="true" />)}<em>{pool.current}/{pool.max}</em></button>
+      >{roman}{Array.from({ length: pool.max }, (_, index) => <i key={index} className={index < pool.current ? (spendLevel === pool.level && index === pool.current - 1 ? 'spend' : '') : 'off'} aria-hidden="true" />)}<em>{pool.current}/{pool.max}</em></button>
     })}
     {pact && <span className="hud-slot pact" title={`Ячейки договора: ${pact.current} из ${pact.max}. Восстанавливаются после короткого отдыха`} aria-label={`Ячейки договора: ${pact.current} из ${pact.max}`}>Договор{Array.from({ length: pact.max }, (_, index) => <i key={index} className={index < pact.current ? '' : 'off'} aria-hidden="true" />)}<em>{pact.current}/{pact.max}</em></span>}
     {concentration && <span className="hud-slot concentration" title={`Концентрация: ${concentration}. Урон требует спасброска Телосложения`}>◎ {concentration}</span>}

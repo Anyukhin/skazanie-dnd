@@ -586,3 +586,15 @@ test('строки изнанки не выносят из проекции ни
   const room = campaignStateForViewer(state, { role: 'player', heroIds: ['hero'] }, 'hero')
   assert.deepEqual(suggestedActionsFor(room, 'hero'), hints)
 })
+
+test('ведущий получает «Что можно сделать» той же функцией, что игрок', () => {
+  // UX-обход 2026-10-04, «Что сломано», пункт 5: ветка ведущего в проекции
+  // возвращала комнату без подсказок, и владелец стола, играющий своим героем,
+  // видел пустую панель «Что можно сделать».
+  const state = tavernState({ leisure: false })
+  const player = projectedHints(state).map((hint) => hint.text)
+  const admin = campaignStateForViewer(state, { role: 'admin' }, 'hero').suggested_actions
+  assert.ok(Array.isArray(admin) && admin.length > 0, 'у ведущего есть подсказки')
+  const adminTexts = admin.map((hint) => hint.text)
+  for (const text of player) assert.ok(adminTexts.includes(text), `ведущий видит подсказку игрока «${text}»`)
+})

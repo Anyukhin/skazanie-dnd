@@ -45,7 +45,7 @@ export function lootTakeButtonState(input: {
   canInspect: boolean
   distanceFeet?: number | null
   reachFeet: number
-  actionCost?: 'action' | null
+  actionCost?: 'action' | 'object_interaction' | null
   /** Действие этого героя в этом ходу уже потрачено (`action_spent` проекции). */
   actionSpent?: boolean
   overloaded: boolean
@@ -76,6 +76,7 @@ export interface LootAftermath {
   bodies: LootContainerCard[]
   caches: LootContainerCard[]
   captiveGear: LootContainerCard[]
+  thrownWeapons: LootContainerCard[]
   itemCount: number
   weight: number
   empty: boolean

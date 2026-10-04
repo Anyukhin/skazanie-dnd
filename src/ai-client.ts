@@ -29,6 +29,53 @@ export function isStateVersionConflictError(error: unknown): error is ApiRequest
   return error instanceof ApiRequestError && error.code === 'STATE_VERSION_CONFLICT'
 }
 
+/**
+ * Ответ хода пришёл с кодом 200, но без полей, которые клиент обязан прочесть.
+ * HTTP-статуса у ошибки нет намеренно: для `isTacticalCommandUnknown` это
+ * неизвестный исход, как оборванный JSON, — запись восстановления (REC-01)
+ * остаётся, и повтор той же заявки уйдёт с прежним ключом.
+ */
+export class MalformedTurnResultError extends Error {
+  constructor(message = 'Сервер вернул неполный ответ на ход. Повторите то же действие: если ход уже записан, сервер вернёт его, а не выполнит второй раз.') {
+    super(message)
+    this.name = 'MalformedTurnResultError'
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+const optionalRecord = (value: unknown) => value == null || isRecord(value)
+const optionalArray = (value: unknown) => value == null || Array.isArray(value)
+const optionalRecords = (value: unknown) => value == null || (Array.isArray(value) && value.every(isRecord))
+
+/**
+ * Аудит PR #131, UI-08/REC-03: проверка результата `/api/narrate` до того, как
+ * хук начнёт его читать. Раньше ответ приводился к типу без проверки, и `{}`
+ * ронял `finishTurn` на `effects.roll` уже после ответа — ход оставался
+ * «в работе», и следующее действие не отправлялось.
+ *
+ * Проверяются ровно те поля, которые клиент читает без условий. Ход без
+ * карточки и манёвра завершается `finishTurn`: ему нужны текст и `effects`.
+ * Карточка проверки и манёвр читают только себя. Исправный ответ возвращается
+ * тем же объектом, без копий и подстановок.
+ */
+export function decodeTurnResult(value: unknown): AiTurnResult {
+  if (!isRecord(value)) throw new MalformedTurnResultError()
+  const { narration, effects, check, action_proposal: proposal, authoritative_state: authoritative } = value
+  if (narration != null && typeof narration !== 'string') throw new MalformedTurnResultError()
+  if (!optionalRecord(check) || !optionalRecord(proposal) || !optionalRecord(value.clarification)) throw new MalformedTurnResultError()
+  if (!optionalArray(value.mechanics)) throw new MalformedTurnResultError()
+  if (authoritative != null && (!isRecord(authoritative) || !Array.isArray(authoritative.players))) throw new MalformedTurnResultError()
+  if (effects != null && (!isRecord(effects) || !optionalRecords(effects.grantItems) || !optionalRecord(effects.roll))) {
+    throw new MalformedTurnResultError()
+  }
+  const finishesTurn = !check && !proposal
+  if (finishesTurn && (typeof narration !== 'string' || !isRecord(effects))) throw new MalformedTurnResultError()
+  return value as unknown as AiTurnResult
+}
+
 export async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -200,7 +247,7 @@ export async function narrateWithAgent(
       const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
       throw new ApiRequestError(details.error || `Ошибка рассказчика: ${response.status}`, response.status, details.code)
     }
-    const result = await response.json() as AiTurnResult
+    const result = decodeTurnResult(await response.json())
     if (options.onNarrationPreview && expectedMessageId
       && result.narration_message_id === expectedMessageId) {
       const finalText = String(result.narration ?? '')

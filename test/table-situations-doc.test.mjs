@@ -124,12 +124,6 @@ const WORLD_CLOCK_CONSUMERS = Object.freeze([
     markers: ['planMerchantEconomyClock', 'runMerchantEconomyClock', 'RestockMerchant'],
   },
   {
-    title: 'исполнение расписаний NPC в окне start/end',
-    code: () => orchestratorMethod('advanceTime').includes('elapsed_minutes')
-      && orchestratorMethod('advanceTime').includes('executeNpcSchedules'),
-    markers: ['executeNpcSchedules'],
-  },
-  {
     title: 'доступность и место NPC на текущую минуту',
     code: () => source('server/npc-social.mjs').includes('export function npcProfileAtWorldTime')
       && source('server/npc-social.mjs').includes('export function campaignElapsedMinutes'),
@@ -155,8 +149,6 @@ const NUMERALS = Object.freeze(['ноль', 'один', 'два', 'три', 'ч�
 /** Формулировки, опровергнутые кодом. Возврат любой из них — регресс документа. */
 const REFUTED_CLAIMS = Object.freeze([
   ['и ни одной больше', 'мировые минуты двигают девять контуров, а не три'],
-  ['Фигурки двигаются, события — нет', 'executeNpcSchedules пишет RecordWorldFact на каждое сработавшее расписание'],
-  ['не порождают событий', 'факт памяти мира о расписании рождается — нет только механического последствия'],
   ['нет ни в одной форме', 'pact-chain вешает состояние pact-familiar, а find-familiar лежит в каталоге заклинаний'],
   ['Монеты передать нельзя', 'NpcBribeOffered списывает монету из кошелька героя в той же фиксации, что и проверку'],
   ['подарок ничего не меняет', 'крупный дар поднимает светлый поступок generosity и двигает славу фракций'],
@@ -190,14 +182,14 @@ test('опровергнутые кодом формулировки не воз
   }
 })
 
-test('D5 признаёт запись о расписании, которую код действительно делает', () => {
-  const schedules = orchestratorMethod('executeNpcSchedules')
-  assert.ok(schedules.includes("command_type: 'RecordWorldFact'"), 'расписания перестали писать факт мира')
-  assert.ok(schedules.includes("predicate: 'npc_scheduled_action_executed'"), 'предикат факта расписания переименован')
+test('D5 описывает один механизм расписаний — тот, что в коде', () => {
+  // Второй механизм (registerNpcSchedule → executeNpcSchedules) удалён 2026-10-04.
+  const orchestrator = source('server/autonomous-orchestrator.mjs')
+  assert.equal(/async (?:registerNpcSchedule|executeNpcSchedules)\(/u.test(orchestrator), false, 'второй механизм расписаний вернулся')
+  assert.ok(source('server/npc-social.mjs').includes('function npcScheduleEntryAt'), 'живое расписание NPC пропало — перепишите D5')
   const d5 = situation('D5')
-  for (const marker of ['RecordWorldFact', 'npc_scheduled_action_executed']) {
-    assert.ok(d5.includes(marker), `D5 занижает готовность контура: нет упоминания ${marker}`)
-  }
+  assert.ok(d5.includes('npcScheduleEntryAt'), 'D5 не называет живой механизм расписаний')
+  assert.ok(d5.includes('удалён'), 'D5 обязан говорить, что второй механизм удалён, а не описывать его как живой')
 })
 
 test('F1 не отрицает спутника, который в коде есть', () => {

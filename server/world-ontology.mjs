@@ -90,18 +90,6 @@ export const PREDICATES = Object.freeze({
     visibility: 'party',
     description_ru: 'Итог боевой или социальной встречи. Механика читает `autonomy.encounter_outcomes`, а не этот факт.',
   }),
-  npc_schedule: Object.freeze({
-    record: 'fact', subject_kinds: ['location', 'concept'], object: 'JSON { npc_id, entries }',
-    producers: ['autonomous-orchestrator'], consumers: ['autonomous-orchestrator'],
-    visibility: 'gm_only',
-    description_ru: 'Расписание NPC, которое исполняет автономный цикл. Подлежащее — текущая сцена или служебная сущность «Расписание мира», NPC указан в объекте.',
-  }),
-  npc_scheduled_action_executed: Object.freeze({
-    record: 'fact', subject_kinds: ['location', 'concept'], object: 'ключ исполненного действия npc:минута:действие',
-    producers: ['autonomous-orchestrator'], consumers: ['autonomous-orchestrator'],
-    visibility: 'party',
-    description_ru: 'Отметка, что пункт расписания уже исполнен: защита от повтора.',
-  }),
   promise_condition: Object.freeze({
     record: 'fact', subject_kinds: ['location', 'concept'], object: 'JSON { promise_id, condition }',
     producers: ['autonomous-orchestrator'], consumers: ['autonomous-orchestrator'],

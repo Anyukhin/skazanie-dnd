@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "baseline": "e1d927f5aa68dc9eca912b527cccf3974ba3e9e7",
+  "browser": "Codex In-app Browser",
+  "synthetic_data": true,
+  "no_llm": true,
+  "admin_seeded_fixture": true,
+  "observed_ui": {
+    "after_lost_reply": {
+      "recovery_notice": true,
+      "action_disabled": true
+    },
+    "after_manual_retry": {
+      "recovery_notice": false,
+      "action_enabled": true,
+      "journal_movements": 1
+    },
+    "after_second_lost_reply_and_same_tab_reload": {
+      "recovery_notice": true,
+      "action_disabled": true,
+      "journal_movements": 2
+    },
+    "after_retry_following_reload": {
+      "recovery_notice": false,
+      "action_enabled": true,
+      "journal_movements": 2
+    }
+  },
+  "verified_store": {
+    "commit_files": 2,
+    "event_count": 4,
+    "same_key_retries_did_not_increase_version": true,
+    "versions": [
+      2,
+      2,
+      4,
+      4
+    ]
+  },
+  "limitations": [
+    "Один обычный игрок и одна вкладка, готовая административная фикстура.",
+    "Новый таб, закрытие браузера, две сессии и реальный LLM не проверены.",
+    "Точный слой автоматического повтора при socket close не установлен."
+  ]
+}

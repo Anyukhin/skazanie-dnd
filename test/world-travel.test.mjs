@@ -19,7 +19,7 @@ const compiled = spawnSync(process.execPath, [
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
 const modulePath = join(buildDir, 'world-travel.mjs')
 writeFileSync(modulePath, readFileSync(join(buildDir, 'world-travel.js'), 'utf8'))
-const { currentWorldLocation, neighboringDestinations, reachableDestinations, travelProposalText } = await import(pathToFileURL(modulePath).href)
+const { currentWorldLocation, neighboringDestinations, reachableDestinations, shortestRoute, travelProposalText } = await import(pathToFileURL(modulePath).href)
 
 test.after(() => rmSync(buildDir, { recursive: true, force: true }))
 
@@ -69,4 +69,25 @@ test('предложение маршрута кодирует ID выбранн
     travelProposalText(current, selected, ['Тихий Брод', 'Дорфорд']),
     `[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=${encodeURIComponent(selected.id)}] Отряд предлагает отправиться из «Тихий Брод» в «Дорфорд». Выбранный путь: Тихий Брод → Дорфорд.`,
   )
+})
+
+test('путь по карте мира — кратчайший по дням, как на сервере', () => {
+  // Прямой тракт в 8 дней против двух переходов по 1 дню (исследование PR #136).
+  const routes = [
+    { id: 'long', from: 'a', to: 'c', kind: 'road', distance: 8, danger: 'низкая', discovered: true },
+    { id: 'ab', from: 'a', to: 'b', kind: 'road', distance: 1, danger: 'низкая', discovered: true },
+    { id: 'bc', from: 'b', to: 'c', kind: 'road', distance: 1, danger: 'низкая', discovered: true },
+  ]
+  assert.deepEqual(shortestRoute('a', 'c', routes).routes.map((route) => route.id), ['ab', 'bc'])
+  assert.deepEqual(shortestRoute('a', 'c', routes).locationIds, ['a', 'b', 'c'])
+  // При равных днях — меньше переходов.
+  const tie = [
+    { id: 'ab', from: 'a', to: 'b', kind: 'road', distance: 2, danger: 'низкая', discovered: true },
+    { id: 'bc', from: 'b', to: 'c', kind: 'road', distance: 2, danger: 'низкая', discovered: true },
+    { id: 'direct', from: 'a', to: 'c', kind: 'road', distance: 4, danger: 'низкая', discovered: true },
+  ]
+  assert.deepEqual(shortestRoute('a', 'c', tie).routes.map((route) => route.id), ['direct'])
+  // Неоткрытая дорога не используется, недостижимое место — пустой путь.
+  assert.deepEqual(shortestRoute('a', 'c', routes.map((route) => route.id === 'bc' ? { ...route, discovered: false } : route)).routes.map((route) => route.id), ['long'])
+  assert.deepEqual(shortestRoute('a', 'z', routes), { locationIds: [], routes: [] })
 })

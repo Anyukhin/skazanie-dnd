@@ -1906,7 +1906,7 @@ export type GameState = {
       duration_minutes: number
       risk_score: number
       random_encounter: boolean
-      /** `server-travel-v2`: граф мира или текстовая ветка совместимости. */
+      /** `server-travel-v3` (v2 — до 2026-10-04, путь по числу переходов): граф мира или текстовая ветка совместимости. */
       source?: 'graph' | 'legacy_text'
       /** Заполнен только для одного прямого маршрута графа. */
       route_id?: string | null
@@ -2160,7 +2160,7 @@ export type LootItemCard = {
 export type LootContainerCard = {
   schema_version?: number
   id: string
-  kind: 'corpse' | 'captive' | 'abandoned' | 'cache'
+  kind: 'corpse' | 'captive' | 'abandoned' | 'cache' | 'dropped'
   name: string
   status: 'available' | 'emptied'
   /**
@@ -2181,6 +2181,8 @@ export type LootContainerCard = {
   item_count: number
   total_weight: number
   can_inspect: boolean
+  /** Цена обыска этого контейнера в бою для героя зрителя; нет — берётся общая `action_cost`. */
+  action_cost?: 'action' | 'object_interaction'
   /**
    * Сколько футов до контейнера. Считает сервер — второй геометрии доски в
    * браузере не заводится. `undefined` значит «померить нечем»: у контейнера
@@ -2198,7 +2200,7 @@ export type LootContainersProjection = {
    * (`validateLootContainerCommand`): идёт бой — обыск стоит действия. Кнопка
    * называет цену до нажатия и своей таблицы правил не держит.
    */
-  action_cost?: 'action' | null
+  action_cost?: 'action' | 'object_interaction' | null
   /**
    * Потрачено ли уже действие этого героя в этом ходу. Вторая половина цены:
    * без неё кнопка называла цену, ничего не зная о том, есть ли чем платить, и
@@ -2712,8 +2714,13 @@ export type AttackForecast = {
   disadvantage: boolean
   advantage_sources: string[]
   disadvantage_sources: string[]
+  /** `null` и при недосягаемой цели, и при закрытой КД — различает `armor_known`. */
   hit_chance: number | null
   critical_chance: number | null
+  /** Любое попадание станет критом (обездвиженная цель в упор). */
+  critical_on_hit?: boolean
+  /** КД цели известна этому зрителю; без неё шанс попасть не раскрывается. */
+  armor_known?: boolean
   average_damage: number
 }
 

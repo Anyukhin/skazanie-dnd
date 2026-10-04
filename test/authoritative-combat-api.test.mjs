@@ -676,10 +676,15 @@ test('CastSpell игрока сохраняет список целей, вар�
   assertStatus(duplicate, 200, log)
   assert.equal(duplicate.body.idempotent_replay, true)
   assert.equal(duplicate.body.authoritative_state.state_version, applied.body.authoritative_state.state_version)
+  // Аудит PR #131, CMD-01: другая цель под тем же ключом — не повтор, а
+  // конфликт. Прежде здесь ждали `200 replay` исходного commit: новую цель он
+  // не применял, но ответ подтверждал игроку не ту заявку, которую он прислал.
+  const beforeAltered = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
   const altered = await command(baseUrl, playerCookie, 'two-acid-targets', { ...cast, target_ids: ['first'] })
-  assertStatus(altered, 200, log)
-  assert.equal(altered.body.idempotent_replay, true)
-  assert.deepEqual(event(altered.body, 'SpellCast').target_ids, ['first', 'second'], 'повтор ключа возвращает исходный commit, не новую цель')
+  assertStatus(altered, 409, log)
+  assert.equal(altered.body.code, 'IDEMPOTENCY_CONFLICT')
+  const afterAltered = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
+  assert.equal(afterAltered.body.state.state_version, beforeAltered.body.state.state_version, 'конфликт не пишет новую цель')
   const next = await command(baseUrl, playerCookie, 'spell-next-turn', { command_type: 'EndTurn', actor_id: 'hero' })
   assertStatus(next, 200, log)
   const chosen = await command(baseUrl, playerCookie, 'cold-orb-upcast', {

@@ -54,7 +54,7 @@ import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertT
 import { sceneSummaryFor } from './scene-summary.mjs'
 import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from './campaign-recap.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
-import { CampaignNarrationStream } from './narration-stream.mjs'
+import { CampaignNarrationStream, CampaignStreamOutbox, campaignStreamFrameKey } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator } from './creative-director.mjs'
 import { tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
 import { NpcMoraleAgent } from './npc-controller.mjs'
@@ -98,10 +98,11 @@ import {
   campaignRulesetMetadata,
   campaignRulesetSettings,
 } from './campaign-ruleset.mjs'
-import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
+import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
+import { claimStorageWriter } from './backup-service.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect.mjs'
 import { partyOptionLabel, proposeAgentInteraction, proposeRoutedTravel, resolvePartyDecision } from './player-request-router.mjs'
@@ -143,6 +144,7 @@ import {
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter, encounterBarrierSides } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
+import { withCombatForecast } from './combat-forecast-view.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { assertCampaignPlayable, lifecycleEventForAction } from './campaign-lifecycle.mjs'
@@ -162,7 +164,7 @@ import {
   resolvePartyRoll,
   resolvePartyVote,
 } from './party-decision.mjs'
-import { compareProjection } from './projection-integrity.mjs'
+import { CANONICAL_PROJECTION_FIELDS, compareProjection } from './projection-integrity.mjs'
 import { characterCreationCatalog, createCharacterSlot } from './character-lifecycle.mjs'
 import {
   NPC_PORTRAIT_GENERATION_LIMIT,
@@ -219,6 +221,15 @@ const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
  * новые готовятся заранее режимом подготовки.
  */
 const runtimeImageGeneration = ['on', 'true', '1', 'yes'].includes(String(process.env.DND_RUNTIME_IMAGE_GENERATION ?? '').trim().toLowerCase())
+// Аудит PR #131, RCV-05: сервер объявляет себя писателем storage до первой
+// записи, и `pnpm backup` не снимает копию с живого хранилища. Отметка
+// снимается при любом штатном выходе; после аварии её распознают устаревшей
+// по pid и по остановившемуся сигналу (`server/backup-service.mjs`).
+const storageWriter = claimStorageWriter(storageDir)
+process.once('exit', () => storageWriter.release())
+// Без обработчика SIGINT/SIGTERM завершают процесс мимо события 'exit', и
+// отметка оставалась бы до признания устаревшей. Выход штатный, с кодом сигнала.
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.once(signal, () => process.exit(code))
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
 const usageLedger = new DurableUsageLedger({
@@ -1359,6 +1370,8 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       ...(target ? { target_id: target } : {}),
       ...(actionId === 'cast:silvery-barbs' && beneficiary != null ? { beneficiary_id: beneficiary.trim() } : {}),
       ...(input?.item_id ? { item_id: String(input.item_id).slice(0, 120) } : {}),
+      // Исход толчка выбирает игрок; значение сверяет Rules Engine.
+      ...(actionId === 'shove' && input?.shove_mode != null ? { shove_mode: String(input.shove_mode).slice(0, 20) } : {}),
     }
   }
   if (type === 'ResolveHeroDeath') {
@@ -2316,7 +2329,11 @@ function revalidateCampaignStreams(campaignId, { state = null, maxAgeMs = 0 } = 
  */
 function revokeCampaignStream(connection, reason) {
   if (connection.closed) return
-  writeCampaignStream(connection, 'access', { status: 'revoked', reason })
+  // Аудит PR #131, SEC-06: кадры, ждущие освобождения сокета, собраны под
+  // прежними правами — они выбрасываются, а кадр отзыва идёт мимо очереди:
+  // Node допишет его после уже принятых кадров, и `end()` закроет поток.
+  connection.outbox?.discard()
+  if (!connection.res.destroyed) connection.res.write(campaignStreamFrame('access', { status: 'revoked', reason }))
   connection.close?.()
   if (!connection.res.destroyed) connection.res.end()
 }
@@ -2410,43 +2427,6 @@ function campaignVoterCount(campaignId, state = {}) {
  * игрок видит шанс попадания и его причины до клика, но не получает скрытые
  * параметры врага — КД раскрывается только там, где уже раскрыто здоровье.
  */
-function withCombatForecast(projected, trustedState, viewerActorId) {
-  if (!projected || !trustedState?.mechanics?.combat?.active) return projected
-  const attackerId = String(trustedState.mechanics.combat.initiative?.[trustedState.mechanics.combat.active_index ?? 0]?.actor_id ?? '')
-  if (!attackerId) return projected
-  // Прогноз нужен только тому, кто сейчас ходит: чужой ход игрок не планирует.
-  const controls = String(viewerActorId ?? '') === attackerId
-    || (projected.players ?? []).some((player) => String(player.id) === attackerId)
-  if (!controls) return projected
-  const attacker = (trustedState.players ?? []).concat(trustedState.actors ?? []).find((actor) => String(actor.id) === attackerId)
-  if (!attacker) return projected
-  const options = [
-    ...(attacker.inventory ?? []).filter((item) => item?.equipped && item?.combat?.kind).map((item) => ({ itemId: String(item.id), label: String(item.name ?? 'Оружие') })),
-    { itemId: null, label: 'Базовая атака' },
-  ].slice(0, 6)
-  const forecast = {}
-  for (const enemy of trustedState.enemies ?? []) {
-    if (!enemy || enemy.alive === false || Number(enemy.hp) <= 0) continue
-    const enemyId = String(enemy.id)
-    const visible = (projected.enemies ?? []).find((candidate) => String(candidate.id) === enemyId)
-    if (!visible) continue
-    const exact = visible.healthKnown === 'exact'
-    const entries = []
-    for (const option of options) {
-      const shot = attackForecast(trustedState, attackerId, enemyId, { itemId: option.itemId })
-      if (!shot) continue
-      entries.push({
-        ...shot,
-        label: option.label,
-        item_id: option.itemId,
-        ...(exact ? {} : { armor_class: null, cover_bonus: shot.cover_bonus }),
-      })
-    }
-    if (entries.length) forecast[enemyId] = entries
-  }
-  return Object.keys(forecast).length ? { ...projected, combatForecast: { actor_id: attackerId, targets: forecast } } : projected
-}
-
 function viewerStateFor(state, user, actorId) {
   return withCombatForecast(campaignStateForViewer(state, user, actorId), state, actorId)
 }
@@ -2547,12 +2527,23 @@ function typingActorIdsForCampaign(campaignId) {
   return [...new Set([...typing.values()].map((entry) => String(entry.actorId)))].sort()
 }
 
+function campaignStreamFrame(event, payload) {
+  return `id: ${++campaignStreamSequence}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
+}
+
+/**
+ * Кадр живого потока. Аудит PR #131, SEC-06: все кадры соединения идут через
+ * одну ограниченную очередь (`CampaignStreamOutbox`, `server/narration-stream.mjs`):
+ * пока сокет не принял прежние, новый `room`/`presence`/снимок повествования
+ * заменяет непрочитанный кадр того же ключа, а не копится. `payload` может
+ * быть функцией — тогда кадр собирается в момент фактической записи.
+ */
 function writeCampaignStream(connection, event, payload) {
   if (connection.closed || connection.res.destroyed) return null
-  const frame = `id: ${++campaignStreamSequence}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
-  const ready = connection.res.write(frame)
-  if (!ready) connection.narrationBackpressured = true
-  return ready
+  return connection.outbox.send(campaignStreamFrameKey(event, payload), () => {
+    const value = typeof payload === 'function' ? payload() : payload
+    return value == null ? null : campaignStreamFrame(event, value)
+  })
 }
 
 function broadcastCampaignTyping(campaignId) {
@@ -2577,17 +2568,25 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
     // Что закэшировано у клиента, соединение знает точно: оно само это и
     // отправило. Пока соединение живо, порядок сообщений сохраняется, а на
     // переподключении объект соединения новый и карта уходит целиком.
-    const projected = viewerStateFor(state, connection.user, connection.actorId)
-    const compacted = compactStateForTransport(projected, connection.mapHash)
-    const written = writeCampaignStream(connection, 'room', {
-      version: room.version,
-      updatedAt: room.updatedAt,
-      state: compacted.state,
+    //
+    // Аудит PR #131, SEC-06: кадр собирается в момент записи в сокет. Пока
+    // медленный клиент не дочитал прежнее, этот кадр ждёт в очереди соединения
+    // и может быть заменён следующей рассылкой. Поэтому проекция и сжатие карты
+    // считаются от `mapHash`, который соединение действительно отправило, и
+    // хеш продвигается только вместе с записью: выброшенный кадр не оставит
+    // клиенту хеш карты, которой у него нет. `ServerResponse.write()` при этом
+    // возвращает false уже после постановки кадра в буфер Node — такой кадр
+    // не потерян и будет дописан после `drain`.
+    writeCampaignStream(connection, 'room', () => {
+      const projected = viewerStateFor(state, connection.user, connection.actorId)
+      const compacted = compactStateForTransport(projected, connection.mapHash)
+      connection.mapHash = compacted.hash
+      return {
+        version: room.version,
+        updatedAt: room.updatedAt,
+        state: compacted.state,
+      }
     })
-    // `ServerResponse.write()` возвращает false уже после постановки кадра в
-    // очередь. Хеш можно продвинуть даже при backpressure: этот room-кадр не
-    // потерян и будет записан Node после `drain`.
-    if (written !== null) connection.mapHash = compacted.hash
   }
 }
 
@@ -2622,6 +2621,13 @@ function captiveClockHasWork(campaignId) {
  * Часы голода пленных. Живут рядом с часами молвы по той же причине: связанного
  * надо кормить, а мировое время идёт само, и без серверного драйвера жестокость
  * от голода не наступала бы никогда — клиент системный такт не дёргает.
+ *
+ * С аудита PR #131 (WT-03) голод в штатном пути пишется в том же коммите, что и
+ * сам скачок времени (`planCaptiveNeglectDrafts` внутри
+ * `appendWorldTimeConsequences`), и после такого коммита этот такт ничего не
+ * находит. Он остаётся идемпотентным догоном для состояний, где сутки без еды
+ * прошли не скачком времени: кампании до этой правки и состояние, созданное или
+ * импортированное уже с просроченной кормёжкой.
  *
  * Такт сходится по построению: `NeglectCaptive` сдвигает `neglected_at_minutes`
  * на текущую минуту, и следующая запись о том же пленном возможна только через
@@ -3203,8 +3209,17 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const currentStateVersion = Number(room.state.state_version ?? 0)
     if (proposedStateVersion < currentStateVersion) return room
     if (!forceProjectorRefresh && proposedStateVersion === currentStateVersion && !journalMessage) {
-      const projectionAck = acknowledge(proposedStateVersion)
-      return projectionAck ? { ...room, projectionAck } : room
+      // Аудит PR #131, SEC-02: равная версия ещё не значит равное содержимое.
+      // Раньше этот быстрый путь подтверждал проекцию без сверки и без hash:
+      // комната, изменённая вне журнала при той же `state_version`, снимала
+      // pending checkpoint и оставалась расходящейся. Теперь подтверждается
+      // только совпавшая проекция с вычисленным здесь hash, а расхождение идёт
+      // ниже, в полную перезапись комнаты из авторитетного состояния.
+      const comparison = compareProjection(engineState, room.state)
+      if (comparison.matched) {
+        const projectionAck = acknowledge(proposedStateVersion, { projectionHash: comparison.projected_hash })
+        return projectionAck ? { ...room, projectionAck } : room
+      }
     }
     // Раньше здесь жили два списка типов событий: `refreshInventory` на
     // одиннадцать `Item*`-типов и `characterBuildChanged` на четыре. Забыть тип
@@ -3244,8 +3259,14 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     }
     if (messages.length > JOURNAL_HISTORY_LIMIT) messages.splice(0, messages.length - JOURNAL_HISTORY_LIMIT)
     const onlineById = new Map((room.state.players ?? []).map((player) => [String(player.id), Boolean(player.online)]))
+    // Аудит PR #131, SEC-02: «из движка целиком» включает и удаление. Поле,
+    // которое движок снял (например, `tacticalTurn` при смене сцены), раньше
+    // переживало слияние с прежней комнатой, и сверка этой комнаты не сходилась
+    // уже никогда — ни здесь, ни при восстановлении на GET.
+    const roomBase = { ...room.state }
+    for (const field of CANONICAL_PROJECTION_FIELDS) if (!Object.hasOwn(engineState, field)) delete roomBase[field]
     const next = normalizeCampaignState({
-      ...room.state,
+      ...roomBase,
       ...engineState,
       agentInteraction: engineState.agentInteraction ?? null,
       players: (engineState.players ?? []).map((player) => ({
@@ -3316,6 +3337,44 @@ async function reconcileAllCampaignProjections() {
     } catch (error) {
       console.error(`[Сказание] Не удалось восстановить projection ${campaignId}:`, error)
     }
+  }
+}
+
+/**
+ * Аудит PR #131, SEC-04: резерв броска, взятый `consume` до commit, снимается,
+ * если запрос упал, а commit по его ключу так и не появился. Исход читается из
+ * журнала, а не из исключения: ошибка после commit (проекция, летопись) бросок
+ * не возвращает. Не удалось прочитать журнал — бросок остаётся потреблённым.
+ *
+ * Исключение — `ROLL_CONTEXT_MISMATCH`: кость подали не к той заявке, под
+ * которую она брошена (другой подход, другая карточка). Это не сбой хода, а
+ * отвергнутая попытка переиграть объявленное решение, и кость сгорает, как и
+ * прежде (`test/tavern-api.test.mjs`).
+ */
+async function finishFailedRollReservation(reservation, error) {
+  if (!reservation) return
+  let committed = true
+  if (error?.code !== 'ROLL_CONTEXT_MISMATCH') {
+    try {
+      committed = Boolean(await eventStore.getByIdempotencyKey(reservation.campaignId, reservation.idempotencyKey))
+    } catch { /* исход неизвестен — резерв не снимаем */ }
+  }
+  try {
+    rollRegistry.finishReservation(reservation.rollId, { idempotencyKey: reservation.idempotencyKey, committed })
+  } catch (error) {
+    console.warn('[Сказание] Резерв броска не снят:', error?.code ?? error?.message)
+  }
+}
+
+/** Аудит PR #131, SEC-04: на старте держателей нет — осиротевшие резервы снимаются. */
+async function releaseOrphanRollReservations() {
+  try {
+    const released = await rollRegistry.releaseOrphanReservations(async (campaignId, idempotencyKey) => (
+      Boolean(await eventStore.getByIdempotencyKey(campaignId, idempotencyKey))
+    ))
+    if (released.length) console.warn(`[Сказание] Сняты резервы бросков без commit: ${released.length}`)
+  } catch (error) {
+    console.error('[Сказание] Не удалось проверить резервы бросков:', error)
   }
 }
 
@@ -3925,16 +3984,32 @@ async function handleHttpRequest(req, res) {
       closed: false,
       close: null,
       mapHash: '',
-      narrationBackpressured: false,
+      outbox: null,
     }
+    // Аудит PR #131, SEC-06: одна ограниченная очередь на соединение для всех
+    // кадров. Клиент, который не читает сокет, не копит в памяти сервера
+    // рассылку за рассылкой: `room`/`presence` схлопываются до последнего, а
+    // переполнение закрывает поток — переподключение получит полное
+    // разрешённое состояние обычным рукопожатием ниже.
+    connection.outbox = new CampaignStreamOutbox({
+      write: (chunk) => (connection.closed || res.destroyed ? null : res.write(chunk)),
+      onClose: (reason, error) => {
+        const detail = error ? `: ${error?.message || error}` : ''
+        console.warn(`[Сказание] Живой поток ${campaignId} закрыт (${reason}${detail}): клиент переподключится и получит состояние заново`)
+        connection.close?.()
+        if (!res.destroyed) res.destroy()
+      },
+    })
     streamConnections(campaignId).set(connectionId, connection)
-    const drain = () => campaignNarrationStream.drain(connection)
+    const drain = () => connection.outbox.drain()
     res.on('drain', drain)
     const heartbeat = setInterval(() => {
       if (connection.closed || res.destroyed) return
       // Истечение сессии не присылает события: тихий поток сверяется на пульсе.
       revalidateCampaignStreams(campaignId, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
-      if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
+      // Пульс идёт той же очередью: занятому сокету он не нужен, а после
+      // `drain` уйдёт один, сколько бы их ни набежало.
+      if (!connection.closed && !res.destroyed) connection.outbox.send('heartbeat', () => `: heartbeat ${Date.now()}\n\n`)
     }, 20_000)
     const close = () => {
       if (connection.closed) return
@@ -5113,6 +5188,9 @@ async function handleHttpRequest(req, res) {
         playerId: command.actor_id,
         message: String(body.message || 'Торговая операция'),
         commands: [command],
+        // Аудит PR #131, CMD-02: сделка объявляет свой пакет команд так же,
+        // как `/commands`, — одна и та же сделка описывается одной операцией.
+        requestCommands: [command],
         idempotencyKey,
         user,
         allowedActorIds: campaignHeroIds(user, merchantMatch[1]),
@@ -5157,6 +5235,8 @@ async function handleHttpRequest(req, res) {
     // дело могло и не дойти.
     let lootRequestActorId = ''
     let lootRequestContainerId = ''
+    // Аудит PR #131, SEC-04: резерв броска до исхода хода.
+    let rollReservation = null
     try {
       const room = getRoom(commandMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
@@ -5239,6 +5319,11 @@ async function handleHttpRequest(req, res) {
         if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
+      // Аудит PR #131, CMD-01/02: повтор ключа сверяется с заявкой в той форме,
+      // которую оставил санитайзер, — без мусорных полей клиента, но и без
+      // серверных дополнений ниже (развёртка отдыха, черновик письма, бой со
+      // стражей). Копия снимается до них.
+      const requestCommands = structuredClone(commands)
       const semanticRestCommand = commands.find((command) => PLAYER_REST_COMMANDS.has(commandType(command))) ?? null
       if (semanticRestCommand) commands = expandPlayerRestCommand(semanticRestCommand)
       const lawCommands = commands.filter((command) => PLAYER_LAW_COMMANDS.has(commandType(command)))
@@ -5356,10 +5441,16 @@ async function handleHttpRequest(req, res) {
       let verifiedRoll = null
       if (body.roll?.roll_id) {
         verifiedRoll = rollRegistry.consume(body.roll.roll_id, { campaignId: commandMatch[1], actorId: actor, idempotencyKey })
+        rollReservation = { rollId: body.roll.roll_id, campaignId: commandMatch[1], idempotencyKey }
       } else if (body.roll) {
         throw commandPolicyError('Принимается только серверный roll_id', 'UNVERIFIED_ROLL')
       }
-      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]), manualRoll, verifiedRoll })
+      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, requestCommands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]), manualRoll, verifiedRoll })
+      // Ход исполнен: бросок остаётся потреблённым, как и прежде.
+      if (rollReservation) {
+        rollRegistry.finishReservation(rollReservation.rollId, { idempotencyKey, committed: true })
+        rollReservation = null
+      }
       // Карточка проверки: мир не изменился, продолжать бой и проецировать
       // нечего. Ответ уходит игроку как есть.
       if (result.check) return json(res, 200, turnResultForViewer({ ...result, room_version: room.version }, user, actor))
@@ -5449,6 +5540,7 @@ async function handleHttpRequest(req, res) {
       const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
+      await finishFailedRollReservation(rollReservation, error)
       const internal = !error?.code || ['EIO', 'ENOSPC', 'CORRUPT_EVENT_LOG', 'CAMPAIGN_RECOVERY_REQUIRED', 'INVALID_STORE_FILE'].includes(error.code)
       const status = internal ? 500
         : ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'ENCOUNTER_ALREADY_PRESENT', 'ENCOUNTER_DURING_COMBAT'].includes(error?.code) ? 409
@@ -5669,6 +5761,8 @@ async function handleHttpRequest(req, res) {
   if (req.url === '/api/narrate' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
     let narrationTransport = null
+    // Аудит PR #131, SEC-04: резерв броска до исхода хода.
+    let rollReservation = null
     try {
       const body = await readBody(req)
       const action = String(body.action || '').trim().slice(0, 2_000)
@@ -5755,6 +5849,7 @@ async function handleHttpRequest(req, res) {
             }
           },
         })
+        rollReservation = { rollId: body.roll.roll_id, campaignId, idempotencyKey }
       } else if (body.roll && mode === 'enforce') {
         return json(res, 400, { error: 'Enforce-режим принимает только серверный roll_id', code: 'UNVERIFIED_ROLL' })
       }
@@ -5848,6 +5943,9 @@ async function handleHttpRequest(req, res) {
             // `/api/narrate` accepts prose only. Structured commands and the
             // unforgeable Director capability are supplied by server branches.
             commands: undefined,
+            // Аудит PR #131, CMD-02: пакет команд в отпечатке повтора объявляет
+            // только маршрут `/commands`, тело `/api/narrate` его не подменяет.
+            requestCommands: undefined,
             commandCapability: undefined,
             state: trustedState,
             roomVersion: room.version,
@@ -5881,6 +5979,11 @@ async function handleHttpRequest(req, res) {
           }
         }
       })
+      // Ход исполнен: бросок остаётся потреблённым, как и прежде.
+      if (rollReservation) {
+        rollRegistry.finishReservation(rollReservation.rollId, { idempotencyKey, committed: true })
+        rollReservation = null
+      }
       if (result.idempotent_replay) {
         const persistedNarration = (getRoom(campaignId).state?.messages ?? [])
           .find((message) => String(message.id) === streamMessageId)
@@ -5982,6 +6085,7 @@ async function handleHttpRequest(req, res) {
           })
         } catch { /* Ошибка SSE не подменяет исход авторитетного запроса. */ }
       }
+      await finishFailedRollReservation(rollReservation, error)
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'PARTY_DECISION_ALREADY_CONSUMED'].includes(error?.code) ? 409 : error?.code === 'ROLL_ALREADY_USED' || error?.code === 'ROLL_FORBIDDEN' ? 400 : error?.code?.startsWith('LLM_') ? 502 : 400
       if (res.destroyed || res.writableEnded) return
       return json(res, status, { error: error instanceof Error ? error.message : 'Ошибка игрового оркестратора', code: error?.code })
@@ -5993,6 +6097,7 @@ async function handleHttpRequest(req, res) {
 }
 
 await reconcileAllCampaignProjections()
+await releaseOrphanRollReservations()
 // Простаивающее соединение держим дольше клиентского keep-alive (у fetch/undici
 // это 4–5 секунд, у обратных прокси — до минуты). При стандартных 5 секундах
 // сервер под нагрузкой закрывал сокет ровно тогда, когда клиент отправлял по

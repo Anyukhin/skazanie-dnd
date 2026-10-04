@@ -546,7 +546,7 @@ function DiceCheckCard({ check, onRoll, onCancel, busy = false, children }: { ch
           <small>{check.result.value} {check.modifier >= 0 ? '+' : '−'} {Math.abs(check.modifier)} = {check.result.total}{typeof check.result.difficulty === 'number' ? ` против ${check.result.difficulty}` : ''}</small>
         </span>}
       </div>
-      <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажми на кость — что выпадет, то и будет.'}</p>
+      <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажмите на кость — что выпадет, то и будет.'}</p>
       <div className="dice-check__footer">
         {children}
         <button className="cancel-check cancel-check--dismiss" onClick={onCancel} disabled={busy || check.status === 'rolling' || (Boolean(check.proposal) && check.status === 'resolving')}>{check.result ? 'Закрыть проверку' : 'Отказаться от действия'}</button>
@@ -843,6 +843,7 @@ function ConnectionIndicator({ status }: { status: ConnectionState }) {
     connected: 'Синхронизация включена',
     reconnecting: 'Связь восстанавливается…',
     offline: 'Нет связи с сервером',
+    revoked: 'Доступ к кампании закрыт',
   }
   /* Исправная синхронизация — не новость: подпись «синхронизация включена»
      висела в строке постоянно и ничего не сообщала. Показываемся только когда
@@ -870,7 +871,9 @@ function pendingCheckKey(check: Pick<PendingCheck, 'check_id' | 'playerId' | 'ac
 }
 
 function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; onAccountRefresh: () => Promise<Account | null>; onLogout: () => void }) {
-  const gameSession = useGameSession({ accountId: account.id })
+  // Сервер отозвал живой поток (аудит PR #131, LIVE-01/02): один раз сверяем
+  // аккаунт. Завершённый вход вернёт `user: null`, и откроется экран входа.
+  const gameSession = useGameSession({ accountId: account.id, onAccessRevoked: onAccountRefresh })
   const { confirmPendingAction, cancelPendingAction } = gameSession
   const { advanceAdventure, directorBusy } = gameSession
   const { pendingTacticalCommand, retryPendingTacticalCommand } = gameSession
@@ -1591,7 +1594,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   // после всех хуков и до первого обращения к activePlayer.
   if (!state.sessionCode || !activePlayer) {
     if (isAdmin && view === 'combat-lab') return <div className="app no-campaign"><main className="game-main"><button className="combat-lab-back" onClick={() => navigate('room')}>Вернуться к кампаниям</button><CombatLabView combatAudio={combatAudio ?? undefined} soundMuted={atmosphereSettings.muted} onSoundMutedChange={changeAtmosphereMuted} /></main></div>
-    const loadingCampaign = state.campaign === 'Загрузка кампании…' && connectionState !== 'offline' && !joinError
+    const loadingCampaign = state.campaign === 'Загрузка кампании…' && connectionState !== 'offline' && connectionState !== 'revoked' && !joinError
     return (
       <div className="app no-campaign">
         <main className="game-main">

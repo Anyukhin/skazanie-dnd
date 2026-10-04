@@ -104,8 +104,11 @@ test('метательная атака сохраняет mode/ability в со�
   assert.equal(attack.payload.thrown, true)
   const replayed = replayEvents(state, result.events)
   assert.equal(replayed.enemies.find((enemy) => enemy.id === 'enemy').hp, 72)
-  assert.equal(replayed.battleLog.at(-1).attackMode, 'thrown')
-  assert.equal(replayed.battleLog.at(-1).attackAbility, 'str')
+  // После атаки в журнале идёт запись о брошенном кинжале, который лёг у цели.
+  const attackLog = replayed.battleLog.findLast((entry) => entry.type === 'attack')
+  assert.equal(attackLog.attackMode, 'thrown')
+  assert.equal(attackLog.attackAbility, 'str')
+  assert.equal(replayed.battleLog.at(-1).type, 'loot-container')
 })
 
 test('двуручный режим не обходит надетый щит', () => {

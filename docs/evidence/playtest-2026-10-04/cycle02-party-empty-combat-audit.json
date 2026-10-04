@@ -1,0 +1,250 @@
+{
+  "campaign_id": "PC1004",
+  "campaign_code": "PC1004",
+  "storage_stream_key": "PC1004-4ffb380db41f644a",
+  "source_commit": "7c1dd986d461831e29be6cf4633abccb46a27f6b",
+  "base_commit": "e1d927f5aa68dc9eca912b527cccf3974ba3e9e7",
+  "method": "Санитизированный read-only аудит: прочитаны только JSON-файлы потока events указанной кампании и исходный код layout/replay/маршрутов; полные snapshots, auth, users, sessions, ключи и скрытые заготовки ведущего не читались, весь поток не печатался.",
+  "storage_scope": "Только временный поток событий кампании PC1004 в каталоге с ключом PC1004-4ffb380db41f644a.",
+  "inputs": [
+    {
+      "visible_phrase": "Начать бой с двумя волками во дворе форта.",
+      "observed_route": "Фраза не совпадает с точным клиентским шаблоном isEncounterRequest и попадает в /api/narrate как обычное действие."
+    },
+    {
+      "visible_phrase": "Начать бой",
+      "observed_route": "Точная короткая фраза совпадает с isEncounterRequest и попадает в /autonomy/advance, где серверный Директор сначала создаёт встречу, затем запускает бой."
+    }
+  ],
+  "selected_commits": [
+    {
+      "state_version_range": [19, 20],
+      "event_types": ["CombatStarted", "TurnStarted"],
+      "events": [
+        {
+          "state_version": 19,
+          "event_type": "CombatStarted",
+          "round": 1,
+          "party_ids": ["hero-slot-1", "hero-slot-2"],
+          "party_participant_count": 2,
+          "enemy_ids": [],
+          "enemy_participant_count": 0,
+          "initiative_count": 2
+        },
+        {
+          "state_version": 20,
+          "event_type": "TurnStarted"
+        }
+      ],
+      "absence_scope": "В коммите версий 19–20 нет EncounterCreated; до версии 23 включительно отдельной проверкой выбран только этот тип события, совпадений нет."
+    },
+    {
+      "state_version_range": [21, 21],
+      "event_types": ["CombatEnded"],
+      "events": [
+        {
+          "state_version": 21,
+          "event_type": "CombatEnded",
+          "round": 1,
+          "reason": "enemies_defeated"
+        }
+      ]
+    },
+    {
+      "state_version_range": [24, 26],
+      "event_types": ["EncounterCreated", "CombatStarted", "TurnStarted"],
+      "events": [
+        {
+          "state_version": 24,
+          "event_type": "EncounterCreated",
+          "theme": "beasts",
+          "difficulty": "medium",
+          "enemy_count": 3,
+          "enemy_descriptors": [
+            {"name": "Волк 1", "size": "medium"},
+            {"name": "Волк 2", "size": "medium"},
+            {"name": "Волк 3", "size": "medium"}
+          ]
+        },
+        {
+          "state_version": 25,
+          "event_type": "CombatStarted",
+          "round": 1,
+          "party_participant_count": 2,
+          "enemy_participant_count": 3,
+          "initiative_count": 5
+        },
+        {
+          "state_version": 26,
+          "event_type": "TurnStarted"
+        }
+      ]
+    },
+    {
+      "state_version_range": [347, 348],
+      "event_types": ["CombatEnded", "EncounterEnded"],
+      "events": [
+        {
+          "state_version": 347,
+          "event_type": "CombatEnded",
+          "round": 17,
+          "reason": "party_incapacitated"
+        },
+        {
+          "state_version": 348,
+          "event_type": "EncounterEnded",
+          "outcome": "party_incapacitated",
+          "reason": "party_incapacitated",
+          "enemy_participant_count": 3
+        }
+      ]
+    }
+  ],
+  "start_combat_code_path": [
+    {
+      "owner": "src/App.tsx",
+      "reference": "onFreeAction",
+      "detail": "Только точная короткая заявка isEncounterRequest при отсутствии боя и живых врагов идёт в advanceAdventure; фраза с уточнением про двух волков этот шаблон не проходит и идёт в submitAction."
+    },
+    {
+      "owner": "src/director-continuation.mjs",
+      "reference": "isEncounterRequest",
+      "detail": "Шаблон принимает только «мы ищем бой», «хочу бой», «начать бой» или «начинаем бой» после нормализации; произвольное описание состава встречи не является этим маршрутом."
+    },
+    {
+      "owner": "src/useGameSession.ts",
+      "reference": "advanceAdventure",
+      "detail": "Короткий маршрут отправляет POST /api/campaigns/<campaign>/autonomy/advance."
+    },
+    {
+      "owner": "server/index.mjs",
+      "reference": "/api/narrate и /autonomy/advance",
+      "detail": "Обычная длинная фраза обслуживается /api/narrate и передаётся в gameOrchestrator.handle; короткая фраза запускает серверный Director-путь autonomy/advance."
+    },
+    {
+      "owner": "server/intent-parser.mjs",
+      "reference": "INTENT_PATTERNS[start_combat]",
+      "detail": "Подстрока «начать бой» классифицирует длинную фразу как start_combat."
+    },
+    {
+      "owner": "server/adjudicator.mjs",
+      "reference": "createPlan case start_combat",
+      "detail": "Для этого намерения строится только StartCombat; participant_ids собираются из players и actors, CreateEncounter в план не добавляется."
+    },
+    {
+      "owner": "server/game-orchestrator.mjs",
+      "reference": "handle → IntentParser → Adjudicator → rulesEngine.resolvePlan → eventStore.commit",
+      "detail": "Контекст обычного /api/narrate содержит allowedActorIds, isAdmin и isDirector, но не serverAuthoritativeCombat; полученный StartCombat поэтому не является серверным authoritative-входом."
+    },
+    {
+      "owner": "server/autonomous-orchestrator.mjs",
+      "reference": "runIntent request_encounter",
+      "detail": "Правильный серверный Director-путь добавляет CreateEncounter и затем StartCombat с server_authoritative=true; поэтому в PC1004 появились EncounterCreated v24 и CombatStarted v25."
+    }
+  ],
+  "empty_enemy_ids_explanation": {
+    "rule_owner": "server/rules-engine.mjs",
+    "reference": "resolveCommand case StartCombat",
+    "calculation": "encounterEnemyIds берутся из state.mechanics.encounter.enemy_ids; при отсутствии подтверждённой встречи это пустой Set. enemyIds выбираются из живых state.enemies, а без staged enemy_ids допускаются все живые враги; в первой заявке врагов не было, поэтому enemyIds=[] и participantIds содержал только двух героев.",
+    "guard": "Отказ происходит только при participantIds.length < 2 или при (command.server_authoritative || context.serverAuthoritativeCombat) && !enemyIds.length.",
+    "why_the_record_was_allowed": "Две партийные записи дали participantIds.length=2, а обычный /api/narrate не выставил ни server_authoritative, ни context.serverAuthoritativeCombat. Условие отказа по пустым врагам поэтому не сработало, и CombatStarted с enemy_ids=[] был принят.",
+    "immediate_end_owner": "После коммита /api/narrate вызывает settleCombatContinuation; post-commit stage combat-continuation передаёт состояние в server/npc-turn-scheduler.mjs, где отсутствие живых врагов выбирает EndCombat с reason=enemies_defeated."
+  },
+  "ownership_boundary": {
+    "encounter_creation": "Подтверждённую встречу собирают server/encounter-assembler.mjs и Rules Engine в ветке CreateEncounter; публичные игровые маршруты не должны превращать произвольную фразу в этот lifecycle-коммит."
+    ,
+    "campaign_bootstrap": "server/campaign-bootstrap.mjs отвечает за создание исходной кампании, мира и стартовых данных. В нём нет пути StartCombat или EncounterCreated, поэтому он не является владельцем исправления PC-01 и не должен включаться в рекомендацию."
+  },
+  "test_proposals": [
+    {
+      "file": "test/rules-engine.test.mjs",
+      "proposed_new": false,
+      "owner": "Rules Engine и серверная допустимость StartCombat",
+      "proposal": "Зафиксировать отказ обычного StartCombat при двух живых героях и пустом списке врагов, с кодом COMBAT_PARTICIPANTS_REQUIRED; отдельно сохранить успешный путь при подтверждённой встрече. Проверить replay результата отказа отсутствием CombatStarted."
+    },
+    {
+      "file": "test/encounter-flow.test.mjs",
+      "proposed_new": false,
+      "owner": "Атомарный поток CreateEncounter → CombatStarted и replay",
+      "proposal": "Добавить regression на последовательность EncounterCreated, CombatStarted, TurnStarted и точное число 2+3; проверить, что staged encounter является источником enemy_ids и пустая встреча не может перейти в активный бой."
+    },
+    {
+      "file": "test/combat-entry-routing.test.mjs",
+      "proposed_new": false,
+      "owner": "Маршрутизация пользовательского текста в IntentParser/GameOrchestrator",
+      "proposal": "Проверить длинную фразу «Начать бой с двумя волками во дворе форта.»: она не должна напрямую создавать CombatStarted; сервер должен вернуть явный отказ или направить в подтверждённый encounter-маршрут. Короткая фраза должна сохранять существующий Director-путь."
+    },
+    {
+      "file": "test/encounter-entry-routing.test.mjs",
+      "proposed_new": true,
+      "owner": "Новый контракт границы входа во встречу между UI, Director и API",
+      "proposal": "Создать отдельный routing regression: только явный bounded request_encounter или авторитетный /encounters/assemble может дать CreateEncounter и затем StartCombat; произвольный текст с названием врагов не должен запускать случайную встречу и не должен оставлять пустой бой."
+    }
+  ],
+  "pc02_equipment_hypothesis": {
+    "scope": "Проверены только разрешённые поля CharacterCreated/CharacterImported и EquipmentChanged для hero-slot-1 в потоке PC1004; полный inventory и snapshots не читались.",
+    "initial_event": {
+      "state_version": 1,
+      "event_type": "CharacterImported",
+      "actor_id": "hero-slot-1",
+      "character_created_events": [],
+      "starter_equipment_choices": {
+        "armor": ["chain-mail"],
+        "melee_loadout": ["longsword-shield"],
+        "secondary": ["light-crossbow"],
+        "pack": ["dungeoneers-pack"]
+      },
+      "shield": {
+        "item_id": null,
+        "choice_id": "longsword-shield",
+        "name": "Щит (часть выбранного melee loadout)",
+        "type": "shield",
+        "equipped_directly_observed": null,
+        "equipped_inference": "likely_true",
+        "evidence_limit": "CharacterImported хранит здесь идентификатор выбранного loadout, но не нормализованный item snapshot с equipped."
+      },
+      "crossbow": {
+        "item_id": null,
+        "choice_id": "light-crossbow",
+        "name": "Лёгкий арбалет",
+        "type": "weapon",
+        "equipped_directly_observed": null
+      }
+    },
+    "equipment_events": [
+      {
+        "state_version": 30,
+        "event_type": "EquipmentChanged",
+        "actor_id": "hero-slot-1",
+        "item_id": "hero-slot-1-starter-class-4",
+        "item_name": "Лёгкий арбалет",
+        "item_type": "weapon (тип следует из ветки ChangeWeapon)",
+        "equipped": true,
+        "timing": "action",
+        "turns_spent": 1
+      }
+    ],
+    "weapon_change": {
+      "from_choice_id": "longsword-shield",
+      "from_name": "Длинный меч + щит (выбранный loadout)",
+      "to_item_id": "hero-slot-1-starter-class-4",
+      "to_name": "Лёгкий арбалет",
+      "to_type": "weapon",
+      "to_equipped": true,
+      "previous_weapon_directly_recorded_in_equipment_event": false
+    },
+    "shield_removal_events": [],
+    "explicit_weapon_unequip_events": [],
+    "source_semantics": {
+      "make_attack_guard": "В server/rules-engine.mjs MakeAttack проверяет selectedItemProfile.two_handed && hasEquippedShield(actor) и тогда отклоняет команду с TWO_HANDED_WITH_SHIELD.",
+      "change_weapon_validation": "Ветка ChangeWeapon проверяет наличие выбранного weapon, но не требует снятия щита и не создаёт событие снятия щита.",
+      "equipment_changed_reducer": "Reducer EquipmentChanged меняет equipped только у item.type === weapon; состояние надетого shield этим событием не снимается."
+    },
+    "assessment": {
+      "confidence": "strong_hypothesis",
+      "statement": "Выбранный стартовый loadout содержал longsword-shield, единственное последующее EquipmentChanged экипировало двуручный Лёгкий арбалет, а события снятия щита нет. Поэтому щит, вероятно, остался надетым, и отказ MakeAttack по TWO_HANDED_WITH_SHIELD объясняет неудачный выстрел.",
+      "direct_evidence_limit": "Whitelisted events не содержат прямого equipped-флага щита или его фактического item_id; поэтому это сильная гипотеза, а не доказанное состояние. Фактический HTTP-код отказа по этому плейтесту также не подтверждён."
+    }
+  },
+  "finding": "PC-01 подтверждён как расхождение маршрутов: длинная видимая фраза распозналась как голый StartCombat, потому что IntentParser и Adjudicator не добавляют встречу, а Rules Engine допускает не-authoritative бой при двух героях без врагов. Затем координатор немедленно завершил его как enemies_defeated. Повторная точная короткая фраза прошла отдельный Director-путь и атомарно создала среднюю встречу из трёх medium-волков перед обычным боем. Исправление должно требовать действительную встречу либо возвращать ясный отказ; случайную встречу за любой текст рекомендовать нельзя."
+}

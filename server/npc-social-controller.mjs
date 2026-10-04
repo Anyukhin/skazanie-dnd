@@ -345,8 +345,10 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
  */
 function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory = [], message = '', hooks = []) {
   // Исход проверки — механика, а не разговор: раскрывать по нему нечего.
-  if (checkOutcome?.skill === 'insight') return { reply: checkOutcome.success ? `${profile.name}: the hero notices a meaningful reaction.` : `${profile.name}: the hero cannot read the NPC's motives.`, claimIds: [] }
-  if (checkOutcome) return { reply: checkOutcome.success ? `${profile.name} accepts the hero's approach.` : `${profile.name} is not convinced.`, claimIds: [] }
+  // Фразы русские: до 2026-10-04 этот путь отвечал игроку по-английски
+  // («is not convinced»), стоило проверке пройти без модели (PR #136).
+  if (checkOutcome?.skill === 'insight') return { reply: checkOutcome.success ? `${profile.name} отвечает уклончиво, и за словами угадывается что-то недосказанное.` : `${profile.name} отвечает ровно — по лицу ничего не прочесть.`, claimIds: [] }
+  if (checkOutcome) return { reply: checkOutcome.success ? `${profile.name} отвечает: «Ладно. Говори, я слушаю».` : `${profile.name} отвечает: «Нет. Меня это не убеждает».`, claimIds: [] }
   const request = clean(message, 1_000).toLocaleLowerCase('ru')
   if (/(?:пообещ|обещани|помоги|проведи|передай|открой)/iu.test(request)) {
     return { reply: 'Нового обещания пока нет; уточним конкретную помощь.', claimIds: [] }
