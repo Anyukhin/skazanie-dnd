@@ -1409,6 +1409,20 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
 export const INDOOR_THEMES = new Set(['interior', 'tavern', 'house', 'temple', 'crypt', 'dungeon', 'cave'])
 
 /**
+ * Переживут ли предметы ремонт доступа. Ремонт меняет только `map.props`,
+ * поэтому проба идёт на мелкой копии карты.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string[]} ids
+ */
+function survivesAccessRepair(map, ids) {
+  const probe = { ...map, props: [...map.props] }
+  ensurePropAccess(probe)
+  const kept = new Set(probe.props.map((prop) => prop.id))
+  return ids.every((id) => kept.has(id))
+}
+
+/**
  * Обещанное сценой: ставит недостающие предметы из списка «вид → штук». Сцена
  * говорит «три настила и алтарь», тема о них не знает — без этого шага на
  * карте не было бы ни того, ни другого. Предмет ставится той же расстановкой
@@ -1452,6 +1466,14 @@ export function placeRequiredProps(map, wanted, { seed }) {
       // Свой префикс: номер по счётчику расстановки мог совпасть с предметом,
       // который ремонт доступа уже убрал и чей номер освободился.
       for (const prop of map.props.slice(before)) prop.id = `required-${index}-${attempt}-${asset.id}`
+      // Место, которое ремонт доступа потом расчистит (телега поперёк прохода
+      // между рядами могил), обещанному не годится: снимаем и ищем другое.
+      // Иначе предмет ставился и тут же пропадал — со сдвигом случайного
+      // добора пропадала и обещанная «телега гробовщика».
+      if (placedNow > 0 && !survivesAccessRepair(map, map.props.slice(before).map((prop) => prop.id))) {
+        map.props = map.props.slice(0, before)
+        continue
+      }
       missing -= placedNow
       added += placedNow
     }

@@ -1514,8 +1514,11 @@ export function buildThemedScene({
     // паре, колодец и костёр — по одному.
     const market = design.topology === 'market'
     const urban = design.scale === 'town' || design.scale === 'city'
+    const hasSquare = map.zones.some((zone) => zone.id === 'square')
+    // «Телег — пара» на всё поселение: у площади своя тележка, и улица тогда
+    // ставит одну, иначе их выходило три.
     const streetCaps = {
-      market_stall: market ? 6 : 1, cart: 2, wagon_wheel: 2, campfire: 1, well: 1, haystack: 2,
+      market_stall: market ? 6 : 1, cart: hasSquare ? 1 : 2, wagon_wheel: 2, campfire: 1, well: 1, haystack: 2,
       woodpile: 3, village_fence: 6, water_trough: 1, hitching_post: 2, signpost: 1, roadside_shrine: 1,
       // Зелень разная: кустов, цветов и камней — не больше дюжины каждого.
       bush: 12, shrub: 8, flowers: 10, rock_small: 8, grass_tuft: 6,
@@ -1523,7 +1526,6 @@ export function buildThemedScene({
     // В городе колодец и прилавки стоят на площади, а дворы за домами —
     // сады и огороды: деревья, кусты, поленницы, без сена и прилавков.
     // Колодец один: если есть площадь, он стоит на ней, а не на улице.
-    const hasSquare = map.zones.some((zone) => zone.id === 'square')
     const streetRequire = urban ? ['tree_oak', 'woodpile'] : market ? ['market_stall', 'market_stall'] : hasSquare ? ['cart', 'village_fence'] : ['well', 'cart', 'village_fence']
     const squarePlan = hasSquare ? [{
       zoneId: 'square',

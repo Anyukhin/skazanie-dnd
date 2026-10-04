@@ -134,6 +134,49 @@ export function programFocusOutdoors(program) {
 }
 
 /**
+ * Место на площади ценой декора: клетки площади под предметом, без порогов
+ * дверей; мешающий декор снимается, а колодец и обещанное по программе
+ * (`required-*`, `program-*`) остаются — такое место не берётся. Из равных
+ * выбирается то, где снимать меньше, затем ближе к середине площади.
+ *
+ * @param {TacticalMap} map
+ * @param {number} width
+ * @param {number} height
+ * @param {Set<string>} taken
+ */
+function roomOnSquare(map, width, height, taken) {
+  /** @type {Array<{x: number, y: number}>} */
+  const square = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (cell?.zone === 'square' && cell.passable && cell.surface !== 'water') square.push({ x, y })
+  }
+  if (!square.length) return null
+  const inSquare = new Set(square.map((point) => `${point.x},${point.y}`))
+  const middle = { x: square.reduce((sum, point) => sum + point.x, 0) / square.length, y: square.reduce((sum, point) => sum + point.y, 0) / square.length }
+  const footprintOf = (/** @type {any} */ prop) => prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
+  const kept = (/** @type {any} */ prop) => prop.assetId === 'well' || /^(required|program)-/u.test(String(prop.id))
+  /** @type {{ x: number, y: number, footprint: Array<{x: number, y: number}>, remove: Set<any>, cost: number }|null} */
+  let best = null
+  for (const corner of square) {
+    /** @type {Array<{x: number, y: number}>} */
+    const footprint = []
+    for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) footprint.push({ x: corner.x + dx, y: corner.y + dy })
+    const keys = new Set(footprint.map((point) => `${point.x},${point.y}`))
+    if ([...keys].some((key) => !inSquare.has(key) || taken.has(key) && !map.props.some((prop) => prop.blocksMove && footprintOf(prop).some((/** @type {{x: number, y: number}} */ point) => `${point.x},${point.y}` === key)))) continue
+    const remove = new Set(map.props.filter((prop) => !prop.mount && footprintOf(prop).some((/** @type {{x: number, y: number}} */ point) => keys.has(`${point.x},${point.y}`))))
+    if ([...remove].some(kept)) continue
+    for (const prop of map.props) {
+      const mount = prop.mount
+      if (mount?.kind === 'surface' && [...remove].some((under) => under.id === mount.propId)) remove.add(prop)
+    }
+    const cost = remove.size * 100 + Math.abs(corner.x + width / 2 - middle.x) + Math.abs(corner.y + height / 2 - middle.y)
+    if (!best || cost < best.cost) best = { x: corner.x, y: corner.y, footprint, remove, cost }
+  }
+  return best
+}
+
+/**
  * Центр сцены: предмет из `assets` посреди самой открытой площадки, в 6–10
  * шагах от входа отряда. Уже стоящий на открытом месте предмет того же вида
  * засчитывается — второй колодец на площадь не ставится.
@@ -165,7 +208,7 @@ export function placeSceneFocus(map, assets, { seed }) {
   const width = Math.max(1, asset.baseFootprint.w || 1)
   const height = Math.max(1, asset.baseFootprint.h || 1)
   const tie = hashNumber(`${seed}:${SCENE_PROGRAM_LAYOUT_VERSION}:focus`)
-  /** @type {{ x: number, y: number, score: number, footprint: Array<{x: number, y: number}> }|null} */
+  /** @type {{ x: number, y: number, score: number, footprint: Array<{x: number, y: number}>, onSquare?: boolean }|null} */
   let best = null
   for (const [index, cell] of cells.entries()) {
     /** @type {Array<{x: number, y: number}>} */
@@ -185,7 +228,17 @@ export function placeSceneFocus(map, assets, { seed }) {
     // а сама площадь — лучше любой улицы: на ней и стоит центр сцены.
     const onSquare = footprint.every((point) => cellAt(map, point.x, point.y)?.zone === 'square') ? 30 : 0
     const score = room * 10 - away * 2 + onSquare - ((index + tie) % 7) / 10
-    if (!best || score > best.score) best = { x: cell.x, y: cell.y, score, footprint }
+    if (!best || score > best.score) best = { x: cell.x, y: cell.y, score, footprint, onSquare: onSquare > 0 }
+  }
+  // Площадь есть, а свободного места на ней центру не нашлось — её заставил
+  // случайный добор. Центр сцены — обещание текста, а прилавок или телега —
+  // декор: место освобождается от декора, обещанное и колодец не трогаются.
+  if (!best?.onSquare) {
+    const cleared = roomOnSquare(map, width, height, taken)
+    if (cleared) {
+      map.props = map.props.filter((/** @type {any} */ prop) => !cleared.remove.has(prop))
+      best = { x: cleared.x, y: cleared.y, score: 0, footprint: cleared.footprint, onSquare: true }
+    }
   }
   if (!best) return null
   const span = asset.scaleRange.max - asset.scaleRange.min

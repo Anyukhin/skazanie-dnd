@@ -205,6 +205,20 @@ function occupiesSpace(state, actor, includeDowned) {
     && state?.mechanics?.death?.heroes?.[id]?.status !== 'dead'
 }
 
+/**
+ * Клетки умирающих героев (на нуле хитов, но не погибших): на них нельзя
+ * остановиться, но сквозь них можно пройти. Отдельно — чтобы поиск пути не
+ * обходил участников второй раз.
+ */
+export function downedHeroPositions(state, exceptActorId = null) {
+  const cells = new Set()
+  for (const actor of state?.players ?? []) {
+    if (actorId(actor) === String(exceptActorId ?? '') || isLivingActor(actor) || !occupiesSpace(state, actor, true)) continue
+    for (const cell of actorFootprintCellsAt(state, actorId(actor))) cells.add(positionKey(cell))
+  }
+  return cells
+}
+
 export function occupiedPositions(state, exceptActorId = null, { includeDowned = true } = {}) {
   const occupied = new Set()
   for (const actor of listActors(state)) {
@@ -298,7 +312,8 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
   const propOccupied = map ? propMovementPositions(map) : new Set()
   const occupied = occupiedPositions(state, actorIdValue)
   // Сквозь умирающего героя проходят, остановиться на нём — нельзя.
-  const passOccupied = occupiedPositions(state, actorIdValue, { includeDowned: false })
+  const downed = downedHeroPositions(state, actorIdValue)
+  const passOccupied = downed.size ? new Set([...occupied].filter((key) => !downed.has(key))) : occupied
   const hasSceneNpcs = Boolean(state?.npc_world?.placements?.length || state?.scene_npcs?.length)
   const npcTransit = hasSceneNpcs ? sceneNpcTransitCells(state) : new Set()
   const npcOccupied = hasSceneNpcs ? sceneNpcOccupiedCells(state) : new Set()
