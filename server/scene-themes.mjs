@@ -11,6 +11,7 @@ import { deepestRoom, raiseDais } from './scene-features.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
+import { placeRuins, placeVignettes, roughenGround } from './scene-dressing.mjs'
 import {
   SIZE_CLASSES,
   addProp,
@@ -1424,12 +1425,24 @@ export function buildThemedScene({
     // ставит один `building-generator`, остальные темы крючков не расставляют
     // вовсе, и привязывать им нечего.
     const built = buildBuildingScene({ seed, width, height, locationId, theme: definition.id, levels, design, entry })
+    // Общий зал трактира помнит вчерашний вечер (`server/scene-dressing.mjs`):
+    // трактир узнаётся по стойке в зале, а не по подписи — её носят и другие.
+    const tavernHall = built.map.props.some((prop) => prop.assetId === 'bar_counter') ? built.map.zones.find((zone) => zone.id === 'hall') : null
+    if (tavernHall && placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 1 }).length) ensurePropAccess(built.map)
     return { map: built.map, theme: definition.id, warnings: built.warnings }
   }
 
   if (definition.kind === 'graph') {
     if (definition.id === 'cave') {
       const map = layoutOrganicCave(definition, { seed, width, height, locationId })
+      // Пещера — не пустой ход: завал щебня пятнами и след прежних гостей
+      // (`server/scene-dressing.mjs`). До расстановки, чтобы добор их обходил.
+      roughenGround(map, { seed, kind: 'rubble', patches: 2 })
+      placeVignettes(map, { seed, set: 'cave', limit: 1 })
+      // Каменный уступ в зале: пять футов над полом, ступени в середине
+      // кромки. Стрелок на уступе получает высоту — как на помосте храма.
+      const hall = map.zones.find((zone) => zone.label === 'Зал')
+      if (hall) raiseDais(map, hall.id, { height: 5, depth: 3 })
       placeProps(map, {
         seed: `${seed}:props`,
         maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (map.sizeClass)].maxProps,
@@ -1531,9 +1544,19 @@ export function buildThemedScene({
     }
     labelled.forEach((zone, index) => {
       const asked = plans.length && plans[index % plans.length]?.colonnade
-      const spacious = zone.label !== 'Камеры' && plans[index % plans.length]?.colonnade !== false && zoneSize(zone.id) >= SPACIOUS_HALL_CELLS
+      // Отказ кладовой мягкий: тайник склепа размером в полкарты без опор —
+      // голое тёмное поле, и он получает колоннаду, как зал.
+      const size = zoneSize(zone.id)
+      const declined = plans[index % plans.length]?.colonnade === false && size < SPACIOUS_HALL_CELLS * 2.5
+      const spacious = zone.label !== 'Камеры' && !declined && size >= SPACIOUS_HALL_CELLS
       if (asked || spacious) placeColonnade(built.map, { zoneId: zone.id, assetId: 'pillar' })
     })
+    // Глубина подземелья (`server/scene-dressing.mjs`): в склепе —
+    // разорённое погребение или место обряда, в склепе и тюрьме — завал в
+    // одном зале. Цель и камеры не трогаются.
+    const dressedZones = labelled.filter((zone) => zone.id !== graph.goalZoneId && zone.label !== 'Камеры').map((zone) => zone.id)
+    if (definition.id === 'crypt') placeVignettes(built.map, { seed, set: 'crypt', zones: dressedZones, limit: 2 })
+    if (definition.id === 'crypt' || definition.id === 'dungeon') roughenGround(built.map, { seed, kind: 'rubble', zones: dressedZones, patches: 1 })
     const map = placeProps(built.map, {
       seed: `${seed}:props`,
       maxProps: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (built.map.sizeClass)].maxProps,
@@ -1749,9 +1772,26 @@ export function buildThemedScene({
   }
   const map = layoutOpenTerrain(terrain, { seed, width, height, locationId })
   if (definition.graves) placeGraveRows(map, seed)
+  // Глубина открытой местности (`server/scene-dressing.mjs`): остов
+  // постройки в лесу и у дороги — укрытие посреди поля, подлесок пятнами —
+  // трудная местность, и сюжетная виньетка. Всё до расстановки: её добор
+  // обходит их стороной. Развалины встают всегда, если о них сказано, и
+  // примерно на каждой второй-третьей карте без слов.
+  const ruinsAsked = /руин|развалин|заброшен|древн|остов/u.test(placeText)
+  const temperate = !arid && !cold && !wetland
+  const wooded = definition.id === 'forest' || definition.id === 'road'
+  if (wooded && !campScene && !terrain.chasm && (ruinsAsked || randomFor(`ruins-roll:${seed}`)() < 0.4)) placeRuins(map, { seed })
+  if (wooded && temperate) roughenGround(map, { seed, kind: 'undergrowth', zones: ['field'], patches: definition.id === 'forest' ? 3 : 2 })
+  // Глубокий снег и сыпучий песок — тоже трудная местность (5e): заносы
+  // зимой, наносы в пустыне. На болоте весь грунт и так вязкий.
+  if (cold || arid) roughenGround(map, { seed, kind: cold ? 'snow' : 'sand', zones: ['field'], patches: 2 })
+  if (!campScene) placeVignettes(map, { seed, set: 'wild', zones: ['field'], limit: definition.id === 'forest' ? 2 : 1 })
   // Дикая местность — не склад реквизита: костёр один (в лагере — два),
   // телега и колесо — от силы по одному, колодца и прилавков в лесу нет.
-  const wildCaps = { campfire: campScene ? 2 : 1, cart: 1, wagon_wheel: 1, well: 0, haystack: 0, hitching_post: 0, water_trough: 0, lamp_post: 0, market_stall: 0, village_fence: 0, signpost: 1, roadside_shrine: definition.graves ? 2 : 1, milestone: 2, woodpile: 2, broken_obelisk: 1, swamp_totem: 1, snow_cairn: 2, scout_tent: 2, bog_pool: 2, ice_pillars: 3, snowy_boulder: 5, desert_boulders: 4, cactus_cluster: 4, dead_scrub: 4, rotten_log: 3, reed_cluster: 5, peat_mound: 3, camp_dummy: 2, shield_rack: 2, spiked_beam_barrier: 3, mangrove_roots: 3, giant_fungus: 2 }
+  // Виньетка уже поставила костёр или телегу — общий предел их учитывает:
+  // в лесу по-прежнему один костёр, у дороги одна телега.
+  const already = (/** @type {string} */ assetId) => map.props.filter((prop) => prop.assetId === assetId).length
+  const wildCaps = { campfire: Math.max(0, (campScene ? 2 : 1) - already('campfire')), cart: Math.max(0, 1 - already('cart')), wagon_wheel: Math.max(0, 1 - already('wagon_wheel')), well: 0, haystack: 0, hitching_post: 0, water_trough: 0, lamp_post: 0, market_stall: 0, village_fence: 0, signpost: 1, roadside_shrine: definition.graves ? 2 : 1, milestone: 2, woodpile: 2, broken_obelisk: 1, swamp_totem: 1, snow_cairn: 2, scout_tent: 2, bog_pool: 2, ice_pillars: 3, snowy_boulder: 5, desert_boulders: 4, cactus_cluster: 4, dead_scrub: 4, rotten_log: 3, reed_cluster: 5, peat_mound: 3, camp_dummy: 2, shield_rack: 2, spiked_beam_barrier: 3, mangrove_roots: 3, giant_fungus: 2 }
   // Лагерь — палатки, скатки и снаряжение из набора `camp` поверх ящиков и мешков.
   const camp = campScene
     ? { extraThemes: ['interior', 'camp', ...terrain.climateThemes], require: [...(terrain.require ?? []), 'campfire', 'crate', 'sack', 'chest', 'woodpile', 'scout_tent', 'bedroll_cluster'], prefer: [...(terrain.prefer ?? []), 'crate', 'sack', 'barrel', 'bedroll_cluster', 'shield_rack', 'camp_dummy', 'spiked_beam_barrier', ...(cold ? ['winter_cache'] : [])], caps: { ...wildCaps, ...CAMP_INTERIOR_OFF } }
