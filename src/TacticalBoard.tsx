@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ActorAppearance, ActorFootprint, BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
-  DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
+  DEFAULT_BOARD_PALETTE, PROP_ATLAS_MANIFEST, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
   type BoardEffectRenderer, type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture,
   type BoardViewport, type PropAtlas, type TerrainTiles, type TileSurface,
@@ -32,7 +32,7 @@ import {
 import { LEGACY_CATALOG_REVISION, loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
 import { DETAIL_ASSET_ROOT, DETAIL_PROP_ATLAS_MANIFEST } from './detail-props'
 import { actorPresentationCenter, boardCameraKey } from './tactical-ui'
-import { revealedAt } from './tactical-map-client'
+import { cellAt, revealedAt } from './tactical-map-client'
 import type { CombatAudio } from './combat-audio'
 import { BoardMiniMap, useMinimapPreference } from './hud-parts'
 import { Crosshair, Map as MapIcon } from 'lucide-react'
@@ -134,12 +134,6 @@ const REDUCED_MOTION_SPELL_CUE_MS = 120
  * постоянного rAF-цикла у доски не появляется.
  */
 const LEVEL_CROSSFADE_MS = 400
-
-/**
- * Манифест растровых штампов предметов. Собирается `pnpm props:atlas`; его
- * может не быть — тогда доска рисует предметы вектором (решение Р6 плана).
- */
-const PROP_ATLAS_MANIFEST = '/assets/maps/props/prop-atlas.json'
 
 /** Манифест фактур пола, поверхностей и стен. Собирается `pnpm terrain:tiles`. */
 const TERRAIN_MANIFEST = '/assets/maps/terrain/terrain-tiles.json'
@@ -1448,6 +1442,10 @@ function TacticalBoard2D({
   // Узел-щуп существует только под указателем и только там, где подсказка есть,
   // а собственного узла у клетки нет.
   const hoverKey = hoverCell ? `${hoverCell.x},${hoverCell.y}` : ''
+  // Точная высота — только под курсором: доска показывает рельеф линиями,
+  // а число нужно, когда игрок прицеливается или прикидывает подъём.
+  const hoverTerrain = hoverCell && map ? cellAt(map, hoverCell.x, hoverCell.y) : null
+  const hoverElevation = hoverTerrain?.revealed && hoverTerrain.elevation !== 0 ? hoverTerrain.elevation : null
   const hoverHint = hoverCell && !activeByKey.has(hoverKey) ? cellHints?.get(hoverKey) : undefined
   /*
    * «Сюда не дойти» рисуется ровно на одной клетке — той, что под указателем.
@@ -1589,6 +1587,16 @@ function TacticalBoard2D({
               </CellElement>
             )
           })}
+          {hoverCell && hoverElevation !== null && (
+            <div
+              key={`elevation-${hoverKey}`}
+              className="cell-elevation-tip"
+              style={{ gridColumn: hoverCell.x + 1, gridRow: hoverCell.y + 1 }}
+              aria-hidden="true"
+            >
+              <span>{hoverElevation > 0 ? '▲' : '▼'}</span>{hoverElevation > 0 ? '+' : '−'}{Math.abs(hoverElevation)} фт
+            </div>
+          )}
           {hoverCell && hoverHint && (
             <div
               key={`hint-${hoverKey}`}

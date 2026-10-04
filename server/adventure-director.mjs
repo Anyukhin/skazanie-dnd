@@ -434,6 +434,9 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
         // Сцена «таверна/галерея» начинается в помещении. Явное прибытие к
         // фасаду оставляет отряд снаружи; закрытая дверь сохраняет своё значение.
         entry: startsOutside ? 'exterior' : 'interior',
+        // Текст сцены — для обстановки: названное ставится, не названное с
+        // событием (драка, обряд, брошенный лагерь) не выдумывается.
+        description,
       })
       built.map.theme = matched.assetTheme ?? matched.id
       // Что пообещал текст сцены, встаёт на карту, даже если тема о нём не

@@ -4,7 +4,7 @@ import type {
 } from './types'
 import { areaCells, type AreaGeometryVersion, type AreaPoint, type AreaShape } from './area-geometry'
 import {
-  LIGHT_FULL, lightAt, lightGridFor, lightSourceVisibilityFor, lightSourcesOf,
+  LIGHT_FULL, LIGHT_LINK_EAST, LIGHT_LINK_SOUTH, lightAt, lightGridFor, lightLinksFor, lightSourceVisibilityFor, lightSourcesOf,
   type LightSource,
 } from './board-lighting'
 import { LEGACY_CATALOG_REVISION, propModelFit, propModelFor, type PropModelCatalog } from './prop-model-catalog'
@@ -38,11 +38,12 @@ export const TILE_CELLS = 16
  * заставлено, а где пусто. Поэтому нижний уровень рисует метку — залитое пятно
  * по габариту предмета, не меньше двух пикселей.
  *
- * Между порогами рисуется один силуэт характерной формы. Детали внутри
- * рисунка — обручи бочки, полки шкафа, доски стола — занимают около одной
- * седьмой его размера: при клетке в 20 px это меньше трёх точек, они сливаются
- * в грязь и стоят лишних вызовов. С 22 px деталь уже различима, и рисунок
- * выводится целиком.
+ * Между порогами векторный рисунок заменяется силуэтом характерной формы.
+ * Детали вектора — обручи бочки, полки шкафа, доски стола — занимают около
+ * одной седьмой его размера: при клетке в 20 px это меньше трёх точек, они
+ * сливаются в грязь и стоят лишних вызовов. С 22 px деталь уже различима, и
+ * рисунок выводится целиком. Растр — штамп или вид модели сверху — рисуется
+ * на обоих уровнях: уменьшенный, он остаётся узнаваемым (`drawProps`).
  */
 export const PROP_MIN_CELL_PIXELS = 12
 export const PROP_FULL_DETAIL_CELL_PIXELS = 22
@@ -102,6 +103,8 @@ export type BoardContext2D = {
   lineWidth: number
   globalAlpha: number
   globalCompositeOperation: GlobalCompositeOperation
+  /** Качество уменьшения растра; у поддельного контекста тестов его нет. */
+  imageSmoothingQuality?: ImageSmoothingQuality
 }
 
 /** Растровая текстура: размеры нужны, чтобы вырезать окно по варианту тайла. */
@@ -190,6 +193,89 @@ export function boardPaletteFrom(read: (name: string) => string | null | undefin
   palette.doorFrame = shade(palette.wall, -0.35)
   palette.zoneInterior = shade(palette.floor, -0.28)
   return palette
+}
+
+/**
+ * Палитра для материалов three.js. Переменная темы приходит из
+ * `getPropertyValue` неразвёрнутой — `color-mix(in srgb, #ab9f91 80%, #1a120a)`.
+ * Холст такую строку принимает, а `THREE.Color` — нет и оставляет белый:
+ * ковёр-заглушка в темнице лежал белым листом. Холсты 2D и 3D рисуют прежней
+ * палитрой: на ней настроены сетка и производные цвета, которые игрок видит.
+ */
+export function materialPalette(palette: BoardPalette): BoardPalette {
+  const solid = { ...palette }
+  for (const key of Object.keys(solid) as Array<keyof BoardPalette>) solid[key] = plainCssColor(solid[key])
+  return solid
+}
+
+/**
+ * Цвет темы в виде `#rrggbb`, а при прозрачности `rgba(…)`. Разбирает то, что
+ * остаётся от переменной после подстановки `var()`: шестнадцатеричный цвет,
+ * `rgb[a](…)` и `color-mix(in srgb, …)` с вложенными смесями. Чего не
+ * разобрать — возвращается как есть.
+ */
+export function plainCssColor(value: string): string {
+  const text = String(value ?? '').trim()
+  if (parseColor(text)) return text
+  const rgba = parseColorMix(text)
+  if (!rgba) return text
+  const rgb = rgba.slice(0, 3) as Rgb
+  return rgba[3] >= 0.999 ? toHex(rgb) : `rgba(${rgb.map(Math.round).join(',')},${Number(rgba[3].toFixed(3))})`
+}
+
+type Rgba = [number, number, number, number]
+
+/** Цвет с прозрачностью: `#hex`, `rgb[a](…)` или смесь `color-mix(in srgb, …)`. */
+function parseRgba(text: string): Rgba | null {
+  const value = text.trim()
+  const rgb = parseColor(value)
+  if (rgb) {
+    const alpha = /^rgba?\(/i.test(value) ? Number(value.slice(value.indexOf('(') + 1, -1).split(/[,/\s]+/).filter(Boolean)[3] ?? 1) : 1
+    return [rgb[0], rgb[1], rgb[2], Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1]
+  }
+  return parseColorMix(value)
+}
+
+/**
+ * `color-mix(in srgb, A p%, B q%)` по CSS Color 5: недостающая доля — дополнение
+ * до ста, обе пропущены — пополам; сумма меньше ста уходит в прозрачность.
+ * Смешение — с предумноженной альфой, как у браузера.
+ */
+function parseColorMix(text: string): Rgba | null {
+  const match = /^color-mix\((.*)\)$/is.exec(text.trim())
+  if (!match) return null
+  const parts: string[] = []
+  let depth = 0, start = 0
+  for (let index = 0; index < match[1].length; index += 1) {
+    const char = match[1][index]
+    if (char === '(') depth += 1
+    else if (char === ')') depth -= 1
+    else if (char === ',' && depth === 0) { parts.push(match[1].slice(start, index)); start = index + 1 }
+  }
+  parts.push(match[1].slice(start))
+  if (parts.length !== 3 || parts[0].trim().toLowerCase() !== 'in srgb') return null
+  const stops = parts.slice(1).map((part) => {
+    const stop = part.trim()
+    const after = /^(.*\S)\s+(-?[\d.]+)%$/s.exec(stop)
+    const before = /^(-?[\d.]+)%\s+(.*)$/s.exec(stop)
+    const [colorText, share] = after ? [after[1], Number(after[2])] : before ? [before[2], Number(before[1])] : [stop, null]
+    return { color: parseRgba(colorText), share }
+  })
+  const [left, right] = stops
+  if (!left.color || !right.color) return null
+  let leftShare = left.share ?? (right.share === null ? 50 : 100 - right.share)
+  let rightShare = right.share ?? 100 - leftShare
+  if (![leftShare, rightShare].every((share) => Number.isFinite(share) && share >= 0)) return null
+  const total = leftShare + rightShare
+  if (total <= 0) return null
+  const multiplier = Math.min(total, 100) / 100
+  leftShare /= total
+  rightShare /= total
+  const alpha = left.color[3] * leftShare + right.color[3] * rightShare
+  const channel = (index: number) => alpha
+    ? (left.color![index] * left.color![3] * leftShare + right.color![index] * right.color![3] * rightShare) / alpha
+    : 0
+  return [channel(0), channel(1), channel(2), alpha * multiplier]
 }
 
 // --- цвет ----------------------------------------------------------------
@@ -384,8 +470,8 @@ export type BoardScene = {
   modelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
   /** Атлас style pack: выбирается только для style-варианта, базовый atlas не подменяется. */
   styleModelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
-  /** Подписывать ли высоту поверх клетки; у объёмного пола высота уже видна геометрией. */
-  showElevationLabels?: boolean
+  /** Рисовать ли рельеф высоты (светотень, горизонтали, обрывы); у объёмного пола высота уже видна геометрией. */
+  showElevationRelief?: boolean
   /**
    * Рисовать ли запечённый свет (`src/board-lighting.ts`): тьму по сетке
    * освещённости, мягкие тени вдоль стен и тёплые ореолы источников.
@@ -437,6 +523,13 @@ export function wallTextureKeyFor(material: TacticalMaterial): string {
 export function wallTextureKeyForSide(map: TacticalMap, side: TacticalCell | null | undefined): string {
   return zoneOfCell(map, side)?.wall ?? wallTextureKeyFor(side?.material ?? 'stone')
 }
+
+/**
+ * Манифест растровых штампов предметов. Собирается `pnpm props:atlas`; его
+ * может не быть — тогда доска рисует предметы вектором (решение Р6 плана).
+ * Им же пользуется 3D-доска для плоских предметов без своей модели.
+ */
+export const PROP_ATLAS_MANIFEST = '/assets/maps/props/prop-atlas.json'
 
 /** Кадр спрайта в атласе: окно в пикселях исходного изображения. */
 export type PropFrame = { x: number; y: number; w: number; h: number }
@@ -3485,23 +3578,30 @@ function drawSilhouette(context: BoardContext2D, box: PropBox, palette: BoardPal
 }
 
 /**
- * Растровый штамп в габарит предмета. Пропорция рисунка сохраняется: спрайт
- * вписывается в габарит, а не растягивается по нему. Растянуть — значит
- * сплющить круглый стол в овал на клетке 2×1, а габарит приходит из футпринта
- * и совпадает с пропорцией рисунка не всегда.
+ * Как штамп ложится в габарит: размер рисунка в единицах габарита и нужен ли
+ * поворот на четверть. Рисунок, вытянутый поперёк габарита (ковёр нарисован
+ * стоя, а лежит поперёк комнаты), разворачивается: иначе он вписывался узкой
+ * полосой и занимал треть своего места. Общая для 2D-штампа и плоской
+ * наклейки 3D-доски, чтобы ковёр лежал одинаково в обоих видах.
  */
-function drawStamp(context: BoardContext2D, box: PropBox, texture: BoardTexture, frame: PropFrame) {
-  // Рисунок, вытянутый поперёк габарита (ковёр нарисован стоя, а лежит
-  // поперёк комнаты), разворачивается на четверть оборота: иначе он
-  // вписывался узкой полосой и занимал треть своего места.
+export function stampFit(box: PropBox, frame: { w: number; h: number }) {
   const boxLandscape = box.hw > box.hh * 1.15
   const boxPortrait = box.hh > box.hw * 1.15
   const turn = (boxLandscape && frame.h > frame.w * 1.15) || (boxPortrait && frame.w > frame.h * 1.15)
   const frameW = turn ? frame.h : frame.w
   const frameH = turn ? frame.w : frame.h
   const fit = Math.min((box.hw * 2) / frameW, (box.hh * 2) / frameH)
-  const width = frame.w * fit
-  const height = frame.h * fit
+  return { width: frame.w * fit, height: frame.h * fit, turn }
+}
+
+/**
+ * Растровый штамп в габарит предмета. Пропорция рисунка сохраняется: спрайт
+ * вписывается в габарит, а не растягивается по нему. Растянуть — значит
+ * сплющить круглый стол в овал на клетке 2×1, а габарит приходит из футпринта
+ * и совпадает с пропорцией рисунка не всегда.
+ */
+function drawStamp(context: BoardContext2D, box: PropBox, texture: BoardTexture, frame: PropFrame) {
+  const { width, height, turn } = stampFit(box, frame)
   if (!turn) {
     context.drawImage(texture.image, frame.x, frame.y, frame.w, frame.h, -width / 2, -height / 2, width, height)
     return
@@ -3537,6 +3637,9 @@ function drawOpenContainerMark(context: BoardContext2D, box: PropBox, palette: B
 export function drawProps(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const level = propDetailLevel(scene.cellSize)
   const frame = tileFrame(scene, tile)
+  // Штамп в 192 точки уменьшается до двадцати: без высокого качества холст
+  // берёт редкие выборки, и рисунок рябит. Тайл запекается один раз.
+  if ('imageSmoothingQuality' in context) context.imageSmoothingQuality = 'high'
   for (const prop of propsInTile(scene.map, tile, scene.cellSize)) {
     const painted = scene.artMode === 'map' && scene.art && prop.id.startsWith('painted:')
     if (painted) {
@@ -3558,12 +3661,15 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     const styleEntry = styleCandidate?.source === 'style' ? styleCandidate : null
     const modelAtlas = styleEntry ? scene.styleModelPropAtlas : scene.modelPropAtlas
     const modelEntry = styleEntry ?? (modelAtlas ? propModelFor(modelAtlas.catalog, canonical, prop.id) : null)
-    const detailed = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
+    // Растровый рисунок — штамп или вид модели сверху — берётся и на общем
+    // плане: уменьшенный, он остаётся бочкой и кустом, а силуэт заливкой
+    // превращал деревню в россыпь оранжевых квадратов и зелёных кругов.
+    // Силуэт остаётся запасным видом, пока атлас не загружен. Ниже
+    // `PROP_MIN_CELL_PIXELS` — только метка.
+    const detailed = level !== 'mark' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
     const modelPreview = detailed ? modelEntry?.preview : undefined
     const modelBox = modelPreview ? propModelPlacementBox(prop, drawing, modelEntry, frame.size) : placement.box
-    // Штамп берётся только на полной детализации: ниже её предмет занимает
-    // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
-    const stamped = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
+    const stamped = detailed
     // Кадр ищется в основном атласе, затем в наборе детализации.
     const stampAtlas = !stamped ? null
       : scene.propAtlas?.frames[prop.assetId] ? scene.propAtlas
@@ -3571,6 +3677,14 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     const stamp = stampAtlas?.frames[prop.assetId]
     context.save()
     context.translate((placement.x - frame.minX) * frame.size, (placement.y - frame.minY) * frame.size)
+    // Тень кладётся до поворота: свет у доски один, с северо-запада, и тень
+    // всегда падает к юго-востоку, как бы ни стоял предмет.
+    const standing = !drawing.flat && prop.blocksMove && !prop.mount && !painted
+    if (standing && (modelPreview || stamp)) {
+      const box = modelPreview ? modelBox : placement.box
+      const quarter = Math.round((((prop.rotation % 360) + 360) % 360) / 90) % 2 === 1
+      drawContactShadow(context, quarter ? { hw: box.hh, hh: box.hw } : box, frame.size)
+    }
     if (prop.rotation || painted) context.rotate(((prop.rotation + (painted ? 90 : 0)) * Math.PI) / 180)
     // Декаль лежит на полу: прозрачность возвращается руками, а не `restore`, —
     // поддельный контекст тестов не обязан хранить стек состояний.
@@ -3586,6 +3700,22 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     if (drawing.flat) context.globalAlpha = 1
     context.restore()
   }
+}
+
+/**
+ * Тень стоящего предмета на 2D-доске: мягкое пятно, сдвинутое к юго-востоку, —
+ * свет с северо-запада, тот же, что у светотени рельефа. Без неё растровый
+ * штамп лежал на полу плоской наклейкой, и колонна читалась плиткой пола.
+ * Два пятна разной плотности дают мягкий край без градиента холста: его нет у
+ * поддельного контекста тестов.
+ */
+function drawContactShadow(context: BoardContext2D, box: PropBox, size: number) {
+  const dx = size * 0.12
+  const dy = size * 0.15
+  context.fillStyle = 'rgba(12,9,6,.18)'
+  ellipseShape(context, dx, dy, box.hw * 0.98, box.hh * 0.98)
+  context.fillStyle = 'rgba(12,9,6,.2)'
+  ellipseShape(context, dx * 0.75, dy * 0.75, box.hw * 0.8, box.hh * 0.8)
 }
 
 /** Слой 6: сетка 5 футов. */
@@ -3719,16 +3849,51 @@ function drawWarmHalos(context: BoardContext2D, scene: BoardScene, frame: TileFr
 export function drawLightShading(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
   const grid = lightGridFor(scene.map)
+  const links = lightLinksFor(scene.map)
+  const map = scene.map
   const size = frame.size
+  // Клетка делится на полосы по шесть пикселей: мельче глаз не различает
+  // ступеньку тьмы, а заливок на тайл и так до шестнадцати тысяч.
+  const steps = size < 12 ? 1 : Math.min(8, Math.max(2, Math.round(size / 6)))
   context.save()
   context.fillStyle = scene.palette.lightShadow
   for (let y = frame.minY; y <= frame.maxY; y += 1) {
     for (let x = frame.minX; x <= frame.maxX; x += 1) {
-      if (!revealedAt(scene.map, x, y)) continue
-      const alpha = lightShadowAlpha(lightAt(grid, scene.map, x, y))
-      if (alpha < 0.01) continue
-      context.globalAlpha = alpha
-      context.fillRect((x - frame.minX) * size, (y - frame.minY) * size, size, size)
+      if (!revealedAt(map, x, y)) continue
+      const left = (x - frame.minX) * size
+      const top = (y - frame.minY) * size
+      const own = lightShadowAlpha(lightAt(grid, map, x, y))
+      // Углы: верхний левый, верхний правый, нижний левый, нижний правый.
+      const corners = steps === 1 ? [own, own, own, own] : [
+        lightShadowAlpha(cornerLight(map, grid, links, x, y, x, y)),
+        lightShadowAlpha(cornerLight(map, grid, links, x, y, x + 1, y)),
+        lightShadowAlpha(cornerLight(map, grid, links, x, y, x, y + 1)),
+        lightShadowAlpha(cornerLight(map, grid, links, x, y, x + 1, y + 1)),
+      ]
+      const low = Math.min(...corners)
+      const high = Math.max(...corners)
+      if (high < 0.01) continue
+      if (high - low < 0.012) {
+        context.globalAlpha = (low + high) / 2
+        context.fillRect(left, top, size, size)
+        continue
+      }
+      // Билинейно между углами; границы полос округлены до пикселя, чтобы
+      // соседние полосы не перекрывались и не оставляли щели.
+      for (let row = 0; row < steps; row += 1) {
+        const y0 = Math.round(top + (row * size) / steps)
+        const y1 = Math.round(top + ((row + 1) * size) / steps)
+        const v = (row + 0.5) / steps
+        for (let column = 0; column < steps; column += 1) {
+          const x0 = Math.round(left + (column * size) / steps)
+          const x1 = Math.round(left + ((column + 1) * size) / steps)
+          const u = (column + 0.5) / steps
+          const alpha = (corners[0] * (1 - u) + corners[1] * u) * (1 - v) + (corners[2] * (1 - u) + corners[3] * u) * v
+          if (alpha < 0.01 || x1 <= x0 || y1 <= y0) continue
+          context.globalAlpha = alpha
+          context.fillRect(x0, y0, x1 - x0, y1 - y0)
+        }
+      }
     }
   }
   context.globalAlpha = 1
@@ -3738,6 +3903,47 @@ export function drawLightShading(context: BoardContext2D, scene: BoardScene, til
   // хранить стек состояний.
   context.globalAlpha = 1
   context.restore()
+}
+
+/**
+ * Освещённость угла `(cornerX, cornerY)` клетки `(x, y)`: среднее по клеткам
+ * квадрата 2×2 вокруг угла, связанным с этой клеткой светом внутри квадрата —
+ * без стены и закрытой двери между ними. У двух связанных соседей общий угол
+ * поэтому одинаков, и тьма переходит из клетки в клетку без шва; через стену
+ * связи нет, и граница остаётся резкой, как и сам свет. Нераскрытая клетка в
+ * среднее не входит: тьма не выдаёт, что за туманом.
+ */
+function cornerLight(map: TacticalMap, grid: Uint8Array, links: Uint8Array, x: number, y: number, cornerX: number, cornerY: number) {
+  // Квадрат: 0 — верхний левый, 1 — верхний правый, 2 — нижний левый, 3 — нижний правый.
+  const cells: Array<[number, number]> = [[cornerX - 1, cornerY - 1], [cornerX, cornerY - 1], [cornerX - 1, cornerY], [cornerX, cornerY]]
+  const present = cells.map(([cx, cy]) => revealedAt(map, cx, cy))
+  const link = (cx: number, cy: number, bit: number) => {
+    const index = cellIndex(map, cx, cy)
+    return index >= 0 && (links[index] & bit) !== 0
+  }
+  const edges: Array<[number, number, boolean]> = [
+    [0, 1, link(cornerX - 1, cornerY - 1, LIGHT_LINK_EAST)],
+    [2, 3, link(cornerX - 1, cornerY, LIGHT_LINK_EAST)],
+    [0, 2, link(cornerX - 1, cornerY - 1, LIGHT_LINK_SOUTH)],
+    [1, 3, link(cornerX, cornerY - 1, LIGHT_LINK_SOUTH)],
+  ]
+  const start = cells.findIndex(([cx, cy]) => cx === x && cy === y)
+  const reached = [false, false, false, false]
+  reached[start] = true
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (const [a, b, open] of edges) {
+      if (!open || !present[a] || !present[b]) continue
+      if (reached[a] || reached[b]) { reached[a] = true; reached[b] = true }
+    }
+  }
+  let sum = 0
+  let count = 0
+  for (let index = 0; index < 4; index += 1) {
+    if (!reached[index]) continue
+    sum += lightAt(grid, map, cells[index][0], cells[index][1])
+    count += 1
+  }
+  return sum / count
 }
 
 /** Световая заливка зоны; `null` означает нейтральный яркий свет. */
@@ -3831,6 +4037,111 @@ function firstHazardCells(map: TacticalMap) {
  * местности и цвет/контур/подпись опасности. Они входят в тайловый кэш, потому
  * что меняются только вместе с картой.
  */
+// --- рельеф ------------------------------------------------------------------
+
+/**
+ * Шаг горизонталей. Правило высоты (преимущество сверху,
+ * `highGroundBetween` в `server/rules/tactical-geometry.mjs`) считает от пяти
+ * футов, и генератор ставит уступы по пять и десять: каждая линия на доске —
+ * граница, за которой высота уже меняет бой.
+ */
+export const CONTOUR_STEP_FEET = 5
+/** Перепад между соседними клетками, который рисуется обрывом с бергштрихами. */
+export const CLIFF_FEET = 10
+
+/** Высота раскрытой клетки; нераскрытая не выдаёт рельефа соседу. */
+function revealedElevation(map: TacticalMap, x: number, y: number): number | null {
+  const cell = cellAt(map, x, y)
+  return cell?.revealed ? cell.elevation : null
+}
+
+/** Стороны клетки: сдвиг к соседу и отрезок стороны в долях клетки. */
+const RELIEF_SIDES = [
+  { dx: 0, dy: -1, from: [0, 0], to: [1, 0], inward: [0, 1] },
+  { dx: 1, dy: 0, from: [1, 0], to: [1, 1], inward: [-1, 0] },
+  { dx: 0, dy: 1, from: [0, 1], to: [1, 1], inward: [0, -1] },
+  { dx: -1, dy: 0, from: [0, 0], to: [0, 1], inward: [1, 0] },
+] as const
+
+/**
+ * Высота на 2D-доске — языком карты местности, а не подписью в каждой
+ * клетке: светотень склона (свет с северо-запада, как на бумажной карте),
+ * лёгкая окраска по высоте, горизонталь через каждые пять футов и обрыв с
+ * бергштрихами там, где соседи расходятся на десять футов и больше. Точное
+ * число остаётся в подсказке клетки под курсором. Каждая клетка рисует
+ * только внутри себя, поэтому шов тайла линию не режет.
+ */
+export function drawElevationRelief(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
+  if (scene.showElevationRelief === false) return
+  const frame = tileFrame(scene, tile)
+  const size = frame.size
+  const map = scene.map
+  const contour = Math.max(1.25, size / 15)
+  const cliff = Math.max(1.5, size / 10)
+  context.save()
+  for (let y = frame.minY; y <= frame.maxY; y += 1) {
+    for (let x = frame.minX; x <= frame.maxX; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell?.revealed) continue
+      const height = cell.elevation
+      const near = (dx: number, dy: number) => revealedElevation(map, x + dx, y + dy)
+      const around = (dx: number, dy: number) => near(dx, dy) ?? height
+      if (height === 0 && [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dy]) => around(dx, dy) === 0)) continue
+      const left = (x - frame.minX) * size
+      const top = (y - frame.minY) * size
+      // Склон к свету светлее, от света темнее: подъём на восток и на юг
+      // смотрит на северо-западный свет.
+      const slope = (around(1, 0) - around(-1, 0) + around(0, 1) - around(0, -1)) / 2
+      if (slope !== 0) {
+        const strength = Math.min(.24, Math.abs(slope) * .045)
+        context.fillStyle = slope > 0 ? `rgba(255,238,204,${strength})` : `rgba(22,15,30,${strength * 1.15})`
+        context.fillRect(left, top, size, size)
+      }
+      // Плато без склона узнаётся по тону: выше — теплее и светлее, ниже — темнее.
+      if (height !== 0) {
+        const tint = Math.min(.24, Math.abs(height) * .02)
+        context.fillStyle = height > 0 ? `rgba(255,226,170,${tint})` : `rgba(18,24,40,${tint * 1.3})`
+        context.fillRect(left, top, size, size)
+      }
+      for (const side of RELIEF_SIDES) {
+        const other = near(side.dx, side.dy)
+        if (other === null) continue
+        const drop = height - other
+        const steep = Math.abs(drop) >= CLIFF_FEET
+        if (!steep && Math.floor(height / CONTOUR_STEP_FEET) === Math.floor(other / CONTOUR_STEP_FEET)) continue
+        const higher = drop > 0
+        const width = steep ? cliff : contour
+        // Линия лежит внутри своей клетки на полширины от стороны.
+        const offsetX = side.inward[0] * width / 2, offsetY = side.inward[1] * width / 2
+        const x0 = left + side.from[0] * size + offsetX, y0 = top + side.from[1] * size + offsetY
+        const x1 = left + side.to[0] * size + offsetX, y1 = top + side.to[1] * size + offsetY
+        context.lineWidth = width
+        context.strokeStyle = steep
+          ? (higher ? 'rgba(34,22,13,.82)' : 'rgba(34,22,13,.36)')
+          : (higher ? 'rgba(255,241,212,.72)' : 'rgba(46,31,19,.8)')
+        context.beginPath()
+        context.moveTo(x0, y0)
+        context.lineTo(x1, y1)
+        context.stroke()
+        // Бергштрихи — короткие штрихи вниз по склону от бровки обрыва.
+        if (steep && !higher) {
+          const tick = size * .26
+          context.lineWidth = Math.max(1, size / 22)
+          context.strokeStyle = 'rgba(34,22,13,.7)'
+          context.beginPath()
+          for (let step = .125; step < 1; step += .25) {
+            const px = x0 + (x1 - x0) * step, py = y0 + (y1 - y0) * step
+            context.moveTo(px, py)
+            context.lineTo(px + side.inward[0] * tick, py + side.inward[1] * tick)
+          }
+          context.stroke()
+        }
+      }
+    }
+  }
+  context.restore()
+}
+
 export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
   const size = frame.size
@@ -3855,23 +4166,6 @@ export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, til
           context.lineTo(left + to, top + (size - (to - offset)))
         }
         context.stroke()
-      }
-      if (cell.elevation !== 0 && scene.showElevationLabels !== false) {
-        const upward = cell.elevation > 0
-        context.strokeStyle = upward ? 'rgba(238,207,148,.62)' : 'rgba(131,174,190,.58)'
-        context.fillStyle = upward ? 'rgba(238,207,148,.88)' : 'rgba(160,202,216,.84)'
-        context.lineWidth = Math.max(1, size / 28)
-        context.beginPath()
-        context.moveTo(left + size * .08, top + size * .24)
-        context.lineTo(left + size * .23, top + size * .09)
-        context.lineTo(left + size * .38, top + size * .24)
-        context.stroke()
-        if (size >= 22) {
-          context.font = `700 ${Math.max(7, Math.min(10, size / 4.4))}px 'Alegreya Sans', sans-serif`
-          context.textAlign = 'left'
-          context.textBaseline = 'top'
-          context.fillText(`${cell.elevation > 0 ? '+' : ''}${cell.elevation} фт`, left + size * .08, top + size * .3, size * .82)
-        }
       }
       if (!cell.hazardId) continue
       const visual = hazardPresentation(cell.hazardId)
@@ -3917,6 +4211,7 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
   drawZoneBackground(context, scene, tile)
   drawFloorTiles(context, scene, tile)
   if (!painted) drawDecals(context, scene, tile)
+  drawElevationRelief(context, scene, tile)
   drawEdgeSegments(context, scene, tile)
   drawProps(context, scene, tile)
   // Слой света — единственное, что снимает настройка зрителя. Туман войны

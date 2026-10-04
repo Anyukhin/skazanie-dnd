@@ -1151,12 +1151,13 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
   /** @type {Set<string>} */
   const occupied = new Set()
   for (const prop of map.props) for (const cell of prop.footprint) occupied.add(`${cell.x},${cell.y}`)
-  /** @type {Array<{assetId: string, x: number, y: number, zoneId?: string}>} */
+  /** @type {Array<{assetId: string, x: number, y: number, zoneId?: string, footprint?: Array<{x: number, y: number}>}>} */
   const placed = map.props.map((prop) => ({
     assetId: prop.assetId,
     x: Math.floor(prop.x),
     y: Math.floor(prop.y),
     zoneId: cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone,
+    footprint: prop.footprint,
   }))
   let counter = map.props.length
   // Порог любой двери и клетка за ним по прямой закрыты для мебели всех зон:
@@ -1332,6 +1333,12 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
       // Соседство одинаковых считается внутри зоны: стог на улице у стены
       // амбара не мешает стогу внутри.
       const sameAsset = localPlaced.filter((record) => record.assetId === asset.id)
+      // Запрет «одинаковое вплотную» в оценке клетки меряет опорные клетки, а
+      // у прилавка 2×2 опора — одна клетка из четырёх: три прилавка смыкались
+      // в сплошной ряд на площади. Для широкого предмета проверяется весь след.
+      const touchingSame = (/** @type {Array<{x: number, y: number}>} */ footprint) => !CLUSTER_FRIENDLY.has(asset.id)
+        && sameAsset.some((record) => (record.footprint?.length ? record.footprint : [record])
+          .some((point) => footprint.some((cell) => Math.max(Math.abs(cell.x - point.x), Math.abs(cell.y - point.y)) <= 1)))
       for (let position = offset; position < cells.length; position += stride) {
         const cell = cells[position]
         if (occupied.has(`${cell.x},${cell.y}`) || keepClear.has(`${cell.x},${cell.y}`) || thresholds.has(`${cell.x},${cell.y}`)) continue
@@ -1356,6 +1363,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
         // Вторая клетка шкафа тоже не встаёт перед окном.
         if (footprint && asset.blocksSight && footprint.some((point) => windowBeside(map, point.x, point.y))) continue
+        if (footprint && touchingSame(footprint)) continue
         if (footprint) {
           chosen = { cell: candidate.cell, rotation, footprint }
           break
@@ -1371,6 +1379,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
           const footprint = fittingFootprint(map, blocked, candidate.cell, asset.baseFootprint, rotation)
           // Вторая клетка шкафа тоже не встаёт перед окном.
           if (footprint && asset.blocksSight && footprint.some((point) => windowBeside(map, point.x, point.y))) continue
+          if (footprint && touchingSame(footprint)) continue
           if (footprint) {
             chosen = { cell: candidate.cell, rotation, footprint }
             break
@@ -1398,7 +1407,7 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         interactive: asset.interactive,
       })
       for (const cell of chosen.footprint) occupied.add(`${cell.x},${cell.y}`)
-      placed.push({ assetId: asset.id, x: chosen.cell.x, y: chosen.cell.y, zoneId: plan.zoneId })
+      placed.push({ assetId: asset.id, x: chosen.cell.x, y: chosen.cell.y, zoneId: plan.zoneId, footprint: chosen.footprint })
     }
   }
   attachPropSupports(map)
@@ -1544,8 +1553,12 @@ export function placeColonnade(map, { zoneId, assetId = 'pillar', idPrefix = 'co
     for (let index = 1; index <= inner; index += 1) rows.push(Math.round(first + (last - first) * index / (inner + 1)))
   }
   let placed = 0
+  // В длинном зале опоры — через две клетки, в коротком — через одну: при
+  // шаге в одну клетку у входа склепа вставало по три дюжины колонн, и зал
+  // превращался в частокол.
+  const step = length >= 12 ? 3 : 2
   for (const row of rows) {
-    for (let along = (horizontal ? minX : minY) + 1; along <= (horizontal ? maxX : maxY) - 1; along += 2) {
+    for (let along = (horizontal ? minX : minY) + 1; along <= (horizontal ? maxX : maxY) - 1; along += step) {
       const cell = horizontal ? { x: along, y: row } : { x: row, y: along }
       const key = cellKey(cell)
       if (!inZone.has(key) || clear.has(key) || occupied.has(key)) continue
