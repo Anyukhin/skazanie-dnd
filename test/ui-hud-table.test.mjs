@@ -37,7 +37,7 @@ test('элементы HUD читают серверную проекцию и �
   // Круг ячейки у плитки ложится в тот же slot_level, что и список «Ячейка».
   assert.match(map, /onPick=\{\(level\) => \{\s*setSpellSlotLevelChoice\(level\)/)
   // «Не убивать» — тот же флаг knock_out атаки ближнего боя.
-  assert.match(map, /knockout-turn-toggle hud-toggle[^\n]*aria-pressed=\{knockOut\}/)
+  assert.match(map, /knockout-turn-toggle[^\n]*aria-pressed=\{knockOut\}/)
   // Окно реакции: те же команды выбора и отказа, часы — серверный turn_clock.
   assert.match(app, /onDecline=\{\(\) => useCombatAction\(reactionWindow\.actor_id, 'decline-reaction'\)\}/)
   assert.match(app, /clock\.reaction_window_id === window\.id/)

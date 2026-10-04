@@ -274,6 +274,15 @@ function heroClassPoolRowsFrom(resources: Record<string, { current?: number; max
     .filter((row) => !isSpellSlotPool(row.keys[0]) && row.keys[0] !== 'pact_slots')
 }
 
+/** Кошелёк одной строкой: «15 зм 3 см», без нулевых монет; пустой — «0 зм». */
+function purseText(currency: { platinum?: number; gold?: number; silver?: number; copper?: number }) {
+  const parts = ([['platinum', 'пм'], ['gold', 'зм'], ['silver', 'см'], ['copper', 'мм']] as const)
+    .map(([key, label]) => [Math.max(0, Number(currency?.[key]) || 0), label] as const)
+    .filter(([value]) => value > 0)
+    .map(([value, label]) => `${value} ${label}`)
+  return parts.length ? parts.join(' ') : '0 зм'
+}
+
 export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, chronicleStatus, freeRoll, children }: {
   state: GameState
   players: Player[]
@@ -3246,6 +3255,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             противников — свёртком под полоской. ОЗ ходящего здесь не
             повторяются: они есть в списке отряда и в полоске жизни. */}
         {chronicleStatus && <div className="chronicle-status">{chronicleStatus}</div>}
+        {/* «Кто в сцене», как в макете исследования: живые NPC сцены, щелчок —
+            тот же разговор, что «Заговорить» в меню фишки. */}
+        {!combatActive && sceneNpcs.some((npc) => npc.alive) && <section className="scene-who-card" aria-label="Кто в сцене">
+          <header><b>Кто в сцене</b><small>щелчок — заговорить</small></header>
+          {sceneNpcs.filter((npc) => npc.alive).slice(0, 5).map((npc) => <button key={npc.id} type="button" className="scene-who-row" disabled={narrating} onClick={() => openNpcDossier(npc.id, 'talk')} title={`Заговорить: ${npc.name}`}>
+            <NpcTokenPortrait campaignId={state.sessionCode} npcId={npc.id} name={npc.name} />
+            <span><b>{npc.name}</b><small>{npc.role || 'Персонаж'}</small></span>
+            <em>{NPC_STANCE_LABELS[visibleNpcStance(npc.stance)]}</em>
+          </button>)}
+        </section>}
         {combatActive && <div className="turn-strip" role="status" aria-live="polite" aria-label={`Раунд ${combat.round ?? 1}, ходит ${activeName}`}>
           <span className="turn-strip-round">Раунд {combat.round ?? 1}</span>
           <span className="turn-strip-actor">ходит <b className={activeHero || activeSummon ? 'ally' : 'enemy'}>{activeName}</b></span>
@@ -3885,7 +3904,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий" hidden={Boolean(viewerHero)}>
           {([
             ['all', 'Все', <Sparkles size={18} />],
-            ['common', 'Основные', <CombatIcon id="common-actions" kind="action" size={18} compact />],
+            ['common', 'Общие', <CombatIcon id="common-actions" kind="action" size={18} compact />],
             ['weapon', 'Атаки', <Swords size={18} />],
             ['magic', 'Заклинания', <Sparkles size={18} />],
             ['class', 'Классовые', <Shield size={18} />],
@@ -3915,9 +3934,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
                 : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
             ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={18} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
-            {/* Переключатель, как «Не убивать» макета: флаг `knock_out` уходит
-                с ближайшей атакой ближнего боя, сервер сам решает, сработал ли он. */}
-            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle hud-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='Не убивать: удар, сводящий ОЗ к нулю, оставит цель с 1 ОЗ без сознания. Только ближний бой'><span className="nonlethal-icon"><CombatIcon id="nonlethal" kind="action" size={14} compact /></span><span>Не убивать</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={18} compact /><span>Сменить оружие</span></button>}
         </div>}
         </div>
@@ -4112,6 +4128,17 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 : <span key={reaction.id} className={`hud-reaction${railReactionReady ? '' : ' spent'}`} title={`${reaction.name} — реакция. Срабатывает в окне реакции, когда случится подходящее событие${railReactionReady ? '' : '. Реакция этого раунда уже потрачена'}`}><CombatIcon id={reactionIconId(reaction)} kind={reaction.kind === 'spell' ? 'spell' : 'action'} hint={reaction.name} size={34} compact /></span>)}
             </div>
           </div>}
+          {/* Переключатели, как «Не убивать» макета: флаг `knock_out` уходит с
+              ближайшей атакой ближнего боя, сервер сам решает, сработал ли он. */}
+          {combatActive && knockoutEligible && <div className="hud-toggles" role="group" aria-label="Переключатели">
+            <span className="hud-side-title">Переключатели</span>
+            <div className="hud-reaction-grid">
+              <button type="button" className={`hud-reaction hud-toggle-button knockout-turn-toggle${knockOut ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} aria-label={`Не убивать — ${knockOut ? 'включено' : 'выключено'}`} onClick={() => setKnockOut((current) => !current)} title="Не убивать: удар, сводящий ОЗ к нулю, оставит цель с 1 ОЗ без сознания. Только ближний бой"><CombatIcon id="nonlethal" kind="action" size={34} compact /></button>
+            </div>
+          </div>}
+          {/* Часы хода — под реакциями, как в макете: тот же серверный срок, что
+              и в полосе хода хроники. */}
+          {combatActive && state.turn_clock && <div className="hud-turn-clock"><CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} compact /></div>}
           {state.mechanics?.movement?.[viewerHero?.id ?? turnActorId] && <div className="hero-cluster-speed" aria-label="Скорость героя">
             <span>Скорость: <b>{railMovement.currentSpeed} фт</b> · базовая {railMovement.baseSpeed} фт</span>
             {railMovement.effects.filter((effect) => effect.applied).map((effect) => <span key={effect.effect_id}>{effect.name} {effect.bonus_feet >= 0 ? '+' : ''}{effect.bonus_feet} фт</span>)}
@@ -4139,6 +4166,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                {(letterAddressees.length > 0 || heroLetters.length > 0) && <button type="button" className={`hud-mode${openSituational === 'letters' ? ' open' : ''}`} aria-expanded={openSituational === 'letters'} onClick={() => { toggleChat(false); toggleSituational('letters') }} title="Почта отряда: письма и курьеры"><CombatIcon id="letters" kind="action" size={22} compact /><span>Письма</span>{heroLettersInTransit.length > 0 && <b aria-label={`в пути: ${heroLettersInTransit.length}`}>{heroLettersInTransit.length}</b>}</button>}
                {canSetReactionModes && <button type="button" data-reaction-modes-anchor="" className={`hud-mode${reactionMenu ? ' open' : ''}`} aria-haspopup="dialog" aria-expanded={Boolean(reactionMenu)} onClick={(event) => openReactionModes(event.currentTarget)} title="Режимы реакций: спрашивать, сразу или никогда"><RefreshCw size={18} aria-hidden="true" /><span>Реакции</span></button>}
              </div>
+             {reactionHero?.currency && <div className="hud-purse" aria-label={`Кошелёк: ${purseText(reactionHero.currency)}`}><span className="hud-purse-coin" aria-hidden="true" /><span>Кошелёк</span><b>{purseText(reactionHero.currency)}</b></div>}
            </div>}
         </div>}
         {/* Завершение хода — главное решение этого ряда, и выглядит оно так
