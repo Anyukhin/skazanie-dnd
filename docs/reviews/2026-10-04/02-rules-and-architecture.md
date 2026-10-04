@@ -17,7 +17,7 @@ ARC-07 сохранены в [architecture-probes.mjs](./architecture-probes.mjs
 Сейчас в проекте уже есть полезное разделение: `core`, запросы к акторам и
 тактическая геометрия вынесены в листовые модули, а `world-memory`, NPC,
 предметы и несколько политик имеют собственные normalizer/apply-функции.
-Тест [server-import-graph.test.mjs:73](../../../test/server-import-graph.test.mjs#L73)
+Тест [server-import-graph.test.mjs:73](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/test/server-import-graph.test.mjs#L73)
 запрещает циклы. Это хорошая основа для следующего шага. Проблема не в том,
 что Rules Engine обязан быть микросервисом, а в том, что один файл всё ещё
 содержит несколько разных интерфейсов: нормализацию, проверку команд,
@@ -34,10 +34,10 @@ Severity: P1 может нарушить авторитет редакции, ц
 ### ARC-01 — P2: commit-first записывает несовместимую редакцию в metadata
 
 `FileEventStore.commit()` умеет сам создать отсутствующую кампанию:
-[event-store.mjs:778-803](../../../server/event-store.mjs#L778-L803). При этом
+[event-store.mjs:778-803](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/event-store.mjs#L778-L803). При этом
 начальный snapshot строится из `initialStateFactory`, но metadata создаётся с
 жёсткими `srd_5_2_1`, `5.2.1` и одноимённым pack:
-[event-store.mjs:449-470](../../../server/event-store.mjs#L449-L470). Поэтому временный
+[event-store.mjs:449-470](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/event-store.mjs#L449-L470). Поэтому временный
 repro с factory, возвращающей `ruleset_id: dnd_5e_2014`, и первым `commit()` без
 `initializeCampaign()` даёт `state.ruleset_id = dnd_5e_2014`, но
 `metadata.ruleset_id = srd_5_2_1`. Обычный HTTP-create вызывает
@@ -59,11 +59,11 @@ metadata, audit и cutover: операционный инструмент, ко�
 ### ARC-02 — P2: неизвестное событие принимается, повышает версию и молча теряется
 
 Нормализация события проверяет форму `event_type`, но не существование
-контракта: [event-store.mjs:595-615](../../../server/event-store.mjs#L595-L615). Commit
+контракта: [event-store.mjs:595-615](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/event-store.mjs#L595-L615). Commit
 сразу прогоняет его через reducer и сохраняет:
-[event-store.mjs:798-837](../../../server/event-store.mjs#L798-L837). В основном reducer
+[event-store.mjs:798-837](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/event-store.mjs#L798-L837). В основном reducer
 у неизвестного типа срабатывает пустая ветка `default`:
-[rules-engine.mjs:24707-24711](../../../server/rules-engine.mjs#L24707-L24711).
+[rules-engine.mjs:24707-24711](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L24707-L24711).
 
 Короткий repro с временным каталогом записал `TypoEvent` с payload `hp: 999`:
 commit вернул `state_version: 1`, событие осталось в журнале, но состояние не
@@ -85,16 +85,16 @@ current event получает 4xx/ошибку до commit; старый пот
 
 `sourceIdsFor()` отвергает только ID с префиксом другой установленной редакции,
 но неизвестный `evil:invented-rule` принимает:
-[rules-engine.mjs:4200-4210](../../../server/rules-engine.mjs#L4200-L4210). Затем
+[rules-engine.mjs:4200-4210](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L4200-L4210). Затем
 `normalizeCommand` сохраняет его, а `eventFrom` переносит в событие:
-[rules-engine.mjs:4212-4231](../../../server/rules-engine.mjs#L4212-L4231) и
-[rules-engine.mjs:7098-7126](../../../server/rules-engine.mjs#L7098-L7126). На
+[rules-engine.mjs:4212-4231](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L4212-L4231) и
+[rules-engine.mjs:7098-7126](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L7098-L7126). На
 реальном player HTTP path `sanitizePlayerCombatCommand()` строит allowlisted
-`base` без source IDs ([index.mjs:1210-1215](../../../server/index.mjs#L1210-L1215)),
+`base` без source IDs ([index.mjs:1210-1215](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L1210-L1215)),
 поэтому unprivileged client injection здесь не доказан. Но
 `/api/campaigns/:id/commands` для admin и часть внутренних callers передают
 другие команды дальше без этого санитайзера
-([index.mjs:4971-4980](../../../server/index.mjs#L4971-L4980)); внутренний repro
+([index.mjs:4971-4980](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L4971-L4980)); внутренний repro
 на `MakeAbilityCheck` возвращает forged ID одновременно в `result.command` и
 `result.events[0]`.
 
@@ -112,10 +112,10 @@ server-owned: принимать только ID активного ruleset/allo
 
 `normalizeCampaignState` превращает любой непустой `ruleset_id` в строку и не
 вызывает `rulesetProfile`:
-[rules-engine.mjs:1969-1979](../../../server/rules-engine.mjs#L1969-L1979). В
+[rules-engine.mjs:1969-1979](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L1969-L1979). В
 `resolveCommand` неизвестный `made-up` state всё же проходит обычную проверку,
 а fallback `RULE_IDS` остаётся `srd_5_2_1` через
-[rules-engine.mjs:4200-4215](../../../server/rules-engine.mjs#L4200-L4215). Repro:
+[rules-engine.mjs:4200-4215](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L4200-L4215). Repro:
 `normalizeCampaignState({ruleset_id: 'made-up', players: [...]})` затем
 `MakeAbilityCheck` успешно выдаёт событие с
 `srd_5_2_1:checks:ability-check`.
@@ -128,17 +128,17 @@ HTTP-создание обычно закрывает это через `ruleset
 legacy replay: старый журнал должен читаться, но кампания с неизвестной
 редакцией должна быть явно locked до миграции. Версию по умолчанию следует
 брать из profile; сейчас строка `5.2.1` задана прямо в
-[rules-engine.mjs:1973-1976](../../../server/rules-engine.mjs#L1973-L1976).
+[rules-engine.mjs:1973-1976](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L1973-L1976).
 
 ### ARC-05 — P2: rule entity_refs не связаны с glossary
 
 `validateRulePack()` проверяет, что `entity_refs` — массив строк, но не требует,
 чтобы значения существовали в glossary:
-[rule-pack.mjs:261-293](../../../server/rule-pack.mjs#L261-L293) и
-[rule-pack.mjs:325-338](../../../server/rule-pack.mjs#L325-L338). Мутация загруженного
+[rule-pack.mjs:261-293](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rule-pack.mjs#L261-L293) и
+[rule-pack.mjs:325-338](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rule-pack.mjs#L325-L338). Мутация загруженного
 pack с `rules[0].entity_refs = ['missing:term']` проходит валидацию. Retriever
 затем просто получает пустой результат `pack.glossary.filter(...)` в
-[rule-retriever.mjs:156-168](../../../server/rule-retriever.mjs#L156-L168), поэтому
+[rule-retriever.mjs:156-168](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rule-retriever.mjs#L156-L168), поэтому
 пакет выглядит валидным, но теряет aliases и обогащение поиска.
 
 Confidence: 1.0; effort: S. Проверка subset glossary IDs и тест на неизвестный
@@ -148,9 +148,9 @@ ref сделают ошибку локальной при сборке pack. Э�
 
 `RuleRetriever` проверяет уникальность `pack_id`, но при сборке документов не
 проверяет уникальность пары `(ruleset_id, rule.id)`:
-[rule-retriever.mjs:295-316](../../../server/rule-retriever.mjs#L295-L316). Во время
+[rule-retriever.mjs:295-316](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rule-retriever.mjs#L295-L316). Во время
 поиска результаты складываются в `Map` по `document.id`:
-[rule-retriever.mjs:363-404](../../../server/rule-retriever.mjs#L363-L404). Repro с
+[rule-retriever.mjs:363-404](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rule-retriever.mjs#L363-L404). Repro с
 копией `srd_5_2_1` под новым `pack_id` проходит constructor, но все совпавшие
 результаты внезапно несут последний pack; порядок загрузки определяет победителя.
 
@@ -165,13 +165,13 @@ ref сделают ошибку локальной при сборке pack. Э�
 
 `applyGameEventCurrent` начинает каждый event с
 `normalizeCampaignState(rawState)`
-([rules-engine.mjs:21941-21957](../../../server/rules-engine.mjs#L21941-L21957)).
+([rules-engine.mjs:21941-21957](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L21941-L21957)).
 EventStore уже ввёл `reducerNormalizesInput` и trusted fast path, но этот reducer
 сам повторяет нормализацию, а fast path снимает только вторую нормализацию
-результата: [event-store.mjs:364-398](../../../server/event-store.mjs#L364-L398).
+результата: [event-store.mjs:364-398](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/event-store.mjs#L364-L398).
 Исторический комментарий в EventStore сообщает замер: до кэша `_load` занимал
 82% CPU и 1–2 секунды на команду для кампании двух героев 11-го уровня:
-[event-store.mjs:241-260](../../../server/event-store.mjs#L241-L260).
+[event-store.mjs:241-260](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/event-store.mjs#L241-L260).
 
 Повторная нормализация — установленный факт, а величина ускорения после её
 устранения — гипотеза, которую надо измерять benchmark-ом; probe печатает
@@ -187,11 +187,11 @@ effort: M. До замены нужно проверить, какие post-even
 ### ARC-08 — P2/design hypothesis: монолит имеет слишком широкий интерфейс для дальнейших правил
 
 `rules-engine.mjs` содержит 25 161 строку, импортирует десятки доменных модулей
-([rules-engine.mjs:1-509](../../../server/rules-engine.mjs#L1-L509)), экспортирует 61
+([rules-engine.mjs:1-509](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L1-L509)), экспортирует 61
 имя и напрямую импортируется 34 серверными модулями. Проверка команд занимает
-примерно [5627-7095](../../../server/rules-engine.mjs#L5627-L7095), resolver —
-[11751-21266](../../../server/rules-engine.mjs#L11751-L21266), reducer —
-[21941-24754](../../../server/rules-engine.mjs#L21941-L24754). Это не defect само по
+примерно [5627-7095](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L5627-L7095), resolver —
+[11751-21266](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L11751-L21266), reducer —
+[21941-24754](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L21941-L24754). Это не defect само по
 себе: поведение тестируемо. Но добавление нового домена требует одновременно
 трогать allowlist, normalization, validate, resolve, reducer и summary, что
 увеличивает шанс забыть одну точку.
@@ -209,8 +209,8 @@ ARC-07 может дать выигрыш после characterization, а ARC-08
 
 Это отдельная будущая задача после завершения и сверки миграции executor. Старый
 `docs/agent-architecture-plan.md` сознательно исключает рефакторинг движка из
-своего шага ([строки 290-292](../../../docs/agent-architecture-plan.md#L290-L292)
-и [строка 466](../../../docs/agent-architecture-plan.md#L466)); ниже не
+своего шага ([строки 290-292](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/docs/agent-architecture-plan.md#L290-L292)
+и [строка 466](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/docs/agent-architecture-plan.md#L466)); ниже не
 предлагается расширять тот план или выполнять extraction «заодно». Его можно
 начинать только отдельным change set с characterization и совместимостью replay.
 
@@ -242,7 +242,7 @@ ARC-07 может дать выигрыш после characterization, а ARC-08
    по ownership. Общие post-event consumers (`world_deeds`, `law`, tavern,
    captives) оставить после основного handler order, потому что текущий порядок
    является частью replay-контракта:
-   [rules-engine.mjs:24713-24752](../../../server/rules-engine.mjs#L24713-L24752).
+   [rules-engine.mjs:24713-24752](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L24713-L24752).
    Unknown current event должен падать по ARC-02; legacy policy должна быть
    отдельной веткой.
 
@@ -264,7 +264,7 @@ ARC-07 может дать выигрыш после characterization, а ARC-08
 
 ## Что не стоит обобщать сейчас
 
-[`contracts.mjs:11-28`](../../../server/contracts.mjs#L11-L28) содержит пустые `RuleRepository`,
+[`contracts.mjs:11-28`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/contracts.mjs#L11-L28) содержит пустые `RuleRepository`,
 `CampaignRepository` и прочие заготовки без реальных adapters. По deletion test
 они пока не дают leverage; переносить EventStore в абстрактный repository слой
 до второго работающего backend не нужно. Также не следует превращать rule pack в

@@ -27,23 +27,23 @@ Severity означает практический приоритет испра
 
 Тип: risk · confidence: high (in-memory path; HTTP отдельно не прогонялся).
 
-[`server/index.mjs#L5355`](../../../server/index.mjs#L5355) принимает `POST /api/roll` от владельца героя и
+[`server/index.mjs#L5355`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L5355) принимает `POST /api/roll` от владельца героя и
 не требует `checkId`/`check_id`. Ветка `RollRegistry.issue` с необязательным
-`registeredId` ([`roll-registry.mjs#L145`](../../../server/roll-registry.mjs#L145)) создаёт запись с
+`registeredId` ([`roll-registry.mjs#L145`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/roll-registry.mjs#L145)) создаёт запись с
 `context = null`, при этом клиент задаёт `modifier` и `difficulty` в допустимых
 границах. Для этого endpoint нет вызова `exceedsRate`.
 
 Дальше `POST /api/narrate` потребляет такой `roll_id`, проверяя только campaign,
-actor и callback контекста ([`index.mjs#L5473`](../../../server/index.mjs#L5473)). В
+actor и callback контекста ([`index.mjs#L5473`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L5473)). В
 `GameOrchestrator` при распознанной обычной проверке `planCheckCommand` получает
-`verifiedRoll` и добавляет его в команду ([`game-orchestrator.mjs#L2611`](../../../server/game-orchestrator.mjs#L2611)),
+`verifiedRoll` и добавляет его в команду ([`game-orchestrator.mjs#L2611`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2611)),
 хотя обязательной проверки, что запись была зарегистрирована как эта проверка,
 нет. Специальный `assertFreeActionConfirmation` защищает один путь свободного
-действия ([`autonomous-orchestrator.mjs#L1185`](../../../server/autonomous-orchestrator.mjs#L1185)), но не закрывает
+действия ([`autonomous-orchestrator.mjs#L1185`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/autonomous-orchestrator.mjs#L1185)), но не закрывает
 обычную ветку `MakeAbilityCheck`.
 
 `checkRollFromVerified` берёт из записи только выпавшие кости и пересчитывает
-модификатор и СЛ ([`rules-engine.mjs#L10744`](../../../server/rules-engine.mjs#L10744)). Поэтому игрок не
+модификатор и СЛ ([`rules-engine.mjs#L10744`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/rules-engine.mjs#L10744)). Поэтому игрок не
 подделывает итог напрямую, но может без лимита выпускать серверные d20, выбрать
 удачный `roll_id` и подать его в следующую проверку. Это обходит смысл
 двухфазной карточки «сначала объявить проверку, затем бросить именно её» и
@@ -68,11 +68,11 @@ command fingerprint и `state_version`, а выпуск ограничить н�
 Тип: confirmed · confidence: high.
 
 `persistAuthoritativeProjection` сначала читает compatibility room и сравнивает
-только `state_version` ([`index.mjs#L3019`](../../../server/index.mjs#L3019)). Если версия комнаты равна
+только `state_version` ([`index.mjs#L3019`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L3019)). Если версия комнаты равна
 предложенной и нет journal message, функция сразу вызывает
-`acknowledgeProjection` и возвращает room ([`index.mjs#L3033`](../../../server/index.mjs#L3033)); сравнения
+`acknowledgeProjection` и возвращает room ([`index.mjs#L3033`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L3033)); сравнения
 `compareProjection` в этой ветке нет. Сам `FileEventStore.acknowledgeProjection`
-принимает переданный `projectionHash` как есть ([`event-store.mjs#L941`](../../../server/event-store.mjs#L941))
+принимает переданный `projectionHash` как есть ([`event-store.mjs#L941`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/event-store.mjs#L941))
 и не вычисляет hash заново.
 
 Проба [`projection-trace-probes.mjs#L24`](./projection-trace-probes.mjs#L24),
@@ -103,9 +103,9 @@ reconcile, но этот fast path вызывается из нескольки�
 Тип: confirmed · confidence: high.
 
 Состояние фиксируется раньше trace: `GameOrchestrator` делает
-`eventStore.commit` ([`game-orchestrator.mjs#L2735`](../../../server/game-orchestrator.mjs#L2735)), а
+`eventStore.commit` ([`game-orchestrator.mjs#L2735`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2735)), а
 `saveTrace` вызывается только после построения narration
-([`game-orchestrator.mjs#L2871`](../../../server/game-orchestrator.mjs#L2871); запись выполняется [`trace-store.mjs#L57`](../../../server/trace-store.mjs#L57)). Trace —
+([`game-orchestrator.mjs#L2871`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2871); запись выполняется [`trace-store.mjs#L57`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/trace-store.mjs#L57)). Trace —
 отдельный атомарный JSON-файл, но не часть event commit и не durable outbox.
 
 Проба [`projection-trace-probes.mjs#L47`](./projection-trace-probes.mjs#L47),
@@ -115,8 +115,8 @@ trace не создаётся повторно. Если процесс оста
 trace-файл станет недоступен
 между этими шагами, событие уже есть, а HTTP может вернуть 500. Повтор с тем же
 idempotency key читается как duplicate: `replayTrace` берётся из существующего
-файла ([`game-orchestrator.mjs#L2794`](../../../server/game-orchestrator.mjs#L2794)), а новый trace сохраняется только при
-`!idempotentReplay` ([`game-orchestrator.mjs#L2871`](../../../server/game-orchestrator.mjs#L2871)). Следовательно, retry исправляет narration/state,
+файла ([`game-orchestrator.mjs#L2794`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2794)), а новый trace сохраняется только при
+`!idempotentReplay` ([`game-orchestrator.mjs#L2871`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2871)). Следовательно, retry исправляет narration/state,
 но не восстанавливает `/why`; запись может отсутствовать навсегда. Event log и
 механический retry при этом сохраняются; ущерб относится к объяснимости принятого
 хода, а не к потере mechanics. Существующий
@@ -135,11 +135,11 @@ O_EXCL. Проверка: fault после commit перед `saveTrace`, зат
 Тип: limitation · confidence: high.
 
 В `/api/narrate` roll потребляется до вызова orchestrator
-([`index.mjs#L5473`](../../../server/index.mjs#L5473)); сам механический event commit происходит позднее
-([`game-orchestrator.mjs#L2735`](../../../server/game-orchestrator.mjs#L2735)). `RollRegistry.consume` сразу меняет
-`consumed_by` и переписывает registry ([`roll-registry.mjs#L184`](../../../server/roll-registry.mjs#L184)).
+([`index.mjs#L5473`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L5473)); сам механический event commit происходит позднее
+([`game-orchestrator.mjs#L2735`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2735)). `RollRegistry.consume` сразу меняет
+`consumed_by` и переписывает registry ([`roll-registry.mjs#L184`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/roll-registry.mjs#L184)).
 Общей транзакции с event store нет — это прямо отмечено в целевой архитектуре
-как оставшаяся граница ([`target-architecture.md#L146`](../../../docs/target-architecture.md#L146)). Если после
+как оставшаяся граница ([`target-architecture.md#L146`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/docs/target-architecture.md#L146)). Если после
 consume commit не состоялся, durable registry уже не знает, был ли у команды
 успешный event commit. Валидатор с принудительным `STATE_VERSION_CONFLICT`
 подтвердил orphan pre-commit consume: `consumed_by` остаётся; повтор с тем же
@@ -164,11 +164,11 @@ protocol не покрывает выбранную гарантию. Fault-те
 Тип: limitation · confidence: high.
 
 `event-store.atomicWrite` делает `fsyncSync` временного файла до `renameSync`
-([`event-store.mjs#L144`](../../../server/event-store.mjs#L144)), но не fsync каталога после rename. В более
+([`event-store.mjs#L144`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/event-store.mjs#L144)), но не fsync каталога после rename. В более
 критичных вспомогательных хранилищах нет даже fsync файла: registry закрывает
-descriptor и переименовывает ([`roll-registry.mjs#L48`](../../../server/roll-registry.mjs#L48)), trace делает
-`writeFileSync` и `renameSync` ([`trace-store.mjs#L38`](../../../server/trace-store.mjs#L38)), backup — то же
-([`backup-service.mjs#L84`](../../../server/backup-service.mjs#L84)). Это ограничение именно power-loss
+descriptor и переименовывает ([`roll-registry.mjs#L48`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/roll-registry.mjs#L48)), trace делает
+`writeFileSync` и `renameSync` ([`trace-store.mjs#L38`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/trace-store.mjs#L38)), backup — то же
+([`backup-service.mjs#L84`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/backup-service.mjs#L84)). Это ограничение именно power-loss
 durability: атомарный rename защищает от полуписанного JSON, но без fsync
 каталога нельзя обещать, что новый directory entry, consumed marker, trace или
 backup переживут потерю питания. Процессный crash-тест сам по себе это не
@@ -194,11 +194,11 @@ verification для process-crash сценария.
 [`08-evidence-and-method.md#изолированная-проверка-sse-backpressure`](./08-evidence-and-method.md#изолированная-проверка-sse-backpressure).
 `writeCampaignStream` отмечает `narrationBackpressured`, когда
 `res.write` вернул `false`, но сам продолжает писать следующий frame
-([`index.mjs#L2405`](../../../server/index.mjs#L2405)). Только `NarrationStream._deliver` уважает этот
+([`index.mjs#L2405`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L2405)). Только `NarrationStream._deliver` уважает этот
 флаг и складывает последний текст в pending map
-([`narration-stream.mjs#L93`](../../../server/narration-stream.mjs#L93)). Presence и room broadcasts вызывают
-`writeCampaignStream` напрямую ([`index.mjs#L2413`](../../../server/index.mjs#L2413), [`index.mjs#L2421`](../../../server/index.mjs#L2421)), а
-heartbeat пишет напрямую раз в 20 секунд ([`index.mjs#L3713`](../../../server/index.mjs#L3713)).
+([`narration-stream.mjs#L93`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/narration-stream.mjs#L93)). Presence и room broadcasts вызывают
+`writeCampaignStream` напрямую ([`index.mjs#L2413`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L2413), [`index.mjs#L2421`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L2421)), а
+heartbeat пишет напрямую раз в 20 секунд ([`index.mjs#L3713`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L3713)).
 
 Медленный аутентифицированный SSE-клиент, который не читает socket, получает
 неограниченную очередь room/presence кадров при боевых обновлениях или частом
@@ -217,11 +217,11 @@ typing. Это риск памяти и event-loop latency для кампани
 
 Тип: limitation · confidence: high.
 
-`migrateRoomFile` читает исходный файл ([`001-event-engine.mjs#L81`](../../../server/migrations/001-event-engine.mjs#L81)),
+`migrateRoomFile` читает исходный файл ([`001-event-engine.mjs#L81`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/migrations/001-event-engine.mjs#L81)),
 строит новый JSON и позже без проверки исходного hash пишет backup и room
-([`001-event-engine.mjs#L123`](../../../server/migrations/001-event-engine.mjs#L123)).
+([`001-event-engine.mjs#L123`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/migrations/001-event-engine.mjs#L123)).
 `migrateRoomsDirectory` последовательно обходит файлы
-([`001-event-engine.mjs#L150`](../../../server/migrations/001-event-engine.mjs#L150)), но не устанавливает lock, который понимает `store.saveRoom`.
+([`001-event-engine.mjs#L150`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/migrations/001-event-engine.mjs#L150)), но не устанавливает lock, который понимает `store.saveRoom`.
 Если сервер или второй migrator запишет room между чтением и `atomicWriteRaw`,
 миграция молча перезапишет более свежие messages/state.
 
@@ -237,11 +237,11 @@ typing. Это риск памяти и event-loop latency для кампани
 Тип: risk · confidence: medium.
 
 `projection-integrity.canonicalProjection` сравнивает только статический массив
-полей ([`projection-integrity.mjs#L3`](../../../server/projection-integrity.mjs#L3), [`projection-integrity.mjs#L50`](../../../server/projection-integrity.mjs#L50)). Аналогично
+полей ([`projection-integrity.mjs#L3`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/projection-integrity.mjs#L3), [`projection-integrity.mjs#L50`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/projection-integrity.mjs#L50)). Аналогично
 `viewer-projection` держит отдельный список `PROJECTED_STATE_KEYS`
-([`viewer-projection.mjs#L1462`](../../../server/viewer-projection.mjs#L1462)), а общий security projector по
-умолчанию пропускает незнакомый ключ ([`security.mjs#L117`](../../../server/security.mjs#L117)); private
-имена перечислены вручную ([`security.mjs#L86`](../../../server/security.mjs#L86)).
+([`viewer-projection.mjs#L1462`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/viewer-projection.mjs#L1462)), а общий security projector по
+умолчанию пропускает незнакомый ключ ([`security.mjs#L117`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/security.mjs#L117)); private
+имена перечислены вручную ([`security.mjs#L86`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/security.mjs#L86)).
 
 При добавлении нового authoritative поля забытый `CANONICAL_FIELDS` означает,
 что room hash совпадёт даже при отсутствии поля. Забытый `PROJECTED_STATE_KEYS`

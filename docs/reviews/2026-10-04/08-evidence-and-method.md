@@ -60,7 +60,7 @@ P1 в отчётах означает работу до расширения з�
 Всего отслеживается **4 882 файла**, из них **592** соответствуют
 `test/*.test.mjs`. В 36 серверных файлах первая строка — `// @ts-check`.
 Этот счётчик не означает, что остальные модули проверяются типами; применяемый
-режим описан в [tsconfig.server.json](../../../tsconfig.server.json).
+режим описан в [tsconfig.server.json](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/tsconfig.server.json).
 
 | Файл | Строки | Почему заслуживает внимания |
 | --- | ---: | --- |
@@ -129,7 +129,7 @@ path и уже существующую ленивую загрузку; ни у
 
 ## Повторный benchmark большой кампании
 
-Запущен существующий [стенд](../../../eval/large-campaign-performance.mjs),
+Запущен существующий [стенд](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/eval/large-campaign-performance.mjs),
 без изменения его реализации:
 
 ```powershell
@@ -234,10 +234,10 @@ opt-in-файлов в программе. Отсутствуют `party-exit-in
 
 ## Изолированная проверка SSE backpressure
 
-В [`server/index.mjs:2405`](../../../server/index.mjs#L2405)
+В [`server/index.mjs:2405`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L2405)
 `writeCampaignStream` отмечает `narrationBackpressured` при `write() === false`,
 но следующий `room`/`presence` снова вызывает `write()`. Защита в
-[`server/narration-stream.mjs:93`](../../../server/narration-stream.mjs#L93)
+[`server/narration-stream.mjs:93`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/narration-stream.mjs#L93)
 касается потока текста. Проба исполняет извлечённую функцию исходного среза,
 не копию её реализации:
 

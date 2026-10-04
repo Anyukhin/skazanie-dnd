@@ -28,9 +28,9 @@ callsite, тесты и существующие eval-артефакты. `.env`
 
 ## AI-01. Eval автономного мира считает переданные результаты, но не запускает сценарии
 
-[`eval/autonomous-scenarios.mjs:1-43`](../../../eval/autonomous-scenarios.mjs#L1-L43) объявляет 36 сценариев, а строки `40-43`
+[`eval/autonomous-scenarios.mjs:1-43`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/eval/autonomous-scenarios.mjs#L1-L43) объявляет 36 сценариев, а строки `40-43`
 задают три длинные кампании на 36, 42 и 48 ходов. Это хороший каталог
-покрытия, но не runner. [`server/autonomy-eval.mjs:11-37`](../../../server/autonomy-eval.mjs#L11-L37) принимает готовые
+покрытия, но не runner. [`server/autonomy-eval.mjs:11-37`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/autonomy-eval.mjs#L11-L37) принимает готовые
 `runs` и только суммирует counters, не проверяя, что каждый сценарий реально
 исполнялся, не задаёт пороги и не возвращает gate. Тест
 `test/autonomous-campaign.test.mjs:501-520` это явно демонстрирует: он строит
@@ -56,31 +56,31 @@ latency и normalized token usage. Команда `pnpm autonomy:eval` може�
 ## AI-02. Общий лимит LLM не покрывает летописца, а trace намеренно теряет usage
 
 Основные модели создаются через `MeteredLLMClient` в
-[`server/index.mjs:263-276`](../../../server/index.mjs#L263-L276), и [`server/usage-ledger.mjs:251-279`](../../../server/usage-ledger.mjs#L251-L279) резервирует и
+[`server/index.mjs:263-276`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L263-L276), и [`server/usage-ledger.mjs:251-279`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/usage-ledger.mjs#L251-L279) резервирует и
 закрывает квоту вокруг `client.complete`. Но `LoreAuthor` подключён напрямую к
-`new RouterAIClient` в [`server/index.mjs:373-376`](../../../server/index.mjs#L373-L376). Пролог и хроника вызываются
-из [`server/campaign-bootstrap.mjs:495-503`](../../../server/campaign-bootstrap.mjs#L495-L503) и
-[`server/autonomous-orchestrator.mjs:553-571`](../../../server/autonomous-orchestrator.mjs#L553-L571), поэтому эти запросы обходят
+`new RouterAIClient` в [`server/index.mjs:373-376`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L373-L376). Пролог и хроника вызываются
+из [`server/campaign-bootstrap.mjs:495-503`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/campaign-bootstrap.mjs#L495-L503) и
+[`server/autonomous-orchestrator.mjs:553-571`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/autonomous-orchestrator.mjs#L553-L571), поэтому эти запросы обходят
 дневной ledger и не имеют общего `usageScope`.
 
 Ещё один такой путь — `generateItemImage` в
-[`server/index.mjs:2633-2650`](../../../server/index.mjs#L2633-L2650): он сам вызывает `fetch(${baseUrl}/images)` и
+[`server/index.mjs:2633-2650`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L2633-L2650): он сам вызывает `fetch(${baseUrl}/images)` и
 возвращает provider cost, не проходя через `usageLedger`; маршрут использует
-его в [`server/index.mjs:5394`](../../../server/index.mjs#L5394). Это отдельный image budget, но для владельца
+его в [`server/index.mjs:5394`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L5394). Это отдельный image budget, но для владельца
 он выглядит как тот же расход AI и должен иметь единый отчёт либо явную
 границу бюджетов.
 
 Даже для metered горячего пути `GameOrchestrator.saveTrace` пишет литерал
-`token_usage: {}` ([`server/game-orchestrator.mjs:2930-2965`](../../../server/game-orchestrator.mjs#L2930-L2965)). `RouterAIClient`
+`token_usage: {}` ([`server/game-orchestrator.mjs:2930-2965`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2930-L2965)). `RouterAIClient`
 получает provider usage, а trace и автономный Director его не сохраняют.
 `/autonomy/advance` возвращает `decision.trace` только в HTTP-ответе
-([`server/index.mjs:4550-4578`](../../../server/index.mjs#L4550-L4578)); после перезапуска связь между моделью,
+([`server/index.mjs:4550-4578`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L4550-L4578)); после перезапуска связь между моделью,
 промптом, ролью и расходом исчезает. Это не утечка секрета, но делает
 бюджет и eval непроверяемыми по ходу.
 
 Минимальная реализация: прокинуть общий metered wrapper в `LoreAuthor`, а для
 image route переиспользовать существующий `createRouterImageGenerator`
-([`server/image-generation.mjs:68-110`](../../../server/image-generation.mjs#L68-L110)) и тот же `usageLedger`-reservation pattern,
+([`server/image-generation.mjs:68-110`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/image-generation.mjs#L68-L110)) и тот же `usageLedger`-reservation pattern,
 который уже используют location illustrations и NPC portraits. Добавить
 `usageRequestId`, `usageScope=campaign:<id>:<turn>` и
 единый observer завершений для всех creative roles. В trace хранить только нормализованные
@@ -98,30 +98,30 @@ external exactly-once: повтор provider call при неизвестном 
 ## AI-03. Commit/retry и повествование раздвоены между двумя оркестраторами
 
 `AutonomousCampaignOrchestrator` имеет собственные `commitEvents`,
-`commitEventsWithRetry` и `runCommands` ([`server/autonomous-orchestrator.mjs:380-470`](../../../server/autonomous-orchestrator.mjs#L380-L470)).
+`commitEventsWithRetry` и `runCommands` ([`server/autonomous-orchestrator.mjs:380-470`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/autonomous-orchestrator.mjs#L380-L470)).
 В основном `GameOrchestrator` повторяется другой цикл `resolvePlan → commit →
-STATE_VERSION_CONFLICT/IDEMPOTENCY_CONFLICT` ([`server/game-orchestrator.mjs:2723-2753`](../../../server/game-orchestrator.mjs#L2723-L2753)),
-а отдельный discovery снова содержит ручной retry ([`server/game-orchestrator.mjs:2891-2925`](../../../server/game-orchestrator.mjs#L2891-L2925)). Правила
+STATE_VERSION_CONFLICT/IDEMPOTENCY_CONFLICT` ([`server/game-orchestrator.mjs:2723-2753`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2723-L2753)),
+а отдельный discovery снова содержит ручной retry ([`server/game-orchestrator.mjs:2891-2925`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2891-L2925)). Правила
 слегка различаются: один путь ограничивает попытки, другой особым образом
 обрабатывает maneuver и social state. Такая разница легко превращается в
 расхождение replay или гонки.
 
 Та же граница повторяется в тексте: `freeActionResponse` собирает brief,
 вызывает Narrator, проверяет и ремонтирует результат
-([`server/game-orchestrator.mjs:1392-1660`](../../../server/game-orchestrator.mjs#L1392-L1660)), а обычный commit-ход делает почти ту же
-лестницу после commit ([`server/game-orchestrator.mjs:2760-2868`](../../../server/game-orchestrator.mjs#L2760-L2868)). Тесты race и refusal показывают, что
+([`server/game-orchestrator.mjs:1392-1660`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L1392-L1660)), а обычный commit-ход делает почти ту же
+лестницу после commit ([`server/game-orchestrator.mjs:2760-2868`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L2760-L2868)). Тесты race и refusal показывают, что
 сегодня оба пути защищены, поэтому это пока `hypothesis`, а не найденная
 ошибка.
 
 Минимальный вариант — мигрировать только совместимые прямые commit-пути на уже
 существующий `AuthoritativeExecutor`: `executeCommands` для Rules Engine-команд и
 `commitDerived` для событий его derived allowlist
-([`server/authoritative-executor.mjs:142-326`](../../../server/authoritative-executor.mjs#L142-L326)).
+([`server/authoritative-executor.mjs:142-326`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/authoritative-executor.mjs#L142-L326)).
 Новый второй authoritative runner здесь не нужен. Reward stages с
 `ExperienceAwarded`, coins и inventory/loot нельзя проталкивать в
 `commitDerived`: для них сначала нужна типизированная reward command, которую
 существующий executor сможет провести атомарно; текущая последовательность reward commits видна в
-[`server/autonomous-orchestrator.mjs:1991-2074`](../../../server/autonomous-orchestrator.mjs#L1991-L2074). Capability allowlist расширять наугад нельзя. После этого можно
+[`server/autonomous-orchestrator.mjs:1991-2074`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/autonomous-orchestrator.mjs#L1991-L2074). Capability allowlist расширять наугад нельзя. После этого можно
 вынести чистый helper для общей narration brief/fallback лестницы, принимающий
 committed events и viewer projection. Автономный и игровой слой должны строить
 только команды/brief, не копировать transport policy. Acceptance: существующие
@@ -132,13 +132,13 @@ refusal проходят; injected conflict даёт одинаковый commit
 
 ## AI-04. Реестр prompt есть, но типизированный output-contract подключён лишь к части ролей
 
-[`server/prompt-descriptors.mjs:31-50`](../../../server/prompt-descriptors.mjs#L31-L50) знает девять загружаемых prompt IDs, а
-[`server/llm-json-schemas.mjs`](../../../server/llm-json-schemas.mjs) описывает только Director, NPC social и
+[`server/prompt-descriptors.mjs:31-50`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/prompt-descriptors.mjs#L31-L50) знает девять загружаемых prompt IDs, а
+[`server/llm-json-schemas.mjs`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/llm-json-schemas.mjs) описывает только Director, NPC social и
 campaign creation. При этом production-вызов создателя кампании в
-[`server/campaign-bootstrap.mjs:460-490`](../../../server/campaign-bootstrap.mjs#L460-L490) не передаёт `jsonSchema`, и вызов
-Scene Architect в [`server/scene-architect.mjs:743-759`](../../../server/scene-architect.mjs#L743-L759) тоже полагается на
+[`server/campaign-bootstrap.mjs:460-490`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/campaign-bootstrap.mjs#L460-L490) не передаёт `jsonSchema`, и вызов
+Scene Architect в [`server/scene-architect.mjs:743-759`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/scene-architect.mjs#L743-L759) тоже полагается на
 ручной `normalizePlan`. Action Adjudicator в
-[`server/action-adjudicator.mjs:455-489`](../../../server/action-adjudicator.mjs#L455-L489) проверяет структуру и references после
+[`server/action-adjudicator.mjs:455-489`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/action-adjudicator.mjs#L455-L489) проверяет структуру и references после
 ответа, но не имеет provider-side schema. Комментарий схемы campaign creation
 ещё ссылается на `campaign_creator/v5`, тогда как загрузчик уже v8 — пример
 дрейфа описания рядом с живым контрактом.
@@ -158,20 +158,20 @@ Acceptance: активный loader, prompt ID, schema и normalizer сверя�
 Бывший кандидат AI-05 исключён из findings как false positive. Подсказка
 `route_hint` действительно хранится в process-local `Map`, но это намеренный
 транспорт внутри одного `/api/narrate`: `routedFreeAction` сохраняет её
-([`server/autonomous-orchestrator.mjs:903-925`](../../../server/autonomous-orchestrator.mjs#L903-L925)), а тот же маршрут сразу забирает
-её в [`server/index.mjs:5597-5608`](../../../server/index.mjs#L5597-L5608). Сам переход не коммитится из model output,
+([`server/autonomous-orchestrator.mjs:903-925`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/autonomous-orchestrator.mjs#L903-L925)), а тот же маршрут сразу забирает
+её в [`server/index.mjs:5597-5608`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/index.mjs#L5597-L5608). Сам переход не коммитится из model output,
 а карточка решения группы уже durable. Отдельное упрощение (вернуть
 `route_hint` напрямую вместо промежуточного Map) возможно как P3, но restart
 дефектом это не является и в roadmap не включено.
 
 ## AI-06. Подтверждённый defect: MapLibrary проверяет только ground floor
 
-В [`server/map-library.mjs:476-490`](../../../server/map-library.mjs#L476-L490) `MapLibrary.pick` получает все уровни, но
+В [`server/map-library.mjs:476-490`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/map-library.mjs#L476-L490) `MapLibrary.pick` получает все уровни, но
 вызывает `playable` и дополнительный `check` только для `ground` с
-`index === 0`. Сам `playable` ([`server/map-library.mjs:500-513`](../../../server/map-library.mjs#L500-L513)) запускает `auditTacticalMap` только на
-переданной карте. Затем [`server/adventure-director.mjs:395-407`](../../../server/adventure-director.mjs#L395-L407) добавляет к ground ещё
+`index === 0`. Сам `playable` ([`server/map-library.mjs:500-513`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/map-library.mjs#L500-L513)) запускает `auditTacticalMap` только на
+переданной карте. Затем [`server/adventure-director.mjs:395-407`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/adventure-director.mjs#L395-L407) добавляет к ground ещё
 `programReport`; `librarySceneGeometry` сохраняет остальные этажи без новой
-проверки ([`server/adventure-director.mjs:475-503`](../../../server/adventure-director.mjs#L475-L503)).
+проверки ([`server/adventure-director.mjs:475-503`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/adventure-director.mjs#L475-L503)).
 
 Safe repro во временном каталоге оставил импортированный ground валидным и
 добавил на верхний этаж prop с footprint `[-1,-1]`. Аудит верхнего этажа дал
@@ -192,18 +192,18 @@ replay перехода между этажами.
 
 ## AI-07. Проверяемая гипотеза: best-effort генерация карты требует отдельного quality gate
 
-В [`server/adventure-director.mjs:416-463`](../../../server/adventure-director.mjs#L416-L463) генератор делает до четырёх попыток,
+В [`server/adventure-director.mjs:416-463`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/adventure-director.mjs#L416-L463) генератор делает до четырёх попыток,
 сохраняет `best` с минимальным числом `programReport.problems` и возвращает его
-даже если проблемы остались. [`server/map-quality.mjs:603-718`](../../../server/map-quality.mjs#L603-L718) различает
+даже если проблемы остались. [`server/map-quality.mjs:603-718`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/map-quality.mjs#L603-L718) различает
 blocking problems (`PROGRAM_ANCHOR_UNREACHABLE`, `SCENE_TOO_SMALL`,
 `OPEN_SCENE_CLUTTERED`, `UNREACHABLE_POCKET`) и warnings, но caller наружу
 передаёт только `missing` (`adventure-director.mjs:461-462`). Поэтому клиент и
 трасса не знают, что `programReport` выбрал последнюю неидеальную попытку;
 `missing` покрывает только обещанные anchors. При этом полный `auditTacticalMap`
 не является одним общим top-level gate: он вызывается внутри отдельных
-генераторов ([`server/building-generator.mjs:934-936`](../../../server/building-generator.mjs#L934-L936), [`server/building-generator.mjs:1760-1772`](../../../server/building-generator.mjs#L1760-L1772)) и библиотеки,
+генераторов ([`server/building-generator.mjs:934-936`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/building-generator.mjs#L934-L936), [`server/building-generator.mjs:1760-1772`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/building-generator.mjs#L1760-L1772)) и библиотеки,
 а `generateSceneGeometryFor` после `applyScenePlan` вызывает именно
-`programReport` ([`server/adventure-director.mjs:438-447`](../../../server/adventure-director.mjs#L438-L447)).
+`programReport` ([`server/adventure-director.mjs:438-447`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/adventure-director.mjs#L438-L447)).
 
 Существующий corpus из 20 мест проверяет чистый результат
 (`test/scene-program-corpus.test.mjs:40-45`), а ручной test `scene-program-layout`
@@ -226,7 +226,7 @@ version и seed выбранной попытки. Блокировать игр
 
 `retrieveWorldMemory` на каждом вызове сначала строит viewer projection, затем
 пересоздаёт `retrievalRecords`, токенизирует и stem-профилирует каждую запись
-([`server/world-memory.mjs:1428-1457`](../../../server/world-memory.mjs#L1428-L1457)). Это корректно по visibility, но при
+([`server/world-memory.mjs:1428-1457`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/world-memory.mjs#L1428-L1457)). Это корректно по visibility, но при
 нескольких вызовах Director/Narrator/NPC за один ход означает повторные обходы
 одного и того же snapshot. Кэш Event Store уже снял часть восстановления, но
 свежий benchmark без LLM и SSE показывает expanded state 8,6 MB, response около
@@ -253,17 +253,17 @@ retrieval и serialization. Нельзя возвращать retention truncati
 
 ## AI-09. Verifier защищает известные классы ошибок, но остаётся лексическим и не версионируется как контракт
 
-`verifyNarration` в [`server/security.mjs:642-790`](../../../server/security.mjs#L642-L790) сверяет числа, rule IDs,
+`verifyNarration` в [`server/security.mjs:642-790`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/security.mjs#L642-L790) сверяет числа, rule IDs,
 перемещение, социальные утверждения, скрытые факты и несколько сценических
 противоречий регулярными выражениями. `Narrator.render` использует этот
 детерминированный verifier и асинхронную craft-проверку
-([`server/narrator.mjs:2060-2363`](../../../server/narrator.mjs#L2060-L2363)). Сторожевые тесты
+([`server/narrator.mjs:2060-2363`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/narrator.mjs#L2060-L2363)). Сторожевые тесты
 `test/security.test.mjs:149-184` полезны и ловят реальные регрессии, но это
 закрытый набор языковых паттернов, а не универсальное доказательство
 соответствия произвольной прозы событиям.
 
 `turnPromptVersions` прямо возвращает `verifier: null` и `intent_parser: null`
-([`server/game-orchestrator.mjs:973-986`](../../../server/game-orchestrator.mjs#L973-L986)). Это не defect: правила проекта
+([`server/game-orchestrator.mjs:973-986`](https://github.com/Anyukhin/skazanie-dnd/blob/c7efdca614cc33f706258d036e86f01c1f189404/server/game-orchestrator.mjs#L973-L986)). Это не defect: правила проекта
 запрещают выдумывать prompt ID для детерминированного алгоритма. Ограничение в
 другом: версия самого алгоритма проверки не фиксируется, поэтому после
 изменения словаря или regex старый результат нельзя воспроизвести как
