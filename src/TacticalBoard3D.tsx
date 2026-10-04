@@ -876,7 +876,7 @@ export default function TacticalBoard3D(props: Props) {
         // Карта теней пересоздаётся под новый размер при следующем кадре.
         sun.shadow.mapSize.set(profile.shadowSize, profile.shadowSize)
         sun.shadow.dispose(); sun.shadow.map = null; sun.shadow.mapPass = null
-        pipeline.configure({ ambientOcclusion: profile.ambientOcclusion, bloom: profile.bloom })
+        pipeline.configure({ ambientOcclusion: profile.ambientOcclusion, ambientOcclusionScale: profile.ambientOcclusionScale, bloom: profile.bloom, tiltShift: profile.tiltShift })
         pipeline.refresh()
         lastQuality = qualityKey
         measuredFrames = 0; measuredRenderMs = 0; measuredSince = performance.now()
@@ -919,7 +919,7 @@ export default function TacticalBoard3D(props: Props) {
         renderer.toneMappingExposure = ambience.exposure
         renderer.domElement.dataset.darkness = darkness.toFixed(2)
         renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
-        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, onReady: invalidate })
+        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', onReady: invalidate })
         diagnostics.created += 1
         diagnostics.rebuilds += 1
         diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'

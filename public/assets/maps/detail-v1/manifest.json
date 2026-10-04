@@ -269,14 +269,105 @@
       "path": "textures/wall-embankment.png",
       "tileSide": 512,
       "cellsPerTile": 8
+    },
+    "floor-mine-grit": {
+      "key": "floor-mine-grit",
+      "file": "floor-mine-grit.png",
+      "type": "floor",
+      "sourceHash": "e97315e042daef199cb727ce4ed4644771242fec10c0a419976cb3a3e424bbe2",
+      "promptHash": "83edd20809b687bdcb9e4c4b219acc19465add54f9cf16e9807995ec07416b10",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-mine-grit.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-camp-earth": {
+      "key": "floor-camp-earth",
+      "file": "floor-camp-earth.png",
+      "type": "floor",
+      "sourceHash": "3a8ac722f5118c89e46ea6c9b3517a08ec0cb343c0e9d1888b46f66e04f052e4",
+      "promptHash": "09b71a044bd4f601bede6a01bbed04d2257336a91c573a5374e0ad10cb090aea",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-camp-earth.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-sewer-brick": {
+      "key": "floor-sewer-brick",
+      "file": "floor-sewer-brick.png",
+      "type": "floor",
+      "sourceHash": "4fe2e9cb381d066a70be1a59979a9b9afae3df9dda4f6bcfb9e91e0f76e68c1a",
+      "promptHash": "13a6bc2aef37fb7068795bff49cc6ecd04a3f60f904d5c6bf046507c6d24ef47",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-sewer-brick.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "floor-desert-sandstone": {
+      "key": "floor-desert-sandstone",
+      "file": "floor-desert-sandstone.png",
+      "type": "floor",
+      "sourceHash": "d559d9c79ac3e6566353196ba7548e35c988e79281e2f357008223b146469c09",
+      "promptHash": "52caa348c831c8e2ff5d80cbafc4e7b3ca0b080a39f95709782c65a59f096f38",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/floor-desert-sandstone.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "surface-bog-water": {
+      "key": "surface-bog-water",
+      "file": "surface-bog-water.png",
+      "type": "surface",
+      "sourceHash": "c7aca4859d2ef7a69dc70e855f0c643ee7c3aa7e0fbc7df7a3ae5d17adc74cbb",
+      "promptHash": "f8d815a7b587a6f5ff07e5a537ebeaeb40c46c8a2aff0a4930f22a703a3c7eff",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/surface-bog-water.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
+    },
+    "surface-cracked-ice": {
+      "key": "surface-cracked-ice",
+      "file": "surface-cracked-ice.png",
+      "type": "surface",
+      "sourceHash": "03dbf022c27e93e402f8ac6427ff6c1ee30b9e74b1e1cbe96b5b4644b2e6b6e2",
+      "promptHash": "e49dff36873c7294079c606f002647ff83138b15cf4eaecfa6894ecc420fcf63",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "path": "textures/surface-cracked-ice.png",
+      "tileSide": 512,
+      "cellsPerTile": 8
     }
   },
   "atlas": {
     "image": "prop-atlas.png",
     "metadata": "prop-atlas.json",
     "width": 2048,
-    "height": 1465,
-    "frameCount": 135
+    "height": 1942,
+    "frameCount": 216
+  },
+  "counts": {
+    "sourceRasters": 49,
+    "textures": 25,
+    "sheets": 24,
+    "stamps": 216,
+    "models": 88
   },
   "sheets": {
     "sheet-24-wall-joints.png": {
@@ -443,6 +534,105 @@
         "width": 1254,
         "height": 1254
       }
+    },
+    "sheet-39-dungeon-hazards.png": {
+      "key": "sheet-39-dungeon-hazards",
+      "file": "sheet-39-dungeon-hazards.png",
+      "type": "sheet",
+      "sourceHash": "801448bdb553826d3ec17f9919d1105a3d2b6a874e7f35250f9ed1c7b05bc849",
+      "promptHash": "bd0c3c5cc640b12c8cb8915745eb6511375df00ca590621a43d4ba890a742d24",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-40-depths-mine.png": {
+      "key": "sheet-40-depths-mine",
+      "file": "sheet-40-depths-mine.png",
+      "type": "sheet",
+      "sourceHash": "a093ce2863af39b49361ae3eaeb81ad88d301e00d9a421c1ecdb6fa1014af3b8",
+      "promptHash": "3ac0d07f74ec49fadb94630df8a9963aeb411f77d7862c6a1e01f1148b967559",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-41-military-camp.png": {
+      "key": "sheet-41-military-camp",
+      "file": "sheet-41-military-camp.png",
+      "type": "sheet",
+      "sourceHash": "f7f90d89a6835c065f05042c4acb3c783ad2130399ca08aa7017b0876ea7fc08",
+      "promptHash": "0534bfe0f2a89da9a3a79865aee243094f4a42bf74648c8e4e5cbc6ac1965e19",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-42-arcane-lab.png": {
+      "key": "sheet-42-arcane-lab",
+      "file": "sheet-42-arcane-lab.png",
+      "type": "sheet",
+      "sourceHash": "e25a5f234f631d83ceae43661b23832d1bb6de672e60a147fb47caae5549ab60",
+      "promptHash": "1558cc03cc79dede156e451d94d65fa3182c912032016eeb7804c30c5205608a",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-43-sewer-undercity.png": {
+      "key": "sheet-43-sewer-undercity",
+      "file": "sheet-43-sewer-undercity.png",
+      "type": "sheet",
+      "sourceHash": "e701ebd99c3bb9b0ebfcff672c1745ed544bc6e3b2cdb3db1ad33c128760453a",
+      "promptHash": "a5ffb1c8d296e2891ebd1c6d73f49b85174aa7365b693663f974a87bd031e577",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-44-harbor-docks.png": {
+      "key": "sheet-44-harbor-docks",
+      "file": "sheet-44-harbor-docks.png",
+      "type": "sheet",
+      "sourceHash": "c8fd2f4a5c634cb666ed355c3ac659e5ceff0157c7a8007b1712a21f87281545",
+      "promptHash": "f73ba4096de84b326b6e4e6560f67d955122220ecf1690111a95f06dcef25f9b",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-45-snow-ice.png": {
+      "key": "sheet-45-snow-ice",
+      "file": "sheet-45-snow-ice.png",
+      "type": "sheet",
+      "sourceHash": "e3eb8b59fa05e69293af8d769e530901f39986a978ed9760db651b18a745ddb1",
+      "promptHash": "5b34700ba7e9c6253d585fb9b6835d05c9c5b9c4e730850bf30191205ba51ac2",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-46-desert-ruins.png": {
+      "key": "sheet-46-desert-ruins",
+      "file": "sheet-46-desert-ruins.png",
+      "type": "sheet",
+      "sourceHash": "6a907b6bf0a6df66d226e269ce66c740dfc14350ee0bd3a6fdad4d2f1b3f31ab",
+      "promptHash": "9bc0b50b146ce8aac1ffa09c2b71cc7af71e04dbb1890544f7717cb995e6e32a",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
+    },
+    "sheet-47-swamp-marsh.png": {
+      "key": "sheet-47-swamp-marsh",
+      "file": "sheet-47-swamp-marsh.png",
+      "type": "sheet",
+      "sourceHash": "107fda9b3e59a72ee73e175082ed8854f2d60c16b5d13873f793c787f6bb07e9",
+      "promptHash": "ea0c9f29e0539895d267f13f8cd80250b0fc279dc1a60db2475886bbd749f9a9",
+      "nativeDimensions": {
+        "width": 1254,
+        "height": 1254
+      }
     }
   },
   "models": [
@@ -459,14 +649,52 @@
         "h": 2
       },
       "file": "models/forge.glb",
-      "triangles": 656,
+      "triangles": 12948,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "9a097dcd1e51100191f1d3e0242c0234d70bfe9952575659fde9172bb9d8054f",
-      "bytes": 64512,
-      "method": "authored-low-poly",
+      "sha256": "53675b1d42112571a57852d92194d3ba6cfd6a809e9839debbeba4c1c09d438c",
+      "bytes": 1030792,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 0,
         "y": 0,
@@ -487,14 +715,52 @@
         "h": 1
       },
       "file": "models/quench_tub.glb",
-      "triangles": 552,
+      "triangles": 5472,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "60a42f410f086012c98cab320e17f5274783f1ee71d24342d6a17de42c1f5a59",
-      "bytes": 54460,
-      "method": "authored-low-poly",
+      "sha256": "fa1535bb75006a5a51e013ae33bfbce6b250406ef498ec5886b4b781a74df98c",
+      "bytes": 595024,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 256,
         "y": 0,
@@ -515,14 +781,52 @@
         "h": 1
       },
       "file": "models/coal_pile.glb",
-      "triangles": 644,
+      "triangles": 3184,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "b884ee79ba5b1ce26ac838afc3a638f31c09a2f5921db59d71403b6d3439a8d6",
-      "bytes": 63384,
-      "method": "authored-low-poly",
+      "sha256": "66ba13fefb15a46d23fda0a2ba7231b65510c66d9c8f76d125b4f1d251740524",
+      "bytes": 377524,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 512,
         "y": 0,
@@ -543,14 +847,52 @@
         "h": 1
       },
       "file": "models/sawhorse.glb",
-      "triangles": 212,
+      "triangles": 8368,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "0e41974f1911ef0f04eb02648c0e77dc7d745d03ad0c33188b07a048e8c94823",
-      "bytes": 21844,
-      "method": "authored-low-poly",
+      "sha256": "da304ecb0237861ed4e8084f995eb530975616f09385cb9fb2b28a6ccf7d246e",
+      "bytes": 523148,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 768,
         "y": 0,
@@ -571,14 +913,52 @@
         "h": 1
       },
       "file": "models/lumber_pile.glb",
-      "triangles": 164,
+      "triangles": 24888,
       "textureSize": [
-        2,
-        2
+        256,
+        256
       ],
-      "sha256": "96c77f97a22807343c292a4fad3e7d9e9ae1e98b1256e12ba6849be3fe246960",
-      "bytes": 17264,
-      "method": "authored-low-poly",
+      "sha256": "1b89d08549b2496892df2bc078f0ab3eae2c918bbf04b7ada5337780b06d25b1",
+      "bytes": 1037992,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1024,
         "y": 0,
@@ -599,14 +979,52 @@
         "h": 2
       },
       "file": "models/millstone.glb",
-      "triangles": 336,
+      "triangles": 6936,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "72a9ab35319851f38a83b6dac951d147e251a9288d46f1d9033472b17fe097aa",
-      "bytes": 33840,
-      "method": "authored-low-poly",
+      "sha256": "56d707f2639bda8a68381204f5e0b636c301494f4e9d1f18f4ee4700ebef73fa",
+      "bytes": 670252,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1280,
         "y": 0,
@@ -627,14 +1045,52 @@
         "h": 3
       },
       "file": "models/water_wheel.glb",
-      "triangles": 344,
+      "triangles": 11868,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "1fb259a061817688a3620a69616b7efbd3ca088a0b5bba0f227c6d4a3d0d9468",
-      "bytes": 34504,
-      "method": "authored-low-poly",
+      "sha256": "8d7d2339d4986fe00a46f932081dcffad6ef3c2483cef01a74c30adfa6e61c2e",
+      "bytes": 683616,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1536,
         "y": 0,
@@ -655,14 +1111,52 @@
         "h": 1
       },
       "file": "models/flour_bin.glb",
-      "triangles": 80,
+      "triangles": 4268,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "7a166cd2e0d2ea9a0a9ed90881aff94ff3216a7f572d9c193e2d795a0cff2753",
-      "bytes": 9168,
-      "method": "authored-low-poly",
+      "sha256": "aaf6f953fd3f85afd814bf6a1a6d3ae1c0f479312adebad6e5c69f221793c759",
+      "bytes": 563444,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1792,
         "y": 0,
@@ -683,14 +1177,52 @@
         "h": 1
       },
       "file": "models/hay_bales.glb",
-      "triangles": 72,
+      "triangles": 11564,
       "textureSize": [
-        2,
-        2
+        256,
+        256
       ],
-      "sha256": "6edbe522c4c93e038227370ff4dd5d0a50507c58ddbda657243b0d96aaa005a3",
-      "bytes": 8428,
-      "method": "authored-low-poly",
+      "sha256": "1f4db970dba5c0127627ff9d5ace5236b6e2ccf38e87f4c27af1b571bad404c7",
+      "bytes": 632552,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 0,
         "y": 256,
@@ -711,14 +1243,52 @@
         "h": 1
       },
       "file": "models/chicken_coop.glb",
-      "triangles": 176,
+      "triangles": 8552,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "d4ff07586f2260aeab9f287ecc58049b7907a77769e03944f5d5e79c922e4a62",
-      "bytes": 18404,
-      "method": "authored-low-poly",
+      "sha256": "4370c8cbff52f9c31b795ab8631c2a315b87cf744c74cd952ae94d42f243caf6",
+      "bytes": 727280,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 256,
         "y": 256,
@@ -739,14 +1309,52 @@
         "h": 1
       },
       "file": "models/garden_bed.glb",
-      "triangles": 1060,
+      "triangles": 19256,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "b0502f7da79faa0a0a755b251f36e4b1c37642991b771f1f0c8a7d08c04767e4",
-      "bytes": 103276,
-      "method": "authored-low-poly",
+      "sha256": "7f87f621670c7d75af10d89f64abd09d4856b6a920dfc27238240b1d84c059d9",
+      "bytes": 976112,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 512,
         "y": 256,
@@ -767,14 +1375,52 @@
         "h": 1
       },
       "file": "models/scarecrow.glb",
-      "triangles": 320,
+      "triangles": 17444,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "6901ff9fd9a5c49670b155edc715782f5fa6fdf143c8f0c11127d1455b38f814",
-      "bytes": 32212,
-      "method": "authored-low-poly",
+      "sha256": "9d76f2e2c32675a2d4f1a86e2ecf8ac16dd29b9cb26aeb7652f2d62e896bcc7b",
+      "bytes": 892612,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 768,
         "y": 256,
@@ -795,14 +1441,52 @@
         "h": 1
       },
       "file": "models/fence_gate.glb",
-      "triangles": 108,
+      "triangles": 5848,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "4bc4341a0dc16f2d4f9f69b216e164eae0a9caf29095679fe7c580fcbc0f268a",
-      "bytes": 11864,
-      "method": "authored-low-poly",
+      "sha256": "e58dcac24503073b705b8556f737ef054b325252c8743fd3a06bb81effffe66e",
+      "bytes": 496956,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1024,
         "y": 256,
@@ -823,14 +1507,52 @@
         "h": 2
       },
       "file": "models/double_bed.glb",
-      "triangles": 280,
+      "triangles": 7184,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "74acbb25d81f39b6204a6da2e45ea80b5fad1073da90284d735e112a1cedb911",
-      "bytes": 28460,
-      "method": "authored-low-poly",
+      "sha256": "83f1f08c4723287ba9a9d7be56df1bc563a684ee049852c94d749f93c559bd90",
+      "bytes": 535216,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1280,
         "y": 256,
@@ -851,14 +1573,52 @@
         "h": 1
       },
       "file": "models/dresser.glb",
-      "triangles": 444,
+      "triangles": 6720,
       "textureSize": [
-        2,
-        2
+        256,
+        256
       ],
-      "sha256": "2ce32abfaacb38e3bcd93c914b7d4e890fd20966afa416dca02ce1a16c551e9b",
-      "bytes": 44148,
-      "method": "authored-low-poly",
+      "sha256": "892beb4797f44fe4cab7dbdfdd1b51021a4bbde3f608a2fefab787885dcd657a",
+      "bytes": 348036,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1536,
         "y": 256,
@@ -879,14 +1639,52 @@
         "h": 1
       },
       "file": "models/writing_desk.glb",
-      "triangles": 264,
+      "triangles": 4080,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "d0396aa4f35d44c8c51f832c09446955be86b7f115e66e9aab9daabe2e1754b8",
-      "bytes": 26924,
-      "method": "authored-low-poly",
+      "sha256": "1c44c8bff09812e3f7b56dbd0a34b71327ddb4195e487ce2884beec593ecf4b4",
+      "bytes": 442500,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1792,
         "y": 256,
@@ -907,14 +1705,52 @@
         "h": 1
       },
       "file": "models/armchair.glb",
-      "triangles": 108,
+      "triangles": 4764,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "093d6d621cb5314e59bc02213b6e231d3738f9c539c8343cd6fc678d4ef0ba79",
-      "bytes": 11824,
-      "method": "authored-low-poly",
+      "sha256": "02171c224a00e5612f5281353d95c61064dc61a6542a36b0bb7d46010c6d526f",
+      "bytes": 443904,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 0,
         "y": 512,
@@ -935,14 +1771,52 @@
         "h": 1
       },
       "file": "models/folding_screen.glb",
-      "triangles": 280,
+      "triangles": 10852,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "c71f6349ca422aedef9619a15d9b7f3d48c915a95b67cb0b5fa0c72c7a86fde8",
-      "bytes": 28476,
-      "method": "authored-low-poly",
+      "sha256": "70c40dc63e40765e63a1ad693e3c8c5861f11e4fea4bc7c10960d24a95b3a936",
+      "bytes": 617036,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 256,
         "y": 512,
@@ -963,14 +1837,52 @@
         "h": 1
       },
       "file": "models/bathtub.glb",
-      "triangles": 492,
+      "triangles": 13740,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "f615cf8a8535b6d0278c78fa2c1cf75ff3030a6d8edaaabaa447ed20fdcda5ed",
-      "bytes": 48752,
-      "method": "authored-low-poly",
+      "sha256": "06db7d191abe61dd1d5fb8c8d077c7af495a0d4d3012baef49a29cb917218e15",
+      "bytes": 1050740,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 512,
         "y": 512,
@@ -991,14 +1903,52 @@
         "h": 1
       },
       "file": "models/cradle.glb",
-      "triangles": 504,
+      "triangles": 6968,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "171def18d29457e4356f882331f1e97969711b912005fdb11d5228acb6047e79",
-      "bytes": 49876,
-      "method": "authored-low-poly",
+      "sha256": "1007ff72ce9c0b659a6bcaf2cdadc363738196d27f4dd48a4cac5dd47310b1a8",
+      "bytes": 693064,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 768,
         "y": 512,
@@ -1019,14 +1969,52 @@
         "h": 1
       },
       "file": "models/standing_mirror.glb",
-      "triangles": 308,
+      "triangles": 6584,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "1bd19ba18e8501b363ee5aaee1f008d28127c533d077f5e8dfa7d9bf3df840bf",
-      "bytes": 31136,
-      "method": "authored-low-poly",
+      "sha256": "c24a24c0559ef11ca8f0af3591437bec0b47177575d988c623c5b9f4b5a93039",
+      "bytes": 465868,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1024,
         "y": 512,
@@ -1047,14 +2035,52 @@
         "h": 1
       },
       "file": "models/coat_rack.glb",
-      "triangles": 524,
+      "triangles": 3800,
       "textureSize": [
-        2,
-        2
+        256,
+        256
       ],
-      "sha256": "87ffa8a9fae0f4c53bee1b70e5969ebc0d0cdcbcf855095359c45e28d11c0c87",
-      "bytes": 51836,
-      "method": "authored-low-poly",
+      "sha256": "7ecbc9bc23a7f61f6f978eb725808b98c835697ea8fc72bc7ee860bdd943f26c",
+      "bytes": 251584,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1280,
         "y": 512,
@@ -1075,14 +2101,52 @@
         "h": 1
       },
       "file": "models/kitchen_stove.glb",
-      "triangles": 820,
+      "triangles": 6260,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "0757942ad6cdbb15da3e81a8f3b38573af74e755fe6d2c6698bc74ac3a393eec",
-      "bytes": 80316,
-      "method": "authored-low-poly",
+      "sha256": "e0873a46db41e2663ab2b17ff8529b1976798d749613f6e6a25be53e25af5ddd",
+      "bytes": 645656,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1536,
         "y": 512,
@@ -1103,14 +2167,52 @@
         "h": 2
       },
       "file": "models/bread_oven.glb",
-      "triangles": 592,
+      "triangles": 5144,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "6182bc60c4849a0b180e1ea9a7f28a0cbec607bf8c3d6ad5e4c6176be365729d",
-      "bytes": 58420,
-      "method": "authored-low-poly",
+      "sha256": "3fd6a76fd5e7dc1c198bece3b3db74e6129943feb302b44352e7ef3828b0b183",
+      "bytes": 598780,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1792,
         "y": 512,
@@ -1131,14 +2233,52 @@
         "h": 1
       },
       "file": "models/washtub.glb",
-      "triangles": 756,
+      "triangles": 5736,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "9133df3a4f380fc9248fa37514d52640aeb26cea5d14496bb668db144ca2f50e",
-      "bytes": 74120,
-      "method": "authored-low-poly",
+      "sha256": "3d31bc6a938070123b797445160d5ada53971198bf18f9320ba1a62b917e1e17",
+      "bytes": 478820,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 0,
         "y": 768,
@@ -1159,14 +2299,52 @@
         "h": 1
       },
       "file": "models/butcher_block.glb",
-      "triangles": 288,
+      "triangles": 5140,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "c32b9f6ae83252100963e507b4af465c7565db7a3b2708b03207decd9f0546e2",
-      "bytes": 29184,
-      "method": "authored-low-poly",
+      "sha256": "165e114f2059f9e02f94a547f06139b4511d1b2249bce2afedd0d7d5285bc411",
+      "bytes": 422024,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 256,
         "y": 768,
@@ -1187,14 +2365,52 @@
         "h": 1
       },
       "file": "models/hanging_pots.glb",
-      "triangles": 968,
+      "triangles": 7896,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "64bb03b2768c4a862c7cd8d13605d22d3425b105aada51bffc3cd9d8373d9d2d",
-      "bytes": 94484,
-      "method": "authored-low-poly",
+      "sha256": "e95ecb19ac314bbb8d3b9d73fad1b2056f6aa823032170fd84b8af820a425368",
+      "bytes": 701872,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 512,
         "y": 768,
@@ -1215,14 +2431,52 @@
         "h": 1
       },
       "file": "models/shop_counter.glb",
-      "triangles": 800,
+      "triangles": 8044,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "b9b792d107b39ce382bb1e7dd90e2f1fd7c61019fcdff5316715ad7b53229345",
-      "bytes": 78344,
-      "method": "authored-low-poly",
+      "sha256": "e0cdba528fc15677ec9d880f5127cbfd98902e12aae759ec289dc467bbcc8a30",
+      "bytes": 526696,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 768,
         "y": 768,
@@ -1243,14 +2497,52 @@
         "h": 1
       },
       "file": "models/cloth_bolts.glb",
-      "triangles": 756,
+      "triangles": 5076,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "0462dfd2587e92e12f60c1e192260dd6b6e6b80aac089bd5444e9be9cd5fa2b5",
-      "bytes": 74180,
-      "method": "authored-low-poly",
+      "sha256": "b3135b5ef585460d2ca277d86b265843bd935b4e147d60c42ba0995ca96c98c9",
+      "bytes": 467120,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1024,
         "y": 768,
@@ -1271,14 +2563,52 @@
         "h": 2
       },
       "file": "models/market_awning.glb",
-      "triangles": 284,
+      "triangles": 6212,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "74eff4df376075e860b8ac477de0bb689c007272e827d74af1f63489fd6d5301",
-      "bytes": 28848,
-      "method": "authored-low-poly",
+      "sha256": "ae3b92ea629a368c8126b1d4a671ab1a15998f7d68f6c562fa5deb993ffc2b16",
+      "bytes": 497088,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1280,
         "y": 768,
@@ -1299,14 +2629,52 @@
         "h": 1
       },
       "file": "models/notice_board.glb",
-      "triangles": 408,
+      "triangles": 6668,
       "textureSize": [
-        3,
-        3
+        256,
+        256
       ],
-      "sha256": "05892a3a29e5489b06038ce574b139fabf5f13a3eee92afec010e7c891dfd5b4",
-      "bytes": 40740,
-      "method": "authored-low-poly",
+      "sha256": "7e2fd2bf63ada0e96067a0f91dec1781ded895c85d5f277c598f01d27d3953be",
+      "bytes": 344540,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1536,
         "y": 768,
@@ -1327,14 +2695,52 @@
         "h": 1
       },
       "file": "models/scales_table.glb",
-      "triangles": 760,
+      "triangles": 7756,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "7782adcdfe00c330b16e2c081c109696f82e86cd24594376d6bb286722d661b6",
-      "bytes": 74448,
-      "method": "authored-low-poly",
+      "sha256": "7fa322a918235ed2a00274e65f2fe2b142b840513cf1b921039222d2577de79c",
+      "bytes": 680632,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1792,
         "y": 768,
@@ -1355,14 +2761,52 @@
         "h": 1
       },
       "file": "models/globe.glb",
-      "triangles": 452,
+      "triangles": 5744,
       "textureSize": [
-        3,
-        3
+        256,
+        256
       ],
-      "sha256": "78ec37e07ffbb9c604aa5e0478e24220db134f084a24165f247a82030ac54b49",
-      "bytes": 44968,
-      "method": "authored-low-poly",
+      "sha256": "43d21ba134ee3a6886621d1db41d1d52ec8fb36ed42b76dedefba6ee5e632e75",
+      "bytes": 294832,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 0,
         "y": 1024,
@@ -1383,14 +2827,52 @@
         "h": 1
       },
       "file": "models/scroll_rack.glb",
-      "triangles": 684,
+      "triangles": 6396,
       "textureSize": [
-        3,
-        3
+        256,
+        256
       ],
-      "sha256": "c97279d945b02f870c274f233a6d42105bde1bc434a736b78581229b7bf80037",
-      "bytes": 67252,
-      "method": "authored-low-poly",
+      "sha256": "b1dbcb1551ffb5ac038c565385de94b9d8fd7f3c5dde80aba5b5d2d068bf9128",
+      "bytes": 363916,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 256,
         "y": 1024,
@@ -1411,14 +2893,52 @@
         "h": 1
       },
       "file": "models/reading_nook.glb",
-      "triangles": 496,
+      "triangles": 6312,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "6e5df9c0ae2212fc45eee8f54f91631a6539a1d3221601f1f71be5274fd029e3",
-      "bytes": 49232,
-      "method": "authored-low-poly",
+      "sha256": "212993b4b6ba64bafaa6424a07a86875089d0d063212b1610e4f2b5491056ec0",
+      "bytes": 492064,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 512,
         "y": 1024,
@@ -1439,14 +2959,52 @@
         "h": 1
       },
       "file": "models/candle_desk.glb",
-      "triangles": 404,
+      "triangles": 4216,
       "textureSize": [
-        3,
-        3
+        256,
+        256
       ],
-      "sha256": "513c5dcc069905b93cbb46cd6ec49a19cd01c97a9d69214477174cd97790e547",
-      "bytes": 40348,
-      "method": "authored-low-poly",
+      "sha256": "62b77522a2f0ce8a8631ee6596b0927f0cdfcd23710616f5be4baefc49450c4e",
+      "bytes": 259404,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 768,
         "y": 1024,
@@ -1467,14 +3025,52 @@
         "h": 1
       },
       "file": "models/telescope.glb",
-      "triangles": 360,
+      "triangles": 3640,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "29cb510ab54ec4551049faca685ab049a3b80715b9ef561490fdedc72ff1e670",
-      "bytes": 36088,
-      "method": "authored-low-poly",
+      "sha256": "da73aaf615f3d00213ef3c32d2f6d73c9e9a8cc2a13eba1bc95221ee991a65d7",
+      "bytes": 413116,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1024,
         "y": 1024,
@@ -1495,14 +3091,52 @@
         "h": 3
       },
       "file": "models/fountain.glb",
-      "triangles": 652,
+      "triangles": 10224,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "fbae643f923e8d4ccff059e52ebb5d3210988e3fb38cb58c9787889a205f0c71",
-      "bytes": 64112,
-      "method": "authored-low-poly",
+      "sha256": "52dc7d4a812f282a4600448aca81a41878e6ce0f2eb112618793caf05a2d9e3f",
+      "bytes": 621308,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1280,
         "y": 1024,
@@ -1523,14 +3157,52 @@
         "h": 2
       },
       "file": "models/statue_plinth.glb",
-      "triangles": 808,
+      "triangles": 20496,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "2dc5f1624067b7df7b4421f3d7bda1eba9ce62865f0de0984e8c8809cb255b3e",
-      "bytes": 79164,
-      "method": "authored-low-poly",
+      "sha256": "8b110d087c1e2c460e5647ca45fcf7eec5f924c25c0f35112e7eb4abbf3f36e4",
+      "bytes": 1077016,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1536,
         "y": 1024,
@@ -1551,14 +3223,52 @@
         "h": 1
       },
       "file": "models/flower_bed.glb",
-      "triangles": 960,
+      "triangles": 18282,
       "textureSize": [
-        3,
-        3
+        512,
+        256
       ],
-      "sha256": "df01bc8858eb8ff9687b1974cbfa0212102e887217e932ce3a066c2ed5392f91",
-      "bytes": 93764,
-      "method": "authored-low-poly",
+      "sha256": "257561cb38be9ad5bfcba5b5737eca28a09868b48cf5f2ad069f6c21fa22415d",
+      "bytes": 949644,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1792,
         "y": 1024,
@@ -1579,14 +3289,52 @@
         "h": 1
       },
       "file": "models/pillory.glb",
-      "triangles": 216,
+      "triangles": 6096,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "3d698b482841eb30befb69fb389fdb866543ea563d876dcb91affb71d866d195",
-      "bytes": 22252,
-      "method": "authored-low-poly",
+      "sha256": "1bc4d95d7b4633063ffa219a13dce430bbfd0d3d19902be67119082a79edbffb",
+      "bytes": 631200,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 0,
         "y": 1280,
@@ -1607,14 +3355,52 @@
         "h": 2
       },
       "file": "models/town_well.glb",
-      "triangles": 700,
+      "triangles": 11280,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "1c4057d65848e2c643b15cbe455b2dffeff6dc65fde7b066117b323ecd98c38d",
-      "bytes": 68804,
-      "method": "authored-low-poly",
+      "sha256": "278de1cc30efa518e1c91b6b1f3dbd00ad84ada3b946ce84cb2f09df1cce1aec",
+      "bytes": 847016,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 256,
         "y": 1280,
@@ -1635,14 +3421,52 @@
         "h": 1
       },
       "file": "models/street_planter.glb",
-      "triangles": 532,
+      "triangles": 7744,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "962b3ac8570289858dbe605aabc41f9e5362bdec7eb71f861a2fa98ceb25a612",
-      "bytes": 52548,
-      "method": "authored-low-poly",
+      "sha256": "67f46a5509b7a81122a839e90c261219da6c8f1dba898ee7e9ccdda04ae7ed55",
+      "bytes": 521288,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 512,
         "y": 1280,
@@ -1663,14 +3487,52 @@
         "h": 1
       },
       "file": "models/sign_post_city.glb",
-      "triangles": 96,
+      "triangles": 3664,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "99037042b2cabae3a6b2296e6e4b53bdf5a4085ac53a5ff5406e4238fe9ec46c",
-      "bytes": 10744,
-      "method": "authored-low-poly",
+      "sha256": "7344caecc6ddd314412d91fea143ab9ea57172f870c512ab0ddb61466a1c731b",
+      "bytes": 372552,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 768,
         "y": 1280,
@@ -1691,14 +3553,52 @@
         "h": 3
       },
       "file": "models/rowboat.glb",
-      "triangles": 308,
+      "triangles": 14268,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "95ec206ddf7b9301b4f9eb54c8164e6213a08331f866979f71855e6cfa12ac22",
-      "bytes": 31052,
-      "method": "authored-low-poly",
+      "sha256": "aee819124cb53038ba89b7beb40f1f62edd9146da28e39c560f97edda373a33c",
+      "bytes": 945744,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1024,
         "y": 1280,
@@ -1719,14 +3619,52 @@
         "h": 3
       },
       "file": "models/punt.glb",
-      "triangles": 212,
+      "triangles": 14076,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "10dfa5d8be329a5631bcb0a6d6dcbace3a46b248172c497573799e728a7a727e",
-      "bytes": 21848,
-      "method": "authored-low-poly",
+      "sha256": "6905237670aa75c4edc71029e31a54c7c95bca72ebec8e15be7f3aadc19d16a9",
+      "bytes": 771288,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1280,
         "y": 1280,
@@ -1747,14 +3685,52 @@
         "h": 1
       },
       "file": "models/mooring_post.glb",
-      "triangles": 440,
+      "triangles": 8468,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "f0d747e2f364b753686f2ec8aa2df7e0b191e98d64a4482bfc5fae36bb5d316c",
-      "bytes": 43760,
-      "method": "authored-low-poly",
+      "sha256": "f9dfbcf97b676bdf3a2da153ae2c2be41bdd8eb2e37ff2e56d866b48b4e75dcb",
+      "bytes": 705132,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1536,
         "y": 1280,
@@ -1775,14 +3751,52 @@
         "h": 1
       },
       "file": "models/fish_rack.glb",
-      "triangles": 1152,
+      "triangles": 11888,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "8913f7d5764a625a78e762d5a987ee7af4ab2b4ff80df8813a25ca892f0be58b",
-      "bytes": 112176,
-      "method": "authored-low-poly",
+      "sha256": "c010f41e0a83a04f0b94ce0871c469be0a5fb2744e13435eeff5e59ad6f31378",
+      "bytes": 866156,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1792,
         "y": 1280,
@@ -1803,14 +3817,52 @@
         "h": 1
       },
       "file": "models/fishing_nets.glb",
-      "triangles": 736,
+      "triangles": 20116,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "b3c16621afc7eb0abaa6f723ca14f7af2bc7b4db3e2c76824777866763a9a349",
-      "bytes": 72188,
-      "method": "authored-low-poly",
+      "sha256": "6d4d3ba26aede8eccd68cfe7a244d9e9a63d70c6c9ccd31a2de46c5cc144e193",
+      "bytes": 967592,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 0,
         "y": 1536,
@@ -1831,14 +3883,52 @@
         "h": 1
       },
       "file": "models/stone_steps.glb",
-      "triangles": 324,
+      "triangles": 4304,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "47570dfd4ba101d760d90b26db5f1f67277eb35ae962a89583f753606bfe8c66",
-      "bytes": 32628,
-      "method": "authored-low-poly",
+      "sha256": "984c926fe00421b517c222cfc30bfbb9f7682d10cdaf39529fc7db5764004f2c",
+      "bytes": 432840,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 256,
         "y": 1536,
@@ -1859,14 +3949,52 @@
         "h": 1
       },
       "file": "models/root_tangle.glb",
-      "triangles": 516,
+      "triangles": 21928,
       "textureSize": [
-        2,
-        2
+        256,
+        256
       ],
-      "sha256": "f8d7f59d1d01fff6afc2d23286640349eaf8510e2dd113415354410df0ef66bb",
-      "bytes": 51100,
-      "method": "authored-low-poly",
+      "sha256": "396630d01eecdf6d6d04983cf9d16f6b20c6da854620ff84e760d18f8c29c0e4",
+      "bytes": 788920,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 512,
         "y": 1536,
@@ -1887,19 +4015,57 @@
         "h": 1
       },
       "file": "models/armor_stand.glb",
-      "triangles": 956,
+      "triangles": 16376,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "b04d3a697742427a154d645ac0cbcf4521441486eccaf2540f3236063fe6c1e8",
-      "bytes": 93276,
-      "method": "authored-low-poly",
+      "sha256": "8903de5ade46f935b2e9761c1c1d15e22d93806a446adfa7da08a7a5d61d27ab",
+      "bytes": 946608,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 768,
         "y": 1536,
         "w": 246,
-        "h": 173
+        "h": 174
       }
     },
     {
@@ -1915,14 +4081,52 @@
         "h": 1
       },
       "file": "models/archery_target.glb",
-      "triangles": 520,
+      "triangles": 6668,
       "textureSize": [
-        3,
-        3
+        256,
+        256
       ],
-      "sha256": "d78b83e9051a88db19a93fcd7cf7984d28e5f786a6709b2016dd5a10a15eec58",
-      "bytes": 51524,
-      "method": "authored-low-poly",
+      "sha256": "8adfb9b649e6f82c0eff4bddc490a3410e64cab70108e6db61d9c27b445548ed",
+      "bytes": 370524,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1024,
         "y": 1536,
@@ -1943,14 +4147,52 @@
         "h": 2
       },
       "file": "models/straw_bed.glb",
-      "triangles": 436,
+      "triangles": 9560,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "a2705261c441fc57b5814dc4045f333c14034af189a9e02aa76e504f34f72148",
-      "bytes": 43420,
-      "method": "authored-low-poly",
+      "sha256": "8bd82050bf9630ff0017580a608df46e23e6df6f1a12acbb959a321f8c62c163",
+      "bytes": 651600,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1280,
         "y": 1536,
@@ -1971,14 +4213,52 @@
         "h": 1
       },
       "file": "models/wall_chains.glb",
-      "triangles": 1788,
+      "triangles": 14136,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "85b2874c04be9ed0210569b2c55fcf09579b3809e786c6502030da00f2f8fcfb",
-      "bytes": 173152,
-      "method": "authored-low-poly",
+      "sha256": "0566bd1c5d5c5ca264288f7c24e425bbf42e97e7ddb049bccb7e31d057909342",
+      "bytes": 878304,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1536,
         "y": 1536,
@@ -1999,14 +4279,52 @@
         "h": 1
       },
       "file": "models/stocks.glb",
-      "triangles": 1084,
+      "triangles": 12580,
       "textureSize": [
-        2,
-        2
+        512,
+        512
       ],
-      "sha256": "d7fe05c54966da3ee0f2c141187e0f5fa4f5ebcf9e41b1b58e7258b832ae60cd",
-      "bytes": 105572,
-      "method": "authored-low-poly",
+      "sha256": "e2cc697325ed1433908ff866ce6a373c453bca56bb33363dfaa7b824adb3e9b1",
+      "bytes": 839928,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1792,
         "y": 1536,
@@ -2027,14 +4345,52 @@
         "h": 1
       },
       "file": "models/torture_rack.glb",
-      "triangles": 444,
+      "triangles": 5540,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "a2fea70dfb0e051d5372ade056c0c0cbe796bf8923cf3aa7862c579c6228ba9a",
-      "bytes": 44196,
-      "method": "authored-low-poly",
+      "sha256": "a6229d5f5228648ab7ad67d9b6de8e2c7b7c7e69e1bc4e4ddb65fb491ce41487",
+      "bytes": 604140,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 0,
         "y": 1792,
@@ -2055,14 +4411,52 @@
         "h": 1
       },
       "file": "models/jailer_desk.glb",
-      "triangles": 432,
+      "triangles": 5412,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "ae74c662bbb23ca46337de6247aeb85f550c1e583f16eb545654f7edc9afff94",
-      "bytes": 43004,
-      "method": "authored-low-poly",
+      "sha256": "eadf62feae42da69b8aedbce01a7c16aac6f313c49be1be09a1af44edf02e200",
+      "bytes": 475884,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 256,
         "y": 1792,
@@ -2083,14 +4477,52 @@
         "h": 2
       },
       "file": "models/idol.glb",
-      "triangles": 856,
+      "triangles": 34008,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "eb8e0f9f58f5c04975e1c8d5a6aac8412908a5761e6172c6c5ef635a358bfa04",
-      "bytes": 83672,
-      "method": "authored-low-poly",
+      "sha256": "7a0012f78860ecc449ba3b3c31a880dad0d2de9d57854a470bab344b410f8fe3",
+      "bytes": 1366408,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 512,
         "y": 1792,
@@ -2111,14 +4543,52 @@
         "h": 1
       },
       "file": "models/font_basin.glb",
-      "triangles": 304,
+      "triangles": 3024,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "dc8a5e4420492b0256214b4e9399fc4bcd347edf72d13b14bd8cf6501c59a51d",
-      "bytes": 30648,
-      "method": "authored-low-poly",
+      "sha256": "cba9940af01fc9bfbc35ac67998c01b8b40bb6ac5703298bec029cfdce9fd4ea",
+      "bytes": 399280,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 768,
         "y": 1792,
@@ -2139,14 +4609,52 @@
         "h": 1
       },
       "file": "models/incense_burner.glb",
-      "triangles": 392,
+      "triangles": 15156,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "dd8be94f72c25f0ba773e3b55ef525bc534fc1ceb403edb3e3ccb9506b0e2e88",
-      "bytes": 39168,
-      "method": "authored-low-poly",
+      "sha256": "815a19b31e5da314f3f4c15a4b260b354136b291c9a5026cfb1a2bc5e915e2b6",
+      "bytes": 759332,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1024,
         "y": 1792,
@@ -2167,14 +4675,52 @@
         "h": 1
       },
       "file": "models/bell_frame.glb",
-      "triangles": 888,
+      "triangles": 8964,
       "textureSize": [
-        3,
-        3
+        512,
+        512
       ],
-      "sha256": "18b3ee889445e0707e703ff824dd66aec8cb252fcfb81297220e8d542763b249",
-      "bytes": 86836,
-      "method": "authored-low-poly",
+      "sha256": "32274b4b1e8946ad78a7fcd7d361315020b4c95a161972dc2e50852c9895a3ad",
+      "bytes": 730828,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1280,
         "y": 1792,
@@ -2195,14 +4741,52 @@
         "h": 2
       },
       "file": "models/holy_pool.glb",
-      "triangles": 264,
+      "triangles": 9160,
       "textureSize": [
-        2,
-        2
+        512,
+        256
       ],
-      "sha256": "cbd1952e1aa2d609baf254973e6e7497144eecb8397a6a38cdcc9fa1bb136a79",
-      "bytes": 26860,
-      "method": "authored-low-poly",
+      "sha256": "fc757c2863c36fe1cd48c1e63e5e1058f8052e294364cb2506d8d3920fb0305d",
+      "bytes": 583688,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1536,
         "y": 1792,
@@ -2223,425 +4807,2267 @@
         "h": 1
       },
       "file": "models/kneeling_cushions.glb",
-      "triangles": 600,
+      "triangles": 11352,
       "textureSize": [
-        2,
-        2
+        256,
+        256
       ],
-      "sha256": "244fe604fcbeb647a2ced05d440d30528cd843534521326897d64c14e2fdfb21",
-      "bytes": 59148,
-      "method": "authored-low-poly",
+      "sha256": "11676f040609e86d620161850d01c3b3a6500460ceb0bd48c26836fc1dd160d7",
+      "bytes": 496344,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
       "preview": {
         "x": 1792,
         "y": 1792,
         "w": 246,
         "h": 88
       }
+    },
+    {
+      "id": "rope_bridge",
+      "description": "Узкий верёвочный мост из потёртых досок с двумя верёвочными перилами и креплениями на концах",
+      "dimensions": [
+        2.8,
+        1.3,
+        1
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/rope_bridge.glb",
+      "triangles": 19492,
+      "textureSize": [
+        512,
+        256
+      ],
+      "sha256": "b05b35686f1134f95705081849dacfc26bf5d03451b81de312497b4c49acbeb0",
+      "bytes": 912920,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 0,
+        "y": 2048,
+        "w": 246,
+        "h": 114
+      }
+    },
+    {
+      "id": "mine_rail",
+      "description": "Прямая секция шахтных рельсов: две железные полосы с деревянными шпалами на щебне, без вагонетки",
+      "dimensions": [
+        2.8,
+        1.3,
+        0.12
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/mine_rail.glb",
+      "triangles": 16392,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "2f46c068881b7fb37ca3ac5516d3fcba9356a48d3e131c47025b28b100caeb2a",
+      "bytes": 1129472,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 256,
+        "y": 2048,
+        "w": 246,
+        "h": 114
+      }
+    },
+    {
+      "id": "mine_cart",
+      "description": "Низкая открытая рудничная вагонетка с грудой руды, сцепка направлена вперёд",
+      "dimensions": [
+        1.3,
+        1.2,
+        1
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/mine_cart.glb",
+      "triangles": 9544,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "be7e9a5891eaf0d6d79eac35d98ae446bc43b11bd096362f6abaa226c005426c",
+      "bytes": 819032,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 512,
+        "y": 2048,
+        "w": 246,
+        "h": 228
+      }
+    },
+    {
+      "id": "timber_shoring",
+      "description": "Шахтная деревянная крепь: две стойки и поперечная балка",
+      "dimensions": [
+        2.8,
+        0.5,
+        2.4
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/timber_shoring.glb",
+      "triangles": 4984,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "4e45110b6961e887f9a1784af055286b51b133dabe299ac970eab3308f00d003",
+      "bytes": 612280,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 768,
+        "y": 2048,
+        "w": 246,
+        "h": 44
+      }
+    },
+    {
+      "id": "crystal_cluster",
+      "description": "Крупная группа сине-фиолетовых гранёных кристаллов среди серого щебня, матовая, без свечения",
+      "dimensions": [
+        1.4,
+        1.4,
+        1.8
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/crystal_cluster.glb",
+      "triangles": 1028,
+      "textureSize": [
+        16,
+        16
+      ],
+      "sha256": "d39a8f34eaa5c613e445c0efaea6435ff4ae7fae900983ea29a73b918b00fffc",
+      "bytes": 56636,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1024,
+        "y": 2048,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "giant_fungus",
+      "description": "Три гигантских гриба с толстыми ножками и неровными шляпками разного размера",
+      "dimensions": [
+        2.8,
+        2.8,
+        2.4
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/giant_fungus.glb",
+      "triangles": 11064,
+      "textureSize": [
+        512,
+        256
+      ],
+      "sha256": "c1aa3d038093f5fcf4924f2ba79d0e502842f03e16ee81724d1ff04f89ee68d3",
+      "bytes": 708768,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1280,
+        "y": 2048,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "obsidian_monolith",
+      "description": "Чёрный обсидиановый монолит со сколотыми углами и мшистыми трещинами, без надписей и символов",
+      "dimensions": [
+        1.2,
+        1,
+        2.8
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/obsidian_monolith.glb",
+      "triangles": 2436,
+      "textureSize": [
+        256,
+        256
+      ],
+      "sha256": "08a9e158bafe9b6fd4857e4839aedf24f82078452cde1103363637754f866f89",
+      "bytes": 220592,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1536,
+        "y": 2048,
+        "w": 246,
+        "h": 206
+      }
+    },
+    {
+      "id": "command_tent",
+      "description": "Крупный шестиугольный командирский шатёр с полотнищами, сходящимися к центральному навершию, без символов и текста",
+      "dimensions": [
+        2.8,
+        2.8,
+        2.2
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/command_tent.glb",
+      "triangles": 6724,
+      "textureSize": [
+        256,
+        256
+      ],
+      "sha256": "4675cf4447002c1be1dc93c2624e8a0949f8f775ef9c5df73bb72a2b355e41be",
+      "bytes": 418044,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1792,
+        "y": 2048,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "scout_tent",
+      "description": "Маленькая двускатная походная палатка, вход обращён вперёд, без людей и снаряжения вокруг",
+      "dimensions": [
+        2.8,
+        1.3,
+        1.4
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/scout_tent.glb",
+      "triangles": 3870,
+      "textureSize": [
+        512,
+        256
+      ],
+      "sha256": "bec5250830dd44c7cdbcf9d69e63db69d9e783c7d11672409d5036f18354c356",
+      "bytes": 445632,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 0,
+        "y": 2304,
+        "w": 246,
+        "h": 116
+      }
+    },
+    {
+      "id": "weapon_rack",
+      "description": "Низкая деревянная оружейная стойка с параллельными копьями и мечами в ножнах, без гербов",
+      "dimensions": [
+        2.6,
+        0.5,
+        1.4
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/weapon_rack.glb",
+      "triangles": 15196,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "cdddc235b835f87de830c77248d1f457db351a1104d8791de8c28b1c114c89e2",
+      "bytes": 951680,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 256,
+        "y": 2304,
+        "w": 246,
+        "h": 48
+      }
+    },
+    {
+      "id": "mantlet",
+      "description": "Широкий передвижной осадный щит на двух колёсах, лицевая сторона обращена вперёд, без надписей",
+      "dimensions": [
+        2.6,
+        0.8,
+        2
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/mantlet.glb",
+      "triangles": 7668,
+      "textureSize": [
+        512,
+        256
+      ],
+      "sha256": "5a772314ef7553899a51e35f284fff1f9ef179329d25a0a623f67384895c3a09",
+      "bytes": 607448,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 512,
+        "y": 2304,
+        "w": 246,
+        "h": 76
+      }
+    },
+    {
+      "id": "ballista",
+      "description": "Крупная торсионная баллиста со стрелой, направленной вперёд; лук, станина и лебёдка",
+      "dimensions": [
+        2.8,
+        2.8,
+        1.6
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/ballista.glb",
+      "triangles": 22472,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "819d69244f5264faef5be2fa3a42452c41f442b77c3404b271c0d1b0467dc812",
+      "bytes": 1467636,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 768,
+        "y": 2304,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "alchemy_table",
+      "description": "Прямоугольный алхимический стол с колбами, ступкой, весами и пятнами реагентов на столешнице",
+      "dimensions": [
+        2.8,
+        1.3,
+        1
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/alchemy_table.glb",
+      "triangles": 13036,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "1c6d76c508dab1921151ddb2c47e6767f2c7df77f40db3c131777728eab05b2c",
+      "bytes": 880612,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1024,
+        "y": 2304,
+        "w": 246,
+        "h": 116
+      }
+    },
+    {
+      "id": "crystal_orb",
+      "description": "Хрустальный шар на трёхногой латунной подставке, тёмно-синий и непрозрачный, без отражений",
+      "dimensions": [
+        1,
+        1,
+        1.2
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/crystal_orb.glb",
+      "triangles": 6680,
+      "textureSize": [
+        256,
+        256
+      ],
+      "sha256": "b100e5796bf01e2a3ecc843d64ddf38608453d52bb75f307f070c5eabe7d9cbd",
+      "bytes": 336420,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1280,
+        "y": 2304,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "arcane_coil",
+      "description": "Круглая медная магическая катушка: центральное кольцо, четыре изолятора и замкнутые провода внутри силуэта",
+      "dimensions": [
+        1.4,
+        1.4,
+        1.1
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/arcane_coil.glb",
+      "triangles": 8016,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "47081b5bd0534eae8fb24670ffe999a5703e3beec640c35d72a1ff3c5e42925f",
+      "bytes": 681836,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1536,
+        "y": 2304,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "anchor",
+      "description": "Тяжёлый железный якорь с короткой аккуратно свёрнутой цепью внутри силуэта",
+      "dimensions": [
+        1.4,
+        1.4,
+        0.35
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/anchor.glb",
+      "triangles": 20088,
+      "textureSize": [
+        256,
+        256
+      ],
+      "sha256": "62f27d99b8b71ff646292a76337de4b07d041334a0029316dec62fdd1a5dca7a",
+      "bytes": 722588,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1792,
+        "y": 2304,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "capstan",
+      "description": "Круглый деревянный кабестан с шестью радиальными рукоятями, вид сверху",
+      "dimensions": [
+        1.4,
+        1.4,
+        1
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/capstan.glb",
+      "triangles": 9960,
+      "textureSize": [
+        512,
+        256
+      ],
+      "sha256": "641aa2bc78dc0a83ffad48ba1cf7bae90862fa2637baab60b6d8ac9d4935c2dc",
+      "bytes": 595360,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 0,
+        "y": 2560,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "dock_crane",
+      "description": "Небольшой деревянный портовый кран: поворотная стойка, стрела, ворот и пустой крюк внутри одного силуэта",
+      "dimensions": [
+        2.8,
+        2.8,
+        2.6
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/dock_crane.glb",
+      "triangles": 6868,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "49b469109f890bb46bf4eaf0de17e3f42b0cc676bbe1af088070519086856bfd",
+      "bytes": 646216,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 256,
+        "y": 2560,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "cargo_sled",
+      "description": "Простые деревянные грузовые сани с двумя полозьями и пустой платформой, без упряжи и животных",
+      "dimensions": [
+        2.8,
+        1.3,
+        0.7
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/cargo_sled.glb",
+      "triangles": 14484,
+      "textureSize": [
+        512,
+        256
+      ],
+      "sha256": "db1ccf52bfde0b275f854ed86347f7d51100d419037924182a7dd1dbec2d1e8d",
+      "bytes": 757524,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 512,
+        "y": 2560,
+        "w": 246,
+        "h": 116
+      }
+    },
+    {
+      "id": "snowshoe_pair",
+      "description": "Пара деревянных снегоступов с переплетением из верёвки, уложенная рядом, без ног и следов",
+      "dimensions": [
+        1.3,
+        1.3,
+        0.15
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/snowshoe_pair.glb",
+      "triangles": 7808,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "bd10cc94483e06cb6dd3b439d6e685b6748d9cf6b240b092baf611c329d72eb1",
+      "bytes": 671492,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 768,
+        "y": 2560,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "sandstone_arch",
+      "description": "Отдельно стоящая разрушенная песчаниковая арка с одной целой и одной обломанной опорой",
+      "dimensions": [
+        2.8,
+        0.8,
+        2.6
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/sandstone_arch.glb",
+      "triangles": 3132,
+      "textureSize": [
+        512,
+        256
+      ],
+      "sha256": "6ebe2bd868a1383cbaaa7544e67827815b85f279af17b49b0d6bf20d6712885a",
+      "bytes": 406280,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1024,
+        "y": 2560,
+        "w": 246,
+        "h": 72
+      }
+    },
+    {
+      "id": "nomad_tent",
+      "description": "Низкий квадратный кочевой шатёр из полосатой ткани, крыша видна строго сверху, без символов",
+      "dimensions": [
+        2.8,
+        2.8,
+        1.8
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 2
+      },
+      "file": "models/nomad_tent.glb",
+      "triangles": 6032,
+      "textureSize": [
+        256,
+        256
+      ],
+      "sha256": "61fd181ba4b4bc1cc4d5c335e757f464ff544cb369f7b855ade4c0191a6c5d06",
+      "bytes": 348680,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1280,
+        "y": 2560,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "mangrove_roots",
+      "description": "Переплетённая группа толстых мангровых корней вокруг короткого пня, единый силуэт без листвы",
+      "dimensions": [
+        2.8,
+        2.8,
+        1.4
+      ],
+      "footprint": {
+        "w": 1,
+        "h": 1
+      },
+      "file": "models/mangrove_roots.glb",
+      "triangles": 27664,
+      "textureSize": [
+        256,
+        256
+      ],
+      "sha256": "9ad4501066ad564d38b4bcb5f971a30759368d8f6f4d2f8524182c64a047f861",
+      "bytes": 972148,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1536,
+        "y": 2560,
+        "w": 246,
+        "h": 246
+      }
+    },
+    {
+      "id": "swamp_boardwalk",
+      "description": "Прямая секция болотного настила из пяти поперечных досок на двух лагах, без перил и воды вокруг",
+      "dimensions": [
+        2.8,
+        1.3,
+        0.35
+      ],
+      "footprint": {
+        "w": 2,
+        "h": 1
+      },
+      "file": "models/swamp_boardwalk.glb",
+      "triangles": 13228,
+      "textureSize": [
+        512,
+        512
+      ],
+      "sha256": "0ab309045c1d98e77eba97202190c73b4abfa1db6105235c8f926673ece7b88c",
+      "bytes": 873152,
+      "method": "authored-detailed-pbr",
+      "materialSources": [
+        {
+          "file": "wood.png",
+          "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+          "bytes": 2791260,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "stone.png",
+          "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+          "bytes": 3565975,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "metal.png",
+          "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+          "bytes": 3231321,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        },
+        {
+          "file": "cloth.png",
+          "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+          "bytes": 3330799,
+          "nativeDimensions": {
+            "width": 1254,
+            "height": 1254
+          }
+        }
+      ],
+      "preview": {
+        "x": 1792,
+        "y": 2560,
+        "w": 246,
+        "h": 115
+      }
     }
   ],
   "schema": "map-detail-assets/v1",
   "status": "prepared",
-  "counts": {
-    "sourceRasters": 34,
-    "textures": 19,
-    "sheets": 15,
-    "stamps": 135,
-    "models": 64
-  },
   "promptSpec": "docs/map-detail-assets-spec-v1.json",
+  "pendingIntegration": {
+    "stamps": [
+      "portcullis",
+      "spike_pit",
+      "pressure_plate",
+      "blade_trap",
+      "tripwire_bells",
+      "cavern_chasm",
+      "rope_bridge",
+      "spore_cloud",
+      "sewer_grate",
+      "drain_channel",
+      "slime_puddle",
+      "refuse_heap",
+      "broken_pipe",
+      "sluice_gate",
+      "maintenance_ladder",
+      "plank_crossing",
+      "valve_wheel",
+      "harbor_rowboat",
+      "ice_patch",
+      "sandstone_arch",
+      "desert_fire_bowl",
+      "swamp_boardwalk"
+    ],
+    "models": [],
+    "textures": [
+      "floor-mine-grit",
+      "floor-camp-earth",
+      "floor-sewer-brick",
+      "floor-desert-sandstone",
+      "surface-bog-water",
+      "surface-cracked-ice"
+    ]
+  },
   "provenance": {
     "rasterMethod": "OpenAI built-in image_gen",
-    "modelMethod": "original procedural low-poly, Three.js GLTFExporter",
+    "modelMethod": "original detailed geometry, UV and PBR, Three.js GLTFExporter",
+    "modelTriangleBudget": 50000,
+    "materialSources": [
+      {
+        "file": "wood.png",
+        "sha256": "8ec8b72122f914600dd36255e4d99b773e66f568a370fc1bd2ef36dde9104353",
+        "bytes": 2791260,
+        "nativeDimensions": {
+          "width": 1254,
+          "height": 1254
+        }
+      },
+      {
+        "file": "stone.png",
+        "sha256": "d9ce4399d819036edc99efaf52d5b994b959a07da63a8dbd1ec82c04527ed98e",
+        "bytes": 3565975,
+        "nativeDimensions": {
+          "width": 1254,
+          "height": 1254
+        }
+      },
+      {
+        "file": "metal.png",
+        "sha256": "60fd43458bfc12c1270527fd3df265420e6049c709fee5933bb0d45315fab109",
+        "bytes": 3231321,
+        "nativeDimensions": {
+          "width": 1254,
+          "height": 1254
+        }
+      },
+      {
+        "file": "cloth.png",
+        "sha256": "9f2bf2ac033cd6574da254c3e053ee8192472259e10ce3fe18f3c266d0712539",
+        "bytes": 3330799,
+        "nativeDimensions": {
+          "width": 1254,
+          "height": 1254
+        }
+      }
+    ],
     "thirdPartyModelsIncluded": false,
     "requestedByOwner": "2026-10-02",
     "sourcePrompts": "docs/map-detail-assets-prompts.md",
     "generators": [
       {
         "file": "tools/build-map-detail-models.mjs",
-        "sha256": "00969b8673cfe392352e2fbccce0389d03c135066ad28419ec09452a9ca0a09c",
-        "bytes": 7947
+        "sha256": "45a7decf5aca08aaf902d1d05b233baa73444c6b0a8d471048df4679169d8ca6",
+        "bytes": 10391
+      },
+      {
+        "file": "tools/map-detail-model-textures.mjs",
+        "sha256": "93b5dd141ce217400f7eefc0c59db0fa094938ad270959f6277733c08db738df",
+        "bytes": 19961
       },
       {
         "file": "tools/map-detail-model-helpers.mjs",
-        "sha256": "75e8647c093220ef557a2861fa6a2377cc3410976d2576cfa9599300e755ebb6",
-        "bytes": 3184
+        "sha256": "7f2bd06d420f13724743434f44d16bc81afff0d456a14b36fd9eb1b0db44ef9a",
+        "bytes": 10395
       },
       {
         "file": "tools/map-detail-models-workshop.mjs",
-        "sha256": "9ffa17b7734b71dd7d5e113c48ebdbdc5382a81f169da0540536ed35b72fe9c3",
-        "bytes": 15277
+        "sha256": "117fd3ca8ec9adaacd4ba34b8cd888e337b17842946854415d242dd85253a1ce",
+        "bytes": 35190
       },
       {
         "file": "tools/map-detail-models-household.mjs",
-        "sha256": "f320eb756393bfbbb57db5a43dac6e917547157ddebac64a446478294311854d",
-        "bytes": 12896
+        "sha256": "a33e455a95127c479babe2bbb9a325eb9b9c5b01f88f18c589c6cc7315138b64",
+        "bytes": 23183
       },
       {
         "file": "tools/map-detail-models-town.mjs",
-        "sha256": "57222a063da192c789ada20abc55d2723fe9800ebb20a098d58ac25eda5b33e7",
-        "bytes": 17930
+        "sha256": "d87960ccd9fb438e287941c628880f4e314843f3a53d6a42e375c2aabdbd55d3",
+        "bytes": 35098
       },
       {
         "file": "tools/map-detail-models-dungeon.mjs",
-        "sha256": "572a69a56b619b29a8288c0c5314e20dc3811d01fc304a0a03a6f33e43befd92",
-        "bytes": 12292
+        "sha256": "249f7d29001707fde33f2c5e8547fc61349952b0cd10ad5ab19030b0486c9e33",
+        "bytes": 27325
+      },
+      {
+        "file": "tools/map-detail-models-mine-camp.mjs",
+        "sha256": "9bf459d3b83e99703894d6a93d6cdb44e9a071520ed65174afc1c6f47c5c4a4b",
+        "bytes": 35459
+      },
+      {
+        "file": "tools/map-detail-models-urban-wilderness.mjs",
+        "sha256": "51d87da0e7bc05d74f95bd6d18340074319bad5a5912ac17625c3f02a12f57af",
+        "bytes": 35019
       },
       {
         "file": "tools/build-map-detail-assets.mjs",
-        "sha256": "ba09da4ad9a9d56ec6c8cff99df48cb7d72cdf17849f6f76d1126d8b5ed4528c",
-        "bytes": 4902
+        "sha256": "1196a512a9f985f587a48b2036526ad94f4084b7f1a0aa60b37abfd3fe11d5ed",
+        "bytes": 12049
       },
       {
         "file": "tools/build-map-detail-rasters.mjs",
-        "sha256": "ce7afe65a395d59789c8cb545ad7e180c924e35e51a69813ac003629c4bafc11",
-        "bytes": 22236
+        "sha256": "04fb03945175385d7e087b040c83d282750090b45435f171e48c6276bf33190a",
+        "bytes": 22761
       }
-    ]
+    ],
+    "sourceSpec": {
+      "file": "docs/map-detail-assets-spec-v1.json",
+      "sha256": "16d76aac5c038625cc838f12b0274f9da787ad6c428f1af8a771648824eb669f",
+      "bytes": 265042
+    },
+    "sourceSha256": "16d76aac5c038625cc838f12b0274f9da787ad6c428f1af8a771648824eb669f",
+    "generatorSha256": "1196a512a9f985f587a48b2036526ad94f4084b7f1a0aa60b37abfd3fe11d5ed"
   },
   "previews": {
     "raster": "raster-preview.png",
-    "models": "model-preview.png"
+    "models": "model-preview.png",
+    "expansion": "expansion-preview.png"
   },
   "files": [
     {
+      "file": "expansion-preview.png",
+      "sha256": "3fbca313a0ee93dfef4f3a2aace44ad9f51302fa200361f71032447f80a524ac",
+      "bytes": 1436994
+    },
+    {
       "file": "model-preview.png",
-      "sha256": "f6174724f23cbc06c3c59692753e5ff4957490fa2e8779a12e67c57f8f9bfff6",
-      "bytes": 516160
+      "sha256": "ae0948ecff08e02a3c6dc91e0c97c998cf3f942fa8ef43dc13e346653ac6924a",
+      "bytes": 2901533
+    },
+    {
+      "file": "models/alchemy_table.glb",
+      "sha256": "1c6d76c508dab1921151ddb2c47e6767f2c7df77f40db3c131777728eab05b2c",
+      "bytes": 880612
+    },
+    {
+      "file": "models/anchor.glb",
+      "sha256": "62f27d99b8b71ff646292a76337de4b07d041334a0029316dec62fdd1a5dca7a",
+      "bytes": 722588
+    },
+    {
+      "file": "models/arcane_coil.glb",
+      "sha256": "47081b5bd0534eae8fb24670ffe999a5703e3beec640c35d72a1ff3c5e42925f",
+      "bytes": 681836
     },
     {
       "file": "models/archery_target.glb",
-      "sha256": "d78b83e9051a88db19a93fcd7cf7984d28e5f786a6709b2016dd5a10a15eec58",
-      "bytes": 51524
+      "sha256": "8adfb9b649e6f82c0eff4bddc490a3410e64cab70108e6db61d9c27b445548ed",
+      "bytes": 370524
     },
     {
       "file": "models/armchair.glb",
-      "sha256": "093d6d621cb5314e59bc02213b6e231d3738f9c539c8343cd6fc678d4ef0ba79",
-      "bytes": 11824
+      "sha256": "02171c224a00e5612f5281353d95c61064dc61a6542a36b0bb7d46010c6d526f",
+      "bytes": 443904
     },
     {
       "file": "models/armor_stand.glb",
-      "sha256": "b04d3a697742427a154d645ac0cbcf4521441486eccaf2540f3236063fe6c1e8",
-      "bytes": 93276
+      "sha256": "8903de5ade46f935b2e9761c1c1d15e22d93806a446adfa7da08a7a5d61d27ab",
+      "bytes": 946608
+    },
+    {
+      "file": "models/ballista.glb",
+      "sha256": "819d69244f5264faef5be2fa3a42452c41f442b77c3404b271c0d1b0467dc812",
+      "bytes": 1467636
     },
     {
       "file": "models/bathtub.glb",
-      "sha256": "f615cf8a8535b6d0278c78fa2c1cf75ff3030a6d8edaaabaa447ed20fdcda5ed",
-      "bytes": 48752
+      "sha256": "06db7d191abe61dd1d5fb8c8d077c7af495a0d4d3012baef49a29cb917218e15",
+      "bytes": 1050740
     },
     {
       "file": "models/bell_frame.glb",
-      "sha256": "18b3ee889445e0707e703ff824dd66aec8cb252fcfb81297220e8d542763b249",
-      "bytes": 86836
+      "sha256": "32274b4b1e8946ad78a7fcd7d361315020b4c95a161972dc2e50852c9895a3ad",
+      "bytes": 730828
     },
     {
       "file": "models/bread_oven.glb",
-      "sha256": "6182bc60c4849a0b180e1ea9a7f28a0cbec607bf8c3d6ad5e4c6176be365729d",
-      "bytes": 58420
+      "sha256": "3fd6a76fd5e7dc1c198bece3b3db74e6129943feb302b44352e7ef3828b0b183",
+      "bytes": 598780
     },
     {
       "file": "models/butcher_block.glb",
-      "sha256": "c32b9f6ae83252100963e507b4af465c7565db7a3b2708b03207decd9f0546e2",
-      "bytes": 29184
+      "sha256": "165e114f2059f9e02f94a547f06139b4511d1b2249bce2afedd0d7d5285bc411",
+      "bytes": 422024
     },
     {
       "file": "models/candle_desk.glb",
-      "sha256": "513c5dcc069905b93cbb46cd6ec49a19cd01c97a9d69214477174cd97790e547",
-      "bytes": 40348
+      "sha256": "62b77522a2f0ce8a8631ee6596b0927f0cdfcd23710616f5be4baefc49450c4e",
+      "bytes": 259404
+    },
+    {
+      "file": "models/capstan.glb",
+      "sha256": "641aa2bc78dc0a83ffad48ba1cf7bae90862fa2637baab60b6d8ac9d4935c2dc",
+      "bytes": 595360
+    },
+    {
+      "file": "models/cargo_sled.glb",
+      "sha256": "db1ccf52bfde0b275f854ed86347f7d51100d419037924182a7dd1dbec2d1e8d",
+      "bytes": 757524
     },
     {
       "file": "models/chicken_coop.glb",
-      "sha256": "d4ff07586f2260aeab9f287ecc58049b7907a77769e03944f5d5e79c922e4a62",
-      "bytes": 18404
+      "sha256": "4370c8cbff52f9c31b795ab8631c2a315b87cf744c74cd952ae94d42f243caf6",
+      "bytes": 727280
     },
     {
       "file": "models/cloth_bolts.glb",
-      "sha256": "0462dfd2587e92e12f60c1e192260dd6b6e6b80aac089bd5444e9be9cd5fa2b5",
-      "bytes": 74180
+      "sha256": "b3135b5ef585460d2ca277d86b265843bd935b4e147d60c42ba0995ca96c98c9",
+      "bytes": 467120
     },
     {
       "file": "models/coal_pile.glb",
-      "sha256": "b884ee79ba5b1ce26ac838afc3a638f31c09a2f5921db59d71403b6d3439a8d6",
-      "bytes": 63384
+      "sha256": "66ba13fefb15a46d23fda0a2ba7231b65510c66d9c8f76d125b4f1d251740524",
+      "bytes": 377524
     },
     {
       "file": "models/coat_rack.glb",
-      "sha256": "87ffa8a9fae0f4c53bee1b70e5969ebc0d0cdcbcf855095359c45e28d11c0c87",
-      "bytes": 51836
+      "sha256": "7ecbc9bc23a7f61f6f978eb725808b98c835697ea8fc72bc7ee860bdd943f26c",
+      "bytes": 251584
+    },
+    {
+      "file": "models/command_tent.glb",
+      "sha256": "4675cf4447002c1be1dc93c2624e8a0949f8f775ef9c5df73bb72a2b355e41be",
+      "bytes": 418044
     },
     {
       "file": "models/cradle.glb",
-      "sha256": "171def18d29457e4356f882331f1e97969711b912005fdb11d5228acb6047e79",
-      "bytes": 49876
+      "sha256": "1007ff72ce9c0b659a6bcaf2cdadc363738196d27f4dd48a4cac5dd47310b1a8",
+      "bytes": 693064
+    },
+    {
+      "file": "models/crystal_cluster.glb",
+      "sha256": "d39a8f34eaa5c613e445c0efaea6435ff4ae7fae900983ea29a73b918b00fffc",
+      "bytes": 56636
+    },
+    {
+      "file": "models/crystal_orb.glb",
+      "sha256": "b100e5796bf01e2a3ecc843d64ddf38608453d52bb75f307f070c5eabe7d9cbd",
+      "bytes": 336420
+    },
+    {
+      "file": "models/dock_crane.glb",
+      "sha256": "49b469109f890bb46bf4eaf0de17e3f42b0cc676bbe1af088070519086856bfd",
+      "bytes": 646216
     },
     {
       "file": "models/double_bed.glb",
-      "sha256": "74acbb25d81f39b6204a6da2e45ea80b5fad1073da90284d735e112a1cedb911",
-      "bytes": 28460
+      "sha256": "83f1f08c4723287ba9a9d7be56df1bc563a684ee049852c94d749f93c559bd90",
+      "bytes": 535216
     },
     {
       "file": "models/dresser.glb",
-      "sha256": "2ce32abfaacb38e3bcd93c914b7d4e890fd20966afa416dca02ce1a16c551e9b",
-      "bytes": 44148
+      "sha256": "892beb4797f44fe4cab7dbdfdd1b51021a4bbde3f608a2fefab787885dcd657a",
+      "bytes": 348036
     },
     {
       "file": "models/fence_gate.glb",
-      "sha256": "4bc4341a0dc16f2d4f9f69b216e164eae0a9caf29095679fe7c580fcbc0f268a",
-      "bytes": 11864
+      "sha256": "e58dcac24503073b705b8556f737ef054b325252c8743fd3a06bb81effffe66e",
+      "bytes": 496956
     },
     {
       "file": "models/fish_rack.glb",
-      "sha256": "8913f7d5764a625a78e762d5a987ee7af4ab2b4ff80df8813a25ca892f0be58b",
-      "bytes": 112176
+      "sha256": "c010f41e0a83a04f0b94ce0871c469be0a5fb2744e13435eeff5e59ad6f31378",
+      "bytes": 866156
     },
     {
       "file": "models/fishing_nets.glb",
-      "sha256": "b3c16621afc7eb0abaa6f723ca14f7af2bc7b4db3e2c76824777866763a9a349",
-      "bytes": 72188
+      "sha256": "6d4d3ba26aede8eccd68cfe7a244d9e9a63d70c6c9ccd31a2de46c5cc144e193",
+      "bytes": 967592
     },
     {
       "file": "models/flour_bin.glb",
-      "sha256": "7a166cd2e0d2ea9a0a9ed90881aff94ff3216a7f572d9c193e2d795a0cff2753",
-      "bytes": 9168
+      "sha256": "aaf6f953fd3f85afd814bf6a1a6d3ae1c0f479312adebad6e5c69f221793c759",
+      "bytes": 563444
     },
     {
       "file": "models/flower_bed.glb",
-      "sha256": "df01bc8858eb8ff9687b1974cbfa0212102e887217e932ce3a066c2ed5392f91",
-      "bytes": 93764
+      "sha256": "257561cb38be9ad5bfcba5b5737eca28a09868b48cf5f2ad069f6c21fa22415d",
+      "bytes": 949644
     },
     {
       "file": "models/folding_screen.glb",
-      "sha256": "c71f6349ca422aedef9619a15d9b7f3d48c915a95b67cb0b5fa0c72c7a86fde8",
-      "bytes": 28476
+      "sha256": "70c40dc63e40765e63a1ad693e3c8c5861f11e4fea4bc7c10960d24a95b3a936",
+      "bytes": 617036
     },
     {
       "file": "models/font_basin.glb",
-      "sha256": "dc8a5e4420492b0256214b4e9399fc4bcd347edf72d13b14bd8cf6501c59a51d",
-      "bytes": 30648
+      "sha256": "cba9940af01fc9bfbc35ac67998c01b8b40bb6ac5703298bec029cfdce9fd4ea",
+      "bytes": 399280
     },
     {
       "file": "models/forge.glb",
-      "sha256": "9a097dcd1e51100191f1d3e0242c0234d70bfe9952575659fde9172bb9d8054f",
-      "bytes": 64512
+      "sha256": "53675b1d42112571a57852d92194d3ba6cfd6a809e9839debbeba4c1c09d438c",
+      "bytes": 1030792
     },
     {
       "file": "models/fountain.glb",
-      "sha256": "fbae643f923e8d4ccff059e52ebb5d3210988e3fb38cb58c9787889a205f0c71",
-      "bytes": 64112
+      "sha256": "52dc7d4a812f282a4600448aca81a41878e6ce0f2eb112618793caf05a2d9e3f",
+      "bytes": 621308
     },
     {
       "file": "models/garden_bed.glb",
-      "sha256": "b0502f7da79faa0a0a755b251f36e4b1c37642991b771f1f0c8a7d08c04767e4",
-      "bytes": 103276
+      "sha256": "7f87f621670c7d75af10d89f64abd09d4856b6a920dfc27238240b1d84c059d9",
+      "bytes": 976112
+    },
+    {
+      "file": "models/giant_fungus.glb",
+      "sha256": "c1aa3d038093f5fcf4924f2ba79d0e502842f03e16ee81724d1ff04f89ee68d3",
+      "bytes": 708768
     },
     {
       "file": "models/globe.glb",
-      "sha256": "78ec37e07ffbb9c604aa5e0478e24220db134f084a24165f247a82030ac54b49",
-      "bytes": 44968
+      "sha256": "43d21ba134ee3a6886621d1db41d1d52ec8fb36ed42b76dedefba6ee5e632e75",
+      "bytes": 294832
     },
     {
       "file": "models/hanging_pots.glb",
-      "sha256": "64bb03b2768c4a862c7cd8d13605d22d3425b105aada51bffc3cd9d8373d9d2d",
-      "bytes": 94484
+      "sha256": "e95ecb19ac314bbb8d3b9d73fad1b2056f6aa823032170fd84b8af820a425368",
+      "bytes": 701872
     },
     {
       "file": "models/hay_bales.glb",
-      "sha256": "6edbe522c4c93e038227370ff4dd5d0a50507c58ddbda657243b0d96aaa005a3",
-      "bytes": 8428
+      "sha256": "1f4db970dba5c0127627ff9d5ace5236b6e2ccf38e87f4c27af1b571bad404c7",
+      "bytes": 632552
     },
     {
       "file": "models/holy_pool.glb",
-      "sha256": "cbd1952e1aa2d609baf254973e6e7497144eecb8397a6a38cdcc9fa1bb136a79",
-      "bytes": 26860
+      "sha256": "fc757c2863c36fe1cd48c1e63e5e1058f8052e294364cb2506d8d3920fb0305d",
+      "bytes": 583688
     },
     {
       "file": "models/idol.glb",
-      "sha256": "eb8e0f9f58f5c04975e1c8d5a6aac8412908a5761e6172c6c5ef635a358bfa04",
-      "bytes": 83672
+      "sha256": "7a0012f78860ecc449ba3b3c31a880dad0d2de9d57854a470bab344b410f8fe3",
+      "bytes": 1366408
     },
     {
       "file": "models/incense_burner.glb",
-      "sha256": "dd8be94f72c25f0ba773e3b55ef525bc534fc1ceb403edb3e3ccb9506b0e2e88",
-      "bytes": 39168
+      "sha256": "815a19b31e5da314f3f4c15a4b260b354136b291c9a5026cfb1a2bc5e915e2b6",
+      "bytes": 759332
     },
     {
       "file": "models/jailer_desk.glb",
-      "sha256": "ae74c662bbb23ca46337de6247aeb85f550c1e583f16eb545654f7edc9afff94",
-      "bytes": 43004
+      "sha256": "eadf62feae42da69b8aedbce01a7c16aac6f313c49be1be09a1af44edf02e200",
+      "bytes": 475884
     },
     {
       "file": "models/kitchen_stove.glb",
-      "sha256": "0757942ad6cdbb15da3e81a8f3b38573af74e755fe6d2c6698bc74ac3a393eec",
-      "bytes": 80316
+      "sha256": "e0873a46db41e2663ab2b17ff8529b1976798d749613f6e6a25be53e25af5ddd",
+      "bytes": 645656
     },
     {
       "file": "models/kneeling_cushions.glb",
-      "sha256": "244fe604fcbeb647a2ced05d440d30528cd843534521326897d64c14e2fdfb21",
-      "bytes": 59148
+      "sha256": "11676f040609e86d620161850d01c3b3a6500460ceb0bd48c26836fc1dd160d7",
+      "bytes": 496344
     },
     {
       "file": "models/lumber_pile.glb",
-      "sha256": "96c77f97a22807343c292a4fad3e7d9e9ae1e98b1256e12ba6849be3fe246960",
-      "bytes": 17264
+      "sha256": "1b89d08549b2496892df2bc078f0ab3eae2c918bbf04b7ada5337780b06d25b1",
+      "bytes": 1037992
+    },
+    {
+      "file": "models/mangrove_roots.glb",
+      "sha256": "9ad4501066ad564d38b4bcb5f971a30759368d8f6f4d2f8524182c64a047f861",
+      "bytes": 972148
+    },
+    {
+      "file": "models/mantlet.glb",
+      "sha256": "5a772314ef7553899a51e35f284fff1f9ef179329d25a0a623f67384895c3a09",
+      "bytes": 607448
     },
     {
       "file": "models/market_awning.glb",
-      "sha256": "74eff4df376075e860b8ac477de0bb689c007272e827d74af1f63489fd6d5301",
-      "bytes": 28848
+      "sha256": "ae3b92ea629a368c8126b1d4a671ab1a15998f7d68f6c562fa5deb993ffc2b16",
+      "bytes": 497088
     },
     {
       "file": "models/millstone.glb",
-      "sha256": "72a9ab35319851f38a83b6dac951d147e251a9288d46f1d9033472b17fe097aa",
-      "bytes": 33840
+      "sha256": "56d707f2639bda8a68381204f5e0b636c301494f4e9d1f18f4ee4700ebef73fa",
+      "bytes": 670252
+    },
+    {
+      "file": "models/mine_cart.glb",
+      "sha256": "be7e9a5891eaf0d6d79eac35d98ae446bc43b11bd096362f6abaa226c005426c",
+      "bytes": 819032
+    },
+    {
+      "file": "models/mine_rail.glb",
+      "sha256": "2f46c068881b7fb37ca3ac5516d3fcba9356a48d3e131c47025b28b100caeb2a",
+      "bytes": 1129472
     },
     {
       "file": "models/mooring_post.glb",
-      "sha256": "f0d747e2f364b753686f2ec8aa2df7e0b191e98d64a4482bfc5fae36bb5d316c",
-      "bytes": 43760
+      "sha256": "f9dfbcf97b676bdf3a2da153ae2c2be41bdd8eb2e37ff2e56d866b48b4e75dcb",
+      "bytes": 705132
+    },
+    {
+      "file": "models/nomad_tent.glb",
+      "sha256": "61fd181ba4b4bc1cc4d5c335e757f464ff544cb369f7b855ade4c0191a6c5d06",
+      "bytes": 348680
     },
     {
       "file": "models/notice_board.glb",
-      "sha256": "05892a3a29e5489b06038ce574b139fabf5f13a3eee92afec010e7c891dfd5b4",
-      "bytes": 40740
+      "sha256": "7e2fd2bf63ada0e96067a0f91dec1781ded895c85d5f277c598f01d27d3953be",
+      "bytes": 344540
+    },
+    {
+      "file": "models/obsidian_monolith.glb",
+      "sha256": "08a9e158bafe9b6fd4857e4839aedf24f82078452cde1103363637754f866f89",
+      "bytes": 220592
     },
     {
       "file": "models/pillory.glb",
-      "sha256": "3d698b482841eb30befb69fb389fdb866543ea563d876dcb91affb71d866d195",
-      "bytes": 22252
+      "sha256": "1bc4d95d7b4633063ffa219a13dce430bbfd0d3d19902be67119082a79edbffb",
+      "bytes": 631200
     },
     {
       "file": "models/punt.glb",
-      "sha256": "10dfa5d8be329a5631bcb0a6d6dcbace3a46b248172c497573799e728a7a727e",
-      "bytes": 21848
+      "sha256": "6905237670aa75c4edc71029e31a54c7c95bca72ebec8e15be7f3aadc19d16a9",
+      "bytes": 771288
     },
     {
       "file": "models/quench_tub.glb",
-      "sha256": "60a42f410f086012c98cab320e17f5274783f1ee71d24342d6a17de42c1f5a59",
-      "bytes": 54460
+      "sha256": "fa1535bb75006a5a51e013ae33bfbce6b250406ef498ec5886b4b781a74df98c",
+      "bytes": 595024
     },
     {
       "file": "models/reading_nook.glb",
-      "sha256": "6e5df9c0ae2212fc45eee8f54f91631a6539a1d3221601f1f71be5274fd029e3",
-      "bytes": 49232
+      "sha256": "212993b4b6ba64bafaa6424a07a86875089d0d063212b1610e4f2b5491056ec0",
+      "bytes": 492064
     },
     {
       "file": "models/root_tangle.glb",
-      "sha256": "f8d7f59d1d01fff6afc2d23286640349eaf8510e2dd113415354410df0ef66bb",
-      "bytes": 51100
+      "sha256": "396630d01eecdf6d6d04983cf9d16f6b20c6da854620ff84e760d18f8c29c0e4",
+      "bytes": 788920
+    },
+    {
+      "file": "models/rope_bridge.glb",
+      "sha256": "b05b35686f1134f95705081849dacfc26bf5d03451b81de312497b4c49acbeb0",
+      "bytes": 912920
     },
     {
       "file": "models/rowboat.glb",
-      "sha256": "95ec206ddf7b9301b4f9eb54c8164e6213a08331f866979f71855e6cfa12ac22",
-      "bytes": 31052
+      "sha256": "aee819124cb53038ba89b7beb40f1f62edd9146da28e39c560f97edda373a33c",
+      "bytes": 945744
+    },
+    {
+      "file": "models/sandstone_arch.glb",
+      "sha256": "6ebe2bd868a1383cbaaa7544e67827815b85f279af17b49b0d6bf20d6712885a",
+      "bytes": 406280
     },
     {
       "file": "models/sawhorse.glb",
-      "sha256": "0e41974f1911ef0f04eb02648c0e77dc7d745d03ad0c33188b07a048e8c94823",
-      "bytes": 21844
+      "sha256": "da304ecb0237861ed4e8084f995eb530975616f09385cb9fb2b28a6ccf7d246e",
+      "bytes": 523148
     },
     {
       "file": "models/scales_table.glb",
-      "sha256": "7782adcdfe00c330b16e2c081c109696f82e86cd24594376d6bb286722d661b6",
-      "bytes": 74448
+      "sha256": "7fa322a918235ed2a00274e65f2fe2b142b840513cf1b921039222d2577de79c",
+      "bytes": 680632
     },
     {
       "file": "models/scarecrow.glb",
-      "sha256": "6901ff9fd9a5c49670b155edc715782f5fa6fdf143c8f0c11127d1455b38f814",
-      "bytes": 32212
+      "sha256": "9d76f2e2c32675a2d4f1a86e2ecf8ac16dd29b9cb26aeb7652f2d62e896bcc7b",
+      "bytes": 892612
+    },
+    {
+      "file": "models/scout_tent.glb",
+      "sha256": "bec5250830dd44c7cdbcf9d69e63db69d9e783c7d11672409d5036f18354c356",
+      "bytes": 445632
     },
     {
       "file": "models/scroll_rack.glb",
-      "sha256": "c97279d945b02f870c274f233a6d42105bde1bc434a736b78581229b7bf80037",
-      "bytes": 67252
+      "sha256": "b1dbcb1551ffb5ac038c565385de94b9d8fd7f3c5dde80aba5b5d2d068bf9128",
+      "bytes": 363916
     },
     {
       "file": "models/shop_counter.glb",
-      "sha256": "b9b792d107b39ce382bb1e7dd90e2f1fd7c61019fcdff5316715ad7b53229345",
-      "bytes": 78344
+      "sha256": "e0cdba528fc15677ec9d880f5127cbfd98902e12aae759ec289dc467bbcc8a30",
+      "bytes": 526696
     },
     {
       "file": "models/sign_post_city.glb",
-      "sha256": "99037042b2cabae3a6b2296e6e4b53bdf5a4085ac53a5ff5406e4238fe9ec46c",
-      "bytes": 10744
+      "sha256": "7344caecc6ddd314412d91fea143ab9ea57172f870c512ab0ddb61466a1c731b",
+      "bytes": 372552
+    },
+    {
+      "file": "models/snowshoe_pair.glb",
+      "sha256": "bd10cc94483e06cb6dd3b439d6e685b6748d9cf6b240b092baf611c329d72eb1",
+      "bytes": 671492
     },
     {
       "file": "models/standing_mirror.glb",
-      "sha256": "1bd19ba18e8501b363ee5aaee1f008d28127c533d077f5e8dfa7d9bf3df840bf",
-      "bytes": 31136
+      "sha256": "c24a24c0559ef11ca8f0af3591437bec0b47177575d988c623c5b9f4b5a93039",
+      "bytes": 465868
     },
     {
       "file": "models/statue_plinth.glb",
-      "sha256": "2dc5f1624067b7df7b4421f3d7bda1eba9ce62865f0de0984e8c8809cb255b3e",
-      "bytes": 79164
+      "sha256": "8b110d087c1e2c460e5647ca45fcf7eec5f924c25c0f35112e7eb4abbf3f36e4",
+      "bytes": 1077016
     },
     {
       "file": "models/stocks.glb",
-      "sha256": "d7fe05c54966da3ee0f2c141187e0f5fa4f5ebcf9e41b1b58e7258b832ae60cd",
-      "bytes": 105572
+      "sha256": "e2cc697325ed1433908ff866ce6a373c453bca56bb33363dfaa7b824adb3e9b1",
+      "bytes": 839928
     },
     {
       "file": "models/stone_steps.glb",
-      "sha256": "47570dfd4ba101d760d90b26db5f1f67277eb35ae962a89583f753606bfe8c66",
-      "bytes": 32628
+      "sha256": "984c926fe00421b517c222cfc30bfbb9f7682d10cdaf39529fc7db5764004f2c",
+      "bytes": 432840
     },
     {
       "file": "models/straw_bed.glb",
-      "sha256": "a2705261c441fc57b5814dc4045f333c14034af189a9e02aa76e504f34f72148",
-      "bytes": 43420
+      "sha256": "8bd82050bf9630ff0017580a608df46e23e6df6f1a12acbb959a321f8c62c163",
+      "bytes": 651600
     },
     {
       "file": "models/street_planter.glb",
-      "sha256": "962b3ac8570289858dbe605aabc41f9e5362bdec7eb71f861a2fa98ceb25a612",
-      "bytes": 52548
+      "sha256": "67f46a5509b7a81122a839e90c261219da6c8f1dba898ee7e9ccdda04ae7ed55",
+      "bytes": 521288
+    },
+    {
+      "file": "models/swamp_boardwalk.glb",
+      "sha256": "0ab309045c1d98e77eba97202190c73b4abfa1db6105235c8f926673ece7b88c",
+      "bytes": 873152
     },
     {
       "file": "models/telescope.glb",
-      "sha256": "29cb510ab54ec4551049faca685ab049a3b80715b9ef561490fdedc72ff1e670",
-      "bytes": 36088
+      "sha256": "da73aaf615f3d00213ef3c32d2f6d73c9e9a8cc2a13eba1bc95221ee991a65d7",
+      "bytes": 413116
+    },
+    {
+      "file": "models/timber_shoring.glb",
+      "sha256": "4e45110b6961e887f9a1784af055286b51b133dabe299ac970eab3308f00d003",
+      "bytes": 612280
     },
     {
       "file": "models/torture_rack.glb",
-      "sha256": "a2fea70dfb0e051d5372ade056c0c0cbe796bf8923cf3aa7862c579c6228ba9a",
-      "bytes": 44196
+      "sha256": "a6229d5f5228648ab7ad67d9b6de8e2c7b7c7e69e1bc4e4ddb65fb491ce41487",
+      "bytes": 604140
     },
     {
       "file": "models/town_well.glb",
-      "sha256": "1c4057d65848e2c643b15cbe455b2dffeff6dc65fde7b066117b323ecd98c38d",
-      "bytes": 68804
+      "sha256": "278de1cc30efa518e1c91b6b1f3dbd00ad84ada3b946ce84cb2f09df1cce1aec",
+      "bytes": 847016
     },
     {
       "file": "models/wall_chains.glb",
-      "sha256": "85b2874c04be9ed0210569b2c55fcf09579b3809e786c6502030da00f2f8fcfb",
-      "bytes": 173152
+      "sha256": "0566bd1c5d5c5ca264288f7c24e425bbf42e97e7ddb049bccb7e31d057909342",
+      "bytes": 878304
     },
     {
       "file": "models/washtub.glb",
-      "sha256": "9133df3a4f380fc9248fa37514d52640aeb26cea5d14496bb668db144ca2f50e",
-      "bytes": 74120
+      "sha256": "3d31bc6a938070123b797445160d5ada53971198bf18f9320ba1a62b917e1e17",
+      "bytes": 478820
     },
     {
       "file": "models/water_wheel.glb",
-      "sha256": "1fb259a061817688a3620a69616b7efbd3ca088a0b5bba0f227c6d4a3d0d9468",
-      "bytes": 34504
+      "sha256": "8d7d2339d4986fe00a46f932081dcffad6ef3c2483cef01a74c30adfa6e61c2e",
+      "bytes": 683616
+    },
+    {
+      "file": "models/weapon_rack.glb",
+      "sha256": "cdddc235b835f87de830c77248d1f457db351a1104d8791de8c28b1c114c89e2",
+      "bytes": 951680
     },
     {
       "file": "models/writing_desk.glb",
-      "sha256": "d0396aa4f35d44c8c51f832c09446955be86b7f115e66e9aab9daabe2e1754b8",
-      "bytes": 26924
+      "sha256": "1c44c8bff09812e3f7b56dbd0a34b71327ddb4195e487ce2884beec593ecf4b4",
+      "bytes": 442500
     },
     {
       "file": "prop-atlas.json",
-      "sha256": "1b92cf1df2c0b776289dcde2aa26aada132b7b1acb364f82f2d2a6cb3ba09289",
-      "bytes": 58706
+      "sha256": "32e6c1b382062d0cf1454e1078ff39087131deb830a900c2b37811d1ae6c924c",
+      "bytes": 94438
     },
     {
       "file": "prop-atlas.png",
-      "sha256": "a9576efba6dcbb5d5bb470487297e50067a21115f98aba1125af26c86d48c4f0",
-      "bytes": 5864068
+      "sha256": "14b05085516bdfd002d3034ad3b0a0954636ef0eea67a7959ffd7139799f8921",
+      "bytes": 7674298
     },
     {
       "file": "raster-preview.png",
-      "sha256": "db48d8130d262fdb4aff3759d2033e6f1eb488683ee4b12b30e0cb4c797fcfba",
-      "bytes": 3296011
+      "sha256": "30b3a4384183426c912616f785f392ffc5c4799477c407443abca85b389a06fa",
+      "bytes": 4729348
+    },
+    {
+      "file": "textures/floor-camp-earth.png",
+      "sha256": "1ee50e9583e47f2c870c753ca79d3c1e77538ff02568ce3588bb46ec7cb73bbc",
+      "bytes": 252627
     },
     {
       "file": "textures/floor-cave.png",
@@ -2657,6 +7083,11 @@
       "file": "textures/floor-cobble.png",
       "sha256": "8826a2f32a51701f83aca2dcfe62060e81fbdb6a4d2c55fe573adcb6ee3becf3",
       "bytes": 238251
+    },
+    {
+      "file": "textures/floor-desert-sandstone.png",
+      "sha256": "99dd30b4c2833006c18fe6fefe80b7aa6324d262cc5423ade125279e0f0ea922",
+      "bytes": 215164
     },
     {
       "file": "textures/floor-dock.png",
@@ -2679,6 +7110,11 @@
       "bytes": 250721
     },
     {
+      "file": "textures/floor-mine-grit.png",
+      "sha256": "37d246a6fb9d33217c4a2834b4b0d1596a0e99024c6917a18ef22b4e9c1e9c69",
+      "bytes": 249817
+    },
+    {
       "file": "textures/floor-mosaic.png",
       "sha256": "564164e478ca74ef3a035126ac90fde5d55c66fc3e7581d63b9d1d25090f1a9f",
       "bytes": 190514
@@ -2694,6 +7130,11 @@
       "bytes": 201087
     },
     {
+      "file": "textures/floor-sewer-brick.png",
+      "sha256": "f66a4bb9d821d46e43efaec57c87d9835fa0761ada52dd5c26290ff59c5ff7b9",
+      "bytes": 217299
+    },
+    {
       "file": "textures/floor-snow.png",
       "sha256": "29e55871ed6e6613696325a0acaabc00462b197e465cdbbe59671adb91209656",
       "bytes": 214093
@@ -2702,6 +7143,16 @@
       "file": "textures/floor-straw.png",
       "sha256": "9d592117af40580250215812e9181e89d31088680f6e51e836db13314995cb10",
       "bytes": 248659
+    },
+    {
+      "file": "textures/surface-bog-water.png",
+      "sha256": "204433623623fb63b726e71fd0b662f0a8278e5a93477c54765bcc8e84047b5c",
+      "bytes": 223743
+    },
+    {
+      "file": "textures/surface-cracked-ice.png",
+      "sha256": "88a2c98550589fcfa4ba72c3bbc7d98649a1a8ba1d94ada69673a5a846a70237",
+      "bytes": 231185
     },
     {
       "file": "textures/surface-river.png",
@@ -2738,5 +7189,54 @@
       "sha256": "4170de6a2b41da8c3d3960e34b3c9fb2c6788a911c4ab9a4d2a37751217c17a8",
       "bytes": 223528
     }
-  ]
+  ],
+  "structuralIntegration": {
+    "models": [
+      "rope_bridge",
+      "swamp_boardwalk",
+      "sandstone_arch"
+    ]
+  },
+  "styleIntegration": {
+    "stamps": [
+      "snowdrift",
+      "snowy_boulder",
+      "ice_pillars",
+      "frozen_pool",
+      "winter_cache",
+      "snow_cairn",
+      "sand_dune",
+      "desert_boulders",
+      "cactus_cluster",
+      "dead_scrub",
+      "oasis_pool",
+      "broken_obelisk",
+      "bog_pool",
+      "lily_pad_cluster",
+      "reed_cluster",
+      "rotten_log",
+      "mud_patch",
+      "swamp_totem",
+      "peat_mound",
+      "mooring_bollard",
+      "cargo_net",
+      "fishing_crates",
+      "lobster_cage",
+      "sail_bundle",
+      "bedroll_cluster",
+      "shield_rack",
+      "camp_dummy",
+      "spiked_beam_barrier",
+      "alchemy_cauldron",
+      "arcane_lectern",
+      "ritual_circle",
+      "arcane_stone",
+      "potion_cabinet",
+      "magic_mirror",
+      "prison_cage",
+      "dungeon_rack",
+      "iron_maiden",
+      "manacle_post"
+    ]
+  }
 }

@@ -56,6 +56,7 @@ export const REFERENCE_SIZE = Object.freeze({ width: 26, height: 26 })
  * @property {string} [topology]
  * @property {'sparse'|'mixed'|'dense'} [density]
  * @property {'rect'|'L'|'cross'|'round'} [shape] форма корпуса
+ * @property {boolean} [arcane] дом мага или алхимика: гостиная и кабинет — лаборатория
  */
 
 /** @typedef {'rect'|'L'|'cross'|'round'} BuildingShape */
@@ -432,6 +433,7 @@ function normalizeBuildingDesign(design) {
     climate: /** @type {'temperate'|'arid'|'cold'|'wetland'} */ (pick('climate', BUILDING_CLIMATES, 'temperate')),
     architecture: /** @type {'wood'|'stone'|'sand'|'metal'|'marble'|'ice'} */ (pick('architecture', BUILDING_ARCHITECTURES, 'wood')),
     density: /** @type {'sparse'|'mixed'|'dense'} */ (pick('density', new Set(['sparse', 'mixed', 'dense']), 'mixed')),
+    ...(source.arcane === true ? { arcane: true } : {}),
   }
 }
 
@@ -881,7 +883,9 @@ function designPropPlans(design, rooms, includeDecorativeTransition = true) {
   } else {
     // Парадный зал усадьбы — шаблон `dining`: стол посредине, стулья, люстра.
     add('hall', 'dining', ['fireplace', 'candelabra'], ['table_small', 'chair', 'candelabra', 'chandelier'], 'interior', 25)
-    add('salon', 'hall', ['table_small', 'chair', 'candelabra'], ['table_small', 'chair', 'candelabra', 'rug'], 'interior', 22)
+    // У мага гостиная — лаборатория: котёл, шкаф с зельями, круг на полу.
+    if (design.arcane) add('salon', 'laboratory', ['candelabra'], ['candle', 'rug'], 'interior', 24)
+    else add('salon', 'hall', ['table_small', 'chair', 'candelabra'], ['table_small', 'chair', 'candelabra', 'rug'], 'interior', 22)
     add('kitchen', 'kitchen', ['fireplace', 'cupboard', 'crate'], ['fireplace', 'cupboard', 'cauldron', 'crate', 'shelf_wall'], 'interior', 25)
     add('store', 'store', ['crate_stack', 'barrel_stack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 28)
   }
@@ -891,7 +895,7 @@ function designPropPlans(design, rooms, includeDecorativeTransition = true) {
     if (/^bedroom-\d+$/u.test(room.zoneId)) add(room.zoneId, 'bedroom', ['bed', 'chest'], ['bed', 'chest', 'night_table', 'wardrobe', 'candle'], 'interior', 26)
     if (/^guest-\d+$/u.test(room.zoneId)) add(room.zoneId, 'bedroom', ['bed', 'night_table'], ['bed', 'chest', 'night_table', 'washbasin', 'candle'], 'interior', 26)
   }
-  add('study', 'study', ['chair'], ['bookshelf', 'chest', 'candle', 'rug'], 'interior', 24)
+  add('study', design.arcane ? 'laboratory' : 'study', ['chair'], ['bookshelf', 'chest', 'candle', 'rug'], 'interior', 24)
   add('corridor', 'corridor', ['lantern_wall'], ['lantern_wall', 'banner', 'chest'], 'interior', 6)
   add('courtyard', 'courtyard', ['well', 'cart'], ['well', 'cart', 'woodpile', 'bush', 'tree_oak', 'tree_birch'], 'yard', 14)
   const yardRequire = design.climate === 'arid' ? ['tree_dead'] : design.climate === 'cold' ? ['tree_pine', 'woodpile'] : ['tree_oak', 'woodpile']

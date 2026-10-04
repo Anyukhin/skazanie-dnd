@@ -115,8 +115,44 @@ void main() {
 export type Board3DPostProcessing = {
   /** Мягкое затенение в углах, у стен и под фигурками. */
   ambientOcclusion: boolean
+  /** Доля разрешения кадра для затенения: 1 — полное, .5 — вчетверо дешевле. */
+  ambientOcclusionScale?: number
   /** Свечение огня и заклинаний поверх яркости кадра. */
   bloom: boolean
+  /** Малая глубина резкости «настольной диорамы»: резкая полоса по центру. */
+  tiltShift?: boolean
+}
+
+/**
+ * Tilt-shift: резкая полоса вокруг центра экрана, к верхнему и нижнему краю
+ * кадр мягко расплывается, как на макросъёмке миниатюр. Центр — точка, вокруг
+ * которой вращается камера, поэтому то, что игрок рассматривает, всегда резко.
+ * `band` — полуширина резкой полосы в долях высоты, `falloff` — ширина перехода,
+ * `amount` — радиус размытия у края в пикселях кадра высотой 1080.
+ */
+export const BOARD3D_TILT_SHIFT = { band: .2, falloff: .3, amount: 2.6 }
+
+const TiltShiftShader = {
+  name: 'BoardTiltShiftShader',
+  uniforms: {
+    tDiffuse: { value: null as THREE.Texture | null },
+    step: { value: new THREE.Vector2(1, 0) },
+    band: { value: BOARD3D_TILT_SHIFT.band },
+    falloff: { value: BOARD3D_TILT_SHIFT.falloff },
+  },
+  vertexShader: `varying vec2 vUv;
+void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 step; uniform float band; uniform float falloff;
+varying vec2 vUv;
+void main() {
+  float blur = smoothstep(band, band + falloff, abs(vUv.y - .5));
+  if (blur < .02) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
+  vec2 offset = step * blur;
+  vec4 sum = texture2D(tDiffuse, vUv) * .2270270270;
+  sum += (texture2D(tDiffuse, vUv + offset * 1.3846153846) + texture2D(tDiffuse, vUv - offset * 1.3846153846)) * .3162162162;
+  sum += (texture2D(tDiffuse, vUv + offset * 3.2307692308) + texture2D(tDiffuse, vUv - offset * 3.2307692308)) * .0702702703;
+  gl_FragColor = sum;
+}`,
 }
 
 /** Палитра фона: тёплый центр под доской и тёмные края, как виньетка стола. */
@@ -195,6 +231,16 @@ export function fitSunShadow(sun: THREE.DirectionalLight, bounds: BoardBounds): 
  */
 class BoardGTAOPass extends GTAOPass {
   private hiddenOverlays: THREE.Object3D[] = []
+  private readonly resolutionScale: number
+
+  constructor(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number, resolutionScale = 1) {
+    super(scene, camera, Math.max(1, Math.round(width * resolutionScale)), Math.max(1, Math.round(height * resolutionScale)))
+    this.resolutionScale = resolutionScale
+  }
+
+  override setSize(width: number, height: number): void {
+    super.setSize(Math.max(1, Math.round(width * this.resolutionScale)), Math.max(1, Math.round(height * this.resolutionScale)))
+  }
 
   override render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget, deltaTime: number, maskActive: boolean): void {
     this.scene.traverseVisible((object) => {
@@ -223,6 +269,7 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
   let composer: EffectComposer | null = null
   let gtao: BoardGTAOPass | null = null
   let bloom: UnrealBloomPass | null = null
+  let tiltPasses: ShaderPass[] = []
   let settings: Board3DPostProcessing = { ambientOcclusion: false, bloom: false }
   let width = 1, height = 1
   let clipBox: THREE.Box3 | null = null
@@ -235,11 +282,21 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
     composer = null
     gtao = null
     bloom = null
+    tiltPasses = []
+  }
+
+  /** Шаг размытия в текселях: радиус у края растёт с высотой кадра. */
+  const updateTiltShift = () => {
+    if (!tiltPasses.length) return
+    const pixelRatio = renderer.getPixelRatio()
+    const radius = BOARD3D_TILT_SHIFT.amount * Math.max(.5, height * pixelRatio / 1080)
+    tiltPasses[0].uniforms.step.value.set(radius / (width * pixelRatio), 0)
+    tiltPasses[1].uniforms.step.value.set(0, radius / (height * pixelRatio))
   }
 
   const build = () => {
     disposeComposer()
-    if (!settings.ambientOcclusion && !settings.bloom) return
+    if (!settings.ambientOcclusion && !settings.bloom && !settings.tiltShift) return
     const pixelRatio = renderer.getPixelRatio()
     // MSAA-цель сохраняет сглаживание, которое иначе даёт сам холст.
     const target = new THREE.WebGLRenderTarget(width * pixelRatio, height * pixelRatio, { type: THREE.HalfFloatType, samples: 4 })
@@ -248,11 +305,14 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
     composer.setSize(width, height)
     composer.addPass(new RenderPass(scene, camera))
     if (settings.ambientOcclusion) {
-      gtao = new BoardGTAOPass(scene, camera, width * pixelRatio, height * pixelRatio)
+      const scale = Math.min(1, Math.max(.25, settings.ambientOcclusionScale ?? 1))
+      gtao = new BoardGTAOPass(scene, camera, width * pixelRatio, height * pixelRatio, scale)
       // Радиус в мировых единицах: клетка — 1. Затенение держится у стыков
-      // стен, мебели и ног и не расползается по всему полу.
-      gtao.updateGtaoMaterial({ radius: .42, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples: 16 })
-      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 16 })
+      // стен, мебели и ног и не расползается по всему полу. На уменьшенном
+      // разрешении выборок вдвое меньше: шум сглаживает тот же фильтр.
+      const samples = scale < 1 ? 8 : 16
+      gtao.updateGtaoMaterial({ radius: .42, distanceExponent: 1.4, thickness: 1.2, scale: 1, samples })
+      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples })
       gtao.blendIntensity = .85
       if (clipBox) gtao.setSceneClipBox(clipBox)
       composer.addPass(gtao)
@@ -264,12 +324,19 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
       composer.addPass(bloom)
     }
     composer.addPass(new OutputPass())
+    if (settings.tiltShift) {
+      tiltPasses = [new ShaderPass(TiltShiftShader), new ShaderPass(TiltShiftShader)]
+      for (const pass of tiltPasses) composer.addPass(pass)
+      updateTiltShift()
+    }
     composer.addPass(new ShaderPass(GradeShader))
   }
 
   return {
     configure(next: Board3DPostProcessing) {
-      if (next.ambientOcclusion === settings.ambientOcclusion && next.bloom === settings.bloom && (composer || (!next.ambientOcclusion && !next.bloom))) return
+      const same = next.ambientOcclusion === settings.ambientOcclusion && next.bloom === settings.bloom
+        && (next.ambientOcclusionScale ?? 1) === (settings.ambientOcclusionScale ?? 1) && Boolean(next.tiltShift) === Boolean(settings.tiltShift)
+      if (same && (composer || (!next.ambientOcclusion && !next.bloom && !next.tiltShift))) return
       settings = { ...next }
       build()
     },
@@ -279,6 +346,7 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
       if (!composer) return
       composer.setPixelRatio(renderer.getPixelRatio())
       composer.setSize(width, height)
+      updateTiltShift()
     },
     /** Смена DPR требует новой цели: EffectComposer не пересчитывает samples. */
     refresh() { build() },

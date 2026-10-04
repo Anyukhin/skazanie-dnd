@@ -1,0 +1,8248 @@
+{
+ "schema": "graphics-style/v1",
+ "style": "stylized",
+ "label": "Рисованный",
+ "revision": "0ec520fe74fe0588",
+ "license": "CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit) и собственные текстуры и модели проекта (data/asset-rights.json)",
+ "sources": [
+  "https://quaternius.com/packs/fantasypropsmegakit.html",
+  "https://quaternius.com/packs/medievalvillagemegakit.html",
+  "https://quaternius.itch.io/stylized-nature-megakit",
+  "public/assets/maps/terrain/terrain-tiles.json",
+  "public/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/",
+  "public/assets/maps/detail-v1/manifest.json"
+ ],
+ "floors": {
+  "stone": {
+   "color": "floors/stone/color.jpg",
+   "normal": "floors/stone/normal.jpg",
+   "orm": "floors/stone/orm.jpg",
+   "height": "floors/stone/height.jpg",
+   "cells": 4,
+   "relief": 0.03
+  },
+  "wood": {
+   "color": "floors/wood/color.jpg",
+   "normal": "floors/wood/normal.jpg",
+   "orm": "floors/wood/orm.jpg",
+   "height": "floors/wood/height.jpg",
+   "cells": 8,
+   "relief": 0.015
+  },
+  "earth": {
+   "color": "floors/earth/color.jpg",
+   "normal": "floors/earth/normal.jpg",
+   "orm": "floors/earth/orm.jpg",
+   "height": "floors/earth/height.jpg",
+   "cells": 5,
+   "relief": 0.03
+  },
+  "grass": {
+   "color": "floors/grass/color.jpg",
+   "normal": "floors/grass/normal.jpg",
+   "orm": "floors/grass/orm.jpg",
+   "height": "floors/grass/height.jpg",
+   "cells": 5,
+   "relief": 0.025
+  },
+  "sand": {
+   "color": "floors/sand/color.jpg",
+   "normal": "floors/sand/normal.jpg",
+   "orm": "floors/sand/orm.jpg",
+   "height": "floors/sand/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "marble": {
+   "color": "floors/marble/color.jpg",
+   "normal": "floors/marble/normal.jpg",
+   "orm": "floors/marble/orm.jpg",
+   "height": "floors/marble/height.jpg",
+   "cells": 4,
+   "relief": 0.006
+  },
+  "metal": {
+   "color": "floors/metal/color.jpg",
+   "normal": "floors/metal/normal.jpg",
+   "orm": "floors/metal/orm.jpg",
+   "height": "floors/metal/height.jpg",
+   "cells": 4,
+   "relief": 0.01
+  },
+  "ice": {
+   "color": "floors/ice/color.jpg",
+   "normal": "floors/ice/normal.jpg",
+   "orm": "floors/ice/orm.jpg",
+   "height": "floors/ice/height.jpg",
+   "cells": 8,
+   "relief": 0.01
+  },
+  "planks-dark": {
+   "color": "floors/planks-dark/color.jpg",
+   "normal": "floors/planks-dark/normal.jpg",
+   "orm": "floors/planks-dark/orm.jpg",
+   "height": "floors/planks-dark/height.jpg",
+   "cells": 8,
+   "relief": 0.015
+  },
+  "parquet": {
+   "color": "floors/parquet/color.jpg",
+   "normal": "floors/parquet/normal.jpg",
+   "orm": "floors/parquet/orm.jpg",
+   "height": "floors/parquet/height.jpg",
+   "cells": 8,
+   "relief": 0.008
+  },
+  "flagstone": {
+   "color": "floors/flagstone/color.jpg",
+   "normal": "floors/flagstone/normal.jpg",
+   "orm": "floors/flagstone/orm.jpg",
+   "height": "floors/flagstone/height.jpg",
+   "cells": 3,
+   "relief": 0.045
+  },
+  "checker": {
+   "color": "floors/checker/color.jpg",
+   "normal": "floors/checker/normal.jpg",
+   "orm": "floors/checker/orm.jpg",
+   "height": "floors/checker/height.jpg",
+   "cells": 8,
+   "relief": 0.008
+  },
+  "dungeon": {
+   "color": "floors/dungeon/color.jpg",
+   "normal": "floors/dungeon/normal.jpg",
+   "orm": "floors/dungeon/orm.jpg",
+   "height": "floors/dungeon/height.jpg",
+   "cells": 3,
+   "relief": 0.04
+  },
+  "mosaic": {
+   "color": "floors/mosaic/color.jpg",
+   "normal": "floors/mosaic/normal.jpg",
+   "orm": "floors/mosaic/orm.jpg",
+   "height": "floors/mosaic/height.jpg",
+   "cells": 8,
+   "relief": 0.008
+  },
+  "cobble": {
+   "color": "floors/cobble/color.jpg",
+   "normal": "floors/cobble/normal.jpg",
+   "orm": "floors/cobble/orm.jpg",
+   "height": "floors/cobble/height.jpg",
+   "cells": 2.4,
+   "relief": 0.05
+  },
+  "straw": {
+   "color": "floors/straw/color.jpg",
+   "normal": "floors/straw/normal.jpg",
+   "orm": "floors/straw/orm.jpg",
+   "height": "floors/straw/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "dock": {
+   "color": "floors/dock/color.jpg",
+   "normal": "floors/dock/normal.jpg",
+   "orm": "floors/dock/orm.jpg",
+   "height": "floors/dock/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "gravel": {
+   "color": "floors/gravel/color.jpg",
+   "normal": "floors/gravel/normal.jpg",
+   "orm": "floors/gravel/orm.jpg",
+   "height": "floors/gravel/height.jpg",
+   "cells": 8,
+   "relief": 0.03
+  },
+  "cave": {
+   "color": "floors/cave/color.jpg",
+   "normal": "floors/cave/normal.jpg",
+   "orm": "floors/cave/orm.jpg",
+   "height": "floors/cave/height.jpg",
+   "cells": 8,
+   "relief": 0.05
+  },
+  "snow": {
+   "color": "floors/snow/color.jpg",
+   "normal": "floors/snow/normal.jpg",
+   "orm": "floors/snow/orm.jpg",
+   "height": "floors/snow/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "mud": {
+   "color": "floors/mud/color.jpg",
+   "normal": "floors/mud/normal.jpg",
+   "orm": "floors/mud/orm.jpg",
+   "height": "floors/mud/height.jpg",
+   "cells": 8,
+   "relief": 0.02
+  },
+  "rubble": {
+   "color": "floors/rubble/color.jpg",
+   "normal": "floors/rubble/normal.jpg",
+   "orm": "floors/rubble/orm.jpg",
+   "height": "floors/rubble/height.jpg",
+   "cells": 8,
+   "relief": 0.05
+  }
+ },
+ "materials": {
+  "bark": {
+   "color": "materials/bark/color.jpg",
+   "normal": "materials/bark/normal.jpg",
+   "orm": "materials/bark/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "brick": {
+   "color": "materials/brick/color.jpg",
+   "normal": "materials/brick/normal.jpg",
+   "orm": "materials/brick/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.4023
+  },
+  "cloth": {
+   "color": "materials/cloth/color.jpg",
+   "normal": "materials/cloth/normal.jpg",
+   "orm": "materials/cloth/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 2.646
+  },
+  "kit-bark-deadtree": {
+   "color": "materials/kit-bark-deadtree/color.jpg",
+   "normal": "materials/kit-bark-deadtree/normal.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-bark-twistedtree": {
+   "color": "materials/kit-bark-twistedtree/color.jpg",
+   "normal": "materials/kit-bark-twistedtree/normal.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-brick": {
+   "color": "materials/kit-brick/color.jpg",
+   "normal": "materials/kit-brick/normal.jpg",
+   "orm": "materials/kit-brick/orm.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-grass": {
+   "color": "materials/kit-grass/color.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-leaves": {
+   "color": "materials/kit-leaves/color.png",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true,
+   "alphaTest": 0.2
+  },
+  "kit-leaves-normaltree-c": {
+   "color": "materials/kit-leaves-normaltree-c/color.png",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true,
+   "alphaTest": 0.2
+  },
+  "kit-metalornaments": {
+   "color": "materials/kit-metalornaments/color.jpg",
+   "orm": "materials/kit-metalornaments/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-page-noise": {
+   "color": "materials/kit-page-noise/color.jpg",
+   "metalness": 0,
+   "roughness": 0.5,
+   "doubleSided": true
+  },
+  "kit-pathrocks": {
+   "color": "materials/kit-pathrocks/color.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-plaster": {
+   "color": "materials/kit-plaster/color.jpg",
+   "normal": "materials/kit-plaster/normal.jpg",
+   "orm": "materials/kit-plaster/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-rocks": {
+   "color": "materials/kit-rocks/color.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-rocktrim": {
+   "color": "materials/kit-rocktrim/color.jpg",
+   "normal": "materials/kit-rocktrim/normal.jpg",
+   "orm": "materials/kit-rocktrim/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-roundtiles": {
+   "color": "materials/kit-roundtiles/color.jpg",
+   "normal": "materials/kit-roundtiles/normal.jpg",
+   "orm": "materials/kit-roundtiles/orm.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-trim-cloth": {
+   "color": "materials/kit-trim-cloth/color.jpg",
+   "normal": "materials/kit-trim-cloth/normal.jpg",
+   "orm": "materials/kit-trim-cloth/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-trim-furniture": {
+   "color": "materials/kit-trim-furniture/color.jpg",
+   "normal": "materials/kit-trim-furniture/normal.jpg",
+   "orm": "materials/kit-trim-furniture/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-trim-metal": {
+   "color": "materials/kit-trim-metal/color.jpg",
+   "normal": "materials/kit-trim-metal/normal.jpg",
+   "orm": "materials/kit-trim-metal/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-trim-props": {
+   "color": "materials/kit-trim-props/color.jpg",
+   "normal": "materials/kit-trim-props/normal.jpg",
+   "orm": "materials/kit-trim-props/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-unevenbrick": {
+   "color": "materials/kit-unevenbrick/color.jpg",
+   "normal": "materials/kit-unevenbrick/normal.jpg",
+   "orm": "materials/kit-unevenbrick/orm.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "kit-vineleaf-png": {
+   "color": "materials/kit-vineleaf-png/color.png",
+   "metalness": 0,
+   "roughness": 0.5,
+   "doubleSided": true,
+   "alphaTest": 0.5
+  },
+  "kit-woodtrim": {
+   "color": "materials/kit-woodtrim/color.jpg",
+   "normal": "materials/kit-woodtrim/normal.jpg",
+   "orm": "materials/kit-woodtrim/orm.jpg",
+   "metalness": 0,
+   "roughness": 1,
+   "doubleSided": true
+  },
+  "metal": {
+   "color": "materials/metal/color.jpg",
+   "normal": "materials/metal/normal.jpg",
+   "orm": "materials/metal/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.332
+  },
+  "plaster": {
+   "color": "materials/plaster/color.jpg",
+   "normal": "materials/plaster/normal.jpg",
+   "orm": "materials/plaster/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "roof-tiles": {
+   "color": "materials/roof-tiles/color.jpg",
+   "normal": "materials/roof-tiles/normal.jpg",
+   "orm": "materials/roof-tiles/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "stone": {
+   "color": "materials/stone/color.jpg",
+   "normal": "materials/stone/normal.jpg",
+   "orm": "materials/stone/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.2393
+  },
+  "straw": {
+   "color": "materials/straw/color.jpg",
+   "normal": "materials/straw/normal.jpg",
+   "orm": "materials/straw/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.3027
+  },
+  "wall-ashlar": {
+   "color": "materials/wall-ashlar/color.jpg",
+   "normal": "materials/wall-ashlar/normal.jpg",
+   "orm": "materials/wall-ashlar/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-brick": {
+   "color": "materials/wall-brick/color.jpg",
+   "normal": "materials/wall-brick/normal.jpg",
+   "orm": "materials/wall-brick/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-log": {
+   "color": "materials/wall-log/color.jpg",
+   "normal": "materials/wall-log/normal.jpg",
+   "orm": "materials/wall-log/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-planks": {
+   "color": "materials/wall-planks/color.jpg",
+   "normal": "materials/wall-planks/normal.jpg",
+   "orm": "materials/wall-planks/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.332
+  },
+  "wall-plaster": {
+   "color": "materials/wall-plaster/color.jpg",
+   "normal": "materials/wall-plaster/normal.jpg",
+   "orm": "materials/wall-plaster/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-stone": {
+   "color": "materials/wall-stone/color.jpg",
+   "normal": "materials/wall-stone/normal.jpg",
+   "orm": "materials/wall-stone/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false
+  },
+  "wall-timber": {
+   "color": "materials/wall-timber/color.jpg",
+   "normal": "materials/wall-timber/normal.jpg",
+   "orm": "materials/wall-timber/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.3027
+  },
+  "wood": {
+   "color": "materials/wood/color.jpg",
+   "normal": "materials/wood/normal.jpg",
+   "orm": "materials/wood/orm.jpg",
+   "metalness": 1,
+   "roughness": 1,
+   "doubleSided": false,
+   "aspect": 0.332
+  }
+ },
+ "walls": {
+  "stone": {
+   "material": "wall-stone",
+   "cells": 1.2
+  },
+  "brick": {
+   "material": "wall-brick",
+   "cells": 1
+  },
+  "fortress": {
+   "material": "wall-ashlar",
+   "cells": 1.5
+  },
+  "plaster": {
+   "material": "wall-plaster",
+   "cells": 1.6
+  },
+  "planks": {
+   "material": "wall-planks",
+   "cells": 1.4
+  },
+  "timber": {
+   "material": "wall-timber",
+   "cells": 1
+  },
+  "log": {
+   "material": "wall-log",
+   "cells": 0.8
+  },
+  "iron": {
+   "material": "metal",
+   "cells": 0.8
+  },
+  "tiles": {
+   "material": "roof-tiles",
+   "cells": 1.7
+  },
+  "shingles": {
+   "material": "wall-planks",
+   "cells": 1.2
+  }
+ },
+ "props": {
+  "barrel": [
+   {
+    "key": "ref-quaternius-barrel",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
+   },
+   {
+    "key": "ref-quaternius-barrel-apples",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel_apples.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
+   }
+  ],
+  "keg": [
+   {
+    "key": "ref-quaternius-barrel",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
+   }
+  ],
+  "water_barrel": [
+   {
+    "key": "ref-quaternius-barrel",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
+   }
+  ],
+  "rain_barrel": [
+   {
+    "key": "ref-quaternius-barrel",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.698,
+     0.898,
+     0.698
+    ]
+   }
+  ],
+  "chest": [
+   {
+    "key": "ref-quaternius-chest-wood",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/chest_wood.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2549,
+     "w": 246,
+     "h": 146
+    },
+    "size": [
+     1.276,
+     0.7152,
+     0.7554
+    ]
+   }
+  ],
+  "footlocker": [
+   {
+    "key": "ref-quaternius-chest-wood",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/chest_wood.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2549,
+     "w": 246,
+     "h": 146
+    },
+    "size": [
+     1.276,
+     0.7152,
+     0.7554
+    ]
+   }
+  ],
+  "strongbox": [
+   {
+    "key": "ref-quaternius-crate-metal",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/crate_metal.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1424,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8639,
+     0.8679,
+     0.8659
+    ]
+   }
+  ],
+  "coin_pile": [
+   {
+    "key": "ref-quaternius-coin-pile",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/coin_pile.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 992,
+     "y": 2174,
+     "w": 246,
+     "h": 192
+    },
+    "size": [
+     0.1975,
+     0.0735,
+     0.1542
+    ]
+   },
+   {
+    "key": "ref-quaternius-coin-pile-2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/coin_pile_2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2646,
+     "y": 2174,
+     "w": 246,
+     "h": 178
+    },
+    "size": [
+     0.2787,
+     0.0584,
+     0.2002
+    ]
+   }
+  ],
+  "crate": [
+   {
+    "key": "ref-quaternius-crate-wooden",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/crate_wooden.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1672,
+     "y": 0,
+     "w": 229,
+     "h": 246
+    },
+    "size": [
+     0.8423,
+     0.9309,
+     0.9083
+    ]
+   },
+   {
+    "key": "style-mvmk-crate",
+    "url": "props/mvmk_crate.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3068,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.0836,
+     1.0596,
+     1.0836
+    ]
+   }
+  ],
+  "torch_wall": [
+   {
+    "key": "ref-quaternius-torch-metal",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/torch_metal.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2997,
+     "y": 0,
+     "w": 142,
+     "h": 246
+    },
+    "size": [
+     0.2232,
+     0.6482,
+     0.3884
+    ]
+   }
+  ],
+  "urn": [
+   {
+    "key": "ref-quaternius-vase-2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/vase_2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3141,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.6947,
+     0.5163,
+     0.6947
+    ]
+   },
+   {
+    "key": "ref-quaternius-vase-4",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/vase_4.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3389,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.3596,
+     0.4855,
+     0.3596
+    ]
+   }
+  ],
+  "anvil": [
+   {
+    "key": "ref-quaternius-anvil",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/anvil.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 3063,
+     "w": 246,
+     "h": 92
+    },
+    "size": [
+     1.0816,
+     0.556,
+     0.4016
+    ]
+   },
+   {
+    "key": "ref-quaternius-anvil-log",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/anvil_log.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2154,
+     "y": 1730,
+     "w": 246,
+     "h": 218
+    },
+    "size": [
+     0.9293,
+     1.0734,
+     0.8214
+    ]
+   }
+  ],
+  "grindstone": [
+   {
+    "key": "ref-quaternius-whetstone",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/whetstone.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 496,
+     "y": 2174,
+     "w": 246,
+     "h": 196
+    },
+    "size": [
+     1.1409,
+     1.1699,
+     0.9018
+    ]
+   }
+  ],
+  "bookcase_tall": [
+   {
+    "key": "ref-quaternius-bookcase-2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bookcase_2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 491,
+     "y": 3158,
+     "w": 246,
+     "h": 74
+    },
+    "size": [
+     1.4612,
+     2.5449,
+     0.429
+    ]
+   }
+  ],
+  "book_lectern": [
+   {
+    "key": "ref-quaternius-book-stand",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/book_stand.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 690,
+     "y": 0,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     0.5071,
+     1.4468,
+     0.5112
+    ]
+   }
+  ],
+  "temple_lectern": [
+   {
+    "key": "ref-quaternius-book-stand",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/book_stand.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 690,
+     "y": 0,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     0.5071,
+     1.4468,
+     0.5112
+    ]
+   }
+  ],
+  "barracks_bed": [
+   {
+    "key": "ref-quaternius-bed-twin2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bed_twin2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 496,
+     "y": 0,
+     "w": 192,
+     "h": 246
+    },
+    "size": [
+     1.8757,
+     0.7596,
+     2.4119
+    ]
+   }
+  ],
+  "weapon_rack_wall": [
+   {
+    "key": "ref-quaternius-weapon-stand",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/weapon_stand.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3142,
+     "y": 2174,
+     "w": 246,
+     "h": 176
+    },
+    "size": [
+     1.3862,
+     1.1093,
+     0.9831
+    ]
+   }
+  ],
+  "training_dummy": [
+   {
+    "key": "ref-quaternius-dummy",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/dummy.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2894,
+     "y": 2174,
+     "w": 246,
+     "h": 178
+    },
+    "size": [
+     0.8085,
+     1.8627,
+     0.5846
+    ]
+   }
+  ],
+  "cell_bucket": [
+   {
+    "key": "ref-quaternius-bucket-wooden-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/bucket_wooden_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2402,
+     "y": 1730,
+     "w": 246,
+     "h": 218
+    },
+    "size": [
+     0.4339,
+     0.2928,
+     0.3835
+    ]
+   }
+  ],
+  "iron_cage": [
+   {
+    "key": "ref-quaternius-cage-small",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/cage_small.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 936,
+     "y": 0,
+     "w": 238,
+     "h": 246
+    },
+    "size": [
+     0.8549,
+     0.8052,
+     0.8843
+    ]
+   }
+  ],
+  "candle_rack": [
+   {
+    "key": "ref-quaternius-candle-stick-stand",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/candle_stick_stand.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1176,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.7323,
+     1.3125,
+     0.7313
+    ]
+   }
+  ],
+  "spice_crates": [
+   {
+    "key": "ref-quaternius-farm-crate-carrot",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/farm_crate_carrot.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 2174,
+     "w": 246,
+     "h": 196
+    },
+    "size": [
+     0.7138,
+     0.4113,
+     0.567
+    ]
+   },
+   {
+    "key": "ref-quaternius-farm-crate-apple",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/farm_crate_apple.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 728,
+     "y": 2549,
+     "w": 246,
+     "h": 144
+    },
+    "size": [
+     0.7138,
+     0.2438,
+     0.4142
+    ]
+   }
+  ],
+  "village_fence": [
+   {
+    "key": "style-mvmk-fence-single",
+    "url": "props/mvmk_fence_single.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3810,
+     "y": 3236,
+     "w": 246,
+     "h": 16
+    },
+    "size": [
+     2.0641,
+     0.8381,
+     0.1198
+    ]
+   },
+   {
+    "key": "style-mvmk-fence-extension",
+    "url": "props/mvmk_fence_extension.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 3292,
+     "w": 246,
+     "h": 14
+    },
+    "size": [
+     2.045,
+     0.8381,
+     0.1104
+    ]
+   }
+  ],
+  "barrel_stack": [
+   {
+    "key": "ref-quaternius-barrel-holder",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/barrel_holder.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3120,
+     "y": 2549,
+     "w": 246,
+     "h": 134
+    },
+    "size": [
+     1.3592,
+     1.2574,
+     0.741
+    ]
+   },
+   {
+    "key": "style-barrel-pyramid",
+    "url": "props/barrel_pyramid.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2951,
+     "w": 219,
+     "h": 110
+    },
+    "size": [
+     1.6148,
+     1.7082,
+     0.8948
+    ]
+   }
+  ],
+  "crate_stack": [
+   {
+    "key": "style-crate-stack-three",
+    "url": "props/crate_stack_three.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3368,
+     "y": 2549,
+     "w": 245,
+     "h": 133
+    },
+    "size": [
+     1.8398,
+     1.6934,
+     1.0217
+    ]
+   },
+   {
+    "key": "style-crate-stack-mixed",
+    "url": "props/crate_stack_mixed.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2624,
+     "y": 2549,
+     "w": 246,
+     "h": 138
+    },
+    "size": [
+     1.8502,
+     1.1444,
+     1.0403
+    ]
+   }
+  ],
+  "ammo_crates": [
+   {
+    "key": "style-ammo-crates",
+    "url": "props/ammo_crates.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3441,
+     "y": 2697,
+     "w": 240,
+     "h": 121
+    },
+    "size": [
+     1.9407,
+     1.0356,
+     0.9638
+    ]
+   }
+  ],
+  "crate_stack_goods": [
+   {
+    "key": "style-crate-stack-goods",
+    "url": "props/crate_stack_goods.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2667,
+     "y": 2373,
+     "w": 245,
+     "h": 152
+    },
+    "size": [
+     1.5495,
+     1.1747,
+     0.9883
+    ]
+   }
+  ],
+  "goods_baskets": [
+   {
+    "key": "style-goods-baskets",
+    "url": "props/goods_baskets.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3197,
+     "y": 2951,
+     "w": 238,
+     "h": 98
+    },
+    "size": [
+     1.5261,
+     0.4876,
+     0.6302
+    ]
+   }
+  ],
+  "grain_sacks": [
+   {
+    "key": "style-grain-sacks",
+    "url": "props/grain_sacks.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2190,
+     "y": 2174,
+     "w": 218,
+     "h": 180
+    },
+    "size": [
+     1.4372,
+     0.7992,
+     1.2177
+    ]
+   }
+  ],
+  "pottery_stand": [
+   {
+    "key": "style-pottery-stand",
+    "url": "props/pottery_stand.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2433,
+     "y": 2373,
+     "w": 232,
+     "h": 153
+    },
+    "size": [
+     1.2807,
+     0.5163,
+     0.8577
+    ]
+   }
+  ],
+  "workbench": [
+   {
+    "key": "ref-quaternius-workbench",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/workbench.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 744,
+     "y": 2697,
+     "w": 246,
+     "h": 126
+    },
+    "size": [
+     2.0191,
+     0.8946,
+     1.0242
+    ]
+   },
+   {
+    "key": "style-workbench-drawers",
+    "url": "props/workbench_drawers.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3194,
+     "y": 2697,
+     "w": 245,
+     "h": 122
+    },
+    "size": [
+     2.0941,
+     1.7075,
+     1.0242
+    ]
+   }
+  ],
+  "tool_rack": [
+   {
+    "key": "style-tool-rack",
+    "url": "props/tool_rack.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1239,
+     "y": 2373,
+     "w": 246,
+     "h": 164
+    },
+    "size": [
+     1.2679,
+     1.8979,
+     0.871
+    ]
+   }
+  ],
+  "prep_table": [
+   {
+    "key": "style-prep-table",
+    "url": "props/prep_table.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2946,
+     "y": 2697,
+     "w": 246,
+     "h": 122
+    },
+    "size": [
+     2.0569,
+     1.1716,
+     1.0188
+    ]
+   }
+  ],
+  "pantry_shelf": [
+   {
+    "key": "style-pantry-shelf",
+    "url": "props/pantry_shelf.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1483,
+     "y": 3158,
+     "w": 246,
+     "h": 66
+    },
+    "size": [
+     1.3618,
+     1.3621,
+     0.3571
+    ]
+   }
+  ],
+  "display_shelf": [
+   {
+    "key": "style-display-shelf",
+    "url": "props/display_shelf.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2230,
+     "y": 3063,
+     "w": 246,
+     "h": 82
+    },
+    "size": [
+     1.3618,
+     1.6448,
+     0.4452
+    ]
+   }
+  ],
+  "bar_shelf": [
+   {
+    "key": "style-sk-bar-shelf",
+    "url": "props/sk_bar_shelf.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1984,
+     "y": 3236,
+     "w": 246,
+     "h": 36
+    },
+    "size": [
+     2.55,
+     1.4675,
+     0.36
+    ]
+   },
+   {
+    "key": "style-bar-shelf-bottles",
+    "url": "props/bar_shelf_bottles.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1731,
+     "y": 3158,
+     "w": 246,
+     "h": 62
+    },
+    "size": [
+     1.1371,
+     1.3274,
+     0.2846
+    ]
+   }
+  ],
+  "map_table": [
+   {
+    "key": "style-map-table",
+    "url": "props/map_table.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 496,
+     "y": 2697,
+     "w": 246,
+     "h": 128
+    },
+    "size": [
+     2.1364,
+     1.0618,
+     1.0967
+    ]
+   }
+  ],
+  "war_table": [
+   {
+    "key": "style-war-table",
+    "url": "props/war_table.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1488,
+     "y": 2829,
+     "w": 238,
+     "h": 116
+    },
+    "size": [
+     2.3305,
+     1.0618,
+     1.2481
+    ]
+   }
+  ],
+  "offering_table": [
+   {
+    "key": "style-offering-table",
+    "url": "props/offering_table.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3316,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.82,
+     0.9507,
+     0.82
+    ]
+   }
+  ],
+  "fruit_cart": [
+   {
+    "key": "style-fruit-cart",
+    "url": "props/fruit_cart.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1982,
+     "y": 3063,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     3.0205,
+     2.6318,
+     1.0597
+    ]
+   }
+  ],
+  "rubble_heap": [
+   {
+    "key": "style-brick-rubble",
+    "url": "props/brick_rubble.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2174,
+     "w": 246,
+     "h": 197
+    },
+    "size": [
+     1.1322,
+     0.6461,
+     0.9166
+    ]
+   },
+   {
+    "key": "style-sk-rubble-heap",
+    "url": "props/sk_rubble_heap.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3553,
+     "y": 1730,
+     "w": 246,
+     "h": 217
+    },
+    "size": [
+     0.5835,
+     0.3035,
+     0.513
+    ]
+   }
+  ],
+  "campfire": [
+   {
+    "key": "style-campfire-ring",
+    "url": "props/campfire_ring.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2202,
+     "y": 1240,
+     "w": 234,
+     "h": 245
+    },
+    "size": [
+     1.2951,
+     0.7354,
+     1.3551
+    ]
+   },
+   {
+    "key": "style-kenney-campfire-stones",
+    "url": "props/kenney_campfire_stones.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1060,
+     "y": 1488,
+     "w": 246,
+     "h": 235
+    },
+    "size": [
+     0.5408,
+     0.0778,
+     0.5155
+    ]
+   }
+  ],
+  "dead_bramble": [
+   {
+    "key": "style-dead-bramble",
+    "url": "props/dead_bramble.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1735,
+     "y": 2373,
+     "w": 205,
+     "h": 156
+    },
+    "size": [
+     1.945,
+     0.7087,
+     1.6093
+    ]
+   }
+  ],
+  "mossy_rock": [
+   {
+    "key": "ref-quaternius-nature-rock-medium-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3741,
+     "y": 1488,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     3.2251,
+     2.2598,
+     2.9891
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-rock-medium-2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2961,
+     "y": 1960,
+     "w": 246,
+     "h": 200
+    },
+    "size": [
+     3.0488,
+     1.899,
+     2.4791
+    ]
+   }
+  ],
+  "boulder_split": [
+   {
+    "key": "style-boulder-split",
+    "url": "props/boulder_split.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3712,
+     "y": 2829,
+     "w": 241,
+     "h": 111
+    },
+    "size": [
+     2.5933,
+     0.8545,
+     1.3398
+    ]
+   }
+  ],
+  "rock_cluster": [
+   {
+    "key": "style-rock-cluster",
+    "url": "props/rock_cluster.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2410,
+     "y": 2174,
+     "w": 234,
+     "h": 179
+    },
+    "size": [
+     2.2124,
+     0.7231,
+     1.6926
+    ]
+   }
+  ],
+  "cliff_medium": [
+   {
+    "key": "style-cliff-medium",
+    "url": "props/cliff_medium.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3683,
+     "y": 2697,
+     "w": 224,
+     "h": 120
+    },
+    "size": [
+     3.3484,
+     1.7372,
+     1.9294
+    ]
+   }
+  ],
+  "cliff_large": [
+   {
+    "key": "style-cliff-large",
+    "url": "props/cliff_large.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 992,
+     "y": 2697,
+     "w": 216,
+     "h": 125
+    },
+    "size": [
+     6.1816,
+     2.0847,
+     3.5579
+    ]
+   }
+  ],
+  "cliff_long": [
+   {
+    "key": "style-cliff-long",
+    "url": "props/cliff_long.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2478,
+     "y": 3063,
+     "w": 246,
+     "h": 80
+    },
+    "size": [
+     6.4087,
+     1.7372,
+     2.0521
+    ]
+   }
+  ],
+  "boulder": [
+   {
+    "key": "ref-quaternius-nature-rock-medium-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3741,
+     "y": 1488,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     3.2251,
+     2.2598,
+     2.9891
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-rock-medium-2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2961,
+     "y": 1960,
+     "w": 246,
+     "h": 200
+    },
+    "size": [
+     3.0488,
+     1.899,
+     2.4791
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-rock-medium-3",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/rock_medium_3.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2753,
+     "y": 0,
+     "w": 242,
+     "h": 246
+    },
+    "size": [
+     3.4201,
+     2.3163,
+     3.4761
+    ]
+   }
+  ],
+  "rock_small": [
+   {
+    "key": "ref-quaternius-nature-pebble-round-3",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pebble_round_3.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2523,
+     "y": 0,
+     "w": 228,
+     "h": 246
+    },
+    "size": [
+     0.4497,
+     0.0986,
+     0.4848
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-pebble-square-4",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pebble_square_4.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 1960,
+     "w": 246,
+     "h": 212
+    },
+    "size": [
+     0.3399,
+     0.1683,
+     0.2908
+    ]
+   }
+  ],
+  "bush": [
+   {
+    "key": "ref-quaternius-nature-bush-common",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 992,
+     "y": 1730,
+     "w": 218,
+     "h": 226
+    },
+    "size": [
+     1.9148,
+     1.5818,
+     1.9651
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-bush-common-flowers",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common_flowers.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 366,
+     "y": 1488,
+     "w": 227,
+     "h": 239
+    },
+    "size": [
+     1.9148,
+     1.5818,
+     1.9651
+    ]
+   }
+  ],
+  "shrub": [
+   {
+    "key": "ref-quaternius-nature-bush-common",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 992,
+     "y": 1730,
+     "w": 218,
+     "h": 226
+    },
+    "size": [
+     1.9148,
+     1.5818,
+     1.9651
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-bush-common-flowers",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/bush_common_flowers.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 366,
+     "y": 1488,
+     "w": 227,
+     "h": 239
+    },
+    "size": [
+     1.9148,
+     1.5818,
+     1.9651
+    ]
+   }
+  ],
+  "fern": [
+   {
+    "key": "ref-quaternius-nature-fern-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/fern_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1434,
+     "y": 1730,
+     "w": 238,
+     "h": 223
+    },
+    "size": [
+     2.8269,
+     0.8402,
+     2.6523
+    ]
+   }
+  ],
+  "flowers": [
+   {
+    "key": "ref-quaternius-nature-flower-3-group",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/flower_3_group.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 1488,
+     "w": 224,
+     "h": 240
+    },
+    "size": [
+     1.4885,
+     2.0548,
+     1.5911
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-flower-4-group",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/flower_4_group.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1736,
+     "y": 2174,
+     "w": 245,
+     "h": 185
+    },
+    "size": [
+     1.7805,
+     2.4868,
+     1.3675
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-plant-7-big",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/plant_7_big.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3422,
+     "y": 1240,
+     "w": 230,
+     "h": 243
+    },
+    "size": [
+     1.3108,
+     0.2534,
+     1.3622
+    ]
+   }
+  ],
+  "grass_tuft": [
+   {
+    "key": "ref-quaternius-nature-grass-common-short",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/grass_common_short.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1903,
+     "y": 0,
+     "w": 214,
+     "h": 246
+    },
+    "size": [
+     0.6389,
+     1.3341,
+     0.7373
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-grass-common-tall",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/grass_common_tall.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2119,
+     "y": 0,
+     "w": 222,
+     "h": 246
+    },
+    "size": [
+     0.8951,
+     1.8727,
+     0.9931
+    ]
+   },
+   {
+    "key": "style-extra-grass-wispy",
+    "url": "props/extra_grass_wispy.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2438,
+     "y": 1240,
+     "w": 238,
+     "h": 245
+    },
+    "size": [
+     1.5401,
+     1.6718,
+     1.5937
+    ]
+   }
+  ],
+  "mushroom_cluster": [
+   {
+    "key": "ref-quaternius-nature-mushroom-common",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/mushroom_common.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2343,
+     "y": 0,
+     "w": 178,
+     "h": 246
+    },
+    "size": [
+     0.5637,
+     0.4635,
+     0.7791
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-mushroom-laetiporus",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/mushroom_laetiporus.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2713,
+     "y": 1960,
+     "w": 246,
+     "h": 200
+    },
+    "size": [
+     1.366,
+     0.767,
+     1.1032
+    ]
+   }
+  ],
+  "tree_oak": [
+   {
+    "key": "ref-quaternius-nature-common-tree-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3801,
+     "y": 1730,
+     "w": 203,
+     "h": 215
+    },
+    "size": [
+     4.3114,
+     7.2648,
+     4.5777
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-common-tree-2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 744,
+     "y": 1960,
+     "w": 231,
+     "h": 211
+    },
+    "size": [
+     4.4643,
+     7.643,
+     4.2759
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-common-tree-5",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_5.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2650,
+     "y": 1730,
+     "w": 195,
+     "h": 218
+    },
+    "size": [
+     3.6712,
+     7.0062,
+     4.2197
+    ]
+   },
+   {
+    "key": "style-extra-twisted-tree-tall",
+    "url": "props/extra_twisted_tree_tall.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3705,
+     "y": 1960,
+     "w": 231,
+     "h": 198
+    },
+    "size": [
+     13.5158,
+     16.7255,
+     11.5494
+    ]
+   },
+   {
+    "key": "style-extra-twisted-tree-broad",
+    "url": "props/extra_twisted_tree_broad.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1778,
+     "y": 1488,
+     "w": 232,
+     "h": 232
+    },
+    "size": [
+     11.3575,
+     16.0725,
+     11.5056
+    ]
+   }
+  ],
+  "tree_birch": [
+   {
+    "key": "ref-quaternius-nature-common-tree-3",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_3.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1212,
+     "y": 1730,
+     "w": 220,
+     "h": 225
+    },
+    "size": [
+     4.0628,
+     9.4252,
+     4.2411
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-common-tree-4",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/common_tree_4.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1556,
+     "y": 1488,
+     "w": 220,
+     "h": 232
+    },
+    "size": [
+     3.8255,
+     9.4384,
+     3.7554
+    ]
+   }
+  ],
+  "tree_pine": [
+   {
+    "key": "ref-quaternius-nature-pine-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1914,
+     "y": 1730,
+     "w": 238,
+     "h": 219
+    },
+    "size": [
+     4.9447,
+     7.3169,
+     4.5384
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-pine-3",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_3.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 595,
+     "y": 1488,
+     "w": 215,
+     "h": 238
+    },
+    "size": [
+     3.6114,
+     7.3922,
+     3.9958
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-pine-4",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_4.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1674,
+     "y": 1730,
+     "w": 238,
+     "h": 221
+    },
+    "size": [
+     5.802,
+     10.2364,
+     5.3708
+    ]
+   }
+  ],
+  "tree_spruce": [
+   {
+    "key": "ref-quaternius-nature-pine-2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3313,
+     "y": 1730,
+     "w": 238,
+     "h": 217
+    },
+    "size": [
+     5.7281,
+     7.3762,
+     5.2212
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-pine-5",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/pine_5.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2260,
+     "y": 1488,
+     "w": 239,
+     "h": 230
+    },
+    "size": [
+     6.4201,
+     8.7238,
+     6.222
+    ]
+   }
+  ],
+  "tree_dead": [
+   {
+    "key": "ref-quaternius-nature-dead-tree-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2012,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     6.1489,
+     9.4955,
+     5.7487
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-dead-tree-2",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_2.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1308,
+     "y": 1488,
+     "w": 246,
+     "h": 234
+    },
+    "size": [
+     6.7296,
+     11.4882,
+     6.3785
+    ]
+   },
+   {
+    "key": "ref-quaternius-nature-dead-tree-4",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius-nature/dead_tree_4.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3654,
+     "y": 1240,
+     "w": 246,
+     "h": 240
+    },
+    "size": [
+     7.9609,
+     12.771,
+     7.7324
+    ]
+   },
+   {
+    "key": "style-extra-dead-tree-low",
+    "url": "props/extra_dead_tree_low.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2792,
+     "y": 744,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     8.3564,
+     16.4374,
+     8.4133
+    ]
+   },
+   {
+    "key": "style-extra-dead-tree-sparse",
+    "url": "props/extra_dead_tree_sparse.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3038,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     6.3876,
+     13.2804,
+     6.4301
+    ]
+   }
+  ],
+  "altar": [
+   {
+    "key": "style-sk-altar",
+    "url": "props/sk_altar.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 469,
+     "y": 2951,
+     "w": 246,
+     "h": 108
+    },
+    "size": [
+     1.84,
+     0.72,
+     0.795
+    ]
+   }
+  ],
+  "bar_counter": [
+   {
+    "key": "style-sk-bar-counter",
+    "url": "props/sk_bar_counter.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2971,
+     "y": 3158,
+     "w": 246,
+     "h": 60
+    },
+    "size": [
+     3.53,
+     1.169,
+     0.855
+    ]
+   }
+  ],
+  "basket": [
+   {
+    "key": "style-sk-basket",
+    "url": "props/sk_basket.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2678,
+     "y": 1240,
+     "w": 246,
+     "h": 244
+    },
+    "size": [
+     0.6693,
+     0.7817,
+     0.66
+    ]
+   }
+  ],
+  "bone_pile": [
+   {
+    "key": "style-sk-bone-pile",
+    "url": "props/sk_bone_pile.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1240,
+     "y": 2174,
+     "w": 246,
+     "h": 190
+    },
+    "size": [
+     0.7572,
+     0.4795,
+     0.58
+    ]
+   }
+  ],
+  "bone_heap": [
+   {
+    "key": "style-sk-bone-pile",
+    "url": "props/sk_bone_pile.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1240,
+     "y": 2174,
+     "w": 246,
+     "h": 190
+    },
+    "size": [
+     0.7572,
+     0.4795,
+     0.58
+    ]
+   }
+  ],
+  "bowl_stew": [
+   {
+    "key": "style-sk-bowl-stew",
+    "url": "props/sk_bowl_stew.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3564,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.44,
+     0.2507,
+     0.44
+    ]
+   }
+  ],
+  "brazier": [
+   {
+    "key": "style-sk-brazier",
+    "url": "props/sk_brazier.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3812,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.73,
+     1.18,
+     0.73
+    ]
+   }
+  ],
+  "guard_brazier": [
+   {
+    "key": "style-sk-brazier",
+    "url": "props/sk_brazier.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3812,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.73,
+     1.18,
+     0.73
+    ]
+   }
+  ],
+  "bread_loaf": [
+   {
+    "key": "style-sk-bread-loaf",
+    "url": "props/sk_bread_loaf.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2698,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     0.705,
+     0.2155,
+     0.351
+    ]
+   }
+  ],
+  "broom": [
+   {
+    "key": "style-sk-broom",
+    "url": "props/sk_broom.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 1240,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.19,
+     1.31,
+     0.19
+    ]
+   }
+  ],
+  "bunk_bed": [
+   {
+    "key": "style-sk-bunk-bed",
+    "url": "props/sk_bunk_bed.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2697,
+     "w": 246,
+     "h": 130
+    },
+    "size": [
+     1.9,
+     2.11,
+     1
+    ]
+   }
+  ],
+  "cheese_wheel": [
+   {
+    "key": "style-sk-cheese-wheel",
+    "url": "props/sk_cheese_wheel.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2926,
+     "y": 1240,
+     "w": 246,
+     "h": 244
+    },
+    "size": [
+     0.436,
+     0.2098,
+     0.4294
+    ]
+   }
+  ],
+  "crypt_niche": [
+   {
+    "key": "style-sk-crypt-niche",
+    "url": "props/sk_crypt_niche.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2701,
+     "y": 2951,
+     "w": 246,
+     "h": 102
+    },
+    "size": [
+     0.88,
+     1.55,
+     0.36
+    ]
+   }
+  ],
+  "cutting_board": [
+   {
+    "key": "style-sk-cutting-board",
+    "url": "props/sk_cutting_board.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 2697,
+     "w": 246,
+     "h": 130
+    },
+    "size": [
+     0.6516,
+     0.101,
+     0.34
+    ]
+   }
+  ],
+  "dice_cup": [
+   {
+    "key": "style-sk-dice-cup",
+    "url": "props/sk_dice_cup.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3174,
+     "y": 1240,
+     "w": 246,
+     "h": 244
+    },
+    "size": [
+     0.326,
+     0.3859,
+     0.321
+    ]
+   }
+  ],
+  "fireplace": [
+   {
+    "key": "style-sk-fireplace",
+    "url": "props/sk_fireplace.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3685,
+     "y": 2951,
+     "w": 246,
+     "h": 94
+    },
+    "size": [
+     1.7,
+     1.63,
+     0.65
+    ]
+   }
+  ],
+  "grave": [
+   {
+    "key": "style-sk-grave",
+    "url": "props/sk_grave.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 1240,
+     "w": 234,
+     "h": 246
+    },
+    "size": [
+     0.88,
+     0.79,
+     0.93
+    ]
+   }
+  ],
+  "haystack": [
+   {
+    "key": "style-sk-haystack",
+    "url": "props/sk_haystack.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 484,
+     "y": 1240,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     1.424,
+     1.2205,
+     1.44
+    ]
+   }
+  ],
+  "hearth_fire": [
+   {
+    "key": "style-sk-hearth-fire",
+    "url": "props/sk_hearth_fire.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3209,
+     "y": 1960,
+     "w": 246,
+     "h": 200
+    },
+    "size": [
+     0.84,
+     0.71,
+     0.68
+    ]
+   }
+  ],
+  "hitching_post": [
+   {
+    "key": "style-sk-hitching-post",
+    "url": "props/sk_hitching_post.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1240,
+     "y": 2829,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     0.51,
+     0.945,
+     0.24
+    ]
+   }
+  ],
+  "jug": [
+   {
+    "key": "style-sk-jug",
+    "url": "props/sk_jug.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3615,
+     "y": 2549,
+     "w": 245,
+     "h": 131
+    },
+    "size": [
+     0.718,
+     0.522,
+     0.38
+    ]
+   }
+  ],
+  "lamp_post": [
+   {
+    "key": "style-sk-lamp-post",
+    "url": "props/sk_lamp_post.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 730,
+     "y": 1240,
+     "w": 234,
+     "h": 246
+    },
+    "size": [
+     0.3424,
+     1.71,
+     0.36
+    ]
+   }
+  ],
+  "lute": [
+   {
+    "key": "style-sk-lute",
+    "url": "props/sk_lute.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2914,
+     "y": 2373,
+     "w": 246,
+     "h": 152
+    },
+    "size": [
+     0.44,
+     1.1062,
+     0.2714
+    ]
+   }
+  ],
+  "milestone": [
+   {
+    "key": "style-sk-milestone",
+    "url": "props/sk_milestone.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3631,
+     "y": 2373,
+     "w": 246,
+     "h": 148
+    },
+    "size": [
+     0.5,
+     0.82,
+     0.3
+    ]
+   }
+  ],
+  "offering_bowl": [
+   {
+    "key": "style-sk-offering-bowl",
+    "url": "props/sk_offering_bowl.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 966,
+     "y": 1240,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     0.535,
+     0.498,
+     0.54
+    ]
+   }
+  ],
+  "pillar": [
+   {
+    "key": "style-sk-pillar",
+    "url": "props/sk_pillar.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1212,
+     "y": 1240,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.72,
+     1.47,
+     0.72
+    ]
+   }
+  ],
+  "reliquary": [
+   {
+    "key": "style-sk-reliquary",
+    "url": "props/sk_reliquary.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2373,
+     "w": 246,
+     "h": 174
+    },
+    "size": [
+     0.72,
+     0.98,
+     0.505
+    ]
+   }
+  ],
+  "roadside_shrine": [
+   {
+    "key": "style-sk-roadside-shrine",
+    "url": "props/sk_roadside_shrine.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1212,
+     "y": 2549,
+     "w": 246,
+     "h": 144
+    },
+    "size": [
+     0.5845,
+     1.135,
+     0.34
+    ]
+   }
+  ],
+  "royal_throne": [
+   {
+    "key": "style-sk-royal-throne",
+    "url": "props/sk_royal_throne.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 744,
+     "y": 2174,
+     "w": 246,
+     "h": 196
+    },
+    "size": [
+     0.99,
+     1.87,
+     0.787
+    ]
+   }
+  ],
+  "sarcophagus": [
+   {
+    "key": "style-sk-sarcophagus",
+    "url": "props/sk_sarcophagus.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 221,
+     "y": 2951,
+     "w": 246,
+     "h": 110
+    },
+    "size": [
+     1.72,
+     0.74,
+     0.76
+    ]
+   }
+  ],
+  "table_round": [
+   {
+    "key": "style-sk-table-round",
+    "url": "props/sk_table_round.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1460,
+     "y": 1240,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.56,
+     0.735,
+     1.56
+    ]
+   }
+  ],
+  "table_royal": [
+   {
+    "key": "style-sk-table-royal",
+    "url": "props/sk_table_royal.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3222,
+     "y": 3063,
+     "w": 246,
+     "h": 80
+    },
+    "size": [
+     3.48,
+     1.108,
+     1.12
+    ]
+   }
+  ],
+  "table_small": [
+   {
+    "key": "style-sk-table-small",
+    "url": "props/sk_table_small.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1708,
+     "y": 1240,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.82,
+     0.694,
+     0.82
+    ]
+   }
+  ],
+  "wagon_wheel": [
+   {
+    "key": "style-sk-wagon-wheel",
+    "url": "props/sk_wagon_wheel.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 3236,
+     "w": 246,
+     "h": 52
+    },
+    "size": [
+     0.592,
+     0.583,
+     0.122
+    ]
+   }
+  ],
+  "wardrobe": [
+   {
+    "key": "style-sk-wardrobe",
+    "url": "props/sk_wardrobe.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 480,
+     "y": 2549,
+     "w": 246,
+     "h": 146
+    },
+    "size": [
+     1.34,
+     1.92,
+     0.7855
+    ]
+   }
+  ],
+  "washbasin": [
+   {
+    "key": "style-sk-washbasin",
+    "url": "props/sk_washbasin.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1956,
+     "y": 1240,
+     "w": 244,
+     "h": 246
+    },
+    "size": [
+     0.7919,
+     1.066,
+     0.8
+    ]
+   }
+  ],
+  "water_trough": [
+   {
+    "key": "style-sk-water-trough",
+    "url": "props/sk_water_trough.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2949,
+     "y": 2951,
+     "w": 246,
+     "h": 102
+    },
+    "size": [
+     1.765,
+     0.6125,
+     0.72
+    ]
+   }
+  ],
+  "well": [
+   {
+    "key": "style-sk-well",
+    "url": "props/sk_well.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3065,
+     "y": 1730,
+     "w": 246,
+     "h": 218
+    },
+    "size": [
+     1.6275,
+     1.6,
+     1.4325
+    ]
+   }
+  ],
+  "fallen_log": [
+   {
+    "key": "style-kenney-log",
+    "url": "props/kenney_log.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 932,
+     "y": 992,
+     "w": 82,
+     "h": 246
+    },
+    "size": [
+     0.234,
+     0.1732,
+     0.71
+    ]
+   },
+   {
+    "key": "style-kenney-log-large",
+    "url": "props/kenney_log_large.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2872,
+     "y": 2549,
+     "w": 246,
+     "h": 136
+    },
+    "size": [
+     1,
+     0.4167,
+     0.5493
+    ]
+   }
+  ],
+  "firewood_stack": [
+   {
+    "key": "style-kenney-log-stack",
+    "url": "props/kenney_log_stack.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1016,
+     "y": 992,
+     "w": 148,
+     "h": 246
+    },
+    "size": [
+     0.4247,
+     0.3464,
+     0.71
+    ]
+   },
+   {
+    "key": "style-kenney-log-stack-large",
+    "url": "props/kenney_log_stack_large.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1166,
+     "y": 992,
+     "w": 220,
+     "h": 246
+    },
+    "size": [
+     0.634,
+     0.3464,
+     0.71
+    ]
+   }
+  ],
+  "woodpile": [
+   {
+    "key": "style-kenney-log-stack",
+    "url": "props/kenney_log_stack.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1016,
+     "y": 992,
+     "w": 148,
+     "h": 246
+    },
+    "size": [
+     0.4247,
+     0.3464,
+     0.71
+    ]
+   },
+   {
+    "key": "style-kenney-log-stack-large",
+    "url": "props/kenney_log_stack_large.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1166,
+     "y": 992,
+     "w": 220,
+     "h": 246
+    },
+    "size": [
+     0.634,
+     0.3464,
+     0.71
+    ]
+   }
+  ],
+  "tree_stump": [
+   {
+    "key": "style-kenney-stump-old",
+    "url": "props/kenney_stump_old.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2348,
+     "y": 992,
+     "w": 238,
+     "h": 246
+    },
+    "size": [
+     0.3565,
+     0.2665,
+     0.371
+    ]
+   },
+   {
+    "key": "style-kenney-stump-round",
+    "url": "props/kenney_stump_round.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2828,
+     "y": 992,
+     "w": 238,
+     "h": 246
+    },
+    "size": [
+     0.3565,
+     0.2065,
+     0.371
+    ]
+   },
+   {
+    "key": "style-kenney-stump-old-tall",
+    "url": "props/kenney_stump_old_tall.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2588,
+     "y": 992,
+     "w": 238,
+     "h": 246
+    },
+    "size": [
+     0.3565,
+     0.6665,
+     0.371
+    ]
+   }
+  ],
+  "signpost": [
+   {
+    "key": "style-kenney-sign",
+    "url": "props/kenney_sign.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3715,
+     "y": 3158,
+     "w": 246,
+     "h": 58
+    },
+    "size": [
+     0.3,
+     0.4088,
+     0.07
+    ]
+   }
+  ],
+  "stalagmite": [
+   {
+    "key": "style-kenney-rock-tall-c",
+    "url": "props/kenney_rock_tall_c.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 812,
+     "y": 1488,
+     "w": 246,
+     "h": 236
+    },
+    "size": [
+     0.4562,
+     0.7829,
+     0.4365
+    ]
+   },
+   {
+    "key": "style-kenney-rock-tall-d",
+    "url": "props/kenney_rock_tall_d.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1388,
+     "y": 992,
+     "w": 236,
+     "h": 246
+    },
+    "size": [
+     0.4428,
+     0.7721,
+     0.4615
+    ]
+   },
+   {
+    "key": "style-kenney-rock-tall-j",
+    "url": "props/kenney_rock_tall_j.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1626,
+     "y": 992,
+     "w": 224,
+     "h": 246
+    },
+    "size": [
+     0.4879,
+     0.62,
+     0.5382
+    ]
+   }
+  ],
+  "statue": [
+   {
+    "key": "style-kenney-statue-head",
+    "url": "props/kenney_statue_head.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1488,
+     "y": 2174,
+     "w": 246,
+     "h": 188
+    },
+    "size": [
+     0.726,
+     1,
+     0.5544
+    ]
+   },
+   {
+    "key": "style-kenney-statue-obelisk",
+    "url": "props/kenney_statue_obelisk.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2100,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.307,
+     0.8754,
+     0.307
+    ]
+   },
+   {
+    "key": "style-kenney-statue-column",
+    "url": "props/kenney_statue_column.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1852,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.3,
+     1,
+     0.3
+    ]
+   }
+  ],
+  "forge": [
+   {
+    "key": "style-detail-forge",
+    "url": "props/detail_forge.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2708,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     3,
+     1.8,
+     3
+    ]
+   }
+  ],
+  "quench_tub": [
+   {
+    "key": "style-detail-quench-tub",
+    "url": "props/detail_quench_tub.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1814,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     0.7,
+     1
+    ]
+   }
+  ],
+  "coal_pile": [
+   {
+    "key": "style-detail-coal-pile",
+    "url": "props/detail_coal_pile.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1716,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     0.4,
+     1.2
+    ]
+   }
+  ],
+  "sawhorse": [
+   {
+    "key": "style-detail-sawhorse",
+    "url": "props/detail_sawhorse.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2974,
+     "y": 3063,
+     "w": 246,
+     "h": 80
+    },
+    "size": [
+     2.5,
+     0.9,
+     0.8
+    ]
+   }
+  ],
+  "lumber_pile": [
+   {
+    "key": "style-detail-lumber-pile",
+    "url": "props/detail_lumber_pile.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1213,
+     "y": 2951,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     0.8,
+     1.2
+    ]
+   }
+  ],
+  "kitchen_stove": [
+   {
+    "key": "style-detail-kitchen-stove",
+    "url": "props/detail_kitchen_stove.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2453,
+     "y": 2951,
+     "w": 246,
+     "h": 104
+    },
+    "size": [
+     2.6,
+     1.1,
+     1.1
+    ]
+   }
+  ],
+  "bread_oven": [
+   {
+    "key": "style-detail-bread-oven",
+    "url": "props/detail_bread_oven.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.8,
+     2.8
+    ]
+   }
+  ],
+  "butcher_block": [
+   {
+    "key": "style-detail-butcher-block",
+    "url": "props/detail_butcher_block.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 496,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.9,
+     0.9,
+     0.9
+    ]
+   }
+  ],
+  "hanging_pots": [
+   {
+    "key": "style-detail-hanging-pots",
+    "url": "props/detail_hanging_pots.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2480,
+     "y": 3236,
+     "w": 246,
+     "h": 30
+    },
+    "size": [
+     2.6,
+     1.2,
+     0.3
+    ]
+   }
+  ],
+  "washtub": [
+   {
+    "key": "style-detail-washtub",
+    "url": "props/detail_washtub.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 496,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     0.6,
+     1
+    ]
+   }
+  ],
+  "double_bed": [
+   {
+    "key": "style-detail-double-bed",
+    "url": "props/detail_double_bed.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2212,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.2,
+     2.8
+    ]
+   }
+  ],
+  "dresser": [
+   {
+    "key": "style-detail-dresser",
+    "url": "props/detail_dresser.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 3063,
+     "w": 246,
+     "h": 93
+    },
+    "size": [
+     2.4,
+     1.1,
+     0.9
+    ]
+   }
+  ],
+  "armchair": [
+   {
+    "key": "style-detail-armchair",
+    "url": "props/detail_armchair.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     1.2,
+     1
+    ]
+   }
+  ],
+  "bathtub": [
+   {
+    "key": "style-detail-bathtub",
+    "url": "props/detail_bathtub.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1210,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     2.2,
+     0.8,
+     1.1
+    ]
+   }
+  ],
+  "coat_rack": [
+   {
+    "key": "style-detail-coat-rack",
+    "url": "props/detail_coat_rack.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1964,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.6,
+     1.8,
+     0.6
+    ]
+   }
+  ],
+  "cradle": [
+   {
+    "key": "style-detail-cradle",
+    "url": "props/detail_cradle.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3638,
+     "y": 2174,
+     "w": 246,
+     "h": 174
+    },
+    "size": [
+     1,
+     0.8,
+     0.7
+    ]
+   }
+  ],
+  "folding_screen": [
+   {
+    "key": "style-detail-folding-screen",
+    "url": "props/detail_folding_screen.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3219,
+     "y": 3158,
+     "w": 246,
+     "h": 58
+    },
+    "size": [
+     2.6,
+     1.8,
+     0.6
+    ]
+   }
+  ],
+  "standing_mirror": [
+   {
+    "key": "style-detail-standing-mirror",
+    "url": "props/detail_standing_mirror.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1942,
+     "y": 2373,
+     "w": 246,
+     "h": 154
+    },
+    "size": [
+     0.8,
+     1.8,
+     0.5
+    ]
+   }
+  ],
+  "writing_desk": [
+   {
+    "key": "style-detail-writing-desk",
+    "url": "props/detail_writing_desk.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2968,
+     "y": 2829,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.4,
+     0.8,
+     1.1
+    ]
+   }
+  ],
+  "candle_desk": [
+   {
+    "key": "style-detail-candle-desk",
+    "url": "props/detail_candle_desk.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2205,
+     "y": 2951,
+     "w": 246,
+     "h": 104
+    },
+    "size": [
+     2.4,
+     1,
+     1
+    ]
+   }
+  ],
+  "scroll_rack": [
+   {
+    "key": "style-detail-scroll-rack",
+    "url": "props/detail_scroll_rack.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1488,
+     "y": 3236,
+     "w": 246,
+     "h": 38
+    },
+    "size": [
+     2.6,
+     1.6,
+     0.4
+    ]
+   }
+  ],
+  "globe": [
+   {
+    "key": "style-detail-globe",
+    "url": "props/detail_globe.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3452,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     1.1,
+     0.8
+    ]
+   }
+  ],
+  "reading_nook": [
+   {
+    "key": "style-detail-reading-nook",
+    "url": "props/detail_reading_nook.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1954,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     2.4,
+     1.2,
+     1.2
+    ]
+   }
+  ],
+  "telescope": [
+   {
+    "key": "style-detail-telescope",
+    "url": "props/detail_telescope.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.9,
+     1.6,
+     0.9
+    ]
+   }
+  ],
+  "armor_stand": [
+   {
+    "key": "style-detail-armor-stand",
+    "url": "props/detail_armor_stand.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3390,
+     "y": 2174,
+     "w": 246,
+     "h": 174
+    },
+    "size": [
+     1,
+     1.8,
+     0.7
+    ]
+   }
+  ],
+  "archery_target": [
+   {
+    "key": "style-detail-archery-target",
+    "url": "props/detail_archery_target.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 743,
+     "y": 2373,
+     "w": 246,
+     "h": 164
+    },
+    "size": [
+     1.2,
+     1.6,
+     0.8
+    ]
+   }
+  ],
+  "straw_bed": [
+   {
+    "key": "style-detail-straw-bed",
+    "url": "props/detail_straw_bed.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3390,
+     "y": 496,
+     "w": 124,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     0.3,
+     2.4
+    ]
+   }
+  ],
+  "wall_chains": [
+   {
+    "key": "style-detail-wall-chains",
+    "url": "props/detail_wall_chains.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 739,
+     "y": 3158,
+     "w": 246,
+     "h": 74
+    },
+    "size": [
+     1,
+     1.6,
+     0.3
+    ]
+   }
+  ],
+  "jailer_desk": [
+   {
+    "key": "style-detail-jailer-desk",
+    "url": "props/detail_jailer_desk.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 991,
+     "y": 2373,
+     "w": 246,
+     "h": 164
+    },
+    "size": [
+     1.2,
+     0.9,
+     0.8
+    ]
+   }
+  ],
+  "torture_rack": [
+   {
+    "key": "style-detail-torture-rack",
+    "url": "props/detail_torture_rack.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1957,
+     "y": 2951,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     1,
+     1.2
+    ]
+   }
+  ],
+  "stocks": [
+   {
+    "key": "style-detail-stocks",
+    "url": "props/detail_stocks.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2720,
+     "y": 2829,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.6,
+     1,
+     1.2
+    ]
+   }
+  ],
+  "idol": [
+   {
+    "key": "style-detail-idol",
+    "url": "props/detail_idol.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     3,
+     2.8
+    ]
+   }
+  ],
+  "holy_pool": [
+   {
+    "key": "style-detail-holy-pool",
+    "url": "props/detail_holy_pool.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3700,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     0.4,
+     2.8
+    ]
+   }
+  ],
+  "font_basin": [
+   {
+    "key": "style-detail-font-basin",
+    "url": "props/detail_font_basin.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2460,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     1.1,
+     1
+    ]
+   }
+  ],
+  "incense_burner": [
+   {
+    "key": "style-detail-incense-burner",
+    "url": "props/detail_incense_burner.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     1.2,
+     0.8
+    ]
+   }
+  ],
+  "kneeling_cushions": [
+   {
+    "key": "style-detail-kneeling-cushions",
+    "url": "props/detail_kneeling_cushions.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 990,
+     "y": 3063,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     2.8,
+     0.3,
+     1
+    ]
+   }
+  ],
+  "bell_frame": [
+   {
+    "key": "style-detail-bell-frame",
+    "url": "props/detail_bell_frame.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1976,
+     "y": 2829,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.6,
+     2.6,
+     1.2
+    ]
+   }
+  ],
+  "shop_counter": [
+   {
+    "key": "style-detail-shop-counter",
+    "url": "props/detail_shop_counter.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2723,
+     "y": 3158,
+     "w": 246,
+     "h": 60
+    },
+    "size": [
+     4.2,
+     1,
+     1
+    ]
+   }
+  ],
+  "scales_table": [
+   {
+    "key": "style-detail-scales-table",
+    "url": "props/detail_scales_table.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3457,
+     "y": 1960,
+     "w": 246,
+     "h": 198
+    },
+    "size": [
+     1,
+     1,
+     0.8
+    ]
+   }
+  ],
+  "cloth_bolts": [
+   {
+    "key": "style-detail-cloth-bolts",
+    "url": "props/detail_cloth_bolts.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1468,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.1,
+     1.4,
+     1.1
+    ]
+   }
+  ],
+  "hay_bales": [
+   {
+    "key": "style-detail-hay-bales",
+    "url": "props/detail_hay_bales.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2224,
+     "y": 2829,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.6,
+     0.7,
+     1.2
+    ]
+   }
+  ],
+  "chicken_coop": [
+   {
+    "key": "style-detail-chicken-coop",
+    "url": "props/detail_chicken_coop.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1458,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     2.8,
+     1.5,
+     1.4
+    ]
+   }
+  ],
+  "garden_bed": [
+   {
+    "key": "style-detail-garden-bed",
+    "url": "props/detail_garden_bed.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 2829,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     2.8,
+     0.5,
+     1.3
+    ]
+   }
+  ],
+  "scarecrow": [
+   {
+    "key": "style-detail-scarecrow",
+    "url": "props/detail_scarecrow.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1486,
+     "y": 3063,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     1.4,
+     2.2,
+     0.5
+    ]
+   }
+  ],
+  "flour_bin": [
+   {
+    "key": "style-detail-flour-bin",
+    "url": "props/detail_flour_bin.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1969,
+     "y": 1960,
+     "w": 246,
+     "h": 206
+    },
+    "size": [
+     1.2,
+     0.9,
+     1
+    ]
+   }
+  ],
+  "millstone": [
+   {
+    "key": "style-detail-millstone",
+    "url": "props/detail_millstone.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 744,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.6,
+     2.8
+    ]
+   }
+  ],
+  "water_wheel": [
+   {
+    "key": "style-detail-water-wheel",
+    "url": "props/detail_water_wheel.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 744,
+     "y": 744,
+     "w": 74,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     4,
+     4
+    ]
+   }
+  ],
+  "fence_gate": [
+   {
+    "key": "style-detail-fence-gate",
+    "url": "props/detail_fence_gate.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 496,
+     "y": 3236,
+     "w": 246,
+     "h": 50
+    },
+    "size": [
+     1.5,
+     1.2,
+     0.3
+    ]
+   }
+  ],
+  "flower_bed": [
+   {
+    "key": "style-detail-flower-bed",
+    "url": "props/detail_flower_bed.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 965,
+     "y": 2951,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     0.6,
+     1.2
+    ]
+   }
+  ],
+  "fountain": [
+   {
+    "key": "style-detail-fountain",
+    "url": "props/detail_fountain.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2956,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     4.4,
+     2.2,
+     4.4
+    ]
+   }
+  ],
+  "town_well": [
+   {
+    "key": "style-detail-town-well",
+    "url": "props/detail_town_well.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     2.6,
+     2.8
+    ]
+   }
+  ],
+  "market_awning": [
+   {
+    "key": "style-detail-market-awning",
+    "url": "props/detail_market_awning.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1487,
+     "y": 2373,
+     "w": 246,
+     "h": 158
+    },
+    "size": [
+     4.4,
+     2.4,
+     2.8
+    ]
+   }
+  ],
+  "notice_board": [
+   {
+    "key": "style-detail-notice-board",
+    "url": "props/detail_notice_board.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 3236,
+     "w": 246,
+     "h": 54
+    },
+    "size": [
+     1.4,
+     2,
+     0.3
+    ]
+   }
+  ],
+  "sign_post_city": [
+   {
+    "key": "style-detail-sign-post-city",
+    "url": "props/detail_sign_post_city.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2646,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     2.2,
+     0.8
+    ]
+   }
+  ],
+  "pillory": [
+   {
+    "key": "style-detail-pillory",
+    "url": "props/detail_pillory.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2472,
+     "y": 2829,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.6,
+     1.8,
+     1.2
+    ]
+   }
+  ],
+  "statue_plinth": [
+   {
+    "key": "style-detail-statue-plinth",
+    "url": "props/detail_statue_plinth.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3142,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     3.2,
+     2.8
+    ]
+   }
+  ],
+  "street_planter": [
+   {
+    "key": "style-detail-street-planter",
+    "url": "props/detail_street_planter.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3516,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     1.6,
+     1
+    ]
+   }
+  ],
+  "mooring_post": [
+   {
+    "key": "style-detail-mooring-post",
+    "url": "props/detail_mooring_post.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1240,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.6,
+     1,
+     0.6
+    ]
+   }
+  ],
+  "fish_rack": [
+   {
+    "key": "style-detail-fish-rack",
+    "url": "props/detail_fish_rack.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3708,
+     "y": 3063,
+     "w": 246,
+     "h": 76
+    },
+    "size": [
+     2.6,
+     1.6,
+     0.8
+    ]
+   }
+  ],
+  "fishing_nets": [
+   {
+    "key": "style-detail-fishing-nets",
+    "url": "props/detail_fishing_nets.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1736,
+     "y": 3236,
+     "w": 246,
+     "h": 36
+    },
+    "size": [
+     2.8,
+     1.4,
+     0.4
+    ]
+   }
+  ],
+  "rowboat": [
+   {
+    "key": "style-detail-rowboat",
+    "url": "props/detail_rowboat.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2558,
+     "y": 496,
+     "w": 86,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     0.7,
+     4
+    ]
+   }
+  ],
+  "punt": [
+   {
+    "key": "style-detail-punt",
+    "url": "props/detail_punt.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1736,
+     "y": 496,
+     "w": 76,
+     "h": 246
+    },
+    "size": [
+     1.3,
+     0.5,
+     4.2
+    ]
+   }
+  ],
+  "stone_steps": [
+   {
+    "key": "style-detail-stone-steps",
+    "url": "props/detail_stone_steps.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2202,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     2.8,
+     0.8,
+     1.4
+    ]
+   }
+  ],
+  "root_tangle": [
+   {
+    "key": "style-detail-root-tangle",
+    "url": "props/detail_root_tangle.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1461,
+     "y": 2951,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     0.8,
+     1.2
+    ]
+   }
+  ],
+  "cart": [
+   {
+    "key": "ref-quaternius-stall-cart-empty",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/stall_cart_empty.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 742,
+     "y": 3063,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     3.0205,
+     2.6318,
+     1.0597
+    ]
+   },
+   {
+    "key": "style-extra-merchant-wagon",
+    "url": "props/extra_merchant_wagon.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 0,
+     "y": 2829,
+     "w": 246,
+     "h": 120
+    },
+    "size": [
+     4.024,
+     1.5292,
+     1.9514
+    ]
+   }
+  ],
+  "banner": [
+   {
+    "key": "ref-quaternius-banner-1",
+    "url": "/assets/models/environment/releases/5f884daa35bf2ebe49f61f75/quaternius/banner_1.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2232,
+     "y": 3236,
+     "w": 246,
+     "h": 30
+    },
+    "size": [
+     1.6131,
+     2.3922,
+     0.1906
+    ]
+   },
+   {
+    "key": "style-extra-banner-variant",
+    "url": "props/extra_banner_variant.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2728,
+     "y": 3236,
+     "w": 246,
+     "h": 30
+    },
+    "size": [
+     1.6131,
+     2.0771,
+     0.1906
+    ]
+   }
+  ],
+  "ballista": [
+   {
+    "key": "style-extra-ballista",
+    "url": "props/extra_ballista.glb",
+    "yaw": 0,
+    "maxHeight": 1.1,
+    "preview": {
+     "x": 1316,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.6,
+     2.8
+    ]
+   }
+  ],
+  "command_tent": [
+   {
+    "key": "style-extra-command-tent",
+    "url": "props/extra_command_tent.glb",
+    "yaw": 0,
+    "maxHeight": 1.45,
+    "preview": {
+     "x": 2048,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     2.2,
+     2.8
+    ]
+   }
+  ],
+  "alchemy_table": [
+   {
+    "key": "style-extra-alchemy-table",
+    "url": "props/extra_alchemy_table.glb",
+    "yaw": 0,
+    "maxHeight": 0.72,
+    "preview": {
+     "x": 496,
+     "y": 2829,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     2.8,
+     1,
+     1.3
+    ]
+   }
+  ],
+  "dock_crane": [
+   {
+    "key": "style-extra-dock-crane",
+    "url": "props/extra_dock_crane.glb",
+    "yaw": 0,
+    "maxHeight": 1.7,
+    "preview": {
+     "x": 3286,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     2.6,
+     2.8
+    ]
+   }
+  ],
+  "mine_cart": [
+   {
+    "key": "style-extra-mine-cart",
+    "url": "props/extra_mine_cart.glb",
+    "yaw": 0,
+    "maxHeight": 0.7,
+    "preview": {
+     "x": 744,
+     "y": 1730,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     1.3,
+     1,
+     1.2
+    ]
+   }
+  ],
+  "rope_bridge": [
+   {
+    "key": "style-extra-rope-bridge",
+    "url": "props/extra_rope_bridge.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3464,
+     "y": 2829,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.8,
+     1,
+     1.3
+    ]
+   }
+  ],
+  "crystal_orb": [
+   {
+    "key": "style-extra-crystal-orb",
+    "url": "props/extra_crystal_orb.glb",
+    "yaw": 0,
+    "maxHeight": 0.8,
+    "preview": {
+     "x": 2544,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1,
+     1.2,
+     1
+    ]
+   }
+  ],
+  "giant_fungus": [
+   {
+    "key": "style-extra-giant-fungus",
+    "url": "props/extra_giant_fungus.glb",
+    "yaw": 0,
+    "maxHeight": 1.6,
+    "preview": {
+     "x": 3534,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     2.4,
+     2.8
+    ]
+   }
+  ],
+  "sandstone_arch": [
+   {
+    "key": "style-extra-sandstone-arch",
+    "url": "props/extra_sandstone_arch.glb",
+    "yaw": 0,
+    "maxHeight": 1.7,
+    "preview": {
+     "x": 987,
+     "y": 3158,
+     "w": 246,
+     "h": 72
+    },
+    "size": [
+     2.8,
+     2.6,
+     0.8
+    ]
+   }
+  ],
+  "mantlet": [
+   {
+    "key": "style-extra-mantlet",
+    "url": "props/extra_mantlet.glb",
+    "yaw": 0,
+    "maxHeight": 1.35,
+    "preview": {
+     "x": 0,
+     "y": 3158,
+     "w": 246,
+     "h": 76
+    },
+    "size": [
+     2.6,
+     2,
+     0.8
+    ]
+   }
+  ],
+  "cargo_sled": [
+   {
+    "key": "style-extra-cargo-sled",
+    "url": "props/extra_cargo_sled.glb",
+    "yaw": 0,
+    "maxHeight": 0.48,
+    "preview": {
+     "x": 744,
+     "y": 2829,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     2.8,
+     0.7,
+     1.3
+    ]
+   }
+  ],
+  "ruin_wall_arch": [
+   {
+    "key": "style-extra-ruin-wall-arch",
+    "url": "props/extra_ruin_wall_arch.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 3292,
+     "w": 246,
+     "h": 8
+    },
+    "size": [
+     2,
+     3,
+     0.064
+    ]
+   }
+  ],
+  "chimney_brick": [
+   {
+    "key": "style-extra-chimney-brick",
+    "url": "props/extra_chimney_brick.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1812,
+     "y": 744,
+     "w": 234,
+     "h": 246
+    },
+    "size": [
+     0.9458,
+     3.1779,
+     1
+    ]
+   }
+  ],
+  "ornate_iron_fence": [
+   {
+    "key": "style-extra-ornate-iron-fence",
+    "url": "props/extra_ornate_iron_fence.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3182,
+     "y": 3236,
+     "w": 246,
+     "h": 20
+    },
+    "size": [
+     1.9523,
+     2.8524,
+     0.1561
+    ]
+   }
+  ],
+  "roof_dormer_roundtile": [
+   {
+    "key": "style-extra-roof-dormer-roundtile",
+    "url": "props/extra_roof_dormer_roundtile.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 248,
+     "y": 992,
+     "w": 200,
+     "h": 246
+    },
+    "size": [
+     1.9664,
+     2.6731,
+     2.4392
+    ]
+   }
+  ],
+  "ruin_corner_brick": [
+   {
+    "key": "style-extra-ruin-corner-brick",
+    "url": "props/extra_ruin_corner_brick.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 450,
+     "y": 992,
+     "w": 232,
+     "h": 246
+    },
+    "size": [
+     0.7123,
+     3.0428,
+     0.7564
+    ]
+   }
+  ],
+  "round_window_brick": [
+   {
+    "key": "style-extra-round-window-brick",
+    "url": "props/extra_round_window_brick.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 744,
+     "y": 3236,
+     "w": 246,
+     "h": 50
+    },
+    "size": [
+     2,
+     3.1227,
+     0.4065
+    ]
+   }
+  ],
+  "arch_shelf": [
+   {
+    "key": "style-extra-arch-shelf",
+    "url": "props/extra_arch_shelf.glb",
+    "yaw": 0,
+    "maxHeight": 0.7,
+    "preview": {
+     "x": 2227,
+     "y": 3158,
+     "w": 246,
+     "h": 62
+    },
+    "size": [
+     1.2452,
+     1.5892,
+     0.3116
+    ]
+   }
+  ],
+  "cutlery_set": [
+   {
+    "key": "style-extra-cutlery-set",
+    "url": "props/extra_cutlery_set.glb",
+    "yaw": 0,
+    "maxHeight": 0.09,
+    "preview": {
+     "x": 248,
+     "y": 2549,
+     "w": 230,
+     "h": 146
+    },
+    "size": [
+     0.7664,
+     0.0292,
+     0.4664
+    ]
+   }
+  ],
+  "tool_peg_rack": [
+   {
+    "key": "style-extra-tool-peg-rack",
+    "url": "props/extra_tool_peg_rack.glb",
+    "yaw": 0,
+    "maxHeight": 0.25,
+    "preview": {
+     "x": 3430,
+     "y": 3236,
+     "w": 246,
+     "h": 20
+    },
+    "size": [
+     1.1839,
+     0.3479,
+     0.0957
+    ]
+   }
+  ],
+  "chain_coil": [
+   {
+    "key": "style-extra-chain-coil",
+    "url": "props/extra_chain_coil.glb",
+    "yaw": 0,
+    "maxHeight": 0.13,
+    "preview": {
+     "x": 1721,
+     "y": 1960,
+     "w": 246,
+     "h": 210
+    },
+    "size": [
+     1.0703,
+     0.0872,
+     0.9077
+    ]
+   }
+  ],
+  "book_piles": [
+   {
+    "key": "style-extra-book-piles",
+    "url": "props/extra_book_piles.glb",
+    "yaw": 0,
+    "maxHeight": 0.24,
+    "preview": {
+     "x": 496,
+     "y": 3063,
+     "w": 244,
+     "h": 92
+    },
+    "size": [
+     0.8219,
+     0.2137,
+     0.3214
+    ]
+   }
+  ],
+  "crystal_cluster": [
+   {
+    "key": "style-extra-crystal-cluster",
+    "url": "props/extra_crystal_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 1.2,
+    "preview": {
+     "x": 2296,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     1.8,
+     1.4
+    ]
+   }
+  ],
+  "nomad_tent": [
+   {
+    "key": "style-extra-nomad-tent",
+    "url": "props/extra_nomad_tent.glb",
+    "yaw": 0,
+    "maxHeight": 1.2,
+    "preview": {
+     "x": 0,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.8,
+     2.8
+    ]
+   }
+  ],
+  "obsidian_monolith": [
+   {
+    "key": "style-extra-obsidian-monolith",
+    "url": "props/extra_obsidian_monolith.glb",
+    "yaw": 0,
+    "maxHeight": 1.8,
+    "preview": {
+     "x": 2217,
+     "y": 1960,
+     "w": 246,
+     "h": 206
+    },
+    "size": [
+     1.2,
+     2.8,
+     1
+    ]
+   }
+  ],
+  "weapon_rack": [
+   {
+    "key": "style-extra-weapon-rack",
+    "url": "props/extra_weapon_rack.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 992,
+     "y": 3236,
+     "w": 246,
+     "h": 48
+    },
+    "size": [
+     2.6,
+     1.4,
+     0.5
+    ]
+   }
+  ],
+  "scout_tent": [
+   {
+    "key": "style-extra-scout-tent",
+    "url": "props/extra_scout_tent.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 992,
+     "y": 2829,
+     "w": 246,
+     "h": 116
+    },
+    "size": [
+     2.8,
+     1.4,
+     1.3
+    ]
+   }
+  ],
+  "timber_shoring": [
+   {
+    "key": "style-extra-timber-shoring",
+    "url": "props/extra_timber_shoring.glb",
+    "yaw": 0,
+    "maxHeight": 1.6,
+    "preview": {
+     "x": 1240,
+     "y": 3236,
+     "w": 246,
+     "h": 44
+    },
+    "size": [
+     2.8,
+     2.4,
+     0.5
+    ]
+   }
+  ],
+  "mine_rail": [
+   {
+    "key": "style-extra-mine-rail",
+    "url": "props/extra_mine_rail.glb",
+    "yaw": 0,
+    "maxHeight": 0.09,
+    "preview": {
+     "x": 3216,
+     "y": 2829,
+     "w": 246,
+     "h": 114
+    },
+    "size": [
+     2.8,
+     0.12,
+     1.3
+    ]
+   }
+  ],
+  "shield_display": [
+   {
+    "key": "style-extra-shield-display",
+    "url": "props/extra_shield_display.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 1235,
+     "y": 3158,
+     "w": 246,
+     "h": 72
+    },
+    "size": [
+     0.676,
+     0.683,
+     0.1967
+    ]
+   }
+  ],
+  "arcane_coil": [
+   {
+    "key": "style-extra-arcane-coil",
+    "url": "props/extra_arcane_coil.glb",
+    "yaw": 0,
+    "maxHeight": 0.75,
+    "preview": {
+     "x": 1068,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     1.1,
+     1.4
+    ]
+   }
+  ],
+  "alchemy_bottles": [
+   {
+    "key": "style-extra-alchemy-bottles",
+    "url": "props/extra_alchemy_bottles.glb",
+    "yaw": 0,
+    "maxHeight": 0.36,
+    "preview": {
+     "x": 2465,
+     "y": 1960,
+     "w": 246,
+     "h": 202
+    },
+    "size": [
+     0.5607,
+     0.2615,
+     0.4576
+    ]
+   }
+  ],
+  "desk_candlestick": [
+   {
+    "key": "style-extra-desk-candlestick",
+    "url": "props/extra_desk_candlestick.glb",
+    "yaw": 0,
+    "maxHeight": 0.3,
+    "preview": {
+     "x": 3162,
+     "y": 2373,
+     "w": 222,
+     "h": 148
+    },
+    "size": [
+     0.468,
+     0.2483,
+     0.3675
+    ]
+   }
+  ],
+  "single_book": [
+   {
+    "key": "style-extra-single-book",
+    "url": "props/extra_single_book.glb",
+    "yaw": 0,
+    "maxHeight": 0.28,
+    "preview": {
+     "x": 226,
+     "y": 1488,
+     "w": 138,
+     "h": 240
+    },
+    "size": [
+     0.2021,
+     0.4293,
+     0.3514
+    ]
+   }
+  ],
+  "vial_display_shelf": [
+   {
+    "key": "style-extra-vial-display-shelf",
+    "url": "props/extra_vial_display_shelf.glb",
+    "yaw": 0,
+    "maxHeight": 0.5,
+    "preview": {
+     "x": 2475,
+     "y": 3158,
+     "w": 246,
+     "h": 62
+    },
+    "size": [
+     1.1371,
+     0.6474,
+     0.2846
+    ]
+   }
+  ],
+  "ceremonial_chalice": [
+   {
+    "key": "style-extra-ceremonial-chalice",
+    "url": "props/extra_ceremonial_chalice.glb",
+    "yaw": 0,
+    "maxHeight": 0.32,
+    "preview": {
+     "x": 2847,
+     "y": 1730,
+     "w": 216,
+     "h": 218
+    },
+    "size": [
+     0.2154,
+     0.4107,
+     0.2237
+    ]
+   }
+  ],
+  "book_row": [
+   {
+    "key": "style-extra-book-row",
+    "url": "props/extra_book_row.glb",
+    "yaw": 0,
+    "maxHeight": 0.3,
+    "preview": {
+     "x": 3467,
+     "y": 3158,
+     "w": 246,
+     "h": 58
+    },
+    "size": [
+     1.222,
+     0.343,
+     0.2846
+    ]
+   }
+  ],
+  "scroll_pile": [
+   {
+    "key": "style-extra-scroll-pile",
+    "url": "props/extra_scroll_pile.glb",
+    "yaw": 0,
+    "maxHeight": 0.16,
+    "preview": {
+     "x": 248,
+     "y": 3158,
+     "w": 241,
+     "h": 76
+    },
+    "size": [
+     0.7941,
+     0.0941,
+     0.2609
+    ]
+   }
+  ],
+  "rope_coils": [
+   {
+    "key": "style-extra-rope-coils",
+    "url": "props/extra_rope_coils.glb",
+    "yaw": 0,
+    "maxHeight": 0.15,
+    "preview": {
+     "x": 2398,
+     "y": 2549,
+     "w": 224,
+     "h": 140
+    },
+    "size": [
+     1.3923,
+     0.1236,
+     1.0892
+    ]
+   }
+  ],
+  "capstan": [
+   {
+    "key": "style-extra-capstan",
+    "url": "props/extra_capstan.glb",
+    "yaw": 0,
+    "maxHeight": 0.68,
+    "preview": {
+     "x": 1564,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     1,
+     1.4
+    ]
+   }
+  ],
+  "snowshoe_pair": [
+   {
+    "key": "style-extra-snowshoe-pair",
+    "url": "props/extra_snowshoe_pair.glb",
+    "yaw": 0,
+    "maxHeight": 0.1,
+    "preview": {
+     "x": 684,
+     "y": 992,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.3,
+     0.15,
+     1.3
+    ]
+   }
+  ],
+  "anchor": [
+   {
+    "key": "style-extra-anchor",
+    "url": "props/extra_anchor.glb",
+    "yaw": 0,
+    "maxHeight": 0.24,
+    "preview": {
+     "x": 820,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     0.35,
+     1.4
+    ]
+   }
+  ],
+  "swamp_boardwalk": [
+   {
+    "key": "style-extra-swamp-boardwalk",
+    "url": "props/extra_swamp_boardwalk.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 1728,
+     "y": 2829,
+     "w": 246,
+     "h": 115
+    },
+    "size": [
+     2.8,
+     0.35,
+     1.3
+    ]
+   }
+  ],
+  "path_stone": [
+   {
+    "key": "style-extra-rock-path-square",
+    "url": "props/extra_rock_path_square.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 3386,
+     "y": 2373,
+     "w": 243,
+     "h": 148
+    },
+    "size": [
+     3.3731,
+     0.1763,
+     2.0909
+    ]
+   },
+   {
+    "key": "style-extra-rock-path-round",
+    "url": "props/extra_rock_path_round.glb",
+    "yaw": 0,
+    "preview": {
+     "x": 2190,
+     "y": 2373,
+     "w": 241,
+     "h": 154
+    },
+    "size": [
+     3.4392,
+     0.1128,
+     2.2301
+    ]
+   }
+  ],
+  "clover_patch": [
+   {
+    "key": "style-extra-clover-patch",
+    "url": "props/extra_clover_patch.glb",
+    "yaw": 0,
+    "maxHeight": 0.2,
+    "preview": {
+     "x": 1460,
+     "y": 2549,
+     "w": 214,
+     "h": 143
+    },
+    "size": [
+     1.3867,
+     1.2638,
+     1.1735
+    ]
+   }
+  ],
+  "forest_plant": [
+   {
+    "key": "style-extra-forest-plant",
+    "url": "props/extra_forest_plant.glb",
+    "yaw": 0,
+    "maxHeight": 0.5,
+    "preview": {
+     "x": 1983,
+     "y": 2174,
+     "w": 205,
+     "h": 181
+    },
+    "size": [
+     1.9632,
+     1.8782,
+     1.8927
+    ]
+   }
+  ],
+  "mangrove_roots": [
+   {
+    "key": "style-extra-mangrove-roots",
+    "url": "props/extra_mangrove_roots.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 3782,
+     "y": 744,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     2.8,
+     1.4,
+     2.8
+    ]
+   }
+  ],
+  "wall_ivy": [
+   {
+    "key": "style-extra-wall-ivy",
+    "url": "props/extra_wall_ivy.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 2976,
+     "y": 3236,
+     "w": 204,
+     "h": 23
+    },
+    "size": [
+     1.5358,
+     2.6026,
+     0.219
+    ]
+   }
+  ],
+  "wall_ivy_corner": [
+   {
+    "key": "style-extra-wall-ivy-corner",
+    "url": "props/extra_wall_ivy_corner.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 3470,
+     "y": 3063,
+     "w": 236,
+     "h": 79
+    },
+    "size": [
+     4.137,
+     2.4683,
+     1.4705
+    ]
+   }
+  ],
+  "wall_ivy_wide": [
+   {
+    "key": "style-extra-wall-ivy-wide",
+    "url": "props/extra_wall_ivy_wide.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 3678,
+     "y": 3236,
+     "w": 130,
+     "h": 17
+    },
+    "size": [
+     1.0166,
+     1.5882,
+     0.15
+    ]
+   }
+  ],
+  "key_bundle": [
+   {
+    "key": "style-extra-key-bundle",
+    "url": "props/extra_key_bundle.glb",
+    "yaw": 0,
+    "maxHeight": 0.1,
+    "preview": {
+     "x": 2172,
+     "y": 2549,
+     "w": 224,
+     "h": 141
+    },
+    "size": [
+     0.4608,
+     0.0273,
+     0.3097
+    ]
+   }
+  ],
+  "coin_pouch": [
+   {
+    "key": "style-extra-coin-pouch",
+    "url": "props/extra_coin_pouch.glb",
+    "yaw": 0,
+    "maxHeight": 0.28,
+    "preview": {
+     "x": 976,
+     "y": 2549,
+     "w": 234,
+     "h": 144
+    },
+    "size": [
+     0.2936,
+     0.1909,
+     0.1923
+    ]
+   }
+  ],
+  "snowdrift": [
+   {
+    "key": "style-detail-snowdrift",
+    "url": "props/detail_snowdrift.glb",
+    "yaw": 0,
+    "maxHeight": 0.25,
+    "preview": {
+     "x": 1676,
+     "y": 2549,
+     "w": 246,
+     "h": 142
+    },
+    "size": [
+     1.4,
+     0.32,
+     0.8
+    ]
+   }
+  ],
+  "snowy_boulder": [
+   {
+    "key": "style-detail-snowy-boulder",
+    "url": "props/detail_snowy_boulder.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 496,
+     "y": 1730,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     1.3,
+     0.9,
+     1.2
+    ]
+   }
+  ],
+  "ice_pillars": [
+   {
+    "key": "style-detail-ice-pillars",
+    "url": "props/detail_ice_pillars.glb",
+    "yaw": 0,
+    "maxHeight": 1.1,
+    "preview": {
+     "x": 248,
+     "y": 1730,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     1.3,
+     1.4,
+     1.2
+    ]
+   }
+  ],
+  "frozen_pool": [
+   {
+    "key": "style-detail-frozen-pool",
+    "url": "props/detail_frozen_pool.glb",
+    "yaw": 0,
+    "maxHeight": 0.12,
+    "preview": {
+     "x": 3204,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     0.14,
+     1.4
+    ]
+   }
+  ],
+  "winter_cache": [
+   {
+    "key": "style-detail-winter-cache",
+    "url": "props/detail_winter_cache.glb",
+    "yaw": 0,
+    "maxHeight": 0.45,
+    "preview": {
+     "x": 2450,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     1.4,
+     0.55,
+     0.7
+    ]
+   }
+  ],
+  "snow_cairn": [
+   {
+    "key": "style-detail-snow-cairn",
+    "url": "props/detail_snow_cairn.glb",
+    "yaw": 0,
+    "maxHeight": 0.9,
+    "preview": {
+     "x": 2894,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     1.3,
+     0.8
+    ]
+   }
+  ],
+  "sand_dune": [
+   {
+    "key": "style-detail-sand-dune",
+    "url": "props/detail_sand_dune.glb",
+    "yaw": 0,
+    "maxHeight": 0.22,
+    "preview": {
+     "x": 1709,
+     "y": 2951,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     1.4,
+     0.3,
+     0.6
+    ]
+   }
+  ],
+  "desert_boulders": [
+   {
+    "key": "style-detail-desert-boulders",
+    "url": "props/detail_desert_boulders.glb",
+    "yaw": 0,
+    "maxHeight": 0.6,
+    "preview": {
+     "x": 248,
+     "y": 1960,
+     "w": 246,
+     "h": 212
+    },
+    "size": [
+     1.4,
+     0.8,
+     1.2
+    ]
+   }
+  ],
+  "cactus_cluster": [
+   {
+    "key": "style-detail-cactus-cluster",
+    "url": "props/detail_cactus_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 1.1,
+    "preview": {
+     "x": 744,
+     "y": 248,
+     "w": 226,
+     "h": 246
+    },
+    "size": [
+     1.1,
+     1.4,
+     1.2
+    ]
+   }
+  ],
+  "dead_scrub": [
+   {
+    "key": "style-detail-dead-scrub",
+    "url": "props/detail_dead_scrub.glb",
+    "yaw": 0,
+    "maxHeight": 0.5,
+    "preview": {
+     "x": 977,
+     "y": 1960,
+     "w": 246,
+     "h": 210
+    },
+    "size": [
+     1.4,
+     0.7,
+     1.2
+    ]
+   }
+  ],
+  "oasis_pool": [
+   {
+    "key": "style-detail-oasis-pool",
+    "url": "props/detail_oasis_pool.glb",
+    "yaw": 0,
+    "maxHeight": 0.15,
+    "preview": {
+     "x": 1225,
+     "y": 1960,
+     "w": 246,
+     "h": 210
+    },
+    "size": [
+     1.4,
+     0.2,
+     1.2
+    ]
+   }
+  ],
+  "broken_obelisk": [
+   {
+    "key": "style-detail-broken-obelisk",
+    "url": "props/detail_broken_obelisk.glb",
+    "yaw": 0,
+    "maxHeight": 0.3,
+    "preview": {
+     "x": 2726,
+     "y": 3063,
+     "w": 246,
+     "h": 80
+    },
+    "size": [
+     1.4,
+     0.4,
+     0.45
+    ]
+   }
+  ],
+  "bog_pool": [
+   {
+    "key": "style-detail-bog-pool",
+    "url": "props/detail_bog_pool.glb",
+    "yaw": 0,
+    "maxHeight": 0.12,
+    "preview": {
+     "x": 2749,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     1.4,
+     0.14,
+     1.3
+    ]
+   }
+  ],
+  "lily_pad_cluster": [
+   {
+    "key": "style-detail-lily-pad-cluster",
+    "url": "props/detail_lily_pad_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 0.08,
+    "preview": {
+     "x": 2997,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     1.4,
+     0.08,
+     1.3
+    ]
+   }
+  ],
+  "reed_cluster": [
+   {
+    "key": "style-detail-reed-cluster",
+    "url": "props/detail_reed_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 1,
+    "preview": {
+     "x": 2062,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     1.3,
+     1.2
+    ]
+   }
+  ],
+  "rotten_log": [
+   {
+    "key": "style-detail-rotten-log",
+    "url": "props/detail_rotten_log.glb",
+    "yaw": 0,
+    "maxHeight": 0.45,
+    "preview": {
+     "x": 1979,
+     "y": 3158,
+     "w": 246,
+     "h": 62
+    },
+    "size": [
+     2.8,
+     0.6,
+     0.7
+    ]
+   }
+  ],
+  "mud_patch": [
+   {
+    "key": "style-detail-mud-patch",
+    "url": "props/detail_mud_patch.glb",
+    "yaw": 0,
+    "maxHeight": 0.06,
+    "preview": {
+     "x": 3493,
+     "y": 1488,
+     "w": 246,
+     "h": 229
+    },
+    "size": [
+     1.4,
+     0.08,
+     1.3
+    ]
+   }
+  ],
+  "swamp_totem": [
+   {
+    "key": "style-detail-swamp-totem",
+    "url": "props/detail_swamp_totem.glb",
+    "yaw": 0,
+    "maxHeight": 1.3,
+    "preview": {
+     "x": 3764,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.7,
+     1.6,
+     0.7
+    ]
+   }
+  ],
+  "peat_mound": [
+   {
+    "key": "style-detail-peat-mound",
+    "url": "props/detail_peat_mound.glb",
+    "yaw": 0,
+    "maxHeight": 0.3,
+    "preview": {
+     "x": 3245,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     1.4,
+     0.4,
+     1.3
+    ]
+   }
+  ],
+  "mooring_bollard": [
+   {
+    "key": "style-detail-mooring-bollard",
+    "url": "props/detail_mooring_bollard.glb",
+    "yaw": 0,
+    "maxHeight": 0.6,
+    "preview": {
+     "x": 992,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.9,
+     0.8,
+     0.9
+    ]
+   }
+  ],
+  "cargo_net": [
+   {
+    "key": "style-detail-cargo-net",
+    "url": "props/detail_cargo_net.glb",
+    "yaw": 0,
+    "maxHeight": 0.45,
+    "preview": {
+     "x": 1220,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.3,
+     0.6,
+     1.3
+    ]
+   }
+  ],
+  "lobster_cage": [
+   {
+    "key": "style-detail-lobster-cage",
+    "url": "props/detail_lobster_cage.glb",
+    "yaw": 0,
+    "maxHeight": 0.45,
+    "preview": {
+     "x": 1924,
+     "y": 2549,
+     "w": 246,
+     "h": 141
+    },
+    "size": [
+     1.4,
+     0.6,
+     0.8
+    ]
+   }
+  ],
+  "sail_bundle": [
+   {
+    "key": "style-detail-sail-bundle",
+    "url": "props/detail_sail_bundle.glb",
+    "yaw": 0,
+    "maxHeight": 0.25,
+    "preview": {
+     "x": 1238,
+     "y": 3063,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     1.4,
+     0.35,
+     0.5
+    ]
+   }
+  ],
+  "bedroll_cluster": [
+   {
+    "key": "style-detail-bedroll-cluster",
+    "url": "props/detail_bedroll_cluster.glb",
+    "yaw": 0,
+    "maxHeight": 0.25,
+    "preview": {
+     "x": 0,
+     "y": 1730,
+     "w": 246,
+     "h": 228
+    },
+    "size": [
+     1.3,
+     0.35,
+     1.2
+    ]
+   }
+  ],
+  "shield_rack": [
+   {
+    "key": "style-detail-shield-rack",
+    "url": "props/detail_shield_rack.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 1734,
+     "y": 3063,
+     "w": 246,
+     "h": 88
+    },
+    "size": [
+     1.4,
+     1.2,
+     0.5
+    ]
+   }
+  ],
+  "camp_dummy": [
+   {
+    "key": "style-detail-camp-dummy",
+    "url": "props/detail_camp_dummy.glb",
+    "yaw": 0,
+    "maxHeight": 1.25,
+    "preview": {
+     "x": 972,
+     "y": 248,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.8,
+     1.6,
+     0.8
+    ]
+   }
+  ],
+  "spiked_beam_barrier": [
+   {
+    "key": "style-detail-spiked-beam-barrier",
+    "url": "props/detail_spiked_beam_barrier.glb",
+    "yaw": 0,
+    "maxHeight": 0.65,
+    "preview": {
+     "x": 1473,
+     "y": 1960,
+     "w": 246,
+     "h": 210
+    },
+    "size": [
+     1.4,
+     0.9,
+     1.2
+    ]
+   }
+  ],
+  "alchemy_cauldron": [
+   {
+    "key": "style-detail-alchemy-cauldron",
+    "url": "props/detail_alchemy_cauldron.glb",
+    "yaw": 0,
+    "maxHeight": 0.6,
+    "preview": {
+     "x": 3637,
+     "y": 0,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.2,
+     0.8,
+     1.2
+    ]
+   }
+  ],
+  "arcane_lectern": [
+   {
+    "key": "style-detail-arcane-lectern",
+    "url": "props/detail_arcane_lectern.glb",
+    "yaw": 0,
+    "maxHeight": 0.95,
+    "preview": {
+     "x": 248,
+     "y": 2373,
+     "w": 246,
+     "h": 173
+    },
+    "size": [
+     1,
+     1.2,
+     0.7
+    ]
+   }
+  ],
+  "ritual_circle": [
+   {
+    "key": "style-detail-ritual-circle",
+    "url": "props/detail_ritual_circle.glb",
+    "yaw": 0,
+    "maxHeight": 0.05,
+    "preview": {
+     "x": 2310,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.4,
+     0.05,
+     1.4
+    ]
+   }
+  ],
+  "arcane_stone": [
+   {
+    "key": "style-detail-arcane-stone",
+    "url": "props/detail_arcane_stone.glb",
+    "yaw": 0,
+    "maxHeight": 0.2,
+    "preview": {
+     "x": 2501,
+     "y": 1488,
+     "w": 246,
+     "h": 230
+    },
+    "size": [
+     1.4,
+     0.25,
+     1.3
+    ]
+   }
+  ],
+  "potion_cabinet": [
+   {
+    "key": "style-detail-potion-cabinet",
+    "url": "props/detail_potion_cabinet.glb",
+    "yaw": 0,
+    "maxHeight": 1.2,
+    "preview": {
+     "x": 3437,
+     "y": 2951,
+     "w": 246,
+     "h": 96
+    },
+    "size": [
+     1.3,
+     1.6,
+     0.5
+    ]
+   }
+  ],
+  "magic_mirror": [
+   {
+    "key": "style-detail-magic-mirror",
+    "url": "props/detail_magic_mirror.glb",
+    "yaw": 0,
+    "maxHeight": 1.3,
+    "preview": {
+     "x": 1706,
+     "y": 2697,
+     "w": 246,
+     "h": 124
+    },
+    "size": [
+     0.8,
+     1.7,
+     0.4
+    ]
+   }
+  ],
+  "prison_cage": [
+   {
+    "key": "style-detail-prison-cage",
+    "url": "props/detail_prison_cage.glb",
+    "yaw": 0,
+    "maxHeight": 1.2,
+    "preview": {
+     "x": 1488,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     1.3,
+     1.6,
+     1.3
+    ]
+   }
+  ],
+  "dungeon_rack": [
+   {
+    "key": "style-detail-dungeon-rack",
+    "url": "props/detail_dungeon_rack.glb",
+    "yaw": 0,
+    "maxHeight": 0.7,
+    "preview": {
+     "x": 717,
+     "y": 2951,
+     "w": 246,
+     "h": 106
+    },
+    "size": [
+     2.8,
+     1,
+     1.2
+    ]
+   }
+  ],
+  "iron_maiden": [
+   {
+    "key": "style-detail-iron-maiden",
+    "url": "props/detail_iron_maiden.glb",
+    "yaw": 0,
+    "maxHeight": 1.4,
+    "preview": {
+     "x": 496,
+     "y": 1960,
+     "w": 246,
+     "h": 212
+    },
+    "size": [
+     0.7,
+     1.9,
+     0.6
+    ]
+   }
+  ],
+  "manacle_post": [
+   {
+    "key": "style-detail-manacle-post",
+    "url": "props/detail_manacle_post.glb",
+    "yaw": 0,
+    "maxHeight": 0.85,
+    "preview": {
+     "x": 496,
+     "y": 496,
+     "w": 246,
+     "h": 246
+    },
+    "size": [
+     0.9,
+     1.2,
+     0.9
+    ]
+   }
+  ],
+  "fishing_crates": [
+   {
+    "key": "style-fishing-crates",
+    "url": "props/fishing_crates.glb",
+    "yaw": 0,
+    "maxHeight": 0.75,
+    "preview": {
+     "x": 496,
+     "y": 2373,
+     "w": 245,
+     "h": 166
+    },
+    "size": [
+     1.5998,
+     1.7874,
+     1.1031
+    ]
+   }
+  ]
+ },
+ "atlas": {
+  "image": "topdown.webp",
+  "key": "cbe773b6115c222493a533da9e5c85a368b1bd2e25fdf3ab1565c4a8036caa6b"
+ },
+ "files": [
+  {
+   "file": "floors/cave/color.jpg",
+   "sha256": "91a091a74c1351d08a8d49026778365dd97ed11b6555b00498d0d626da91ac3d",
+   "bytes": 82646
+  },
+  {
+   "file": "floors/cave/height.jpg",
+   "sha256": "6325bbf556af79a8cce1fbea8d9c3640cec7c8b2949280957b15f01c99d24c99",
+   "bytes": 61712
+  },
+  {
+   "file": "floors/cave/normal.jpg",
+   "sha256": "63b28e987f4fbd0273235970d620ed71f29a50fae992f5808031799929a5ca88",
+   "bytes": 137243
+  },
+  {
+   "file": "floors/cave/orm.jpg",
+   "sha256": "2ea85f8103484ab351d285941458ac430fdc48d1873e484a49bcc6a555f3ad8c",
+   "bytes": 20300
+  },
+  {
+   "file": "floors/checker/color.jpg",
+   "sha256": "3ee994365035725c6d9ddae46a033ecfc42febff2af215936ece025c4cf3244f",
+   "bytes": 60337
+  },
+  {
+   "file": "floors/checker/height.jpg",
+   "sha256": "714a81bad61eb2e088ddcd30e2920275487bdfd595afbf36b6f894ae7ef99920",
+   "bytes": 49495
+  },
+  {
+   "file": "floors/checker/normal.jpg",
+   "sha256": "8c2ed3db26ea9f96f84be4f7b9d3ecda38e603e3ea5c30a09b2475f11fc6bc36",
+   "bytes": 100547
+  },
+  {
+   "file": "floors/checker/orm.jpg",
+   "sha256": "7db65b5b079dc9209801453158e1ddca683a341937cc9d90aad02292dcdd65d1",
+   "bytes": 20905
+  },
+  {
+   "file": "floors/cobble/color.jpg",
+   "sha256": "0d82619b1060c704dc3281e3ae33bc48bdb1ae302484d5a16baa9319248fdae2",
+   "bytes": 96401
+  },
+  {
+   "file": "floors/cobble/height.jpg",
+   "sha256": "59f34405a96926f7a852f89c8c90d24d0c480657479a2a17526097a09b230b5e",
+   "bytes": 39215
+  },
+  {
+   "file": "floors/cobble/normal.jpg",
+   "sha256": "17edd820288af367d84fcb2fd5a43c3d9fd42d1e7d7ae2c76553443813fdd8b6",
+   "bytes": 170121
+  },
+  {
+   "file": "floors/cobble/orm.jpg",
+   "sha256": "29db0f1d7ad36a1d609cf7d81bec9aa480606fdb1e8c8af852f277815a9f9ff9",
+   "bytes": 15197
+  },
+  {
+   "file": "floors/dock/color.jpg",
+   "sha256": "2c136b2e843b42b65e422480af137c1929a745d73a1c4ea38d20941ded479971",
+   "bytes": 80494
+  },
+  {
+   "file": "floors/dock/height.jpg",
+   "sha256": "fe912d0e28567dcbe8bbaa43f3aee7b35b89615eb89793918130627edad2e6f0",
+   "bytes": 57762
+  },
+  {
+   "file": "floors/dock/normal.jpg",
+   "sha256": "a3fd3830eb31b661f48e28b962a0849f8cf55483d6d27cf3f053e6f52e70841d",
+   "bytes": 115434
+  },
+  {
+   "file": "floors/dock/orm.jpg",
+   "sha256": "e76985956ce0c84e77b3d258fcfdaff195bd3aa1808aec812bcf8290e2371f87",
+   "bytes": 20205
+  },
+  {
+   "file": "floors/dungeon/color.jpg",
+   "sha256": "6581d0ad84a1a9c17294d1bb3a16ed3eb9642afb249f25f37a8c78065a226001",
+   "bytes": 89510
+  },
+  {
+   "file": "floors/dungeon/height.jpg",
+   "sha256": "b8789db3b4c574e070b1fd77aae48c9074a5ff0a91a8cc2ccaef2eb2806cf43c",
+   "bytes": 40771
+  },
+  {
+   "file": "floors/dungeon/normal.jpg",
+   "sha256": "c45b58828581329bf43b46d161c2725f7fded77dbe4fa3908387d8e2b4a5bfaa",
+   "bytes": 217096
+  },
+  {
+   "file": "floors/dungeon/orm.jpg",
+   "sha256": "5808acfd34b9524b5b7e472e5225233c9a5ef01c8c428dfb205fed184a3b1d02",
+   "bytes": 15960
+  },
+  {
+   "file": "floors/earth/color.jpg",
+   "sha256": "d0b7dc6c92069f8ecf677889af8bb769c352255eb919f7592bb00eec4f998592",
+   "bytes": 93130
+  },
+  {
+   "file": "floors/earth/height.jpg",
+   "sha256": "99952c2e3272a3367687fea1b5be2d0fb5b519f4511321c531c6759f76a0db74",
+   "bytes": 41743
+  },
+  {
+   "file": "floors/earth/normal.jpg",
+   "sha256": "6c4c5a6e4af732ffc28275f68e2ba052bcdd942eb05425967519b6550dad498c",
+   "bytes": 213588
+  },
+  {
+   "file": "floors/earth/orm.jpg",
+   "sha256": "430f51cbe1c0f86ce033ac0f4ef0c570538cc16b32d4508359cddb3ead67b247",
+   "bytes": 13954
+  },
+  {
+   "file": "floors/flagstone/color.jpg",
+   "sha256": "0d82619b1060c704dc3281e3ae33bc48bdb1ae302484d5a16baa9319248fdae2",
+   "bytes": 96401
+  },
+  {
+   "file": "floors/flagstone/height.jpg",
+   "sha256": "59f34405a96926f7a852f89c8c90d24d0c480657479a2a17526097a09b230b5e",
+   "bytes": 39215
+  },
+  {
+   "file": "floors/flagstone/normal.jpg",
+   "sha256": "17edd820288af367d84fcb2fd5a43c3d9fd42d1e7d7ae2c76553443813fdd8b6",
+   "bytes": 170121
+  },
+  {
+   "file": "floors/flagstone/orm.jpg",
+   "sha256": "29db0f1d7ad36a1d609cf7d81bec9aa480606fdb1e8c8af852f277815a9f9ff9",
+   "bytes": 15197
+  },
+  {
+   "file": "floors/grass/color.jpg",
+   "sha256": "9cc4d343f07f49292fc880cde32df746f5468ac9a546b1b74b26952e05ea60fb",
+   "bytes": 152417
+  },
+  {
+   "file": "floors/grass/height.jpg",
+   "sha256": "55809732addcade68df1554cd3b0048606236a06e1ffe444e574e698c5e35087",
+   "bytes": 45366
+  },
+  {
+   "file": "floors/grass/normal.jpg",
+   "sha256": "5fe873c5771c07d81e62fbae01d5f86384ce64357f1ef2099fdd894398edc3c0",
+   "bytes": 243597
+  },
+  {
+   "file": "floors/grass/orm.jpg",
+   "sha256": "01265a860b1c9421d7c7c03cd794719695d4352b9a039b52210247dca3a06a19",
+   "bytes": 12537
+  },
+  {
+   "file": "floors/gravel/color.jpg",
+   "sha256": "913035ef69fdc1ad47a1df402dedaab169edea31f26e532e12a6618dcb7043a6",
+   "bytes": 131481
+  },
+  {
+   "file": "floors/gravel/height.jpg",
+   "sha256": "6ded7a81dd381c99c49b25381fc34332bcc59714ace6d62242bbab3c128619b1",
+   "bytes": 79446
+  },
+  {
+   "file": "floors/gravel/normal.jpg",
+   "sha256": "9e2924da1ed3676c2afd28be8a98a53aa63c7dc8260b82c7bdba1c23a9352da9",
+   "bytes": 165084
+  },
+  {
+   "file": "floors/gravel/orm.jpg",
+   "sha256": "1840e4a64a893444226c7b9db622ced0bc6698ca64928586bf5a7c8cddf58ff7",
+   "bytes": 27240
+  },
+  {
+   "file": "floors/ice/color.jpg",
+   "sha256": "24e47cb835c7271bc7a82700f5eed98ab46877e9e246782c1fa499f9b2b5a874",
+   "bytes": 62807
+  },
+  {
+   "file": "floors/ice/height.jpg",
+   "sha256": "af9e21317bbf4d536fab3ca53b878209092cb0829a3e72be3b9cbfb703621436",
+   "bytes": 57787
+  },
+  {
+   "file": "floors/ice/normal.jpg",
+   "sha256": "7fa503f4b476c3b898f1182b666043551b38ae8c420f86ebbee182011a0b1f9e",
+   "bytes": 129653
+  },
+  {
+   "file": "floors/ice/orm.jpg",
+   "sha256": "156671fb02056d2bd14114997e152984c8e3ce70c01e982573a8ecf57cc56e53",
+   "bytes": 18921
+  },
+  {
+   "file": "floors/marble/color.jpg",
+   "sha256": "675e1a0b73151e3ddd449afd9a0571bca969296b439df9e8cedc6e9761d8bb8e",
+   "bytes": 48692
+  },
+  {
+   "file": "floors/marble/height.jpg",
+   "sha256": "6663f734c8e50b255b3562809d6adcbbda56642a9e0b89ae7cb6e27a4dbc2284",
+   "bytes": 51193
+  },
+  {
+   "file": "floors/marble/normal.jpg",
+   "sha256": "e3d8de2df960729a1076969413787f3ad3e463c3c639417dd090947c810336a4",
+   "bytes": 111377
+  },
+  {
+   "file": "floors/marble/orm.jpg",
+   "sha256": "5443bc23f604f891e4e3151604cb9baa1ea9a4a6f1145039926e019ce43fa5b1",
+   "bytes": 18007
+  },
+  {
+   "file": "floors/metal/color.jpg",
+   "sha256": "13abe7d6a5e17854e37c405f59452f6b776d426279741a61beb11c891609b79a",
+   "bytes": 39880
+  },
+  {
+   "file": "floors/metal/height.jpg",
+   "sha256": "589e610ffb55ddbdb856b7cba8d375ceeada8c712415a158f78f10a4caf4d25d",
+   "bytes": 54669
+  },
+  {
+   "file": "floors/metal/normal.jpg",
+   "sha256": "67265ed33b81d8c9deaec2f0dc6271282e29e1c2a65398734f7c9fc2e155fd74",
+   "bytes": 117446
+  },
+  {
+   "file": "floors/metal/orm.jpg",
+   "sha256": "b686c0b3baf96c0f78bb653438f1cacfa6a7a1f0ebc50db38a0a74df8518a964",
+   "bytes": 18876
+  },
+  {
+   "file": "floors/mosaic/color.jpg",
+   "sha256": "70e90222d04c4f59ce82da846da312bcea5162e76d4d4aac43c2ff1bd6792da8",
+   "bytes": 97089
+  },
+  {
+   "file": "floors/mosaic/height.jpg",
+   "sha256": "5892e48f52d3e2171bd9d3d95d0d1548c8c3ef8cbad641af38d62812e049ed37",
+   "bytes": 72820
+  },
+  {
+   "file": "floors/mosaic/normal.jpg",
+   "sha256": "81f59f5cfc39377059e9ad7b025457f37b993a2d9bd4111491253fadfbd1aad2",
+   "bytes": 141241
+  },
+  {
+   "file": "floors/mosaic/orm.jpg",
+   "sha256": "a8358f45c2c1fb1d0847bd774df750e0d4c83343e63b8e70c8d2390e4c8ea2e3",
+   "bytes": 27690
+  },
+  {
+   "file": "floors/mud/color.jpg",
+   "sha256": "9515e9f4b6543b50e7a2ee8af7c1f4a02735b20507bd3cf95fdbb62ca242cb43",
+   "bytes": 60806
+  },
+  {
+   "file": "floors/mud/height.jpg",
+   "sha256": "a0948921db0879747aae9d81a7cb1dd98e20e9ae9536bf7193e500af7d6f3465",
+   "bytes": 70737
+  },
+  {
+   "file": "floors/mud/normal.jpg",
+   "sha256": "b9170e0e4ead8971fa62a4e03672cb3ef213ff50a6028f113499807ee0d415bd",
+   "bytes": 150278
+  },
+  {
+   "file": "floors/mud/orm.jpg",
+   "sha256": "7bc820d4e3298e8e94e55b23a816ece73783c07df2f25d4288619159b741ff1e",
+   "bytes": 22274
+  },
+  {
+   "file": "floors/parquet/color.jpg",
+   "sha256": "acbf2c9474502fda66d048e232aa18ec2a02e6ec0399417499263f4f2d233355",
+   "bytes": 88352
+  },
+  {
+   "file": "floors/parquet/height.jpg",
+   "sha256": "ad07b603d3aff45152b1cdbf747c3356a535d2ede47907e0601963398654868b",
+   "bytes": 65560
+  },
+  {
+   "file": "floors/parquet/normal.jpg",
+   "sha256": "f069907181b88a8c5e8b4c6d66c6ba1677ca21ac8477d63282b071b923a01615",
+   "bytes": 127908
+  },
+  {
+   "file": "floors/parquet/orm.jpg",
+   "sha256": "196bccb3aa56f02a997018f287aa65b892d32aaa9a102943ab3cf2b7c1a85825",
+   "bytes": 25221
+  },
+  {
+   "file": "floors/planks-dark/color.jpg",
+   "sha256": "7068eff73eaa46ad5687f629e9aa80cb1e3ac3969e381195bed0625b9587039e",
+   "bytes": 54599
+  },
+  {
+   "file": "floors/planks-dark/height.jpg",
+   "sha256": "eb62d3917d5c23c239ff99928d874cb65443c5d7c78e2ca6e1c79a137416ca9e",
+   "bytes": 60802
+  },
+  {
+   "file": "floors/planks-dark/normal.jpg",
+   "sha256": "7d44c4b4a3a7dfbe790114858cffa9687759fc6f6dc5e552980726c3a73ad26e",
+   "bytes": 121754
+  },
+  {
+   "file": "floors/planks-dark/orm.jpg",
+   "sha256": "c0b582a87b9f7ac08c0b19ec8f1308e5d3e1cd838865824d619e64ce31212f4c",
+   "bytes": 21672
+  },
+  {
+   "file": "floors/rubble/color.jpg",
+   "sha256": "7a7e6cb8ff27b501ddef7b6adb5849ff2e6904d59b4b727a04d0c6784981cd81",
+   "bytes": 108133
+  },
+  {
+   "file": "floors/rubble/height.jpg",
+   "sha256": "9aeb3fc935c0d01bc8854d112392ee6753f82e1e1ea8e440b8e17656d90e13c3",
+   "bytes": 72503
+  },
+  {
+   "file": "floors/rubble/normal.jpg",
+   "sha256": "98eda4e9e0b4c62954c16adeb675d5273b9520f3917d27eefbca951a50c5823b",
+   "bytes": 149410
+  },
+  {
+   "file": "floors/rubble/orm.jpg",
+   "sha256": "cb6c363cd79e7e8377e6842beb03527c162f7f2eae177a8a31fd55eb30845bc6",
+   "bytes": 24918
+  },
+  {
+   "file": "floors/sand/color.jpg",
+   "sha256": "b9ac90c8288860795cfbdede068ed7429ccc4547850333f9b074cc6d57e8e652",
+   "bytes": 62364
+  },
+  {
+   "file": "floors/sand/height.jpg",
+   "sha256": "0deadbb809564c6ab931aa898c60f612e5cf5d6af7b7c5ab9472a704a96054b4",
+   "bytes": 71542
+  },
+  {
+   "file": "floors/sand/normal.jpg",
+   "sha256": "94735898d94b44a0b632b793b82f35f42995c3d5c8d3a54628d15473232138a7",
+   "bytes": 150849
+  },
+  {
+   "file": "floors/sand/orm.jpg",
+   "sha256": "f699cb61ab25ddf30afaf72b40fde946debbe00909f2f2fcdf51f5a9fddd9d0d",
+   "bytes": 20969
+  },
+  {
+   "file": "floors/snow/color.jpg",
+   "sha256": "f1c1f8df0fdae6a6232a5cd5248ce58ad72535e4169136e9653aa9169adc2e90",
+   "bytes": 54042
+  },
+  {
+   "file": "floors/snow/height.jpg",
+   "sha256": "89a094b46e79a3dd0586a010430c44fe6cf1ac517288f203e5401019cec809e2",
+   "bytes": 53481
+  },
+  {
+   "file": "floors/snow/normal.jpg",
+   "sha256": "8f4ea19e7fbd104a72c333a4611ee30da78b0980442a21fc161a87a3f1e50979",
+   "bytes": 117678
+  },
+  {
+   "file": "floors/snow/orm.jpg",
+   "sha256": "f8e111e68e1f2069fa4d78bb09089992e71e51aa4d48cca529edaad98316b7c9",
+   "bytes": 20091
+  },
+  {
+   "file": "floors/stone/color.jpg",
+   "sha256": "ff53b203c21ffbd7c9c945fbca673f45a599ec83cd5d1bc22b9488d7e03e2c4b",
+   "bytes": 69673
+  },
+  {
+   "file": "floors/stone/height.jpg",
+   "sha256": "4e6f0041499d1b7dfea9fad8a238bef642357b98cd8e8f8824c523e9767c4c3f",
+   "bytes": 57074
+  },
+  {
+   "file": "floors/stone/normal.jpg",
+   "sha256": "7c81d023e3449481cab7120d7ceb15ef2d4296dd560c62c23ec40cfc4060ab12",
+   "bytes": 121811
+  },
+  {
+   "file": "floors/stone/orm.jpg",
+   "sha256": "376400e3306d703a418cd2139e14d76a7845455ff9d9eac46e889642d9c7e29c",
+   "bytes": 19376
+  },
+  {
+   "file": "floors/straw/color.jpg",
+   "sha256": "97cb20868d1582d439981b89abe32b1aa595af2d7fb3e43bdb8f39f227588f0a",
+   "bytes": 123658
+  },
+  {
+   "file": "floors/straw/height.jpg",
+   "sha256": "56b54cbe0f7483a3a3401b3b62c112901a23ec95f98b1822d1143bf69e48065c",
+   "bytes": 80739
+  },
+  {
+   "file": "floors/straw/normal.jpg",
+   "sha256": "f3249e2c81ef05e59e686327fd62a34343f812fc877584623ea00716c4d4e461",
+   "bytes": 164867
+  },
+  {
+   "file": "floors/straw/orm.jpg",
+   "sha256": "c8acf34af20366af75a8f803227c11c56750a95c635f4e980ca993e0f6cdeaa6",
+   "bytes": 25375
+  },
+  {
+   "file": "floors/wood/color.jpg",
+   "sha256": "cbab112d5506b44280314eedf8133b5cc562edd35c4c162de165e78f746b8464",
+   "bytes": 43367
+  },
+  {
+   "file": "floors/wood/height.jpg",
+   "sha256": "35762871d72253573cb902adf2f2fca3300b8101c88b2a9694b24150fdb549d5",
+   "bytes": 54522
+  },
+  {
+   "file": "floors/wood/normal.jpg",
+   "sha256": "a730ec1215d59374e2a8347ecf6cc5583ecfc4b9d96ff1a856106a4613424173",
+   "bytes": 107334
+  },
+  {
+   "file": "floors/wood/orm.jpg",
+   "sha256": "bb92a65d7d8c284784d1e9c18f9f7cf01f2c6392e5d4859dca9184b272714e03",
+   "bytes": 20284
+  },
+  {
+   "file": "materials/bark/color.jpg",
+   "sha256": "f10a082ac006f5c1df669acf5567e702e80401253c93eda83aebee468294e42a",
+   "bytes": 169171
+  },
+  {
+   "file": "materials/bark/normal.jpg",
+   "sha256": "0832293f3110bff197ec7e14a8939a043392d3cff1465408cf4b2982c59ebe2f",
+   "bytes": 123479
+  },
+  {
+   "file": "materials/bark/orm.jpg",
+   "sha256": "4c9d5ce0cffc50ca37bb6cd3fd57a160006a9ca457b0d6a4c29c9c6a91ae8870",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/brick/color.jpg",
+   "sha256": "b8a313e31ffe395b1b9175b2fbb0c2969aeba02965ef0a17e48f4c47a21cced1",
+   "bytes": 45657
+  },
+  {
+   "file": "materials/brick/normal.jpg",
+   "sha256": "0e8586a985d783b9b03bd1a3be2d93109a17c595c2b2f492c6cc89bb64021784",
+   "bytes": 91812
+  },
+  {
+   "file": "materials/brick/orm.jpg",
+   "sha256": "e15c903487bf28b0424df314c64a4e23ff69a35649d402d1443ad40d49e4ec89",
+   "bytes": 13827
+  },
+  {
+   "file": "materials/cloth/color.jpg",
+   "sha256": "ad03341dae24aa31e6dabb2016579d768afa2715a9e11de10d5c0bc3f41961f1",
+   "bytes": 17922
+  },
+  {
+   "file": "materials/cloth/normal.jpg",
+   "sha256": "c8f3d02e993f38c216c1a1d075409faecd0fc0dfe141ad4d31fea159c2453065",
+   "bytes": 56844
+  },
+  {
+   "file": "materials/cloth/orm.jpg",
+   "sha256": "bac8a0c861f6f7e9c45ffe43f6d2112fec381fdfc16697624133ad20fd5786ce",
+   "bytes": 2062
+  },
+  {
+   "file": "materials/kit-bark-deadtree/color.jpg",
+   "sha256": "0fb712fc94a3de5cf3a517add84f7dce153ba36ae03d687a90d1122d16675672",
+   "bytes": 110159
+  },
+  {
+   "file": "materials/kit-bark-deadtree/normal.jpg",
+   "sha256": "58a23aca10504a0ec295914734fdbb2e7a35e56b3276f652dfa6c9fac346c75e",
+   "bytes": 174299
+  },
+  {
+   "file": "materials/kit-bark-twistedtree/color.jpg",
+   "sha256": "a7a6170b59fc53ae32885f21fcd2a8d6141cd698d386586cd7a383bb5039bf58",
+   "bytes": 131385
+  },
+  {
+   "file": "materials/kit-bark-twistedtree/normal.jpg",
+   "sha256": "58a23aca10504a0ec295914734fdbb2e7a35e56b3276f652dfa6c9fac346c75e",
+   "bytes": 174299
+  },
+  {
+   "file": "materials/kit-brick/color.jpg",
+   "sha256": "6581d0ad84a1a9c17294d1bb3a16ed3eb9642afb249f25f37a8c78065a226001",
+   "bytes": 89510
+  },
+  {
+   "file": "materials/kit-brick/normal.jpg",
+   "sha256": "c45b58828581329bf43b46d161c2725f7fded77dbe4fa3908387d8e2b4a5bfaa",
+   "bytes": 217096
+  },
+  {
+   "file": "materials/kit-brick/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/kit-grass/color.jpg",
+   "sha256": "4e8b1c961b97fae35f931881bd74eeb0f85779cf4fd04d0931f1fcc2349f5859",
+   "bytes": 5195
+  },
+  {
+   "file": "materials/kit-leaves/color.png",
+   "sha256": "3a78ad2bbfdd08a2e843f032e83131839863616628b5217e46021cf0d772a335",
+   "bytes": 897760
+  },
+  {
+   "file": "materials/kit-leaves-normaltree-c/color.png",
+   "sha256": "fa9e2c98b6138eff951c17b9338e681c13c33af6f906cced151d842458ffcde1",
+   "bytes": 285162
+  },
+  {
+   "file": "materials/kit-metalornaments/color.jpg",
+   "sha256": "131ab2fae03402f89a6f309b811b59d9332a63b5d4736595addf56a583e97ce3",
+   "bytes": 154744
+  },
+  {
+   "file": "materials/kit-metalornaments/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/kit-page-noise/color.jpg",
+   "sha256": "7041e448b15cf587326e8afc8b364b124ff32f0c9462223b457618d7e8f0345b",
+   "bytes": 83096
+  },
+  {
+   "file": "materials/kit-pathrocks/color.jpg",
+   "sha256": "851b6c80dd15d9b87a98fa5aa16174aea172a5bcaa2b36bc0a6692f593c3f7ed",
+   "bytes": 116165
+  },
+  {
+   "file": "materials/kit-plaster/color.jpg",
+   "sha256": "b4e543f36912e71510b53c662ddcaaf8f75e073e6e7a74d8ca247e72152408df",
+   "bytes": 64651
+  },
+  {
+   "file": "materials/kit-plaster/normal.jpg",
+   "sha256": "62004961331fb12a1a7ae5a4acb75d013192037dfa646c2cb03377ed5dcef365",
+   "bytes": 108451
+  },
+  {
+   "file": "materials/kit-plaster/orm.jpg",
+   "sha256": "1e2339cd4a5f1159d3091d03daa8ba9ca756eb78f5650181a4433b4018e48e25",
+   "bytes": 23151
+  },
+  {
+   "file": "materials/kit-rocks/color.jpg",
+   "sha256": "468b87a83496c3f015277bfa7a6456e18f26c0d36fbee6ac617d1cf23c7b6efe",
+   "bytes": 121509
+  },
+  {
+   "file": "materials/kit-rocktrim/color.jpg",
+   "sha256": "0f516c6ed1a656442afed511df475896fd607c8ad7dbae59778cd71901aee584",
+   "bytes": 86030
+  },
+  {
+   "file": "materials/kit-rocktrim/normal.jpg",
+   "sha256": "593297e702536695367d66cd8415682d5d673b77087397538c6bac08d77c2934",
+   "bytes": 172248
+  },
+  {
+   "file": "materials/kit-rocktrim/orm.jpg",
+   "sha256": "cc2b21591c473cb1b67b9b7455e9518c3e013a329a42ec793522a811639edd95",
+   "bytes": 19286
+  },
+  {
+   "file": "materials/kit-roundtiles/color.jpg",
+   "sha256": "ae1d1e31b63c2158d1c3ed933e5f9de6d3e22abe250c1637183a62ab23581443",
+   "bytes": 79914
+  },
+  {
+   "file": "materials/kit-roundtiles/normal.jpg",
+   "sha256": "ada1fb80b8f9da833af7f7b0ed35d94a37c4715335b2632cbb795c307881d68c",
+   "bytes": 109785
+  },
+  {
+   "file": "materials/kit-roundtiles/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/kit-trim-cloth/color.jpg",
+   "sha256": "42a1dad93894ff244e753230a11bbf1b86df7df1dcdd794426101d5e1d3e963a",
+   "bytes": 92417
+  },
+  {
+   "file": "materials/kit-trim-cloth/normal.jpg",
+   "sha256": "e8959ac34b7a97247bda01a59b07973ab0e2937357eec2d78a2cd31c802e994f",
+   "bytes": 115414
+  },
+  {
+   "file": "materials/kit-trim-cloth/orm.jpg",
+   "sha256": "263408c9fd7e951cd5d03c0f14f2ea1e6602177464514a0b7a67f16ebc8abfa8",
+   "bytes": 9711
+  },
+  {
+   "file": "materials/kit-trim-furniture/color.jpg",
+   "sha256": "630f8666a12db0c22a5cacbefced2af2745b8d453d2aa0d796c4f09a39942e66",
+   "bytes": 116705
+  },
+  {
+   "file": "materials/kit-trim-furniture/normal.jpg",
+   "sha256": "7faed7556e41f76ebbae03ceb521720c731cb7399c02eab826351d6ee4686bc6",
+   "bytes": 178649
+  },
+  {
+   "file": "materials/kit-trim-furniture/orm.jpg",
+   "sha256": "2fc89e08c090cd1f06823825618bc69d2ab56acb2967c79e5e49c6e44cd58f0a",
+   "bytes": 41130
+  },
+  {
+   "file": "materials/kit-trim-metal/color.jpg",
+   "sha256": "fec4628264c02fdf097fba2e6f8a23031cf2134e12e6fc78e8aeb73af099292b",
+   "bytes": 90819
+  },
+  {
+   "file": "materials/kit-trim-metal/normal.jpg",
+   "sha256": "2dcb5915be45f5aec4e3de6588634fa0c9989750b830cd9b07d1ea13bc399d15",
+   "bytes": 166357
+  },
+  {
+   "file": "materials/kit-trim-metal/orm.jpg",
+   "sha256": "eae01de0171ac30e9a9fb528df72372496d880f11dd6f3d577334dcb574ba2f2",
+   "bytes": 27273
+  },
+  {
+   "file": "materials/kit-trim-props/color.jpg",
+   "sha256": "311f2a901cbabfdd3ff3d413e861c346e4142aec21dd79f5558561660546bf2c",
+   "bytes": 153754
+  },
+  {
+   "file": "materials/kit-trim-props/normal.jpg",
+   "sha256": "b3f576eb01dd44fe52d316f2c15cf88ba26bf44b7848f842074bf1ea3d198f0c",
+   "bytes": 229068
+  },
+  {
+   "file": "materials/kit-trim-props/orm.jpg",
+   "sha256": "def50a757d5e48812ad7151801c7a8fa2b25d900d22e9a499c4c66d66be97677",
+   "bytes": 51129
+  },
+  {
+   "file": "materials/kit-unevenbrick/color.jpg",
+   "sha256": "0d82619b1060c704dc3281e3ae33bc48bdb1ae302484d5a16baa9319248fdae2",
+   "bytes": 96401
+  },
+  {
+   "file": "materials/kit-unevenbrick/normal.jpg",
+   "sha256": "17edd820288af367d84fcb2fd5a43c3d9fd42d1e7d7ae2c76553443813fdd8b6",
+   "bytes": 170121
+  },
+  {
+   "file": "materials/kit-unevenbrick/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/kit-vineleaf-png/color.png",
+   "sha256": "f2aeb48db663d31a4f0506098f832928c75bdbfcc2346ba842fd52608c319009",
+   "bytes": 87120
+  },
+  {
+   "file": "materials/kit-woodtrim/color.jpg",
+   "sha256": "8ee1bd08516c7ded42d06bccd196edd33e098bf50e86b5b50c7989a811023a0d",
+   "bytes": 116996
+  },
+  {
+   "file": "materials/kit-woodtrim/normal.jpg",
+   "sha256": "b922298d5784a12718d42133d625a4ce5fb2e19c9eda51c7d15e5a347d129857",
+   "bytes": 202938
+  },
+  {
+   "file": "materials/kit-woodtrim/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/metal/color.jpg",
+   "sha256": "3886fb27d06c773470d6eec950bc460db39fa4680472b19e3fe9f1138dd68d4d",
+   "bytes": 26867
+  },
+  {
+   "file": "materials/metal/normal.jpg",
+   "sha256": "2e124407b25514278b90547fbeabbc5ac8713641e26a5d8a22f3471948f03704",
+   "bytes": 55950
+  },
+  {
+   "file": "materials/metal/orm.jpg",
+   "sha256": "a5bca5b17f04304f611c3af71aa2d0182cb4e3dd436a7437f0a8835ff8ddc2a2",
+   "bytes": 9330
+  },
+  {
+   "file": "materials/plaster/color.jpg",
+   "sha256": "99e251b3670f88d41bf85b9c9adbacf5ebec3d52f56b50e31292efef22df37ee",
+   "bytes": 81106
+  },
+  {
+   "file": "materials/plaster/normal.jpg",
+   "sha256": "62004961331fb12a1a7ae5a4acb75d013192037dfa646c2cb03377ed5dcef365",
+   "bytes": 108451
+  },
+  {
+   "file": "materials/plaster/orm.jpg",
+   "sha256": "1e2339cd4a5f1159d3091d03daa8ba9ca756eb78f5650181a4433b4018e48e25",
+   "bytes": 23151
+  },
+  {
+   "file": "materials/roof-tiles/color.jpg",
+   "sha256": "ae1d1e31b63c2158d1c3ed933e5f9de6d3e22abe250c1637183a62ab23581443",
+   "bytes": 79914
+  },
+  {
+   "file": "materials/roof-tiles/normal.jpg",
+   "sha256": "ada1fb80b8f9da833af7f7b0ed35d94a37c4715335b2632cbb795c307881d68c",
+   "bytes": 109785
+  },
+  {
+   "file": "materials/roof-tiles/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/stone/color.jpg",
+   "sha256": "1296ab49e53736288604337c5e0f95a4840be7a325c4cbda43ff36cff6fc9456",
+   "bytes": 13999
+  },
+  {
+   "file": "materials/stone/normal.jpg",
+   "sha256": "88e1d75b1f02a56695fba026cc336c0f391e9b312fb4726afa7e6cf1a14baf85",
+   "bytes": 23059
+  },
+  {
+   "file": "materials/stone/orm.jpg",
+   "sha256": "9dd4dabfc173956209ada93ff4f05d434c320c3f4795e1afb367816adcd91e99",
+   "bytes": 2560
+  },
+  {
+   "file": "materials/straw/color.jpg",
+   "sha256": "5802d306b761558dc4ad464e65c88ed67761e7064e94709d7347f50333d86fd0",
+   "bytes": 54017
+  },
+  {
+   "file": "materials/straw/normal.jpg",
+   "sha256": "c48df9de710626e8189b07e9928c5c04e6c028de9e7f5c656a14cb0eacf7df82",
+   "bytes": 62498
+  },
+  {
+   "file": "materials/straw/orm.jpg",
+   "sha256": "e4a932e153fda9bf108aba3eb036423ae1c585ce5ac225b077c343de31687cd3",
+   "bytes": 1242
+  },
+  {
+   "file": "materials/wall-ashlar/color.jpg",
+   "sha256": "6581d0ad84a1a9c17294d1bb3a16ed3eb9642afb249f25f37a8c78065a226001",
+   "bytes": 89510
+  },
+  {
+   "file": "materials/wall-ashlar/normal.jpg",
+   "sha256": "c45b58828581329bf43b46d161c2725f7fded77dbe4fa3908387d8e2b4a5bfaa",
+   "bytes": 217096
+  },
+  {
+   "file": "materials/wall-ashlar/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/wall-brick/color.jpg",
+   "sha256": "7817b69d614f44a713e1e6406e012cf023934c20d31c44d1e1247cc8af2018f6",
+   "bytes": 107107
+  },
+  {
+   "file": "materials/wall-brick/normal.jpg",
+   "sha256": "c45b58828581329bf43b46d161c2725f7fded77dbe4fa3908387d8e2b4a5bfaa",
+   "bytes": 217096
+  },
+  {
+   "file": "materials/wall-brick/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/wall-log/color.jpg",
+   "sha256": "2950579d52496aef36336746fef8e3347decbc5c9cbbab5285c89df86798478c",
+   "bytes": 99283
+  },
+  {
+   "file": "materials/wall-log/normal.jpg",
+   "sha256": "0832293f3110bff197ec7e14a8939a043392d3cff1465408cf4b2982c59ebe2f",
+   "bytes": 123479
+  },
+  {
+   "file": "materials/wall-log/orm.jpg",
+   "sha256": "4c9d5ce0cffc50ca37bb6cd3fd57a160006a9ca457b0d6a4c29c9c6a91ae8870",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/wall-planks/color.jpg",
+   "sha256": "3805d70b38c1e54d2878f17a9db10888f55fec8d009257da997c1bebd6ee4e89",
+   "bytes": 35281
+  },
+  {
+   "file": "materials/wall-planks/normal.jpg",
+   "sha256": "14a996082a342df26a769fc4c2c55e3d9bfc8a518de37a65e373e00ee2e61122",
+   "bytes": 56281
+  },
+  {
+   "file": "materials/wall-planks/orm.jpg",
+   "sha256": "5b628296f92262e4c9bcc4d754cd8e665e95775153d050609d6d55a994394473",
+   "bytes": 12013
+  },
+  {
+   "file": "materials/wall-plaster/color.jpg",
+   "sha256": "b4e543f36912e71510b53c662ddcaaf8f75e073e6e7a74d8ca247e72152408df",
+   "bytes": 64651
+  },
+  {
+   "file": "materials/wall-plaster/normal.jpg",
+   "sha256": "62004961331fb12a1a7ae5a4acb75d013192037dfa646c2cb03377ed5dcef365",
+   "bytes": 108451
+  },
+  {
+   "file": "materials/wall-plaster/orm.jpg",
+   "sha256": "1e2339cd4a5f1159d3091d03daa8ba9ca756eb78f5650181a4433b4018e48e25",
+   "bytes": 23151
+  },
+  {
+   "file": "materials/wall-stone/color.jpg",
+   "sha256": "0d82619b1060c704dc3281e3ae33bc48bdb1ae302484d5a16baa9319248fdae2",
+   "bytes": 96401
+  },
+  {
+   "file": "materials/wall-stone/normal.jpg",
+   "sha256": "17edd820288af367d84fcb2fd5a43c3d9fd42d1e7d7ae2c76553443813fdd8b6",
+   "bytes": 170121
+  },
+  {
+   "file": "materials/wall-stone/orm.jpg",
+   "sha256": "09c1ef939696495049cab3c17c681d247d7aedc1a13ccecf2359b23cc55a2b4b",
+   "bytes": 2298
+  },
+  {
+   "file": "materials/wall-timber/color.jpg",
+   "sha256": "494f536a133f7b9b9f33ed49c5477615c101ac405b9f1b0d7ce3cfb1226f4499",
+   "bytes": 21448
+  },
+  {
+   "file": "materials/wall-timber/normal.jpg",
+   "sha256": "59a64fde9ae4f98f1ce222c95ebef29d16b6954418a0aea73c81a290eb57f30f",
+   "bytes": 58441
+  },
+  {
+   "file": "materials/wall-timber/orm.jpg",
+   "sha256": "e4a932e153fda9bf108aba3eb036423ae1c585ce5ac225b077c343de31687cd3",
+   "bytes": 1242
+  },
+  {
+   "file": "materials/wood/color.jpg",
+   "sha256": "d0b17ab8e839106e1c641a23bd2673df4ef9a55b459971a98af9af3fcfa0978c",
+   "bytes": 49415
+  },
+  {
+   "file": "materials/wood/normal.jpg",
+   "sha256": "14a996082a342df26a769fc4c2c55e3d9bfc8a518de37a65e373e00ee2e61122",
+   "bytes": 56281
+  },
+  {
+   "file": "materials/wood/orm.jpg",
+   "sha256": "5b628296f92262e4c9bcc4d754cd8e665e95775153d050609d6d55a994394473",
+   "bytes": 12013
+  },
+  {
+   "file": "props/ammo_crates.glb",
+   "sha256": "c194c442e545f5d533cce367f84b228b711eaeae696896453d3f52effda50198",
+   "bytes": 271448
+  },
+  {
+   "file": "props/bar_shelf_bottles.glb",
+   "sha256": "e80a5aef1f4db89e463fb5b43886d45bf191eab324b0385573902f20d6979783",
+   "bytes": 235072
+  },
+  {
+   "file": "props/barrel_pyramid.glb",
+   "sha256": "dd2c5fc577af3d9f4e3da9738b2331b5f1a769217d30b75f15fc8003b902ff4a",
+   "bytes": 170324
+  },
+  {
+   "file": "props/boulder_split.glb",
+   "sha256": "6c07387b4ad8ef533a67aeb17dc9bbdc5404fdf4cdbac8acfc16c133a0c23f38",
+   "bytes": 11560
+  },
+  {
+   "file": "props/brick_rubble.glb",
+   "sha256": "ddbd5158fc2376ada9654ad88a1a9c00f18295fb5fe4dec807042f36e881c17f",
+   "bytes": 34188
+  },
+  {
+   "file": "props/campfire_ring.glb",
+   "sha256": "27e6a0ab860333199cd72a56deb246f4fd8808cef86ef2e0d86dcc9f83bef288",
+   "bytes": 44424
+  },
+  {
+   "file": "props/cliff_large.glb",
+   "sha256": "259f44d32d6bc391e140a628038339fdb88309da55a763e145c0a982298897db",
+   "bytes": 47264
+  },
+  {
+   "file": "props/cliff_long.glb",
+   "sha256": "59fba81cfffa33bdc5a75b58ce4be1bb18093b689ac666589ab1f2bc55ea67e9",
+   "bytes": 47208
+  },
+  {
+   "file": "props/cliff_medium.glb",
+   "sha256": "e2492d7fddbba25315a524595e0ae2331b730b696f3373202dbdc3a2e03d54e6",
+   "bytes": 36424
+  },
+  {
+   "file": "props/crate_stack_goods.glb",
+   "sha256": "53251ca2158cd8c9c19d4aa7ae266a7a0aa059737e8f91618723a90e1be043a0",
+   "bytes": 417892
+  },
+  {
+   "file": "props/crate_stack_mixed.glb",
+   "sha256": "2424ed621e56846a60ff6e127ec2e516431e45b169c48d76e6c207f50b9057a0",
+   "bytes": 204900
+  },
+  {
+   "file": "props/crate_stack_three.glb",
+   "sha256": "6429c4a689d002a7a3545c2ee15e76c5bc1c372dd9268aff92fa3dfd69c75503",
+   "bytes": 71644
+  },
+  {
+   "file": "props/dead_bramble.glb",
+   "sha256": "95abc11c95b8cb3ba2e2aa08a791e1304da34d84b6cec6af0f7ff8462246077f",
+   "bytes": 1245684
+  },
+  {
+   "file": "props/detail_alchemy_cauldron.glb",
+   "sha256": "bd4859231d4c41d4a74d63e53b2ed934a20d99cdf1b1442176659baddc29b7b6",
+   "bytes": 324800
+  },
+  {
+   "file": "props/detail_arcane_lectern.glb",
+   "sha256": "1ed4a40af8ef1f0e6764706f18e5f5e17371231b00c6ba8b68c383bb07c4848e",
+   "bytes": 81504
+  },
+  {
+   "file": "props/detail_arcane_stone.glb",
+   "sha256": "a465b3031480400bbfdf9fee7ad41dc943403072fcaea4547fe315be3184b206",
+   "bytes": 49996
+  },
+  {
+   "file": "props/detail_archery_target.glb",
+   "sha256": "f09e8357ceca8aba8aaaa4c2b3e981fe4713ec9785358d49f576966e1972410c",
+   "bytes": 242880
+  },
+  {
+   "file": "props/detail_armchair.glb",
+   "sha256": "8d3899461d7975621d81638f25e5f75ea6bf59e2809234232e4cc00c7f75edab",
+   "bytes": 166196
+  },
+  {
+   "file": "props/detail_armor_stand.glb",
+   "sha256": "edb9607200c90f522864b0aaecd7a502a464c247b910f335c0c97c7b340fd433",
+   "bytes": 522340
+  },
+  {
+   "file": "props/detail_bathtub.glb",
+   "sha256": "d5e40a6a5e2e8459b4c943504b10fb680ff858f4cc5690fdbc7c7eb4b2d3623a",
+   "bytes": 461948
+  },
+  {
+   "file": "props/detail_bedroll_cluster.glb",
+   "sha256": "a0a44a2122bff927cee4b9f534f3ba468ae3405abf39877dabdcce57055358ac",
+   "bytes": 229312
+  },
+  {
+   "file": "props/detail_bell_frame.glb",
+   "sha256": "d4ef49311db7c330e0627a541d369b9eac47d3e8d921ae444e2481f092a18258",
+   "bytes": 299120
+  },
+  {
+   "file": "props/detail_bog_pool.glb",
+   "sha256": "7732b42e4ed13431eb51f80ef5c5b264206cb894c9c8c6c939cd945fa81f8494",
+   "bytes": 317872
+  },
+  {
+   "file": "props/detail_bread_oven.glb",
+   "sha256": "1dbfd28d2bc591c9bc3f1b13d323ecce73088969c03823468ea600b41e890b9a",
+   "bytes": 207588
+  },
+  {
+   "file": "props/detail_broken_obelisk.glb",
+   "sha256": "56158f3008631bdd4c8aea6f48d1ec171d9f86bfd2b71188e388d5172ef7bcf6",
+   "bytes": 110708
+  },
+  {
+   "file": "props/detail_butcher_block.glb",
+   "sha256": "d36b38878c87363bd5615a1724b7964dfc155a122ff6cd80e7352062dae40090",
+   "bytes": 164064
+  },
+  {
+   "file": "props/detail_cactus_cluster.glb",
+   "sha256": "0dad99826f69c4f69d34c3b7f24520b20d2481f0492bd0f64adaf74c06b3c1fb",
+   "bytes": 511740
+  },
+  {
+   "file": "props/detail_camp_dummy.glb",
+   "sha256": "4381fafc94501307fcd510cd3a2dc27107cd996951262fc0b43f22f8121cc87a",
+   "bytes": 141656
+  },
+  {
+   "file": "props/detail_candle_desk.glb",
+   "sha256": "13b9a7336673c343c2e1ddbd602d57682368d3122864207b7de115f054f28d54",
+   "bytes": 170880
+  },
+  {
+   "file": "props/detail_cargo_net.glb",
+   "sha256": "572f906ab4c1beb6c9dc7e0564949ab208451be843815bd6696f7cabc9c94bf0",
+   "bytes": 381876
+  },
+  {
+   "file": "props/detail_chicken_coop.glb",
+   "sha256": "debb55834fe9a73c5eb7aaf9ca826934d6e895a61608184fd9eafda226e340db",
+   "bytes": 292452
+  },
+  {
+   "file": "props/detail_cloth_bolts.glb",
+   "sha256": "6f1ddd6ef11a8cefb59af6ad124f3ef42c676168fe14ea8754725becedc91acc",
+   "bytes": 182032
+  },
+  {
+   "file": "props/detail_coal_pile.glb",
+   "sha256": "048a5fe09097cc3bfc35e51c061e6ce08cb3a4aa71707529e47b7394f861014a",
+   "bytes": 132240
+  },
+  {
+   "file": "props/detail_coat_rack.glb",
+   "sha256": "cfdf917bf0cac2140fe62f4422997b4f35c1f5cf630ee12334c4e6041f097ce1",
+   "bytes": 137280
+  },
+  {
+   "file": "props/detail_cradle.glb",
+   "sha256": "d02930deeb6da2eac50a1a51102ca0145915832dcaf15e77234a2dc668990955",
+   "bytes": 243644
+  },
+  {
+   "file": "props/detail_dead_scrub.glb",
+   "sha256": "9933b98394ba3aa123effdaede0e517457a067f357671099e32897e67c6af738",
+   "bytes": 221636
+  },
+  {
+   "file": "props/detail_desert_boulders.glb",
+   "sha256": "4def966586140e76140030d403e62506867cab7c4a8e99eb9a40db7ae8c4d1ed",
+   "bytes": 60180
+  },
+  {
+   "file": "props/detail_double_bed.glb",
+   "sha256": "47fa47f6021d934744bbfefbe9a73ad34d51f17650dfe77bcb09f320026172d1",
+   "bytes": 247124
+  },
+  {
+   "file": "props/detail_dresser.glb",
+   "sha256": "14165b816c1726baf534e079566a5104ff019abcfdbb31f40a9c342418a2d457",
+   "bytes": 221960
+  },
+  {
+   "file": "props/detail_dungeon_rack.glb",
+   "sha256": "cb7ec19ddc7424d7524290af7a295aec446a84932f28c9e79ce430c14f823d86",
+   "bytes": 362592
+  },
+  {
+   "file": "props/detail_fence_gate.glb",
+   "sha256": "8a7655fc2cbcae494280dd472aa0572358bb6930f1ed1d8e79377df9e4662c56",
+   "bytes": 189084
+  },
+  {
+   "file": "props/detail_fish_rack.glb",
+   "sha256": "2604822af29d33917f3c7038264d87fdfb7060c87c09b7298964aa86d38b47f3",
+   "bytes": 422092
+  },
+  {
+   "file": "props/detail_fishing_nets.glb",
+   "sha256": "806bf2d8f8baf115cabe543793bb68f0172db75623b5d35003f95b32a8620560",
+   "bytes": 624048
+  },
+  {
+   "file": "props/detail_flour_bin.glb",
+   "sha256": "ef67345089b0330f319376a6721874cffea1cf0dedd1ed56802481f2e0d80469",
+   "bytes": 150168
+  },
+  {
+   "file": "props/detail_flower_bed.glb",
+   "sha256": "6b860e252463194ba930b6d0701bdfbc84633f1185e25a5ce8f79a8e7a257f62",
+   "bytes": 652324
+  },
+  {
+   "file": "props/detail_folding_screen.glb",
+   "sha256": "4589320024a95234015324ca6c3cce1351bba97763c32522f6ecd3c0831d34dc",
+   "bytes": 373128
+  },
+  {
+   "file": "props/detail_font_basin.glb",
+   "sha256": "d429e763b13d50bf1cec23acc7bcfaaa5f61dd6291b42fa7f017b311676497e1",
+   "bytes": 121900
+  },
+  {
+   "file": "props/detail_forge.glb",
+   "sha256": "2fa4d344cf89f7138d4fa6b62e6fd7f018a87afb7477c4e5f664c00ea6684649",
+   "bytes": 449032
+  },
+  {
+   "file": "props/detail_fountain.glb",
+   "sha256": "e0e9f9f9a5545edca02a235e0d63581894b322a7b02fa6906a1673ce30deb9c0",
+   "bytes": 348704
+  },
+  {
+   "file": "props/detail_frozen_pool.glb",
+   "sha256": "eb1608208804c3a6f170b4b2871b7ea32e725cf13006513d69e7f5709fe6bd1b",
+   "bytes": 552088
+  },
+  {
+   "file": "props/detail_garden_bed.glb",
+   "sha256": "9429bbaf28d41e91df371747592b5424033e1416716a336c5e7e38f9dda2d1d3",
+   "bytes": 697620
+  },
+  {
+   "file": "props/detail_globe.glb",
+   "sha256": "cc93647702ee323a4caa413687bafe1cc97ba561d50ec7923820b114691e3ce9",
+   "bytes": 182776
+  },
+  {
+   "file": "props/detail_hanging_pots.glb",
+   "sha256": "dbfcc0ed84e8a88d838cc38a5789dd0fbf06ca04a0248a5d311fde112f8c40b6",
+   "bytes": 285224
+  },
+  {
+   "file": "props/detail_hay_bales.glb",
+   "sha256": "3713b744cbf52d64ca7c49630bc7fbc9d590b45d0a1ca503f1cfa3c5cb8e4cdf",
+   "bytes": 470316
+  },
+  {
+   "file": "props/detail_holy_pool.glb",
+   "sha256": "4f356ce4af479411a1e383a81f79bd552bce8b95e25da57804e3709ca6c35a6a",
+   "bytes": 1013960
+  },
+  {
+   "file": "props/detail_ice_pillars.glb",
+   "sha256": "cc3670770f8d843cf5eae39230e4878cd0d92b06c93ab1fc48d23303e08be8c0",
+   "bytes": 115748
+  },
+  {
+   "file": "props/detail_idol.glb",
+   "sha256": "445f8c4c7776462a17e62b126372948755fe89a6424e7610897fe3e807fef861",
+   "bytes": 1241288
+  },
+  {
+   "file": "props/detail_incense_burner.glb",
+   "sha256": "e0fe70b46ef0f9e752875782a163ecb2455bf49c112ce794401cfb5712492a76",
+   "bytes": 713244
+  },
+  {
+   "file": "props/detail_iron_maiden.glb",
+   "sha256": "6333a78044a58ed1b4e332822985c83f5e7d02e2904722cbd67064a48d92b0ca",
+   "bytes": 330472
+  },
+  {
+   "file": "props/detail_jailer_desk.glb",
+   "sha256": "2c344fe207ae0385d00d832fd430722e0d7cc18d0f4eb103f0767851f870b670",
+   "bytes": 183664
+  },
+  {
+   "file": "props/detail_kitchen_stove.glb",
+   "sha256": "0197166d2dcfd5a0a12737b68ce3f2b595221ac6e0eaddb37cea4d6678ed49b9",
+   "bytes": 212184
+  },
+  {
+   "file": "props/detail_kneeling_cushions.glb",
+   "sha256": "7fe98f3be401c648fa6713d4d9f4a582c82833d05a7a34a406feb3131c47240c",
+   "bytes": 329276
+  },
+  {
+   "file": "props/detail_lily_pad_cluster.glb",
+   "sha256": "259717397d454b08b3c3eef38d99685e726f849b82e73cdf2e8ffffaca7c5da5",
+   "bytes": 347228
+  },
+  {
+   "file": "props/detail_lobster_cage.glb",
+   "sha256": "d61e9067449531a0b8d3b2d23c64a29ed24a856e39b4171f73731f7215b0d559",
+   "bytes": 206728
+  },
+  {
+   "file": "props/detail_lumber_pile.glb",
+   "sha256": "b238a4102cab4295455df3b2d6b7609adc04542e09ef25af0cef7fabc0e1e4f1",
+   "bytes": 823676
+  },
+  {
+   "file": "props/detail_magic_mirror.glb",
+   "sha256": "2c8d86cc802a552fc32527bbeca23db0e4b8da2a2ae1cac7e81b43eeab88ed6d",
+   "bytes": 363664
+  },
+  {
+   "file": "props/detail_manacle_post.glb",
+   "sha256": "27de4c27f1902ec45671014687cb2e8caf1fb1a5b4ffe8a224071dfa6fcc6c72",
+   "bytes": 285460
+  },
+  {
+   "file": "props/detail_market_awning.glb",
+   "sha256": "1faf4201dd514312903ff5e269819e2bb98e45178fd1a4d17a9299d3c7d8c200",
+   "bytes": 205888
+  },
+  {
+   "file": "props/detail_millstone.glb",
+   "sha256": "210af576d18e842986e0a9cf7f29e20ffc6720fd1f50a15ff78c93e1c3d058a0",
+   "bytes": 233308
+  },
+  {
+   "file": "props/detail_mooring_bollard.glb",
+   "sha256": "a83df0821f1b5672fede52649146b446340a7194df3baaf01d9d9f9e14af6800",
+   "bytes": 335600
+  },
+  {
+   "file": "props/detail_mooring_post.glb",
+   "sha256": "3db60334c9187e3accbf017193be6f64152d2badc6e57bcb85bc831159ac2be8",
+   "bytes": 294588
+  },
+  {
+   "file": "props/detail_mud_patch.glb",
+   "sha256": "afc6c990fe203d0c718b72d2aab9666f79f805327a525a60382a86bf47cc06e2",
+   "bytes": 242212
+  },
+  {
+   "file": "props/detail_notice_board.glb",
+   "sha256": "dd732697a0bf984f27d0d76bd92c5cdb6386ad30fcc5fda26ce5a18112a91d02",
+   "bytes": 214200
+  },
+  {
+   "file": "props/detail_oasis_pool.glb",
+   "sha256": "90b41316873abed8f796e4fa8f29d45c006b37a61201069540f53577ef426ccb",
+   "bytes": 310732
+  },
+  {
+   "file": "props/detail_peat_mound.glb",
+   "sha256": "1ef626e12f5e3ea76efc3d3805f3874bafc9b2cd5a195563e2da412106b100c8",
+   "bytes": 203608
+  },
+  {
+   "file": "props/detail_pillory.glb",
+   "sha256": "a7d066918c305d62156687e5e6020922b7009e53eb836249978f62fceb16b706",
+   "bytes": 202208
+  },
+  {
+   "file": "props/detail_potion_cabinet.glb",
+   "sha256": "057bc2e480b1ce9480e3493c345653d6fc1bbe96a0c9348647998107193a3244",
+   "bytes": 532276
+  },
+  {
+   "file": "props/detail_prison_cage.glb",
+   "sha256": "ae0127bf0654f50c1c8b920fe49a6dc96236adbab7f2a5a5378ad6f90c420e87",
+   "bytes": 267428
+  },
+  {
+   "file": "props/detail_punt.glb",
+   "sha256": "63a63709be1432fc58f545441b8add01aec54c6ba07c774df79643eddec3d68f",
+   "bytes": 466048
+  },
+  {
+   "file": "props/detail_quench_tub.glb",
+   "sha256": "b3215b30d1ad6b5d070757ec6c3a179cab61016364e7c8c314e435817f0182de",
+   "bytes": 191572
+  },
+  {
+   "file": "props/detail_reading_nook.glb",
+   "sha256": "e618574953f496cdd8f3321a2ec6676fc339e6872dc9922691747729adecaa75",
+   "bytes": 295312
+  },
+  {
+   "file": "props/detail_reed_cluster.glb",
+   "sha256": "163579b531a31a91061e1c37ef8c9b14841a927e459db44611b49bd5097399e4",
+   "bytes": 311992
+  },
+  {
+   "file": "props/detail_ritual_circle.glb",
+   "sha256": "f1103ce8d77a9962f8cabfdc5d494162044ee7f1c0b7dc3862436fb7a3f47993",
+   "bytes": 189420
+  },
+  {
+   "file": "props/detail_root_tangle.glb",
+   "sha256": "c93debea4253705fca1408605eb55bb3fd54258656a9a8c7ae837c0559f71764",
+   "bytes": 646088
+  },
+  {
+   "file": "props/detail_rotten_log.glb",
+   "sha256": "72d9de6d9462a968bcae3c821b3553bb7602b6cc4e2888c3646b03d94d8e3dbe",
+   "bytes": 287716
+  },
+  {
+   "file": "props/detail_rowboat.glb",
+   "sha256": "9a96a5d16c1af4b57d56d12b98988f6f08d3d43ef352f415148f71242db4af7f",
+   "bytes": 497316
+  },
+  {
+   "file": "props/detail_sail_bundle.glb",
+   "sha256": "35cc2371fd4c8cd706da623508b7448b7b140114b2523696b14c958c1bfaabee",
+   "bytes": 165636
+  },
+  {
+   "file": "props/detail_sand_dune.glb",
+   "sha256": "13feafb1fb3e750796d7880da7f7339c8ce11be28a7cd4a8a3fae50abb07f3f6",
+   "bytes": 123236
+  },
+  {
+   "file": "props/detail_sawhorse.glb",
+   "sha256": "a20d9e6688e7d0ddb2bd65ac65f2e2cbec022f55d1776371b38dcba8398e098c",
+   "bytes": 286064
+  },
+  {
+   "file": "props/detail_scales_table.glb",
+   "sha256": "36299b09851b18187113e7103e896c9d7aa9c5a4073ce251eaec44307dccc0a1",
+   "bytes": 262444
+  },
+  {
+   "file": "props/detail_scarecrow.glb",
+   "sha256": "f318162aafd1d9ee09a9b98c7defe11ef4aaa9ec3d18fd2759f0d31f54f33e71",
+   "bytes": 595604
+  },
+  {
+   "file": "props/detail_scroll_rack.glb",
+   "sha256": "b2887f4bf74521fbeff4a4661ac95ca0731e226d356ebf15aaa3ec4d59b4047f",
+   "bytes": 240284
+  },
+  {
+   "file": "props/detail_shield_rack.glb",
+   "sha256": "c3bf79213112dfc61a3a32ebe10bec3da504ae58ff238cc269d79d784d72a504",
+   "bytes": 391648
+  },
+  {
+   "file": "props/detail_shop_counter.glb",
+   "sha256": "f267d65d9a541bd9d9315741f6a6ee811d787c7603f6307cb4ff169c1c1ec968",
+   "bytes": 280176
+  },
+  {
+   "file": "props/detail_sign_post_city.glb",
+   "sha256": "81504aa5954822808394fdad235c358a9d129cc63d2c9a383d1ded47a7793f4e",
+   "bytes": 123256
+  },
+  {
+   "file": "props/detail_snow_cairn.glb",
+   "sha256": "36bfbcdb1da1334da297911b6c25214b8453de13e6b9552df8226c380b5cdbca",
+   "bytes": 118444
+  },
+  {
+   "file": "props/detail_snowdrift.glb",
+   "sha256": "e9eed4366444494aca70b44c8f1f444d5676e74024ec6d6eb10a81cce93a6442",
+   "bytes": 133540
+  },
+  {
+   "file": "props/detail_snowy_boulder.glb",
+   "sha256": "478f83fe01b4afa3214f50ba9c214812048a19c7473da6e9ca5767dc477cdbe9",
+   "bytes": 53972
+  },
+  {
+   "file": "props/detail_spiked_beam_barrier.glb",
+   "sha256": "c3d5ca0d3f4f318190163415582edad9d9839baae47d5512c4876c0b9fc9bb63",
+   "bytes": 126324
+  },
+  {
+   "file": "props/detail_standing_mirror.glb",
+   "sha256": "777ae96e2f3835f8c8c612d9d8d78eb8c70f5ffda8b1c172ebc46389e31fe4cb",
+   "bytes": 232108
+  },
+  {
+   "file": "props/detail_statue_plinth.glb",
+   "sha256": "f93d8aa5193974e2db98543021334e0f2fb73b754fb657fac49e58fa01c67f8f",
+   "bytes": 625740
+  },
+  {
+   "file": "props/detail_stocks.glb",
+   "sha256": "77bd19f4374492fda1ad0085cba62fa94588607832f7b11bf6b4888d9cf67328",
+   "bytes": 976508
+  },
+  {
+   "file": "props/detail_stone_steps.glb",
+   "sha256": "ddc201c6ad247929691fe63c8022d3f74fe9eb1e5dd2273f1cd6ac08882719e8",
+   "bytes": 132484
+  },
+  {
+   "file": "props/detail_straw_bed.glb",
+   "sha256": "fc4d8e1508832f6a56fd19f6107321f97287728046738b988e48c3fbaff0325f",
+   "bytes": 354388
+  },
+  {
+   "file": "props/detail_street_planter.glb",
+   "sha256": "9bda44b71c54d0c181156a24969958e90bb0095814beaf6a1899358e11f0745b",
+   "bytes": 315104
+  },
+  {
+   "file": "props/detail_swamp_totem.glb",
+   "sha256": "232af25456e180735cf3e2237b1166679821ffda92a4528d0ca44dfe63d1fb04",
+   "bytes": 282588
+  },
+  {
+   "file": "props/detail_telescope.glb",
+   "sha256": "b77499edb2dcb1336eff5ae7c4184a88fba130e7bfa04d83e3570123a7d33b5e",
+   "bytes": 134156
+  },
+  {
+   "file": "props/detail_torture_rack.glb",
+   "sha256": "94028ad9fa0083a40999c9b9fc52a61003d8ad483f18e308447171dde7a3e112",
+   "bytes": 195108
+  },
+  {
+   "file": "props/detail_town_well.glb",
+   "sha256": "b98bf4f28fbcb8f264b3b5f06fea28a346a14706cb05f83b8fe53432a6e20f93",
+   "bytes": 395768
+  },
+  {
+   "file": "props/detail_wall_chains.glb",
+   "sha256": "b3c217400dc800e9df86cbf9851da4e9dfed9468bdb5f27af90727093d799d2a",
+   "bytes": 475204
+  },
+  {
+   "file": "props/detail_washtub.glb",
+   "sha256": "81c2ae1764303835abfd085a0f74b44314f06fd39809cbb44a2ff1f15be61437",
+   "bytes": 266108
+  },
+  {
+   "file": "props/detail_water_wheel.glb",
+   "sha256": "015cf9e51da2166c6b792f95f50cdc088c46b5b49ba1cf38a0048d21ebbcb95e",
+   "bytes": 409452
+  },
+  {
+   "file": "props/detail_winter_cache.glb",
+   "sha256": "283daf36154105b100d011549240f7a8e1dc5cb4142cff8db0ef58125654d5aa",
+   "bytes": 275516
+  },
+  {
+   "file": "props/detail_writing_desk.glb",
+   "sha256": "0b27c1b4f7fd30b0473ab726e24f0c41d14cbaefc6bef7df268457eca5974943",
+   "bytes": 148492
+  },
+  {
+   "file": "props/display_shelf.glb",
+   "sha256": "95785aab5e5f59c1752d88543ec8747bfd8d665a64c8b35934834a7ac095b1f9",
+   "bytes": 351856
+  },
+  {
+   "file": "props/extra_alchemy_bottles.glb",
+   "sha256": "2f8167148af88633e2c98e7fad51af9e469397cf2d8e5883865fcbb3488b0368",
+   "bytes": 65336
+  },
+  {
+   "file": "props/extra_alchemy_table.glb",
+   "sha256": "36a66dee1fb942eb8a98a122fc0636984fdf1b9070de4c1034a1297e94bb0d3a",
+   "bytes": 607676
+  },
+  {
+   "file": "props/extra_anchor.glb",
+   "sha256": "9860cd1b99aaee316082a3ee972e0595668604ba25e576b731dcf3e9d5308b21",
+   "bytes": 636392
+  },
+  {
+   "file": "props/extra_arcane_coil.glb",
+   "sha256": "64e9ba2239b36ae80a358a7eab0be9b4e856ee451c638fe8a26fc779689de255",
+   "bytes": 304400
+  },
+  {
+   "file": "props/extra_arch_shelf.glb",
+   "sha256": "1d82013fc0c8993add27c9c5988121d65eefca1f9b5ee82744d47a3e6124e45a",
+   "bytes": 68076
+  },
+  {
+   "file": "props/extra_ballista.glb",
+   "sha256": "5974136a08839ab457f471aec5af538993f5814a2f16eb84019cac1c04a98ba7",
+   "bytes": 833316
+  },
+  {
+   "file": "props/extra_banner_variant.glb",
+   "sha256": "982881d1ce337acb7e01a669354d95f54efcf06692800c8dac92179c7663b3b4",
+   "bytes": 24644
+  },
+  {
+   "file": "props/extra_book_piles.glb",
+   "sha256": "01baaafd2770f2bac262d989679dc82453808cf5fa1ae4c111d09a053a2aafa0",
+   "bytes": 41852
+  },
+  {
+   "file": "props/extra_book_row.glb",
+   "sha256": "cd0a1ebb14cdeb1f1239ee91427c097171a9b867587ca24399519b28520d36df",
+   "bytes": 27480
+  },
+  {
+   "file": "props/extra_capstan.glb",
+   "sha256": "1ee80a4bf790656121e71798929343b7f5fde8a10c9b408346ff74ca082813c3",
+   "bytes": 401308
+  },
+  {
+   "file": "props/extra_cargo_sled.glb",
+   "sha256": "36b06b58b2a31d936eaafe7bb29d2049c99f2588e70d56788ae94e911b237491",
+   "bytes": 521492
+  },
+  {
+   "file": "props/extra_ceremonial_chalice.glb",
+   "sha256": "eb53cd398e957bbaf576ec86e1f26414f2a8020958812f46ddeceb9c7861b444",
+   "bytes": 17316
+  },
+  {
+   "file": "props/extra_chain_coil.glb",
+   "sha256": "e2b85ac47223a64f0139d7dd6d1157956c1336b997e183888b7bcfc0b03be7ad",
+   "bytes": 195584
+  },
+  {
+   "file": "props/extra_chimney_brick.glb",
+   "sha256": "8c8e5e18f2583a014e72cf1269a079824528027cd8da966b01c20865f6ecc198",
+   "bytes": 23376
+  },
+  {
+   "file": "props/extra_clover_patch.glb",
+   "sha256": "3338a27defa57b30bfa9f9f16955df2d74761876dd6d77cf18959e7a606b0538",
+   "bytes": 37696
+  },
+  {
+   "file": "props/extra_coin_pouch.glb",
+   "sha256": "fdad3e6dac7773d5c5dbf4fe4aea7d8583e60ee524d21008786770c1f5a61d83",
+   "bytes": 35024
+  },
+  {
+   "file": "props/extra_command_tent.glb",
+   "sha256": "c1e7a9d527dc51aa8362eb5f3029246cbb07723053f697b394cbbf27aae69be1",
+   "bytes": 252728
+  },
+  {
+   "file": "props/extra_crystal_cluster.glb",
+   "sha256": "bd612ded37429b31843fe585ff41fc9a2e55a3f55fc4f6b709fbaf48cbe349c7",
+   "bytes": 135400
+  },
+  {
+   "file": "props/extra_crystal_orb.glb",
+   "sha256": "9afdd1f71e6f8ece5dfb87699fdab8a39455d0e8e5e6754bd467b10843f9da98",
+   "bytes": 750856
+  },
+  {
+   "file": "props/extra_cutlery_set.glb",
+   "sha256": "21e322479d2b4260322b4c3e39515c63adcdb30dbea55fa3624524dd9dcc6399",
+   "bytes": 16600
+  },
+  {
+   "file": "props/extra_dead_tree_low.glb",
+   "sha256": "3ff02c23c60a56cefc50e386c0adbb6bcff0f130125d8bd0257a8168b2e527ba",
+   "bytes": 395828
+  },
+  {
+   "file": "props/extra_dead_tree_sparse.glb",
+   "sha256": "3d023c20b25acd2d1f66d6247b395f5354e522c250b0843f94af05b9ed8e9479",
+   "bytes": 417724
+  },
+  {
+   "file": "props/extra_desk_candlestick.glb",
+   "sha256": "80389f83b74cc22fc437d471f0764e99b02ced4b8fdc884fac4dae49962a21d8",
+   "bytes": 23104
+  },
+  {
+   "file": "props/extra_dock_crane.glb",
+   "sha256": "5fbc7cf44b91f2ddd21ac92ca1e14422b8a6f6e67cbf7c5e195a81a21eeae905",
+   "bytes": 255528
+  },
+  {
+   "file": "props/extra_forest_plant.glb",
+   "sha256": "8bea91be20eef0a15c2a1741ef546a84cc3cce9736365a904df6eb255f6d86dd",
+   "bytes": 25792
+  },
+  {
+   "file": "props/extra_giant_fungus.glb",
+   "sha256": "fb930556714c99258efd9a741afe6221b4f5e6d53759a0ed5b267360d9ef7130",
+   "bytes": 408688
+  },
+  {
+   "file": "props/extra_grass_wispy.glb",
+   "sha256": "3f70cfaa843e31e8ba791e3f7f3a340cdb959b72bbf32e69f2b559290cf59266",
+   "bytes": 58388
+  },
+  {
+   "file": "props/extra_key_bundle.glb",
+   "sha256": "45daa7b640b601f90635124880cd2aa6153963c5d0a6c8440a649a731462c01e",
+   "bytes": 81280
+  },
+  {
+   "file": "props/extra_mangrove_roots.glb",
+   "sha256": "43f13097209009a63bd5a7df24c6b7e80e9fa68ae2a182f4f13decbb78ec6d92",
+   "bytes": 828416
+  },
+  {
+   "file": "props/extra_mantlet.glb",
+   "sha256": "ca672b0fdee4b9e37e881e8900252606754cbba1ef9cf8168a3d96cb90927511",
+   "bytes": 301380
+  },
+  {
+   "file": "props/extra_merchant_wagon.glb",
+   "sha256": "961bea4a39b4d57760d32ae4c57e882ad76087958eb2e07b66335d3f67a39692",
+   "bytes": 105156
+  },
+  {
+   "file": "props/extra_mine_cart.glb",
+   "sha256": "f934f21188a50111ac4ed84792bd110310e4b6954135bfda4b702cd230c26f26",
+   "bytes": 367556
+  },
+  {
+   "file": "props/extra_mine_rail.glb",
+   "sha256": "d0728f27da5ca5d582f61e8c681a5c0263fd13a6d2241f55a432f35b3087a806",
+   "bytes": 601344
+  },
+  {
+   "file": "props/extra_nomad_tent.glb",
+   "sha256": "2c7bc238381429cf6361d6cf5ee1a9e6057dd938129bc39df8dc4b96b08c4974",
+   "bytes": 216560
+  },
+  {
+   "file": "props/extra_obsidian_monolith.glb",
+   "sha256": "526f36073ef81d7dfae0e0c1a03b7a45f0ec1163c973509528658890693920a3",
+   "bytes": 85740
+  },
+  {
+   "file": "props/extra_ornate_iron_fence.glb",
+   "sha256": "a428a709a2ffafde1b5c895d91c1cfb50bcbacca135080c52649184efdf8ccb5",
+   "bytes": 152468
+  },
+  {
+   "file": "props/extra_rock_path_round.glb",
+   "sha256": "c2d3a36be94d5ce7bbf715ed140e0bc3dc76bf19fe9ed86a9270b17855722aa9",
+   "bytes": 410180
+  },
+  {
+   "file": "props/extra_rock_path_square.glb",
+   "sha256": "861031b8c638de0d6a8107f3e9faf430ca3d3a9ced9073d0f603fdc31a2bfb75",
+   "bytes": 297512
+  },
+  {
+   "file": "props/extra_roof_dormer_roundtile.glb",
+   "sha256": "b650cf6dd37f273f0d78a6d01ae1412356e06d54780ae2fa3ba5aa50733e07df",
+   "bytes": 66940
+  },
+  {
+   "file": "props/extra_rope_bridge.glb",
+   "sha256": "897701bf68f6be7295e7637a582ca10a7a4adb19e15f0bd62c1b199f3a8a09da",
+   "bytes": 639644
+  },
+  {
+   "file": "props/extra_rope_coils.glb",
+   "sha256": "b2dfce1f291c3502e6217a68d8382b0a3e3ab0c12bdb7032d6fecb9738f07222",
+   "bytes": 79708
+  },
+  {
+   "file": "props/extra_round_window_brick.glb",
+   "sha256": "8ec6b2520a7e6576e0e7bdb90055853a7510b2d57d0c7de470e548a6f14a2231",
+   "bytes": 9944
+  },
+  {
+   "file": "props/extra_ruin_corner_brick.glb",
+   "sha256": "5936338cd7d5a51af6ef05ec9f4a32c99640cba1527762da3c8c9e540aefcaa7",
+   "bytes": 90976
+  },
+  {
+   "file": "props/extra_ruin_wall_arch.glb",
+   "sha256": "a059f0365e1770ab985d7bee5d2019566b4901d3f78837a338511bae57bf40ad",
+   "bytes": 11000
+  },
+  {
+   "file": "props/extra_sandstone_arch.glb",
+   "sha256": "34ae5ead96d8ccf83b47a1d0a846c7acf4c4ed3a7ef81a873dfaec11c55c0f56",
+   "bytes": 125980
+  },
+  {
+   "file": "props/extra_scout_tent.glb",
+   "sha256": "a2c99ebfb17d40553be15d90cd531282fe5ccafbf5c5034f93376480295ed50c",
+   "bytes": 183376
+  },
+  {
+   "file": "props/extra_scroll_pile.glb",
+   "sha256": "dc60615cd54002150ebd42344474f209e11497ce9bd98893501509a5caf345c4",
+   "bytes": 54964
+  },
+  {
+   "file": "props/extra_shield_display.glb",
+   "sha256": "537d1ee57fd1ed39506ff959e4c6fece250658a901d37c09be4b1e41d68ac385",
+   "bytes": 68880
+  },
+  {
+   "file": "props/extra_single_book.glb",
+   "sha256": "67c2add823336d9f507ec6b1f03e1006a8557877ce8159d40635f369074ee720",
+   "bytes": 5180
+  },
+  {
+   "file": "props/extra_snowshoe_pair.glb",
+   "sha256": "246efa8e3a3cdc7f78c57ddecaec288939d1cdaa7d8c741d4d161b797dd1a1de",
+   "bytes": 298768
+  },
+  {
+   "file": "props/extra_swamp_boardwalk.glb",
+   "sha256": "30a3a2281fe92330eed96f7a624138433f516964cc1641f83cdaf83091cc4618",
+   "bytes": 498756
+  },
+  {
+   "file": "props/extra_timber_shoring.glb",
+   "sha256": "dde1cfff5d5c67242b45dec385a93b651166ebf63817f6798885fd4418226f7e",
+   "bytes": 197856
+  },
+  {
+   "file": "props/extra_tool_peg_rack.glb",
+   "sha256": "34f5beae6af947893d374cf8798ea6654aed21c8e17e2e7be989c6f205157ce1",
+   "bytes": 29424
+  },
+  {
+   "file": "props/extra_twisted_tree_broad.glb",
+   "sha256": "03973568aebf366cc7ec8e366904e87258475c171328d59e58028ac40c2ae4ab",
+   "bytes": 774776
+  },
+  {
+   "file": "props/extra_twisted_tree_tall.glb",
+   "sha256": "45745a21538094e189ae22bbfb71320a37635e40e6bc3421b16e0a71f36ab41e",
+   "bytes": 736060
+  },
+  {
+   "file": "props/extra_vial_display_shelf.glb",
+   "sha256": "e473381cb642e25226e1840089cf12abcca6beb1946e9e06282cb26a60ec8d15",
+   "bytes": 234160
+  },
+  {
+   "file": "props/extra_wall_ivy_corner.glb",
+   "sha256": "07fbe6686164a004f44079ffac3d81f80b31afc5feb5b814eb62fca8b37d1508",
+   "bytes": 8020
+  },
+  {
+   "file": "props/extra_wall_ivy_wide.glb",
+   "sha256": "d5916c69e0dc6d8aa1cf91f011e2c398b7cbe3f6b5a43f8b30bc4217840455e4",
+   "bytes": 3780
+  },
+  {
+   "file": "props/extra_wall_ivy.glb",
+   "sha256": "99d0de581474a7437817adc0c6e37c753bccfbcf05b6c5b0739192d0b139b347",
+   "bytes": 7224
+  },
+  {
+   "file": "props/extra_weapon_rack.glb",
+   "sha256": "73a0d231a49b9aa9459e25436508aa63662d429dbb3c004f6c934c92e1d27086",
+   "bytes": 524384
+  },
+  {
+   "file": "props/fishing_crates.glb",
+   "sha256": "cbdc31fd846661d992a43e9aa20bbd8aca3cda3b729a4545d2d2e0975d452198",
+   "bytes": 71808
+  },
+  {
+   "file": "props/fruit_cart.glb",
+   "sha256": "80cfe5284a2537a9a0a801a58114c0fc1713c34e873b613c0ac44c8535c9c168",
+   "bytes": 590356
+  },
+  {
+   "file": "props/goods_baskets.glb",
+   "sha256": "4f37ec50dc964efa74e79d23af287768a64c02a24bb1b4a798c56f47a22f4591",
+   "bytes": 405560
+  },
+  {
+   "file": "props/grain_sacks.glb",
+   "sha256": "70cdc701433131273ae0d485fe2bc82ee4c938b45c1b5f9260c3bfb88fb5186c",
+   "bytes": 32184
+  },
+  {
+   "file": "props/kenney_campfire_stones.glb",
+   "sha256": "91031ddbf83f4e66a0e73b3db132bda0492dada33c531946a5b59c59a3e1fae4",
+   "bytes": 17680
+  },
+  {
+   "file": "props/kenney_log_large.glb",
+   "sha256": "60e1b7c13e84122a4f5e3b997f824f7951ab0f196e0d72463433aeb97931c8e3",
+   "bytes": 9036
+  },
+  {
+   "file": "props/kenney_log_stack_large.glb",
+   "sha256": "b1fcbde69f24c44fec3d0966e7f866820b30eaa85f4cbcbf61e87b7f3953788a",
+   "bytes": 20512
+  },
+  {
+   "file": "props/kenney_log_stack.glb",
+   "sha256": "cc62868653ee4d53755eb04d9893f08f125997d6b29acfe634b1c224be2d8415",
+   "bytes": 13056
+  },
+  {
+   "file": "props/kenney_log.glb",
+   "sha256": "57417b6f52ce975c8e1a332792d677497f787082bfc8c8bf61d5ffe69b9640ac",
+   "bytes": 15388
+  },
+  {
+   "file": "props/kenney_rock_tall_c.glb",
+   "sha256": "9bcf3c55a8846b3e4f2ab4a45f718322391a9ab6c556950faceeb8f852b7ac66",
+   "bytes": 5716
+  },
+  {
+   "file": "props/kenney_rock_tall_d.glb",
+   "sha256": "7aaf5c35cbb335dc64fca818b8c3150e8e9e44bb665c360fc5d1a64d6fd3d9ce",
+   "bytes": 5632
+  },
+  {
+   "file": "props/kenney_rock_tall_j.glb",
+   "sha256": "ed4a1dc09784089b390293c56493ef148b3c751523fd93553f1709b0606c4102",
+   "bytes": 5936
+  },
+  {
+   "file": "props/kenney_sign.glb",
+   "sha256": "bfa1be6b978e80f83cf2b9482461e143b9c2613705e1bda4a00dbbacb5486804",
+   "bytes": 5720
+  },
+  {
+   "file": "props/kenney_statue_column.glb",
+   "sha256": "9852a50d7bada735f98474e964540292843762697faf2da1895c587c0dbafa3c",
+   "bytes": 11112
+  },
+  {
+   "file": "props/kenney_statue_head.glb",
+   "sha256": "4a6cd536af46012a11782fb0d80e10ccbb6ca1c60f01b63d5564eb74042ad622",
+   "bytes": 15548
+  },
+  {
+   "file": "props/kenney_statue_obelisk.glb",
+   "sha256": "2490b7c9a3f06f188bdf2f5bf401c47c501663fcb497208bc46e61892033208f",
+   "bytes": 5852
+  },
+  {
+   "file": "props/kenney_stump_old_tall.glb",
+   "sha256": "f5ce220460a86d0992456737ddce963230a390f97539af24d85c53abfba01d39",
+   "bytes": 9824
+  },
+  {
+   "file": "props/kenney_stump_old.glb",
+   "sha256": "2fd003f213b430260e43c9fbb51db9b02564330fcda727444cf1934c5aa5980c",
+   "bytes": 9824
+  },
+  {
+   "file": "props/kenney_stump_round.glb",
+   "sha256": "1ba6182842c4b4bc45762708843850ff835fe78e7b701ca5bc3611ea52f4f78b",
+   "bytes": 9296
+  },
+  {
+   "file": "props/map_table.glb",
+   "sha256": "9995aac941bba1fb27518dbe89300ada8d2a06b231b29c678f98a6e57a199952",
+   "bytes": 172620
+  },
+  {
+   "file": "props/mvmk_crate.glb",
+   "sha256": "5c0aa01292e4cedf28fff00f4071e796e79ac4edd1fc5c22f8c9618c8b724c08",
+   "bytes": 17560
+  },
+  {
+   "file": "props/mvmk_fence_extension.glb",
+   "sha256": "b5465114554fecb827f04d32dda2bd2646a45cf30ffb7e368513805891d9d901",
+   "bytes": 3792
+  },
+  {
+   "file": "props/mvmk_fence_single.glb",
+   "sha256": "a3d4e00de93331289661e312134267e5cc78e0216013b1327794959b74f840c3",
+   "bytes": 4328
+  },
+  {
+   "file": "props/offering_table.glb",
+   "sha256": "bec1b418dac51ffbec942e4026d8ffacbfb66e9932db9c3d835f4ba1c2cf24e3",
+   "bytes": 67608
+  },
+  {
+   "file": "props/pantry_shelf.glb",
+   "sha256": "31dd713cbb78b6615486b42e3463ade9ac42dd5ccca11350828aee0b90ee93bb",
+   "bytes": 204472
+  },
+  {
+   "file": "props/pottery_stand.glb",
+   "sha256": "93ff075161d70c1f26ed8f0709eae3e9d61a855df4d705a50199a444e85b4f12",
+   "bytes": 47104
+  },
+  {
+   "file": "props/prep_table.glb",
+   "sha256": "a8b05eeebd712699ef2259df2352d14b23df7d15675981ee9a7b8fb4342ee2a7",
+   "bytes": 133716
+  },
+  {
+   "file": "props/rock_cluster.glb",
+   "sha256": "df9374e969a54d48afd1ed6a2fdc38785739dc2c2f730ae1970568cabeec53e5",
+   "bytes": 54344
+  },
+  {
+   "file": "props/sk_altar.glb",
+   "sha256": "959d641d80702885b5a6c7ce0fa9b35b7166e0c38e496cda7ac07b6634658981",
+   "bytes": 36808
+  },
+  {
+   "file": "props/sk_bar_counter.glb",
+   "sha256": "dcb23b66e871b851cecc63d7820e75146b46fa8008f195be84e839d5d63588ee",
+   "bytes": 105348
+  },
+  {
+   "file": "props/sk_bar_shelf.glb",
+   "sha256": "8d67a4c3f68fc22210b312d875d9ae936dc31d70f6e78a0ff373abde740d9c07",
+   "bytes": 252096
+  },
+  {
+   "file": "props/sk_basket.glb",
+   "sha256": "9c937bcc8202419106d33b504c2205ffba0716dbadb2d596a453d9a78f27c600",
+   "bytes": 65828
+  },
+  {
+   "file": "props/sk_bone_pile.glb",
+   "sha256": "d4346c1234e912917d49e9881ef107bb266fee9b010e43e674fc81ef981e37e5",
+   "bytes": 35628
+  },
+  {
+   "file": "props/sk_bowl_stew.glb",
+   "sha256": "2d1391bdafe87e514879952bc7f285703caa9206409868f23346e287bb3315f6",
+   "bytes": 56552
+  },
+  {
+   "file": "props/sk_brazier.glb",
+   "sha256": "0f470b89cb64f32ca04bd3192d82d0d6d4ca043f8b3c40b920f88790164beca4",
+   "bytes": 102616
+  },
+  {
+   "file": "props/sk_bread_loaf.glb",
+   "sha256": "a31d2815d18414f8706cc4ba96223dea8d3e609c3d5829ae8511a413f49d211d",
+   "bytes": 20348
+  },
+  {
+   "file": "props/sk_broom.glb",
+   "sha256": "6483e2cf414cbf8ac358504cb84e1bc8314740a3e767541e0eaffd20947129b1",
+   "bytes": 23072
+  },
+  {
+   "file": "props/sk_bunk_bed.glb",
+   "sha256": "df9c09f30336df991f9b979d2e73ae338a2e201044b05a0b4708b6d07eb7b5a4",
+   "bytes": 65316
+  },
+  {
+   "file": "props/sk_cheese_wheel.glb",
+   "sha256": "db24a00fd09e37de365e7d99ba57661834111dfcd776b3711276bb0ba48ef80f",
+   "bytes": 50092
+  },
+  {
+   "file": "props/sk_crypt_niche.glb",
+   "sha256": "a44ff8ebd0039e9712f1f772643145f8e7483408b114cfd08544bf4c0a15bb0b",
+   "bytes": 22560
+  },
+  {
+   "file": "props/sk_cutting_board.glb",
+   "sha256": "234367ebf58e4521a4d1b72bd81cac48a6303ad174e9aff664bd2218ddf2d585",
+   "bytes": 48040
+  },
+  {
+   "file": "props/sk_dice_cup.glb",
+   "sha256": "4c2ce60629fe6fa952621a475dcf6b0f1e5ed4a31b9ccc754de1615125e39c05",
+   "bytes": 50288
+  },
+  {
+   "file": "props/sk_fireplace.glb",
+   "sha256": "c56b9a63c8eed6e07d91f82820350589084625be0a85eba3e220a8bfd58b1135",
+   "bytes": 80452
+  },
+  {
+   "file": "props/sk_grave.glb",
+   "sha256": "be9fdfaca5dc3d9e3c77ba1355194338cfa87aa9463d3e5e07505f6b4fea322b",
+   "bytes": 26168
+  },
+  {
+   "file": "props/sk_haystack.glb",
+   "sha256": "2a8499d2d79699ff7698b675168c3ab382f83be4853d07f197eac68e93165891",
+   "bytes": 51932
+  },
+  {
+   "file": "props/sk_hearth_fire.glb",
+   "sha256": "ae6a4dc158f1c4b047f0e1859ddf9925d666f746105aa2348dc591d771b79d54",
+   "bytes": 22476
+  },
+  {
+   "file": "props/sk_hitching_post.glb",
+   "sha256": "10b134b1c4f7b95b5c2f86807af1949cbd757cc3e8416508adee532c9c065442",
+   "bytes": 46608
+  },
+  {
+   "file": "props/sk_jug.glb",
+   "sha256": "084ccea035eda1d0f8297dd4b0f80f39b02d9342c361194b9b1d0b561726cb00",
+   "bytes": 36732
+  },
+  {
+   "file": "props/sk_lamp_post.glb",
+   "sha256": "3d0db5d3335a6673ce6e9faf2dead2acff7ac811cff27f4abc3bf13ff9997f3f",
+   "bytes": 32240
+  },
+  {
+   "file": "props/sk_lute.glb",
+   "sha256": "bac72e1a37ab7d73f421bf744324656795aea2b86bc1afb73a1255d56261d743",
+   "bytes": 60304
+  },
+  {
+   "file": "props/sk_milestone.glb",
+   "sha256": "31f7f12d5edbd19b04e916ded706953ea7671606405145bf56ba42a3ff959823",
+   "bytes": 33052
+  },
+  {
+   "file": "props/sk_offering_bowl.glb",
+   "sha256": "f4171a3bf542ea1bc85317e752655abe193acc36403fa5b3e45158da6664983e",
+   "bytes": 39588
+  },
+  {
+   "file": "props/sk_pillar.glb",
+   "sha256": "1fb1b7676b9ae6389cb334745b7c30a59b57de6459ac7ae3635ba8caad1cea19",
+   "bytes": 13584
+  },
+  {
+   "file": "props/sk_reliquary.glb",
+   "sha256": "a5c93fa5b91c13a18c6dae4412704c0d07bbe877ae9ce8f6cb3820d76ed228ef",
+   "bytes": 12460
+  },
+  {
+   "file": "props/sk_roadside_shrine.glb",
+   "sha256": "9e53de34aff6b526f3ad4df4a64bc3a7e31b4c93da8f7b3bd199ca041c93705c",
+   "bytes": 37308
+  },
+  {
+   "file": "props/sk_royal_throne.glb",
+   "sha256": "f02b0d6a2a58b61b95a5f667ffa6c7a5404a9eb5bd36a8147f3026fa5ce09360",
+   "bytes": 70776
+  },
+  {
+   "file": "props/sk_rubble_heap.glb",
+   "sha256": "6b6bb59e2ee10f0368490e35fad4a50d6bde6eb499666b8508c537e5a3b72a97",
+   "bytes": 16816
+  },
+  {
+   "file": "props/sk_sarcophagus.glb",
+   "sha256": "e3b9960443d9bf3c8ea80d1d40ace7a912739cca093af608af1cd40f9a6970e8",
+   "bytes": 130908
+  },
+  {
+   "file": "props/sk_table_round.glb",
+   "sha256": "433a18eabfb1fd2a638fc3525671c2e67238ee549174665083b5386953717fff",
+   "bytes": 22052
+  },
+  {
+   "file": "props/sk_table_royal.glb",
+   "sha256": "85147afe7beb72b7c79e23c7c78421a4039d91ea02b520fe20395aa8009e4e57",
+   "bytes": 37560
+  },
+  {
+   "file": "props/sk_table_small.glb",
+   "sha256": "8e6851c06e798ae19d3408053526e49cd9e87e371696228d1df432d5424b4150",
+   "bytes": 35684
+  },
+  {
+   "file": "props/sk_wagon_wheel.glb",
+   "sha256": "3d57183726dc2e99d28a0bd0a351a2aa76b6239cd9fb09d7ac9179ac67f7a295",
+   "bytes": 38676
+  },
+  {
+   "file": "props/sk_wardrobe.glb",
+   "sha256": "109947a899656ce16eb0a6140bc5351f925abd2c66edeb0f95e3f67df0a82767",
+   "bytes": 53540
+  },
+  {
+   "file": "props/sk_washbasin.glb",
+   "sha256": "ade12eda4fc0f082b56d468ef558bba5fe301be94c55f088d8f09200b702ceaf",
+   "bytes": 37240
+  },
+  {
+   "file": "props/sk_water_trough.glb",
+   "sha256": "2acbb152cf13cb0f3f82de9b7aeb4d1dbc1111fd2199d7de70560f8608d6476b",
+   "bytes": 178364
+  },
+  {
+   "file": "props/sk_well.glb",
+   "sha256": "3649737c87e81585a44c3a5186e14c5349b56f10b96bfd2674c1e62e7ac60324",
+   "bytes": 255252
+  },
+  {
+   "file": "props/tool_rack.glb",
+   "sha256": "634f33224d765583d9cdde207727b6ed0d9ce07af0c3ec20b029ed39e2729259",
+   "bytes": 272652
+  },
+  {
+   "file": "props/war_table.glb",
+   "sha256": "67f9fb1e70f2d8270bfbee5467d54196fb604c9b7f3044c67cc76d3cd4f5bcbd",
+   "bytes": 226180
+  },
+  {
+   "file": "props/workbench_drawers.glb",
+   "sha256": "187c9f5bb147a95cf0ae4346b91f9ffde689af0c7dfde08852c2aef110205546",
+   "bytes": 118732
+  },
+  {
+   "file": "topdown.webp",
+   "sha256": "cbe773b6115c222493a533da9e5c85a368b1bd2e25fdf3ab1565c4a8036caa6b",
+   "bytes": 1990906
+  }
+ ]
+}

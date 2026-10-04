@@ -34,6 +34,26 @@ export const DETAIL_PROP_ALIASES: Readonly<Record<string, string>> = Object.free
   boulder_split: 'boulder', dead_bramble: 'bush', root_tangle: 'fallen_log', scree: 'path_stone', pebbles: 'path_stone',
   leaf_litter: 'fern', cliff_medium: 'boulder', cliff_large: 'boulder', cliff_long: 'boulder', wine_stain: 'floor_stain',
   floor_crack: 'floor_stain',
+  ballista: 'village_fence', command_tent: 'haystack', alchemy_table: 'table_long', dock_crane: 'well',
+  mine_cart: 'cart', crystal_orb: 'offering_bowl', giant_fungus: 'mushroom_cluster',
+  mantlet: 'village_fence', cargo_sled: 'cart', arch_shelf: 'shelf_wall', cutlery_set: 'plate',
+  tool_peg_rack: 'shelf_wall', chain_coil: 'rubble_heap', book_piles: 'mug', crystal_cluster: 'boulder',
+  nomad_tent: 'haystack', obsidian_monolith: 'pillar', weapon_rack: 'shelf_wall', scout_tent: 'haystack',
+  timber_shoring: 'village_fence', mine_rail: 'path_stone', shield_display: 'shelf_wall', arcane_coil: 'offering_bowl',
+  alchemy_bottles: 'bottle', desk_candlestick: 'candle', single_book: 'mug', vial_display_shelf: 'shelf_wall',
+  ceremonial_chalice: 'offering_bowl', book_row: 'mug', scroll_pile: 'mug', rope_coils: 'woodpile', capstan: 'well',
+  snowshoe_pair: 'mug', anchor: 'milestone', clover_patch: 'flowers', forest_plant: 'fern', mangrove_roots: 'fallen_log',
+  wall_ivy: 'cobweb', wall_ivy_corner: 'cobweb', wall_ivy_wide: 'cobweb', key_bundle: 'mug', coin_pouch: 'coin_pile',
+  snowdrift: 'floor_stain', snowy_boulder: 'boulder', ice_pillars: 'stalagmite', frozen_pool: 'cave_pool',
+  winter_cache: 'crate', snow_cairn: 'milestone', sand_dune: 'floor_stain', desert_boulders: 'boulder',
+  cactus_cluster: 'bush', dead_scrub: 'bush', oasis_pool: 'cave_pool', broken_obelisk: 'pillar',
+  bog_pool: 'cave_pool', lily_pad_cluster: 'fern', reed_cluster: 'grass_tuft', rotten_log: 'fallen_log',
+  mud_patch: 'floor_stain', swamp_totem: 'signpost', peat_mound: 'rubble_heap', mooring_bollard: 'hitching_post',
+  cargo_net: 'sack', fishing_crates: 'crate', lobster_cage: 'basket', sail_bundle: 'woodpile',
+  bedroll_cluster: 'sack', shield_rack: 'shelf_wall', camp_dummy: 'statue', spiked_beam_barrier: 'village_fence',
+  alchemy_cauldron: 'cauldron', arcane_lectern: 'reliquary', ritual_circle: 'mosaic', arcane_stone: 'mosaic',
+  potion_cabinet: 'cupboard', magic_mirror: 'cupboard', prison_cage: 'crate', dungeon_rack: 'table_long',
+  iron_maiden: 'wardrobe', manacle_post: 'pillar',
 })
 
 /** Предметы набора, у которых есть авторская GLB-модель (`models/<id>.glb`). */
@@ -46,6 +66,9 @@ export const DETAIL_PROP_MODELS: ReadonlySet<string> = new Set([
   'hay_bales', 'chicken_coop', 'garden_bed', 'scarecrow', 'flour_bin', 'millstone', 'water_wheel', 'fence_gate',
   'flower_bed', 'fountain', 'town_well', 'market_awning', 'notice_board', 'sign_post_city', 'pillory', 'statue_plinth',
   'street_planter', 'mooring_post', 'fish_rack', 'fishing_nets', 'rowboat', 'punt', 'stone_steps', 'root_tangle',
+  'ballista', 'command_tent', 'alchemy_table', 'dock_crane', 'mine_cart', 'crystal_orb', 'giant_fungus',
+  'mantlet', 'cargo_sled', 'crystal_cluster', 'nomad_tent', 'obsidian_monolith', 'weapon_rack', 'scout_tent',
+  'timber_shoring', 'mine_rail', 'arcane_coil', 'capstan', 'snowshoe_pair', 'anchor', 'mangrove_roots',
 ])
 
 /** Корень набора внутри `public`. */
