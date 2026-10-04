@@ -17,6 +17,7 @@ import { PhbCharacterOptions } from './PhbCharacterOptions'
 import type { PhbCharacterOptionsCatalog, PhbCharacterOptionsValue } from './phb-character-types'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 import { EquipmentPreview } from './EquipmentPreview'
+import { mechanicsSupportPresentation } from './tactical-ui'
 
 // Сокращения характеристик общие с боевой хроникой: словарь один, и лист героя
 // с журналом боя не разъезжаются в подписях.
@@ -494,7 +495,12 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
         <div className="development-spell-list">{filteredDevelopmentSpells.map((spell) => {
           const known = knownSpellIds.includes(spell.id)
           const prepared = preparedSpellIds.includes(spell.id)
-          return <article key={spell.id} className={known || prepared ? 'selected' : ''}><CombatIcon id={spell.id} kind="spell" hint={spell.name} size={48} /><span><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spell.castingTime || '1 действие'} · {spell.rangeText || `${spell.range} фт.`}</small><p>{spell.description}</p></span><div>
+          // Тот же словарь статусов, что в мастере создания и в бою. Без него
+          // «Обнаружение магии» при создании было «НУЖНО РЕШЕНИЕ», а здесь
+          // выглядело обычной карточкой (плейтест 2026-10-04, MG-01). Изучить
+          // заклинание можно в любом статусе — исполнимость решает движок.
+          const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote)
+          return <article key={spell.id} className={`${known || prepared ? 'selected' : ''} support-${support.status}`.trim()}><CombatIcon id={spell.id} kind="spell" hint={spell.name} size={48} /><span><strong>{spell.name}</strong><small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spell.castingTime || '1 действие'} · {spell.rangeText || `${spell.range} фт.`} · <b className={`mechanics-support-label support-${support.status}`} title={`${support.label}. ${support.explanation}`}>{support.shortLabel}</b></small><p>{spell.description}</p></span><div>
             {spell.level === 0 || spellRules.mode === 'known' ? <button className={known ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id)}>{known ? <Check size={13} /> : <Plus size={13} />}{spell.level === 0 ? 'Изучен' : 'Выбрать'}</button> : spellRules.mode === 'spellbook' ? <><button className={known ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id)}>{known ? <Check size={13} /> : <Plus size={13} />}Книга</button><button className={prepared ? 'active' : ''} disabled={!known} onClick={() => toggleDevelopmentSpell(spell.id, true)}>{prepared ? <Check size={13} /> : <Plus size={13} />}Подготовить</button></> : <button className={prepared ? 'active' : ''} onClick={() => toggleDevelopmentSpell(spell.id, true)}>{prepared ? <Check size={13} /> : <Plus size={13} />}Подготовить</button>}
           </div></article>
         })}</div>

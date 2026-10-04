@@ -224,7 +224,101 @@ export function roleAllowsWorldTools(role) {
 }
 
 /** Подпись варианта голосования обрезается сервером до 100 знаков. */
-const PARTY_OPTION_LIMIT = 100
+export const PARTY_OPTION_LIMIT = 100
+
+/** Сколько знаков подписи отдаётся маршруту: остальное — «откуда» и задание. */
+const PARTY_ROUTE_LIMIT = 64
+
+/**
+ * Подпись варианта в пределах лимита без оборванной кавычки.
+ *
+ * Выбранный вариант после голосования заново разбирает `classifyPartyDecision`,
+ * и прямой срез посреди «ёлочек» делал из «Другой путь к разгадке» место
+ * «Другой п» — отряд уходил в локацию с обрубленным именем (плейтест
+ * 2026-10-04, QP-05). Срез идёт по слову; незакрытое название отбрасывается
+ * вместе с повисшим предлогом: уход без названия честнее выдуманного места.
+ *
+ * @param {unknown} value
+ * @param {number} [limit]
+ * @returns {string}
+ */
+export function partyOptionLabel(value, limit = PARTY_OPTION_LIMIT) {
+  const text = String(value ?? '').replace(/\s+/gu, ' ').trim()
+  if (text.length <= limit) return text
+  let cut = text.slice(0, limit)
+  if (text.charAt(limit) !== ' ') {
+    const space = cut.lastIndexOf(' ')
+    if (space > 0) cut = cut.slice(0, space)
+  }
+  const open = cut.lastIndexOf('«')
+  if (open > cut.lastIndexOf('»')) cut = cut.slice(0, open)
+  return cut.trim().replace(/\s+(?:в|во|на|к|ко|до|из|от)$/iu, '').trim()
+}
+
+/**
+ * Украшение подписи — откуда уходят, название задания — в `room` знаков.
+ * Кавычки внутри снимаются, когда название приходится резать: по ним подпись
+ * потом разбирается, и обрезанная вложенная кавычка закрылась бы не там.
+ * Название места, которое помещается целиком, сохраняет свои кавычки
+ * («Таверна «Ржавый Якорь»»).
+ *
+ * @param {unknown} value
+ * @param {number} room
+ * @param {{ keepQuotes?: boolean }} [options]
+ * @returns {string}
+ */
+function shortLabelPart(value, room, { keepQuotes = false } = {}) {
+  const whole = String(value ?? '').replace(/\s+/gu, ' ').trim()
+  if (keepQuotes && whole.length <= room) return whole
+  const plain = whole.replace(/[«»]/gu, '').trim()
+  if (plain.length <= room) return plain
+  const cut = plain.slice(0, Math.max(1, room - 1))
+  const space = cut.lastIndexOf(' ')
+  return `${(space > room / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
+/**
+ * Фраза назначения («в «Кленовка»», «к старому склепу») не длиннее `limit`.
+ * Длинное название сокращается по слову внутри своих кавычек: укороченное, но
+ * закрытое название остаётся местом, а оборванное — нет.
+ *
+ * @param {unknown} phrase
+ * @param {number} limit
+ * @returns {string}
+ */
+function fitRoutePhrase(phrase, limit) {
+  const text = String(phrase ?? '').replace(/\s+/gu, ' ').trim()
+  if (text.length <= limit) return text
+  const quoted = /^(\S+ )«([^»]*)»$/u.exec(text)
+  const lead = quoted?.[1] ?? /^\S+ /u.exec(text)?.[0] ?? ''
+  const body = quoted ? quoted[2] : text.slice(lead.length)
+  const room = Math.max(1, limit - lead.length - (quoted ? 2 : 0))
+  let kept = ''
+  for (const word of body.split(' ')) {
+    const next = kept ? `${kept} ${word}` : word
+    if (next.length > room) break
+    kept = next
+  }
+  // Повисший предлог («…другой путь к») названию не принадлежит.
+  kept = kept.replace(/\s+(?:в|во|на|к|ко|до|из|от|у|по|с|со|за|и)$/iu, '') || body.slice(0, room)
+  return quoted ? `${lead}«${kept}»` : `${lead}${kept}`
+}
+
+/**
+ * Подпись варианта «уходим». Маршрут решает, куда попадёт отряд, поэтому при
+ * нехватке места сокращается название покидаемого места, а не он.
+ *
+ * @param {string} from
+ * @param {string} phrase
+ * @returns {string}
+ */
+function leaveLabel(from, phrase) {
+  if (!phrase) return from ? `Покинуть «${shortLabelPart(from, PARTY_OPTION_LIMIT - 'Покинуть «»'.length, { keepQuotes: true })}»` : 'Покинуть подземелье'
+  const route = fitRoutePhrase(phrase, PARTY_ROUTE_LIMIT)
+  if (!from) return `Уходим из подземелья и идём ${route}`
+  const room = PARTY_OPTION_LIMIT - 'Уходим из «» и идём '.length - route.length
+  return `Уходим из «${shortLabelPart(from, room, { keepQuotes: true })}» и идём ${route}`
+}
 
 /**
  * Подпись варианта «уйти и бросить задание».
@@ -243,13 +337,10 @@ const PARTY_OPTION_LIMIT = 100
 function abandonLabel(questTitle, destination) {
   // Кавычки-ёлочки в подписи значащие: по ним разбирается пункт назначения.
   // Чужая «ёлочка» внутри названия задания закрыла бы кавычку не там.
-  const plain = (value) => String(value ?? '').replace(/[«»]/gu, '').trim()
-  const phrase = String(destination ?? '').trim().slice(0, 64)
+  // Прямой срез фразы до 64 знаков мог оборвать и её кавычку.
+  const phrase = fitRoutePhrase(destination, PARTY_ROUTE_LIMIT)
   const lead = phrase ? `Уходим ${phrase} и бросаем задание` : 'Уходим отсюда и бросаем задание'
-  const room = PARTY_OPTION_LIMIT - lead.length - ' «»'.length
-  const title = plain(questTitle)
-  const fitted = title.length > room ? `${title.slice(0, Math.max(1, room - 1)).trimEnd()}…` : title
-  return `${lead} «${fitted}»`
+  return `${lead} «${shortLabelPart(questTitle, PARTY_OPTION_LIMIT - lead.length - ' «»'.length)}»`
 }
 
 // Сверка «цель называет место» живёт в `party-exit-intent.mjs`: её читает и
@@ -294,9 +385,7 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
     // Назначение согласовано по-русски: имя точки карты в кавычках или фраза
     // игрока с его предлогом. Прежде было «идём в старому фамильному склепу».
     const { phrase } = partyDestinationLabel(sourceText || text, destination, exitContext)
-    const leaveOption = phrase
-      ? knownFrom ? `Уходим из «${from}» и идём ${phrase}` : `Уходим из подземелья и идём ${phrase}`
-      : knownFrom ? `Покинуть «${from}»` : 'Покинуть подземелье'
+    const leaveOption = leaveLabel(knownFrom, phrase)
     // Отказ от задания — третий вариант того же голосования, а не отдельная
     // карточка: уйти, не закрыв нить, и уйти, отказавшись от неё, — это один и
     // тот же разговор за столом, и разводить его на два голосования незачем.

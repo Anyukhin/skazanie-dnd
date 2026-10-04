@@ -6604,7 +6604,18 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'ChangeWeapon') {
     const actor = findActor(state, command.actor_id)
-    if (!combatItem(actor, command.item_id)?.combat || combatItem(actor, command.item_id)?.type !== 'weapon') throw new RulesValidationError('Оружие не найдено в инвентаре', 'INVALID_WEAPON')
+    const weapon = combatItem(actor, command.item_id)
+    if (!weapon?.combat || weapon?.type !== 'weapon') throw new RulesValidationError('Оружие не найдено в инвентаре', 'INVALID_WEAPON')
+    // Вне боя такую смену запрещает жизненный цикл вещи, а в бою смена
+    // проходила и списывала действие — после чего каждая атака двуручным
+    // оружием упиралась в TWO_HANDED_WITH_SHIELD (плейтест 2026-10-04, PC-02:
+    // воин со щитом взял лёгкий арбалет и не смог выстрелить). Отказ до
+    // расхода действия, тем же кодом, что у атаки.
+    const combat = catalogItem(String(weapon.catalog_id ?? weapon.catalogId ?? ''))?.combat ?? weapon.combat
+    const modes = Array.isArray(combat?.modes) && combat.modes.length ? combat.modes : [combat]
+    if (modes.every((mode) => mode?.twoHanded === true) && hasEquippedShield(actor)) {
+      throw new RulesValidationError('Двуручное оружие не взять в бою, пока надет щит: щит снимают вне боя', 'TWO_HANDED_WITH_SHIELD')
+    }
   }
   if (command.command_type === 'MakeAreaAttack') {
     const actor = findActor(state, command.actor_id)
@@ -18193,8 +18204,16 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const encounterEnemyIds = new Set(Array.isArray(state.mechanics.encounter?.enemy_ids) ? state.mechanics.encounter.enemy_ids.map(String) : [])
       const enemyIds = state.enemies.filter((enemy) => isLivingActor(enemy) && (!encounterEnemyIds.size || encounterEnemyIds.has(actorId(enemy)))).map(actorId)
       const participantIds = uniqueStrings(enemyIds.length ? [...partyIds, ...summonIds, ...enemyIds] : [...partyIds, ...summonIds])
-      if (participantIds.length < 2 || ((command.server_authoritative || context.serverAuthoritativeCombat) && !enemyIds.length)) {
-        throw new RulesValidationError('Для боя нужны живые герои и противники', 'COMBAT_PARTICIPANTS_REQUIRED')
+      // Без живой противостоящей стороны бой не начинается ни на одном пути:
+      // иначе свободная фраза «начать бой с волками» записывала бой из одних
+      // героев, и координатор тут же объявлял победу (плейтест PC-01).
+      if (participantIds.length < 2 || !enemyIds.length) {
+        throw new RulesValidationError(
+          enemyIds.length
+            ? 'Для боя нужны живые герои и противники'
+            : 'Бой не начат: рядом нет живых противников. Чтобы найти схватку, напишите «Ищем бой».',
+          'COMBAT_PARTICIPANTS_REQUIRED',
+        )
       }
       const entries = []
       for (const id of [...partyIds, ...enemyIds]) {

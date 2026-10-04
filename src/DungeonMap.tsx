@@ -3680,9 +3680,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {combatActive && <div className="hotbar-combat-controls">
             {combatActive && !truce && <button
               className="parley-hotbar"
-              disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck)}
+              disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck) || !actionReady}
               onClick={() => { void onProposeParley('persuasion') }}
-              title={parleyAttempted
+              title={canAct && !actionReady
+                ? 'Действие на этом ходу уже потрачено: переговоры станут доступны в следующий ход'
+                : parleyAttempted
                 ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
                 : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
             ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={18} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
