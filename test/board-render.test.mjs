@@ -311,16 +311,44 @@ test('геометрия длящейся области берётся из are
   )
 })
 
-test('ступень высоты подписана прямо на раскрытой клетке', () => {
-  const map = sampleMap()
-  setCell(map, 4, 0, { elevation: 5, revealed: true })
-  const context = recordingContext()
-  render.drawCellFeatures(context, {
-    map: decoded(map),
-    palette: render.DEFAULT_BOARD_PALETTE,
-    cellSize: 32,
-  }, { tileX: 0, tileY: 0 })
-  assert.ok(context.ops.some((item) => item.op === 'fillText' && item.text === '+5 фт'))
+test('высота на 2D — рельеф без подписей: горизонталь на уступе 5 футов, обрыв на 10', () => {
+  // Ровная раскрытая площадка 5×3; угловая клетка 0,2 скрыта туманом.
+  const ground = (heights = {}) => {
+    const map = createTacticalMap({ width: 5, height: 3, seed: 'relief' })
+    for (let y = 0; y < 3; y += 1) for (let x = 0; x < 5; x += 1) {
+      setCell(map, x, y, { passable: true, material: 'stone', revealed: !(x === 0 && y === 2), elevation: heights[`${x},${y}`] ?? 0 })
+    }
+    return { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  }
+  const draw = (scene, fn = render.drawElevationRelief) => {
+    const context = recordingContext()
+    fn(context, scene, { tileX: 0, tileY: 0 })
+    return context.ops
+  }
+  const strokes = (ops, prefix) => ops.filter((item) => item.op === 'stroke' && (!prefix || String(item.value).startsWith(prefix)))
+
+  const ledge = ground({ '2,1': 5 })
+  assert.equal(draw(ledge, render.drawCellFeatures).filter((item) => item.op === 'fillText').length, 0, 'в клетке нет надписи «+5 фт»')
+  // Уступ в 5 футов: светлая кромка на высокой клетке и тёмная линия на низкой.
+  const contour = draw(ledge)
+  assert.equal(strokes(contour, 'rgba(255,241,212').length, 4, 'кромка со всех четырёх сторон поднятой клетки')
+  assert.equal(strokes(contour, 'rgba(46,31,19').length, 4, 'по линии у каждого соседа')
+  assert.equal(strokes(contour, 'rgba(34,22,13').length, 0, 'это ещё не обрыв')
+
+  // Перепад в 10 футов — обрыв: бровка сверху, штрихи вниз по склону у соседа.
+  const cliff = draw(ground({ '2,1': 10 }))
+  assert.equal(strokes(cliff, 'rgba(34,22,13,.82').length, 4, 'бровка обрыва')
+  assert.equal(strokes(cliff, 'rgba(34,22,13,.7)').length, 4, 'бергштрихи у каждого нижнего соседа')
+
+  // Шаг внутри одной ступени (2 фута) горизонтали не даёт — только светотень.
+  const soft = draw(ground({ '2,1': 2 }))
+  assert.equal(strokes(soft).length, 0)
+  assert.ok(soft.some((item) => item.op === 'fillRect'), 'склон всё равно оттенён')
+
+  // Нераскрытая клетка не выдаёт своей высоты ни линией, ни тенью.
+  assert.equal(draw(ground({ '0,2': 10 })).filter((item) => item.op === 'stroke' || item.op === 'fillRect').length, 0)
+  // Ровная карта рельефа не рисует вовсе.
+  assert.equal(draw(ground()).filter((item) => item.op === 'stroke' || item.op === 'fillRect').length, 0)
 })
 
 test('канонизация ребра на клиенте совпадает с серверной', () => {
@@ -434,6 +462,24 @@ function stubAtlas(frames) {
   return { texture: { image: {}, width: 512, height: 512 }, frames, key: 'stub-atlas' }
 }
 
+test('стоящий предмет отбрасывает тень к юго-востоку, наклейка и настенный — нет', () => {
+  const map = createTacticalMap({ width: 6, height: 4, fill: { passable: true, revealed: true } })
+  addProp(map, { id: 'prop-crate', assetId: 'crate', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }], blocksMove: true })
+  addProp(map, { id: 'prop-rug', assetId: 'rug', x: 4, y: 2, footprint: [] })
+  const atlas = stubAtlas({ crate: { x: 0, y: 0, w: 96, h: 96 }, rug: { x: 0, y: 0, w: 96, h: 96 } })
+  const scene = { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 40, propAtlas: atlas }
+  const context = recordingContext()
+  render.drawProps(context, scene, { tileX: 0, tileY: 0 })
+  const images = context.ops.map((item, index) => ({ item, index })).filter(({ item }) => item.op === 'drawImage')
+  assert.equal(images.length, 2, 'ящик и ковёр нарисованы штампом')
+  const shadows = context.ops.map((item, index) => ({ item, index })).filter(({ item }) => item.op === 'fill' && String(item.value).startsWith('rgba(12,9,6'))
+  assert.equal(shadows.length, 2, 'у ящика тень из двух пятен, у ковра — ни одной')
+  assert.ok(shadows.every(({ index }) => index < images[0].index), 'тень под предметом, а не поверх')
+  // Пятно сдвинуто к юго-востоку от центра предмета.
+  const firstMove = context.ops.slice(0, shadows[0].index).filter((item) => item.op === 'moveTo').at(-1)
+  assert.ok(firstMove.x > 0 && firstMove.y > 0, 'тень лежит к юго-востоку')
+})
+
 test('штамп из атласа заменяет вектор и сохраняет пропорцию рисунка', () => {
   const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true } })
   addProp(map, { id: 'prop-crate', assetId: 'crate', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
@@ -475,7 +521,7 @@ test('без атласа и без своего кадра предмет ос�
   assert.ok(foreign.ops.length > 2)
 })
 
-test('на общем плане штамп уступает силуэту, а ключ тайла помнит про атлас', () => {
+test('на общем плане штамп остаётся рисунком, метка — только ниже порога, а ключ тайла помнит про атлас', () => {
   const map = createTacticalMap({ width: 4, height: 4, fill: { passable: true, revealed: true } })
   addProp(map, { id: 'prop-crate', assetId: 'crate', x: 1.5, y: 1.5, footprint: [{ x: 1, y: 1 }] })
   const clientMap = decoded(map)
@@ -483,10 +529,15 @@ test('на общем плане штамп уступает силуэту, а 
   const palette = render.DEFAULT_BOARD_PALETTE
   const atlas = stubAtlas({ crate: { x: 0, y: 0, w: 96, h: 96 } })
 
-  const small = recordingContext()
-  render.drawProps(small, { map: clientMap, palette, cellSize: render.PROP_FULL_DETAIL_CELL_PIXELS - 1, propAtlas: atlas }, tile)
-  assert.equal(small.ops.some((item) => item.op === 'drawImage'), false,
-    'на мелкой клетке штамп не нужен: там всё равно несколько пикселей')
+  // Уменьшенный штамп — всё ещё ящик; силуэт заливкой превращал деревню на
+  // общем плане в россыпь квадратов.
+  const overview = recordingContext()
+  render.drawProps(overview, { map: clientMap, palette, cellSize: render.PROP_FULL_DETAIL_CELL_PIXELS - 1, propAtlas: atlas }, tile)
+  assert.ok(overview.ops.some((item) => item.op === 'drawImage'), 'на общем плане рисуется штамп')
+  const tiny = recordingContext()
+  render.drawProps(tiny, { map: clientMap, palette, cellSize: render.PROP_MIN_CELL_PIXELS - 1, propAtlas: atlas }, tile)
+  assert.equal(tiny.ops.some((item) => item.op === 'drawImage'), false,
+    'ниже порога предмет — метка: там всё равно несколько пикселей')
 
   // Подгрузка атласа обязана обесценить кэш тайла, иначе местность останется
   // нарисованной вектором до первого изменения карты.
@@ -879,8 +930,20 @@ test('свет запекается в тайл: тьма по сетке, те�
 
   const shadows = context.ops.filter((item) => item.op === 'fillRect' && item.value === '#111827')
   const halo = context.ops.filter((item) => item.op === 'fill' && item.value === '#ffa500')
-  // 256 клеток тайла минус нераскрытая, плюс две полосы тени у единственной стены.
-  assert.equal(shadows.length, 255 + 2, `заливок тьмы ${shadows.length}`)
+  // Тьма каждой раскрытой клетки покрывает её ровно один раз — целиком или
+  // полосами сглаживания; нераскрытая клетка не залита. Последние две
+  // заливки — полосы тени у единственной стены.
+  const cellShadows = shadows.slice(0, -2)
+  const covered = new Map()
+  for (const rect of cellShadows) {
+    const key = `${Math.floor(rect.x / 32)},${Math.floor(rect.y / 32)}`
+    assert.equal(`${Math.floor((rect.x + rect.width - 1) / 32)},${Math.floor((rect.y + rect.height - 1) / 32)}`, key, 'заливка не выходит за свою клетку')
+    covered.set(key, (covered.get(key) ?? 0) + rect.width * rect.height)
+  }
+  assert.equal(covered.size, 255, 'залиты все раскрытые клетки тайла')
+  assert.equal(covered.has('15,15'), false, 'нераскрытая клетка не залита')
+  assert.ok([...covered.values()].every((area) => area === 32 * 32), 'клетка залита ровно один раз, без щелей и наложений')
+  assert.ok(shadows.slice(-2).every((rect) => Math.min(rect.width, rect.height) < 32), 'две полосы тени у стены')
   assert.equal(halo.length, 3, 'ореол факела рисуется тремя кольцами')
   assert.equal(context.globalAlpha, 1, 'прозрачность обязана вернуться к единице')
 
@@ -889,6 +952,41 @@ test('свет запекается в тайл: тьма по сетке, те�
   const atTorch = render.lightShadowAlpha(grid[2 * 16 + 2])
   const far = render.lightShadowAlpha(grid[14 * 16 + 14])
   assert.ok(atTorch < far, `у факела альфа тьмы ${atTorch} обязана быть меньше дальней ${far}`)
+})
+
+test('тьма спадает плавно внутри комнаты и не перетекает через стену', () => {
+  const map = createTacticalMap({ width: 9, height: 3, locationId: 'smooth-light', seed: 'smooth', theme: 'crypt' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'stone', label: 'Зал' })
+  for (let y = 0; y < 3; y += 1) {
+    for (let x = 0; x < 9; x += 1) setCell(map, x, y, { passable: true, revealed: true, material: 'stone', zone: 'hall' })
+    setEdge(map, 5, y, 6, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+  }
+  addProp(map, { id: 'torch', assetId: 'torch_wall', x: 0.5, y: 1.5, footprint: [{ x: 0, y: 1 }] })
+  const palette = { ...render.DEFAULT_BOARD_PALETTE, lightShadow: '#111827' }
+  const scene = { map: decoded(map), palette, cellSize: 36 }
+  const context = recordingContext()
+  render.drawLightShading(context, scene, { tileX: 0, tileY: 0 })
+  // Средний ряд: тьма по горизонтали, от факела к стене и за неё. Полосы
+  // тени у стены (узкие во всю высоту клетки) в выборку не входят.
+  const row = context.ops
+    .filter((item) => item.op === 'fillRect' && item.value === '#111827' && item.y >= 36 && item.y + item.height <= 72)
+    .filter((item) => !(item.height === 36 && item.width < 36))
+    .sort((left, right) => left.x - right.x)
+  const alphaAt = (px) => row.filter((item) => item.x <= px && px < item.x + item.width).at(-1)?.alpha ?? 0
+  // Внутри комнаты соседние полосы отличаются едва заметно — ступеньки на
+  // границе клеток больше нет.
+  const grid = lighting.computeLightGrid(scene.map)
+  const cellJump = Math.abs(render.lightShadowAlpha(grid[9 + 2]) - render.lightShadowAlpha(grid[9 + 3]))
+  const seam = Math.abs(alphaAt(3 * 36 - 1) - alphaAt(3 * 36))
+  assert.ok(cellJump > 0.02, `на сетке между клетками есть перепад ${cellJump}`)
+  assert.ok(seam < cellJump / 3, `на шве клеток перепад ${seam} вместо ${cellJump}`)
+  // Через стену связи нет: тёмная сторона не подтягивается к светлой и
+  // перепад на стене остаётся почти целиком.
+  const cellAlpha = (x, y) => render.lightShadowAlpha(grid[y * 9 + x])
+  const darkSide = Math.min(...[0, 1, 2].flatMap((y) => [cellAlpha(6, y), cellAlpha(7, y)]))
+  const wallJump = cellAlpha(6, 1) - cellAlpha(5, 1)
+  assert.ok(alphaAt(6 * 36) >= darkSide - 1e-9, 'тьма за стеной не светлеет от соседней комнаты')
+  assert.ok(alphaAt(6 * 36) - alphaAt(6 * 36 - 1) > wallJump * 0.6, 'граница света на стене остаётся резкой')
 })
 
 test('ореол источника не пересекает стену и проходит через открытую дверь', () => {

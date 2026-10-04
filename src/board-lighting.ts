@@ -317,6 +317,41 @@ export function lightSignature(map: TacticalMap, theme: string = map.theme): str
   return `${map.terrainHash}:${map.levelIndex}:${theme}`
 }
 
+/** Бит связи: свет проходит к восточному соседу. */
+export const LIGHT_LINK_EAST = 1
+/** Бит связи: свет проходит к южному соседу. */
+export const LIGHT_LINK_SOUTH = 2
+
+const lightLinkCache = new WeakMap<TacticalMap, { signature: string; links: Uint8Array }>()
+
+/**
+ * Связи света между соседними клетками: по клетке байт с битами
+ * `LIGHT_LINK_EAST` и `LIGHT_LINK_SOUTH`. Та же отсечка по рёбрам, что у
+ * сетки (`lightPasses`): стена и закрытая дверь связь рвут. По ним 2D-доска
+ * сглаживает тьму внутри комнаты и не размывает её через стену.
+ */
+export function lightLinksFor(map: TacticalMap): Uint8Array {
+  const signature = `${map.terrainHash}:${map.width}:${map.height}`
+  const cached = lightLinkCache.get(map)
+  if (cached && cached.signature === signature) return cached.links
+  const width = Math.max(0, map.width)
+  const height = Math.max(0, map.height)
+  const links = new Uint8Array(width * height)
+  const doorState = new Map<string, string>()
+  for (const door of map.doors) doorState.set(door.id, door.state)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!cellExists(map, x, y)) continue
+      let bits = 0
+      if (cellExists(map, x + 1, y) && lightPasses(map, doorState, x, y, x + 1, y)) bits |= LIGHT_LINK_EAST
+      if (cellExists(map, x, y + 1) && lightPasses(map, doorState, x, y, x, y + 1)) bits |= LIGHT_LINK_SOUTH
+      links[y * width + x] = bits
+    }
+  }
+  lightLinkCache.set(map, { signature, links })
+  return links
+}
+
 const lightGridCache = new WeakMap<TacticalMap, { signature: string; grid: Uint8Array }>()
 
 /**

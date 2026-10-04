@@ -202,7 +202,14 @@ export function placeSceneFocus(map, assets, { seed }) {
   }
   const { cells, party } = openGround(map)
   const open = new Set(cells.map((cell) => `${cell.x},${cell.y}`))
-  const existing = map.props.find((prop) => ids.has(prop.assetId) && open.has(`${Math.floor(prop.x)},${Math.floor(prop.y)}`))
+  // Свой предмет занимает клетку, и открытая земля его клетку обходит: колодец
+  // площади не находился, и рядом с ним вставал второй. Стоящий предмет
+  // засчитывается, если к нему можно подойти — его клетка или соседняя открыта.
+  const reachable = (/** @type {import('./tactical-map.mjs').TacticalProp} */ prop) => {
+    const footprint = prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
+    return footprint.some((point) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => open.has(`${point.x + dx},${point.y + dy}`)))
+  }
+  const existing = map.props.find((prop) => ids.has(prop.assetId) && !prop.mount && reachable(prop))
   if (existing) return existing.id
   const taken = new Set([...blockedByProps(map), ...doorApproaches(map)])
   const width = Math.max(1, asset.baseFootprint.w || 1)

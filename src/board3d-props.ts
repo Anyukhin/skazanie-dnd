@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-import { propVisualLayout, resolvePropAssetId, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
+import { propDrawingFor, propVisualLayout, resolvePropAssetId, stampFit, PROP_DECAL_ALPHA, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import { detailPropAlias } from './detail-props'
 import type { TacticalProp } from './types'
 import { propModelFit, propModelFor } from './prop-model-catalog'
@@ -375,6 +375,43 @@ function buildGroundDetail(resources: Resources, parent: THREE.Group, layout: La
   else if (kind === 'path-stone' || kind === 'mosaic') { const count = kind === 'mosaic' ? 4 : 3; for (let i = 0; i < count; i += 1) rock(resources, parent, kind, stone, [width / count * 0.75, 0.035, depth / count * 0.75], [(i - (count - 1) / 2) * width / count, 0.03, (i % 2 - 0.5) * depth * 0.3]) }
 }
 
+/** Виды плоских предметов, которые 2D-штамп заменяет целиком. */
+const FLOOR_STAMP_KINDS: ReadonlySet<string> = new Set(['rug', 'floor-stain', 'cave-pool', 'mosaic', 'path-stone', 'fern', 'flowers'])
+
+/**
+ * Ковёр, шкура, пятно, озерцо или мозаика — своим штампом, как на 2D-доске:
+ * тот же габарит, тот же поворот вытянутого рисунка (`stampFit`) и та же
+ * прозрачность (декаль полупрозрачна, озерцо — нет). Наклейка не пишет
+ * глубину, поэтому сетка и туман ложатся поверх неё, как в 2D, а ножки стола
+ * на ковре её закрывают.
+ */
+function buildFloorStamp(resources: Resources, parent: THREE.Group, layout: Layout, assetId: string, texture: THREE.Texture) {
+  const image = texture.image as { width?: number; height?: number } | undefined
+  const frame = { w: Math.max(1, Number(image?.width) || 1), h: Math.max(1, Number(image?.height) || 1) }
+  const fit = stampFit({ hw: layout.width * PROP_FOOTPRINT_FILL / 2, hh: layout.depth * PROP_FOOTPRINT_FILL / 2 }, frame)
+  const key = `stamp:${assetId}`
+  let materialValue = resources.materialPool.get(key)
+  if (!materialValue) {
+    materialValue = new THREE.MeshStandardMaterial({
+      map: texture, transparent: true, opacity: propDrawingFor(assetId).flat ? PROP_DECAL_ALPHA : 1, depthWrite: false, roughness: 0.95, metalness: 0,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
+    })
+    resources.materialPool.set(key, materialValue)
+    resources.materials.add(materialValue)
+  }
+  const plane = geometry(resources, 'floor-stamp', () => new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2))
+  const mesh = new THREE.Mesh(plane, materialValue)
+  mesh.name = 'floor-stamp'
+  mesh.position.y = 0.012
+  // Холст 2D разворачивает рисунок по часовой стрелке; в 3D это минус по Y,
+  // как и общий поворот предмета.
+  if (fit.turn) mesh.rotation.y = -Math.PI / 2
+  mesh.scale.set(fit.width, 1, fit.height)
+  mesh.castShadow = false
+  mesh.receiveShadow = true
+  parent.add(mesh)
+}
+
 function buildSettlement(resources: Resources, parent: THREE.Group, layout: Layout, t: Tones, kind: string) {
   const { width, depth } = dimensions(layout), wood = woodMaterial(t, resources), dark = material(resources, 'wood-dark', t.woodDark), cloth = material(resources, 'fabric', t.fabric), stone = material(resources, 'stone', t.stone)
   if (kind === 'cart') { cube(resources, parent, 'cart-bed', wood, [Math.min(1.5, width * 0.7), 0.18, Math.min(0.7, depth * 0.7)], [0, 0.46, 0]); for (const x of [-0.48, 0.48]) { const wheel = ring(resources, parent, 'cart-wheel', dark, 0.5, 0.08, [x, 0.3, 0], [Math.PI / 2, 0, 0]); wheel.rotation.x = Math.PI / 2 } cube(resources, parent, 'cart-shaft', wood, [0.65, 0.08, 0.08], [0, 0.42, depth * 0.55], [0, 0, 0]) }
@@ -563,6 +600,7 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
       const template = entry ? assets?.models.get(entry.key) : null
       const templateHinge = animatedHingeOf(template)
       const useTemplate = Boolean(template) && (!openContainerState(prop.state) || Boolean(templateHinge))
+      const stamp = !useTemplate && FLOOR_STAMP_KINDS.has(kind) ? assets?.stamps?.get(canonical) : undefined
       if (useTemplate && template) {
         const model = template.clone(true)
         model.updateMatrixWorld(true)
@@ -592,6 +630,9 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         group.userData.modelKey = entry!.key
         group.userData.modelSource = 'glb'
         if (lightHeight !== undefined) group.userData.lightHeight = size.y * fit * .8 + lift
+      } else if (stamp) {
+        buildFloorStamp(owned, group, layout, canonical, stamp)
+        group.userData.modelSource = 'stamp'
       } else if (kind === 'unknown') buildUnknown(owned, group, t)
       else buildModel(owned, group, layout, t, kind)
       applyContainerState(group, kind, prop.state)

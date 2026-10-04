@@ -36,6 +36,8 @@
  */
 
 const TEMPLE = ['temple']
+/** Храмовое, что уместно и в склепе: свет, подношения, постамент. */
+const TEMPLE_AND_CRYPT = ['temple', 'crypt']
 const WILD = ['forest', 'road', 'settlement', 'exterior', 'graveyard']
 
 /**
@@ -111,7 +113,7 @@ export const DETAIL_PROPS = Object.freeze([
   detail('globe', ['study'], '1x1', 'm', 'urn'),
   detail('map_table', ['study', 'barracks'], '2x2', 'mc', 'table_round'),
   detail('reading_nook', ['study'], '2x1', 'mw', 'bench'),
-  detail('strongbox', ['study', 'prison'], '1x1', 'mcw', 'chest'),
+  detail('strongbox', ['study', 'prison', 'crypt'], '1x1', 'mcw', 'chest'),
   detail('telescope', ['study'], '1x1', 'm', 'signpost'),
   detail('paper_scatter', ['study'], '0x0', 'd', 'floor_stain'),
 
@@ -145,7 +147,7 @@ export const DETAIL_PROPS = Object.freeze([
   detail('jailer_desk', ['prison'], '1x1', 'mc', 'table_small'),
   detail('torture_rack', ['prison'], '2x1', 'mc', 'table_long'),
   detail('stocks', ['prison', 'street'], '2x1', 'mc', 'village_fence'),
-  detail('bone_heap', ['prison'], '0x0', '', 'bone_pile'),
+  detail('bone_heap', ['prison', 'crypt'], '0x0', '', 'bone_pile'),
   detail('drain_grate', ['prison'], '0x0', 'd', 'path_stone'),
   detail('straw_scatter', ['prison', 'farm'], '0x0', 'd', 'floor_stain'),
   detail('scorch_mark', ['prison', 'forge'], '0x0', 'd', 'floor_stain'),
@@ -154,10 +156,10 @@ export const DETAIL_PROPS = Object.freeze([
   detail('idol', TEMPLE, '2x2', 'msw', 'statue'),
   detail('holy_pool', TEMPLE, '2x2', 'm', 'cave_pool'),
   detail('font_basin', TEMPLE, '1x1', 'mc', 'washbasin'),
-  detail('incense_burner', TEMPLE, '1x1', 'm', 'brazier'),
+  detail('incense_burner', TEMPLE_AND_CRYPT, '1x1', 'm', 'brazier'),
   detail('kneeling_cushions', TEMPLE, '2x1', '', 'prayer_bench'),
-  detail('candle_rack', TEMPLE, '2x1', 'mw', 'candelabra'),
-  detail('offering_table', TEMPLE, '2x1', 'mcw', 'altar'),
+  detail('candle_rack', TEMPLE_AND_CRYPT, '2x1', 'mw', 'candelabra'),
+  detail('offering_table', TEMPLE_AND_CRYPT, '2x1', 'mcw', 'altar'),
   detail('temple_lectern', TEMPLE, '1x1', 'm', 'reliquary'),
   detail('bell_frame', TEMPLE, '2x1', 'm', 'roadside_shrine'),
 
@@ -191,7 +193,7 @@ export const DETAIL_PROPS = Object.freeze([
   detail('notice_board', ['street'], '1x1', 'm', 'sign_board'),
   detail('sign_post_city', ['street'], '1x1', 'm', 'signpost'),
   detail('pillory', ['street'], '2x1', 'mc', 'village_fence'),
-  detail('statue_plinth', ['street', 'temple'], '2x2', 'ms', 'statue'),
+  detail('statue_plinth', ['street', 'temple', 'crypt'], '2x2', 'ms', 'statue'),
   detail('street_planter', ['street'], '1x1', 'mc', 'bush'),
 
   // --- Река и пристань ---------------------------------------------------
@@ -239,11 +241,11 @@ export const DETAIL_PROPS = Object.freeze([
   detail('arch_shelf', ['study', 'shop', 'temple'], '2x1', 'mw', 'shelf_wall'),
   detail('cutlery_set', ['kitchen', 'hall', 'study'], '0x0', '', 'plate', { min: 1.2, max: 1.8 }),
   detail('tool_peg_rack', ['forge', 'workshop', 'barracks'], '2x1', 'w', 'shelf_wall'),
-  detail('chain_coil', ['forge', 'workshop', 'prison', 'mine'], '0x0', '', 'rubble_heap'),
+  detail('chain_coil', ['forge', 'workshop', 'prison', 'mine', 'crypt'], '0x0', '', 'rubble_heap'),
   detail('book_piles', ['study', 'bedroom', 'temple'], '0x0', '', 'mug', { min: .9, max: 1.4 }),
   detail('crystal_cluster', ['cave', 'mine', 'dungeon'], '1x1', 'mc', 'boulder', { min: .8, max: 1.25 }),
   detail('nomad_tent', ['desert', 'camp'], '2x2', 'mc', 'haystack'),
-  detail('obsidian_monolith', ['cave', 'dungeon', 'graveyard', 'temple'], '1x1', 'msc', 'pillar'),
+  detail('obsidian_monolith', ['cave', 'dungeon', 'graveyard', 'temple', 'crypt'], '1x1', 'msc', 'pillar'),
   detail('weapon_rack', ['barracks', 'workshop', 'prison'], '2x1', 'w', 'shelf_wall'),
   detail('scout_tent', ['camp', 'barracks'], '2x2', 'mc', 'haystack'),
   detail('timber_shoring', ['mine', 'cave', 'dungeon'], '2x1', 'w', 'village_fence'),
