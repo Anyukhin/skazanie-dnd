@@ -41,11 +41,43 @@ export function isMapRef(value) {
 }
 
 /**
- * @param {unknown} value
+ * @param {string} text
  * @returns {string}
  */
-function digest(value) {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+function sha256(text) {
+  return createHash('sha256').update(text).digest('hex')
+}
+
+/** Адрес карты — SHA-256 содержимого в нижнем регистре. */
+const MAP_HASH = /^[0-9a-f]{64}$/u
+
+/**
+ * Файл карты есть, но его содержимое не то, на которое указывает адрес.
+ *
+ * Аудит PR #131, RCV-03: прежде `get` отдавал любой разобранный JSON, и
+ * изменённая под прежним хешем карта проходила контрольную сумму снимка —
+ * та считается по ссылке, а не по байтам карты. После перезапуска кампания
+ * молча оказывалась в другом мире. Теперь такое чтение — отказ с кодом,
+ * а `internalizeMaps` считает ссылку неразрешённой, и хранилище событий
+ * идёт прежним безопасным путём: предыдущий снимок или replay.
+ */
+export class MapBlobIntegrityError extends Error {
+  /**
+   * @param {string} hash адрес из ссылки
+   * @param {string} code `MAP_BLOB_HASH_MISMATCH` или `MAP_REF_INVALID`
+   * @param {Record<string, unknown>} [details]
+   */
+  constructor(hash, code, details = {}) {
+    super(code === 'MAP_REF_INVALID'
+      ? 'Ссылка на карту не является хешем содержимого'
+      : `Содержимое карты ${hash.slice(0, 12)}… не совпадает с её адресом`)
+    // Та же форма, что у ошибок хранилища событий (`EventStoreError`):
+    // имя класса, код и подробности полями самой ошибки.
+    this.name = 'MapBlobIntegrityError'
+    this.code = code
+    this.hash = hash
+    Object.assign(this, details)
+  }
 }
 
 /**
@@ -74,8 +106,14 @@ export class MapStore {
     if (!rootDir) throw new Error('MapStore требует rootDir')
     this.rootDir = join(rootDir, 'maps')
     this.cacheSize = Math.max(1, cacheSize)
-    /** @type {Map<string, unknown>} */
+    // Кэш держит проверенный JSON-текст, а не объект: каждый `get` отдаёт
+    // новую копию, и вызывающий, поправив её, не испортит то, что следующий
+    // `get` вернёт под тем же хешем (аудит PR #131, RCV-03).
+    /** @type {Map<string, string>} */
     this.cache = new Map()
+    /** Хеши, чей файл оказался чужим содержимым: `put` перепишет его верным. */
+    /** @type {Set<string>} */
+    this.corrupt = new Set()
   }
 
   /**
@@ -96,10 +134,17 @@ export class MapStore {
    * @returns {MapRef}
    */
   put(serializedMap) {
-    const hash = digest(serializedMap)
+    const text = JSON.stringify(serializedMap)
+    const hash = sha256(text)
     const file = this.fileFor(hash)
-    if (!existsSync(file)) atomicWrite(file, JSON.stringify(serializedMap))
-    this._remember(hash, serializedMap)
+    // Файл, который `get` уже уличил в чужом содержимом, переписывается верным:
+    // адрес задаёт содержимое, и это восстановление карты, а не её правка.
+    // Иначе каждый следующий снимок ссылался бы на тот же испорченный файл.
+    if (!existsSync(file) || this.corrupt.has(hash)) {
+      atomicWrite(file, text)
+      this.corrupt.delete(hash)
+    }
+    this._remember(hash, text)
     return {
       marker: MAP_REF_MARKER,
       hash,
@@ -109,31 +154,49 @@ export class MapStore {
   }
 
   /**
+   * Карта по адресу — всегда новая копия.
+   *
+   * Содержимое файла сверяется с адресом тем же digest, что и при записи
+   * (аудит PR #131, RCV-03): от канонического JSON значения, а не от байтов
+   * файла, поэтому перевод строки или отступы карту чужой не делают, а другая
+   * клетка — делает. Кэш хранит только сверенный текст.
+   *
    * @param {string} hash
-   * @returns {Record<string, any>|null} null, если карты нет — вызывающий обязан
-   *   пережить это, а не упасть: потеря файла карты не должна ронять кампанию
+   * @returns {Record<string, any>|null} null, если карты нет или файл не
+   *   разбирается — вызывающий обязан пережить это, а не упасть: потеря файла
+   *   карты не должна ронять кампанию
+   * @throws {MapBlobIntegrityError} файл есть, но в нём не та карта
+   *   (`MAP_BLOB_HASH_MISMATCH`), или адрес — не хеш (`MAP_REF_INVALID`)
    */
   get(hash) {
-    if (this.cache.has(hash)) {
-      const value = this.cache.get(hash)
-      this.cache.delete(hash)
-      this.cache.set(hash, value)
-      return /** @type {Record<string, any>} */ (value)
+    if (typeof hash !== 'string' || !MAP_HASH.test(hash)) throw new MapBlobIntegrityError(String(hash), 'MAP_REF_INVALID')
+    const cached = this.cache.get(hash)
+    if (cached !== undefined) {
+      this._remember(hash, cached)
+      return JSON.parse(cached)
     }
     const file = this.fileFor(hash)
     if (!existsSync(file)) return null
+    /** @type {Record<string, any>} */
+    let parsed
     try {
-      const parsed = JSON.parse(readFileSync(file, 'utf8'))
-      this._remember(hash, parsed)
-      return parsed
+      parsed = JSON.parse(readFileSync(file, 'utf8'))
     } catch {
       return null
     }
+    const text = JSON.stringify(parsed)
+    const actual = sha256(text)
+    if (actual !== hash) {
+      this.corrupt.add(hash)
+      throw new MapBlobIntegrityError(hash, 'MAP_BLOB_HASH_MISMATCH', { actual_hash: actual })
+    }
+    this._remember(hash, text)
+    return parsed
   }
 
   /**
    * @param {string} hash
-   * @param {unknown} value
+   * @param {string} value сверенный JSON-текст карты
    */
   _remember(hash, value) {
     this.cache.delete(hash)
@@ -176,12 +239,34 @@ function putCells(store, cells) {
 }
 
 /**
+ * Карта по ссылке или `null`, если её не вернуть: файла нет, он не
+ * разбирается или в нём не та карта. Подмену вызывающий узнаёт по списку
+ * `corrupt`, но поступает с ней как с потерей — снимок с такой ссылкой
+ * непригоден (аудит PR #131, RCV-03).
+ *
  * @param {MapStore} store
  * @param {string} hash
+ * @param {string[]} corrupt
+ * @returns {Record<string, any>|null}
+ */
+function restoreBlob(store, hash, corrupt) {
+  try {
+    return store.get(hash)
+  } catch (error) {
+    if (!(error instanceof MapBlobIntegrityError)) throw error
+    corrupt.push(hash)
+    return null
+  }
+}
+
+/**
+ * @param {MapStore} store
+ * @param {string} hash
+ * @param {string[]} corrupt
  * @returns {unknown[]|null} null, если файла нет — вызывающий обязан пережить
  */
-function getCells(store, hash) {
-  const body = store.get(hash)
+function getCells(store, hash, corrupt) {
+  const body = restoreBlob(store, hash, corrupt)
   return Array.isArray(body?.cells) ? body.cells : null
 }
 
@@ -243,19 +328,25 @@ export function externalizeMaps(state, store) {
  * Возвращает карты на место. Если файла нет, ссылка остаётся ссылкой: состояние
  * читаемо, а нормализация соберёт карту заново из производных клеток.
  *
+ * Файл с чужим содержимым под адресом ссылки — тоже неразрешённая ссылка:
+ * хеш попадает и в `missing` (по нему хранилище событий отвергает снимок), и
+ * в `corrupt` — чтобы потерю можно было отличить от подмены.
+ *
  * @param {Record<string, any>} state
  * @param {MapStore} store
- * @returns {{state: Record<string, any>, missing: string[]}}
+ * @returns {{state: Record<string, any>, missing: string[], corrupt: string[]}}
  */
 export function internalizeMaps(state, store) {
   /** @type {string[]} */
   const missing = []
-  if (!state || typeof state !== 'object') return { state, missing }
+  /** @type {string[]} */
+  const corrupt = []
+  if (!state || typeof state !== 'object') return { state, missing, corrupt }
   let changed = false
   const next = { ...state }
 
   if (state.scene && typeof state.scene === 'object' && isMapRef(state.scene.map)) {
-    const restored = store.get(state.scene.map.hash)
+    const restored = restoreBlob(store, state.scene.map.hash, corrupt)
     if (restored) {
       const scene = { ...state.scene, map: restored }
       // Производный массив клеток пересобирается из карты — ровно тем же
@@ -284,12 +375,12 @@ export function internalizeMaps(state, store) {
       }
       let entry = record
       if (isMapRef(entry.map)) {
-        const restored = store.get(entry.map.hash)
+        const restored = restoreBlob(store, entry.map.hash, corrupt)
         if (restored) entry = { ...entry, map: restored }
         else missing.push(entry.map.hash)
       }
       if (isMapRef(entry.cells)) {
-        const restored = getCells(store, entry.cells.hash)
+        const restored = getCells(store, entry.cells.hash, corrupt)
         if (restored) entry = { ...entry, cells: restored }
         else missing.push(entry.cells.hash)
       }
@@ -299,5 +390,5 @@ export function internalizeMaps(state, store) {
     if (touched) { next.locationMaps = replaced; changed = true }
   }
 
-  return { state: changed ? next : state, missing }
+  return { state: changed ? next : state, missing, corrupt }
 }

@@ -254,3 +254,103 @@ export function clearPendingNarrate(storage, key, requestId) {
   }
   clearPendingTacticalCommand(storage, key)
 }
+
+/*
+ * Голос и общий бросок отряда с неизвестным исходом (аудит PR #131, REC-02).
+ *
+ * Тот же принцип, что у свободного действия выше, в отдельном слоте. Раньше
+ * каждое нажатие рождало новый ключ: сервер записывал голос, ответ терялся, и
+ * повтор того же голоса уходил с новым ключом — второй `PartyVoteCast` (тот же
+ * бюллетень, но лишний commit). Общий бросок закрывает решение атомарно, и
+ * повтор с новым ключом получал 409 вместо уже выпавшей кости.
+ *
+ * Та же операция (кампания, решение, герой, вид и вариант) уходит с прежним
+ * ключом и тем же телом, и сервер вернёт записанный commit. Другая операция —
+ * например, игрок передумал и выбрал другой вариант — получает новый ключ:
+ * смена голоса до кворума разрешена правилами. Запись снимается только
+ * известным исходом: принятым ответом или авторитетным отказом 4xx.
+ */
+const PARTY_DECISION_OPERATIONS = new Set(['vote', 'abstain', 'roll'])
+const MAX_PARTY_DECISION_ID_LENGTH = 200
+
+function partyDecisionIntent(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const campaignId = text(value.campaignId, MAX_CAMPAIGN_ID_LENGTH).toUpperCase()
+  const interactionId = text(value.interactionId, MAX_PARTY_DECISION_ID_LENGTH)
+  const actorId = text(value.actorId, MAX_REQUEST_ID_LENGTH)
+  const operation = PARTY_DECISION_OPERATIONS.has(value.operation) ? value.operation : null
+  const optionId = operation === 'vote' ? text(value.optionId, MAX_PARTY_DECISION_ID_LENGTH) : ''
+  if (!campaignId || !interactionId || !actorId || !operation || (operation === 'vote' && !optionId)) return null
+  return { campaignId, interactionId, actorId, operation, ...(optionId ? { optionId } : {}) }
+}
+
+function validPendingPartyDecision(value) {
+  const intent = partyDecisionIntent(value)
+  const requestId = text(value?.requestId, MAX_REQUEST_ID_LENGTH)
+  return intent && requestId ? { ...intent, requestId } : null
+}
+
+/** Та же ли это операция отряда: кампания, решение, герой, вид и вариант. */
+export function partyDecisionIntentMatches(pending, intent) {
+  const left = partyDecisionIntent(pending)
+  const right = partyDecisionIntent(intent)
+  if (!left || !right) return false
+  return left.campaignId === right.campaignId
+    && left.interactionId === right.interactionId
+    && left.actorId === right.actorId
+    && left.operation === right.operation
+    && (left.optionId ?? '') === (right.optionId ?? '')
+}
+
+/**
+ * Запись для отправки: повтор той же операции возвращает прежнюю запись с её
+ * ключом, другая операция — новую. `newKey` вызывается только для новой.
+ */
+export function partyDecisionRecoveryFor(existing, intent, { newKey }) {
+  const previous = validPendingPartyDecision(existing)
+  if (previous && partyDecisionIntentMatches(previous, intent)) return previous
+  const fresh = partyDecisionIntent(intent)
+  return fresh ? validPendingPartyDecision({ ...fresh, requestId: newKey() }) : null
+}
+
+/** Запрос из записи: путь и тело собираются только из неё, повтор шлёт ровно то же. */
+export function partyDecisionRequest(pending) {
+  const value = validPendingPartyDecision(pending)
+  if (!value) return null
+  const base = `/api/campaigns/${encodeURIComponent(value.campaignId)}/party-decisions/${encodeURIComponent(value.interactionId)}`
+  const body = value.operation === 'roll'
+    ? { actor_id: value.actorId, idempotency_key: value.requestId }
+    : value.operation === 'abstain'
+      ? { actor_id: value.actorId, abstain: true, idempotency_key: value.requestId }
+      : { actor_id: value.actorId, option_id: value.optionId, idempotency_key: value.requestId }
+  return {
+    path: value.operation === 'roll' ? `${base}/roll` : `${base}/votes`,
+    init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    body,
+  }
+}
+
+export function pendingPartyDecisionStorageKey(accountId, campaignId) {
+  const account = text(accountId, MAX_REQUEST_ID_LENGTH)
+  const campaign = text(campaignId, MAX_CAMPAIGN_ID_LENGTH).toUpperCase()
+  if (!account || !campaign) return null
+  return `skazanie-pending-party-decision-v${PENDING_SCHEMA_VERSION}:${encodeURIComponent(account)}:${encodeURIComponent(campaign)}`
+}
+
+export function readPendingPartyDecision(storage, key) {
+  return readPending(storage, key, validPendingPartyDecision)
+}
+
+export function writePendingPartyDecision(storage, key, pending) {
+  writePending(storage, key, validPendingPartyDecision(pending))
+}
+
+/** Снимает запись после известного исхода; с `requestId` — только свою. */
+export function clearPendingPartyDecision(storage, key, requestId) {
+  if (!storage || !key) return
+  if (requestId) {
+    const current = readPendingPartyDecision(storage, key)
+    if (current && current.requestId !== requestId) return
+  }
+  clearPendingTacticalCommand(storage, key)
+}

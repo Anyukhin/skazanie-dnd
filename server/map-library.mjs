@@ -413,6 +413,132 @@ const LIBRARY_BLOCKING_PROBLEMS = new Set([
   'PROP_ON_SOLID_CELL', 'DOOR_TO_NOWHERE', 'BUILDING_WITHOUT_EXIT',
 ])
 
+/**
+ * Те же изъяны для этажа выше или ниже входа. Отряд встаёт там не на точку
+ * появления, а у обратной лестницы (`levelTransitionBackTo` в Rules Engine),
+ * поэтому проверка идёт от неё, и `PARTY_SPAWN_BLOCKED` значит «лестница
+ * выводит в стену или под шкаф».
+ *
+ * Чего здесь нет — намеренно. `BUILDING_WITHOUT_EXIT`: выход с верхнего этажа —
+ * лестница, а не дверь наружу. `UNREACHABLE_FLOOR`: проверка досягаемости идёт
+ * от одной точки и только по сторонам клетки, а у настоящих построек верхний
+ * ярус бывает разделён — деревня из двух двухэтажных домов даёт этаж из двух
+ * несвязанных чердаков, а марш лестницы нередко выходит на площадку по
+ * диагонали (так у тестового дома `test/talespire-fixtures.mjs`). Это
+ * свойство постройки, а не повреждение карты.
+ */
+const LIBRARY_UPPER_BLOCKING_PROBLEMS = new Set([
+  'PARTY_SPAWN_BLOCKED', 'PROP_OUT_OF_BOUNDS', 'PROP_ON_SOLID_CELL', 'DOOR_TO_NOWHERE',
+])
+
+/**
+ * Переход на целевом этаже, у которого встаёт пришедший с этажа `from`. Тем же
+ * правилом пользуется `UseLevelTransition` (`levelTransitionBackTo`).
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {number} from
+ */
+function arrivalFrom(map, from) {
+  return map.props.find((prop) => Number(prop.transition?.toLevel) === from) ?? null
+}
+
+/**
+ * Изъяны записи библиотеки по всем её этажам; пустой список — карту можно брать.
+ *
+ * Аудит PR #131, AI-06: прежде мерился только этаж входа, и постройка с целым
+ * первым этажом и битым вторым уходила в сцену, а битый этаж ложился в память
+ * локации без единой проверки. Теперь каждый этаж проходит свою мерку:
+ *
+ * - этаж входа — прежняя: точка появления отряда, досягаемость пола, выход
+ *   наружу (`LIBRARY_BLOCKING_PROBLEMS`);
+ * - остальные этажи — структура и место у обратной лестницы
+ *   (`LIBRARY_UPPER_BLOCKING_PROBLEMS`);
+ * - лестницы связывают этажи самой записи: переход ведёт на этаж, который в
+ *   ней есть, оттуда есть обратный, и от этажа входа по ним доходишь до
+ *   каждого этажа. Иначе `UseLevelTransition` откажет посреди игры
+ *   (`LEVEL_ARRIVAL_MISSING`) или достроит недостающий этаж генератором поверх
+ *   чужой постройки.
+ *
+ * Функция чистая: тот же набор этажей даёт тот же ответ, поэтому подбор карты
+ * остаётся детерминированным.
+ *
+ * @param {Array<{ index: number, label?: string, map: Record<string, unknown> }>|null|undefined} levels
+ * @returns {Array<{ level: number, code: string, detail?: string }>}
+ */
+export function libraryLevelProblems(levels) {
+  /** @type {Array<{ level: number, code: string, detail?: string }>} */
+  const problems = []
+  /** @type {Map<number, import('./tactical-map.mjs').TacticalMap>} */
+  const maps = new Map()
+  for (const level of Array.isArray(levels) ? levels : []) {
+    const index = Number(level?.index)
+    if (!Number.isSafeInteger(index) || maps.has(index)) {
+      problems.push({ level: index, code: 'LEVEL_INDEX_INVALID' })
+      continue
+    }
+    try {
+      const map = deserializeTacticalMap(structuredClone(level.map))
+      // Этаж записи и этаж карты — одно число: по первому этаж ложится в
+      // память локации, по второму Rules Engine считает, откуда пришёл отряд.
+      if (map.levelIndex !== index) problems.push({ level: index, code: 'LEVEL_INDEX_MISMATCH', detail: String(map.levelIndex) })
+      else maps.set(index, map)
+    } catch {
+      problems.push({ level: index, code: 'LEVEL_MAP_INVALID' })
+    }
+  }
+  if (!maps.has(0)) return [...problems, { level: 0, code: 'NO_ENTRY_LEVEL' }]
+
+  /** @type {Map<number, Set<number>>} куда с этажа ведут исправные лестницы */
+  const links = new Map()
+  for (const [index, map] of maps) {
+    for (const prop of map.props) {
+      if (!prop.transition) continue
+      const to = Number(prop.transition.toLevel)
+      const target = maps.get(to)
+      if (!target) problems.push({ level: index, code: 'TRANSITION_BROKEN', detail: `${prop.id}→${to}` })
+      else if (!arrivalFrom(target, index)) problems.push({ level: index, code: 'TRANSITION_WITHOUT_RETURN', detail: `${prop.id}→${to}` })
+      else links.set(index, (links.get(index) ?? new Set()).add(to))
+    }
+  }
+  /** @type {Set<number>} */
+  const reached = new Set([0])
+  for (const queue = [0]; queue.length;) {
+    for (const to of links.get(/** @type {number} */ (queue.shift())) ?? []) {
+      if (!reached.has(to)) { reached.add(to); queue.push(to) }
+    }
+  }
+
+  for (const [index, map] of [...maps].sort((left, right) => left[0] - right[0])) {
+    if (index === 0) {
+      for (const problem of auditTacticalMap(map).problems) {
+        if (LIBRARY_BLOCKING_PROBLEMS.has(problem.code)) problems.push({ level: index, ...problem })
+      }
+      continue
+    }
+    if (!reached.has(index)) {
+      problems.push({ level: index, code: 'LEVEL_UNREACHABLE' })
+      continue
+    }
+    // Отряд приходит сюда с каждого этажа, откуда ведёт исправная лестница, и
+    // встаёт у своей обратной. Структурные изъяны от точки прибытия не зависят —
+    // их достаточно собрать один раз.
+    const arrivals = [...links].filter(([, targets]) => targets.has(index))
+      .map(([from]) => arrivalFrom(map, from))
+    arrivals.forEach((arrival, order) => {
+      const spot = arrival?.footprint?.[0]
+      if (!spot) {
+        problems.push({ level: index, code: 'LEVEL_ARRIVAL_MISSING', detail: String(arrival?.id ?? '') })
+        return
+      }
+      const probe = { ...map, spawnPoints: [{ id: 'library-arrival', x: spot.x, y: spot.y, role: 'party' }] }
+      for (const problem of auditTacticalMap(probe).problems) {
+        if (order > 0 && problem.code !== 'PARTY_SPAWN_BLOCKED') continue
+        if (LIBRARY_UPPER_BLOCKING_PROBLEMS.has(problem.code)) problems.push({ level: index, ...problem })
+      }
+    })
+  }
+  return problems
+}
+
 export class MapLibrary {
   /** @param {string} storageDir корень хранилища (`DND_STORAGE_DIR`) */
   constructor(storageDir) {
@@ -476,13 +602,14 @@ export class MapLibrary {
   pick(request, options) {
     const rejected = new Set(options.usedIds ?? [])
     // Неиграбельная карта отбрасывается, и выбор идёт к следующей: отряд не
-    // должен начинать сцену в замурованной комнате или видеть дверь в стену.
+    // должен начинать сцену в замурованной комнате или видеть дверь в стену —
+    // ни на этаже входа, ни на этаже, куда ведёт лестница (аудит PR #131, AI-06).
     for (let attempt = 0; attempt < LIBRARY_PICK_ATTEMPTS; attempt += 1) {
       const entry = chooseLibraryMap(this.entries(), request, { ...options, usedIds: rejected })
       if (!entry) return null
       const levels = this.levels(entry.id)
       const ground = levels?.find((level) => Number(level.index) === 0)
-      if (ground && this.playable(entry.id, ground.map) && (!options.check || options.check(ground.map))) {
+      if (ground && this.playable(entry.id, levels) && (!options.check || options.check(ground.map))) {
         return { entry, levels: /** @type {NonNullable<typeof levels>} */ (levels) }
       }
       rejected.add(entry.id)
@@ -491,21 +618,22 @@ export class MapLibrary {
   }
 
   /**
-   * Проходит ли этаж входа проверку играбельности. Результат запоминается
-   * до смены индекса библиотеки: проверка большой карты — десятки
-   * миллисекунд, а подбор идёт на каждой новой локации.
+   * Проходят ли все этажи записи проверку (`libraryLevelProblems`). Результат
+   * запоминается до смены индекса библиотеки: проверка большой карты —
+   * десятки миллисекунд на этаж, а подбор идёт на каждой новой локации.
+   * Запись при этом не трогается и битой не помечается: отказ живёт только
+   * в памяти процесса и касается одного автоподбора.
    * @param {string} id
-   * @param {Record<string, unknown>} map
+   * @param {Array<{ index: number, label?: string, map: Record<string, unknown> }>|null|undefined} levels
    */
-  playable(id, map) {
+  playable(id, levels) {
     const mtime = this.cache?.mtime ?? 0
     if (this.audits?.mtime !== mtime) this.audits = { mtime, results: new Map() }
     const known = this.audits.results.get(id)
     if (known !== undefined) return known
     let ok = false
     try {
-      const report = auditTacticalMap(deserializeTacticalMap(structuredClone(map)))
-      ok = !report.problems.some((problem) => LIBRARY_BLOCKING_PROBLEMS.has(problem.code))
+      ok = libraryLevelProblems(levels).length === 0
     } catch {
       ok = false
     }

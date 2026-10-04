@@ -26,6 +26,10 @@ export class RollRegistry {
     this.storageFile = storageFile ? resolve(storageFile) : null
     this.rolls = new Map()
     this.checks = new Map()
+    // Аудит PR #131, SEC-04: сколько запросов этого процесса держат резерв
+    // броска (потребили его и ещё не узнали исход commit). Только в памяти:
+    // после перезапуска держателей нет по определению.
+    this.reservationHolders = new Map()
     this._load()
     this.cleanup()
   }
@@ -213,8 +217,87 @@ export class RollRegistry {
     }
     if (validateContext) validateContext(structuredClone(entry.context ?? null))
     entry.consumed_by = key || `used:${this.now()}`
+    // Аудит PR #131, SEC-04: исход хода ещё не известен (см. finishReservation).
+    entry.commit_pending = true
     this._persist()
+    const id = String(rollId)
+    this.reservationHolders.set(id, (this.reservationHolders.get(id) ?? 0) + 1)
     return structuredClone({ ...entry.result, ...(entry.context ? { context: entry.context } : {}) })
+  }
+
+  /**
+   * Аудит PR #131, SEC-04: `consume` помечает бросок потреблённым раньше, чем
+   * ход фиксируется в журнале. Если commit не состоялся (отказ движка, конфликт
+   * версии, сбой записи), пометка оставалась навсегда: другой ключ получал
+   * `ROLL_ALREADY_USED`, карточка проверки пропадала, а повтор с тем же ключом
+   * зависел от того, не сдвинулась ли обстановка.
+   *
+   * Теперь `consume` — резерв (`commit_pending`), а исход сообщает маршрут.
+   * `committed: true` — запрос завершён (ход в журнале, отвергнут по существу
+   * или исход неизвестен): бросок окончательно потреблён. `committed: false` —
+   * commit по этому ключу не состоялся: когда последний держатель резерва в
+   * процессе его отпустил, бросок снова доступен. Кость при этом та же —
+   * переброса нет, а применить её можно только одним commit. Резерв другого
+   * ключа и уже закреплённый резерв не трогаются.
+   *
+   * @returns {boolean} снят ли резерв
+   */
+  finishReservation(rollId, { idempotencyKey, committed = true } = {}) {
+    const id = String(rollId || '')
+    const holders = this.reservationHolders.get(id) ?? 0
+    if (holders <= 1) this.reservationHolders.delete(id)
+    else this.reservationHolders.set(id, holders - 1)
+    const key = String(idempotencyKey || '')
+    const entry = this.rolls.get(id)
+    if (!entry || !key || entry.consumed_by !== key || entry.commit_pending !== true) return false
+    if (committed) {
+      delete entry.commit_pending
+      this._persist()
+      return false
+    }
+    // Пока резерв держит другой запрос того же ключа, его commit ещё возможен.
+    if (holders > 1) return false
+    entry.consumed_by = null
+    delete entry.commit_pending
+    this._persist()
+    return true
+  }
+
+  /**
+   * Аудит PR #131, SEC-04: восстановление после остановки процесса между
+   * `consume` и исходом хода. На старте держателей нет, поэтому незакреплённый
+   * резерв, чей ключ не дал commit, — осиротевший, и он снимается; с commit —
+   * закрепляется. Резерв с неизвестным исходом (ошибка чтения журнала) остаётся
+   * как есть: при сомнении защита от двойного применения важнее. Завершённые
+   * запросы (в том числе отвергнутые без commit) не пересматриваются.
+   *
+   * @param {(campaignId: string, idempotencyKey: string) => Promise<boolean>} hasCommit
+   * @returns {Promise<string[]>} идентификаторы освобождённых бросков
+   */
+  async releaseOrphanReservations(hasCommit) {
+    this.cleanup()
+    const released = []
+    let changed = false
+    for (const [id, entry] of [...this.rolls]) {
+      const key = String(entry.consumed_by ?? '')
+      // Потребление без ключа (`used:<время>`) с журналом не сверить.
+      if (entry.commit_pending !== true || !key || key.startsWith('used:') || this.reservationHolders.has(id)) continue
+      let committed
+      try {
+        committed = Boolean(await hasCommit(String(entry.campaign_id ?? ''), key))
+      } catch {
+        continue
+      }
+      // Пока шла проверка, резерв мог снова взять запрос того же ключа.
+      if (entry.consumed_by !== key || entry.commit_pending !== true || this.reservationHolders.has(id)) continue
+      delete entry.commit_pending
+      changed = true
+      if (committed) continue
+      entry.consumed_by = null
+      released.push(id)
+    }
+    if (changed) this._persist()
+    return released
   }
 
   /** Карточка, под которую выдана кость, либо `null` для ничейного броска. */

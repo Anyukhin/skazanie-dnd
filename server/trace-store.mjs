@@ -78,12 +78,32 @@ export class FileTraceStore {
       token_usage: input.token_usage ?? {},
       narration_result: input.narration_result ?? null,
       ruling: input.ruling ?? null,
+      // Аудит PR #131, SEC-03: пометка трассы, собранной заново по уже
+      // записанному commit, а не в момент самого хода.
+      ...(input.recovery ? { recovery: input.recovery } : {}),
       created_at: input.created_at || new Date().toISOString(),
     })
     safeId(trace.turn_id, 'turn_id')
     safeId(trace.campaign_id, 'campaign_id')
     atomicJson(join(this.campaignDir(trace.campaign_id), `${trace.turn_id}.json`), trace)
     return trace
+  }
+
+  /**
+   * Аудит PR #131, SEC-03: записывает трассу, только если её ещё нет.
+   *
+   * Восстановленная трасса — запасная: она не должна затирать полную трассу
+   * исходного запроса, если тот успел её записать. Обратное разрешено — обычный
+   * `save` исходного хода перезапишет восстановленную. Проверка и запись идут
+   * одним синхронным шагом, поэтому внутри процесса между ними никто не
+   * вклинится; файловое хранилище, как и журнал событий, однописательное.
+   *
+   * @returns {{ trace: Record<string, any>, created: boolean }}
+   */
+  saveIfAbsent(input) {
+    const existing = this.get(input.campaign_id, input.turn_id)
+    if (existing) return { trace: existing, created: false }
+    return { trace: this.save(input), created: true }
   }
 
   get(campaignId, turnId) {
@@ -166,5 +186,8 @@ export function buildTurnExplanation(trace, viewer = null) {
     state_version_before: record.state_version_before,
     state_version_after: record.state_version_after,
     verification: record.verification_result ?? {},
+    // Аудит PR #131, SEC-03: `/why` честно говорит, что трасса собрана по
+    // журналу после сбоя записи, а не в момент хода.
+    ...(record.recovery ? { recovery: record.recovery } : {}),
   }
 }

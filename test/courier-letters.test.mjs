@@ -589,6 +589,74 @@ test('уведённый после доставки молчит по той ж
   assert.equal(lettersOf(applyAll(gone, reply.events))[0].status, 'unanswered')
 })
 
+/** День недели минуты кампании — тем же счётом, что у расписания NPC. */
+const weekDayOf = (minutes) => Math.floor(minutes / 1_440) % 7
+
+/** Тот же отряд, но у мельника недельное расписание: в эти дни его нет дома. */
+function campaignWithAllyAway(days) {
+  const base = campaign()
+  return {
+    ...base,
+    social: {
+      ...base.social,
+      npcs: base.social.npcs.map((npc) => (npc.id === 'ally'
+        ? { ...npc, schedule: [{ id: 'away', days, start_minute: 0, end_minute: 1_440, location: 'Ярмарка за рекой', available: false }] }
+        : npc)),
+    },
+  }
+}
+
+test('курьер стучится к адресату в минуту доставки и ответа, а не в начале скачка (аудит PR #131, WT-02)', () => {
+  // Регресс аудита: расписание адресата читалось на начало скачка. Мельник,
+  // уехавший на ярмарку в ночь отправки, «не находился», хотя курьер приезжал
+  // через сутки и заставал его дома; и наоборот — письмо «доходило» до того,
+  // кто к приезду курьера уже уехал.
+  const probe = afterSend(campaign()).state
+  const [planned] = lettersOf(probe)
+  const now = probe.mechanics.world_time.elapsed_minutes
+  const departure = weekDayOf(now)
+  const arrival = weekDayOf(planned.delivery_due_minutes)
+  const answer = weekDayOf(planned.reply_due_minutes)
+  assert.equal(new Set([departure, arrival, answer]).size, 3, 'фикстура разводит начало скачка, доставку и ответ по разным дням')
+  const jumpToReply = planned.reply_due_minutes - now
+
+  // В начале скачка мельника нет, к приезду курьера и к ответу он дома: один
+  // длинный скачок доводит письмо до ответа целиком.
+  const back = campaignWithAllyAway([departure])
+  const backSent = afterSend(back)
+  const backRun = advance(backSent.state, jumpToReply)
+  assert.ok(!typesOf(backRun.events).includes(COURIER_LETTER_EVENT_TYPES.returned), 'вернувшийся с ярмарки письмо получает')
+  const delivered = backRun.events.find((event) => event.event_type === COURIER_LETTER_EVENT_TYPES.delivered)
+  assert.equal(delivered?.payload.at_minutes, planned.delivery_due_minutes)
+  const answered = backRun.events.find((event) => event.event_type === COURIER_LETTER_EVENT_TYPES.answered)
+  assert.equal(answered?.payload.at_minutes, planned.reply_due_minutes)
+  // Replay всей дуги сходится с живым применением: минута берётся из письма и
+  // скачка, а не из часов реального мира.
+  const live = applyAll(backSent.state, backRun.events)
+  const replayed = replayEvents(back, [...backSent.events, ...backRun.events])
+  assert.deepEqual(replayed.courier_letters, live.courier_letters)
+  assert.equal(lettersOf(replayed)[0].status, 'answered')
+  assert.deepEqual(advance(backSent.state, jumpToReply).events.map((event) => [event.event_type, event.payload]),
+    backRun.events.map((event) => [event.event_type, event.payload]), 'тот же скачок даёт ту же почту')
+
+  // Дома в начале скачка, но к приезду курьера уехал — письмо возвращается.
+  const leftBeforeArrival = afterSend(campaignWithAllyAway([arrival])).state
+  const leftRun = advance(leftBeforeArrival, jumpToReply)
+  const returned = leftRun.events.find((event) => event.event_type === COURIER_LETTER_EVENT_TYPES.returned)
+  assert.equal(returned?.payload.reason, 'gone')
+  assert.equal(returned?.payload.at_minutes, planned.delivery_due_minutes)
+  assert.ok(!typesOf(leftRun.events).includes(COURIER_LETTER_EVENT_TYPES.delivered))
+
+  // Письмо застало его дома, а к минуте ответа он уехал — ответа не будет.
+  const leftBeforeAnswer = afterSend(campaignWithAllyAway([answer])).state
+  const silentRun = advance(leftBeforeAnswer, jumpToReply)
+  assert.ok(typesOf(silentRun.events).includes(COURIER_LETTER_EVENT_TYPES.delivered))
+  assert.ok(!typesOf(silentRun.events).includes(COURIER_LETTER_EVENT_TYPES.answered))
+  const silence = silentRun.events.find((event) => event.event_type === COURIER_LETTER_EVENT_TYPES.unanswered)
+  assert.equal(silence?.payload.reason, 'gone')
+  assert.equal(silence?.payload.at_minutes, planned.reply_due_minutes)
+})
+
 test('доставка и ответ в одном скачке заводят сущность адресата один раз', () => {
   // Регресс ревью: `addresseeEntityDraft` вызывалась и на доставке, и на
   // ответе, и в журнал уходили два дословно одинаковых `WorldEntityUpserted`.

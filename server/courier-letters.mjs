@@ -457,12 +457,27 @@ function courierLetterContext(state = {}) {
   const leagues = new Map()
   const originOnce = () => (origin ??= partyLocationId(state))
   const vitalsOnce = () => (vitals ??= normalizeNpcWorldState(state?.npc_world).vitals)
+  /**
+   * Аудит PR #131, WT-02: внутри одного скачка курьер приезжает не в его
+   * начало, а в минуту доставки, и ответ пишется в минуту ответа. Расписание
+   * адресата поэтому читается на переданную минуту; смерть, бой и прочее
+   * авторитетное состояние по-прежнему берутся из дособытийного `state` —
+   * второго счётчика времени здесь нет, сдвигается только вопрос «который час».
+   */
+  const profileStateAt = (atMinutes) => ({
+    mechanics: atMinutes == null
+      ? state.mechanics
+      : { ...(state.mechanics ?? {}), world_time: { ...(state.mechanics?.world_time ?? {}), elapsed_minutes: atMinutes } },
+    enemies: state.enemies,
+    actors: state.actors,
+    npc_world: { vitals: vitalsOnce() },
+  })
   return {
     social: () => (social ??= ensureNpcSocialState(state?.social, state)),
     vitals: vitalsOnce,
-    profileAtTime: (profile) => npcProfileAtWorldTime(profile, profileState ??= {
-      mechanics: state.mechanics, enemies: state.enemies, actors: state.actors, npc_world: { vitals: vitalsOnce() },
-    }),
+    profileAtTime: (profile, atMinutes = null) => npcProfileAtWorldTime(profile, atMinutes == null
+      ? (profileState ??= profileStateAt(null))
+      : profileStateAt(Math.max(0, integer(atMinutes, 0)))),
     present: () => (present ??= new Set(presentSceneNpcs(state).map((npc) => String(npc.id)))),
     leaguesTo: (targetId) => {
       const target = text(targetId, 120)
@@ -783,13 +798,18 @@ export function planCourierLetter(state = {}, {
  * Почему письмо не дошло, либо пустая строка. Мёртвый адресат — `dead`,
  * недоступный (уведён ходом мира, ушёл из мира отряда) — `gone`. Фракцию не
  * убивают и не уводят: у неё нет ни ОЗ, ни доступности.
+ *
+ * `atMinutes` — минута, в которую курьер стучится к адресату: доставка или
+ * ответ внутри скачка (аудит PR #131, WT-02). Без неё расписание читалось на
+ * начало скачка, и уехавший на ночь адресат возвращал письмо, которое утром,
+ * к приезду курьера, уже был дома и мог прочесть.
  */
-function deliveryFailureFor(state, letter, context = courierLetterContext(state)) {
+function deliveryFailureFor(state, letter, context = courierLetterContext(state), atMinutes = null) {
   if (letter.addressee_kind === 'faction') return ''
   if (context.vitals()[letter.addressee_id]?.alive === false) return 'dead'
   const profile = context.social().npcs.find((npc) => npc.id === letter.addressee_id)
   if (!profile) return 'gone'
-  return context.profileAtTime(profile).available === false ? 'gone' : ''
+  return context.profileAtTime(profile, atMinutes).available === false ? 'gone' : ''
 }
 
 const RETURN_SUMMARY = Object.freeze({
@@ -902,7 +922,10 @@ function addresseeEntityDraft(state, letter, written = new Set()) {
  * Доставка и ответ могут уместиться в один скачок — неделя под замком доводит
  * письмо до ответа целиком, — и считаются они оба от **дособытийного**
  * состояния: срок ответа выведен из срока доставки при отправке, а не из того,
- * что случилось внутри этого же скачка.
+ * что случилось внутри этого же скачка. Часы при этом у каждого шага свои:
+ * расписание адресата читается на минуту доставки и на минуту ответа (аудит
+ * PR #131, WT-02), иначе ночная отлучка в начале скачка решала судьбу письма,
+ * которое приезжало днём.
  *
  * @returns {any[]} черновики событий в порядке, в котором их писать
  */
@@ -924,7 +947,7 @@ export function planCourierLetterTicks(state = {}, { elapsedMinutes = 0 } = {}) 
     if (letter.status === 'in_transit') {
       if (letter.delivery_due_minutes > end) continue
       deliveredAt = Math.max(start, letter.delivery_due_minutes)
-      const failure = deliveryFailureFor(state, letter, context)
+      const failure = deliveryFailureFor(state, letter, context, deliveredAt)
       if (failure) {
         drafts.push({
           event_type: COURIER_LETTER_EVENT_TYPES.returned,
@@ -1043,8 +1066,9 @@ export function planCourierLetterTicks(state = {}, { elapsedMinutes = 0 } = {}) 
     // успевает за них убить адресата сам: тёплое приглашение в гости от того,
     // кого зарубили утром, — то же враньё, что и черновик друга в письме врагу,
     // только тон здесь ни при чём. Поэтому перед выпуском ответа вопрос «а есть
-    // ли ещё кому отвечать» задаётся заново.
-    const silence = deliveryFailureFor(state, letter, context)
+    // ли ещё кому отвечать» задаётся заново — на минуту ответа, а не на начало
+    // скачка (аудит PR #131, WT-02).
+    const silence = deliveryFailureFor(state, letter, context, answeredAt)
     if (silence) {
       const summary = SILENCE_SUMMARY[silence](letter)
       drafts.push({

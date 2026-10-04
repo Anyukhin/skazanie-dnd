@@ -49,7 +49,13 @@ export const ASSETS = {
 function grouped(placements) {
   /** @type {Map<string, Placement[]>} */
   const byAsset = new Map()
-  for (const placement of placements) byAsset.set(placement.asset.id, [...(byAsset.get(placement.asset.id) ?? []), placement])
+  // Дописываем в список, а не копируем его: слэбы на пределе числа объектов
+  // собираются из десятков тысяч записей.
+  for (const placement of placements) {
+    const list = byAsset.get(placement.asset.id)
+    if (list) list.push(placement)
+    else byAsset.set(placement.asset.id, [placement])
+  }
   return [...byAsset.entries()]
 }
 
@@ -104,6 +110,31 @@ export function encodeSlabV1(placements) {
     const buffer = Buffer.alloc(28)
     ;[placement.x + halfX, placement.y + ey, placement.z + halfZ, halfX, ey, halfZ].forEach((value, index) => buffer.writeFloatLE(value, index * 4))
     buffer.writeUInt8(Math.round((placement.rotation ?? 0) / 22.5) % 16, 24)
+    return buffer
+  }))
+  return gzipSync(Buffer.concat([header, ...layouts, ...instances, Buffer.alloc(24)])).toString('base64')
+}
+
+/**
+ * v1 с центром и полуразмером как есть, без таблицы: так собираются слэбы с
+ * координатами, которых настоящая постройка не даёт.
+ * @param {Array<{ asset: { id: string }, center: [number, number, number], extent: [number, number, number] }>} records
+ */
+export function encodeSlabV1Raw(records) {
+  const groups = grouped(records.map((record) => ({ ...record, x: 0, y: 0, z: 0 })))
+  const header = Buffer.alloc(8)
+  header.writeUInt32LE(0xD1CEFACE, 0)
+  header.writeUInt16LE(1, 4)
+  header.writeUInt16LE(groups.length, 6)
+  const layouts = groups.map(([id, list]) => {
+    const layout = Buffer.alloc(20)
+    guidBytes(id).copy(layout, 0)
+    layout.writeUInt16LE(list.length, 16)
+    return layout
+  })
+  const instances = groups.flatMap(([, list]) => list.map((record) => {
+    const buffer = Buffer.alloc(28)
+    ;[...record.center, ...record.extent].forEach((value, index) => buffer.writeFloatLE(value, index * 4))
     return buffer
   }))
   return gzipSync(Buffer.concat([header, ...layouts, ...instances, Buffer.alloc(24)])).toString('base64')

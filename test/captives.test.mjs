@@ -426,6 +426,67 @@ test('связанного надо кормить: сутки без еды —
   }], hungry, { diceService: dice(), context: { allowedActorIds: ['hero'] } }), (error) => error.code === 'CAPTIVE_NEGLECT_FORBIDDEN')
 })
 
+test('сутки без еды фиксирует тот же коммит, что двинул время (аудит PR #131, WT-03)', () => {
+  // Регресс аудита: голод писал только внешний такт после сохранения комнаты —
+  // вторым коммитом. Replay одной команды времени последствия не содержал, а
+  // между двумя коммитами было видно «сутки прошли, а голода нет».
+  const state = withCaptives({ npcs: [villager('watchman', 'Страж Бран')] })
+  const advance = (from, minutes, commandId) => resolveCommands([{
+    command_type: 'AdvanceTime',
+    actor_id: 'hero',
+    amount: minutes,
+    unit: 'minute',
+    command_id: commandId,
+    campaign_id: 'CAPTIVE',
+  }], from, { diceService: dice(), context: { isAdmin: true, allowedActorIds: ['hero'] } })
+
+  const day = advance(state, CAPTIVE_FEED_INTERVAL_MINUTES, 'cmd-day')
+  const types = day.events.map((event) => event.event_type)
+  const neglected = day.events.filter((event) => event.event_type === 'CaptiveNeglected')
+  assert.equal(neglected.length, heldCaptives(state).length, 'каждый связанный в том же наборе событий')
+  assert.ok(types.indexOf('TimeAdvanced') < types.indexOf('CaptiveNeglected'), 'голод — следствие прошедших суток')
+  for (const event of neglected) {
+    assert.equal(event.command_id, 'cmd-day', 'один коммит с продвижением времени')
+    assert.equal(event.actor_id, null, 'голод — дело часов, а не героя, двинувшего время')
+    assert.equal(event.visibility, 'party')
+    assert.equal(event.payload.at_minutes, CAPTIVE_FEED_INTERVAL_MINUTES)
+    assert.equal(event.payload.hours_without_food, 24)
+  }
+  assert.deepEqual(
+    heldCaptives(day.state).map((captive) => captive.neglected_at_minutes),
+    heldCaptives(state).map(() => CAPTIVE_FEED_INTERVAL_MINUTES),
+  )
+  // Поступок записан на часы, а не на героя: та же атрибуция, что у команды
+  // `NeglectCaptive` внешнего такта.
+  const cruelty = worldDeedsFeed(day.state).filter((deed) => deed.kind === 'cruelty')
+  assert.equal(cruelty.length, heldCaptives(state).length)
+  assert.ok(cruelty.every((deed) => deed.actor_names.length === 0), JSON.stringify(cruelty))
+
+  // Replay того же набора событий сходится с живым применением.
+  const replayed = replayEvents(state, day.events)
+  assert.deepEqual(replayed.captives, day.state.captives)
+  assert.deepEqual(replayed.world_deeds, day.state.world_deeds)
+
+  // Повтор не дублирует: внешний такт-догон после такого коммита ничего не
+  // находит, час спустя голода нет, а следующие сутки — новая запись.
+  assert.deepEqual(planCaptiveNeglectCommands(day.state), [])
+  const hour = advance(day.state, 60, 'cmd-hour')
+  assert.equal(hour.events.some((event) => event.event_type === 'CaptiveNeglected'), false)
+  const nextDay = advance(hour.state, CAPTIVE_FEED_INTERVAL_MINUTES - 60, 'cmd-next-day')
+  assert.equal(nextDay.events.filter((event) => event.event_type === 'CaptiveNeglected').length, heldCaptives(state).length)
+
+  // Накормленного часы не трогают.
+  const fed = resolveCommands([{
+    command_type: 'FeedCaptive', actor_id: 'hero', captive_id: captiveOf(state).id, command_id: 'cmd-feed-early', campaign_id: 'CAPTIVE',
+  }], applyGameEvent(state, { event_type: 'TimeAdvanced', payload: { amount: 600, unit: 'minute', elapsed_minutes: 600 }, target_ids: [], visibility: 'party' }),
+  { diceService: dice(), context: { allowedActorIds: ['hero'] } })
+  const afterFed = advance(fed.state, CAPTIVE_FEED_INTERVAL_MINUTES - 600, 'cmd-day-after-feed')
+  assert.deepEqual(
+    afterFed.events.filter((event) => event.event_type === 'CaptiveNeglected').map((event) => event.payload.captive_id),
+    heldCaptives(state).filter((captive) => captive.id !== captiveOf(state).id).map((captive) => captive.id),
+  )
+})
+
 test('убийство пленного — жестокость, а не рядовое убийство; свидетели те же', () => {
   const state = withCaptives({ npcs: [villager('watchman', 'Страж Бран')] })
   const captive = captiveOf(state)

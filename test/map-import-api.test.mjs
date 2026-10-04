@@ -7,7 +7,8 @@ import test from 'node:test'
 
 import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-import { HOUSE_SLAB, encodeSlabV1, housePlacements } from './talespire-fixtures.mjs'
+import { SLAB_MAX_INSTANCES } from '../server/talespire-slab.mjs'
+import { ASSETS, HOUSE_SLAB, encodeSlabV1, encodeSlabV1Raw, encodeSlabV2, housePlacements } from './talespire-fixtures.mjs'
 
 /**
  * HTTP-путь импорта карты из TaleSpire: `POST /api/campaigns/:id/map-import`.
@@ -187,6 +188,22 @@ test('импорт карты по HTTP: предпросмотр, примен�
   const garbage = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: { mode: 'preview', slab: 'не слэб' } })
   assert.equal(garbage.status, 400)
   assert.equal(garbage.body.code, 'SLAB_NOT_BASE64')
+
+  // Аудит PR #131, MAP-BOUNDARY-01/02: лавина одинаковых объектов и коробка в
+  // сто тысяч клеток укладываются в предел сжатого слэба. Оба — 400 с кодом
+  // до обхода геометрии, и в предпросмотре, и в применении.
+  const flood = encodeSlabV2(Array.from({ length: SLAB_MAX_INSTANCES + 1 }, () => ({ asset: ASSETS.floor, x: 1, y: 0, z: 1 })))
+  const flooded = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: { mode: 'preview', slab: flood } })
+  assert.equal(flooded.status, 400, flooded.text)
+  assert.equal(flooded.body.code, 'SLAB_TOO_MANY_INSTANCES')
+  const floodApply = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: { mode: 'apply', slab: flood, idempotency_key: 'map-import:flood' } })
+  assert.equal(floodApply.status, 400, floodApply.text)
+  assert.equal(floodApply.body.code, 'SLAB_TOO_MANY_INSTANCES')
+  const wide = encodeSlabV1Raw([{ asset: ASSETS.floor, center: [5, 0.25, 5], extent: [100_000, 0.25, 100_000] }])
+  const widened = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: { mode: 'preview', slab: wide } })
+  assert.equal(widened.status, 400, widened.text)
+  assert.equal(widened.body.code, 'SLAB_EXTENT_TOO_LARGE')
+  assert.equal((await request(baseUrl, '/api/rooms/MAPIMP', { cookie: ownerCookie })).body.version, before.body.version, 'отказы ничего не записали')
 
   const keyless = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: { mode: 'apply', slab: HOUSE_SLAB } })
   assert.equal(keyless.status, 400)

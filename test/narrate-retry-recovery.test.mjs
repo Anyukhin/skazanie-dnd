@@ -106,6 +106,10 @@ test('потеря ответа после commit: повтор той же фр
     ['503 без тела', () => new Response('', { status: 503 })],
     ['503 прокси', () => new Response(JSON.stringify({ code: 'PROXY_DROP_AFTER_COMMIT' }), { status: 503 })],
     ['обрезанный JSON', () => new Response('{"narration":', { status: 200 })],
+    // Аудит PR #131, UI-08/REC-03: неполный, но разборчивый ответ — тоже
+    // неизвестный исход, а не успех, который потом роняет `finishTurn`.
+    ['неполный ответ 200', () => new Response('{}', { status: 200 })],
+    ['ответ 200 без effects', () => new Response(JSON.stringify({ narration: 'Готово.' }), { status: 200 })],
   ]) {
     const storage = memoryStorage()
     const key = pendingNarrateStorageKey('account-a', state.sessionCode)
@@ -143,6 +147,44 @@ test('авторитетный отказ 4xx снимает запись: сл�
     assert.notEqual(server.bodies[1].idempotency_key, server.bodies[0].idempotency_key)
   } finally {
     server.restore()
+  }
+})
+
+test('UI-08/REC-03: декодер хода пропускает исправные ответы тем же объектом и отклоняет неполные без HTTP-статуса', () => {
+  const { decodeTurnResult, MalformedTurnResultError } = client
+  const valid = [
+    ['обычный ход', { narration: 'Дверь поддаётся.', effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [] }, mechanics: [] }],
+    ['ход без кости в проекции', { narration: '', effects: {} }],
+    ['ход с состоянием', { narration: 'Ок.', effects: {}, authoritative_state: { players: [] }, mechanics: [{ event_type: 'ActorMoved' }] }],
+    ['карточка проверки без effects', { narration: 'Требуется проверка', check: { label: 'Сила', modifier: 2, difficulty: 12, sides: 20 } }],
+    ['манёвр без effects', { narration: 'Проверьте маршрут', action_proposal: { id: 'proposal-1' } }],
+    ['уточнение', { narration: 'Что именно?', effects: {}, clarification: { id: 'c-1' }, check: null }],
+  ]
+  for (const [label, value] of valid) assert.equal(decodeTurnResult(value), value, label)
+
+  const malformed = [
+    ['пустой объект', {}],
+    ['null', null],
+    ['массив', []],
+    ['строка', 'ok'],
+    ['нет effects у завершённого хода', { narration: 'Готово.' }],
+    ['нет текста у завершённого хода', { effects: {} }],
+    ['текст не строка', { narration: 42, effects: {} }],
+    ['effects не объект', { narration: '', effects: [] }],
+    ['grantItems не массив', { narration: '', effects: { grantItems: {} } }],
+    ['пустая выдача в grantItems', { narration: '', effects: { grantItems: [null] } }],
+    ['roll не объект', { narration: '', effects: { roll: 'd20' } }],
+    ['mechanics не массив', { narration: '', effects: {}, mechanics: {} }],
+    ['состояние без героев', { narration: '', effects: {}, authoritative_state: {} }],
+    ['карточка не объект', { narration: '', check: 'Сила' }],
+  ]
+  for (const [label, value] of malformed) {
+    assert.throws(() => decodeTurnResult(value), (error) => {
+      assert.ok(error instanceof MalformedTurnResultError, label)
+      assert.equal(error.status, undefined, `${label}: у отказа нет HTTP-статуса`)
+      assert.equal(isTacticalCommandUnknown(error), true, `${label}: исход неизвестен, запись REC-01 остаётся`)
+      return true
+    }, label)
   }
 })
 

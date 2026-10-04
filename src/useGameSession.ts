@@ -19,19 +19,34 @@ import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-ma
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
 import {
   clearPendingNarrate,
+  clearPendingPartyDecision,
   clearPendingTacticalCommand,
   isTacticalCommandUnknown,
   narrateRecoveryFor,
+  partyDecisionRecoveryFor,
+  partyDecisionRequest,
   pendingNarrateStorageKey,
+  pendingPartyDecisionStorageKey,
   pendingTacticalCommandStorageKey,
   readPendingNarrate,
+  readPendingPartyDecision,
   readPendingTacticalCommand,
   tacticalCommandRequest,
   tacticalCommandView,
   writePendingNarrate,
+  writePendingPartyDecision,
   writePendingTacticalCommand,
 } from './tactical-command-recovery.mjs'
-import type { NarrateRecovery, TacticalCommandRecovery } from './tactical-command-recovery.mjs'
+import type { NarrateRecovery, PartyDecisionIntent, TacticalCommandRecovery } from './tactical-command-recovery.mjs'
+import {
+  enqueueRoomSnapshot,
+  queuedRoomsForCampaign,
+  roomSnapshotAcceptable,
+  sameCampaign,
+  streamAccessRevocation,
+  takeQueuedRoom,
+} from './room-stream.mjs'
+import type { QueuedRoomSnapshot } from './room-stream.mjs'
 import type { ActionClarification, AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, PlayerRequestKind, ReactionMode, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
@@ -206,7 +221,12 @@ type MerchantCommandResult = {
   code?: string
 }
 
-export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'offline'
+/**
+ * `revoked` — сервер закрыл живой поток кадром `access` (аудит PR #131,
+ * LIVE-01/02), а сверка аккаунта и комнаты подтвердила, что доступа нет.
+ * Вслепую такой поток не переподключается.
+ */
+export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'offline' | 'revoked'
 
 type RoomSnapshot = {
   version?: number
@@ -279,6 +299,12 @@ function stateVersionConflictMessage(refreshed: boolean) {
   return refreshed
     ? 'Другой игрок уже изменил состояние кампании. Состояние обновлено — проверьте изменения и повторите действие. Ваш ввод сохранён.'
     : 'Другой игрок уже изменил состояние кампании. Не удалось обновить его автоматически — обновите страницу и повторите действие. Ваш ввод сохранён.'
+}
+
+/** Текст отказа решения отряда; при неизвестном исходе — с подсказкой, что повтор безопасен (REC-02). */
+function partyDecisionError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback
+  return isTacticalCommandUnknown(error) ? `${message} Повторите то же действие: дважды оно не запишется.` : message
 }
 
 function stateForPersistence(state: GameState): GameState {
@@ -419,8 +445,18 @@ function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null
   }
 }
 
-export function useGameSession(options: { accountId?: string } = {}) {
+export function useGameSession(options: {
+  accountId?: string
+  /**
+   * Сервер отозвал живой поток (аудит PR #131, LIVE-01/02). Обычно это
+   * обновление аккаунта через `/api/auth/me`: завершённый вход вернёт экран
+   * входа, а хук после этого один раз сверит доступ к комнате.
+   */
+  onAccessRevoked?: (reason: string) => unknown
+} = {}) {
   const accountId = String(options.accountId ?? '').trim()
+  const onAccessRevokedRef = useRef(options.onAccessRevoked)
+  onAccessRevokedRef.current = options.onAccessRevoked
   const [state, setState] = useState<GameState>(loadState)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const [narrationPreview, setNarrationPreview] = useState<NarrationPreview | null>(null)
@@ -461,7 +497,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
   const questRequestBusy = useRef(false)
   const pendingQuestRequest = useRef<{ campaignId: string; playerId: string; questId: string; action: 'accept' | 'abandon'; key: string } | null>(null)
   const [questDecisionBusy, setQuestDecisionBusy] = useState(false)
-  const fullRoomRequest = useRef<Promise<boolean> | null>(null)
+  const fullRoomRequest = useRef<{ campaignId: string; request: Promise<boolean> } | null>(null)
   const actionEpoch = useRef(0)
   // Вторая фаза ручного броска для команд доски. `rollPendingCheck` объявлен
   // раньше `executeTacticalCommand`, и прямая зависимость читалась бы до
@@ -469,7 +505,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
   const tacticalCommandRef = useRef<
     ((command: TacticalCommand, message: string, dice?: { manualRoll?: boolean; roll?: RollResult; idempotencyKey?: string }) => Promise<CommandOutcome>) | null
   >(null)
-  const queuedRooms = useRef<Array<{ version: number; state: GameState }>>([])
+  const queuedRooms = useRef<QueuedRoomSnapshot<GameState>[]>([])
   const recoveryStorage = () => {
     try { return window.sessionStorage } catch { return null }
   }
@@ -515,25 +551,36 @@ export function useGameSession(options: { accountId?: string } = {}) {
     localStorage.setItem(ACTIVE_CAMPAIGN_KEY, next.sessionCode)
   }, [])
 
-  const applyRemote = useCallback((next: GameState) => {
+  const applyRemote = useCallback((next: GameState, campaignChange = false): boolean => {
+    // Аудит PR #131, REC-04: сменить кампанию на экране может только
+    // `switchCampaign`. Любой другой снимок или ответ чужой кампании —
+    // поздний хвост прежней — отбрасывается, а не перекрывает текущую.
+    if (!campaignChange && stateRef.current.sessionCode && !sameCampaign(stateRef.current.sessionCode, next.sessionCode)) return false
     // Ответы команд и бросков приходят с картой целиком: разбор здесь только
     // запоминает её в кэше, чтобы следующая дельта было к чему приложить.
     const scene = next.scene ? resolveSceneMap(next.scene) : null
     const recovered = stateForPersistence(scene && scene !== next.scene ? { ...next, scene } : next)
     // Карточка проверки принадлежит этому игроку. Серверный снимок комнаты
     // её не содержит, а рассылать её соседнему игроку нельзя.
-    const sameCampaign = stateRef.current.sessionCode === recovered.sessionCode
+    const keepsCampaign = stateRef.current.sessionCode === recovered.sessionCode
     const pendingAction = pendingActionForSnapshot(stateRef.current, recovered)
-    if (sameCampaign && stateRef.current.pendingAction && !pendingAction) setTacticalError('Обстановка изменилась. Отправьте заявку заново, чтобы согласовать маршрут.')
-    const local = { ...recovered, pendingCheck: sameCampaign ? stateRef.current.pendingCheck : null, pendingAction }
+    if (keepsCampaign && stateRef.current.pendingAction && !pendingAction) setTacticalError('Обстановка изменилась. Отправьте заявку заново, чтобы согласовать маршрут.')
+    const local = { ...recovered, pendingCheck: keepsCampaign ? stateRef.current.pendingCheck : null, pendingAction }
     stateRef.current = local
     setState(local)
     persistLocal(recovered)
     channel.current?.postMessage(recovered)
+    return true
   }, [persistLocal])
 
-  const applyRoomSnapshot = useCallback((room: RoomSnapshot) => {
+  /**
+   * Снимок комнаты из потока, опроса или полного перезапроса. `sourceCampaignId`
+   * — кампания, для которой его запросили. Аудит PR #131, REC-04: сначала
+   * кампания, потом версия — номер чужого журнала не сдвигает счётчик текущей.
+   */
+  const applyRoomSnapshot = useCallback((room: RoomSnapshot, sourceCampaignId: string) => {
     if (!room.state) return
+    if (!roomSnapshotAcceptable(stateRef.current.sessionCode, sourceCampaignId, room.state)) return
     setNarrationPreview((current) => (
       current && room.state?.messages?.some((message) => message.id === current.messageId)
         ? null
@@ -544,27 +591,42 @@ export function useGameSession(options: { accountId?: string } = {}) {
   }, [applyRemote])
 
   /**
+   * Ответ запроса, отправленного для `campaignId`. Аудит PR #131, REC-04:
+   * поздний ответ прежней кампании не сдвигает счётчик версии текущей и не
+   * подменяет её экран.
+   */
+  const applyCampaignResponse = useCallback((campaignId: string, version: unknown, next: GameState) => {
+    if (!sameCampaign(stateRef.current.sessionCode, campaignId)) return false
+    roomVersion.current = latestRoomVersion(roomVersion.current, version)
+    return applyRemote(next)
+  }, [applyRemote])
+
+  /**
    * Карта сцены не собралась из кэша — значит обновление потеряно. Единственный
    * правильный ответ: запросить комнату целиком и получить карту без дельты.
    */
   const refreshFullRoom = useCallback((force = false): Promise<boolean> => {
-    if (fullRoomRequest.current) return fullRoomRequest.current
+    // Запрос помнит свою кампанию: ответ, пришедший после смены кампании, к
+    // новой не применяется, а запрос новой не ждёт чужой (аудит PR #131, REC-04).
+    const campaignId = stateRef.current.sessionCode
+    if (fullRoomRequest.current?.campaignId === campaignId) return fullRoomRequest.current.request
     const request = (async () => {
       try {
-        const response = await fetch(roomUrl(stateRef.current.sessionCode))
+        const response = await fetch(roomUrl(campaignId))
         if (!response.ok) return false
         const room = roomWithSceneMap(await response.json() as RoomSnapshot & { version?: number })
         if (!room?.state) return false
-        if (force || Number(room.version) > roomVersion.current) applyRoomSnapshot(room)
+        if (force || Number(room.version) > roomVersion.current) applyRoomSnapshot(room, campaignId)
         return true
       } catch (error) {
         console.warn('Не удалось перезапросить состояние кампании целиком:', error)
         return false
       }
     })()
-    fullRoomRequest.current = request
+    const entry = { campaignId, request }
+    fullRoomRequest.current = entry
     void request.finally(() => {
-      if (fullRoomRequest.current === request) fullRoomRequest.current = null
+      if (fullRoomRequest.current === entry) fullRoomRequest.current = null
     })
     return request
   }, [applyRoomSnapshot])
@@ -583,23 +645,18 @@ export function useGameSession(options: { accountId?: string } = {}) {
     fallback: string,
   ) => normalizeCommandError(apiRequestError(response, details, fallback)), [normalizeCommandError])
 
-  const queueRoomSnapshot = useCallback((room: RoomSnapshot) => {
-    if (!room.state) return
-    const version = Number(room.version)
-    if (!Number.isSafeInteger(version) || version < 0) return
-    queuedRooms.current.push({ version, state: room.state })
-    if (queuedRooms.current.length > 50) queuedRooms.current.splice(0, queuedRooms.current.length - 50)
+  // Аудит PR #131, REC-04: запись очереди помнит кампанию, из потока которой
+  // пришла, а выбор отложенного снимка сначала отсекает чужие кампании и только
+  // потом сравнивает номера (`src/room-stream.mjs`).
+  const queueRoomSnapshot = useCallback((room: RoomSnapshot, sourceCampaignId: string) => {
+    queuedRooms.current = enqueueRoomSnapshot(queuedRooms.current, sourceCampaignId, room)
   }, [])
 
   const flushQueuedRooms = useCallback(() => {
     if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current) return
-    const latest = queuedRooms.current
-      .filter((candidate) => candidate.version > roomVersion.current)
-      .reduce<{ version: number; state: GameState } | null>((current, candidate) => (
-        !current || candidate.version >= current.version ? candidate : current
-      ), null)
+    const latest = takeQueuedRoom(queuedRooms.current, stateRef.current.sessionCode, roomVersion.current)
     queuedRooms.current = []
-    if (latest) applyRoomSnapshot(latest)
+    if (latest) applyRoomSnapshot(latest, latest.campaignId)
   }, [applyRoomSnapshot])
 
   const persistRemote = useCallback((_next: GameState) => {
@@ -632,13 +689,18 @@ export function useGameSession(options: { accountId?: string } = {}) {
       setConnectionState('offline')
       return
     }
+    const campaignId = state.sessionCode
     let active = true
     let source: EventSource | null = null
     let retryTimer: number | null = null
     let retryDelay = 1_000
     let retryScheduled = false
+    let revoked = false
     const receive = (event: MessageEvent<string>) => {
       try {
+        // Аудит PR #131, REC-04: кадр потока прежней кампании, долетевший уже
+        // после переключения, не трогает ни экран, ни кэш карт, ни очередь.
+        if (!sameCampaign(stateRef.current.sessionCode, campaignId)) return
         const received = JSON.parse(event.data) as RoomSnapshot
         if (!received.state) return
         const room = roomWithSceneMap(received)
@@ -647,16 +709,17 @@ export function useGameSession(options: { accountId?: string } = {}) {
           return
         }
         if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current) {
-          queueRoomSnapshot(room)
+          queueRoomSnapshot(room, campaignId)
           return
         }
-        applyRoomSnapshot(room)
+        applyRoomSnapshot(room, campaignId)
       } catch (error) {
         console.warn('Realtime-событие комнаты отклонено:', error)
       }
     }
     const receivePresence = (event: MessageEvent<string>) => {
       try {
+        if (!sameCampaign(stateRef.current.sessionCode, campaignId)) return
         const payload = JSON.parse(event.data) as { typing_actor_ids?: string[] }
         const typingActorIds = Array.isArray(payload.typing_actor_ids) ? payload.typing_actor_ids.map(String) : []
         setState((current) => {
@@ -679,6 +742,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
     }
     const receiveNarration = (event: MessageEvent<string>) => {
       try {
+        if (!sameCampaign(stateRef.current.sessionCode, campaignId)) return
         const preview = parseNarrationPreview(event.data)
         if (!preview) return
         publishNarrationPreview(state.sessionCode, preview)
@@ -698,6 +762,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
       source.removeEventListener('narration.start', receiveNarration as EventListener)
       source.removeEventListener('narration.chunk', receiveNarration as EventListener)
       source.removeEventListener('narration.complete', receiveNarration as EventListener)
+      source.removeEventListener('access', receiveAccess as EventListener)
       source.close()
       source = null
     }
@@ -706,7 +771,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
     // «Связь восстанавливается…».
     let opened = false
     let failedConnects = 0
-    const stopIfRoomMissing = async () => {
+    const stopIfRoomMissing = async (finalState: ConnectionState = 'offline') => {
       try {
         const response = await fetch(`/api/rooms/${encodeURIComponent(state.sessionCode)}`)
         const room = await response.json().catch(() => null) as { state?: unknown } | null
@@ -714,11 +779,41 @@ export function useGameSession(options: { accountId?: string } = {}) {
       } catch { return false }
       active = false
       closeSource()
-      setConnectionState('offline')
+      setConnectionState(finalState)
       return true
     }
+    // Аудит PR #131, LIVE-01/02: кадр `access` с отзывом окончателен для этого
+    // потока. Раньше сервер закрывал поток, клиент видел обрыв и бесконечно
+    // переподключался с паузой до 30 с, каждый раз упираясь в 401/403. Теперь
+    // поток закрывается сразу (иначе браузер сам переподключится по `retry:`),
+    // аккаунт сверяется один раз через `onAccessRevoked` — завершённый вход
+    // возвращает экран входа, — и один раз проверяется доступ к комнате. Доступ
+    // подтвердился (сервер, например, не смог сверить права из-за временной
+    // ошибки) — переподключение уже не вслепую; нет — поток остаётся закрытым,
+    // а игрок видит, что доступ к кампании закрыт.
+    function receiveAccess(event: MessageEvent<string>) {
+      const revocation = streamAccessRevocation(event.data)
+      if (!revocation || revoked) return
+      revoked = true
+      closeSource()
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
+      retryTimer = null
+      retryScheduled = false
+      setConnectionState('reconnecting')
+      void (async () => {
+        try { await onAccessRevokedRef.current?.(revocation.reason) } catch { /* сверка аккаунта не решает судьбу потока */ }
+        if (!active) return
+        if (await stopIfRoomMissing('revoked')) return
+        if (!active) return
+        revoked = false
+        opened = false
+        failedConnects = 0
+        retryDelay = 1_000
+        connect()
+      })()
+    }
     const scheduleReconnect = () => {
-      if (!active || retryScheduled) return
+      if (!active || retryScheduled || revoked) return
       if (!opened && ++failedConnects >= 2) { void stopIfRoomMissing().then((stopped) => { if (!stopped) failedConnects = 0 }) }
       retryScheduled = true
       setConnectionState('reconnecting')
@@ -740,6 +835,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
       nextSource.addEventListener('narration.start', receiveNarration as EventListener)
       nextSource.addEventListener('narration.chunk', receiveNarration as EventListener)
       nextSource.addEventListener('narration.complete', receiveNarration as EventListener)
+      nextSource.addEventListener('access', receiveAccess as EventListener)
       nextSource.onopen = () => {
         retryDelay = 1_000
         opened = true
@@ -770,15 +866,17 @@ export function useGameSession(options: { accountId?: string } = {}) {
     // Пока кампания не выбрана, опрашивать нечего: запрос уходил на
     // `/api/rooms/` и раз в 15 секунд писал в консоль «Комната недоступна».
     if (!state.sessionCode) return
+    const campaignId = state.sessionCode
     let active = true
     const sync = async () => {
       try {
         // Сервер узнаёт, какая карта уже есть, и молчит о ней, если она не
         // менялась. Хеш недоверенный и на сервере — только ключ кэша.
-        const response = await fetch(roomUrl(state.sessionCode, latestSceneMapHash()))
+        const response = await fetch(roomUrl(campaignId, latestSceneMapHash()))
         if (!response.ok) return
         const received = await response.json() as RoomSnapshot & { version: number }
-        if (!active) return
+        // Аудит PR #131, REC-04: кампания проверяется до сравнения версий.
+        if (!active || !sameCampaign(stateRef.current.sessionCode, campaignId)) return
         const resolved = roomWithSceneMap(received)
         if (!resolved) { void refreshFullRoom(); return }
         const room = resolved as RoomSnapshot & { version: number }
@@ -786,9 +884,9 @@ export function useGameSession(options: { accountId?: string } = {}) {
         // уезжал на сервер и подменял «кампаний пока нет».
         if (room.state && room.version > roomVersion.current) {
           if (busy.current || tacticalBusyRef.current || merchantBusyRef.current || directorBusyRef.current) {
-            queueRoomSnapshot(room)
+            queueRoomSnapshot(room, campaignId)
           } else {
-            applyRoomSnapshot(room)
+            applyRoomSnapshot(room, campaignId)
           }
         }
       } catch (error) { console.warn('Комната временно недоступна:', error) }
@@ -857,177 +955,198 @@ export function useGameSession(options: { accountId?: string } = {}) {
     busy.current = true
     setTacticalError(null)
     const epoch = ++actionEpoch.current
-    const player = state.players.find((item) => item.id === (actorId || state.activePlayerId)) ?? state.players[0]
-    const continuation = !npcId && pendingClarification?.actor_id === player.id && pendingClarification.campaign_id === state.sessionCode ? pendingClarification : null
-    const edited = !conversationOnly && editingProposal.current?.actorId === player.id && editingProposal.current.campaignId === state.sessionCode ? editingProposal.current : null
-    // Служебные команды (`/why`) сервер в летопись не пишет — локальный пузырь
-    // игрока прожил бы ровно до следующего опроса комнаты и исчезал на глазах.
-    const metaCommand = /^\s*\//u.test(text.trim())
-    const pending: GameState = {
-      ...state,
-      isNarrating: true,
-      messages: metaCommand ? state.messages : [...state.messages, playerMessage(player.character, text.trim())],
-    }
-    commit(pending)
-
-    let aiResult: AiTurnResult | null = null
-    let authoritativeError: Error | null = null
-    let uncertain = false
-    // Аудит PR #131, REC-01: ключ свободного действия переживает неизвестный
-    // исход. Запись ставится до отправки и лежит в sessionStorage под аккаунтом
-    // и кампанией, поэтому переживает и перезагрузку вкладки. Та же заявка
-    // уходит с прежним ключом, и сервер вернёт уже записанный ход вместо второй
-    // проверки с новым броском; другая заявка получает новый ключ. Снимается
-    // запись только известным исходом — ответом или авторитетным отказом 4xx.
-    const question = requestKind === 'question'
-    const intent = {
-      campaignId: state.sessionCode, actorId: player.id, action: text.trim(), requestKind, npcId,
-      clarificationId: continuation?.id, supersedesCheckId: edited?.checkId, supersedesProposalId: edited?.proposalId,
-      questionCheckId: question ? state.pendingCheck?.check_id : undefined,
-      questionProposalId: question ? state.pendingAction?.proposal.id : undefined,
-    }
-    const narrateStorage = recoveryStorage()
-    const narrateStorageKey = pendingNarrateStorageKey(accountId, state.sessionCode)
-    let narrateRecovery: NarrateRecovery | null = null
+    // Аудит PR #131, UI-08/REC-03: блокировка хода снимается при любом выходе.
+    // Раньше исключение уже после ответа (неполный результат ронял `finishTurn`)
+    // оставляло `busy` и `isNarrating` включёнными, и тот же экземпляр хука
+    // отказывал во всех следующих действиях до перезагрузки страницы.
     try {
-      narrateRecovery = narrateRecoveryFor(readPendingNarrate(narrateStorage, narrateStorageKey), intent, {
-        newKey: newIdempotencyKey, manualRoll: !autoRollEnabled(),
-      })
-      writePendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery)
-      aiResult = await narrateWithAgent(
-        pending,
-        text.trim(),
-        player.character,
-        undefined,
-        narrateRecovery?.requestId,
-        player.id,
-        { npcId, requestKind, clarificationId: intent.clarificationId,
-          supersedesCheckId: intent.supersedesCheckId, supersedesProposalId: intent.supersedesProposalId,
-          questionCheckId: intent.questionCheckId, questionProposalId: intent.questionProposalId,
-          manualRoll: narrateRecovery?.manualRoll,
-          onNarrationPreview: setNarrationPreview },
-      )
-      if (narrateRecovery) clearPendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery.requestId)
-    } catch (error) {
-      console.warn('AI fallback:', error instanceof Error ? error.message : error)
-      uncertain = isTacticalCommandUnknown(error)
-      if (narrateRecovery && !uncertain) clearPendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery.requestId)
-      authoritativeError = await normalizeCommandError(error)
-    }
-    if (epoch !== actionEpoch.current) {
-      busy.current = false
-      return { ok: false, error: 'Действие было отменено.' }
-    }
-    if (authoritativeError) {
-      if (edited && authoritativeError instanceof ApiRequestError) {
-        if (authoritativeError.code === 'CHECK_ALREADY_ROLLED' && edited.check) {
-          // Ответ на выдачу кости мог потеряться. Возвращаем исходную карточку,
-          // чтобы повтор получил ту же кость, а не оставлял игрока без выхода.
-          mutate((current) => ({ ...current, pendingCheck: edited.check ?? null }))
-          editingProposal.current = null
-          setDialogueDraft(null)
-        } else if (['CHECK_NOT_FOUND', 'PROPOSAL_NOT_FOUND', 'PROPOSAL_STALE', 'STATE_VERSION_CONFLICT'].includes(authoritativeError.code ?? '')) {
-          editingProposal.current = null
+      const player = state.players.find((item) => item.id === (actorId || state.activePlayerId)) ?? state.players[0]
+      const continuation = !npcId && pendingClarification?.actor_id === player.id && pendingClarification.campaign_id === state.sessionCode ? pendingClarification : null
+      const edited = !conversationOnly && editingProposal.current?.actorId === player.id && editingProposal.current.campaignId === state.sessionCode ? editingProposal.current : null
+      // Служебные команды (`/why`) сервер в летопись не пишет — локальный пузырь
+      // игрока прожил бы ровно до следующего опроса комнаты и исчезал на глазах.
+      const metaCommand = /^\s*\//u.test(text.trim())
+      const pending: GameState = {
+        ...state,
+        isNarrating: true,
+        messages: metaCommand ? state.messages : [...state.messages, playerMessage(player.character, text.trim())],
+      }
+      commit(pending)
+
+      let aiResult: AiTurnResult | null = null
+      let authoritativeError: Error | null = null
+      let uncertain = false
+      // Аудит PR #131, REC-01: ключ свободного действия переживает неизвестный
+      // исход. Запись ставится до отправки и лежит в sessionStorage под аккаунтом
+      // и кампанией, поэтому переживает и перезагрузку вкладки. Та же заявка
+      // уходит с прежним ключом, и сервер вернёт уже записанный ход вместо второй
+      // проверки с новым броском; другая заявка получает новый ключ. Снимается
+      // запись только известным исходом — ответом или авторитетным отказом 4xx.
+      const question = requestKind === 'question'
+      const intent = {
+        campaignId: state.sessionCode, actorId: player.id, action: text.trim(), requestKind, npcId,
+        clarificationId: continuation?.id, supersedesCheckId: edited?.checkId, supersedesProposalId: edited?.proposalId,
+        questionCheckId: question ? state.pendingCheck?.check_id : undefined,
+        questionProposalId: question ? state.pendingAction?.proposal.id : undefined,
+      }
+      const narrateStorage = recoveryStorage()
+      const narrateStorageKey = pendingNarrateStorageKey(accountId, state.sessionCode)
+      let narrateRecovery: NarrateRecovery | null = null
+      try {
+        narrateRecovery = narrateRecoveryFor(readPendingNarrate(narrateStorage, narrateStorageKey), intent, {
+          newKey: newIdempotencyKey, manualRoll: !autoRollEnabled(),
+        })
+        writePendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery)
+        aiResult = await narrateWithAgent(
+          pending,
+          text.trim(),
+          player.character,
+          undefined,
+          narrateRecovery?.requestId,
+          player.id,
+          { npcId, requestKind, clarificationId: intent.clarificationId,
+            supersedesCheckId: intent.supersedesCheckId, supersedesProposalId: intent.supersedesProposalId,
+            questionCheckId: intent.questionCheckId, questionProposalId: intent.questionProposalId,
+            manualRoll: narrateRecovery?.manualRoll,
+            onNarrationPreview: setNarrationPreview },
+        )
+        if (narrateRecovery) clearPendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery.requestId)
+      } catch (error) {
+        console.warn('AI fallback:', error instanceof Error ? error.message : error)
+        uncertain = isTacticalCommandUnknown(error)
+        if (narrateRecovery && !uncertain) clearPendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery.requestId)
+        authoritativeError = await normalizeCommandError(error)
+      }
+      if (epoch !== actionEpoch.current) {
+        busy.current = false
+        return { ok: false, error: 'Действие было отменено.' }
+      }
+      if (authoritativeError) {
+        if (edited && authoritativeError instanceof ApiRequestError) {
+          if (authoritativeError.code === 'CHECK_ALREADY_ROLLED' && edited.check) {
+            // Ответ на выдачу кости мог потеряться. Возвращаем исходную карточку,
+            // чтобы повтор получил ту же кость, а не оставлял игрока без выхода.
+            mutate((current) => ({ ...current, pendingCheck: edited.check ?? null }))
+            editingProposal.current = null
+            setDialogueDraft(null)
+          } else if (['CHECK_NOT_FOUND', 'PROPOSAL_NOT_FOUND', 'PROPOSAL_STALE', 'STATE_VERSION_CONFLICT'].includes(authoritativeError.code ?? '')) {
+            editingProposal.current = null
+          }
         }
+        if (authoritativeError instanceof ApiRequestError && authoritativeError.code?.startsWith('CLARIFICATION_')) {
+          setPendingClarification(null)
+          if (continuation) setDialogueDraft({ id: Date.now(), text: `${continuation.action}. ${text.trim()}`, kind: 'action', actorId: player.id, campaignId: state.sessionCode })
+        }
+        const message = authoritativeError.message
+        const conflict = isStateVersionConflictError(authoritativeError)
+        if (conflict) setTacticalError(message)
+        mutate((current) => ({
+          ...current,
+          isNarrating: false,
+          messages: [...current.messages, {
+            id: `${Date.now()}-server-rejection`, speaker: 'system', author: 'Правила игры',
+            timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
+            text: message,
+            turnConsumed: false,
+          }],
+        }))
+        busy.current = false
+        return { ok: false, error: message, ...(conflict ? { conflict: true } : {}), ...(uncertain ? { uncertain: true } : {}) }
       }
-      if (authoritativeError instanceof ApiRequestError && authoritativeError.code?.startsWith('CLARIFICATION_')) {
-        setPendingClarification(null)
-        if (continuation) setDialogueDraft({ id: Date.now(), text: `${continuation.action}. ${text.trim()}`, kind: 'action', actorId: player.id, campaignId: state.sessionCode })
+      if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
+      if (aiResult?.narration_message_id) {
+        setNarrationPreview((current) => current?.messageId === aiResult?.narration_message_id ? null : current)
       }
-      const message = authoritativeError.message
-      const conflict = isStateVersionConflictError(authoritativeError)
-      if (conflict) setTacticalError(message)
+      if (aiResult?.mechanics?.length) {
+        setCombatVisualBatch({
+          id: `narrate:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
+          events: aiResult.mechanics,
+          npcTurns: [],
+        })
+      }
+
+      const conversationResult = conversationOnly || aiResult?.request_kind === 'question' || aiResult?.request_kind === 'discussion'
+      if (conversationResult && aiResult?.clarification) setPendingClarification(aiResult.clarification)
+      if (!conversationResult) {
+        setPendingClarification(aiResult?.clarification ?? null)
+        setDialogueDraft(null)
+        setLastDialogueAnswer('')
+        if (edited) editingProposal.current = null
+      }
+      const resolvedAction = aiResult?.resolved_action ?? text.trim()
+      if (aiResult?.action_proposal) {
+        const proposal = aiResult.action_proposal
+        setNarrationPreview(null)
+        mutate((current) => ({ ...current, isNarrating: false, pendingAction: {
+          proposal, action: resolvedAction, playerId: player.id, status: 'ready', idempotencyKey: commandId(),
+        } }))
+        busy.current = false
+        return { ok: true }
+      }
+      const check = aiResult?.check ?? null
+      if (check) {
+        setNarrationPreview(null)
+        mutate((current) => ({
+          ...current,
+          isNarrating: false,
+          pendingCheck: { ...check, action: resolvedAction, playerId: player.id, status: 'ready' },
+          messages: check.proposal ? current.messages : [...current.messages, {
+            id: `${Date.now()}-check`, speaker: 'narrator', author: 'Рассказчик',
+            timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
+            text: aiResult?.narration || `Это рискованное действие. Проверим, насколько удачно оно получится: брось d20 на «${check.label}».`,
+          }],
+        }))
+        busy.current = false
+        return { ok: true }
+      }
+
+      if (conversationResult) {
+        setLastDialogueAnswer(aiResult!.narration)
+        mutate((current) => ({ ...finishTurn(current, text, aiResult!), pendingCheck: current.pendingCheck, pendingAction: current.pendingAction }))
+      } else {
+        setLastDialogueAnswer('')
+        mutate((current) => finishTurn(current, text, aiResult!))
+      }
+      busy.current = false
+
+      for (const item of aiResult?.effects.grantItems ?? []) {
+        if (!item.imagePrompt) continue
+        const landscape = item.type === 'document' && /карт|map|схем|план/i.test(`${item.name} ${item.description}`)
+        void generateItemImage(item.imagePrompt, landscape).then((generated) => {
+          mutate((current) => ({
+            ...current,
+            players: current.players.map((owner) => owner.id === item.ownerId ? {
+              ...owner,
+              inventory: owner.inventory.map((existing) => existing.id === item.id ? { ...existing, image: generated.url, imageStatus: 'ready' } : existing),
+            } : owner),
+          }))
+        }).catch(() => {
+          mutate((current) => ({
+            ...current,
+            players: current.players.map((owner) => owner.id === item.ownerId ? {
+              ...owner,
+              inventory: owner.inventory.map((existing) => existing.id === item.id ? { ...existing, imageStatus: 'failed' } : existing),
+            } : owner),
+          }))
+        })
+      }
+      return { ok: true }
+    } catch (error) {
+      if (epoch !== actionEpoch.current) return { ok: false, error: 'Действие было отменено.' }
+      console.warn('Ход не удалось показать:', error instanceof Error ? error.message : error)
+      const message = 'Ход не удалось завершить на экране. Состояние кампании обновится при синхронизации — проверьте итог, прежде чем повторять действие.'
       mutate((current) => ({
         ...current,
         isNarrating: false,
         messages: [...current.messages, {
-          id: `${Date.now()}-server-rejection`, speaker: 'system', author: 'Правила игры',
-          timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
-          text: message,
-          turnConsumed: false,
+          id: `${Date.now()}-client-turn-error`, speaker: 'system', author: 'Правила игры',
+          timestamp: clock(), text: message, turnConsumed: false,
         }],
       }))
-      busy.current = false
-      return { ok: false, error: message, ...(conflict ? { conflict: true } : {}), ...(uncertain ? { uncertain: true } : {}) }
+      return { ok: false, error: message }
+    } finally {
+      if (epoch === actionEpoch.current) busy.current = false
     }
-    if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
-    if (aiResult?.narration_message_id) {
-      setNarrationPreview((current) => current?.messageId === aiResult?.narration_message_id ? null : current)
-    }
-    if (aiResult?.mechanics?.length) {
-      setCombatVisualBatch({
-        id: `narrate:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
-        events: aiResult.mechanics,
-        npcTurns: [],
-      })
-    }
-
-    const conversationResult = conversationOnly || aiResult?.request_kind === 'question' || aiResult?.request_kind === 'discussion'
-    if (conversationResult && aiResult?.clarification) setPendingClarification(aiResult.clarification)
-    if (!conversationResult) {
-      setPendingClarification(aiResult?.clarification ?? null)
-      setDialogueDraft(null)
-      setLastDialogueAnswer('')
-      if (edited) editingProposal.current = null
-    }
-    const resolvedAction = aiResult?.resolved_action ?? text.trim()
-    if (aiResult?.action_proposal) {
-      const proposal = aiResult.action_proposal
-      setNarrationPreview(null)
-      mutate((current) => ({ ...current, isNarrating: false, pendingAction: {
-        proposal, action: resolvedAction, playerId: player.id, status: 'ready', idempotencyKey: commandId(),
-      } }))
-      busy.current = false
-      return { ok: true }
-    }
-    const check = aiResult?.check ?? null
-    if (check) {
-      setNarrationPreview(null)
-      mutate((current) => ({
-        ...current,
-        isNarrating: false,
-        pendingCheck: { ...check, action: resolvedAction, playerId: player.id, status: 'ready' },
-        messages: check.proposal ? current.messages : [...current.messages, {
-          id: `${Date.now()}-check`, speaker: 'narrator', author: 'Рассказчик',
-          timestamp: new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
-          text: aiResult?.narration || `Это рискованное действие. Проверим, насколько удачно оно получится: брось d20 на «${check.label}».`,
-        }],
-      }))
-      busy.current = false
-      return { ok: true }
-    }
-
-    if (conversationResult) {
-      setLastDialogueAnswer(aiResult!.narration)
-      mutate((current) => ({ ...finishTurn(current, text, aiResult!), pendingCheck: current.pendingCheck, pendingAction: current.pendingAction }))
-    } else {
-      setLastDialogueAnswer('')
-      mutate((current) => finishTurn(current, text, aiResult!))
-    }
-    busy.current = false
-
-    for (const item of aiResult?.effects.grantItems ?? []) {
-      if (!item.imagePrompt) continue
-      const landscape = item.type === 'document' && /карт|map|схем|план/i.test(`${item.name} ${item.description}`)
-      void generateItemImage(item.imagePrompt, landscape).then((generated) => {
-        mutate((current) => ({
-          ...current,
-          players: current.players.map((owner) => owner.id === item.ownerId ? {
-            ...owner,
-            inventory: owner.inventory.map((existing) => existing.id === item.id ? { ...existing, image: generated.url, imageStatus: 'ready' } : existing),
-          } : owner),
-        }))
-      }).catch(() => {
-        mutate((current) => ({
-          ...current,
-          players: current.players.map((owner) => owner.id === item.ownerId ? {
-            ...owner,
-            inventory: owner.inventory.map((existing) => existing.id === item.id ? { ...existing, imageStatus: 'failed' } : existing),
-          } : owner),
-        }))
-      })
-    }
-    return { ok: true }
   }, [accountId, commit, finishTurn, mutate, normalizeCommandError, pendingClarification, state])
 
   const confirmPendingAction = useCallback(async () => {
@@ -1197,17 +1316,27 @@ export function useGameSession(options: { accountId?: string } = {}) {
       return
     }
     if (!requestIsCurrent()) return
-    if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
-    if (aiResult?.mechanics?.length) {
-      setCombatVisualBatch({
-        id: `check:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
-        events: aiResult.mechanics,
-        npcTurns: [],
-      })
+    // Аудит PR #131, UI-08/REC-03: исключение при показе результата не держит
+    // ход «в работе». Карточка возвращается с той же костью и тем же ключом —
+    // повтор получит уже записанный исход, а не новую проверку.
+    try {
+      if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
+      if (aiResult?.mechanics?.length) {
+        setCombatVisualBatch({
+          id: `check:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
+          events: aiResult.mechanics,
+          npcTurns: [],
+        })
+      }
+      setPendingClarification(aiResult?.clarification ?? null)
+      mutate((current) => finishTurn(current, check.action, aiResult!, result))
+    } catch (error) {
+      console.warn('Итог проверки не удалось показать:', error instanceof Error ? error.message : error)
+      mutate((current) => ({ ...current, isNarrating: false, pendingCheck: { ...check, resolutionKey, result, status: 'ready' } }))
+      return
+    } finally {
+      busy.current = false
     }
-    setPendingClarification(aiResult?.clarification ?? null)
-    mutate((current) => finishTurn(current, check.action, aiResult!, result))
-    busy.current = false
 
     for (const item of aiResult?.effects.grantItems ?? []) {
       if (!item.imagePrompt) continue
@@ -1243,14 +1372,14 @@ export function useGameSession(options: { accountId?: string } = {}) {
     try {
       // This endpoint rolls and updates the room in one server-side operation.
       // Unlike a skill check, it does not touch messages, the active hero or turn.
-      const room = await rollSharedDie(state.sessionCode, playerId, sides)
-      roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
-      applyRemote(room.state)
+      const campaignId = state.sessionCode
+      const room = await rollSharedDie(campaignId, playerId, sides)
+      applyCampaignResponse(campaignId, room.version, room.state)
       return room.roll
     } finally {
       freeRollBusy.current = false
     }
-  }, [applyRemote, state.sessionCode])
+  }, [applyCampaignResponse, state.sessionCode])
 
   const requestQuestDecision = useCallback(async (playerId: string, questId: string, action: 'accept' | 'abandon'): Promise<boolean> => {
     if (questRequestBusy.current) return false
@@ -1289,74 +1418,91 @@ export function useGameSession(options: { accountId?: string } = {}) {
     }
   }, [applyRemote, responseCommandError])
 
+  /**
+   * Голос, отказ от голоса и общий бросок отряда (аудит PR #131, REC-02).
+   * Ключ и тело берутся из записи восстановления под аккаунтом и кампанией:
+   * повтор той же операции после неизвестного исхода уходит с прежним ключом,
+   * и сервер вернёт записанный commit — без второго `PartyVoteCast` и без
+   * отказа 409 после уже выпавшей кости. Другая операция получает новый ключ.
+   * Запись снимается принятым ответом или авторитетным отказом 4xx.
+   */
+  const sendPartyDecision = useCallback(async <T extends { version?: number; state?: GameState; error?: string; code?: string }>(
+    intent: PartyDecisionIntent,
+    failure: string,
+    complete: (result: T) => boolean,
+    incomplete: string,
+  ): Promise<T> => {
+    const storage = recoveryStorage()
+    const key = pendingPartyDecisionStorageKey(accountId, intent.campaignId)
+    const recovery = partyDecisionRecoveryFor(readPendingPartyDecision(storage, key), intent, { newKey: commandId })
+    const request = partyDecisionRequest(recovery)
+    if (!recovery || !request) throw new Error(failure)
+    writePendingPartyDecision(storage, key, recovery)
+    try {
+      const response = await fetch(request.path, request.init)
+      const result = await response.json().catch(() => null) as T | null
+      if (!response.ok) throw await responseCommandError(response, result, failure)
+      if (!result || !complete(result)) throw new Error(incomplete)
+      clearPendingPartyDecision(storage, key, recovery.requestId)
+      return result
+    } catch (error) {
+      if (!isTacticalCommandUnknown(error)) clearPendingPartyDecision(storage, key, recovery.requestId)
+      throw error
+    }
+  }, [accountId, responseCommandError])
+
   const voteAgentInteraction = useCallback(async (playerId: string, optionId: string) => {
     const current = stateRef.current
     const interaction = current.agentInteraction
     if (!interaction || interaction.status !== 'open' || interaction.type === 'roll'
       || !interaction.options.some((option) => option.id === optionId)) return
     setDirectorError(null)
+    const campaignId = current.sessionCode
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/party-decisions/${encodeURIComponent(interaction.id)}/votes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          actor_id: playerId,
-          option_id: optionId,
-          idempotency_key: commandId(),
-        }),
-      })
-      const result = await response.json() as { version?: number; state?: GameState; error?: string; code?: string }
-      if (!response.ok) throw await responseCommandError(response, result, 'Не удалось записать голос')
-      if (!result.state) throw new Error('Сервер не вернул состояние после голосования')
-      roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
-      applyRemote(result.state)
+      const result = await sendPartyDecision<{ version?: number; state?: GameState; error?: string; code?: string }>(
+        { campaignId, interactionId: interaction.id, actorId: playerId, operation: 'vote', optionId },
+        'Не удалось записать голос', (value) => Boolean(value.state), 'Сервер не вернул состояние после голосования',
+      )
+      applyCampaignResponse(campaignId, result.version, result.state!)
     } catch (error) {
-      setDirectorError(error instanceof Error ? error.message : 'Не удалось записать голос')
+      if (sameCampaign(stateRef.current.sessionCode, campaignId)) setDirectorError(partyDecisionError(error, 'Не удалось записать голос'))
     }
-  }, [applyRemote, responseCommandError])
+  }, [applyCampaignResponse, sendPartyDecision])
 
   const abstainAgentInteraction = useCallback(async (playerId: string) => {
     const current = stateRef.current
     const interaction = current.agentInteraction
     if (!interaction || interaction.status !== 'open' || interaction.type === 'roll') return
     setDirectorError(null)
+    const campaignId = current.sessionCode
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/party-decisions/${encodeURIComponent(interaction.id)}/votes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actor_id: playerId, abstain: true, idempotency_key: commandId() }),
-      })
-      const result = await response.json() as { version?: number; state?: GameState; error?: string; code?: string }
-      if (!response.ok) throw await responseCommandError(response, result, 'Не удалось воздержаться')
-      if (!result.state) throw new Error('Сервер не вернул состояние после отказа от голоса')
-      roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
-      applyRemote(result.state)
+      const result = await sendPartyDecision<{ version?: number; state?: GameState; error?: string; code?: string }>(
+        { campaignId, interactionId: interaction.id, actorId: playerId, operation: 'abstain' },
+        'Не удалось воздержаться', (value) => Boolean(value.state), 'Сервер не вернул состояние после отказа от голоса',
+      )
+      applyCampaignResponse(campaignId, result.version, result.state!)
     } catch (error) {
-      setDirectorError(error instanceof Error ? error.message : 'Не удалось воздержаться')
+      if (sameCampaign(stateRef.current.sessionCode, campaignId)) setDirectorError(partyDecisionError(error, 'Не удалось воздержаться'))
     }
-  }, [applyRemote, responseCommandError])
+  }, [applyCampaignResponse, sendPartyDecision])
 
   const rollAgentInteraction = useCallback(async (playerId: string): Promise<DiceRollEvent> => {
     const current = stateRef.current
     const interaction = current.agentInteraction
     if (!interaction || interaction.type !== 'roll' || interaction.status !== 'open') throw new Error('Общий бросок сейчас не требуется')
-    const response = await fetch(`/api/campaigns/${encodeURIComponent(current.sessionCode)}/party-decisions/${encodeURIComponent(interaction.id)}/roll`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actor_id: playerId, idempotency_key: commandId() }),
-    })
-    const result = await response.json() as { version?: number; state?: GameState; roll?: DiceRollEvent; error?: string; code?: string }
+    const campaignId = current.sessionCode
     try {
-      if (!response.ok) throw await responseCommandError(response, result, 'Не удалось выполнить общий бросок')
-      if (!result.state || !result.roll) throw new Error('Сервер не вернул результат общего броска')
-      roomVersion.current = latestRoomVersion(roomVersion.current, result.version)
-      applyRemote(result.state)
-      return result.roll
+      const result = await sendPartyDecision<{ version?: number; state?: GameState; roll?: DiceRollEvent; error?: string; code?: string }>(
+        { campaignId, interactionId: interaction.id, actorId: playerId, operation: 'roll' },
+        'Не удалось выполнить общий бросок', (value) => Boolean(value.state && value.roll), 'Сервер не вернул результат общего броска',
+      )
+      applyCampaignResponse(campaignId, result.version, result.state!)
+      return result.roll!
     } catch (error) {
-      setDirectorError(error instanceof Error ? error.message : 'Не удалось выполнить общий бросок')
+      if (sameCampaign(stateRef.current.sessionCode, campaignId)) setDirectorError(partyDecisionError(error, 'Не удалось выполнить общий бросок'))
       throw error
     }
-  }, [applyRemote, responseCommandError])
+  }, [applyCampaignResponse, sendPartyDecision])
 
   const continueAgentInteraction = useCallback(async (playerId?: string): Promise<CommandOutcome> => {
     const interaction = state.agentInteraction
@@ -2036,9 +2182,14 @@ export function useGameSession(options: { accountId?: string } = {}) {
     // Карты прежней кампании к новой сцене отношения не имеют: дельта от них не
     // применима, и хранить их значит рисковать наложением чужой карты.
     forgetSceneMaps()
+    // Аудит PR #131, REC-04: отложенные снимки прежней кампании уходят вместе с
+    // её ожидающими ответами. Раньше очередь переживала переключение, и снимок
+    // A с большим номером версии побеждал только что загруженную B. Очередь
+    // чистится и перед применением B: пока она загружалась, хвост A мог успеть.
+    queuedRooms.current = queuedRoomsForCampaign(queuedRooms.current, normalized)
     if (prefetched?.state) {
       roomVersion.current = prefetched.version ?? 0
-      applyRemote(prefetched.state)
+      applyRemote(prefetched.state, true)
       const url = new URL(window.location.href)
       url.searchParams.set('room', normalized)
       window.history.replaceState(null, '', url)
@@ -2052,8 +2203,9 @@ export function useGameSession(options: { accountId?: string } = {}) {
     )
     const room = await response.json() as { version?: number; state?: GameState | null; error?: string }
     if (!response.ok || !room.state) throw new Error(room.error || 'Кампания не найдена')
+    queuedRooms.current = queuedRoomsForCampaign(queuedRooms.current, normalized)
     roomVersion.current = room.version ?? 0
-    applyRemote(room.state)
+    applyRemote(room.state, true)
     const url = new URL(window.location.href)
     url.searchParams.set('room', normalized)
     window.history.replaceState(null, '', url)

@@ -14,9 +14,11 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  statSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { hostname } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -26,6 +28,101 @@ const AAD = Buffer.from(BACKUP_FORMAT, 'utf8')
 const MAX_FILES = 100_000
 const MAX_FILE_BYTES = 128 * 1024 * 1024
 const MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
+
+/**
+ * Аудит PR #131, RCV-05: отметка живого сервера в корне storage.
+ *
+ * Копия снимается файл за файлом, а commit журнала пишет событие, снимок и
+ * metadata разными шагами. Пока сервер пишет, копия может собрать журнал одного
+ * момента и metadata другого: архив честно зашифрован и проходит `verify`, но
+ * восстановленная кампания несогласована. Поэтому обещанный режим копии —
+ * остановленный сервер, и это проверяется, а не только описано.
+ *
+ * Сервер объявляет себя файлом-отметкой (`claimStorageWriter`) и раз в
+ * `WRITER_HEARTBEAT_MS` обновляет в нём время. Копия (`createStorageBackup`)
+ * по умолчанию отказывает, пока отметка живая. Устаревшей отметка считается,
+ * если время не обновлялось дольше `WRITER_STALE_MS` (сервер упал, контейнер
+ * убит) либо если на этой же машине процесса с её pid уже нет. Отметка видит
+ * только игровой сервер, а не любой процесс, пишущий в каталог; в архив она не
+ * попадает.
+ */
+export const STORAGE_WRITER_MARKER = '.server-writer.json'
+const WRITER_HEARTBEAT_MS = 60_000
+const WRITER_STALE_MS = 5 * 60_000
+
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    // EPERM: процесс есть, но чужой — он жив.
+    return error?.code === 'EPERM'
+  }
+}
+
+/**
+ * Объявляет текущий процесс писателем storage. Возвращает `release`, который
+ * удаляет отметку, только если она всё ещё своя: новый сервер на том же
+ * каталоге мог уже переписать её.
+ */
+export function claimStorageWriter(storageDir, { heartbeatMs = WRITER_HEARTBEAT_MS, now = () => new Date() } = {}) {
+  const file = join(resolve(String(storageDir ?? '')), STORAGE_WRITER_MARKER)
+  const identity = {
+    schema_version: 1,
+    writer_id: randomUUID(),
+    pid: process.pid,
+    host: hostname(),
+    started_at: now().toISOString(),
+  }
+  const write = () => atomicWrite(file, Buffer.from(`${JSON.stringify({ ...identity, heartbeat_at: now().toISOString() }, null, 2)}\n`, 'utf8'))
+  write()
+  const timer = setInterval(() => {
+    // Пропуск такта не опасен: отметка устареет только после нескольких подряд.
+    try { write() } catch { /* следующий такт повторит */ }
+  }, heartbeatMs)
+  timer.unref?.()
+  let released = false
+  const release = () => {
+    if (released) return
+    released = true
+    clearInterval(timer)
+    try {
+      if (JSON.parse(readFileSync(file, 'utf8'))?.writer_id === identity.writer_id) unlinkSync(file)
+    } catch { /* отметки уже нет или она нечитаема — оставляем как есть */ }
+  }
+  return { file, writer_id: identity.writer_id, release }
+}
+
+/**
+ * Состояние отметки писателя: `absent` — сервера нет, `stale` — отметка
+ * осталась от остановленного сервера, `live` — сервер пишет прямо сейчас.
+ */
+export function inspectStorageWriter(storageDir, {
+  now = () => Date.now(),
+  host = hostname(),
+  isProcessAlive = processAlive,
+  staleAfterMs = WRITER_STALE_MS,
+} = {}) {
+  const file = join(resolve(String(storageDir ?? '')), STORAGE_WRITER_MARKER)
+  if (!existsSync(file)) return { state: 'absent', marker_file: file }
+  let marker = null
+  try { marker = JSON.parse(readFileSync(file, 'utf8')) } catch { /* нечитаемую отметку судим по времени файла */ }
+  const declared = Date.parse(String(marker?.heartbeat_at ?? ''))
+  const heartbeat = Number.isFinite(declared) ? declared : statSync(file).mtimeMs
+  const pid = Number(marker?.pid)
+  const details = {
+    marker_file: file,
+    pid: Number.isSafeInteger(pid) ? pid : null,
+    host: marker?.host ?? null,
+    started_at: marker?.started_at ?? null,
+    heartbeat_at: new Date(heartbeat).toISOString(),
+  }
+  if (now() - heartbeat > staleAfterMs) return { state: 'stale', reason: 'heartbeat_expired', ...details }
+  if (marker?.host === host && Number.isSafeInteger(pid) && pid > 0 && !isProcessAlive(pid)) {
+    return { state: 'stale', reason: 'process_not_running', ...details }
+  }
+  return { state: 'live', ...details }
+}
 
 export class BackupError extends Error {
   constructor(message, code = 'BACKUP_ERROR', details = {}) {
@@ -69,6 +166,9 @@ function collectFiles(rootDir, directory = rootDir, prefix = '') {
   const result = []
   for (const name of readdirSync(directory).sort()) {
     if (name.endsWith('.tmp') || name.includes('.tmp.')) continue
+    // Отметка живого сервера — состояние процесса, а не данные: восстановленный
+    // каталог не должен выглядеть занятым чужим pid.
+    if (!prefix && name === STORAGE_WRITER_MARKER) continue
     const absolute = join(directory, name)
     const relativePath = prefix ? `${prefix}/${name}` : name
     const stat = lstatSync(absolute)
@@ -187,6 +287,7 @@ export function createStorageBackup({
   backupFile,
   secret,
   now = () => new Date(),
+  allowLiveWriter = false,
 } = {}) {
   const source = resolve(String(sourceDir ?? ''))
   const output = resolve(String(backupFile ?? ''))
@@ -196,6 +297,15 @@ export function createStorageBackup({
     throw new BackupError('Backup file must be outside the storage directory', 'BACKUP_TARGET_INSIDE_SOURCE')
   }
   if (existsSync(output)) throw new BackupError(`Backup file already exists: ${output}`, 'BACKUP_ALREADY_EXISTS')
+  // Аудит PR #131, RCV-05: копия с живого сервера может быть несогласованной,
+  // поэтому по умолчанию она не снимается. Осознанный обход — `allowLiveWriter`.
+  const writerActive = (writer) => new BackupError(
+    `Storage is in use by a running server (pid ${writer.pid ?? '?'} on ${writer.host ?? '?'}); stop it before taking a backup`,
+    'BACKUP_WRITER_ACTIVE',
+    { writer },
+  )
+  const writer = inspectStorageWriter(source)
+  if (writer.state === 'live' && !allowLiveWriter) throw writerActive(writer)
   const files = collectFiles(source)
   let totalBytes = 0
   const entries = files.map((file) => {
@@ -205,6 +315,11 @@ export function createStorageBackup({
     if (totalBytes > MAX_TOTAL_BYTES) throw new BackupError('Backup exceeds the total size limit', 'BACKUP_LIMIT_EXCEEDED')
     return { path: file.path, size_bytes: bytes.length, sha256: sha256(bytes), data: bytes.toString('base64') }
   })
+  // Сервер мог подняться, пока файлы читались: такая копия уже не с покоя.
+  if (!allowLiveWriter) {
+    const after = inspectStorageWriter(source)
+    if (after.state === 'live') throw writerActive(after)
+  }
   const timestamp = now()
   const createdAt = (timestamp instanceof Date ? timestamp : new Date(timestamp)).toISOString()
   const payload = {
@@ -222,6 +337,12 @@ export function createStorageBackup({
     file_count: entries.length,
     total_bytes: totalBytes,
     encrypted: true,
+    // Что знала копия о сервере в момент снятия. `live` бывает только при
+    // явном обходе, и тогда согласованность архива не гарантируется.
+    writer: writer.state === 'absent'
+      ? { state: 'absent' }
+      : { state: writer.state, ...(writer.reason ? { reason: writer.reason } : {}), pid: writer.pid, host: writer.host, heartbeat_at: writer.heartbeat_at },
+    ...(writer.state === 'live' ? { consistency: 'not_guaranteed' } : {}),
   }
 }
 

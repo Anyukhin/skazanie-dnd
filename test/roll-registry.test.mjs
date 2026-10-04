@@ -142,3 +142,85 @@ test('ничейная запись из прежнего durable-файла м�
   // Привязанная кость того времени по-прежнему исполняет свою проверку.
   assert.equal(registry.consume('legacy-bound', { ...scope, idempotencyKey: 'turn-3' }).roll_id, 'legacy-bound')
 })
+
+// Аудит PR #131, SEC-04: `consume` — резерв до исхода commit. Несостоявшийся
+// commit возвращает ту же кость, состоявшийся закрепляет её за своим ключом.
+test('резерв броска без commit снимается, а с commit остаётся за своим ключом', () => {
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([3, 18]) }) })
+  const scope = { campaignId: 'ROOM', actorId: 'hero' }
+  const failedCheck = registry.registerCheck({ ...scope, label: 'Атлетика', modifier: 2, difficulty: 12 })
+  const failedRoll = registry.issue({ checkId: failedCheck.check_id, ...scope })
+
+  registry.consume(failedRoll.roll_id, { ...scope, idempotencyKey: 'turn-failed' })
+  assert.throws(() => registry.consume(failedRoll.roll_id, { ...scope, idempotencyKey: 'turn-other' }), { code: 'ROLL_ALREADY_USED' })
+  assert.equal(registry.finishReservation(failedRoll.roll_id, { idempotencyKey: 'turn-failed', committed: false }), true)
+  // Кость та же — переброса нет; повторно выдаётся она же.
+  assert.deepEqual(registry.issue({ checkId: failedCheck.check_id, ...scope }), failedRoll)
+  assert.equal(registry.consume(failedRoll.roll_id, { ...scope, idempotencyKey: 'turn-other' }).kept, failedRoll.kept)
+  registry.finishReservation(failedRoll.roll_id, { idempotencyKey: 'turn-other', committed: true })
+  assert.throws(() => registry.consume(failedRoll.roll_id, { ...scope, idempotencyKey: 'turn-failed' }), { code: 'ROLL_ALREADY_USED' })
+  // Тот же ключ после commit по-прежнему получает прежний бросок.
+  assert.equal(registry.consume(failedRoll.roll_id, { ...scope, idempotencyKey: 'turn-other' }).roll_id, failedRoll.roll_id)
+
+  // Чужой ключ резерв не снимает.
+  const check = registry.registerCheck({ ...scope, label: 'Скрытность', difficulty: 10 })
+  const roll = registry.issue({ checkId: check.check_id, ...scope })
+  registry.consume(roll.roll_id, { ...scope, idempotencyKey: 'turn-a' })
+  assert.equal(registry.finishReservation(roll.roll_id, { idempotencyKey: 'turn-b', committed: false }), false)
+  assert.throws(() => registry.consume(roll.roll_id, { ...scope, idempotencyKey: 'turn-b' }), { code: 'ROLL_ALREADY_USED' })
+})
+
+test('резерв не снимается, пока его держит другой запрос того же ключа', () => {
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([11]) }) })
+  const scope = { campaignId: 'ROOM', actorId: 'hero' }
+  const check = registry.registerCheck({ ...scope, label: 'Проверка', difficulty: 10 })
+  const roll = registry.issue({ checkId: check.check_id, ...scope })
+  // Два запроса одного ключа (повтор после таймаута клиента) держат резерв.
+  registry.consume(roll.roll_id, { ...scope, idempotencyKey: 'turn-1' })
+  registry.consume(roll.roll_id, { ...scope, idempotencyKey: 'turn-1' })
+  // Первый упал до commit — второй ещё может закоммитить, кость не отпускаем.
+  assert.equal(registry.finishReservation(roll.roll_id, { idempotencyKey: 'turn-1', committed: false }), false)
+  assert.throws(() => registry.consume(roll.roll_id, { ...scope, idempotencyKey: 'turn-2' }), { code: 'ROLL_ALREADY_USED' })
+  assert.equal(registry.finishReservation(roll.roll_id, { idempotencyKey: 'turn-1', committed: false }), true)
+  assert.equal(registry.consume(roll.roll_id, { ...scope, idempotencyKey: 'turn-2' }).roll_id, roll.roll_id)
+})
+
+test('после перезапуска снимаются только резервы без commit', async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'skazanie-roll-orphan-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  let rollId = 0
+  const options = {
+    diceService: new DiceService({ rng: new SequenceDiceRng([5, 15, 9, 12]), idFactory: () => `orphan-roll-${++rollId}` }),
+    storageFile: join(directory, 'rolls.json'),
+    now: () => 1_000,
+  }
+  const scope = { campaignId: 'ROOM', actorId: 'hero' }
+  const first = new RollRegistry(options)
+  const rolls = ['crashed', 'committed', 'unknown', 'burned'].map((name) => {
+    const check = first.registerCheck({ ...scope, label: name, difficulty: 10 })
+    const roll = first.issue({ checkId: check.check_id, ...scope })
+    first.consume(roll.roll_id, { ...scope, idempotencyKey: `turn-${name}` })
+    return roll
+  })
+  // Запрос завершился без commit по существу (кость подали не к той заявке):
+  // такой исход окончателен и перезапуском не пересматривается.
+  first.finishReservation(rolls[3].roll_id, { idempotencyKey: 'turn-burned', committed: true })
+  // Процесс остановился между consume и исходом остальных: держатели не сняты.
+  const restarted = new RollRegistry(options)
+  const released = await restarted.releaseOrphanReservations(async (campaignId, key) => {
+    assert.equal(campaignId, 'ROOM')
+    if (key === 'turn-unknown') throw new Error('журнал не прочитан')
+    return key === 'turn-committed'
+  })
+  assert.deepEqual(released, [rolls[0].roll_id])
+  assert.equal(restarted.consume(rolls[0].roll_id, { ...scope, idempotencyKey: 'turn-retry' }).kept, rolls[0].kept)
+  for (const kept of rolls.slice(1)) {
+    assert.throws(() => restarted.consume(kept.roll_id, { ...scope, idempotencyKey: 'turn-retry' }), { code: 'ROLL_ALREADY_USED' })
+  }
+  // Закреплённый по журналу резерв повторной сверки не требует, неизвестный — ждёт её.
+  assert.equal(restarted.rolls.get(rolls[1].roll_id).commit_pending, undefined)
+  assert.equal(restarted.rolls.get(rolls[2].roll_id).commit_pending, true)
+  // Новое потребление записано на диск: прежний ключ его не перехватит.
+  const again = new RollRegistry(options)
+  assert.throws(() => again.consume(rolls[0].roll_id, { ...scope, idempotencyKey: 'turn-crashed' }), { code: 'ROLL_ALREADY_USED' })
+})

@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { projectionHash } from '../server/projection-integrity.mjs'
 import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -133,4 +134,73 @@ test('ошибка проекции после commit возвращает 500, 
   })
   assert.equal(malformed.status, 400)
   assert.equal((await malformed.json()).code, 'INVALID_JSON')
+})
+
+// Аудит PR #131, SEC-02: быстрый путь проекции при равной `state_version`
+// подтверждал комнату без сверки. Комната, испорченная вне журнала, снимала
+// pending checkpoint и оставалась расходящейся до следующего GET.
+test('подтверждение проекции при той же версии сверяет содержимое комнаты', { timeout: runnerTimeout(60_000) }, async (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-commands-projection-fault-'))
+  let logs = ''
+  const port = await freePort()
+  const baseUrl = `http://127.0.0.1:${port}`
+  const child = startServer(port, storage, (chunk) => { logs += chunk })
+  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
+  await waitForHealth(baseUrl, child, () => logs)
+
+  const setup = await request(baseUrl, '/api/auth/setup-admin', {
+    method: 'POST',
+    body: { name: 'Setup', email: 'setup@projection-drift.test', password: 'setup-password', setupToken: 'projection-fault-setup' },
+  })
+  assert.equal(setup.status, 201, setup.text)
+  const adminCookie = cookie(setup)
+  const state = {
+    sessionCode: 'PROJECTION-FAULT', campaign: 'Projection drift', activePlayerId: 'hero',
+    isNarrating: false, pendingCheck: null, agentInteraction: null, messages: [],
+    players: [{ id: 'hero', name: 'Hero', character: 'Hero', hp: 10, maxHp: 10, armor: 14, abilities: { str: 14, dex: 12, con: 12, int: 10, wis: 10, cha: 10 }, proficiency: 2, inventory: [], online: true }],
+    enemies: [{ id: 'goblin', name: 'Goblin', hp: 8, maxHp: 8, armor: 12, abilities: { str: 8, dex: 14, con: 10, int: 8, wis: 8, cha: 8 }, proficiency: 2, alive: true, x: 1, y: 0 }],
+    scene: { title: 'Зал', location: 'Зал', mood: '', objective: '', turn: 0, cells: [] },
+    mechanics: {}, ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], engine_mode: 'enforce', state_version: 0,
+  }
+  const created = await request(baseUrl, '/api/campaigns', { method: 'POST', cookie: adminCookie, body: { code: 'PROJECTION-FAULT', name: state.campaign, state } })
+  assert.equal(created.status, 201, created.text)
+
+  // Маршрут жизненного цикла проецирует результат без сверки на входе и без
+  // записи в летопись: повтор того же ключа приходит в быстрый путь равной версии.
+  const pause = { action: 'pause', idempotency_key: 'projection-drift-pause' }
+  // Подтверждение версии 1 падает один раз (фоновое, ответ не ломает):
+  // checkpoint остаётся позади журнала.
+  const paused = await request(baseUrl, '/api/campaigns/PROJECTION-FAULT/lifecycle', { method: 'POST', cookie: adminCookie, body: pause })
+  assert.equal(paused.status, 200, `${paused.text}\n${logs}`)
+
+  const campaignsRoot = join(storage, 'engine', 'campaigns')
+  const campaignDir = join(campaignsRoot, readdirSync(campaignsRoot).find((name) => name.toUpperCase().includes('PROJECTION-FAULT')))
+  const metadata = () => JSON.parse(readFileSync(join(campaignDir, 'metadata.json'), 'utf8'))
+  assert.equal(metadata().projection_checkpoint_version, 0, 'после сбоя подтверждения проекция ждёт сверки')
+
+  // Внешний дрейф при той же версии: каноническое поле комнаты испорчено, и в
+  // ней появилось каноническое поле, которого движок не держит вовсе.
+  const roomFile = join(storage, 'rooms', 'PROJECTION-FAULT.json')
+  const room = JSON.parse(readFileSync(roomFile, 'utf8'))
+  assert.equal(room.state.state_version, 1)
+  assert.equal(room.state.tacticalTurn, undefined)
+  room.state.enemies = room.state.enemies.map((enemy) => (enemy.id === 'goblin' ? { ...enemy, hp: 1 } : enemy))
+  room.state.tacticalTurn = { actorId: 'hero', round: 3, actionUsed: true }
+  writeFileSync(roomFile, JSON.stringify(room, null, 2), 'utf8')
+
+  const replay = await request(baseUrl, '/api/campaigns/PROJECTION-FAULT/lifecycle', { method: 'POST', cookie: adminCookie, body: pause })
+  assert.equal(replay.status, 200, `${replay.text}\n${logs}`)
+
+  // Подтверждение фоновое: ждём, пока checkpoint догонит журнал.
+  let checkpoint = metadata()
+  for (let attempt = 0; attempt < 40 && checkpoint.projection_checkpoint_version !== 1; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    checkpoint = metadata()
+  }
+  const repaired = JSON.parse(readFileSync(roomFile, 'utf8'))
+  assert.equal(repaired.state.state_version, 1)
+  assert.equal(repaired.state.enemies.find((enemy) => enemy.id === 'goblin').hp, 8, 'комната восстановлена из журнала')
+  assert.equal(repaired.state.tacticalTurn, undefined, 'поле, которого движок не держит, из комнаты снято')
+  assert.equal(checkpoint.projection_checkpoint_version, 1)
+  assert.equal(checkpoint.projection_checkpoint_hash, projectionHash(repaired.state), 'подтверждён hash восстановленной комнаты')
 })
