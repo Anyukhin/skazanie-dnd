@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -493,13 +493,20 @@ test('смазанный клинок читается в обеих форма�
   assert.equal(tacticalUi.tokenConditionGlyph(foe.id, foe.label), '☠')
   assert.equal(tacticalUi.tokenConditionGlyph('weapon-coated:hero-blade', own.label), '☠')
 
-  // Проверяется настоящая функция, а не текст исходника: до переезда знаки жили
-  // внутри `DungeonMap.tsx` вместе с react и двумя десятками соседей, вызвать их
-  // из теста было нечем, и сторожем стояла регулярка по коду — она держала форму
-  // записи и молчала бы о любой правке поведения. Осталась ровно одна строка
-  // исходником — проводка: доска обязана звать функцию, а не собирать знак сама.
-  const board = ['../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n')
-  assert.match(board, /\{tokenConditionGlyph\(condition\.id, condition\.label\)\}/u)
+})
+
+test('рисунки состояний используют allowlist, суффикс вещи и action reuse', () => {
+  assert.equal(tacticalUi.conditionIconAssetId('dead'), 'dead')
+  assert.equal(tacticalUi.conditionIconUrl('dead'), '/assets/ui/conditions/dead.png')
+  assert.equal(tacticalUi.conditionIconUrl('WEAPON-COATED:item'), '/assets/ui/conditions/weapon-coated.png')
+  assert.equal(tacticalUi.conditionIconUrl('weapon-coated:../../secrets'), '/assets/ui/conditions/weapon-coated.png')
+  assert.equal(tacticalUi.conditionIconAssetId('disengaged'), 'disengage')
+  assert.equal(tacticalUi.conditionIconUrl('disengaged'), '/assets/ui/action-icons/disengage.png')
+  assert.equal(tacticalUi.conditionIconUrl('aura-of-protection'), '/assets/ui/action-icons/paladin-aura-of-protection.png')
+  assert.equal(tacticalUi.conditionIconUrl('bless-d4'), '/assets/ui/action-icons/bless.png')
+  assert.equal(tacticalUi.conditionIconUrl('homebrew-omen'), null)
+  assert.equal(tacticalUi.conditionIconAssetId('constructor'), null)
+  assert.equal(tacticalUi.conditionIconUrl('__proto__'), null)
 })
 
 test('у постоянных состояний свои знаки, а не первые буквы подписей', () => {

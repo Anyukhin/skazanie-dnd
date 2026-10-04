@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Compass, DoorOpen, Map, MapPin, Navigation, Sparkles, X } from 'lucide-react'
+import { Compass, Map, MapPin, Navigation, Sparkles, X } from 'lucide-react'
 import type { GameState, WorldMapLocation } from './types'
 import { KIND_LABELS, currentWorldLocation, neighboringDestinations, travelProposalText, type TravelDestination } from './world-travel'
+import { CombatIcon } from './CombatIcon'
 
 /**
  * Две карточки перехода между локациями поверх доски.
@@ -46,7 +47,7 @@ export function LeaveLocationPicker({ state, busy, onTravel, onNarratorDecides, 
   }
   return <section className="leave-location-picker" role="dialog" aria-label="Куда отправиться">
     <header>
-      <DoorOpen size={16} />
+      <CombatIcon id="group-vote" kind="action" size={16} compact />
       <span><small>Решение группы</small><strong>Куда отправиться из «{from}»?</strong></span>
       <button type="button" className="icon-button" onClick={onClose} aria-label="Закрыть выбор пути"><X size={15} /></button>
     </header>
