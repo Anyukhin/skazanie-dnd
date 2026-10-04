@@ -1,0 +1,151 @@
+import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
+import { createServer, request as httpRequest } from 'node:http'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { freePort } from '../../../../test/free-port.mjs'
+
+// Временный стенд для ручного браузерного аудита. Порт 127.0.0.2 отделяет
+// cookie теста от обычного localhost. Реальные ключи и сохранения не нужны.
+const root = mkdtempSync(join(tmpdir(), 'skazanie-browser-review-'))
+const emptyEnv = join(root, 'empty.env')
+writeFileSync(emptyEnv, '')
+const backendPort = await freePort()
+const backend = `http://127.0.0.1:${backendPort}`
+const credentials = { email: 'review-player@example.test', password: 'local-review-only-password' }
+const campaign = 'BROWSER-REVIEW3'
+let logs = ''
+const serverPath = fileURLToPath(new URL('../../../../server/index.mjs', import.meta.url))
+const child = spawn(process.execPath, [serverPath], {
+  cwd: process.cwd(),
+  env: {
+    ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(backendPort),
+    DND_STORAGE_DIR: join(root, 'storage'), DOTENV_CONFIG_PATH: emptyEnv,
+    ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'local-browser-review-token',
+    COOKIE_SECURE: 'false', GAME_ENGINE_MODE: 'enforce',
+  }, stdio: ['ignore', 'pipe', 'pipe'],
+})
+child.stdout.on('data', c => { logs = (logs + c).slice(-2000) })
+child.stderr.on('data', c => { logs = (logs + c).slice(-2000) })
+let stopRequested = false
+process.once('SIGINT', () => { stopRequested = true })
+process.once('SIGTERM', () => { stopRequested = true })
+
+async function api(path, { method = 'GET', cookie = '', body } = {}) {
+  const response = await fetch(backend + path, {
+    method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(10000),
+  })
+  const value = await response.json()
+  return { status: response.status, value, cookie: response.headers.get('set-cookie')?.split(';')[0] ?? '' }
+}
+
+const sockets = new Set()
+const requests = []
+const proxy = createServer((req, res) => {
+  const command = req.method === 'POST' && /^\/api\/campaigns\/[^/]+\/commands$/u.test(req.url ?? '')
+  const drop = command && existsSync(join(root, 'drop-next-command'))
+  const fail = command && existsSync(join(root, 'fail-command-responses'))
+  if (drop) rmSync(join(root, 'drop-next-command'))
+  const chunks = []
+  req.on('data', chunk => { if (command) chunks.push(chunk) })
+  const upstream = httpRequest({
+    hostname: '127.0.0.1', port: backendPort, method: req.method, path: req.url,
+    headers: req.headers,
+  }, result => {
+    const reply = []
+    if (command) result.on('data', chunk => reply.push(chunk))
+    if (fail) {
+      result.resume()
+      result.once('end', () => {
+        res.writeHead(503, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Ответ потерян на пробном proxy.', code: 'SIMULATED_REPLY_LOST' }))
+      })
+    } else if (drop) {
+      result.resume()
+      result.once('end', () => { res.destroy(); writeFileSync(join(root, 'last-drop.json'), JSON.stringify({ status: result.statusCode, path: req.url })) })
+    } else { res.writeHead(result.statusCode ?? 502, result.headers); result.pipe(res) }
+    if (command) result.once('end', () => {
+      let input = {}
+      try { input = JSON.parse(Buffer.concat(chunks).toString()) } catch { /* Только диагностика синтетического ввода. */ }
+      let output = {}
+      try { output = JSON.parse(Buffer.concat(reply).toString()) } catch { /* Не сохраняем тело ответа. */ }
+      const hero = output.authoritative_state?.players?.find(player => player.id === 'review-hero')
+      requests.push({
+        path: req.url, status: result.statusCode, dropped: drop,
+        response_status: fail ? 503 : drop ? null : result.statusCode,
+        key: input.idempotency_key, type: input.command?.command_type,
+        replayed: output.idempotent_replay ?? null,
+        state_version: output.authoritative_state?.state_version ?? null,
+        position: hero ? { x: hero.x, y: hero.y } : null,
+      })
+      writeFileSync(join(root, 'command-receipts.json'), JSON.stringify(requests, null, 2))
+    })
+  })
+  upstream.on('error', () => { if (!res.destroyed) { res.writeHead(502); res.end('{}') } })
+  res.once('close', () => upstream.destroy())
+  req.pipe(upstream)
+})
+proxy.on('connection', socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)) })
+
+async function stop() {
+  for (const socket of sockets) socket.destroy()
+  if (proxy.listening) await new Promise(resolve => proxy.close(resolve))
+  if (child.exitCode == null) {
+    const exited = new Promise(resolve => child.once('exit', resolve))
+    child.kill()
+    await exited
+  }
+  rmSync(root, { recursive: true, force: true })
+}
+
+try {
+  let ready = false
+  for (let index = 0; index < 100; index++) {
+    if (child.exitCode != null) throw new Error(`Пробный сервер завершился: ${logs}`)
+    try { if ((await api('/api/health')).status === 200) { ready = true; break } } catch { /* Ждём свой процесс. */ }
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+  assert.ok(ready, 'Пробный сервер не запустился')
+  const admin = await api('/api/auth/setup-admin', { method: 'POST', body: {
+    name: 'Администратор стенда', email: 'review-admin@example.test',
+    password: 'local-review-admin-password', setupToken: 'local-browser-review-token',
+  } })
+  assert.equal(admin.status, 201)
+  const state = {
+    sessionCode: campaign, campaign: 'Браузерная проверка восстановления', activePlayerId: 'review-hero',
+    partyMemberIds: ['review-hero'], messages: [],
+    players: [{ id: 'review-hero', character: 'Алёна', class: 'Воин', level: 1,
+      hp: 8, maxHp: 10, armor: 12, speed: 30, proficiency: 2, x: 1, y: 1, online: true,
+      characterSetupRequired: false, abilities: { str: 14, dex: 12, con: 12, int: 10, wis: 10, cha: 10 }, inventory: [] }],
+    scene: { title: 'Тихая площадь', location: 'Тестовая площадь', description: 'Безопасная синтетическая сцена.',
+      cells: Array.from({ length: 256 }, (_, i) => ({ x: i % 16, y: Math.floor(i / 16), type: 'floor', revealed: true })) },
+    ruleset_id: 'srd_5_2_1', ruleset_version: '5.2.1', enabled_rule_packs: ['srd_5_2_1'], engine_mode: 'enforce',
+  }
+  const created = await api('/api/campaigns', { method: 'POST', cookie: admin.cookie, body: { code: campaign, name: state.campaign, state } })
+  assert.equal(created.status, 201, JSON.stringify(created.value))
+  const player = await api('/api/auth/register', { method: 'POST', body: { name: 'Игрок стенда', ...credentials } })
+  assert.equal(player.status, 201)
+  const users = await api('/api/admin/users', { cookie: admin.cookie })
+  const playerId = users.value.users.find(user => user.email === credentials.email)?.id
+  assert.ok(playerId)
+  const assigned = await api(`/api/admin/users/${playerId}`, { method: 'PATCH', cookie: admin.cookie, body: { heroIds: ['review-hero'] } })
+  assert.equal(assigned.status, 200)
+  await new Promise((resolve, reject) => { proxy.once('error', reject); proxy.listen(0, '127.0.0.2', resolve) })
+  const address = proxy.address()
+  assert.ok(address && typeof address === 'object')
+  const info = { url: `http://127.0.0.2:${address.port}`, campaign, root, credentials,
+    helper_pid: process.pid, backend_pid: child.pid, backend_port: backendPort,
+    arm: join(root, 'drop-next-command'), fail: join(root, 'fail-command-responses'),
+    receipts: join(root, 'command-receipts.json'), stop: join(root, 'stop') }
+  console.log(JSON.stringify(info))
+  const deadline = Date.now() + 20 * 60 * 1000
+  while (!stopRequested && !existsSync(info.stop) && Date.now() < deadline && child.exitCode == null) {
+    await new Promise(resolve => setTimeout(resolve, 500))
+  }
+} finally {
+  await stop()
+  console.log('BROWSER_REVIEW_SERVER_STOPPED')
+}
