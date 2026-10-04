@@ -11,6 +11,7 @@ import {
   itemAssetsOnDisk,
   manifestIsCurrent,
   normalizeItemIdentifier,
+  legacyStarterItemPresentationFor,
   resolveItemImagePath,
   starterItemPresentationFor,
 } from '../tools/build-item-manifest.mjs'
@@ -106,6 +107,43 @@ test('стартовые вещи получают рисунок по точн�
   assert.equal(resolveItemImagePath({ ...book, image: '/generated/custom-book.png' }), '/generated/custom-book.png')
   assert.equal(starterItemPresentationFor({ ...book, catalog_id: 'srd_5_2_1:dagger' }), null)
   assert.equal(starterItemPresentationFor({ name: 'Собственный предмет игрока' }), null)
+})
+
+test('старый рисунок заменяется только для точной пары имени стартовой вещи и прежнего URL', () => {
+  const legacyImage = '/assets/ui/action-icons/identify.png'
+  const currentImage = '/assets/items/starter-book.png'
+  const presentations = {
+    'Книга заклинаний': {
+      description: 'fixture',
+      image: currentImage,
+      legacy_images: [legacyImage],
+    },
+  }
+  const manifest = { itemIds: ['item-catalog-id'], typeIds: { other: 'type-other' } }
+
+  assert.equal(
+    legacyStarterItemPresentationFor({ name: 'Книга заклинаний', catalog_id: 'srd:book', image: legacyImage }, presentations)?.image,
+    currentImage,
+  )
+  assert.equal(
+    resolveItemImagePath({ name: 'Книга заклинаний', catalog_id: 'srd:book', image: legacyImage, type: 'other' }, manifest, presentations),
+    currentImage,
+  )
+  assert.equal(
+    resolveItemImagePath({ name: 'Книга заклинаний', catalog_id: 'srd:book', image: '/generated/custom.png', type: 'other' }, manifest, presentations),
+    '/generated/custom.png',
+  )
+  assert.equal(
+    resolveItemImagePath({ name: 'Другая книга', catalog_id: 'srd:book', image: legacyImage, type: 'other' }, manifest, presentations),
+    legacyImage,
+  )
+  assert.equal(
+    resolveItemImagePath({ name: 'Книга заклинаний', catalog_id: 'catalog id', type: 'other' }, manifest, presentations),
+    '/assets/items/item-catalog-id.png',
+  )
+
+  const inherited = Object.create({ 'Книга заклинаний': presentations['Книга заклинаний'] })
+  assert.equal(starterItemPresentationFor({ name: 'Книга заклинаний' }, inherited), null)
 })
 
 test('инвентарь и торговец используют общий resolver без вечных текстовых плейсхолдеров', () => {

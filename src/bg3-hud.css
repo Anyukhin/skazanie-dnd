@@ -695,3 +695,5 @@
   .dialogue-composer .request-kind button { border-radius: 2px; }
   .dialogue-composer .rail-free-input > button[type="submit"] { grid-row: 3; border-radius: 3px; font-family: var(--f-display); }
 }
+.dice-tray--panel .dice-tray__tag { display: inline-flex; align-items: center; gap: 5px; }
+.game-area .turn-rail-side .hud-mode .combat-icon { width: 22px; height: 22px; }
