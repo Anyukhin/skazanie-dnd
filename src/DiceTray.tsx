@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Dices, Wifi } from 'lucide-react'
+import { Wifi } from 'lucide-react'
 import type { DiceRollEvent } from './types'
 import './dice-tray.css'
 import { DiceRollScene } from './DiceRollScene'
+import { CombatIcon } from './CombatIcon'
 
 type DiceTrayProps = {
   latestRoll?: DiceRollEvent | null
@@ -160,7 +161,7 @@ export function DiceTray({ latestRoll, onRoll, disabled = false, compact = false
     return (
       <aside className={`dice-tray dice-tray--panel dice-tray--cinematic${error ? ' dice-tray--error' : ''}`} aria-label="Свободный бросок" aria-busy={rolling}>
         {scene}
-        <span className="dice-tray__tag">Свободный бросок</span>
+        <span className="dice-tray__tag"><CombatIcon id="free-roll" kind="roll" size={12} compact />Свободный бросок</span>
         <button ref={trigger} className="dice-tray__big" type="button" onClick={() => { void handleRoll() }} disabled={disabled || rolling} aria-label={rolling ? `Выполняется бросок d${sides}` : `Бросить d${sides}`}>
           <span className="dice-tray__die"><D20 value={displayValue} /></span>
           <strong>{rolling ? 'Катится…' : <>Бросок<br />d{sides}</>}</strong>
@@ -212,7 +213,7 @@ export function DiceTray({ latestRoll, onRoll, disabled = false, compact = false
       <button ref={trigger} className="dice-tray__button" type="button" onClick={() => { void handleRoll() }} disabled={disabled || rolling} aria-label={rolling ? 'Выполняется бросок d20' : 'Бросить d20'}>
         <span className="dice-tray__die-scene"><span className="dice-tray__die"><D20 value={displayValue} /></span><i /></span>
         <span className="dice-tray__copy">
-          <small><Dices size={12} /> СВОБОДНЫЙ БРОСОК</small>
+          <small><CombatIcon id="free-roll" kind="roll" size={12} compact /> СВОБОДНЫЙ БРОСОК</small>
           <strong>{rolling ? 'Кость катится…' : visibleRoll ? `Выпало ${visibleRoll.value}` : 'Бросить d20'}</strong>
           <span className={error ? 'dice-tray__error' : ''}>
             {error || (visibleRoll ? <><Wifi size={10} />{visibleRoll.playerName} · {timeLabel(visibleRoll.rolledAt)}</> : 'Результат увидят все')}

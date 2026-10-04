@@ -4,11 +4,17 @@
   "items": {
     "Барабан": {
       "description": "Ударный музыкальный инструмент для ритма и сигналов.",
-      "image": "/assets/ui/action-icons/thunderwave.png"
+      "image": "/assets/items/item-srd-5-2-1-drum.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/thunderwave.png"
+      ]
     },
     "Благовония": {
       "description": "Ароматические смолы или травы для обрядов и очищения воздуха.",
-      "image": "/assets/ui/action-icons/calm-emotions.png"
+      "image": "/assets/items/starter-2014/incense.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/calm-emotions.png"
+      ]
     },
     "Бутылочка чёрных чернил": {
       "description": "Небольшая ёмкость с чёрными чернилами для письма.",
@@ -36,7 +42,10 @@
     },
     "Друидический фокус": {
       "description": "Природный предмет для направления и удержания энергии заклинаний.",
-      "image": "/assets/ui/action-icons/druidcraft.png"
+      "image": "/assets/items/starter-2014/druidic-focus.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/druidcraft.png"
+      ]
     },
     "Железный горшок": {
       "description": "Тяжёлый металлический горшок для приготовления пищи.",
@@ -48,7 +57,10 @@
     },
     "Знак звания": {
       "description": "Знак, обозначающий воинское звание или должность.",
-      "image": "/assets/ui/action-icons/heroism.png"
+      "image": "/assets/items/starter-2014/insignia.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/heroism.png"
+      ]
     },
     "Карта родного города": {
       "description": "Схематичная карта города для ориентирования на знакомых улицах.",
@@ -56,11 +68,17 @@
     },
     "Книга заклинаний": {
       "description": "Книга для записи и подготовки известных заклинаний.",
-      "image": "/assets/ui/action-icons/identify.png"
+      "image": "/assets/items/starter-2014/spellbook.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/identify.png"
+      ]
     },
     "Книга знаний": {
       "description": "Книга с общими сведениями, заметками и справочными записями.",
-      "image": "/assets/ui/action-icons/identify.png"
+      "image": "/assets/items/starter-2014/reference-book.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/identify.png"
+      ]
     },
     "Костюм": {
       "description": "Комплект сценической или праздничной одежды.",
@@ -72,7 +90,10 @@
     },
     "Краплёная колода карт": {
       "description": "Колода карт с незаметными отметками для шулерских трюков.",
-      "image": "/assets/ui/action-icons/spray-of-cards.png"
+      "image": "/assets/items/starter-2014/marked-deck.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/spray-of-cards.png"
+      ]
     },
     "Кусок знамени павшего врага": {
       "description": "Фрагмент знамени, оставленный как военный трофей.",
@@ -80,7 +101,10 @@
     },
     "Лира": {
       "description": "Щипковый струнный инструмент с открытой рамой.",
-      "image": "/assets/ui/action-icons/dissonant-whispers.png"
+      "image": "/assets/items/item-srd-5-2-1-lyre.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/dissonant-whispers.png"
+      ]
     },
     "Лопата": {
       "description": "Ручной инструмент для копания и рыхления земли.",
@@ -88,11 +112,17 @@
     },
     "Лютня": {
       "description": "Щипковый струнный инструмент с корпусом и грифом.",
-      "image": "/assets/ui/action-icons/bardic-inspiration.png"
+      "image": "/assets/items/item-srd-5-2-1-lute.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/bardic-inspiration.png"
+      ]
     },
     "Магическая фокусировка": {
       "description": "Предмет для направления и удержания энергии заклинаний.",
-      "image": "/assets/ui/action-icons/bless.png"
+      "image": "/assets/items/starter-2014/arcane-focus.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/bless.png"
+      ]
     },
     "Мешочек с компонентами": {
       "description": "Небольшой мешочек с материальными компонентами для заклинаний.",
@@ -100,15 +130,24 @@
     },
     "Молитвенник": {
       "description": "Книга с молитвами и обрядами религиозной традиции.",
-      "image": "/assets/ui/action-icons/identify.png"
+      "image": "/assets/items/starter-2014/prayer-book.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/identify.png"
+      ]
     },
     "Молитвенное колесо": {
       "description": "Ритуальный предмет для повторения молитв и сосредоточения.",
-      "image": "/assets/ui/action-icons/bless.png"
+      "image": "/assets/items/starter-2014/prayer-wheel.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/bless.png"
+      ]
     },
     "Набор «Ставка трёх драконов»": {
       "description": "Игровой комплект с картами для партии в «Ставку трёх драконов».",
-      "image": "/assets/ui/action-icons/spray-of-cards.png"
+      "image": "/assets/items/starter-2014/three-dragon-ante.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/spray-of-cards.png"
+      ]
     },
     "Набор артиста": {
       "description": "Комплект реквизита и дорожных принадлежностей артиста.",
@@ -132,7 +171,10 @@
     },
     "Набор игральных карт": {
       "description": "Колода карт для игр и ставок.",
-      "image": "/assets/ui/action-icons/spray-of-cards.png"
+      "image": "/assets/items/starter-2014/playing-cards.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/spray-of-cards.png"
+      ]
     },
     "Набор исследователя подземелий": {
       "description": "Рюкзак, свет, инструменты, припасы и верёвка для подземелий.",
@@ -168,7 +210,10 @@
     },
     "Памятная вещь родителей": {
       "description": "Небольшой семейный предмет, хранящий память о родных.",
-      "image": "/assets/ui/action-icons/bless.png"
+      "image": "/assets/items/starter-2014/keepsake.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/bless.png"
+      ]
     },
     "Парадная одежда": {
       "description": "Качественный комплект одежды для официальных случаев.",
@@ -176,7 +221,10 @@
     },
     "Перо": {
       "description": "Птичье перо для письма чернилами.",
-      "image": "/assets/ui/action-icons/feather-fall.png"
+      "image": "/assets/items/starter-2014/quill.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/feather-fall.png"
+      ]
     },
     "Перстень вымышленного герцога": {
       "description": "Декоративный перстень, выдаваемый за знак высокого происхождения.",
@@ -192,7 +240,10 @@
     },
     "Подарок поклонника": {
       "description": "Небольшой знак внимания от благодарного зрителя.",
-      "image": "/assets/ui/action-icons/bless.png"
+      "image": "/assets/items/starter-2014/fan-gift.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/bless.png"
+      ]
     },
     "Поясной кошель": {
       "description": "Кожаный кошель для монет и мелких предметов.",
@@ -204,7 +255,10 @@
     },
     "Рожок": {
       "description": "Небольшой духовой инструмент для музыки и сигналов.",
-      "image": "/assets/ui/action-icons/message.png"
+      "image": "/assets/items/item-srd-5-2-1-horn.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/message.png"
+      ]
     },
     "Ручная мышь": {
       "description": "Маленькая приручённая мышь с тонким хвостом и чуткими усами. Это живой питомец; её привычки и история знакомства с героем определяются в кампании.",
@@ -220,7 +274,10 @@
     },
     "Священный символ": {
       "description": "Предмет, представляющий религиозную веру и используемый как фокус.",
-      "image": "/assets/ui/action-icons/bless.png"
+      "image": "/assets/items/item-srd-5-2-1-holy-symbol-amulet.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/bless.png"
+      ]
     },
     "Сеть": {
       "description": "Плетёная метательная сеть с грузиками по краям. Предназначена для захвата подходящей цели; наличие сети само по себе не гарантирует успешного опутывания.",
@@ -228,7 +285,10 @@
     },
     "Счастливый талисман": {
       "description": "Небольшой личный амулет, который носят как знак удачи.",
-      "image": "/assets/ui/action-icons/bless.png"
+      "image": "/assets/items/starter-2014/lucky-talisman.png",
+      "legacy_images": [
+        "/assets/ui/action-icons/bless.png"
+      ]
     },
     "Тёмная обычная одежда с капюшоном": {
       "description": "Незаметная одежда тёмных цветов с капюшоном.",

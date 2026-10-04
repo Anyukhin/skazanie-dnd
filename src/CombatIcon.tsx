@@ -28,6 +28,81 @@ type CombatIconProps = {
   priority?: boolean
 }
 
+/**
+ * Служебные рисунки живут отдельно от каталога действий: у них нет
+ * заклинания или умения, которое могло бы попасть в `ACTION_ICON_IDS`.
+ * Таблица держит только канонические имена файлов; динамические команды
+ * (`swap-*`, `scene-object-*`) разрешаются ниже по безопасным префиксам.
+ */
+export const HUD_ICON_ASSET_IDS: Readonly<Record<string, string>> = Object.freeze({
+  'end-turn': 'end-turn',
+  movement: 'movement',
+  spellbook: 'spellbook',
+  'swap-weapons': 'swap-weapons',
+  'base-attack': 'base-attack',
+  interact: 'interact',
+  parley: 'parley',
+  'unarmed-strike': 'unarmed-strike',
+  throw: 'throw',
+  lockpick: 'lockpick',
+  'leave-scene': 'leave-scene',
+  'look-around': 'look-around',
+  talk: 'talk',
+  'short-rest': 'short-rest',
+  'long-rest': 'long-rest',
+  'group-vote': 'group-vote',
+  letters: 'letters',
+  'turn-based': 'turn-based',
+  sneak: 'sneak',
+  'common-actions': 'common-actions',
+  nonlethal: 'nonlethal',
+  'opportunity-attack': 'opportunity-attack',
+  'hasted-action': 'hasted-action',
+  'custom-action': 'custom-action',
+  'free-roll': 'free-roll',
+  'sculpt-spells': 'sculpt-spells',
+})
+
+const HUD_ICON_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  '__base-attack__': 'base-attack',
+  'propose-parley': 'parley',
+})
+
+const HUD_ICON_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^swap(?:-|$)/u, 'swap-weapons'],
+  [/^scene-object(?:-|$)/u, 'interact'],
+  [/^door-lockpick(?:-|$)/u, 'lockpick'],
+  [/^lockpick(?:-|:|$)/u, 'lockpick'],
+  [/^throw(?:-|:|$)/u, 'throw'],
+]
+
+const HUD_ICON_KIND_DEFAULTS: Partial<Record<CombatIconKind, string>> = {
+  movement: 'movement',
+  spellbook: 'spellbook',
+  'end-turn': 'end-turn',
+}
+
+/** Возвращает канонический HUD-рисунок или `null` для обычного атласа. */
+export function hudIconAssetId(id: string, kind: CombatIconKind, _hint = '') {
+  const normalized = String(id ?? '').trim().toLocaleLowerCase('en-US')
+  return resolveHudIcon(normalized, kind)
+}
+
+function resolveHudIcon(normalized: string, kind: CombatIconKind) {
+  const explicit = Object.hasOwn(HUD_ICON_ASSET_IDS, normalized) ? HUD_ICON_ASSET_IDS[normalized] : undefined
+  const alias = Object.hasOwn(HUD_ICON_ALIASES, normalized) ? HUD_ICON_ALIASES[normalized] : undefined
+  return explicit
+    ?? alias
+    ?? HUD_ICON_PATTERNS.find(([pattern]) => pattern.test(normalized))?.[1]
+    ?? HUD_ICON_KIND_DEFAULTS[kind]
+    ?? null
+}
+
+export function hudIconUrl(id: string, kind: CombatIconKind, hint = '') {
+  const assetId = hudIconAssetId(id, kind, hint)
+  return assetId ? `/assets/ui/hud-icons/${assetId}.png` : null
+}
+
 const semanticIcons: Array<[RegExp, number]> = [
   [/fire|flame|burn|scorch|hell|огн|плам|жар/u, 5],
   [/cold|frost|ice|winter|chill|лед|мороз|холод/u, 6],
@@ -137,14 +212,25 @@ const ACTION_ICON_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   'enervation-repeat': 'enervation',
 })
 
-/** Продолжение заклинания использует его существующий рисунок. */
+const CAST_ICON_ID = /^cast:([a-z0-9]+(?:-[a-z0-9]+)*)$/u
+
+/** Канонический cast-id и продолжение заклинания используют общий рисунок. */
 export function iconAssetIdFor(id: string) {
-  return ACTION_ICON_ALIASES[id] ?? id
+  const raw = String(id ?? '')
+  const cast = CAST_ICON_ID.exec(raw)
+  const canonical = cast?.[1] ?? raw
+  return Object.hasOwn(ACTION_ICON_ALIASES, canonical) ? ACTION_ICON_ALIASES[canonical] : canonical
 }
 
 export function ownIconUrl(id: string) {
   const assetId = iconAssetIdFor(id)
   return ACTION_ICON_IDS.has(assetId) ? `/assets/ui/action-icons/${assetId}.png` : null
+}
+
+/** Индивидуальный рисунок действия имеет приоритет над служебным HUD-алиасом. */
+export function combatIconArtworkUrl(id: string, kind: CombatIconKind, hint = '') {
+  const assetId = iconAssetIdFor(id)
+  return ownIconUrl(assetId) ?? hudIconUrl(id, kind, hint)
 }
 
 // Фоновая картинка грузится, как только элемент попал в дерево отрисовки, —
@@ -214,28 +300,28 @@ export function CombatIcon({ id, kind, hint = '', size, compact = false, priorit
   // постепенно, поэтому запасной вариант обязателен — иначе интерфейс поедет на
   // полпути, когда нарисована половина каталога.
   const assetId = iconAssetIdFor(id)
-  const own = ownIconUrl(assetId)
+  const artwork = combatIconArtworkUrl(id, kind, hint)
   const theme = abilityIconTheme(assetId, kind, hint)
   const index = combatIconIndex(assetId, kind, hint)
   const column = index % 5
   const row = Math.floor(index / 5)
-  const { holder, revealed } = useRevealedIcon(own !== null, priority)
+  const { holder, revealed } = useRevealedIcon(artwork !== null, priority)
   // Без size размер задаёт место, куда иконку поставили: слоту боевой панели нужно,
   // чтобы рисунок занимал его целиком, а слот меняет ширину вместе с экраном.
   // Запасное значение стоит в CSS, поэтому иконка нигде не схлопнется в ноль.
   const style = {
-    ...(own
+    ...(artwork
       ? {
           '--combat-icon-bg': `url('${abilityIconBackgroundUrl(theme)}')`,
-          ...(revealed ? { '--combat-icon-src': `url('${own}')` } : {}),
+          ...(revealed ? { '--combat-icon-src': `url('${artwork}')` } : {}),
         }
       : { '--combat-icon-x': `${column * 25}%`, '--combat-icon-y': `${row * 25}%` }),
     ...(size === undefined ? {} : { width: size, height: size }),
   } as CSSProperties
 
   return <span ref={holder} className={`combat-icon combat-icon-${kind} combat-icon-theme-${theme}${compact ? ' compact' : ''}`} style={style} aria-hidden="true">
-    <i className={own ? 'combat-icon-art own' : 'combat-icon-art'}>
-      {own && <b className="combat-icon-symbol" />}
+    <i className={artwork ? 'combat-icon-art own' : 'combat-icon-art'}>
+      {artwork && <b className="combat-icon-symbol" />}
     </i>
   </span>
 }

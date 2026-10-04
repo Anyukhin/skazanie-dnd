@@ -198,8 +198,8 @@
     },
     {
       "path": "data/starter-item-presentation.json",
-      "sha256": "6803d947d7161d9e92d0143902b97a0eb6baf040a9b916c116efe95d3542dbec",
-      "size_bytes": 14984,
+      "sha256": "462b29fe21d805be55fd5def73ba2f966e6a06b1cb1e901e772960c8c17ee146",
+      "size_bytes": 16710,
       "source_id": "dndsu-5e14-core",
       "rights_status": "project_license_required"
     }

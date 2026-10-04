@@ -29,6 +29,7 @@ import {
   actorFootprintCells,
   battleRollContext,
   battleRollPresentation,
+  conditionIconUrl,
   conditionPresentation,
   tokenConditionGlyph,
   turnClockPresentation,
@@ -43,6 +44,20 @@ import { factionDisplayName, reputationImpactForTier } from './player-experience
 export type EnemyVisualKind = 'construct' | 'undead' | 'beast' | 'mystic' | 'raider'
 
 export type PresentedCondition = ReturnType<typeof conditionPresentation>
+
+/** Общий рисунок для компактных строк состояния. */
+export function ConditionMark({ id, label, className = '' }: { id: string; label: string; className?: string }) {
+  const src = conditionIconUrl(id)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  if (!src || failedSrc === src) return tokenConditionGlyph(id, label)
+  return <img
+    className={`condition-mark${className ? ` ${className}` : ''}`}
+    src={src}
+    alt=""
+    aria-hidden="true"
+    onError={() => setFailedSrc(src)}
+  />
+}
 
 /**
  * Что у героя «на нём» прямо сейчас: состояния, концентрация и временные хиты.
@@ -666,7 +681,7 @@ export function TokenConditionIcons({ conditions }: { conditions: PresentedCondi
         aria-label={condition.label}
         title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}
       >
-        {tokenConditionGlyph(condition.id, condition.label)}
+        <ConditionMark id={condition.id} label={condition.label} />
       </i>
     ))}
   </span>

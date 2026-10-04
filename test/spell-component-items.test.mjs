@@ -177,7 +177,7 @@ test('десять инструментов барда — реальные held
   const lute = bard.inventory.find((item) => item.catalog_id === 'srd_5_2_1:lute')
   assert.deepEqual(lute?.spellcasting_focus, ['bard'])
   assert.equal(lute?.focus_mode, 'held')
-  assert.equal(lute?.image, '/assets/ui/action-icons/bardic-inspiration.png')
+  assert.equal(lute?.image, '/assets/items/item-srd-5-2-1-lute.png')
 })
 
 test('материализация и нормализация берут компонентные свойства из catalog_id, а не из имени или payload', () => {

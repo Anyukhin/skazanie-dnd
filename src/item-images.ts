@@ -172,10 +172,26 @@ export type ItemImageInput = {
   imagePosition?: string
 }
 
-export function starterItemPresentationFor(item: ItemImageInput): { description: string; image: string; imagePosition?: string } | null {
+type StarterPresentation = { description: string; image: string; imagePosition?: string; legacy_images?: string[] }
+
+function namedStarterPresentation(item: ItemImageInput, entries: Record<string, StarterPresentation>) {
+  const name = String(item.name ?? '').trim()
+  return Object.hasOwn(entries, name) ? entries[name] : null
+}
+
+export function starterItemPresentationFor(item: ItemImageInput): StarterPresentation | null {
   if (item.catalog_id) return null
-  const entries = starterPresentation.items as Record<string, { description: string; image: string; imagePosition?: string }>
-  return entries[String(item.name ?? '').trim()] ?? null
+  const entries = starterPresentation.items as Record<string, StarterPresentation>
+  return namedStarterPresentation(item, entries)
+}
+
+export function legacyStarterItemPresentationFor(item: ItemImageInput): StarterPresentation | null {
+  const runtime = String(item.image ?? '').trim()
+  if (!runtime) return null
+  const entries = starterPresentation.items as Record<string, StarterPresentation>
+  const presentation = namedStarterPresentation(item, entries)
+  const legacyImages = Array.isArray(presentation?.legacy_images) ? presentation.legacy_images : []
+  return legacyImages.includes(runtime) ? presentation : null
 }
 
 const normalizeItemIdentifier = (value?: string) => String(value ?? '')
@@ -185,6 +201,8 @@ const normalizeItemIdentifier = (value?: string) => String(value ?? '')
   .replace(/^-+|-+$/gu, '')
 
 export function itemImageFor(item: ItemImageInput): string | null {
+  const legacyStarter = legacyStarterItemPresentationFor(item)
+  if (legacyStarter?.image) return legacyStarter.image
   const runtime = String(item.image ?? '').trim()
   if (runtime) return runtime
   for (const value of [item.id, item.stock_id, item.catalog_id]) {

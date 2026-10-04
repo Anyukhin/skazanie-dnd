@@ -808,6 +808,65 @@ export const TOKEN_CONDITION_GLYPHS: Record<string, string> = {
 export const TOKEN_CONDITION_PRIORITY = ['paralyzed', 'restrained', 'prone', 'frightened']
 
 /**
+ * Состояния с отдельным рисунком. Имена проходят через allowlist, поэтому
+ * ключ из серверной проекции никогда не становится частью произвольного URL.
+ * Состояние `weapon-coated:<item>` намеренно сводится к общей картинке клинка.
+ */
+const CONDITION_ICON_IDS: ReadonlySet<string> = new Set([
+  'dead', 'unconscious', 'incapacitated', 'stunned', 'paralyzed', 'petrified', 'restrained', 'grappled', 'prone',
+  'poisoned', 'blinded', 'deafened', 'frightened', 'charmed', 'invisible', 'exhaustion', 'concentration',
+  'fled', 'surrendered', 'weapon-coated', 'rime-encased', 'vitriolic-acid-covered', 'minor-blessing',
+])
+
+/** Состояния без нового PNG: рисунок переиспользуется из каталога действий. */
+export const CONDITION_ICON_ACTION_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  disengaged: 'disengage',
+  dodging: 'dodge',
+  helped: 'help',
+  readied: 'ready',
+  raging: 'rage',
+  reckless: 'reckless-attack',
+  'bardic-inspiration': 'bardic-inspiration',
+  'beacon-of-hope': 'beacon-of-hope',
+  'death-ward': 'death-ward',
+  'aura-of-life': 'aura-of-life',
+  'aura-of-protection': 'paladin-aura-of-protection',
+  light: 'light',
+  bless: 'bless',
+  'bless-d4': 'bless',
+  'resistance-d4': 'resistance',
+  'chill-touch-undead': 'chill-touch',
+  longstrider: 'longstrider',
+  bane: 'bane',
+  'metamagic-quickened': 'quickened-spell',
+  'favored-foe': 'favored-foe',
+  'hunters-mark': 'hunters-mark',
+})
+
+function conditionIconKey(id: string) {
+  const raw = String(id ?? '').trim().toLocaleLowerCase('en-US')
+  const separator = raw.indexOf(':')
+  return separator === -1 ? raw : raw.slice(0, separator)
+}
+
+/** Возвращает только разрешённое имя PNG, без пользовательского суффикса. */
+export function conditionIconAssetId(id: string) {
+  const key = conditionIconKey(id)
+  return CONDITION_ICON_IDS.has(key)
+    ? key
+    : Object.hasOwn(CONDITION_ICON_ACTION_ALIASES, key) ? CONDITION_ICON_ACTION_ALIASES[key] : null
+}
+
+/** Путь к рисунку состояния или переиспользованной иконке действия. */
+export function conditionIconUrl(id: string) {
+  const key = conditionIconKey(id)
+  const assetId = conditionIconAssetId(id)
+  if (!assetId) return null
+  const directory = CONDITION_ICON_IDS.has(key) ? 'conditions' : 'action-icons'
+  return `/assets/ui/${directory}/${assetId}.png`
+}
+
+/**
  * Знак состояния под фишкой. Смазанный клинок приезжает в двух формах: чужой —
  * непрозрачной (`weapon-coated`), свой — точной (`weapon-coated:<item_id>`),
  * потому что проекция обезличивает только карман противника
