@@ -63,18 +63,18 @@ test('проекция отдаёт сводку только своему за�
   const state = wizardState()
   const own = campaignStateForViewer(state, { role: 'player', heroIds: ['caster'] }, 'caster')
   const caster = own.players.find((player) => player.id === 'caster')
-  assert.deepEqual(caster.characterSheet.spellcasting, { ability: 'int', attack_bonus: 7, save_dc: 15 })
+  assert.deepEqual(caster.characterSheet.spellcaster, { ability: 'int', attack_bonus: 7, save_dc: 15 })
   const fighter = own.players.find((player) => player.id === 'fighter')
-  assert.equal(fighter.characterSheet?.spellcasting, undefined, 'чужой лист без сводки')
+  assert.equal(fighter.characterSheet?.spellcaster, undefined, 'чужой лист без сводки')
   const asFighter = campaignStateForViewer(state, { role: 'player', heroIds: ['fighter'] }, 'fighter')
-  assert.equal(asFighter.players.find((player) => player.id === 'caster').characterSheet?.spellcasting, undefined)
-  assert.equal(asFighter.players.find((player) => player.id === 'fighter').characterSheet?.spellcasting, undefined, 'воину сводка не нужна')
+  assert.equal(asFighter.players.find((player) => player.id === 'caster').characterSheet?.spellcaster, undefined)
+  assert.equal(asFighter.players.find((player) => player.id === 'fighter').characterSheet?.spellcaster, undefined, 'воину сводка не нужна')
 })
 
 test('СЛ в проекции совпадает со СЛ спасброска, которую применяет CastSpell', () => {
   const state = wizardState()
   const projected = campaignStateForViewer(state, { role: 'player', heroIds: ['caster'] }, 'caster')
-  const shown = projected.players.find((player) => player.id === 'caster').characterSheet.spellcasting.save_dc
+  const shown = projected.players.find((player) => player.id === 'caster').characterSheet.spellcaster.save_dc
   const result = resolveCommand({
     command_type: 'CastSpell', command_id: 'summary-fireball', actor_id: 'caster', spell_id: 'fireball',
     to: { x: 5, y: 3 }, slot_level: 3, server_authoritative: true,

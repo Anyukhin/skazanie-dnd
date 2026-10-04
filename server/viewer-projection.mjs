@@ -1601,7 +1601,7 @@ function playerItemsWithCapabilities(players, viewerId = '', rulesetId = '', sta
     const spellcasting = own && publicPlayer.characterSheet ? heroSpellcastingSummaryFor(player) : null
     return {
       ...publicPlayer,
-      ...(spellcasting ? { characterSheet: { ...publicPlayer.characterSheet, spellcasting } } : {}),
+      ...(spellcasting ? { characterSheet: { ...publicPlayer.characterSheet, spellcaster: spellcasting } } : {}),
       ...(Array.isArray(visibleCombatActions) ? { combatActions: visibleCombatActions } : {}),
       ...(own && state && rulesetId === 'dnd_5e_2014' && Array.isArray(publicPlayer.combatSpells) ? {
         combatSpells: publicPlayer.combatSpells.map((/** @type {Loose} */ spell) => ({
