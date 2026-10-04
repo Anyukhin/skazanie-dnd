@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { CircleAlert, X } from 'lucide-react'
 import type { CombatMechanics, GameState, Player, ReputationTier, SummonedCreature, TacticalMap } from './types'
 import { sceneTacticalMap, sightEdgeBlocked } from './tactical-map-client'
+import { concentrationEndReasonLabel } from '../server/concentration-end-reasons.mjs'
 export { canonicalLocationKey, locationsMatch } from './player-experience'
 
 
@@ -450,7 +451,7 @@ export function battleEventText(state: GameState, event: BattleLogEvent) {
     const rollText = modifier === 0 ? natural : `${natural} ${modifier > 0 ? '+' : '−'} ${Math.abs(modifier)} = ${event.roll?.total ?? '?'}`
     return `${actorName(event.actorId)}: концентрация ${rollText} против СЛ ${event.roll?.difficulty ?? 10} — ${event.result === 'success' ? 'сохранена' : 'провалена'}.${event.itemSavingThrowBonus ? ` Предмет: +${event.itemSavingThrowBonus}.` : ''}${event.auraBonus ? ` Аура защиты: +${event.auraBonus}.` : ''}${event.indomitableBonus ? ` Несгибаемый: +${event.indomitableBonus}, исходный итог ${event.indomitableOriginalTotal ?? '?'}.` : ''}`
   }
-  if (event.type === 'concentration-end') return `Концентрация ${actorName(event.actorId)} прекращена${event.reason ? ` · ${event.reason}` : ''}.`
+  if (event.type === 'concentration-end') return `Концентрация ${actorName(event.actorId)} прекращена${event.reason ? ` · ${concentrationEndReasonLabel(event.reason)}` : ''}.`
   if (event.type === 'max-hp-reduction') return hideTargetFacts ? `Жизненные силы ${actorName(event.targetId)} ослаблены.` : `${actorName(event.targetId)}: максимум ОЗ ${event.maximumHpBefore ?? '?'} → ${event.maximumHpAfter ?? '?'}.`
   if (event.type === 'max-hp-reduction-prevented') return `Аура жизни защищает максимум ОЗ ${actorName(event.targetId)}.`
   if (event.type === 'action') return event.indomitableBonus

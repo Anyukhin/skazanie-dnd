@@ -22,6 +22,7 @@
     "server/building-generator.mjs",
     "server/combat-bounds.mjs",
     "server/combat-forecast-view.mjs",
+    "server/concentration-end-reasons.mjs",
     "server/contracts.mjs",
     "server/dynamic-map.mjs",
     "server/graph-layout.mjs",

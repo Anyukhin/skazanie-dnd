@@ -18670,7 +18670,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // Заготовка живёт до начала собственного следующего хода: круг замкнулся —
       // несработавшая «Готовность» пропадает вместе с потраченным действием.
       if (state.mechanics.combat.readied?.[nextId]) {
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ReadiedActionExpired', { reason: 'turn-came-around', trigger: state.mechanics.combat.readied[nextId].trigger }, [nextId]))
+        const expiring = state.mechanics.combat.readied[nextId]
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ReadiedActionExpired', {
+          reason: 'turn-came-around', trigger: expiring.trigger, ...(expiring.spell_id ? { spell_id: expiring.spell_id } : {}),
+        }, [nextId]))
       }
       let startTurnState = projectEvents(events)
       const auraSource = activeAuraOfLifeSource(startTurnState, nextId)
@@ -21477,7 +21480,7 @@ function concentrationReconciliationEvents(state, command, events) {
     const readied = projected.mechanics.combat?.readied?.[id]
     if (readied?.effect_id && String(projected.mechanics.concentration?.[id]?.effect_id ?? '') !== String(readied.effect_id)) {
       push(eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.reaction), 'ReadiedActionExpired', {
-        reason: 'concentration-lost', trigger: readied.trigger,
+        reason: 'concentration-lost', trigger: readied.trigger, spell_id: readied.spell_id,
       }, [id]))
     }
     const readiedBefore = state.mechanics.combat?.readied?.[id]
