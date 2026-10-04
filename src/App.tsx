@@ -537,17 +537,35 @@ function PlayerHud({ player, hazards = [], combatActive = false, status, onChara
   // показывает и полную полосу, и голубой хвост за ней.
   const barScale = Math.max(maxHp, hp + temporaryHp)
   const barPercent = (value: number) => Math.round(Math.max(0, Math.min(1, value / barScale)) * 1000) / 10
+  const passivePerception = player.characterSheet?.passive_perception
+  // Подкласс показываем, только если сервер отдал человеческое название, а не ключ.
+  const subclassLabel = player.subclass && /[А-Яа-яЁё]/u.test(player.subclass) ? player.subclass : ''
+  const roleLine = [player.species, playerRoleLabel(player), subclassLabel].filter(Boolean).join(' · ')
+  const damagePercent = Math.round((1 - Math.max(0, Math.min(1, hp / maxHp))) * 100)
+  const equippedWeapons = (player.inventory ?? []).filter((item) => item.equipped && item.type === 'weapon').slice(0, 2)
   return (
     <aside className="player-hud" aria-label={`${player.character}: здоровье ${hp} из ${maxHp}, класс доспеха ${player.armor}, скорость ${player.speed} футов`}>
       <div className="hud-identity">
-        {/* Портрет с гербовым щитом КД и печатью уровня, как в макете стола. */}
+        {/* Портрет как в BG3: полученный урон заливает его снизу, ОЗ — полосой
+            внутри круга. КД и уровень вынесены в строку характеристик: значки
+            поверх портрета наезжали на ОЗ. */}
         <span className="hud-portrait-frame">
           <span className={`hud-portrait${hp <= 0 ? ' down' : ''}`} data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</span>
-          <span className="hud-ac-badge" title={`Класс доспеха ${player.armor}`} aria-label={`Класс доспеха ${player.armor}`}><svg viewBox="0 0 34 38" aria-hidden="true"><path d="M17 2 4 7v10c0 8.5 5.6 14.6 13 18.5C24.4 31.6 30 25.5 30 17V7z" /></svg><b>{player.armor}</b></span>
-          <span className="hud-level-badge" title={`Уровень ${player.level}`} aria-label={`Уровень ${player.level}`}>{player.level}</span>
+          <span className="hud-portrait-damage" style={{ height: `${damagePercent}%` }} aria-hidden="true" />
+          <span className={`hud-portrait-hp${hp <= 0 ? ' down' : ''}`} aria-hidden="true">{hp <= 0 ? 'без сознания' : `${hp}${temporaryHp > 0 ? ` +${temporaryHp}` : ''} / ${maxHp}`}</span>
         </span>
-        <span><strong>{player.character}</strong><small>{playerRoleLabel(player)}</small></span>
+        <span><strong title={player.character}>{player.character}</strong><small title={roleLine}>{roleLine}</small></span>
       </div>
+      <dl className="hud-stats" aria-label="Характеристики героя">
+        <div title={`Класс доспеха ${player.armor}`}><dt>КД</dt><dd>{player.armor}</dd></div>
+        <div title={`Скорость ${player.speed} футов`}><dt>Скор.</dt><dd>{player.speed}</dd></div>
+        {passivePerception != null && <div title="Пассивная внимательность: что герой замечает, не тратя действий"><dt>Вним.</dt><dd>{passivePerception}</dd></div>}
+        <div title={`Уровень ${player.level}`}><dt>Ур.</dt><dd>{player.level}</dd></div>
+      </dl>
+      {/* Что герой держит в руках — из серверного инвентаря, без своей логики. */}
+      {equippedWeapons.length > 0 && <div className="hud-weapons" role="group" aria-label="Оружие в руках">
+        {equippedWeapons.map((item) => <span key={item.id} className="hud-weapon" title={`${item.name}${item.combat?.damage ? ` · ${item.combat.damage}` : ''}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} size={28} compact /><span>{item.name}</span></span>)}
+      </div>}
       {/* Полоса здоровья с хвостом временных хитов: они уходят первыми и
           не лечатся, поэтому цвет у них свой (`--bonus`), а не продолжение красного. */}
       <div className="hud-health" title={`Здоровье: ${hp} из ${maxHp}${status && status.temporaryHp > 0 ? ` · временные хиты ${status.temporaryHp}` : ''}`}>
@@ -562,8 +580,8 @@ function PlayerHud({ player, hazards = [], combatActive = false, status, onChara
         {hazards.length > 0 && <em className="hud-hazard" title={`Активная опасность: ${hazardLabel}`}><Flame size={13} />{hazardLabel}</em>}
       </div>
       <div className="hud-actions">
-        <button onClick={onCharacter} title="Лист героя" aria-label="Лист героя"><BookOpen size={15} /></button>
-        <button onClick={onInventory} title={`Инвентарь · ${player.inventory.length}`} aria-label={`Инвентарь, предметов: ${player.inventory.length}`}><BackpackIcon /><b>{player.inventory.length}</b></button>
+        <button onClick={onCharacter} title="Лист героя" aria-label="Лист героя"><BookOpen size={15} /><span className="hud-action-label">Лист героя</span></button>
+        <button onClick={onInventory} title={`Инвентарь · ${player.inventory.length}`} aria-label={`Инвентарь, предметов: ${player.inventory.length}`}><BackpackIcon /><span className="hud-action-label">Вещи</span><b>{player.inventory.length}</b></button>
       </div>
       {/* Вторая строка — словами, потому что по ним принимают решения: держать
           ли концентрацию под ударом, чем лечить отравление. Рисуется только
