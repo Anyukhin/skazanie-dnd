@@ -1,8 +1,8 @@
-import { interpretResolvedPartyDecision } from './scene-architect.mjs'
-import { abandonableQuest, detectPartyExitRequest, exitContextFromState, objectiveNamesDestination, onwardRouteExitRequest, partyDestinationLabel, travelDestinationIsPlace } from './party-exit-intent.mjs'
+import { interpretResolvedPartyDecision, knownDestinationsFrom } from './scene-architect.mjs'
+import { abandonableQuest, detectPartyExitRequest, exitContextFromState, objectiveCallsTo, objectiveNamesDestination, onwardRouteExitRequest, partyDestinationLabel, travelDestinationIsPlace, unrecognizedDestination } from './party-exit-intent.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
-import { isSceneObservationRequest } from './intent-parser.mjs'
+import { isSceneObservationRequest, resolvePresentSocialActors } from './intent-parser.mjs'
 import { sceneObjectLabelFor } from './scene-interactions.mjs'
 
 /**
@@ -348,6 +348,130 @@ function abandonLabel(questTitle, destination) {
 export { objectiveNamesDestination }
 
 /**
+ * Называет ли фраза того, кто стоит в сцене: видимого NPC — по имени или по
+ * роли («к смотрительнице»), героя отряда или живого противника — по имени.
+ * Скрытые от отряда NPC не учитываются: ответ не должен работать оракулом.
+ *
+ * @param {string} phrase
+ * @param {Record<string, any>} state
+ */
+function namesSceneActor(phrase, state = {}) {
+  const location = visibleText(state.scene?.location, 160).toLocaleLowerCase('ru')
+  const merchants = (Array.isArray(state.merchants) ? state.merchants : [])
+    .filter((merchant) => merchant?.available !== false
+      && (!location || !merchant?.location || visibleText(merchant.location, 160).toLocaleLowerCase('ru') === location))
+  const visibleState = { scene: state.scene, social: { npcs: presentSceneNpcs(state) }, merchants }
+  if (resolvePresentSocialActors(phrase, visibleState).length) return true
+  const others = [
+    ...(Array.isArray(state.players) ? state.players : []),
+    ...(Array.isArray(state.enemies) ? state.enemies : []).filter((enemy) => enemy?.alive !== false),
+  ].map((actor) => ({ name: visibleText(actor?.character || actor?.name, 80) }))
+  return Boolean(mentionedNpc(phrase, others.filter((actor) => actor.name)))
+}
+
+/**
+ * Называет ли фраза видимый предмет обстановки: «к колодцу» при колодце на
+ * доске — шаг по сцене, а не неизвестное место.
+ *
+ * @param {string} phrase
+ * @param {string[]} labels русские подписи видимых предметов
+ */
+function namesSceneObject(phrase, labels) {
+  const words = visibleText(phrase, 160).toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/[^\p{L}-]+/u).filter((word) => word.length >= 3)
+  return labels.some((label) => visibleText(label, 60).toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/[^\p{L}-]+/u)
+    .filter((part) => part.length >= 3)
+    .some((part) => words.some((word) => word.startsWith(RU_WORD_STEM(part)))))
+}
+
+/**
+ * Районы и места городского плана текущей локации («Высокие ворота дамбы»).
+ * План — только презентация, перехода по нему нет, но сказать, что такого
+ * места нет, когда оно подписано на плане, было бы неправдой.
+ *
+ * @param {Record<string, any>} state
+ * @returns {string[]}
+ */
+function currentCityPlanNames(state = {}) {
+  const map = state?.worldMap
+  const locations = Array.isArray(map?.locations) ? map.locations : []
+  const sceneLocation = visibleText(state?.scene?.location, 160).toLocaleLowerCase('ru')
+  const current = locations.find((entry) => map?.currentLocationId && String(entry?.id ?? '') === String(map.currentLocationId))
+    ?? locations.find((entry) => sceneLocation && visibleText(entry?.name, 160).toLocaleLowerCase('ru') === sceneLocation)
+  const overview = current?.cityOverview ?? current?.city_overview
+  return [
+    ...(Array.isArray(overview?.districts) ? overview.districts : []),
+    ...(Array.isArray(overview?.places) ? overview.places : []),
+  ].map((entry) => visibleText(entry?.name, 120)).filter(Boolean)
+}
+
+/**
+ * «Иду к смотровой дамбе» при цели «Добраться до смотровой дамбы…»: словарь
+ * мест дамбы не знает, но цель прямо зовёт отряд туда. Прежде без модели фраза
+ * доходила до подхода к собеседнику и получала «К кому именно подойти?»
+ * (плейтест 2026-10-04, QP-02). Цель должна звать словами о приходе
+ * (`objectiveCallsTo`): «не дать толпе открыть шлюзы» шлюзы называет, но «иду
+ * к шлюзам» — шаг по сцене. Текущее место и собеседник по роли уходом не
+ * становятся.
+ *
+ * @param {string} text
+ * @param {Record<string, any>} state
+ * @param {{ knownPlaces: string[], presentNames: string[] }} exitContext
+ * @returns {{ destination: string, source: 'text' }|null}
+ */
+function objectiveTravelRequest(text, state, exitContext) {
+  const destination = unrecognizedDestination(text, exitContext)
+  if (!destination || !objectiveCallsTo(destination, state.scene?.objective)) return null
+  if (objectiveNamesDestination(destination, state.scene?.location)) return null
+  if (namesSceneActor(destination, state)) return null
+  return { destination, source: 'text' }
+}
+
+/**
+ * Честный ответ на движение к месту, которого нет ни на карте мира, ни в сцене:
+ * «Иду по свежим следам к провалу у старой арки» получало общее «Я не понял
+ * способ действия», хотя способ ясен — непонятно, куда (плейтест 2026-10-04,
+ * QP-06). Ответ ничего не создаёт: точки на карте из текста не появляются, а
+ * найти место можно проверкой здесь или известной дорогой по карте мира.
+ *
+ * Пустая строка — фраза не о таком месте: оно на карте или в цели, это текущая
+ * локация, видимый предмет обстановки, место городского плана или собеседник,
+ * или идёт бой. Тогда остаётся прежнее общее уточнение.
+ *
+ * @param {unknown} action
+ * @param {Record<string, any>} [state]
+ * @param {{ isRevealed?: ((prop: any) => boolean) | null }} [options]
+ *   `isRevealed` — раскрыт ли предмет на авторитетной карте; без него `state`
+ *   считается уже проекцией игрока
+ * @returns {string}
+ */
+export function unknownDestinationReply(action, state = {}, { isRevealed = null } = {}) {
+  if (state?.mechanics?.combat?.active) return ''
+  const text = visibleText(action, 2_000)
+  const context = exitContextFromState(state)
+  const destination = unrecognizedDestination(text, context)
+  if (!destination) return ''
+  if (objectiveNamesDestination(destination, state.scene?.objective)
+    || objectiveNamesDestination(destination, state.scene?.location)) return ''
+  if (namesSceneActor(destination, state)) return ''
+  const props = (Array.isArray(state?.scene?.map?.props) ? state.scene.map.props : [])
+    .filter((prop) => !['broken', 'destroyed'].includes(String(prop?.state ?? ''))
+      && (typeof isRevealed !== 'function' || isRevealed(prop)))
+  const sceneLabels = [...props.map((prop) => sceneObjectLabelFor(prop?.assetId)), ...currentCityPlanNames(state)].filter(Boolean)
+  if (namesSceneObject(destination, sceneLabels)) return ''
+  const { phrase } = partyDestinationLabel(text, destination, context)
+  const asked = phrase.charAt(0).toLocaleUpperCase('ru') + phrase.slice(1)
+  const neighbours = knownDestinationsFrom(state).map((entry) => visibleText(entry.name, 80)).filter(Boolean).slice(0, 4)
+  return [
+    `${asked}? Такого места пока нет ни на карте мира, ни среди отмеченного в этой сцене.`,
+    'Путь к нему можно искать отсюда: осмотритесь или идите по следам — это проверка навыка.',
+    neighbours.length
+      ? `Или выберите на карте мира знакомое направление: ${neighbours.join(', ')}.`
+      : 'Знакомых направлений отсюда на карте мира пока нет.',
+    'Попытка ничего не расходует.',
+  ].join(' ')
+}
+
+/**
  * @param {unknown} action
  * @param {Record<string, any>} [state]
  * @param {{ sourceText?: string }} [options] `sourceText` — исходная фраза
@@ -375,6 +499,7 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
   const destination = accompanied ? /(?:\sк|\sв|\sна)\s+([^,.;!?]+?)(?=\s+(?:и|чтобы|затем)\s|[,.!?;]|$)/iu.exec(text)?.[1] : ''
   // Известные точки карты и имена присутствующих: «Иду в Каменный Град» — уход
   // без родового слова, «иду к Марте» — шаг к собеседнику, а не из сцены.
+  // Последним — место, куда словами о приходе зовёт цель сцены.
   const exitContext = exitContextFromState(state)
   // «Продолжим» на промежуточной точке маршрута — уход к его следующему пункту:
   // та же карточка, что открывает выбор этого пункта кнопкой «Решение группы»
@@ -382,6 +507,7 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
   const exit = detectPartyExitRequest(text, exitContext)
     ?? (destination ? detectPartyExitRequest(`Отправиться к ${destination}`, exitContext) : null)
     ?? onwardRouteExitRequest(text, state)
+    ?? objectiveTravelRequest(text, state, exitContext)
   if (exit) {
     const destination = exit.destination
     const knownFrom = String(state.scene?.location || state.scene?.title || '').replace(/\s+/gu, ' ').trim().slice(0, 120)

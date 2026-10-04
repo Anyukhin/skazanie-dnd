@@ -2,8 +2,15 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { WORLD_MAP_TRAVEL_MARKER, abandonableQuest, classifyPartyDecision, detectPartyExitRequest, isRouteContinuation, onwardRouteObjective, onwardRouteTarget, pendingOnwardTarget } from '../server/party-exit-intent.mjs'
-import { PARTY_OPTION_LIMIT, partyOptionLabel, proposeAgentInteraction, resolvePartyDecision } from '../server/player-request-router.mjs'
+import {
+  WORLD_MAP_TRAVEL_MARKER, abandonableQuest, classifyPartyDecision, detectPartyExitRequest, isRouteContinuation,
+  objectiveCallsTo, objectiveNamesDestination, objectiveRemainder, onwardRouteObjective, onwardRouteTarget,
+  pendingOnwardTarget, unrecognizedDestination,
+} from '../server/party-exit-intent.mjs'
+import {
+  PARTY_OPTION_LIMIT, partyOptionLabel, proposeAgentInteraction, proposeRoutedTravel, resolvePartyDecision,
+  unknownDestinationReply,
+} from '../server/player-request-router.mjs'
 
 const caravanserai = {
   scene: { title: 'Глава 1', location: 'Заброшенный Караван-сарай', objective: 'Найти печать архивариуса' },
@@ -293,4 +300,128 @@ test('«продолжим» и «идём дальше» — просьба о 
   for (const text of ['продолжим приключение', 'продолжим разговор с Мирой', 'идём в таверну', 'продолжим?', 'дальше', '', null]) {
     assert.equal(isRouteContinuation(text), false, String(text))
   }
+})
+
+// ---------- плейтест 2026-10-04: разбор фраз о передвижении ----------
+
+const veldburg = {
+  scene: { title: 'Кусок дерева на площади', location: 'Вельдбург', objective: 'Исследовать кусок дерева на площади и понять его значение' },
+  social: { npcs: [{ id: 'npc:mara', name: 'Мара Трижды-Мерная', role: 'старшая смотрительница дамбы', location: 'Вельдбург', visibility: 'public' }] },
+  worldMemory: { quests: [{ id: 'quest:main', title: 'Колокол под водой', status: 'active' }] },
+  worldMap: {
+    currentLocationId: 'veld',
+    locations: [
+      { id: 'veld', name: 'Вельдбург', known: true },
+      { id: 'gates', name: 'Солёные Ворота', known: true },
+      { id: 'koegs', name: 'Три Кёга', known: true },
+      { id: 'secret', name: 'Тайный грот', known: false },
+    ],
+    routes: [{ from: 'veld', to: 'gates', distance: 1 }, { from: 'veld', to: 'koegs', distance: 2 }, { from: 'veld', to: 'secret', distance: 1 }],
+  },
+}
+
+test('описание дороги не входит в название места, но уход по-прежнему узнаётся', () => {
+  // Хроника плейтеста: локация «Смотровой дамбе по маршруту от Высокой пристани
+  // вдоль соляных складов» и цель «Найти в Смотровой дамбе по маршруту … другой
+  // путь». «Дамбы» нет в словаре мест; уход узнавался только по «пристани» в
+  // хвосте — и должен узнаваться по-прежнему, иначе игрок упрётся в тупик.
+  const text = 'Отправляюсь к смотровой дамбе по маршруту от Высокой пристани вдоль соляных складов, чтобы проверить карту.'
+  assert.deepEqual(detectPartyExitRequest(text), { destination: 'смотровой дамбе', source: 'text' })
+  const card = proposeAgentInteraction(text, veldburg)
+  assert.equal(card?.type, 'vote')
+  assert.equal(card.options[0], 'Уходим из «Вельдбург» и идём к смотровой дамбе')
+  assert.equal(classifyPartyDecision(card.options[0]).destinationHint, 'смотровой дамбе')
+
+  for (const [phrase, destination] of [
+    ['Идём в деревню вдоль реки', 'деревню'],
+    ['Уходим в лес через болото, пока не стемнело', 'лес'],
+    ['Направляемся в порт мимо старых складов', 'порт'],
+    ['Идём в таверну по старой дороге', 'таверну'],
+    // Дорога до предлога: «по следам», «через», «от … вдоль …».
+    ['Идём через лес в деревню', 'деревню'],
+    ['Иду по свежим следам в деревню', 'деревню'],
+    // «По» без слова пути — часть названия, а не дорога.
+    ['Идём в таверну по соседству', 'таверну по соседству'],
+  ]) {
+    assert.equal(detectPartyExitRequest(phrase)?.destination, destination, phrase)
+  }
+  // Дорога не делает уходом шаг внутри сцены.
+  for (const phrase of ['Иду по коридору к двери', 'Иду через зал к стойке', 'Отступаем от двери к окну', 'Иду к двери через таверну']) {
+    assert.equal(detectPartyExitRequest(phrase), null, phrase)
+  }
+})
+
+test('переносное «другой путь» не называет места из цели сцены', () => {
+  // Плейтест 2026-10-04: цель «Найти в … другой путь к разгадке», судья
+  // свободных действий вернул назначение «другой путь к разгадке», и отряд ушёл
+  // в локацию с таким именем. Слова совпадали с целью все до одного.
+  const objective = 'Найти в Смотровой дамбе по маршруту от Высокой пристани вдоль соляных складов другой путь к разгадке: колокол звонит снизу'
+  assert.equal(objectiveNamesDestination('Другой путь к разгадке', objective), false)
+  assert.equal(objectiveNamesDestination('«Другой п', objective), false, 'обрывок старой подписи — тоже не место')
+  assert.equal(objectiveNamesDestination('новый выход', 'Найти новый выход из подземелья'), false)
+  assert.equal(objectiveRemainder(objective, 'Другой п'), null, 'приход в обрывок не продолжает цель')
+  const dam = { scene: { location: 'Смотровая дамба', objective }, worldMemory: veldburg.worldMemory }
+  assert.equal(proposeRoutedTravel({ route: 'travel', destination: 'другой путь к разгадке' }, dam,
+    'Покидаю Смотровую дамбу через дверь, чтобы найти другой путь к разгадке.'), null)
+  // Настоящее место из цели по-прежнему называется целью.
+  assert.equal(objectiveNamesDestination('смотровая дамба', 'Добраться до смотровой дамбы и понять источник звона'), true)
+  assert.equal(objectiveNamesDestination('Каменный Град', 'Вернуться в Каменный Град'), true)
+  assert.equal(objectiveRemainder('Добраться до смотровой дамбы, понять источник звона', 'Смотровая дамба'), 'Понять источник звона')
+})
+
+test('место, куда словами о приходе зовёт цель, — уход, а не «К кому именно подойти?»', () => {
+  // QP-02: без модели «Иду к смотровой дамбе» доходило до подхода к
+  // собеседнику, хотя цель прямо называла дамбу.
+  const state = { ...veldburg, scene: { ...veldburg.scene, objective: 'Добраться до смотровой дамбы, понять источник звона и не дать толпе открыть шлюзы.' } }
+  const card = proposeAgentInteraction('Иду к смотровой дамбе, следуя по открытой площади и не мешая толпе.', state)
+  assert.equal(card?.type, 'vote')
+  assert.equal(card.options[0], 'Уходим из «Вельдбург» и идём к смотровой дамбе')
+  assert.equal(card.options.some((option) => /бросаем задание/u.test(option)), false, 'идти туда, куда зовёт цель, — не отказ от задания')
+  assert.equal(objectiveCallsTo('смотровой дамбе', state.scene.objective), true)
+
+  // Цель называет шлюзы, но никуда к ним не зовёт; собеседник по роли — не
+  // место; отряд, уже стоящий на дамбе, туда не уходит; цель без слов о
+  // приходе тоже не зовёт.
+  assert.equal(objectiveCallsTo('шлюзам', state.scene.objective), false)
+  assert.equal(proposeAgentInteraction('Иду к шлюзам', state), null)
+  assert.equal(proposeAgentInteraction('Иду к смотрительнице дамбы', state), null)
+  assert.equal(proposeAgentInteraction('Иду к смотровой дамбе', { ...state, scene: { ...state.scene, location: 'Смотровая дамба' } }), null)
+  assert.equal(proposeAgentInteraction('Иду к смотровой дамбе', { ...state, scene: { ...state.scene, objective: 'Понять, кто звонит на смотровой дамбе' } }), null)
+  assert.equal(proposeAgentInteraction('Не иду к смотровой дамбе, остаюсь на площади', state), null)
+})
+
+test('движение к месту, которого нет ни на карте, ни в сцене, получает честный ответ', () => {
+  // QP-06: после улики о «провале у старой арки» обе фразы получали «Я не понял
+  // способ действия». Точку из текста сервер не создаёт — он объясняет, что
+  // можно сделать, и называет известные направления, но не скрытые.
+  for (const [text, asked] of [
+    ['Иду по свежим следам к провалу у старой арки, чтобы найти телегу или следы груза.', 'К провалу у старой арки?'],
+    ['Отправляюсь к старой арке по свежим следам телеги, чтобы осмотреть провал.', 'К старой арке?'],
+  ]) {
+    assert.equal(unrecognizedDestination(text), asked.slice(2, -1).toLocaleLowerCase('ru'), text)
+    assert.equal(proposeAgentInteraction(text, veldburg), null, 'неизвестное место не открывает голосование')
+    const reply = unknownDestinationReply(text, veldburg)
+    assert.ok(reply.startsWith(`${asked} Такого места пока нет`), reply)
+    assert.match(reply, /осмотритесь или идите по следам — это проверка навыка/u)
+    assert.match(reply, /знакомое направление: Солёные Ворота, Три Кёга\./u)
+    assert.doesNotMatch(reply, /Тайный грот|Отправляемся в/u)
+  }
+
+  const text = 'Отправляюсь к торговому лотку у фонтана'
+  const withStall = { ...veldburg, scene: { ...veldburg.scene, map: { props: [{ id: 'stall', assetId: 'market_stall' }] } } }
+  assert.equal(unknownDestinationReply(text, withStall), '', 'видимый предмет обстановки — не неизвестное место')
+  assert.match(unknownDestinationReply(text, withStall, { isRevealed: () => false }), /^К торговому лотку у фонтана\?/u,
+    'нераскрытый предмет не выдаётся отказом от ответа')
+  // Собеседник по роли, место из цели, бой и известная точка карты — не этот случай.
+  assert.equal(unknownDestinationReply('Отправляюсь к смотрительнице дамбы', veldburg), '')
+  assert.equal(unknownDestinationReply('Отправляюсь к затопленной колокольне',
+    { ...veldburg, scene: { ...veldburg.scene, objective: 'Осмотреть затопленную колокольню' } }), '')
+  assert.equal(unknownDestinationReply('Отправляюсь к старой арке', { ...veldburg, mechanics: { combat: { active: true } } }), '')
+  assert.equal(unknownDestinationReply('Отправляюсь в Солёные Ворота', veldburg), '')
+  // Название на городском плане текущего места — не «нет такого места».
+  const withPlan = structuredClone(veldburg)
+  withPlan.worldMap.locations[0].cityOverview = { districts: [{ name: 'Линия дамб' }], places: [{ name: 'Арка Десятой Пошлины' }] }
+  assert.equal(unknownDestinationReply('Отправляюсь к старой арке', withPlan), '')
+  // Без известных соседей ответ это признаёт, а не перечисляет пустоту.
+  assert.match(unknownDestinationReply('Отправляюсь к старой арке', { scene: veldburg.scene }), /Знакомых направлений отсюда на карте мира пока нет\./u)
 })
