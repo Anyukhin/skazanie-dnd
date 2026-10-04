@@ -246,3 +246,19 @@ test('структурно неверный ответ NPC не становит
     assert.notEqual(result.reply, '42')
   }
 })
+
+test('без модели исход проверки звучит по-русски, а не служебной английской строкой', async () => {
+  // До 2026-10-04 запасной путь отвечал «Мира is not convinced.» (PR #136).
+  const controller = new NpcSocialController()
+  for (const checkOutcome of [
+    { skill: 'persuasion', ability: 'cha', success: true },
+    { skill: 'persuasion', ability: 'cha', success: false },
+    { skill: 'insight', ability: 'wis', success: true },
+    { skill: 'insight', ability: 'wis', success: false },
+  ]) {
+    const result = await controller.respond({ state: dialogueState(), playerId: 'hero', npcId: 'npc:mira', message: 'Пропусти нас к архиву', turnId: 'turn-check', checkOutcome })
+    const reply = String(result?.reply ?? result?.npc_reply ?? '')
+    assert.ok(reply.startsWith('Мира'), reply)
+    assert.doesNotMatch(reply, /[A-Za-z]{3,}/u, `${checkOutcome.skill}/${checkOutcome.success}: ${reply}`)
+  }
+})
