@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "run_url": "https://github.com/Anyukhin/skazanie-dnd/actions/runs/37212546476",
+  "head_sha": "435bba3d77465ed713f40a1495d4d4af784716eb",
+  "checked_out_merge": "4856eccd9f2cd8e2f6569691437904a472f2c876",
+  "base_sha": "cb045a8466f35696ff24abe9020d6f39dee89462",
+  "checkout_evidence": "actions/checkout log: Merge 435bba3d into cb045a84",
+  "test": "test/combat-lab-api.test.mjs",
+  "assertion_line": 287,
+  "error_code": "TARGET_OUT_OF_RANGE",
+  "expected_status": 200,
+  "actual_status": 400,
+  "budget": {
+    "pass": 13,
+    "fail": 0
+  },
+  "functional": {
+    "pass": 5696,
+    "fail": 1,
+    "skipped": 6
+  },
+  "server_typecheck": "skipped",
+  "build": "skipped",
+  "local_focused": {
+    "runtime": "cb045a8466f35696ff24abe9020d6f39dee89462",
+    "pass": 1,
+    "fail": 0
+  },
+  "main_ci": "https://github.com/Anyukhin/skazanie-dnd/actions/runs/37212047520",
+  "main_ci_conclusion": "success",
+  "cause_confirmed": false,
+  "root_cause": "Координаты и версия на неудачной команде в CI не записаны; возможная гонка продолжения боя остаётся гипотезой."
+}
