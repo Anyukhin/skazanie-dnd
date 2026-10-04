@@ -113,8 +113,8 @@ test('SSR не создаёт DOM-обёртки для пустых клето�
     className: 'occupied-by-hero',
     children: h('button', { type: 'button', className: 'map-token hero-token', 'aria-label': 'Искра' }, 'Искра'),
   })
-  const route = cell(2, 1, {
-    children: h(Fragment, null, h(Fragment, null, h('span', { className: 'route-step-badge', 'aria-hidden': 'true' }, '1'))),
+  const footprint = cell(2, 1, {
+    children: h(Fragment, null, h(Fragment, null, h('span', { className: 'cell-footprint', 'aria-hidden': 'true' }))),
   })
   const feedback = cell(3, 1, {
     children: h(Fragment, null, h('span', { className: 'map-feedback hit' }, 'Попадание')),
@@ -132,13 +132,13 @@ test('SSR не создаёт DOM-обёртки для пустых клето�
   const hidden = cell(19, 19, {
     children: h('button', { type: 'button', className: 'map-token hero-token', 'aria-label': 'Скрытый герой' }, 'Скрытый герой'),
   })
-  const markup = renderBoard([...emptyCells, actor, route, feedback, loot, hidden])
+  const markup = renderBoard([...emptyCells, actor, footprint, feedback, loot, hidden])
 
   assert.equal((markup.match(/class="board3d-cell\b/gu) ?? []).length, 4)
   assert.equal((markup.match(/data-board3d-cell=/gu) ?? []).length, 4)
   assert.match(markup, /Искра/u)
   assert.match(markup, /aria-label="Искра"/u)
-  assert.match(markup, /route-step-badge/u)
+  assert.match(markup, /cell-footprint/u)
   assert.match(markup, /Попадание/u)
   assert.match(markup, /scene-object-menu/u)
   assert.match(markup, /scene-object-hotspot/u)
@@ -195,4 +195,25 @@ test('фигурка с ходом в очереди ждёт на старте,
   assert.deepEqual(queuedStartCell('mage', [undefined, blink]), { x: 1, y: 1 })
   assert.equal(queuedStartCell('goblin-1', [strike, move]), null)
   assert.equal(queuedStartCell('hero', []), null)
+})
+
+test('предпросмотр хода в 3D: итог у цели и метка атаки, без номеров на клетках', () => {
+  const markup = renderToStaticMarkup(h(TacticalBoard3D, {
+    map: mapForUi(), campaignId: 'board3d-ui', columns: 20, rows: 20, irregular: false,
+    ariaLabel: 'Поле боя 3D', themeKey: 'map-theme-interior', artUrl: null,
+    cells: [], overlayCells: [], effectRenderers: [], battleLog: [], visualBatch: null,
+    animationActors: [], animationsEnabled: false, conditions: {}, onUnavailable: () => {},
+    movePreview: {
+      start: { x: 2, y: 2 },
+      path: [{ x: 3, y: 2 }, { x: 4, y: 2, difficult: true }],
+      reach: ['3,2', '4,2'],
+      risk: { x: 2.5, y: 2 },
+      label: { main: '15 фт', sub: 'останется 15 фт', note: 'трудная местность +5 фт', risk: 'атака по возможности' },
+    },
+  }))
+  assert.match(markup, /class="move-preview-label"/u)
+  assert.match(markup, /15 фт/u)
+  assert.match(markup, /трудная местность \+5 фт/u)
+  assert.match(markup, /class="move-risk-mark"/u)
+  assert.doesNotMatch(markup, /route-step-badge/u)
 })
