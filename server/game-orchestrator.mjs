@@ -2705,7 +2705,19 @@ export class GameOrchestrator {
     }
     if (planCheckCommand && verifiedRoll) {
       // Кости из реестра передаются движку; математику он пересчитывает сам.
-      const { context: _checkContext, ...verifiedRollPayload } = verifiedRoll
+      //
+      // Аудит PR #131, SEC-01: бросок обязан быть выдан под карточку **этой**
+      // ветки — обычной проверки (`ability_action`), зарегистрированной выше.
+      // Ничейный бросок отсекает реестр (`ROLL_UNBOUND`), заявку и версию
+      // обстановки сверяет `validateContext` маршрута `/api/narrate`; здесь
+      // закрыт последний зазор — кость от парлея, молитвы или другой карточки
+      // того же героя обычной проверкой не становится.
+      const { context: checkContext, ...verifiedRollPayload } = verifiedRoll
+      if (String(checkContext?.kind ?? '') !== 'ability_action') {
+        const error = new Error('Этот бросок регистрировался не для этой проверки. Объявите действие заново.')
+        error.code = 'ROLL_CONTEXT_MISMATCH'
+        throw error
+      }
       planCheckCommand.verified_roll = verifiedRollPayload
     }
 

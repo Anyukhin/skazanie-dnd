@@ -5431,16 +5431,17 @@ async function handleHttpRequest(req, res) {
       const room = getRoom(campaignId)
       if (!room.state || !canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       assertCampaignPlayable(room.state)
+      // Аудит PR #131, SEC-01: кость выдаётся только под объявленную проверку
+      // (`check_id` из карточки первой фазы). Подпись, модификатор и СЛ берутся
+      // из карточки; поля клиента сюда больше не идут. Без `check_id` реестр
+      // отвечает `CHECK_REQUIRED`; свободный кубик — `/api/rooms/:code/dice`.
       const issued = rollRegistry.issue({
         checkId: body.checkId ?? body.check_id,
         campaignId,
         actorId: body.playerId,
-        label: body.label,
-        modifier: Math.max(-5, Math.min(12, Number(body.modifier) || 0)),
-        difficulty: Math.max(5, Math.min(30, Number(body.difficulty) || 10)),
       })
       return json(res, 200, { roll_id: issued.roll_id, value: issued.kept, modifier: issued.modifier, total: issued.total, difficulty: issued.difficulty, label: issued.label, success: issued.success, ability: issued.ability })
-    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректная проверка' }) }
+    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректная проверка', code: error?.code }) }
   }
   if (req.url?.startsWith('/generated/items/') && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return

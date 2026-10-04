@@ -258,11 +258,27 @@ test('побег от стражи идёт двухфазным ручным б
   const beforeRoll = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
   assert.ok(beforeRoll.body.state.law.encounter, 'до броска стража остаётся на месте')
 
-  // Чужой бросок того же героя во вторую фазу не проходит.
-  const foreign = await request(baseUrl, '/api/roll', {
+  // Ничейной кости без карточки сервер не выдаёт вовсе (аудит PR #131, SEC-01).
+  const generic = await request(baseUrl, '/api/roll', {
     method: 'POST',
     cookie: adminCookie,
     body: { campaignId: SESSION, playerId: 'hero', label: 'Проверка Ловкости', modifier: 12, difficulty: 5 },
+  })
+  assert.equal(generic.status, 400, generic.text)
+  assert.equal(generic.body.code, 'CHECK_REQUIRED')
+
+  // Кость чужой проверки того же героя во вторую фазу не проходит.
+  const otherCheck = await request(baseUrl, '/api/narrate', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { campaign_id: SESSION, actor_id: 'hero', idempotency_key: 'law-other-check', action: 'Проверяю силу', manual_roll: true },
+  })
+  assert.equal(otherCheck.status, 200, `${otherCheck.text}\n${log()}`)
+  assert.ok(otherCheck.body.check?.check_id, `нужна карточка обычной проверки\n${otherCheck.text}`)
+  const foreign = await request(baseUrl, '/api/roll', {
+    method: 'POST',
+    cookie: adminCookie,
+    body: { campaignId: SESSION, playerId: 'hero', checkId: otherCheck.body.check.check_id },
   })
   assert.equal(foreign.status, 200, `${foreign.text}\n${log()}`)
   const rejected = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {

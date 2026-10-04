@@ -771,7 +771,7 @@ pnpm world-memory:recover --source ./storage/engine --campaign ROOM-CODE --outpu
 ## Основные API
 
 - `GET /api/health` — provider, модель, режим, ruleset и инструменты;
-- `POST /api/roll` — одноразовый серверный roll artifact; modifier/DC закреплены сервером только для выданного сервером `check_id`;
+- `POST /api/roll` — одноразовый серверный roll artifact только для выданного сервером `check_id` (без него — `400 CHECK_REQUIRED`); modifier/DC берутся из карточки проверки, свободный кубик стола — `POST /api/rooms/:code/dice`;
 - `POST /api/narrate` — авторитетный ход по `campaign_id`, action и idempotency key; клиентский state, mode override и raw roll запрещены;
 - `GET /api/campaigns/:id/stream` — authenticated SSE комнаты и проверенного
   повествования; события `narration.start/chunk/complete` содержат только

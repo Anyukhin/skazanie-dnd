@@ -219,13 +219,20 @@ export async function narrateWithAgent(
   }
 }
 
-export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'label' | 'modifier' | 'difficulty' | 'playerId'>, campaignId: string): Promise<RollResult> {
+export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'playerId'>, campaignId: string): Promise<RollResult> {
+  // Аудит PR #131, SEC-01: механическая кость выдаётся только под карточку
+  // проверки. Без `check_id` сервер ответит отказом, поэтому запрос не уходит
+  // вовсе; подпись, модификатор и СЛ сервер берёт из карточки, а не отсюда.
+  if (!check.check_id) throw new Error('Карточка проверки устарела. Объявите действие заново.')
   const response = await fetch('/api/roll', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...check, checkId: check.check_id, campaignId }),
+    body: JSON.stringify({ checkId: check.check_id, playerId: check.playerId, campaignId }),
   })
-  if (!response.ok) throw new Error('Кость укатилась со стола')
+  if (!response.ok) {
+    const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
+    throw new ApiRequestError(details.error || 'Кость укатилась со стола', response.status, details.code)
+  }
   return response.json() as Promise<RollResult>
 }
 
