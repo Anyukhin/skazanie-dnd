@@ -271,7 +271,7 @@ function heroClassPoolRowsFrom(resources: Record<string, { current?: number; max
     .filter((row) => !isSpellSlotPool(row.keys[0]) && row.keys[0] !== 'pact_slots')
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, chronicleStatus, freeRoll, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -330,6 +330,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /** Ходит не герой зрителя: вместо чужих неактивных плиток — кто ходит и чей лист внизу. */
   foreignTurn?: { turnName: string; heroName: string } | null
   statusContent: React.ReactNode
+  /** Строка кампании и места — первой строкой хроники на столе (на телефоне она в шапке). */
+  chronicleStatus?: React.ReactNode
+  /** Свободный бросок вне боя — на месте кольца «Завершить ход». */
+  freeRoll?: React.ReactNode
   children?: React.ReactNode
 }) {
   const [freeText, setFreeText] = useState('')
@@ -2800,9 +2804,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         .map((id) => ({ id, tiles: visibleTiles.filter((tile) => tile.section === id) }))
         .filter((section) => section.tiles.length > 0)
     : visibleTiles.length ? [{ id: 'deck', tiles: visibleTiles }] : []
+  // Одна секция (вкладка-фильтр) тоже идёт иконками, как в макете, если плиток
+  // больше двух рядов по три: подписи нужны только совсем короткому списку.
   const largestSection = hotbarSections.length > 1
     ? hotbarSections.reduce((best, section) => section.tiles.length > best.tiles.length ? section : best)
-    : null
+    : hotbarSections[0] && hotbarSections[0].tiles.length > hudRows * 2 ? hotbarSections[0] : null
   /* Реакции героя — справа от плиток: они не нажимаются, а срабатывают в окне
      реакции, поэтому панель только показывает, чем герой может ответить и не
      потрачена ли реакция в этом раунде. */
@@ -2951,6 +2957,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </div>}
       {npcTacticText && <div className="npc-tactic-banner" role="status" aria-live="polite"><Swords size={15} /><span>{npcTacticText}</span></div>}
       <TacticalBoard
+        minimapCaption={state.scene.location}
         campaignId={state.sessionCode}
         key={state.sessionCode}
         map={boardMap}
@@ -3223,6 +3230,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             (`combat-target-popover` ниже), события боя — в ленте, ходы
             противников — свёртком под полоской. ОЗ ходящего здесь не
             повторяются: они есть в списке отряда и в полоске жизни. */}
+        {chronicleStatus && <div className="chronicle-status">{chronicleStatus}</div>}
         {combatActive && <div className="turn-strip" role="status" aria-live="polite" aria-label={`Раунд ${combat.round ?? 1}, ходит ${activeName}`}>
           <span className="turn-strip-round">Раунд {combat.round ?? 1}</span>
           <span className="turn-strip-actor">ходит <b className={activeHero || activeSummon ? 'ally' : 'enemy'}>{activeName}</b></span>
@@ -3774,6 +3782,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         }}
       >
 
+        {/* Подпись над полем, как в макете стола: что сюда пишут именно сейчас. */}
+        <span className="composer-label" aria-hidden="true">{combatActive ? 'Действие в бою словами' : 'Ваше действие'}</span>
         {/* Вид реплики — переключателем под полем, как в прототипе стола: три
             варианта видны сразу и меняются одним щелчком. */}
         <div className="request-kind" role="radiogroup" aria-label="Тип реплики">
@@ -4149,6 +4159,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </div>}
           <small className={`end-turn-move${railMovementAvailable && railRemainingFeet > 0 ? '' : ' spent'}`} title={railMovement.blockedReason ?? undefined}>{railMovement.blockedReason ? 'Движение недоступно' : `Осталось ${railMovementAvailable ? railRemainingFeet : 0} из ${railSpeedFeet} фт`}</small>
         </div>}
+        {!combatActive && freeRoll && <div className="free-roll-dock">{freeRoll}</div>}
       </aside>
       <TileTooltip tip={tileTip} />
       {upcastPrompt && selectedSpell?.id === upcastPrompt.spellId && combatMode === 'magic' && <UpcastPopover
