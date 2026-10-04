@@ -900,6 +900,32 @@ export function levelTransitionPresentation(input: {
 }
 
 /**
+ * Расстояние от героя до ближайшей клетки объекта сцены — той же мерой
+ * `actorDistanceFeet`, которой карточка решает «под рукой ли объект».
+ * Нового расчёта здесь нет, и авторитетом он не становится: дальность
+ * взаимодействия по-прежнему проверяет сервер. `null` — измерить нечем.
+ */
+export function sceneObjectDistanceFeet(actor: BoardActor | null | undefined, cells: readonly ActorFootprintCell[]): number | null {
+  if (!actor || !cells.length) return null
+  const feet = Math.min(...cells.map((cell) => actorDistanceFeet(actor, cell)))
+  return Number.isFinite(feet) ? feet : null
+}
+
+/**
+ * Пояснение у закрытых действий объекта. Плейтест 2026-10-04, SE-13:
+ * подсказка звала «осмотреть длинный стол», а карточка отвечала только
+ * «подойдите на соседнюю клетку» — без расстояния непонятно, к которому из
+ * трёх столов и насколько идти. Теперь число футов стоит рядом с просьбой.
+ * Автодвижения нет намеренно: идти герой решает сам.
+ */
+export function sceneObjectApproachHint(distanceFeet: number | null | undefined): string {
+  const request = 'Подойдите к объекту на соседнюю клетку'
+  const feet = Number(distanceFeet)
+  // Соседняя клетка — 5 футов; ближе подходить некуда, и число там не нужно.
+  return distanceFeet != null && Number.isFinite(feet) && feet > 5 ? `До объекта ${feet} фт. ${request}` : request
+}
+
+/**
  * Строки индикатора этажей: верхний этаж сверху, активный помечен. Один этаж —
  * не выбор, а шум, поэтому индикатор одноэтажной локации пустой.
  */

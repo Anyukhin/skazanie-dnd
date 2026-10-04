@@ -235,6 +235,24 @@
   border-bottom: 0;
 }
 
+/* Текущая цель и перенесённые нити прежних глав (плейтест 2026-10-04, QP-04). */
+.campaign-journal-page .quest-card .quest-tag {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--gold-bright);
+  font-size: var(--fs-sm);
+  letter-spacing: .04em;
+}
+
+.campaign-journal-page .quest-card.carried .quest-tag {
+  color: inherit;
+  opacity: .72;
+}
+
+.campaign-journal-page .quest-card.carried > b {
+  opacity: .85;
+}
+
 .quest-abandon-button {
   margin-top: 8px;
   padding: 6px 10px;

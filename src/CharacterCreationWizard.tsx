@@ -16,6 +16,17 @@ import { PhbCharacterOptions } from './PhbCharacterOptions'
 import type { PhbCharacterOptionsValue } from './PhbCharacterOptions'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 import { validateClassChoices } from '../server/character-creation-class-options.mjs'
+import {
+  clearCreationDraft,
+  creationDraftKey,
+  goldLabel,
+  mergeCreationDraft,
+  purchaseShortfallCp,
+  readCreationDraft,
+  sessionDraftStorage,
+  startingPurchaseBudget,
+  writeCreationDraft,
+} from './character-creation-draft.mjs'
 
 /**
  * «Защита» (Defense) и «Оборона» (Protection) — разные боевые стили, но в
@@ -166,6 +177,8 @@ const abilityLabels: Record<(typeof abilityIds)[number], string> = {
 }
 
 type CreationStepId = 'class' | 'race' | 'subrace' | 'background' | 'abilities' | 'proficiencies' | 'equipment' | 'magic' | 'identity'
+const CREATION_STEP_IDS: readonly CreationStepId[] = ['class', 'race', 'subrace', 'background', 'abilities', 'proficiencies', 'equipment', 'magic', 'identity']
+const isCreationStep = (value: unknown): value is CreationStepId => CREATION_STEP_IDS.includes(value as CreationStepId)
 type SpeciesOption = CharacterCreationCatalog['ability_policy']['species_options'][number]
 type RaceChoice = { id: string; raceId: string; label: string; option: SpeciesOption; subraces: SpeciesOption[] }
 
@@ -314,6 +327,26 @@ function initialDraft(catalog: CharacterCreationCatalog): CreationDraft {
 }
 
 /**
+ * Черновик, сохранённый при прошлом закрытии мастера (плейтест 2026-10-04,
+ * OB-01). Он сверяется с нынешним каталогом: класс или вид, которых в каталоге
+ * больше нет, означают, что черновик собран под другой набор правил, — тогда
+ * мастер открывается заново, а не с выбором, который нельзя ни показать, ни
+ * отправить. Остальные поля проверит `validateStep` на каждом шаге.
+ */
+function restoredCreationDraft(
+  stored: ReturnType<typeof readCreationDraft>,
+  fresh: CreationDraft,
+  catalog: CharacterCreationCatalog,
+): { draft: CreationDraft; step: CreationStepId; furthestStep: CreationStepId } | null {
+  if (!stored) return null
+  const draft = mergeCreationDraft(fresh, stored.draft, { abilitiesCustomized: 'boolean' })
+  if (!catalog.classes.some((entry) => entry.id === draft.classId)) return null
+  if (!catalog.ability_policy.species_options.some((entry) => entry.id === draft.speciesOptionId)) return null
+  const step = isCreationStep(stored.step) ? stored.step : 'class'
+  return { draft, step, furthestStep: isCreationStep(stored.furthestStep) ? stored.furthestStep : step }
+}
+
+/**
  * Русский счёт: 1 заговор, 2 заговора, 5 заговоров. Раньше подсказки склеивали
  * число с одной формой — «Выберите 3 заговоров», — и текст выдавал шаблон.
  */
@@ -355,6 +388,7 @@ export function CharacterCreationWizard({
   accountName,
   catalog,
   rulesetId,
+  campaignCode,
   required = false,
   onClose,
   onImport,
@@ -365,21 +399,41 @@ export function CharacterCreationWizard({
   accountName: string
   catalog: CharacterCreationCatalog
   rulesetId?: string
+  /** Код кампании — часть ключа черновика: без него черновик не сохраняется. */
+  campaignCode?: string
   required?: boolean
   onClose: () => void
   onImport: (source: string) => Promise<void>
   onRollAbilities?: (rollIndex: number) => Promise<void>
   onRollWealth?: (classId: string) => Promise<void>
 }) {
-  const [step, setStep] = useState<CreationStepId>('class')
-  const mainRef = useRef<HTMLElement>(null)
-  const [furthestStep, setFurthestStep] = useState<CreationStepId>('class')
-  const [draft, setDraft] = useState<CreationDraft>(() => {
+  /* Плейтест 2026-10-04, OB-01: мастер обещал «можно закрыть и вернуться
+     позже», а черновик жил только в state компонента — второй Escape или
+     крестик стирали вручную собранного героя. Теперь черновик лежит в
+     хранилище вкладки под ключом «кампания + аккаунт + место + редакция» и
+     восстанавливается при следующем открытии того же места. */
+  const draftKey = creationDraftKey({ campaignCode, accountName, playerId: player.id, rulesetId: rulesetId ?? catalog.ruleset_id })
+  const [draftStorage] = useState(() => sessionDraftStorage())
+  const freshDraft = (): CreationDraft => {
     const initial = initialDraft(catalog)
     const savedRoll = player.characterCreationRolls?.abilities
     const completedRoll = savedRoll?.scores.length === abilityIds.length
     return savedRoll ? { ...initial, abilityMethod: 'rolled', abilities: completedRoll ? Object.fromEntries(abilityIds.map((id, index) => [id, savedRoll.scores[index]])) as CharacterAbilityScores : zeroScores() } : initial
-  })
+  }
+  const [pristineDraft] = useState(() => JSON.stringify(freshDraft()))
+  const [restored] = useState(() => restoredCreationDraft(readCreationDraft(draftStorage, draftKey), freshDraft(), catalog))
+  const [step, setStep] = useState<CreationStepId>(restored?.step ?? 'class')
+  const mainRef = useRef<HTMLElement>(null)
+  const [furthestStep, setFurthestStep] = useState<CreationStepId>(restored?.furthestStep ?? 'class')
+  const [draft, setDraft] = useState<CreationDraft>(() => restored?.draft ?? freshDraft())
+  // Нетронутый мастер черновиком не считается: запись стирается, и следующее
+  // открытие начинается с чистого листа, как и раньше.
+  useEffect(() => {
+    if (!draftKey) return
+    if (step === 'class' && furthestStep === 'class' && JSON.stringify(draft) === pristineDraft) clearCreationDraft(draftStorage, draftKey)
+    else writeCreationDraft(draftStorage, draftKey, { draft, step, furthestStep })
+  }, [draft, draftKey, draftStorage, furthestStep, pristineDraft, step])
+  const draftPersists = Boolean(draftKey && draftStorage)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   // `hero-slot-3` — внутренний идентификатор, игроку он ничего не говорит.
@@ -405,7 +459,15 @@ export function CharacterCreationWizard({
   const abilityRollCount = abilityRoll?.scores.length ?? 0
   const abilityRollComplete = abilityRollCount === abilityIds.length
   const wealthRoll = player.characterCreationRolls?.wealth
-  const purchaseTotal = draft.purchases.reduce((sum, item) => sum + item.quantity * (catalog.starting_wealth?.items.find((entry) => entry.id === item.id)?.price_cp ?? 0), 0)
+  /* Плейтест 2026-10-04, стартовое богатство: при остатке 85 зм кираса за
+     400 зм ложилась в корзину, и мастер писал «осталось -315 зм», будто покупка
+     состоялась. Покупка сверх остатка теперь не добавляется, а кнопка называет
+     точную нехватку. Серверный `PURCHASES_OVER_BUDGET` и `validateStep` ниже
+     остаются последней защитой. */
+  const purchaseBudget = startingPurchaseBudget({ budgetGp: wealthRoll?.total_gp, purchases: draft.purchases, items: catalog.starting_wealth?.items ?? [] })
+  const purchaseTotal = purchaseBudget.spentCp
+  const purchaseCandidatePriceCp = catalog.starting_wealth?.items.find((entry) => entry.id === draft.purchaseId)?.price_cp ?? 0
+  const purchaseShortfall = draft.purchaseId ? purchaseShortfallCp({ remainingCp: purchaseBudget.remainingCp, priceCp: purchaseCandidatePriceCp, quantity: draft.purchaseQuantity }) : 0
   const abilityValues = draft.abilityMethod === 'rolled' ? abilityRoll?.scores ?? [] : catalog.ability_policy.standard_array
   const abilityChoices = draft.abilityMethod === 'point_buy' ? [8, 9, 10, 11, 12, 13, 14, 15] : [...new Set(abilityValues)].sort((a, b) => b - a)
   const pointBuySpent = abilityIds.reduce((sum, ability) => sum + (catalog.point_buy?.costs[draft.abilities[ability]] ?? 0), 0)
@@ -1012,6 +1074,9 @@ export function CharacterCreationWizard({
     setError('')
     try {
       await onImport(JSON.stringify(document))
+      // Герой создан — черновик своё отслужил и к следующему открытию этого
+      // места переходить не должен. При отказе сервера он остаётся.
+      clearCreationDraft(draftStorage, draftKey)
       onClose()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось создать персонажа.')
@@ -1325,10 +1390,16 @@ export function CharacterCreationWizard({
             {catalog.phb && <label className="creation-form">Стартовое снаряжение<select value={draft.equipmentMode} onChange={(event) => patch('equipmentMode', event.target.value as 'standard' | 'wealth')}><option value="standard">Наборы класса и предыстории</option><option value="wealth">Стартовое богатство и покупки</option></select></label>}
             {draft.equipmentMode === 'wealth' && <section className="creation-form">
               <p>Этот вариант заменяет вещи и деньги класса и предыстории. Купленные предметы можно надеть в инвентаре после создания.</p>
-              {!wealthRoll ? <button type="button" disabled={busy || !onRollWealth} onClick={async () => { setBusy(true); setError(''); try { await onRollWealth?.(draft.classId) } catch (error) { setError(error instanceof Error ? error.message : 'Ошибка броска') } finally { setBusy(false) } }}>Бросить стартовое богатство</button> : <p>Получено {wealthRoll.total_gp} зм · потрачено {purchaseTotal / 100} зм · осталось {(wealthRoll.total_gp * 100 - purchaseTotal) / 100} зм</p>}
+              {!wealthRoll ? <button type="button" disabled={busy || !onRollWealth} onClick={async () => { setBusy(true); setError(''); try { await onRollWealth?.(draft.classId) } catch (error) { setError(error instanceof Error ? error.message : 'Ошибка броска') } finally { setBusy(false) } }}>Бросить стартовое богатство</button>
+                : purchaseBudget.overBudgetCp > 0
+                  // Корзина дороже бюджета (например, собрана до броска): такой
+                  // черновик дальше не пройдёт, и об этом сказано сразу, с суммой.
+                  ? <p className="creation-purchase-warning" role="alert">Получено {wealthRoll.total_gp} зм · потрачено {goldLabel(purchaseTotal)} · корзина дороже бюджета на {goldLabel(purchaseBudget.overBudgetCp)}. Уберите покупки, чтобы идти дальше.</p>
+                  : <p>Получено {wealthRoll.total_gp} зм · потрачено {goldLabel(purchaseTotal)} · осталось {goldLabel(purchaseBudget.remainingCp ?? 0)}</p>}
               <label>Предмет<select value={draft.purchaseId} onChange={(event) => patch('purchaseId', event.target.value)}><option value="">Выберите предмет</option>{catalog.starting_wealth?.items.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.price_cp / 100} зм</option>)}</select></label>
               <label>Количество<input type="number" min={1} max={1000} value={draft.purchaseQuantity} onChange={(event) => patch('purchaseQuantity', Number(event.target.value))} /></label>
-              <button type="button" disabled={!draft.purchaseId || !Number.isInteger(draft.purchaseQuantity) || draft.purchaseQuantity < 1} onClick={() => patch('purchases', [...draft.purchases, { id: draft.purchaseId, quantity: draft.purchaseQuantity }])}>Добавить покупку</button>
+              <button type="button" disabled={!draft.purchaseId || !Number.isInteger(draft.purchaseQuantity) || draft.purchaseQuantity < 1 || purchaseShortfall > 0} aria-describedby={purchaseShortfall > 0 ? 'creation-purchase-shortfall' : undefined} onClick={() => { if (purchaseShortfall > 0) return; patch('purchases', [...draft.purchases, { id: draft.purchaseId, quantity: draft.purchaseQuantity }]) }}>Добавить покупку</button>
+              {purchaseShortfall > 0 && <p id="creation-purchase-shortfall" className="creation-purchase-warning" role="status">Не хватает {goldLabel(purchaseShortfall)}: покупка стоит {goldLabel(purchaseCandidatePriceCp * draft.purchaseQuantity)}, в остатке {goldLabel(Math.max(0, purchaseBudget.remainingCp ?? 0))}.</p>}
               {draft.purchases.map((item, index) => <div key={index}>{catalog.starting_wealth?.items.find((entry) => entry.id === item.id)?.name} ×{item.quantity} <button type="button" onClick={() => patch('purchases', draft.purchases.filter((_, at) => at !== index))}>Убрать</button></div>)}
             </section>}
             {draft.equipmentMode === "standard" && catalog.starter_equipment?.backgrounds?.find((entry) => entry.background_id === draft.backgroundId)?.choice_groups.map((group) => <section className="creation-form" key={group.id}><label>{group.label} · предыстория<select value={draft.backgroundEquipmentChoices[group.id]?.[0] ?? group.options[0]?.id ?? ''} onChange={(event) => patch('backgroundEquipmentChoices', { ...draft.backgroundEquipmentChoices, [group.id]: [event.target.value] })}>{group.options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label></section>)}
@@ -1394,8 +1465,12 @@ export function CharacterCreationWizard({
         </main>
         <footer>
           <div className={error ? 'creation-error' : ''} role={error ? 'alert' : undefined}>
+            {/* Обещание «вернуться позже» даётся, только когда черновику есть
+                где лежать (плейтест 2026-10-04, OB-01). */}
             {error || (required
-              ? 'Пока герой не создан, ходить он не может. Мастер можно закрыть и вернуться позже.'
+              ? draftPersists
+                ? 'Пока герой не создан, ходить он не может. Мастер можно закрыть и вернуться позже: выбор сохранится в этой вкладке до создания героя.'
+                : 'Пока герой не создан, ходить он не может. Браузер не даёт сохранить черновик: если закрыть мастер, выбор придётся начать заново.'
               : '')}
           </div>
           <span>

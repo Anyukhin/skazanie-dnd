@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { WORLD_MAP_TRAVEL_MARKER, abandonableQuest, classifyPartyDecision, detectPartyExitRequest } from '../server/party-exit-intent.mjs'
+import { WORLD_MAP_TRAVEL_MARKER, abandonableQuest, classifyPartyDecision, detectPartyExitRequest, isRouteContinuation, onwardRouteObjective, onwardRouteTarget, pendingOnwardTarget } from '../server/party-exit-intent.mjs'
 import { PARTY_OPTION_LIMIT, partyOptionLabel, proposeAgentInteraction, resolvePartyDecision } from '../server/player-request-router.mjs'
 
 const caravanserai = {
@@ -270,4 +270,27 @@ test('подпись, обрезанная посреди названия, не
   assert.equal(cut.includes('«Другой'), false, cut)
   assert.deepEqual(classifyPartyDecision(cut), { kind: 'move', destinationHint: '', abandonsQuest: false })
   assert.equal(partyOptionLabel('  Остаться   и исследовать  '), 'Остаться и исследовать')
+})
+
+// Плейтест 2026-10-04, SE-11 и SE-14: следующий пункт составного маршрута
+// живёт только в цели промежуточной точки, и формулу пишет и читает один код.
+test('цель промежуточной точки: одна формула на запись и чтение, текущее место не зовёт', () => {
+  const objective = onwardRouteObjective('Айрская башня', 'Дормар')
+  assert.equal(objective, 'Продолжить путь из Айрская башня к «Дормар»')
+  assert.equal(onwardRouteTarget(objective), 'Дормар')
+  assert.equal(onwardRouteTarget('Найти пропавшего курьера'), '')
+  assert.equal(onwardRouteTarget('Продолжить путь к Дормару и найти курьера'), '', 'произвольная цель со словом «путь» не узнаётся')
+  assert.equal(pendingOnwardTarget({ location: 'Айрская башня', objective }), 'Дормар')
+  // Цель, сохранённая до исправления SE-14: отряд уже в Дормаре.
+  assert.equal(pendingOnwardTarget({ location: 'Дормар', objective }), '')
+  assert.equal(pendingOnwardTarget(null), '')
+})
+
+test('«продолжим» и «идём дальше» — просьба о дороге, остальное ею не считается', () => {
+  for (const text of ['продолжим', 'Продолжаем!', 'продолжаем путь', 'Продолжим маршрут.', 'идём дальше', 'Идем дальше', 'Ну, в путь!', 'давайте двигаемся дальше', 'дальше в путь']) {
+    assert.equal(isRouteContinuation(text), true, text)
+  }
+  for (const text of ['продолжим приключение', 'продолжим разговор с Мирой', 'идём в таверну', 'продолжим?', 'дальше', '', null]) {
+    assert.equal(isRouteContinuation(text), false, String(text))
+  }
 })

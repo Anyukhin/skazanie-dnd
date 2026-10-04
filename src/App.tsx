@@ -28,7 +28,7 @@ import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { DiceRollScene, type DiceRollResult } from './DiceRollScene'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
-import { awaitsDecisionContinuation, isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
+import { awaitsDecisionContinuation, continuesOnwardRoute, isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
 import { createScreenMusic, type ScreenMusicPlayer } from './screen-music'
@@ -1803,6 +1803,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onFinishTurn={finishMapTurn}
             onFreeAction={(text, kind) => isAdventureContinuation(text, { requestKind: kind ?? 'action' }) && awaitsDecisionContinuation(state.agentInteraction)
               ? continueSceneInteraction()
+              // «Продолжим» на промежуточной точке маршрута — обычная заявка:
+              // сервер открывает голосование ухода к следующему пункту, как
+              // кнопка «Решение группы» (плейтест 2026-10-04, SE-11).
+              : !state.agentInteraction && continuesOnwardRoute(text, state.scene, { requestKind: kind ?? 'action' })
+              ? submitAction(text, activePlayer.id, undefined, kind)
               : (isAdventureContinuation(text, { requestKind: kind ?? 'action' })
               || (!combatActive && !(state.enemies ?? []).some((enemy) => enemy.alive !== false)
                 && isEncounterRequest(text, { requestKind: kind ?? 'action' })))
@@ -1965,6 +1970,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         accountName={account.name}
         catalog={characterCreationCatalog ?? aiHealth!.characterCreation!}
         rulesetId={state.ruleset_id}
+        campaignCode={state.sessionCode}
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
         onImport={async (source) => {

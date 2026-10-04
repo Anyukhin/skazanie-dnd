@@ -84,3 +84,18 @@ test('полный каталог даёт всем 439 карточкам то�
   assert.match(dungeonMap, /const Spellbook = lazy\(\(\) => import\('\.\/Spellbook'\)/u)
   assert.match(dungeonMap, /<Suspense fallback=/u)
 })
+
+// Плейтест 2026-10-04, MG-03: плитка и панель параметров «Скорохода» писали
+// «5 фт», а книга — «Касание». Подпись дальности одна — `spellRangeLabel` из
+// карточки книги; футы остаются только в подсказке как мерка доски.
+test('плитка и панель параметров подписывают дальность тем же spellRangeLabel, что и книга', () => {
+  const longstrider = catalog.spells.find((spell) => spell.id === 'longstrider')
+  assert.equal(longstrider.rangeText, 'Касание')
+  assert.equal(longstrider.range, 5, 'футы касания нужны доске, но не подписи')
+  assert.match(detail, /\['Дистанция', spellRangeLabel\(spell\)\]/u)
+  assert.match(dungeonMap, /import \{ spellRangeLabel \} from '\.\/SpellDetail'/u)
+  assert.match(dungeonMap, /<small>\{spell\.level \? `\$\{spell\.level\} круг` : 'заговор'\} · \{spellRangeLabel\(spell\)\}<\/small>/u)
+  assert.match(dungeonMap, /title=\{selectedSpellRange > 0 \? `Дальность на карте: \$\{selectedSpellRange\} фт` : 'Заклинание на себя'\}>\{spellRangeLabel\(selectedSpell\)\}<\/i>/u)
+  assert.doesNotMatch(dungeonMap, /\{spellRange\(spell\)\} фт/u)
+  assert.doesNotMatch(dungeonMap, />\{selectedSpellRange\} фт<\/i>/u)
+})

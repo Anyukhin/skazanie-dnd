@@ -1,5 +1,5 @@
 import { interpretResolvedPartyDecision } from './scene-architect.mjs'
-import { abandonableQuest, detectPartyExitRequest, exitContextFromState, objectiveNamesDestination, partyDestinationLabel, travelDestinationIsPlace } from './party-exit-intent.mjs'
+import { abandonableQuest, detectPartyExitRequest, exitContextFromState, objectiveNamesDestination, onwardRouteExitRequest, partyDestinationLabel, travelDestinationIsPlace } from './party-exit-intent.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { isSceneObservationRequest } from './intent-parser.mjs'
@@ -376,8 +376,12 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
   // Известные точки карты и имена присутствующих: «Иду в Каменный Град» — уход
   // без родового слова, «иду к Марте» — шаг к собеседнику, а не из сцены.
   const exitContext = exitContextFromState(state)
+  // «Продолжим» на промежуточной точке маршрута — уход к его следующему пункту:
+  // та же карточка, что открывает выбор этого пункта кнопкой «Решение группы»
+  // (плейтест 2026-10-04, SE-11).
   const exit = detectPartyExitRequest(text, exitContext)
     ?? (destination ? detectPartyExitRequest(`Отправиться к ${destination}`, exitContext) : null)
+    ?? onwardRouteExitRequest(text, state)
   if (exit) {
     const destination = exit.destination
     const knownFrom = String(state.scene?.location || state.scene?.title || '').replace(/\s+/gu, ' ').trim().slice(0, 120)

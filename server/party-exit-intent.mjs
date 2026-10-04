@@ -605,6 +605,94 @@ export function objectiveRemainder(objective, destination) {
 }
 
 /**
+ * Цель промежуточной точки составного маршрута: «Продолжить путь из Айрская
+ * башня к «Дормар»». Дальний путь исполняется по одному ребру за сцену
+ * (`fallbackPlan`, `server/scene-architect.mjs`), и следующий пункт маршрута
+ * хранится только в этой цели — отдельного поля у сцены нет. Поэтому формула
+ * одна на всех, кто её пишет и читает: архитектор сцен, подсказки, разбор
+ * «продолжим» и клиент.
+ *
+ * @param {unknown} from
+ * @param {unknown} destination
+ * @returns {string}
+ */
+export function onwardRouteObjective(from, destination) {
+  return `Продолжить путь из ${compact(from, 120)} к «${compact(destination, 120)}»`
+}
+
+const ONWARD_ROUTE_OBJECTIVE = /^Продолжить путь из .+ к «([^«»]{1,120})»$/u
+
+/**
+ * Конечная точка маршрута из цели промежуточной точки; пустая строка — цель не
+ * такая. Узнаётся только формула самого сервера (`onwardRouteObjective`), а не
+ * любая цель со словом «путь»: произвольную цель по совпадению названия места
+ * никто не переписывает.
+ *
+ * @param {unknown} objective
+ * @returns {string}
+ */
+export function onwardRouteTarget(objective) {
+  return compact(ONWARD_ROUTE_OBJECTIVE.exec(compact(objective, 300))?.[1] ?? '', 120)
+}
+
+/**
+ * Следующий пункт маршрута, если сцена — промежуточная точка. Пустая строка,
+ * если цель не такая или зовёт туда, где отряд уже стоит: так выглядит цель,
+ * сохранённая до исправления (плейтест 2026-10-04, SE-14), и звать по ней в
+ * текущее место незачем.
+ *
+ * @param {{ objective?: unknown, location?: unknown } | null | undefined} scene
+ * @returns {string}
+ */
+export function pendingOnwardTarget(scene) {
+  const target = onwardRouteTarget(scene?.objective)
+  if (!target) return ''
+  return target.toLocaleLowerCase('ru') === compact(scene?.location, 120).toLocaleLowerCase('ru') ? '' : target
+}
+
+/**
+ * «Продолжим», «продолжаем путь», «идём дальше». Места фраза не называет и
+ * уходом сама по себе не является: смысл у неё появляется только на
+ * промежуточной точке маршрута (`pendingOnwardTarget`). «Продолжим
+ * приключение» сюда не входит — это просьба к Режиссёру, а не о дороге.
+ */
+const ROUTE_CONTINUATION = /^(?:(?:ну|итак|ладно|что\s+ж|давайте|давай|ребята|всё|все)[,!.]?\s+){0,2}(?:продолж(?:им|аем|ить)(?:\s+(?:путь|маршрут|дорогу|путешествие|поход))?|(?:ид[её]м|пойд[её]м|пошли|двигаемся|двинемся|едем|поехали|отправляемся)\s+дальше|(?:дальше\s+)?в\s+путь)$/iu
+
+/**
+ * @param {unknown} action
+ * @returns {boolean}
+ */
+export function isRouteContinuation(action) {
+  const text = compact(action, 200).toLocaleLowerCase('ru').replace(/[.!…]+$/u, '').trim()
+  return Boolean(text) && ROUTE_CONTINUATION.test(text)
+}
+
+/**
+ * Уход к следующему пункту маршрута по фразе «продолжим» (плейтест 2026-10-04,
+ * SE-11). На промежуточной точке свободное «продолжим» уходило Режиссёру и
+ * получало «Пока ничего не меняется», а путь продолжала только кнопка «Решение
+ * группы». Здесь фраза превращается в тот же уход, что и выбор пункта в этой
+ * кнопке: голосование, его подпись и исполнение — общие, второго пути нет.
+ * Пункт должен быть известной точкой карты мира; идентификатор берётся, только
+ * если имя на карте однозначно.
+ *
+ * @param {unknown} action
+ * @param {Record<string, any>} [state]
+ * @returns {{destination: string, source: 'route', destinationLocationId?: string}|null}
+ */
+export function onwardRouteExitRequest(action, state = {}) {
+  if (!isRouteContinuation(action)) return null
+  const target = pendingOnwardTarget(state?.scene)
+  if (!target) return null
+  /** @type {Array<Record<string, any>>} */
+  const locations = Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : []
+  const known = locations.filter((entry) => entry?.id && entry.known !== false && entry.hidden !== true
+    && entry.visibility !== 'gm_only' && compact(entry.name, 120) === target)
+  if (!known.length) return null
+  return { destination: target, source: 'route', ...(known.length === 1 ? { destinationLocationId: String(known[0].id) } : {}) }
+}
+
+/**
  * Задание, от которого отряд отказывается. Правило то же, которым автономный
  * контур отличает кампанийную нить от сценической (`docs/known-limitations.md`,
  * раздел «Путешествия по карте мира»): служебный префикс `quest:chapter:` —
@@ -617,6 +705,9 @@ export function objectiveRemainder(objective, destination) {
  * @returns {{id: string, title: string}|null}
  */
 export function abandonableQuest(state = {}) {
+  // Приведение только для проверки типов: модуль попал в `typecheck:server`
+  // через `action-hints.mjs` (плейтест 2026-10-04, SE-11), рантайм тот же.
+  /** @type {Array<Record<string, any>>} */
   const quests = Array.isArray(state?.worldMemory?.quests) ? state.worldMemory.quests : []
   // Функция вызывается на полном серверном состоянии, а её результат попадает в
   // подпись варианта голосования — то есть на глаза всему столу. Отказаться от
