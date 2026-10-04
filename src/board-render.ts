@@ -192,6 +192,89 @@ export function boardPaletteFrom(read: (name: string) => string | null | undefin
   return palette
 }
 
+/**
+ * Палитра для материалов three.js. Переменная темы приходит из
+ * `getPropertyValue` неразвёрнутой — `color-mix(in srgb, #ab9f91 80%, #1a120a)`.
+ * Холст такую строку принимает, а `THREE.Color` — нет и оставляет белый:
+ * ковёр-заглушка в темнице лежал белым листом. Холсты 2D и 3D рисуют прежней
+ * палитрой: на ней настроены сетка и производные цвета, которые игрок видит.
+ */
+export function materialPalette(palette: BoardPalette): BoardPalette {
+  const solid = { ...palette }
+  for (const key of Object.keys(solid) as Array<keyof BoardPalette>) solid[key] = plainCssColor(solid[key])
+  return solid
+}
+
+/**
+ * Цвет темы в виде `#rrggbb`, а при прозрачности `rgba(…)`. Разбирает то, что
+ * остаётся от переменной после подстановки `var()`: шестнадцатеричный цвет,
+ * `rgb[a](…)` и `color-mix(in srgb, …)` с вложенными смесями. Чего не
+ * разобрать — возвращается как есть.
+ */
+export function plainCssColor(value: string): string {
+  const text = String(value ?? '').trim()
+  if (parseColor(text)) return text
+  const rgba = parseColorMix(text)
+  if (!rgba) return text
+  const rgb = rgba.slice(0, 3) as Rgb
+  return rgba[3] >= 0.999 ? toHex(rgb) : `rgba(${rgb.map(Math.round).join(',')},${Number(rgba[3].toFixed(3))})`
+}
+
+type Rgba = [number, number, number, number]
+
+/** Цвет с прозрачностью: `#hex`, `rgb[a](…)` или смесь `color-mix(in srgb, …)`. */
+function parseRgba(text: string): Rgba | null {
+  const value = text.trim()
+  const rgb = parseColor(value)
+  if (rgb) {
+    const alpha = /^rgba?\(/i.test(value) ? Number(value.slice(value.indexOf('(') + 1, -1).split(/[,/\s]+/).filter(Boolean)[3] ?? 1) : 1
+    return [rgb[0], rgb[1], rgb[2], Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1]
+  }
+  return parseColorMix(value)
+}
+
+/**
+ * `color-mix(in srgb, A p%, B q%)` по CSS Color 5: недостающая доля — дополнение
+ * до ста, обе пропущены — пополам; сумма меньше ста уходит в прозрачность.
+ * Смешение — с предумноженной альфой, как у браузера.
+ */
+function parseColorMix(text: string): Rgba | null {
+  const match = /^color-mix\((.*)\)$/is.exec(text.trim())
+  if (!match) return null
+  const parts: string[] = []
+  let depth = 0, start = 0
+  for (let index = 0; index < match[1].length; index += 1) {
+    const char = match[1][index]
+    if (char === '(') depth += 1
+    else if (char === ')') depth -= 1
+    else if (char === ',' && depth === 0) { parts.push(match[1].slice(start, index)); start = index + 1 }
+  }
+  parts.push(match[1].slice(start))
+  if (parts.length !== 3 || parts[0].trim().toLowerCase() !== 'in srgb') return null
+  const stops = parts.slice(1).map((part) => {
+    const stop = part.trim()
+    const after = /^(.*\S)\s+(-?[\d.]+)%$/s.exec(stop)
+    const before = /^(-?[\d.]+)%\s+(.*)$/s.exec(stop)
+    const [colorText, share] = after ? [after[1], Number(after[2])] : before ? [before[2], Number(before[1])] : [stop, null]
+    return { color: parseRgba(colorText), share }
+  })
+  const [left, right] = stops
+  if (!left.color || !right.color) return null
+  let leftShare = left.share ?? (right.share === null ? 50 : 100 - right.share)
+  let rightShare = right.share ?? 100 - leftShare
+  if (![leftShare, rightShare].every((share) => Number.isFinite(share) && share >= 0)) return null
+  const total = leftShare + rightShare
+  if (total <= 0) return null
+  const multiplier = Math.min(total, 100) / 100
+  leftShare /= total
+  rightShare /= total
+  const alpha = left.color[3] * leftShare + right.color[3] * rightShare
+  const channel = (index: number) => alpha
+    ? (left.color![index] * left.color![3] * leftShare + right.color![index] * right.color![3] * rightShare) / alpha
+    : 0
+  return [channel(0), channel(1), channel(2), alpha * multiplier]
+}
+
 // --- цвет ----------------------------------------------------------------
 
 type Rgb = [number, number, number]
@@ -3485,23 +3568,30 @@ function drawSilhouette(context: BoardContext2D, box: PropBox, palette: BoardPal
 }
 
 /**
- * Растровый штамп в габарит предмета. Пропорция рисунка сохраняется: спрайт
- * вписывается в габарит, а не растягивается по нему. Растянуть — значит
- * сплющить круглый стол в овал на клетке 2×1, а габарит приходит из футпринта
- * и совпадает с пропорцией рисунка не всегда.
+ * Как штамп ложится в габарит: размер рисунка в единицах габарита и нужен ли
+ * поворот на четверть. Рисунок, вытянутый поперёк габарита (ковёр нарисован
+ * стоя, а лежит поперёк комнаты), разворачивается: иначе он вписывался узкой
+ * полосой и занимал треть своего места. Общая для 2D-штампа и плоской
+ * наклейки 3D-доски, чтобы ковёр лежал одинаково в обоих видах.
  */
-function drawStamp(context: BoardContext2D, box: PropBox, texture: BoardTexture, frame: PropFrame) {
-  // Рисунок, вытянутый поперёк габарита (ковёр нарисован стоя, а лежит
-  // поперёк комнаты), разворачивается на четверть оборота: иначе он
-  // вписывался узкой полосой и занимал треть своего места.
+export function stampFit(box: PropBox, frame: { w: number; h: number }) {
   const boxLandscape = box.hw > box.hh * 1.15
   const boxPortrait = box.hh > box.hw * 1.15
   const turn = (boxLandscape && frame.h > frame.w * 1.15) || (boxPortrait && frame.w > frame.h * 1.15)
   const frameW = turn ? frame.h : frame.w
   const frameH = turn ? frame.w : frame.h
   const fit = Math.min((box.hw * 2) / frameW, (box.hh * 2) / frameH)
-  const width = frame.w * fit
-  const height = frame.h * fit
+  return { width: frame.w * fit, height: frame.h * fit, turn }
+}
+
+/**
+ * Растровый штамп в габарит предмета. Пропорция рисунка сохраняется: спрайт
+ * вписывается в габарит, а не растягивается по нему. Растянуть — значит
+ * сплющить круглый стол в овал на клетке 2×1, а габарит приходит из футпринта
+ * и совпадает с пропорцией рисунка не всегда.
+ */
+function drawStamp(context: BoardContext2D, box: PropBox, texture: BoardTexture, frame: PropFrame) {
+  const { width, height, turn } = stampFit(box, frame)
   if (!turn) {
     context.drawImage(texture.image, frame.x, frame.y, frame.w, frame.h, -width / 2, -height / 2, width, height)
     return

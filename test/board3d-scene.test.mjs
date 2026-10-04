@@ -326,6 +326,33 @@ test('палитра темы проходит в 3D-пол, стены и дв�
   scene.dispose()
 })
 
+test('color-mix из переменной темы не красит 3D-материалы белым', () => {
+  // Так переменные темы приходят из getPropertyValue: var() подставлен, смесь — нет.
+  const theme = render.boardPaletteFrom((name) => ({
+    '--map-floor-alt': 'color-mix(in srgb, #ab9f91 80%, #1a120a)',
+    '--map-wall': 'color-mix(in srgb, color-mix(in srgb, #13100d 50%, #000000) 65%, #ab9f91)',
+  })[name])
+  assert.match(theme.wall, /^color-mix/u, 'палитра холста остаётся строкой темы')
+  assert.equal(render.plainCssColor(theme.floorAlt), '#8e8376')
+  assert.equal(render.plainCssColor('color-mix(in srgb, #ffffff, #000000)'), '#808080', 'без долей — пополам')
+  assert.equal(render.plainCssColor('color-mix(in srgb, #13100d 15%, #c9974f 5%)'), 'rgba(65,50,30,0.2)', 'недобор до ста — прозрачность')
+  assert.equal(render.plainCssColor('rgba(67,48,29,.2)'), 'rgba(67,48,29,.2)')
+  assert.equal(render.plainCssColor('oklch(70% 0.1 50)'), 'oklch(70% 0.1 50)', 'чужое пространство не выдумывается')
+  for (const [key, value] of Object.entries(render.materialPalette(theme))) {
+    assert.match(value, /^(#[0-9a-f]{6}|rgba?\()/iu, `${key}: цвет разбирается THREE.Color`)
+  }
+
+  const map = mapOf({ revealed: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
+  addProp(map, { id: 'theme-rug', assetId: 'rug', x: 2, y: 1.5, footprint: [{ x: 1, y: 1 }, { x: 2, y: 1 }] })
+  const scene = scene3d.createBoard3DScene(map, { palette: theme })
+  const cloth = scene.group.getObjectByName('rug')
+  const border = scene.group.getObjectByName('rug-border')
+  assert.equal(`#${cloth.material.color.getHexString()}`, render.plainCssColor(theme.floorAlt), 'ткань заглушки — цвет темы, а не белый')
+  assert.equal(`#${border.material.color.getHexString()}`, render.plainCssColor(theme.wall))
+  assert.notEqual(border.material.color.getHexString(), 'ffffff')
+  scene.dispose()
+})
+
 test('поворот крупного реквизита совпадает с 2D и применяется один раз', () => {
   const footprint = [1, 2, 3, 4].map((y) => ({ x: 2, y }))
   const map = mapOf({ width: 6, height: 6, revealed: footprint })

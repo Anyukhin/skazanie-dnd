@@ -8,6 +8,7 @@ import {
   drawFloorTiles,
   drawFog,
   drawGrid,
+  materialPalette,
   terrainKeysFor,
   visiblePropsOnBoard,
   TILE_CELLS,
@@ -895,7 +896,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   group.name = 'board-3d-scene'
   let disposed = false
   let readyCalled = false
-  const palette = options.palette ?? DEFAULT_BOARD_PALETTE
+  // Холсты пола рисуют палитрой темы как есть, как и 2D-доска; материалы
+  // three.js берут развёрнутую: `color-mix()` из переменной темы
+  // `THREE.Color` не разбирает и оставляет белый.
+  const canvasPalette = options.palette ?? DEFAULT_BOARD_PALETTE
+  const palette = materialPalette(canvasPalette)
   const artMode = options.artMode ?? 'backdrop'
   const artUrl = typeof options.artUrl === 'string' ? options.artUrl.trim() : ''
 
@@ -908,7 +913,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   const groundGroup = new THREE.Group()
   groundGroup.name = 'ground'
   group.add(groundGroup)
-  const groundTexture = createGroundCanvasTexture(resources, map, palette)
+  const groundTexture = createGroundCanvasTexture(resources, map, canvasPalette)
   const groundGeometry = createGroundGeometry(resources, map, palette, !groundTexture)
   const groundMaterial = material(resources, '#ffffff', { vertexColors: true, roughness: 0.94, metalness: 0 }) as THREE.MeshStandardMaterial
   if (groundTexture) {
@@ -1092,7 +1097,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   let groundOverlay: THREE.Mesh | null = null
   const paintGroundOverlay = () => {
     if (!styledFloors || disposed) return
-    const texture = paintTerrainCanvas(resources, map, palette, loadedTerrain, true)
+    const texture = paintTerrainCanvas(resources, map, canvasPalette, loadedTerrain, true)
     if (!texture) return
     if (!groundOverlay) {
       const overlayMaterial = material(resources, '#ffffff', { transparent: true, depthWrite: false, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 }) as THREE.MeshStandardMaterial
@@ -1158,7 +1163,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   loadTerrainTiles(map, (terrain) => {
     loadedTerrain = terrain
     paintGroundOverlay()
-    const texture = paintTerrainCanvas(resources, map, palette, terrain)
+    const texture = paintTerrainCanvas(resources, map, canvasPalette, terrain)
     if (!texture) return
     if (authoritativeArtLoaded) {
       resources.textures.delete(texture)
