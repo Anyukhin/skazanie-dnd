@@ -113,7 +113,9 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 119 файлов подготовленного набора детализации (`maps/detail-v1`):
   //   88 GLB, 25 фактур, PNG/JSON атласа, manifest и три предпросмотра.
   // + пакеты стилей графики (`styles/<стиль>`): файлы манифеста и сам манифест.
-  assert.equal(report.integrity.assets, 1939 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
+  // + 157 рисунков действий подклассов, 26 служебных, 23 состояния и 15
+  //   собственных рисунков стартовых вещей вместо картинок заклинаний.
+  assert.equal(report.integrity.assets, 2160 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

@@ -37,7 +37,7 @@ import {
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
-import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
@@ -926,12 +926,58 @@ function safeNarrationProviderError(value) {
   return /^[A-Z][A-Z0-9_.:-]*$/u.test(code) ? code : ''
 }
 
+// Перемещение подтверждают только события шага, перехода или пути — не бросок.
+const FREE_ACTION_MOVEMENT_EVENT = /move|travel|arriv|depart|relocat|levelchanged|sceneadvanced/iu
+
+/**
+ * Удачная заявка на перемещение («войти внутрь маяка») без единого события
+ * перемещения или перехода. Импровизация героя не двигает, и её решение
+ * записано с `world_change: false`, поэтому «Вышло: войти внутрь маяка» было
+ * обещанием, которого commit не держит. Плейтест 2026-10-04, MAP2-02: отряд
+ * остался во дворе, а игрок не понял, что делать дальше. Трюк сюда не входит:
+ * он и так говорит «герой остаётся на месте».
+ */
+function unconfirmedFreeActionPassage({ freeAction, message, events, state }) {
+  if (!['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) return false
+  if (freeAction?.reading?.activity_kind === 'stunt' || state?.mechanics?.combat?.active) return false
+  if (!freeActionGoalIsPassage(freeAction?.reading?.goal_summary || message)) return false
+  return !(events ?? []).some((event) => FREE_ACTION_MOVEMENT_EVENT.test(String(event?.event_type ?? '')))
+}
+
+/**
+ * Честный ответ на удачную заявку-перемещение: проверка прошла, но сцена та
+ * же, и вот штатный путь. Автоматического перехода нет и не будет: дверь,
+ * лестница и уход в другое место — свои команды с собственными проверками.
+ */
+function freeActionPassageNarration({ freeAction, events, state }) {
+  const actorId = String((events ?? []).find((event) => event?.event_type === 'ActionDeclared')?.actor_id ?? '')
+  const hero = (state?.players ?? []).find((player) => String(player?.id ?? '') === actorId)
+  const name = trimSentenceEnd(hero?.character || hero?.name, 80) || 'Герой'
+  const opener = freeAction?.kind === 'check_success' ? 'Проверка удалась' : 'Попытка удалась'
+  return `${opener}, но сама сцена от этого не изменилась: ${name} пока на прежнем месте. `
+    + 'Путь дальше — на карте: дверь и проход — шагами по клеткам, лестница — через её меню, '
+    + 'а в другое место отряд переходит через «Решение группы».'
+}
+
+/**
+ * «Сохранено в хронике, предмет не создан». Заявка «снимаю копию схемы»
+ * подтверждается только как запись хода: предмета-документа сервер не
+ * создаёт. Плейтест 2026-10-04, QP-07: ответ «Ты снимаешь копию схемы…»
+ * игрок читал как вещь и искал её в инвентаре.
+ */
+function freeActionCopyNote({ freeAction, message, events }) {
+  if (!['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) return ''
+  if (!freeActionIsCopyRequest(message)) return ''
+  if ((events ?? []).some((event) => /item|loot/iu.test(String(event?.event_type ?? '')))) return ''
+  return 'Копия осталась записью в хронике отряда: отдельного документа в инвентаре нет.'
+}
+
 /**
  * Короткий offline-текст свободного действия. Он опирается на исходную
  * задумку и уже записанные события, поэтому не может закрыть дверь, нанести
  * урон или объявить навык, которого нет в commit.
  */
-function deterministicFreeActionNarration({ freeAction, message, events, state }) {
+function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false }) {
   const kind = String(freeAction?.kind ?? '')
   if (kind === 'hazard_contact') {
     const effects = freeActionEffectText(events, state)
@@ -952,13 +998,15 @@ function deterministicFreeActionNarration({ freeAction, message, events, state }
     ? `${rawGoal.charAt(0).toLocaleLowerCase('ru')}${rawGoal.slice(1)}`
     : rawGoal
   const failed = kind === 'check_failure'
-  const parts = [freeAction?.reading?.activity_kind === 'stunt'
-    ? (failed ? 'Трюк сорвался.' : 'Трюк удался.')
-    : goal
-      // «Вышло», а не «Получилось»: guard передачи вещей читает «получил…
-      // монетку» как полученный предмет и выбрасывал весь текст.
-      ? `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
-      : (failed ? 'Не вышло.' : 'Вышло.')]
+  const parts = [unconfirmedPassage && !failed
+    ? freeActionPassageNarration({ freeAction, events, state })
+    : freeAction?.reading?.activity_kind === 'stunt'
+      ? (failed ? 'Трюк сорвался.' : 'Трюк удался.')
+      : goal
+        // «Вышло», а не «Получилось»: guard передачи вещей читает «получил…
+        // монетку» как полученный предмет и выбрасывал весь текст.
+        ? `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
+        : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
   parts.push(...effects)
   const time = freeActionTimeText(events)
@@ -1498,7 +1546,12 @@ export class GameOrchestrator {
     let renderedPromptVersion = null
     let renderedFailureReason = ''
     let renderedElapsedMs = 0
+    // Заявка-перемещение без события перемещения получает серверный ответ со
+    // штатным путём, а не пересказ модели: модели велено показать, «как герой
+    // делает заявленное», и она описала бы вход, которого не было (MAP2-02).
+    const unconfirmedPassage = unconfirmedFreeActionPassage({ freeAction, message, events: publicCommittedEvents, state })
     const narrateCommittedImprovisation = !freeAction.duplicate
+      && !unconfirmedPassage
       && freeAction.reading?.source !== 'deterministic-trivial'
       && ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
       && committedEvents.length > 0
@@ -1530,9 +1583,10 @@ export class GameOrchestrator {
       message,
       events: publicCommittedEvents,
       state: narrationState,
+      unconfirmedPassage,
     })
     const deterministicProvider = /^deterministic(?:-|$)/u.test(renderedProvider)
-    const preferredNarration = deterministicProvider
+    const preferredNarration = deterministicProvider || unconfirmedPassage
       ? deterministicNarration || candidateNarration || renderedNarration
       : renderedNarration || candidateNarration || deterministicNarration
     const candidateVerification = verifyNarration(preferredNarration, brief, { knownRuleIds: [] })
@@ -1552,7 +1606,7 @@ export class GameOrchestrator {
     const repairedFrom = [...safeNarrationViolations(renderedVerification?.repaired_from), ...safeNarrationViolations(rejectedCandidateViolations)]
       .filter((entry, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(entry)) === index)
     const rendererProviderError = safeNarrationProviderError(renderedVerification?.provider_error)
-    const narration = candidateVerification.valid && preferredNarration
+    const chosenNarration = candidateVerification.valid && preferredNarration
       ? preferredNarration
       : groundedVerification?.valid && groundedNarration
         ? groundedNarration
@@ -1566,6 +1620,10 @@ export class GameOrchestrator {
             : freeAction.kind === 'check_failure'
               ? 'Не вышло.'
               : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
+    // Пометка дописывается к любому тексту — модели и запасному: она про то,
+    // чего commit не содержит, и пересказ его не отменяет (QP-07).
+    const copyNote = freeActionCopyNote({ freeAction, message, events: committedEvents })
+    const narration = copyNote ? `${chosenNarration} ${copyNote}` : chosenNarration
     const acceptedRenderedNarration = !deterministicProvider
       && Boolean(renderedNarration)
       && renderedNarration === preferredNarration

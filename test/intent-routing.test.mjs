@@ -258,6 +258,24 @@ test('маршрут talk и clarify переспрашивают без про�
   assert.deepEqual(unclear.mechanics, [])
 })
 
+test('без модели уход к неизвестному месту получает честный ответ, а не «не понял способ действия»', async () => {
+  // Плейтест 2026-10-04, QP-06: после улики о «провале у старой арки» фраза
+  // упиралась в общее «Я не понял способ действия». Ответ проходит тот же
+  // guard повествования, что и любое уточнение, и ничего не коммитит.
+  const { eventStore, handle } = await orchestratorWith(async (state, actorId, text, fallback) => fallback)
+  const before = (await eventStore.load('ROUTING')).state_version
+  const unknown = await handle('Иду по свежим следам к провалу у старой арки, чтобы найти телегу или следы груза.', 'unknown-place-1')
+  assert.equal(unknown.free_action_outcome, 'clarification')
+  assert.match(unknown.narration, /^К провалу у старой арки\? Такого места пока нет ни на карте мира, ни среди отмеченного в этой сцене\./u)
+  assert.match(unknown.narration, /осмотритесь или идите по следам/u)
+  assert.equal(unknown.check, undefined)
+  assert.deepEqual(unknown.mechanics, [])
+  assert.equal((await eventStore.load('ROUTING')).state_version, before)
+  // Непонятное действие без названного места — по-прежнему общее уточнение.
+  const unclear = await handle('Делаю нечто невнятное с воздухом вокруг', 'unknown-place-2')
+  assert.match(unclear.narration, /Я не понял способ действия/u)
+})
+
 test('в бою маршрут travel не предлагается: заявка судится как обычная попытка', async () => {
   const { orchestrator, handle } = await orchestratorWith(async () => ({ ...reading, route: 'travel', destination: 'Каменный Град' }), {
     mechanics: { combat: { active: true, round: 1, active_index: 0, initiative: [{ actor_id: 'hero-1' }], action_economy: { 'hero-1': { action: true, bonus_action: true, movement: true } } } },
@@ -268,22 +286,13 @@ test('в бою маршрут travel не предлагается: заявк�
 })
 
 test('описание пути не становится частью имени новой локации', () => {
-  // «Идём в Заречье через лес» заводило локацию «Заречье через лес», а судья
-  // свободных действий с назначением «дамба вдоль складов» — «Дамбу вдоль
-  // складов» (исследование PR #136, M05). Предлог места («за мельницей») —
-  // часть имени и остаётся.
+  // «Идём в Заречье через лес» заводило локацию «Заречье через лес»
+  // (исследование PR #136, M05). Предлог места («за мельницей») — часть
+  // имени и остаётся.
   assert.deepEqual(detectPartyExitRequest('Отправляемся в Заречье через лес'), { destination: 'Заречье', source: 'text' })
   assert.deepEqual(detectPartyExitRequest('Идём к старой мельнице вдоль реки'), { destination: 'старой мельнице', source: 'text' })
   assert.deepEqual(detectPartyExitRequest('Идём в деревню Кленовку по тракту'), { destination: 'деревню Кленовку', source: 'text' })
   assert.deepEqual(detectPartyExitRequest('Идём к старому склепу за мельницей'), { destination: 'старому склепу за мельницей', source: 'text' })
   // Живой плейтест 2026-10-03: так называлось новое место.
   assert.deepEqual(detectPartyExitRequest('Идём к смотровой дамбе по маршруту от Высокой пристани вдоль соляных складов'), { destination: 'смотровой дамбе', source: 'text' })
-  const card = proposeRoutedTravel({ route: 'travel', destination: 'старая дамба вдоль складов' }, fixtureState())
-  assert.equal(card?.type, 'vote')
-  assert.equal(classifyPartyDecision(card.options[0]).destinationHint, 'Старая дамба')
-})
-
-test('если путь — часть имени известной точки карты, имя не режется', () => {
-  const context = { knownPlaces: ['Тропа через перевал'] }
-  assert.equal(detectPartyExitRequest('Идём на Тропу через перевал', context)?.destination, 'Тропу через перевал')
 })

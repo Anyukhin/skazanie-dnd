@@ -17,8 +17,6 @@ import {
   Crown,
   DoorOpen,
   Dices,
-  Flame,
-  Footprints,
   Gem,
   History,
   MessageSquare,
@@ -115,10 +113,14 @@ import {
   mechanicsSupportPresentation,
   movementCellReason,
   pointInAreaEffect,
+  sceneObjectApproachHint,
+  sceneObjectDistanceFeet,
   type MovementPath,
 } from './tactical-ui'
 import { SUPERSEDED_FEATURE_POOLS, fallbackCombatActions } from './combat-actions'
-import { allCatalogCombatSpells, fallbackCombatSpells } from './combat-spells'
+import { allCatalogCombatSpells, fallbackCombatSpells, spellSelectionRules } from './combat-spells'
+import { heroSpellCounts, heroSpellSummary, heroSpellTileLabel } from './spellbook-summary.mjs'
+import { spellRangeLabel } from './SpellDetail'
 import { CombatIcon } from './CombatIcon'
 import { ReactionAskMark, ReactionModesPanel, reactionIconId, reactionModeTitle } from './ReactionModes'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -204,6 +206,7 @@ import {
   type TileCost,
   tokenAnchor,
   type TokenAnchor,
+  ConditionMark,
   TokenConditionIcons,
   TokenHealthBar,
   unavailableUiReason,
@@ -271,7 +274,16 @@ function heroClassPoolRowsFrom(resources: Record<string, { current?: number; max
     .filter((row) => !isSpellSlotPool(row.keys[0]) && row.keys[0] !== 'pact_slots')
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, children }: {
+/** Кошелёк одной строкой: «15 зм 3 см», без нулевых монет; пустой — «0 зм». */
+function purseText(currency: { platinum?: number; gold?: number; silver?: number; copper?: number }) {
+  const parts = ([['platinum', 'пм'], ['gold', 'зм'], ['silver', 'см'], ['copper', 'мм']] as const)
+    .map(([key, label]) => [Math.max(0, Number(currency?.[key]) || 0), label] as const)
+    .filter(([value]) => value > 0)
+    .map(([value, label]) => `${value} ${label}`)
+  return parts.length ? parts.join(' ') : '0 зм'
+}
+
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, chronicleStatus, freeRoll, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -330,6 +342,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /** Ходит не герой зрителя: вместо чужих неактивных плиток — кто ходит и чей лист внизу. */
   foreignTurn?: { turnName: string; heroName: string } | null
   statusContent: React.ReactNode
+  /** Строка кампании и места — первой строкой хроники на столе (на телефоне она в шапке). */
+  chronicleStatus?: React.ReactNode
+  /** Свободный бросок вне боя — на месте кольца «Завершить ход». */
+  freeRoll?: React.ReactNode
   children?: React.ReactNode
 }) {
   const [freeText, setFreeText] = useState('')
@@ -958,6 +974,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
          fallback, но не переносим из него решение о доступности. */
       return fallback?.components && !spell.components ? { ...spell, components: fallback.components } : spell
     })
+  /* Плейтест 2026-10-04, OB-02 / MG-02: `spells` — список класса до
+     доступного круга, а не книга героя; «45 в списке» новичок читал как свои
+     сорок пять заклинаний. Счётчики разведены по тому же флагу `prepared`,
+     которым решается доступность ниже, и по книге героя (`knownSpellIds`). */
+  const heroSpellTally = heroSpellCounts(spells, { mode: spellSelectionRules(activeHero)?.mode ?? null, knownSpellIds: activeHero?.knownSpellIds ?? null })
+  const heroSpellLine = heroSpellSummary(heroSpellTally)
   const hotbarSpells = spells.filter((spell) => hotbarSpellIds.includes(spell.id) && spellActionType(spell) !== 'reaction')
   const selectedSpell = spells.find((spell) => spell.id === selectedSpellId) ?? spells[0]
   const selectedSpellItemOption = selectedSpell?.id === 'shillelagh' && shillelaghItemId ? { itemId: shillelaghItemId } : {}
@@ -1092,6 +1114,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     : []
   const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
   const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
+  /* Плейтест 2026-10-04, SE-13: закрытые действия объясняются с расстоянием —
+     той же мерой, что решает «под рукой» строкой выше. */
+  const selectedSceneObjectApproach = sceneObjectApproachHint(selectedSceneObject ? sceneObjectDistanceFeet(active, sceneObjectCells(selectedSceneObject)) : null)
   /* Благословения приезжают готовой карточкой: цена требы, СЛ молитвы и то,
      прошли ли сутки, посчитаны сервером (`server/blessings.mjs`). Своей
      арифметики суток здесь нет — иначе кнопка обещала бы одно, а движок делал
@@ -1421,7 +1446,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       : (current) => abilities.includes(current as NonNullable<WeaponAttackChoice['attackAbility']>) ? current : mode?.ability)
   }, [selectedItem?.id, selectedWeaponCatalogCombat?.abilities?.join('|'), weaponModeKey, attackMode, activeShillelaghAbility])
   useEffect(() => { if (!knockoutEligible) setKnockOut(false) }, [knockoutEligible])
-  useEffect(() => { if (selectedCombatAction?.id !== 'shove') setShovePush(false) }, [selectedCombatAction?.id])
+  const shoveSelected = combatMode === 'action' && selectedCombatAction?.id === 'shove'
+  useEffect(() => { if (!shoveSelected) setShovePush(false) }, [shoveSelected])
   useEffect(() => { if (!sneakAttackEligible || sneakAttackSpent) setSneakAttack(false) }, [sneakAttackEligible, sneakAttackSpent])
   useEffect(() => {
     setPendingCommand(null)
@@ -2225,7 +2251,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           onClick={(event) => event.stopPropagation()}
         >
           <header>
-            <span><b>{sceneObjectLabel(sceneObject)}</b><small>{selectedSceneObjectAtHand ? 'Выберите действие' : 'Подойдите к объекту на соседнюю клетку'}</small></span>
+            <span><b>{sceneObjectLabel(sceneObject)}</b><small>{selectedSceneObjectAtHand ? 'Выберите действие' : selectedSceneObjectApproach}</small></span>
             <button type="button" className="scene-object-menu-close" aria-label="Закрыть действия объекта" onClick={() => setSelectedSceneObjectId(null)}><X size={13} /></button>
           </header>
           {sceneObjectVerbs(sceneObject).map((intent) => {
@@ -2235,7 +2261,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive))
               || (intent === 'lockpick' && !lockpickAllowed)
             const title = unavailable
-              ? 'Подойдите к объекту на соседнюю клетку'
+              ? selectedSceneObjectApproach
               : intent === 'pray'
                 ? (combatActive ? 'Посреди боя благословений не раздают' : blessingPrayerHint)
                 : intent === 'lockpick'
@@ -2465,7 +2491,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               disabled={combatActive || !sceneNpc.alive || narrating}
               title={combatActive ? 'Разговор недоступен во время боя' : !sceneNpc.alive ? 'Собеседник недоступен' : narrating ? 'Дождитесь ответа Рассказчика' : 'Открыть адресованный разговор'}
               onClick={() => openNpcDossier(sceneNpc.id, 'talk')}
-            ><MessageSquare size={13} />Заговорить</button>
+            ><CombatIcon id="talk" kind="action" hint="поговорить с персонажем" size={13} compact />Заговорить</button>
             <button type="button" onClick={() => openNpcDossier(sceneNpc.id, 'inspect')} title="Открыть публичное досье, не расходуя действие"><BookOpen size={13} />Осмотреть</button>
             <button
               type="button"
@@ -2724,7 +2750,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      или занятого действия. Числа берутся из серверной проекции, поэтому
      счётчик не может обещать выстрел, в котором движок откажет. */
   if (inDeck('weapon')) combatItems.filter((item) => item.type === 'weapon').forEach((item) => { const ammunition = ammunitionSupplyFor(activeHero?.inventory, item); const quiverEmpty = Boolean(ammunition && ammunition.shots <= 0); const ammunitionLabel = ammunition ? `${ammunition.shots}×${ammunition.unit}` : ''; deckTiles.push({ id: item.id, cost: 'action', section: 'action', node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked || quiverEmpty} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={quiverEmpty ? `${item.name}: колчан пуст — для выстрела нужен боеприпас «${ammunition?.unit}»` : ammunition ? `${item.name} ${ammunitionLabel}: ${item.description || item.properties}` : `${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт{ammunition ? ` · ${ammunitionLabel}` : ''}</small>{ammunition && <em>{ammunition.shots}</em>}<i className="action-cost action">действие</i></button> }) })
-  if (activeDeck === 'magic' || (activeDeck === 'all' && spells.length > 0)) deckTiles.push({ id: 'spellbook', section: 'spell', node: <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={tacticalBusy} title={`Открыть полный каталог: ${spells.length} заклинаний в списке героя`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} в списке</small></button> })
+  if (activeDeck === 'magic' || (activeDeck === 'all' && spells.length > 0)) deckTiles.push({ id: 'spellbook', section: 'spell', node: <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={tacticalBusy} title={`Открыть книгу заклинаний. ${heroSpellLine}. Весь каталог — отдельной вкладкой внутри`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{heroSpellTileLabel(heroSpellTally)}</small></button> })
   const slotFilteredSpells = slotLevelFilter
     ? hotbarSpells.filter((spell) => spell.level > 0 && spell.level <= slotLevelFilter)
     : hotbarSpells
@@ -2766,7 +2792,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {spell.level > 0 && <i className="tile-level" aria-hidden="true">{SPELL_LEVEL_ROMANS[spell.level - 1]}</i>}
         {spell.concentration && <i className={`tile-conc${heroConcentration === spell.name ? ' holding' : ''}`} aria-hidden="true" />}
         <strong>{spell.name}</strong>
-        <small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>
+        {/* Плейтест 2026-10-04, MG-03: плитка писала «5 фт», а книга —
+            «Касание». Подпись дальности одна на всё — `spellRangeLabel`. */}
+        <small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRangeLabel(spell)}</small>
         <SpellComponentsLine spell={spell} compact />
         {pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}
         {componentAvailability.blocked && <i id={componentReasonId} className="spell-component-lock" title={componentReason ?? 'Недоступно: нужные компоненты недоступны'} aria-label={componentReason ?? 'Недоступно: нужные компоненты недоступны'}><Lock size={11} aria-hidden="true" /></i>}
@@ -2804,9 +2832,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         .map((id) => ({ id, tiles: visibleTiles.filter((tile) => tile.section === id) }))
         .filter((section) => section.tiles.length > 0)
     : visibleTiles.length ? [{ id: 'deck', tiles: visibleTiles }] : []
+  // Одна секция (вкладка-фильтр) тоже идёт иконками, как в макете, если плиток
+  // больше двух рядов по три: подписи нужны только совсем короткому списку.
   const largestSection = hotbarSections.length > 1
     ? hotbarSections.reduce((best, section) => section.tiles.length > best.tiles.length ? section : best)
-    : null
+    : hotbarSections[0] && hotbarSections[0].tiles.length > hudRows * 2 ? hotbarSections[0] : null
   /* Реакции героя — справа от плиток: они не нажимаются, а срабатывают в окне
      реакции, поэтому панель только показывает, чем герой может ответить и не
      потрачена ли реакция в этом раунде. */
@@ -2955,6 +2985,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </div>}
       {npcTacticText && <div className="npc-tactic-banner" role="status" aria-live="polite"><Swords size={15} /><span>{npcTacticText}</span></div>}
       <TacticalBoard
+        minimapCaption={state.scene.location}
         campaignId={state.sessionCode}
         key={state.sessionCode}
         map={boardMap}
@@ -3069,6 +3100,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       {spellbookOpen && <Suspense fallback={<section className="spellbook-catalog spellbook-loading" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}><p role="status">Открываем книгу заклинаний…</p><button type="button" onClick={() => setSpellbookOpen(false)}>Закрыть</button></section>}><Spellbook
         spells={spells}
         catalogSpells={spellbookSpells}
+        heroSummary={heroSpellLine}
         activeName={activeName}
         initialSpellId={selectedSpell?.id}
         pinnedSpellIds={hotbarSpellIds}
@@ -3227,10 +3259,21 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             (`combat-target-popover` ниже), события боя — в ленте, ходы
             противников — свёртком под полоской. ОЗ ходящего здесь не
             повторяются: они есть в списке отряда и в полоске жизни. */}
+        {chronicleStatus && <div className="chronicle-status">{chronicleStatus}</div>}
+        {/* «Кто в сцене», как в макете исследования: живые NPC сцены, щелчок —
+            тот же разговор, что «Заговорить» в меню фишки. */}
+        {!combatActive && sceneNpcs.some((npc) => npc.alive) && <section className="scene-who-card" aria-label="Кто в сцене">
+          <header><b>Кто в сцене</b><small>щелчок — заговорить</small></header>
+          {sceneNpcs.filter((npc) => npc.alive).slice(0, 5).map((npc) => <button key={npc.id} type="button" className="scene-who-row" disabled={narrating} onClick={() => openNpcDossier(npc.id, 'talk')} title={`Заговорить: ${npc.name}`}>
+            <NpcTokenPortrait campaignId={state.sessionCode} npcId={npc.id} name={npc.name} />
+            <span><b>{npc.name}</b><small>{npc.role || 'Персонаж'}</small></span>
+            <em>{NPC_STANCE_LABELS[visibleNpcStance(npc.stance)]}</em>
+          </button>)}
+        </section>}
         {combatActive && <div className="turn-strip" role="status" aria-live="polite" aria-label={`Раунд ${combat.round ?? 1}, ходит ${activeName}`}>
           <span className="turn-strip-round">Раунд {combat.round ?? 1}</span>
           <span className="turn-strip-actor">ходит <b className={activeHero || activeSummon ? 'ally' : 'enemy'}>{activeName}</b></span>
-          {activeConditions.map((condition) => <span key={condition.instanceKey} className={`turn-strip-condition ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i />{condition.label}</span>)}
+          {activeConditions.map((condition) => <span key={condition.instanceKey} className={`turn-strip-condition ${condition.status}`} title={`${condition.statusLabel}. ${condition.explanation}${condition.duration ? ` Длительность: ${condition.duration}` : ''}`}><i><ConditionMark id={condition.id} label={condition.label} /></i>{condition.label}</span>)}
           <CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} compact />
         </div>}
         {activeHero && canAct && activeConditionIds.has('bless-d4') && onSetSpellBonusPreference && <label className="spell-bonus-preference"><input type="checkbox" aria-label="Использовать бонус Благословения" checked={(state.mechanics?.conditions?.[turnActorId] ?? []).some((condition) => condition.id === 'bless-d4' && condition.bonus_enabled !== false)} disabled={tacticalBusy || Boolean(combat.reaction_window)} onChange={(event) => { void onSetSpellBonusPreference(turnActorId, event.target.checked) }} /> Использовать бонус Благословения к атакам и спасброскам</label>}
@@ -3483,10 +3526,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             срочное действие, и держать открытым бланк рядом с боем незачем.
             Показывается она только там, где почте есть смысл, — когда отряд
             знает хоть одного адресата или уже отправил хоть одно письмо. */}
-        {(letterAddressees.length > 0 || heroLetters.length > 0) && <SituationalSlot id="letters" icon={<Mail size={14} />} label="Письма" badge={heroLettersInTransit.length} open={openSituational === 'letters'} onToggle={toggleSituational} onClose={closeSituational}>
+        {(letterAddressees.length > 0 || heroLetters.length > 0) && <SituationalSlot id="letters" icon={<CombatIcon id="letters" kind="action" size={14} compact />} label="Письма" badge={heroLettersInTransit.length} open={openSituational === 'letters'} onToggle={toggleSituational} onClose={closeSituational}>
         <section className="letters-panel" aria-label="Почта отряда" aria-live="polite">
           <header>
-            <Mail size={15} />
+            <CombatIcon id="letters" kind="action" size={15} compact />
             <span><small>Почта отряда{heroLettersInTransit.length ? ` · в пути: ${heroLettersInTransit.length}` : ''}</small><strong>Письма и курьеры</strong></span>
             <button
               type="button"
@@ -3672,15 +3715,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </article>
           })}
         </section></SituationalSlot>}
-        {!combatActive && <SituationalSlot id="rest" icon={<Flame size={14} />} label="Отдых" open={openSituational === 'rest'} onToggle={toggleSituational} onClose={closeSituational}>
+        {!combatActive && <SituationalSlot id="rest" icon={<CombatIcon id="short-rest" kind="action" size={14} compact />} label="Отдых" open={openSituational === 'rest'} onToggle={toggleSituational} onClose={closeSituational}>
         <section className="rest-controls" aria-label="Отдых">
-          <header><Flame size={15} /><span><small>Передышка</small><strong>Отдых героя</strong></span></header>
+          <header><CombatIcon id="short-rest" kind="action" size={15} compact /><span><small>Передышка</small><strong>Отдых героя</strong></span></header>
           {!activeRest
             ? <>
                 <p>Короткий отдых откроет поштучный расход костей хитов. Долгий пройдёт атомарно.</p>
                 <div>
-                  <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onStartRest('short')}>Короткий · 1 час</button>
-                  <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onStartRest('long')}>Долгий · 8 часов</button>
+                  <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onStartRest('short')}><CombatIcon id="short-rest" kind="action" size={16} compact />Короткий · 1 час</button>
+                  <button disabled={!canAct || narrating || Boolean(state.pendingCheck)} onClick={() => onStartRest('long')}><CombatIcon id="long-rest" kind="action" size={16} compact />Долгий · 8 часов</button>
                 </div>
               </>
             : activeRest.reason === 'knockout'
@@ -3783,6 +3826,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         }}
       >
 
+        {/* Подпись над полем, как в макете стола: что сюда пишут именно сейчас. */}
+        <span className="composer-label" aria-hidden="true">{combatActive ? 'Действие в бою словами' : 'Ваше действие'}</span>
         {/* Вид реплики — переключателем под полем, как в прототипе стола: три
             варианта видны сразу и меняются одним щелчком. */}
         <div className="request-kind" role="radiogroup" aria-label="Тип реплики">
@@ -3818,7 +3863,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           />
           <VoiceInput key={state.sessionCode + turnActorId} value={freeText} onChange={updateFreeText} disabled={composerBlocked} />
         </div>
-        <button type="submit" disabled={composerBlocked || ((conversationOnly || !preparedLabel || awaitingTarget) && !freeText.trim())} title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : awaitingTarget ? 'Сначала выберите цель на карте' : !preparedLabel && !freeText.trim() ? 'Сначала опишите действие' : 'Отправить действие'}><Send size={17} />Отправить</button>
+        <button type="submit" disabled={composerBlocked || ((conversationOnly || !preparedLabel || awaitingTarget) && !freeText.trim())} title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : awaitingTarget ? 'Сначала выберите цель на карте' : !preparedLabel && !freeText.trim() ? 'Сначала опишите действие' : 'Отправить действие'}><CombatIcon id="custom-action" kind="action" size={17} compact />Отправить</button>
       </form>
       </div>
       <section className="turn-rail">
@@ -3869,7 +3914,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий" hidden={Boolean(viewerHero)}>
           {([
             ['all', 'Все', <Sparkles size={18} />],
-            ['common', 'Основные', <Footprints size={18} />],
+            ['common', 'Общие', <CombatIcon id="common-actions" kind="action" size={18} compact />],
             ['weapon', 'Атаки', <Swords size={18} />],
             ['magic', 'Заклинания', <Sparkles size={18} />],
             ['class', 'Классовые', <Shield size={18} />],
@@ -3886,7 +3931,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             : leaveLocationDisabled
               ? 'Сначала завершите текущее действие или проверку'
             : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
-        ><DoorOpen size={18} /><span>Решение группы</span></button>}
+        ><CombatIcon id="group-vote" kind="action" size={18} compact /><span>Решение группы</span></button>}
         {showStartCombat && <button type="button" className="start-combat-button" disabled={!canAct || tacticalBusy} onClick={onStartCombat} title="Бросить инициативу и начать бой"><Swords size={18} /><span>Начать бой</span></button>}
         {combatActive && <div className="hotbar-combat-controls">
             {combatActive && !truce && <button
@@ -3899,12 +3944,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
                 : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
             ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={18} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
-            {/* Переключатель, как «Не убивать» макета: флаг `knock_out` уходит
-                с ближайшей атакой ближнего боя, сервер сам решает, сработал ли он. */}
-            {combatActive && knockoutEligible && <button className={`knockout-turn-toggle hud-toggle ${knockOut ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} onClick={() => setKnockOut((current) => !current)} title='Не убивать: удар, сводящий ОЗ к нулю, оставит цель с 1 ОЗ без сознания. Только ближний бой'><i aria-hidden="true" /><span>Не убивать</span></button>}
-            {/* Исход толчка выбирается до броска: правило даёт «сбить с ног» или
-                «оттолкнуть на 5 фт». Стену и занятую клетку проверяет сервер. */}
-            {combatActive && selectedCombatAction?.id === 'shove' && <button className={`knockout-turn-toggle hud-toggle ${shovePush ? 'active' : ''}`} disabled={tacticalBusy} aria-pressed={shovePush} onClick={() => setShovePush((current) => !current)} title='Оттолкнуть: при успехе цель отлетает на 5 футов от вас вместо того, чтобы упасть. Стена или другое существо её остановят'><i aria-hidden="true" /><span>Оттолкнуть</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={18} compact /><span>Сменить оружие</span></button>}
         </div>}
         </div>
@@ -3984,7 +4023,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             <div className="hotbar-detail-content">
             {combatMode === 'magic' && selectedSpell ? <>
               <DetailHeader title={selectedSpell.name} description={selectedSpell.description} meta={<>
-                {selectedSpellRange > 0 ? <i className="detail-chip" title={`Дальность: ${selectedSpellRange} фт`}>{selectedSpellRange} фт</i> : <i className="detail-chip" title="Заклинание на себя">на себя</i>}
+                {/* Подпись — та же, что в книге (MG-03, плейтест 2026-10-04):
+                    «Касание», а не «5 фт». Футы остаются в подсказке: по ним
+                    доска меряет досягаемость. */}
+                <i className="detail-chip" title={selectedSpellRange > 0 ? `Дальность на карте: ${selectedSpellRange} фт` : 'Заклинание на себя'}>{spellRangeLabel(selectedSpell)}</i>
                 {selectedSpell.concentration ? <i className="detail-chip mark" title="Требует концентрации">К</i> : null}
                 {supportMark(selectedSpellSupport.status) ? <i className={`detail-chip mark support-${selectedSpellSupport.status}`} title={`${selectedSpellSupport.label}. ${selectedSpellSupport.explanation}`}>{supportMark(selectedSpellSupport.status)}</i> : null}
               </>} />
@@ -4096,6 +4138,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 : <span key={reaction.id} className={`hud-reaction${railReactionReady ? '' : ' spent'}`} title={`${reaction.name} — реакция. Срабатывает в окне реакции, когда случится подходящее событие${railReactionReady ? '' : '. Реакция этого раунда уже потрачена'}`}><CombatIcon id={reactionIconId(reaction)} kind={reaction.kind === 'spell' ? 'spell' : 'action'} hint={reaction.name} size={34} compact /></span>)}
             </div>
           </div>}
+          {/* Переключатели, как «Не убивать» макета: флаг `knock_out` уходит с
+              ближайшей атакой ближнего боя, сервер сам решает, сработал ли он. */}
+          {combatActive && (knockoutEligible || shoveSelected) && <div className="hud-toggles" role="group" aria-label="Переключатели">
+            <span className="hud-side-title">Переключатели</span>
+            <div className="hud-reaction-grid">
+              {knockoutEligible && <button type="button" className={`hud-reaction hud-toggle-button knockout-turn-toggle${knockOut ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} aria-label={`Не убивать — ${knockOut ? 'включено' : 'выключено'}`} onClick={() => setKnockOut((current) => !current)} title="Не убивать: удар, сводящий ОЗ к нулю, оставит цель с 1 ОЗ без сознания. Только ближний бой"><CombatIcon id="nonlethal" kind="action" size={34} compact /></button>}
+              {/* Исход толчка выбирается до броска: правило даёт «сбить с ног»
+                  или «оттолкнуть на 5 фт». Стену и занятую клетку проверяет сервер. */}
+              {shoveSelected && <button type="button" className={`hud-reaction hud-toggle-button shove-push-toggle${shovePush ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={shovePush} aria-label={`Толчок отталкивает — ${shovePush ? 'включено' : 'выключено, сбивает с ног'}`} onClick={() => setShovePush((current) => !current)} title="Оттолкнуть: при успехе толчка цель отлетает на 5 футов от вас вместо того, чтобы упасть. Стена или другое существо её остановят"><CombatIcon id="shove" kind="action" size={34} compact /></button>}
+            </div>
+          </div>}
+          {/* Часы хода — под реакциями, как в макете: тот же серверный срок, что
+              и в полосе хода хроники. */}
+          {combatActive && state.turn_clock && <div className="hud-turn-clock"><CombatTurnClock clock={state.turn_clock} actorName={actorNameById(state.turn_clock?.actor_ids?.[0])} compact /></div>}
           {state.mechanics?.movement?.[viewerHero?.id ?? turnActorId] && <div className="hero-cluster-speed" aria-label="Скорость героя">
             <span>Скорость: <b>{railMovement.currentSpeed} фт</b> · базовая {railMovement.baseSpeed} фт</span>
             {railMovement.effects.filter((effect) => effect.applied).map((effect) => <span key={effect.effect_id}>{effect.name} {effect.bonus_feet >= 0 ? '+' : ''}{effect.bonus_feet} фт</span>)}
@@ -4119,10 +4175,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
            {!combatActive && <div className="hud-modes" role="group" aria-label="Отдых и режимы">
              <span className="hud-side-title">Отдых и режимы</span>
              <div className="hud-mode-grid">
-               <button type="button" className={`hud-mode${openSituational === 'rest' ? ' open' : ''}`} aria-expanded={openSituational === 'rest'} onClick={() => { toggleChat(false); toggleSituational('rest') }} title="Короткий или долгий отдых: восстановление считает сервер"><Flame size={18} aria-hidden="true" /><span>Отдых</span></button>
-               {(letterAddressees.length > 0 || heroLetters.length > 0) && <button type="button" className={`hud-mode${openSituational === 'letters' ? ' open' : ''}`} aria-expanded={openSituational === 'letters'} onClick={() => { toggleChat(false); toggleSituational('letters') }} title="Почта отряда: письма и курьеры"><Mail size={18} aria-hidden="true" /><span>Письма</span>{heroLettersInTransit.length > 0 && <b aria-label={`в пути: ${heroLettersInTransit.length}`}>{heroLettersInTransit.length}</b>}</button>}
+               <button type="button" className={`hud-mode${openSituational === 'rest' ? ' open' : ''}`} aria-expanded={openSituational === 'rest'} onClick={() => { toggleChat(false); toggleSituational('rest') }} title="Короткий или долгий отдых: восстановление считает сервер"><CombatIcon id="short-rest" kind="action" size={22} compact /><span>Отдых</span></button>
+               {(letterAddressees.length > 0 || heroLetters.length > 0) && <button type="button" className={`hud-mode${openSituational === 'letters' ? ' open' : ''}`} aria-expanded={openSituational === 'letters'} onClick={() => { toggleChat(false); toggleSituational('letters') }} title="Почта отряда: письма и курьеры"><CombatIcon id="letters" kind="action" size={22} compact /><span>Письма</span>{heroLettersInTransit.length > 0 && <b aria-label={`в пути: ${heroLettersInTransit.length}`}>{heroLettersInTransit.length}</b>}</button>}
                {canSetReactionModes && <button type="button" data-reaction-modes-anchor="" className={`hud-mode${reactionMenu ? ' open' : ''}`} aria-haspopup="dialog" aria-expanded={Boolean(reactionMenu)} onClick={(event) => openReactionModes(event.currentTarget)} title="Режимы реакций: спрашивать, сразу или никогда"><RefreshCw size={18} aria-hidden="true" /><span>Реакции</span></button>}
              </div>
+             {reactionHero?.currency && <div className="hud-purse" aria-label={`Кошелёк: ${purseText(reactionHero.currency)}`}><span className="hud-purse-coin" aria-hidden="true" /><span>Кошелёк</span><b>{purseText(reactionHero.currency)}</b></div>}
            </div>}
         </div>}
         {/* Завершение хода — главное решение этого ряда, и выглядит оно так
@@ -4161,6 +4218,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </div>}
           <small className={`end-turn-move${railMovementAvailable && railRemainingFeet > 0 ? '' : ' spent'}`} title={railMovement.blockedReason ?? undefined}>{railMovement.blockedReason ? 'Движение недоступно' : `Осталось ${railMovementAvailable ? railRemainingFeet : 0} из ${railSpeedFeet} фт`}</small>
         </div>}
+        {!combatActive && freeRoll && <div className="free-roll-dock">{freeRoll}</div>}
       </aside>
       <TileTooltip tip={tileTip} />
       {upcastPrompt && selectedSpell?.id === upcastPrompt.spellId && combatMode === 'magic' && <UpcastPopover

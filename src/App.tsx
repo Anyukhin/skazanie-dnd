@@ -21,6 +21,7 @@ import type { BoardCombatant } from './app-shared'
 import { AdminView, AgentInteractionCard, CampaignModal, ChatPanel, JournalView, SettingsView } from './AppViews'
 import { CombatTurnClock, DungeonMap, heroStatusFor, heroStatusSummary, type HeroStatus } from './DungeonMap'
 import { RailGrip, useBoardFrame } from './hud-parts'
+import { ConditionMark, PartyQuestHud } from './dungeon-map-parts'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
@@ -28,7 +29,7 @@ import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { DiceRollScene, type DiceRollResult } from './DiceRollScene'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
-import { awaitsDecisionContinuation, isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
+import { awaitsDecisionContinuation, continuesOnwardRoute, isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
 import { createScreenMusic, type ScreenMusicPlayer } from './screen-music'
@@ -57,7 +58,6 @@ import { PartyPage } from './PartyPage'
 import { MobileTabBar, type MobilePane } from './MobileTabBar'
 import { LeaveLocationPicker, SceneTransitionBanner, sceneTransitionNotice, type SceneTransitionNotice } from './SceneTransitionOverlay'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
-import { characterDraftKey } from './character-draft-storage.mjs'
 import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
 import {
   createAtmosphereAudio,
@@ -166,6 +166,10 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, st
     <button className={`player-card ${selected ? 'active' : ''} ${accessible ? '' : 'locked'} ${downed ? 'downed' : ''}`} onClick={onClick} disabled={!accessible} title={accessible ? `${player.character}: ${player.online ? 'в сети' : 'не в сети'}${typing ? ', формулирует намерение' : ''}` : `${player.character}: этот герой закреплён за другим игроком`}>
       <div className="avatar portrait-avatar" data-face={heroFaceMode(player)} style={heroFaceStyle(player, { '--avatar': player.color } as React.CSSProperties)}>
         {!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}
+        {/* Портрет карточкой, как в макете стола: урон заливает его снизу, ОЗ —
+            числом на нижней кромке. Вне стола эти слои скрыты стилями. */}
+        <i className="portrait-damage" aria-hidden="true" style={{ height: `${Math.round((1 - Math.max(0, Math.min(1, player.hp / Math.max(1, player.maxHp)))) * 100)}%` }} />
+        <b className="portrait-hp" aria-hidden="true">{Math.max(0, player.hp)}/{player.maxHp}{status && status.temporaryHp > 0 ? ` +${status.temporaryHp}` : ''}</b>
         <span className={`presence ${player.online ? 'online' : ''}`} aria-label={player.online ? 'В сети' : 'Не в сети'} />
       </div>
       <div className="player-meta">
@@ -178,8 +182,8 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, st
             принимает только владелец героя в своей полоске жизни. */}
         <div className="hp-line"><i style={{ width: `${Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100}%` }} />{status && status.temporaryHp > 0 && <i className="temp" style={{ left: `${Math.min(100, Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100)}%`, width: `${Math.min(100, status.temporaryHp / Math.max(1, player.maxHp) * 100)}%` }} />}<small>{player.hp}/{player.maxHp}{status && status.temporaryHp > 0 && <em>+{status.temporaryHp}</em>} ОЗ</small></div>
         {status && (status.concentration || status.conditions.length > 0) && <div className="player-status-dots" title={heroStatusSummary(status)} aria-label={heroStatusSummary(status)}>
-          {status.concentration && <i className="concentration" />}
-          {status.conditions.map((condition) => <i key={condition.instanceKey} className={condition.status === 'marker' ? 'marker' : 'condition'} />)}
+          {status.concentration && <span className="party-condition concentration"><ConditionMark id="concentration" label="Концентрация" /></span>}
+          {status.conditions.map((condition) => <span key={condition.instanceKey} className={`party-condition ${condition.status === 'marker' ? 'marker' : 'condition'}`}><ConditionMark id={condition.id} label={condition.statusLabel} /></span>)}
         </div>}
         {downed && <div className="downed-line" title={deathSaves ? `Спасброски от смерти: ${deathSaves.successes} успеха, ${deathSaves.failures} провала` : undefined}>
           <HeartCrack size={11} /><span>{downedLabel}</span>
@@ -286,21 +290,25 @@ function PartyOverlay({ players, selectedPlayerId, turnPlayerId, accessibleHeroI
 function RoomHeaderBar({
   campaignName, partyName, sessionCode, connectionState, pacing, progression, reputationStanding,
   combatActive, round, canManageLifecycle, lifecycleStatus, lifecycleBusy, onChangeLifecycle, inviteEnabled, onInvite,
-  onOpenCampaigns, onOpenLevelUp,
+  onOpenCampaigns, onOpenLevelUp, location = '', weather,
 }: {
   campaignName: string; partyName: string; sessionCode: string; connectionState: ConnectionState
+  /** Где отряд: строка статуса хроники начинается с места, как в макете. */
+  location?: string; weather?: WeatherProjection
   pacing?: SidebarPacing | null; progression?: SidebarProgression | null; reputationStanding: SidebarReputation[]
   combatActive: boolean; round: number
   canManageLifecycle: boolean; lifecycleStatus: string; lifecycleBusy: boolean; onChangeLifecycle: (action: SidebarLifecycleAction) => void
   inviteEnabled: boolean; onInvite: () => void; onOpenCampaigns: () => void; onOpenLevelUp: () => void
 }) {
   return <div className="room-header-bar">
+    {location && <span className="room-place" title={location}>{location}</span>}
     <span className={`header-chip mode ${combatActive ? 'fight' : ''}`}>{combatActive ? <><Swords size={14} />Бой · раунд {round}</> : <><Compass size={14} />Свободная сцена</>}</span>
     {pacing && <span className={`header-chip director-status ${pacing.phase}`} title={pacing.title}><Sparkles size={13} />{pacing.label}<b>{pacing.tension}</b></span>}
     {progression && progression.milestonesSinceLevel > 0 && (progression.levelUpAvailable
       ? <button type="button" className="header-chip progression-status earned" onClick={onOpenLevelUp} title="Отряд заслужил уровень. Откройте лист героя, чтобы выбрать умения."><Sparkles size={13} />Уровень готов</button>
       : <span className="header-chip progression-status" title={`Вех до нового уровня: ${progression.milestonesSinceLevel} из ${progression.milestonesPerLevel}`}><Sparkles size={13} />Вехи<b>{progression.milestonesSinceLevel}/{progression.milestonesPerLevel}</b></span>)}
     {reputationStanding.length > 0 && <span className="header-chip reputation-status" title={reputationStanding.map((entry) => entry.label).join('; ')}><Shield size={13} />Слава<b>{reputationStanding.filter((entry) => entry.known).length || '—'}</b></span>}
+    <SceneWeather weather={weather} />
     <span className="room-header-spacer" />
     <button type="button" className="header-campaign" onClick={onOpenCampaigns} title={`Кампания «${campaignName}», группа «${partyName}», комната ${sessionCode}. Переключить кампанию`}>
       <small>{partyName || 'Отряд'} · {sessionCode}</small><strong>{campaignName}</strong><ChevronDown size={14} />
@@ -394,7 +402,7 @@ function SceneWeather({ weather }: { weather?: WeatherProjection }) {
   )
 }
 
-function SceneHeader({ title, location, objective, turn, chapter, illustration, illustrationKey, locationArtUrl, scenicBackdrop, wantedSigns, weather }: {
+function SceneHeader({ title, location, objective, turn, chapter, illustration, illustrationKey, locationArtUrl, scenicBackdrop, wantedSigns, weather, combat = false, children }: {
   title: string
   location: string
   objective: string
@@ -419,6 +427,10 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
    * крышей» приходят готовыми из проекции (`server/weather.mjs`).
    */
   weather?: WeatherProjection
+  /** Идёт ли бой: на столе заголовок сцены уступает место ленте очерёдности. */
+  combat?: boolean
+  /** Задачи отряда — под целью сцены, в той же плашке поверх доски. */
+  children?: React.ReactNode
 }) {
   const [objectiveExpanded, setObjectiveExpanded] = useState(false)
   // Готовой картинки у локации может и не быть — это норма, а не ошибка.
@@ -457,14 +469,18 @@ function SceneHeader({ title, location, objective, turn, chapter, illustration, 
           не добавляла ни тем, ни другим. */}
       {/* `turn` — номер сцены, а не ход отряда: он растёт только при переходе
           Директора. Подпись «ХОД» читалась как замерший счётчик действий. */}
-      <div className="scene-title"><span>Глава {chapter} · сцена {turn} · {location}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
+      <div className="scene-title"><span>Глава {chapter} ◆ Сцена {turn} ◆ {location}</span><h1>{title}</h1><p><Target size={13} />{location}</p></div>
       {/* Время суток и погода стоят рядом с названием места: это часть ответа
           на вопрос «где мы», а не отдельная панель. */}
       <SceneWeather weather={weather} />
       {/* Цель не помещается в строку заголовка и обрезается многоточием, а
           читать её игроку надо: замерено — из 571 px текста видно 311. Полная
           формулировка уходит в подсказку, иначе цель просто теряется. */}
-      <button ref={objectiveRef} type="button" className={`objective ${objectiveExpanded ? 'expanded' : ''}`} title={objective} aria-expanded={objectiveExpanded} onClick={() => setObjectiveExpanded((value) => !value)}><small>ТЕКУЩАЯ ЦЕЛЬ</small><strong>{objective}</strong></button>
+      <button ref={objectiveRef} type="button" className={`objective ${objectiveExpanded ? 'expanded' : ''}`} title={objective} aria-expanded={objectiveExpanded} onClick={() => setObjectiveExpanded((value) => !value)}><small>Цель сцены</small><strong>{objective}</strong></button>
+      {/* Под целью — режим сцены рядом с погодой, как в макете стола: погода
+          сама стоит выше, а чип режима говорит, свободная ли сцена. */}
+      <span className={`scene-mode-chip ${combat ? 'fight' : ''}`}>{combat ? 'Бой' : 'Свободная сцена'}</span>
+      {children}
       {/* Розыск игрок видит миром, а не индикатором: в шапке стоит одна примета,
           остальные — в подсказке. Цифры ступени в проекции нет, и выводить её
           из числа строк клиенту нечем и незачем. */}
@@ -1676,6 +1692,8 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
 
   const roomHeaderBar = <RoomHeaderBar
     campaignName={state.campaign}
+    location={state.scene.location}
+    weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather}
     partyName={state.partyName ?? ''}
     sessionCode={state.sessionCode ?? ''}
     connectionState={connectionState}
@@ -1767,7 +1785,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             statusByHero={heroStatusByHero}
             onSelect={setSelectedHeroId}
           />
-          <DiceTray key={state.sessionCode} compact latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />
+          {/* Вне боя свободный бросок — большой кнопкой в панели (`freeRoll`),
+              в бою — кнопкой у мини-карты. Один экземпляр за раз: иначе сцена
+              чужого броска открылась бы дважды. */}
+          {combatActive && <DiceTray key={state.sessionCode} compact latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />}
           <DungeonMap
             state={state}
             players={partyPlayers}
@@ -1804,6 +1825,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onFinishTurn={finishMapTurn}
             onFreeAction={(text, kind) => isAdventureContinuation(text, { requestKind: kind ?? 'action' }) && awaitsDecisionContinuation(state.agentInteraction)
               ? continueSceneInteraction()
+              // «Продолжим» на промежуточной точке маршрута — обычная заявка:
+              // сервер открывает голосование ухода к следующему пункту, как
+              // кнопка «Решение группы» (плейтест 2026-10-04, SE-11).
+              : !state.agentInteraction && continuesOnwardRoute(text, state.scene, { requestKind: kind ?? 'action' })
+              ? submitAction(text, activePlayer.id, undefined, kind)
               : (isAdventureContinuation(text, { requestKind: kind ?? 'action' })
               || (!combatActive && !(state.enemies ?? []).some((enemy) => enemy.alive !== false)
                 && isEncounterRequest(text, { requestKind: kind ?? 'action' })))
@@ -1830,7 +1856,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             narrating={state.isNarrating}
             foreignTurn={combatActive && !canControlHero && !canControlSummon ? { turnName: turnActorName, heroName: activePlayer.character } : null}
             playerHud={<PlayerHud player={hudHero} combatActive={combatActive} status={heroStatusByHero[(hudHero).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(hudHero).id] ?? [])} onCharacter={() => openHeroEditor((hudHero).id)} onInventory={() => navigate('inventory')} />}
-            statusContent={<><SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />{roomHeaderBar}</>}
+            statusContent={<><SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} combat={combatActive}><PartyQuestHud state={state} /></SceneHeader>{roomHeaderBar}</>}
+            chronicleStatus={roomHeaderBar}
+            freeRoll={combatActive ? undefined : <DiceTray key={state.sessionCode} panel latestRoll={state.lastDiceRoll} onRoll={(sides) => rollFreeDie(activePlayer.id, sides)} />}
           >
             <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => { void continueSceneInteraction() }} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
           </DungeonMap>
@@ -1966,7 +1994,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         accountName={account.name}
         catalog={characterCreationCatalog ?? aiHealth!.characterCreation!}
         rulesetId={state.ruleset_id}
-        draftKey={characterDraftKey({ accountId: account.id, sessionCode: state.sessionCode, playerId: creatingPlayerId, rulesetId: state.ruleset_id })}
+        campaignCode={state.sessionCode}
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
         onImport={async (source) => {

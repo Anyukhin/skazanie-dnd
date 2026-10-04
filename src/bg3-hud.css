@@ -509,3 +509,225 @@
 .reaction-mode-seg button[aria-checked="true"] { background: var(--acc-soft, var(--raise)); color: var(--acc2); box-shadow: inset 0 0 0 1px var(--line2); }
 .reaction-mode-seg button[aria-disabled="true"] { cursor: progress; }
 .reaction-mode-seg button:focus-visible { outline: 2px solid var(--acc2); outline-offset: 1px; }
+
+/* ---------------- раскладка стола по макету: без шапки ----------------
+   Доска идёт во всю высоту. Заголовок сцены — глава, название, цель, погода и
+   режим — лежит поверх неё по центру (в бою на этом месте лента очерёдности),
+   а строка кампании — первой строкой хроники. На телефоне шапка прежняя. */
+@media (min-width: 761px) {
+  .game-area { --status: 0px; }
+  .game-area > .status-bar { position: absolute; z-index: 14; top: 0; left: 0; right: var(--server-column); height: 0; padding: 0; border: 0; background: none; overflow: visible; display: block; pointer-events: none; }
+  .game-area > .status-bar > .room-header-bar { display: none; }
+  /* Строка статуса сама занимает ширину доски: лента встаёт по её центру, между
+     портретами отряда слева и кругом мини-карты справа. */
+  .game-area > .status-bar > .initiative-ribbon.combat { top: 10px; left: 50%; max-width: calc(100% - 460px); }
+  .game-area.combat-active > .status-bar > .scene-header { display: none; }
+  .game-area > .status-bar > .scene-header {
+    position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+    width: max-content; max-width: min(560px, calc(100% - 520px));
+    display: grid; grid-template-columns: auto auto; justify-content: center; gap: 6px 12px;
+    padding: 0; pointer-events: none;
+  }
+  .game-area > .status-bar > .scene-header > * { pointer-events: auto; }
+  .game-area > .status-bar .scene-title { order: 0; grid-column: 1 / -1; min-width: 0; text-align: center; pointer-events: none; }
+  .game-area > .status-bar .scene-title > span { color: var(--acc2); font: 700 var(--fs-sm) var(--f-display); letter-spacing: .08em; text-shadow: 0 1px 4px #000; }
+  .game-area > .status-bar .scene-title h1 { margin-top: 2px; color: var(--text); font: 700 34px/1.05 var(--f-display); text-shadow: 0 2px 8px #000; white-space: normal; }
+  .game-area > .status-bar .scene-header > .objective {
+    order: 1; grid-column: 1 / -1; justify-self: center; position: relative; top: auto;
+    height: auto; max-width: 520px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 8px 18px 10px; border: 1px solid var(--line2); border-top: 3px solid var(--enemy); border-radius: 0;
+    background: color-mix(in srgb, var(--panel) 94%, transparent);
+    box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--panel) 94%, transparent), inset 0 0 0 4px var(--line), 0 8px 20px rgba(0,0,0,.45);
+    color: var(--text); text-align: center;
+  }
+  .game-area > .status-bar .scene-header > .objective small { display: block; color: var(--acc2); font: 700 var(--fs-md) var(--f-display); letter-spacing: .04em; }
+  .game-area > .status-bar .scene-header > .objective strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--text); font: 400 var(--fs-md)/1.35 var(--f-serif); white-space: normal; text-overflow: clip; }
+  .game-area > .status-bar .scene-header > .objective.expanded strong { -webkit-line-clamp: unset; }
+  .game-area > .status-bar .scene-header > .scene-weather { order: 2; grid-row: auto; grid-column: auto; justify-self: end; }
+  .game-area > .status-bar .scene-header > .scene-mode-chip { order: 3; justify-self: start; }
+  .game-area > .status-bar .scene-header > .party-quest-hud { order: 4; grid-column: 1 / -1; justify-self: center; position: relative; left: auto; top: auto; width: min(360px, 100%); transform: none; }
+  .game-area > .status-bar .scene-header > .scene-wanted { order: 5; grid-column: 1 / -1; justify-self: center; }
+  .scene-mode-chip { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 4px; background: color-mix(in srgb, var(--panel) 90%, transparent); color: var(--text2); font: 600 var(--fs-sm) var(--f-serif); white-space: nowrap; }
+  /* Плашка задач и надпись «Исследование» живут теперь в заголовке сцены. */
+  .game-area .map-stage > .party-quest-hud, .game-area .map-stage > .map-mode-plate { display: none; }
+
+  /* Строка кампании — первой строкой хроники: место, режим и погода слева,
+     кампания, связь, пауза и приглашение справа. */
+  .server-column > .chronicle-status { flex: 0 0 auto; min-width: 0; padding: 0 2px 8px; border-bottom: 1px solid var(--line); }
+  .chronicle-status > .room-header-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .chronicle-status .room-place { min-width: 0; max-width: 100%; overflow: hidden; color: var(--text); font: 700 var(--fs-md) var(--f-display); text-overflow: ellipsis; white-space: nowrap; }
+  .chronicle-status .header-chip { height: 26px; padding: 0 9px; font-size: var(--fs-xs); }
+  .chronicle-status .scene-weather { max-width: 170px; }
+  .chronicle-status .header-campaign { max-width: 200px; text-align: left; }
+  .chronicle-status .header-icon { width: 30px; height: 30px; }
+}
+@media (max-width: 760px) {
+  .server-column > .chronicle-status { display: none; }
+  .status-bar .scene-header > .scene-mode-chip, .status-bar .scene-header > .party-quest-hud { display: none; }
+}
+
+/* ---------------- отряд: портретные карточки ----------------
+   Как в макете стола: портрет с заливкой урона снизу и ОЗ на нижней кромке,
+   рядом — точки состояний. Имя остаётся в названии кнопки. Портреты героев —
+   спрайт квадратных лиц, поэтому карточка квадратная: вытянутая исказила бы лицо. */
+.portrait-damage, .portrait-hp { display: none; }
+@media (min-width: 761px) {
+  .party-overlay { width: auto; gap: 10px; margin: 64px 0 0 12px; }
+  .party-overlay .player-card { position: relative; display: flex; align-items: flex-start; gap: 6px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+  .party-overlay .player-card .avatar { position: relative; width: 76px; height: 76px; flex: none; overflow: hidden; border-radius: 4px; border: 2px solid var(--ally); background-color: var(--well); box-shadow: 0 6px 14px rgba(0,0,0,.55); }
+  .party-overlay .player-card.active .avatar { width: 88px; height: 88px; border: 3px solid var(--text); box-shadow: 0 0 12px color-mix(in srgb, var(--text) 45%, transparent), 0 6px 14px rgba(0,0,0,.55); }
+  .party-overlay .player-card.downed .avatar { filter: grayscale(.7) brightness(.75); }
+  .party-overlay .player-card .hero-face-initials { font: 700 var(--fs-xl) var(--f-display); }
+  .party-overlay .portrait-damage { display: block; position: absolute; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--hp) 55%, transparent); pointer-events: none; }
+  .party-overlay .portrait-hp { display: block; position: absolute; left: 0; right: 0; bottom: 0; padding: 1px 0; background: rgba(8,6,4,.78); color: var(--text); font: 700 var(--fs-sm) var(--f-display); text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
+  .party-overlay .player-card .presence { top: 3px; right: 3px; }
+  .party-overlay .player-meta { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding-top: 2px; }
+  .party-overlay .player-name-row, .party-overlay .player-meta > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .party-overlay .hp-line, .party-overlay .armor-badge { display: none; }
+  .party-overlay .player-status-dots { flex-direction: column; gap: 4px; }
+  .party-overlay .downed-line { flex-direction: column; align-items: flex-start; max-width: 76px; padding: 2px 5px; border-radius: 3px; background: rgba(8,6,4,.82); white-space: normal; }
+}
+
+/* ---------------- мини-карта кругом ----------------
+   Как в макете: круг с золотым кольцом в правом верхнем углу поля и подпись
+   места под ним. Холст квадратный, карта вписана в круг по диагонали. */
+.board-minimap { top: 14px; right: 16px; padding: 0; border-radius: 0; background: none; box-shadow: none; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.board-minimap-disc { display: block; width: 176px; height: 176px; overflow: hidden; border-radius: 50%; border: 2px solid var(--acc2); background: var(--well); box-shadow: 0 0 0 4px var(--rail-bg), 0 0 0 5px var(--line2), 0 10px 24px rgba(0,0,0,.6); pointer-events: auto; }
+.board-minimap canvas { border-radius: 0; }
+.board-minimap-caption { max-width: 230px; color: var(--text); font: 700 var(--fs-md) var(--f-display); text-align: center; text-shadow: 0 1px 4px #000, 0 0 10px #000; overflow-wrap: anywhere; }
+
+/* ---------------- свободный бросок вне боя ----------------
+   Как в макете исследования: на месте кольца «Завершить ход» — большая кнопка
+   «Бросок d20», над ней ярлык, под ней ряд костей и подпись «Видят все за
+   столом». В бою бросок — прежней кнопкой у мини-карты, левее круга. */
+.free-roll-dock { flex: none; display: flex; justify-content: center; }
+.dice-tray.dice-tray--panel { position: relative; inset: auto; z-index: auto; display: flex; flex-direction: column; align-items: center; gap: 5px; width: auto; min-width: 0; max-width: none; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; backdrop-filter: none; }
+.dice-tray--panel .dice-tray__tag { padding: 2px 9px; border: 1px solid var(--line2); border-radius: 10px; color: var(--acc2); font: 600 var(--fs-xxs) var(--f-ui); white-space: nowrap; }
+.dice-tray--panel .dice-tray__big {
+  width: calc(116px * var(--ui-readable-scale, 1)); height: calc(116px * var(--ui-readable-scale, 1));
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  padding: 0; border: 2px solid var(--acc2); border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, color-mix(in srgb, var(--acc) 30%, var(--raise)), var(--rail-bg) 78%);
+  box-shadow: 0 0 0 6px var(--rail-bg), 0 0 0 8px color-mix(in srgb, var(--acc2) 40%, transparent), 0 8px 20px rgba(0,0,0,.55);
+  color: var(--text); font: 700 var(--fs-sm)/1.05 var(--f-display); text-align: center; cursor: pointer;
+}
+.dice-tray--panel .dice-tray__big:hover:not(:disabled) { border-color: var(--text); }
+.dice-tray--panel .dice-tray__big:focus-visible { outline: 2px solid var(--acc2); outline-offset: 4px; }
+.dice-tray--panel .dice-tray__big .dice-tray__die, .dice-tray--panel .dice-tray__big .dice-tray__die svg { width: 34px; height: 34px; }
+.dice-tray--panel .dice-tray__sides { display: flex; gap: 3px; }
+.dice-tray--panel .dice-tray__sides button { height: 22px; padding: 0 5px; border: 1px solid var(--line2); border-radius: 3px; background: var(--rail-bg); color: var(--text2); font: 700 var(--fs-xxs) var(--f-display); cursor: pointer; }
+.dice-tray--panel .dice-tray__sides button[aria-pressed="true"] { border-color: var(--acc2); color: var(--acc2); }
+.dice-tray--panel > em { max-width: 150px; color: var(--muted); font: italic 400 var(--fs-xxs) var(--f-serif); text-align: center; }
+@media (min-width: 761px) {
+  /* В бою — под кругом мини-карты, у правого края поля: по центру лента. */
+  /* Кнопка — элемент сетки в области доски, поэтому и отсчёт от края доски. */
+  .game-area > .dice-tray.dice-tray--compact { position: absolute; z-index: 30; grid-area: board; top: 296px; right: 16px; margin: 0; }
+}
+
+/* ---------------- хроника по макету ----------------
+   Сверху — «Хроника» с фильтрами и круглой кнопкой сворачивания, под ней
+   орнамент, затем строка места и кампании, полоса хода, панели и лента.
+   Блоки ленты поднимаются в колонку (display: contents), чтобы шапка встала
+   первой: в разметке она внутри ленты, ниже полосы хода. */
+@media (min-width: 761px) {
+  .server-column { gap: 10px; padding: 14px 16px 10px; }
+  .server-column > .chat-panel { display: contents; }
+  .server-column .chat-head { order: -3; position: relative; min-height: 0; padding: 0 52px 14px 0; border-bottom: 0; cursor: default; }
+  .server-column .chat-head > div { flex-wrap: nowrap; gap: 12px; }
+  .server-column .chat-head::before, .server-column .chat-head::after { content: ''; position: absolute; bottom: 4px; height: 1px; width: calc(50% - 30px); background: var(--line2); }
+  .server-column .chat-head::before { left: 0; }
+  .server-column .chat-head::after { right: 52px; width: calc(50% - 56px); }
+  .server-column .chat-head-eyebrow { color: var(--text); font: 700 24px/1 var(--f-display); letter-spacing: .02em; }
+  .server-column .chronicle-filters { gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 3px; background: var(--well); }
+  .server-column .chronicle-filters button { height: 28px; padding: 0 10px; border-radius: 2px; font: 700 var(--fs-sm) var(--f-ui); }
+  .server-column .chronicle-filters button.active { background: var(--acc-soft); color: var(--acc2); }
+  /* Ромб посередине орнамента. */
+  .server-column > .chronicle-status::before { content: ''; position: absolute; left: calc(50% - 30px); top: -14px; width: 7px; height: 7px; border: 1px solid var(--acc2); transform: rotate(45deg); }
+  .server-column > .chronicle-status { order: -2; position: relative; }
+  .server-column > .turn-strip { order: -1; }
+  .server-column > .chat-collapse-button {
+    left: auto; right: 16px; top: 10px;
+    width: 40px; height: 40px;
+    border: 1px solid var(--line2);
+    background: var(--rail-bg);
+    box-shadow: inset 0 0 0 3px var(--rail-bg), inset 0 0 0 4px var(--line);
+  }
+  .server-column .chat-interaction-slot { order: 1; }
+  .server-column .action-hints { order: 2; margin: 0; }
+  .server-column .messages { order: 3; flex: 1 1 0; min-height: 0; padding: 4px 2px 6px; }
+  .server-column > .player-hud-stack { order: 4; }
+
+  /* Подсказки — карточкой «Что можно сделать» с красной кромкой. */
+  .server-column .action-hints { padding: 10px 12px 12px; border: 1px solid var(--line2); border-top: 3px solid var(--enemy); border-radius: 0; background: color-mix(in srgb, var(--raise) 60%, var(--rail-bg)); box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--raise) 60%, var(--rail-bg)), inset 0 0 0 4px var(--line); }
+  .server-column .action-hints-head > span { color: var(--acc2); font: 700 var(--fs-lg) var(--f-display); letter-spacing: .02em; }
+  .server-column .action-hints ul { margin-top: 8px; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .server-column .action-hints li { padding: 5px 10px; border: 1px solid var(--line2); background: var(--rail-bg); color: var(--text); font: 400 var(--fs-md)/1.35 var(--f-serif); }
+  .server-column .action-hints li::before { content: '◆ '; color: var(--acc2); }
+
+  /* Лента: рассказчик — крупным книжным шрифтом, первая запись с буквицей;
+     реплика игрока — цитатой; служебные строки — мельче. */
+  .server-column .message { margin-bottom: 14px; }
+  .server-column .message-meta strong { font: 700 var(--fs-lg) var(--f-display); }
+  .server-column .message.narrator .message-meta strong { color: var(--acc2); }
+  .server-column .message.narrator .message-body p { color: var(--text); font: 400 17px/1.55 var(--f-serif); }
+  .server-column .messages > article.message.narrator:first-of-type .message-body p::first-letter {
+    float: left; margin: 4px 8px 0 0; padding: 4px 9px 2px;
+    border: 1px solid var(--line2); background: var(--raise);
+    box-shadow: inset 0 0 0 2px var(--raise), inset 0 0 0 3px var(--line);
+    color: var(--acc2); font: 700 36px/1 var(--f-display);
+  }
+  .server-column .message.player .message-body { padding: 8px 12px 10px; border: 1px solid var(--line2); background: color-mix(in srgb, var(--raise) 55%, var(--rail-bg)); box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--raise) 55%, var(--rail-bg)), inset 0 0 0 4px var(--line); }
+  .server-column .message.player .message-meta strong { color: var(--acc2); font-size: var(--fs-md); }
+  .server-column .message.player .message-body p { color: var(--text); font: 400 var(--fs-md)/1.45 var(--f-serif); }
+  .server-column .message.system { opacity: 1; margin-bottom: 10px; padding-left: 8px; border-left: 2px solid var(--line2); }
+  .server-column .message.system .message-body p { color: var(--text2); font: var(--fs-sm)/1.45 var(--f-ui); }
+}
+
+/* ---------------- поле ввода по макету ----------------
+   Подпись «Ваше действие» / «Действие в бою словами» над полем, поле — в
+   двойной рамке, ниже вид реплики и «Отправить». */
+.composer-label { display: none; }
+@media (min-width: 761px) {
+  .dialogue-composer .rail-free-input { grid-template-rows: auto auto auto; }
+  .dialogue-composer .composer-label { display: block; grid-column: 1 / -1; grid-row: 1; color: var(--acc2); font: 700 var(--fs-md) var(--f-display); }
+  .dialogue-composer .rail-input-shell { grid-row: 2; border: 1px solid var(--line2); border-radius: 3px; background: var(--well); box-shadow: inset 0 0 0 3px var(--well), inset 0 0 0 4px var(--line); }
+  .dialogue-composer .request-kind { grid-row: 3; border-radius: 3px; }
+  .dialogue-composer .request-kind button { border-radius: 2px; }
+  .dialogue-composer .rail-free-input > button[type="submit"] { grid-row: 3; border-radius: 3px; font-family: var(--f-display); }
+}
+.dice-tray--panel .dice-tray__tag { display: inline-flex; align-items: center; gap: 5px; }
+.game-area .turn-rail-side .hud-mode .combat-icon { width: 22px; height: 22px; }
+
+/* ---------------- остаток макета ----------------
+   Кошелёк под «Отдых и режимы»; «Кто в сцене» карточкой в хронике; в бою под
+   реакциями — переключатели и часы хода; у портретов отряда — рисунки
+   состояний вместо точек. */
+@media (min-width: 761px) {
+  .game-area .turn-rail-side .hud-purse { align-self: stretch; display: flex; align-items: center; gap: 6px; padding: 4px 7px; border: 1px solid var(--line); background: var(--well); color: var(--text2); font: 600 var(--fs-xs) var(--f-display); }
+  .game-area .turn-rail-side .hud-purse b { margin-left: auto; color: var(--acc2); font: 700 var(--fs-sm) var(--f-display); white-space: nowrap; }
+  .game-area .turn-rail-side .hud-purse-coin { width: 11px; height: 11px; flex: none; border-radius: 50%; background: var(--acc); border: 1px solid var(--line2); }
+
+  .game-area .turn-rail-side .hud-toggles { display: flex; flex-direction: column; gap: 6px; }
+  .game-area .turn-rail-side .hud-toggle-button { position: relative; padding: 0; cursor: pointer; }
+  .game-area .turn-rail-side .hud-toggle-button .combat-icon { opacity: .55; filter: grayscale(.6); }
+  .game-area .turn-rail-side .hud-toggle-button.on { border-color: var(--acc2); }
+  .game-area .turn-rail-side .hud-toggle-button.on .combat-icon { opacity: 1; filter: none; }
+  .game-area .turn-rail-side .hud-toggle-button.on::after { content: ''; position: absolute; inset: 2px; border-radius: 50%; border: 2px solid var(--acc2); box-shadow: 0 0 8px color-mix(in srgb, var(--acc2) 60%, transparent); pointer-events: none; }
+  .game-area .turn-rail-side .hud-turn-clock { align-self: stretch; }
+
+  .server-column > .scene-who-card { order: 4; flex: none; display: flex; flex-direction: column; gap: 6px; max-height: 230px; overflow-y: auto; padding: 10px 12px; border: 1px solid var(--line); background: color-mix(in srgb, var(--raise) 45%, var(--rail-bg)); }
+  .scene-who-card > header { display: flex; align-items: baseline; gap: 8px; }
+  .scene-who-card > header b { color: var(--acc2); font: 700 var(--fs-lg) var(--f-display); }
+  .scene-who-card > header small { margin-left: auto; color: var(--muted); font: italic 400 var(--fs-xxs) var(--f-serif); }
+  .scene-who-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 3px 4px; border: 0; border-radius: 3px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+  .scene-who-row:hover:not(:disabled) { background: var(--raise); }
+  .scene-who-row > :first-child { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; border: 2px solid var(--line2); }
+  .scene-who-row > span { min-width: 0; display: flex; flex-direction: column; }
+  .scene-who-row b { overflow: hidden; color: var(--text); font: 700 var(--fs-sm) var(--f-display); text-overflow: ellipsis; white-space: nowrap; }
+  .scene-who-row small { overflow: hidden; color: var(--text2); font: italic 400 var(--fs-xs) var(--f-serif); text-overflow: ellipsis; white-space: nowrap; }
+  .scene-who-row em { padding: 1px 7px; border: 1px solid var(--line2); color: var(--text2); font: 600 var(--fs-xxs) var(--f-display); font-style: normal; white-space: nowrap; }
+
+  .party-overlay .player-status-dots { gap: 3px; }
+  .party-overlay .party-condition { display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line2); border-radius: 50%; background: var(--rail-bg); color: var(--text2); font: 700 11px var(--f-ui); overflow: hidden; }
+  .party-overlay .party-condition .condition-mark { width: 20px; height: 20px; }
+}

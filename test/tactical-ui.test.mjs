@@ -493,13 +493,20 @@ test('смазанный клинок читается в обеих форма�
   assert.equal(tacticalUi.tokenConditionGlyph(foe.id, foe.label), '☠')
   assert.equal(tacticalUi.tokenConditionGlyph('weapon-coated:hero-blade', own.label), '☠')
 
-  // Проверяется настоящая функция, а не текст исходника: до переезда знаки жили
-  // внутри `DungeonMap.tsx` вместе с react и двумя десятками соседей, вызвать их
-  // из теста было нечем, и сторожем стояла регулярка по коду — она держала форму
-  // записи и молчала бы о любой правке поведения. Осталась ровно одна строка
-  // исходником — проводка: доска обязана звать функцию, а не собирать знак сама.
-  const board = ['../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n')
-  assert.match(board, /\{tokenConditionGlyph\(condition\.id, condition\.label\)\}/u)
+})
+
+test('рисунки состояний используют allowlist, суффикс вещи и action reuse', () => {
+  assert.equal(tacticalUi.conditionIconAssetId('dead'), 'dead')
+  assert.equal(tacticalUi.conditionIconUrl('dead'), '/assets/ui/conditions/dead.png')
+  assert.equal(tacticalUi.conditionIconUrl('WEAPON-COATED:item'), '/assets/ui/conditions/weapon-coated.png')
+  assert.equal(tacticalUi.conditionIconUrl('weapon-coated:../../secrets'), '/assets/ui/conditions/weapon-coated.png')
+  assert.equal(tacticalUi.conditionIconAssetId('disengaged'), 'disengage')
+  assert.equal(tacticalUi.conditionIconUrl('disengaged'), '/assets/ui/action-icons/disengage.png')
+  assert.equal(tacticalUi.conditionIconUrl('aura-of-protection'), '/assets/ui/action-icons/paladin-aura-of-protection.png')
+  assert.equal(tacticalUi.conditionIconUrl('bless-d4'), '/assets/ui/action-icons/bless.png')
+  assert.equal(tacticalUi.conditionIconUrl('homebrew-omen'), null)
+  assert.equal(tacticalUi.conditionIconAssetId('constructor'), null)
+  assert.equal(tacticalUi.conditionIconUrl('__proto__'), null)
 })
 
 test('у постоянных состояний свои знаки, а не первые буквы подписей', () => {
@@ -682,6 +689,31 @@ test('кнопка перехода называет направление и �
   })
   assert.equal(inCombat.disabled, true)
   assert.equal(inCombat.title, 'Сначала завершите бой', 'бой важнее расстояния: сервер откажет именно по нему')
+})
+
+// Плейтест 2026-10-04, SE-13: подсказка звала «осмотреть длинный стол», а
+// карточка стола отвечала только «подойдите на соседнюю клетку». Теперь рядом
+// с просьбой стоит расстояние — той же мерой, что решает «под рукой».
+test('карточка объекта называет расстояние до ближайшей клетки объекта рядом с просьбой подойти', () => {
+  const hero = { id: 'hero', x: 0, y: 0 }
+  const table = [{ x: 6, y: 2 }, { x: 7, y: 2 }, { x: 8, y: 2 }]
+  assert.equal(tacticalUi.sceneObjectDistanceFeet(hero, table), 30, 'ближайшая клетка длинного стола, а не его центр')
+  assert.equal(tacticalUi.sceneObjectApproachHint(30), 'До объекта 30 фт. Подойдите к объекту на соседнюю клетку')
+  // Та же мера, что у проверки «под рукой»: соседняя клетка по диагонали — 5 футов.
+  assert.equal(tacticalUi.sceneObjectDistanceFeet({ id: 'hero', x: 5, y: 1 }, table), 5)
+  assert.equal(tacticalUi.sceneObjectApproachHint(5), 'Подойдите к объекту на соседнюю клетку')
+  // Крупный герой меряется от края своей площади, а не от верхней левой клетки.
+  assert.equal(tacticalUi.sceneObjectDistanceFeet({ id: 'ogre', x: 4, y: 1, footprint: { version: 1, size: 2 } }, table), 5)
+  assert.equal(tacticalUi.sceneObjectDistanceFeet({ id: 'hero', x: 4, y: 1 }, table), 10)
+  // Измерить нечем — просьба без выдуманного числа.
+  assert.equal(tacticalUi.sceneObjectDistanceFeet(null, table), null)
+  assert.equal(tacticalUi.sceneObjectDistanceFeet(hero, []), null)
+  assert.equal(tacticalUi.sceneObjectApproachHint(null), 'Подойдите к объекту на соседнюю клетку')
+
+  const board = readFileSync(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  assert.match(board, /sceneObjectApproachHint\(selectedSceneObject \? sceneObjectDistanceFeet\(active, sceneObjectCells\(selectedSceneObject\)\) : null\)/u)
+  assert.match(board, /selectedSceneObjectAtHand \? 'Выберите действие' : selectedSceneObjectApproach/u)
+  assert.match(board, /const title = unavailable\s*\n\s*\? selectedSceneObjectApproach/u)
 })
 
 test('тултип лестницы называет этаж и молчит на обычном предмете', () => {

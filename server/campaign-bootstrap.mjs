@@ -81,6 +81,40 @@ function openingNarrationFacts(opening, locationEntity, campaignCode) {
   })
 }
 
+const STARTER_QUEST_TITLE_LIMIT = 72
+const TITLE_TAIL_RE = /[\s.!?…;:,—–-]+$/u
+
+/**
+ * Заголовок задачи — первое предложение, а длинное — до первой запятой или
+ * точки с запятой либо по слову с многоточием. Полный текст остаётся в
+ * `summary`, поэтому здесь ничего не теряется.
+ */
+function shortQuestTitle(value) {
+  const sentence = (clean(value, 500).split(/(?<=[.!?…])\s+/u)[0] ?? '').replace(TITLE_TAIL_RE, '')
+  if (sentence.length <= STARTER_QUEST_TITLE_LIMIT) return sentence
+  const clause = (sentence.split(/\s*[;:—–]\s+|,\s+/u)[0] ?? '').replace(TITLE_TAIL_RE, '')
+  if (clause.length >= 12 && clause.length <= STARTER_QUEST_TITLE_LIMIT) return clause
+  const head = sentence.slice(0, STARTER_QUEST_TITLE_LIMIT)
+  const byWord = head.includes(' ') ? head.slice(0, head.lastIndexOf(' ')) : head
+  return `${byWord.replace(TITLE_TAIL_RE, '')}…`
+}
+
+/**
+ * Название стартовой задачи. Плейтест 2026-10-04 (SE, предложение 2): журнал
+ * показывал названием целиком фразу вступления «Отряд просыпается…» — запасной
+ * рассказчик берёт зацепку из тех же вводных, что и пролог. Строка, которую
+ * пролог уже произнёс, — не название задачи: тогда берётся цель сцены, а за
+ * ней — её заголовок.
+ */
+function starterQuestTitle(opening) {
+  const narration = clean(opening.openingNarration, 4_000).toLocaleLowerCase('ru')
+  for (const candidate of [opening.hook, opening.scene?.objective, opening.scene?.title]) {
+    const title = shortQuestTitle(candidate)
+    if (title && !narration.includes(title.replace(/…$/u, '').toLocaleLowerCase('ru'))) return title
+  }
+  return 'Первая зацепка'
+}
+
 function integer(value, fallback, minimum, maximum) {
   const number = Number(value)
   return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
@@ -218,6 +252,30 @@ function startingVisualSpec(theme, world) {
   return { scale: 'site', pattern: 'natural', material: 'earth', width: 15, height: 11 }
 }
 
+/**
+ * Противник или нападение в словах владельца. Плейтест 2026-10-04, MC-01:
+ * запасной пролог вставил «разбойника у моста» из вводных мира как то, что уже
+ * стоит перед отрядом, а в сцене не оказалось ни противника, ни встречи —
+ * «Напасть» было недоступно, и игрок упирался в отказ. Короткие основы
+ * («орк», «огр», «враг») сравниваются с окончаниями, иначе «оркестр» и
+ * «огромный» тоже становились бы угрозой.
+ */
+const OPENING_THREAT_RE = /(?<![\p{L}])(?:(?:разбойн|бандит|грабител|налётчик|налетчик|мародёр|мародер|головорез|душегуб|убийц|пират|культист|сектант|наёмник|наемник|дезертир|чудовищ|монстр|нежит|мертвец|зомби|скелет|упыр|вурдалак|вампир|оборотн|гоблин|кобольд|гнолл|дракон|волч|засад|нападе|напада|напал|атаку|атаков)\p{L}*|(?:орк|огр|волк|тролл|демон|враг|твар)(?:а|у|ом|е|и|ы|ов|ам|ами|ах|ь|ей|ям|ями|ях)?)(?![\p{L}])/iu
+
+/**
+ * В запасном прологе у угрозы нет профиля: модель не создала ни противника, ни
+ * встречи, а запасной рассказчик их не создаёт никогда. Поэтому названная во
+ * вводных угроза звучит молвой, которую отряд ещё не проверил, а не фактом
+ * сцены. Остальные вводные идут дословно, как и раньше. Оговорка стоит в том
+ * же предложении, что и сама угроза: собеседник без модели цитирует пролог по
+ * предложению, и молва не должна в его устах снова стать фактом. Внутренние
+ * кавычки — „лапки“: цитата NPC оборачивает фразу в «ёлочки».
+ */
+function fallbackSituationText(situation) {
+  if (!OPENING_THREAT_RE.test(situation)) return situation
+  return `Пока это только молва: „${situation.replace(/[\s.!?…]+$/u, '')}“ — своими глазами герои этого ещё не видели, и где правда, а где пересказ, предстоит выяснить.`
+}
+
 function fallbackOpening({ name, partyName, world, heroes, entropy, inspiration = null }) {
   const theme = fallbackTheme(world, entropy, inspiration)
   const location = world.startingLocation || theme.location
@@ -242,7 +300,7 @@ function fallbackOpening({ name, partyName, world, heroes, entropy, inspiration 
     worldSummary: `${name} — самостоятельный мир в ${era}, жанр: ${genre}. ${premise}`,
     worldHistory: `Земли вокруг ${location} менялись задолго до появления героев. ${premise} Теперь старые дороги, границы и забытые места снова определяют судьбы тех, кто здесь живёт.`,
     worldMap: {},
-    openingNarration: `${location}. ${tone}. ${situation}\n\nЗдесь впервые сходятся пути героев: ${heroNames}. У каждого есть причина не пройти мимо, но решение о первом шаге остаётся за отрядом.`,
+    openingNarration: `${location}. ${tone}. ${fallbackSituationText(situation)}\n\nЗдесь впервые сходятся пути героев: ${heroNames}. У каждого есть причина не пройти мимо, но решение о первом шаге остаётся за отрядом.`,
     scene: {
       title: 'Точка пересечения', location,
       mood: tone,
@@ -730,14 +788,17 @@ export class CampaignBootstrapper {
       const npc = holder ? openingNpcs.find((entry) => clean(entry.name, 120).toLocaleLowerCase('ru') === holder) : null
       if (npc) npc.known_fact_ids = [...(npc.known_fact_ids ?? []), fact.id]
     }
+    // Короткое название отдельно от полного текста зацепки: зацепка уходит в
+    // summary целиком, цель сцены — в objectives (плейтест 2026-10-04, SE).
+    const starterTitle = starterQuestTitle(opening)
     const initialWorldMemory = {
       ...sceneMemory,
       facts: [...(sceneMemory.facts ?? []), ...openingFacts, ...secretFacts],
       entities: [...(sceneMemory.entities ?? []), ...factionEntities],
       quests: [...(sceneMemory.quests ?? []), {
         id: starterQuestId,
-        title: opening.hook || opening.scene.objective || 'Первая зацепка',
-        summary: opening.scene.objective,
+        title: starterTitle,
+        summary: opening.hook && opening.hook !== starterTitle ? opening.hook : opening.scene.objective,
         status: 'active', visibility: 'party', entity_ids: [starterFactionId],
         objectives: [opening.scene.objective],
         clock: { current: 0, max: arc?.target_scenes ?? 4, label: 'Прогресс расследования' },

@@ -136,7 +136,7 @@ test('нарративные стартовые вещи получают сущ
     phbCreation: { schema_version: 1 },
   }, { rulesetId: RULESET_ID })
   const expected = new Map([
-    ['Книга заклинаний', '/assets/ui/action-icons/identify.png'],
+    ['Книга заклинаний', '/assets/items/starter-2014/spellbook.png'],
     ['Мешочек с компонентами', '/assets/items/type-other.png'],
     ['Набор учёного', '/assets/items/item-srd-5-2-1-backpack.png'],
     ['Письмо от умершего коллеги', '/assets/items/type-document.png'],
@@ -148,7 +148,7 @@ test('нарративные стартовые вещи получают сущ
     id: 'art-cleric', characterClass: 'cleric', backgroundId: 'criminal', inventory: [], currency: {},
     phbCreation: { schema_version: 1 },
   }, { rulesetId: RULESET_ID })
-  assert.equal(cleric.inventory.find((item) => item.name === 'Священный символ')?.image, '/assets/ui/action-icons/bless.png')
+  assert.equal(cleric.inventory.find((item) => item.name === 'Священный символ')?.image, '/assets/items/item-srd-5-2-1-holy-symbol-amulet.png')
 
   const legacy = withStarterKit({
     id: 'art-legacy', characterClass: 'wizard', backgroundId: 'sage', inventory: [], currency: {},

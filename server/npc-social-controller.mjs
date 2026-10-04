@@ -8,13 +8,16 @@ import { NPC_SOCIAL_RESPONSE_JSON_SCHEMA } from './llm-json-schemas.mjs'
 import { promptForModelRole } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { tavernTableMood } from './tavern-life.mjs'
+import { publicWorldMapFor } from './viewer-projection.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v6'
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v6.txt', import.meta.url)), 'utf8')
+export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v7'
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v7.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8
+/** Публичных зацепок о собеседнике в брифе не больше этого числа. */
+export const NPC_PUBLIC_HOOK_LIMIT = 4
 
 const NPC_SOCIAL_RESPONSE_FIELDS = new Set([
   'npc_id', 'reply', 'stance', 'disclosed_fact_ids', 'disclosed_claim_ids',
@@ -115,6 +118,73 @@ function npcClaims(state, profile, message = '') {
   }))
 }
 
+/** Слова без регистра и «ё»: «Мара Трижды-Мерная» → ['мара', 'трижды', 'мерная']. */
+function plainWords(value, maximum = 2_000) {
+  return clean(value, maximum).toLocaleLowerCase('ru').replaceAll('ё', 'е').match(/[\p{L}\p{N}]+/gu) ?? []
+}
+
+const NAME_ENDING_RE = /(?:ой|ей|ою|ею|ом|ем|ым|им|ую|юю|ая|яя|ов|ев|а|я|у|ю|е|ы|и|о|ь|й)$/u
+
+/**
+ * Слово текста — форма слова из имени: «Мерную» к «Мерная», «Сестрой» к
+ * «Сестра». Короткая основа («мир» у «Мира») префиксом не сравнивается:
+ * «мире» — не имя, поэтому такое слово должно совпасть целиком.
+ */
+function wordNamesPart(word, namePart) {
+  if (word === namePart) return true
+  const stem = namePart.replace(NAME_ENDING_RE, '')
+  return stem.length >= 4 && word.startsWith(stem) && word.length - stem.length <= 3
+}
+
+/** Текст называет собеседника, если в нём есть каждое слово его имени. */
+function textNamesNpc(text, profile) {
+  const nameParts = plainWords(profile?.name, 200).filter((part) => part.length >= 3)
+  if (!nameParts.length) return false
+  const words = plainWords(text)
+  return nameParts.every((part) => words.some((word) => wordNamesPart(word, part)))
+}
+
+/**
+ * Публичные зацепки карты мира и плана города, где этот NPC назван по имени.
+ *
+ * Плейтест 2026-10-04, QP-01: на плане города стояло «Смотрительница Мара
+ * Трижды-Мерная обнаружила подменённую мерную рейку», а сама Мара дважды
+ * ответила, что о подмене не знает. Зацепки — строки без привязки к `npc_id`,
+ * и в бриф собеседника они не попадали вовсе: модель честно не знала того, что
+ * игрок уже прочёл на карте.
+ *
+ * Источник — ровно та проекция карты, которую видит игрок
+ * (`publicWorldMapFor`): места, которые отряд не знает, отсюда не берутся, и
+ * скрытое через этот путь не утекает. Заготовки ведущего здесь не участвуют —
+ * они живут фактами `gm_secret` и раскрываются только своим хранителем.
+ *
+ * @returns {{ place: string, text: string }[]}
+ */
+function publicHooksNamingNpc(state, profile) {
+  const worldMap = state.worldMap && typeof state.worldMap === 'object' && !Array.isArray(state.worldMap)
+    ? publicWorldMapFor(state.worldMap)
+    : null
+  const hooks = []
+  const seen = new Set()
+  const take = (place, value) => {
+    const text = clean(value, 320)
+    const key = text.toLocaleLowerCase('ru')
+    if (!text || seen.has(key) || !textNamesNpc(text, profile)) return
+    seen.add(key)
+    hooks.push({ place: clean(place, 240), text })
+  }
+  for (const location of worldMap?.locations ?? []) {
+    for (const hook of location.storyHooks ?? []) take(location.name, hook)
+    for (const district of location.cityOverview?.districts ?? []) {
+      for (const hook of district.storyHooks ?? []) take(`${location.name} · ${district.name}`, hook)
+    }
+    for (const place of location.cityOverview?.places ?? []) {
+      for (const hook of place.storyHooks ?? []) take(`${location.name} · ${place.name}`, hook)
+    }
+  }
+  return hooks
+}
+
 function privateKnowledgeUsed(state, profile, facts, claims, disclosedFactIds = [], disclosedClaimIds = []) {
   const privateFactIds = new Set(npcSpeakableFactRecords(state, profile)
     .filter((fact) => !['public', 'party'].includes(fact.visibility))
@@ -179,6 +249,7 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
   const relevantMemory = relevantNpcMemory(social, profile, playerId, message)
   const speakableFacts = npcFacts(state, profile, message)
   const speakableClaims = npcClaims(state, profile, message)
+  const publicHooks = publicHooksNamingNpc(state, profile)
   const relevantMemoryCandidateCount = currentConversation.length
     + (profile.dossier ?? []).filter((entry) => entry.visibility === 'party'
       || (entry.visibility === 'specific_player' && String(entry.hero_id) === String(playerId))).length
@@ -190,6 +261,7 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
   const conversationSelection = boundedSelectionMetadata({ scope: 'visible_conversation_with_active_hero', candidateCount: currentConversation.length, limit: 6 })
   const partyConversationSelection = boundedSelectionMetadata({ scope: 'party_visible_conversation_with_other_heroes', candidateCount: partyConversation.length, limit: 4 })
   const memorySelection = boundedSelectionMetadata({ scope: 'visible_relevant_npc_memory', candidateCount: relevantMemoryCandidateCount, limit: NPC_SOCIAL_MEMORY_LIMIT })
+  const publicHookSelection = boundedSelectionMetadata({ scope: 'party_visible_world_hooks_naming_npc', candidateCount: publicHooks.length, limit: NPC_PUBLIC_HOOK_LIMIT })
   return {
     context_metadata: agentContextMetadata(state, { role: 'npc_social', actorId: playerId, targetId: profile.id, contractVersion: NPC_SOCIAL_PROMPT_VERSION }),
     campaign_premise: campaignConceptForAgent(state),
@@ -233,11 +305,16 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
     relevant_memory: relevantMemory,
     speakable_facts: speakableFacts,
     speakable_claims: speakableClaims,
+    // Что о собеседнике открыто сказано на карте (плейтест 2026-10-04, QP-01):
+    // он это знает. Солгать или уклониться модель может, изобразить незнание —
+    // нет (social_v7).
+    public_hooks_naming_npc: publicHooks.slice(0, NPC_PUBLIC_HOOK_LIMIT),
     ...selectionFields(conversationSelection, 'recent_conversation'),
     ...selectionFields(partyConversationSelection, 'recent_party_conversation'),
     ...selectionFields(memorySelection, 'relevant_memory'),
     ...selectionFields(factSelection, 'speakable_facts'),
     ...selectionFields(claimSelection, 'speakable_claims'),
+    ...selectionFields(publicHookSelection, 'public_hooks_naming_npc'),
     ...selectionFields(promiseSelection, 'open_promises'),
     player_message: clean(message, 1_000),
     resolved_check: checkOutcome ? { skill: checkOutcome.skill, ability: checkOutcome.ability, success: checkOutcome.success, degree: checkOutcome.degree } : null,
@@ -257,9 +334,16 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
  * потом молва, за которую он не отвечает. Возвращается и список раскрытых
  * утверждений: реплика и провенанс расходиться не должны.
  *
+ * Факт отвечает только на тот вопрос, с которым совпал словами, и звучит одним
+ * предложением, а не целым абзацем. Плейтест 2026-10-04 (QP-02, SE-04): без
+ * модели Мара, Элин и Мира на любой вопрос дословно зачитывали абзац пролога о
+ * колоколах — пролог лежит в памяти фактом отряда и всегда шёл первым, совпал
+ * он с вопросом или нет. Теперь несовпавший вопрос получает честное «ничего
+ * нового», а сказанное этому герою раньше не повторяется.
+ *
  * @returns {{ reply: string, claimIds: string[] }}
  */
-function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory = [], message = '') {
+function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory = [], message = '', hooks = []) {
   // Исход проверки — механика, а не разговор: раскрывать по нему нечего.
   // Фразы русские: до 2026-10-04 этот путь отвечал игроку по-английски
   // («is not convinced»), стоило проверке пройти без модели (PR #136).
@@ -273,13 +357,79 @@ function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory 
     const remembered = memory.find((entry) => entry.kind === 'conversation' && entry.npc_reply)
     if (remembered) return { reply: `${profile.name} напоминает: «${clean(remembered.npc_reply, 500)}»`, claimIds: [] }
   }
-  const openFact = facts.find((fact) => !fact.guarded)
-  if (openFact) return { reply: `${profile.name} отвечает: «${openFact.summary}»`, claimIds: [] }
-  const rumor = claims.find((claim) => claim.kind === 'rumor')
+  const said = memory.filter((entry) => entry.kind === 'conversation').map((entry) => clean(entry.npc_reply, 2_000))
+  const alreadySaid = (text) => said.some((reply) => reply.includes(text))
+  const answer = fallbackAnswer(profile, message, hooks, facts, alreadySaid)
+  if (answer?.kind === 'hook') return { reply: `${profile.name} подтверждает: «${answer.sentence}»`, claimIds: [] }
+  if (answer) return { reply: `${profile.name} отвечает: «${answer.sentence}»`, claimIds: [] }
+  const rumor = claims.find((claim) => claim.kind === 'rumor' && !alreadySaid(claim.summary))
   if (rumor) return { reply: `${profile.name} понижает голос: «${rumor.summary}»`, claimIds: [rumor.id] }
-  const belief = claims[0]
+  const belief = claims.find((claim) => !alreadySaid(claim.summary))
   if (belief) return { reply: `${profile.name} отвечает: «${belief.summary}»`, claimIds: [belief.id] }
   return { reply: `${profile.name} выслушивает героя, но не сообщает ничего нового.`, claimIds: [] }
+}
+
+/**
+ * Служебные слова вопроса, глаголы обращения и каркас «как пройти к…». По ним
+ * ответ не подбирается: «прямо сейчас» не делает ответом фразу о «прямой
+ * улице», «как пройти» — фразу «не пройти мимо», а «спрашиваю» ни о чём не
+ * спрашивает. Слова короче четырёх букв отсекаются раньше.
+ */
+const FALLBACK_QUESTION_STOP_WORDS = new Set([
+  'какой', 'какая', 'какое', 'какие', 'какую', 'каком', 'какого', 'почему', 'зачем', 'когда', 'куда', 'откуда',
+  'сколько', 'кому', 'кого', 'чего', 'этот', 'этого', 'этом', 'этой', 'тебя', 'тебе', 'меня', 'есть', 'было',
+  'была', 'были', 'быть', 'будет', 'может', 'можно', 'нужно', 'надо', 'сейчас', 'прямо', 'теперь', 'тогда',
+  'здесь', 'очень', 'только', 'ничего', 'никто', 'скажи', 'скажите', 'расскажи', 'расскажите', 'знаешь',
+  'знаете', 'слышал', 'слышала', 'слышали', 'слышно', 'нового', 'новое', 'новости', 'говорю', 'говорим',
+  'спрашиваю', 'спросим', 'расспрашиваю', 'расспросим', 'обращаюсь', 'обращаемся', 'прошу', 'просим',
+  'интересуюсь', 'узнаю', 'хочу', 'хотим', 'давай', 'давайте', 'пожалуйста', 'вопрос', 'ответь', 'подскажи',
+  'думаешь', 'думаете', 'считаешь', 'считаете', 'видел', 'видела', 'видели', 'пройти', 'пройду', 'пройдем',
+  'пойти', 'пойду', 'пойдем', 'идти', 'попасть', 'добраться', 'найти', 'найду', 'найдем', 'сделать', 'делать',
+])
+
+/** Обращение из досье NPC: «Обращаюсь к Маре (смотрительница): …» — адрес, а не вопрос. */
+const ADDRESS_PREFIX_RE = /^\s*(?:обращаюсь|обращаемся)\s+к\s+[^:]{1,240}:\s*/iu
+
+const QUESTION_ENDING_RE = /(?:иями|ями|ами|ого|его|ому|ему|ыми|ими|иях|ях|ах|ов|ев|ий|ый|ой|ей|ых|их|ым|им|ую|юю|ая|яя|ое|ее|ие|ые|ам|ям|ом|ем|ью|ь|ю|ы|и|а|я|е|о|у|й)$/u
+
+/**
+ * Основы слов вопроса без обращения и без имени самого собеседника: имя
+ * совпало бы с любым фактом о нём, и он снова отвечал бы на всё одним.
+ */
+function fallbackQuestionStems(profile, message) {
+  const nameParts = plainWords(profile?.name, 200)
+  return [...new Set(plainWords(clean(message, 1_000).replace(ADDRESS_PREFIX_RE, ''))
+    .filter((word) => word.length >= 4 && !FALLBACK_QUESTION_STOP_WORDS.has(word))
+    .filter((word) => !nameParts.some((part) => wordNamesPart(word, part)))
+    .map((word) => {
+      const stem = word.replace(QUESTION_ENDING_RE, '')
+      return stem.length >= 4 ? stem : word
+    }))]
+}
+
+/**
+ * Лучшее совпавшее с вопросом предложение из публичных зацепок о собеседнике и
+ * открытых фактов. Тайна (`guarded`) сюда не попадает: её без модели не выдают.
+ *
+ * @returns {{ kind: 'hook' | 'fact', sentence: string, score: number } | null}
+ */
+function fallbackAnswer(profile, message, hooks, facts, alreadySaid) {
+  const stems = fallbackQuestionStems(profile, message)
+  if (!stems.length) return null
+  const candidates = [
+    ...hooks.map((hook) => ({ kind: 'hook', text: hook.text })),
+    ...facts.filter((fact) => !fact.guarded).map((fact) => ({ kind: 'fact', text: fact.summary })),
+  ]
+  let best = null
+  for (const candidate of candidates) {
+    for (const sentence of clean(candidate.text, 1_000).split(/(?<=[.!?…])\s+/u).map((part) => clean(part, 320)).filter(Boolean)) {
+      const words = plainWords(sentence)
+      const score = stems.filter((stem) => words.some((word) => word.startsWith(stem))).length
+      if (score < 1 || alreadySaid(sentence)) continue
+      if (!best || score > best.score) best = { kind: candidate.kind, sentence, score }
+    }
+  }
+  return best
 }
 
 function promiseWithinBoundary(promise, profile) {
@@ -300,7 +450,12 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
     .map(String).filter((factId) => allowedFactIds.has(factId)))].slice(0, 20)
   const allowedClaimIds = new Set(npcSpeakableClaimRecords(state, profile).map((claim) => String(claim.id)))
   const modelReply = typeof raw?.reply === 'string' ? clean(raw.reply, 1_000) : ''
-  const fallback = fallbackDisclosure(profile, facts, claims, checkOutcome, memory, message)
+  // Запасной ответ подбирает факты по самому вопросу, без обращения и имени
+  // собеседника: иначе «Обращаюсь к смотрительнице дамбы» находило пролог про
+  // смотрителя дамбы на любой вопрос (плейтест 2026-10-04, QP-02).
+  const answerFacts = modelReply ? [] : npcFacts(state, profile, fallbackQuestionStems(profile, message).join(' '))
+  const answerHooks = modelReply ? [] : publicHooksNamingNpc(state, profile)
+  const fallback = fallbackDisclosure(profile, answerFacts, claims, checkOutcome, memory, message, answerHooks)
   // Раскрытие фолбэка добавляется только тогда, когда прозвучала его реплика:
   // иначе провенанс обещал бы то, чего NPC не говорил.
   const disclosedClaimIds = [...new Set([

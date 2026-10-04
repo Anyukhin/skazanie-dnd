@@ -4,12 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
+import { ActionAdjudicator } from '../server/action-adjudicator.mjs'
 import { Adjudicator } from '../server/adjudicator.mjs'
+import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
+import { freeActionGoalIsPassage } from '../server/free-action-adjudication.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
 import { createItemInstance } from '../server/item-instances.mjs'
+import { Narrator } from '../server/narrator.mjs'
 import { buildNarrationBrief, verifyNarration } from '../server/security.mjs'
 import { RollRegistry } from '../server/roll-registry.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
@@ -32,7 +36,7 @@ function campaign(overrides = {}) {
   })
 }
 
-async function setup(initialState = campaign(), { rollRegistry = null, narrator = null, diceRolls = [18, 3, 18, 3, 18, 3, 18, 3] } = {}) {
+async function setup(initialState = campaign(), { rollRegistry = null, narrator = null, diceRolls = [18, 3, 18, 3, 18, 3, 18, 3], reading = null } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-free-action-'))
   const dice = new DiceService({ rng: new SequenceDiceRng(diceRolls), idFactory: (() => { let id = 0; return () => `free-roll-${++id}` })() })
   const eventStore = new FileEventStore({
@@ -43,11 +47,20 @@ async function setup(initialState = campaign(), { rollRegistry = null, narrator 
   })
   const rulesEngine = new RulesEngine({ diceService: dice })
   let narratorCalls = 0
+  // Прочтение заявки задаётся тестом: судья свободных действий без ключа модели
+  // таких фраз не разбирает, а проверяется здесь ответ после commit.
+  const unknownActionHandler = reading
+    ? new AutonomousCampaignOrchestrator({
+      eventStore, rulesEngine, rollRegistry,
+      actionAdjudicator: new ActionAdjudicator({ llmClient: { completeJson: async () => reading } }),
+    })
+    : null
   const orchestrator = new GameOrchestrator({
     rulesEngine,
     eventStore,
     narrator: narrator ?? { render: async () => { narratorCalls += 1; throw new Error('Свободное действие не должно вызывать Narrator') } },
     rollRegistry,
+    unknownActionHandler,
     idFactory: (() => { let id = 0; return () => `free-turn-${++id}` })(),
   })
   await eventStore.initializeCampaign({ campaign_id: 'FREE-ACTION', initial_state: initialState })
@@ -728,6 +741,87 @@ test('подтверждение нельзя перенести на другу
     ...actionInput(text, 'confirm', changed.state), verifiedRoll,
   }), { code: 'STATE_VERSION_CONFLICT' })
   assert.equal((await eventStore.load('FREE-ACTION')).state_version, changed.state_version)
+})
+
+/**
+ * Плейтест 2026-10-04, MAP2-02: «Вхожу через дверь башни внутрь маяка» стало
+ * проверкой Атлетики СЛ 15, бросок 18 прошёл, решение записалось с
+ * `world_change: false`, время сдвинулось на минуту — и ведущий ответил
+ * «Вышло: войти внутрь маяка», хотя отряд остался во дворе.
+ */
+const passageReading = (overrides = {}) => ({
+  goal_summary: 'Войти внутрь маяка',
+  approach_summary: 'Через дверь башни, следуя за найденным рычагом',
+  obstacle: 'запертая дверь башни',
+  ability: 'str',
+  skill: 'athletics',
+  plausibility: 'plausible',
+  risk: 'minor',
+  required_means: [],
+  action_cost: 'action',
+  effect: 'none',
+  effect_target: '',
+  hazard: '',
+  prop_id: '',
+  target_id: '',
+  item_id: '',
+  proficiency: 'none',
+  consequence_type: 'time',
+  duration_class: 'brief',
+  ...overrides,
+})
+const PASSAGE_TEXT = 'Вхожу через дверь башни внутрь маяка, следуя за найденным рычагом.'
+
+test('удачная заявка «войти внутрь» не обещает перехода, а называет штатный путь — MAP2-02', async () => {
+  let renderCalls = 0
+  const { orchestrator } = await setup(campaign(), {
+    reading: passageReading(),
+    // Модель описала бы вход: ей велено показать, «как герой делает заявленное».
+    narrator: { render: async () => { renderCalls += 1; return { narration: 'Ада толкает дверь и оказывается внутри маяка.', provider: 'test-llm' } } },
+  })
+  const result = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage', campaign()))
+
+  assert.equal(result.free_action_outcome, 'check_success')
+  assert.deepEqual(result.mechanics.map((event) => event.event_type), ['ActionDeclared', 'AbilityCheckResolved', 'RulingRecorded', 'TimeAdvanced'])
+  assert.equal(result.ruling.world_change, false)
+  // Перехода нет и автоматически не появляется.
+  assert.equal(result.mechanics.some((event) => /Moved|LevelChanged|SceneAdvanced|DoorStateChanged/u.test(event.event_type)), false)
+  assert.doesNotMatch(result.narration, /Вышло: войти|оказывается внутри/u)
+  assert.match(result.narration, /^Проверка удалась, но сама сцена от этого не изменилась: Ада пока на прежнем месте\./u)
+  assert.match(result.narration, /на карте/u)
+  assert.match(result.narration, /«Решение группы»/u)
+  assert.equal(result.verification.valid, true)
+  assert.equal(renderCalls, 0, 'ответ на перемещение без перемещения — серверный')
+})
+
+test('запасной рассказчик не меняет «Вышло: …» у цели без перемещения и у провала — MAP2-02', async () => {
+  const shout = await setup(campaign(), {
+    narrator: new Narrator(),
+    reading: passageReading({ goal_summary: 'Крикнуть «Пожар!» на весь двор', approach_summary: 'во весь голос', ability: 'cha', skill: 'performance' }),
+  })
+  const shouted = await shout.orchestrator.handle(actionInput('Кричу «Пожар!» на весь двор', 'free-shout', campaign()))
+  assert.equal(shouted.free_action_outcome, 'check_success')
+  assert.match(shouted.narration, /^Вышло: крикнуть «Пожар!» на весь двор\./u)
+
+  const failed = await setup(campaign(), { narrator: new Narrator(), reading: passageReading(), diceRolls: [1, 1, 1, 1] })
+  const missed = await failed.orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage-fail', campaign()))
+  assert.equal(missed.free_action_outcome, 'check_failure')
+  assert.match(missed.narration, /^Не вышло: войти внутрь маяка\./u)
+})
+
+test('карточка броска на перемещение не сулит вход — MAP2-02', async () => {
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([18]) }) })
+  const { orchestrator } = await setup(campaign(), { rollRegistry: registry, reading: passageReading() })
+  const offered = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage-card', campaign()))
+  assert.equal(offered.free_action_outcome, 'check_required')
+  assert.doesNotMatch(offered.check.proposal.on_success, /войти внутрь маяка/u)
+  assert.match(offered.check.proposal.on_success, /не переместит/u)
+
+  assert.equal(freeActionGoalIsPassage('Перебраться через стену во двор'), true)
+  assert.equal(freeActionGoalIsPassage('Пройти мимо стражи незамеченным'), true)
+  for (const goal of ['Забрать кинжал со стола', 'Пройти проверку', 'Попасть камнем в гоблина', 'Подпереть дверь скамьёй']) {
+    assert.equal(freeActionGoalIsPassage(goal), false, goal)
+  }
 })
 
 test('прыжок с люстры получает честный отказ без расхода хода', async () => {

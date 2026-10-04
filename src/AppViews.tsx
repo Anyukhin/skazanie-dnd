@@ -16,6 +16,7 @@ import {
 import { chronicleFollowAfterScroll, chronicleMatchesFilter, chronicleMessageText, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
+import { journalQuestFocus } from './journal-quests.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, BeastChronicleCard,
@@ -637,6 +638,16 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
   // но игрок её нигде не видел: квесты, нити и резюме прошлых сцен доезжали
   // до клиента и молча пропадали.
   const quests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  // Одна текущая цель вперёд, перенесённые нити прежних глав — после остальных
+  // и с пометкой. Только подача: задания не закрываются и не меняются
+  // (плейтест 2026-10-04, QP-04).
+  const questFocus = journalQuestFocus(state)
+  const carriedQuestIds = new Set(questFocus.carriedIds)
+  const orderedQuests = [
+    ...quests.filter((quest) => quest.id === questFocus.currentId),
+    ...quests.filter((quest) => quest.id !== questFocus.currentId && !carriedQuestIds.has(quest.id)),
+    ...quests.filter((quest) => carriedQuestIds.has(quest.id)),
+  ]
   const offers = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'offered')
   const canChooseStory = state.campaignConcept?.campaign_mode === 'persistent' && !state.campaignConcept.story_quest_id
   const abandonedQuests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'abandoned')
@@ -670,7 +681,9 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
         </div>}
         {quests.length > 0 && <div className="quest-column">
           <header><ScrollText size={15} /><strong>Задачи отряда</strong><span>{quests.length}</span></header>
-          {quests.map((quest) => {
+          {orderedQuests.map((quest) => {
+            const current = quest.id === questFocus.currentId
+            const carried = carriedQuestIds.has(quest.id)
             // Это только представление: серверные цели и часы не меняются.
             // Повтор убираем по нормализованному тексту внутри одного квеста,
             // не сравнивая разные квесты между собой.
@@ -683,7 +696,9 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
               seen.add(key)
               return true
             }).slice(0, 4)
-            return <article className="quest-card" key={quest.id}>
+            return <article className={`quest-card${current ? ' current' : ''}${carried ? ' carried' : ''}`} key={quest.id}>
+              {current && <small className="quest-tag">Текущая цель</small>}
+              {carried && <small className="quest-tag">Незавершённая нить · задание остаётся открытым</small>}
               <b>{quest.title}</b>
               {quest.summary && summaryKey !== titleKey && <p>{quest.summary}</p>}
               {questGiver(quest) && <p>{questGiver(quest)}</p>}

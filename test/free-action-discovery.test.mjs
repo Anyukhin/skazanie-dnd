@@ -193,3 +193,81 @@ test('улику дают только познавательный навык, 
   const first = freeActionDiscoveryCommands(state, base)[0].fact.id
   assert.equal(freeActionDiscoveryCommands(state, base)[0].fact.id, first, 'id улики детерминирован')
 })
+
+/**
+ * Плейтест 2026-10-04, QP-07: «снимаю копию схемы на пергаменте и заношу её в
+ * журнал» дало ответ «Ты снимаешь копию схемы…», а предмета не появилось —
+ * категория «Документ» в инвентаре осталась пустой. Документ сервер не
+ * создаёт, и ответ теперь честно говорит, что это запись в хронике.
+ */
+const copyReading = (overrides = {}) => perceptionReading({
+  goal_summary: 'Снять копию схемы на пергамент',
+  approach_summary: 'Перерисовывает линии на пергамент и заносит в журнал отряда',
+  obstacle: 'тонкие линии легко потерять',
+  ability: 'int',
+  skill: 'investigation',
+  plausibility: 'trivial',
+  risk: 'none',
+  activity_kind: 'routine',
+  proficiency: 'none',
+  ...overrides,
+})
+const COPY_TEXT = 'Снимаю копию схемы на пергаменте и заношу её в журнал отряда, чтобы не потерять найденную улику.'
+const COPY_NOTE = 'Копия осталась записью в хронике отряда: отдельного документа в инвентаре нет.'
+
+async function copyFixture(t, reading) {
+  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-copy-'))
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
+  const eventStore = new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  const initial = harbourState()
+  await eventStore.initializeCampaign({ campaign_id: CAMPAIGN_ID, initial_state: initial })
+  const rulesEngine = new RulesEngine({ diceService: new DiceService({ rng: new SequenceDiceRng(Array(50).fill(15)) }) })
+  const orchestrator = new GameOrchestrator({
+    rulesEngine,
+    eventStore,
+    traceStore: new FileTraceStore({ rootDir: join(rootDir, 'traces') }),
+    // Пересказ модели: сам по себе он звучит как созданная вещь.
+    narrator: { render: async () => ({ narration: 'Тордин снимает копию схемы и заносит её в журнал отряда.', provider: 'test-llm' }) },
+    unknownActionHandler: new AutonomousCampaignOrchestrator({
+      eventStore, rulesEngine,
+      actionAdjudicator: new ActionAdjudicator({ llmClient: { completeJson: async () => reading } }),
+      now: () => 1_790_000_000_000,
+    }),
+  })
+  return { orchestrator, initial }
+}
+
+test('копия схемы без выданного предмета честно названа записью в хронике — QP-07', async (t) => {
+  const { orchestrator, initial } = await copyFixture(t, copyReading())
+  const result = await orchestrator.handle({ state: initial, playerId: 'hero', idempotencyKey: 'copy-scheme', message: COPY_TEXT })
+  assert.equal(result.free_action_outcome, 'auto_success')
+  assert.equal(result.mechanics.some((event) => /Item|Loot/u.test(event.event_type)), false, 'предмет не создаётся')
+  assert.equal(result.authoritative_state.players[0].inventory.length, 0)
+  assert.ok(result.narration.startsWith('Тордин снимает копию схемы'), 'пересказ модели сохраняется')
+  assert.ok(result.narration.endsWith(COPY_NOTE), result.narration)
+  assert.equal(result.verification.valid, true)
+})
+
+test('пометка о копии не появляется у обычного осмотра и у выданного предмета — QP-07', async (t) => {
+  const { orchestrator, initial } = await copyFixture(t, copyReading({ goal_summary: 'Запомнить схему на доске', approach_summary: 'обводит линии пальцем' }))
+  const inspected = await orchestrator.handle({ state: initial, playerId: 'hero', idempotencyKey: 'look-scheme', message: 'Обвожу схему пальцем, чтобы запомнить линии' })
+  assert.equal(inspected.free_action_outcome, 'auto_success')
+  assert.doesNotMatch(inspected.narration, /отдельного документа/u)
+
+  // Если commit всё же выдал вещь, «предмет не создан» было бы неправдой.
+  const granted = await orchestrator.freeActionResponse({
+    freeAction: {
+      kind: 'auto_success', state: initial,
+      reading: { source: 'agent-adjudicator', goal_summary: 'Снять копию схемы на пергамент', approach_summary: 'перерисовывает' },
+      events: [
+        { event_type: 'ActionDeclared', actor_id: 'hero', target_ids: [], visibility: 'party', payload: { action: COPY_TEXT } },
+        { event_type: 'ItemGranted', actor_id: 'hero', target_ids: ['hero'], visibility: 'party', payload: { item: { id: 'copy-1', name: 'Копия схемы', quantity: 1 } } },
+      ],
+    },
+    campaignId: CAMPAIGN_ID, playerId: 'hero', viewer: { playerId: 'hero', isPartyMember: true },
+    message: COPY_TEXT, intent: {}, retrievalQueries: [], retrievedRules: { results: [] },
+    plan: { narration_constraints: [] }, authoritativeState: initial,
+    idempotencyKey: 'copy-granted', turnId: 'turn-copy-granted', started: 100, mode: 'enforce',
+  })
+  assert.doesNotMatch(granted.narration, /отдельного документа/u)
+})

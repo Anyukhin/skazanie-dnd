@@ -16,7 +16,8 @@
  */
 
 import { currencyToCopper } from './merchant-economy.mjs'
-import { sceneInteractionCatalogEntry, sceneInteractionRewardKinds, sceneObjectLabelFor } from './scene-interactions.mjs'
+import { pendingOnwardTarget } from './party-exit-intent.mjs'
+import { sceneInteractionCatalogEntry, sceneInteractionRewardKinds, sceneObjectDistance, sceneObjectLabelFor } from './scene-interactions.mjs'
 import { MIN_BRIBE_CP } from './underworld.mjs'
 
 /** Больше четырёх строк — это уже не подсказка, а инструкция. */
@@ -111,6 +112,17 @@ function capitalized(value) {
 }
 
 /**
+ * Какая из одноимённых строк реквизита остаётся: приметная, затем ближняя,
+ * затем по идентификатору. Без героя-читателя расстояний нет (∞ − ∞ даёт
+ * `NaN`, и решает идентификатор) — ровно прежний порядок панели.
+ */
+function propHintOrder(left, right) {
+  return left.priority - right.priority
+    || (left.distance ?? Number.POSITIVE_INFINITY) - (right.distance ?? Number.POSITIVE_INFINITY)
+    || left.id.localeCompare(right.id)
+}
+
+/**
  * Подсказки по реквизиту сцены — самая узкая часть панели.
  *
  * Три ограничения, и каждое поставлено по живому зонду:
@@ -122,10 +134,22 @@ function capitalized(value) {
  * 2. Подпись берётся из каталога подписей. Латинского идентификатора игрок не
  *    увидит никогда: без русской подписи предмет молча пропускается.
  * 3. Порядок детерминирован — приметное вперёд, дальше по идентификатору.
+ *
+ * И одна честность про досягаемость — та же, что у добычи (`lootHints`).
+ * Плейтест 2026-10-04, SE-13: подсказка обещала «Можно осмотреть: Длинный
+ * стол», а карточка стола отвечала отключённой кнопкой «подойдите на соседнюю
+ * клетку». Взаимодействие движок разрешает только с соседней клетки
+ * (`sceneObjectDistance` ≤ 1), поэтому для героя-читателя, стоящего дальше,
+ * строка говорит, что подойти надо. Мерка та же, что у движка; читателю без
+ * героя мерить нечем, и строка остаётся прежней. Одноимённые предметы (три
+ * длинных стола) дают одну строку — по ближайшему, иначе панель назвала бы стол
+ * дважды: один «можно», другой «надо подойти».
  */
-function propHints(room) {
+function propHints(room, actorId) {
   const props = Array.isArray(room?.scene?.map?.props) ? room.scene.map.props : []
-  const hints = []
+  const cell = readerHero(room, actorId) ? heroCell(room, actorId) : null
+  /** @type {Map<string, { id: string, priority: number, phrase: string, distance: number | null }>} */
+  const nearest = new Map()
   for (const prop of props) {
     if (prop?.interactive !== true) continue
     const catalog = sceneInteractionCatalogEntry(prop?.assetId)
@@ -135,14 +159,21 @@ function propHints(room) {
     const verbs = Array.isArray(prop?.interaction?.verbs) ? prop.interaction.verbs.map(String) : catalog.verbs
     const verb = VERB_ORDER.find((candidate) => verbs.includes(candidate))
     if (!verb) continue
-    hints.push({
+    const distance = cell ? sceneObjectDistance(prop, cell) : Number.POSITIVE_INFINITY
+    const hint = {
       id: `prop:${text(prop?.id, 80)}:${verb}`,
       // Приметное — вперёд: точка интереса заметнее рядового ящика.
       priority: prop?.interaction?.pointOfInterest === true ? HINT_PRIORITY.poiProp : HINT_PRIORITY.prop,
-      text: `Можно ${VERB_PHRASES[verb]}: ${label}`,
-    })
+      phrase: `Можно ${VERB_PHRASES[verb]}: ${label}`,
+      distance: Number.isFinite(distance) ? distance : null,
+    }
+    const current = nearest.get(hint.phrase)
+    if (!current || propHintOrder(hint, current) < 0) nearest.set(hint.phrase, hint)
   }
-  return hints
+  return [...nearest.values()].map(({ phrase, distance, ...hint }) => ({
+    ...hint,
+    text: distance != null && distance > 1 ? `${phrase} — надо подойти вплотную` : phrase,
+  }))
 }
 
 /**
@@ -529,6 +560,14 @@ function beastReachRow(entry, actorId) {
 }
 
 function objectiveHint(room) {
+  // Промежуточная точка маршрута: цель «Продолжить путь из … к «…»» не
+  // говорила, чем продолжать, и клик по ней ничего не делал. Подсказка
+  // называет оба способа, которые ведут к одному голосованию ухода (плейтест
+  // 2026-10-04, SE-11).
+  const onward = text(pendingOnwardTarget(room?.scene), 60)
+  if (onward) {
+    return [{ id: 'objective', priority: HINT_PRIORITY.objective, text: `Цель отряда: продолжить путь к «${onward}» — нажмите «Решение группы» или напишите «продолжаем путь»` }]
+  }
   const objective = text(room?.scene?.objective, 90)
   return objective ? [{ id: 'objective', priority: HINT_PRIORITY.objective, text: `Цель отряда: ${objective}` }] : []
 }
@@ -624,7 +663,7 @@ export function suggestedActionsFor(room, actorId = '') {
   ])
   const budget = Math.min(MAX_PROP_HINTS, Math.max(0, MAX_ACTION_HINTS - reserved.length))
   const props = ordered([
-    ...propHints(room),
+    ...propHints(room, actorId),
     ...lockpickHints(room),
     ...tavern.leisure,
     ...blessingHints(room),

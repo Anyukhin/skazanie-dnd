@@ -67,6 +67,95 @@ export function encounterEndText(reason) {
   return /[а-яё]/iu.test(code) && !/[a-z]/iu.test(code) ? code.slice(0, 120) : ENCOUNTER_END_TEXT.resolved
 }
 
+/**
+ * Длительности политики `post_encounter_recovery` — те же, что в
+ * `completeEncounterUnlocked` (`server/autonomous-orchestrator.mjs`): долгий
+ * отдых и, если кто-то из выживших лежит на нуле, время прийти в себя до него.
+ */
+const POST_VICTORY_REST_MINUTES = 480
+const POST_VICTORY_STABLE_RECOVERY_MINUTES = 240
+
+/** Причины `DowntimeResolved`, которые пишет политика `post_encounter_recovery`. */
+const POST_VICTORY_DOWNTIME_REASONS = new Set(['post_encounter_recovery', 'post_encounter_recovery_after_stabilisation'])
+
+/** «1 час», «2 часа», «8 часов». */
+function hoursLabelRu(value) {
+  const count = Math.max(0, Math.round(Number(value) || 0))
+  const lastTwo = count % 100
+  const last = count % 10
+  const word = lastTwo >= 11 && lastTwo <= 14 ? 'часов' : last === 1 ? 'час' : last >= 2 && last <= 4 ? 'часа' : 'часов'
+  return `${count} ${word}`
+}
+
+/**
+ * Сколько минут отряд проведёт в отдыхе, когда продолжит историю после этой
+ * победы; 0 — отдыха не будет. Условие то же, что у политики
+ * `post_encounter_recovery` в `completeEncounterUnlocked`
+ * (`server/autonomous-orchestrator.mjs`): исход `enemies_defeated` и хотя бы
+ * один не погибший участник отряда с ОЗ выше нуля. Политику строка не решает —
+ * она лишь называет её заранее.
+ *
+ * Плейтест 2026-10-04, MC-03: после победы «Продолжим» проматывал 8 часов
+ * долгого отдыха, и игрок узнавал об этом только по строке «завершает
+ * продолжительный отдых».
+ */
+function postVictoryRestMinutes(state, outcome) {
+  if (String(outcome ?? '') !== 'enemies_defeated') return 0
+  const partyIds = new Set((state?.partyMemberIds ?? []).map(String))
+  const survivors = (state?.players ?? []).filter((hero) => partyIds.has(String(hero?.id ?? ''))
+    && state?.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead')
+  if (!survivors.some((hero) => Number(hero?.hp) > 0)) return 0
+  return POST_VICTORY_REST_MINUTES
+    + (survivors.some((hero) => Number(hero?.hp) === 0) ? POST_VICTORY_STABLE_RECOVERY_MINUTES : 0)
+}
+
+/** «1 зм 5 см», «7 мм» — монеты награды словами стола. */
+function coinsLabelRu(value) {
+  let copper = Math.max(0, Math.trunc(Number(value) || 0))
+  const gold = Math.floor(copper / 100)
+  copper -= gold * 100
+  const silver = Math.floor(copper / 10)
+  copper -= silver * 10
+  return [gold ? `${gold} зм` : '', silver ? `${silver} см` : '', copper ? `${copper} мм` : ''].filter(Boolean).join(' ')
+}
+
+/** «Короткий лук», «Кинжал» (2 шт.) — одноимённые экземпляры склеиваются. */
+function rewardItemsLabel(items) {
+  const counts = new Map()
+  for (const item of Array.isArray(items) ? items : []) {
+    const name = String(item?.name ?? '').replace(/\s+/gu, ' ').trim().slice(0, 80)
+    if (!name) continue
+    counts.set(name, (counts.get(name) ?? 0) + Math.max(1, Math.trunc(Number(item?.quantity) || 1)))
+  }
+  return [...counts].map(([name, count]) => (count > 1 ? `«${name}» (${count} шт.)` : `«${name}»`)).join(', ')
+}
+
+/**
+ * Сводка награды встречи по `EncounterRewardsDistributed`: кому какие вещи,
+ * сколько монет и опыта. Только из payload события — нового события строка не
+ * пишет, и повтор «Продолжим» её не удваивает: завершение встречи идемпотентно
+ * и во второй раз событий не возвращает.
+ *
+ * Плейтест 2026-10-04, MC-05: после победы над волком в инвентаре появились
+ * короткий лук и стрелы, а откуда — нигде не говорилось. Это доля отряда за
+ * победу (`server/encounter-rewards.mjs`), а не вещи с тела.
+ */
+function encounterRewardLine(payload, state) {
+  const allocations = Array.isArray(payload?.allocations) ? payload.allocations : []
+  const parts = allocations.flatMap((allocation) => {
+    const items = rewardItemsLabel(allocation?.items)
+    return items ? [`${tacticalActorName(state, allocation?.recipient_id)} — ${items}`] : []
+  })
+  const shared = allocations.length > 1 ? ' поровну' : ''
+  const coins = coinsLabelRu(allocations.reduce((sum, allocation) => sum + Math.max(0, Number(allocation?.coins_cp) || 0), 0))
+  if (coins) parts.push(`монеты${shared}: ${coins}`)
+  const xp = allocations.reduce((sum, allocation) => sum + Math.max(0, Math.trunc(Number(allocation?.xp) || 0)), 0)
+  if (xp) parts.push(`опыт${shared}: ${xp}`)
+  const leftover = rewardItemsLabel(payload?.unassigned?.items)
+  if (leftover) parts.push(`унести не смогли: ${leftover}`)
+  return parts.length ? `Награда встречи — доля отряда за победу: ${parts.join('; ')}.` : ''
+}
+
 const MASCULINE_CONSONANT = /[бвгджзклмнпрстфхцчшщ]$/u
 
 /**
@@ -248,6 +337,12 @@ function tacticalNarrationLines(events, state) {
   const completedRestActors = new Set((events ?? [])
     .filter((event) => event?.event_type === 'RestCompleted' && !event?.payload?.source_prop_id)
     .map((event) => String(event?.actor_id ?? '')))
+  // Отдых после победы говорит одной строкой за весь отряд — у `DowntimeResolved`
+  // политики восстановления; строки «завершает отдых» по каждому герою её
+  // только дублировали бы (MC-03).
+  const postVictoryRestActors = new Set((events ?? [])
+    .filter((event) => event?.event_type === 'DowntimeResolved' && POST_VICTORY_DOWNTIME_REASONS.has(String(event?.payload?.reason ?? '')))
+    .flatMap((event) => (Array.isArray(event?.payload?.participant_ids) ? event.payload.participant_ids : []).map(String)))
   const sceneInteraction = sceneInteractionNarration(events)
   if (sceneInteraction) meaningful.push(sceneInteraction)
   const partyFailed = (events ?? []).some((event) => event?.event_type === 'CampaignFailed')
@@ -273,7 +368,19 @@ function tacticalNarrationLines(events, state) {
       const names = (payload.encounter?.enemies ?? []).map((enemy) => String(enemy?.name ?? '')).filter(Boolean).slice(0, 12)
       meaningful.push(`На поле появляются противники: ${names.join(', ')}.`)
     } else if (event.event_type === 'EncounterEnded') {
-      meaningful.push(`Столкновение завершено: ${encounterEndText(payload.reason ?? payload.outcome)}.`)
+      // Отдых после победы объявляется в момент победы, а не задним числом:
+      // «Продолжим» иначе молча проматывал 8 часов (плейтест 2026-10-04, MC-03).
+      const restMinutes = postVictoryRestMinutes(state, payload.outcome ?? payload.reason)
+      const restAhead = restMinutes
+        ? ` Когда отряд продолжит историю («продолжим»), он сначала отдохнёт ${hoursLabelRu(restMinutes / 60)} и восстановит силы.`
+        : ''
+      meaningful.push(`Столкновение завершено: ${encounterEndText(payload.reason ?? payload.outcome)}.${restAhead}`)
+    } else if (event.event_type === 'EncounterRewardsDistributed') {
+      const line = encounterRewardLine(payload, state)
+      if (line) meaningful.push(line)
+    } else if (event.event_type === 'DowntimeResolved' && POST_VICTORY_DOWNTIME_REASONS.has(String(payload.reason ?? ''))) {
+      const hours = hoursLabelRu((Number(payload.duration_minutes) || POST_VICTORY_REST_MINUTES) / 60)
+      meaningful.push(`После победы отряд отдыхает ${hours} и восстанавливает силы: продолжительный отдых завершён.`)
     } else if (event.event_type === 'CombatStarted') {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
       const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))
@@ -435,7 +542,9 @@ function tacticalNarrationLines(events, state) {
       && !completedRestActors.has(String(event.actor_id ?? ''))) {
       meaningful.push(`${actor} начинает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых.`)
     } else if (event.event_type === 'RestCompleted' && !payload.source_prop_id) {
-      meaningful.push(`${actor} завершает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых.`)
+      if (!(payload.kind === 'long' && postVictoryRestActors.has(String(event.actor_id ?? '')))) {
+        meaningful.push(`${actor} завершает ${payload.kind === 'long' ? 'продолжительный' : 'короткий'} отдых.`)
+      }
     } else if (event.event_type === 'HitPointsReducedToZero') {
       meaningful.push(`${target} падает без сознания и начинает делать спасброски от смерти.`)
     } else if (event.event_type === 'DeathSavingThrowRolled') {
@@ -666,7 +775,7 @@ export const COMBAT_NARRATION_EVENT_TYPES = Object.freeze(new Set([
   'CaptiveMoved', 'CaptiveNeglected', 'CaptiveReleased', 'CaptiveTaken',
   'CombatEnded', 'CombatStarted', 'ConcentrationEnded', 'ConcentrationSavingThrowResolved',
   'ConditionAdded', 'ConditionImmunityResolved', 'CreatureKnockedOut', 'DamageApplied', 'DeathSaveFailureRecorded',
-  'DeathSavingThrowRolled', 'EncounterCreated', 'EncounterEnded', 'EquipmentChanged',
+  'DeathSavingThrowRolled', 'DowntimeResolved', 'EncounterCreated', 'EncounterEnded', 'EncounterRewardsDistributed', 'EquipmentChanged',
   'HealingApplied', 'HeroDied', 'HeroReplaced', 'HeroResurrected',
   'HeroStabilized', 'HitPointMaximumIncreased', 'HitPointMaximumReduced', 'HitPointMaximumReductionPrevented', 'HitPointsReducedToZero',
   'ItemEffectIneffective', 'LegendaryActionUsed', 'LegendaryActionsReset', 'LegendaryResistanceUsed',
