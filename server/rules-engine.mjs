@@ -21376,6 +21376,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       condition: 'fled', reason: 'opportunity-resolved',
     }, [String(context.finalizeFleeActorId)]))
   }
+  if (resolveDepth === 0) resolvedEvents.push(...concentrationReconciliationEvents(state, command, resolvedEvents))
   if (resolveDepth === 0 && resolvedEvents.some((event) => ['DamageApplied', 'ActorMoved'].includes(event.event_type))) {
     resolvedEvents.push(...npcWorldEventsFrom(command, planAuthoredNpcWorldEvents(state, projectEvents(resolvedEvents), resolvedEvents,
       { commandId: command.command_id, actorId: command.actor_id })))
@@ -21436,6 +21437,60 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
  * обязана быть видна. Если у события несколько целей и иммунна часть из них,
  * исходное событие остаётся для остальных.
  */
+/**
+ * Концентрация и заготовленное заклинание — одно удержание магии, и кончаются
+ * они вместе. До 2026-10-04 (исследование PR #136) это расходилось в трёх
+ * местах:
+ *
+ * - недееспособность состоянием («Удержание личности», «Усыпление») не
+ *   снимала концентрацию — снимал только урон до 0 ОЗ;
+ * - заготовка, истёкшая к началу своего хода, оставляла пустую концентрацию:
+ *   она требовала спасбросков от урона и вытесняла следующее заклинание;
+ * - потерянная концентрация (проваленный спасбросок, замена другим
+ *   заклинанием) оставляла заготовку, и та срабатывала как ни в чём не бывало.
+ *
+ * Сверка идёт после всех последствий команды и уже без невосприимчивых
+ * состояний, поэтому ловит и вложенные события. Смотрит она только на тех,
+ * кого эта команда коснулась: старое рассогласование не всплывает чужим
+ * событием посреди постороннего хода.
+ */
+function concentrationReconciliationEvents(state, command, events) {
+  const touched = new Set()
+  for (const event of events) {
+    if (!['ConditionAdded', 'ConcentrationEnded', 'ConcentrationStarted', 'ReadiedActionExpired', 'ActionReadied'].includes(event.event_type)) continue
+    for (const id of event.target_ids ?? []) touched.add(String(id))
+  }
+  if (!touched.size) return []
+  let projected = events.reduce(applyGameEvent, state)
+  const extra = []
+  const push = (event) => {
+    extra.push(event)
+    projected = applyGameEvent(projected, event)
+  }
+  for (const id of [...touched].sort()) {
+    const concentration = projected.mechanics.concentration?.[id]
+    if (concentration && [...conditionIdsFor(projected, id)].some((condition) => INCAPACITATING_CONDITIONS.includes(condition))) {
+      push(eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.concentration), 'ConcentrationEnded', {
+        reason: 'incapacitated', effect_id: concentration.effect_id,
+      }, [id]))
+    }
+    const readied = projected.mechanics.combat?.readied?.[id]
+    if (readied?.effect_id && String(projected.mechanics.concentration?.[id]?.effect_id ?? '') !== String(readied.effect_id)) {
+      push(eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.reaction), 'ReadiedActionExpired', {
+        reason: 'concentration-lost', trigger: readied.trigger,
+      }, [id]))
+    }
+    const readiedBefore = state.mechanics.combat?.readied?.[id]
+    if (readiedBefore?.effect_id && !projected.mechanics.combat?.readied?.[id]
+      && String(projected.mechanics.concentration?.[id]?.effect_id ?? '') === String(readiedBefore.effect_id)) {
+      push(eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.concentration), 'ConcentrationEnded', {
+        reason: 'readied-expired', effect_id: readiedBefore.effect_id,
+      }, [id]))
+    }
+  }
+  return extra
+}
+
 function withoutImmuneConditions(state, command, events) {
   return events.flatMap((event) => {
     if (event.event_type !== 'ConditionAdded') return [event]

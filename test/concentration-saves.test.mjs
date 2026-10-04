@@ -110,3 +110,25 @@ test('0 HP прекращает концентрацию без спасброс
   assert.equal(after.mechanics.concentration.caster, undefined)
   assert.equal(after.battleLog.at(-1).type, 'concentration-end')
 })
+
+test('недееспособность состоянием прекращает концентрацию так же, как 0 ОЗ', () => {
+  // До 2026-10-04 концентрацию снимал только урон до 0 ОЗ, а «Удержание
+  // личности» или «Усыпление» оставляли её висеть (исследование PR #136).
+  for (const condition of ['stunned', 'paralyzed', 'incapacitated', 'unconscious']) {
+    const state = fixture()
+    const result = resolveCommand({ command_type: 'AddCondition', actor_id: 'enemy', target_id: 'caster', condition }, state, { diceService: dice([]) })
+    const ended = result.events.find((event) => event.event_type === 'ConcentrationEnded')
+    assert.equal(ended?.payload.reason, 'incapacitated', condition)
+    assert.equal(ended.payload.effect_id, 'spell:web')
+    assert.equal(applyAll(state, result.events).mechanics.concentration.caster, undefined, condition)
+    assert.deepEqual(replayEvents(state, result.events).mechanics.concentration, applyAll(state, result.events).mechanics.concentration)
+  }
+})
+
+test('мешающее, но не выводящее из строя состояние концентрацию не трогает', () => {
+  for (const condition of ['prone', 'poisoned', 'frightened', 'blinded']) {
+    const state = fixture()
+    const result = resolveCommand({ command_type: 'AddCondition', actor_id: 'enemy', target_id: 'caster', condition }, state, { diceService: dice([]) })
+    assert.equal(result.events.some((event) => event.event_type === 'ConcentrationEnded'), false, condition)
+  }
+})
