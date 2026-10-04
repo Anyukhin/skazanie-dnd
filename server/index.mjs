@@ -25,10 +25,12 @@ import {
   registerUser,
   saveCampaignAiSettings,
   saveRoom,
+  sessionKeyForToken,
   storageDir,
   updateUserAccess,
   upsertCampaignMembership,
   userForToken,
+  usersForSessionKeys,
   verifyUser,
 } from './store.mjs'
 import {
@@ -47,6 +49,7 @@ import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
+import { createRouterImageGenerator } from './image-generation.mjs'
 import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertText } from './architect-usage.mjs'
 import { sceneSummaryFor } from './scene-summary.mjs'
 import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from './campaign-recap.mjs'
@@ -251,8 +254,18 @@ const campaignWorldClockJobs = new Map()
 const WORLD_RUMOR_BURST_LIMIT = 4
 const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
+// Аудит PR #131, LIVE-01/02: как часто сверять живые потоки с сессиями на путях
+// без состояния комнаты — дельты повествования (раз в 50 мс), индикатор ввода,
+// пульс. Logout и смена доступа администратором закрывают и обновляют потоки
+// сразу, так что этот интервал ограничивает только окно истечения сессии.
+const STREAM_ACCESS_RECHECK_MS = 1_000
+/** Когда потоки кампании последний раз сверялись с сессиями (см. выше). */
+const campaignStreamAccessCheckedAt = new Map()
 const campaignNarrationStream = new CampaignNarrationStream({
-  connectionsFor: (campaignId) => streamConnections(campaignId).values(),
+  connectionsFor: (campaignId) => {
+    revalidateCampaignStreams(campaignId, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
+    return streamConnections(campaignId).values()
+  },
   write: (connection, event, payload) => writeCampaignStream(connection, event, payload),
 })
 
@@ -372,9 +385,17 @@ const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmCli
 // luna-pro: там задержка неважна, а качество текста — главное. Пролог и хроника
 // зовутся раз за кампанию и раз за арку, поэтому вклад в бюджет — копейки.
 const loreModel = process.env.DND_AI_LORE_MODEL ?? 'openai/gpt-5.6-luna-pro'
-const loreAuthor = new LoreAuthor({
-  llmClient: apiKey ? new RouterAIClient({ model: loreModel, reasoning: reasoningProfileFor(loreModel), timeoutMs: 30_000 }) : null,
+// Аудит PR #131, AI-02: летописец получал голый RouterAIClient и обходил
+// дневную квоту и usage-ledger. Теперь он идёт через тот же MeteredLLMClient,
+// что и остальные роли: отдельная модель, но общий учёт и общий предел.
+const loreLlmClient = new MeteredLLMClient({
+  client: new RouterAIClient({
+    apiKey, baseUrl, model: loreModel, maxTokens, timeoutMs: 30_000,
+    reasoning: reasoningProfileFor(loreModel),
+  }),
+  ledger: usageLedger,
 })
+const loreAuthor = new LoreAuthor({ llmClient: apiKey ? loreLlmClient : null })
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor, diceService })
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor, rollRegistry })
@@ -2212,7 +2233,111 @@ function streamConnections(campaignId) {
   return campaignStreams.get(normalized)
 }
 
+/**
+ * Аудит PR #131, LIVE-01/02: права живого потока — не снимок рукопожатия. До
+ * исправления соединение навсегда запоминало `user`, `heroIds` и `actorId` на
+ * момент подключения: после logout или истечения сессии поток продолжал
+ * получать комнату, а после переназначения героя — проекцию прежнего героя.
+ * Теперь перед отправкой каждое соединение заново читает свою сессию по
+ * непрозрачному ключу (хешу токена, не cookie) и доступ к кампании.
+ *
+ * Со `state` (рассылка комнаты, опрос, ответ команды) проверка полная: сессия,
+ * доступ к комнате и актёр, от имени которого строится проекция. Без состояния
+ * (повествование, индикатор ввода, пульс) — только сессия и закреплённые герои:
+ * перечитывать файл комнаты на каждую дельту текста незачем, а доступ сверит
+ * ближайшая рассылка комнаты. `maxAgeMs` ограничивает частоту лёгкой сверки.
+ */
+function revalidateCampaignStreams(campaignId, { state = null, maxAgeMs = 0 } = {}) {
+  const normalized = String(campaignId || '').toUpperCase()
+  const connections = streamConnections(normalized)
+  if (!connections.size) return
+  const now = Date.now()
+  if (!state && maxAgeMs > 0 && now - (campaignStreamAccessCheckedAt.get(normalized) ?? 0) < maxAgeMs) return
+  campaignStreamAccessCheckedAt.set(normalized, now)
+  // Поток зарегистрирован под этой кампанией: её код и решает членство, даже
+  // если в переданном состоянии кода нет.
+  const accessRoom = state ? {
+    state: { sessionCode: state.sessionCode || normalized, players: state.players, partyMemberIds: state.partyMemberIds },
+  } : null
+  const live = [...connections.values()]
+  // Сверка зовётся и из таймеров (пульс, дельты повествования), где брошенная
+  // ошибка уронила бы процесс. Не смогли проверить права — не отправляем:
+  // поток закрывается, а клиент переподключится через обычное рукопожатие.
+  let users = new Map()
+  let failure = ''
+  try { users = usersForSessionKeys(live.map((connection) => connection.sessionKey)) }
+  catch (error) {
+    failure = 'access_unverified'
+    console.error('[Сказание] Не удалось сверить живые потоки с сессиями:', error?.message || error)
+  }
+  for (const connection of live) {
+    try {
+      const user = users.get(connection.sessionKey) ?? null
+      if (!user) {
+        revokeCampaignStream(connection, failure || 'session_ended')
+        continue
+      }
+      if (accessRoom && !canAccessRoom(user, accessRoom)) {
+        revokeCampaignStream(connection, 'access_lost')
+        continue
+      }
+      const heroIds = campaignHeroIds(user, normalized).map(String)
+      connection.user = user
+      connection.userId = String(user.id)
+      connection.heroIds = heroIds
+      connection.controlsParty = user.role === 'admin'
+      if (state) {
+        const actorId = heroIds.find((id) => state.players?.some((player) => String(player.id) === id)) ?? ''
+        // Сменился актёр — клиентский кэш карты принадлежал прежней проекции:
+        // следующий кадр уходит целиком.
+        if (actorId !== connection.actorId) connection.mapHash = ''
+        connection.actorId = actorId
+      }
+    } catch (error) {
+      console.error('[Сказание] Не удалось сверить доступ живого потока:', error?.message || error)
+      revokeCampaignStream(connection, 'access_unverified')
+    }
+  }
+}
+
+/**
+ * Закрывает поток, у которого больше нет права читать кампанию: последним
+ * кадром `access` с причиной, затем конец ответа. Переподключение того же
+ * клиента упрётся в 401/403 на рукопожатии.
+ */
+function revokeCampaignStream(connection, reason) {
+  if (connection.closed) return
+  writeCampaignStream(connection, 'access', { status: 'revoked', reason })
+  connection.close?.()
+  if (!connection.res.destroyed) connection.res.end()
+}
+
+/** Logout закрывает потоки только этой сессии: другой вход того же игрока живёт. */
+function revokeCampaignStreamsForSession(sessionKey) {
+  if (!sessionKey) return
+  for (const connections of campaignStreams.values()) {
+    for (const connection of [...connections.values()]) {
+      if (connection.sessionKey === sessionKey) revokeCampaignStream(connection, 'session_ended')
+    }
+  }
+}
+
+/**
+ * Администратор поменял роль или героев аккаунта: открытые потоки этого
+ * пользователя получают свежую проекцию сразу, не дожидаясь следующего хода, а
+ * потерявшие доступ закрываются внутри той же рассылки.
+ */
+function refreshCampaignStreamsForUser(userId) {
+  for (const [campaignId, connections] of campaignStreams) {
+    if (![...connections.values()].some((connection) => connection.userId === String(userId))) continue
+    try { broadcastCampaignRoom(campaignId) }
+    catch (error) { console.error(`[Сказание] Не удалось обновить живые потоки ${campaignId}:`, error?.message || error) }
+  }
+}
+
 function connectedHeroIdsForCampaign(campaignId) {
+  // Присутствие и состав голосующих не держат отозванные соединения.
+  revalidateCampaignStreams(campaignId, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
   return new Set([...streamConnections(campaignId).values()].flatMap((connection) => connection.heroIds))
 }
 
@@ -2335,6 +2460,11 @@ async function directorResumeKeyForInteraction(campaignId, interactionId) {
 
 function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
+  // Аудит PR #131, LIVE-01/02: присутствие считается только по соединениям с
+  // живой сессией и доступом к этому состоянию. Здесь же проходит полная
+  // сверка перед рассылкой комнаты: `broadcastCampaignRoom` строит проекции
+  // уже после неё, по обновлённым `user` и `actorId`.
+  revalidateCampaignStreams(campaignId, { state })
   const connections = streamConnections(campaignId)
   const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
   const typingActorIds = typingActorIdsForCampaign(campaignId)
@@ -2381,6 +2511,7 @@ function writeCampaignStream(connection, event, payload) {
 
 function broadcastCampaignTyping(campaignId) {
   const normalized = String(campaignId || '').toUpperCase()
+  revalidateCampaignStreams(normalized, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
   const typingActorIds = typingActorIdsForCampaign(normalized)
   for (const connection of streamConnections(normalized).values()) {
     writeCampaignStream(connection, 'presence', { typing_actor_ids: typingActorIds })
@@ -2393,6 +2524,8 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
   if (!connections.size) return
   const room = suppliedRoom ?? getRoom(normalized)
   if (!room.state) return
+  // Внутри — сверка сессий и прав (аудит PR #131, LIVE-01/02): отозванные
+  // соединения закрываются до цикла, остальные получают актуальные права.
   const state = stateWithLivePresence(normalizeCampaignState(room.state), normalized)
   for (const connection of connections.values()) {
     // Что закэшировано у клиента, соединение знает точно: оно само это и
@@ -2557,8 +2690,17 @@ async function readBody(req) {
     raw += chunk
     if (raw.length > 1_000_000) throw commandPolicyError('Слишком большой запрос', 'REQUEST_TOO_LARGE')
   }
-  try { return JSON.parse(raw || '{}') }
+  let body
+  try { body = JSON.parse(raw || '{}') }
   catch { throw commandPolicyError('Некорректный JSON в запросе', 'INVALID_JSON') }
+  // Каждый маршрут сразу читает поля тела. JSON `null` проходил разбор, и
+  // `body.mode` бросал TypeError мимо catch маршрута — процесс падал целиком;
+  // массив и число молча становились «пустым» запросом. Тело — только объект
+  // (аудит PR #131, MAP-BOUNDARY-03).
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw commandPolicyError('Тело запроса должно быть JSON-объектом', 'INVALID_JSON_BODY')
+  }
+  return body
 }
 
 function executeTool(name, args, effects, state = {}) {
@@ -2599,24 +2741,39 @@ function executeTool(name, args, effects, state = {}) {
   return { error: 'Инструмент не разрешён' }
 }
 
+/**
+ * Картинка предмета. Аудит PR #131, AI-02: раньше здесь жил собственный
+ * `fetch` к `/images` — без проверки формата и мимо usage-ledger. Теперь путь
+ * тот же, что у портретов NPC и иллюстраций локаций: общий проверяющий
+ * генератор (`image-generation.mjs`: тайм-аут, потолок размера, сигнатура
+ * webp) и резерв в общем ledger до запроса. Оценка выхода — та же, что у
+ * портрета.
+ */
+const ITEM_IMAGE_ESTIMATED_OUTPUT_TOKENS = 1_024
+const itemImageGenerators = {
+  '1:1': createRouterImageGenerator({ baseUrl, apiKey, aspectRatio: '1:1' }),
+  '16:9': createRouterImageGenerator({ baseUrl, apiKey, aspectRatio: '16:9' }),
+}
+
 async function generateItemImage(prompt, aspectRatio = '1:1') {
-  const response = await fetch(`${baseUrl}/images`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: imageModel,
-      prompt: `Fantasy tabletop RPG inventory illustration. ${String(prompt).slice(0, 1600)}. No text, letters, logo, watermark, UI or characters.`,
-      n: 1, aspect_ratio: aspectRatio, resolution: '1K', quality: 'low', output_format: 'webp',
-    }),
-    signal: AbortSignal.timeout(120_000),
+  const imagePrompt = `Fantasy tabletop RPG inventory illustration. ${String(prompt).slice(0, 1600)}. No text, letters, logo, watermark, UI or characters.`
+  const reservation = usageLedger.reserve({
+    requestId: `item-image:${randomUUID()}`,
+    estimatedTokens: Buffer.byteLength(imagePrompt, 'utf8') + ITEM_IMAGE_ESTIMATED_OUTPUT_TOKENS,
+    scope: 'item-image',
+    model: imageModel,
   })
-  if (!response.ok) throw new Error(`Генератор изображений ответил ${response.status}`)
-  const result = await response.json()
-  const encoded = result.data?.[0]?.b64_json
-  if (!encoded) throw new Error('Генератор не вернул изображение')
+  let generated
+  try {
+    generated = await (itemImageGenerators[aspectRatio] ?? itemImageGenerators['1:1'])({ prompt: imagePrompt, model: imageModel })
+  } catch (error) {
+    usageLedger.fail(reservation.request_id, String(error?.code ?? error?.name ?? 'IMAGE_PROVIDER_ERROR').slice(0, 80))
+    throw error
+  }
+  usageLedger.settle(reservation.request_id, generated.usage ?? {})
   const filename = `${randomUUID()}.webp`
-  writeFileSync(join(generatedDir, filename), Buffer.from(encoded, 'base64'))
-  return { url: `/generated/items/${filename}`, model: imageModel, cost: result.usage?.cost }
+  writeFileSync(join(generatedDir, filename), generated.bytes)
+  return { url: `/generated/items/${filename}`, model: imageModel, cost: generated.usage?.cost }
 }
 
 const gameOrchestrator = new GameOrchestrator({
@@ -3379,7 +3536,41 @@ function serveGeneratedImage(req, res, image, headerPrefix, cacheControl = 'priv
   return createReadStream(image.filePath).pipe(res)
 }
 
+// Ошибки разбора тела — вина запроса, а не сервера: им 400 и на маршрутах,
+// где тело читается вне собственного try.
+const REQUEST_BODY_ERROR_CODES = new Set(['INVALID_JSON', 'INVALID_JSON_BODY', 'REQUEST_TOO_LARGE'])
+
+/**
+ * Последняя граница HTTP. Обработчик асинхронный, и `createServer` его
+ * промис не ждёт: необработанная ошибка любого маршрута становилась
+ * unhandledRejection и завершала общий процесс со всеми кампаниями. Теперь
+ * она завершает только свой запрос (аудит PR #131, MAP-BOUNDARY-03). В лог
+ * идут метод, путь без query и стек — без тела и заголовков запроса.
+ */
+function failUnhandledRequest(req, res, error) {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  const known = REQUEST_BODY_ERROR_CODES.has(code)
+  if (!known) {
+    let pathname = '?'
+    try { pathname = new URL(req.url || '/', 'http://skazanie.local').pathname } catch { /* путь не разобрался — он и не нужен */ }
+    console.error(`[Сказание] Необработанная ошибка ${req.method} ${pathname}:`, error?.stack || error?.message || error)
+  }
+  if (res.destroyed || res.writableEnded) return
+  // Ответ уже начат (поток, SSE): статус не переписать — закрываем соединение.
+  if (res.headersSent) { res.destroy(); return }
+  try {
+    if (known) json(res, 400, { error: error.message, code })
+    else json(res, 500, { error: 'Внутренняя ошибка сервера', code: 'INTERNAL_ERROR' })
+  } catch {
+    res.destroy()
+  }
+}
+
 const server = createServer((req, res) => {
+  handleHttpRequest(req, res).catch((error) => failUnhandledRequest(req, res, error))
+})
+
+async function handleHttpRequest(req, res) {
   const requestPath = new URL(req.url || '/', 'http://skazanie.local').pathname
   const campaignPathMatch = requestPath.match(/^\/api\/(?:campaigns|rooms)\/([A-Za-z0-9-]+)/)
   const requestCampaignId = campaignPathMatch?.[1]?.toUpperCase() ?? ''
@@ -3463,7 +3654,11 @@ const server = createServer((req, res) => {
     return json(res, 200, { user })
   }
   if (req.url === '/api/auth/logout' && req.method === 'POST') {
-    deleteSession(cookies(req).skazanie_session)
+    const token = cookies(req).skazanie_session
+    deleteSession(token)
+    // Аудит PR #131, LIVE-01/02: открытые потоки этой сессии закрываются сразу,
+    // а не при следующей сверке; потоки других входов того же игрока живут.
+    revokeCampaignStreamsForSession(sessionKeyForToken(token))
     res.setHeader('Set-Cookie', sessionCookie(req, '', true))
     return json(res, 200, { ok: true })
   }
@@ -3474,8 +3669,13 @@ const server = createServer((req, res) => {
   const adminUserMatch = req.url?.match(/^\/api\/admin\/users\/([a-f0-9-]+)$/i)
   if (adminUserMatch && req.method === 'PATCH') {
     const admin = requireAdmin(req, res); if (!admin) return
-    try { return json(res, 200, { user: updateUserAccess(adminUserMatch[1], await readBody(req)) }) }
+    let updated
+    try { updated = updateUserAccess(adminUserMatch[1], await readBody(req)) }
     catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось обновить пользователя' }) }
+    // Аудит PR #131, LIVE-01/02: новые герои и роль действуют и в уже открытых
+    // потоках — та же проекция, что отдаст свежий GET.
+    refreshCampaignStreamsForUser(updated.id)
+    return json(res, 200, { user: updated })
   }
 
   const parsedUrl = new URL(req.url || '/', 'http://skazanie.local')
@@ -3666,6 +3866,10 @@ const server = createServer((req, res) => {
     const controlsParty = user?.role === 'admin'
     const connection = {
       id: connectionId,
+      // Аудит PR #131, LIVE-01/02: поток привязан к конкретной сессии, а
+      // `user`, `heroIds`, `actorId` ниже — лишь стартовые значения: перед каждой
+      // отправкой их обновляет `revalidateCampaignStreams`.
+      sessionKey: sessionKeyForToken(cookies(req).skazanie_session),
       userId: String(user.id),
       user,
       heroIds,
@@ -3673,6 +3877,7 @@ const server = createServer((req, res) => {
       controlsParty,
       res,
       closed: false,
+      close: null,
       mapHash: '',
       narrationBackpressured: false,
     }
@@ -3680,6 +3885,9 @@ const server = createServer((req, res) => {
     const drain = () => campaignNarrationStream.drain(connection)
     res.on('drain', drain)
     const heartbeat = setInterval(() => {
+      if (connection.closed || res.destroyed) return
+      // Истечение сессии не присылает события: тихий поток сверяется на пульсе.
+      revalidateCampaignStreams(campaignId, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
       if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
     }, 20_000)
     const close = () => {
@@ -3694,6 +3902,7 @@ const server = createServer((req, res) => {
           .finally(() => broadcastCampaignRoom(campaignId))
       })
     }
+    connection.close = close
     req.once('close', close)
     req.once('aborted', close)
     // При переподключении достаточно последнего полного снимка каждого
@@ -5154,7 +5363,7 @@ const server = createServer((req, res) => {
       const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
-      const internal = !error?.code || ['EIO', 'ENOSPC', 'CORRUPT_EVENT_LOG', 'INVALID_STORE_FILE'].includes(error.code)
+      const internal = !error?.code || ['EIO', 'ENOSPC', 'CORRUPT_EVENT_LOG', 'CAMPAIGN_RECOVERY_REQUIRED', 'INVALID_STORE_FILE'].includes(error.code)
       const status = internal ? 500
         : ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'ENCOUNTER_ALREADY_PRESENT', 'ENCOUNTER_DURING_COMBAT'].includes(error?.code) ? 409
           : ['ACTOR_FORBIDDEN', 'PLAYER_COMMAND_FORBIDDEN'].includes(error?.code) ? 403 : 400
@@ -5330,16 +5539,17 @@ const server = createServer((req, res) => {
       const room = getRoom(campaignId)
       if (!room.state || !canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       assertCampaignPlayable(room.state)
+      // Аудит PR #131, SEC-01: кость выдаётся только под объявленную проверку
+      // (`check_id` из карточки первой фазы). Подпись, модификатор и СЛ берутся
+      // из карточки; поля клиента сюда больше не идут. Без `check_id` реестр
+      // отвечает `CHECK_REQUIRED`; свободный кубик — `/api/rooms/:code/dice`.
       const issued = rollRegistry.issue({
         checkId: body.checkId ?? body.check_id,
         campaignId,
         actorId: body.playerId,
-        label: body.label,
-        modifier: Math.max(-5, Math.min(12, Number(body.modifier) || 0)),
-        difficulty: Math.max(5, Math.min(30, Number(body.difficulty) || 10)),
       })
       return json(res, 200, { roll_id: issued.roll_id, value: issued.kept, modifier: issued.modifier, total: issued.total, difficulty: issued.difficulty, label: issued.label, success: issued.success, ability: issued.ability })
-    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректная проверка' }) }
+    } catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Некорректная проверка', code: error?.code }) }
   }
   if (req.url?.startsWith('/generated/items/') && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
@@ -5361,7 +5571,14 @@ const server = createServer((req, res) => {
       const body = await readBody(req)
       if (!body.prompt || String(body.prompt).length < 20) return json(res, 400, { error: 'Нужен подробный промпт' })
       return json(res, 200, await generateItemImage(body.prompt, body.aspectRatio === '16:9' ? '16:9' : '1:1'))
-    } catch (error) { return json(res, 502, { error: error instanceof Error ? error.message : 'Ошибка генерации' }) }
+    } catch (error) {
+      // Картинка предмета теперь в общей дневной квоте (аудит PR #131, AI-02):
+      // исчерпанный предел — это не сбой поставщика, а отказ до запроса.
+      if (error?.code === 'LLM_QUOTA_EXCEEDED') {
+        return json(res, 429, { error: 'Дневной предел расхода модели исчерпан', code: 'LLM_QUOTA_EXCEEDED' })
+      }
+      return json(res, 502, { error: error instanceof Error ? error.message : 'Ошибка генерации' })
+    }
   }
   if (req.url === '/api/narrate' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
@@ -5687,7 +5904,7 @@ const server = createServer((req, res) => {
   if (parsedUrl.pathname.startsWith('/api/')) return json(res, 404, { error: 'API endpoint не найден' })
   return serveStatic(req, res)
   })
-})
+}
 
 await reconcileAllCampaignProjections()
 // Простаивающее соединение держим дольше клиентского keep-alive (у fetch/undici

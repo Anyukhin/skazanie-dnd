@@ -292,8 +292,10 @@ test('все producer-path TimeAdvanced используют один resolver �
   const longCastEnd = source.indexOf('const counterspell =', longCastStart)
   assert.ok(longCastStart >= 0 && longCastEnd > longCastStart, 'найден обработчик длительного накладывания')
   // Перед часами теперь снимается прежняя концентрация; длина этого кода
-  // не меняет требование использовать общий producer времени.
-  assert.match(source.slice(longCastStart, longCastEnd), /appendTimeAdvance\(/u)
+  // не меняет требование использовать общий producer времени. Длительное
+  // накладывание идёт через appendWorldTimeConsequences — ту же обёртку над
+  // appendTimeAdvance, что и AdvanceTime (аудит PR #131, WT-01).
+  assert.match(source.slice(longCastStart, longCastEnd), /appendWorldTimeConsequences\(/u)
   assert.match(source, /case 'AdvanceTime'[\s\S]{0,350}appendWorldTimeConsequences\(/u)
   assert.match(source, /if \(definition\.kind === 'campfire'\)[\s\S]{0,1600}appendWorldTimeConsequences\(/u)
   const producers = [...source.matchAll(/eventFrom\([^\n]*'TimeAdvanced'/gu)]

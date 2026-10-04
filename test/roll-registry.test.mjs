@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -47,7 +47,8 @@ test('серверный roll_id нельзя подменить, передат
     now: () => now,
     ttlMs: 100,
   })
-  const issued = registry.issue({ campaignId: 'ROOM', actorId: 'hero', label: 'Атака', modifier: 4, difficulty: 15 })
+  const check = registry.registerCheck({ campaignId: 'ROOM', actorId: 'hero', label: 'Атака', modifier: 4, difficulty: 15 })
+  const issued = registry.issue({ checkId: check.check_id, campaignId: 'ROOM', actorId: 'hero' })
   assert.equal(issued.total, 18)
   assert.equal(issued.success, true)
   assert.throws(() => registry.consume('roll-1', { campaignId: 'ROOM', actorId: 'other', idempotencyKey: 'turn-1' }), (error) => error.code === 'ROLL_FORBIDDEN')
@@ -83,7 +84,8 @@ test('выданный и уже использованный roll_id переж
     now: () => 1_000,
   }
   const first = new RollRegistry(options)
-  first.issue({ campaignId: 'ROOM', actorId: 'hero', label: 'История', modifier: 2, difficulty: 15 })
+  const check = first.registerCheck({ campaignId: 'ROOM', actorId: 'hero', label: 'История', modifier: 2, difficulty: 15 })
+  first.issue({ checkId: check.check_id, campaignId: 'ROOM', actorId: 'hero' })
   first.consume('durable-roll', { campaignId: 'ROOM', actorId: 'hero', idempotencyKey: 'turn-1' })
 
   const reopened = new RollRegistry(options)
@@ -92,4 +94,51 @@ test('выданный и уже использованный roll_id переж
     () => reopened.consume('durable-roll', { campaignId: 'ROOM', actorId: 'hero', idempotencyKey: 'turn-2' }),
     (error) => error.code === 'ROLL_ALREADY_USED',
   )
+})
+
+// Аудит PR #131, SEC-01: механическая кость выдаётся только под объявленную
+// проверку, а ничейная запись механикой не потребляется.
+test('кость без карточки проверки не выдаётся, и параметры клиента её не создают', () => {
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([20]) }) })
+  for (const request of [
+    { campaignId: 'ROOM', actorId: 'hero' },
+    { campaignId: 'ROOM', actorId: 'hero', label: 'Сила', modifier: 12, difficulty: 5 },
+    { checkId: '', check_id: null, campaignId: 'ROOM', actorId: 'hero' },
+  ]) {
+    assert.throws(() => registry.issue(request), { code: 'CHECK_REQUIRED' })
+  }
+  assert.equal(registry.rolls.size, 0, 'отказ не оставляет записи в реестре')
+  assert.throws(() => registry.issue({ checkId: 'missing', campaignId: 'ROOM', actorId: 'hero' }), { code: 'CHECK_NOT_FOUND' })
+})
+
+test('ничейная запись из прежнего durable-файла механикой не потребляется', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'skazanie-roll-unbound-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const storageFile = join(directory, 'rolls.json')
+  const roll = (id, consumedBy = null) => [id, {
+    result: { roll_id: id, dice: [20], kept: 20, modifier: 0, total: 20, difficulty: 10, success: true, label: 'Проверка', ability: null },
+    campaign_id: 'ROOM', actor_id: 'hero', expires_at: 10_000, consumed_by: consumedBy,
+  }]
+  // Записи до исправления: у привязанной кости нет поля `check_id`, связь
+  // хранит только карточка (`issued_roll_id`).
+  writeFileSync(storageFile, JSON.stringify({
+    schema_version: 1,
+    rolls: [roll('generic-roll'), roll('generic-used', 'turn-old'), roll('legacy-bound')],
+    checks: [['legacy-check', {
+      check_id: 'legacy-check', campaign_id: 'ROOM', actor_id: 'hero', label: 'Проверка', modifier: 0, difficulty: 10,
+      ability: null, advantage: false, disadvantage: false, visibility: 'public', expires_at: 10_000, issued_roll_id: 'legacy-bound',
+    }]],
+  }), 'utf8')
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([1]) }), storageFile, now: () => 1_000 })
+  const scope = { campaignId: 'ROOM', actorId: 'hero' }
+
+  assert.throws(() => registry.consume('generic-roll', { ...scope, idempotencyKey: 'turn-1' }), { code: 'ROLL_UNBOUND' })
+  // Отказ не помечает кость использованной: повтор отвечает тем же отказом.
+  assert.throws(() => registry.consume('generic-roll', { ...scope, idempotencyKey: 'turn-1' }), { code: 'ROLL_UNBOUND' })
+  // Уже потреблённая до исправления запись отдаёт прежний commit только тому
+  // же ключу; новое потребление по-прежнему запрещено.
+  assert.equal(registry.consume('generic-used', { ...scope, idempotencyKey: 'turn-old' }).roll_id, 'generic-used')
+  assert.throws(() => registry.consume('generic-used', { ...scope, idempotencyKey: 'turn-2' }), { code: 'ROLL_ALREADY_USED' })
+  // Привязанная кость того времени по-прежнему исполняет свою проверку.
+  assert.equal(registry.consume('legacy-bound', { ...scope, idempotencyKey: 'turn-3' }).roll_id, 'legacy-bound')
 })

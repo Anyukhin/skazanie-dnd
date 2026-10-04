@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  CampaignRecoveryRequiredError,
   FileEventStore,
   IdempotencyConflictError,
   VersionConflictError,
@@ -557,4 +558,180 @@ test('голова потока грузится без повторного rep
   const fresh = await store.load('head')
   assert.equal(fresh.state_version, 4)
   assert.equal(fresh.state.hp, 6)
+})
+
+// Аудит PR #131, RCV-01/02: потеря файлов кампании не должна выглядеть
+// успешной загрузкой старого или пустого состояния.
+function recoveryRequired(reason, expected = {}) {
+  return (error) => {
+    assert.ok(error instanceof CampaignRecoveryRequiredError, String(error))
+    assert.equal(error.code, 'CAMPAIGN_RECOVERY_REQUIRED')
+    assert.equal(error.recovery_required, true)
+    assert.equal(error.reason, reason)
+    for (const [key, value] of Object.entries(expected)) assert.deepEqual(error[key], value, key)
+    return true
+  }
+}
+
+function heal(campaignId, expectedStateVersion, idempotencyKey, extra = {}) {
+  return {
+    campaign_id: campaignId, expected_state_version: expectedStateVersion, idempotency_key: idempotencyKey,
+    events: [{ event_type: 'HealingApplied', payload: { amount: 1 } }], ...extra,
+  }
+}
+
+test('RCV-01: потерянный хвост журнала требует восстановления, а не откатывает кампанию к нулю', async (t) => {
+  const { rootDir, reducer, store } = temporaryStore(t, { snapshotEvery: 1 })
+  await store.initializeCampaign({ campaign_id: 'lost-tail', initial_state: { hp: 10 } })
+  await store.commit(heal('lost-tail', 0, 'heal-1'))
+  assert.equal((await store.load('lost-tail')).state.hp, 11, 'голова попала в кэш до потери файла')
+
+  const directory = campaignDirectory(rootDir)
+  const eventsDir = join(directory, 'events')
+  const metadataFile = join(directory, 'metadata.json')
+  for (const name of readdirSync(eventsDir)) rmSync(join(eventsDir, name))
+  const metadataBefore = readFileSync(metadataFile, 'utf8')
+
+  const expected = recoveryRequired('EVENT_LOG_TAIL_MISSING', { log_state_version: 0, evidence_state_version: 1 })
+  const reopened = new FileEventStore({ rootDir, reducer, snapshotEvery: 1 })
+  for (const candidate of [store, reopened]) {
+    for (const operation of [
+      () => candidate.load('lost-tail'),
+      () => candidate.replay('lost-tail', { use_snapshots: false }),
+      () => candidate.getMetadata('lost-tail'),
+      () => candidate.pendingProjection('lost-tail'),
+      () => candidate.getEvents('lost-tail'),
+      () => candidate.getByIdempotencyKey('lost-tail', 'heal-1'),
+      () => candidate.acknowledgeProjection('lost-tail', 0),
+      () => candidate.createSnapshot('lost-tail'),
+      () => candidate.commit(heal('lost-tail', 0, 'heal-again')),
+    ]) await assert.rejects(operation, expected)
+  }
+  assert.equal(readFileSync(metadataFile, 'utf8'), metadataBefore, 'отказ не затирает свидетельство версией обрезанного журнала')
+  assert.deepEqual(readdirSync(eventsDir), [], 'обрезанный журнал не дополняется новым коммитом')
+})
+
+test('RCV-01: свидетельством головы служат и metadata, и снимок новее журнала', async (t) => {
+  const byMetadata = temporaryStore(t, { snapshotEvery: 0 })
+  await byMetadata.store.initializeCampaign({ campaign_id: 'lost-last', initial_state: { hp: 10 } })
+  for (let version = 0; version < 3; version += 1) await byMetadata.store.commit(heal('lost-last', version, `heal-${version}`))
+  const metadataEvents = join(campaignDirectory(byMetadata.rootDir), 'events')
+  rmSync(join(metadataEvents, readdirSync(metadataEvents).sort().at(-1)))
+  await assert.rejects(
+    new FileEventStore({ rootDir: byMetadata.rootDir, reducer: byMetadata.reducer }).load('lost-last'),
+    recoveryRequired('EVENT_LOG_TAIL_MISSING', {
+      log_state_version: 2,
+      evidence_state_version: 3,
+      evidence: [
+        { source: 'metadata.state_version', state_version: 3 },
+        { source: 'metadata.current_version', state_version: 3 },
+      ],
+    }),
+  )
+
+  const bySnapshot = temporaryStore(t, { snapshotEvery: 0 })
+  await bySnapshot.store.initializeCampaign({ campaign_id: 'lost-metadata', initial_state: { hp: 10 } })
+  await bySnapshot.store.commit(heal('lost-metadata', 0, 'heal-0', { forceSnapshot: true }))
+  const snapshotDirectory = campaignDirectory(bySnapshot.rootDir)
+  for (const name of readdirSync(join(snapshotDirectory, 'events'))) rmSync(join(snapshotDirectory, 'events', name))
+  rmSync(join(snapshotDirectory, 'metadata.json'))
+  await assert.rejects(
+    new FileEventStore({ rootDir: bySnapshot.rootDir, reducer: bySnapshot.reducer }).load('lost-metadata'),
+    recoveryRequired('EVENT_LOG_TAIL_MISSING', {
+      log_state_version: 0,
+      evidence: [{ source: 'snapshots/0000000000000001.json', state_version: 1 }],
+    }),
+  )
+})
+
+test('RCV-01: журнал новее metadata — сбой между коммитом и metadata, а не потеря', async (t) => {
+  const { rootDir, reducer, store } = temporaryStore(t, { snapshotEvery: 0 })
+  await store.initializeCampaign({ campaign_id: 'crash-before-metadata', initial_state: { hp: 10 } })
+  const metadataFile = join(campaignDirectory(rootDir), 'metadata.json')
+  const staleMetadata = readFileSync(metadataFile, 'utf8')
+  await store.commit(heal('crash-before-metadata', 0, 'heal-0'))
+  writeFileSync(metadataFile, staleMetadata)
+
+  const reopened = new FileEventStore({ rootDir, reducer, snapshotEvery: 0 })
+  const loaded = await reopened.load('crash-before-metadata')
+  assert.equal(loaded.state_version, 1)
+  assert.equal(loaded.state.hp, 11)
+  assert.deepEqual((await reopened.replay('crash-before-metadata', { use_snapshots: false })).state, loaded.state)
+  assert.equal((await reopened.getMetadata('crash-before-metadata')).state_version, 1)
+  assert.equal((await reopened.pendingProjection('crash-before-metadata')).state_version, 1)
+  const next = await reopened.commit(heal('crash-before-metadata', 1, 'heal-1'))
+  assert.equal(next.state.hp, 12)
+  assert.equal(JSON.parse(readFileSync(metadataFile, 'utf8')).state_version, 2)
+})
+
+test('RCV-02: потерянный seed v0 требует восстановления, а не даёт пустую кампанию', async (t) => {
+  const fresh = temporaryStore(t, { snapshotEvery: 0 })
+  const seed = { campaign: 'Seed only in snapshot', hp: 7 }
+  await fresh.store.initializeCampaign({ campaign_id: 'lost-seed', initial_state: seed })
+  const freshSeed = join(campaignDirectory(fresh.rootDir), 'snapshots', '0000000000000000.json')
+  rmSync(freshSeed)
+  const freshReopened = new FileEventStore({ rootDir: fresh.rootDir, reducer: fresh.reducer, snapshotEvery: 0 })
+  const missing = recoveryRequired('SEED_SNAPSHOT_MISSING')
+  for (const operation of [
+    () => freshReopened.load('lost-seed'),
+    () => freshReopened.replay('lost-seed', { use_snapshots: false }),
+    () => freshReopened.initializeCampaign({ campaign_id: 'lost-seed', initial_state: seed }),
+    () => freshReopened.commit(heal('lost-seed', 0, 'heal-0')),
+  ]) await assert.rejects(operation, missing)
+  assert.deepEqual(readdirSync(join(campaignDirectory(fresh.rootDir), 'events')), [], 'поверх пустого состояния ничего не записано')
+
+  const played = temporaryStore(t, { snapshotEvery: 0 })
+  await played.store.initializeCampaign({ campaign_id: 'lost-seed-played', initial_state: seed })
+  await played.store.commit(heal('lost-seed-played', 0, 'heal-0'))
+  rmSync(join(campaignDirectory(played.rootDir), 'snapshots', '0000000000000000.json'))
+  const playedReopened = new FileEventStore({ rootDir: played.rootDir, reducer: played.reducer, snapshotEvery: 0 })
+  await assert.rejects(playedReopened.load('lost-seed-played'), missing)
+  await assert.rejects(playedReopened.replay('lost-seed-played', { use_snapshots: false }), missing)
+  // Явный replay от фабрики — заказанная вызывающим проверка, а не загрузка
+  // кампании: фабрика здесь пустая, и вызывающий видит ровно это.
+  const explicit = await playedReopened.replay('lost-seed-played', { from_initial: true })
+  assert.equal(explicit.state.hp, 1)
+  assert.equal(explicit.state.campaign, undefined)
+})
+
+test('RCV-02: без seed голова живёт на пригодном снимке, но честный replay требует восстановления', async (t) => {
+  const { rootDir, reducer, store } = temporaryStore(t, { snapshotEvery: 2 })
+  await store.initializeCampaign({ campaign_id: 'seed-and-snapshot', initial_state: { hp: 10 } })
+  for (let version = 0; version < 3; version += 1) await store.commit(heal('seed-and-snapshot', version, `heal-${version}`))
+  const snapshots = join(campaignDirectory(rootDir), 'snapshots')
+  assert.deepEqual(readdirSync(snapshots).sort(), ['0000000000000000.json', '0000000000000002.json'])
+  rmSync(join(snapshots, '0000000000000000.json'))
+
+  const reopened = new FileEventStore({ rootDir, reducer, snapshotEvery: 2 })
+  const head = await reopened.load('seed-and-snapshot')
+  assert.equal(head.state_version, 3)
+  assert.equal(head.state.hp, 13, 'голова собрана из снимка v2 и события v3, а не из пустого seed')
+  const missing = recoveryRequired('SEED_SNAPSHOT_MISSING')
+  await assert.rejects(reopened.replay('seed-and-snapshot', { use_snapshots: false }), missing)
+  await assert.rejects(reopened.load('seed-and-snapshot', { atVersion: 1 }), missing)
+})
+
+test('RCV-02: поток с LegacyStateImported несёт состояние сам и без seed v0', async (t) => {
+  const { rootDir, reducer, store } = temporaryStore(t)
+  await store.importLegacySnapshot({ campaign_id: 'legacy-seed', legacy_state: { hp: 17 }, idempotency_key: 'legacy' })
+  await store.commit(heal('legacy-seed', 1, 'heal-1'))
+  rmSync(join(campaignDirectory(rootDir), 'snapshots', '0000000000000000.json'))
+  const reopened = new FileEventStore({ rootDir, reducer })
+  const replayed = await reopened.replay('legacy-seed', { use_snapshots: false })
+  assert.equal(replayed.state_version, 2)
+  assert.equal(replayed.state.hp, 18)
+  assert.deepEqual((await reopened.load('legacy-seed')).state, replayed.state)
+})
+
+test('RCV-02: seed v0 с потерянной картой непригоден и не подменяется пустым состоянием', async (t) => {
+  const { rootDir } = temporaryStore(t)
+  const reducer = (state) => state
+  const store = new FileEventStore({ rootDir, reducer, mapStore: new MapStore({ rootDir }), snapshotEvery: 0 })
+  await store.initializeCampaign({
+    campaign_id: 'seed-without-map',
+    initial_state: { hp: 9, scene: { map: { width: 1, height: 1, cells: [{ x: 0, y: 0, terrain: 'floor' }] } } },
+  })
+  rmSync(join(rootDir, 'maps'), { recursive: true, force: true })
+  const reopened = new FileEventStore({ rootDir, reducer, mapStore: new MapStore({ rootDir }), snapshotEvery: 0 })
+  await assert.rejects(reopened.load('seed-without-map'), recoveryRequired('SEED_SNAPSHOT_UNUSABLE'))
 })

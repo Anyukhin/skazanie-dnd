@@ -98,7 +98,7 @@ Frontend является UI/read-model adapter. Он не отправляет 
 | `GET /api/rooms/:code` | ACL-protected compatibility read model; при необходимости reconciliation по hash |
 | `PUT /api/rooms/:code` | Retired endpoint: всегда `410 ROOM_MUTATION_RETIRED` для доступной кампании |
 | `POST /api/rooms/:code/dice` | `DiceService` → `PublicDieRolled` → Event Store → projection |
-| `POST /api/roll` | `RollRegistry.issue` для серверного `roll_id` |
+| `POST /api/roll` | `RollRegistry.issue` для серверного `roll_id`; только под зарегистрированный `check_id` |
 | `POST /api/narrate` | Campaign ID, action и optional `roll_id`; trusted Event Store state, verified roll consume и `GameOrchestrator` |
 | `GET /api/campaigns/:id/npcs/:npcId/portrait` | Authenticated lazy portrait: viewer-visible NPC → static role asset либо rate-limited generation с hashed cache |
 | merchant routes | Публичная витрина/quotes/касса, player bargain/appraise/buy/sell, admin lifecycle и ручной `ShopAssembler`; все изменения проходят Rules Engine и FileEventStore |

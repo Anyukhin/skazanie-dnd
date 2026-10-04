@@ -50,6 +50,9 @@ export class LoreAuthor {
         temperature: 0.8,
         maxTokens,
         timeoutMs: LORE_TIMEOUT_MS,
+        // Метка записи в usage-ledger (аудит PR #131, AI-02): расход летописца
+        // виден отдельно от горячего пути. Поставщику поле не уходит.
+        usageScope: 'lore',
       })
       return boundedText(result?.content ?? result?.text ?? '', 12_000)
     } catch {

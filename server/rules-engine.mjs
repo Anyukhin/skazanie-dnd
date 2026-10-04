@@ -15412,7 +15412,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }
           const minutes = castingTimeMinutes(spell.castingTime)
           if (minutes > 0) {
-            appendTimeAdvance(commandWithRules(command, RULE_IDS.resource), minutes, 'minute')
+            // Через общего владельца последствий, как AdvanceTime и отдых: сроки
+            // обещаний, восстановление, ход мира и почта видят эти минуты так
+            // же, как обычный скачок, а не ждут следующего (аудит PR #131, WT-01).
+            appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), minutes, 'minute')
           }
         }
         const counterspell = context.readiedRelease || context.additionalBeam ? null : counterspellWindowFor(state, command, spell)

@@ -7,6 +7,7 @@ import {
   generateItemImage,
   isStateVersionConflictError,
   narrateWithAgent,
+  newIdempotencyKey,
   publishNarrationPreview,
   rollDice,
   rollSharedDie,
@@ -17,15 +18,20 @@ import { withLootTakenRecord } from './loot-panel-rules.mjs'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
 import {
+  clearPendingNarrate,
   clearPendingTacticalCommand,
   isTacticalCommandUnknown,
+  narrateRecoveryFor,
+  pendingNarrateStorageKey,
   pendingTacticalCommandStorageKey,
+  readPendingNarrate,
   readPendingTacticalCommand,
   tacticalCommandRequest,
   tacticalCommandView,
+  writePendingNarrate,
   writePendingTacticalCommand,
 } from './tactical-command-recovery.mjs'
-import type { TacticalCommandRecovery } from './tactical-command-recovery.mjs'
+import type { NarrateRecovery, TacticalCommandRecovery } from './tactical-command-recovery.mjs'
 import type { ActionClarification, AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, PlayerRequestKind, ReactionMode, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
@@ -866,21 +872,46 @@ export function useGameSession(options: { accountId?: string } = {}) {
 
     let aiResult: AiTurnResult | null = null
     let authoritativeError: Error | null = null
+    let uncertain = false
+    // Аудит PR #131, REC-01: ключ свободного действия переживает неизвестный
+    // исход. Запись ставится до отправки и лежит в sessionStorage под аккаунтом
+    // и кампанией, поэтому переживает и перезагрузку вкладки. Та же заявка
+    // уходит с прежним ключом, и сервер вернёт уже записанный ход вместо второй
+    // проверки с новым броском; другая заявка получает новый ключ. Снимается
+    // запись только известным исходом — ответом или авторитетным отказом 4xx.
+    const question = requestKind === 'question'
+    const intent = {
+      campaignId: state.sessionCode, actorId: player.id, action: text.trim(), requestKind, npcId,
+      clarificationId: continuation?.id, supersedesCheckId: edited?.checkId, supersedesProposalId: edited?.proposalId,
+      questionCheckId: question ? state.pendingCheck?.check_id : undefined,
+      questionProposalId: question ? state.pendingAction?.proposal.id : undefined,
+    }
+    const narrateStorage = recoveryStorage()
+    const narrateStorageKey = pendingNarrateStorageKey(accountId, state.sessionCode)
+    let narrateRecovery: NarrateRecovery | null = null
     try {
+      narrateRecovery = narrateRecoveryFor(readPendingNarrate(narrateStorage, narrateStorageKey), intent, {
+        newKey: newIdempotencyKey, manualRoll: !autoRollEnabled(),
+      })
+      writePendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery)
       aiResult = await narrateWithAgent(
         pending,
         text.trim(),
         player.character,
         undefined,
-        undefined,
+        narrateRecovery?.requestId,
         player.id,
-        { npcId, requestKind, clarificationId: continuation?.id,
-          supersedesCheckId: edited?.checkId, supersedesProposalId: edited?.proposalId,
-          ...(requestKind === 'question' ? { questionCheckId: state.pendingCheck?.check_id, questionProposalId: state.pendingAction?.proposal.id } : {}),
+        { npcId, requestKind, clarificationId: intent.clarificationId,
+          supersedesCheckId: intent.supersedesCheckId, supersedesProposalId: intent.supersedesProposalId,
+          questionCheckId: intent.questionCheckId, questionProposalId: intent.questionProposalId,
+          manualRoll: narrateRecovery?.manualRoll,
           onNarrationPreview: setNarrationPreview },
       )
+      if (narrateRecovery) clearPendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery.requestId)
     } catch (error) {
       console.warn('AI fallback:', error instanceof Error ? error.message : error)
+      uncertain = isTacticalCommandUnknown(error)
+      if (narrateRecovery && !uncertain) clearPendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery.requestId)
       authoritativeError = await normalizeCommandError(error)
     }
     if (epoch !== actionEpoch.current) {
@@ -917,7 +948,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
         }],
       }))
       busy.current = false
-      return { ok: false, error: message, ...(conflict ? { conflict: true } : {}) }
+      return { ok: false, error: message, ...(conflict ? { conflict: true } : {}), ...(uncertain ? { uncertain: true } : {}) }
     }
     if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
     if (aiResult?.narration_message_id) {
@@ -997,7 +1028,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
       })
     }
     return { ok: true }
-  }, [commit, finishTurn, mutate, normalizeCommandError, pendingClarification, state])
+  }, [accountId, commit, finishTurn, mutate, normalizeCommandError, pendingClarification, state])
 
   const confirmPendingAction = useCallback(async () => {
     const pending = stateRef.current.pendingAction

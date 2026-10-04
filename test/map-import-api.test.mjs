@@ -69,6 +69,76 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}
 
 const sessionCookie = (result) => result.response.headers.get('set-cookie')?.split(';')[0]
 
+/** Тело уходит как есть: `null`, массив, число или битый JSON. */
+async function rawRequest(baseUrl, path, { method = 'POST', cookie = '', raw }) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
+    body: raw,
+  })
+  const text = await response.text()
+  return { response, status: response.status, body: text ? JSON.parse(text) : null, text }
+}
+
+test('тело не объект — 400, а сервер жив для следующего запроса (аудит PR #131, MAP-BOUNDARY-03)', { timeout: runnerTimeout(90_000) }, async (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-import-body-'))
+  let logs = ''
+  let child = null
+  t.after(async () => {
+    await stopServer(child)
+    rmSync(storage, { recursive: true, force: true })
+  })
+  const port = await freePort()
+  const baseUrl = `http://127.0.0.1:${port}`
+  child = startServer(port, storage, (chunk) => { logs += chunk })
+  await waitForHealth(baseUrl, child, () => logs)
+
+  // Обычный аккаунт — ведущий своей кампании, глобальных прав у него нет.
+  const owner = await request(baseUrl, '/api/auth/register', { method: 'POST', body: { name: 'Owner', email: 'map-body@test.local', password: 'secure-owner-password' } })
+  const ownerCookie = sessionCookie(owner)
+  const created = await request(baseUrl, '/api/campaigns', {
+    method: 'POST',
+    cookie: ownerCookie,
+    body: { code: 'MAPNUL', name: 'Пустое тело', bootstrap: { partyName: 'Один', players: [{ id: 'hero-1' }] } },
+  })
+  assert.equal(created.status, 201, created.text)
+
+  const path = '/api/campaigns/MAPNUL/map-import'
+  for (const raw of ['null', '[]', '[{"mode":"preview"}]', '42', '"slab"', 'true']) {
+    const rejected = await rawRequest(baseUrl, path, { cookie: ownerCookie, raw })
+    assert.equal(rejected.status, 400, `${raw}: ${rejected.text}\n${logs}`)
+    assert.equal(rejected.body.code, 'INVALID_JSON_BODY', raw)
+    assert.equal(child.exitCode, null, `сервер упал на теле ${raw}\n${logs}`)
+  }
+
+  // Тот же узкий фикс закрывает и маршруты, где тело читают без try: вход без
+  // сессии и индикатор ввода. Битый JSON вне try ловит общая граница HTTP.
+  const login = await rawRequest(baseUrl, '/api/auth/login', { raw: 'null' })
+  assert.equal(login.status, 401, login.text)
+  const typingNull = await rawRequest(baseUrl, '/api/campaigns/MAPNUL/presence/typing', { method: 'PUT', cookie: ownerCookie, raw: 'null' })
+  assert.equal(typingNull.status, 400, typingNull.text)
+  assert.equal(typingNull.body.code, 'INVALID_JSON_BODY')
+  const typingBroken = await rawRequest(baseUrl, '/api/campaigns/MAPNUL/presence/typing', { method: 'PUT', cookie: ownerCookie, raw: '{"typing":' })
+  assert.equal(typingBroken.status, 400, typingBroken.text)
+  assert.equal(typingBroken.body.code, 'INVALID_JSON')
+  // Непредвиденная ошибка маршрута: `{"toString":1}` не приводится к строке,
+  // и TypeError уходит из catch маршрута наверх. Граница отвечает 500 и не
+  // роняет процесс. Если маршрут научится отказывать сам, триггер нужно сменить.
+  const unexpected = await rawRequest(baseUrl, path, { cookie: ownerCookie, raw: JSON.stringify({ mode: 'preview', slab: HOUSE_SLAB, location_id: { toString: 1 } }) })
+  assert.equal(unexpected.status, 500, unexpected.text)
+  assert.equal(unexpected.body.code, 'INTERNAL_ERROR')
+  assert.doesNotMatch(unexpected.text, /toString|primitive|at /u, 'наружу не уходят подробности ошибки')
+  assert.equal(child.exitCode, null, `сервер упал\n${logs}`)
+
+  // Сервер продолжает обслуживать: здоровье, комната и настоящий предпросмотр.
+  assert.equal((await request(baseUrl, '/api/health')).status, 200)
+  const room = await request(baseUrl, '/api/rooms/MAPNUL', { cookie: ownerCookie })
+  assert.equal(room.status, 200, room.text)
+  const preview = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: { mode: 'preview', slab: HOUSE_SLAB } })
+  assert.equal(preview.status, 200, preview.text)
+  assert.equal((await request(baseUrl, '/api/rooms/MAPNUL', { cookie: ownerCookie })).body.version, room.body.version, 'отказы ничего не записали')
+})
+
 test('импорт карты по HTTP: предпросмотр, применение, повтор ключа и права', { timeout: runnerTimeout(90_000) }, async (t) => {
   const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-import-'))
   let logs = ''
