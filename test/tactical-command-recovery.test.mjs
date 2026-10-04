@@ -3,17 +3,24 @@ import test from 'node:test'
 
 import {
   clearPendingNarrate,
+  clearPendingPartyDecision,
   isTacticalCommandUnknown,
   narrateIntentMatches,
   narrateRecoveryFor,
   parsePendingNarrate,
   parsePendingTacticalCommand,
+  partyDecisionIntentMatches,
+  partyDecisionRecoveryFor,
+  partyDecisionRequest,
   pendingNarrateStorageKey,
+  pendingPartyDecisionStorageKey,
   pendingTacticalCommandStorageKey,
   readPendingNarrate,
+  readPendingPartyDecision,
   readPendingTacticalCommand,
   tacticalCommandRequest,
   writePendingNarrate,
+  writePendingPartyDecision,
   writePendingTacticalCommand,
 } from '../src/tactical-command-recovery.mjs'
 
@@ -294,4 +301,175 @@ test('narrate: запись лежит под аккаунтом и кампан
   assert.equal(parsePendingNarrate('{"schema_version":2,"pending":{}}'), null)
   assert.equal(parsePendingNarrate('не json'), null)
   assert.equal(narrateRecoveryFor(null, { ...narrateIntent, action: '   ' }, { newKey: () => 'unused' }), null)
+})
+
+// --- Голос и общий бросок отряда (аудит PR #131, REC-02) ------------------
+
+/**
+ * Поддельный сервер решений отряда с той же идемпотентностью, что у маршрутов
+ * `party-decisions/:id/votes` и `/roll` (server/index.mjs): новый ключ — новый
+ * commit, прежний — replay. Голос до кворума можно заменить, а общий бросок
+ * закрывает решение — новый ключ после него получает 409. `dropFirst`
+ * моделирует пробу аудита (round-6/30): commit записан, ответ потерян.
+ */
+function fakePartyDecisionServer({ dropFirst = null } = {}) {
+  const commits = new Map()
+  const sent = []
+  let closed = false
+  return {
+    commits,
+    sent,
+    async transport(path, init) {
+      const body = JSON.parse(String(init.body))
+      sent.push({ path, body })
+      const roll = path.endsWith('/roll')
+      if (!commits.has(body.idempotency_key)) {
+        if (roll && closed) throw Object.assign(new Error('Решение уже принято'), { status: 409, code: 'PARTY_DECISION_CLOSED' })
+        commits.set(body.idempotency_key, roll
+          ? { event_type: 'DieRolled', total: 11 + commits.size }
+          : { event_type: body.abstain ? 'PartyDecisionAbstained' : 'PartyVoteCast', option_id: body.option_id ?? null })
+        if (roll) closed = true
+      }
+      if (dropFirst && sent.length === 1) throw dropFirst
+      return { state: { sessionCode: 'PARTY-1' }, mechanics: [commits.get(body.idempotency_key)] }
+    },
+  }
+}
+
+const voteIntent = { campaignId: 'PARTY-1', interactionId: 'decision-1', actorId: 'hero-a', operation: 'vote', optionId: 'north' }
+const rollIntent = { campaignId: 'PARTY-1', interactionId: 'decision-2', actorId: 'hero-a', operation: 'roll' }
+
+/**
+ * Те же шаги, что у `sendPartyDecision` (src/useGameSession.ts): запись до
+ * отправки, снятие после ответа или авторитетного отказа, сохранение при
+ * неизвестном исходе. Сам хук прогоняется в test/game-session-recovery.test.mjs.
+ */
+let partyKeySequence = 0
+async function sendParty(storage, key, intent, transport) {
+  const recovery = partyDecisionRecoveryFor(readPendingPartyDecision(storage, key), intent, {
+    newKey: () => `party-key-${++partyKeySequence}`,
+  })
+  writePendingPartyDecision(storage, key, recovery)
+  const request = partyDecisionRequest(recovery)
+  try {
+    const result = await transport(request.path, request.init)
+    clearPendingPartyDecision(storage, key, recovery.requestId)
+    return { ok: true, result, recovery }
+  } catch (error) {
+    if (!isTacticalCommandUnknown(error)) clearPendingPartyDecision(storage, key, recovery.requestId)
+    return { ok: false, error, recovery }
+  }
+}
+
+test('REC-02: повтор голоса после неизвестного исхода уходит с прежним ключом — второго PartyVoteCast нет', async () => {
+  for (const lost of [
+    new TypeError('fetch failed'),
+    Object.assign(new Error('Прокси отдал 502 после commit'), { status: 502 }),
+    new SyntaxError('Ответ прервался при чтении JSON'),
+  ]) {
+    const storage = memoryStorage()
+    const key = pendingPartyDecisionStorageKey('account-a', voteIntent.campaignId)
+    const server = fakePartyDecisionServer({ dropFirst: lost })
+
+    const first = await sendParty(storage, key, voteIntent, server.transport)
+    assert.equal(first.ok, false, lost.message)
+    assert.equal(server.commits.size, 1, 'первый голос записан')
+    assert.equal(readPendingPartyDecision(storage, key)?.requestId, first.recovery.requestId, 'запись пережила неизвестный исход')
+
+    const retry = await sendParty(storage, key, { ...voteIntent }, server.transport)
+    assert.equal(retry.ok, true)
+    assert.equal(server.sent[1].path, server.sent[0].path)
+    assert.deepEqual(server.sent[1].body, server.sent[0].body, 'повтор отправляет то же тело с тем же ключом')
+    assert.equal(server.commits.size, 1, 'второго PartyVoteCast нет')
+    assert.equal(readPendingPartyDecision(storage, key), null, 'принятый ответ снимает запись')
+  }
+})
+
+test('REC-02: повтор общего броска после потери ответа получает выпавшую кость, а не 409', async () => {
+  const storage = memoryStorage()
+  const key = pendingPartyDecisionStorageKey('account-a', rollIntent.campaignId)
+  const server = fakePartyDecisionServer({ dropFirst: new TypeError('fetch failed') })
+
+  const first = await sendParty(storage, key, rollIntent, server.transport)
+  assert.equal(first.ok, false)
+  const retry = await sendParty(storage, key, rollIntent, server.transport)
+  assert.equal(retry.ok, true, 'тот же ключ — replay записанного броска')
+  assert.equal(server.sent[1].body.idempotency_key, server.sent[0].body.idempotency_key)
+  assert.match(server.sent[1].path, /\/party-decisions\/decision-2\/roll$/u)
+  assert.equal(retry.result.mechanics[0].event_type, 'DieRolled')
+  assert.equal(server.commits.size, 1, 'вторая кость не брошена')
+})
+
+test('REC-02: без сохранённого ключа тот же сценарий давал второй голос и 409 на броске (контроль пробы)', async () => {
+  const vote = fakePartyDecisionServer({ dropFirst: new TypeError('fetch failed') })
+  await sendParty(null, null, voteIntent, vote.transport)
+  await sendParty(null, null, voteIntent, vote.transport)
+  assert.notEqual(vote.sent[1].body.idempotency_key, vote.sent[0].body.idempotency_key)
+  assert.equal(vote.commits.size, 2, 'лишний PartyVoteCast')
+
+  const roll = fakePartyDecisionServer({ dropFirst: new TypeError('fetch failed') })
+  await sendParty(null, null, rollIntent, roll.transport)
+  const second = await sendParty(null, null, rollIntent, roll.transport)
+  assert.equal(second.error?.status, 409)
+})
+
+test('REC-02: другая операция получает новый ключ и вытесняет запись', () => {
+  const pending = partyDecisionRecoveryFor(null, voteIntent, { newKey: () => 'vote-key' })
+  assert.equal(pending.requestId, 'vote-key')
+  assert.equal(partyDecisionRecoveryFor(pending, { ...voteIntent, campaignId: 'party-1' }, { newKey: () => 'unexpected' }).requestId, 'vote-key',
+    'регистр кода кампании не делает операцию другой')
+  for (const [label, changed] of [
+    ['другой вариант — игрок передумал', { optionId: 'south' }],
+    ['отказ от голоса', { operation: 'abstain', optionId: undefined }],
+    ['общий бросок', { operation: 'roll', optionId: undefined }],
+    ['другое решение', { interactionId: 'decision-9' }],
+    ['другой герой', { actorId: 'hero-b' }],
+    ['другая кампания', { campaignId: 'PARTY-2' }],
+  ]) {
+    const intent = { ...voteIntent, ...changed }
+    assert.equal(partyDecisionIntentMatches(pending, intent), false, label)
+    assert.equal(partyDecisionRecoveryFor(pending, intent, { newKey: () => `new-${label}` }).requestId, `new-${label}`, label)
+  }
+})
+
+test('REC-02: известный исход снимает запись, следующая такая же операция — новый ключ', async () => {
+  for (const known of [
+    null,
+    Object.assign(new Error('Решение уже принято'), { status: 409, code: 'PARTY_DECISION_CLOSED' }),
+    Object.assign(new Error('Этот герой не принадлежит вашему аккаунту'), { status: 403, code: 'ACTOR_FORBIDDEN' }),
+  ]) {
+    const storage = memoryStorage()
+    const key = pendingPartyDecisionStorageKey('account-a', voteIntent.campaignId)
+    const transport = known ? async () => { throw known } : async () => ({ state: { sessionCode: 'PARTY-1' } })
+    const first = await sendParty(storage, key, voteIntent, transport)
+    assert.equal(first.ok, known === null)
+    assert.equal(readPendingPartyDecision(storage, key), null, known?.message ?? 'успех')
+    const next = await sendParty(storage, key, voteIntent, async () => ({ state: {} }))
+    assert.notEqual(next.recovery.requestId, first.recovery.requestId)
+  }
+})
+
+test('REC-02: тело запроса совпадает с прежним форматом клиента, поздний ответ не стирает чужую запись', () => {
+  assert.deepEqual(partyDecisionRequest({ ...voteIntent, requestId: 'k1' }).body, { actor_id: 'hero-a', option_id: 'north', idempotency_key: 'k1' })
+  assert.deepEqual(partyDecisionRequest({ ...voteIntent, operation: 'abstain', optionId: undefined, requestId: 'k2' }).body, { actor_id: 'hero-a', abstain: true, idempotency_key: 'k2' })
+  assert.deepEqual(partyDecisionRequest({ ...rollIntent, requestId: 'k3' }).body, { actor_id: 'hero-a', idempotency_key: 'k3' })
+  assert.equal(partyDecisionRequest({ ...rollIntent, requestId: 'k3' }).path, '/api/campaigns/PARTY-1/party-decisions/decision-2/roll')
+  assert.equal(partyDecisionRequest({ ...voteIntent, requestId: 'k1' }).path, '/api/campaigns/PARTY-1/party-decisions/decision-1/votes')
+  assert.equal(partyDecisionRequest({ ...voteIntent, optionId: '', requestId: 'k1' }), null, 'голос без варианта не собирается')
+
+  const storage = memoryStorage()
+  const key = pendingPartyDecisionStorageKey('account-a', 'PARTY-1')
+  const older = partyDecisionRecoveryFor(null, voteIntent, { newKey: () => 'older' })
+  const newer = partyDecisionRecoveryFor(older, { ...voteIntent, optionId: 'south' }, { newKey: () => 'newer' })
+  writePendingPartyDecision(storage, key, newer)
+  clearPendingPartyDecision(storage, key, older.requestId)
+  assert.equal(readPendingPartyDecision(storage, key)?.requestId, 'newer')
+
+  // Слот отдельный: не делит место ни с командой доски, ни со свободным действием.
+  assert.ok(key)
+  assert.notEqual(key, pendingTacticalCommandStorageKey('account-a', 'PARTY-1'))
+  assert.notEqual(key, pendingNarrateStorageKey('account-a', 'PARTY-1'))
+  assert.notEqual(key, pendingPartyDecisionStorageKey('account-b', 'PARTY-1'))
+  assert.equal(pendingPartyDecisionStorageKey('', 'PARTY-1'), null)
+  assert.equal(readPendingNarrate(storage, key), null, 'запись голоса не читается как свободное действие')
 })
