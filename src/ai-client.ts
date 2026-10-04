@@ -74,7 +74,7 @@ export async function getCharacterCreationCatalog(rulesetId: RulesetProfileDescr
   return body
 }
 
-function newIdempotencyKey() {
+export function newIdempotencyKey() {
   if (!globalThis.crypto?.randomUUID) throw new Error('Браузер не поддерживает безопасные ключи запросов')
   return globalThis.crypto.randomUUID()
 }
@@ -88,6 +88,12 @@ export interface NarrateOptions {
   questionProposalId?: string
   confirmedProposalId?: string
   npcId?: string
+  /**
+   * Режим броска, записанный при первой попытке. Повтор после неизвестного
+   * исхода отправляет его как был, а не по текущей настройке (аудит PR #131,
+   * REC-01). Без значения режим читается из настройки автоброска.
+   */
+  manualRoll?: boolean
   onNarrationPreview?: (preview: NarrationPreview) => void
 }
 
@@ -187,7 +193,7 @@ export async function narrateWithAgent(
         ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
         // Ручной режим: сервер не бросает d20 за игрока, а возвращает карточку
         // проверки; ход завершится повторным запросом с roll_id.
-        ...(autoRollEnabled() ? {} : { manual_roll: true }),
+        ...((options.manualRoll ?? !autoRollEnabled()) ? { manual_roll: true } : {}),
       }),
     }, 48_000, 'Рассказчик не ответил вовремя. Попробуйте обновить состояние кампании.')
     if (!response.ok) {
