@@ -1537,6 +1537,12 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .mechanics-support-badge.support-heuristic { color: #c58b62; }
 .mechanics-support-badge.support-ruling-only { color: #cf746f; }
 .mechanics-support-badge.support-verified { color: #75aa8d; }
+/* Ярлык статуса в строке карточки развития героя: тот же цвет, что у плитки. */
+.mechanics-support-label { font-weight: 700; letter-spacing: .045em; }
+.mechanics-support-label.support-partial { color: color-mix(in srgb, var(--acc) 50%, var(--acc2)); }
+.mechanics-support-label.support-heuristic { color: #c58b62; }
+.mechanics-support-label.support-ruling-only { color: #cf746f; }
+.mechanics-support-label.support-verified { color: #75aa8d; }
 .spellbook-panel article.support-heuristic, .spellbook-panel article.support-ruling-only { border-color: color-mix(in srgb, var(--muted) 7%, var(--enemy) 21%); }
 
 .combat-hotbar .action-tile.spellbook-tile { color: color-mix(in srgb, var(--text) 25%, var(--acc)); background: color-mix(in srgb, var(--well) 46.4%, var(--acc) 11.6%); }
@@ -2287,14 +2293,21 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
 .map-token.targetable { cursor: crosshair; box-shadow: 0 4px 9px #000, 0 0 0 3px rgba(92,174,126,.65), 0 0 15px rgba(67,155,105,.45); }
 .summon-token { border-style: dashed; background-image: radial-gradient(circle, #315b46, #17251d) !important; background-size: 100% 100%; color: #c3ead4; }
 .summon-token > svg { filter: drop-shadow(0 0 4px rgba(132,221,174,.6)); }
-.enemy-token { --enemy-accent: color-mix(in srgb, var(--muted) 20%, var(--enemy)); --enemy-surface: color-mix(in srgb, var(--well) 70%, var(--enemy)); position: absolute; z-index: 5; width: clamp(31px, 5.4cqw, 44px); height: clamp(34px, 5.9cqw, 48px); display: grid; place-items: center; padding: 0; border: 2px solid var(--enemy-accent); border-radius: 10px 10px 14px 14px; clip-path: polygon(50% 0, 91% 17%, 100% 68%, 50% 100%, 0 68%, 9% 17%); background: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--enemy-accent), white 9%), var(--enemy-surface) 45%, color-mix(in srgb, var(--well) 30%, var(--panel)) 100%); color: color-mix(in srgb, var(--enemy-accent), white 42%); box-shadow: 0 6px 12px #000, 0 0 0 3px rgba(0,0,0,.48), 0 0 18px color-mix(in srgb, var(--enemy-accent), transparent 62%); cursor: crosshair; transition: transform .18s ease, filter .18s ease, box-shadow .18s ease; }
+/* Форма щита — у подложки ::before, а не у самой кнопки. clip-path обрезает
+   всех потомков, и с июля 2026 под фишкой врага не было видно ни подписи, ни
+   числа здоровья, ни значков состояний, а обводки хода и области обрезались по
+   краю. Тени кнопки обрезались вместе с ней — прямоугольной тени у щита нет и
+   теперь (правило ниже). */
+.enemy-token { --enemy-accent: color-mix(in srgb, var(--muted) 20%, var(--enemy)); --enemy-surface: color-mix(in srgb, var(--well) 70%, var(--enemy)); --enemy-shield: polygon(50% 0, 91% 17%, 100% 68%, 50% 100%, 0 68%, 9% 17%); --enemy-token-border: 2px; position: absolute; z-index: 5; width: clamp(31px, 5.4cqw, 44px); height: clamp(34px, 5.9cqw, 48px); display: grid; place-items: center; padding: 0; border: var(--enemy-token-border) solid transparent; border-radius: 10px 10px 14px 14px; background: transparent; color: color-mix(in srgb, var(--enemy-accent), white 42%); cursor: crosshair; transition: transform .18s ease, filter .18s ease; }
+.enemy-token::before { content: ''; position: absolute; inset: calc(-1 * var(--enemy-token-border)); z-index: -1; border: var(--enemy-token-border) solid var(--enemy-accent); border-radius: inherit; background: radial-gradient(circle at 50% 32%, color-mix(in srgb, var(--enemy-accent), white 9%), var(--enemy-surface) 45%, color-mix(in srgb, var(--well) 30%, var(--panel)) 100%); clip-path: var(--enemy-shield); pointer-events: none; }
+.board-cell .enemy-token { box-shadow: none !important; }
 .enemy-token[data-enemy-kind="construct"] { --enemy-accent: #78c8c5; --enemy-surface: #214449; }
 .enemy-token[data-enemy-kind="undead"] { --enemy-accent: #a69acc; --enemy-surface: #332b48; }
 .enemy-token[data-enemy-kind="beast"] { --enemy-accent: #d5965f; --enemy-surface: #52341f; }
 .enemy-token[data-enemy-kind="mystic"] { --enemy-accent: #c482d2; --enemy-surface: #45264f; }
 .enemy-token.active-turn { box-shadow: 0 6px 12px #000, 0 0 0 3px rgba(229,170,91,.84), 0 0 24px rgba(214,145,63,.72); }
 .enemy-token:hover, .enemy-token:focus-visible { filter: brightness(1.16); transform: translateY(-3px) scale(1.1); box-shadow: 0 9px 15px #000, 0 0 0 3px rgba(0,0,0,.5), 0 0 24px color-mix(in srgb, var(--enemy-accent), transparent 42%); }
-.enemy-emblem { position: absolute; inset: 2px; display: grid; place-items: center; overflow: hidden; filter: drop-shadow(0 2px 4px #000); clip-path: inherit; }
+.enemy-emblem { position: absolute; inset: 2px; display: grid; place-items: center; overflow: hidden; filter: drop-shadow(0 2px 4px #000); clip-path: var(--enemy-shield); }
 .enemy-emblem img { width: 100%; height: 100%; object-fit: cover; object-position: center 28%; filter: saturate(.78) contrast(1.08) brightness(.86); }
 .enemy-nameplate { position: absolute; left: 50%; bottom: calc(100% + 8px); max-width: 116px; overflow: hidden; padding: 4px 7px; border: 1px solid color-mix(in srgb, var(--enemy-accent), transparent 62%); border-radius: 4px; background: color-mix(in srgb, var(--bg) 94%, transparent); color: color-mix(in srgb, var(--spent) 5%, var(--text)); font: 600 var(--fs-sm) var(--f-ui); text-overflow: ellipsis; white-space: nowrap; opacity: 0; pointer-events: none; transform: translate(-50%, 3px); transition: opacity .16s ease, transform .16s ease; }
 .enemy-token:hover .enemy-nameplate, .enemy-token:focus-visible .enemy-nameplate, .enemy-token.targetable .enemy-nameplate { opacity: 1; transform: translate(-50%, 0); }

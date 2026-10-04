@@ -26,7 +26,7 @@ import {
   writePendingTacticalCommand,
 } from './tactical-command-recovery.mjs'
 import type { TacticalCommandRecovery } from './tactical-command-recovery.mjs'
-import type { ActionClarification, AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, PlayerRequestKind, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
+import type { ActionClarification, AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, PlayerRequestKind, ReactionMode, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -61,6 +61,7 @@ type TacticalCommand =
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
   | { command_type: 'ActivateItem'; actor_id: string; item_id: string; activated: boolean }
   | { command_type: 'SetSpellBonusPreference'; actor_id: string; spell_id: 'bless'; enabled: boolean }
+  | { command_type: 'SetReactionPreference'; actor_id: string; reaction_id: string; mode: ReactionMode }
   | { command_type: 'InterrogateCaptive'; actor_id: string; captive_id: string; skill: CaptiveInterrogationSkill }
   | { command_type: 'ReleaseCaptive'; actor_id: string; captive_id: string }
   | { command_type: 'HandCaptiveToGuards'; actor_id: string; captive_id: string }
@@ -1981,6 +1982,11 @@ export function useGameSession(options: { accountId?: string } = {}) {
     return executeTacticalCommand({ command_type: 'SetSpellBonusPreference', actor_id: playerId, spell_id: 'bless', enabled }, enabled ? 'Использовать бонус Благословения' : 'Не использовать бонус Благословения')
   }, [executeTacticalCommand])
 
+  const setReactionPreference = useCallback((playerId: string, reactionId: string, mode: ReactionMode, reactionName = 'реакции') => {
+    const label = mode === 'auto' ? 'сразу' : mode === 'never' ? 'никогда' : 'спрашивать'
+    return executeTacticalCommand({ command_type: 'SetReactionPreference', actor_id: playerId, reaction_id: reactionId, mode }, `Режим «${reactionName}»: ${label}`)
+  }, [executeTacticalCommand])
+
   const switchCampaign = useCallback(async (code: string, prefetched?: { version?: number; state?: GameState | null }) => {
     const normalized = code.toUpperCase()
     actionEpoch.current += 1
@@ -2359,6 +2365,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
     castSpell,
     useCombatAction,
     setSpellBonusPreference,
+    setReactionPreference,
     changeWeapon,
     operateDoor,
     operateSceneObject,

@@ -413,8 +413,19 @@ export function sceneObjectOperationFromText(text) {
   const aliases = Object.entries(ASSET_ALIASES_RU)
     .filter(([, words]) => words.some((word) => normalized.includes(word)))
     .map(([alias]) => alias)
-  return { intent, approach, aliases }
+  return { intent, approach, aliases, ...(!aliases.length && NON_PROP_TARGET.test(normalized) ? { namesOtherTarget: true } : {}) }
 }
+
+/**
+ * Цель, которая названа, но предметом обстановки не является: дверь, ворота,
+ * рычаг, люк, окно, лестница. Без неё пустой список `aliases` читался как
+ * «предмет не назван» и выбирал то, что под рукой: «привести в действие рычаг
+ * и открыть запертую дверь башни» открыло соседний буфет и показало булаву
+ * внутри (плейтест 2026-10-04, MAP2-01). Такая фраза уходит дальше обычным
+ * разбором свободного действия, а голое «Открыть» по-прежнему берёт ближайшее.
+ * «Дверца» в список не входит: её открывают у шкафа или буфета.
+ */
+const NON_PROP_TARGET = /(?<![а-яё])(?:двер(?:ь|и|ью|ей|ям|ях|ями)|ворот(?:а|ам|ами|ах)?|калитк[аиуеой]|рычаг(?:а|у|ом|е|и|ов)?|люк(?:а|у|ом|е|и)?|окн(?:о|а|у|е|ом)|окош[а-яё]*|ставн[а-яё]*|решётк[а-яё]*|решетк[а-яё]*|шлюз[а-яё]*|засов[а-яё]*|механизм[а-яё]*|лестниц[а-яё]*|мост(?:а|у|ом|е)?|стен(?:а|у|е|ы|ой)|арк(?:а|у|е|ой|и)|проход(?:а|у|ом|е)?)(?![а-яё])/u
 
 function propCells(prop) {
   if (Array.isArray(prop?.footprint) && prop.footprint.length) {
@@ -436,6 +447,8 @@ export function sceneObjectDistance(prop, actorPosition) {
 export function nearestSceneObjectCommand({ props = [], actorPosition, text } = {}) {
   const operation = sceneObjectOperationFromText(text)
   if (!operation) return null
+  // Молитва адресована святыне, где бы ни стояли ворота храма.
+  if (operation.namesOtherTarget && operation.intent !== 'pray') return null
   const candidates = (Array.isArray(props) ? props : [])
     .filter((prop) => sceneInteractionCatalogEntry(prop?.assetId))
     // Молиться можно только святыне. Без этого фильтра «помолюсь» у ближайшего

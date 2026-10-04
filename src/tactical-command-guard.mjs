@@ -2,6 +2,9 @@ export function canIssueUiTacticalCommand(combat, command, currentActorId) {
   if (!combat?.active) return true
   if (command?.command_type === 'AttackNpc') return false
   if (['StartCombat', 'ResolveHeroDeath'].includes(command?.command_type)) return true
+  // Режим реакции — заранее данный ответ, а не действие: его меняют в чужой ход,
+  // ровно тогда, когда реакции и случаются. Сервер очередь здесь не проверяет.
+  if (command?.command_type === 'SetReactionPreference') return true
   // Уговор на переговорах заключает отряд, а не тот, на ком стоит указатель
   // инициативы: перемирие эту очередь уже заморозило. Сервер проверяет то же
   // самое — здесь только не мешаем нажать кнопку карточки условий.

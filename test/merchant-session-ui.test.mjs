@@ -99,3 +99,20 @@ test('открытие обновляет котировки один раз, о
   tick(3, false)
   assert.deepEqual(loaded, [['shop', 'hero'], ['shop', 'hero']], 'чужое изменение требует обновления')
 })
+
+test('распроданный товар называется «Нет в наличии», а не «Нет котировки»', () => {
+  // Плейтест 2026-10-04, MP-01: второй игрок видел у распроданного товара
+  // «Нет котировки» и «Торговец пока не назвал цену» даже после обновления.
+  const line = shop.split('\n').find((candidate) => candidate.includes('const stateLabel = soldOut'))
+  assert.ok(line, 'статус карточки покупки не найден')
+  const stateLabel = new Function('soldOut', 'tradeRefusal', 'quote', 'purchaseMax', 'stockAvailable', `${line.trim()}; return stateLabel`)
+  assert.equal(stateLabel(true, '', undefined, 0, 0), 'Нет в наличии')
+  assert.equal(stateLabel(true, 'Розыск', undefined, 0, 0), 'Нет в наличии')
+  assert.equal(stateLabel(false, 'Розыск', { can_afford: true }, 0, 3), 'Отказано')
+  assert.equal(stateLabel(false, '', undefined, 3, 3), 'Нет котировки')
+  assert.equal(stateLabel(false, '', { can_afford: false }, 0, 3), 'Недостаточно монет')
+  assert.equal(stateLabel(false, '', { can_afford: true }, 3, 3), '3 в наличии')
+  assert.match(shop, /if \(soldOut\) return <div className="merchant-no-quote">Товар распродан<\/div>/u)
+  assert.match(shop, /<QuoteBreakdown quote=\{quote\} quantity=\{quantity\} direction="buy" soldOut=\{soldOut\} \/>/u)
+  assert.match(shop, /\{soldOut \? 'Нет в наличии' : !quote \? 'Нет котировки'/u)
+})

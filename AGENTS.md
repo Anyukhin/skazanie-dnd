@@ -47,7 +47,8 @@ pnpm test                              # функциональный набор
 node --test test/rules-engine.test.mjs # один файл — так проверять точечные правки
 pnpm build                             # tsc --noEmit + vite build
 pnpm typecheck:server                  # tsc по tsconfig.server.json (только файлы с // @ts-check)
-pnpm verify                            # ОБЯЗАТЕЛЬНЫЙ финальный gate: test + typecheck:server + build
+pnpm verify                            # test + typecheck:server + build; локально не запускать:
+                                       # полный прогон делает CI (.github/workflows/verify.yml)
 
 pnpm rules:verify     # rule-pack + rule-retriever
 pnpm content:verify   # целостность контента и лицензий
@@ -159,7 +160,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
 `weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`, `tavern-life.mjs`,
 `courier-letters.mjs`, `talespire-slab.mjs`, `talespire-import.mjs`, `map-library.mjs`,
 `thin-walls.mjs`, `room-floors.mjs`, `detail-props.mjs`, `scene-features.mjs`,
-`scene-dressing.mjs` (виньетки по тексту сцены, трудная местность, низкая мебель и развалины поверх планировки).
+`scene-dressing.mjs` (виньетки по тексту сцены, трудная местность, низкая мебель и развалины поверх планировки),
+`reaction-preferences.mjs` (режимы реакций героя: какое окно реакции сервер закрывает сам).
 Не описывать их как «агентов».
 
 **Готовые карты (TaleSpire):** `talespire-slab.mjs` разбирает строку слэба,
@@ -260,7 +262,7 @@ commit, механики он не касается.
 ## 5. Инварианты и их сторожа
 
 Каждый инвариант обязан оставаться проверяемым. При изменении механики
-запускать соответствующий тест **до** `pnpm verify`.
+запускать соответствующий тест точечно (`node --test test/<файл>.test.mjs`).
 
 | Инвариант | Сторож |
 | --- | --- |
@@ -338,7 +340,7 @@ commit, механики он не касается.
 + ручная проверка основного браузерного сценария с двумя игроками
 (автоматизации браузера в проекте нет).
 
-**Документация, тексты, стили:** достаточно `pnpm verify` и точности утверждений.
+**Документация, тексты, стили:** достаточно точности утверждений.
 
 При любом изменении фактических возможностей обновлять `README.md` и
 `docs/rules-coverage.md` либо `docs/known-limitations.md`. **Не заявлять
@@ -416,7 +418,7 @@ gh pr create --base main --fill
 
 ### Перед каждым переносом
 
-- `pnpm verify` зелёный — иначе ПР не сольётся;
+- проверка `verify` в CI зелёная — иначе ПР не сольётся;
 - в переносимом состоянии нет ассетов с неподтверждёнными правами; открытые
   вопросы по ним — в `docs/assets-to-regenerate.md`;
 - секретов в отслеживаемых файлах нет. `.env`, `storage/` и `PUBLIC_LINK.txt`

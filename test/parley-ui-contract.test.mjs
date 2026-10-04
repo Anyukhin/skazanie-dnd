@@ -68,3 +68,13 @@ test('ручной бросок парлея двухфазный: карточ�
   assert.match(session, /result\?\.check && twoPhase/u)
   assert.match(session, /function twoPhaseCheckCommandFor[\s\S]*?case 'ProposeParley':/u)
 })
+
+test('переговоры недоступны после расхода действия, а подсказка объясняет почему', () => {
+  // Плейтест 2026-10-04, MC-04: после атаки кнопка оставалась активной, и клик
+  // возвращал серверный отказ ACTION_SPENT вместо видимой причины заранее.
+  const button = /className="parley-hotbar"[\s\S]{0,400}?disabled=\{([^}]*)\}[\s\S]{0,200}?title=\{([^\n]*)/u.exec(board)
+  assert.ok(button, 'кнопка переговоров не найдена')
+  assert.match(button[1], /!actionReady/u)
+  assert.match(button[2], /canAct && !actionReady/u)
+  assert.match(board, /Действие на этом ходу уже потрачено: переговоры/u)
+})

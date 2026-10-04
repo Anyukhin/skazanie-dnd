@@ -510,10 +510,25 @@ function DiceCheckCard({ check, onRoll, onCancel, busy = false, children }: { ch
           <div><dt>Успех</dt><dd>{check.proposal.on_success}</dd></div>
           <div><dt>Провал</dt><dd>{check.proposal.on_failure}</dd></div></dl>
       </div>}
-      <button className="d20-button" onClick={onRoll} disabled={busy || check.status !== 'ready'} aria-label={`${check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить d20' : 'Бросить d20'}: ${check.label}`}>
-        <i><b>{shownValue}</b><small>d20</small></i>
-        <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить' : 'Бросить кубик'}</span>
-      </button>
+      {/* Арка, как в BG3: сложность наверху, кость посередине — щелчок по ней и
+          есть бросок, — под ней модификатор и преимущество. Итог и «Успех» или
+          «Провал» приходят только с сервера (`check.result`). */}
+      <div className="dice-arch">
+        <span className="dice-arch-dc"><small>Сложность</small><b>{check.difficulty}</b></span>
+        <span className="dice-arch-rule" aria-hidden="true"><i /></span>
+        <button className="d20-button" onClick={onRoll} disabled={busy || check.status !== 'ready'} aria-label={`${check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить d20' : 'Бросить d20'}: ${check.label}`}>
+          <i><b>{shownValue}</b><small>d20</small></i>
+          <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить' : 'Бросить кубик'}</span>
+        </button>
+        <span className="dice-arch-terms">
+          <span className="dice-term" title="Модификатор проверки, рассчитанный сервером"><b>{check.modifier >= 0 ? '+' : '−'}{Math.abs(check.modifier)}</b><small>модификатор</small></span>
+          {swing && <span className={`dice-term swing ${check.advantage ? 'advantage' : 'disadvantage'}`} title={check.advantage ? 'Бросаются две кости, берётся большая' : 'Бросаются две кости, берётся меньшая'}><b>{check.advantage ? '2к20↑' : '2к20↓'}</b><small>{swing}</small></span>}
+        </span>
+        {check.result && typeof check.result.success === 'boolean' && <span className={`dice-arch-verdict ${check.result.success ? 'success' : 'failure'}`} role="status">
+          <b>{check.result.success ? 'Успех' : 'Провал'}</b>
+          <small>{check.result.value} {check.modifier >= 0 ? '+' : '−'} {Math.abs(check.modifier)} = {check.result.total}{typeof check.result.difficulty === 'number' ? ` против ${check.result.difficulty}` : ''}</small>
+        </span>}
+      </div>
       <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажми на кость — что выпадет, то и будет.'}</p>
       <div className="dice-check__footer">
         {children}
@@ -537,17 +552,45 @@ function PlayerHud({ player, hazards = [], combatActive = false, status, onChara
   // показывает и полную полосу, и голубой хвост за ней.
   const barScale = Math.max(maxHp, hp + temporaryHp)
   const barPercent = (value: number) => Math.round(Math.max(0, Math.min(1, value / barScale)) * 1000) / 10
+  const passivePerception = player.characterSheet?.passive_perception
+  const initiative = player.characterSheet?.initiative
+  const spellcaster = player.characterSheet?.spellcaster
+  const signedNumber = (value: number) => `${value >= 0 ? '+' : '−'}${Math.abs(value)}`
+  // Подкласс показываем, только если сервер отдал человеческое название, а не ключ.
+  const subclassLabel = player.subclass && /[А-Яа-яЁё]/u.test(player.subclass) ? player.subclass : ''
+  const roleLine = [player.species, playerRoleLabel(player), subclassLabel].filter(Boolean).join(' · ')
+  const damagePercent = Math.round((1 - Math.max(0, Math.min(1, hp / maxHp))) * 100)
+  const equippedWeapons = (player.inventory ?? []).filter((item) => item.equipped && item.type === 'weapon').slice(0, 2)
   return (
     <aside className="player-hud" aria-label={`${player.character}: здоровье ${hp} из ${maxHp}, класс доспеха ${player.armor}, скорость ${player.speed} футов`}>
       <div className="hud-identity">
-        {/* Портрет с гербовым щитом КД и печатью уровня, как в макете стола. */}
+        {/* Портрет как в BG3: полученный урон заливает его снизу, ОЗ — полосой
+            внутри круга. КД и уровень вынесены в строку характеристик: значки
+            поверх портрета наезжали на ОЗ. */}
         <span className="hud-portrait-frame">
           <span className={`hud-portrait${hp <= 0 ? ' down' : ''}`} data-face={heroFaceMode(player)} style={heroFaceStyle(player)}>{!hasHeroPortrait(player) && <HeroFaceInitials hero={player} />}</span>
-          <span className="hud-ac-badge" title={`Класс доспеха ${player.armor}`} aria-label={`Класс доспеха ${player.armor}`}><svg viewBox="0 0 34 38" aria-hidden="true"><path d="M17 2 4 7v10c0 8.5 5.6 14.6 13 18.5C24.4 31.6 30 25.5 30 17V7z" /></svg><b>{player.armor}</b></span>
-          <span className="hud-level-badge" title={`Уровень ${player.level}`} aria-label={`Уровень ${player.level}`}>{player.level}</span>
+          <span className="hud-portrait-damage" style={{ height: `${damagePercent}%` }} aria-hidden="true" />
+          <span className={`hud-portrait-hp${hp <= 0 ? ' down' : ''}`} aria-hidden="true">{hp <= 0 ? 'без сознания' : `${hp}${temporaryHp > 0 ? ` +${temporaryHp}` : ''} / ${maxHp}`}</span>
         </span>
-        <span><strong>{player.character}</strong><small>{playerRoleLabel(player)}</small></span>
+        <span><strong title={player.character}>{player.character}</strong><small title={roleLine}>{roleLine}</small></span>
       </div>
+      <dl className="hud-stats" aria-label="Характеристики героя">
+        <div title={`Класс доспеха ${player.armor}`}><dt>КД</dt><dd>{player.armor}</dd></div>
+        {initiative != null && <div title="Инициатива: прибавка к броску очерёдности"><dt>Иниц.</dt><dd>{signedNumber(initiative)}</dd></div>}
+        <div title={`Скорость ${player.speed} футов`}><dt>Скор.</dt><dd>{player.speed}</dd></div>
+        {/* Заклинателю — СЛ и бонус атаки из проекции (та же функция, что у
+            CastSpell); остальным — пассивная внимательность. */}
+        {spellcaster
+          ? <>
+              <div title="Сложность спасброска от заклинаний героя"><dt>СЛ</dt><dd>{spellcaster.save_dc}</dd></div>
+              <div title="Бонус атаки заклинанием"><dt>Атака</dt><dd>{signedNumber(spellcaster.attack_bonus)}</dd></div>
+            </>
+          : passivePerception != null && <div title="Пассивная внимательность: что герой замечает, не тратя действий"><dt>Вним.</dt><dd>{passivePerception}</dd></div>}
+      </dl>
+      {/* Что герой держит в руках — из серверного инвентаря, без своей логики. */}
+      {equippedWeapons.length > 0 && <div className="hud-weapons" role="group" aria-label="Оружие в руках">
+        {equippedWeapons.map((item) => <span key={item.id} className="hud-weapon" title={`${item.name}${item.combat?.damage ? ` · ${item.combat.damage}` : ''}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} size={28} compact /><span>{item.name}</span></span>)}
+      </div>}
       {/* Полоса здоровья с хвостом временных хитов: они уходят первыми и
           не лечатся, поэтому цвет у них свой (`--bonus`), а не продолжение красного. */}
       <div className="hud-health" title={`Здоровье: ${hp} из ${maxHp}${status && status.temporaryHp > 0 ? ` · временные хиты ${status.temporaryHp}` : ''}`}>
@@ -562,8 +605,8 @@ function PlayerHud({ player, hazards = [], combatActive = false, status, onChara
         {hazards.length > 0 && <em className="hud-hazard" title={`Активная опасность: ${hazardLabel}`}><Flame size={13} />{hazardLabel}</em>}
       </div>
       <div className="hud-actions">
-        <button onClick={onCharacter} title="Лист героя" aria-label="Лист героя"><BookOpen size={15} /></button>
-        <button onClick={onInventory} title={`Инвентарь · ${player.inventory.length}`} aria-label={`Инвентарь, предметов: ${player.inventory.length}`}><BackpackIcon /><b>{player.inventory.length}</b></button>
+        <button onClick={onCharacter} title="Лист героя" aria-label="Лист героя"><BookOpen size={15} /><span className="hud-action-label">Лист героя</span></button>
+        <button onClick={onInventory} title={`Инвентарь · ${player.inventory.length}`} aria-label={`Инвентарь, предметов: ${player.inventory.length}`}><BackpackIcon /><span className="hud-action-label">Вещи</span><b>{player.inventory.length}</b></button>
       </div>
       {/* Вторая строка — словами, потому что по ним принимают решения: держать
           ли концентрацию под ударом, чем лечить отравление. Рисуется только
@@ -691,7 +734,7 @@ function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiar
         {slotChoices.length > 1 && <label className="reaction-slot"><span>Ячейка</span><select value={chosenSlot} disabled={busy} onChange={(event) => setChosenSlots((current) => ({ ...current, [option.id]: Number(event.target.value) }))}>{slotChoices.map((level) => <option key={level} value={level}>{level}-й круг</option>)}</select></label>}
       </div>
     })}</div>
-    {!savingThrowBonus && <footer><button disabled={busy} onClick={onDecline}>{busy ? 'Применяем…' : failedSave ? 'Оставить провал' : 'Не реагировать'}</button><span>{failedSave ? 'Несгибаемый не расходует реакцию и восстанавливается после продолжительного отдыха.' : 'Реакция восстановится в начале следующего хода героя.'}</span></footer>}
+    {!savingThrowBonus && <footer><button disabled={busy} onClick={onDecline}>{busy ? 'Применяем…' : failedSave ? 'Оставить провал' : 'Не реагировать'}</button><span>{failedSave ? 'Несгибаемый не расходует реакцию и восстанавливается после продолжительного отдыха.' : 'Реакция восстановится в начале следующего хода героя. Чтобы отвечать без вопроса, выберите режим «Сразу» на панели героя.'}</span></footer>}
     {savingThrowBonus && <footer><span>Этот выбор не расходует реакцию.</span></footer>}
   </section></div>
 }
@@ -814,7 +857,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const { confirmPendingAction, cancelPendingAction } = gameSession
   const { advanceAdventure, directorBusy } = gameSession
   const { pendingTacticalCommand, retryPendingTacticalCommand } = gameSession
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, setReactionPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
   const [checkDiceScene, setCheckDiceScene] = useState<PendingCheckDiceScene | null>(null)
   const checkDiceSceneRef = useRef<PendingCheckDiceScene | null>(null)
   const checkDiceTimerRef = useRef<number | null>(null)
@@ -1612,6 +1655,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const reactionActorName = reactionActor && 'character' in reactionActor ? reactionActor.character : reactionActor?.name ?? 'Герой'
   const reactionSourceName = reactionSource && 'character' in reactionSource ? reactionSource.character : reactionSource?.name ?? 'Противник'
   const canAnswerReaction = Boolean(reactionWindow && lifecycleStatus === 'active' && (isAdmin || accessibleHeroIds.includes(reactionWindow.actor_id) || accessibleHeroIds.includes(reactionControllerId)))
+  // Реакции в режиме «никогда» в окне не предлагаются: игрок уже ответил на них
+  // заранее. Остальные варианты окна остаются как прислал сервер.
+  const reactionNeverIds = new Set((reactionActor && 'reactionModes' in reactionActor ? reactionActor.reactionModes ?? [] : [])
+    .filter((entry) => entry.mode === 'never').map((entry) => entry.id))
+  const promptReactionWindow = reactionWindow && reactionNeverIds.size
+    ? { ...reactionWindow, action_options: reactionWindow.action_options.filter((option) => !reactionNeverIds.has(option.id)) }
+    : reactionWindow
   const visibleTypingActorIds = (state.presence?.typing_actor_ids ?? []).filter((actorId) => actorId !== activePlayer.id)
   const narratorAvailability = narratorAvailabilityMessage(aiHealth, campaignAi?.settings.model)
   const continueSceneInteraction = (): Promise<CommandOutcome> => {
@@ -1742,6 +1792,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCastSpell={castSpell}
             onUseCombatAction={useCombatAction}
             onSetSpellBonusPreference={setSpellBonusPreference}
+            onSetReactionMode={setReactionPreference}
             onChangeWeapon={changeWeapon}
             onOperateDoor={operateDoor}
             onOperateSceneObject={operateSceneObject}
@@ -1945,7 +1996,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           return player ? levelUpCharacter(player.id, player.level) : Promise.resolve({ ok: false, error: 'Герой не найден' })
         }}
       />}
-      {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} clock={state.turn_clock} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} slotLevels={reactionSlotLevels} onChoose={(actionId, beneficiaryId, slotLevel) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId, undefined, slotLevel)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
+      {reactionWindow && promptReactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={promptReactionWindow} clock={state.turn_clock} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} slotLevels={reactionSlotLevels} onChoose={(actionId, beneficiaryId, slotLevel) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId, undefined, slotLevel)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
       {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
       {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
       {!campaignsOpen && !showDeathScreen && !showConclusion && levelUpCelebration && !(editingPlayerId === levelUpCelebration.playerId) && <LevelUpScreen

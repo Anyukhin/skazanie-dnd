@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { WORLD_MAP_TRAVEL_MARKER, abandonableQuest, classifyPartyDecision, detectPartyExitRequest } from '../server/party-exit-intent.mjs'
-import { proposeAgentInteraction, resolvePartyDecision } from '../server/player-request-router.mjs'
+import { PARTY_OPTION_LIMIT, partyOptionLabel, proposeAgentInteraction, resolvePartyDecision } from '../server/player-request-router.mjs'
 
 const caravanserai = {
   scene: { title: 'Глава 1', location: 'Заброшенный Караван-сарай', objective: 'Найти печать архивариуса' },
@@ -227,4 +227,47 @@ test('подпись маршрута согласована по-русски: 
   const village = proposeAgentInteraction('Уходим в Кленовку', state)
   assert.equal(village?.options[0], 'Уходим из «Водяная мельница» и идём в «Кленовка»')
   assert.equal(classifyPartyDecision(village.options[0]).destinationHint, 'Кленовка')
+})
+
+test('длинное покидаемое место сокращается, а маршрут доходит до решения целиком', () => {
+  // Плейтест 2026-10-04, QP-05: «Уходим из «<70 знаков>» и идём в «Другой путь
+  // к разгадке»» срезался на сотом знаке посреди кавычек, и отряд уходил в
+  // новую локацию «Другой п».
+  const from = 'Смотровая дамба по маршруту от Высокой пристани вдоль соляных складов'
+  const state = { scene: { location: from }, worldMemory: { quests: [{ id: 'quest:main', title: 'Найти следы', status: 'active' }] } }
+  for (const destination of ['Другой путь к разгадке', 'Старая арка у провала после соляных складов и разлома под маяком']) {
+    const card = proposeAgentInteraction(`Отправляемся в «${destination}»`, state)
+    assert.equal(card?.type, 'vote', destination)
+    card.options.forEach((label, index) => {
+      assert.ok(label.length <= PARTY_OPTION_LIMIT, `${label.length}: ${label}`)
+      assert.equal(partyOptionLabel(label), label, 'подпись уже в лимите, сервер её не режет')
+      assert.equal((label.match(/«/gu) ?? []).length, (label.match(/»/gu) ?? []).length, label)
+      const resolved = resolvePartyDecision(`[РЕШЕНИЕ ГРУППЫ] ${label}`, {
+        ...state,
+        agentInteraction: {
+          id: 'decision-long', status: 'resolved', resolvedOptionId: `option-${index + 1}`,
+          options: card.options.map((item, position) => ({ id: `option-${position + 1}`, label: item })),
+        },
+      })
+      if (resolved.type !== 'scene_request') return
+      // Короткое название доходит дословно, слишком длинное — укороченным по
+      // слову, но всегда началом настоящего названия, а не обрывком слова.
+      assert.ok(destination.startsWith(resolved.destinationHint), `${resolved.destinationHint} ← ${destination}`)
+      assert.match(resolved.destinationHint, /\p{L}$/u)
+      if (destination.length <= 50) assert.equal(resolved.destinationHint, destination)
+    })
+  }
+})
+
+test('подпись, обрезанная посреди названия, не превращается в место', () => {
+  // Так записаны карточки, открытые до исправления: заново открыть их нельзя,
+  // а повторный разбор не должен выдумывать локацию из обрывка.
+  const legacy = 'Уходим из «Смотровой дамбе по маршруту от Высокой пристани вдоль соляных складов» и идём в «Другой п'
+  assert.deepEqual(classifyPartyDecision(legacy), { kind: 'move', destinationHint: '', abandonsQuest: false })
+  // Длинную подпись от Режиссёра сервер режет по слову и без висящей кавычки.
+  const cut = partyOptionLabel(`${legacy}уть к разгадке»`)
+  assert.ok(cut.length <= PARTY_OPTION_LIMIT)
+  assert.equal(cut.includes('«Другой'), false, cut)
+  assert.deepEqual(classifyPartyDecision(cut), { kind: 'move', destinationHint: '', abandonsQuest: false })
+  assert.equal(partyOptionLabel('  Остаться   и исследовать  '), 'Остаться и исследовать')
 })

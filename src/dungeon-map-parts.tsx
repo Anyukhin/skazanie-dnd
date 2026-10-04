@@ -139,6 +139,11 @@ export const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
 export const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
 export const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 export const TILE_ORDER_KEY = 'skazanie-tile-order-v1'
+/* Хроника свёрнута во вкладку у края стола: бой и исследование целиком на
+   доске, а слово Рассказчику — одним щелчком по вкладке или «Своё действие». */
+export const CHAT_COLLAPSED_KEY = 'skazanie-chat-collapsed-v1'
+/* Высота поля ввода под хроникой: тянется ручкой над полем. */
+export const COMPOSER_HEIGHT_KEY = 'skazanie-composer-height-v1'
 export const MAP_LEGEND_KEY = 'skazanie-map-legend-open-v1'
 export const BASE_ATTACK_ID = '__base-attack__'
 export const SCENE_OBJECT_VERB_LABELS: Record<SceneObjectIntent, string> = {
@@ -295,10 +300,22 @@ export function heroResourceTitle(keys: string[], current: number, max: number):
 }
 
 /** Короткая подпись в ряду: у ячейки — цифра круга, у прочего — имя строчными. */
+/* Короткие имена для лотка ресурсов: полное «Магическое восстановление»
+   обрывалось многоточием посреди слова. Полное имя остаётся в подсказке. */
+const HERO_RESOURCE_SHORT_LABELS: Record<string, string> = {
+  arcane_recovery: 'восстановление',
+  superiority_dice: 'превосходство',
+  bardic_inspiration: 'вдохновение',
+  channel_divinity: 'канал',
+  sorcery_points: 'чародейство',
+  divine_sense: 'чувство',
+  mystic_arcanum_6: 'арканум',
+}
+
 export function heroResourceShortLabel(key: string): string {
   const slot = /^spell_slots_([1-9])$/u.exec(key)
   if (slot) return slot[1]
-  return heroResourceLabel(key).toLocaleLowerCase('ru')
+  return HERO_RESOURCE_SHORT_LABELS[key] ?? heroResourceLabel(key).toLocaleLowerCase('ru')
 }
 
 /**
@@ -363,7 +380,12 @@ export const HOTBAR_COST_FILTER_LABELS: Record<HotbarCostFilter, string> = {
 }
 
 export type CombatMode = 'weapon' | 'magic' | 'action'
-export type CombatDeck = 'common' | 'weapon' | 'magic' | 'class' | 'items'
+/* «Все» — общий вид BG3: плитки всех колод разом, разложенные секциями по
+   экономике хода. Остальные колоды — фильтры этого вида. */
+export type CombatDeck = 'all' | 'common' | 'weapon' | 'magic' | 'class' | 'items'
+/* Секция общего вида: куда плитка ложится по цене. Заклинания — своей
+   секцией, как у заклинателя в BG3: их много, и они живут по кругам ячеек. */
+export type HotbarSection = 'action' | 'spell' | 'bonus' | 'items'
 export type PendingCombatCommand =
   | { kind: 'target'; targetId: string; attackMode?: WeaponAttackChoice['attackMode']; attackAbility?: WeaponAttackChoice['attackAbility']; sneakAttack?: boolean }
   | { kind: 'area'; x: number; y: number }
