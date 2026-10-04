@@ -734,7 +734,7 @@ function ReactionPrompt({ actorName, sourceName, window, clock, busy, beneficiar
         {slotChoices.length > 1 && <label className="reaction-slot"><span>Ячейка</span><select value={chosenSlot} disabled={busy} onChange={(event) => setChosenSlots((current) => ({ ...current, [option.id]: Number(event.target.value) }))}>{slotChoices.map((level) => <option key={level} value={level}>{level}-й круг</option>)}</select></label>}
       </div>
     })}</div>
-    {!savingThrowBonus && <footer><button disabled={busy} onClick={onDecline}>{busy ? 'Применяем…' : failedSave ? 'Оставить провал' : 'Не реагировать'}</button><span>{failedSave ? 'Несгибаемый не расходует реакцию и восстанавливается после продолжительного отдыха.' : 'Реакция восстановится в начале следующего хода героя.'}</span></footer>}
+    {!savingThrowBonus && <footer><button disabled={busy} onClick={onDecline}>{busy ? 'Применяем…' : failedSave ? 'Оставить провал' : 'Не реагировать'}</button><span>{failedSave ? 'Несгибаемый не расходует реакцию и восстанавливается после продолжительного отдыха.' : 'Реакция восстановится в начале следующего хода героя. Чтобы отвечать без вопроса, выберите режим «Сразу» на панели героя.'}</span></footer>}
     {savingThrowBonus && <footer><span>Этот выбор не расходует реакцию.</span></footer>}
   </section></div>
 }
@@ -857,7 +857,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const { confirmPendingAction, cancelPendingAction } = gameSession
   const { advanceAdventure, directorBusy } = gameSession
   const { pendingTacticalCommand, retryPendingTacticalCommand } = gameSession
-  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
+  const { state, combatVisualBatch, connectionState, tacticalBusy, tacticalError, merchantBusy, merchantError, directorError, merchantView, merchantNarration, clearTacticalError, submitAction, rollPendingCheck, cancelPendingCheck, rollFreeDie, voteAgentInteraction, abstainAgentInteraction, rollAgentInteraction, continueAgentInteraction, startCombat, attackNpc, startRest, spendHitPointDie, completeRest, movePlayer, attackEnemy, throwAreaItem, castSpell, useCombatAction, setSpellBonusPreference, setReactionPreference, changeWeapon, operateDoor, operateSceneObject, captiveAction, lootContainer, beastAction, resolveGuardEncounter, proposeParley, settleParley, openTavernDiceRound, answerTavernDiceRound, leaveTavernDiceRound, orderTavernDrink, sendLetter, receiveNpcBlessing, useLevelTransition, finishMapTurn, resolveHeroDeath, equipItem, useItem, transferItem, attuneItem, activateItem, importCharacter, levelUpCharacter, switchCampaign, loadMerchant, bargainWithMerchant, buyFromMerchant, sellToMerchant, appraiseWithMerchant, purchaseMerchantService, assembleMerchant, assembleEncounter, moveMerchant, setMerchantAvailability, updatePlayer, updateWorld } = gameSession
   const [checkDiceScene, setCheckDiceScene] = useState<PendingCheckDiceScene | null>(null)
   const checkDiceSceneRef = useRef<PendingCheckDiceScene | null>(null)
   const checkDiceTimerRef = useRef<number | null>(null)
@@ -1655,6 +1655,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const reactionActorName = reactionActor && 'character' in reactionActor ? reactionActor.character : reactionActor?.name ?? 'Герой'
   const reactionSourceName = reactionSource && 'character' in reactionSource ? reactionSource.character : reactionSource?.name ?? 'Противник'
   const canAnswerReaction = Boolean(reactionWindow && lifecycleStatus === 'active' && (isAdmin || accessibleHeroIds.includes(reactionWindow.actor_id) || accessibleHeroIds.includes(reactionControllerId)))
+  // Реакции в режиме «никогда» в окне не предлагаются: игрок уже ответил на них
+  // заранее. Остальные варианты окна остаются как прислал сервер.
+  const reactionNeverIds = new Set((reactionActor && 'reactionModes' in reactionActor ? reactionActor.reactionModes ?? [] : [])
+    .filter((entry) => entry.mode === 'never').map((entry) => entry.id))
+  const promptReactionWindow = reactionWindow && reactionNeverIds.size
+    ? { ...reactionWindow, action_options: reactionWindow.action_options.filter((option) => !reactionNeverIds.has(option.id)) }
+    : reactionWindow
   const visibleTypingActorIds = (state.presence?.typing_actor_ids ?? []).filter((actorId) => actorId !== activePlayer.id)
   const narratorAvailability = narratorAvailabilityMessage(aiHealth, campaignAi?.settings.model)
   const continueSceneInteraction = (): Promise<CommandOutcome> => {
@@ -1785,6 +1792,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCastSpell={castSpell}
             onUseCombatAction={useCombatAction}
             onSetSpellBonusPreference={setSpellBonusPreference}
+            onSetReactionMode={setReactionPreference}
             onChangeWeapon={changeWeapon}
             onOperateDoor={operateDoor}
             onOperateSceneObject={operateSceneObject}
@@ -1988,7 +1996,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           return player ? levelUpCharacter(player.id, player.level) : Promise.resolve({ ok: false, error: 'Герой не найден' })
         }}
       />}
-      {reactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={reactionWindow} clock={state.turn_clock} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} slotLevels={reactionSlotLevels} onChoose={(actionId, beneficiaryId, slotLevel) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId, undefined, slotLevel)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
+      {reactionWindow && promptReactionWindow && canAnswerReaction && <ReactionPrompt actorName={String(reactionActorName)} sourceName={String(reactionSourceName)} window={promptReactionWindow} clock={state.turn_clock} busy={tacticalBusy} beneficiaries={reactionBeneficiaries} slotLevels={reactionSlotLevels} onChoose={(actionId, beneficiaryId, slotLevel) => useCombatAction(reactionWindow.actor_id, actionId, reactionWindow.source_actor_id, undefined, beneficiaryId, undefined, slotLevel)} onDecline={() => useCombatAction(reactionWindow.actor_id, 'decline-reaction')} />}
       {!campaignsOpen && showDeathScreen && <DeathScreen heroes={fallenHeroes} partyDefeated={partyDefeated} busy={tacticalBusy} error={tacticalError} canResolve={(heroId) => isAdmin || accessibleHeroIds.includes(heroId)} onResolve={(heroId, resolution, replacementName) => { if (resolution === 'replace') setReplacementEditorId(heroId); resolveHeroDeath(heroId, resolution, replacementName) }} onContinueToEpilogue={() => setReviewedPartyDefeat(state.sessionCode)} />}
       {!campaignsOpen && showConclusion && <CampaignConclusionScreen status={lifecycleStatus as 'completed' | 'failed' | 'archived'} epilogue={lifecycle?.epilogue} busy={lifecycleBusy} canManage={canManageLifecycle} onArchive={() => { void changeLifecycle('archive') }} onChooseCampaign={() => setCampaignsOpen(true)} />}
       {!campaignsOpen && !showDeathScreen && !showConclusion && levelUpCelebration && !(editingPlayerId === levelUpCelebration.playerId) && <LevelUpScreen

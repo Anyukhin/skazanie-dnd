@@ -12,7 +12,7 @@ import { reputationTier } from './reputation-policy.mjs'
 import { projectVisibleState } from './security.mjs'
 import { supersededFeatureResourceIdsFor } from './combat-actions.mjs'
 import { heroSpellcastingSummaryFor } from './combat-spells.mjs'
-import { RULE_IDS, hitPointDicePoolForActor, spellComponentAvailabilityFor, movementForActor, effectiveSpeedFeet, positionInEffect } from './rules-engine.mjs'
+import { RULE_IDS, heroReactionModesFor, hitPointDicePoolForActor, spellComponentAvailabilityFor, movementForActor, effectiveSpeedFeet, positionInEffect } from './rules-engine.mjs'
 import {
   MATERIALS,
   SIZE_CLASSES,
@@ -1599,8 +1599,12 @@ function playerItemsWithCapabilities(players, viewerId = '', rulesetId = '', sta
     // Сводка заклинателя — своему герою: СЛ и бонус атаки у портрета считаются
     // той же функцией, что и в CastSpell, а не арифметикой клиента.
     const spellcasting = own && publicPlayer.characterSheet ? heroSpellcastingSummaryFor(player) : null
+    // Реакции своего героя и их режимы («спрашивать», «сразу», «никогда»):
+    // список собирает сервер, тот же, по которому команда сверяет запрос.
+    const reactionModes = own && state ? heroReactionModesFor(state, String(player?.id ?? '')) : null
     return {
       ...publicPlayer,
+      ...(reactionModes ? { reactionModes } : {}),
       ...(spellcasting ? { characterSheet: { ...publicPlayer.characterSheet, spellcaster: spellcasting } } : {}),
       ...(Array.isArray(visibleCombatActions) ? { combatActions: visibleCombatActions } : {}),
       ...(own && state && rulesetId === 'dnd_5e_2014' && Array.isArray(publicPlayer.combatSpells) ? {
@@ -1852,10 +1856,20 @@ export function campaignStateForViewer(state, user, actorId = '') {
         enemy_knowledge: _enemyKnowledge,
         active_effects: _activeEffects,
         concentration: _concentration,
+        reaction_preferences: _reactionPreferences,
         ...publicMechanics
       } = visible.mechanics
+      // Режимы реакций — заранее данные ответы игрока. Чужому столу они не
+      // нужны: свои режимы герой получает списком `reactionModes`, а ведущий
+      // видит реестр целиком.
+      const ownReactionPreferences = user?.role === 'admin'
+        ? visible.mechanics.reaction_preferences
+        : actorId && visible.mechanics.reaction_preferences?.[String(actorId)]
+          ? { [String(actorId)]: visible.mechanics.reaction_preferences[String(actorId)] }
+          : null
       return {
       ...publicMechanics,
+      ...(ownReactionPreferences ? { reaction_preferences: ownReactionPreferences } : {}),
       ...(Object.hasOwn(publicMechanics, 'resources')
         ? { resources: publicResourcesFor(state, publicMechanics.resources) }
         : {}),

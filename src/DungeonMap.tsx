@@ -60,10 +60,12 @@ import type {
   Enemy,
   GameState,
   GuardResolution,
+  HeroReactionMode,
   LetterAddresseeKind,
   ParleyOutcome,
   Player,
   PlayerRequestKind,
+  ReactionMode,
   SceneObjectIntent,
   TacticalProp,
   TavernDiceApproach,
@@ -117,6 +119,7 @@ import {
 import { SUPERSEDED_FEATURE_POOLS, fallbackCombatActions } from './combat-actions'
 import { allCatalogCombatSpells, fallbackCombatSpells } from './combat-spells'
 import { CombatIcon } from './CombatIcon'
+import { ReactionAskMark, ReactionModesPanel, reactionIconId, reactionModeTitle } from './ReactionModes'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
 import { drawLingeringSpellEffects, type BoardAreaEffect, type BoardEffectRenderer, type BoardOverlayCell } from './board-render'
 import { CIRCULAR_AREA_GEOMETRY_VERSION, gridOriginForTargetCell } from './area-geometry'
@@ -266,7 +269,7 @@ function heroClassPoolRowsFrom(resources: Record<string, { current?: number; max
     .filter((row) => !isSpellSlotPool(row.keys[0]) && row.keys[0] !== 'pact_slots')
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, children }: {
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -289,6 +292,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { itemId?: string; spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
   onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => Promise<CommandOutcome>
   onSetSpellBonusPreference?: (actorId: string, enabled: boolean) => Promise<CommandOutcome>
+  onSetReactionMode?: (actorId: string, reactionId: string, mode: ReactionMode, reactionName?: string) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
   onOperateDoor: (actorId: string, doorId: string, intent: 'open' | 'close' | 'force' | 'lockpick') => Promise<CommandOutcome>
   onOperateSceneObject: (actorId: string, propId: string, intent: SceneObjectIntent) => Promise<CommandOutcome>
@@ -542,6 +546,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /* Выбор круга ячейки всплывает над плиткой заклинания, если его можно
      сотворить ячейками нескольких кругов. */
   const [upcastPrompt, setUpcastPrompt] = useState<{ spellId: string; anchor: DOMRect } | null>(null)
+  // Панель режимов реакций: где открыть и чью строку выделить.
+  const [reactionMenu, setReactionMenu] = useState<{ anchorElement: HTMLElement; focusId: string | null } | null>(null)
   const closeUpcastPrompt = useCallback(() => setUpcastPrompt(null), [])
   const hotbarActionsRef = useRef<HTMLDivElement | null>(null)
   const tileTip = useTileTooltip(hotbarActionsRef)
@@ -2759,11 +2765,24 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      потрачена ли реакция в этом раунде. */
   const reactionHero = viewerHero ?? activeHero
   const railReactionReady = railPips.find((pip) => pip.id === 'reaction')?.ready ?? true
-  const heroReactions = reactionHero ? [
-    { id: 'opportunity-attack', name: 'Атака по возможности', kind: 'action' as const },
-    ...(reactionHero.combatActions ?? []).filter((action) => action.actionType === 'reaction').map((action) => ({ id: action.id, name: action.name, kind: 'action' as const })),
-    ...(reactionHero.combatSpells ?? []).filter((spell) => spellActionType(spell) === 'reaction').map((spell) => ({ id: spell.id, name: spell.name, kind: 'spell' as const })),
-  ].filter((reaction, index, list) => list.findIndex((other) => other.id === reaction.id) === index) : []
+  // Реакции героя и их режимы приходят с сервера списком — тем же, по которому
+  // сервер сверяет команду. Чужому герою режимов не отдают: тогда панель
+  // показывает его реакции без переключателя.
+  const ownReactionModes = reactionHero?.reactionModes ?? null
+  const heroReactions: HeroReactionMode[] = ownReactionModes ?? (reactionHero ? [
+    { id: 'opportunity-attack', name: 'Атака по возможности', kind: 'action' as const, mode: 'ask' as const },
+    ...(reactionHero.combatActions ?? []).filter((action) => action.actionType === 'reaction').map((action) => ({ id: action.id, name: action.name, kind: 'action' as const, mode: 'ask' as const })),
+    ...(reactionHero.combatSpells ?? []).filter((spell) => spellActionType(spell) === 'reaction').map((spell) => ({ id: `cast:${spell.id}`, spell_id: spell.id, name: spell.name, kind: 'spell' as const, mode: 'ask' as const })),
+  ].filter((reaction, index, list) => list.findIndex((other) => other.id === reaction.id) === index) : [])
+  const canSetReactionModes = Boolean(ownReactionModes && onSetReactionMode && reactionHero && !ownHeroDead)
+  const openReactionModes = (anchorElement: HTMLElement, focusId: string | null = null) => {
+    if (reactionMenu) { setReactionMenu(null); return }
+    setReactionMenu({ anchorElement, focusId })
+  }
+  const setReactionMode = (reaction: HeroReactionMode, mode: ReactionMode) => {
+    if (!reactionHero || !onSetReactionMode) return
+    void onSetReactionMode(reactionHero.id, reaction.id, mode, reaction.name)
+  }
   const openChatForOwnAction = () => {
     toggleChat(false)
     window.requestAnimationFrame(() => freeInputRef.current?.focus())
@@ -4012,7 +4031,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {combatActive && heroReactions.length > 0 && <div className="hud-reactions" role="group" aria-label={`Реакции героя${railReactionReady ? '' : ': реакция этого раунда потрачена'}`}>
             <span className="hud-side-title">Реакции</span>
             <div className="hud-reaction-grid">
-              {heroReactions.slice(0, 6).map((reaction) => <span key={reaction.id} className={`hud-reaction${railReactionReady ? '' : ' spent'}`} title={`${reaction.name} — реакция. Срабатывает в окне реакции, когда случится подходящее событие${railReactionReady ? '' : '. Реакция этого раунда уже потрачена'}`}><CombatIcon id={reaction.id} kind={reaction.kind === 'spell' ? 'spell' : 'action'} hint={reaction.name} size={34} compact /></span>)}
+              {/* Облачко — «спрашивать», серая — «никогда», без метки — «сразу».
+                  Щелчок открывает режимы всех реакций героя. */}
+              {heroReactions.slice(0, 6).map((reaction) => canSetReactionModes
+                ? <button key={reaction.id} type="button" data-reaction-modes-anchor="" className={`hud-reaction mode-${reaction.mode}${railReactionReady ? '' : ' spent'}`} aria-haspopup="dialog" aria-expanded={reactionMenu?.focusId === reaction.id} aria-label={`${reactionModeTitle(reaction)}${railReactionReady ? '' : '; реакция этого раунда потрачена'}. Изменить режим`} title={`${reactionModeTitle(reaction)}${railReactionReady ? '' : '. Реакция этого раунда уже потрачена'}. Щелчок — режимы реакций`} onClick={(event) => openReactionModes(event.currentTarget, reaction.id)}><CombatIcon id={reactionIconId(reaction)} kind={reaction.kind === 'spell' ? 'spell' : 'action'} hint={reaction.name} size={34} compact />{reaction.mode === 'ask' && <ReactionAskMark />}</button>
+                : <span key={reaction.id} className={`hud-reaction${railReactionReady ? '' : ' spent'}`} title={`${reaction.name} — реакция. Срабатывает в окне реакции, когда случится подходящее событие${railReactionReady ? '' : '. Реакция этого раунда уже потрачена'}`}><CombatIcon id={reactionIconId(reaction)} kind={reaction.kind === 'spell' ? 'spell' : 'action'} hint={reaction.name} size={34} compact /></span>)}
             </div>
           </div>}
           {state.mechanics?.movement?.[viewerHero?.id ?? turnActorId] && <div className="hero-cluster-speed" aria-label="Скорость героя">
@@ -4032,13 +4055,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
              {hitPointDice && <div title="Кости хитов тратятся на коротком отдыхе, восстанавливаются после долгого"><dt>Кости хитов</dt><dd>{hitPointDiceRemaining}/{hitPointDice.maximum} · к{hitPointDice.die_size}</dd></div>}
            </dl>}
            {/* Камни хода, классовые запасы и ячейки — в лотке над плитками. */}
-           {/* Вне боя на месте реакций — отдых и почта. Кнопки открывают те же
-               панели, что чипы хроники; свёрнутую хронику сначала разворачивают. */}
-           {!combatActive && <div className="hud-modes" role="group" aria-label="Отдых и почта">
-             <span className="hud-side-title">Отдых и почта</span>
+           {/* Вне боя на месте реакций — отдых, почта и режимы реакций. Кнопки
+               отдыха и писем открывают те же панели, что чипы хроники;
+               свёрнутую хронику сначала разворачивают. */}
+           {!combatActive && <div className="hud-modes" role="group" aria-label="Отдых и режимы">
+             <span className="hud-side-title">Отдых и режимы</span>
              <div className="hud-mode-grid">
                <button type="button" className={`hud-mode${openSituational === 'rest' ? ' open' : ''}`} aria-expanded={openSituational === 'rest'} onClick={() => { toggleChat(false); toggleSituational('rest') }} title="Короткий или долгий отдых: восстановление считает сервер"><Flame size={18} aria-hidden="true" /><span>Отдых</span></button>
                {(letterAddressees.length > 0 || heroLetters.length > 0) && <button type="button" className={`hud-mode${openSituational === 'letters' ? ' open' : ''}`} aria-expanded={openSituational === 'letters'} onClick={() => { toggleChat(false); toggleSituational('letters') }} title="Почта отряда: письма и курьеры"><Mail size={18} aria-hidden="true" /><span>Письма</span>{heroLettersInTransit.length > 0 && <b aria-label={`в пути: ${heroLettersInTransit.length}`}>{heroLettersInTransit.length}</b>}</button>}
+               {canSetReactionModes && <button type="button" data-reaction-modes-anchor="" className={`hud-mode${reactionMenu ? ' open' : ''}`} aria-haspopup="dialog" aria-expanded={Boolean(reactionMenu)} onClick={(event) => openReactionModes(event.currentTarget)} title="Режимы реакций: спрашивать, сразу или никогда"><RefreshCw size={18} aria-hidden="true" /><span>Реакции</span></button>}
              </div>
            </div>}
         </div>}
@@ -4096,6 +4121,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         onClose={closeUpcastPrompt}
       />}
       </section>
+      {reactionMenu && reactionHero && canSetReactionModes && <ReactionModesPanel
+        heroName={reactionHero.character}
+        reactions={heroReactions}
+        busy={tacticalBusy}
+        focusId={reactionMenu.focusId}
+        anchorElement={reactionMenu.anchorElement}
+        onSet={setReactionMode}
+        onClose={() => setReactionMenu(null)}
+      />}
     </>
   )
 }
