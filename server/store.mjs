@@ -177,6 +177,40 @@ export function deleteSession(token) {
   })
 }
 
+/**
+ * Непрозрачный ключ конкретной сессии для долгоживущих соединений (аудит PR #131,
+ * LIVE-01/02). Живой поток помнит этот хеш, а не саму cookie: по нему сервер
+ * узнаёт, что вход отозван или истёк, но предъявить его как пропуск нельзя.
+ * Пустая строка — сессии нет.
+ *
+ * @param {unknown} token
+ * @returns {string}
+ */
+export function sessionKeyForToken(token) {
+  return token ? tokenHash(String(token)) : ''
+}
+
+/**
+ * Актуальные пользователи по ключам сессий — одним чтением хранилища на весь
+ * набор соединений. Удалённая (logout) или истёкшая сессия в ответ не попадает,
+ * поэтому отсутствие ключа и есть сигнал закрыть его поток.
+ *
+ * @param {Iterable<string>} sessionKeys
+ * @returns {Map<string, ReturnType<typeof publicUser>>}
+ */
+export function usersForSessionKeys(sessionKeys) {
+  const wanted = new Set([...sessionKeys].filter(Boolean))
+  const result = new Map()
+  if (!wanted.size) return result
+  const db = readAuth()
+  for (const session of db.sessions) {
+    if (!wanted.has(session.tokenHash) || result.has(session.tokenHash)) continue
+    const user = db.users.find((item) => item.id === session.userId)
+    if (user) result.set(session.tokenHash, publicUser(user, db))
+  }
+  return result
+}
+
 export function listUsers() {
   const db = readAuth()
   return db.users.map((user) => publicUser(user, db))

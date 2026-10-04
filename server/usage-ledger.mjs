@@ -80,6 +80,15 @@ function safeCost(value) {
   return Number.isFinite(number) && number >= 0 ? number : 0
 }
 
+/**
+ * Запись, расход которой уже потрачен у поставщика: завершённая и неудачная.
+ * Неудачная без известного usage несёт нули (так было и до COST-01), поэтому
+ * старые записи ledger считаются так же, как раньше.
+ */
+function spentEntry(entry) {
+  return entry.status === 'completed' || entry.status === 'failed'
+}
+
 export function normalizeProviderUsage(usage = {}, fallbackTokens = 0) {
   const input = safeTokenCount(usage.input_tokens ?? usage.prompt_tokens)
   const output = safeTokenCount(usage.output_tokens ?? usage.completion_tokens)
@@ -135,7 +144,7 @@ export class DurableUsageLedger {
   _usedToday(ledger, now) {
     const day = dayKey(now)
     return Object.values(ledger.requests).filter((entry) => entry.day === day)
-      .reduce((total, entry) => total + (entry.status === 'reserved' ? safeTokenCount(entry.reserved_tokens) : entry.status === 'completed' ? safeTokenCount(entry.total_tokens) : 0), 0)
+      .reduce((total, entry) => total + (entry.status === 'reserved' ? safeTokenCount(entry.reserved_tokens) : spentEntry(entry) ? safeTokenCount(entry.total_tokens) : 0), 0)
   }
 
   reserve({
@@ -199,16 +208,29 @@ export class DurableUsageLedger {
     return structuredClone(entry)
   }
 
-  fail(requestId, errorCode = 'LLM_ERROR') {
+  /**
+   * Закрывает резерв неудачной попытки.
+   *
+   * Аудит PR #131, COST-01: если поставщик ответил и назвал свой расход, а
+   * ответ отвергнут как непригодный, этот расход записывается в ту же запись
+   * (`providerUsage`) и считается в дневной квоте и отчёте наравне с
+   * успешным. Без `providerUsage` — таймаут, сеть, отказ до отправки — расход
+   * неизвестен: резерв освобождается, как раньше, и ничего не списывается.
+   */
+  fail(requestId, errorCode = 'LLM_ERROR', providerUsage = null) {
     const id = clean(requestId, 160)
     const now = Number(this.now())
     const ledger = this._prune(this._read(), now)
     const entry = ledger.requests[id]
     if (!entry) throw new UsageLedgerError(`Unknown usage reservation ${id}`, 'USAGE_RESERVATION_NOT_FOUND')
     if (entry.status !== 'reserved') return structuredClone(entry)
+    const knownUsage = providerUsage && typeof providerUsage === 'object' && !Array.isArray(providerUsage)
+      ? normalizeProviderUsage(providerUsage, 0)
+      : null
     Object.assign(entry, {
       status: 'failed',
       reserved_tokens: 0,
+      ...(knownUsage ?? {}),
       finished_at_ms: now,
       error_code: clean(errorCode, 80) || 'LLM_ERROR',
     })
@@ -223,15 +245,18 @@ export class DurableUsageLedger {
     const day = dayKey(now)
     const entries = Object.values(ledger.requests).filter((entry) => entry.day === day)
     const completed = entries.filter((entry) => entry.status === 'completed')
+    // Расход — это всё, что поставщик назвал: успешные ответы и отвергнутые
+    // непригодные (COST-01). У прочих неудач токены нулевые.
+    const spent = entries.filter(spentEntry)
     const reserved = entries.filter((entry) => entry.status === 'reserved')
     return {
       day,
       daily_token_limit: this.dailyTokenLimit,
-      committed_tokens: completed.reduce((total, entry) => total + safeTokenCount(entry.total_tokens), 0),
+      committed_tokens: spent.reduce((total, entry) => total + safeTokenCount(entry.total_tokens), 0),
       reserved_tokens: reserved.reduce((total, entry) => total + safeTokenCount(entry.reserved_tokens), 0),
-      input_tokens: completed.reduce((total, entry) => total + safeTokenCount(entry.input_tokens), 0),
-      output_tokens: completed.reduce((total, entry) => total + safeTokenCount(entry.output_tokens), 0),
-      provider_cost: completed.reduce((total, entry) => total + safeCost(entry.provider_cost), 0),
+      input_tokens: spent.reduce((total, entry) => total + safeTokenCount(entry.input_tokens), 0),
+      output_tokens: spent.reduce((total, entry) => total + safeTokenCount(entry.output_tokens), 0),
+      provider_cost: spent.reduce((total, entry) => total + safeCost(entry.provider_cost), 0),
       requests: entries.length,
       completed_requests: completed.length,
       failed_requests: entries.filter((entry) => entry.status === 'failed').length,
@@ -271,7 +296,9 @@ export class MeteredLLMClient {
       this.ledger.settle(reservation.request_id, result.usage ?? {})
       return result
     } catch (error) {
-      this.ledger.fail(reservation.request_id, error?.code ?? error?.name ?? 'LLM_ERROR')
+      // Аудит PR #131, COST-01: RouterAIClient прикладывает к ошибке
+      // непригодного ответа известный usage — он оплачен и уходит в ledger.
+      this.ledger.fail(reservation.request_id, error?.code ?? error?.name ?? 'LLM_ERROR', error?.providerUsage ?? null)
       throw error
     }
   }

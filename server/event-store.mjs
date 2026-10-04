@@ -69,6 +69,26 @@ export class CorruptEventLogError extends EventStoreError {
   }
 }
 
+/**
+ * Аудит PR #131, RCV-01/02: файлы кампании противоречат друг другу так, что
+ * обычная загрузка отдала бы старое или пустое состояние вместо ошибки.
+ * Это не порча одного файла, а потеря: хвоста журнала (metadata или снимок
+ * знают версию, которой в журнале нет) либо снимка v0 — единственной записи
+ * исходного состояния. Игровой путь останавливается по образцу
+ * `CorruptEventLogError`; восстановление — отдельная операция владельца,
+ * а не побочный эффект первой загрузки.
+ */
+export class CampaignRecoveryRequiredError extends EventStoreError {
+  constructor(campaignId, reason, message, details = {}) {
+    super(`Campaign ${campaignId} requires recovery (${reason}): ${message}`, 'CAMPAIGN_RECOVERY_REQUIRED', {
+      campaign_id: campaignId,
+      recovery_required: true,
+      reason,
+      ...details,
+    })
+  }
+}
+
 export class StoreBusyError extends EventStoreError {
   constructor(campaignId) {
     super(`Campaign ${campaignId} is being committed by another process`, 'EVENT_STORE_BUSY', { campaign_id: campaignId })
@@ -398,7 +418,68 @@ export class FileEventStore {
     return this._normalizeState(nextState, lastEvent.state_version_after, reducerVersion)
   }
 
+  /**
+   * Аудит PR #131, RCV-01: свидетельства головы журнала, записанные рядом с ним.
+   *
+   * Коммит пишет файлы в порядке «событие → снимок → metadata», поэтому, пока
+   * файлы целы, ни снимок, ни metadata не бывают новее журнала. Обратное —
+   * журнал новее metadata — штатно: процесс мог упасть между записью коммита
+   * и metadata. Значит, сравнение одностороннее.
+   *
+   * Читаются свидетельства ДО журнала: если другой процесс успел записать
+   * metadata или снимок к этому чтению, его файл коммита уже лежит в журнале
+   * к моменту `readdir`, и ложной тревоги не будет.
+   */
+  _headEvidence(layout) {
+    const evidence = []
+    if (existsSync(layout.metadata)) {
+      const metadata = readJson(layout.metadata, 'campaign metadata')
+      // Чужая metadata — уже повод для `CorruptEventLogError` в `_readMetadata`;
+      // свидетельством о голове этого журнала она не считается.
+      if (metadata?.campaign_id === layout.campaignId) {
+        for (const field of ['state_version', 'current_version']) {
+          const value = Number(metadata[field])
+          if (Number.isSafeInteger(value) && value > 0) evidence.push({ source: `metadata.${field}`, state_version: value })
+        }
+      }
+    }
+    if (existsSync(layout.snapshots)) {
+      let newest = null
+      for (const name of readdirSync(layout.snapshots)) {
+        const match = name.match(SNAPSHOT_FILE)
+        if (match && Number(match[1]) > (newest?.state_version ?? 0)) newest = { source: `snapshots/${name}`, state_version: Number(match[1]) }
+      }
+      if (newest) evidence.push(newest)
+    }
+    return evidence
+  }
+
+  /**
+   * Журнал коммитов, сверенный со свидетельствами его головы.
+   *
+   * Аудит PR #131, RCV-01: `_readCommitFiles` проверяет непрерывность только
+   * найденных файлов, а исчезнувший последний файл неотличим от конца потока.
+   * Без этой сверки загрузка молча возвращалась к прошлой версии — вплоть до
+   * нулевой, — а `_readMetadata` затирал сохранённую версию вычисленной.
+   */
   _readCommits(layout) {
+    const evidence = this._headEvidence(layout)
+    const commits = this._readCommitFiles(layout)
+    const head = commits.at(-1)?.state_version_after ?? 0
+    const ahead = evidence.filter((item) => item.state_version > head)
+    if (ahead.length) {
+      const reached = Math.max(...ahead.map((item) => item.state_version))
+      throw new CampaignRecoveryRequiredError(
+        layout.campaignId,
+        'EVENT_LOG_TAIL_MISSING',
+        `stored evidence reaches state version ${reached}, but the event log ends at ${head}`,
+        { log_state_version: head, evidence_state_version: reached, evidence: ahead },
+      )
+    }
+    return commits
+  }
+
+  _readCommitFiles(layout) {
     if (!existsSync(layout.events)) return []
     const files = readdirSync(layout.events)
       .map((name) => ({ name, match: name.match(EVENT_FILE) }))
@@ -536,6 +617,33 @@ export class FileEventStore {
     return snapshot
   }
 
+  /**
+   * Аудит PR #131, RCV-02: пригодного снимка не нашлось, и загрузка собирается
+   * начать поток от `initialStateFactory`.
+   *
+   * У кампании из `initializeCampaign` снимок v0 — единственная запись
+   * исходного состояния: события `CampaignInitialized` в журнале нет, а фабрика
+   * по умолчанию возвращает `{}`. Начать от фабрики значит молча отдать пустую
+   * кампанию с наложенными поверх событиями. Сюда же попадает v0, чья карта
+   * потеряна: `_readSnapshot` пропускает такой снимок, и seed так же недоступен.
+   *
+   * Исключение — поток, который начинается с `LegacyStateImported`: событие
+   * несёт состояние целиком (см. `_applyEvent`), и seed ему не нужен. Явный
+   * `fromInitial` — заказанный вызывающим replay от фабрики; его не трогаем.
+   */
+  _assertSeedAvailable(layout, commits, targetVersion) {
+    const first = targetVersion > 0 ? commits[0]?.events?.[0] : null
+    if (first?.event_type === 'LegacyStateImported' && first.payload?.state) return
+    const seed = `${padVersion(0)}.json`
+    const missing = !existsSync(join(layout.snapshots, seed))
+    throw new CampaignRecoveryRequiredError(
+      layout.campaignId,
+      missing ? 'SEED_SNAPSHOT_MISSING' : 'SEED_SNAPSHOT_UNUSABLE',
+      missing ? `seed snapshot ${seed} is missing` : `seed snapshot ${seed} references missing map blobs`,
+      { state_version: targetVersion },
+    )
+  }
+
   // Проверенные записи передаются только внутри _withLock. Внешние чтения
   // всегда перечитывают журнал, чтобы видеть коммиты другого процесса.
   _load(layout, { atVersion, useSnapshots = true, reducerVersion = null, fromInitial = false } = {}, knownCommits = null) {
@@ -568,6 +676,7 @@ export class FileEventStore {
       state = this._normalizeState(snapshot.state, snapshot.state_version, selectedReducerVersion)
       fromVersion = snapshot.state_version
     } else {
+      if (!fromInitial) this._assertSeedAvailable(layout, commits, targetVersion)
       const firstEvent = commits.flatMap((commit) => commit.events).find((event) => event.state_version_after <= targetVersion)
       selectedReducerVersion = forcedReducerVersion ?? Number(firstEvent?.reducer_version ?? 0)
       state = this._normalizeState(this.initialStateFactory(layout.campaignId), 0, selectedReducerVersion)

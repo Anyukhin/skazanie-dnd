@@ -25,7 +25,7 @@ const options = () => ({ diceService: dice(), context: { serverAuthoritativeComb
  * пределах дальности заговора. Бой по умолчанию выключен: это состояние
  * привала, ради которого правило и заводилось.
  */
-function camp({ combatActive = false } = {}) {
+function camp({ combatActive = false, promises = [] } = {}) {
   const cells = Array.from({ length: 36 }, (_, index) => ({ x: index % 9, y: Math.floor(index / 9), type: 'floor', revealed: true }))
   return normalizeCampaignState({
     sessionCode: 'CAMP-1',
@@ -63,6 +63,11 @@ function camp({ combatActive = false } = {}) {
         }
         : { active: false, round: 0, active_index: 0, initiative: [], action_economy: {} },
     },
+    social: {
+      npcs: [{ id: 'mira', name: 'Мира', role: 'npc', visibility: 'party', available: true }],
+      relationships: { mira: { cleric: 0 } }, conversations: [], promises,
+    },
+    npc_world: { vitals: { mira: { alive: true, hp: 10 } } },
   })
 }
 
@@ -113,6 +118,39 @@ test('вне боя Prayer of Healing двигает мировые часы и 
   assert.ok(result.events.some((event) => event.event_type === 'TimeAdvanced' && event.payload.elapsed_minutes === 10))
   assert.ok(result.events.some((event) => event.event_type === 'HealingApplied' && event.target_ids[0] === 'fighter'))
   assert.equal(after.mechanics.resources.cleric.spell_slots_2.current, 1, 'ячейка второго круга потрачена')
+})
+
+test('десять минут ритуала — те же десять минут мира, что и AdvanceTime (аудит PR #131, WT-01)', () => {
+  /* Срок обещания наступает посреди накладывания. Раньше длительное
+     накладывание двигало только нижний слой часов: TimeAdvanced был, а
+     обещание оставалось открытым до следующего скачка. Контроль — обычный
+     AdvanceTime на те же десять минут из того же состояния. */
+  const state = camp({ promises: [{
+    id: 'promise:long-cast', npc_id: 'mira', hero_id: 'cleric', direction: 'party_to_npc',
+    text: 'Вернуть книгу', due_hint: 'через 5 минут', status: 'open', visibility: 'party',
+    created_at_minutes: 0, deadline_minutes: 5,
+  }] })
+  const longCast = cast(state, { spell_id: 'prayer-of-healing', target_id: 'fighter' })
+  const advance = resolveCommand(authoritative({ command_type: 'AdvanceTime', actor_id: 'cleric', amount: 10, unit: 'minute' }), state, options())
+  assert.ok(advance.events.some((event) => event.event_type === 'NpcPromiseResolved'), 'фикстура: AdvanceTime ломает просроченное обещание')
+
+  // Хвост мирового времени — тот же и стоит до эффекта заклинания: сначала
+  // прошли десять минут, потом легло лечение.
+  const shape = (event) => ({ event_type: event.event_type, payload: event.payload, target_ids: event.target_ids })
+  const timeIndex = longCast.events.findIndex((event) => event.event_type === 'TimeAdvanced')
+  assert.ok(timeIndex >= 0, 'накладывание двигает часы')
+  assert.deepEqual(longCast.events.slice(timeIndex, timeIndex + advance.events.length).map(shape), advance.events.map(shape))
+  const healingIndex = longCast.events.findIndex((event) => event.event_type === 'HealingApplied')
+  assert.ok(healingIndex >= timeIndex + advance.events.length, 'лечение ложится после последствий времени')
+
+  // Replay сходится с контролем по миру и не теряет эффект заклинания.
+  const afterCast = replayEvents(state, longCast.events)
+  const afterAdvance = replayEvents(state, advance.events)
+  assert.equal(afterCast.mechanics.world_time.elapsed_minutes, 10)
+  assert.deepEqual(afterCast.social, afterAdvance.social)
+  assert.equal(afterCast.social.promises[0].status, 'broken')
+  assert.equal(afterCast.mechanics.resources.cleric.spell_slots_2.current, 1, 'ячейка второго круга потрачена один раз')
+  assert.ok(afterCast.players.find((player) => player.id === 'fighter').hp > 9, 'воин подлечен')
 })
 
 test('в бою боевое заклинание работает как прежде', () => {

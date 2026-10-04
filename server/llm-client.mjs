@@ -218,6 +218,27 @@ function normalizeAssistantMessage(message, request, defaults) {
   return normalized
 }
 
+/**
+ * Аудит PR #131, COST-01. Ответ поставщика оплачен, как только пришёл его
+ * конверт, даже если содержание для игры непригодно: некорректный JSON, пустой
+ * ответ, чужой инструмент. Раньше нормализатор бросал ошибку до возврата
+ * `usage`, и обёртка учёта освобождала резерв так, будто запроса не было.
+ * Теперь известный `usage` прикладывается к той же ошибке полем
+ * `providerUsage`; класс, код и текст ошибки не меняются, отказ остаётся
+ * отказом. Расход, который неизвестен (таймаут, сеть, HTTP-ошибка), сюда не
+ * попадает и не придумывается.
+ */
+function normalizeWithKnownUsage(usage, normalize) {
+  try {
+    return normalize()
+  } catch (error) {
+    if (error instanceof LLMError && usage && typeof usage === 'object' && !Array.isArray(usage)) {
+      error.providerUsage = { ...usage }
+    }
+    throw error
+  }
+}
+
 function makeAbortScope(timeoutMs, externalSignal) {
   const controller = new AbortController()
   let timedOut = false
@@ -503,10 +524,10 @@ export class RouterAIClient extends LLMClient {
           maxEventBytes: request.maxEventBytes ?? ROUTERAI_STREAM_MAX_EVENT_BYTES,
           maxResponseBytes: request.maxResponseBytes ?? this.maxResponseBytes,
         }), scope.signal)
-        const message = normalizeAssistantMessage({
+        const message = normalizeWithKnownUsage(streamed.usage, () => normalizeAssistantMessage({
           role: 'assistant',
           content: streamed.content,
-        }, request, this)
+        }, request, this))
         return {
           ...message,
           model: streamed.model ?? body.model,
@@ -516,8 +537,9 @@ export class RouterAIClient extends LLMClient {
         }
       }
       const payload = await raceWithSignal(readProviderBody(response, this.maxResponseBytes), scope.signal)
-      const message = normalizeAssistantMessage(payload.choices?.[0]?.message, request, this)
-      return { ...message, model: payload.model ?? body.model, usage: payload.usage ?? null, provider: 'RouterAI' }
+      const usage = payload.usage ?? null
+      const message = normalizeWithKnownUsage(usage, () => normalizeAssistantMessage(payload.choices?.[0]?.message, request, this))
+      return { ...message, model: payload.model ?? body.model, usage, provider: 'RouterAI' }
     } catch (error) {
       if (scope.timedOut()) throw new LLMTimeoutError(timeoutMs)
       if (request.signal?.aborted) throw new LLMError('LLM-запрос отменён', 'LLM_ABORTED', { cause: error })

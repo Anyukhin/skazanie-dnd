@@ -142,27 +142,36 @@ export class RollRegistry {
     }
   }
 
-  issue({ checkId, check_id, campaignId, actorId, label = 'Проверка', modifier = 0, difficulty = 10, ability = null, advantage = false, disadvantage = false, visibility = 'public' }) {
+  /**
+   * Выдаёт кость для объявленной проверки. Аудит PR #131, SEC-01: прежде
+   * `check_id` был необязательным, и реестр выдавал «ничейный» бросок с
+   * параметрами клиента; обычная проверка принимала его `roll_id`, так что
+   * игрок мог бросать серию и подставить лучший. Теперь кость рождается только
+   * под зарегистрированную карточку, одна на карточку, и параметры берутся из
+   * неё. Свободный кубик стола — отдельный путь `/api/rooms/:code/dice`, в
+   * механику он не попадает.
+   */
+  issue({ checkId, check_id, campaignId, actorId }) {
     this.cleanup()
     const registeredId = checkId ?? check_id
-    let context = null
-    if (registeredId) {
-      const registered = this.checks.get(String(registeredId))
-      if (!registered) throw new RollRegistryError('Проверка не найдена или истекла', 'CHECK_NOT_FOUND')
-      if (registered.campaign_id !== String(campaignId || '') || registered.actor_id !== String(actorId || '')) {
-        throw new RollRegistryError('Проверка принадлежит другому ходу или персонажу', 'CHECK_FORBIDDEN')
-      }
-      if (registered.invalidated_at != null) throw new RollRegistryError('Эта проверка отменена: заявка была изменена', 'CHECK_INVALIDATED')
-      // Повтор HTTP-запроса после потери ответа возвращает ту же кость.
-      // Связь хранится вместе с реестром и переживает перезапуск.
-      if (registered.issued_roll_id) {
-        const issued = this.rolls.get(registered.issued_roll_id)
-        if (!issued) throw new RollRegistryError('Выданный бросок истёк', 'ROLL_NOT_FOUND')
-        return structuredClone(issued.result)
-      }
-      context = registered.context ?? null
-      ;({ label, modifier, difficulty, ability, advantage, disadvantage, visibility } = registered)
+    if (!registeredId) {
+      throw new RollRegistryError('Механический бросок выдаётся только для объявленной проверки', 'CHECK_REQUIRED')
     }
+    const registered = this.checks.get(String(registeredId))
+    if (!registered) throw new RollRegistryError('Проверка не найдена или истекла', 'CHECK_NOT_FOUND')
+    if (registered.campaign_id !== String(campaignId || '') || registered.actor_id !== String(actorId || '')) {
+      throw new RollRegistryError('Проверка принадлежит другому ходу или персонажу', 'CHECK_FORBIDDEN')
+    }
+    if (registered.invalidated_at != null) throw new RollRegistryError('Эта проверка отменена: заявка была изменена', 'CHECK_INVALIDATED')
+    // Повтор HTTP-запроса после потери ответа возвращает ту же кость.
+    // Связь хранится вместе с реестром и переживает перезапуск.
+    if (registered.issued_roll_id) {
+      const issued = this.rolls.get(registered.issued_roll_id)
+      if (!issued) throw new RollRegistryError('Выданный бросок истёк', 'ROLL_NOT_FOUND')
+      return structuredClone(issued.result)
+    }
+    const { label, modifier, difficulty, ability, advantage, disadvantage, visibility } = registered
+    const context = registered.context ?? null
     const result = this.diceService.rollCheck({
       modifier: Number(modifier), difficulty: Number(difficulty), purpose: String(label).slice(0, 80),
       actorId: String(actorId), advantage, disadvantage, visibility,
@@ -170,13 +179,16 @@ export class RollRegistry {
     const entry = {
       result: { ...result, label: String(label).slice(0, 80), ability },
       ...(context ? { context } : {}),
+      // Обратная связь «бросок → карточка»: по ней `consume` отличает
+      // механический бросок от ничейного (аудит PR #131, SEC-01).
+      check_id: String(registeredId),
       campaign_id: String(campaignId || ''),
       actor_id: String(actorId || ''),
       expires_at: this.now() + this.ttlMs,
       consumed_by: null,
     }
     this.rolls.set(result.roll_id, entry)
-    if (registeredId) this.checks.get(String(registeredId)).issued_roll_id = result.roll_id
+    registered.issued_roll_id = result.roll_id
     this._persist()
     return structuredClone(entry.result)
   }
@@ -191,10 +203,25 @@ export class RollRegistry {
     if (entry.invalidated_at != null) throw new RollRegistryError('Этот бросок отменён: заявка была изменена', 'ROLL_INVALIDATED')
     const key = String(idempotencyKey || '')
     if (entry.consumed_by && entry.consumed_by !== key) throw new RollRegistryError('Бросок уже использован', 'ROLL_ALREADY_USED')
+    // Аудит PR #131, SEC-01: ничейный бросок механикой не потребляется. Такие
+    // записи могли остаться в durable-файле от выдачи до исправления; у
+    // привязанных записей того времени нет поля `check_id`, и связь ищется по
+    // карточке. Повтор того же ключа по уже потреблённой записи не трогаем:
+    // он лишь возвращает прежний commit.
+    if (!entry.consumed_by && !this._boundCheckId(String(rollId), entry)) {
+      throw new RollRegistryError('Бросок не относится ни к одной объявленной проверке', 'ROLL_UNBOUND')
+    }
     if (validateContext) validateContext(structuredClone(entry.context ?? null))
     entry.consumed_by = key || `used:${this.now()}`
     this._persist()
     return structuredClone({ ...entry.result, ...(entry.context ? { context: entry.context } : {}) })
+  }
+
+  /** Карточка, под которую выдана кость, либо `null` для ничейного броска. */
+  _boundCheckId(rollId, entry) {
+    if (entry.check_id) return String(entry.check_id)
+    for (const [id, check] of this.checks) if (check.issued_roll_id === rollId) return id
+    return null
   }
 
   /**
