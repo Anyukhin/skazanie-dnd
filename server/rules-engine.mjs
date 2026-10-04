@@ -14985,11 +14985,35 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
         events.push(actionEvent({ affected: affected.map(actorId), damage: damageRoll.total, difficulty }))
       } else if (action.id === 'shove') {
+        // Толчок даёт выбор: сбить с ног или оттолкнуть на 5 футов — так в обеих
+        // редакциях. До 2026-10-04 был только первый исход (исследование PR #136).
+        // Исход выбирается до броска, полем `shove_mode`; без него — «сбить».
+        const shoveMode = String(command.shove_mode ?? 'prone')
+        if (!['prone', 'push'].includes(shoveMode)) throw new RulesValidationError('Толчок либо сбивает с ног, либо отталкивает', 'SHOVE_MODE_UNKNOWN')
+        if (creatureSizeRank(findActor(state, actionTargetId)) > creatureSizeRank(actor) + 1) {
+          throw new RulesValidationError('Цель слишком велика: толкнуть можно существо не больше чем на один размер крупнее вас', 'SHOVE_TARGET_TOO_LARGE')
+        }
         const contest = grappleContest(state, diceService, command, actionTargetId, rolls)
         const success = contest.success
-        events.push(eventFrom(command, 'ContestedCheckResolved', contest, [actionTargetId]))
-        if (success) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: usesDnd2014(state) ? null : 'until-next-turn' }, [actionTargetId]))
-        events.push(actionEvent({ success }))
+        events.push(eventFrom(command, 'ContestedCheckResolved', shoveMode === 'push' ? { ...contest, shove_mode: 'push' } : contest, [actionTargetId]))
+        if (success && shoveMode === 'prone') events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: usesDnd2014(state) ? null : 'until-next-turn' }, [actionTargetId]))
+        // Тот же путь, что у отталкивающих заклинаний: стена, занятая клетка,
+        // предмет или край карты останавливают цель. Атаки по возможности
+        // вынужденное перемещение не вызывает. Расход действия пишется раньше
+        // перемещения, чтобы хроника шла по порядку: толкнул — отлетел.
+        const pushPath = success && shoveMode === 'push' ? forcedPushPath(state, actionTargetId, actorPosition(state, command.actor_id), 5) : []
+        events.push(actionEvent(shoveMode === 'push' ? { success, shove_mode: 'push', pushed_feet: pushPath.length * 5 } : { success }))
+        if (pushPath.length) {
+          const pushedFrom = actorPosition(state, actionTargetId)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ActorMoved', {
+            from: pushedFrom, to: pushPath.at(-1), path: pushPath, distance: pushPath.length * 5,
+            movement_cost: 0, movement_spent: 0, movement_remaining: effectiveSpeedFeet(state, findActor(state, actionTargetId), actionTargetId),
+            spend_movement: false, forced_movement: true, action_id: 'shove', phase: 'combat',
+          }, [actionTargetId]))
+          events.push(...areaEntryConsequences(events.reduce(applyGameEvent, state), command, actionTargetId, pushedFrom, pushPath.at(-1), {
+            diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor, trigger: 'forced-entry',
+          }))
+        }
       } else if (action.id === 'second-wind') {
         const expression = diceExpression('1d10', Math.max(1, safeInteger(actor?.level, 1)), 10)
         const healingRoll = diceService.roll(expression, 'second_wind', command.actor_id, command.visibility ?? 'public')

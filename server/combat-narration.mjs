@@ -300,6 +300,10 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(payload.success === true
         ? `${actor} удерживается за люстру и продолжает манёвр.`
         : `${actor} срывается при попытке ухватиться за люстру и падает ничком у опоры; удар не происходит.`)
+    } else if (event.event_type === 'ActorMoved' && payload.forced_movement === true && targetId && String(targetId) !== String(event.actor_id ?? '')) {
+      // Вынужденное перемещение двигает цель, а не того, кто толкнул или
+      // наложил заклинание: раньше хроника писала «Боец перемещается на 5 фт».
+      meaningful.push(`${target} ${payload.pulled ? 'притянут' : 'отброшен'} на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
     } else if (event.event_type === 'ActorMoved') {
       meaningful.push(`${actor} перемещается на ${Math.max(0, Number(payload.distance) || 0)} фт.`)
     } else if (event.event_type === 'MapLevelChanged') {

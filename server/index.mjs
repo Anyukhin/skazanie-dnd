@@ -1327,6 +1327,8 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       ...(target ? { target_id: target } : {}),
       ...(actionId === 'cast:silvery-barbs' && beneficiary != null ? { beneficiary_id: beneficiary.trim() } : {}),
       ...(input?.item_id ? { item_id: String(input.item_id).slice(0, 120) } : {}),
+      // Исход толчка выбирает игрок; значение сверяет Rules Engine.
+      ...(actionId === 'shove' && input?.shove_mode != null ? { shove_mode: String(input.shove_mode).slice(0, 20) } : {}),
     }
   }
   if (type === 'ResolveHeroDeath') {
