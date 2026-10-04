@@ -573,6 +573,69 @@ function structuredCommandTurnId(campaignId, idempotencyKey) {
   return `turn-${digest}`
 }
 
+// Аудит PR #131, CMD-01/02: поля команды, которые не меняют смысла заявки, —
+// транспорт, предусловие версии и серверные пометки. `rest_id` санитайзер
+// отдыха берёт из текущего состояния: после коммита отдыха его уже нет, и
+// честный повтор выглядел бы другой командой. Тип, актёр, цель и прочие
+// параметры входят в отпечаток целиком.
+const COMMAND_FINGERPRINT_IGNORED_FIELDS = new Set([
+  'command_id', 'campaign_id', 'idempotency_key',
+  'expected_state_version', 'expectedStateVersion',
+  'server_authoritative', 'verified_roll', 'request_fingerprint', 'rest_id',
+])
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value ?? null) ?? 'null'
+}
+
+/**
+ * Отпечаток структурированного пакета команд — заявки клиента после
+ * санитайзера маршрута.
+ *
+ * Аудит PR #131, CMD-01: повтор с тем же ключом и тем же текстом, но с другой
+ * целью получал старый `200 replay`. Санитайзер уже отбросил мусорные поля
+ * клиента (повтор атаки с другим `attack_modifier` остаётся повтором), а
+ * серверные дополнения после него — развёртка отдыха, черновик письма — в
+ * отпечаток не попадают: маршрут снимает копию до них.
+ *
+ * @param {unknown} commands
+ * @returns {string}
+ */
+export function structuredCommandsFingerprint(commands) {
+  const semantic = (Array.isArray(commands) ? commands : []).map((command) => (
+    command && typeof command === 'object' && !Array.isArray(command)
+      ? Object.fromEntries(Object.entries(command).filter(([key]) => !COMMAND_FINGERPRINT_IGNORED_FIELDS.has(key)))
+      : command ?? null
+  ))
+  return createHash('sha256').update(canonicalJson(semantic)).digest('hex')
+}
+
+// Смысл заявки задаёт текст: `/api/narrate` и серверные ветки со своими
+// командами (Режиссёр, сборка столкновения, жизненный цикл торговцев) — у
+// последних повтор сверяется собственными отпечатками в событиях.
+const MESSAGE_REQUEST_OPERATION = 'message'
+
+/**
+ * Какая операция стоит за запросом: пакет команд клиента или текст.
+ *
+ * Аудит PR #131, CMD-02: без этой части отпечатка `/commands` и `/api/narrate`
+ * с тем же ключом и той же фразой считались одним запросом, и второй endpoint
+ * молча получал чужой commit. Пакет команд объявляют полем `requestCommands`
+ * только маршруты игрока: `/commands` и сделка торговца.
+ */
+function requestOperationFor(input) {
+  return Array.isArray(input?.requestCommands)
+    ? `commands:${structuredCommandsFingerprint(input.requestCommands)}`
+    : MESSAGE_REQUEST_OPERATION
+}
+
 export function narrationRequestFingerprint({
   campaignId = '',
   playerId = '',
@@ -584,8 +647,11 @@ export function narrationRequestFingerprint({
   supersedesProposalId = '',
   questionCheckId = '',
   questionProposalId = '',
+  // Пустая операция даёт прежний отпечаток: по нему узнаются записи, сделанные
+  // до аудита PR #131 (CMD-01/02).
+  operation = '',
 } = {}) {
-  return createHash('sha256')
+  const hash = createHash('sha256')
     .update(String(campaignId).toUpperCase())
     .update('\0')
     .update(String(playerId))
@@ -605,7 +671,8 @@ export function narrationRequestFingerprint({
     .update(String(questionCheckId))
     .update('\0')
     .update(String(questionProposalId))
-    .digest('hex')
+  if (operation) hash.update('\0').update(`operation:${operation}`)
+  return hash.digest('hex')
 }
 
 function legacyNarrationRequestFingerprint({ campaignId = '', playerId = '', message = '', npcId = '' } = {}) {
@@ -632,9 +699,10 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
   supersedesProposalId = '',
   questionCheckId = '',
   questionProposalId = '',
+  operation = '',
 }) {
   if (!duplicate) return
-  const requestFingerprint = narrationRequestFingerprint({
+  const fields = {
     campaignId,
     playerId,
     message,
@@ -645,12 +713,20 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
     supersedesProposalId,
     questionCheckId,
     questionProposalId,
-  })
+  }
+  const requestFingerprint = narrationRequestFingerprint(fields)
   if (trace?.request_fingerprint) {
+    const stored = String(trace.request_fingerprint)
+    // Аудит PR #131, CMD-01/02: новые трассы хранят отпечаток вместе с
+    // операцией (пакет команд или текст), и несовпадение — конфликт, а не
+    // повтор. Трасса, записанная до этого, хранит отпечаток без операции и
+    // сверяется по-старому.
+    const exact = stored === narrationRequestFingerprint({ ...fields, operation })
+    const compatibleWithoutOperation = Boolean(operation) && stored === requestFingerprint
     const compatibleLegacy = requestKind === 'action'
       && !clarificationId && !supersedesCheckId && !supersedesProposalId
-      && String(trace.request_fingerprint) === legacyNarrationRequestFingerprint({ campaignId, playerId, message, npcId })
-    if (String(trace.request_fingerprint) !== requestFingerprint && !compatibleLegacy) {
+      && stored === legacyNarrationRequestFingerprint({ campaignId, playerId, message, npcId })
+    if (!exact && !compatibleWithoutOperation && !compatibleLegacy) {
       throw new IdempotencyConflictError(campaignId, idempotencyKey)
     }
     return
@@ -1460,6 +1536,7 @@ export class GameOrchestrator {
     plan,
     authoritativeState,
     idempotencyKey,
+    requestFingerprint = null,
     turnId,
     started,
     mode,
@@ -1707,6 +1784,9 @@ export class GameOrchestrator {
         turnId,
         campaignId,
         idempotencyKey,
+        // Аудит PR #131, CMD-02: без отпечатка повтор ключа свободного действия
+        // структурированной командой `/commands` молча получал этот commit.
+        requestFingerprint,
         mode,
         intent,
         retrievalQueries,
@@ -1970,6 +2050,9 @@ export class GameOrchestrator {
 
   async _handle(input) {
     const started = this.now()
+    // Считается до любых серверных правок команд (парлей, ручной бросок):
+    // отпечаток описывает заявку клиента, а не её исполнение.
+    const requestOperation = requestOperationFor(input)
     const originalState = normalizeCampaignState(input.state ?? {})
     const campaignId = String(input.campaignId ?? input.campaign_id ?? originalState.sessionCode ?? originalState.campaign_id ?? '')
     const playerId = String(input.playerId ?? input.player_id ?? originalState.activePlayerId ?? '')
@@ -2168,22 +2251,7 @@ export class GameOrchestrator {
     const duplicate = typeof this.eventStore.getByIdempotencyKey === 'function'
       ? await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
       : null
-    const requestFingerprint = narrationRequestFingerprint({
-      campaignId,
-      playerId,
-      message,
-      npcId: explicitNpcId,
-      requestKind,
-      clarificationId,
-      supersedesCheckId,
-      supersedesProposalId,
-      questionCheckId,
-      questionProposalId,
-    })
-    const requestTrace = duplicate && this.traceStore && typeof this.traceStore.get === 'function'
-      ? this.traceStore.get(campaignId, turnId)
-      : null
-    assertNarrationRequestIdempotency(duplicate, requestTrace, {
+    const idempotencyRequest = {
       campaignId,
       idempotencyKey,
       playerId,
@@ -2195,7 +2263,16 @@ export class GameOrchestrator {
       supersedesProposalId,
       questionCheckId,
       questionProposalId,
-    })
+      operation: requestOperation,
+    }
+    // Аудит PR #131, CMD-01/02: в трассу пишется отпечаток с операцией, и
+    // повтор сверяет с ним и пакет команд, и выбор endpoint.
+    const requestFingerprint = narrationRequestFingerprint(idempotencyRequest)
+    const traceFor = (commit) => (commit && this.traceStore && typeof this.traceStore.get === 'function'
+      ? this.traceStore.get(campaignId, turnId)
+      : null)
+    const requestTrace = traceFor(duplicate)
+    assertNarrationRequestIdempotency(duplicate, requestTrace, idempotencyRequest)
     // Парлей: единственная развилка на оба входа.
     //
     // Кнопка хотбара приходит сюда командой `ProposeParley`, свободная фраза —
@@ -2601,6 +2678,7 @@ export class GameOrchestrator {
         plan,
         authoritativeState,
         idempotencyKey,
+        requestFingerprint,
         turnId,
         started,
         mode,
@@ -2821,6 +2899,10 @@ export class GameOrchestrator {
           if (!(error instanceof IdempotencyConflictError) && error?.code !== 'IDEMPOTENCY_CONFLICT') throw error
           committed = await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
           if (!committed) throw error
+          // Аудит PR #131, CMD-01: параллельный запрос с тем же ключом успел
+          // первым. Его commit — повтор только при том же намерении; если его
+          // трасса ещё не записана, сверка идёт по-прежнему.
+          assertNarrationRequestIdempotency(committed, traceFor(committed), idempotencyRequest)
           replayedCommit = true
           break
         }

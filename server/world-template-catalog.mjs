@@ -57,10 +57,20 @@ export class WorldTemplateCatalogError extends Error {
   }
 }
 
+/**
+ * @template T
+ * @param {T} value
+ * @returns {T}
+ */
 function clone(value) {
   return structuredClone(value)
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {Record<string, any>}
+ */
 function object(value, path) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new WorldTemplateCatalogError(`${path} должен быть объектом`)
@@ -68,6 +78,12 @@ function object(value, path) {
   return /** @type {Record<string, any>} */ (value)
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @param {number} [minimum]
+ * @returns {any[]}
+ */
 function array(value, path, minimum = 1) {
   if (!Array.isArray(value) || value.length < minimum) {
     throw new WorldTemplateCatalogError(`${path} должен содержать не менее ${minimum} записей`)
@@ -75,6 +91,12 @@ function array(value, path, minimum = 1) {
   return value
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @param {number} [maximum]
+ * @returns {string}
+ */
 function text(value, path, maximum = TEXT_LIMITS.short) {
   if (typeof value !== 'string' || !value.trim()) {
     throw new WorldTemplateCatalogError(`${path} должен быть непустым текстом`)
@@ -84,11 +106,25 @@ function text(value, path, maximum = TEXT_LIMITS.short) {
   return result
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @param {number} [maximum]
+ * @returns {string}
+ */
 function optionalText(value, path, maximum = TEXT_LIMITS.short) {
   if (value == null || value === '') return ''
   return text(value, path, maximum)
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @param {number} minimum
+ * @param {number} maximum
+ * @param {number} [fallback]
+ * @returns {number}
+ */
 function integer(value, path, minimum, maximum, fallback = undefined) {
   if (value == null && fallback !== undefined) return fallback
   const result = Number(value)
@@ -98,35 +134,66 @@ function integer(value, path, minimum, maximum, fallback = undefined) {
   return result
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @param {boolean} [fallback]
+ * @returns {boolean}
+ */
 function boolean(value, path, fallback = undefined) {
   if (value == null && fallback !== undefined) return fallback
   if (typeof value !== 'boolean') throw new WorldTemplateCatalogError(`${path} должен быть boolean`)
   return value
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @param {number} [maximum]
+ * @returns {string}
+ */
 function id(value, path, maximum = TEXT_LIMITS.id) {
   const result = text(value, path, maximum)
   if (!ID_PATTERN.test(result)) throw new WorldTemplateCatalogError(`${path} должен быть безопасным ASCII-идентификатором`)
   return result
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {string}
+ */
 function worldRuleId(value, path) {
   const result = text(value, path, TEXT_LIMITS.id)
   if (!WORLD_RULE_ID_PATTERN.test(result)) throw new WorldTemplateCatalogError(`${path} должен быть безопасным ASCII-идентификатором`)
   return result
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {string}
+ */
 function worldRuleTag(value, path) {
   const result = text(value, path, TEXT_LIMITS.id)
   if (!WORLD_RULE_TAG_PATTERN.test(result)) throw new WorldTemplateCatalogError(`${path} должен быть безопасным ASCII-тегом`)
   return result
 }
 
+/**
+ * @param {any} source
+ * @param {...string} names
+ * @returns {any}
+ */
 function field(source, ...names) {
   for (const name of names) if (source?.[name] !== undefined) return source[name]
   return undefined
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ */
 function normalizeThemes(value, path) {
   if (Array.isArray(value)) {
     const values = value.map((entry, index) => text(entry, `${path}[${index}]`, 160))
@@ -136,6 +203,12 @@ function normalizeThemes(value, path) {
   return text(value, path, TEXT_LIMITS.world)
 }
 
+/**
+ * @param {Array<{ id: string, name: string }>} entries
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {string}
+ */
 function resolveName(entries, value, path) {
   const wanted = text(value, path, TEXT_LIMITS.name)
   const exact = entries.find((entry) => entry.id === wanted)
@@ -145,6 +218,11 @@ function resolveName(entries, value, path) {
   throw new WorldTemplateCatalogError(`${path} ссылается на неизвестную запись «${wanted}»`)
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {string}
+ */
 function richTextFor(value, path) {
   if (typeof value === 'string') return text(value, path, TEXT_LIMITS.history)
   const source = object(value, path)
@@ -182,6 +260,11 @@ function validateRichCollection(value, path, requireIds = false) {
   })
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {string}
+ */
 function validateImage(value, path) {
   const image = text(value, path, 240)
   if (!WORLD_TEMPLATE_IMAGE_PATTERN.test(image)) {
@@ -193,6 +276,11 @@ function validateImage(value, path) {
   return image
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {string}
+ */
 function validateCityImage(value, path) {
   const image = text(value, path, 240)
   if (!CITY_OVERVIEW_IMAGE_PATTERN.test(image)) {
@@ -204,12 +292,21 @@ function validateCityImage(value, path) {
   return image
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} path
+ * @returns {string[]}
+ */
 function validateCityHooks(value, path) {
   const hooks = array(value, path, 2)
   if (hooks.length !== 2) throw new WorldTemplateCatalogError(`${path} должен содержать ровно две зацепки`)
   return hooks.map((entry, index) => text(entry, `${path}[${index}]`, 320))
 }
 
+/**
+ * @param {unknown} raw
+ * @param {string} path
+ */
 function validateCityOverview(raw, path) {
   const source = object(raw, path)
   const version = integer(source.version, `${path}.version`, 1, 99)
@@ -283,6 +380,10 @@ function validateCityOverview(raw, path) {
   }
 }
 
+/**
+ * @param {unknown} raw
+ * @param {number} index
+ */
 function validateMetadata(raw, index) {
   const path = `templates[${index}]`
   const template = object(raw, path)
@@ -316,6 +417,12 @@ function validateMetadata(raw, index) {
   return { template, templateId, version, name, tagline, description, image, imageAlt, accent, focus, recommendedLevels }
 }
 
+/**
+ * @param {unknown} raw
+ * @param {string} path
+ * @param {unknown} startName
+ * @returns {Record<string, any>}
+ */
 function validateWorld(raw, path, startName) {
   const source = object(raw, path)
   const world = {
@@ -334,6 +441,10 @@ function validateWorld(raw, path, startName) {
   return world
 }
 
+/**
+ * @param {unknown} raw
+ * @param {string} path
+ */
 function validateWorldMap(raw, path) {
   const source = object(raw, path)
   const width = integer(source.width, `${path}.width`, 320, 2_000, 1_000)
@@ -427,6 +538,13 @@ function validateWorldMap(raw, path) {
   }
 }
 
+/**
+ * @param {unknown} raw
+ * @param {string} path
+ * @param {ReturnType<typeof validateWorldMap>} worldMap
+ * @param {{ campaignName?: unknown, worldSummary?: unknown, worldHistory?: unknown }} [defaults]
+ * @returns {Record<string, any>}
+ */
 function validateOpening(raw, path, worldMap, defaults = {}) {
   const source = object(raw, path)
   const scene = object(source.scene, `${path}.scene`)
@@ -519,6 +637,10 @@ const OPENING_SECRET_SKILLS = new Set(['investigation', 'perception', 'survival'
  * Заготовки ведущего первой сцены: что в ней уже правда и спрятано от героев.
  * Хранитель обязан быть среди NPC сцены — иначе секрет некому выдать в
  * разговоре, и он открывался бы только броском.
+ *
+ * @param {unknown} raw
+ * @param {string} path
+ * @param {Array<{ name: string }>} npcs
  */
 function validateOpeningSecrets(raw, path, npcs) {
   if (raw == null) return []
@@ -544,6 +666,12 @@ function validateOpeningSecrets(raw, path, npcs) {
   })
 }
 
+/**
+ * @param {unknown} raw
+ * @param {string} path
+ * @param {any[]} openingNpcs
+ * @param {any[]} factions
+ */
 function validateWorldRules(raw, path, openingNpcs, factions) {
   if (raw == null) return null
   const source = object(raw, path)
@@ -659,7 +787,13 @@ function validateWorldRules(raw, path, openingNpcs, factions) {
   }
 }
 
-function validateWorldResponsibility(raw, path, { npcIds, officeIds, expectedType = '', expectedDeathPolicy = '' } = {}) {
+/**
+ * @param {unknown} raw
+ * @param {string} path
+ * @param {{ npcIds: Set<string>, officeIds: Set<string>, expectedType?: string, expectedDeathPolicy?: string }} options
+ * @returns {Record<string, any>}
+ */
+function validateWorldResponsibility(raw, path, { npcIds, officeIds, expectedType = '', expectedDeathPolicy = '' } = /** @type {any} */ ({})) {
   const source = object(raw, path)
   const type = text(source.type, `${path}.type`, 20)
   if (!['npc', 'office'].includes(type)) throw new WorldTemplateCatalogError(`${path}.type имеет недопустимое значение`)
@@ -677,11 +811,21 @@ function validateWorldResponsibility(raw, path, { npcIds, officeIds, expectedTyp
   return { ...clone(source), schema_version: 1, type, office_id: officeId, death_policy: deathPolicy }
 }
 
+/**
+ * @param {ReturnType<typeof validateWorldMap>} worldMap
+ * @param {string} startId
+ * @param {string} path
+ */
 function validateGraph(worldMap, startId, path) {
+  /** @type {Map<string, Set<string>>} */
   const adjacency = new Map(worldMap.locations.map((location) => [location.id, new Set()]))
+  // Концы маршрутов уже сверены с местами карты в validateWorldMap; приведение
+  // ниже нужно только проверке типов (аудит PR #131, QA-02).
   for (const route of worldMap.routes) {
-    adjacency.get(route.from).add(route.to)
-    adjacency.get(route.to).add(route.from)
+    const fromLinks = /** @type {Set<string>} */ (adjacency.get(route.from))
+    const toLinks = /** @type {Set<string>} */ (adjacency.get(route.to))
+    fromLinks.add(route.to)
+    toLinks.add(route.from)
   }
   const seen = new Set([startId])
   const queue = [startId]
@@ -699,6 +843,10 @@ function validateGraph(worldMap, startId, path) {
   }
 }
 
+/**
+ * @param {unknown} raw
+ * @param {number} index
+ */
 function validateTemplate(raw, index) {
   const metadata = validateMetadata(raw, index)
   const source = metadata.template
@@ -799,6 +947,10 @@ function loadCatalog() {
 const WORLD_TEMPLATES = loadCatalog()
 const WORLD_TEMPLATES_BY_ID = new Map(WORLD_TEMPLATES.map((template) => [template.id, template]))
 
+/**
+ * @param {any} value
+ * @returns {ReturnType<typeof validateTemplate>}
+ */
 function templateFor(value) {
   const requested = typeof value === 'string' ? value : value?.id
   const key = String(requested ?? '').trim()
@@ -807,6 +959,10 @@ function templateFor(value) {
   return template
 }
 
+/**
+ * @param {ReturnType<typeof validateTemplate>} template
+ * @returns {string}
+ */
 function historyTeaser(template) {
   const explicit = field(template, 'historyTeaser', 'history_teaser')
   if (explicit) return text(explicit, 'historyTeaser', 360)
@@ -814,10 +970,17 @@ function historyTeaser(template) {
   return richTextFor(first, 'histories[0]').slice(0, 360)
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 function versionLabel(value) {
   return typeof value === 'number' ? `${value}.0.0` : String(value)
 }
 
+/**
+ * @param {ReturnType<typeof validateTemplate>} template
+ */
 function publicPreview(template) {
   const settlements = template.world_map.locations.filter((location) => SETTLEMENT_KINDS.has(location.kind))
   const cityNames = settlements.map((location) => location.name).slice(0, 24)
@@ -861,6 +1024,9 @@ export function listWorldTemplates() {
   return clone(WORLD_TEMPLATES.map(publicPreview))
 }
 
+/**
+ * @param {unknown} idValue
+ */
 export function getWorldTemplate(idValue) {
   return clone(templateFor(idValue))
 }
@@ -904,6 +1070,9 @@ export function worldTemplateOpening(templateValue, overrides = {}) {
   }
 }
 
+/**
+ * @param {unknown} templateValue
+ */
 export function worldTemplateConcept(templateValue) {
   const template = templateFor(templateValue)
   const opening = worldTemplateOpening(template)

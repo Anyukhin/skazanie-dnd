@@ -5077,6 +5077,9 @@ async function handleHttpRequest(req, res) {
         playerId: command.actor_id,
         message: String(body.message || 'Торговая операция'),
         commands: [command],
+        // Аудит PR #131, CMD-02: сделка объявляет свой пакет команд так же,
+        // как `/commands`, — одна и та же сделка описывается одной операцией.
+        requestCommands: [command],
         idempotencyKey,
         user,
         allowedActorIds: campaignHeroIds(user, merchantMatch[1]),
@@ -5203,6 +5206,11 @@ async function handleHttpRequest(req, res) {
         if (user.role !== 'admin') return sanitizePlayerCombatCommand(user, authoritativeBefore, command)
         return PLAYER_COMBAT_COMMANDS.has(type) ? { ...command, server_authoritative: true } : command
       })
+      // Аудит PR #131, CMD-01/02: повтор ключа сверяется с заявкой в той форме,
+      // которую оставил санитайзер, — без мусорных полей клиента, но и без
+      // серверных дополнений ниже (развёртка отдыха, черновик письма, бой со
+      // стражей). Копия снимается до них.
+      const requestCommands = structuredClone(commands)
       const semanticRestCommand = commands.find((command) => PLAYER_REST_COMMANDS.has(commandType(command))) ?? null
       if (semanticRestCommand) commands = expandPlayerRestCommand(semanticRestCommand)
       const lawCommands = commands.filter((command) => PLAYER_LAW_COMMANDS.has(commandType(command)))
@@ -5323,7 +5331,7 @@ async function handleHttpRequest(req, res) {
       } else if (body.roll) {
         throw commandPolicyError('Принимается только серверный roll_id', 'UNVERIFIED_ROLL')
       }
-      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]), manualRoll, verifiedRoll })
+      let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, requestCommands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]), manualRoll, verifiedRoll })
       // Карточка проверки: мир не изменился, продолжать бой и проецировать
       // нечего. Ответ уходит игроку как есть.
       if (result.check) return json(res, 200, turnResultForViewer({ ...result, room_version: room.version }, user, actor))
@@ -5808,6 +5816,9 @@ async function handleHttpRequest(req, res) {
             // `/api/narrate` accepts prose only. Structured commands and the
             // unforgeable Director capability are supplied by server branches.
             commands: undefined,
+            // Аудит PR #131, CMD-02: пакет команд в отпечатке повтора объявляет
+            // только маршрут `/commands`, тело `/api/narrate` его не подменяет.
+            requestCommands: undefined,
             commandCapability: undefined,
             state: trustedState,
             roomVersion: room.version,

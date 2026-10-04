@@ -22,6 +22,8 @@
   нужна правка поведения — остановиться и вынести её отдельной задачей.
   Проверяются 40 файлов (на 2026-10-04): список даёт
   `grep -rl '^// @ts-check' server/`. `rules-engine.mjs` и `index.mjs` в нём нет.
+  Каждый такой файл перечислен в `include` `tsconfig.server.json`: пометка без
+  строки там ничего не проверяет. Сторож — `test/server-typecheck-coverage.test.mjs`.
   Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
 - **`src/` — TypeScript + React + Vite.** Проверяется через `tsc --noEmit -p tsconfig.app.json`.
 - **Тесты — встроенный `node:test`, файлы `test/*.test.mjs`.** Ни Jest, ни
@@ -268,7 +270,7 @@ commit, механики он не касается.
 | --- | --- |
 | Replay потока событий даёт то же состояние | `test/event-store.test.mjs`, `pnpm cutover:audit` |
 | Потеря хвоста журнала или seed-снимка — явный отказ `CAMPAIGN_RECOVERY_REQUIRED`, а не тихая загрузка старого состояния; отказ одной кампании не роняет сервер | `test/event-store.test.mjs`, `test/recovery-required-api.test.mjs` |
-| Повтор с тем же `idempotency_key` возвращает прежний commit | `test/api-integration.test.mjs`, `test/game-flow-integration.test.mjs` |
+| Повтор с тем же `idempotency_key` возвращает прежний commit; другая цель, тип команды, актор или endpoint под тем же ключом — `409 IDEMPOTENCY_CONFLICT` | `test/api-integration.test.mjs`, `test/game-flow-integration.test.mjs`, `test/command-retry-intent-api.test.mjs` |
 | Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs`, `test/roll-binding.test.mjs` |
 | Клиентские поля недоверенные (путь, дальность, цель) | `test/tactical-command-guard.test.mjs` |
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
