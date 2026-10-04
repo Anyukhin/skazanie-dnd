@@ -485,10 +485,11 @@ https://claude.ai/artifact/F5kia5hzhWkKJPPy9tXmm3 (доски «Ход в бою
 15. Тесты:
     - `test/action-icon-manifest.test.mjs` перебирает подклассы;
     - добавлены тесты для `hud-icons` и `conditions`;
-    - `pnpm verify` зелёный.
+    - локально прогнаны только затронутые тесты (`node --test test/<файл>.test.mjs`) и
+      `node tools/action-icon-gaps.mjs --check`; полный набор, типы и сборку гоняет
+      CI (`.github/workflows/verify.yml`) на PR, и он зелёный.
 
-    Три теста `tactical-map-budget` иногда падают по времени и на чистом `main`. Это
-    не регресс, но в отчёте об этом сказать.
+    Локально `pnpm verify` не запускать.
 16. Нет новых зависимостей. Не тронуты `storage/`, `.env`, `rights_status` и
     `distribution`. В `public/assets/test/` ничего не добавлено.
 
