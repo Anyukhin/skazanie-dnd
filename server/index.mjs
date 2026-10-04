@@ -25,10 +25,12 @@ import {
   registerUser,
   saveCampaignAiSettings,
   saveRoom,
+  sessionKeyForToken,
   storageDir,
   updateUserAccess,
   upsertCampaignMembership,
   userForToken,
+  usersForSessionKeys,
   verifyUser,
 } from './store.mjs'
 import {
@@ -251,8 +253,18 @@ const campaignWorldClockJobs = new Map()
 const WORLD_RUMOR_BURST_LIMIT = 4
 const TYPING_TTL_MS = 4_000
 let campaignStreamSequence = 0
+// Аудит PR #131, LIVE-01/02: как часто сверять живые потоки с сессиями на путях
+// без состояния комнаты — дельты повествования (раз в 50 мс), индикатор ввода,
+// пульс. Logout и смена доступа администратором закрывают и обновляют потоки
+// сразу, так что этот интервал ограничивает только окно истечения сессии.
+const STREAM_ACCESS_RECHECK_MS = 1_000
+/** Когда потоки кампании последний раз сверялись с сессиями (см. выше). */
+const campaignStreamAccessCheckedAt = new Map()
 const campaignNarrationStream = new CampaignNarrationStream({
-  connectionsFor: (campaignId) => streamConnections(campaignId).values(),
+  connectionsFor: (campaignId) => {
+    revalidateCampaignStreams(campaignId, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
+    return streamConnections(campaignId).values()
+  },
   write: (connection, event, payload) => writeCampaignStream(connection, event, payload),
 })
 
@@ -2218,7 +2230,111 @@ function streamConnections(campaignId) {
   return campaignStreams.get(normalized)
 }
 
+/**
+ * Аудит PR #131, LIVE-01/02: права живого потока — не снимок рукопожатия. До
+ * исправления соединение навсегда запоминало `user`, `heroIds` и `actorId` на
+ * момент подключения: после logout или истечения сессии поток продолжал
+ * получать комнату, а после переназначения героя — проекцию прежнего героя.
+ * Теперь перед отправкой каждое соединение заново читает свою сессию по
+ * непрозрачному ключу (хешу токена, не cookie) и доступ к кампании.
+ *
+ * Со `state` (рассылка комнаты, опрос, ответ команды) проверка полная: сессия,
+ * доступ к комнате и актёр, от имени которого строится проекция. Без состояния
+ * (повествование, индикатор ввода, пульс) — только сессия и закреплённые герои:
+ * перечитывать файл комнаты на каждую дельту текста незачем, а доступ сверит
+ * ближайшая рассылка комнаты. `maxAgeMs` ограничивает частоту лёгкой сверки.
+ */
+function revalidateCampaignStreams(campaignId, { state = null, maxAgeMs = 0 } = {}) {
+  const normalized = String(campaignId || '').toUpperCase()
+  const connections = streamConnections(normalized)
+  if (!connections.size) return
+  const now = Date.now()
+  if (!state && maxAgeMs > 0 && now - (campaignStreamAccessCheckedAt.get(normalized) ?? 0) < maxAgeMs) return
+  campaignStreamAccessCheckedAt.set(normalized, now)
+  // Поток зарегистрирован под этой кампанией: её код и решает членство, даже
+  // если в переданном состоянии кода нет.
+  const accessRoom = state ? {
+    state: { sessionCode: state.sessionCode || normalized, players: state.players, partyMemberIds: state.partyMemberIds },
+  } : null
+  const live = [...connections.values()]
+  // Сверка зовётся и из таймеров (пульс, дельты повествования), где брошенная
+  // ошибка уронила бы процесс. Не смогли проверить права — не отправляем:
+  // поток закрывается, а клиент переподключится через обычное рукопожатие.
+  let users = new Map()
+  let failure = ''
+  try { users = usersForSessionKeys(live.map((connection) => connection.sessionKey)) }
+  catch (error) {
+    failure = 'access_unverified'
+    console.error('[Сказание] Не удалось сверить живые потоки с сессиями:', error?.message || error)
+  }
+  for (const connection of live) {
+    try {
+      const user = users.get(connection.sessionKey) ?? null
+      if (!user) {
+        revokeCampaignStream(connection, failure || 'session_ended')
+        continue
+      }
+      if (accessRoom && !canAccessRoom(user, accessRoom)) {
+        revokeCampaignStream(connection, 'access_lost')
+        continue
+      }
+      const heroIds = campaignHeroIds(user, normalized).map(String)
+      connection.user = user
+      connection.userId = String(user.id)
+      connection.heroIds = heroIds
+      connection.controlsParty = user.role === 'admin'
+      if (state) {
+        const actorId = heroIds.find((id) => state.players?.some((player) => String(player.id) === id)) ?? ''
+        // Сменился актёр — клиентский кэш карты принадлежал прежней проекции:
+        // следующий кадр уходит целиком.
+        if (actorId !== connection.actorId) connection.mapHash = ''
+        connection.actorId = actorId
+      }
+    } catch (error) {
+      console.error('[Сказание] Не удалось сверить доступ живого потока:', error?.message || error)
+      revokeCampaignStream(connection, 'access_unverified')
+    }
+  }
+}
+
+/**
+ * Закрывает поток, у которого больше нет права читать кампанию: последним
+ * кадром `access` с причиной, затем конец ответа. Переподключение того же
+ * клиента упрётся в 401/403 на рукопожатии.
+ */
+function revokeCampaignStream(connection, reason) {
+  if (connection.closed) return
+  writeCampaignStream(connection, 'access', { status: 'revoked', reason })
+  connection.close?.()
+  if (!connection.res.destroyed) connection.res.end()
+}
+
+/** Logout закрывает потоки только этой сессии: другой вход того же игрока живёт. */
+function revokeCampaignStreamsForSession(sessionKey) {
+  if (!sessionKey) return
+  for (const connections of campaignStreams.values()) {
+    for (const connection of [...connections.values()]) {
+      if (connection.sessionKey === sessionKey) revokeCampaignStream(connection, 'session_ended')
+    }
+  }
+}
+
+/**
+ * Администратор поменял роль или героев аккаунта: открытые потоки этого
+ * пользователя получают свежую проекцию сразу, не дожидаясь следующего хода, а
+ * потерявшие доступ закрываются внутри той же рассылки.
+ */
+function refreshCampaignStreamsForUser(userId) {
+  for (const [campaignId, connections] of campaignStreams) {
+    if (![...connections.values()].some((connection) => connection.userId === String(userId))) continue
+    try { broadcastCampaignRoom(campaignId) }
+    catch (error) { console.error(`[Сказание] Не удалось обновить живые потоки ${campaignId}:`, error?.message || error) }
+  }
+}
+
 function connectedHeroIdsForCampaign(campaignId) {
+  // Присутствие и состав голосующих не держат отозванные соединения.
+  revalidateCampaignStreams(campaignId, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
   return new Set([...streamConnections(campaignId).values()].flatMap((connection) => connection.heroIds))
 }
 
@@ -2378,6 +2494,11 @@ async function directorResumeKeyForInteraction(campaignId, interactionId) {
 
 function stateWithLivePresence(state, campaignId) {
   if (!state || typeof state !== 'object') return state
+  // Аудит PR #131, LIVE-01/02: присутствие считается только по соединениям с
+  // живой сессией и доступом к этому состоянию. Здесь же проходит полная
+  // сверка перед рассылкой комнаты: `broadcastCampaignRoom` строит проекции
+  // уже после неё, по обновлённым `user` и `actorId`.
+  revalidateCampaignStreams(campaignId, { state })
   const connections = streamConnections(campaignId)
   const onlineHeroIds = connectedHeroIdsForCampaign(campaignId)
   const typingActorIds = typingActorIdsForCampaign(campaignId)
@@ -2424,6 +2545,7 @@ function writeCampaignStream(connection, event, payload) {
 
 function broadcastCampaignTyping(campaignId) {
   const normalized = String(campaignId || '').toUpperCase()
+  revalidateCampaignStreams(normalized, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
   const typingActorIds = typingActorIdsForCampaign(normalized)
   for (const connection of streamConnections(normalized).values()) {
     writeCampaignStream(connection, 'presence', { typing_actor_ids: typingActorIds })
@@ -2436,6 +2558,8 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
   if (!connections.size) return
   const room = suppliedRoom ?? getRoom(normalized)
   if (!room.state) return
+  // Внутри — сверка сессий и прав (аудит PR #131, LIVE-01/02): отозванные
+  // соединения закрываются до цикла, остальные получают актуальные права.
   const state = stateWithLivePresence(normalizeCampaignState(room.state), normalized)
   for (const connection of connections.values()) {
     // Что закэшировано у клиента, соединение знает точно: оно само это и
@@ -3564,7 +3688,11 @@ async function handleHttpRequest(req, res) {
     return json(res, 200, { user })
   }
   if (req.url === '/api/auth/logout' && req.method === 'POST') {
-    deleteSession(cookies(req).skazanie_session)
+    const token = cookies(req).skazanie_session
+    deleteSession(token)
+    // Аудит PR #131, LIVE-01/02: открытые потоки этой сессии закрываются сразу,
+    // а не при следующей сверке; потоки других входов того же игрока живут.
+    revokeCampaignStreamsForSession(sessionKeyForToken(token))
     res.setHeader('Set-Cookie', sessionCookie(req, '', true))
     return json(res, 200, { ok: true })
   }
@@ -3575,8 +3703,13 @@ async function handleHttpRequest(req, res) {
   const adminUserMatch = req.url?.match(/^\/api\/admin\/users\/([a-f0-9-]+)$/i)
   if (adminUserMatch && req.method === 'PATCH') {
     const admin = requireAdmin(req, res); if (!admin) return
-    try { return json(res, 200, { user: updateUserAccess(adminUserMatch[1], await readBody(req)) }) }
+    let updated
+    try { updated = updateUserAccess(adminUserMatch[1], await readBody(req)) }
     catch (error) { return json(res, 400, { error: error instanceof Error ? error.message : 'Не удалось обновить пользователя' }) }
+    // Аудит PR #131, LIVE-01/02: новые герои и роль действуют и в уже открытых
+    // потоках — та же проекция, что отдаст свежий GET.
+    refreshCampaignStreamsForUser(updated.id)
+    return json(res, 200, { user: updated })
   }
 
   const parsedUrl = new URL(req.url || '/', 'http://skazanie.local')
@@ -3767,6 +3900,10 @@ async function handleHttpRequest(req, res) {
     const controlsParty = user?.role === 'admin'
     const connection = {
       id: connectionId,
+      // Аудит PR #131, LIVE-01/02: поток привязан к конкретной сессии, а
+      // `user`, `heroIds`, `actorId` ниже — лишь стартовые значения: перед каждой
+      // отправкой их обновляет `revalidateCampaignStreams`.
+      sessionKey: sessionKeyForToken(cookies(req).skazanie_session),
       userId: String(user.id),
       user,
       heroIds,
@@ -3774,6 +3911,7 @@ async function handleHttpRequest(req, res) {
       controlsParty,
       res,
       closed: false,
+      close: null,
       mapHash: '',
       narrationBackpressured: false,
     }
@@ -3781,6 +3919,9 @@ async function handleHttpRequest(req, res) {
     const drain = () => campaignNarrationStream.drain(connection)
     res.on('drain', drain)
     const heartbeat = setInterval(() => {
+      if (connection.closed || res.destroyed) return
+      // Истечение сессии не присылает события: тихий поток сверяется на пульсе.
+      revalidateCampaignStreams(campaignId, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
       if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
     }, 20_000)
     const close = () => {
@@ -3795,6 +3936,7 @@ async function handleHttpRequest(req, res) {
           .finally(() => broadcastCampaignRoom(campaignId))
       })
     }
+    connection.close = close
     req.once('close', close)
     req.once('aborted', close)
     // При переподключении достаточно последнего полного снимка каждого
