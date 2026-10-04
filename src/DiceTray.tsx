@@ -10,6 +10,8 @@ type DiceTrayProps = {
   disabled?: boolean
   /** Значок на карте вместо карточки в колонке: кость и список костей по нажатию. */
   compact?: boolean
+  /** Вариант для нижней панели вне боя: большая круглая кнопка и ряд костей. */
+  panel?: boolean
 }
 
 /* Кости меню; сервер отдельно проверяет допустимое число граней. */
@@ -62,7 +64,7 @@ function D20({ value }: { value: number }) {
 }
 
 /** Свободная кость с серверным результатом; lastDiceRoll приносит броски остальных игроков. */
-export function DiceTray({ latestRoll, onRoll, disabled = false, compact = false }: DiceTrayProps) {
+export function DiceTray({ latestRoll, onRoll, disabled = false, compact = false, panel = false }: DiceTrayProps) {
   const reducedMotion = usePrefersReducedMotion()
   const [visibleRoll, setVisibleRoll] = useState<DiceRollEvent | null>(() => latestRoll ?? null)
   const [displayValue, setDisplayValue] = useState(() => latestRoll?.value ?? 20)
@@ -151,6 +153,26 @@ export function DiceTray({ latestRoll, onRoll, disabled = false, compact = false
       : visibleRoll
         ? `${visibleRoll.playerName}: выпало ${visibleRoll.value} на d${visibleRoll.sides ?? sides}`
         : `Свободный бросок d${sides} готов`
+
+  /* В панели вне боя — на месте кольца «Завершить ход», как в макете стола:
+     большая кнопка бросает выбранную кость, ряд под ней выбирает её. */
+  if (panel) {
+    return (
+      <aside className={`dice-tray dice-tray--panel dice-tray--cinematic${error ? ' dice-tray--error' : ''}`} aria-label="Свободный бросок" aria-busy={rolling}>
+        {scene}
+        <span className="dice-tray__tag">Свободный бросок</span>
+        <button ref={trigger} className="dice-tray__big" type="button" onClick={() => { void handleRoll() }} disabled={disabled || rolling} aria-label={rolling ? `Выполняется бросок d${sides}` : `Бросить d${sides}`}>
+          <span className="dice-tray__die"><D20 value={displayValue} /></span>
+          <strong>{rolling ? 'Катится…' : <>Бросок<br />d{sides}</>}</strong>
+        </button>
+        <div className="dice-tray__sides" role="group" aria-label="Какую кость бросать">
+          {DICE.map((die) => <button key={die} type="button" aria-pressed={die === sides} disabled={rolling} onClick={() => setSides(die)}>d{die}</button>)}
+        </div>
+        <em className={error ? 'dice-tray__error' : ''}>{error || (visibleRoll ? `${visibleRoll.playerName}: ${visibleRoll.value} на d${visibleRoll.sides ?? sides}` : 'Видят все за столом')}</em>
+        <span className="dice-tray__sr-status" role="status" aria-live="polite">{status}</span>
+      </aside>
+    )
+  }
 
   /* На карте — только кость. Список костей открывается по нажатию и закрывается
      выбором, повторным нажатием или щелчком мимо: карточке с подписями на поле

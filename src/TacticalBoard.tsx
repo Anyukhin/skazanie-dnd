@@ -105,7 +105,7 @@ export function TacticalBoard(props: TacticalBoardProps) {
       <button type="button" aria-pressed={minimapVisible} onClick={toggleMinimap} aria-label="Мини-карта" title={minimapVisible ? 'Скрыть мини-карту' : 'Показать мини-карту'}><MapIcon size={17} strokeWidth={1.7} /></button>
       {focusActor && <button type="button" onClick={() => focusCell(focusActor.x, focusActor.y)} aria-label="Камера к герою" title={`К герою: ${focusActor.label}`}><Crosshair size={17} strokeWidth={1.7} /></button>}
     </div>}
-    {props.map && minimapVisible && <BoardMiniMap map={props.map} actors={props.animationActors ?? []} focusActorId={props.focusActorId} onPick={focusCell} />}
+    {props.map && minimapVisible && <BoardMiniMap map={props.map} actors={props.animationActors ?? []} focusActorId={props.focusActorId} onPick={focusCell} caption={props.minimapCaption} />}
     {error && <p className="board-view-error" role="status">{error} Включён вид 2D.</p>}
     {view === '3d'
       ? <Board3DErrorBoundary onError={fallback}><Suspense fallback={<div className="board3d-loading" role="status">Загрузка 3D-карты…</div>}><TacticalBoard3D {...props} focusRequest={focusRequest} onUnavailable={fallback} /></Suspense></Board3DErrorBoundary>
@@ -452,6 +452,8 @@ const cameraByLocation = new Map<string, { zoom: number; pan: { x: number; y: nu
 
 export type TacticalBoardProps = {
   map: TacticalMap | null
+  /** Подпись под мини-картой: где сейчас отряд. */
+  minimapCaption?: string
   campaignId?: string
   columns: number
   rows: number
