@@ -19,6 +19,15 @@ const campaign = 'BROWSER-REVIEW3'
 const switchTest = process.argv.includes('--switch-test')
 const receiptsArgument = process.argv.find(value => value.startsWith('--receipts='))
 const durableReceipts = receiptsArgument ? resolve(receiptsArgument.slice('--receipts='.length)) : null
+const observationsArgument = process.argv.find(value => value.startsWith('--observations='))
+const durableObservations = observationsArgument ? resolve(observationsArgument.slice('--observations='.length)) : null
+const observations = []
+const observationStart = Date.now()
+function observe(value) {
+  if (!durableObservations) return
+  observations.push({ elapsed_ms: Date.now() - observationStart, ...value })
+  writeFileSync(durableObservations, JSON.stringify(observations, null, 2))
+}
 let logs = ''
 const serverPath = fileURLToPath(new URL('../../../../server/index.mjs', import.meta.url))
 const child = spawn(process.execPath, [serverPath], {
@@ -52,6 +61,9 @@ const proxy = createServer((req, res) => {
   const command = req.method === 'POST' && /^\/api\/campaigns\/[^/]+\/commands$/u.test(req.url ?? '')
   const narrate = req.method === 'POST' && req.url === '/api/narrate'
   const tracked = command || narrate
+  const roomRead = durableObservations && req.method === 'GET' && /^\/api\/rooms\/[^/?]+(?:\?.*)?$/u.test(req.url ?? '')
+  const streamRead = durableObservations && req.method === 'GET' && /^\/api\/campaigns\/[^/]+\/stream(?:\?.*)?$/u.test(req.url ?? '')
+  const requestStarted = Date.now()
   const drop = command && existsSync(join(root, 'drop-next-command'))
   const fail = command && existsSync(join(root, 'fail-command-responses'))
   const hold = tracked && switchTest && existsSync(join(root, 'hold-command-responses'))
@@ -63,7 +75,27 @@ const proxy = createServer((req, res) => {
     headers: req.headers,
   }, result => {
     const reply = []
-    if (tracked) result.on('data', chunk => reply.push(chunk))
+    if (tracked || roomRead) result.on('data', chunk => reply.push(chunk))
+    if (streamRead) {
+      observe({ kind: 'sse-open', status: result.statusCode })
+      result.on('data', chunk => observe({ kind: 'sse-chunk', bytes: chunk.length,
+        events: [...chunk.toString().matchAll(/^event:\s*([^\r\n]+)/gmu)].map(match => match[1]),
+        has_comment: /^:/mu.test(chunk.toString()),
+      }))
+      result.once('close', () => observe({ kind: 'sse-close' }))
+    }
+    if (roomRead) result.once('end', () => {
+      let output = {}
+      try { output = JSON.parse(Buffer.concat(reply).toString()) } catch { /* Только метаданные синтетического ответа. */ }
+      observe({ kind: 'room-get', has_map_hash: new URL(req.url, backend).searchParams.has('map_hash'),
+        status: result.statusCode, bytes: reply.reduce((total, chunk) => total + chunk.length, 0),
+        duration_ms: Date.now() - requestStarted, room_version: output.version ?? null,
+        state_version: output.state?.state_version ?? null, has_state: Boolean(output.state),
+        map_unchanged: output.state?.scene?.map_unchanged === true,
+        has_map_delta: Boolean(output.state?.scene?.map_delta),
+        has_map: Boolean(output.state?.scene?.map),
+      })
+    })
     if (hold) {
       result.resume()
       result.once('end', () => {
@@ -181,6 +213,7 @@ try {
     arm: join(root, 'drop-next-command'), fail: join(root, 'fail-command-responses'),
     ...(switchTest ? { other_campaign: 'BROWSER-OTHER4', hold: join(root, 'hold-command-responses'), pulse: join(root, 'pulse-a') } : {}),
     receipts: join(root, 'command-receipts.json'), stop: join(root, 'stop') }
+  if (durableObservations) info.observations = durableObservations
   console.log(JSON.stringify(info))
   const deadline = Date.now() + 20 * 60 * 1000
   let pulse = 0
