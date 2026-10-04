@@ -5354,6 +5354,16 @@ function authoredOfficeParticipants(state, npcId) {
   return uniqueStrings([npcId, office?.holder_npc_id, ...(office?.defender_npc_ids ?? [])])
 }
 
+/**
+ * Место героя без созданного героя («Место героя 2») — не участник боя: оно не
+ * бросает инициативу и не входит в бюджет встречи. Герой, который уже создан и
+ * только повышает уровень до стартового (`characterSetupStage: 'leveling'`), —
+ * участник. Раньше пустое место ходило первым с выдуманными ОЗ 10 и КД 10.
+ */
+function isEmptyHeroSeat(actor) {
+  return actor?.characterSetupRequired === true && actor?.characterSetupStage !== 'leveling'
+}
+
 function assembleEncounterFromState(state, command) {
   /**
    * Проверка размещения после сборщика нужна потому, что сборщик получает
@@ -5437,7 +5447,7 @@ function assembleEncounterFromState(state, command) {
     })
   }
   const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
-  const party = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor)).map((actor) => {
+  const party = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor) && !isEmptyHeroSeat(actor)).map((actor) => {
     const position = actorPosition(state, actorId(actor))
     return {
       id: actorId(actor),
@@ -18358,7 +18368,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     case 'StartCombat': {
       const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map((player) => actorId(player)))
-      const partyIds = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor)).map(actorId)
+      const partyIds = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor) && !isEmptyHeroSeat(actor)).map(actorId)
       const expiredAtStart = new Set(summonIdsExpiredAt(state, worldTimeSeconds(state)))
       events.push(...summonExpiryEvents(
         command,

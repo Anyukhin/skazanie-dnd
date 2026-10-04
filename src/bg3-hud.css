@@ -848,6 +848,12 @@
   .game-area .turn-rail .hotbar-section .action-tile:hover:not(:disabled) { border-color: var(--acc2); }
   .game-area .turn-rail .hotbar-section .action-tile.selected { border-color: var(--acc2); box-shadow: 0 0 0 2px var(--well), 0 0 0 3px var(--acc2); }
   .game-area .turn-rail .hotbar-section .action-tile.spellbook-tile { background: var(--hud-btn-on); }
+  /* Подписанная плитка (от 110 px): счётчик и метка концентрации — на иконке,
+     как в макете, а не поверх подписи. */
+  @container (min-width: 110px) {
+    .game-area .turn-rail .hotbar-section .action-tile > em { right: auto; left: calc(var(--hud-cell) - 3px); top: auto; bottom: 2px; transform: translateX(-100%); }
+    .game-area .turn-rail .hotbar-section .action-tile > .tile-conc { right: auto; left: calc(var(--hud-cell) - 14px); top: 3px; }
+  }
   .game-area .turn-rail .own-action-tile {
     width: 56px; padding: 0; gap: 8px;
     border: 1px solid var(--acc); border-radius: 0;
@@ -995,3 +1001,137 @@
   .game-area .turn-rail-side .end-turn-ring { width: calc(124px * var(--ui-readable-scale, 1)); height: calc(124px * var(--ui-readable-scale, 1)); }
   .game-area .turn-rail > .hotbar-decks > .hotbar-tabs button { padding: 0 9px; font-size: 14px; }
 }
+
+/* ---------------- детали макета боя ----------------
+   Номер клавиши в углу плитки (1–0, ⇧1–⇧0), цена — ромбом по центру нижней
+   кромки; в лотке пунктиром то, что потратит выбранное действие; на кольце
+   хода — светлая дуга наведённого шага; стрелки у длинной ленты очерёдности;
+   при свёрнутой хронике — субтитр Рассказчика и мини-журнал боя. */
+@media (min-width: 761px) {
+  .game-area .turn-rail .hotbar-section .action-tile[data-hotkey]::after {
+    content: attr(data-hotkey);
+    position: absolute; right: 3px; bottom: 2px; z-index: 5;
+    color: color-mix(in srgb, var(--acc2) 55%, #fff);
+    font: 700 11px/1 var(--f-display);
+    text-shadow: 0 1px 2px #000, 0 0 3px #000;
+    pointer-events: none;
+  }
+  .game-area .turn-rail .hotbar-section .action-tile .action-cost::before { right: auto; left: calc(var(--hud-cell) / 2 - 4px); bottom: 3px; width: 8px; height: 8px; }
+
+  .game-area .hud-tray .hero-pip.will-spend { box-shadow: 0 0 0 2px #f6e7c8, 0 0 10px rgba(246, 231, 200, .7); }
+  .game-area .hud-tray .hud-slot > i.spend { background: color-mix(in srgb, var(--bonus) 35%, transparent); outline: 1px dashed #f6e7c8; box-shadow: 0 0 8px rgba(246, 231, 200, .7); }
+  .game-area .turn-rail > .hud-tray > .hud-tray-note { color: var(--text2); font: 600 14px var(--f-display); white-space: nowrap; }
+
+  .game-area .turn-rail-side .end-turn-ring .step { stroke: #f6e7c8; opacity: .85; }
+
+  .initiative-ribbon.combat > .initiative-scroll {
+    align-self: center; flex: none;
+    width: 26px; height: 60px; padding: 0;
+    border: 1px solid color-mix(in srgb, var(--acc) 42%, var(--rail-bg)); border-radius: 0;
+    background: color-mix(in srgb, var(--acc) 5%, var(--well));
+    color: var(--acc2); font: 700 18px/1 var(--f-display);
+    cursor: pointer;
+  }
+  .initiative-ribbon.combat > .initiative-scroll:hover { border-color: var(--acc2); }
+
+  .map-stage > .board-subtitle {
+    position: absolute; left: 50%; bottom: 14px; z-index: 14;
+    transform: translateX(-50%);
+    max-width: min(760px, calc(100% - 480px));
+    margin: 0; padding: 8px 18px;
+    border-top: 1px solid color-mix(in srgb, var(--acc) 42%, var(--rail-bg));
+    border-bottom: 1px solid color-mix(in srgb, var(--acc) 42%, var(--rail-bg));
+    background: color-mix(in srgb, var(--well) 82%, transparent);
+    color: var(--text);
+    font: italic 400 19px/1.35 var(--f-serif);
+    text-align: center;
+    pointer-events: none;
+  }
+  .map-stage > .board-subtitle > b { color: var(--acc2); font: 700 19px var(--f-display); font-style: normal; }
+  .map-stage > .board-mini-log {
+    position: absolute; right: 16px; bottom: 92px; z-index: 14;
+    width: 340px;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 10px 14px;
+    border: 1px solid color-mix(in srgb, var(--acc) 42%, var(--rail-bg));
+    background: color-mix(in srgb, var(--well) 92%, transparent);
+    box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--well) 92%, transparent), inset 0 0 0 4px color-mix(in srgb, var(--acc) 20%, var(--rail-bg)), var(--shadow);
+  }
+  .board-mini-log > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .board-mini-log > header b { color: var(--text); font: 700 18px var(--f-display); }
+  .board-mini-log > header button { height: 26px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--acc) 62%, var(--well)); border-radius: 0; background: var(--well); color: var(--acc2); font: 700 13px var(--f-display); cursor: pointer; }
+  .board-mini-log-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; color: var(--text); font: 500 13px var(--f-ui); }
+  .board-mini-log-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .board-mini-log-row > small { color: var(--text2); font-variant-numeric: tabular-nums; }
+  .board-mini-log-row > em { padding: 1px 6px; border: 1px solid var(--line2); font: 700 12px var(--f-display); font-style: normal; white-space: nowrap; }
+  .board-mini-log-row > em.hit { border-color: color-mix(in srgb, var(--hp) 70%, transparent); background: color-mix(in srgb, var(--hp) 35%, transparent); color: #fff; }
+  .board-mini-log-row > em.crit { border-color: var(--hp); background: var(--hp); color: #fff; }
+  .board-mini-log-row > em.miss { color: var(--text2); }
+}
+
+/* ---------------- меню NPC по макету холста ----------------
+   Рамка с красными кромками сверху и снизу, шапка с портретом и чипом
+   отношения, «Заговорить» — крупной красной кнопкой, «Сделка» и «Риск» —
+   группами, риск окрашен. Раскрывается туда, где есть место. */
+.map-stage .neutral-token-menu {
+  --npc-line: color-mix(in srgb, var(--acc) 62%, var(--well));
+  --npc-bg: color-mix(in srgb, var(--acc) 10%, var(--well));
+  --npc-red: color-mix(in srgb, var(--hp) 72%, #250402);
+  width: 328px; min-width: 0;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--npc-line);
+  border-top: 3px solid var(--npc-red);
+  border-bottom: 3px solid var(--npc-red);
+  border-radius: 2px;
+  background: var(--npc-bg);
+  box-shadow: inset 0 0 0 3px var(--npc-bg), inset 0 0 0 4px color-mix(in srgb, var(--acc) 22%, var(--well)), 0 18px 44px rgba(0, 0, 0, .65);
+  color: var(--text);
+  text-align: left;
+}
+.map-stage .neutral-token-menu.npc-menu-up { top: auto; bottom: calc(50% + 34px); }
+.map-stage .neutral-token-menu.npc-menu-toleft { left: auto; right: -12px; transform: none; }
+.map-stage .neutral-token-menu.npc-menu-toright { left: -12px; transform: none; }
+.tactical-scroll .neutral-token-menu.npc-menu-up { transform-origin: 50% 100%; }
+.tactical-scroll .neutral-token-menu.npc-menu-toleft { transform: scale(var(--counter-scale, 1)); transform-origin: 100% 0; }
+.tactical-scroll .neutral-token-menu.npc-menu-toright { transform: scale(var(--counter-scale, 1)); transform-origin: 0 0; }
+.tactical-scroll .neutral-token-menu.npc-menu-up.npc-menu-toleft { transform-origin: 100% 100%; }
+.tactical-scroll .neutral-token-menu.npc-menu-up.npc-menu-toright { transform-origin: 0 100%; }
+
+.neutral-token-menu > .npc-menu-head { display: flex; align-items: center; gap: 12px; padding-bottom: 9px; background: linear-gradient(90deg, color-mix(in srgb, var(--hp) 80%, #000), transparent) bottom / 100% 3px no-repeat; }
+.neutral-token-menu .npc-menu-portrait { flex: none; width: 50px; height: 60px; display: grid; place-items: center; overflow: hidden; border: 2px solid var(--npc-line); border-radius: 25px 25px 3px 3px; background: var(--well); }
+.neutral-token-menu .npc-menu-portrait > img { width: 100%; height: 100%; object-fit: cover; }
+.neutral-token-menu .npc-menu-head > span:last-child { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.neutral-token-menu .npc-menu-head b { max-width: 100%; overflow: hidden; color: var(--acc2); font: 700 21px/1 var(--f-display); text-overflow: ellipsis; white-space: nowrap; }
+.neutral-token-menu .npc-menu-head small { color: var(--text2); font: italic 400 13px var(--f-serif); }
+.neutral-token-menu .npc-menu-stance { padding: 0 8px; border: 1px solid var(--npc-line); background: color-mix(in srgb, var(--acc) 12%, var(--well)); color: var(--text2); font: 700 13px var(--f-display); font-style: normal; }
+
+.map-stage .neutral-token-menu button {
+  min-height: 36px; height: auto;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--npc-line); border-radius: 2px;
+  background: color-mix(in srgb, var(--acc) 12%, var(--well));
+  color: var(--text);
+  font: 400 15px var(--f-serif);
+  cursor: pointer;
+}
+.map-stage .neutral-token-menu button:hover:not(:disabled) { border-color: var(--acc2); }
+.map-stage .neutral-token-menu button:disabled { opacity: .45; cursor: not-allowed; }
+.neutral-token-menu > .npc-menu-main { display: flex; gap: 8px; }
+.map-stage .neutral-token-menu > .npc-menu-main > button { flex: 1; height: 44px; color: var(--text2); font: 700 17px var(--f-display); }
+.map-stage .neutral-token-menu > .npc-menu-main > .npc-menu-primary {
+  border-color: color-mix(in srgb, var(--hp) 40%, #000);
+  background: var(--npc-red);
+  box-shadow: inset 0 0 0 2px var(--npc-red), inset 0 0 0 3px color-mix(in srgb, var(--hp) 88%, var(--acc2));
+  color: color-mix(in srgb, var(--acc2) 55%, #fff);
+  font-size: 18px;
+}
+.neutral-token-menu > .npc-menu-group { display: flex; flex-direction: column; gap: 5px; }
+.neutral-token-menu > .npc-menu-group > span { color: var(--acc2); font: 700 15px var(--f-display); }
+.neutral-token-menu > .npc-menu-group > div,
+.neutral-token-menu .npc-menu-bribe { display: flex; flex-wrap: wrap; gap: 8px; }
+.neutral-token-menu > .npc-menu-group.risk { padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--acc) 22%, var(--well)); }
+.map-stage .neutral-token-menu > .npc-menu-group.risk button { border-color: var(--npc-red); background: transparent; color: color-mix(in srgb, var(--enemy) 60%, #fff); }
+.map-stage .neutral-token-menu .npc-menu-back { min-width: 36px; padding: 0; font: 700 18px var(--f-display); }
+.neutral-token-menu > .npc-menu-esc { color: var(--text2); font: italic 400 13px var(--f-serif); }

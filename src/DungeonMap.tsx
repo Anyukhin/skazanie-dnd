@@ -363,6 +363,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const typingTimeoutRef = useRef<number | null>(null)
   const typingActiveRef = useRef(false)
   const [openTokenLabelId, setOpenTokenLabelId] = useState<string | null>(null)
+  /* Меню NPC раскрывается туда, где есть место: у нижнего края доски — вверх,
+     у боковых — внутрь доски. Подкуп открывает вложенный шаг со щедростью. */
+  const [npcMenuPlacement, setNpcMenuPlacement] = useState<{ vertical: 'down' | 'up'; horizontal: 'center' | 'toleft' | 'toright' }>({ vertical: 'down', horizontal: 'center' })
+  const [npcBribeOpen, setNpcBribeOpen] = useState(false)
+  useEffect(() => {
+    if (!openTokenLabelId) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      setOpenTokenLabelId(null)
+      setNpcBribeOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openTokenLabelId])
   const [linkedParticipantIds, setLinkedParticipantIds] = useState<string[]>([])
   const [npcDossier, setNpcDossier] = useState<{ npcId: string; mode: 'talk' | 'inspect' | 'transfer' } | null>(null)
   useDialogEscape(() => setNpcDossier(null), Boolean(npcDossier))
@@ -623,6 +637,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      число колонок, а что не влезло — уходит на страницы (▲ 1/2 ▼), как в
      макете. Прокрутка показывала у края обрезанную половину плитки. */
   const [hotbarBox, setHotbarBox] = useState({ width: 0, cell: 48 })
+  /* Лента очерёдности: стрелки появляются, только когда участники не влезают. */
+  const ribbonListRef = useRef<HTMLOListElement | null>(null)
+  const [ribbonOverflow, setRibbonOverflow] = useState(false)
   const [compactPage, setCompactPage] = useState(0)
   useEffect(() => {
     const element = hotbarActionsRef.current
@@ -744,6 +761,27 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const, footprint: actor.footprint, defeated: actor.alive === false })),
     ...sceneNpcs.filter((npc) => npc.alive).map((npc) => ({ id: npc.id, x: npc.x, y: npc.y, label: npc.name, color: '#9d8f72', kind: 'neutral' as const, footprint: npc.footprint })),
   ].map((actor) => ({ ...actor, appearance: state.actor_appearances?.[actor.id] }))
+  /* Субтитр — первое предложение последней реплики Рассказчика; мини-журнал —
+     три последних удара: кто → кого, бросок против КД, если она открыта, итог. */
+  const latestNarration = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
+  const collapsedSubtitle = latestNarration ? (/^[^.!?…]{8,180}[.!?…]/u.exec(latestNarration.text.trim())?.[0] ?? latestNarration.text.trim().slice(0, 180)) : ''
+  const miniBattleLog = (state.battleLog ?? []).filter((event) => event.type === 'attack' && event.roll).slice(-3).map((event) => ({
+    id: event.id,
+    who: `${actorNameById(event.actorId) ?? '—'} → ${actorNameById(event.targetId) ?? '—'}`,
+    roll: event.roll?.difficulty != null ? `${event.roll.total} vs КД ${event.roll.difficulty}` : String(event.roll?.total ?? ''),
+    result: !event.roll?.hit ? 'промах' : event.critical ? `крит −${event.damage ?? 0}` : event.damage ? `−${event.damage}` : 'попадание',
+    tone: !event.roll?.hit ? 'miss' : event.critical ? 'crit' : 'hit',
+  }))
+  const initiativeCount = combat.initiative?.length ?? 0
+  useEffect(() => {
+    const list = ribbonListRef.current
+    if (!list || typeof ResizeObserver === 'undefined') { setRibbonOverflow(false); return }
+    const measure = () => setRibbonOverflow(list.scrollWidth > list.clientWidth + 2)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(list)
+    return () => observer.disconnect()
+  }, [combatActive, initiativeCount])
   const npcSummaryEvents = latestNpcTurnEvents(state.battleLog ?? [])
   // Пленные приезжают отдельной серверной веткой проекции: на доске связанный
   // выглядит обычным NPC сцены, и без этого списка отличить его было бы нечем.
@@ -1032,6 +1070,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const fallbackSpells = fallbackCombatSpells(activeHero, state.ruleset_id)
   const spellbookSpells = useMemo(() => allCatalogCombatSpells(projectedSpells, state.ruleset_id), [projectedSpells, state.ruleset_id])
   const fallbackSpellById = new Map(fallbackSpells.map((spell) => [spell.id, spell]))
+  // Имя заклинания по id — для врождённой магии расы в лотке ресурсов.
+  const spellNameById = (spellId: string) => spells.find((spell) => spell.id === spellId)?.name
   const spells = [...new Map([...fallbackSpells, ...projectedSpells].map((spell) => [spell.id, spell])).entries()]
     .map(([id, spell]) => {
       const fallback = fallbackSpellById.get(id)
@@ -1300,6 +1340,17 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     { id: 'reaction', label: 'Реакция', ready: railEconomy?.reaction !== false, note: '' },
   ] : heroPips
   const railResources = viewerHero ? heroResourcesFor(state, viewerHero.id, viewerHero) : activeResources
+  /* Цена выбранного действия, как в BG3: пока оно ждёт цели, камень и ромб
+     ячейки, которые оно потратит, подсвечены в лотке. */
+  const spendCost: 'action' | 'bonus_action' | null = !combatActive || viewerHero || !canAct ? null
+    : combatMode === 'magic' ? (selectedSpellId && (selectedSpellAction === 'action' || selectedSpellAction === 'bonus_action') ? selectedSpellAction : null)
+    : combatMode === 'action' ? (selectedCombatAction && (selectedCombatAction.actionType === 'action' || selectedCombatAction.actionType === 'bonus_action') ? selectedCombatAction.actionType : null)
+    : 'action'
+  const spendSlotLevel = combatActive && !viewerHero && canAct && combatMode === 'magic' && selectedSpellId && selectedSpell && selectedSpell.level > 0 ? selectedSpellSlotLevel ?? null : null
+  /* Наведённый шаг на кольце хода: светлая дуга — что он съест, под кнопкой —
+     «шаг −N». */
+  const stepFeet = combatActive && canAct && !viewerHero && previewRoute && !maneuverPath ? Math.max(0, Math.min(railRemainingFeet, previewRoute.costFeet)) : 0
+  const ringRatio = (feet: number) => railMovementAvailable && railSpeedFeet > 0 ? Math.max(0, Math.min(1, feet / railSpeedFeet)) : 0
   const railClassPoolRows = viewerHero ? heroClassPoolRowsFrom(railResources) : heroClassPoolRows
   const railName = viewerHero?.character ?? activeName
   /* Спасброски от смерти — у того же героя, что и полоска жизни слева: у
@@ -1361,6 +1412,25 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [combatActive, canAct, tacticalBusy])
+  /* Клавиши 1–0 и Shift+1–0, как в BG3: нажимают плитку с тем же номером.
+     В полях ввода и при открытом окне цифры принадлежат им. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const match = /^Digit(\d)$/.exec(event.code)
+      if (!match || event.defaultPrevented || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return
+      const focused = document.activeElement
+      if (focused instanceof HTMLElement && (focused.isContentEditable || focused.closest('input, textarea, select'))) return
+      if (document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"]')) return
+      const digit = Number(match[1])
+      const index = (digit === 0 ? 9 : digit - 1) + (event.shiftKey ? 10 : 0)
+      const tile = document.querySelector<HTMLButtonElement>(`.turn-rail .hotbar-actions [data-hotkey-index="${index}"]`)
+      if (!tile || tile.disabled || tile.closest('[hidden]')) return
+      event.preventDefault()
+      tile.click()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const selectedSpellSupport = mechanicsSupportPresentation(selectedSpell?.mechanicsSupport, selectedSpell?.supportNote)
   const selectedSpellComponentAvailability = spellComponentAvailabilityFor(selectedSpell)
   /* Вне боя экономики хода нет, а длинное накладывание, наоборот, доступно
@@ -1538,6 +1608,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     if (autoAttackRoll) void onAttack(selected, enemyId, selectedItem?.id, choice).then((outcome) => {
       if (outcome.ok && sneakAttack) setSneakAttack(false)
     })
+    /* Как в BG3: первый щелчок наводит удар на цель, второй по той же цели —
+       бьёт. Поле ввода по-прежнему подтверждает удар с добавленными словами. */
+    else if (pendingCommand?.kind === 'target' && pendingCommand.targetId === enemyId) void confirmPreparedCommand()
     else setPendingCommand({ kind: 'target', targetId: enemyId, ...choice })
   }
   const chooseArea = (x: number, y: number) => {
@@ -2526,133 +2599,173 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 else if (!multiTargetSpell && canHealActorHere) castAtTarget(sceneNpc.id)
                 return
               }
+              const tokenBox = event.currentTarget.getBoundingClientRect()
+              const stageBox = event.currentTarget.closest('.map-stage')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth }
+              const below = stageBox.bottom - tokenBox.bottom
+              const above = tokenBox.top - stageBox.top
+              setNpcMenuPlacement({
+                vertical: below < 380 && above > below ? 'up' : 'down',
+                horizontal: stageBox.right - tokenBox.right < 160 ? 'toleft' : tokenBox.left - stageBox.left < 160 ? 'toright' : 'center',
+              })
+              setNpcBribeOpen(false)
               setOpenTokenLabelId((current) => current === sceneNpcMenuId ? null : sceneNpcMenuId)
             }}
           >
             <NpcTokenPortrait campaignId={state.sessionCode} npcId={sceneNpc.id} name={sceneNpc.name} />
             <span className="neutral-nameplate">{sceneNpc.name}</span>
           </button>
-          {openTokenLabelId === sceneNpcMenuId && <div className="neutral-token-menu" role="group" aria-label={`Действия с ${sceneNpc.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-            <span><b>{sceneNpc.name}</b><small>{sceneNpc.role || 'Персонаж'} · {NPC_STANCE_LABELS[sceneNpcStance]}</small></span>
-            <button
-              type="button"
-              disabled={combatActive || !sceneNpc.alive || !sceneNpc.can_start_combat || narrating || tacticalBusy || !canAct}
-              title={combatActive
-                ? 'Бой уже идёт'
-                : !sceneNpc.alive
-                  ? 'Этот персонаж уже выбыл'
-                  : !sceneNpc.can_start_combat
-                    ? 'Бой с этим NPC пока недоступен: нет готового серверного профиля'
-                  : narrating
-                    ? 'Дождитесь ответа Рассказчика'
-                    : tacticalBusy
-                      ? 'Дождитесь завершения текущего действия'
-                      : !canAct
-                        ? 'Сейчас этот герой не может действовать'
-                        : `Начать бой с ${sceneNpc.name}. Инициатива определится случайно`}
-              onClick={() => { setOpenTokenLabelId(null); void onNpcAttack(sceneNpc.id) }}
-            ><Swords size={13} />Напасть</button>
-             <button
-              type="button"
-              disabled={combatActive || !sceneNpc.alive || narrating}
-              title={combatActive ? 'Разговор недоступен во время боя' : !sceneNpc.alive ? 'Собеседник недоступен' : narrating ? 'Дождитесь ответа Рассказчика' : 'Открыть адресованный разговор'}
-              onClick={() => openNpcDossier(sceneNpc.id, 'talk')}
-            ><CombatIcon id="talk" kind="action" hint="поговорить с персонажем" size={13} compact />Заговорить</button>
-            <button type="button" onClick={() => openNpcDossier(sceneNpc.id, 'inspect')} title="Открыть публичное досье, не расходуя действие"><BookOpen size={13} />Осмотреть</button>
-            <button
-              type="button"
-              disabled={sceneNpcGiftBlocked}
-              title={combatActive
-                ? 'Передача недоступна во время боя'
-                : !sceneNpc.alive
-                  ? 'Этому персонажу нельзя передать предмет'
-                  : sceneNpcSocial?.available === false
-                    ? 'Персонаж сейчас недоступен'
-                    : narrating
-                      ? 'Дождитесь ответа Рассказчика'
-                      : tacticalBusy
-                        ? 'Дождитесь завершения текущего действия'
-                        : !canAct
-                          ? 'Сейчас этот герой не может действовать'
-                          : transferableGiftItems.length === 0
-                            ? 'Нет свободных предметов для передачи'
-                            : 'Выбрать предмет и количество'}
-              onClick={() => openNpcDossier(sceneNpc.id, 'transfer')}
-            ><Send size={13} />Передать предмет</button>
-            {/* Обчистить карманы. Кнопка идёт тем же каналом свободной фразы,
-                что и «Заговорить»: сервер разбирает её в команду `PickpocketNpc`
-                (`resolvePickpocket`, `server/free-action-adjudication.mjs`), и у
-                кнопки с фразой получается один путь, а не два расходящихся.
-                Своих условий доска не выдумывает — все отказы у движка, — но
-                молчать о заведомо невозможном тоже нельзя: подсказка называет
-                причину до нажатия. */}
-            <button
-              type="button"
-              disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
-              title={combatActive
-                ? 'Посреди боя карманов не чистят'
-                : !sceneNpc.alive
-                  ? 'Карманы живых'
-                  : narrating
-                    ? 'Дождитесь ответа Рассказчика'
-                    : tacticalBusy
-                      ? 'Дождитесь завершения текущего действия'
-                      : !canAct
-                        ? 'Сейчас этот герой не может действовать'
-                        : 'Ловкость рук против чужого внимания. Заметят — будет скандал, и его запомнят'}
-              onClick={() => { void onNpcAction(`Незаметно обчищаю карманы: ${sceneNpc.name}`, sceneNpc.id) }}
-            ><Coins size={13} />Обчистить карманы</button>
-            {/* Подкрепить слова монетой. Три ступени щедрости шлют ту же
-                свободную фразу, что игрок мог бы сказать сам, — сервер читает
-                ступень из неё и сам же считает сумму от кошелька героя
-                (`classifyBribeTier`, `server/npc-social-check.mjs`). Своих
-                чисел доска не держит намеренно: две копии правила разошлись бы
-                при первой правке долей, и подпись обещала бы не ту цену. */}
-            {(['монету', 'кошель', 'щедро'] as const).map((tier) => <button
-              key={tier}
-              type="button"
-              disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
-              title={combatActive
-                ? 'Посреди боя не торгуются'
-                : narrating
-                  ? 'Дождитесь ответа Рассказчика'
-                  : tacticalBusy
-                    ? 'Дождитесь завершения текущего действия'
-                    : !canAct
-                      ? 'Сейчас этот герой не может действовать'
-                      : `Убеждение станет легче. Сумму отсчитает сервер от вашего кошелька; если этот человек не берёт денег — станет только хуже, и это запомнят`}
-              onClick={() => { void onNpcAction(`Убеждаю и подкрепляю слова: ${tier}`, sceneNpc.id) }}
-            ><Coins size={13} />Подкрепить: {tier}</button>)}
-            {sceneNpcMerchant
-              ? <button
+          {openTokenLabelId === sceneNpcMenuId && <div className={`neutral-token-menu npc-menu-${npcMenuPlacement.vertical}${npcMenuPlacement.horizontal === 'center' ? '' : ` npc-menu-${npcMenuPlacement.horizontal}`}`} role="group" aria-label={`Действия с ${sceneNpc.name}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+            {/* Меню по макету холста «Меню NPC»: раскрывается туда, где есть
+                место (у нижнего края доски — вверх, у боковых — вбок), главное
+                действие одно и крупное, сделки отдельно, риск отделён и окрашен. */}
+            <header className="npc-menu-head">
+              <span className="npc-menu-portrait"><NpcTokenPortrait campaignId={state.sessionCode} npcId={sceneNpc.id} name={sceneNpc.name} /></span>
+              <span><b>{sceneNpc.name}</b><small>{sceneNpc.role || 'Персонаж'}</small><em className={`npc-menu-stance stance-${sceneNpcStance}`}>{NPC_STANCE_LABELS[sceneNpcStance]}</em></span>
+            </header>
+            <div className="npc-menu-main">
+              <button
+                type="button"
+                className="npc-menu-primary"
+                disabled={combatActive || !sceneNpc.alive || narrating}
+                title={combatActive ? 'Разговор недоступен во время боя' : !sceneNpc.alive ? 'Собеседник недоступен' : narrating ? 'Дождитесь ответа Рассказчика' : 'Открыть адресованный разговор'}
+                onClick={() => openNpcDossier(sceneNpc.id, 'talk')}
+              >Заговорить</button>
+              <button type="button" onClick={() => openNpcDossier(sceneNpc.id, 'inspect')} title="Открыть публичное досье, не расходуя действие">Осмотреть</button>
+            </div>
+            <div className="npc-menu-group" role="group" aria-label="Сделка">
+              <span>Сделка</span>
+              <div>
+                <button
                   type="button"
-                  disabled={!canAct || narrating || tacticalBusy || dialogueBusy}
-                  title={!canAct ? 'Сейчас этот герой не может торговать' : narrating || tacticalBusy || dialogueBusy ? 'Дождитесь завершения текущего действия' : `Торговать с ${sceneNpc.name}`}
-                  onClick={() => onOpenMerchant(sceneNpc.id)}
-                ><Store size={13} />Торговать</button>
-              : null}
-            {/* Треба у служителя. Кто служитель, решает сервер по роли профиля
-                (`blessingPriestsFor`, `server/blessings.mjs`): своего списка
-                ролей у доски нет, иначе кнопка появлялась бы там, где движок её
-                не принимает. */}
-            {blessingPriests.some((priest) => priest.id === sceneNpc.id)
-              ? <button
-                  type="button"
-                  disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct || blessingHeld || !blessingAvailable || activeHeroPurseCp < blessingDonationCp}
+                  disabled={sceneNpcGiftBlocked}
                   title={combatActive
-                    ? 'Посреди боя благословений не раздают'
+                    ? 'Передача недоступна во время боя'
                     : !sceneNpc.alive
-                      ? 'Служитель сейчас недоступен'
-                      : !blessingAvailable
-                        ? blessingSpentHint
-                        : blessingHeld
-                          ? blessingHeldHint
-                          : activeHeroPurseCp < blessingDonationCp
-                            ? `На пожертвование нужно ${blessingDonationCp} мм`
-                            : `Пожертвовать ${blessingDonationCp} мм и получить малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) без броска`}
-                  onClick={() => { void onReceiveNpcBlessing(sceneNpc.id) }}
-                ><HandHeart size={13} />Благословение ({blessingDonationCp} мм)</button>
-              : null}
+                      ? 'Этому персонажу нельзя передать предмет'
+                      : sceneNpcSocial?.available === false
+                        ? 'Персонаж сейчас недоступен'
+                        : narrating
+                          ? 'Дождитесь ответа Рассказчика'
+                          : tacticalBusy
+                            ? 'Дождитесь завершения текущего действия'
+                            : !canAct
+                              ? 'Сейчас этот герой не может действовать'
+                              : transferableGiftItems.length === 0
+                                ? 'Нет свободных предметов для передачи'
+                                : 'Выбрать предмет и количество'}
+                  onClick={() => openNpcDossier(sceneNpc.id, 'transfer')}
+                >Передать предмет</button>
+                {/* Подкуп — одна кнопка, щедрость — вложенным шагом. Три ступени
+                    шлют ту же свободную фразу, что игрок мог бы сказать сам, —
+                    сервер читает ступень из неё и сам считает сумму от кошелька
+                    героя (`classifyBribeTier`, `server/npc-social-check.mjs`).
+                    Своих чисел доска не держит: подпись не обещает не ту цену. */}
+                {npcBribeOpen
+                  ? <span className="npc-menu-bribe" role="group" aria-label="Сколько дать">
+                      {(['монету', 'кошель', 'щедро'] as const).map((tier) => <button
+                        key={tier}
+                        type="button"
+                        disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
+                        title="Убеждение станет легче. Сумму отсчитает сервер от вашего кошелька; если этот человек не берёт денег — станет только хуже, и это запомнят"
+                        onClick={() => { setNpcBribeOpen(false); void onNpcAction(`Убеждаю и подкрепляю слова: ${tier}`, sceneNpc.id) }}
+                      >{tier === 'монету' ? 'Монету' : tier === 'кошель' ? 'Кошель' : 'Щедро'}</button>)}
+                      <button type="button" className="npc-menu-back" onClick={() => setNpcBribeOpen(false)} aria-label="Назад к меню" title="Назад">‹</button>
+                    </span>
+                  : <button
+                      type="button"
+                      aria-haspopup="true"
+                      aria-expanded={false}
+                      disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
+                      title={combatActive
+                        ? 'Посреди боя не торгуются'
+                        : narrating
+                          ? 'Дождитесь ответа Рассказчика'
+                          : tacticalBusy
+                            ? 'Дождитесь завершения текущего действия'
+                            : !canAct
+                              ? 'Сейчас этот герой не может действовать'
+                              : 'Подкрепить слова монетой: щедрость выберете следующим шагом'}
+                      onClick={() => setNpcBribeOpen(true)}
+                    >Подкупить ▸</button>}
+                {sceneNpcMerchant
+                  ? <button
+                      type="button"
+                      disabled={!canAct || narrating || tacticalBusy || dialogueBusy}
+                      title={!canAct ? 'Сейчас этот герой не может торговать' : narrating || tacticalBusy || dialogueBusy ? 'Дождитесь завершения текущего действия' : `Торговать с ${sceneNpc.name}`}
+                      onClick={() => onOpenMerchant(sceneNpc.id)}
+                    >Торговать</button>
+                  : null}
+                {/* Треба у служителя. Кто служитель, решает сервер по роли профиля
+                    (`blessingPriestsFor`, `server/blessings.mjs`): своего списка
+                    ролей у доски нет, иначе кнопка появлялась бы там, где движок её
+                    не принимает. */}
+                {blessingPriests.some((priest) => priest.id === sceneNpc.id)
+                  ? <button
+                      type="button"
+                      disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct || blessingHeld || !blessingAvailable || activeHeroPurseCp < blessingDonationCp}
+                      title={combatActive
+                        ? 'Посреди боя благословений не раздают'
+                        : !sceneNpc.alive
+                          ? 'Служитель сейчас недоступен'
+                          : !blessingAvailable
+                            ? blessingSpentHint
+                            : blessingHeld
+                              ? blessingHeldHint
+                              : activeHeroPurseCp < blessingDonationCp
+                                ? `На пожертвование нужно ${blessingDonationCp} мм`
+                                : `Пожертвовать ${blessingDonationCp} мм и получить малое благословение (+${Number(blessings?.attack_bonus) || 1} к первой атаке) без броска`}
+                      onClick={() => { void onReceiveNpcBlessing(sceneNpc.id) }}
+                    >Благословение ({blessingDonationCp} мм)</button>
+                  : null}
+              </div>
+            </div>
+            <div className="npc-menu-group risk" role="group" aria-label="Риск">
+              <span>Риск</span>
+              <div>
+                {/* Обчистить карманы. Кнопка идёт тем же каналом свободной фразы,
+                    что и «Заговорить»: сервер разбирает её в команду `PickpocketNpc`
+                    (`resolvePickpocket`, `server/free-action-adjudication.mjs`), и у
+                    кнопки с фразой получается один путь, а не два расходящихся.
+                    Своих условий доска не выдумывает — все отказы у движка, — но
+                    молчать о заведомо невозможном тоже нельзя: подсказка называет
+                    причину до нажатия. */}
+                <button
+                  type="button"
+                  disabled={combatActive || !sceneNpc.alive || narrating || tacticalBusy || !canAct}
+                  title={combatActive
+                    ? 'Посреди боя карманов не чистят'
+                    : !sceneNpc.alive
+                      ? 'Карманы живых'
+                      : narrating
+                        ? 'Дождитесь ответа Рассказчика'
+                        : tacticalBusy
+                          ? 'Дождитесь завершения текущего действия'
+                          : !canAct
+                            ? 'Сейчас этот герой не может действовать'
+                            : 'Ловкость рук против чужого внимания. Заметят — будет скандал, и его запомнят'}
+                  onClick={() => { void onNpcAction(`Незаметно обчищаю карманы: ${sceneNpc.name}`, sceneNpc.id) }}
+                >Обчистить карманы</button>
+                <button
+                  type="button"
+                  disabled={combatActive || !sceneNpc.alive || !sceneNpc.can_start_combat || narrating || tacticalBusy || !canAct}
+                  title={combatActive
+                    ? 'Бой уже идёт'
+                    : !sceneNpc.alive
+                      ? 'Этот персонаж уже выбыл'
+                      : !sceneNpc.can_start_combat
+                        ? 'Бой с этим NPC пока недоступен: нет готового серверного профиля'
+                      : narrating
+                        ? 'Дождитесь ответа Рассказчика'
+                        : tacticalBusy
+                          ? 'Дождитесь завершения текущего действия'
+                          : !canAct
+                            ? 'Сейчас этот герой не может действовать'
+                            : `Начать бой с ${sceneNpc.name}. Инициатива определится случайно`}
+                  onClick={() => { setOpenTokenLabelId(null); void onNpcAttack(sceneNpc.id) }}
+                >Напасть</button>
+              </div>
+            </div>
+            <small className="npc-menu-esc">Esc — закрыть</small>
           </div>}
         </>}
         {player && cell.revealed && actorIsAnchor && (() => {
@@ -2924,6 +3037,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const sectionTiles = (section: (typeof hotbarSections)[number]) => section === largestSection && compactLayout.pages > 1
     ? section.tiles.slice(compactPageIndex * compactLayout.cols * hudRows, (compactPageIndex + 1) * compactLayout.cols * hudRows)
     : section.tiles
+  // Номера клавиш — по порядку плиток на экране, с учётом страницы секции.
+  const hotkeyTileIds = hotbarSections.flatMap((section) => sectionTiles(section).map((tile) => tile.id)).slice(0, 20)
+  const hotkeyLabel = (index: number) => `${index < 10 ? '' : '⇧'}${(index % 10 + 1) % 10}`
   /* Реакции героя — справа от плиток: они не нажимаются, а срабатывают в окне
      реакции, поэтому панель только показывает, чем герой может ответить и не
      потрачена ли реакция в этом раунде. */
@@ -2981,7 +3097,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {/* Как в BG3: лента начинается с ходящего, а кто уже сходил в этом
                 раунде, уходит за черту следующего раунда. Номер в углу — место
                 в исходном порядке инициативы. */}
-            <ol>{(combat.initiative ?? []).map((entry, index) => ({ entry, index }))
+            {ribbonOverflow && <button type="button" className="initiative-scroll prev" onClick={() => ribbonListRef.current?.scrollBy({ left: -200, behavior: 'smooth' })} aria-label="Прокрутить очерёдность назад" title="Назад по очерёдности">‹</button>}
+            <ol ref={ribbonListRef}>{(combat.initiative ?? []).map((entry, index) => ({ entry, index }))
               .sort((left, right) => ((left.index - activeInitiativeIndex + 1000) % 1000) - ((right.index - activeInitiativeIndex + 1000) % 1000))
               .map(({ entry, index }) => {
               const hero = state.players.find((player) => player.id === entry.actor_id)
@@ -3032,6 +3149,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               </li>
               </Fragment>
             })}</ol>
+            {ribbonOverflow && <button type="button" className="initiative-scroll next" onClick={() => ribbonListRef.current?.scrollBy({ left: 200, behavior: 'smooth' })} aria-label="Прокрутить очерёдность вперёд" title="Дальше по очерёдности">›</button>}
           </> : <div className="initiative-exploration-lead">
             <span className="initiative-ribbon-label">Свободная сцена</span>
             <div className="initiative-active-chip exploration">
@@ -3049,6 +3167,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
       {!combatActive && <PartyQuestHud state={state} />}
+      {/* Хроника свёрнута: Рассказчик — субтитром над панелью, бой — мини-журналом
+          у края доски, как в макете боя. Полный текст — в хронике. */}
+      {chatCollapsed && collapsedSubtitle && <p className="board-subtitle" aria-live="polite"><b>Рассказчик:</b> {collapsedSubtitle}</p>}
+      {chatCollapsed && combatActive && miniBattleLog.length > 0 && <section className="board-mini-log" aria-label="Журнал боя">
+        <header><b>Журнал боя</b><button type="button" onClick={() => toggleChat(false)}>Открыть чат</button></header>
+        {miniBattleLog.map((line) => <div key={line.id} className="board-mini-log-row"><span>{line.who}</span><small>{line.roll}</small><em className={line.tone}>{line.result}</em></div>)}
+      </section>}
       {combatActive && pendingTarget && (() => {
         const targetEnemy = state.enemies?.find((enemy) => enemy.id === pendingTarget.id)
         const health = targetEnemy ? enemyHealthPresentation(targetEnemy) : null
@@ -3060,7 +3185,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <strong>{targetName}</strong>
           {targetEnemy?.boss && <span className="combat-target-plate-tag">босс</span>}
           {fill != null && <span className="combat-target-plate-bar" aria-hidden="true"><u style={{ width: `${Math.round(fill * 100)}%` }} /><b>{word}</b></span>}
-          <small>Ваша цель — подтвердите в поле ввода или выберите другую</small>
+          <small>Ваша цель — щёлкните по ней ещё раз, чтобы ударить, или подтвердите в поле ввода</small>
         </div>
       })()}
       {/* Перемирие видно на самой доске, а не только в панели: рамка вокруг
@@ -3970,9 +4095,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             и реакции (щелчок — показать только плитки этой цены), классовые
             запасы и ячейки по кругам (щелчок — только заклинания круга). */}
         <div className="hud-tray" role="group" aria-label={`Ресурсы хода: ${railName}`}>
+          {/* Заклинателю лоток нужен под ячейки шести кругов — подпись уступает им место. */}
+          {!combatActive && spellSlotPools(railResources).levels.length === 0 && <span className="hud-tray-note">Вне боя — ходы не считаются</span>}
           {combatActive && !(ownHero && ownDeathSaves) && <div className="hero-cluster-pips" role="group" aria-label="Экономика хода">
             {railPips.map((pip) => <button type="button" key={pip.id}
-              className={`hero-pip ${pip.id} ${pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
+              className={`hero-pip ${pip.id} ${pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}${spendCost === pip.id && pip.ready ? ' will-spend' : ''}`}
               aria-pressed={costFilter === pip.id} disabled={Boolean(viewerHero)}
               onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
               title={`${pip.label}: ${pip.note || (pip.ready ? 'доступно' : 'потрачено')}. Щелчок — показать только плитки этой цены`}
@@ -3981,8 +4108,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {railClassPoolRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Классовые запасы">
             {railClassPoolRows.map((row) => <span key={row.keys.join('+')}
               className={`hero-resource class-pool ${row.current > 0 ? 'ready' : 'spent'}`}
-              title={heroResourceTitle(row.keys, row.current, row.max)} aria-label={heroResourceTitle(row.keys, row.current, row.max)}
-            ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6
+              title={heroResourceTitle(row.keys, row.current, row.max, spellNameById)} aria-label={heroResourceTitle(row.keys, row.current, row.max, spellNameById)}
+            ><em>{heroResourceShortLabel(row.keys[0], spellNameById)}</em>{row.max <= 6
               ? <i aria-hidden="true">{Array.from({length:row.max}, (_,index) => <u key={index} className={index < row.current ? '' : 'spent'} />)}</i>
               : <b>{row.current}/{row.max}</b>}</span>)}
           </div>}
@@ -3990,6 +4117,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <SpellSlotBar
             resources={railResources}
             filterLevel={slotLevelFilter}
+            spendLevel={spendSlotLevel}
             concentration={(viewerHero ?? activeHero) ? heroStatusForActor(state, (viewerHero ?? activeHero)!.id).concentration : null}
             onToggleLevel={(level) => {
               setSlotLevelFilter((current) => current === level ? null : level)
@@ -4038,6 +4166,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               <div className={`hotbar-section ${section.id}${largestSection === section ? ' compact' : ''}`} role="group" aria-label={HOTBAR_SECTION_LABELS[section.id]} style={{ '--section-cols': largestSection === section ? compactLayout.cols : Math.max(1, Math.ceil(section.tiles.length / hudRows)) } as React.CSSProperties}>
                 {sectionTiles(section).map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
                   key: id,
+                  ...(hotkeyTileIds.includes(id) ? {
+                    'data-hotkey': hotkeyLabel(hotkeyTileIds.indexOf(id)),
+                    'data-hotkey-index': hotkeyTileIds.indexOf(id),
+                    title: `${String((node.props as { title?: string }).title ?? '')} · клавиша ${hotkeyLabel(hotkeyTileIds.indexOf(id)).replace('⇧', 'Shift+')}`,
+                  } : {}),
                   draggable: !tilesLocked,
                   onDragStart: () => setDraggedTileId(id),
                   onDragOver: (event: React.DragEvent) => { if (!tilesLocked) event.preventDefault() },
@@ -4276,7 +4409,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <div className="end-turn-ring">
             <svg viewBox="0 0 120 120" aria-hidden="true">
               <circle className="track" cx="60" cy="60" r="55" pathLength="100" />
-              <circle className="fill" cx="60" cy="60" r="55" pathLength="100" strokeDasharray={`${Math.round((railMovementAvailable ? railMovementRatio : 0) * 1000) / 10} 100`} />
+              <circle className="fill" cx="60" cy="60" r="55" pathLength="100" strokeDasharray={`${Math.round((stepFeet ? ringRatio(railRemainingFeet - stepFeet) : railMovementAvailable ? railMovementRatio : 0) * 1000) / 10} 100`} />
+              {stepFeet > 0 && <circle className="step" cx="60" cy="60" r="55" pathLength="100" strokeDasharray={`0 ${Math.round(ringRatio(railRemainingFeet - stepFeet) * 1000) / 10} ${Math.round(ringRatio(stepFeet) * 1000) / 10} 100`} />}
             </svg>
             <button
           className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
@@ -4298,7 +4432,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             </div>
             <label><input type="checkbox" checked={skipEndTurnConfirm} onChange={(event) => setSkipEndTurnConfirm(event.target.checked)} /> Не спрашивать до конца боя</label>
           </div>}
-          <small className={`end-turn-move${railMovementAvailable && railRemainingFeet > 0 ? '' : ' spent'}`} title={railMovement.blockedReason ?? undefined}>{railMovement.blockedReason ? 'Движение недоступно' : `Осталось ${railMovementAvailable ? railRemainingFeet : 0} из ${railSpeedFeet} фт`}</small>
+          <small className={`end-turn-move${railMovementAvailable && railRemainingFeet > 0 ? '' : ' spent'}`} title={railMovement.blockedReason ?? undefined}>{railMovement.blockedReason ? 'Движение недоступно' : `Осталось ${railMovementAvailable ? railRemainingFeet : 0} из ${railSpeedFeet} фт${stepFeet ? ` · шаг −${stepFeet}` : ''}`}</small>
         </div>}
         {!combatActive && freeRoll && <div className="free-roll-dock">{freeRoll}</div>}
       </aside>
