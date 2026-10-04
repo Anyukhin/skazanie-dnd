@@ -303,17 +303,46 @@ function worldMapDestinationLocationId(text) {
  * @param {ExitContext} context
  * @returns {{destination: string, isPlace: boolean}}
  */
+/**
+ * Как идти, а не куда: «через лес», «вдоль складов», «по тракту», «мимо
+ * мельницы», «в обход». Предлоги места («за мельницей», «у реки») сюда не
+ * входят — они называют само место и остаются в имени.
+ */
+const ROUTE_TAIL = /\s+(?:через|вдоль|мимо|сквозь|в\s+обход|напрямик|напрямую|окольн\p{L}*|берегом|лесом|полем|по\s+(?:тракт|дорог|троп|набережн|берег|мост|улиц|следу|краю|просек|рек|лес|болот|гор|переул|площад|стен|степ|пол)\p{L}*)(?:\s.*)?$/iu
+
+/**
+ * Пункт назначения без описания пути. До 2026-10-04 «идём в Заречье через
+ * лес» заводило новую локацию «Заречье через лес», а «к старой мельнице вдоль
+ * реки» — «Старую мельницу вдоль реки» (исследование PR #136, M05). Если
+ * описание пути — часть имени известной точки карты, фраза не трогается.
+ *
+ * @param {string} phrase
+ * @param {string[]} knownPlaces
+ * @returns {string}
+ */
+function withoutRouteTail(phrase, knownPlaces) {
+  const tail = ROUTE_TAIL.exec(phrase)
+  if (!tail || tail.index === 0) return phrase
+  const known = knownPlaceName(phrase, knownPlaces)
+  if (known && ROUTE_TAIL.test(` ${known}`)) return phrase
+  return compact(phrase.slice(0, tail.index), 120)
+}
+
 function destinationIn(text, context) {
   const match = DESTINATION.exec(text)
   if (!match) return { destination: '', isPlace: false }
-  const quoted = compact(match[1] ?? match[2] ?? match[3] ?? match[4] ?? '', 120)
-  const phrase = compact(match[5] ?? '', 120)
+  const quoted = withoutRouteTail(compact(match[1] ?? match[2] ?? match[3] ?? match[4] ?? '', 120), context.knownPlaces)
+  const spoken = compact(match[5] ?? '', 120)
+  const phrase = withoutRouteTail(spoken, context.knownPlaces)
   // Название в кавычках после «в» — всегда место: кавычки ставит либо клиент
   // карты мира, либо сам сервер, собирая вариант голосования.
   if (quoted) return { destination: quoted, isPlace: true }
   const placeAt = firstIndex(PLACE_WORD, phrase)
   const known = namesKnownPlace(phrase, context.knownPlaces)
-  if (placeAt < 0 && !known) return { destination: phrase, isPlace: false }
+  // Описанный путь («через лес», «по тракту») сам говорит о дороге: «идём в
+  // Заречье через лес» — уход, даже если «Заречье» не родовое слово места.
+  const routed = phrase !== spoken
+  if (placeAt < 0 && !known && !routed) return { destination: phrase, isPlace: false }
   const anchor = placeAt < 0 ? phrase.length : placeAt
   const inScene = [
     firstIndex(INSIDE_SCENE, phrase),

@@ -266,3 +266,22 @@ test('в бою маршрут travel не предлагается: заявк�
   assert.notEqual(result.free_action_outcome, 'route_travel')
   assert.equal(orchestrator.unknownActionHandler.takeRouteHint('ROUTING', 'route-combat-1'), null)
 })
+
+test('описание пути не становится частью имени новой локации', () => {
+  // «Идём в Заречье через лес» заводило локацию «Заречье через лес», а судья
+  // свободных действий с назначением «дамба вдоль складов» — «Дамбу вдоль
+  // складов» (исследование PR #136, M05). Предлог места («за мельницей») —
+  // часть имени и остаётся.
+  assert.deepEqual(detectPartyExitRequest('Отправляемся в Заречье через лес'), { destination: 'Заречье', source: 'text' })
+  assert.deepEqual(detectPartyExitRequest('Идём к старой мельнице вдоль реки'), { destination: 'старой мельнице', source: 'text' })
+  assert.deepEqual(detectPartyExitRequest('Идём в деревню Кленовку по тракту'), { destination: 'деревню Кленовку', source: 'text' })
+  assert.deepEqual(detectPartyExitRequest('Идём к старому склепу за мельницей'), { destination: 'старому склепу за мельницей', source: 'text' })
+  const card = proposeRoutedTravel({ route: 'travel', destination: 'старая дамба вдоль складов' }, fixtureState())
+  assert.equal(card?.type, 'vote')
+  assert.equal(classifyPartyDecision(card.options[0]).destinationHint, 'Старая дамба')
+})
+
+test('если путь — часть имени известной точки карты, имя не режется', () => {
+  const context = { knownPlaces: ['Тропа через перевал'] }
+  assert.equal(detectPartyExitRequest('Идём на Тропу через перевал', context)?.destination, 'Тропу через перевал')
+})
