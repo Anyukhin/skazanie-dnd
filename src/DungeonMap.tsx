@@ -2795,7 +2795,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               {activeEnemy?.legendary && <LegendaryPips legendary={activeEnemy.legendary} />}
             </div>
             <header>Раунд <b>{combat.round ?? 1}</b></header>
-            <ol>{combat.initiative?.map((entry, index) => {
+            {/* Как в BG3: лента начинается с ходящего, а кто уже сходил в этом
+                раунде, уходит за черту следующего раунда. Номер в углу — место
+                в исходном порядке инициативы. */}
+            <ol>{(combat.initiative ?? []).map((entry, index) => ({ entry, index }))
+              .sort((left, right) => ((left.index - activeInitiativeIndex + 1000) % 1000) - ((right.index - activeInitiativeIndex + 1000) % 1000))
+              .map(({ entry, index }) => {
               const hero = state.players.find((player) => player.id === entry.actor_id)
               const enemy = state.enemies?.find((item) => item.id === entry.actor_id)
               const summon = state.actors?.find((item) => item.id === entry.actor_id)
@@ -2816,7 +2821,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               const allyHealth = hero ?? summon
               const healthFill = enemyHealth ? enemyHealth.fill : allyHealth && Number(allyHealth.maxHp) > 0 ? Math.max(0, Math.min(1, Number(allyHealth.hp) / Number(allyHealth.maxHp))) : null
               const healthWord = enemyHealth ? enemyHealth.label : allyHealth && Number(allyHealth.maxHp) > 0 ? `${Math.max(0, Number(allyHealth.hp))}/${allyHealth.maxHp} ОЗ` : ''
-              return <li key={entry.actor_id} className={`${kind} ${activeNow ? 'active' : ''} ${nextUp ? 'next' : ''} ${defeated ? 'defeated' : ''}${boss ? ' boss' : ''}`} aria-current={activeNow ? 'step' : undefined}>
+              return <Fragment key={entry.actor_id}>
+              {index === 0 && activeInitiativeIndex > 0 && <li className="initiative-round-divider" aria-label={`Раунд ${(combat.round ?? 1) + 1}`}><span>{(combat.round ?? 1) + 1}</span></li>}
+              <li className={`${kind} ${activeNow ? 'active' : ''} ${nextUp ? 'next' : ''} ${defeated ? 'defeated' : ''}${boss ? ' boss' : ''}`} aria-current={activeNow ? 'step' : undefined}>
                 <button
                   className={`initiative-avatar-button ${focusedParticipantId === entry.actor_id ? 'focused' : ''}`}
                   aria-label={`Выделить на карте: ${name}${boss ? ', босс' : ''}${healthWord && !defeated ? `, ${healthWord.toLowerCase()}` : ''}${statusLabel ? `, ${statusLabel}` : ''}`}
@@ -2834,9 +2841,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   {boss && enemy?.legendary && !defeated && <LegendaryPips legendary={enemy.legendary} compact />}
                   {activeNow && <span className="initiative-turn-dot" aria-hidden="true" />}
                   {healthFill != null && !defeated && <span className={`initiative-health ${enemy ? 'enemy' : 'ally'}`} data-status={enemyHealth?.status} aria-hidden="true"><u style={{ width: `${Math.round(healthFill * 100)}%` }} /></span>}
+                  {/* Урон заливает портрет снизу, как в BG3: у противника — по
+                      ступени здоровья, у своих — по доле хитов. */}
+                  {healthFill != null && !defeated && <span className="initiative-damage" aria-hidden="true" style={{ height: `${Math.round((1 - healthFill) * 100)}%` }} />}
                   {statusLabel && <span className={`initiative-status-label ${defeated ? 'defeated' : activeNow ? 'active' : 'next'}`}>{statusLabel}</span>}
                 </button>
               </li>
+              </Fragment>
             })}</ol>
           </> : <div className="initiative-exploration-lead">
             <span className="initiative-ribbon-label">Свободная сцена</span>
@@ -2855,6 +2866,20 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
       {!combatActive && <PartyQuestHud state={state} />}
+      {combatActive && pendingTarget && (() => {
+        const targetEnemy = state.enemies?.find((enemy) => enemy.id === pendingTarget.id)
+        const health = targetEnemy ? enemyHealthPresentation(targetEnemy) : null
+        const allyFill = !targetEnemy && Number(pendingTarget.maxHp) > 0 ? Math.max(0, Math.min(1, Number(pendingTarget.hp) / Number(pendingTarget.maxHp))) : null
+        const fill = health ? health.fill : allyFill
+        const word = health ? health.label : allyFill != null ? `${Math.max(0, Number(pendingTarget.hp))}/${pendingTarget.maxHp} ОЗ` : ''
+        const targetName = 'character' in pendingTarget && pendingTarget.character ? pendingTarget.character : pendingTarget.name
+        return <div className={`combat-target-plate ${targetEnemy ? 'enemy' : 'ally'}`} role="status" aria-label={`Выбранная цель: ${targetName}${word ? `, ${word.toLowerCase()}` : ''}`}>
+          <strong>{targetName}</strong>
+          {targetEnemy?.boss && <span className="combat-target-plate-tag">босс</span>}
+          {fill != null && <span className="combat-target-plate-bar" aria-hidden="true"><u style={{ width: `${Math.round(fill * 100)}%` }} /><b>{word}</b></span>}
+          <small>Ваша цель — подтвердите в поле ввода или выберите другую</small>
+        </div>
+      })()}
       {/* Перемирие видно на самой доске, а не только в панели: рамка вокруг
           поля и полоса сверху. Без этого стол не понимал бы, почему очередь
           стоит и почему кнопки боя ведут себя иначе. */}

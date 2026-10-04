@@ -359,3 +359,65 @@
   .game-area .end-turn-confirm-actions > button:hover:not(:disabled) { border-color: var(--acc2); }
   .game-area .end-turn-confirm > label { display: flex; align-items: center; gap: 6px; color: var(--text2); font-size: var(--fs-xs); }
 }
+
+/* ---------------- лента очерёдности в духе BG3 ----------------
+   Портреты — вертикальными карточками: свои в бирюзовой рамке, противники в
+   красной, ходящий крупнее и с шевроном. Урон заливает карточку снизу. За
+   чертой с номером раунда — те, кто уже сходил: они ходят в следующем. */
+@media (min-width: 761px) {
+  .initiative-ribbon.combat { height: auto; align-items: flex-end; gap: 10px; padding: 6px 12px 6px; }
+  .initiative-ribbon.combat > header { align-self: center; }
+  .initiative-ribbon.combat > .initiative-active-chip { align-self: center; }
+  .initiative-ribbon.combat > ol { align-items: flex-end; gap: 6px; padding: 4px 2px 16px; overflow-y: visible; }
+  .initiative-ribbon.combat li { position: relative; }
+  .initiative-ribbon.combat .initiative-avatar-button {
+    width: 44px; height: 60px;
+    padding: 0;
+    overflow: hidden;
+    border: 2px solid color-mix(in srgb, var(--ally) 85%, var(--text));
+    border-radius: 4px;
+    background: var(--well);
+  }
+  .initiative-ribbon.combat li.enemy .initiative-avatar-button { border-color: color-mix(in srgb, var(--enemy) 85%, var(--text)); }
+  .initiative-ribbon.combat li.summon .initiative-avatar-button { border-color: color-mix(in srgb, var(--ally) 55%, var(--muted)); border-style: dashed; }
+  .initiative-ribbon.combat li.boss .initiative-avatar-button { border-color: var(--acc2); }
+  .initiative-ribbon.combat li.active .initiative-avatar-button { width: 56px; height: 76px; border-color: var(--text); box-shadow: 0 0 14px color-mix(in srgb, var(--acc2) 55%, transparent); }
+  .initiative-ribbon.combat li.active::after { content: ''; position: absolute; left: 50%; bottom: -12px; width: 0; height: 0; transform: translateX(-50%); border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 9px solid var(--text); }
+  .initiative-ribbon.combat .initiative-avatar { width: 100%; height: 100%; border-radius: 0; }
+  .initiative-ribbon.combat .initiative-avatar.portrait { background-size: cover; }
+  .initiative-ribbon.combat .initiative-avatar > .hero-face-initials { font-size: var(--fs-sm); }
+  .initiative-ribbon.combat .initiative-health { display: none; }
+  .initiative-ribbon.combat .initiative-damage { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; background: color-mix(in srgb, var(--hp) 50%, transparent); pointer-events: none; }
+  .initiative-ribbon.combat .initiative-order { left: 2px; top: 2px; }
+  .initiative-ribbon.combat .initiative-turn-dot { display: none; }
+  .initiative-ribbon.combat .initiative-status-label { bottom: auto; top: 2px; left: auto; right: 2px; transform: none; display: none; }
+  /* Метка «Следующий» внутри карточки обрезалась её краем: следующего видно по рамке. */
+  .initiative-ribbon.combat li.next .initiative-avatar-button { box-shadow: 0 0 0 2px var(--rail-bg), 0 0 0 3px color-mix(in srgb, var(--ally) 70%, transparent); }
+  .initiative-ribbon.combat .initiative-boss-badge { left: auto; right: 2px; bottom: 2px; }
+  .initiative-ribbon.combat .initiative-round-divider { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0 3px; color: var(--acc2); font: 700 var(--fs-sm) var(--f-display); }
+  .initiative-ribbon.combat .initiative-round-divider::before,
+  .initiative-ribbon.combat .initiative-round-divider::after { content: ''; flex: 1; width: 1px; background: var(--acc-line); }
+
+  /* Выбранная цель — плашкой под лентой, пока удар ждёт подтверждения. */
+  .map-stage > .combat-target-plate {
+    position: absolute; left: 50%; top: 128px; z-index: 14;
+    transform: translateX(-50%);
+    width: min(380px, calc(100% - 520px));
+    display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 4px 10px;
+    padding: 8px 14px 10px;
+    border: 1px solid var(--line2);
+    border-top: 3px solid var(--enemy);
+    border-radius: 8px;
+    background: var(--pop);
+    box-shadow: var(--shadow);
+    pointer-events: none;
+  }
+  .map-stage > .combat-target-plate.ally { border-top-color: var(--ally); }
+  .combat-target-plate > strong { color: var(--text); font: 700 var(--fs-xl)/1.1 var(--f-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .combat-target-plate-tag { padding: 0 6px; border: 1px solid var(--acc2); border-radius: 8px; color: var(--acc2); font: 600 var(--fs-xxs) var(--f-ui); }
+  .combat-target-plate-bar { grid-column: 1 / -1; position: relative; height: 16px; overflow: hidden; border: 1px solid var(--line2); border-radius: 3px; background: var(--hp-bg); }
+  .combat-target-plate-bar > u { position: absolute; left: 0; top: 0; bottom: 0; background: var(--hp); text-decoration: none; }
+  .combat-target-plate.ally .combat-target-plate-bar > u { background: var(--ally); }
+  .combat-target-plate-bar > b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font: 700 var(--fs-xxs) var(--f-ui); text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
+  .combat-target-plate > small { grid-column: 1 / -1; color: var(--text2); font: italic 500 var(--fs-xs) var(--f-ui); }
+}
