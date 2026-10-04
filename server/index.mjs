@@ -2591,8 +2591,17 @@ async function readBody(req) {
     raw += chunk
     if (raw.length > 1_000_000) throw commandPolicyError('Слишком большой запрос', 'REQUEST_TOO_LARGE')
   }
-  try { return JSON.parse(raw || '{}') }
+  let body
+  try { body = JSON.parse(raw || '{}') }
   catch { throw commandPolicyError('Некорректный JSON в запросе', 'INVALID_JSON') }
+  // Каждый маршрут сразу читает поля тела. JSON `null` проходил разбор, и
+  // `body.mode` бросал TypeError мимо catch маршрута — процесс падал целиком;
+  // массив и число молча становились «пустым» запросом. Тело — только объект
+  // (аудит PR #131, MAP-BOUNDARY-03).
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw commandPolicyError('Тело запроса должно быть JSON-объектом', 'INVALID_JSON_BODY')
+  }
+  return body
 }
 
 function executeTool(name, args, effects, state = {}) {
@@ -3413,7 +3422,41 @@ function serveGeneratedImage(req, res, image, headerPrefix, cacheControl = 'priv
   return createReadStream(image.filePath).pipe(res)
 }
 
+// Ошибки разбора тела — вина запроса, а не сервера: им 400 и на маршрутах,
+// где тело читается вне собственного try.
+const REQUEST_BODY_ERROR_CODES = new Set(['INVALID_JSON', 'INVALID_JSON_BODY', 'REQUEST_TOO_LARGE'])
+
+/**
+ * Последняя граница HTTP. Обработчик асинхронный, и `createServer` его
+ * промис не ждёт: необработанная ошибка любого маршрута становилась
+ * unhandledRejection и завершала общий процесс со всеми кампаниями. Теперь
+ * она завершает только свой запрос (аудит PR #131, MAP-BOUNDARY-03). В лог
+ * идут метод, путь без query и стек — без тела и заголовков запроса.
+ */
+function failUnhandledRequest(req, res, error) {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  const known = REQUEST_BODY_ERROR_CODES.has(code)
+  if (!known) {
+    let pathname = '?'
+    try { pathname = new URL(req.url || '/', 'http://skazanie.local').pathname } catch { /* путь не разобрался — он и не нужен */ }
+    console.error(`[Сказание] Необработанная ошибка ${req.method} ${pathname}:`, error?.stack || error?.message || error)
+  }
+  if (res.destroyed || res.writableEnded) return
+  // Ответ уже начат (поток, SSE): статус не переписать — закрываем соединение.
+  if (res.headersSent) { res.destroy(); return }
+  try {
+    if (known) json(res, 400, { error: error.message, code })
+    else json(res, 500, { error: 'Внутренняя ошибка сервера', code: 'INTERNAL_ERROR' })
+  } catch {
+    res.destroy()
+  }
+}
+
 const server = createServer((req, res) => {
+  handleHttpRequest(req, res).catch((error) => failUnhandledRequest(req, res, error))
+})
+
+async function handleHttpRequest(req, res) {
   const requestPath = new URL(req.url || '/', 'http://skazanie.local').pathname
   const campaignPathMatch = requestPath.match(/^\/api\/(?:campaigns|rooms)\/([A-Za-z0-9-]+)/)
   const requestCampaignId = campaignPathMatch?.[1]?.toUpperCase() ?? ''
@@ -5721,7 +5764,7 @@ const server = createServer((req, res) => {
   if (parsedUrl.pathname.startsWith('/api/')) return json(res, 404, { error: 'API endpoint не найден' })
   return serveStatic(req, res)
   })
-})
+}
 
 await reconcileAllCampaignProjections()
 // Простаивающее соединение держим дольше клиентского keep-alive (у fetch/undici

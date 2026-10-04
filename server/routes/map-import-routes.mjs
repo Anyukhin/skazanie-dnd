@@ -68,6 +68,13 @@ export function createMapImportRoutes(deps) {
         return send(res, 403, { error: 'Загружать карту может только ведущий кампании', code: 'MAP_IMPORT_FORBIDDEN' })
       }
       const body = await readBody(req)
+      // Форма тела — до первого поля: JSON `null` от ведущего своей кампании
+      // ронял TypeError мимо catch и весь процесс (аудит PR #131, MAP-BOUNDARY-03).
+      // Общий readBody теперь отказывает сам; проверка здесь держит маршрут и
+      // при другом внедрённом readBody.
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return send(res, 400, { error: 'Тело запроса должно быть JSON-объектом', code: 'INVALID_JSON_BODY' })
+      }
       if (body.mode === 'rebuild') {
         const state = room.state
         if (campaignIsReadOnly(state)) {
