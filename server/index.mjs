@@ -92,6 +92,8 @@ import {
 } from './authoritative-executor.mjs'
 import {
   CampaignRulesetError,
+  campaignHouseRuleChangeEvent,
+  campaignHouseRuleMetadata,
   campaignRulesetChangeEvent,
   campaignRulesetMetadata,
   campaignRulesetSettings,
@@ -725,6 +727,20 @@ function makeAttackPrimaryEvent(event) {
     || (event?.event_type === 'CombatActionUsed' && event?.payload?.action_id === 'sanctuary-blocked')
 }
 
+/**
+ * Отпечатки атак, которые записал коммит. Удар из исследования, отложенный
+ * до хода героя (`opening_action.status === 'deferred'`), броска не делает:
+ * его отпечаток несёт `CombatStarted`, иначе повтор с тем же ключом и сам
+ * ответ читались бы как подменённая атака.
+ */
+function makeAttackEventFingerprints(events) {
+  return (events ?? []).flatMap((event) => {
+    if (makeAttackPrimaryEvent(event)) return [event.payload?.request_fingerprint]
+    const opening = event?.event_type === 'CombatStarted' ? event.payload?.opening_action : null
+    return opening?.status === 'deferred' && opening.command_type === 'MakeAttack' ? [opening.request_fingerprint] : []
+  }).filter(Boolean).map(String)
+}
+
 async function assertMakeAttackIdempotency(campaignId, idempotencyKey, commands, { authorizeDuplicate = null } = {}) {
   const expected = (commands ?? [])
     .filter((command) => commandType(command) === 'MakeAttack')
@@ -736,11 +752,7 @@ async function assertMakeAttackIdempotency(campaignId, idempotencyKey, commands,
   // отличить точный ключ от конфликтующего. Callback получает только
   // серверное историческое состояние сохранённого commit.
   if (authorizeDuplicate) authorizeDuplicate(duplicate)
-  const actual = (duplicate.events ?? [])
-    .filter(makeAttackPrimaryEvent)
-    .map((event) => event.payload?.request_fingerprint)
-    .filter(Boolean)
-    .map(String)
+  const actual = makeAttackEventFingerprints(duplicate.events)
   if (actual.length !== expected.length || expected.some((fingerprint, index) => actual[index] !== fingerprint)) {
     throw commandPolicyError('Этот ключ идемпотентности уже использован для другой атаки', 'IDEMPOTENCY_CONFLICT')
   }
@@ -752,11 +764,7 @@ function assertMakeAttackResultFingerprint(result, commands) {
     .filter((command) => commandType(command) === 'MakeAttack')
     .map(makeAttackCommandFingerprint)
   if (!expected.length) return
-  const actual = (result?.mechanics ?? [])
-    .filter(makeAttackPrimaryEvent)
-    .map((event) => event.payload?.request_fingerprint)
-    .filter(Boolean)
-    .map(String)
+  const actual = makeAttackEventFingerprints(result?.mechanics)
   if (actual.length !== expected.length || expected.some((fingerprint, index) => actual[index] !== fingerprint)) {
     throw commandPolicyError('Результат атаки не соответствует исходному запросу', 'IDEMPOTENCY_CONFLICT')
   }
@@ -1241,9 +1249,13 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
   if (type === 'MakeAttack') {
     const target = String(input?.target_id ?? input?.targetId ?? '')
     const enemy = (state.enemies ?? []).find((candidate) => String(candidate.id) === target)
+    // Нейтральный NPC сцены — тоже цель: удар по нему из исследования движок
+    // разворачивает в `AttackNpc` (`resolveOpeningStrike`) и сам проверяет
+    // видимость, присутствие и боевой лист. Здесь — только что такой NPC есть.
+    const sceneNpc = !enemy && (state.social?.npcs ?? []).some((candidate) => String(candidate?.id ?? '') === target)
     // Ограничение player→enemy относится к HTTP-политике игрока. Живость и
     // прочую законность новой атаки по-прежнему определяет Rules Engine.
-    if (!skipAttackTargetPolicy && !enemy) throw commandPolicyError('Цель атаки не найдена', 'INVALID_ATTACK_TARGET')
+    if (!skipAttackTargetPolicy && !enemy && !sceneNpc) throw commandPolicyError('Цель атаки не найдена', 'INVALID_ATTACK_TARGET')
     return normalizeMakeAttackCommand(input, base)
   }
   if (type === 'IdentifyEnemy') {
@@ -4391,6 +4403,42 @@ async function handleHttpRequest(req, res) {
         rulesetState = latest.state
         persistAuthoritativeProjection(campaignId, latest.state, committed?.replayed ? [] : (committed?.events ?? []))
       }
+      // Домашние правила идущей кампании: `{ houseRules: { [id]: true|false } }`.
+      // Это механика, а не настройка ИИ, поэтому она живёт в журнале событий —
+      // тем же производным путём, что и смена редакции, — и попадает в
+      // `enabled_house_rules` состояния. Какие правила вообще можно
+      // переключать, решает `campaignHouseRuleChangeEvent`.
+      const requestedHouseRules = body.houseRules && typeof body.houseRules === 'object' && !Array.isArray(body.houseRules)
+        ? Object.entries(body.houseRules)
+        : []
+      for (const [houseRuleId, enabled] of requestedHouseRules) {
+        campaignHouseRuleChangeEvent(houseRuleId, enabled, { ...rulesetState, enabled_house_rules: [] }, { actorId: user.id })
+        const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').trim()
+        if (!idempotencyKey) throw new CampaignRulesetError('Для смены домашнего правила нужен idempotency_key', 'IDEMPOTENCY_KEY_REQUIRED')
+        const committed = await authoritativeExecutor.commitDerived({
+          campaignId,
+          idempotencyKey: `${idempotencyKey}:house-rule:${houseRuleId}`,
+          deriveEvents: async (freshState) => {
+            const event = campaignHouseRuleChangeEvent(houseRuleId, enabled, freshState, { actorId: user.id })
+            return event ? [event] : []
+          },
+          deriveMetadata: (events) => campaignHouseRuleMetadata(events[0]),
+          producerCapability: CAMPAIGN_RULESET_CAPABILITY,
+        })
+        if (!committed) continue
+        const latest = await eventStore.load(campaignId)
+        rulesetState = latest.state
+        persistAuthoritativeProjection(campaignId, latest.state, committed.replayed ? [] : (committed.events ?? []))
+        if (!committed.replayed) {
+          const rule = campaignRulesetSettings(latest.state).houseRules.find((entry) => entry.id === houseRuleId)
+          appendRoomJournal(campaignId, [{
+            id: `house-rule-${campaignId}-${Date.now()}`,
+            speaker: 'system',
+            author: 'Настройки кампании',
+            text: `Домашнее правило «${rule?.label ?? houseRuleId}» ${enabled ? 'включено' : 'выключено'}.${rule?.description ? ` ${rule.description}.` : ''}`,
+          }])
+        }
+      }
       const previousImprovMode = normalizeImprovMode(current.improvMode)
       const saved = saveCampaignAiSettings(campaignId, {
         model: requestedModel,
@@ -4423,7 +4471,7 @@ async function handleHttpRequest(req, res) {
         canManage: true, rulesetState, rulesetEvents: await eventStore.getEvents(campaignId),
       }))
     } catch (error) {
-      const status = ['CAMPAIGN_RULESET_LOCKED', 'IDEMPOTENCY_CONFLICT', 'STATE_VERSION_CONFLICT'].includes(error?.code) ? 409 : 400
+      const status = ['CAMPAIGN_RULESET_LOCKED', 'IDEMPOTENCY_CONFLICT', 'STATE_VERSION_CONFLICT', 'HOUSE_RULE_DURING_COMBAT'].includes(error?.code) ? 409 : 400
       return json(res, status, { error: error instanceof Error ? error.message : 'Не удалось сохранить настройки ИИ кампании', code: error?.code })
     }
   }
@@ -5328,7 +5376,11 @@ async function handleHttpRequest(req, res) {
           || ((types.has('UseItem') || types.has('LootContainer')) && Boolean(result.authoritative_state.mechanics?.combat?.active))
         const scheduler = shouldSettleCombat
           ? await settleCombatContinuation(commandMatch[1], {
-            advanceNpc: types.has('StartCombat') || types.has('AttackNpc') || types.has('EndTurn') || resolvesReaction,
+            // Удар из исследования открывает бой сам (`resolveOpeningStrike`):
+            // если первым ходит враг, его ход должен пройти так же, как после
+            // кнопки «Начать бой».
+            advanceNpc: types.has('StartCombat') || types.has('AttackNpc') || types.has('EndTurn') || resolvesReaction
+              || (result.mechanics ?? []).some((event) => event?.event_type === 'CombatStarted'),
           })
           : { turns: [], events: [] }
         const latest = await eventStore.load(commandMatch[1])

@@ -1273,7 +1273,7 @@ export function AtmosphereRange({ label, description, value, onChange }: { label
   </label>
 }
 
-export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, combatEffectsVolume, onCombatEffectsVolumeChange, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onCampaignRulesetChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
+export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiBusy, campaignAiError, uiScale, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, atmosphereSettings, combatEffectsVolume, onCombatEffectsVolumeChange, notificationPermission, voiceMode, voiceSupported, actionHintsEnabled, onCampaignAiChange, onCampaignRulesetChange, onCampaignHouseRuleChange, onUiScaleChange, onAutoAttackRollChange, onScenicBackdropChange, onBoardLightingChange, onCombatAnimationsChange, onAmbientVolumeChange, onAtmosphereMutedChange, onRequestNotifications, onVoiceModeChange, onActionHintsEnabledChange }: {
   health: AiHealth | null
   campaignAi: CampaignAiSettingsResponse | null
   currentRulesetId?: string | null
@@ -1293,6 +1293,7 @@ export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiB
   actionHintsEnabled: boolean
   onCampaignAiChange: (patch: Partial<CampaignAiSettings>) => void
   onCampaignRulesetChange: (rulesetId: RulesetProfileDescriptor['id']) => void
+  onCampaignHouseRuleChange: (houseRuleId: string, enabled: boolean) => void
   onUiScaleChange: (value: number) => void
   onAutoAttackRollChange: (value: boolean) => void
   onScenicBackdropChange: (value: boolean) => void
@@ -1410,6 +1411,17 @@ export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiB
               </small>
             )}
           </label>
+          {/* Домашние правила — отступления от редакции, видимые столу. Их
+              итог пишется событиями в момент команды, поэтому переключение не
+              меняет уже сыгранного; посреди боя сервер его отклонит. */}
+          {(campaignAi?.ruleset.houseRules ?? []).map((rule) => <ToggleRow
+            key={rule.id}
+            icon={<Swords size={17} />}
+            title={`Домашнее правило: ${rule.label}`}
+            description={rule.description}
+            value={rule.enabled}
+            onChange={() => { if (campaignAi?.canManage && !campaignAiBusy) onCampaignHouseRuleChange(rule.id, !rule.enabled) }}
+          />)}
           {!campaignAi?.canManage && campaignAi && <p className="secure-note"><Lock size={14} />Изменять общие настройки ИИ может владелец кампании или администратор.</p>}
           {campaignAiError && <p className="admin-error" role="alert">{campaignAiError}</p>}
           <details className="settings-diagnostics"><summary><ShieldCheck size={15} />Диагностика подключения <ChevronDown size={14} /></summary>

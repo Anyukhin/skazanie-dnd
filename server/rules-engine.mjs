@@ -2,9 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { authoredNpcCombatant } from './authored-npc.mjs'
 import { withBackgroundBenefits } from './backgrounds.mjs'
 import { PHB_STARTING_WEALTH, startingPurchaseCatalog } from './character-creation-wealth.mjs'
-import { parseDiceExpression } from './dice-service.mjs'
+import { DiceService, parseDiceExpression } from './dice-service.mjs'
 import { monsterActionAvailable, monsterActionSpentMarker, monsterActionUsageKey, monsterAreaAction, monsterAttackTargetAllowed, monsterOnHitTargetAllowed, monsterRechargeMinimum, monsterMultiattackSequences, monsterMultiattackSequenceFor } from './monster-actions.mjs'
-import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './ruleset-config.mjs'
+import { BG3_OPENING_STRIKE_HOUSE_RULE_ID, DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import {
   createSceneTransition,
@@ -413,6 +413,7 @@ import {
   classResourceOptionsFor,
   combatResourceMaximumsFor,
   combatResourceRecoveryFor,
+  explorationUseFor,
   normalizedCombatSubclassFor,
   ONE_ON_SHORT_REST,
   weaponAttacksPerActionFor,
@@ -6968,7 +6969,15 @@ export function validateCommand(input, rawState, context = {}) {
       assertSpellComponentsAllowed(state, actor, action.spell)
       assertBonusActionSpellAllowed(state, command.actor_id, action.spell, 'reaction')
     }
-    if (!state.mechanics.combat.active && !resistanceChoiceAction && action.id !== 'indomitable') throw new RulesValidationError('Сначала нужно начать бой и определить инициативу', 'COMBAT_NOT_ACTIVE')
+    // Вне боя проходит только мирное действие, переживающее ход. Действие
+    // против противника сюда не доходит: его раньше перехватывает
+    // `resolveOpeningStrike` и открывает бой. Если противников рядом нет,
+    // отказ остаётся прежним.
+    if (!state.mechanics.combat.active && !resistanceChoiceAction && action.id !== 'indomitable' && explorationUseFor(action) !== 'allowed') {
+      throw new RulesValidationError(explorationUseFor(action) === 'opens-combat'
+        ? 'Сначала нужно начать бой и определить инициативу'
+        : 'Это действие имеет смысл только в бою, в свой ход', 'COMBAT_NOT_ACTIVE')
+    }
     assertMonkUnarmedActionAllowed(state, actor, action)
     if (!isLivingActor(actor) && !(action.id === 'indomitable' && actor && state.mechanics.death.saving_throws[command.actor_id])) throw new RulesValidationError('Побеждённый участник не может действовать', 'ACTOR_DEFEATED')
     if (action.id === 'indomitable') {
@@ -11860,9 +11869,182 @@ export function resolveCommand(input, rawState, { diceService, context = {} } = 
   return resolveReactionPreferences(result, rawState, input, diceService)
 }
 
+/**
+ * Нападение из исследования открывает бой.
+ *
+ * Вне боя панель героя живая: игрок выбирает удар, враждебное заклинание или
+ * приём и указывает цель — противника или нейтрального NPC сцены, — как в бою.
+ * Команда разворачивается по образцу `AttackNpc`:
+ *
+ * 1. бой: `StartCombat` от имени нападающего, а для нейтрального NPC — сам
+ *    `AttackNpc` (встреча из его серверного профиля и `StartCombat`).
+ *    Инициатива и внезапность — по обычным правилам: спрятавшийся отряд
+ *    застаёт врагов врасплох;
+ * 2. сам удар. Как именно — решает домашнее правило кампании:
+ *    - `house:bg3-opening-strike` (как в BG3): удар проходит сразу, вне
+ *      очереди, а экономика хода нападающего затем возвращается к тому, что
+ *      было до удара (`OpeningStrikeEconomyRestored`) — его ход в первом раунде
+ *      остаётся целым;
+ *    - без правила (по редакции, решение владельца от 2026-07-27): удар
+ *      исполняется, только если нападающий ходит первым, иначе ждёт его хода.
+ *
+ * `CombatStarted.opening_action` говорит, что случилось, хронике и клиенту.
+ * Удар, который заведомо незаконен (вне дальности, без линии обзора, без
+ * ячейки), бой не начинает ни в одном режиме: он разбирается против состояния,
+ * где ход уже у нападающего, и отказ откатывает всю команду.
+ *
+ * Действует только для героя отряда на верхнем уровне разбора. Без цели для
+ * нападения прежний отказ `COMBAT_NOT_ACTIVE` остаётся в силе.
+ */
+const OPENING_STRIKE_COMMAND_TYPES = new Set(['MakeAttack', 'MakeAreaAttack', 'CastSpell', 'UseCombatAction'])
+
+function openingStrikeFor(input, rawState, context) {
+  if (safeInteger(context?.__resolve_depth, 0) !== 0) return null
+  if (context?.isNpcScheduler === true || context?.isDirector === true) return null
+  const commandType = String(input?.command_type ?? input?.type ?? '')
+  if (!OPENING_STRIKE_COMMAND_TYPES.has(commandType)) return null
+  if (rawState?.mechanics?.combat?.active === true) return null
+  const state = normalizeCampaignState(rawState)
+  if (state.mechanics.combat.active) return null
+  const heroId = String(input?.actor_id ?? input?.actorId ?? '')
+  const hero = playerActor(state, heroId)
+  if (!hero || !isLivingActor(hero)) return null
+  const targetIds = uniqueStrings(input?.target_ids ?? input?.targetIds ?? [input?.target_id ?? input?.targetId].filter(Boolean))
+  // Нейтральный NPC сцены — ещё не участник боя: актёра для него нет, есть
+  // социальный профиль. Удар по нему идёт через `AttackNpc`, а всё, что
+  // проверяет этот путь (видимость, присутствие, боевой лист), проверяет он.
+  const npcId = targetIds.find((id) => !findActor(state, id)
+    && (state.social?.npcs ?? []).some((npc) => String(npc?.id ?? '') === id)) ?? null
+  const spell = commandType === 'CastSpell'
+    ? combatSpellFor(hero, input?.spell_id ?? input?.spellId, { rulesetId: state.ruleset_id })
+    : null
+  const harmfulSpell = Boolean(spell && HARMFUL_SPELL_KINDS.has(String(spell.kind)))
+  const hostileAction = commandType === 'UseCombatAction'
+    && explorationUseFor(combatActionFor(hero, input?.action_id ?? input?.actionId)) === 'opens-combat'
+  if (npcId) {
+    const hostile = commandType === 'MakeAttack' || harmfulSpell || hostileAction
+    return hostile ? { actor_id: heroId, command_type: commandType, npc_id: npcId } : null
+  }
+  if (!state.enemies.some(isLivingActor)) return null
+  const hostileTarget = targetIds.some((id) => isEnemyActor(state, id) && isLivingActor(findActor(state, id)))
+  const hostile = commandType === 'MakeAttack' ? hostileTarget
+    : commandType === 'MakeAreaAttack' ? true
+      : commandType === 'CastSpell' ? Boolean(spell && (harmfulSpell || (hostileTarget && spell.requiresCombatAgainstHostile !== false)))
+        : hostileAction
+  return hostile ? { actor_id: heroId, command_type: commandType } : null
+}
+
+/**
+ * Состояние, в котором разбирается удар-открытие: ход у нападающего, а его
+ * собственные состояния — те, что были до боя. Начало хода снимает эффекты
+ * «до следующего хода», и без возврата спрятавшийся герой терял бы укрытие
+ * раньше, чем успевал ударить из него.
+ */
+function openingStrikeTurnState(started, before, heroId, turnStarted) {
+  const combat = started.mechanics.combat
+  const heroIndex = combat.initiative.findIndex((entry) => String(entry.actor_id) === heroId)
+  const ownTurn = heroIndex >= 0 && heroIndex !== combat.active_index && turnStarted
+    ? applyGameEvent(started, {
+      ...turnStarted,
+      actor_id: heroId,
+      target_ids: [heroId],
+      payload: { ...turnStarted.payload, active_index: heroIndex },
+    })
+    : normalizeCampaignState(started)
+  ownTurn.mechanics.conditions[heroId] = clone(before.mechanics.conditions?.[heroId] ?? [])
+  return ownTurn
+}
+
+function resolveOpeningStrike(input, rawState, opening, { diceService, context }) {
+  const commandId = String(input.command_id ?? input.commandId ?? randomUUID())
+  const strike = { ...input, command_id: commandId }
+  const state = normalizeCampaignState(rawState)
+  const freeStrike = state.enabled_house_rules.includes(BG3_OPENING_STRIKE_HOUSE_RULE_ID)
+  const openingAction = {
+    actor_id: opening.actor_id,
+    command_type: opening.command_type,
+    ...(opening.npc_id ? { npc_id: opening.npc_id } : {}),
+    ...(freeStrike ? { free_strike: true, house_rule_id: BG3_OPENING_STRIKE_HOUSE_RULE_ID } : {}),
+    ...(input.request_fingerprint ? { request_fingerprint: String(input.request_fingerprint).slice(0, 128) } : {}),
+  }
+  // Вход в бой собирается из явных полей, а не копией удара: поля оружия и
+  // заклинания ему не нужны, а `AttackNpc` разворачивается ещё глубже.
+  const entry = {
+    command_type: opening.npc_id ? 'AttackNpc' : 'StartCombat',
+    command_id: `${commandId}:opening-combat`,
+    actor_id: opening.actor_id,
+    ...(opening.npc_id ? { npc_id: opening.npc_id } : {}),
+    server_authoritative: true,
+    expected_state_version: input.expected_state_version,
+    ...(input.campaign_id != null ? { campaign_id: input.campaign_id } : {}),
+    ...(input.visibility != null ? { visibility: input.visibility } : {}),
+  }
+  const start = resolveCommandInternal(entry, state, {
+    diceService,
+    context: { ...context, serverAuthoritativeCombat: true, openingAction },
+  })
+  const started = start.events.reduce(applyGameEvent, state)
+  const combat = started.mechanics.combat
+  const turnStarted = start.events.findLast((event) => event.event_type === 'TurnStarted')
+  const heroActsFirst = String(combat.initiative[combat.active_index]?.actor_id ?? '') === opening.actor_id
+  const ownTurn = openingStrikeTurnState(started, state, opening.actor_id, turnStarted)
+  const followUp = {
+    ...strike,
+    expected_state_version: ownTurn.state_version,
+    ...(freeStrike ? { house_rule_id: BG3_OPENING_STRIKE_HOUSE_RULE_ID } : {}),
+  }
+  if (freeStrike || heroActsFirst) {
+    let resolved
+    try {
+      resolved = resolveCommandInternal(followUp, ownTurn, { diceService, context })
+    } catch (error) {
+      if (isCombatPause(error)) {
+        error.prefixEvents = [...start.events, ...(error.prefixEvents ?? [])]
+        error.prefixRolls = [...start.rolls, ...(error.prefixRolls ?? [])]
+      }
+      throw error
+    }
+    const marked = withCombatRoundTimeMarker(resolved, started, {})
+    // Удар вне очереди не съедает ход: экономика нападающего возвращается к
+    // тому, что выдал старт боя. Слоты, заряды и боеприпасы удар потратил
+    // своими событиями — их событие не трогает.
+    const restored = freeStrike
+      ? [eventFrom(resolved.command, 'OpeningStrikeEconomyRestored', {
+        schema_version: 1,
+        house_rule_id: BG3_OPENING_STRIKE_HOUSE_RULE_ID,
+        action_economy: clone(started.mechanics.combat.action_economy?.[opening.actor_id] ?? null),
+      }, [opening.actor_id])]
+      : []
+    return {
+      command: marked.command,
+      events: [...start.events, ...marked.events, ...restored],
+      rolls: [...start.rolls, ...marked.rolls],
+    }
+  }
+  // По редакции ход не у нападающего: удар ждёт. Законность проверяется сухим
+  // прогоном так, будто его ход уже настал, — иначе удар вне дальности
+  // открывал бы бой впустую. Дальность, линия обзора и цель проверяются не
+  // только в `validateCommand`, но и по ходу разбора, поэтому прогон полный.
+  // Его кубик отдельный и всегда выбрасывает минимум: ни один бросок прогона
+  // не попадает в результат и не тратит случайность настоящей команды.
+  try {
+    resolveCommandInternal(followUp, ownTurn, {
+      diceService: new DiceService({ rng: { randint: (minimum) => minimum }, idFactory: () => 'opening-strike-dry-run' }),
+      context,
+    })
+  } catch (error) {
+    // Остановка на окне реакции значит, что удар законен и дошёл до броска.
+    if (!isCombatPause(error)) throw error
+  }
+  return { command: normalizeCommand(strike, state), events: start.events, rolls: start.rolls }
+}
+
 function resolveCommandWithPauses(input, rawState, { diceService, context = {} } = {}) {
   try {
-    const resolved = resolveCommandInternal(input, rawState, { diceService, context })
+    const opening = openingStrikeFor(input, rawState, context)
+    const resolved = opening
+      ? resolveOpeningStrike(input, rawState, opening, { diceService, context })
+      : resolveCommandInternal(input, rawState, { diceService, context })
     const afterAction = closeEnervationAfterOtherAction(resolved, rawState)
     return withCombatRoundTimeMarker(closeFinishedSpellBuffs(closeEnervationAfterTriggers(afterAction, rawState), rawState), rawState, context)
   } catch (error) {
@@ -18417,8 +18599,20 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const groupInitiative = command.group_initiative === true || state.campaign?.rules?.group_initiative === true
       const combatStartedEventId = `combat-started:${String(command.command_id).slice(0, 100)}`
       const combatInstanceId = `combat-instance:${createHash('sha256').update(String(command.command_id)).digest('hex')}`
+      // Бой открыт нападением из исследования (`resolveOpeningStrike`): кто
+      // напал и состоялся ли удар сразу. Поле только для внутреннего пути —
+      // из тела запроса его не задать.
+      const openingAction = context.openingAction && String(context.openingAction.actor_id) === String(command.actor_id)
+        ? {
+          ...clone(context.openingAction),
+          // Удар вне очереди (домашнее правило BG3) состоится при любой
+          // инициативе; по редакции — только у ходящего первым.
+          status: context.openingAction.free_strike === true || String(initiative[0]?.actor_id ?? '') === String(command.actor_id) ? 'resolved' : 'deferred',
+          first_actor_id: String(initiative[0]?.actor_id ?? ''),
+        }
+        : null
       events.push({
-        ...eventFrom(command, 'CombatStarted', { round: 1, initiative, active_index: initiative.length ? 0 : -1, party_ids: partyIds, enemy_ids: enemyIds, combat_instance_id: combatInstanceId, ...(groupInitiative ? { group_initiative: true } : {}), ...(surprised.length ? { surprised } : {}) }, participantIds),
+        ...eventFrom(command, 'CombatStarted', { round: 1, initiative, active_index: initiative.length ? 0 : -1, party_ids: partyIds, enemy_ids: enemyIds, combat_instance_id: combatInstanceId, ...(groupInitiative ? { group_initiative: true } : {}), ...(surprised.length ? { surprised } : {}), ...(openingAction ? { opening_action: openingAction } : {}) }, participantIds),
         event_id: combatStartedEventId,
       })
       events.push(...npcWorldEventsFrom(command, npcCombatStanceEventDrafts(state, {
@@ -22132,6 +22326,20 @@ function applyGameEventCurrent(rawState, event) {
         changed_by: payload.changed_by ?? event.actor_id ?? null,
       }
       break
+    case 'CampaignHouseRuleChanged':
+      // Ведущий переключил домашнее правило идущей кампании. Меняется только
+      // список; итоги уже сыгранных команд записаны их событиями.
+      state.enabled_house_rules = uniqueStrings(payload.enabled_house_rules_after)
+      break
+    case 'OpeningStrikeEconomyRestored':
+      // Удар из исследования по домашнему правилу BG3 прошёл вне очереди:
+      // экономика хода нападающего возвращается к выданной стартом боя.
+      if (payload.action_economy && typeof payload.action_economy === 'object') {
+        state.mechanics.combat.action_economy[target] = clone(payload.action_economy)
+      } else if (target) {
+        delete state.mechanics.combat.action_economy[target]
+      }
+      break
     case 'CampaignRulesetChanged':
       state.ruleset_id = String(payload.ruleset_id_after || state.ruleset_id)
       state.ruleset_version = String(payload.ruleset_version_after || state.ruleset_version)
@@ -25098,6 +25306,8 @@ export function eventSummary(event, resolveName = (id) => id) {
   const payload = event.payload ?? {}
   const named = (id) => (id == null || id === '' ? id : resolveName(id))
   switch (event.event_type) {
+    case 'CampaignHouseRuleChanged': return `Домашнее правило ${payload.house_rule_id} ${payload.enabled ? 'включено' : 'выключено'}`
+    case 'OpeningStrikeEconomyRestored': return 'Удар вне очереди не отнял ход: инициатива брошена, ход начинается заново'
     case 'CampaignRulesetChanged': return `Правила кампании изменены: ${payload.ruleset_id_after} · ${payload.ruleset_version_after}`
     case 'LocationMapImported': return payload.source?.format === 'scene-program-rebuild'
       ? `Ведущий перестроил карту «${payload.location_name || payload.location_id}» по описанию сцены`

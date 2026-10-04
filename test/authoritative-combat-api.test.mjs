@@ -310,13 +310,18 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assertStatus(retiredProjectionMutation, 410, log)
   assert.equal(retiredProjectionMutation.body.code, 'ROOM_MUTATION_RETIRED')
 
+  // Удар из исследования открывает бой через инициативу
+  // (test/exploration-opening-strike-api.test.mjs), но незаконный удар — здесь
+  // оружием, которого у героя нет, — бой не начинает и ничего не пишет.
   const attackBeforeInitiative = await command(baseUrl, playerCookie, 'attack-before-combat-1', {
     command_type: 'MakeAttack',
     actor_id: 'hero',
     target_id: 'sentinel',
+    item_id: 'no-such-weapon',
   })
   assertStatus(attackBeforeInitiative, 400, log)
-  assert.equal(attackBeforeInitiative.body.code, 'COMBAT_NOT_ACTIVE')
+  const afterRejectedOpening = await request(baseUrl, '/api/rooms/AUTH-COMBAT', { cookie: playerCookie })
+  assert.equal(afterRejectedOpening.body.state.mechanics?.combat?.active ?? false, false, 'отвергнутый удар не открывает бой')
 
   // A regular player starts combat. Participants and initiative modifiers are server-derived.
   const started = await command(baseUrl, playerCookie, 'combat-start-1', {

@@ -1306,6 +1306,9 @@ export type CombatAction = {
   mechanicsSupport?: MechanicsSupport
   supportNote?: string
   effect?: Record<string, unknown>
+  /** Что действие значит вне боя; объявляет сервер (`explorationUseFor`).
+   *  Без поля — старый снимок: действие только для боя. */
+  exploration?: 'opens-combat' | 'allowed' | 'combat-only'
 }
 
 export type Enemy = {
@@ -3043,6 +3046,15 @@ export type CampaignRulesetSettings = {
   canChange: boolean
   locked: boolean
   lockReason: string | null
+  /** Домашние правила, которые ведущий переключает в идущей кампании. */
+  houseRules?: CampaignHouseRuleSetting[]
+}
+
+export type CampaignHouseRuleSetting = {
+  id: string
+  label: string
+  description: string
+  enabled: boolean
 }
 
 export type CharacterAbilityScores = {

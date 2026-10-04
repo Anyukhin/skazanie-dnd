@@ -7,6 +7,28 @@ export const NEW_WORLD_DEFAULT_RULESET_ID = DND_2014_RULESET_ID
  * их replay не менял уже начисленные запасы.
  */
 export const CLASS_RESOURCES_2024_POLICY_ID = 'skazanie:class-resources-2024-v1'
+/**
+ * Домашнее правило в духе BG3: удар из исследования проходит сразу, вне
+ * очереди, и только потом бросается инициатива; ход нападающего в первом
+ * раунде остаётся целым. По редакции нападение начинается с инициативы — без
+ * правила движок так и делает (`resolveOpeningStrike`). Решение владельца от
+ * 2026-10-04: правило включено в новых кампаниях по умолчанию, в идущих его
+ * включает ведущий в настройках кампании событием `CampaignHouseRuleChanged`.
+ */
+export const BG3_OPENING_STRIKE_HOUSE_RULE_ID = 'house:bg3-opening-strike'
+
+/**
+ * Домашние правила, которые ведущий переключает в настройках идущей кампании.
+ * Сюда попадает только правило, решающее исход в момент команды: его итог
+ * записан событиями, поэтому смена правила не меняет replay прошлого.
+ */
+export const TOGGLEABLE_HOUSE_RULES = Object.freeze([
+  Object.freeze({
+    id: BG3_OPENING_STRIKE_HOUSE_RULE_ID,
+    label: 'Нападение как в BG3',
+    description: 'Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым',
+  }),
+])
 
 const profiles = [
   {
@@ -20,7 +42,7 @@ const profiles = [
     creation_enabled: true,
     process_default_allowed: false,
     enabled_rule_packs: ['dnd_5e_2014'],
-    default_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1'],
+    default_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1', BG3_OPENING_STRIKE_HOUSE_RULE_ID],
     limitations: [
       'Предметы и бестиарий ещё переводятся на отдельные каталоги 2014; стартовые наборы пока ссылаются на совместимые item IDs SRD 5.2.1.',
       'Неперенесённые различия остаются partial и перечислены в аудите cutover.',
@@ -37,7 +59,7 @@ const profiles = [
     creation_enabled: true,
     process_default_allowed: true,
     enabled_rule_packs: ['srd_5_2_1'],
-    default_house_rules: [CLASS_RESOURCES_2024_POLICY_ID],
+    default_house_rules: [CLASS_RESOURCES_2024_POLICY_ID, BG3_OPENING_STRIKE_HOUSE_RULE_ID],
     limitations: [
       'Покрытие классов, заклинаний, существ и предметов остаётся частичным.',
     ],

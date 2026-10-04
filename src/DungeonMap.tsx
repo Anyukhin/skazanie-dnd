@@ -151,6 +151,7 @@ import {
   visibleNpcStance,
 } from './player-experience'
 import {
+  actorLineOfFireBlockReason,
   actorTrajectoryBlockReason,
   ammunitionSupplyFor,
   BASE_ATTACK_ID,
@@ -167,6 +168,7 @@ import {
   EnemyGlyph,
   enemyHealthPresentation,
   enemyVisualKind,
+  hasClearActorLineOfFire,
   hasClearBoardTrajectory,
   heroResourceLabel,
   heroResourceRank,
@@ -231,6 +233,21 @@ const DECK_HINTS: Record<CombatDeck, string> = {
   magic: 'книга и заклинания, вынесенные на панель',
   class: 'умения класса и их запасы',
   items: 'расходуемые предметы из сумки',
+}
+
+/* Подсказки плиток вне боя. Удар из исследования открывает бой
+   (`resolveOpeningStrike`, server/rules-engine.mjs); как именно — решает
+   домашнее правило кампании `house:bg3-opening-strike`. */
+const BG3_OPENING_STRIKE_HOUSE_RULE_ID = 'house:bg3-opening-strike'
+const explorationStrikeHint = (freeStrike: boolean) => freeStrike
+  ? 'вне боя: удар пройдёт сразу, как в BG3, затем бросается инициатива — ваш ход в первом раунде останется целым'
+  : 'вне боя: удар начнёт бой — сначала инициатива, и если первым ходит противник, удар придётся повторить в свой ход'
+const NO_FOE_HINT = 'вне боя: рядом нет противника, нападать не на кого'
+
+function actionExplorationHint(action: CombatAction, foesPresent: boolean, freeStrike: boolean): string {
+  if (action.exploration === 'allowed') return ''
+  if (action.exploration === 'opens-combat') return ` · ${foesPresent ? explorationStrikeHint(freeStrike) : NO_FOE_HINT}`
+  return ' · только в бою: без хода это действие ничего не даёт'
 }
 
 /** Подписи секций общего вида панели (для чтения с экрана). */
@@ -553,6 +570,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [attackAbility, setAttackAbility] = useState<WeaponAttackChoice['attackAbility']>()
   const [sneakAttack, setSneakAttack] = useState(false)
   const [knockOut, setKnockOut] = useState(false)
+  /* Вне боя режим «оружие» стоит по умолчанию, и без явного выбора плитки любой
+     клик по врагу готовил бы удар, открывающий бой. Поэтому удар из
+     исследования ждёт, пока игрок сам возьмёт оружие на изготовку плиткой. */
+  const [weaponArmed, setWeaponArmed] = useState(false)
   /* Фильтр колоды по стоимости — чисто экранная выборка по клику на пипсе
      ресурса. Никуда не сохраняется и ничего не запрещает: закрытая плитка
      остаётся закрытой, а видимая — видимой, просто рядом с ней стоят только
@@ -1177,13 +1198,46 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   // Выбранная клетка принадлежит ходу, в котором её выбрали: после смены хода
   // второй клик по ней не должен двигать уже другого героя.
   useEffect(() => { setPendingMoveKey(null) }, [turnActorId, selected, combatActive])
+  /* Изготовка — намерение одного удара из исследования. Начался или кончился
+     бой, сменился герой или режим — оружие опускается. */
+  useEffect(() => { setWeaponArmed(false) }, [combatActive, selected])
+  useEffect(() => { if (combatMode !== 'weapon') setWeaponArmed(false) }, [combatMode])
+  useEffect(() => {
+    if (!weaponArmed || combatActive) return
+    const lower = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || (event.target as HTMLElement)?.closest('input, textarea, [contenteditable="true"]')) return
+      setWeaponArmed(false)
+      setPendingCommand(null)
+    }
+    window.addEventListener('keydown', lower)
+    return () => window.removeEventListener('keydown', lower)
+  }, [weaponArmed, combatActive])
   const pendingMovePoint = combatActive && pendingMoveKey && reachable.has(pendingMoveKey)
     ? (() => { const [x, y] = pendingMoveKey.split(',').map(Number); return { x, y } })()
     : null
   const previewMoveKey = pendingMoveKey ?? hoveredMoveKey
   const previewRoute = previewMoveKey ? movementPaths.get(previewMoveKey) ?? null : null
   const maneuverPath = state.pendingAction?.proposal.actor_id === turnActorId ? state.pendingAction.proposal.path : null
-  const actionReady = !tactical.actionUsed && economy?.action !== false
+  /* Вне боя экономики хода нет (`action_economy` не заводится), поэтому
+     действие и бонусное действие всегда готовы — ограничивают ресурсы. */
+  const actionReady = !combatActive || (!tactical.actionUsed && economy?.action !== false)
+  /* Нападение из исследования открывает бой (`resolveOpeningStrike` в
+     rules-engine): сервер бросает инициативу и исполняет удар, если герой
+     ходит первым. Без живого противника открывать нечего — и плитка гаснет. */
+  const explorationFoesPresent = !combatActive && (state.enemies ?? []).some((enemy) => enemy.alive
+    && !(state.mechanics?.conditions?.[enemy.id] ?? []).some((condition) => condition.id === 'unconscious'))
+  /* Нейтральный NPC — тоже цель, как в BG3: удар по нему движок разворачивает
+     в `AttackNpc`. Пока на карте есть стычка, новую встречу сервер не
+     откроет, поэтому NPC целью становится только без неё. */
+  const npcStrikeTargetsPresent = !combatActive && !explorationFoesPresent && sceneNpcs.some((npc) => npc.alive && npc.can_start_combat)
+  const explorationStrikeAvailable = explorationFoesPresent || npcStrikeTargetsPresent
+  const freeOpeningStrike = (state.enabled_house_rules ?? []).includes(BG3_OPENING_STRIKE_HOUSE_RULE_ID)
+  const weaponTargeting = combatActive || (explorationStrikeAvailable && weaponArmed)
+  /* Что действие панели значит вне боя, объявляет сервер (`explorationUseFor`,
+     server/combat-actions.mjs). Своей таблицы у клиента нет. */
+  const actionUsableNow = (action: CombatAction) => combatActive
+    || action.exploration === 'allowed'
+    || (action.exploration === 'opens-combat' && explorationStrikeAvailable)
   // «Дополнительная атака» — свойство действия «Атака», а не отдельная кнопка:
   // действие уже потрачено первым ударом, но оружие бьёт ещё раз, и между
   // ударами можно перемещаться.
@@ -1191,7 +1245,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const weaponAttacksAllowed = Math.max(1, Number(economy?.attacks_allowed) || 1)
   const weaponAttacksLeft = Math.max(0, weaponAttacksAllowed - weaponAttacksUsed)
   const weaponAttackReady = actionReady || (weaponAttacksUsed > 0 && weaponAttacksLeft > 0)
-  const bonusReady = economy?.bonus_action !== false
+  const bonusReady = !combatActive || economy?.bonus_action !== false
   const reactionReady = economy?.reaction !== false
   /* Ресурсный кластер и кнопка конца хода читают ту же серверную
      `action_economy`, что и плашка над картой: своей арифметики хода у панели
@@ -1300,11 +1354,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      `HARMFUL_SPELL_KINDS` и проверка `long_cast` в rules-engine. */
   const spellEconomyReady = selectedSpellItemReady && !selectedSpellSupport.blocked && !selectedSpellComponentAvailability.blocked && selectedSpell?.prepared !== false && spellSlotReady && !(state.ruleset_id === 'dnd_5e_2014' && selectedSpellAction === 'reaction') && (combatActive
     ? selectedSpellAction !== 'long_cast' && (selectedSpellAction === 'bonus_action' ? bonusReady : selectedSpellAction === 'reaction' ? reactionReady : actionReady)
-    : Boolean(selectedSpell && castableOutOfCombat(selectedSpell)))
+    : Boolean(selectedSpell && (castableOutOfCombat(selectedSpell) || explorationStrikeAvailable)))
   const selectedActionPool = selectedCombatAction?.resource ? activeResources[selectedCombatAction.resource] : undefined
   const selectedActionResourceReady = !selectedCombatAction?.resource || Number(selectedActionPool?.current ?? 0) >= Number(selectedCombatAction.cost ?? 1)
   const selectedActionSupport = mechanicsSupportPresentation(selectedCombatAction?.mechanicsSupport, selectedCombatAction?.supportNote)
-  const selectedActionEconomyReady = Boolean(selectedCombatAction && !selectedActionSupport.blocked && selectedActionResourceReady && (selectedCombatAction.actionType === 'free' || (selectedCombatAction.actionType === 'bonus_action' ? bonusReady : selectedCombatAction.actionType === 'reaction' ? reactionReady : actionReady)))
+  const selectedActionEconomyReady = Boolean(selectedCombatAction && actionUsableNow(selectedCombatAction) && !selectedActionSupport.blocked && selectedActionResourceReady && (selectedCombatAction.actionType === 'free' || (selectedCombatAction.actionType === 'bonus_action' ? bonusReady : selectedCombatAction.actionType === 'reaction' ? reactionReady : actionReady)))
   const selectedCommandReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : weaponAttackReady
   const selectedSpellSlotOption = {
     ...(selectedSpellSlotLevel ? { slotLevel: selectedSpellSlotLevel } : {}),
@@ -1346,11 +1400,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       })
     : []
   const showStartCombat = aliveEnemies.length > 0 && !combatActive
-  /* Вне боя плитки видны, но не нажимаются: выбор цели на карте закрыт по всему
-     клиенту (`combatActive &&` в каждом правиле наведения), да и сервер отвергает
-     атаку и боевое действие без инициативы — `COMBAT_NOT_ACTIVE` в rules-engine.
-     Показывать живую плитку, которая никуда не ведёт, хуже, чем закрытую. */
-  const actionsLocked = tacticalBusy || !combatActive
+  /* Вне боя плитки живые, как в BG3: мирные действия исполняются сразу, а удар,
+     боевое заклинание или приём против противника открывают бой через
+     инициативу. Гаснет только то, что без хода не значит ничего («Рывок»,
+     «Уклонение»), и удары, когда противника рядом нет. */
+  const actionsLocked = tacticalBusy
+  /* Наведение на противника: в бою — всегда, вне боя — только когда выбранное
+     действие действительно открывает бой. */
+  const enemyAiming = combatActive || (combatMode === 'weapon'
+    ? weaponTargeting
+    : combatMode === 'magic'
+      ? explorationStrikeAvailable
+      : combatMode === 'action' && Boolean(selectedCombatAction && actionUsableNow(selectedCombatAction)))
   const pendingPoint = pendingCommand?.kind === 'area' ? pendingCommand : null
   const pendingTargetId = pendingCommand?.kind === 'target' || pendingCommand?.kind === 'spell-target' || pendingCommand?.kind === 'action-target'
     ? pendingCommand.targetId
@@ -1358,6 +1419,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const pendingTarget = pendingTargetId
     ? [...players, ...(state.actors ?? []), ...(state.enemies ?? [])].find((actor) => actor.id === pendingTargetId) ?? null
     : null
+  /* Удар из исследования по нейтральному NPC: актёра у него ещё нет, есть
+     фишка сцены. Табличке и подписи хватает имени и клетки. */
+  const pendingNpcTarget = pendingTargetId && !pendingTarget ? sceneNpcs.find((npc) => npc.id === pendingTargetId) ?? null : null
   const projectileTarget = pendingPoint ?? aimCell
   const projectileEnd = pendingTarget ?? projectileTarget
   const trajectoryStart = active
@@ -1374,6 +1438,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const activeConditions = (state.mechanics?.conditions?.[turnActorId] ?? []).map(conditionPresentation)
   const pendingTargetName = pendingTarget
     ? ('character' in pendingTarget ? pendingTarget.character : pendingTarget.name)
+    : pendingNpcTarget ? pendingNpcTarget.name
     : pendingPoint ? `клетка ${pendingPoint.x + 1}:${pendingPoint.y + 1}` : ''
   // Прогноз выбирается под пару «выбранное оружие + наведённая/выбранная цель».
   // Все числа уже пришли с сервера; без цели helper намеренно возвращает null.
@@ -1566,7 +1631,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const pool = action.resource ? activeResources[action.resource] : undefined
     const resourceReady = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1)
     const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : action.actionType === 'reaction' ? reactionReady : actionReady)
-    if (!resourceReady || !economyReady) return
+    if (!resourceReady || !economyReady || !actionUsableNow(action)) return
     setSelectedCombatActionId(action.id)
     setCombatMode('action')
     // Как и заклинание на себя: выбор, описание, и только потом подтверждение.
@@ -1584,9 +1649,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const awaitingTarget = Boolean(selected && !pendingCommand && !selfCastReady && selectedCommandReady && (
     (combatMode === 'magic' && selectedSpell && selectedSpell.target !== 'self')
     || (combatMode === 'action' && selectedCombatAction && selectedCombatAction.target !== 'self')
-    || (combatMode === 'weapon' && combatActive)
+    || (combatMode === 'weapon' && weaponTargeting)
   ))
-  const clearPrepared = () => { setPendingCommand(null); setSpellTargetIds([]); setAreaSpellPoint(null); setAimCell(null); setCombatMode('weapon') }
+  const clearPrepared = () => { setPendingCommand(null); setSpellTargetIds([]); setAreaSpellPoint(null); setAimCell(null); setCombatMode('weapon'); setWeaponArmed(false) }
 
   const spellAiming = Boolean(selected && combatMode === 'magic' && selectedSpell && spellEconomyReady)
   const pointSpellSelected = Boolean(selected && combatMode === 'magic' && selectedSpell?.target === 'point' && spellEconomyReady)
@@ -1786,7 +1851,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       if (actorDistanceFeet(selectedSpellPrimary, candidate) > selectedSpellTargetSeparationFeet) {
         return `Цель должна быть в пределах ${selectedSpellTargetSeparationFeet} футов от ${selectedSpellPrimary.label}`
       }
-      return hasClearBoardTrajectory(state, selectedSpellPrimary, candidate) ? null : `Траектория от ${selectedSpellPrimary.label} перекрыта`
+      return hasClearActorLineOfFire(state, selectedSpellPrimary, candidate) ? null : `Траектория от ${selectedSpellPrimary.label} перекрыта`
     }
     const selectedActors = animationActors.filter((actor) => selectedSpellTargetSet.has(actor.id))
     const tooFar = selectedActors.find((actor) => actorDistanceFeet(actor, candidate) > selectedSpellTargetSeparationFeet)
@@ -1800,7 +1865,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const spellTargetSelectionText = multiTargetSpell
     ? `${areaTargetSelectionActive ? `Сфера ${Number(selectedSpell?.radius) || 30} фт · ` : ''}Цели ${spellTargetIds.length}/${spellTargetLimit}${beamDistribution ? ` · лучи по порядку выбора: ${beamDistribution}` : ''} · Enter — подтвердить`
     : null
-  const preparedLabel = (() => {
+  /* Подтверждение вне боя необратимо: оно бросает инициативу. Подпись говорит
+     об этом там же, где кнопка «Отправить». */
+  const preparedOpensCombat = !combatActive && Boolean(
+    pendingCommand?.kind === 'target' || pendingCommand?.kind === 'area'
+    || ((pendingCommand?.kind === 'spell-target' || pendingCommand?.kind === 'spell-targets') && (!selectedSpell || !castableOutOfCombat(selectedSpell) || pendingCommand.kind === 'spell-target' && Boolean(state.enemies?.some((enemy) => enemy.id === pendingCommand.targetId) || pendingNpcTarget)))
+    || (pendingCommand?.kind === 'action-target' && selectedCombatAction?.exploration === 'opens-combat'),
+  )
+  const preparedLabelBase = (() => {
     if (pendingCommand?.kind === 'target') return `${selectedItem?.name ?? 'Базовая атака'} → ${pendingTargetName ?? 'цель'}`
     if (pendingCommand?.kind === 'area') return `${selectedItem?.name ?? 'Бросок'} → клетка`
     if (pendingCommand?.kind === 'spell-target') return `${selectedSpell?.name ?? 'Заклинание'} → ${pendingTargetName ?? 'цель'}`
@@ -1812,6 +1884,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     if (awaitingTarget) return `${(combatMode === 'magic' ? selectedSpell?.name : combatMode === 'action' ? selectedCombatAction?.name : selectedItem?.name) ?? 'Действие'} → ${targetWord}`
     return null
   })()
+  const preparedLabel = preparedLabelBase && preparedOpensCombat ? `${preparedLabelBase} · начнёт бой` : preparedLabelBase
   const spellAimColor = spellEffectPalette(selectedSpell?.id, selectedSpell ?? {}).primary
   const aimingEffectRenderers = spellAreaPreviewSelected && previewBlastCenter && active
     ? [...boardEffectRenderers, createSpellTargetRenderer({
@@ -1939,7 +2012,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       ? actorDistanceFeet(active, enemy)
       : Number.POSITIVE_INFINITY
     const spellDistanceFeet = enemy && active ? actorDistanceFeet(active, enemy) : Number.POSITIVE_INFINITY
-    const trajectoryBlockReason = enemy && active ? actorTrajectoryBlockReason(state, active, enemy) : null
+    const trajectoryBlockReason = enemy && active ? actorLineOfFireBlockReason(state, active, enemy) : null
     const clearTrajectory = Boolean(enemy && active && trajectoryBlockReason == null)
     const enemyForecast = enemy
       ? selectedAttackForecast(state.combatForecast?.targets, enemy.id, selectedItem?.id ?? null)
@@ -1949,12 +2022,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const enemyInChainSecondaryRange = Boolean(
       enemy && selectedSpellPrimary && enemy.id !== selectedSpellPrimary.id
       && actorDistanceFeet(selectedSpellPrimary, enemy) <= selectedSpellTargetSeparationFeet
-      && hasClearBoardTrajectory(state, selectedSpellPrimary, enemy),
+      && hasClearActorLineOfFire(state, selectedSpellPrimary, enemy),
     )
-    const canWeaponTargetEnemy = Boolean(combatActive && selected && combatMode === 'weapon' && weaponAttackReady && enemyInWeaponRange && selectedItem?.combat?.kind !== 'thrown-area' && !needsWeaponChange)
+    const canWeaponTargetEnemy = Boolean(weaponTargeting && selected && combatMode === 'weapon' && weaponAttackReady && enemyInWeaponRange && selectedItem?.combat?.kind !== 'thrown-area' && !needsWeaponChange)
     const longstriderTargeting = (selectedSpell?.id === 'longstrider' || selectedSpell?.target === 'creature' && selectedSpell.mechanicsSupport === 'verified') && combatMode === 'magic'
     const canSpellTargetEnemy = Boolean(
-      (combatActive || longstriderTargeting) && selected && combatMode === 'magic'
+      (enemyAiming || longstriderTargeting) && selected && combatMode === 'magic'
       && selectedSpell && ['enemy', 'creature'].includes(selectedSpell.target) && spellEconomyReady
       && (selectedSpellPrimary && enemy?.id !== selectedSpellPrimary.id ? enemyInChainSecondaryRange : enemyInSpellRange)
       && (!longstriderTargeting || clearTrajectory),
@@ -1965,7 +2038,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const selectedActionTargetGuard = enemy && selectedCombatAction
       ? combatActionTargetGuard(selectedCombatAction, enemy.id)
       : { allowed: true, reason: null }
-    const canActionTargetEnemy = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['enemy', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && selectedActionTargetGuard.allowed && enemyInActionRange && (selectedCombatAction.id !== 'first-aid' || enemyKnockedOut))
+    const canActionTargetEnemy = Boolean(enemyAiming && selected && combatMode === 'action' && selectedCombatAction && ['enemy', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && selectedActionTargetGuard.allowed && enemyInActionRange && (selectedCombatAction.id !== 'first-aid' || enemyKnockedOut))
     const targetRangeFeet = combatMode === 'magic' ? selectedSpellRange : combatMode === 'action' ? selectedActionRange : selectedItem?.combat?.kind === 'thrown-area' ? normalRangeFeet : attackRangeFeet
     const acceptedTarget = combatMode === 'magic'
       ? selectedSpell?.target === 'ally' ? 'ally' : selectedSpell?.target === 'enemy' ? 'enemy' : 'creature'
@@ -1988,7 +2061,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             ? selectedActionTargetGuard.reason
             : null
     const enemyTargetCheck = enemy ? evaluateCombatTarget({
-      selected: Boolean((combatActive || longstriderTargeting) && selected), economyReady: targetEconomyReady,
+      selected: Boolean((enemyAiming || longstriderTargeting) && selected), economyReady: targetEconomyReady,
       unavailableReason: targetUnavailableReason,
       targetAlive: enemy.alive, targetTeam: 'enemy', acceptedTarget,
       distanceFeet: attackDistanceFeet, rangeFeet: targetRangeFeet,
@@ -2021,7 +2094,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const route = movementPaths.get(cellKey)
     const moveReason = movement.blockedReason ?? (active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null)
     const opportunityRisk = Boolean(canMoveHere && opportunityThreats.some((threat) => actorDistanceFeet(threat, cell) > CELL_FEET))
-    const canThrowHere = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && actorDistanceFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
+    const canThrowHere = Boolean(weaponTargeting && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && actorDistanceFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
     const actorIsAnchor = Boolean(actorAtCell && actorAtCell.x === cell.x && actorAtCell.y === cell.y)
     const actorLayout = actorAtCell ? actorLayoutById.get(actorAtCell.id) ?? null : null
     const actorHasFullArea = Boolean(actorAtCell && fullActorIds.has(actorAtCell.id) && actorLayout && actorLayout.width > 1)
@@ -2052,7 +2125,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       return false
     })())
     const occupied = Boolean(actorAtCell || player || enemy || summon || sceneNpc)
-    const commandRangeVisible = Boolean(selected && targetRangeFeet > 0 && (combatActive || spellEconomyReady))
+    const commandRangeVisible = Boolean(selected && targetRangeFeet > 0 && (enemyAiming || spellEconomyReady))
     const cellInCommandRange = Boolean(commandRangeVisible && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && actorDistanceFeet(active, cell) <= targetRangeFeet && (targetRangeFeet <= CELL_FEET || hasClearBoardTrajectory(state, active, cell)))
     const moveUnavailable = Boolean(selected && movementAvailable && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && !occupied && !canMoveHere && moveReason)
     const canPointSpellHere = Boolean(selected && combatMode === 'magic' && selectedSpell?.target === 'point' && spellEconomyReady && (!selectTargetsInAreaSpell || !areaSpellPoint) && active && actorDistanceFeet(active, cell) <= selectedSpellRange && clearPointSpellLineOfEffect(cell) && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && (!['summon', 'teleport'].includes(selectedSpellKind ?? '') || !occupied))
@@ -2067,7 +2140,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       actorAtCell && selectedSpell?.id === 'chain-lightning' && selectedSpellPrimary
       && actorAtCell.id !== selectedSpellPrimary.id
       && actorDistanceFeet(selectedSpellPrimary, actorAtCell) <= selectedSpellTargetSeparationFeet
-      && hasClearBoardTrajectory(state, selectedSpellPrimary, actorAtCell),
+      && hasClearActorLineOfFire(state, selectedSpellPrimary, actorAtCell),
     )
     // Дальше пяти футов сервер требует чистую траекторию для любого заклинания
     // на существо (проверка цели CastSpell). Без неё «Лечащее слово» сквозь
@@ -2083,7 +2156,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       && spellEconomyReady
       && (areaTargetSelectionActive
         ? areaTargetInBlast
-        : (chainSecondaryTargetAllowed || (actorTargetDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, actorAtCell))) && actorTargetDistance <= selectedSpellRange)),
+        : (chainSecondaryTargetAllowed || (actorTargetDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearActorLineOfFire(state, active, actorAtCell))) && actorTargetDistance <= selectedSpellRange)),
     )
     const multiTargetSelected = Boolean(multiTargetSpell && actorAtCell && selectedSpellTargetSet.has(actorAtCell.id))
     const multiTargetSeparationReason = actorAtCell ? spellTargetSeparationReason(actorAtCell) : null
@@ -2099,7 +2172,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       unavailableReason: targetUnavailableReason, targetAlive: sceneNpc.alive,
       targetTeam: 'ally', acceptedTarget: 'creature',
       distanceFeet: actorTargetDistance, rangeFeet: selectedSpellRange,
-      clearTrajectory: Boolean(active && hasClearBoardTrajectory(state, active, sceneNpc)),
+      clearTrajectory: Boolean(active && hasClearActorLineOfFire(state, active, sceneNpc)),
       resourceReady: spellSlotReady,
     }) : null
     const areaTargetReason = areaTargetSelectionActive && actorAtCell && !areaTargetInBlast ? 'Существо вне сферы 30 футов'
@@ -2109,7 +2182,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const canAidActorHere = Boolean(
       actorAtCell
       && (actorAtCell.kind === 'hero' || actorAtCell.kind === 'summon')
-      && combatActive
       && selected
       && combatMode === 'action'
       && selectedCombatAction
@@ -2118,7 +2190,31 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       && actorAtCell.id !== selected
       && actorTargetDistance <= selectedCombatAction.range,
     )
-    const actorCanActivate = Boolean(actorAtCell && (canAimHere || canActionTargetEnemy || canSpellTargetEnemy || canWeaponTargetEnemy || canHealActorHere || canAidActorHere || multiTargetSelectable))
+    /* Удар из исследования по нейтральному NPC — плиткой, как по врагу.
+       Дальность и линию обзора проверяет и сервер; здесь — чтобы подсветка
+       не обещала удар, в котором он откажет. */
+    const npcStrikeDistance = sceneNpc && active ? actorDistanceFeet(active, sceneNpc) : Number.POSITIVE_INFINITY
+    const npcStrikeRange = combatMode === 'magic' ? selectedSpellRange : combatMode === 'action' ? selectedActionRange : attackRangeFeet
+    const npcStrikeArmed = npcStrikeTargetsPresent && Boolean(
+      (combatMode === 'weapon' && weaponArmed && weaponAttackReady && !needsWeaponChange && selectedItem?.combat?.kind !== 'thrown-area')
+      || (combatMode === 'magic' && selectedSpell && !multiTargetSpell && !castableOutOfCombat(selectedSpell) && ['enemy', 'creature'].includes(selectedSpell.target) && spellEconomyReady)
+      || (combatMode === 'action' && selectedCombatAction?.exploration === 'opens-combat' && selectedActionEconomyReady),
+    )
+    const canStrikeNpcHere = Boolean(selected && sceneNpc?.alive && sceneNpc.can_start_combat && npcStrikeArmed
+      && (combatMode !== 'weapon' || npcStrikeDistance >= CELL_FEET)
+      && npcStrikeDistance <= npcStrikeRange
+      && (npcStrikeRange <= CELL_FEET || Boolean(active && sceneNpc && hasClearActorLineOfFire(state, active, sceneNpc))))
+    const npcStrikeReason = !sceneNpc?.can_start_combat
+      ? 'С этим персонажем бой пока недоступен: нет готового серверного профиля'
+      : npcStrikeDistance > npcStrikeRange || (combatMode === 'weapon' && npcStrikeDistance < CELL_FEET)
+        ? 'Цель вне досягаемости'
+        : (active && sceneNpc ? actorLineOfFireBlockReason(state, active, sceneNpc) : null) ?? 'Цель недоступна'
+    const strikeNpc = (npcId: string) => {
+      if (combatMode === 'magic') castAtTarget(npcId)
+      else if (combatMode === 'action') useActionAtTarget(npcId)
+      else chooseTarget(npcId)
+    }
+    const actorCanActivate = Boolean(actorAtCell && (canAimHere || canActionTargetEnemy || canSpellTargetEnemy || canWeaponTargetEnemy || canHealActorHere || canAidActorHere || canStrikeNpcHere || multiTargetSelectable))
     const inBlastArea = Boolean(cell.revealed && previewBlastKeys.has(cellKey))
     const inPersistentSpellArea = Boolean(cell.revealed && (state.mechanics?.active_effects ?? []).some((effect) => pointInAreaEffect(effect, cell)))
     // У объекта собственная hotspot-зона в соседнем слое поверх клетки. Клетка
@@ -2332,6 +2428,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           else if (enemy && canWeaponTargetEnemy) chooseTarget(enemy.id)
           else if (canAidActorHere) useActionAtTarget(actorAtCell.id)
           else if (canHealActorHere) castAtTarget(actorAtCell.id)
+          else if (sceneNpc && canStrikeNpcHere) strikeNpc(sceneNpc.id)
           return
         }
         if (!selected || (!canMoveHere && !canAimHere) || (spellAiming && !canPointSpellHere)) return
@@ -2408,7 +2505,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {actorHasFullArea && actorIsAnchor && <span className="actor-footprint-area" style={actorTokenStyle} aria-hidden="true" />}
         {enemy && cell.revealed && actorIsAnchor && (
           <button
-            className={`enemy-token ${actorHasFullArea ? 'large-actor' : ''}${enemyNameplateAbove ? ' nameplate-above' : ''} ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${linkedParticipantIds.includes(enemy.id) ? 'journal-linked' : ''} ${enemy.id === turnActorId ? 'active-turn' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''} ${multiTargetSelected ? 'multi-target-selected' : ''}`}
+            className={`enemy-token ${actorHasFullArea ? 'large-actor' : ''}${enemyNameplateAbove ? ' nameplate-above' : ''} ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${linkedParticipantIds.includes(enemy.id) ? 'journal-linked' : ''} ${enemy.id === turnActorId ? 'active-turn' : ''} ${enemyCommandAllowed ? 'targetable' : enemyAiming ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''} ${multiTargetSelected ? 'multi-target-selected' : ''}`}
             data-actor-id={enemy.id}
             data-enemy-kind={enemyKind}
             data-footprint-size={actorHasFullArea ? actorLayout?.size : undefined}
@@ -2435,15 +2532,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           {actorHasFullArea && <span className="actor-footprint-area" style={actorTokenStyle} aria-hidden="true" />}
           <button
             type="button"
-            className={`map-token neutral-token ${actorHasFullArea ? 'large-actor' : ''} stance-${sceneNpcStance} ${sceneNpc.alive ? '' : 'dead'} ${openTokenLabelId === sceneNpcMenuId ? 'label-open' : ''} ${canHealActorHere || multiTargetSelectable ? 'targetable healing-target' : ''} ${multiTargetSelected ? 'multi-target-selected' : ''}`}
+            className={`map-token neutral-token ${actorHasFullArea ? 'large-actor' : ''} stance-${sceneNpcStance} ${sceneNpc.alive ? '' : 'dead'} ${openTokenLabelId === sceneNpcMenuId ? 'label-open' : ''} ${canHealActorHere || multiTargetSelectable ? 'targetable healing-target' : canStrikeNpcHere ? 'targetable' : npcStrikeArmed && sceneNpc.alive ? 'unavailable-target' : ''} ${multiTargetSelected ? 'multi-target-selected' : ''} ${pendingTargetId === sceneNpc.id ? 'command-selected' : ''}`}
             data-actor-id={sceneNpc.id}
             data-token-role="neutral"
             data-footprint-size={actorHasFullArea ? actorLayout?.size : undefined}
             style={actorTokenStyle}
             aria-expanded={openTokenLabelId === sceneNpcMenuId}
-            aria-label={canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку с ${sceneNpc.name}` : (longstriderTargeting || areaTargetSelectionActive) ? `Наложить ${selectedSpell?.name} на ${sceneNpc.name}` : `${sceneNpc.name}, ${sceneNpc.role || 'персонаж'}. Отношение: ${NPC_STANCE_LABELS[sceneNpcStance]}`}
+            aria-label={canPointSpellHere ? `Наложить ${selectedSpell?.name} в клетку с ${sceneNpc.name}` : (longstriderTargeting || areaTargetSelectionActive) ? `Наложить ${selectedSpell?.name} на ${sceneNpc.name}` : canStrikeNpcHere ? `${sceneNpc.name} — напасть: удар начнёт бой` : `${sceneNpc.name}, ${sceneNpc.role || 'персонаж'}. Отношение: ${NPC_STANCE_LABELS[sceneNpcStance]}`}
             aria-disabled={(longstriderTargeting || areaTargetSelectionActive) ? tacticalBusy || !(multiTargetSpell ? multiTargetSelectable : canHealActorHere) : undefined}
-            title={(longstriderTargeting || areaTargetSelectionActive) ? sceneNpcTargetReason : undefined}
+            title={(longstriderTargeting || areaTargetSelectionActive) ? sceneNpcTargetReason : canStrikeNpcHere ? `${sceneNpc.name} — напасть: удар начнёт бой` : npcStrikeArmed && sceneNpc.alive ? npcStrikeReason : undefined}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
             onKeyDown={(event) => { if ((longstriderTargeting || areaTargetSelectionActive) && multiTargetSpell && !pendingCommand && event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); confirmSpellTargetSelection() } }}
@@ -2455,6 +2552,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                 else if (!multiTargetSpell && canHealActorHere) castAtTarget(sceneNpc.id)
                 return
               }
+              if (canStrikeNpcHere) { strikeNpc(sceneNpc.id); return }
               setOpenTokenLabelId((current) => current === sceneNpcMenuId ? null : sceneNpcMenuId)
             }}
           >
@@ -2589,9 +2687,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
           // разрешено, и решает это `spellEconomyReady`, повторяющий правило движка.
           const playerInBlast = Boolean(areaTargetSelectionActive && spellAffectedIds.has(player.id))
-          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && (['ally', 'creature'].includes(selectedSpell.target) || areaTargetSelectionActive) && spellEconomyReady && (areaTargetSelectionActive ? playerInBlast : healingDistance <= selectedSpellRange && (healingDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, player)))))
+          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && (['ally', 'creature'].includes(selectedSpell.target) || areaTargetSelectionActive) && spellEconomyReady && (areaTargetSelectionActive ? playerInBlast : healingDistance <= selectedSpellRange && (healingDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearActorLineOfFire(state, active, player)))))
           const playerKnockedOut = state.mechanics?.resting?.[player.id]?.reason === 'knockout'
-          const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && player.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'stabilize' || player.hp === 0) && (selectedCombatAction.id !== 'first-aid' || playerKnockedOut))
+          const canAid = Boolean(selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && player.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'stabilize' || player.hp === 0) && (selectedCombatAction.id !== 'first-aid' || playerKnockedOut))
           const playerCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere || multiTargetSelectable)
           const playerSpecialBlock = combatMode === 'action' && selectedCombatAction?.id === 'stabilize' && player.hp > 0
             ? 'Стабилизация нужна только герою с 0 ОЗ'
@@ -2599,11 +2697,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               ? 'Первая помощь доступна только нокаутированному союзнику'
               : combatMode === 'action' && player.id === selected ? 'Выберите другого союзника' : null
           const playerTargetCheck = evaluateCombatTarget({
-            selected: Boolean(selected && (combatActive || spellEconomyReady)), economyReady: targetEconomyReady,
+            selected: Boolean(selected && (combatActive || spellEconomyReady || (combatMode === 'action' && selectedActionEconomyReady))), economyReady: targetEconomyReady,
             unavailableReason: targetUnavailableReason,
             targetAlive: player.hp > 0 || !heroIsDead(player.id), targetTeam: 'ally', acceptedTarget,
             distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
-            clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, player)),
+            clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || Boolean(active && hasClearActorLineOfFire(state, active, player)),
             resourceReady: targetResourceReady, specialBlockReason: playerSpecialBlock,
           })
           // Вне боя и без выбранного заклинания наведение на союзника — просто
@@ -2649,16 +2747,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
           // разрешено, и решает это `spellEconomyReady`, повторяющий правило движка.
           const summonInBlast = Boolean(areaTargetSelectionActive && spellAffectedIds.has(summon.id))
-          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && (['ally', 'creature'].includes(selectedSpell.target) || areaTargetSelectionActive) && spellEconomyReady && (areaTargetSelectionActive ? summonInBlast : healingDistance <= selectedSpellRange && (healingDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, summon)))))
+          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && (['ally', 'creature'].includes(selectedSpell.target) || areaTargetSelectionActive) && spellEconomyReady && (areaTargetSelectionActive ? summonInBlast : healingDistance <= selectedSpellRange && (healingDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearActorLineOfFire(state, active, summon)))))
           const summonKnockedOut = state.mechanics?.resting?.[summon.id]?.reason === 'knockout'
-          const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && summon.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'first-aid' || summonKnockedOut))
+          const canAid = Boolean(selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && summon.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'first-aid' || summonKnockedOut))
           const summonCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere || multiTargetSelectable)
           const summonTargetCheck = evaluateCombatTarget({
-            selected: Boolean(selected && (combatActive || spellEconomyReady)), economyReady: targetEconomyReady,
+            selected: Boolean(selected && (combatActive || spellEconomyReady || (combatMode === 'action' && selectedActionEconomyReady))), economyReady: targetEconomyReady,
             unavailableReason: targetUnavailableReason,
             targetAlive: summon.alive, targetTeam: 'ally', acceptedTarget,
             distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
-            clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, summon)),
+            clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || Boolean(active && hasClearActorLineOfFire(state, active, summon)),
             resourceReady: targetResourceReady,
             specialBlockReason: combatMode === 'action' && summon.id === selected ? 'Выберите другого союзника' : null,
           })
@@ -2738,13 +2836,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /* Заклинание, которое герой держит сейчас: его плитка обводится кольцом. */
   const heroConcentration = activeHero ? heroStatusForActor(state, activeHero.id).concentration : null
   const deckTiles: Array<{ id: string; node: React.ReactElement; cost?: TileCost; section: HotbarSection }> = []
-  if (activeDeck === 'common') deckTiles.push({ id: 'movement', cost: 'movement', section: 'action', node: <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || actionsLocked} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Перемещение — выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button> })
-  if (inDeck('weapon')) deckTiles.push({ id: BASE_ATTACK_ID, cost: 'action', section: 'action', node: <button className={`action-tile weapon ${combatMode === 'weapon' && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon') }} title={`Базовая атака · ${baseRangeFeet} фт`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button> })
+  if (activeDeck === 'common') deckTiles.push({ id: 'movement', cost: 'movement', section: 'action', node: <button className="action-tile movement-tile" disabled={!selected || !movementAvailable || remainingFeet <= 0 || actionsLocked || !combatActive} onClick={() => { setSelectedCombatActionId(''); setCombatMode('weapon') }} title="Перемещение — выберите подсвеченную клетку на карте"><CombatIcon id="movement" kind="movement" hint="перемещение" /><strong>Перемещение</strong><small>{remainingFeet} фт</small><i className="action-cost movement">движение</i></button> })
+  if (inDeck('weapon')) deckTiles.push({ id: BASE_ATTACK_ID, cost: 'action', section: 'action', node: <button className={`action-tile weapon ${combatMode === 'weapon' && weaponTargeting && weaponSelectionId === BASE_ATTACK_ID ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked || (!combatActive && !explorationStrikeAvailable)} onClick={() => { setSelectedItemId(BASE_ATTACK_ID); setCombatMode('weapon'); setWeaponArmed(true) }} title={`Базовая атака · ${baseRangeFeet} фт${combatActive ? '' : explorationStrikeAvailable ? ` · ${explorationStrikeHint(freeOpeningStrike)}` : ` · ${NO_FOE_HINT}`}`}><CombatIcon id={BASE_ATTACK_ID} kind="weapon" hint="базовая атака оружием" /><strong>Базовая атака</strong><small>{baseRangeFeet} фт</small><i className="action-cost action">действие</i></button> })
   /* Колчан объясняется той же кнопкой, что и всё остальное на панели: пустой —
      плитка гаснет и в подсказке названа причина, ровно как у потраченной ячейки
      или занятого действия. Числа берутся из серверной проекции, поэтому
      счётчик не может обещать выстрел, в котором движок откажет. */
-  if (inDeck('weapon')) combatItems.filter((item) => item.type === 'weapon').forEach((item) => { const ammunition = ammunitionSupplyFor(activeHero?.inventory, item); const quiverEmpty = Boolean(ammunition && ammunition.shots <= 0); const ammunitionLabel = ammunition ? `${ammunition.shots}×${ammunition.unit}` : ''; deckTiles.push({ id: item.id, cost: 'action', section: 'action', node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked || quiverEmpty} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={quiverEmpty ? `${item.name}: колчан пуст — для выстрела нужен боеприпас «${ammunition?.unit}»` : ammunition ? `${item.name} ${ammunitionLabel}: ${item.description || item.properties}` : `${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт{ammunition ? ` · ${ammunitionLabel}` : ''}</small>{ammunition && <em>{ammunition.shots}</em>}<i className="action-cost action">действие</i></button> }) })
+  if (inDeck('weapon')) combatItems.filter((item) => item.type === 'weapon').forEach((item) => { const ammunition = ammunitionSupplyFor(activeHero?.inventory, item); const quiverEmpty = Boolean(ammunition && ammunition.shots <= 0); const ammunitionLabel = ammunition ? `${ammunition.shots}×${ammunition.unit}` : ''; deckTiles.push({ id: item.id, cost: 'action', section: 'action', node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && weaponTargeting && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked || quiverEmpty || (!combatActive && !explorationStrikeAvailable)} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon'); setWeaponArmed(true) }} title={`${quiverEmpty ? `${item.name}: колчан пуст — для выстрела нужен боеприпас «${ammunition?.unit}»` : ammunition ? `${item.name} ${ammunitionLabel}: ${item.description || item.properties}` : `${item.name}: ${item.description || item.properties}`}${combatActive ? '' : explorationStrikeAvailable ? ` · ${explorationStrikeHint(freeOpeningStrike)}` : ` · ${NO_FOE_HINT}`}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт{ammunition ? ` · ${ammunitionLabel}` : ''}</small>{ammunition && <em>{ammunition.shots}</em>}<i className="action-cost action">действие</i></button> }) })
   if (activeDeck === 'magic' || (activeDeck === 'all' && spells.length > 0)) deckTiles.push({ id: 'spellbook', section: 'spell', node: <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={tacticalBusy} title={`Открыть книгу заклинаний. ${heroSpellLine}. Весь каталог — отдельной вкладкой внутри`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{heroSpellTileLabel(heroSpellTally)}</small></button> })
   const slotFilteredSpells = slotLevelFilter
     ? hotbarSpells.filter((spell) => spell.level > 0 && spell.level <= slotLevelFilter)
@@ -2762,13 +2860,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const reactionOnly = state.ruleset_id === 'dnd_5e_2014' && actionType === 'reaction'
     const economyReady = !reactionOnly && (combatActive
       ? actionType !== 'long_cast' && (actionType === 'bonus_action' ? bonusReady : actionType === 'reaction' ? reactionReady : actionReady)
-      : castableOutOfCombat(spell))
+      : castableOutOfCombat(spell) || explorationStrikeAvailable)
     const componentReason = componentAvailability.blocked
       ? unavailableUiReason(componentAvailability.reason)
       : null
     const tileReason = support.blocked
       ? `${support.label}. ${support.explanation}`
-      : componentReason ?? (reactionOnly ? 'Применяется через окно реакции после подходящего события' : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}`)
+      : componentReason ?? (reactionOnly ? 'Применяется через окно реакции после подходящего события' : `${spell.description ?? ''}${spell.concentration ? ' · Концентрация' : ''}${combatActive || castableOutOfCombat(spell) ? '' : explorationStrikeAvailable ? ` · ${explorationStrikeHint(freeOpeningStrike)}` : ` · ${NO_FOE_HINT}`}`)
     const componentReasonId = `spell-component-availability-${spell.id}`
     deckTiles.push({
       id: spell.id,
@@ -2777,7 +2875,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       node: <button
         key={spell.id}
         className={`action-tile spell support-${support.status}${componentAvailability.blocked ? ' components-blocked' : ''} ${combatMode === 'magic' && selectedSpell?.id === spell.id ? 'selected' : ''}`}
-        disabled={support.blocked || !selected || !ready || !economyReady || (combatActive ? tacticalBusy : !castableOutOfCombat(spell))}
+        disabled={support.blocked || !selected || !ready || !economyReady || tacticalBusy}
         onClick={(event) => selectSpell(spell, event.currentTarget)}
         title={`${spell.name} — ${tileReason}`}
         aria-label={`${spell.name}. ${tileReason}`}
@@ -2798,7 +2896,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </button>,
     })
   })
-  if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
+  if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked || !actionUsableNow(action)} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}${combatActive ? '' : actionExplorationHint(action, explorationStrikeAvailable, freeOpeningStrike)}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
   if (inDeck('items')) combatItems.filter((item) => item.type !== 'weapon').forEach((item) => deckTiles.push({ id: item.id, cost: 'action', section: 'items', node: <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name} — ${item.description}`}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">действие</i></button> }))
   const tileOrderKey = `${turnActorId}:${activeDeck}`
   const savedTileOrder = tileOrder[tileOrderKey] ?? []
@@ -2957,7 +3055,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       <div className="map-atmosphere map-atmosphere-one" />
       <div className="map-atmosphere map-atmosphere-two" />
       {!combatActive && <PartyQuestHud state={state} />}
-      {combatActive && pendingTarget && (() => {
+      {pendingNpcTarget && preparedOpensCombat && <div className="combat-target-plate enemy" role="status" aria-label={`Выбранная цель: ${pendingNpcTarget.name}`}>
+        <strong>{pendingNpcTarget.name}</strong>
+        <small>{freeOpeningStrike
+          ? 'Удар пройдёт сразу и сделает его противником: начнётся бой. Подтвердите в поле ввода или выберите другую цель'
+          : 'Удар сделает его противником и начнёт бой: сначала инициатива. Подтвердите в поле ввода или выберите другую цель'}</small>
+      </div>}
+      {pendingTarget && (combatActive || preparedOpensCombat) && (() => {
         const targetEnemy = state.enemies?.find((enemy) => enemy.id === pendingTarget.id)
         const health = targetEnemy ? enemyHealthPresentation(targetEnemy) : null
         const allyFill = !targetEnemy && Number(pendingTarget.maxHp) > 0 ? Math.max(0, Math.min(1, Number(pendingTarget.hp) / Number(pendingTarget.maxHp))) : null
@@ -2968,7 +3072,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           <strong>{targetName}</strong>
           {targetEnemy?.boss && <span className="combat-target-plate-tag">босс</span>}
           {fill != null && <span className="combat-target-plate-bar" aria-hidden="true"><u style={{ width: `${Math.round(fill * 100)}%` }} /><b>{word}</b></span>}
-          <small>Ваша цель — подтвердите в поле ввода или выберите другую</small>
+          <small>{combatActive ? 'Ваша цель — подтвердите в поле ввода или выберите другую' : freeOpeningStrike ? 'Удар пройдёт сразу и начнёт бой. Подтвердите в поле ввода или выберите другую цель' : 'Удар начнёт бой: сначала инициатива. Подтвердите в поле ввода или выберите другую цель'}</small>
         </div>
       })()}
       {/* Перемирие видно на самой доске, а не только в панели: рамка вокруг
@@ -3116,7 +3220,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           const spell = spells.find((entry) => entry.id === catalogSpell.id)
           if (!spell) return true
           const support = mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote)
-          return spellComponentAvailabilityFor(spell).blocked || support.blocked || spell.prepared === false || (state.ruleset_id === 'dnd_5e_2014' && spellActionType(spell) === 'reaction') || (combatActive && spellActionType(spell) === 'long_cast') || (!combatActive && !castableOutOfCombat(spell))
+          return spellComponentAvailabilityFor(spell).blocked || support.blocked || spell.prepared === false || (state.ruleset_id === 'dnd_5e_2014' && spellActionType(spell) === 'reaction') || (combatActive && spellActionType(spell) === 'long_cast') || (!combatActive && !castableOutOfCombat(spell) && !explorationStrikeAvailable)
         }}
         blockedReasonFor={(catalogSpell) => {
           const spell = spells.find((entry) => entry.id === catalogSpell.id)
@@ -3128,7 +3232,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           if (spell.prepared === false) return 'Заклинание не изучено или не подготовлено'
           if (state.ruleset_id === 'dnd_5e_2014' && spellActionType(spell) === 'reaction') return 'Применяется через окно реакции после подходящего события'
           if (combatActive && spellActionType(spell) === 'long_cast') return 'Длительное накладывание доступно только вне боя'
-          if (!combatActive && !castableOutOfCombat(spell)) return 'Боевое заклинание требует инициативы: сначала начните бой'
+          if (!combatActive && !castableOutOfCombat(spell) && !explorationStrikeAvailable) return NO_FOE_HINT
           return null
         }}
       /></Suspense>}
@@ -4008,7 +4112,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             })}
            </div>}
            </div>
-           {(combatActive || (combatMode === 'magic' && selectedSpell)) && <details className="hotbar-detail">
+           {(combatActive || (combatMode === 'weapon' && weaponTargeting) || (combatMode === 'magic' && selectedSpell) || (combatMode === 'action' && selectedCombatAction)) && <details className="hotbar-detail">
             <summary aria-label="Параметры действия" title="Параметры действия"><SlidersHorizontal size={15} /></summary>
             <div className="hotbar-detail-content">
             {combatMode === 'magic' && selectedSpell ? <>

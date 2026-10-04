@@ -1,6 +1,7 @@
-import { publicRulesetProfiles, rulesetLock, rulesetProfile } from './ruleset-config.mjs'
+import { publicRulesetProfiles, rulesetLock, rulesetProfile, TOGGLEABLE_HOUSE_RULES } from './ruleset-config.mjs'
 
 const RULESET_EVENT_TYPE = 'CampaignRulesetChanged'
+const HOUSE_RULE_EVENT_TYPE = 'CampaignHouseRuleChanged'
 
 export class CampaignRulesetError extends Error {
   constructor(message, code = 'CAMPAIGN_RULESET_INVALID') {
@@ -41,7 +42,64 @@ export function campaignRulesetSettings(state, events = [], { canManage = false 
     canChange: canManage && change.allowed,
     locked: !change.allowed,
     lockReason: change.reason,
+    houseRules: campaignHouseRuleSettings(state),
   }
+}
+
+/**
+ * Переключаемые домашние правила кампании и их состояние — для настроек
+ * ведущего. Источник истины — `enabled_house_rules` состояния.
+ */
+export function campaignHouseRuleSettings(state) {
+  const enabled = new Set((Array.isArray(state?.enabled_house_rules) ? state.enabled_house_rules : []).map(String))
+  return TOGGLEABLE_HOUSE_RULES.map((rule) => ({ id: rule.id, label: rule.label, description: rule.description, enabled: enabled.has(rule.id) }))
+}
+
+/**
+ * Событие включения или выключения домашнего правила в идущей кампании.
+ * Разрешены только правила из `TOGGLEABLE_HOUSE_RULES`: их итог фиксируется
+ * событиями в момент команды, поэтому переключение не меняет replay прошлого.
+ * Без изменения возвращает `null`.
+ */
+export function campaignHouseRuleChangeEvent(houseRuleId, enabled, state, {
+  actorId = null,
+  now = new Date().toISOString(),
+} = {}) {
+  const id = String(houseRuleId ?? '')
+  if (!TOGGLEABLE_HOUSE_RULES.some((rule) => rule.id === id)) {
+    throw new CampaignRulesetError('Это домашнее правило нельзя переключить в идущей кампании', 'HOUSE_RULE_NOT_TOGGLEABLE')
+  }
+  if (typeof enabled !== 'boolean') throw new CampaignRulesetError('Нужно явное включено или выключено', 'HOUSE_RULE_VALUE_INVALID')
+  if (state?.mechanics?.combat?.active === true) {
+    throw new CampaignRulesetError('Домашние правила боя не меняют посреди боя', 'HOUSE_RULE_DURING_COMBAT')
+  }
+  const before = (Array.isArray(state?.enabled_house_rules) ? state.enabled_house_rules : []).map(String)
+  if (before.includes(id) === enabled) return null
+  const after = enabled ? [...new Set([...before, id])] : before.filter((entry) => entry !== id)
+  return {
+    event_schema_version: 1,
+    event_type: HOUSE_RULE_EVENT_TYPE,
+    actor_id: actorId,
+    target_ids: [],
+    visibility: 'party',
+    source_rule_ids: [],
+    house_rule_id: id,
+    ruling_id: null,
+    payload: {
+      schema_version: 1,
+      house_rule_id: id,
+      enabled,
+      enabled_house_rules_before: before,
+      enabled_house_rules_after: after,
+      changed_by: actorId,
+      changed_at: now,
+    },
+  }
+}
+
+export function campaignHouseRuleMetadata(event) {
+  if (event?.event_type !== HOUSE_RULE_EVENT_TYPE) return {}
+  return { enabled_house_rules: [...event.payload.enabled_house_rules_after] }
 }
 
 export function campaignRulesetChangeEvent(requestedRulesetId, state, events = [], {

@@ -106,6 +106,18 @@ test('persisted beam events use canonical event_id while command_id is shared', 
   assert.equal((text.match(/творит заклинание «Палящий луч»/gu) ?? []).length, 1)
 })
 
+test('бой, открытый ударом из исследования, говорит, состоялся ли удар', () => {
+  const opened = (status, first) => combatNarration([
+    event('CombatStarted', { opening_action: { actor_id: 'hero', command_type: 'MakeAttack', status, first_actor_id: first } }, ['hero', 'wolf']),
+  ], state)
+  assert.match(opened('resolved', 'hero'), /Лира нападает первым и открывает бой/u)
+  assert.match(opened('deferred', 'wolf'), /Лира нападает, но первым ходит Волк: удар придётся повторить в свой ход/u)
+  const free = combatNarration([
+    event('CombatStarted', { opening_action: { actor_id: 'hero', command_type: 'MakeAttack', status: 'resolved', free_strike: true, npc_id: 'wolf', first_actor_id: 'wolf' } }, ['hero', 'wolf']),
+  ], state)
+  assert.match(free, /Лира нападает на Волка вне очереди/u, 'домашнее правило BG3 называет удар вне очереди')
+})
+
 test('по своему герою те же числа показываются', () => {
   const text = combatNarration([
     event('DamageApplied', { target_id: 'hero', applied_amount: 5, hp_before: 24, hp_after: 19 }, ['hero']),

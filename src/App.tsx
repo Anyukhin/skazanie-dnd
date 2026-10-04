@@ -1201,6 +1201,32 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     }
   }, [campaignAi, campaignAiBusy, state.sessionCode])
 
+  /* Домашнее правило — механика, а не настройка ИИ: сервер пишет его событием
+     в журнал кампании, поэтому запрос несёт ключ идемпотентности. */
+  const updateCampaignHouseRule = useCallback(async (houseRuleId: string, enabled: boolean) => {
+    if (!campaignAi?.canManage || campaignAiBusy) return
+    setCampaignAiBusy(true)
+    setCampaignAiError('')
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(state.sessionCode)}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...campaignAi.settings,
+          houseRules: { [houseRuleId]: enabled },
+          idempotency_key: globalThis.crypto?.randomUUID?.() ?? `house-rule-${Date.now()}`,
+        }),
+      })
+      const body = await response.json().catch(() => null) as CampaignAiSettingsResponse | null
+      if (!response.ok || !body?.ruleset) throw new Error(body?.error || 'Не удалось изменить домашнее правило')
+      setCampaignAi(body)
+    } catch (error) {
+      setCampaignAiError(error instanceof Error ? error.message : 'Не удалось изменить домашнее правило')
+    } finally {
+      setCampaignAiBusy(false)
+    }
+  }, [campaignAi, campaignAiBusy, state.sessionCode])
+
   useEffect(() => {
     if (state.isNarrating || directorBusy) return
     let active = true
@@ -1903,7 +1929,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}
           onActivate={(itemId, activated) => activateItem(activePlayer.id, itemId, activated)}
         />}
-        {view === 'settings' && <SettingsView combatEffectsVolume={combatEffectsVolume} onCombatEffectsVolumeChange={setCombatEffectsVolume} health={aiHealth} campaignAi={campaignAi} currentRulesetId={state.ruleset_id} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onCampaignRulesetChange={(rulesetId) => { void updateCampaignRuleset(rulesetId) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
+        {view === 'settings' && <SettingsView combatEffectsVolume={combatEffectsVolume} onCombatEffectsVolumeChange={setCombatEffectsVolume} health={aiHealth} campaignAi={campaignAi} currentRulesetId={state.ruleset_id} campaignAiBusy={campaignAiBusy} campaignAiError={campaignAiError} uiScale={uiScale} autoAttackRoll={autoAttackRoll} scenicBackdrop={scenicBackdrop} boardLighting={boardLighting} combatAnimations={combatAnimations} atmosphereSettings={atmosphereSettings} notificationPermission={notificationPermission} voiceMode={voiceMode} voiceSupported={voiceSupported} onVoiceModeChange={setVoiceMode} actionHintsEnabled={actionHintsEnabled} onActionHintsEnabledChange={setActionHintsEnabled} onCampaignAiChange={(patch) => { void updateCampaignAi(patch) }} onCampaignRulesetChange={(rulesetId) => { void updateCampaignRuleset(rulesetId) }} onCampaignHouseRuleChange={(houseRuleId, enabled) => { void updateCampaignHouseRule(houseRuleId, enabled) }} onUiScaleChange={setUiScale} onAutoAttackRollChange={setAutoAttackRoll} onScenicBackdropChange={setScenicBackdrop} onBoardLightingChange={setBoardLighting} onCombatAnimationsChange={setCombatAnimations} onAmbientVolumeChange={changeAmbientVolume} onAtmosphereMutedChange={changeAtmosphereMuted} onRequestNotifications={() => { void requestTurnNotifications() }} />}
         {view === 'admin' && isAdmin && <AdminView account={account} state={state} onUpdateWorld={updateWorld} onAssembleEncounter={assembleEncounter} onAssembleMerchant={assembleMerchant} onMoveMerchant={moveMerchant} onSetMerchantAvailability={setMerchantAvailability} />}
         {view === 'combat-lab' && isAdmin && <CombatLabView combatAudio={combatAudio ?? undefined} soundMuted={atmosphereSettings.muted} onSoundMutedChange={changeAtmosphereMuted} />}
       </main>

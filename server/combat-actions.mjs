@@ -322,7 +322,42 @@ export function combatActionsFor(actor) {
     : []
   return [...COMMON_ACTIONS, ...classActions, ...speciesActions]
     .filter((entry) => level >= entry.minimumLevel)
-    .map((entry) => ({ ...clone(entry), sourceUrl: entry.sourceUrl ?? CLASS_URL[classKey] ?? 'https://www.dnd.su/articles/actions-in-combat/' }))
+    .map((entry) => ({
+      ...clone(entry),
+      sourceUrl: entry.sourceUrl ?? CLASS_URL[classKey] ?? 'https://www.dnd.su/articles/actions-in-combat/',
+      exploration: explorationUseFor(entry),
+    }))
+}
+
+/* Эффекты, у которых нет смысла без хода: лишняя скорость, второе действие и
+   заготовка живут ровно до конца хода, а хода вне боя нет. */
+const TURN_BOUND_EFFECT_KINDS = new Set(['dash', 'restore_action', 'ready_action', 'special'])
+
+/**
+ * Чем действие становится вне боя, в режиме исследования.
+ *
+ * - `opens-combat` — действие против противника. Нападение начинается с
+ *   инициативы (решение владельца от 2026-07-27), поэтому такое действие из
+ *   исследования открывает бой: Rules Engine бросает инициативу и исполняет
+ *   удар, только если нападающий ходит первым (`resolveOpeningStrike`).
+ * - `allowed` — мирное действие с лечением, проверкой или эффектом, который
+ *   переживает ход: «Второе дыхание», «Засада», «Ярость», «Помощь».
+ * - `combat-only` — реакция или эффект, привязанный к ходу: «Рывок», «Отход»,
+ *   «Уклонение», «Всплеск действий». Вне боя он ничего не значит.
+ *
+ * Признак один на сервер и клиент: движок по нему пропускает команду, панель —
+ * зажигает плитку. Второй таблицы в интерфейсе нет.
+ *
+ * @param {{ actionType?: string, target?: string, effect?: { kind?: string, duration?: string } } | null | undefined} entry
+ * @returns {'opens-combat' | 'allowed' | 'combat-only'}
+ */
+export function explorationUseFor(entry) {
+  if (!entry || entry.actionType === 'reaction') return 'combat-only'
+  if (entry.target === 'enemy') return 'opens-combat'
+  const effect = entry.effect ?? {}
+  if (TURN_BOUND_EFFECT_KINDS.has(String(effect.kind ?? ''))) return 'combat-only'
+  if (effect.kind === 'condition' && String(effect.duration ?? 'until-next-turn') === 'until-next-turn') return 'combat-only'
+  return 'allowed'
 }
 
 export function combatActionFor(actor, actionId) {
