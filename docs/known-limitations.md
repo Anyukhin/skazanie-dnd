@@ -3314,6 +3314,19 @@ Viewer-safe досье из stacked PR #13, портрет из PR #20 и явн
 - Текущий рабочий storage не проходит `cutover:verify`; автоматическая перезапись намеренно запрещена.
 - FileEventStore и compatibility room рассчитаны на single-writer deployment; auth.json отдельно защищён межпроцессным lock вокруг read-modify-write. OneDrive sync может создавать внешние конфликты.
 - Нет PostgreSQL adapter, multi-process coordination, scheduled backup/retention и production restore verification.
+- Потеря файлов кампании не маскируется загрузкой (аудит PR #131, RCV-01/02).
+  Если `metadata.json` или снимок знают версию, которой нет в журнале, либо
+  пропал снимок v0 (или карта, на которую он ссылается) — единственная запись
+  исходного состояния кампании из `initializeCampaign`, — `FileEventStore`
+  отвечает `CAMPAIGN_RECOVERY_REQUIRED` вместо старого или пустого состояния.
+  Журнал новее metadata (сбой между коммитом и записью metadata) — штатное
+  состояние. Без seed голова по-прежнему грузится с пригодного снимка новее
+  v0, но replay без снимков и версии до этого снимка отказывают. Средства
+  восстановления нет: выбор источника (backup, снимок) — ручная операция
+  владельца. Seed не записан событием, а `MapStore` не сверяет хеш содержимого
+  карты (RCV-03). Маршрут комнаты не ловит ошибки хранилища, поэтому такой
+  отказ, как и `CORRUPT_EVENT_LOG`, до закрытия async-границы HTTP
+  (MAP-BOUNDARY-03) завершает процесс сервера. Сторож — `test/event-store.test.mjs`.
 - Сводка сцены читает журнал событий целиком. `campaignEventsForSummary` в
   `server/index.mjs` зовёт `eventStore.getEvents(campaignId)` без среза, а тот
   разбирает все коммиты кампании с диска. Вызов происходит один раз на переход
