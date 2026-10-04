@@ -1218,6 +1218,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ...(movementAvailable && remainingFeet > 0 ? [`движение ${remainingFeet} фт`] : []),
   ]
   const turnFullySpent = combatActive && unspentTurnResources.length === 0
+  /* Переспрос, как в BG3: щелчок по «Завершить ход», когда остались шаги или
+     бонус, сначала перечисляет, что ещё можно сделать. Пробел завершает сразу —
+     клавиатура остаётся быстрым путём. «Не спрашивать» живёт до конца боя. */
+  const [endTurnConfirm, setEndTurnConfirm] = useState(false)
+  const [skipEndTurnConfirm, setSkipEndTurnConfirm] = useState(false)
+  useEffect(() => { setEndTurnConfirm(false) }, [turnActorId])
+  useEffect(() => { if (!combatActive) { setEndTurnConfirm(false); setSkipEndTurnConfirm(false) } }, [combatActive])
+  useDialogEscape(() => setEndTurnConfirm(false), endTurnConfirm)
+  const requestFinishTurn = () => {
+    if (turnFullySpent || skipEndTurnConfirm) { void onFinishTurn(); return }
+    setEndTurnConfirm(true)
+  }
   /* Escape снимает фильтр стоимости — и только его. Пока книга заклинаний
      открыта, Escape принадлежит ей (`useDialogEscape`), иначе одно нажатие
      закрывало бы окно и заодно сбрасывало выборку под ним. */
@@ -4013,12 +4025,23 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             <button
           className={`end-turn-hotbar ${turnFullySpent ? 'exhausted' : ''}`}
           disabled={!canAct || tacticalBusy}
-          onClick={onFinishTurn}
+          onClick={requestFinishTurn}
+          aria-haspopup={turnFullySpent || skipEndTurnConfirm ? undefined : 'dialog'}
           title={turnFullySpent
             ? 'Ресурсы хода израсходованы. Завершить ход — клавиша «Пробел»'
             : `Остались: ${unspentTurnResources.join(', ')}. Завершить ход — клавиша «Пробел»`}
         ><CombatIcon id="end-turn" kind="end-turn" hint="завершить ход" size={22} compact /><span>Завершить ход<kbd>Пробел</kbd></span></button>
           </div>
+          {endTurnConfirm && canAct && <div className="end-turn-confirm" role="alertdialog" aria-label="Завершить ход?" aria-describedby="end-turn-confirm-list">
+            <b>Завершить ход?</b>
+            <span>Ещё можно:</span>
+            <ul id="end-turn-confirm-list">{unspentTurnResources.map((item) => <li key={item}>{item}</li>)}</ul>
+            <div className="end-turn-confirm-actions">
+              <button type="button" className="confirm" onClick={onFinishTurn} disabled={tacticalBusy}>Завершить</button>
+              <button type="button" onClick={() => setEndTurnConfirm(false)} autoFocus>Вернуться</button>
+            </div>
+            <label><input type="checkbox" checked={skipEndTurnConfirm} onChange={(event) => setSkipEndTurnConfirm(event.target.checked)} /> Не спрашивать до конца боя</label>
+          </div>}
           <small className={`end-turn-move${railMovementAvailable && railRemainingFeet > 0 ? '' : ' spent'}`} title={railMovement.blockedReason ?? undefined}>{railMovement.blockedReason ? 'Движение недоступно' : `Осталось ${railMovementAvailable ? railRemainingFeet : 0} из ${railSpeedFeet} фт`}</small>
         </div>}
       </aside>

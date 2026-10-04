@@ -330,3 +330,32 @@
   .turn-rail-side .end-turn-ring > svg { display: none; }
   .turn-rail-hero .hud-portrait-damage, .turn-rail-hero .hud-portrait-hp, .turn-rail-hero .hud-stats { display: none; }
 }
+
+/* Переспрос «Завершить ход?» — поверх кольца и реакций, внутри панели: у неё
+   overflow: auto, и всплывашка над панелью обрезалась бы. */
+@media (min-width: 761px) {
+  .game-area .turn-rail-side .end-turn-dock { position: relative; }
+  .game-area .turn-rail-side .end-turn-confirm {
+    position: absolute; right: 0; top: 50%; z-index: 30;
+    transform: translateY(-50%);
+    width: 260px;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid var(--acc2);
+    border-top: 3px solid var(--enemy);
+    border-radius: 8px;
+    background: var(--pop);
+    box-shadow: var(--shadow);
+    color: var(--text);
+    font: 500 var(--fs-sm)/1.4 var(--f-ui);
+    text-align: left;
+  }
+  .game-area .end-turn-confirm > b { color: var(--acc2); font: 700 var(--fs-lg)/1.2 var(--f-display); }
+  .game-area .end-turn-confirm > span { color: var(--text2); }
+  .game-area .end-turn-confirm > ul { margin: 0; padding-left: 18px; }
+  .game-area .end-turn-confirm-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .game-area .end-turn-confirm-actions > button { flex: 1; height: 34px; border: 1px solid var(--line2); border-radius: 6px; background: var(--well); color: var(--text); font: 600 var(--fs-sm) var(--f-ui); cursor: pointer; }
+  .game-area .end-turn-confirm-actions > button.confirm { border-color: var(--enemy); background: color-mix(in srgb, var(--enemy) 45%, var(--rail-bg)); }
+  .game-area .end-turn-confirm-actions > button:hover:not(:disabled) { border-color: var(--acc2); }
+  .game-area .end-turn-confirm > label { display: flex; align-items: center; gap: 6px; color: var(--text2); font-size: var(--fs-xs); }
+}
