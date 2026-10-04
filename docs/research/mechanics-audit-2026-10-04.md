@@ -7,6 +7,9 @@
 постоянного NPC-спутника — принятое решение владельца, а не пропущенная
 реализация.
 
+Это профильное приложение, а не самостоятельная очередь реализации:
+общие приоритеты и зависимости задаёт [основной план](../bg3-experience-roadmap-2026-10-04.md).
+
 ## Выводы
 
 Архитектура уже держит правильную границу: typed-команда проходит ACL и
@@ -70,10 +73,14 @@ surface/prop-контур, социальные исходы с типизиро
 Preview должен возвращать не только красную клетку риска, а список причин:
 кто провоцирует opportunity attack, viewer-safe доступную реакцию, cover и
 расход movement/action. Точная КД скрытого врага и число реакций скрытого
-владельца не должны попадать в preview: это уже защищают
-[viewer-projection.mjs](../../server/viewer-projection.mjs#L1317) и
-[index.mjs](../../server/index.mjs#L2291). Публичный прогноз намеренно обнуляет
-armor_class у неизвестного врага ([index.mjs](../../server/index.mjs#L2305)).
+владельца не должны попадать в preview. Основная проекция скрывает характеристики
+([viewer-projection.mjs](../../server/viewer-projection.mjs#L1317)), но углублённая
+проверка нашла расхождение в последующей обработке: `withCombatForecast`
+обнуляет `armor_class`, сохраняя зависящий от него процент; право показать КД
+также ошибочно проверяется по знанию хитов
+([index.mjs](../../server/index.mjs#L2291)).
+Результаты и минимальная будущая правка — в
+[отдельном воспроизведении](combat-forecast-disclosure-2026-10-04.md).
 Часть UI уже выводит cover и reason; [DungeonMap.tsx](../../src/DungeonMap.tsx#L2124) и [DungeonMap.tsx](../../src/DungeonMap.tsx#L2371). Сервер должен оставаться единственным вычислителем, а клиент только показывать safe snapshot.
 
 ## Shove, jump, throw, ready
@@ -194,7 +201,7 @@ structured command path продолжает работать через determi
 
 Текущий guard подтверждён [narrator-evidence-regression.test.mjs](../../test/narrator-evidence-regression.test.mjs#L54)
 и [narrator-grounding-regression.test.mjs](../../test/narrator-grounding-regression.test.mjs#L70).
-Приоритетный дизайн: передавать Narrator не сырые события, а typed
+Эксперимент после N06: дополнить существующий `NarrationBrief` типизированными
 NarrationClaims: confirmed_action, confirmed_outcome, forbidden_implications,
 visible_changes, permitted_npc_reactions, sensory_anchors. Ответ модели
 сначала проверять на claim coverage и запрещённые implications, затем
@@ -205,8 +212,8 @@ deterministic result и сохранять модельный текст тол�
 
 | Приоритет | Server → events | Projection/UI | Acceptance и риск |
 |---|---|---|---|
-| P0 preview | Добавить read-only forecast API поверх attackForecast, movementStepCostFor, coverBetween и reaction candidates; событий нет. | Причины пути, известная КД, cover, high-ground, viewer-safe reaction и расхода одним preview. | Скрытые КД/реакции не раскрывать; сравнить preview с commit на 2014/2024. |
-| P2 reaction edge case | Сохранять текущий sequential resume; добавлять schema stack только после failing test с незавершёнными nested windows. | Viewer-safe trigger/action и восстановление текущего окна после reload. | Existing tests cover two owners, Indomitable and ready continuation; риск преждевременной миграции ниже. |
+| P0 preview | Расширить существующие combatForecast/action_proposal; отдельный read-only API только при недостающем потребителе. Расчёт — через текущие helpers; событий нет. | Причины пути, разрешённые сведения о цели, cover, high-ground, доступная владельцу реакция и расход одним preview. | Проверить производные числа на раскрытие скрытой КД; сравнить preview с commit на 2014/2024. |
+| P2 reaction edge case | Сохранять текущий sequential resume; добавлять schema stack только после failing test с незавершёнными nested windows. | Viewer-safe trigger/action и восстановление текущего окна после reload. | Уже проверены два владельца, Indomitable и ready continuation; новую миграцию не вводить без воспроизведения ошибки. |
 | P0 ready | Расширить READIED_TRIGGERS policy и release contract, сохранив v1 replay. | Карточка выбранного trigger и preview результата. | Unknown trigger не тратит action; restart/expiry tests. |
 | P1 shove/vertical | Policy per ruleset для 2014 push 5 ft, BG3 fall/edge и forced movement; ActorMoved version + FallResolved. | Направление, клетки падения, итог урона/препятствия. | Blocked path, size, no-OA; отдельно тестировать официальный 2014 shove и BG3-like policy. |
 | P1 surfaces/props | Единый resolver для active area и TacticalProp interactions, существующие SpellArea/SceneObject events. | Surface legend, trigger marker, extinguish/burn/topple reason. | Fire/web/oil/ice + replay; не создавать произвольные цепочки. |
@@ -214,7 +221,7 @@ deterministic result и сохранять модельный текст тол�
 | P1 quest graph | Read-only dependency/clock projection поверх worldMemory и quest-consequences. | Факты, часы, ответственный NPC, последствия и доступные варианты. | NPC death/office transfer/abandon/replay; не раскрывать GM knowledge. |
 | P1 camp/downtime | Расширить StartRest/CompleteRest через typed CampActivity и TimeAdvanced. | Передышка: отдых, camp action, crafting/rumor/training. | Инвариант времени и ресурсов, interruption policy; без музыки и companion recruit. |
 | P1 loot world | Создавать cache/ground/drop container тем же loot registry и event reducer. | Точки добычи, pickup preview, weight/ownership. | Atomic transfer, reach, visibility, replay; не дублировать inventory. |
-| P1 narrator claims | Расширить NarrationBrief/verifier, добавить negative implication corpus и provider eval. | Отдавать короткий проверенный текст с корректным failure framing. | Все benchmark failures rejected/fallback; risk over-rejection. |
+| Эксперимент после N06: narrator claims | Сравнить точечное расширение NarrationBrief/verifier с текущим подходом на новом корпусе. | Короткий проверенный текст с честным описанием провала. | Измерять пропущенные нарушения и ложные отказы; IDs утверждений сами по себе не доказывают смысл русского текста. |
 | P2 map UX | Использовать уже server-owned geometry и projection для camera/overlays. | Контекстное action wheel, inspect mode, unobstructed markers, level/elevation legend. | Browser acceptance на desktop/mobile; не переносить collision в canvas. |
 
 ## Правила, конфликты и границы решения
