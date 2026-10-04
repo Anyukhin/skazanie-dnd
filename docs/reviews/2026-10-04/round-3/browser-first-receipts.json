@@ -1,0 +1,16 @@
+[
+  {
+    "path": "/api/campaigns/BROWSER-REVIEW3/commands",
+    "status": 200,
+    "dropped": true,
+    "key": "66818ebe-975a-4e6a-931f-907125c3931f",
+    "type": "MoveActor"
+  },
+  {
+    "path": "/api/campaigns/BROWSER-REVIEW3/commands",
+    "status": 200,
+    "dropped": false,
+    "key": "66818ebe-975a-4e6a-931f-907125c3931f",
+    "type": "MoveActor"
+  }
+]

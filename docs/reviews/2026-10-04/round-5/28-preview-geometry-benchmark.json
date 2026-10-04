@@ -1,0 +1,64 @@
+{
+  "baseline": "88c620e6011ae607913efb224cb8f850b4ee5028",
+  "node": "v24.19.0",
+  "platform": "win32",
+  "cpu": "AMD Ryzen 7 9800X3D 8-Core Processor           ",
+  "scope": "Только строки четырёх функций move-preview; не FPS, не время React или Canvas.",
+  "results": [
+    {
+      "width": 32,
+      "height": 32,
+      "movement_feet": 30,
+      "stress_only": false,
+      "reach_cells": 84,
+      "generated_characters": 2206,
+      "samples": 200,
+      "p50_ms": 0.0338,
+      "p95_ms": 0.0669
+    },
+    {
+      "width": 96,
+      "height": 64,
+      "movement_feet": 30,
+      "stress_only": false,
+      "reach_cells": 84,
+      "generated_characters": 2206,
+      "samples": 200,
+      "p50_ms": 0.0364,
+      "p95_ms": 0.0783
+    },
+    {
+      "width": 96,
+      "height": 64,
+      "movement_feet": 60,
+      "stress_only": false,
+      "reach_cells": 312,
+      "generated_characters": 7066,
+      "samples": 200,
+      "p50_ms": 0.1341,
+      "p95_ms": 0.2248
+    },
+    {
+      "width": 96,
+      "height": 64,
+      "movement_feet": 150,
+      "stress_only": false,
+      "reach_cells": 1860,
+      "generated_characters": 37953,
+      "samples": 200,
+      "p50_ms": 0.9441,
+      "p95_ms": 1.5078
+    },
+    {
+      "width": 96,
+      "height": 64,
+      "movement_feet": null,
+      "stress_only": true,
+      "reach_cells": 6143,
+      "generated_characters": 118439,
+      "samples": 200,
+      "p50_ms": 3.3927,
+      "p95_ms": 5.3256
+    }
+  ]
+}
