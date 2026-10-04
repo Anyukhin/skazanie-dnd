@@ -104,6 +104,7 @@ import {
   buildMovementPaths,
   conditionPresentation,
   evaluateCombatTarget,
+  isDifficultTerrain,
   levelIndicatorRows,
   levelTransitionHint,
   levelTransitionPresentation,
@@ -116,6 +117,7 @@ import { SUPERSEDED_FEATURE_POOLS, fallbackCombatActions } from './combat-action
 import { allCatalogCombatSpells, fallbackCombatSpells } from './combat-spells'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
+import { moveRiskPoint, type BoardMovePreview } from './move-preview'
 import { drawLingeringSpellEffects, type BoardAreaEffect, type BoardEffectRenderer, type BoardOverlayCell } from './board-render'
 import { CIRCULAR_AREA_GEOMETRY_VERSION, gridOriginForTargetCell } from './area-geometry'
 import {
@@ -1097,7 +1099,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const previewMoveKey = pendingMoveKey ?? hoveredMoveKey
   const previewRoute = previewMoveKey ? movementPaths.get(previewMoveKey) ?? null : null
   const maneuverPath = state.pendingAction?.proposal.actor_id === turnActorId ? state.pendingAction.proposal.path : null
-  const previewRouteSteps = new Map((maneuverPath ?? previewRoute?.path ?? []).map((step, index) => [boardPositionKey(step.x, step.y), index + 1]))
   const actionReady = !tactical.actionUsed && economy?.action !== false
   // «Дополнительная атака» — свойство действия «Атака», а не отдельная кнопка:
   // действие уже потрачено первым ударом, но оружие бьёт ещё раз, и между
@@ -1494,6 +1495,34 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const spellAiming = Boolean(selected && combatMode === 'magic' && selectedSpell && spellEconomyReady)
   const pointSpellSelected = Boolean(selected && combatMode === 'magic' && selectedSpell?.target === 'point' && spellEconomyReady)
   const spellAreaPreviewSelected = Boolean(pointSpellSelected || areaTargetSelectionActive)
+  /* Предпросмотр хода (`src/move-preview.ts`): нить маршрута и одно число у
+     цели вместо номера на каждой клетке, а в бою ещё контур — докуда хватает
+     движения. Прицел заклинания гасит и то и другое: клик по клетке тогда
+     значит «колдовать сюда», а не «идти сюда». Вне боя контура нет — движение
+     не ограничено, и он обвёл бы всю карту. */
+  const movePreview: BoardMovePreview | null = (() => {
+    if (!active || spellAiming) return null
+    const routePath = maneuverPath ?? previewRoute?.path ?? []
+    const reach = combatActive ? [...reachable] : []
+    if (!routePath.length && !reach.length) return null
+    const start = { x: active.x, y: active.y }
+    const path = routePath.map((step) => ({ x: step.x, y: step.y, difficult: isDifficultTerrain(state, step, boardMap) }))
+    const threatened = (point: { x: number; y: number }) => opportunityThreats.some((threat) => actorDistanceFeet(threat, point) <= CELL_FEET)
+    const risk = path.length && opportunityThreats.length ? moveRiskPoint({ start, path }, threatened) : null
+    const route = maneuverPath ? null : previewRoute
+    return {
+      start,
+      path,
+      reach,
+      risk,
+      label: route ? {
+        main: `${route.costFeet} фт`,
+        ...(combatActive ? { sub: `останется ${Math.max(0, remainingFeet - route.costFeet)} фт` } : {}),
+        ...(route.difficultTerrainFeet > 0 ? { note: `трудная местность +${route.difficultTerrainFeet} фт` } : {}),
+        ...(risk ? { risk: 'атака по возможности' } : {}),
+      } : undefined,
+    }
+  })()
   useEffect(() => {
     if (spellEconomyReady) return
     setAreaSpellPoint(null)
@@ -1895,7 +1924,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const canMoveHere = reachable.has(cellKey)
     const route = movementPaths.get(cellKey)
     const moveReason = movement.blockedReason ?? (active ? movementCellReason(state, active, cell, movementLimit, movementPaths) : null)
-    const routeStep = previewRouteSteps.get(cellKey)
     const opportunityRisk = Boolean(canMoveHere && opportunityThreats.some((threat) => actorDistanceFeet(threat, cell) > CELL_FEET))
     const canThrowHere = Boolean(combatActive && selected && combatMode === 'weapon' && actionReady && selectedItem?.combat?.kind === 'thrown-area' && active && actorDistanceFeet(active, cell) <= normalRangeFeet && hasClearBoardTrajectory(state, active, cell) && cell.revealed && cell.type !== 'wall')
     const actorIsAnchor = Boolean(actorAtCell && actorAtCell.x === cell.x && actorAtCell.y === cell.y)
@@ -2026,8 +2054,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
 
     const stateClasses = [
       canMoveHere && !canAimHere && previewMoveKey === cellKey ? 'move-target' : '',
-      routeStep ? 'route-step' : '',
-      previewMoveKey === cellKey ? 'route-destination' : '',
       opportunityRisk && !canAimHere ? 'opportunity-risk' : '',
       canAimHere ? 'aim-target' : '',
       canSummonHere ? 'summon-target' : '',
@@ -2234,7 +2260,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {sceneObjectMenu}
       </> : undefined,
       children: <>
-        {routeStep && <span className="route-step-badge" aria-hidden="true">{routeStep}</span>}
         {/* След на клетке: лежит в плоскости доски, поэтому при любом повороте и
             наклоне точно совпадает с сеткой. Фигурка стоит стоймя и из-за этого
             перспективно смещается — позиционную правду несёт именно этот след. */}
@@ -2776,6 +2801,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         cells={boardCells}
         cellHints={boardHints}
         overlayCells={boardOverlay}
+        movePreview={movePreview}
         effectRenderers={aimingEffectRenderers}
         onCancelAiming={spellAiming ? clearPrepared : undefined}
         onConfirmAiming={multiTargetSpell && spellTargetIds.length > 0 && !pendingCommand ? confirmSpellTargetSelection : undefined}
