@@ -47,6 +47,7 @@ import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
 import { DurableUsageLedger, MeteredLLMClient } from './usage-ledger.mjs'
+import { createRouterImageGenerator } from './image-generation.mjs'
 import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertText } from './architect-usage.mjs'
 import { sceneSummaryFor } from './scene-summary.mjs'
 import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from './campaign-recap.mjs'
@@ -371,9 +372,17 @@ const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmCli
 // luna-pro: там задержка неважна, а качество текста — главное. Пролог и хроника
 // зовутся раз за кампанию и раз за арку, поэтому вклад в бюджет — копейки.
 const loreModel = process.env.DND_AI_LORE_MODEL ?? 'openai/gpt-5.6-luna-pro'
-const loreAuthor = new LoreAuthor({
-  llmClient: apiKey ? new RouterAIClient({ model: loreModel, reasoning: reasoningProfileFor(loreModel), timeoutMs: 30_000 }) : null,
+// Аудит PR #131, AI-02: летописец получал голый RouterAIClient и обходил
+// дневную квоту и usage-ledger. Теперь он идёт через тот же MeteredLLMClient,
+// что и остальные роли: отдельная модель, но общий учёт и общий предел.
+const loreLlmClient = new MeteredLLMClient({
+  client: new RouterAIClient({
+    apiKey, baseUrl, model: loreModel, maxTokens, timeoutMs: 30_000,
+    reasoning: reasoningProfileFor(loreModel),
+  }),
+  ledger: usageLedger,
 })
+const loreAuthor = new LoreAuthor({ llmClient: apiKey ? loreLlmClient : null })
 const campaignBootstrapper = new CampaignBootstrapper({ llmClient: apiKey ? llmClient : null, loreAuthor, diceService })
 const actionAdjudicator = new ActionAdjudicator({ llmClient: apiKey ? llmClient : null })
 const autonomousCampaign = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, narrator, actionAdjudicator, loreAuthor, rollRegistry })
@@ -2642,24 +2651,39 @@ function executeTool(name, args, effects, state = {}) {
   return { error: 'Инструмент не разрешён' }
 }
 
+/**
+ * Картинка предмета. Аудит PR #131, AI-02: раньше здесь жил собственный
+ * `fetch` к `/images` — без проверки формата и мимо usage-ledger. Теперь путь
+ * тот же, что у портретов NPC и иллюстраций локаций: общий проверяющий
+ * генератор (`image-generation.mjs`: тайм-аут, потолок размера, сигнатура
+ * webp) и резерв в общем ledger до запроса. Оценка выхода — та же, что у
+ * портрета.
+ */
+const ITEM_IMAGE_ESTIMATED_OUTPUT_TOKENS = 1_024
+const itemImageGenerators = {
+  '1:1': createRouterImageGenerator({ baseUrl, apiKey, aspectRatio: '1:1' }),
+  '16:9': createRouterImageGenerator({ baseUrl, apiKey, aspectRatio: '16:9' }),
+}
+
 async function generateItemImage(prompt, aspectRatio = '1:1') {
-  const response = await fetch(`${baseUrl}/images`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: imageModel,
-      prompt: `Fantasy tabletop RPG inventory illustration. ${String(prompt).slice(0, 1600)}. No text, letters, logo, watermark, UI or characters.`,
-      n: 1, aspect_ratio: aspectRatio, resolution: '1K', quality: 'low', output_format: 'webp',
-    }),
-    signal: AbortSignal.timeout(120_000),
+  const imagePrompt = `Fantasy tabletop RPG inventory illustration. ${String(prompt).slice(0, 1600)}. No text, letters, logo, watermark, UI or characters.`
+  const reservation = usageLedger.reserve({
+    requestId: `item-image:${randomUUID()}`,
+    estimatedTokens: Buffer.byteLength(imagePrompt, 'utf8') + ITEM_IMAGE_ESTIMATED_OUTPUT_TOKENS,
+    scope: 'item-image',
+    model: imageModel,
   })
-  if (!response.ok) throw new Error(`Генератор изображений ответил ${response.status}`)
-  const result = await response.json()
-  const encoded = result.data?.[0]?.b64_json
-  if (!encoded) throw new Error('Генератор не вернул изображение')
+  let generated
+  try {
+    generated = await (itemImageGenerators[aspectRatio] ?? itemImageGenerators['1:1'])({ prompt: imagePrompt, model: imageModel })
+  } catch (error) {
+    usageLedger.fail(reservation.request_id, String(error?.code ?? error?.name ?? 'IMAGE_PROVIDER_ERROR').slice(0, 80))
+    throw error
+  }
+  usageLedger.settle(reservation.request_id, generated.usage ?? {})
   const filename = `${randomUUID()}.webp`
-  writeFileSync(join(generatedDir, filename), Buffer.from(encoded, 'base64'))
-  return { url: `/generated/items/${filename}`, model: imageModel, cost: result.usage?.cost }
+  writeFileSync(join(generatedDir, filename), generated.bytes)
+  return { url: `/generated/items/${filename}`, model: imageModel, cost: generated.usage?.cost }
 }
 
 const gameOrchestrator = new GameOrchestrator({
@@ -5438,7 +5462,14 @@ async function handleHttpRequest(req, res) {
       const body = await readBody(req)
       if (!body.prompt || String(body.prompt).length < 20) return json(res, 400, { error: 'Нужен подробный промпт' })
       return json(res, 200, await generateItemImage(body.prompt, body.aspectRatio === '16:9' ? '16:9' : '1:1'))
-    } catch (error) { return json(res, 502, { error: error instanceof Error ? error.message : 'Ошибка генерации' }) }
+    } catch (error) {
+      // Картинка предмета теперь в общей дневной квоте (аудит PR #131, AI-02):
+      // исчерпанный предел — это не сбой поставщика, а отказ до запроса.
+      if (error?.code === 'LLM_QUOTA_EXCEEDED') {
+        return json(res, 429, { error: 'Дневной предел расхода модели исчерпан', code: 'LLM_QUOTA_EXCEEDED' })
+      }
+      return json(res, 502, { error: error instanceof Error ? error.message : 'Ошибка генерации' })
+    }
   }
   if (req.url === '/api/narrate' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
