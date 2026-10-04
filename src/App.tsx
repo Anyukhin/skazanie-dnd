@@ -510,10 +510,25 @@ function DiceCheckCard({ check, onRoll, onCancel, busy = false, children }: { ch
           <div><dt>Успех</dt><dd>{check.proposal.on_success}</dd></div>
           <div><dt>Провал</dt><dd>{check.proposal.on_failure}</dd></div></dl>
       </div>}
-      <button className="d20-button" onClick={onRoll} disabled={busy || check.status !== 'ready'} aria-label={`${check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить d20' : 'Бросить d20'}: ${check.label}`}>
-        <i><b>{shownValue}</b><small>d20</small></i>
-        <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить' : 'Бросить кубик'}</span>
-      </button>
+      {/* Арка, как в BG3: сложность наверху, кость посередине — щелчок по ней и
+          есть бросок, — под ней модификатор и преимущество. Итог и «Успех» или
+          «Провал» приходят только с сервера (`check.result`). */}
+      <div className="dice-arch">
+        <span className="dice-arch-dc"><small>Сложность</small><b>{check.difficulty}</b></span>
+        <span className="dice-arch-rule" aria-hidden="true"><i /></span>
+        <button className="d20-button" onClick={onRoll} disabled={busy || check.status !== 'ready'} aria-label={`${check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить d20' : 'Бросить d20'}: ${check.label}`}>
+          <i><b>{shownValue}</b><small>d20</small></i>
+          <span>{rolling ? 'Кость катится…' : resolving ? `${check.result?.value} ${check.modifier >= 0 ? '+' : '−'} ${Math.abs(check.modifier)} = ${check.result?.total}` : check.result ? 'Повторить отправку результата' : check.proposal ? 'Подтвердить и бросить' : 'Бросить кубик'}</span>
+        </button>
+        <span className="dice-arch-terms">
+          <span className="dice-term" title="Модификатор проверки, рассчитанный сервером"><b>{check.modifier >= 0 ? '+' : '−'}{Math.abs(check.modifier)}</b><small>модификатор</small></span>
+          {swing && <span className={`dice-term swing ${check.advantage ? 'advantage' : 'disadvantage'}`} title={check.advantage ? 'Бросаются две кости, берётся большая' : 'Бросаются две кости, берётся меньшая'}><b>{check.advantage ? '2к20↑' : '2к20↓'}</b><small>{swing}</small></span>}
+        </span>
+        {check.result && typeof check.result.success === 'boolean' && <span className={`dice-arch-verdict ${check.result.success ? 'success' : 'failure'}`} role="status">
+          <b>{check.result.success ? 'Успех' : 'Провал'}</b>
+          <small>{check.result.value} {check.modifier >= 0 ? '+' : '−'} {Math.abs(check.modifier)} = {check.result.total}{typeof check.result.difficulty === 'number' ? ` против ${check.result.difficulty}` : ''}</small>
+        </span>}
+      </div>
       <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажми на кость — что выпадет, то и будет.'}</p>
       <div className="dice-check__footer">
         {children}
