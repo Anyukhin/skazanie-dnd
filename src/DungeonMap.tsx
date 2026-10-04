@@ -2008,6 +2008,24 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           '--actor-footprint-center-y': actorLayout.height / 2,
         } as React.CSSProperties
       : undefined
+    // Подпись врага висит под фишкой и видна, пока его можно выбрать целью.
+    // Фишка ниже рисуется позже и закрыла бы её: подпись живёт внутри своей
+    // фишки и выше её слоя не поднимется. Поэтому, если под врагом или
+    // наискосок под ним кто-то стоит, подпись встаёт над фишкой — верхний ряд
+    // рисуется раньше. В верхнем ряду доски подпись остаётся снизу.
+    const enemyNameplateAbove = Boolean(enemy && actorIsAnchor && actorAtCell && (() => {
+      const cells = actorHasFullArea && actorLayout ? actorLayout.cells : [{ x: cell.x, y: cell.y }]
+      const top = Math.min(...cells.map((point) => point.y))
+      const bottom = Math.max(...cells.map((point) => point.y))
+      const left = Math.min(...cells.map((point) => point.x))
+      const right = Math.max(...cells.map((point) => point.x))
+      if (top <= 0) return false
+      for (let x = left - 1; x <= right + 1; x += 1) {
+        const below = actorByCell.get(boardPositionKey(x, bottom + 1))
+        if (below && below.id !== actorAtCell.id) return true
+      }
+      return false
+    })())
     const occupied = Boolean(actorAtCell || player || enemy || summon || sceneNpc)
     const commandRangeVisible = Boolean(selected && targetRangeFeet > 0 && (combatActive || spellEconomyReady))
     const cellInCommandRange = Boolean(commandRangeVisible && active && cell.revealed && (cell.type === 'floor' || cell.type === 'door') && actorDistanceFeet(active, cell) <= targetRangeFeet && (targetRangeFeet <= CELL_FEET || hasClearBoardTrajectory(state, active, cell)))
@@ -2365,7 +2383,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {actorHasFullArea && actorIsAnchor && <span className="actor-footprint-area" style={actorTokenStyle} aria-hidden="true" />}
         {enemy && cell.revealed && actorIsAnchor && (
           <button
-            className={`enemy-token ${actorHasFullArea ? 'large-actor' : ''} ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${linkedParticipantIds.includes(enemy.id) ? 'journal-linked' : ''} ${enemy.id === turnActorId ? 'active-turn' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''} ${multiTargetSelected ? 'multi-target-selected' : ''}`}
+            className={`enemy-token ${actorHasFullArea ? 'large-actor' : ''}${enemyNameplateAbove ? ' nameplate-above' : ''} ${focusedParticipantId === enemy.id ? 'initiative-focus' : ''} ${linkedParticipantIds.includes(enemy.id) ? 'journal-linked' : ''} ${enemy.id === turnActorId ? 'active-turn' : ''} ${enemyCommandAllowed ? 'targetable' : combatActive ? 'unavailable-target' : ''} ${pendingTargetId === enemy.id ? 'command-selected' : ''} ${multiTargetSelected ? 'multi-target-selected' : ''}`}
             data-actor-id={enemy.id}
             data-enemy-kind={enemyKind}
             data-footprint-size={actorHasFullArea ? actorLayout?.size : undefined}
