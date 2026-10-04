@@ -86,3 +86,18 @@ export function detailPropAlias(assetId: string): string | undefined {
 export function detailPropModelUrl(assetId: string): string | null {
   return DETAIL_PROP_MODELS.has(assetId) ? `${DETAIL_ASSET_ROOT}models/${assetId}.glb` : null
 }
+
+/** Двойники, чья процедурная модель в 3D — лишь цветная плашка на полу. */
+const FLOOR_STAMP_ALIASES: ReadonlySet<string> = new Set(['rug', 'floor_stain'])
+
+/**
+ * Ложится ли предмет набора на пол 3D-доски своим штампом. Ковры, шкуры,
+ * тюфяки и пятна — плоские наклейки (флаг `d` в `server/detail-props.mjs`),
+ * и плашка двойника не передаёт ни цвета, ни узора: красный ковёр выходил
+ * бурым, а снежный нанос — тёмным пятном. Растительность и камни остаются
+ * объёмными процедурными моделями. Своя GLB-модель, если появится, сильнее штампа.
+ */
+export function isDetailFloorStamp(assetId: string): boolean {
+  const alias = DETAIL_PROP_ALIASES[assetId]
+  return alias !== undefined && FLOOR_STAMP_ALIASES.has(alias) && !DETAIL_PROP_MODELS.has(assetId)
+}
