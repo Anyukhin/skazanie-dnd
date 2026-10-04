@@ -227,6 +227,36 @@ test('голод пленного отмечают серверные часы, 
   assert.deepEqual(deeds[0].witness_ids, ['watchman'])
 })
 
+test('сутки по HTTP: голод в том же коммите, повтор ключа его не дублирует (аудит PR #131, WT-03)', { timeout: runnerTimeout(40_000) }, async (t) => {
+  const { baseUrl, adminCookie, log } = await setUp(t, seededState())
+  const body = {
+    idempotency_key: 'captive-day-1',
+    command: { command_type: 'AdvanceTime', actor_id: 'hero', amount: 1_440, unit: 'minute' },
+  }
+  const first = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, { method: 'POST', cookie: adminCookie, body })
+  assert.equal(first.status, 200, `${first.text}\n${log()}`)
+  const events = first.body.mechanics ?? []
+  const advanced = events.find((event) => event.event_type === 'TimeAdvanced')
+  const neglected = events.filter((event) => event.event_type === 'CaptiveNeglected')
+  assert.ok(advanced, first.text)
+  assert.equal(neglected.length, 1, JSON.stringify(events.map((event) => event.event_type)))
+  assert.equal(neglected[0].command_id, advanced.command_id, 'голод записан коммитом суток, а не вторым тактом')
+  assert.equal(neglected[0].payload.at_minutes, 1_440)
+
+  // Потерянный ответ и повтор с тем же ключом: прежний коммит, без второго дня
+  // и без второй записи о голоде. Внешний такт-догон после сохранения комнаты
+  // тоже ничего не находит.
+  const replay = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, { method: 'POST', cookie: adminCookie, body })
+  assert.equal(replay.status, 200, `${replay.text}\n${log()}`)
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  const room = await request(baseUrl, `/api/rooms/${SESSION}`, { cookie: adminCookie })
+  assert.equal(room.status, 200, room.text)
+  assert.equal(room.body.state.mechanics.world_time.elapsed_minutes, 1_440)
+  assert.equal(room.body.state.captives.captives[0].neglected_at_minutes, 1_440)
+  const deeds = (room.body.state.world_deeds?.deeds ?? []).filter((deed) => deed.kind === 'cruelty')
+  assert.equal(deeds.length, 1, JSON.stringify(room.body.state.world_deeds ?? {}, null, 1))
+})
+
 test('часы голода живут в серверном драйвере, а не в HTTP-роуте', () => {
   const source = readFileSync(new URL('../server/index.mjs', import.meta.url), 'utf8')
   const driver = source.match(/function nudgeWorldClocks\(campaignId\) \{[\s\S]*?\n\}/u)?.[0] ?? ''

@@ -54,7 +54,7 @@ import { ArchitectUsageStore, DEFAULT_ARCHITECT_ALERT_THRESHOLD, architectAlertT
 import { sceneSummaryFor } from './scene-summary.mjs'
 import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from './campaign-recap.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
-import { CampaignNarrationStream } from './narration-stream.mjs'
+import { CampaignNarrationStream, CampaignStreamOutbox, campaignStreamFrameKey } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator } from './creative-director.mjs'
 import { tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
 import { NpcMoraleAgent } from './npc-controller.mjs'
@@ -2307,7 +2307,11 @@ function revalidateCampaignStreams(campaignId, { state = null, maxAgeMs = 0 } = 
  */
 function revokeCampaignStream(connection, reason) {
   if (connection.closed) return
-  writeCampaignStream(connection, 'access', { status: 'revoked', reason })
+  // Аудит PR #131, SEC-06: кадры, ждущие освобождения сокета, собраны под
+  // прежними правами — они выбрасываются, а кадр отзыва идёт мимо очереди:
+  // Node допишет его после уже принятых кадров, и `end()` закроет поток.
+  connection.outbox?.discard()
+  if (!connection.res.destroyed) connection.res.write(campaignStreamFrame('access', { status: 'revoked', reason }))
   connection.close?.()
   if (!connection.res.destroyed) connection.res.end()
 }
@@ -2501,12 +2505,23 @@ function typingActorIdsForCampaign(campaignId) {
   return [...new Set([...typing.values()].map((entry) => String(entry.actorId)))].sort()
 }
 
+function campaignStreamFrame(event, payload) {
+  return `id: ${++campaignStreamSequence}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
+}
+
+/**
+ * Кадр живого потока. Аудит PR #131, SEC-06: все кадры соединения идут через
+ * одну ограниченную очередь (`CampaignStreamOutbox`, `server/narration-stream.mjs`):
+ * пока сокет не принял прежние, новый `room`/`presence`/снимок повествования
+ * заменяет непрочитанный кадр того же ключа, а не копится. `payload` может
+ * быть функцией — тогда кадр собирается в момент фактической записи.
+ */
 function writeCampaignStream(connection, event, payload) {
   if (connection.closed || connection.res.destroyed) return null
-  const frame = `id: ${++campaignStreamSequence}\nevent: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
-  const ready = connection.res.write(frame)
-  if (!ready) connection.narrationBackpressured = true
-  return ready
+  return connection.outbox.send(campaignStreamFrameKey(event, payload), () => {
+    const value = typeof payload === 'function' ? payload() : payload
+    return value == null ? null : campaignStreamFrame(event, value)
+  })
 }
 
 function broadcastCampaignTyping(campaignId) {
@@ -2531,17 +2546,25 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
     // Что закэшировано у клиента, соединение знает точно: оно само это и
     // отправило. Пока соединение живо, порядок сообщений сохраняется, а на
     // переподключении объект соединения новый и карта уходит целиком.
-    const projected = viewerStateFor(state, connection.user, connection.actorId)
-    const compacted = compactStateForTransport(projected, connection.mapHash)
-    const written = writeCampaignStream(connection, 'room', {
-      version: room.version,
-      updatedAt: room.updatedAt,
-      state: compacted.state,
+    //
+    // Аудит PR #131, SEC-06: кадр собирается в момент записи в сокет. Пока
+    // медленный клиент не дочитал прежнее, этот кадр ждёт в очереди соединения
+    // и может быть заменён следующей рассылкой. Поэтому проекция и сжатие карты
+    // считаются от `mapHash`, который соединение действительно отправило, и
+    // хеш продвигается только вместе с записью: выброшенный кадр не оставит
+    // клиенту хеш карты, которой у него нет. `ServerResponse.write()` при этом
+    // возвращает false уже после постановки кадра в буфер Node — такой кадр
+    // не потерян и будет дописан после `drain`.
+    writeCampaignStream(connection, 'room', () => {
+      const projected = viewerStateFor(state, connection.user, connection.actorId)
+      const compacted = compactStateForTransport(projected, connection.mapHash)
+      connection.mapHash = compacted.hash
+      return {
+        version: room.version,
+        updatedAt: room.updatedAt,
+        state: compacted.state,
+      }
     })
-    // `ServerResponse.write()` возвращает false уже после постановки кадра в
-    // очередь. Хеш можно продвинуть даже при backpressure: этот room-кадр не
-    // потерян и будет записан Node после `drain`.
-    if (written !== null) connection.mapHash = compacted.hash
   }
 }
 
@@ -2576,6 +2599,13 @@ function captiveClockHasWork(campaignId) {
  * Часы голода пленных. Живут рядом с часами молвы по той же причине: связанного
  * надо кормить, а мировое время идёт само, и без серверного драйвера жестокость
  * от голода не наступала бы никогда — клиент системный такт не дёргает.
+ *
+ * С аудита PR #131 (WT-03) голод в штатном пути пишется в том же коммите, что и
+ * сам скачок времени (`planCaptiveNeglectDrafts` внутри
+ * `appendWorldTimeConsequences`), и после такого коммита этот такт ничего не
+ * находит. Он остаётся идемпотентным догоном для состояний, где сутки без еды
+ * прошли не скачком времени: кампании до этой правки и состояние, созданное или
+ * импортированное уже с просроченной кормёжкой.
  *
  * Такт сходится по построению: `NeglectCaptive` сдвигает `neglected_at_minutes`
  * на текущую минуту, и следующая запись о том же пленном возможна только через
@@ -3879,16 +3909,32 @@ async function handleHttpRequest(req, res) {
       closed: false,
       close: null,
       mapHash: '',
-      narrationBackpressured: false,
+      outbox: null,
     }
+    // Аудит PR #131, SEC-06: одна ограниченная очередь на соединение для всех
+    // кадров. Клиент, который не читает сокет, не копит в памяти сервера
+    // рассылку за рассылкой: `room`/`presence` схлопываются до последнего, а
+    // переполнение закрывает поток — переподключение получит полное
+    // разрешённое состояние обычным рукопожатием ниже.
+    connection.outbox = new CampaignStreamOutbox({
+      write: (chunk) => (connection.closed || res.destroyed ? null : res.write(chunk)),
+      onClose: (reason, error) => {
+        const detail = error ? `: ${error?.message || error}` : ''
+        console.warn(`[Сказание] Живой поток ${campaignId} закрыт (${reason}${detail}): клиент переподключится и получит состояние заново`)
+        connection.close?.()
+        if (!res.destroyed) res.destroy()
+      },
+    })
     streamConnections(campaignId).set(connectionId, connection)
-    const drain = () => campaignNarrationStream.drain(connection)
+    const drain = () => connection.outbox.drain()
     res.on('drain', drain)
     const heartbeat = setInterval(() => {
       if (connection.closed || res.destroyed) return
       // Истечение сессии не присылает события: тихий поток сверяется на пульсе.
       revalidateCampaignStreams(campaignId, { maxAgeMs: STREAM_ACCESS_RECHECK_MS })
-      if (!connection.closed && !res.destroyed) res.write(`: heartbeat ${Date.now()}\n\n`)
+      // Пульс идёт той же очередью: занятому сокету он не нужен, а после
+      // `drain` уйдёт один, сколько бы их ни набежало.
+      if (!connection.closed && !res.destroyed) connection.outbox.send('heartbeat', () => `: heartbeat ${Date.now()}\n\n`)
     }, 20_000)
     const close = () => {
       if (connection.closed) return

@@ -121,11 +121,13 @@ import {
   captiveBountyCp,
   captiveFor,
   captiveInterrogationPolicy,
+  captiveNeglectedPayload,
   captivePersona,
   captiveSettlementFor,
   captiveSparedDisposition,
   localFactionIds,
   normalizeCaptivesState,
+  planCaptiveNeglectDrafts,
   planCaptiveRelocationDrafts,
   planCaptureDrafts,
 } from './captives.mjs'
@@ -12083,6 +12085,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }, [targetIdValue]))
       }
     }
+    // Голод пленных — в том же коммите, что и прошедшие сутки (аудит PR #131,
+    // WT-03). Раньше его фиксировал только внешний такт после сохранения комнаты
+    // вторым коммитом (`runCaptiveClock`, `server/index.mjs`), и между ними было
+    // видно «сутки прошли, а голода нет». Реестр берётся из дособытийного
+    // состояния, как у остальных потребителей минут, а минута — конец скачка,
+    // как у внешнего такта: тот теперь лишь идемпотентный догон и после этого
+    // коммита ничего не находит. Голод — дело часов, а не того, кто их двинул:
+    // `actor_id` пуст, как у команды `NeglectCaptive`, иначе летопись записала
+    // бы жестокость на героя, объявившего привал.
+    for (const draft of planCaptiveNeglectDrafts(sourceState, { worldMinute: campaignElapsedMinutes(afterTime) })) {
+      events.push(eventFrom({ ...sourceCommand, actor_id: null, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids))
+    }
     // «Пока вас не было…»: мир живёт, когда отряд спит.
     //
     // Слой стоит **последним** и поверх всех остальных потребителей минут:
@@ -19348,14 +19362,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     case 'NeglectCaptive': {
       const captive = captiveFor(state, command.captive_id)
-      events.push(eventFrom({ ...command, visibility: 'party' }, 'CaptiveNeglected', {
-        captive_id: captive.id,
-        npc_id: captive.npc_id,
-        captive_name: captive.name,
-        hours_without_food: Math.floor(Math.max(0, campaignElapsedMinutes(state) - captive.last_fed_at_minutes) / 60),
-        at_minutes: campaignElapsedMinutes(state),
-        policy_id: CAPTIVES_POLICY_ID,
-      }, [captive.npc_id]))
+      // Та же форма, что пишут мировые часы внутри скачка (аудит PR #131, WT-03):
+      // команда осталась догоном внешнего такта для старых кампаний.
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'CaptiveNeglected',
+        captiveNeglectedPayload(captive, campaignElapsedMinutes(state)), [captive.npc_id]))
       break
     }
     case 'ExecuteCaptive': {
