@@ -29,6 +29,53 @@ export function isStateVersionConflictError(error: unknown): error is ApiRequest
   return error instanceof ApiRequestError && error.code === 'STATE_VERSION_CONFLICT'
 }
 
+/**
+ * Ответ хода пришёл с кодом 200, но без полей, которые клиент обязан прочесть.
+ * HTTP-статуса у ошибки нет намеренно: для `isTacticalCommandUnknown` это
+ * неизвестный исход, как оборванный JSON, — запись восстановления (REC-01)
+ * остаётся, и повтор той же заявки уйдёт с прежним ключом.
+ */
+export class MalformedTurnResultError extends Error {
+  constructor(message = 'Сервер вернул неполный ответ на ход. Повторите то же действие: если ход уже записан, сервер вернёт его, а не выполнит второй раз.') {
+    super(message)
+    this.name = 'MalformedTurnResultError'
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+const optionalRecord = (value: unknown) => value == null || isRecord(value)
+const optionalArray = (value: unknown) => value == null || Array.isArray(value)
+const optionalRecords = (value: unknown) => value == null || (Array.isArray(value) && value.every(isRecord))
+
+/**
+ * Аудит PR #131, UI-08/REC-03: проверка результата `/api/narrate` до того, как
+ * хук начнёт его читать. Раньше ответ приводился к типу без проверки, и `{}`
+ * ронял `finishTurn` на `effects.roll` уже после ответа — ход оставался
+ * «в работе», и следующее действие не отправлялось.
+ *
+ * Проверяются ровно те поля, которые клиент читает без условий. Ход без
+ * карточки и манёвра завершается `finishTurn`: ему нужны текст и `effects`.
+ * Карточка проверки и манёвр читают только себя. Исправный ответ возвращается
+ * тем же объектом, без копий и подстановок.
+ */
+export function decodeTurnResult(value: unknown): AiTurnResult {
+  if (!isRecord(value)) throw new MalformedTurnResultError()
+  const { narration, effects, check, action_proposal: proposal, authoritative_state: authoritative } = value
+  if (narration != null && typeof narration !== 'string') throw new MalformedTurnResultError()
+  if (!optionalRecord(check) || !optionalRecord(proposal) || !optionalRecord(value.clarification)) throw new MalformedTurnResultError()
+  if (!optionalArray(value.mechanics)) throw new MalformedTurnResultError()
+  if (authoritative != null && (!isRecord(authoritative) || !Array.isArray(authoritative.players))) throw new MalformedTurnResultError()
+  if (effects != null && (!isRecord(effects) || !optionalRecords(effects.grantItems) || !optionalRecord(effects.roll))) {
+    throw new MalformedTurnResultError()
+  }
+  const finishesTurn = !check && !proposal
+  if (finishesTurn && (typeof narration !== 'string' || !isRecord(effects))) throw new MalformedTurnResultError()
+  return value as unknown as AiTurnResult
+}
+
 export async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -74,7 +121,7 @@ export async function getCharacterCreationCatalog(rulesetId: RulesetProfileDescr
   return body
 }
 
-function newIdempotencyKey() {
+export function newIdempotencyKey() {
   if (!globalThis.crypto?.randomUUID) throw new Error('Браузер не поддерживает безопасные ключи запросов')
   return globalThis.crypto.randomUUID()
 }
@@ -88,6 +135,12 @@ export interface NarrateOptions {
   questionProposalId?: string
   confirmedProposalId?: string
   npcId?: string
+  /**
+   * Режим броска, записанный при первой попытке. Повтор после неизвестного
+   * исхода отправляет его как был, а не по текущей настройке (аудит PR #131,
+   * REC-01). Без значения режим читается из настройки автоброска.
+   */
+  manualRoll?: boolean
   onNarrationPreview?: (preview: NarrationPreview) => void
 }
 
@@ -187,14 +240,14 @@ export async function narrateWithAgent(
         ...(roll?.roll_id ? { roll: { roll_id: roll.roll_id } } : {}),
         // Ручной режим: сервер не бросает d20 за игрока, а возвращает карточку
         // проверки; ход завершится повторным запросом с roll_id.
-        ...(autoRollEnabled() ? {} : { manual_roll: true }),
+        ...((options.manualRoll ?? !autoRollEnabled()) ? { manual_roll: true } : {}),
       }),
     }, 48_000, 'Рассказчик не ответил вовремя. Попробуйте обновить состояние кампании.')
     if (!response.ok) {
       const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
       throw new ApiRequestError(details.error || `Ошибка рассказчика: ${response.status}`, response.status, details.code)
     }
-    const result = await response.json() as AiTurnResult
+    const result = decodeTurnResult(await response.json())
     if (options.onNarrationPreview && expectedMessageId
       && result.narration_message_id === expectedMessageId) {
       const finalText = String(result.narration ?? '')
@@ -219,13 +272,20 @@ export async function narrateWithAgent(
   }
 }
 
-export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'label' | 'modifier' | 'difficulty' | 'playerId'>, campaignId: string): Promise<RollResult> {
+export async function rollDice(check: Pick<PendingCheck, 'check_id' | 'playerId'>, campaignId: string): Promise<RollResult> {
+  // Аудит PR #131, SEC-01: механическая кость выдаётся только под карточку
+  // проверки. Без `check_id` сервер ответит отказом, поэтому запрос не уходит
+  // вовсе; подпись, модификатор и СЛ сервер берёт из карточки, а не отсюда.
+  if (!check.check_id) throw new Error('Карточка проверки устарела. Объявите действие заново.')
   const response = await fetch('/api/roll', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...check, checkId: check.check_id, campaignId }),
+    body: JSON.stringify({ checkId: check.check_id, playerId: check.playerId, campaignId }),
   })
-  if (!response.ok) throw new Error('Кость укатилась со стола')
+  if (!response.ok) {
+    const details = await response.json().catch(() => ({})) as { error?: string; code?: string }
+    throw new ApiRequestError(details.error || 'Кость укатилась со стола', response.status, details.code)
+  }
   return response.json() as Promise<RollResult>
 }
 

@@ -1,0 +1,4088 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-04T04:08:42.180Z",
+  "command": [
+    "--output=docs/reviews/2026-10-04/round-2/state-transfer-cost.json"
+  ],
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "win32",
+    "arch": "x64",
+    "no_llm": true,
+    "storage": "temporary",
+    "serialized_requests": true
+  },
+  "fixture": {
+    "counts": {
+      "entities": 600,
+      "facts": 2501,
+      "relationships": 2501,
+      "quests": 400,
+      "threads": 600,
+      "epistemic_claims": 2501,
+      "summaries": 1200,
+      "knowledge_ledger": 6001
+    },
+    "state_bytes": 8601236,
+    "source": "eval/world-data-measurements.mjs:measureProductionStorage",
+    "seed_timings": {
+      "initialize_ms": 192.549,
+      "commit_ms": 1055.19,
+      "load_ms": 42.777,
+      "normalize_ms": 45.569,
+      "replay_full_ms": 984.954,
+      "replay_snapshot_ms": 36.695
+    }
+  },
+  "http": {
+    "no_llm": true,
+    "reps": 3,
+    "timing_boundaries": {
+      "client_fetch_body": "requestJson performance.now() around fetch() plus response.text()",
+      "server_request_to_finish": "child preloader request event to ServerResponse finish event"
+    },
+    "fixture": {
+      "expanded_state_bytes": 8623855,
+      "expanded_counts": {
+        "entities": 601,
+        "facts": 2501,
+        "relationships": 2501,
+        "quests": 400,
+        "threads": 600,
+        "epistemic_claims": 2501,
+        "summaries": 1200,
+        "knowledge_ledger": 6001
+      },
+      "expansion": "LegacyStateImported through FileEventStore, then production projector snapshot; same shape as the previous full HTTP benchmark"
+    },
+    "series": {
+      "small": {
+        "reps": 3,
+        "summary": {
+          "client_fetch_body_elapsed_ms": {
+            "count": 3,
+            "min_ms": 62.173,
+            "p50_ms": 78.113,
+            "p95_ms": 218.646,
+            "max_ms": 218.646,
+            "mean_ms": 119.644
+          },
+          "response_bytes": {
+            "count": 3,
+            "min": 34813,
+            "p50": 35219,
+            "p95": 35625,
+            "max": 35625,
+            "mean": 35219
+          }
+        },
+        "measurements": [
+          {
+            "index": 1,
+            "client_fetch_body_elapsed_ms": 218.646,
+            "response_bytes": 34813,
+            "composition": {
+              "raw_bytes": 34813,
+              "top_level": [
+                {
+                  "key": "narration",
+                  "value_bytes": 51,
+                  "member_bytes": 63
+                },
+                {
+                  "key": "effects",
+                  "value_bytes": 69,
+                  "member_bytes": 79
+                },
+                {
+                  "key": "provider",
+                  "value_bytes": 25,
+                  "member_bytes": 36
+                },
+                {
+                  "key": "model",
+                  "value_bytes": 14,
+                  "member_bytes": 22
+                },
+                {
+                  "key": "turn_id",
+                  "value_bytes": 39,
+                  "member_bytes": 49
+                },
+                {
+                  "key": "engine_mode",
+                  "value_bytes": 9,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "state_version",
+                  "value_bytes": 1,
+                  "member_bytes": 17
+                },
+                {
+                  "key": "mechanics",
+                  "value_bytes": 1343,
+                  "member_bytes": 1355
+                },
+                {
+                  "key": "visible_state_changes",
+                  "value_bytes": 736,
+                  "member_bytes": 760
+                },
+                {
+                  "key": "authoritative_state",
+                  "value_bytes": 31870,
+                  "member_bytes": 31892
+                },
+                {
+                  "key": "verification",
+                  "value_bytes": 142,
+                  "member_bytes": 157
+                },
+                {
+                  "key": "ruling",
+                  "value_bytes": 4,
+                  "member_bytes": 13
+                },
+                {
+                  "key": "explanation_url",
+                  "value_bytes": 83,
+                  "member_bytes": 101
+                },
+                {
+                  "key": "idempotent_replay",
+                  "value_bytes": 5,
+                  "member_bytes": 25
+                },
+                {
+                  "key": "npc_turns",
+                  "value_bytes": 2,
+                  "member_bytes": 14
+                },
+                {
+                  "key": "narration_message_id",
+                  "value_bytes": 29,
+                  "member_bytes": 52
+                },
+                {
+                  "key": "narration_speaker",
+                  "value_bytes": 8,
+                  "member_bytes": 28
+                },
+                {
+                  "key": "narration_author",
+                  "value_bytes": 23,
+                  "member_bytes": 42
+                },
+                {
+                  "key": "creative_trigger",
+                  "value_bytes": 4,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "creative_provider",
+                  "value_bytes": 4,
+                  "member_bytes": 24
+                },
+                {
+                  "key": "room_version",
+                  "value_bytes": 1,
+                  "member_bytes": 16
+                }
+              ],
+              "top_level_keys": [
+                "narration",
+                "effects",
+                "provider",
+                "model",
+                "turn_id",
+                "engine_mode",
+                "state_version",
+                "mechanics",
+                "visible_state_changes",
+                "authoritative_state",
+                "verification",
+                "ruling",
+                "explanation_url",
+                "idempotent_replay",
+                "npc_turns",
+                "narration_message_id",
+                "narration_speaker",
+                "narration_author",
+                "creative_trigger",
+                "creative_provider",
+                "room_version"
+              ],
+              "top_level_member_bytes": 34791,
+              "top_level_syntax_bytes": 22,
+              "top_level_partition_bytes": 34813,
+              "authoritative_state": {
+                "value_bytes": 31870,
+                "fields": [
+                  {
+                    "key": "sessionCode",
+                    "value_bytes": 12,
+                    "member_bytes": 26
+                  },
+                  {
+                    "key": "campaign",
+                    "value_bytes": 56,
+                    "member_bytes": 67
+                  },
+                  {
+                    "key": "activePlayerId",
+                    "value_bytes": 6,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "partyMemberIds",
+                    "value_bytes": 8,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "state_version",
+                    "value_bytes": 1,
+                    "member_bytes": 17
+                  },
+                  {
+                    "key": "players",
+                    "value_bytes": 20599,
+                    "member_bytes": 20609
+                  },
+                  {
+                    "key": "messages",
+                    "value_bytes": 190,
+                    "member_bytes": 201
+                  },
+                  {
+                    "key": "ruleset_id",
+                    "value_bytes": 11,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_version",
+                    "value_bytes": 7,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_rule_packs",
+                    "value_bytes": 13,
+                    "member_bytes": 34
+                  },
+                  {
+                    "key": "engine_mode",
+                    "value_bytes": 9,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "character_start_level",
+                    "value_bytes": 1,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_house_rules",
+                    "value_bytes": 36,
+                    "member_bytes": 58
+                  },
+                  {
+                    "key": "ruleset_locked_at",
+                    "value_bytes": 4,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_selection_locked",
+                    "value_bytes": 4,
+                    "member_bytes": 31
+                  },
+                  {
+                    "key": "mechanics",
+                    "value_bytes": 1298,
+                    "member_bytes": 1310
+                  },
+                  {
+                    "key": "actors",
+                    "value_bytes": 2,
+                    "member_bytes": 11
+                  },
+                  {
+                    "key": "partyName",
+                    "value_bytes": 25,
+                    "member_bytes": 37
+                  },
+                  {
+                    "key": "enemies",
+                    "value_bytes": 2,
+                    "member_bytes": 12
+                  },
+                  {
+                    "key": "merchants",
+                    "value_bytes": 2,
+                    "member_bytes": 14
+                  },
+                  {
+                    "key": "mapFeedback",
+                    "value_bytes": 2,
+                    "member_bytes": 16
+                  },
+                  {
+                    "key": "battleLog",
+                    "value_bytes": 218,
+                    "member_bytes": 230
+                  },
+                  {
+                    "key": "economyLog",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "adventure",
+                    "value_bytes": 83,
+                    "member_bytes": 95
+                  },
+                  {
+                    "key": "worldMap",
+                    "value_bytes": 4972,
+                    "member_bytes": 4983
+                  },
+                  {
+                    "key": "offscreen_world",
+                    "value_bytes": 31,
+                    "member_bytes": 49
+                  },
+                  {
+                    "key": "captives",
+                    "value_bytes": 34,
+                    "member_bytes": 45
+                  },
+                  {
+                    "key": "beasts",
+                    "value_bytes": 88,
+                    "member_bytes": 97
+                  },
+                  {
+                    "key": "autonomy",
+                    "value_bytes": 138,
+                    "member_bytes": 149
+                  },
+                  {
+                    "key": "partyDecisionPolicy",
+                    "value_bytes": 252,
+                    "member_bytes": 274
+                  },
+                  {
+                    "key": "state_projector_version",
+                    "value_bytes": 2,
+                    "member_bytes": 28
+                  },
+                  {
+                    "key": "isNarrating",
+                    "value_bytes": 5,
+                    "member_bytes": 19
+                  },
+                  {
+                    "key": "agentInteraction",
+                    "value_bytes": 4,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "scene",
+                    "value_bytes": 884,
+                    "member_bytes": 892
+                  },
+                  {
+                    "key": "worldMemory",
+                    "value_bytes": 342,
+                    "member_bytes": 356
+                  },
+                  {
+                    "key": "social",
+                    "value_bytes": 106,
+                    "member_bytes": 115
+                  },
+                  {
+                    "key": "scene_npcs",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "loot_containers",
+                    "value_bytes": 91,
+                    "member_bytes": 109
+                  },
+                  {
+                    "key": "law",
+                    "value_bytes": 48,
+                    "member_bytes": 54
+                  },
+                  {
+                    "key": "tavern",
+                    "value_bytes": 4,
+                    "member_bytes": 13
+                  },
+                  {
+                    "key": "blessings",
+                    "value_bytes": 228,
+                    "member_bytes": 240
+                  },
+                  {
+                    "key": "lockpicking",
+                    "value_bytes": 254,
+                    "member_bytes": 268
+                  },
+                  {
+                    "key": "courier_letters",
+                    "value_bytes": 122,
+                    "member_bytes": 140
+                  },
+                  {
+                    "key": "weather",
+                    "value_bytes": 383,
+                    "member_bytes": 393
+                  },
+                  {
+                    "key": "weather_by_actor",
+                    "value_bytes": 392,
+                    "member_bytes": 411
+                  },
+                  {
+                    "key": "actor_appearances",
+                    "value_bytes": 155,
+                    "member_bytes": 175
+                  },
+                  {
+                    "key": "suggested_actions",
+                    "value_bytes": 2,
+                    "member_bytes": 22
+                  }
+                ],
+                "world_memory": {
+                  "value_bytes": 342,
+                  "fields": [
+                    {
+                      "key": "schema_version",
+                      "value_bytes": 1,
+                      "member_bytes": 18,
+                      "record_count": null
+                    },
+                    {
+                      "key": "entities",
+                      "value_bytes": 148,
+                      "member_bytes": 159,
+                      "record_count": 1
+                    },
+                    {
+                      "key": "facts",
+                      "value_bytes": 2,
+                      "member_bytes": 10,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "relationships",
+                      "value_bytes": 2,
+                      "member_bytes": 18,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "quests",
+                      "value_bytes": 2,
+                      "member_bytes": 11,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "threads",
+                      "value_bytes": 2,
+                      "member_bytes": 12,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "epistemic_claims",
+                      "value_bytes": 2,
+                      "member_bytes": 21,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "summaries",
+                      "value_bytes": 2,
+                      "member_bytes": 14,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "knowledge",
+                      "value_bytes": 11,
+                      "member_bytes": 23,
+                      "record_count": null
+                    },
+                    {
+                      "key": "knowledge_revealed",
+                      "value_bytes": 2,
+                      "member_bytes": 23,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "knowledge_ledger",
+                      "value_bytes": 2,
+                      "member_bytes": 21,
+                      "record_count": 0
+                    }
+                  ],
+                  "exact_large_value_duplicates": []
+                }
+              },
+              "exact_large_value_duplicates": []
+            }
+          },
+          {
+            "index": 2,
+            "client_fetch_body_elapsed_ms": 78.113,
+            "response_bytes": 35219,
+            "composition": {
+              "raw_bytes": 35219,
+              "top_level": [
+                {
+                  "key": "narration",
+                  "value_bytes": 51,
+                  "member_bytes": 63
+                },
+                {
+                  "key": "effects",
+                  "value_bytes": 69,
+                  "member_bytes": 79
+                },
+                {
+                  "key": "provider",
+                  "value_bytes": 25,
+                  "member_bytes": 36
+                },
+                {
+                  "key": "model",
+                  "value_bytes": 14,
+                  "member_bytes": 22
+                },
+                {
+                  "key": "turn_id",
+                  "value_bytes": 39,
+                  "member_bytes": 49
+                },
+                {
+                  "key": "engine_mode",
+                  "value_bytes": 9,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "state_version",
+                  "value_bytes": 1,
+                  "member_bytes": 17
+                },
+                {
+                  "key": "mechanics",
+                  "value_bytes": 1343,
+                  "member_bytes": 1355
+                },
+                {
+                  "key": "visible_state_changes",
+                  "value_bytes": 736,
+                  "member_bytes": 760
+                },
+                {
+                  "key": "authoritative_state",
+                  "value_bytes": 32276,
+                  "member_bytes": 32298
+                },
+                {
+                  "key": "verification",
+                  "value_bytes": 142,
+                  "member_bytes": 157
+                },
+                {
+                  "key": "ruling",
+                  "value_bytes": 4,
+                  "member_bytes": 13
+                },
+                {
+                  "key": "explanation_url",
+                  "value_bytes": 83,
+                  "member_bytes": 101
+                },
+                {
+                  "key": "idempotent_replay",
+                  "value_bytes": 5,
+                  "member_bytes": 25
+                },
+                {
+                  "key": "npc_turns",
+                  "value_bytes": 2,
+                  "member_bytes": 14
+                },
+                {
+                  "key": "narration_message_id",
+                  "value_bytes": 29,
+                  "member_bytes": 52
+                },
+                {
+                  "key": "narration_speaker",
+                  "value_bytes": 8,
+                  "member_bytes": 28
+                },
+                {
+                  "key": "narration_author",
+                  "value_bytes": 23,
+                  "member_bytes": 42
+                },
+                {
+                  "key": "creative_trigger",
+                  "value_bytes": 4,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "creative_provider",
+                  "value_bytes": 4,
+                  "member_bytes": 24
+                },
+                {
+                  "key": "room_version",
+                  "value_bytes": 1,
+                  "member_bytes": 16
+                }
+              ],
+              "top_level_keys": [
+                "narration",
+                "effects",
+                "provider",
+                "model",
+                "turn_id",
+                "engine_mode",
+                "state_version",
+                "mechanics",
+                "visible_state_changes",
+                "authoritative_state",
+                "verification",
+                "ruling",
+                "explanation_url",
+                "idempotent_replay",
+                "npc_turns",
+                "narration_message_id",
+                "narration_speaker",
+                "narration_author",
+                "creative_trigger",
+                "creative_provider",
+                "room_version"
+              ],
+              "top_level_member_bytes": 35197,
+              "top_level_syntax_bytes": 22,
+              "top_level_partition_bytes": 35219,
+              "authoritative_state": {
+                "value_bytes": 32276,
+                "fields": [
+                  {
+                    "key": "sessionCode",
+                    "value_bytes": 12,
+                    "member_bytes": 26
+                  },
+                  {
+                    "key": "campaign",
+                    "value_bytes": 56,
+                    "member_bytes": 67
+                  },
+                  {
+                    "key": "activePlayerId",
+                    "value_bytes": 6,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "partyMemberIds",
+                    "value_bytes": 8,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "state_version",
+                    "value_bytes": 1,
+                    "member_bytes": 17
+                  },
+                  {
+                    "key": "players",
+                    "value_bytes": 20599,
+                    "member_bytes": 20609
+                  },
+                  {
+                    "key": "messages",
+                    "value_bytes": 379,
+                    "member_bytes": 390
+                  },
+                  {
+                    "key": "ruleset_id",
+                    "value_bytes": 11,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_version",
+                    "value_bytes": 7,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_rule_packs",
+                    "value_bytes": 13,
+                    "member_bytes": 34
+                  },
+                  {
+                    "key": "engine_mode",
+                    "value_bytes": 9,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "character_start_level",
+                    "value_bytes": 1,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_house_rules",
+                    "value_bytes": 36,
+                    "member_bytes": 58
+                  },
+                  {
+                    "key": "ruleset_locked_at",
+                    "value_bytes": 4,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_selection_locked",
+                    "value_bytes": 4,
+                    "member_bytes": 31
+                  },
+                  {
+                    "key": "mechanics",
+                    "value_bytes": 1298,
+                    "member_bytes": 1310
+                  },
+                  {
+                    "key": "actors",
+                    "value_bytes": 2,
+                    "member_bytes": 11
+                  },
+                  {
+                    "key": "partyName",
+                    "value_bytes": 25,
+                    "member_bytes": 37
+                  },
+                  {
+                    "key": "enemies",
+                    "value_bytes": 2,
+                    "member_bytes": 12
+                  },
+                  {
+                    "key": "merchants",
+                    "value_bytes": 2,
+                    "member_bytes": 14
+                  },
+                  {
+                    "key": "mapFeedback",
+                    "value_bytes": 2,
+                    "member_bytes": 16
+                  },
+                  {
+                    "key": "battleLog",
+                    "value_bytes": 435,
+                    "member_bytes": 447
+                  },
+                  {
+                    "key": "economyLog",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "adventure",
+                    "value_bytes": 83,
+                    "member_bytes": 95
+                  },
+                  {
+                    "key": "worldMap",
+                    "value_bytes": 4972,
+                    "member_bytes": 4983
+                  },
+                  {
+                    "key": "offscreen_world",
+                    "value_bytes": 31,
+                    "member_bytes": 49
+                  },
+                  {
+                    "key": "captives",
+                    "value_bytes": 34,
+                    "member_bytes": 45
+                  },
+                  {
+                    "key": "beasts",
+                    "value_bytes": 88,
+                    "member_bytes": 97
+                  },
+                  {
+                    "key": "autonomy",
+                    "value_bytes": 138,
+                    "member_bytes": 149
+                  },
+                  {
+                    "key": "partyDecisionPolicy",
+                    "value_bytes": 252,
+                    "member_bytes": 274
+                  },
+                  {
+                    "key": "state_projector_version",
+                    "value_bytes": 2,
+                    "member_bytes": 28
+                  },
+                  {
+                    "key": "isNarrating",
+                    "value_bytes": 5,
+                    "member_bytes": 19
+                  },
+                  {
+                    "key": "agentInteraction",
+                    "value_bytes": 4,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "scene",
+                    "value_bytes": 884,
+                    "member_bytes": 892
+                  },
+                  {
+                    "key": "worldMemory",
+                    "value_bytes": 342,
+                    "member_bytes": 356
+                  },
+                  {
+                    "key": "social",
+                    "value_bytes": 106,
+                    "member_bytes": 115
+                  },
+                  {
+                    "key": "scene_npcs",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "loot_containers",
+                    "value_bytes": 91,
+                    "member_bytes": 109
+                  },
+                  {
+                    "key": "law",
+                    "value_bytes": 48,
+                    "member_bytes": 54
+                  },
+                  {
+                    "key": "tavern",
+                    "value_bytes": 4,
+                    "member_bytes": 13
+                  },
+                  {
+                    "key": "blessings",
+                    "value_bytes": 228,
+                    "member_bytes": 240
+                  },
+                  {
+                    "key": "lockpicking",
+                    "value_bytes": 254,
+                    "member_bytes": 268
+                  },
+                  {
+                    "key": "courier_letters",
+                    "value_bytes": 122,
+                    "member_bytes": 140
+                  },
+                  {
+                    "key": "weather",
+                    "value_bytes": 383,
+                    "member_bytes": 393
+                  },
+                  {
+                    "key": "weather_by_actor",
+                    "value_bytes": 392,
+                    "member_bytes": 411
+                  },
+                  {
+                    "key": "actor_appearances",
+                    "value_bytes": 155,
+                    "member_bytes": 175
+                  },
+                  {
+                    "key": "suggested_actions",
+                    "value_bytes": 2,
+                    "member_bytes": 22
+                  }
+                ],
+                "world_memory": {
+                  "value_bytes": 342,
+                  "fields": [
+                    {
+                      "key": "schema_version",
+                      "value_bytes": 1,
+                      "member_bytes": 18,
+                      "record_count": null
+                    },
+                    {
+                      "key": "entities",
+                      "value_bytes": 148,
+                      "member_bytes": 159,
+                      "record_count": 1
+                    },
+                    {
+                      "key": "facts",
+                      "value_bytes": 2,
+                      "member_bytes": 10,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "relationships",
+                      "value_bytes": 2,
+                      "member_bytes": 18,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "quests",
+                      "value_bytes": 2,
+                      "member_bytes": 11,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "threads",
+                      "value_bytes": 2,
+                      "member_bytes": 12,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "epistemic_claims",
+                      "value_bytes": 2,
+                      "member_bytes": 21,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "summaries",
+                      "value_bytes": 2,
+                      "member_bytes": 14,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "knowledge",
+                      "value_bytes": 11,
+                      "member_bytes": 23,
+                      "record_count": null
+                    },
+                    {
+                      "key": "knowledge_revealed",
+                      "value_bytes": 2,
+                      "member_bytes": 23,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "knowledge_ledger",
+                      "value_bytes": 2,
+                      "member_bytes": 21,
+                      "record_count": 0
+                    }
+                  ],
+                  "exact_large_value_duplicates": []
+                }
+              },
+              "exact_large_value_duplicates": []
+            }
+          },
+          {
+            "index": 3,
+            "client_fetch_body_elapsed_ms": 62.173,
+            "response_bytes": 35625,
+            "composition": {
+              "raw_bytes": 35625,
+              "top_level": [
+                {
+                  "key": "narration",
+                  "value_bytes": 51,
+                  "member_bytes": 63
+                },
+                {
+                  "key": "effects",
+                  "value_bytes": 69,
+                  "member_bytes": 79
+                },
+                {
+                  "key": "provider",
+                  "value_bytes": 25,
+                  "member_bytes": 36
+                },
+                {
+                  "key": "model",
+                  "value_bytes": 14,
+                  "member_bytes": 22
+                },
+                {
+                  "key": "turn_id",
+                  "value_bytes": 39,
+                  "member_bytes": 49
+                },
+                {
+                  "key": "engine_mode",
+                  "value_bytes": 9,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "state_version",
+                  "value_bytes": 1,
+                  "member_bytes": 17
+                },
+                {
+                  "key": "mechanics",
+                  "value_bytes": 1343,
+                  "member_bytes": 1355
+                },
+                {
+                  "key": "visible_state_changes",
+                  "value_bytes": 736,
+                  "member_bytes": 760
+                },
+                {
+                  "key": "authoritative_state",
+                  "value_bytes": 32682,
+                  "member_bytes": 32704
+                },
+                {
+                  "key": "verification",
+                  "value_bytes": 142,
+                  "member_bytes": 157
+                },
+                {
+                  "key": "ruling",
+                  "value_bytes": 4,
+                  "member_bytes": 13
+                },
+                {
+                  "key": "explanation_url",
+                  "value_bytes": 83,
+                  "member_bytes": 101
+                },
+                {
+                  "key": "idempotent_replay",
+                  "value_bytes": 5,
+                  "member_bytes": 25
+                },
+                {
+                  "key": "npc_turns",
+                  "value_bytes": 2,
+                  "member_bytes": 14
+                },
+                {
+                  "key": "narration_message_id",
+                  "value_bytes": 29,
+                  "member_bytes": 52
+                },
+                {
+                  "key": "narration_speaker",
+                  "value_bytes": 8,
+                  "member_bytes": 28
+                },
+                {
+                  "key": "narration_author",
+                  "value_bytes": 23,
+                  "member_bytes": 42
+                },
+                {
+                  "key": "creative_trigger",
+                  "value_bytes": 4,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "creative_provider",
+                  "value_bytes": 4,
+                  "member_bytes": 24
+                },
+                {
+                  "key": "room_version",
+                  "value_bytes": 1,
+                  "member_bytes": 16
+                }
+              ],
+              "top_level_keys": [
+                "narration",
+                "effects",
+                "provider",
+                "model",
+                "turn_id",
+                "engine_mode",
+                "state_version",
+                "mechanics",
+                "visible_state_changes",
+                "authoritative_state",
+                "verification",
+                "ruling",
+                "explanation_url",
+                "idempotent_replay",
+                "npc_turns",
+                "narration_message_id",
+                "narration_speaker",
+                "narration_author",
+                "creative_trigger",
+                "creative_provider",
+                "room_version"
+              ],
+              "top_level_member_bytes": 35603,
+              "top_level_syntax_bytes": 22,
+              "top_level_partition_bytes": 35625,
+              "authoritative_state": {
+                "value_bytes": 32682,
+                "fields": [
+                  {
+                    "key": "sessionCode",
+                    "value_bytes": 12,
+                    "member_bytes": 26
+                  },
+                  {
+                    "key": "campaign",
+                    "value_bytes": 56,
+                    "member_bytes": 67
+                  },
+                  {
+                    "key": "activePlayerId",
+                    "value_bytes": 6,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "partyMemberIds",
+                    "value_bytes": 8,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "state_version",
+                    "value_bytes": 1,
+                    "member_bytes": 17
+                  },
+                  {
+                    "key": "players",
+                    "value_bytes": 20599,
+                    "member_bytes": 20609
+                  },
+                  {
+                    "key": "messages",
+                    "value_bytes": 568,
+                    "member_bytes": 579
+                  },
+                  {
+                    "key": "ruleset_id",
+                    "value_bytes": 11,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_version",
+                    "value_bytes": 7,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_rule_packs",
+                    "value_bytes": 13,
+                    "member_bytes": 34
+                  },
+                  {
+                    "key": "engine_mode",
+                    "value_bytes": 9,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "character_start_level",
+                    "value_bytes": 1,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_house_rules",
+                    "value_bytes": 36,
+                    "member_bytes": 58
+                  },
+                  {
+                    "key": "ruleset_locked_at",
+                    "value_bytes": 4,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_selection_locked",
+                    "value_bytes": 4,
+                    "member_bytes": 31
+                  },
+                  {
+                    "key": "mechanics",
+                    "value_bytes": 1298,
+                    "member_bytes": 1310
+                  },
+                  {
+                    "key": "actors",
+                    "value_bytes": 2,
+                    "member_bytes": 11
+                  },
+                  {
+                    "key": "partyName",
+                    "value_bytes": 25,
+                    "member_bytes": 37
+                  },
+                  {
+                    "key": "enemies",
+                    "value_bytes": 2,
+                    "member_bytes": 12
+                  },
+                  {
+                    "key": "merchants",
+                    "value_bytes": 2,
+                    "member_bytes": 14
+                  },
+                  {
+                    "key": "mapFeedback",
+                    "value_bytes": 2,
+                    "member_bytes": 16
+                  },
+                  {
+                    "key": "battleLog",
+                    "value_bytes": 652,
+                    "member_bytes": 664
+                  },
+                  {
+                    "key": "economyLog",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "adventure",
+                    "value_bytes": 83,
+                    "member_bytes": 95
+                  },
+                  {
+                    "key": "worldMap",
+                    "value_bytes": 4972,
+                    "member_bytes": 4983
+                  },
+                  {
+                    "key": "offscreen_world",
+                    "value_bytes": 31,
+                    "member_bytes": 49
+                  },
+                  {
+                    "key": "captives",
+                    "value_bytes": 34,
+                    "member_bytes": 45
+                  },
+                  {
+                    "key": "beasts",
+                    "value_bytes": 88,
+                    "member_bytes": 97
+                  },
+                  {
+                    "key": "autonomy",
+                    "value_bytes": 138,
+                    "member_bytes": 149
+                  },
+                  {
+                    "key": "partyDecisionPolicy",
+                    "value_bytes": 252,
+                    "member_bytes": 274
+                  },
+                  {
+                    "key": "state_projector_version",
+                    "value_bytes": 2,
+                    "member_bytes": 28
+                  },
+                  {
+                    "key": "isNarrating",
+                    "value_bytes": 5,
+                    "member_bytes": 19
+                  },
+                  {
+                    "key": "agentInteraction",
+                    "value_bytes": 4,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "scene",
+                    "value_bytes": 884,
+                    "member_bytes": 892
+                  },
+                  {
+                    "key": "worldMemory",
+                    "value_bytes": 342,
+                    "member_bytes": 356
+                  },
+                  {
+                    "key": "social",
+                    "value_bytes": 106,
+                    "member_bytes": 115
+                  },
+                  {
+                    "key": "scene_npcs",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "loot_containers",
+                    "value_bytes": 91,
+                    "member_bytes": 109
+                  },
+                  {
+                    "key": "law",
+                    "value_bytes": 48,
+                    "member_bytes": 54
+                  },
+                  {
+                    "key": "tavern",
+                    "value_bytes": 4,
+                    "member_bytes": 13
+                  },
+                  {
+                    "key": "blessings",
+                    "value_bytes": 228,
+                    "member_bytes": 240
+                  },
+                  {
+                    "key": "lockpicking",
+                    "value_bytes": 254,
+                    "member_bytes": 268
+                  },
+                  {
+                    "key": "courier_letters",
+                    "value_bytes": 122,
+                    "member_bytes": 140
+                  },
+                  {
+                    "key": "weather",
+                    "value_bytes": 383,
+                    "member_bytes": 393
+                  },
+                  {
+                    "key": "weather_by_actor",
+                    "value_bytes": 392,
+                    "member_bytes": 411
+                  },
+                  {
+                    "key": "actor_appearances",
+                    "value_bytes": 155,
+                    "member_bytes": 175
+                  },
+                  {
+                    "key": "suggested_actions",
+                    "value_bytes": 2,
+                    "member_bytes": 22
+                  }
+                ],
+                "world_memory": {
+                  "value_bytes": 342,
+                  "fields": [
+                    {
+                      "key": "schema_version",
+                      "value_bytes": 1,
+                      "member_bytes": 18,
+                      "record_count": null
+                    },
+                    {
+                      "key": "entities",
+                      "value_bytes": 148,
+                      "member_bytes": 159,
+                      "record_count": 1
+                    },
+                    {
+                      "key": "facts",
+                      "value_bytes": 2,
+                      "member_bytes": 10,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "relationships",
+                      "value_bytes": 2,
+                      "member_bytes": 18,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "quests",
+                      "value_bytes": 2,
+                      "member_bytes": 11,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "threads",
+                      "value_bytes": 2,
+                      "member_bytes": 12,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "epistemic_claims",
+                      "value_bytes": 2,
+                      "member_bytes": 21,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "summaries",
+                      "value_bytes": 2,
+                      "member_bytes": 14,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "knowledge",
+                      "value_bytes": 11,
+                      "member_bytes": 23,
+                      "record_count": null
+                    },
+                    {
+                      "key": "knowledge_revealed",
+                      "value_bytes": 2,
+                      "member_bytes": 23,
+                      "record_count": 0
+                    },
+                    {
+                      "key": "knowledge_ledger",
+                      "value_bytes": 2,
+                      "member_bytes": 21,
+                      "record_count": 0
+                    }
+                  ],
+                  "exact_large_value_duplicates": []
+                }
+              },
+              "exact_large_value_duplicates": []
+            }
+          }
+        ]
+      },
+      "expanded": {
+        "reps": 3,
+        "summary": {
+          "client_fetch_body_elapsed_ms": {
+            "count": 3,
+            "min_ms": 2751.615,
+            "p50_ms": 2765.704,
+            "p95_ms": 2817.217,
+            "max_ms": 2817.217,
+            "mean_ms": 2778.179
+          },
+          "response_bytes": {
+            "count": 3,
+            "min": 6165403,
+            "p50": 6165811,
+            "p95": 6166219,
+            "max": 6166219,
+            "mean": 6165811
+          }
+        },
+        "measurements": [
+          {
+            "index": 1,
+            "client_fetch_body_elapsed_ms": 2751.615,
+            "response_bytes": 6165403,
+            "composition": {
+              "raw_bytes": 6165403,
+              "top_level": [
+                {
+                  "key": "narration",
+                  "value_bytes": 51,
+                  "member_bytes": 63
+                },
+                {
+                  "key": "effects",
+                  "value_bytes": 69,
+                  "member_bytes": 79
+                },
+                {
+                  "key": "provider",
+                  "value_bytes": 25,
+                  "member_bytes": 36
+                },
+                {
+                  "key": "model",
+                  "value_bytes": 14,
+                  "member_bytes": 22
+                },
+                {
+                  "key": "turn_id",
+                  "value_bytes": 39,
+                  "member_bytes": 49
+                },
+                {
+                  "key": "engine_mode",
+                  "value_bytes": 9,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "state_version",
+                  "value_bytes": 1,
+                  "member_bytes": 17
+                },
+                {
+                  "key": "mechanics",
+                  "value_bytes": 1349,
+                  "member_bytes": 1361
+                },
+                {
+                  "key": "visible_state_changes",
+                  "value_bytes": 742,
+                  "member_bytes": 766
+                },
+                {
+                  "key": "authoritative_state",
+                  "value_bytes": 6162448,
+                  "member_bytes": 6162470
+                },
+                {
+                  "key": "verification",
+                  "value_bytes": 142,
+                  "member_bytes": 157
+                },
+                {
+                  "key": "ruling",
+                  "value_bytes": 4,
+                  "member_bytes": 13
+                },
+                {
+                  "key": "explanation_url",
+                  "value_bytes": 83,
+                  "member_bytes": 101
+                },
+                {
+                  "key": "idempotent_replay",
+                  "value_bytes": 5,
+                  "member_bytes": 25
+                },
+                {
+                  "key": "npc_turns",
+                  "value_bytes": 2,
+                  "member_bytes": 14
+                },
+                {
+                  "key": "narration_message_id",
+                  "value_bytes": 29,
+                  "member_bytes": 52
+                },
+                {
+                  "key": "narration_speaker",
+                  "value_bytes": 8,
+                  "member_bytes": 28
+                },
+                {
+                  "key": "narration_author",
+                  "value_bytes": 23,
+                  "member_bytes": 42
+                },
+                {
+                  "key": "creative_trigger",
+                  "value_bytes": 4,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "creative_provider",
+                  "value_bytes": 4,
+                  "member_bytes": 24
+                },
+                {
+                  "key": "room_version",
+                  "value_bytes": 1,
+                  "member_bytes": 16
+                }
+              ],
+              "top_level_keys": [
+                "narration",
+                "effects",
+                "provider",
+                "model",
+                "turn_id",
+                "engine_mode",
+                "state_version",
+                "mechanics",
+                "visible_state_changes",
+                "authoritative_state",
+                "verification",
+                "ruling",
+                "explanation_url",
+                "idempotent_replay",
+                "npc_turns",
+                "narration_message_id",
+                "narration_speaker",
+                "narration_author",
+                "creative_trigger",
+                "creative_provider",
+                "room_version"
+              ],
+              "top_level_member_bytes": 6165381,
+              "top_level_syntax_bytes": 22,
+              "top_level_partition_bytes": 6165403,
+              "authoritative_state": {
+                "value_bytes": 6162448,
+                "fields": [
+                  {
+                    "key": "sessionCode",
+                    "value_bytes": 12,
+                    "member_bytes": 26
+                  },
+                  {
+                    "key": "campaign",
+                    "value_bytes": 56,
+                    "member_bytes": 67
+                  },
+                  {
+                    "key": "activePlayerId",
+                    "value_bytes": 8,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "partyMemberIds",
+                    "value_bytes": 10,
+                    "member_bytes": 27
+                  },
+                  {
+                    "key": "state_version",
+                    "value_bytes": 1,
+                    "member_bytes": 17
+                  },
+                  {
+                    "key": "players",
+                    "value_bytes": 20601,
+                    "member_bytes": 20611
+                  },
+                  {
+                    "key": "messages",
+                    "value_bytes": 190,
+                    "member_bytes": 201
+                  },
+                  {
+                    "key": "ruleset_id",
+                    "value_bytes": 11,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_version",
+                    "value_bytes": 7,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_rule_packs",
+                    "value_bytes": 13,
+                    "member_bytes": 34
+                  },
+                  {
+                    "key": "engine_mode",
+                    "value_bytes": 9,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "character_start_level",
+                    "value_bytes": 1,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_house_rules",
+                    "value_bytes": 2,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_locked_at",
+                    "value_bytes": 4,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_selection_locked",
+                    "value_bytes": 5,
+                    "member_bytes": 32
+                  },
+                  {
+                    "key": "mechanics",
+                    "value_bytes": 1306,
+                    "member_bytes": 1318
+                  },
+                  {
+                    "key": "actors",
+                    "value_bytes": 2,
+                    "member_bytes": 11
+                  },
+                  {
+                    "key": "partyName",
+                    "value_bytes": 25,
+                    "member_bytes": 37
+                  },
+                  {
+                    "key": "enemies",
+                    "value_bytes": 2,
+                    "member_bytes": 12
+                  },
+                  {
+                    "key": "merchants",
+                    "value_bytes": 2,
+                    "member_bytes": 14
+                  },
+                  {
+                    "key": "mapFeedback",
+                    "value_bytes": 2,
+                    "member_bytes": 16
+                  },
+                  {
+                    "key": "battleLog",
+                    "value_bytes": 220,
+                    "member_bytes": 232
+                  },
+                  {
+                    "key": "economyLog",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "adventure",
+                    "value_bytes": 83,
+                    "member_bytes": 95
+                  },
+                  {
+                    "key": "worldMap",
+                    "value_bytes": 4790,
+                    "member_bytes": 4801
+                  },
+                  {
+                    "key": "offscreen_world",
+                    "value_bytes": 31,
+                    "member_bytes": 49
+                  },
+                  {
+                    "key": "captives",
+                    "value_bytes": 34,
+                    "member_bytes": 45
+                  },
+                  {
+                    "key": "beasts",
+                    "value_bytes": 88,
+                    "member_bytes": 97
+                  },
+                  {
+                    "key": "autonomy",
+                    "value_bytes": 138,
+                    "member_bytes": 149
+                  },
+                  {
+                    "key": "partyDecisionPolicy",
+                    "value_bytes": 252,
+                    "member_bytes": 274
+                  },
+                  {
+                    "key": "state_projector_version",
+                    "value_bytes": 2,
+                    "member_bytes": 28
+                  },
+                  {
+                    "key": "isNarrating",
+                    "value_bytes": 5,
+                    "member_bytes": 19
+                  },
+                  {
+                    "key": "agentInteraction",
+                    "value_bytes": 4,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "scene",
+                    "value_bytes": 884,
+                    "member_bytes": 892
+                  },
+                  {
+                    "key": "worldMemory",
+                    "value_bytes": 6100155,
+                    "member_bytes": 6100169
+                  },
+                  {
+                    "key": "social",
+                    "value_bytes": 20278,
+                    "member_bytes": 20287
+                  },
+                  {
+                    "key": "scene_npcs",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "loot_containers",
+                    "value_bytes": 91,
+                    "member_bytes": 109
+                  },
+                  {
+                    "key": "law",
+                    "value_bytes": 48,
+                    "member_bytes": 54
+                  },
+                  {
+                    "key": "tavern",
+                    "value_bytes": 4,
+                    "member_bytes": 13
+                  },
+                  {
+                    "key": "blessings",
+                    "value_bytes": 228,
+                    "member_bytes": 240
+                  },
+                  {
+                    "key": "lockpicking",
+                    "value_bytes": 254,
+                    "member_bytes": 268
+                  },
+                  {
+                    "key": "courier_letters",
+                    "value_bytes": 10843,
+                    "member_bytes": 10861
+                  },
+                  {
+                    "key": "weather",
+                    "value_bytes": 343,
+                    "member_bytes": 353
+                  },
+                  {
+                    "key": "weather_by_actor",
+                    "value_bytes": 354,
+                    "member_bytes": 373
+                  },
+                  {
+                    "key": "actor_appearances",
+                    "value_bytes": 157,
+                    "member_bytes": 177
+                  },
+                  {
+                    "key": "suggested_actions",
+                    "value_bytes": 149,
+                    "member_bytes": 169
+                  }
+                ],
+                "world_memory": {
+                  "value_bytes": 6100155,
+                  "fields": [
+                    {
+                      "key": "schema_version",
+                      "value_bytes": 1,
+                      "member_bytes": 18,
+                      "record_count": null
+                    },
+                    {
+                      "key": "entities",
+                      "value_bytes": 155596,
+                      "member_bytes": 155607,
+                      "record_count": 601
+                    },
+                    {
+                      "key": "facts",
+                      "value_bytes": 1180294,
+                      "member_bytes": 1180302,
+                      "record_count": 2501
+                    },
+                    {
+                      "key": "relationships",
+                      "value_bytes": 103363,
+                      "member_bytes": 103379,
+                      "record_count": 250
+                    },
+                    {
+                      "key": "quests",
+                      "value_bytes": 153353,
+                      "member_bytes": 153362,
+                      "record_count": 400
+                    },
+                    {
+                      "key": "threads",
+                      "value_bytes": 260629,
+                      "member_bytes": 260639,
+                      "record_count": 600
+                    },
+                    {
+                      "key": "epistemic_claims",
+                      "value_bytes": 132755,
+                      "member_bytes": 132774,
+                      "record_count": 250
+                    },
+                    {
+                      "key": "summaries",
+                      "value_bytes": 487327,
+                      "member_bytes": 487339,
+                      "record_count": 1200
+                    },
+                    {
+                      "key": "knowledge",
+                      "value_bytes": 58929,
+                      "member_bytes": 58941,
+                      "record_count": null
+                    },
+                    {
+                      "key": "knowledge_revealed",
+                      "value_bytes": 1783871,
+                      "member_bytes": 1783892,
+                      "record_count": 6001
+                    },
+                    {
+                      "key": "knowledge_ledger",
+                      "value_bytes": 1783871,
+                      "member_bytes": 1783890,
+                      "record_count": 6001
+                    }
+                  ],
+                  "exact_large_value_duplicates": [
+                    {
+                      "sha256": "bc2250eaa99c647d35ec75cc382a419738652180e2cc8e6450a40b54e86ff097",
+                      "bytes": 1783871,
+                      "paths": [
+                        "authoritative_state.worldMemory.knowledge_revealed",
+                        "authoritative_state.worldMemory.knowledge_ledger"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "exact_large_value_duplicates": []
+            }
+          },
+          {
+            "index": 2,
+            "client_fetch_body_elapsed_ms": 2817.217,
+            "response_bytes": 6165811,
+            "composition": {
+              "raw_bytes": 6165811,
+              "top_level": [
+                {
+                  "key": "narration",
+                  "value_bytes": 51,
+                  "member_bytes": 63
+                },
+                {
+                  "key": "effects",
+                  "value_bytes": 69,
+                  "member_bytes": 79
+                },
+                {
+                  "key": "provider",
+                  "value_bytes": 25,
+                  "member_bytes": 36
+                },
+                {
+                  "key": "model",
+                  "value_bytes": 14,
+                  "member_bytes": 22
+                },
+                {
+                  "key": "turn_id",
+                  "value_bytes": 39,
+                  "member_bytes": 49
+                },
+                {
+                  "key": "engine_mode",
+                  "value_bytes": 9,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "state_version",
+                  "value_bytes": 1,
+                  "member_bytes": 17
+                },
+                {
+                  "key": "mechanics",
+                  "value_bytes": 1349,
+                  "member_bytes": 1361
+                },
+                {
+                  "key": "visible_state_changes",
+                  "value_bytes": 742,
+                  "member_bytes": 766
+                },
+                {
+                  "key": "authoritative_state",
+                  "value_bytes": 6162856,
+                  "member_bytes": 6162878
+                },
+                {
+                  "key": "verification",
+                  "value_bytes": 142,
+                  "member_bytes": 157
+                },
+                {
+                  "key": "ruling",
+                  "value_bytes": 4,
+                  "member_bytes": 13
+                },
+                {
+                  "key": "explanation_url",
+                  "value_bytes": 83,
+                  "member_bytes": 101
+                },
+                {
+                  "key": "idempotent_replay",
+                  "value_bytes": 5,
+                  "member_bytes": 25
+                },
+                {
+                  "key": "npc_turns",
+                  "value_bytes": 2,
+                  "member_bytes": 14
+                },
+                {
+                  "key": "narration_message_id",
+                  "value_bytes": 29,
+                  "member_bytes": 52
+                },
+                {
+                  "key": "narration_speaker",
+                  "value_bytes": 8,
+                  "member_bytes": 28
+                },
+                {
+                  "key": "narration_author",
+                  "value_bytes": 23,
+                  "member_bytes": 42
+                },
+                {
+                  "key": "creative_trigger",
+                  "value_bytes": 4,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "creative_provider",
+                  "value_bytes": 4,
+                  "member_bytes": 24
+                },
+                {
+                  "key": "room_version",
+                  "value_bytes": 1,
+                  "member_bytes": 16
+                }
+              ],
+              "top_level_keys": [
+                "narration",
+                "effects",
+                "provider",
+                "model",
+                "turn_id",
+                "engine_mode",
+                "state_version",
+                "mechanics",
+                "visible_state_changes",
+                "authoritative_state",
+                "verification",
+                "ruling",
+                "explanation_url",
+                "idempotent_replay",
+                "npc_turns",
+                "narration_message_id",
+                "narration_speaker",
+                "narration_author",
+                "creative_trigger",
+                "creative_provider",
+                "room_version"
+              ],
+              "top_level_member_bytes": 6165789,
+              "top_level_syntax_bytes": 22,
+              "top_level_partition_bytes": 6165811,
+              "authoritative_state": {
+                "value_bytes": 6162856,
+                "fields": [
+                  {
+                    "key": "sessionCode",
+                    "value_bytes": 12,
+                    "member_bytes": 26
+                  },
+                  {
+                    "key": "campaign",
+                    "value_bytes": 56,
+                    "member_bytes": 67
+                  },
+                  {
+                    "key": "activePlayerId",
+                    "value_bytes": 8,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "partyMemberIds",
+                    "value_bytes": 10,
+                    "member_bytes": 27
+                  },
+                  {
+                    "key": "state_version",
+                    "value_bytes": 1,
+                    "member_bytes": 17
+                  },
+                  {
+                    "key": "players",
+                    "value_bytes": 20601,
+                    "member_bytes": 20611
+                  },
+                  {
+                    "key": "messages",
+                    "value_bytes": 379,
+                    "member_bytes": 390
+                  },
+                  {
+                    "key": "ruleset_id",
+                    "value_bytes": 11,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_version",
+                    "value_bytes": 7,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_rule_packs",
+                    "value_bytes": 13,
+                    "member_bytes": 34
+                  },
+                  {
+                    "key": "engine_mode",
+                    "value_bytes": 9,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "character_start_level",
+                    "value_bytes": 1,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_house_rules",
+                    "value_bytes": 2,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_locked_at",
+                    "value_bytes": 4,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_selection_locked",
+                    "value_bytes": 5,
+                    "member_bytes": 32
+                  },
+                  {
+                    "key": "mechanics",
+                    "value_bytes": 1306,
+                    "member_bytes": 1318
+                  },
+                  {
+                    "key": "actors",
+                    "value_bytes": 2,
+                    "member_bytes": 11
+                  },
+                  {
+                    "key": "partyName",
+                    "value_bytes": 25,
+                    "member_bytes": 37
+                  },
+                  {
+                    "key": "enemies",
+                    "value_bytes": 2,
+                    "member_bytes": 12
+                  },
+                  {
+                    "key": "merchants",
+                    "value_bytes": 2,
+                    "member_bytes": 14
+                  },
+                  {
+                    "key": "mapFeedback",
+                    "value_bytes": 2,
+                    "member_bytes": 16
+                  },
+                  {
+                    "key": "battleLog",
+                    "value_bytes": 439,
+                    "member_bytes": 451
+                  },
+                  {
+                    "key": "economyLog",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "adventure",
+                    "value_bytes": 83,
+                    "member_bytes": 95
+                  },
+                  {
+                    "key": "worldMap",
+                    "value_bytes": 4790,
+                    "member_bytes": 4801
+                  },
+                  {
+                    "key": "offscreen_world",
+                    "value_bytes": 31,
+                    "member_bytes": 49
+                  },
+                  {
+                    "key": "captives",
+                    "value_bytes": 34,
+                    "member_bytes": 45
+                  },
+                  {
+                    "key": "beasts",
+                    "value_bytes": 88,
+                    "member_bytes": 97
+                  },
+                  {
+                    "key": "autonomy",
+                    "value_bytes": 138,
+                    "member_bytes": 149
+                  },
+                  {
+                    "key": "partyDecisionPolicy",
+                    "value_bytes": 252,
+                    "member_bytes": 274
+                  },
+                  {
+                    "key": "state_projector_version",
+                    "value_bytes": 2,
+                    "member_bytes": 28
+                  },
+                  {
+                    "key": "isNarrating",
+                    "value_bytes": 5,
+                    "member_bytes": 19
+                  },
+                  {
+                    "key": "agentInteraction",
+                    "value_bytes": 4,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "scene",
+                    "value_bytes": 884,
+                    "member_bytes": 892
+                  },
+                  {
+                    "key": "worldMemory",
+                    "value_bytes": 6100155,
+                    "member_bytes": 6100169
+                  },
+                  {
+                    "key": "social",
+                    "value_bytes": 20278,
+                    "member_bytes": 20287
+                  },
+                  {
+                    "key": "scene_npcs",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "loot_containers",
+                    "value_bytes": 91,
+                    "member_bytes": 109
+                  },
+                  {
+                    "key": "law",
+                    "value_bytes": 48,
+                    "member_bytes": 54
+                  },
+                  {
+                    "key": "tavern",
+                    "value_bytes": 4,
+                    "member_bytes": 13
+                  },
+                  {
+                    "key": "blessings",
+                    "value_bytes": 228,
+                    "member_bytes": 240
+                  },
+                  {
+                    "key": "lockpicking",
+                    "value_bytes": 254,
+                    "member_bytes": 268
+                  },
+                  {
+                    "key": "courier_letters",
+                    "value_bytes": 10843,
+                    "member_bytes": 10861
+                  },
+                  {
+                    "key": "weather",
+                    "value_bytes": 343,
+                    "member_bytes": 353
+                  },
+                  {
+                    "key": "weather_by_actor",
+                    "value_bytes": 354,
+                    "member_bytes": 373
+                  },
+                  {
+                    "key": "actor_appearances",
+                    "value_bytes": 157,
+                    "member_bytes": 177
+                  },
+                  {
+                    "key": "suggested_actions",
+                    "value_bytes": 149,
+                    "member_bytes": 169
+                  }
+                ],
+                "world_memory": {
+                  "value_bytes": 6100155,
+                  "fields": [
+                    {
+                      "key": "schema_version",
+                      "value_bytes": 1,
+                      "member_bytes": 18,
+                      "record_count": null
+                    },
+                    {
+                      "key": "entities",
+                      "value_bytes": 155596,
+                      "member_bytes": 155607,
+                      "record_count": 601
+                    },
+                    {
+                      "key": "facts",
+                      "value_bytes": 1180294,
+                      "member_bytes": 1180302,
+                      "record_count": 2501
+                    },
+                    {
+                      "key": "relationships",
+                      "value_bytes": 103363,
+                      "member_bytes": 103379,
+                      "record_count": 250
+                    },
+                    {
+                      "key": "quests",
+                      "value_bytes": 153353,
+                      "member_bytes": 153362,
+                      "record_count": 400
+                    },
+                    {
+                      "key": "threads",
+                      "value_bytes": 260629,
+                      "member_bytes": 260639,
+                      "record_count": 600
+                    },
+                    {
+                      "key": "epistemic_claims",
+                      "value_bytes": 132755,
+                      "member_bytes": 132774,
+                      "record_count": 250
+                    },
+                    {
+                      "key": "summaries",
+                      "value_bytes": 487327,
+                      "member_bytes": 487339,
+                      "record_count": 1200
+                    },
+                    {
+                      "key": "knowledge",
+                      "value_bytes": 58929,
+                      "member_bytes": 58941,
+                      "record_count": null
+                    },
+                    {
+                      "key": "knowledge_revealed",
+                      "value_bytes": 1783871,
+                      "member_bytes": 1783892,
+                      "record_count": 6001
+                    },
+                    {
+                      "key": "knowledge_ledger",
+                      "value_bytes": 1783871,
+                      "member_bytes": 1783890,
+                      "record_count": 6001
+                    }
+                  ],
+                  "exact_large_value_duplicates": [
+                    {
+                      "sha256": "bc2250eaa99c647d35ec75cc382a419738652180e2cc8e6450a40b54e86ff097",
+                      "bytes": 1783871,
+                      "paths": [
+                        "authoritative_state.worldMemory.knowledge_revealed",
+                        "authoritative_state.worldMemory.knowledge_ledger"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "exact_large_value_duplicates": []
+            }
+          },
+          {
+            "index": 3,
+            "client_fetch_body_elapsed_ms": 2765.704,
+            "response_bytes": 6166219,
+            "composition": {
+              "raw_bytes": 6166219,
+              "top_level": [
+                {
+                  "key": "narration",
+                  "value_bytes": 51,
+                  "member_bytes": 63
+                },
+                {
+                  "key": "effects",
+                  "value_bytes": 69,
+                  "member_bytes": 79
+                },
+                {
+                  "key": "provider",
+                  "value_bytes": 25,
+                  "member_bytes": 36
+                },
+                {
+                  "key": "model",
+                  "value_bytes": 14,
+                  "member_bytes": 22
+                },
+                {
+                  "key": "turn_id",
+                  "value_bytes": 39,
+                  "member_bytes": 49
+                },
+                {
+                  "key": "engine_mode",
+                  "value_bytes": 9,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "state_version",
+                  "value_bytes": 1,
+                  "member_bytes": 17
+                },
+                {
+                  "key": "mechanics",
+                  "value_bytes": 1349,
+                  "member_bytes": 1361
+                },
+                {
+                  "key": "visible_state_changes",
+                  "value_bytes": 742,
+                  "member_bytes": 766
+                },
+                {
+                  "key": "authoritative_state",
+                  "value_bytes": 6163264,
+                  "member_bytes": 6163286
+                },
+                {
+                  "key": "verification",
+                  "value_bytes": 142,
+                  "member_bytes": 157
+                },
+                {
+                  "key": "ruling",
+                  "value_bytes": 4,
+                  "member_bytes": 13
+                },
+                {
+                  "key": "explanation_url",
+                  "value_bytes": 83,
+                  "member_bytes": 101
+                },
+                {
+                  "key": "idempotent_replay",
+                  "value_bytes": 5,
+                  "member_bytes": 25
+                },
+                {
+                  "key": "npc_turns",
+                  "value_bytes": 2,
+                  "member_bytes": 14
+                },
+                {
+                  "key": "narration_message_id",
+                  "value_bytes": 29,
+                  "member_bytes": 52
+                },
+                {
+                  "key": "narration_speaker",
+                  "value_bytes": 8,
+                  "member_bytes": 28
+                },
+                {
+                  "key": "narration_author",
+                  "value_bytes": 23,
+                  "member_bytes": 42
+                },
+                {
+                  "key": "creative_trigger",
+                  "value_bytes": 4,
+                  "member_bytes": 23
+                },
+                {
+                  "key": "creative_provider",
+                  "value_bytes": 4,
+                  "member_bytes": 24
+                },
+                {
+                  "key": "room_version",
+                  "value_bytes": 1,
+                  "member_bytes": 16
+                }
+              ],
+              "top_level_keys": [
+                "narration",
+                "effects",
+                "provider",
+                "model",
+                "turn_id",
+                "engine_mode",
+                "state_version",
+                "mechanics",
+                "visible_state_changes",
+                "authoritative_state",
+                "verification",
+                "ruling",
+                "explanation_url",
+                "idempotent_replay",
+                "npc_turns",
+                "narration_message_id",
+                "narration_speaker",
+                "narration_author",
+                "creative_trigger",
+                "creative_provider",
+                "room_version"
+              ],
+              "top_level_member_bytes": 6166197,
+              "top_level_syntax_bytes": 22,
+              "top_level_partition_bytes": 6166219,
+              "authoritative_state": {
+                "value_bytes": 6163264,
+                "fields": [
+                  {
+                    "key": "sessionCode",
+                    "value_bytes": 12,
+                    "member_bytes": 26
+                  },
+                  {
+                    "key": "campaign",
+                    "value_bytes": 56,
+                    "member_bytes": 67
+                  },
+                  {
+                    "key": "activePlayerId",
+                    "value_bytes": 8,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "partyMemberIds",
+                    "value_bytes": 10,
+                    "member_bytes": 27
+                  },
+                  {
+                    "key": "state_version",
+                    "value_bytes": 1,
+                    "member_bytes": 17
+                  },
+                  {
+                    "key": "players",
+                    "value_bytes": 20601,
+                    "member_bytes": 20611
+                  },
+                  {
+                    "key": "messages",
+                    "value_bytes": 568,
+                    "member_bytes": 579
+                  },
+                  {
+                    "key": "ruleset_id",
+                    "value_bytes": 11,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_version",
+                    "value_bytes": 7,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_rule_packs",
+                    "value_bytes": 13,
+                    "member_bytes": 34
+                  },
+                  {
+                    "key": "engine_mode",
+                    "value_bytes": 9,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "character_start_level",
+                    "value_bytes": 1,
+                    "member_bytes": 25
+                  },
+                  {
+                    "key": "enabled_house_rules",
+                    "value_bytes": 2,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_locked_at",
+                    "value_bytes": 4,
+                    "member_bytes": 24
+                  },
+                  {
+                    "key": "ruleset_selection_locked",
+                    "value_bytes": 5,
+                    "member_bytes": 32
+                  },
+                  {
+                    "key": "mechanics",
+                    "value_bytes": 1306,
+                    "member_bytes": 1318
+                  },
+                  {
+                    "key": "actors",
+                    "value_bytes": 2,
+                    "member_bytes": 11
+                  },
+                  {
+                    "key": "partyName",
+                    "value_bytes": 25,
+                    "member_bytes": 37
+                  },
+                  {
+                    "key": "enemies",
+                    "value_bytes": 2,
+                    "member_bytes": 12
+                  },
+                  {
+                    "key": "merchants",
+                    "value_bytes": 2,
+                    "member_bytes": 14
+                  },
+                  {
+                    "key": "mapFeedback",
+                    "value_bytes": 2,
+                    "member_bytes": 16
+                  },
+                  {
+                    "key": "battleLog",
+                    "value_bytes": 658,
+                    "member_bytes": 670
+                  },
+                  {
+                    "key": "economyLog",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "adventure",
+                    "value_bytes": 83,
+                    "member_bytes": 95
+                  },
+                  {
+                    "key": "worldMap",
+                    "value_bytes": 4790,
+                    "member_bytes": 4801
+                  },
+                  {
+                    "key": "offscreen_world",
+                    "value_bytes": 31,
+                    "member_bytes": 49
+                  },
+                  {
+                    "key": "captives",
+                    "value_bytes": 34,
+                    "member_bytes": 45
+                  },
+                  {
+                    "key": "beasts",
+                    "value_bytes": 88,
+                    "member_bytes": 97
+                  },
+                  {
+                    "key": "autonomy",
+                    "value_bytes": 138,
+                    "member_bytes": 149
+                  },
+                  {
+                    "key": "partyDecisionPolicy",
+                    "value_bytes": 252,
+                    "member_bytes": 274
+                  },
+                  {
+                    "key": "state_projector_version",
+                    "value_bytes": 2,
+                    "member_bytes": 28
+                  },
+                  {
+                    "key": "isNarrating",
+                    "value_bytes": 5,
+                    "member_bytes": 19
+                  },
+                  {
+                    "key": "agentInteraction",
+                    "value_bytes": 4,
+                    "member_bytes": 23
+                  },
+                  {
+                    "key": "scene",
+                    "value_bytes": 884,
+                    "member_bytes": 892
+                  },
+                  {
+                    "key": "worldMemory",
+                    "value_bytes": 6100155,
+                    "member_bytes": 6100169
+                  },
+                  {
+                    "key": "social",
+                    "value_bytes": 20278,
+                    "member_bytes": 20287
+                  },
+                  {
+                    "key": "scene_npcs",
+                    "value_bytes": 2,
+                    "member_bytes": 15
+                  },
+                  {
+                    "key": "loot_containers",
+                    "value_bytes": 91,
+                    "member_bytes": 109
+                  },
+                  {
+                    "key": "law",
+                    "value_bytes": 48,
+                    "member_bytes": 54
+                  },
+                  {
+                    "key": "tavern",
+                    "value_bytes": 4,
+                    "member_bytes": 13
+                  },
+                  {
+                    "key": "blessings",
+                    "value_bytes": 228,
+                    "member_bytes": 240
+                  },
+                  {
+                    "key": "lockpicking",
+                    "value_bytes": 254,
+                    "member_bytes": 268
+                  },
+                  {
+                    "key": "courier_letters",
+                    "value_bytes": 10843,
+                    "member_bytes": 10861
+                  },
+                  {
+                    "key": "weather",
+                    "value_bytes": 343,
+                    "member_bytes": 353
+                  },
+                  {
+                    "key": "weather_by_actor",
+                    "value_bytes": 354,
+                    "member_bytes": 373
+                  },
+                  {
+                    "key": "actor_appearances",
+                    "value_bytes": 157,
+                    "member_bytes": 177
+                  },
+                  {
+                    "key": "suggested_actions",
+                    "value_bytes": 149,
+                    "member_bytes": 169
+                  }
+                ],
+                "world_memory": {
+                  "value_bytes": 6100155,
+                  "fields": [
+                    {
+                      "key": "schema_version",
+                      "value_bytes": 1,
+                      "member_bytes": 18,
+                      "record_count": null
+                    },
+                    {
+                      "key": "entities",
+                      "value_bytes": 155596,
+                      "member_bytes": 155607,
+                      "record_count": 601
+                    },
+                    {
+                      "key": "facts",
+                      "value_bytes": 1180294,
+                      "member_bytes": 1180302,
+                      "record_count": 2501
+                    },
+                    {
+                      "key": "relationships",
+                      "value_bytes": 103363,
+                      "member_bytes": 103379,
+                      "record_count": 250
+                    },
+                    {
+                      "key": "quests",
+                      "value_bytes": 153353,
+                      "member_bytes": 153362,
+                      "record_count": 400
+                    },
+                    {
+                      "key": "threads",
+                      "value_bytes": 260629,
+                      "member_bytes": 260639,
+                      "record_count": 600
+                    },
+                    {
+                      "key": "epistemic_claims",
+                      "value_bytes": 132755,
+                      "member_bytes": 132774,
+                      "record_count": 250
+                    },
+                    {
+                      "key": "summaries",
+                      "value_bytes": 487327,
+                      "member_bytes": 487339,
+                      "record_count": 1200
+                    },
+                    {
+                      "key": "knowledge",
+                      "value_bytes": 58929,
+                      "member_bytes": 58941,
+                      "record_count": null
+                    },
+                    {
+                      "key": "knowledge_revealed",
+                      "value_bytes": 1783871,
+                      "member_bytes": 1783892,
+                      "record_count": 6001
+                    },
+                    {
+                      "key": "knowledge_ledger",
+                      "value_bytes": 1783871,
+                      "member_bytes": 1783890,
+                      "record_count": 6001
+                    }
+                  ],
+                  "exact_large_value_duplicates": [
+                    {
+                      "sha256": "bc2250eaa99c647d35ec75cc382a419738652180e2cc8e6450a40b54e86ff097",
+                      "bytes": 1783871,
+                      "paths": [
+                        "authoritative_state.worldMemory.knowledge_revealed",
+                        "authoritative_state.worldMemory.knowledge_ledger"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "exact_large_value_duplicates": []
+            }
+          }
+        ]
+      }
+    },
+    "child_records": [
+      {
+        "server_request_to_finish_ms": 221.208,
+        "status": 200,
+        "response_bytes": 34813,
+        "response_stringify_ms": 0.158,
+        "response_stringify_calls": 1,
+        "persistence_inclusive_ms": 37.162,
+        "residual_ms": 184.046,
+        "store": {
+          "load": {
+            "calls": 7,
+            "elapsed_ms": 12.614
+          },
+          "commit": {
+            "calls": 1,
+            "elapsed_ms": 17.182
+          },
+          "acknowledgeProjection": {
+            "calls": 1,
+            "elapsed_ms": 7.366
+          }
+        },
+        "all_stringify_ms": 1.803,
+        "all_stringify_calls": 193
+      },
+      {
+        "server_request_to_finish_ms": 78.182,
+        "status": 200,
+        "response_bytes": 35219,
+        "response_stringify_ms": 0.136,
+        "response_stringify_calls": 1,
+        "persistence_inclusive_ms": 29.3,
+        "residual_ms": 48.882,
+        "store": {
+          "load": {
+            "calls": 7,
+            "elapsed_ms": 7.974
+          },
+          "commit": {
+            "calls": 1,
+            "elapsed_ms": 14.713
+          },
+          "acknowledgeProjection": {
+            "calls": 1,
+            "elapsed_ms": 6.613
+          }
+        },
+        "all_stringify_ms": 0.951,
+        "all_stringify_calls": 172
+      },
+      {
+        "server_request_to_finish_ms": 58.021,
+        "status": 200,
+        "response_bytes": 35625,
+        "response_stringify_ms": 0.211,
+        "response_stringify_calls": 1,
+        "persistence_inclusive_ms": 29.324,
+        "residual_ms": 28.697,
+        "store": {
+          "load": {
+            "calls": 7,
+            "elapsed_ms": 8.805
+          },
+          "commit": {
+            "calls": 1,
+            "elapsed_ms": 12.939
+          },
+          "acknowledgeProjection": {
+            "calls": 1,
+            "elapsed_ms": 7.58
+          }
+        },
+        "all_stringify_ms": 0.986,
+        "all_stringify_calls": 172
+      },
+      {
+        "server_request_to_finish_ms": 3174.294,
+        "status": 200,
+        "response_bytes": 6165403,
+        "response_stringify_ms": 15.591,
+        "response_stringify_calls": 1,
+        "persistence_inclusive_ms": 1423.307,
+        "residual_ms": 1750.987,
+        "store": {
+          "load": {
+            "calls": 7,
+            "elapsed_ms": 965.284
+          },
+          "commit": {
+            "calls": 1,
+            "elapsed_ms": 413.768
+          },
+          "acknowledgeProjection": {
+            "calls": 1,
+            "elapsed_ms": 44.255
+          }
+        },
+        "all_stringify_ms": 263.76,
+        "all_stringify_calls": 187
+      },
+      {
+        "server_request_to_finish_ms": 3008.669,
+        "status": 200,
+        "response_bytes": 6165811,
+        "response_stringify_ms": 15.604,
+        "response_stringify_calls": 1,
+        "persistence_inclusive_ms": 1199.883,
+        "residual_ms": 1808.786,
+        "store": {
+          "load": {
+            "calls": 7,
+            "elapsed_ms": 654.975
+          },
+          "commit": {
+            "calls": 1,
+            "elapsed_ms": 499.338
+          },
+          "acknowledgeProjection": {
+            "calls": 1,
+            "elapsed_ms": 45.57
+          }
+        },
+        "all_stringify_ms": 186.551,
+        "all_stringify_calls": 172
+      },
+      {
+        "server_request_to_finish_ms": 3032.362,
+        "status": 200,
+        "response_bytes": 6166219,
+        "response_stringify_ms": 17.619,
+        "response_stringify_calls": 1,
+        "persistence_inclusive_ms": 1171.691,
+        "residual_ms": 1860.671,
+        "store": {
+          "load": {
+            "calls": 7,
+            "elapsed_ms": 736.884
+          },
+          "commit": {
+            "calls": 1,
+            "elapsed_ms": 389.381
+          },
+          "acknowledgeProjection": {
+            "calls": 1,
+            "elapsed_ms": 45.426
+          }
+        },
+        "all_stringify_ms": 171.237,
+        "all_stringify_calls": 172
+      }
+    ]
+  },
+  "isolated_projection": {
+    "scope": "same synthetic expanded authoritative state passed directly to turnResultForViewer and JSON.stringify; excludes HTTP socket, route orchestration, persistence and file IO",
+    "summary": {
+      "projection_ms": {
+        "count": 3,
+        "min_ms": 86.126,
+        "p50_ms": 91.428,
+        "p95_ms": 97.996,
+        "max_ms": 97.996,
+        "mean_ms": 91.85
+      },
+      "serialization_ms": {
+        "count": 3,
+        "min_ms": 15.592,
+        "p50_ms": 16.376,
+        "p95_ms": 16.704,
+        "max_ms": 16.704,
+        "mean_ms": 16.224
+      },
+      "response_bytes": {
+        "count": 3,
+        "min": 6162022,
+        "p50": 6162022,
+        "p95": 6162022,
+        "max": 6162022,
+        "mean": 6162022
+      }
+    },
+    "measurements": [
+      {
+        "repeat": 1,
+        "projection_ms": 97.996,
+        "serialization_ms": 16.376,
+        "response_bytes": 6162022,
+        "composition": {
+          "raw_bytes": 6162022,
+          "top_level": [
+            {
+              "key": "state_version",
+              "value_bytes": 1,
+              "member_bytes": 17
+            },
+            {
+              "key": "room_version",
+              "value_bytes": 1,
+              "member_bytes": 16
+            },
+            {
+              "key": "mechanics",
+              "value_bytes": 2,
+              "member_bytes": 14
+            },
+            {
+              "key": "authoritative_state",
+              "value_bytes": 6161948,
+              "member_bytes": 6161970
+            }
+          ],
+          "top_level_keys": [
+            "state_version",
+            "room_version",
+            "mechanics",
+            "authoritative_state"
+          ],
+          "top_level_member_bytes": 6162017,
+          "top_level_syntax_bytes": 5,
+          "top_level_partition_bytes": 6162022,
+          "authoritative_state": {
+            "value_bytes": 6161948,
+            "fields": [
+              {
+                "key": "sessionCode",
+                "value_bytes": 12,
+                "member_bytes": 26
+              },
+              {
+                "key": "campaign",
+                "value_bytes": 56,
+                "member_bytes": 67
+              },
+              {
+                "key": "activePlayerId",
+                "value_bytes": 8,
+                "member_bytes": 25
+              },
+              {
+                "key": "partyMemberIds",
+                "value_bytes": 10,
+                "member_bytes": 27
+              },
+              {
+                "key": "state_version",
+                "value_bytes": 1,
+                "member_bytes": 17
+              },
+              {
+                "key": "players",
+                "value_bytes": 20601,
+                "member_bytes": 20611
+              },
+              {
+                "key": "messages",
+                "value_bytes": 2,
+                "member_bytes": 13
+              },
+              {
+                "key": "ruleset_id",
+                "value_bytes": 11,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_version",
+                "value_bytes": 7,
+                "member_bytes": 25
+              },
+              {
+                "key": "enabled_rule_packs",
+                "value_bytes": 13,
+                "member_bytes": 34
+              },
+              {
+                "key": "engine_mode",
+                "value_bytes": 9,
+                "member_bytes": 23
+              },
+              {
+                "key": "character_start_level",
+                "value_bytes": 1,
+                "member_bytes": 25
+              },
+              {
+                "key": "enabled_house_rules",
+                "value_bytes": 2,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_locked_at",
+                "value_bytes": 4,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_selection_locked",
+                "value_bytes": 5,
+                "member_bytes": 32
+              },
+              {
+                "key": "mechanics",
+                "value_bytes": 1285,
+                "member_bytes": 1297
+              },
+              {
+                "key": "actors",
+                "value_bytes": 2,
+                "member_bytes": 11
+              },
+              {
+                "key": "partyName",
+                "value_bytes": 25,
+                "member_bytes": 37
+              },
+              {
+                "key": "enemies",
+                "value_bytes": 2,
+                "member_bytes": 12
+              },
+              {
+                "key": "merchants",
+                "value_bytes": 2,
+                "member_bytes": 14
+              },
+              {
+                "key": "mapFeedback",
+                "value_bytes": 2,
+                "member_bytes": 16
+              },
+              {
+                "key": "battleLog",
+                "value_bytes": 2,
+                "member_bytes": 14
+              },
+              {
+                "key": "economyLog",
+                "value_bytes": 2,
+                "member_bytes": 15
+              },
+              {
+                "key": "adventure",
+                "value_bytes": 83,
+                "member_bytes": 95
+              },
+              {
+                "key": "worldMap",
+                "value_bytes": 4790,
+                "member_bytes": 4801
+              },
+              {
+                "key": "offscreen_world",
+                "value_bytes": 31,
+                "member_bytes": 49
+              },
+              {
+                "key": "captives",
+                "value_bytes": 34,
+                "member_bytes": 45
+              },
+              {
+                "key": "beasts",
+                "value_bytes": 88,
+                "member_bytes": 97
+              },
+              {
+                "key": "autonomy",
+                "value_bytes": 138,
+                "member_bytes": 149
+              },
+              {
+                "key": "partyDecisionPolicy",
+                "value_bytes": 252,
+                "member_bytes": 274
+              },
+              {
+                "key": "scene",
+                "value_bytes": 884,
+                "member_bytes": 892
+              },
+              {
+                "key": "worldMemory",
+                "value_bytes": 6100155,
+                "member_bytes": 6100169
+              },
+              {
+                "key": "social",
+                "value_bytes": 20278,
+                "member_bytes": 20287
+              },
+              {
+                "key": "scene_npcs",
+                "value_bytes": 2,
+                "member_bytes": 15
+              },
+              {
+                "key": "loot_containers",
+                "value_bytes": 91,
+                "member_bytes": 109
+              },
+              {
+                "key": "law",
+                "value_bytes": 48,
+                "member_bytes": 54
+              },
+              {
+                "key": "tavern",
+                "value_bytes": 4,
+                "member_bytes": 13
+              },
+              {
+                "key": "blessings",
+                "value_bytes": 228,
+                "member_bytes": 240
+              },
+              {
+                "key": "lockpicking",
+                "value_bytes": 254,
+                "member_bytes": 268
+              },
+              {
+                "key": "courier_letters",
+                "value_bytes": 10843,
+                "member_bytes": 10861
+              },
+              {
+                "key": "weather",
+                "value_bytes": 343,
+                "member_bytes": 353
+              },
+              {
+                "key": "weather_by_actor",
+                "value_bytes": 354,
+                "member_bytes": 373
+              },
+              {
+                "key": "actor_appearances",
+                "value_bytes": 157,
+                "member_bytes": 177
+              },
+              {
+                "key": "suggested_actions",
+                "value_bytes": 149,
+                "member_bytes": 169
+              }
+            ],
+            "world_memory": {
+              "value_bytes": 6100155,
+              "fields": [
+                {
+                  "key": "schema_version",
+                  "value_bytes": 1,
+                  "member_bytes": 18,
+                  "record_count": null
+                },
+                {
+                  "key": "entities",
+                  "value_bytes": 155596,
+                  "member_bytes": 155607,
+                  "record_count": 601
+                },
+                {
+                  "key": "facts",
+                  "value_bytes": 1180294,
+                  "member_bytes": 1180302,
+                  "record_count": 2501
+                },
+                {
+                  "key": "relationships",
+                  "value_bytes": 103363,
+                  "member_bytes": 103379,
+                  "record_count": 250
+                },
+                {
+                  "key": "quests",
+                  "value_bytes": 153353,
+                  "member_bytes": 153362,
+                  "record_count": 400
+                },
+                {
+                  "key": "threads",
+                  "value_bytes": 260629,
+                  "member_bytes": 260639,
+                  "record_count": 600
+                },
+                {
+                  "key": "epistemic_claims",
+                  "value_bytes": 132755,
+                  "member_bytes": 132774,
+                  "record_count": 250
+                },
+                {
+                  "key": "summaries",
+                  "value_bytes": 487327,
+                  "member_bytes": 487339,
+                  "record_count": 1200
+                },
+                {
+                  "key": "knowledge",
+                  "value_bytes": 58929,
+                  "member_bytes": 58941,
+                  "record_count": null
+                },
+                {
+                  "key": "knowledge_revealed",
+                  "value_bytes": 1783871,
+                  "member_bytes": 1783892,
+                  "record_count": 6001
+                },
+                {
+                  "key": "knowledge_ledger",
+                  "value_bytes": 1783871,
+                  "member_bytes": 1783890,
+                  "record_count": 6001
+                }
+              ],
+              "exact_large_value_duplicates": [
+                {
+                  "sha256": "bc2250eaa99c647d35ec75cc382a419738652180e2cc8e6450a40b54e86ff097",
+                  "bytes": 1783871,
+                  "paths": [
+                    "authoritative_state.worldMemory.knowledge_revealed",
+                    "authoritative_state.worldMemory.knowledge_ledger"
+                  ]
+                }
+              ]
+            }
+          },
+          "exact_large_value_duplicates": []
+        }
+      },
+      {
+        "repeat": 2,
+        "projection_ms": 86.126,
+        "serialization_ms": 15.592,
+        "response_bytes": 6162022,
+        "composition": {
+          "raw_bytes": 6162022,
+          "top_level": [
+            {
+              "key": "state_version",
+              "value_bytes": 1,
+              "member_bytes": 17
+            },
+            {
+              "key": "room_version",
+              "value_bytes": 1,
+              "member_bytes": 16
+            },
+            {
+              "key": "mechanics",
+              "value_bytes": 2,
+              "member_bytes": 14
+            },
+            {
+              "key": "authoritative_state",
+              "value_bytes": 6161948,
+              "member_bytes": 6161970
+            }
+          ],
+          "top_level_keys": [
+            "state_version",
+            "room_version",
+            "mechanics",
+            "authoritative_state"
+          ],
+          "top_level_member_bytes": 6162017,
+          "top_level_syntax_bytes": 5,
+          "top_level_partition_bytes": 6162022,
+          "authoritative_state": {
+            "value_bytes": 6161948,
+            "fields": [
+              {
+                "key": "sessionCode",
+                "value_bytes": 12,
+                "member_bytes": 26
+              },
+              {
+                "key": "campaign",
+                "value_bytes": 56,
+                "member_bytes": 67
+              },
+              {
+                "key": "activePlayerId",
+                "value_bytes": 8,
+                "member_bytes": 25
+              },
+              {
+                "key": "partyMemberIds",
+                "value_bytes": 10,
+                "member_bytes": 27
+              },
+              {
+                "key": "state_version",
+                "value_bytes": 1,
+                "member_bytes": 17
+              },
+              {
+                "key": "players",
+                "value_bytes": 20601,
+                "member_bytes": 20611
+              },
+              {
+                "key": "messages",
+                "value_bytes": 2,
+                "member_bytes": 13
+              },
+              {
+                "key": "ruleset_id",
+                "value_bytes": 11,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_version",
+                "value_bytes": 7,
+                "member_bytes": 25
+              },
+              {
+                "key": "enabled_rule_packs",
+                "value_bytes": 13,
+                "member_bytes": 34
+              },
+              {
+                "key": "engine_mode",
+                "value_bytes": 9,
+                "member_bytes": 23
+              },
+              {
+                "key": "character_start_level",
+                "value_bytes": 1,
+                "member_bytes": 25
+              },
+              {
+                "key": "enabled_house_rules",
+                "value_bytes": 2,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_locked_at",
+                "value_bytes": 4,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_selection_locked",
+                "value_bytes": 5,
+                "member_bytes": 32
+              },
+              {
+                "key": "mechanics",
+                "value_bytes": 1285,
+                "member_bytes": 1297
+              },
+              {
+                "key": "actors",
+                "value_bytes": 2,
+                "member_bytes": 11
+              },
+              {
+                "key": "partyName",
+                "value_bytes": 25,
+                "member_bytes": 37
+              },
+              {
+                "key": "enemies",
+                "value_bytes": 2,
+                "member_bytes": 12
+              },
+              {
+                "key": "merchants",
+                "value_bytes": 2,
+                "member_bytes": 14
+              },
+              {
+                "key": "mapFeedback",
+                "value_bytes": 2,
+                "member_bytes": 16
+              },
+              {
+                "key": "battleLog",
+                "value_bytes": 2,
+                "member_bytes": 14
+              },
+              {
+                "key": "economyLog",
+                "value_bytes": 2,
+                "member_bytes": 15
+              },
+              {
+                "key": "adventure",
+                "value_bytes": 83,
+                "member_bytes": 95
+              },
+              {
+                "key": "worldMap",
+                "value_bytes": 4790,
+                "member_bytes": 4801
+              },
+              {
+                "key": "offscreen_world",
+                "value_bytes": 31,
+                "member_bytes": 49
+              },
+              {
+                "key": "captives",
+                "value_bytes": 34,
+                "member_bytes": 45
+              },
+              {
+                "key": "beasts",
+                "value_bytes": 88,
+                "member_bytes": 97
+              },
+              {
+                "key": "autonomy",
+                "value_bytes": 138,
+                "member_bytes": 149
+              },
+              {
+                "key": "partyDecisionPolicy",
+                "value_bytes": 252,
+                "member_bytes": 274
+              },
+              {
+                "key": "scene",
+                "value_bytes": 884,
+                "member_bytes": 892
+              },
+              {
+                "key": "worldMemory",
+                "value_bytes": 6100155,
+                "member_bytes": 6100169
+              },
+              {
+                "key": "social",
+                "value_bytes": 20278,
+                "member_bytes": 20287
+              },
+              {
+                "key": "scene_npcs",
+                "value_bytes": 2,
+                "member_bytes": 15
+              },
+              {
+                "key": "loot_containers",
+                "value_bytes": 91,
+                "member_bytes": 109
+              },
+              {
+                "key": "law",
+                "value_bytes": 48,
+                "member_bytes": 54
+              },
+              {
+                "key": "tavern",
+                "value_bytes": 4,
+                "member_bytes": 13
+              },
+              {
+                "key": "blessings",
+                "value_bytes": 228,
+                "member_bytes": 240
+              },
+              {
+                "key": "lockpicking",
+                "value_bytes": 254,
+                "member_bytes": 268
+              },
+              {
+                "key": "courier_letters",
+                "value_bytes": 10843,
+                "member_bytes": 10861
+              },
+              {
+                "key": "weather",
+                "value_bytes": 343,
+                "member_bytes": 353
+              },
+              {
+                "key": "weather_by_actor",
+                "value_bytes": 354,
+                "member_bytes": 373
+              },
+              {
+                "key": "actor_appearances",
+                "value_bytes": 157,
+                "member_bytes": 177
+              },
+              {
+                "key": "suggested_actions",
+                "value_bytes": 149,
+                "member_bytes": 169
+              }
+            ],
+            "world_memory": {
+              "value_bytes": 6100155,
+              "fields": [
+                {
+                  "key": "schema_version",
+                  "value_bytes": 1,
+                  "member_bytes": 18,
+                  "record_count": null
+                },
+                {
+                  "key": "entities",
+                  "value_bytes": 155596,
+                  "member_bytes": 155607,
+                  "record_count": 601
+                },
+                {
+                  "key": "facts",
+                  "value_bytes": 1180294,
+                  "member_bytes": 1180302,
+                  "record_count": 2501
+                },
+                {
+                  "key": "relationships",
+                  "value_bytes": 103363,
+                  "member_bytes": 103379,
+                  "record_count": 250
+                },
+                {
+                  "key": "quests",
+                  "value_bytes": 153353,
+                  "member_bytes": 153362,
+                  "record_count": 400
+                },
+                {
+                  "key": "threads",
+                  "value_bytes": 260629,
+                  "member_bytes": 260639,
+                  "record_count": 600
+                },
+                {
+                  "key": "epistemic_claims",
+                  "value_bytes": 132755,
+                  "member_bytes": 132774,
+                  "record_count": 250
+                },
+                {
+                  "key": "summaries",
+                  "value_bytes": 487327,
+                  "member_bytes": 487339,
+                  "record_count": 1200
+                },
+                {
+                  "key": "knowledge",
+                  "value_bytes": 58929,
+                  "member_bytes": 58941,
+                  "record_count": null
+                },
+                {
+                  "key": "knowledge_revealed",
+                  "value_bytes": 1783871,
+                  "member_bytes": 1783892,
+                  "record_count": 6001
+                },
+                {
+                  "key": "knowledge_ledger",
+                  "value_bytes": 1783871,
+                  "member_bytes": 1783890,
+                  "record_count": 6001
+                }
+              ],
+              "exact_large_value_duplicates": [
+                {
+                  "sha256": "bc2250eaa99c647d35ec75cc382a419738652180e2cc8e6450a40b54e86ff097",
+                  "bytes": 1783871,
+                  "paths": [
+                    "authoritative_state.worldMemory.knowledge_revealed",
+                    "authoritative_state.worldMemory.knowledge_ledger"
+                  ]
+                }
+              ]
+            }
+          },
+          "exact_large_value_duplicates": []
+        }
+      },
+      {
+        "repeat": 3,
+        "projection_ms": 91.428,
+        "serialization_ms": 16.704,
+        "response_bytes": 6162022,
+        "composition": {
+          "raw_bytes": 6162022,
+          "top_level": [
+            {
+              "key": "state_version",
+              "value_bytes": 1,
+              "member_bytes": 17
+            },
+            {
+              "key": "room_version",
+              "value_bytes": 1,
+              "member_bytes": 16
+            },
+            {
+              "key": "mechanics",
+              "value_bytes": 2,
+              "member_bytes": 14
+            },
+            {
+              "key": "authoritative_state",
+              "value_bytes": 6161948,
+              "member_bytes": 6161970
+            }
+          ],
+          "top_level_keys": [
+            "state_version",
+            "room_version",
+            "mechanics",
+            "authoritative_state"
+          ],
+          "top_level_member_bytes": 6162017,
+          "top_level_syntax_bytes": 5,
+          "top_level_partition_bytes": 6162022,
+          "authoritative_state": {
+            "value_bytes": 6161948,
+            "fields": [
+              {
+                "key": "sessionCode",
+                "value_bytes": 12,
+                "member_bytes": 26
+              },
+              {
+                "key": "campaign",
+                "value_bytes": 56,
+                "member_bytes": 67
+              },
+              {
+                "key": "activePlayerId",
+                "value_bytes": 8,
+                "member_bytes": 25
+              },
+              {
+                "key": "partyMemberIds",
+                "value_bytes": 10,
+                "member_bytes": 27
+              },
+              {
+                "key": "state_version",
+                "value_bytes": 1,
+                "member_bytes": 17
+              },
+              {
+                "key": "players",
+                "value_bytes": 20601,
+                "member_bytes": 20611
+              },
+              {
+                "key": "messages",
+                "value_bytes": 2,
+                "member_bytes": 13
+              },
+              {
+                "key": "ruleset_id",
+                "value_bytes": 11,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_version",
+                "value_bytes": 7,
+                "member_bytes": 25
+              },
+              {
+                "key": "enabled_rule_packs",
+                "value_bytes": 13,
+                "member_bytes": 34
+              },
+              {
+                "key": "engine_mode",
+                "value_bytes": 9,
+                "member_bytes": 23
+              },
+              {
+                "key": "character_start_level",
+                "value_bytes": 1,
+                "member_bytes": 25
+              },
+              {
+                "key": "enabled_house_rules",
+                "value_bytes": 2,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_locked_at",
+                "value_bytes": 4,
+                "member_bytes": 24
+              },
+              {
+                "key": "ruleset_selection_locked",
+                "value_bytes": 5,
+                "member_bytes": 32
+              },
+              {
+                "key": "mechanics",
+                "value_bytes": 1285,
+                "member_bytes": 1297
+              },
+              {
+                "key": "actors",
+                "value_bytes": 2,
+                "member_bytes": 11
+              },
+              {
+                "key": "partyName",
+                "value_bytes": 25,
+                "member_bytes": 37
+              },
+              {
+                "key": "enemies",
+                "value_bytes": 2,
+                "member_bytes": 12
+              },
+              {
+                "key": "merchants",
+                "value_bytes": 2,
+                "member_bytes": 14
+              },
+              {
+                "key": "mapFeedback",
+                "value_bytes": 2,
+                "member_bytes": 16
+              },
+              {
+                "key": "battleLog",
+                "value_bytes": 2,
+                "member_bytes": 14
+              },
+              {
+                "key": "economyLog",
+                "value_bytes": 2,
+                "member_bytes": 15
+              },
+              {
+                "key": "adventure",
+                "value_bytes": 83,
+                "member_bytes": 95
+              },
+              {
+                "key": "worldMap",
+                "value_bytes": 4790,
+                "member_bytes": 4801
+              },
+              {
+                "key": "offscreen_world",
+                "value_bytes": 31,
+                "member_bytes": 49
+              },
+              {
+                "key": "captives",
+                "value_bytes": 34,
+                "member_bytes": 45
+              },
+              {
+                "key": "beasts",
+                "value_bytes": 88,
+                "member_bytes": 97
+              },
+              {
+                "key": "autonomy",
+                "value_bytes": 138,
+                "member_bytes": 149
+              },
+              {
+                "key": "partyDecisionPolicy",
+                "value_bytes": 252,
+                "member_bytes": 274
+              },
+              {
+                "key": "scene",
+                "value_bytes": 884,
+                "member_bytes": 892
+              },
+              {
+                "key": "worldMemory",
+                "value_bytes": 6100155,
+                "member_bytes": 6100169
+              },
+              {
+                "key": "social",
+                "value_bytes": 20278,
+                "member_bytes": 20287
+              },
+              {
+                "key": "scene_npcs",
+                "value_bytes": 2,
+                "member_bytes": 15
+              },
+              {
+                "key": "loot_containers",
+                "value_bytes": 91,
+                "member_bytes": 109
+              },
+              {
+                "key": "law",
+                "value_bytes": 48,
+                "member_bytes": 54
+              },
+              {
+                "key": "tavern",
+                "value_bytes": 4,
+                "member_bytes": 13
+              },
+              {
+                "key": "blessings",
+                "value_bytes": 228,
+                "member_bytes": 240
+              },
+              {
+                "key": "lockpicking",
+                "value_bytes": 254,
+                "member_bytes": 268
+              },
+              {
+                "key": "courier_letters",
+                "value_bytes": 10843,
+                "member_bytes": 10861
+              },
+              {
+                "key": "weather",
+                "value_bytes": 343,
+                "member_bytes": 353
+              },
+              {
+                "key": "weather_by_actor",
+                "value_bytes": 354,
+                "member_bytes": 373
+              },
+              {
+                "key": "actor_appearances",
+                "value_bytes": 157,
+                "member_bytes": 177
+              },
+              {
+                "key": "suggested_actions",
+                "value_bytes": 149,
+                "member_bytes": 169
+              }
+            ],
+            "world_memory": {
+              "value_bytes": 6100155,
+              "fields": [
+                {
+                  "key": "schema_version",
+                  "value_bytes": 1,
+                  "member_bytes": 18,
+                  "record_count": null
+                },
+                {
+                  "key": "entities",
+                  "value_bytes": 155596,
+                  "member_bytes": 155607,
+                  "record_count": 601
+                },
+                {
+                  "key": "facts",
+                  "value_bytes": 1180294,
+                  "member_bytes": 1180302,
+                  "record_count": 2501
+                },
+                {
+                  "key": "relationships",
+                  "value_bytes": 103363,
+                  "member_bytes": 103379,
+                  "record_count": 250
+                },
+                {
+                  "key": "quests",
+                  "value_bytes": 153353,
+                  "member_bytes": 153362,
+                  "record_count": 400
+                },
+                {
+                  "key": "threads",
+                  "value_bytes": 260629,
+                  "member_bytes": 260639,
+                  "record_count": 600
+                },
+                {
+                  "key": "epistemic_claims",
+                  "value_bytes": 132755,
+                  "member_bytes": 132774,
+                  "record_count": 250
+                },
+                {
+                  "key": "summaries",
+                  "value_bytes": 487327,
+                  "member_bytes": 487339,
+                  "record_count": 1200
+                },
+                {
+                  "key": "knowledge",
+                  "value_bytes": 58929,
+                  "member_bytes": 58941,
+                  "record_count": null
+                },
+                {
+                  "key": "knowledge_revealed",
+                  "value_bytes": 1783871,
+                  "member_bytes": 1783892,
+                  "record_count": 6001
+                },
+                {
+                  "key": "knowledge_ledger",
+                  "value_bytes": 1783871,
+                  "member_bytes": 1783890,
+                  "record_count": 6001
+                }
+              ],
+              "exact_large_value_duplicates": [
+                {
+                  "sha256": "bc2250eaa99c647d35ec75cc382a419738652180e2cc8e6450a40b54e86ff097",
+                  "bytes": 1783871,
+                  "paths": [
+                    "authoritative_state.worldMemory.knowledge_revealed",
+                    "authoritative_state.worldMemory.knowledge_ledger"
+                  ]
+                }
+              ]
+            }
+          },
+          "exact_large_value_duplicates": []
+        }
+      }
+    ]
+  },
+  "methodology": {
+    "response_member_bytes": "For each top-level JSON member, member_bytes = UTF-8 bytes of JSON.stringify(key) + colon + UTF-8 bytes of JSON.stringify(value). Object braces and commas are reported separately as top_level_syntax_bytes.",
+    "duplicate_scan": "Exact SHA-256 equality of JSON.stringify values for top-level response fields versus authoritative_state fields and for authoritative_state.worldMemory fields, limited to values >=128 bytes; this reports byte-identical payloads only and does not claim semantic overlap.",
+    "stage_timings": "Child --import preloader wraps FileEventStore load/commit/getEvents/acknowledgeProjection/pendingProjection and response JSON.stringify within AsyncLocalStorage request scopes. server_request_to_finish_ms is measured from the child request event to ServerResponse finish; client_fetch_body_elapsed_ms is measured independently around fetch plus response.text(). persistence_inclusive_ms is a sum of inclusive calls and can overlap nested calls; residual_ms is server finish time minus that sum, so it is a diagnostic bound rather than a CPU attribution.",
+    "confidence": "Three serial requests per campaign on one local Windows process, no concurrent benchmark and no LLM. The HTTP request timings are wall-clock observations; isolated projection timings are same-fixture CPU-adjacent measurements and must not be added to HTTP wall time."
+  }
+}

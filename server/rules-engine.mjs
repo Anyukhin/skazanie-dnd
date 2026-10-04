@@ -121,11 +121,13 @@ import {
   captiveBountyCp,
   captiveFor,
   captiveInterrogationPolicy,
+  captiveNeglectedPayload,
   captivePersona,
   captiveSettlementFor,
   captiveSparedDisposition,
   localFactionIds,
   normalizeCaptivesState,
+  planCaptiveNeglectDrafts,
   planCaptiveRelocationDrafts,
   planCaptureDrafts,
 } from './captives.mjs'
@@ -139,7 +141,9 @@ import {
   lootContainerFor,
   normalizeLootContainersState,
   normalizeLootLines,
+  lootCombatActionFor,
   planLootContainerDrafts,
+  thrownWeaponDropDraft,
   validateLootContainerCommand,
 } from './loot-containers.mjs'
 import {
@@ -3893,9 +3897,8 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
   const swing = attackSwingShape(state, attackerIdValue, targetIdValue, profile, { actorAt, targetAt, distanceFeet })
   const hitChance = d20HitChance(armorClass - modifier, swing)
   // Крит по обездвиженной цели в упор гарантирован правилами, а не костью.
-  const criticalChance = swing.automaticCritical && distanceFeet != null && distanceFeet <= (profile.kind === 'melee' ? profile.normal_range_feet : 5)
-    ? hitChance
-    : d20HitChance(20, swing)
+  const criticalOnHit = Boolean(swing.automaticCritical && distanceFeet != null && distanceFeet <= (profile.kind === 'melee' ? profile.normal_range_feet : 5))
+  const criticalChance = criticalOnHit ? hitChance : d20HitChance(20, swing)
   const reachable = inRange && !blockedTrajectory
   return {
     action_id: String(profile.id ?? actionId ?? ''),
@@ -3918,6 +3921,9 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
     disadvantage_sources: reachable ? swing.disadvantageSources : [],
     hit_chance: reachable ? Math.round(hitChance * 100) : null,
     critical_chance: reachable ? Math.round(criticalChance * 100) : null,
+    // Любое попадание станет критом: тогда шанс крита равен шансу попасть и
+    // зависит от КД цели. Проекция зрителя по этому флагу прячет и его.
+    critical_on_hit: reachable && criticalOnHit,
     average_damage: averageDamageOf(profile),
   }
 }
@@ -5183,9 +5189,11 @@ function assertTurn(command, state, context = {}) {
     // Правило стола: обыск одного контейнера в бою стоит действия
     // (`docs/rules-coverage.md`, раздел «Контейнеры добычи и обыск»). Смотреть
     // в контейнер при этом бесплатно — содержимое приезжает проекцией, а не
-    // командой, и хода не стоит.
+    // командой, и хода не стоит. Своё брошенное оружие поднимается свободным
+    // взаимодействием с предметом, пока оно не потрачено.
     const economy = combat.action_economy[command.actor_id]
-    if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+    const cost = lootCombatActionFor(state, command.actor_id, lootContainerFor(state, command.container_id))
+    if (cost !== 'object_interaction' && economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'ProposeParley') {
     // Окрик посреди схватки стоит действия — и стоит его даже тогда, когда в
     // ответ летит только насмешка. Бесплатный парлей превратился бы в
@@ -5352,6 +5360,16 @@ function authoredOfficeParticipants(state, npcId) {
   return uniqueStrings([npcId, office?.holder_npc_id, ...(office?.defender_npc_ids ?? [])])
 }
 
+/**
+ * Место героя без созданного героя («Место героя 2») — не участник боя: оно не
+ * бросает инициативу и не входит в бюджет встречи. Герой, который уже создан и
+ * только повышает уровень до стартового (`characterSetupStage: 'leveling'`), —
+ * участник. Раньше пустое место ходило первым с выдуманными ОЗ 10 и КД 10.
+ */
+function isEmptyHeroSeat(actor) {
+  return actor?.characterSetupRequired === true && actor?.characterSetupStage !== 'leveling'
+}
+
 function assembleEncounterFromState(state, command) {
   /**
    * Проверка размещения после сборщика нужна потому, что сборщик получает
@@ -5435,7 +5453,7 @@ function assembleEncounterFromState(state, command) {
     })
   }
   const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
-  const party = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor)).map((actor) => {
+  const party = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor) && !isEmptyHeroSeat(actor)).map((actor) => {
     const position = actorPosition(state, actorId(actor))
     return {
       id: actorId(actor),
@@ -12081,6 +12099,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }, [targetIdValue]))
       }
     }
+    // Голод пленных — в том же коммите, что и прошедшие сутки (аудит PR #131,
+    // WT-03). Раньше его фиксировал только внешний такт после сохранения комнаты
+    // вторым коммитом (`runCaptiveClock`, `server/index.mjs`), и между ними было
+    // видно «сутки прошли, а голода нет». Реестр берётся из дособытийного
+    // состояния, как у остальных потребителей минут, а минута — конец скачка,
+    // как у внешнего такта: тот теперь лишь идемпотентный догон и после этого
+    // коммита ничего не находит. Голод — дело часов, а не того, кто их двинул:
+    // `actor_id` пуст, как у команды `NeglectCaptive`, иначе летопись записала
+    // бы жестокость на героя, объявившего привал.
+    for (const draft of planCaptiveNeglectDrafts(sourceState, { worldMinute: campaignElapsedMinutes(afterTime) })) {
+      events.push(eventFrom({ ...sourceCommand, actor_id: null, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids))
+    }
     // «Пока вас не было…»: мир живёт, когда отряд спит.
     //
     // Слой стоит **последним** и поверх всех остальных потребителей минут:
@@ -13027,6 +13057,20 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           weapon_name: String(selectedProfile.item?.name ?? ''),
           ...heroExpenditure,
         }, [command.actor_id]))
+      }
+      // Метательное оружие героя падает у цели — и на промахе тоже — и ждёт,
+      // пока его подберут (решение владельца 2026-10-04, исследование PR #136).
+      // До этого кинжал можно было метать каждый ход, не выпуская из руки.
+      if (attackKind === 'thrown' && selectedProfile?.item && !isEnemyActor(state, command.actor_id)) {
+        const drop = thrownWeaponDropDraft(state, {
+          commandId: command.command_id, ownerId: command.actor_id, item: selectedProfile.item, position: actorPosition(state, targetId),
+        })
+        if (drop) {
+          events.push({
+            ...eventFrom({ ...commandWithRules(command, RULE_IDS.attack), visibility: drop.visibility }, drop.event_type, drop.payload, drop.target_ids),
+            event_schema_version: drop.event_schema_version,
+          })
+        }
       }
       if (helped) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'helped' }, [command.actor_id]))
       if (hidden) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'hidden' }, [command.actor_id]))
@@ -14983,11 +15027,35 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
         events.push(actionEvent({ affected: affected.map(actorId), damage: damageRoll.total, difficulty }))
       } else if (action.id === 'shove') {
+        // Толчок даёт выбор: сбить с ног или оттолкнуть на 5 футов — так в обеих
+        // редакциях. До 2026-10-04 был только первый исход (исследование PR #136).
+        // Исход выбирается до броска, полем `shove_mode`; без него — «сбить».
+        const shoveMode = String(command.shove_mode ?? 'prone')
+        if (!['prone', 'push'].includes(shoveMode)) throw new RulesValidationError('Толчок либо сбивает с ног, либо отталкивает', 'SHOVE_MODE_UNKNOWN')
+        if (creatureSizeRank(findActor(state, actionTargetId)) > creatureSizeRank(actor) + 1) {
+          throw new RulesValidationError('Цель слишком велика: толкнуть можно существо не больше чем на один размер крупнее вас', 'SHOVE_TARGET_TOO_LARGE')
+        }
         const contest = grappleContest(state, diceService, command, actionTargetId, rolls)
         const success = contest.success
-        events.push(eventFrom(command, 'ContestedCheckResolved', contest, [actionTargetId]))
-        if (success) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: usesDnd2014(state) ? null : 'until-next-turn' }, [actionTargetId]))
-        events.push(actionEvent({ success }))
+        events.push(eventFrom(command, 'ContestedCheckResolved', shoveMode === 'push' ? { ...contest, shove_mode: 'push' } : contest, [actionTargetId]))
+        if (success && shoveMode === 'prone') events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: 'prone', duration: usesDnd2014(state) ? null : 'until-next-turn' }, [actionTargetId]))
+        // Тот же путь, что у отталкивающих заклинаний: стена, занятая клетка,
+        // предмет или край карты останавливают цель. Атаки по возможности
+        // вынужденное перемещение не вызывает. Расход действия пишется раньше
+        // перемещения, чтобы хроника шла по порядку: толкнул — отлетел.
+        const pushPath = success && shoveMode === 'push' ? forcedPushPath(state, actionTargetId, actorPosition(state, command.actor_id), 5) : []
+        events.push(actionEvent(shoveMode === 'push' ? { success, shove_mode: 'push', pushed_feet: pushPath.length * 5 } : { success }))
+        if (pushPath.length) {
+          const pushedFrom = actorPosition(state, actionTargetId)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ActorMoved', {
+            from: pushedFrom, to: pushPath.at(-1), path: pushPath, distance: pushPath.length * 5,
+            movement_cost: 0, movement_spent: 0, movement_remaining: effectiveSpeedFeet(state, findActor(state, actionTargetId), actionTargetId),
+            spend_movement: false, forced_movement: true, action_id: 'shove', phase: 'combat',
+          }, [actionTargetId]))
+          events.push(...areaEntryConsequences(events.reduce(applyGameEvent, state), command, actionTargetId, pushedFrom, pushPath.at(-1), {
+            diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor, trigger: 'forced-entry',
+          }))
+        }
       } else if (action.id === 'second-wind') {
         const expression = diceExpression('1d10', Math.max(1, safeInteger(actor?.level, 1)), 10)
         const healingRoll = diceService.roll(expression, 'second_wind', command.actor_id, command.visibility ?? 'public')
@@ -15386,7 +15454,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }
           const minutes = castingTimeMinutes(spell.castingTime)
           if (minutes > 0) {
-            appendTimeAdvance(commandWithRules(command, RULE_IDS.resource), minutes, 'minute')
+            // Через общего владельца последствий, как AdvanceTime и отдых: сроки
+            // обещаний, восстановление, ход мира и почта видят эти минуты так
+            // же, как обычный скачок, а не ждут следующего (аудит PR #131, WT-01).
+            appendWorldTimeConsequences(commandWithRules(command, RULE_IDS.resource), minutes, 'minute')
           }
         }
         const counterspell = context.readiedRelease || context.additionalBeam ? null : counterspellWindowFor(state, command, spell)
@@ -18329,7 +18400,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     case 'StartCombat': {
       const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map((player) => actorId(player)))
-      const partyIds = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor)).map(actorId)
+      const partyIds = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor) && !isEmptyHeroSeat(actor)).map(actorId)
       const expiredAtStart = new Set(summonIdsExpiredAt(state, worldTimeSeconds(state)))
       events.push(...summonExpiryEvents(
         command,
@@ -18668,7 +18739,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // Заготовка живёт до начала собственного следующего хода: круг замкнулся —
       // несработавшая «Готовность» пропадает вместе с потраченным действием.
       if (state.mechanics.combat.readied?.[nextId]) {
-        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ReadiedActionExpired', { reason: 'turn-came-around', trigger: state.mechanics.combat.readied[nextId].trigger }, [nextId]))
+        const expiring = state.mechanics.combat.readied[nextId]
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'ReadiedActionExpired', {
+          reason: 'turn-came-around', trigger: expiring.trigger, ...(expiring.spell_id ? { spell_id: expiring.spell_id } : {}),
+        }, [nextId]))
       }
       let startTurnState = projectEvents(events)
       const auraSource = activeAuraOfLifeSource(startTurnState, nextId)
@@ -19316,14 +19390,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     case 'NeglectCaptive': {
       const captive = captiveFor(state, command.captive_id)
-      events.push(eventFrom({ ...command, visibility: 'party' }, 'CaptiveNeglected', {
-        captive_id: captive.id,
-        npc_id: captive.npc_id,
-        captive_name: captive.name,
-        hours_without_food: Math.floor(Math.max(0, campaignElapsedMinutes(state) - captive.last_fed_at_minutes) / 60),
-        at_minutes: campaignElapsedMinutes(state),
-        policy_id: CAPTIVES_POLICY_ID,
-      }, [captive.npc_id]))
+      // Та же форма, что пишут мировые часы внутри скачка (аудит PR #131, WT-03):
+      // команда осталась догоном внешнего такта для старых кампаний.
+      events.push(eventFrom({ ...command, visibility: 'party' }, 'CaptiveNeglected',
+        captiveNeglectedPayload(captive, campaignElapsedMinutes(state)), [captive.npc_id]))
       break
     }
     case 'ExecuteCaptive': {
@@ -21374,6 +21444,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       condition: 'fled', reason: 'opportunity-resolved',
     }, [String(context.finalizeFleeActorId)]))
   }
+  if (resolveDepth === 0) resolvedEvents.push(...concentrationReconciliationEvents(state, command, resolvedEvents))
   if (resolveDepth === 0 && resolvedEvents.some((event) => ['DamageApplied', 'ActorMoved'].includes(event.event_type))) {
     resolvedEvents.push(...npcWorldEventsFrom(command, planAuthoredNpcWorldEvents(state, projectEvents(resolvedEvents), resolvedEvents,
       { commandId: command.command_id, actorId: command.actor_id })))
@@ -21434,6 +21505,60 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
  * обязана быть видна. Если у события несколько целей и иммунна часть из них,
  * исходное событие остаётся для остальных.
  */
+/**
+ * Концентрация и заготовленное заклинание — одно удержание магии, и кончаются
+ * они вместе. До 2026-10-04 (исследование PR #136) это расходилось в трёх
+ * местах:
+ *
+ * - недееспособность состоянием («Удержание личности», «Усыпление») не
+ *   снимала концентрацию — снимал только урон до 0 ОЗ;
+ * - заготовка, истёкшая к началу своего хода, оставляла пустую концентрацию:
+ *   она требовала спасбросков от урона и вытесняла следующее заклинание;
+ * - потерянная концентрация (проваленный спасбросок, замена другим
+ *   заклинанием) оставляла заготовку, и та срабатывала как ни в чём не бывало.
+ *
+ * Сверка идёт после всех последствий команды и уже без невосприимчивых
+ * состояний, поэтому ловит и вложенные события. Смотрит она только на тех,
+ * кого эта команда коснулась: старое рассогласование не всплывает чужим
+ * событием посреди постороннего хода.
+ */
+function concentrationReconciliationEvents(state, command, events) {
+  const touched = new Set()
+  for (const event of events) {
+    if (!['ConditionAdded', 'ConcentrationEnded', 'ConcentrationStarted', 'ReadiedActionExpired', 'ActionReadied'].includes(event.event_type)) continue
+    for (const id of event.target_ids ?? []) touched.add(String(id))
+  }
+  if (!touched.size) return []
+  let projected = events.reduce(applyGameEvent, state)
+  const extra = []
+  const push = (event) => {
+    extra.push(event)
+    projected = applyGameEvent(projected, event)
+  }
+  for (const id of [...touched].sort()) {
+    const concentration = projected.mechanics.concentration?.[id]
+    if (concentration && [...conditionIdsFor(projected, id)].some((condition) => INCAPACITATING_CONDITIONS.includes(condition))) {
+      push(eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.concentration), 'ConcentrationEnded', {
+        reason: 'incapacitated', effect_id: concentration.effect_id,
+      }, [id]))
+    }
+    const readied = projected.mechanics.combat?.readied?.[id]
+    if (readied?.effect_id && String(projected.mechanics.concentration?.[id]?.effect_id ?? '') !== String(readied.effect_id)) {
+      push(eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.reaction), 'ReadiedActionExpired', {
+        reason: 'concentration-lost', trigger: readied.trigger, spell_id: readied.spell_id,
+      }, [id]))
+    }
+    const readiedBefore = state.mechanics.combat?.readied?.[id]
+    if (readiedBefore?.effect_id && !projected.mechanics.combat?.readied?.[id]
+      && String(projected.mechanics.concentration?.[id]?.effect_id ?? '') === String(readiedBefore.effect_id)) {
+      push(eventFrom(commandWithRules({ ...command, actor_id: id }, RULE_IDS.concentration), 'ConcentrationEnded', {
+        reason: 'readied-expired', effect_id: readiedBefore.effect_id,
+      }, [id]))
+    }
+  }
+  return extra
+}
+
 function withoutImmuneConditions(state, command, events) {
   return events.flatMap((event) => {
     if (event.event_type !== 'ConditionAdded') return [event]
@@ -21740,8 +21865,9 @@ function hasteOnlyActionFrame(economy) {
 
 function commandRequiresNormalActionFrame(command, economy) {
   switch (String(command?.command_type ?? '')) {
-    case 'IdentifyEnemy':
     case 'LootContainer':
+      return command?.loot_combat_action !== 'object_interaction'
+    case 'IdentifyEnemy':
     case 'ProposeParley':
     case 'CalmBeast':
     case 'FeedBeast':

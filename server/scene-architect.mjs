@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { publicAdventureMemory } from './adventure-director.mjs'
 import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
-import { classifyPartyDecision, objectiveRemainder } from './party-exit-intent.mjs'
+import { classifyPartyDecision, objectiveRemainder, onwardRouteObjective, onwardRouteTarget } from './party-exit-intent.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { normalizeSceneMapDesign, sceneMapDesignFor } from './scene-map-design.mjs'
@@ -406,11 +406,24 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
     : ''
   const knownKind = knownDestination?.kind ?? chosen?.kind ?? ''
   const location = destination.charAt(0).toLocaleUpperCase('ru') + destination.slice(1)
+  // Пришли в конечную точку составного маршрута: цель промежуточной точки
+  // («Продолжить путь из Айрская башня к «Дормар»») исполнена самим приходом.
+  // Прежде `objectiveRemainder` не узнавал в ней глагола движения, возвращал
+  // её целиком как «остаток», и в Дормаре цель по-прежнему звала в Дормар —
+  // в том числе после перезагрузки (плейтест 2026-10-04, SE-14). Сверяется
+  // только формула самого сервера и точка карты, а не любое совпадение имени.
+  const onwardTarget = onwardRouteTarget(state.scene?.objective)
+  const onwardTargetPoint = onwardTarget ? knownWorldDestinationByName(state, onwardTarget) : null
+  const arrivedAtRouteEnd = Boolean(onwardTarget) && (onwardTargetPoint && knownDestination?.id
+    ? onwardTargetPoint.id === knownDestination.id
+    : locationKey(onwardTarget) === locationKey(location))
   // Отряд пришёл туда, куда звала цель сцены (вариант А владельца,
   // 2026-10-03): это шаг той же главы, цель — её остаток. Если приход и был
   // всей целью, она выполнена. Отказ от задания и транзит к дальней точке
   // сюда не относятся.
-  const remainder = abandonsQuest || onwardDestination ? null : objectiveRemainder(state.scene?.objective, location)
+  const remainder = abandonsQuest || onwardDestination ? null
+    : arrivedAtRouteEnd ? ''
+      : objectiveRemainder(state.scene?.objective, location)
   const continues = Boolean(remainder)
   const reached = remainder === ''
   const chapter = Math.max(1, Number(state.adventure?.chapter) || 1) + (continues ? 0 : 1)
@@ -462,7 +475,7 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
     objective: continues
       ? remainder
       : onwardDestination
-      ? `Продолжить путь из ${location} к «${onwardDestination}»`
+      ? onwardRouteObjective(location, onwardDestination)
       : abandonsQuest
       ? `Осмотреться в ${location} и найти новую цель`
       : oldHook ? `Найти в ${location} другой путь к разгадке: ${oldHook}` : `Осмотреться в ${location} и найти другой путь`,
@@ -525,13 +538,21 @@ function normalizePlan(value, fallback) {
   const transition = clean(source.transition, 500)
   const outcome = clean(source.outcome, 240)
   const continued = fallback.objective_status === 'continued'
+  // Цель промежуточной точки — единственный носитель оставшегося маршрута
+  // (`onwardRouteObjective`): пересказ модели стёр бы следующий пункт, и
+  // «продолжим» на этой точке стало бы некуда вести (плейтест 2026-10-04,
+  // SE-11). И обратное: модель не вправе снова назвать целью путь туда, куда
+  // отряд как раз пришёл (SE-14).
+  const onwardLeg = Boolean(onwardRouteTarget(fallback.objective))
+  const modelRouteTarget = locationKey(onwardRouteTarget(source.objective))
+  const routeToHere = Boolean(modelRouteTarget) && [location, fallback.location].some((place) => locationKey(place) === modelRouteTarget)
   return {
     // Цель продолжается — глава та же: «Глава N+1» в заголовке модели была бы
     // неправдой, а цель новой сцены — канонический остаток прежней.
     title: continued && /глава\s+\d/iu.test(clean(source.title, 80)) ? fallback.title : clean(source.title, 80) || fallback.title,
     location,
     mood: clean(source.mood, 160) || fallback.mood,
-    objective: continued ? fallback.objective : clean(source.objective, 160) || fallback.objective,
+    objective: continued || onwardLeg || routeToHere ? fallback.objective : clean(source.objective, 160) || fallback.objective,
     transition: inventedDuration.test(transition) ? 'Отряд следует подтверждённому маршруту.' : continued && UNFINISHED_GOAL.test(transition) ? fallback.transition : transition || fallback.transition,
     arrival: inventedDuration.test(arrival) ? `Отряд прибывает в локацию «${location}».` : arrival || fallback.arrival,
     hook: clean(source.hook, 240) || fallback.hook,
@@ -768,7 +789,13 @@ export class SceneArchitectAgent {
       // Если модель при наличии известных дорог придумала третье место или
       // подменила явно выбранное, её творческий план отбрасывается целиком:
       // отдельные строки arrival/hook тоже могли бы ссылаться на ложную точку.
-      const constrainedFallback = constraint.destination
+      // Точка та же, что у запасного плана, — он и есть канонический. Пересчёт
+      // от первого сегмента дальнего маршрута терял его конечный пункт: цель
+      // промежуточной точки переставала звать дальше, и следующий шаг маршрута
+      // при живой модели пропадал (плейтест 2026-10-04, SE-11).
+      const constrainedFallback = constraint.destination && constraint.destination.id === fallback.location_id
+        ? fallback
+        : constraint.destination
         ? fallbackPlan({
           action: clean(action, 2000), state, decision: clean(decision, 500),
           destinationHint: constraint.destination.name,

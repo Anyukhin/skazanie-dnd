@@ -63,24 +63,29 @@ export function useMinimapPreference() {
   return [visible, toggle] as const
 }
 
-const MINIMAP_WIDTH = 168
-const MINIMAP_HEIGHT = 108
+// Круг, как в макете стола: квадратный холст, а карта вписана в круг целиком —
+// по диагонали, чтобы углы локации не срезало кольцом.
+const MINIMAP_WIDTH = 176
+const MINIMAP_HEIGHT = 176
+const MINIMAP_INNER = MINIMAP_WIDTH - 10
 
 /**
  * Мини-карта поверх поля: раскрытые клетки (проходимые светлее стен) и фишки
  * тех, кого игрок и так видит на доске. Нераскрытое не рисуется — туман войны
  * на мини-карте тот же, что на поле. Клик ставит выбранную клетку в центр поля.
  */
-export function BoardMiniMap({ map, actors, focusActorId, onPick }: {
+export function BoardMiniMap({ map, actors, focusActorId, onPick, caption }: {
   map: TacticalMap
   actors: readonly BoardAnimationActor[]
   focusActorId?: string
   onPick: (x: number, y: number) => void
+  /** Где отряд — подписью под кругом. */
+  caption?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const probeRef = useRef<HTMLSpanElement | null>(null)
   const paletteVersion = usePaletteVersion()
-  const scale = Math.max(1, Math.min(MINIMAP_WIDTH / Math.max(1, map.width), MINIMAP_HEIGHT / Math.max(1, map.height)))
+  const scale = Math.max(1, MINIMAP_INNER / Math.max(1, Math.hypot(map.width, map.height)))
   const offsetX = (MINIMAP_WIDTH - map.width * scale) / 2
   const offsetY = (MINIMAP_HEIGHT - map.height * scale) / 2
   const actorSignature = actors.map((actor) => `${actor.id}:${actor.x},${actor.y}:${actor.kind}:${actor.defeated ? 1 : 0}`).join('|')
@@ -136,6 +141,7 @@ export function BoardMiniMap({ map, actors, focusActorId, onPick }: {
 
   return <div className="board-minimap">
     <span ref={probeRef} className="board-minimap-probe" aria-hidden="true" />
+    <span className="board-minimap-disc">
     <canvas
       ref={canvasRef}
       style={{ width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT }}
@@ -144,6 +150,8 @@ export function BoardMiniMap({ map, actors, focusActorId, onPick }: {
       aria-label="Мини-карта: раскрытая часть локации и участники. Щелчок ставит место в центр поля"
       title="Мини-карта. Щелчок — показать это место на поле"
     />
+    </span>
+    {caption && <span className="board-minimap-caption">{caption}</span>}
   </div>
 }
 
@@ -198,9 +206,11 @@ export function spellSlotPools(resources: Readonly<Record<string, { current?: nu
  * Щелчок по кругу оставляет в колоде заклинаний только заклинания, которые
  * этим кругом можно сотворить, — это экранная выборка, ресурс не тратится.
  */
-export function SpellSlotBar({ resources, filterLevel, concentration, onToggleLevel }: {
+export function SpellSlotBar({ resources, filterLevel, spendLevel = null, concentration, onToggleLevel }: {
   resources: Readonly<Record<string, { current?: number; max?: number } | undefined>>
   filterLevel: number | null
+  /** Круг ячейки, которую потратит выбранное заклинание: её ромб — пунктиром. */
+  spendLevel?: number | null
   concentration?: string | null
   onToggleLevel: (level: number) => void
 }) {
@@ -235,7 +245,7 @@ export function SpellSlotBar({ resources, filterLevel, concentration, onToggleLe
         onClick={() => onToggleLevel(pool.level)}
         title={`Ячейки ${roman} круга: ${pool.current} из ${pool.max}. ${pressed ? 'Щелчок — показать все заклинания' : 'Щелчок — показать заклинания, доступные этому кругу'}`}
         aria-label={`Ячейки ${roman} круга: ${pool.current} из ${pool.max}`}
-      >{roman}{Array.from({ length: pool.max }, (_, index) => <i key={index} className={index < pool.current ? '' : 'off'} aria-hidden="true" />)}<em>{pool.current}/{pool.max}</em></button>
+      >{roman}{Array.from({ length: pool.max }, (_, index) => <i key={index} className={index < pool.current ? (spendLevel === pool.level && index === pool.current - 1 ? 'spend' : '') : 'off'} aria-hidden="true" />)}<em>{pool.current}/{pool.max}</em></button>
     })}
     {pact && <span className="hud-slot pact" title={`Ячейки договора: ${pact.current} из ${pact.max}. Восстанавливаются после короткого отдыха`} aria-label={`Ячейки договора: ${pact.current} из ${pact.max}`}>Договор{Array.from({ length: pact.max }, (_, index) => <i key={index} className={index < pact.current ? '' : 'off'} aria-hidden="true" />)}<em>{pact.current}/{pact.max}</em></span>}
     {concentration && <span className="hud-slot concentration" title={`Концентрация: ${concentration}. Урон требует спасброска Телосложения`}>◎ {concentration}</span>}

@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-04T15:32:57.229Z",
+  "fixture_clock": "2026-09-16T00:00:00.000Z",
+  "environment": {
+    "node": "v24.19.0",
+    "zlib": "1.3.2.1-motley-3246f1b",
+    "brotli": "1.2.0",
+    "compression_options": "node:zlib defaults"
+  },
+  "decision": "At the public transport boundary, retain one knowledge alias and reconstruct the other only when a consumer explicitly needs the compatibility shape.",
+  "scope": "Full turnResultForViewer JSON envelope versus deleting exactly one worldMemory alias after viewer projection. gzip and Brotli are bounded wire-size estimates; no timing SLA is inferred.",
+  "source": {
+    "runtime_commit": "cb045a8466f35696ff24abe9020d6f39dee89462",
+    "fixture": "eval/world-data-measurements.mjs:materializeLongState",
+    "counts": {
+      "entities": 120,
+      "facts": 500,
+      "relationships": 500,
+      "quests": 80,
+      "threads": 120,
+      "epistemic_claims": 500,
+      "summaries": 240,
+      "knowledge_ledger": 1200
+    },
+    "canonical_state_sha256": "332173bb13360a2ad7faeb561b2c0ad1aa069f8b2b057d28041a4be7643e9548",
+    "no_http": true,
+    "no_llm": true,
+    "canonical_input_unchanged_after_each_projection": true
+  },
+  "cases": [
+    {
+      "name": "hero-a",
+      "visibility": {
+        "role": "player",
+        "hero_id": "hero-1",
+        "fact_count": 301,
+        "gm_only_fact_count": 251,
+        "canonical_gm_only_fact_count": 516,
+        "hidden_gm_only_fact_count": 265,
+        "hidden_gm_only_fact_ids_sample": [
+          "fact:measurement-2",
+          "fact:measurement-4",
+          "fact:measurement-6",
+          "fact:measurement-8",
+          "fact:measurement-12"
+        ],
+        "known_gm_only_fact_ids": [
+          "fact:hero-a-private"
+        ],
+        "knowledge_entry_count": 601,
+        "alias_equal": true
+      },
+      "full": {
+        "wire": {
+          "json_bytes": 762495,
+          "gzip_bytes": 40238,
+          "brotli_bytes": 13880
+        },
+        "alias_array_bytes": {
+          "knowledge_revealed": 177829,
+          "knowledge_ledger": 177829
+        },
+        "remaining_fields_sha256": "73aa688b5b94d8a76546940ed35ff5acaa8d505df76e0892cb0ca291a3e51e5a"
+      },
+      "variants": {
+        "knowledge_revealed": {
+          "wire": {
+            "json_bytes": 584644,
+            "gzip_bytes": 33118,
+            "brotli_bytes": 13918
+          },
+          "savings": {
+            "json_bytes": {
+              "bytes": 177851,
+              "percent": 23.325
+            },
+            "gzip_bytes": {
+              "bytes": 7120,
+              "percent": 17.695
+            },
+            "brotli_bytes": {
+              "bytes": -38,
+              "percent": -0.274
+            }
+          },
+          "omitted_alias": "knowledge_revealed",
+          "retained_alias": "knowledge_ledger",
+          "retained_alias_equal_full": true,
+          "remaining_fields_sha256": "73aa688b5b94d8a76546940ed35ff5acaa8d505df76e0892cb0ca291a3e51e5a",
+          "remaining_fields_identity": true,
+          "normalize_world_memory_matches_full": true
+        },
+        "knowledge_ledger": {
+          "wire": {
+            "json_bytes": 584646,
+            "gzip_bytes": 33115,
+            "brotli_bytes": 14046
+          },
+          "savings": {
+            "json_bytes": {
+              "bytes": 177849,
+              "percent": 23.325
+            },
+            "gzip_bytes": {
+              "bytes": 7123,
+              "percent": 17.702
+            },
+            "brotli_bytes": {
+              "bytes": -166,
+              "percent": -1.196
+            }
+          },
+          "omitted_alias": "knowledge_ledger",
+          "retained_alias": "knowledge_revealed",
+          "retained_alias_equal_full": true,
+          "remaining_fields_sha256": "73aa688b5b94d8a76546940ed35ff5acaa8d505df76e0892cb0ca291a3e51e5a",
+          "remaining_fields_identity": true,
+          "normalize_world_memory_matches_full": true
+        }
+      }
+    },
+    {
+      "name": "hero-b",
+      "visibility": {
+        "role": "player",
+        "hero_id": "hero-2",
+        "fact_count": 251,
+        "gm_only_fact_count": 201,
+        "canonical_gm_only_fact_count": 516,
+        "hidden_gm_only_fact_count": 315,
+        "hidden_gm_only_fact_ids_sample": [
+          "fact:measurement-1",
+          "fact:measurement-3",
+          "fact:measurement-5",
+          "fact:measurement-7",
+          "fact:measurement-9"
+        ],
+        "known_gm_only_fact_ids": [
+          "fact:hero-b-private"
+        ],
+        "knowledge_entry_count": 601,
+        "alias_equal": true
+      },
+      "full": {
+        "wire": {
+          "json_bytes": 739178,
+          "gzip_bytes": 39313,
+          "brotli_bytes": 13547
+        },
+        "alias_array_bytes": {
+          "knowledge_revealed": 177838,
+          "knowledge_ledger": 177838
+        },
+        "remaining_fields_sha256": "fa206b4d98f851606a366b78ed8d2bd2e62f7e6b3a433e133cdd9dc850f45e90"
+      },
+      "variants": {
+        "knowledge_revealed": {
+          "wire": {
+            "json_bytes": 561318,
+            "gzip_bytes": 32136,
+            "brotli_bytes": 14007
+          },
+          "savings": {
+            "json_bytes": {
+              "bytes": 177860,
+              "percent": 24.062
+            },
+            "gzip_bytes": {
+              "bytes": 7177,
+              "percent": 18.256
+            },
+            "brotli_bytes": {
+              "bytes": -460,
+              "percent": -3.396
+            }
+          },
+          "omitted_alias": "knowledge_revealed",
+          "retained_alias": "knowledge_ledger",
+          "retained_alias_equal_full": true,
+          "remaining_fields_sha256": "fa206b4d98f851606a366b78ed8d2bd2e62f7e6b3a433e133cdd9dc850f45e90",
+          "remaining_fields_identity": true,
+          "normalize_world_memory_matches_full": true
+        },
+        "knowledge_ledger": {
+          "wire": {
+            "json_bytes": 561320,
+            "gzip_bytes": 32132,
+            "brotli_bytes": 13693
+          },
+          "savings": {
+            "json_bytes": {
+              "bytes": 177858,
+              "percent": 24.062
+            },
+            "gzip_bytes": {
+              "bytes": 7181,
+              "percent": 18.266
+            },
+            "brotli_bytes": {
+              "bytes": -146,
+              "percent": -1.078
+            }
+          },
+          "omitted_alias": "knowledge_ledger",
+          "retained_alias": "knowledge_revealed",
+          "retained_alias_equal_full": true,
+          "remaining_fields_sha256": "fa206b4d98f851606a366b78ed8d2bd2e62f7e6b3a433e133cdd9dc850f45e90",
+          "remaining_fields_identity": true,
+          "normalize_world_memory_matches_full": true
+        }
+      }
+    },
+    {
+      "name": "admin",
+      "visibility": {
+        "role": "admin",
+        "hero_id": "hero-1",
+        "fact_count": 566,
+        "gm_only_fact_count": 516,
+        "canonical_gm_only_fact_count": 516,
+        "hidden_gm_only_fact_count": 0,
+        "hidden_gm_only_fact_ids_sample": [],
+        "known_gm_only_fact_ids": [
+          "fact:hero-a-private",
+          "fact:hero-b-private"
+        ],
+        "knowledge_entry_count": 1202,
+        "alias_equal": true
+      },
+      "full": {
+        "wire": {
+          "json_bytes": 1583001,
+          "gzip_bytes": 81383,
+          "brotli_bytes": 26564
+        },
+        "alias_array_bytes": {
+          "knowledge_revealed": 355692,
+          "knowledge_ledger": 355692
+        },
+        "remaining_fields_sha256": "f86dd717ff2f53128a7747ef020fbf244d2f881e33a6ee7f0b79f8cb77db9f31"
+      },
+      "variants": {
+        "knowledge_revealed": {
+          "wire": {
+            "json_bytes": 1227287,
+            "gzip_bytes": 66882,
+            "brotli_bytes": 26323
+          },
+          "savings": {
+            "json_bytes": {
+              "bytes": 355714,
+              "percent": 22.471
+            },
+            "gzip_bytes": {
+              "bytes": 14501,
+              "percent": 17.818
+            },
+            "brotli_bytes": {
+              "bytes": 241,
+              "percent": 0.907
+            }
+          },
+          "omitted_alias": "knowledge_revealed",
+          "retained_alias": "knowledge_ledger",
+          "retained_alias_equal_full": true,
+          "remaining_fields_sha256": "f86dd717ff2f53128a7747ef020fbf244d2f881e33a6ee7f0b79f8cb77db9f31",
+          "remaining_fields_identity": true,
+          "normalize_world_memory_matches_full": true
+        },
+        "knowledge_ledger": {
+          "wire": {
+            "json_bytes": 1227289,
+            "gzip_bytes": 66877,
+            "brotli_bytes": 26410
+          },
+          "savings": {
+            "json_bytes": {
+              "bytes": 355712,
+              "percent": 22.471
+            },
+            "gzip_bytes": {
+              "bytes": 14506,
+              "percent": 17.824
+            },
+            "brotli_bytes": {
+              "bytes": 154,
+              "percent": 0.58
+            }
+          },
+          "omitted_alias": "knowledge_ledger",
+          "retained_alias": "knowledge_revealed",
+          "retained_alias_equal_full": true,
+          "remaining_fields_sha256": "f86dd717ff2f53128a7747ef020fbf244d2f881e33a6ee7f0b79f8cb77db9f31",
+          "remaining_fields_identity": true,
+          "normalize_world_memory_matches_full": true
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "The probe does not change the server or client, and it does not prove replay compatibility for a persisted transport variant.",
+    "normalize_world_memory_matches_full covers only the worldMemory normalizer; consumers still need an explicit alias policy."
+  ]
+}

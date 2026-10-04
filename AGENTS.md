@@ -20,8 +20,10 @@
   Типы описываются JSDoc-ом (`@typedef`, `@param`, `@returns`) и JSDoc-приведением
   `/** @type {T} */ (expr)` — рантайм при этом не меняется. Если для зелёного
   нужна правка поведения — остановиться и вынести её отдельной задачей.
-  Проверяются 35 файлов (на 2026-10-02): список даёт
+  Проверяются 40 файлов (на 2026-10-04): список даёт
   `grep -rl '^// @ts-check' server/`. `rules-engine.mjs` и `index.mjs` в нём нет.
+  Каждый такой файл перечислен в `include` `tsconfig.server.json`: пометка без
+  строки там ничего не проверяет. Сторож — `test/server-typecheck-coverage.test.mjs`.
   Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
 - **`src/` — TypeScript + React + Vite.** Проверяется через `tsc --noEmit -p tsconfig.app.json`.
 - **Тесты — встроенный `node:test`, файлы `test/*.test.mjs`.** Ни Jest, ни
@@ -137,7 +139,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | --- | --- | --- |
 | `server/director-agent.mjs` | `prompts/director/v4_story.txt`, `prompts/director/v4_chaos.txt` | темп, развилки, переходы |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | тактика NPC |
-| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v6.txt` | социальные сцены |
+| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v7.txt` | социальные сцены; публичные зацепки карты о собеседнике (`public_hooks_naming_npc`) |
 | `server/narrator.mjs` | `prompts/narrator/v12.txt` | текст после commit; якоря карты сцены (`landmarks`, `landmarks_absent`) |
 | `server/scene-architect.mjs` | `prompts/map_architect/v8.txt` | новые области, их заготовки ведущего (`secrets`) и якоря карты (`map.design.landmarks`) |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v8.txt` | исходная ситуация кампании, заготовки ведущего (`secrets`) и якоря первой карты |
@@ -149,7 +151,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 вариант выбирается в `choose()`, а не импортом. Файлов в `prompts/` ещё больше:
 рядом с загружаемой версией лежат предыдущие (`action_adjudicator/v2`—`v7`,
 `campaign_creator/v1`—`v7`, `director/v1`—`v3`, `map_architect/v1`—`v7`,
-`narrator/v1`—`v11`, `npc_controller/social_v1`—`social_v5`) плюс
+`narrator/v1`—`v11`, `npc_controller/social_v1`—`social_v6`) плюс
 `narrator/few-shot-v1.json` и `few-shot-v2.json`. Актуальна та
 версия, которую действительно читает модуль из таблицы, — остальные оставлены
 как история контракта.
@@ -267,11 +269,12 @@ commit, механики он не касается.
 | Инвариант | Сторож |
 | --- | --- |
 | Replay потока событий даёт то же состояние | `test/event-store.test.mjs`, `pnpm cutover:audit` |
-| Повтор с тем же `idempotency_key` возвращает прежний commit | `test/api-integration.test.mjs`, `test/game-flow-integration.test.mjs` |
-| Все броски серверные, один бросок не применяется дважды | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs` |
+| Потеря хвоста журнала или seed-снимка — явный отказ `CAMPAIGN_RECOVERY_REQUIRED`, а не тихая загрузка старого состояния; отказ одной кампании не роняет сервер | `test/event-store.test.mjs`, `test/recovery-required-api.test.mjs` |
+| Повтор с тем же `idempotency_key` возвращает прежний commit; другая цель, тип команды, актор или endpoint под тем же ключом — `409 IDEMPOTENCY_CONFLICT` | `test/api-integration.test.mjs`, `test/game-flow-integration.test.mjs`, `test/command-retry-intent-api.test.mjs` |
+| Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs`, `test/roll-binding.test.mjs` |
 | Клиентские поля недоверенные (путь, дальность, цель) | `test/tactical-command-guard.test.mjs` |
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
-| Игрок видит только разрешённое | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs` |
+| Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs`, `test/combat-forecast-disclosure.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
 | Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |
@@ -281,6 +284,11 @@ commit, механики он не касается.
 | Враг встречи появляется по эту сторону дверей и окон от отряда | `test/encounter-assembler.test.mjs` |
 | Параллельные команды не перезаписывают друг друга молча | `test/narrate-room-version-race.test.mjs`, `test/snapshot-projector-version.test.mjs` |
 | Корпус тестов не ходит в интернет: каждый запуск `server/index.mjs` либо с пустым `ROUTERAI_API_KEY`, либо с локальным `ROUTERAI_BASE_URL` | `test/test-network-isolation.test.mjs` |
+| Запрос не роняет сервер: тело — только JSON-объект, необработанная ошибка маршрута завершает свой запрос ответом 500 | `test/map-import-api.test.mjs`, `test/recovery-required-api.test.mjs` |
+| Весь вызов модели и картинок идёт через учёт расхода; известный usage непригодного ответа тоже записывается | `test/usage-ledger.test.mjs`, `test/item-images-api.test.mjs` |
+| Медленный читатель живого потока не копит кадры: комната и присутствие схлопываются до последнего состояния, очередь соединения ограничена, отзыв прав уходит напрямую | `test/narration-stream.test.mjs`, `test/stream-backpressure-api.test.mjs` |
+| Карта читается только той, на которую указывает её хеш; библиотечная постройка выбирается, только если исправны все её этажи | `test/map-store.test.mjs`, `test/map-library.test.mjs` |
+| Бэкап не снимается с работающего на том же storage сервера без явного `--allow-live` | `test/backup-service.test.mjs`, `test/storage-backup-cli.test.mjs` |
 
 Если новый инвариант нельзя привязать к тесту — он ещё не инвариант, а намерение.
 

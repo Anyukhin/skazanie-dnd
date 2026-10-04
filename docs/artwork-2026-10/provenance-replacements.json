@@ -1,0 +1,140 @@
+{
+  "schema": "artwork-provenance/v1",
+  "assets": [
+    {
+      "id": "party_portraits",
+      "path": "party-portraits.png",
+      "assembly": "Четыре отдельные генерации уменьшены до256×256 и собраны2×2: человек-воительница, эльф-следопыт, дворф-жрец, тифлинг-колдунья.",
+      "components": [
+        {
+          "call_id": "portrait-human-fighter",
+          "position": "TL",
+          "normalize": [
+            256,
+            256
+          ],
+          "source_file": "exec-af3f4f99-d449-430a-bd3d-92a3c9dd40de.png",
+          "prompt": "Use case: stylized-concept\nAsset type: fantasy tabletop RPG party portrait, one quadrant source for a 2x2 demo portrait sheet\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile materials, restrained old-fantasy palette, and warm directed light. Do not copy its fireball subject, silhouette, composition, or transparent cutout.\nPrimary request: an original adult human woman fighter portrait.\nScene/backdrop: a dark umber-brown softly mottled painted background with a subtle vignette, no frame or plate.\nSubject: one adult human woman fighter, calm capable expression, practical worn leather and muted steel armor, one simple shoulder guard, head and upper torso centered and fully visible.\nStyle/medium: original hand-painted dark-fantasy character portrait with matte gouache, broad connected paint shapes, visible brush texture, dark illustrated contour, natural anatomy. No glossy 3D or photoreal studio rendering.\nComposition/framing: square 1024-style portrait, circle-safe head and shoulders with generous margin on every side; face readable at 64 px; no cropping of hair, chin, or shoulders.\nLighting/mood: warm directional light from upper front, deep umber shadows, quiet readiness.\nColor palette: warm skin tones, dark brown hair, worn leather, muted iron, restrained ochre and charcoal.\nMaterials/textures: matte painted skin, hair, leather, and metal; no plastic sheen.\nText (verbatim): \"\"\nConstraints: one character only; original artwork; no frame; no border; no logo; no watermark; no weapon dominating the image; no readable text.\nAvoid: fire motif, flames, extra characters, extra limbs, distorted hands, cropped face, photorealism, glossy 3D, game-render plastic, neon, flat vector art, letters, numbers, pseudo-text."
+        },
+        {
+          "call_id": "portrait-elf-ranger",
+          "position": "TR",
+          "normalize": [
+            256,
+            256
+          ],
+          "source_file": "exec-8a2b7408-35b5-4798-8eea-ce7d1af1982c.png",
+          "prompt": "Use case: stylized-concept\nAsset type: fantasy tabletop RPG party portrait, one quadrant source for a 2x2 demo portrait sheet\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile materials, restrained old-fantasy palette, and warm directed light. Do not copy its fireball subject, silhouette, composition, or transparent cutout.\nPrimary request: an original adult male elf ranger portrait.\nScene/backdrop: a dark umber-brown softly mottled painted background with a subtle vignette, no frame or plate.\nSubject: one adult male elf ranger, calm alert expression, slightly pointed ears, long dark hair tied back, practical green-brown travel cloak and worn leather shoulder gear, head and upper torso centered and fully visible.\nStyle/medium: original hand-painted dark-fantasy character portrait with matte gouache, broad connected paint shapes, visible brush texture, dark illustrated contour, natural anatomy. No glossy 3D or photoreal studio rendering.\nComposition/framing: square 1024-style portrait, circle-safe head and shoulders with generous margin on every side; face readable at 64 px; no cropping of ears, hair, chin, or shoulders.\nLighting/mood: warm directional light from upper front with quiet cool shadow accents, deep umber background, watchful woodland readiness.\nColor palette: muted olive green, dark brown hair, weathered leather, bronze-brown fittings, restrained ochre and charcoal.\nMaterials/textures: matte painted skin, hair, wool cloak, leather, and small metal fittings; no plastic sheen.\nText (verbatim): \"\"\nConstraints: one character only; original artwork; no frame; no border; no logo; no watermark; no weapon dominating the image; no readable text.\nAvoid: fire motif, flames, extra characters, extra limbs, distorted ears or hands, cropped face, photorealism, glossy 3D, game-render plastic, neon, flat vector art, letters, numbers, pseudo-text."
+        },
+        {
+          "call_id": "portrait-dwarf-priest",
+          "position": "BL",
+          "normalize": [
+            256,
+            256
+          ],
+          "source_file": "exec-3ceb812e-5d76-45c0-be6b-1a403ab2b3be.png",
+          "prompt": "Use case: stylized-concept\nAsset type: fantasy tabletop RPG party portrait, one quadrant source for a 2x2 demo portrait sheet\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile materials, restrained old-fantasy palette, and warm directed light. Do not copy its fireball subject, silhouette, composition, or transparent cutout.\nPrimary request: an original adult male dwarf priest portrait.\nScene/backdrop: a dark umber-brown softly mottled painted background with a subtle vignette, no frame or plate.\nSubject: one adult male dwarf priest, broad face and sturdy build, short dark braided beard, calm solemn expression, simple worn brown robe with muted bronze clasp and a small plain holy pendant, head and upper torso centered and fully visible.\nStyle/medium: original hand-painted dark-fantasy character portrait with matte gouache, broad connected paint shapes, visible brush texture, dark illustrated contour, natural anatomy. No glossy 3D or photoreal studio rendering.\nComposition/framing: square 1024-style portrait, circle-safe head and shoulders with generous margin on every side; face readable at 64 px; no cropping of beard, head, or shoulders.\nLighting/mood: warm directional light from upper front, quiet devotional dignity, deep umber shadows.\nColor palette: warm ruddy skin, dark brown hair and beard, worn earth-brown robe, muted bronze, restrained ochre and charcoal.\nMaterials/textures: matte painted skin, hair, beard, cloth, leather, and metal; no plastic sheen.\nText (verbatim): \"\"\nConstraints: one character only; original artwork; no frame; no border; no logo; no watermark; no weapon dominating the image; no readable text.\nAvoid: fire motif, flames, extra characters, extra limbs, distorted beard or hands, cropped face, photorealism, glossy 3D, game-render plastic, neon, flat vector art, letters, numbers, pseudo-text."
+        },
+        {
+          "call_id": "portrait-tiefling-warlock",
+          "position": "BR",
+          "normalize": [
+            256,
+            256
+          ],
+          "source_file": "exec-671ceba4-6e0f-4bdb-80af-5e310918a211.png",
+          "prompt": "Use case: stylized-concept\nAsset type: fantasy tabletop RPG party portrait, one quadrant source for a 2x2 demo portrait sheet\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile materials, restrained old-fantasy palette, and warm directed light. Do not copy its fireball subject, silhouette, composition, or transparent cutout.\nPrimary request: an original adult female tiefling warlock portrait.\nScene/backdrop: a dark umber-brown softly mottled painted background with a subtle vignette, no frame or plate.\nSubject: one adult female tiefling warlock, natural crimson-umber skin, two swept-back horns, dark wavy hair, composed intelligent expression, worn charcoal and burgundy cloak with a muted bronze clasp, head and upper torso centered and fully visible.\nStyle/medium: original hand-painted dark-fantasy character portrait with matte gouache, broad connected paint shapes, visible brush texture, dark illustrated contour, natural anatomy. No glossy 3D or photoreal studio rendering.\nComposition/framing: square 1024-style portrait, circle-safe head, horns, and shoulders with generous margin on every side; face readable at 64 px; no cropping of horns, hair, chin, or shoulders.\nLighting/mood: warm directional light from upper front, restrained burgundy and violet shadow accents, quiet occult confidence.\nColor palette: muted crimson-umber skin, dark brown hair, charcoal cloth, subdued burgundy, aged bronze, restrained ochre.\nMaterials/textures: matte painted skin, horns, hair, cloth, leather, and metal; no plastic sheen; no glowing eyes or magical effects.\nText (verbatim): \"\"\nConstraints: one character only; original artwork; no frame; no border; no logo; no watermark; no weapon dominating the image; no readable text.\nAvoid: fire motif, flames, extra characters, extra limbs, distorted horns or hands, cropped face, photorealism, glossy 3D, game-render plastic, neon, flat vector art, letters, numbers, pseudo-text."
+        }
+      ],
+      "tool": "OpenAI ImageGen (built-in); сборка и нормализация Sharp",
+      "date": "2026-10-04",
+      "width": 512,
+      "height": 512,
+      "sha256": "5bdaa36774917936471a1d485aa647bd51814e5a1f0ac913d19a89cfd6c94e95",
+      "bytes": 469735,
+      "status": "installed",
+      "encoding": "PNG: адаптивная фильтрация и deflate9, без изменения пикселей"
+    },
+    {
+      "id": "item_atlas",
+      "path": "items/item-atlas.png",
+      "assembly": "Четыре отдельные генерации уменьшены до627×627 и собраны2×2: компас, зелье лечения, амулет-глаз, кожаный журнал.",
+      "components": [
+        {
+          "call_id": "item-compass",
+          "position": "TL",
+          "normalize": [
+            627,
+            627
+          ],
+          "source_file": "exec-570a5d01-909f-4982-8d62-25fee139ccad.png",
+          "prompt": "Use case: stylized-concept\nAsset type: matte painted fantasy RPG inventory item source for a 2x2 demo atlas\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile materials, restrained old-fantasy palette, and warm directed light. Do not copy its fireball subject, silhouette, composition, or transparent cutout.\nPrimary request: an original brass compass with a clear green needle.\nScene/backdrop: opaque dark brown umber vignette, softly painted, no frame or plate.\nSubject: one antique brass compass, closed circular case with hinged lid slightly open enough to show the face, a clear green needle, worn engraved metal texture without readable marks, leather strap loop optional only if it stays secondary.\nStyle/medium: hand-painted dark-fantasy tabletop RPG inventory art, matte gouache with broad connected strokes, dark illustrated contour, tangible worn brass and glass, material colors true to the object. No glossy 3D or photoreal product render.\nComposition/framing: square 1024-style source, one whole centered item with generous margin on every side, silhouette readable at 64 px.\nLighting/mood: warm soft directional light, deep brown shadows, quiet travel artifact.\nMaterials/textures: aged matte brass, muted glass, worn leather, no plastic shine, no bloom.\nText (verbatim): \"\"\nConstraints: exactly one compass; no frame; no border; no label; no text; no letters; no numbers; no pseudo-text; no logo; no watermark; whole object visible; dark brown background.\nAvoid: fire, flames, extra objects, map, scenery, hands, impossible geometry, photorealism, glossy 3D, chrome render, neon, flat vector, decorative medallion without a compass."
+        },
+        {
+          "call_id": "item-healing-potion",
+          "position": "TR",
+          "normalize": [
+            627,
+            627
+          ],
+          "source_file": "exec-9db2ee12-1249-4ab5-b06d-d860cb17e97e.png",
+          "prompt": "Use case: stylized-concept\nAsset type: matte painted fantasy RPG inventory item source for a 2x2 demo atlas\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile materials, restrained old-fantasy palette, and warm directed light. Do not copy its fireball subject, silhouette, composition, or transparent cutout.\nPrimary request: an original small healing potion.\nScene/backdrop: opaque dark brown umber vignette, softly painted, no frame or plate.\nSubject: one squat clear glass potion bottle with a simple cork stopper, crimson red liquid, a few distinct gold flecks suspended in the liquid, no label or writing.\nStyle/medium: hand-painted dark-fantasy tabletop RPG inventory art, matte gouache with broad connected strokes, dark illustrated contour, tangible glass and liquid, material colors true to the object. No glossy 3D or photoreal product render.\nComposition/framing: square 1024-style source, one whole centered item with generous margin on every side, silhouette readable at 64 px.\nLighting/mood: warm soft directional light, restrained red and gold color accents, deep brown shadows.\nMaterials/textures: painted glass with controlled highlights, matte cork, opaque crimson liquid, subtle gold flecks, no plastic shine, no external glow or bloom.\nText (verbatim): \"\"\nConstraints: exactly one potion bottle; no frame; no border; no label; no text; no letters; no numbers; no pseudo-text; no logo; no watermark; whole object visible; dark brown background.\nAvoid: fire, flames, extra objects, hands, spilled liquid, impossible geometry, photorealism, glossy 3D, chrome render, neon, flat vector, decorative medallion."
+        },
+        {
+          "call_id": "item-eye-amulet",
+          "position": "BL",
+          "normalize": [
+            627,
+            627
+          ],
+          "source_file": "exec-9344b824-0e63-4ac1-b746-0bdccbfd72e1.png",
+          "prompt": "Use case: stylized-concept\nAsset type: matte painted fantasy RPG inventory item source for a 2x2 demo atlas\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile materials, restrained old-fantasy palette, and warm directed light. Do not copy its fireball subject, silhouette, composition, or transparent cutout.\nPrimary request: an original silver eye amulet.\nScene/backdrop: opaque dark brown umber vignette, softly painted, no frame or plate.\nSubject: one small silver amulet shaped as a single stylized protective eye, solid silver setting with a pale blue-gray stone iris, suspended on a simple dark cord; no writing or runes.\nStyle/medium: hand-painted dark-fantasy tabletop RPG inventory art, matte gouache with broad connected strokes, dark illustrated contour, tangible silver and stone, material colors true to the object. No glossy 3D or photoreal product render.\nComposition/framing: square 1024-style source, one whole centered item with generous margin on every side, silhouette readable at 64 px.\nLighting/mood: warm soft directional light, restrained cool stone accent, deep brown shadows.\nMaterials/textures: aged matte silver, softly polished stone but not glossy, worn cord, no plastic shine, no glow or bloom.\nText (verbatim): \"\"\nConstraints: exactly one amulet; one eye motif only; no frame; no border; no label; no text; no letters; no numbers; no pseudo-text; no logo; no watermark; whole object visible; dark brown background.\nAvoid: extra eyes, faces, hands, living creature, fire, flames, impossible anatomy, photorealism, glossy 3D, chrome render, neon, flat vector, decorative medallion without a clear eye amulet."
+        },
+        {
+          "call_id": "item-leather-journal",
+          "position": "BR",
+          "normalize": [
+            627,
+            627
+          ],
+          "source_file": "exec-d2ce1c54-213a-4a0a-aa00-8cefb650743c.png",
+          "prompt": "Use case: stylized-concept\nAsset type: matte painted fantasy RPG inventory item source for a 2x2 demo atlas\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile materials, restrained old-fantasy palette, and warm directed light. Do not copy its fireball subject, silhouette, composition, or transparent cutout.\nPrimary request: an original worn leather journal.\nScene/backdrop: opaque dark brown umber vignette, softly painted, no frame or plate.\nSubject: one closed worn leather journal, thick dark brown cover with a strap and simple metal clasp, slightly softened corners and visible page block at the edge, no title or markings.\nStyle/medium: hand-painted dark-fantasy tabletop RPG inventory art, matte gouache with broad connected strokes, dark illustrated contour, tangible worn leather and paper, material colors true to the object. No glossy 3D or photoreal product render.\nComposition/framing: square 1024-style source, one whole centered item with generous margin on every side, silhouette readable at 64 px.\nLighting/mood: warm soft directional light, quiet archival object, deep brown shadows.\nMaterials/textures: matte cracked leather, aged paper edges, dull metal clasp, no plastic shine, no glow or bloom.\nText (verbatim): \"\"\nConstraints: exactly one journal; no frame; no border; no title; no label; no text; no letters; no numbers; no pseudo-text; no logo; no watermark; whole object visible; dark brown background.\nAvoid: open pages, writing, readable marks, extra objects, hands, loose papers, fire, flames, impossible geometry, photorealism, glossy 3D, chrome render, neon, flat vector, decorative book medallion."
+        }
+      ],
+      "tool": "OpenAI ImageGen (built-in); сборка и нормализация Sharp",
+      "date": "2026-10-04",
+      "width": 1254,
+      "height": 1254,
+      "sha256": "dd6f021633f286adad521cbc11178b56d868fcabd419c52d768d25b27a0ce5ab",
+      "bytes": 2368877,
+      "status": "installed",
+      "encoding": "PNG: адаптивная фильтрация и deflate9, без изменения пикселей"
+    },
+    {
+      "id": "norvin_map",
+      "path": "items/norvin-map.png",
+      "assembly": "Оригинальная генерация карты затопленного архива приведена к1536×1024 с сохранением пропорций.",
+      "components": [
+        {
+          "call_id": "norvin-map",
+          "position": null,
+          "normalize": [
+            1536,
+            1024
+          ],
+          "source_file": "exec-980901cb-c056-4e88-96ed-7716d09f132e.png",
+          "prompt": "Use case: stylized-concept\nAsset type: tabletop RPG location illustration and map background, fresh replacement for an unknown-provenance static asset\nInput images: Image 1 is the primary style reference only; match its matte hand-painted gouache brushwork, visible dry strokes, dark carved contours, tactile paper and wood materials, restrained old-fantasy palette, and warm directed light. Do not copy the reference subject, layout, or silhouette.\nPrimary request: a fresh 3:2 top-down plan illustration of a flooded underground archive.\nScene/backdrop: an aged oiled parchment plan laid over dark wood, viewed directly from above; irregular dark paper edges are acceptable inside the frame but the full image must fill a 3:2 canvas with no letterbox.\nSubject: an underground archive layout with connected corridors, flooded rooms and channels of muted blue water, dense book stacks, a few staircases, small structural partitions, and clear navigable negative space. Add sparse abstract green marks as non-linguistic vegetation or damp growth indicators and a dotted red route crossing the archive.\nStyle/medium: matte hand-painted old-fantasy map illustration, broad gouache strokes, visible dry brush, dark brown ink-like contours, tactile oiled paper and dark wood grain. It is a readable illustrated plan, not a photoreal aerial photo and not glossy 3D.\nComposition/framing: exact 3:2 landscape composition, full canvas filled, top-down orthographic plan, corridors and rooms arranged as a coherent fresh layout; no stretching, no letterbox, no copied old map layout.\nLighting/mood: warm subdued light on parchment, cool muted blue water, damp secretive archive atmosphere.\nColor palette: dark umber wood, aged tan paper, charcoal-brown linework, muted slate blue water, sparse desaturated green marks, restrained dotted red route.\nMaterials/textures: matte paper fibers, oil stains, painted wood grain, dark ink contours, opaque brushwork.\nText (verbatim): \"\"\nConstraints: no readable text, no letters, no numbers, no runes, no labels, no legend, no compass rose, no logo, no watermark; no people; no modern objects; one coherent archive plan; route is dotted red marks only.\nAvoid: fire motif, flames, photorealism, glossy 3D, satellite imagery, neon, polished game UI, vector diagram, pseudo-text, grids with written coordinates, impossible floating structures."
+        }
+      ],
+      "tool": "OpenAI ImageGen (built-in); сборка и нормализация Sharp",
+      "date": "2026-10-04",
+      "width": 1536,
+      "height": 1024,
+      "sha256": "7f3c9e3643bc14de32ddb3138b11f8ee9b164ab76bc7c891a0bc190c65413d2d",
+      "bytes": 3135494,
+      "status": "installed",
+      "encoding": "PNG: адаптивная фильтрация и deflate9, без изменения пикселей"
+    }
+  ]
+}

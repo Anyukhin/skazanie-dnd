@@ -1,0 +1,209 @@
+[
+  {
+    "elapsed_ms": 69890,
+    "kind": "room-get",
+    "has_map_hash": false,
+    "status": 200,
+    "bytes": 38111,
+    "duration_ms": 29,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": false,
+    "has_map_delta": false,
+    "has_map": true
+  },
+  {
+    "elapsed_ms": 69983,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37537,
+    "duration_ms": 17,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 70021,
+    "kind": "sse-open",
+    "status": 200
+  },
+  {
+    "elapsed_ms": 70021,
+    "kind": "sse-chunk",
+    "bytes": 13,
+    "events": [],
+    "has_comment": false
+  },
+  {
+    "elapsed_ms": 70022,
+    "kind": "sse-chunk",
+    "bytes": 38149,
+    "events": [
+      "room"
+    ],
+    "has_comment": false
+  },
+  {
+    "elapsed_ms": 84998,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37549,
+    "duration_ms": 17,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 90027,
+    "kind": "sse-chunk",
+    "bytes": 27,
+    "events": [],
+    "has_comment": true
+  },
+  {
+    "elapsed_ms": 99982,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37549,
+    "duration_ms": 14,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 110034,
+    "kind": "sse-chunk",
+    "bytes": 27,
+    "events": [],
+    "has_comment": true
+  },
+  {
+    "elapsed_ms": 114981,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37549,
+    "duration_ms": 14,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 129981,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37549,
+    "duration_ms": 13,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 130048,
+    "kind": "sse-chunk",
+    "bytes": 27,
+    "events": [],
+    "has_comment": true
+  },
+  {
+    "elapsed_ms": 144982,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37549,
+    "duration_ms": 14,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 150049,
+    "kind": "sse-chunk",
+    "bytes": 27,
+    "events": [],
+    "has_comment": true
+  },
+  {
+    "elapsed_ms": 159982,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37549,
+    "duration_ms": 14,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 170059,
+    "kind": "sse-chunk",
+    "bytes": 27,
+    "events": [],
+    "has_comment": true
+  },
+  {
+    "elapsed_ms": 174982,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37549,
+    "duration_ms": 14,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 189984,
+    "kind": "room-get",
+    "has_map_hash": true,
+    "status": 200,
+    "bytes": 37549,
+    "duration_ms": 15,
+    "room_version": 1,
+    "state_version": 0,
+    "has_state": true,
+    "map_unchanged": true,
+    "has_map_delta": false,
+    "has_map": false
+  },
+  {
+    "elapsed_ms": 190061,
+    "kind": "sse-chunk",
+    "bytes": 27,
+    "events": [],
+    "has_comment": true
+  },
+  {
+    "elapsed_ms": 191464,
+    "kind": "sse-close"
+  }
+]

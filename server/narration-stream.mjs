@@ -71,7 +71,6 @@ export class CampaignNarrationStream {
     this.clearTimer = clearTimer
     this.now = now
     this.active = new Map()
-    this.pendingByConnection = new WeakMap()
   }
 
   _campaign(campaignId, create = true) {
@@ -81,23 +80,14 @@ export class CampaignNarrationStream {
     return { normalized, entries: this.active.get(normalized) ?? null }
   }
 
-  _pending(connection) {
-    let pending = this.pendingByConnection.get(connection)
-    if (!pending) {
-      pending = new Map()
-      this.pendingByConnection.set(connection, pending)
-    }
-    return pending
-  }
-
   _deliver(connection, event, payload) {
     if (!connection || connection.closed || connection.res?.destroyed) return
-    if (connection.narrationBackpressured) {
-      this._pending(connection).set(payload.message_id, { event, payload })
-      return
-    }
-    const ready = this.write(connection, event, payload)
-    if (ready === false) connection.narrationBackpressured = true
+    // Аудит PR #131, SEC-06: своей очереди у повествования больше нет. Раньше
+    // backpressure держал только этот класс, а `room`, `presence` и пульс шли
+    // в сокет мимо него. Теперь кадр уходит в общую очередь соединения
+    // (`CampaignStreamOutbox` ниже): она и схлопывает снимки одного сообщения
+    // до последнего, пока клиент не дочитал прежние.
+    this.write(connection, event, payload)
   }
 
   _broadcast(campaignId, event, payload) {
@@ -217,17 +207,155 @@ export class CampaignNarrationStream {
     }
   }
 
-  drain(connection) {
-    connection.narrationBackpressured = false
-    const pending = this._pending(connection)
-    for (const [messageId, item] of [...pending]) {
-      pending.delete(messageId)
-      this._deliver(connection, item.event, item.payload)
-      if (connection.narrationBackpressured) break
+  activeCount(campaignId) {
+    return this._campaign(campaignId, false).entries?.size ?? 0
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Очередь кадров одного SSE-соединения
+// ---------------------------------------------------------------------------
+
+/**
+ * Сколько непрочитанных кадров держит одно соединение, пока сокет не принял
+ * прежние. Кадры с ключом схлопываются — одна `room`, одна `presence`, один
+ * пульс, по снимку на сообщение повествования, — поэтому до предела доходит
+ * только поток разных сообщений к клиенту, который не читает вовсе.
+ */
+export const CAMPAIGN_STREAM_MAX_PENDING_FRAMES = 32
+
+/**
+ * Ключ схлопывания кадра: непрочитанный кадр с тем же ключом заменяется новым.
+ * `room` несёт полное разрешённое состояние, `presence` — полный список
+ * печатающих, снимок повествования — полный текст своего сообщения, так что
+ * промежуточные клиенту не нужны. Остальные кадры (`null`) не схлопываются и
+ * считаются в предел по одному.
+ *
+ * @param {string} event
+ * @param {unknown} payload
+ * @returns {string | null}
+ */
+export function campaignStreamFrameKey(event, payload) {
+  const name = String(event ?? '')
+  if (name === 'room' || name === 'presence' || name === 'heartbeat') return name
+  const messageId = payload && typeof payload === 'object' ? payload.message_id : null
+  if (name.startsWith('narration.') && messageId) return `narration:${messageId}`
+  return null
+}
+
+/**
+ * Аудит PR #131, SEC-06: одна ограниченная очередь на SSE-соединение для всех
+ * кадров — комнаты, присутствия, пульса и повествования.
+ *
+ * `ServerResponse.write()` возвращает `false`, когда буфер сокета переполнен,
+ * но кадр при этом уже принят и будет отправлен после `drain`. Раньше это
+ * учитывал только поток повествования, а рассылка комнаты и индикатор ввода
+ * продолжали писать: клиент, который не читает сокет, копил в памяти сервера
+ * по полному состоянию кампании на каждый ход.
+ *
+ * Теперь пока сокет занят, новые кадры ждут здесь, и кадр с тем же ключом
+ * (`campaignStreamFrameKey`) заменяет непрочитанный прежний. На `drain`
+ * уходит последнее. Кадр собирается **в момент записи** (`render`), а не
+ * постановки: кадр комнаты сжимается относительно карты, которую соединение
+ * действительно отправило (`mapHash`), — выброшенный промежуточный кадр не
+ * оставит клиенту хеш карты, которую тот так и не получил.
+ *
+ * Очередь ограничена `maxPending`. Переполнение значит, что клиент не читает
+ * вовсе: соединение закрывается (`onClose('overflow')`), а переподключение
+ * получает полное разрешённое состояние обычным рукопожатием.
+ *
+ * Отзыв прав (`access`) сюда не входит: он выбрасывает ожидающие кадры
+ * (`discard`) — они собраны под прежними правами — и пишется в сокет напрямую
+ * перед закрытием потока.
+ */
+export class CampaignStreamOutbox {
+  /**
+   * @param {{
+   *   write: (chunk: string) => boolean | null,
+   *   maxPending?: number,
+   *   onClose?: (reason: 'overflow' | 'render_failed', error?: unknown) => void,
+   * }} options `write` возвращает результат `res.write()` либо `null`, если
+   *   соединение уже закрыто.
+   */
+  constructor({ write, maxPending = CAMPAIGN_STREAM_MAX_PENDING_FRAMES, onClose = () => {} } = {}) {
+    if (typeof write !== 'function') throw new TypeError('CampaignStreamOutbox требует write')
+    this.write = write
+    this.maxPending = Math.max(1, Number(maxPending) || CAMPAIGN_STREAM_MAX_PENDING_FRAMES)
+    this.onClose = onClose
+    this.blocked = false
+    this.closed = false
+    this.pending = new Map()
+    this.sequence = 0
+  }
+
+  get pendingCount() {
+    return this.pending.size
+  }
+
+  _close(reason, error) {
+    this.pending.clear()
+    if (this.closed) return
+    this.closed = true
+    this.onClose(reason, error)
+  }
+
+  /**
+   * Отправляет кадр сразу либо ставит его в очередь, если сокет занят.
+   * `render` возвращает готовую строку SSE (или `null`, если писать нечего) и
+   * вызывается ровно тогда, когда кадр уходит в сокет.
+   *
+   * @param {string | null} key ключ схлопывания, `null` — не схлопывать
+   * @param {() => string | null} render
+   * @returns {boolean | null} результат записи; `false` — кадр в очереди или
+   *   буфер полон; `null` — соединение закрыто или переполнено
+   */
+  send(key, render) {
+    if (this.closed) return null
+    if (!this.blocked && !this.pending.size) return this._flush(render)
+    const slot = key ?? `frame:${++this.sequence}`
+    // Удаление перед вставкой переносит схлопнутый кадр в конец: порядок
+    // уцелевших кадров тот же, в каком приходили их последние версии.
+    this.pending.delete(slot)
+    this.pending.set(slot, render)
+    if (this.pending.size > this.maxPending) {
+      this._close('overflow')
+      return null
+    }
+    return false
+  }
+
+  /** Сокет освободился: отправить ожидающее, пока он снова не заполнится. */
+  drain() {
+    this.blocked = false
+    while (!this.closed && this.pending.size && !this.blocked) {
+      const [slot, render] = this.pending.entries().next().value
+      this.pending.delete(slot)
+      let written
+      // `drain` приходит из события сокета: брошенная здесь ошибка уронила бы
+      // процесс. Не собрался кадр — соединение закрывается, клиент
+      // переподключится и получит состояние заново.
+      try { written = this._flush(render) }
+      catch (error) {
+        this._close('render_failed', error)
+        return
+      }
+      if (written === null) {
+        this.pending.clear()
+        return
+      }
     }
   }
 
-  activeCount(campaignId) {
-    return this._campaign(campaignId, false).entries?.size ?? 0
+  /** Выбросить непрочитанное — перед отзывом прав и закрытием потока. */
+  discard() {
+    this.pending.clear()
+  }
+
+  _flush(render) {
+    const chunk = render()
+    if (chunk == null) return true
+    const written = this.write(String(chunk))
+    if (written === false) this.blocked = true
+    return written
   }
 }

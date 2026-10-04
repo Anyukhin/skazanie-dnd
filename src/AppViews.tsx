@@ -16,6 +16,7 @@ import {
 import { chronicleFollowAfterScroll, chronicleMatchesFilter, chronicleMessageText, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import type { NarrationVoiceMode } from './narration-tts.mjs'
 import { campaignClockLabel, localizedQuestClockLabel } from './desktop-ui.mjs'
+import { journalQuestFocus } from './journal-quests.mjs'
 import type { AtmosphereSettings } from './atmosphere-audio'
 import type {
   Account, AgentInteraction, AiHealth, AssetPreparationReport, BeastChronicleCard,
@@ -49,13 +50,13 @@ const REASONING_LEVEL_FALLBACK: NonNullable<CampaignAiSettingsResponse['reasonin
 const RULESET_FALLBACK: RulesetProfileDescriptor[] = [
   {
     id: 'dnd_5e_2014', version: '2014.1.0', editionFamily: '5e_2014', label: 'D&D 5e 2014',
-    description: 'Классическая редакция по локальному профилю 5e14.dnd.su.', mechanicsStatus: 'partial', availability: 'preview',
-    limitations: ['Создание героев, предметы и бестиарий ещё переводятся на отдельные каталоги 2014.'],
+    description: 'Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.', mechanicsStatus: 'partial', availability: 'preview',
+    limitations: ['Снаряжение и монстры пока общие с правилами 2024 года.'],
   },
   {
     id: 'srd_5_2_1', version: '5.2.1', editionFamily: '5e_2024', label: 'D&D 2024',
-    description: 'Текущий стабильный runtime-профиль SRD 5.2.1.', mechanicsStatus: 'partial', availability: 'active',
-    limitations: ['Покрытие механики остаётся частичным.'],
+    description: 'Правила 2024 года — поддерживаются лучше всего.', mechanicsStatus: 'partial', availability: 'active',
+    limitations: ['Часть классовых умений, заклинаний и существ пока объявляется словами.'],
   },
 ]
 
@@ -258,7 +259,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
             <div className="ruleset-picker" role="group" aria-label="Правила кампании">
               <span className="ruleset-picker-title"><b>Правила кампании</b><small>Редакция сохраняется в кампании и после первого игрового события блокируется.</small></span>
               <div>{rulesets.map((profile) => <button key={profile.id} type="button" className={rulesetId === profile.id ? 'selected' : ''} aria-pressed={rulesetId === profile.id} onClick={() => setRulesetId(profile.id)}>
-                <strong>{profile.label}</strong><small>{profile.description}</small><em>{profile.availability === 'preview' ? 'ПРЕДПРОСМОТР · ЧАСТИЧНО' : 'АКТИВНО · ЧАСТИЧНО'}</em>
+                <strong>{profile.label}</strong><small>{profile.description}</small><em>{profile.availability === 'preview' ? 'В работе' : 'Основная'}</em>
               </button>)}</div>
               {rulesets.find((profile) => profile.id === rulesetId)?.limitations.map((limitation) => <small className="secure-note" key={limitation}><Shield size={13} />{limitation}</small>)}
             </div>
@@ -286,7 +287,7 @@ export function CampaignModal({ state, rulesets = RULESET_FALLBACK, onSwitch, on
             </div>
             <div className="hero-library">{Array.from({ length: slotCount }, (_, index) => index + 1).map((slot) => <div className="hero-slot-preview" key={slot}><span>{slot}</span><div><b>{slot === 1 ? 'Ваш герой' : `Герой друга ${slot - 1}`}</b><small>Класс, вид, характеристики и история ещё не выбраны</small></div><ShieldCheck size={16} /></div>)}</div>
           </div>}
-          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок создаст собственного героя через серверно проверяемый мастер.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || (selectedWorldTemplate ? selectedWorldTemplate.name : 'Название придумает рассказчик')}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{selectedWorldTemplate?.name || [world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{selectedWorldTemplate ? <><div><dt>Основа</dt><dd>{selectedWorldTemplate.description}</dd></div><div><dt>Карта</dt><dd>{selectedWorldTemplate.regionCount ?? 0} регионов · {selectedWorldTemplate.locationCount ?? 0} мест · {selectedWorldTemplate.routeCount ?? 0} путей{selectedWorldTemplate.cityOverviewCount ? ' · план столицы' : ''}</dd></div></> : world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{selectedWorldTemplate?.world?.startingLocation || world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`} · старт с {startLevel}-го уровня</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div><div><dt>Формат</dt><dd>{campaignMode === 'persistent' ? 'Постоянный мир' : 'Приключение'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя и поэтапную подготовку до стартового уровня.</small></div>}
+          {step === 3 && <div className="campaign-review"><span><Sparkles size={22} /></span><h3>Рассказчик готов создать мир</h3><p>Сначала появятся мир, первая сцена и места героев. Затем каждый игрок соберёт своего героя — мастер подскажет на каждом шаге.</p><dl><div><dt>Кампания</dt><dd>{name.trim() || (selectedWorldTemplate ? selectedWorldTemplate.name : 'Название придумает рассказчик')}{partyName.trim() ? ` · отряд «${partyName.trim()}»` : ''}</dd></div><div><dt>Мир</dt><dd>{selectedWorldTemplate?.name || [world.preset, world.era, world.genre].filter(Boolean).join(' · ') || 'Полная автоматическая генерация'}</dd></div>{selectedWorldTemplate ? <><div><dt>Основа</dt><dd>{selectedWorldTemplate.description}</dd></div><div><dt>Карта</dt><dd>{selectedWorldTemplate.regionCount ?? 0} регионов · {selectedWorldTemplate.locationCount ?? 0} мест · {selectedWorldTemplate.routeCount ?? 0} путей{selectedWorldTemplate.cityOverviewCount ? ' · план столицы' : ''}</dd></div></> : world.premise.trim() && <div><dt>Основа</dt><dd>{world.premise.trim()}</dd></div>}<div><dt>Начало</dt><dd>{selectedWorldTemplate?.world?.startingLocation || world.openingSituation || 'Придумает рассказчик'}</dd></div><div><dt>Герои</dt><dd>{slotCount === 1 ? 'одно место · соло-кампания' : `${slotCount} места · первый герой ваш`} · старт с {startLevel}-го уровня</dd></div><div><dt>Правила</dt><dd>{rulesets.find((profile) => profile.id === rulesetId)?.label ?? rulesetId}</dd></div><div><dt>Импровизация</dt><dd>{IMPROV_MODE_FALLBACK.find((improv) => improv.id === improvMode)?.label ?? 'Сюжет'}</dd></div><div><dt>Формат</dt><dd>{campaignMode === 'persistent' ? 'Постоянный мир' : 'Приключение'}</dd></div></dl><small>Ни один игрок не сможет сделать первый ход, пока не завершит создание закреплённого за ним героя и поэтапную подготовку до стартового уровня.</small></div>}
           <div className="campaign-wizard-actions"><button onClick={() => step === 1 ? setWizard(false) : setStep((current) => current - 1)}>{step === 1 ? 'К списку кампаний' : 'Назад'}</button>{step < 3 ? <button className="primary" onClick={() => { if (validateStep()) setStep((current) => current + 1) }}>Продолжить<ChevronRight size={14} /></button> : <button className="primary" onClick={() => { void create() }} disabled={busy}><Sparkles size={14} />{busy ? 'Рассказчик создаёт мир…' : 'Создать мир и написать пролог'}</button>}</div>
         </>}
         {error && <div className="admin-error">{error}</div>}
@@ -637,6 +638,16 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
   // но игрок её нигде не видел: квесты, нити и резюме прошлых сцен доезжали
   // до клиента и молча пропадали.
   const quests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'active')
+  // Одна текущая цель вперёд, перенесённые нити прежних глав — после остальных
+  // и с пометкой. Только подача: задания не закрываются и не меняются
+  // (плейтест 2026-10-04, QP-04).
+  const questFocus = journalQuestFocus(state)
+  const carriedQuestIds = new Set(questFocus.carriedIds)
+  const orderedQuests = [
+    ...quests.filter((quest) => quest.id === questFocus.currentId),
+    ...quests.filter((quest) => quest.id !== questFocus.currentId && !carriedQuestIds.has(quest.id)),
+    ...quests.filter((quest) => carriedQuestIds.has(quest.id)),
+  ]
   const offers = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'offered')
   const canChooseStory = state.campaignConcept?.campaign_mode === 'persistent' && !state.campaignConcept.story_quest_id
   const abandonedQuests = (state.worldMemory?.quests ?? []).filter((quest) => quest.status === 'abandoned')
@@ -670,7 +681,9 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
         </div>}
         {quests.length > 0 && <div className="quest-column">
           <header><ScrollText size={15} /><strong>Задачи отряда</strong><span>{quests.length}</span></header>
-          {quests.map((quest) => {
+          {orderedQuests.map((quest) => {
+            const current = quest.id === questFocus.currentId
+            const carried = carriedQuestIds.has(quest.id)
             // Это только представление: серверные цели и часы не меняются.
             // Повтор убираем по нормализованному тексту внутри одного квеста,
             // не сравнивая разные квесты между собой.
@@ -683,7 +696,9 @@ export function JournalView({ state, onAbandonQuest, onAcceptQuest, questBusy = 
               seen.add(key)
               return true
             }).slice(0, 4)
-            return <article className="quest-card" key={quest.id}>
+            return <article className={`quest-card${current ? ' current' : ''}${carried ? ' carried' : ''}`} key={quest.id}>
+              {current && <small className="quest-tag">Текущая цель</small>}
+              {carried && <small className="quest-tag">Незавершённая нить · задание остаётся открытым</small>}
               <b>{quest.title}</b>
               {quest.summary && summaryKey !== titleKey && <p>{quest.summary}</p>}
               {questGiver(quest) && <p>{questGiver(quest)}</p>}
@@ -1091,7 +1106,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
     try {
       setEncounterProposal(await onAssembleEncounter({ difficulty: encounterDifficulty, theme: encounterTheme }))
     } catch (reason) {
-      setEncounterError(reason instanceof Error ? reason.message : 'EncounterAssembler не смог собрать столкновение')
+      setEncounterError(reason instanceof Error ? reason.message : 'Не удалось собрать столкновение')
     } finally {
       setEncounterBusy(false)
     }
@@ -1130,7 +1145,7 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
           <p>Листы и инвентари всех героев доступны администратору через разделы «Персонажи» и «Инвентарь».</p>
         </div>
         <div className="admin-card admin-encounters">
-          <div className="admin-card-head"><span><Swords size={18} /><b>Столкновения и EncounterAssembler</b></span><em>{combatActive ? 'БОЙ ИДЁТ' : 'ГОТОВ К СБОРКЕ'}</em></div>
+          <div className="admin-card-head"><span><Swords size={18} /><b>Собрать столкновение</b></span><em>{combatActive ? 'БОЙ ИДЁТ' : 'ГОТОВ К СБОРКЕ'}</em></div>
           <p>Сервер подберёт существ по бюджету опыта, разместит их на карте и запустит инициативу. Состав столкновения нельзя подменить из браузера.</p>
           {combatActive && <div className="encounter-admin-warning"><Swords size={15} />Завершите текущее столкновение, прежде чем собирать новое.</div>}
           {encounterError && <div className="admin-error">{encounterError}</div>}
@@ -1333,7 +1348,7 @@ export function SettingsView({ health, campaignAi, currentRulesetId, campaignAiB
             >
               {rulesetOptions.map((profile) => <option key={profile.id} value={profile.id}>{profile.label} · {profile.mechanicsStatus === 'partial' ? 'частичное покрытие' : profile.mechanicsStatus}</option>)}
             </select>
-            {currentRuleset?.availability === 'preview' && <small className="secure-note"><Shield size={13} />Редакция 2014 доступна как честно ограниченный preview; текущие ограничения перечислены в выборе мира.</small>}
+            {currentRuleset?.availability === 'preview' && <small className="secure-note"><Shield size={13} />Редакция 2014 в работе: часть механик пока не поддерживается. Сменить редакцию можно только до первого хода.</small>}
           </label>
           <label className="ui-scale-setting">
             <span><b>Модель для группы</b><small>{selectedModelOption?.description ? `${selectedModelOption.label}: ${selectedModelOption.description}` : 'Выбранная модель применяется к новым ответам этой кампании'}</small></span>

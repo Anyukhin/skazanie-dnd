@@ -561,7 +561,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
   // bounded-intent контракт, что и прежний v1.
   const prompts = [
     ['npc_controller/v1', 'npc_controller/v1'],
-    ['npc_controller/social_v6', 'npc_controller/social-v6'],
+    ['npc_controller/social_v7', 'npc_controller/social-v7'],
     ['narrator/v12', 'narrator/v12'],
     ['director/v4_story', 'director/v4_story'],
     ['director/v4_chaos', 'director/v4_chaos'],

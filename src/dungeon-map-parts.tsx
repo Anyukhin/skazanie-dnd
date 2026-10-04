@@ -29,6 +29,7 @@ import {
   actorFootprintCells,
   battleRollContext,
   battleRollPresentation,
+  conditionIconUrl,
   conditionPresentation,
   tokenConditionGlyph,
   turnClockPresentation,
@@ -43,6 +44,20 @@ import { factionDisplayName, reputationImpactForTier } from './player-experience
 export type EnemyVisualKind = 'construct' | 'undead' | 'beast' | 'mystic' | 'raider'
 
 export type PresentedCondition = ReturnType<typeof conditionPresentation>
+
+/** Общий рисунок для компактных строк состояния. */
+export function ConditionMark({ id, label, className = '' }: { id: string; label: string; className?: string }) {
+  const src = conditionIconUrl(id)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  if (!src || failedSrc === src) return tokenConditionGlyph(id, label)
+  return <img
+    className={`condition-mark${className ? ` ${className}` : ''}`}
+    src={src}
+    alt=""
+    aria-hidden="true"
+    onError={() => setFailedSrc(src)}
+  />
+}
 
 /**
  * Что у героя «на нём» прямо сейчас: состояния, концентрация и временные хиты.
@@ -135,7 +150,18 @@ export const NPC_CONVERSATION_STANCE_LABELS = {
   hostile: 'враждебно',
 } as const
 
+/** Прежняя высота панели в пикселях: больше не читается, ключ только удаляется. */
 export const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
+/** Высота нижней панели — рядами плиток, как «+ / − ряд» в BG3. */
+export const HUD_ROWS_KEY = 'skazanie-hud-rows-v1'
+export const HUD_ROWS_MIN = 2
+export const HUD_ROWS_MAX = 5
+export const HUD_ROWS_DEFAULT = 3
+/** Сколько рядов помещается: панель не выше 40 % окна, доска остаётся главной.
+    112 px — лоток, вкладки и поля панели, 52 px — ряд плиток с зазором. */
+export function hudRowsLimit(viewportHeight: number) {
+  return Math.max(HUD_ROWS_MIN, Math.min(HUD_ROWS_MAX, Math.floor((viewportHeight * .4 - 112) / 52)))
+}
 export const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
 export const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 export const TILE_ORDER_KEY = 'skazanie-tile-order-v1'
@@ -272,15 +298,27 @@ export function heroResourceFallbackLabel(key: string): string {
   return tidy ? tidy.charAt(0).toLocaleUpperCase('ru') + tidy.slice(1) : key
 }
 
+/** Имя заклинания по id — из листа героя; без него остаётся опрятный ключ. */
+export type SpellNameLookup = (spellId: string) => string | undefined
+
+/** Врождённое заклинание расы (`species_spell_<id>`): имя заклинания вместо ключа. */
+function speciesSpellName(key: string, spellName?: SpellNameLookup): string | null {
+  const match = /^species_spell_(.+)$/u.exec(key)
+  if (!match) return null
+  return spellName?.(match[1]) ?? heroResourceFallbackLabel(match[1])
+}
+
 /** Знаем ли мы запас по имени — от этого зависит, нужен ли сырой ключ в подсказке. */
 function heroResourceKnown(key: string): boolean {
-  return /^spell_slots_[1-9]$/u.test(key) || Boolean(HERO_RESOURCE_LABELS[key]) || Boolean(featureResourceName(key))
+  return /^spell_slots_[1-9]$/u.test(key) || /^species_spell_/u.test(key) || Boolean(HERO_RESOURCE_LABELS[key]) || Boolean(featureResourceName(key))
 }
 
 /** Полное имя запаса — для подсказки и для скринридера. */
-export function heroResourceLabel(key: string): string {
+export function heroResourceLabel(key: string, spellName?: SpellNameLookup): string {
   const slot = /^spell_slots_([1-9])$/u.exec(key)
   if (slot) return `Ячейки ${slot[1]} круга`
+  const innate = speciesSpellName(key, spellName)
+  if (innate) return `Врождённая магия: ${innate}`
   return HERO_RESOURCE_LABELS[key] ?? featureResourceName(key) ?? heroResourceFallbackLabel(key)
 }
 
@@ -289,9 +327,9 @@ export function heroResourceLabel(key: string): string {
  * Чип узкий и обрывается многоточием, поэтому подсказка обязана нести всё, чего
  * в нём не поместилось.
  */
-export function heroResourceTitle(keys: string[], current: number, max: number): string {
+export function heroResourceTitle(keys: string[], current: number, max: number, spellName?: SpellNameLookup): string {
   const [first = ''] = keys
-  const head = `${heroResourceLabel(first)}: ${current} из ${max}`
+  const head = `${heroResourceLabel(first, spellName)}: ${current} из ${max}`
   /* Ключей несколько — это схлопнутые близнецы, и назвать оба обязательно:
      игрок вправе знать, из чего сложился единственный чип, а мастеру это
      единственный след серверного задвоения. */
@@ -312,9 +350,11 @@ const HERO_RESOURCE_SHORT_LABELS: Record<string, string> = {
   mystic_arcanum_6: 'арканум',
 }
 
-export function heroResourceShortLabel(key: string): string {
+export function heroResourceShortLabel(key: string, spellName?: SpellNameLookup): string {
   const slot = /^spell_slots_([1-9])$/u.exec(key)
   if (slot) return slot[1]
+  const innate = speciesSpellName(key, spellName)
+  if (innate) return innate.toLocaleLowerCase('ru')
   return HERO_RESOURCE_SHORT_LABELS[key] ?? heroResourceLabel(key).toLocaleLowerCase('ru')
 }
 
@@ -666,7 +706,7 @@ export function TokenConditionIcons({ conditions }: { conditions: PresentedCondi
         aria-label={condition.label}
         title={`${condition.label} · ${condition.statusLabel}. ${condition.explanation}`}
       >
-        {tokenConditionGlyph(condition.id, condition.label)}
+        <ConditionMark id={condition.id} label={condition.label} />
       </i>
     ))}
   </span>

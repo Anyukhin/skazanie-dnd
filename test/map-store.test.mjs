@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readdirSync, rmSync, statSync, unlinkSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { MapStore, externalizeMaps, internalizeMaps, isMapRef } from '../server/map-store.mjs'
+import { MapBlobIntegrityError, MapStore, externalizeMaps, internalizeMaps, isMapRef } from '../server/map-store.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { buildBuildingScene } from '../server/building-generator.mjs'
@@ -211,4 +211,94 @@ test('файлы карт раскладываются по подкаталог
   for (const entry of entries) {
     assert.ok(statSync(join(root, 'maps', entry)).isDirectory(), 'в корне хранилища лежат только подкаталоги')
   }
+})
+
+/**
+ * Аудит PR #131, RCV-03: под прежним хешем лежит другая, но валидная карта.
+ * Контрольная сумма снимка считается по ссылке, поэтому подмену видит только
+ * само хранилище карт — сверкой содержимого с адресом.
+ */
+function tamper(store, hash, change) {
+  const file = store.fileFor(hash)
+  writeFileSync(file, JSON.stringify(change(JSON.parse(readFileSync(file, 'utf8')))))
+}
+
+const integrityError = (code) => (error) => {
+  assert.ok(error instanceof MapBlobIntegrityError, String(error))
+  assert.equal(error.code, code)
+  return true
+}
+
+test('аудит PR #131, RCV-03: подменённая под прежним хешем карта даёт отказ с кодом, а не другой мир', (t) => {
+  const { root, store } = tempStore(t)
+  const map = serializeTacticalMap(buildBuildingScene({ seed: 'rcv-03', width: 20, height: 20 }).map)
+  const ref = store.put(map)
+  tamper(store, ref.hash, (body) => ({ ...body, levelLabel: 'Лава' }))
+
+  // Кэш держит сверенное содержимое: подмену на диске он не отдаёт.
+  assert.deepEqual(store.get(ref.hash), map)
+  // Промах кэша — тот же путь, что и перезапуск сервера.
+  store.cache.clear()
+  assert.throws(() => store.get(ref.hash), integrityError('MAP_BLOB_HASH_MISMATCH'))
+  const restarted = new MapStore({ rootDir: root })
+  assert.throws(() => restarted.get(ref.hash), (error) => integrityError('MAP_BLOB_HASH_MISMATCH')(error) && error.hash === ref.hash)
+
+  // Снимок с такой ссылкой непригоден: ссылка не разрешена, подмена названа.
+  const stripped = externalizeMaps(sceneState('rcv-03-state'), new MapStore({ rootDir: root }))
+  tamper(restarted, stripped.scene.map.hash, (body) => ({ ...body, levelLabel: 'Лава' }))
+  const restored = internalizeMaps(stripped, new MapStore({ rootDir: root }))
+  assert.deepEqual(restored.missing, [stripped.scene.map.hash, stripped.scene.map.hash])
+  assert.deepEqual(restored.corrupt, restored.missing)
+  assert.ok(isMapRef(restored.state.scene.map), 'ссылка остаётся ссылкой')
+
+  // Адрес — только хеш: путь из ссылки не выводит за каталог карт.
+  assert.throws(() => restarted.get('../../index'), integrityError('MAP_REF_INVALID'))
+
+  // Верная карта под тем же адресом восстанавливает файл: адрес задаёт содержимое.
+  restarted.put(map)
+  assert.deepEqual(new MapStore({ rootDir: root }).get(ref.hash), map)
+})
+
+test('аудит PR #131, RCV-03: копия из get не портит кэш, а отступы в файле карту чужой не делают', (t) => {
+  const { root, store } = tempStore(t)
+  const map = serializeTacticalMap(buildBuildingScene({ seed: 'rcv-03-copy', width: 20, height: 20 }).map)
+  const ref = store.put(map)
+  const copy = store.get(ref.hash)
+  copy.levelLabel = 'Поправлено вызывающим'
+  assert.deepEqual(store.get(ref.hash), map, 'следующий get отдаёт карту по адресу, а не чужую правку')
+  assert.notEqual(store.get(ref.hash), store.get(ref.hash), 'каждый get — новая копия')
+
+  // Тот же digest, что при записи: от значения, а не от байтов файла.
+  writeFileSync(store.fileFor(ref.hash), `${JSON.stringify(map, null, 2)}\n`)
+  assert.deepEqual(new MapStore({ rootDir: root }).get(ref.hash), map)
+})
+
+test('аудит PR #131, RCV-03: после перезапуска подменённая карта снимка не меняет мир — хранилище переигрывает события', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-map-rcv03-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const map = buildBuildingScene({ seed: 'rcv-03-replay', width: 30, height: 30 }).map
+  const state = normalizeCampaignState({
+    sessionCode: 'RCV03',
+    players: [{ id: 'hero', character: 'Герой', hp: 10, maxHp: 10, inventory: [], x: 1, y: 1, level: 1 }],
+    partyMemberIds: ['hero'],
+    scene: { title: 'Сцена', location: 'Дом', cells: legacyCellsFromTacticalMap(map) },
+  })
+  const open = () => new FileEventStore({
+    rootDir: root,
+    reducer: applyGameEvent,
+    normalizeState: normalizeCampaignState,
+    mapStore: new MapStore({ rootDir: join(root, 'engine') }),
+  })
+  await open().importLegacySnapshot({ campaign_id: 'RCV03', legacy_state: state, idempotency_key: 'import-1' })
+  const before = await open().load('RCV03')
+  const snapshotDir = join(root, 'campaigns', readdirSync(join(root, 'campaigns'))[0], 'snapshots')
+  const snapshot = JSON.parse(readFileSync(join(snapshotDir, readdirSync(snapshotDir).sort().at(-1)), 'utf8'))
+  assert.ok(isMapRef(snapshot.state.scene.map), 'в снимке ссылка на карту')
+  tamper(new MapStore({ rootDir: join(root, 'engine') }), snapshot.state.scene.map.hash, (body) => ({ ...body, levelLabel: 'Лава' }))
+
+  const after = await open().load('RCV03')
+  const replayed = await open().replay('RCV03', { use_snapshots: false })
+  assert.notEqual(after.state.scene.map.levelLabel, 'Лава', 'подменённая карта не попала в мир')
+  assert.deepEqual(after.state, before.state, 'после перезапуска тот же мир, что до подмены')
+  assert.deepEqual(after.state, replayed.state, 'и тот же, что честный replay')
 })

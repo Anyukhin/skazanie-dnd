@@ -73,8 +73,11 @@ export function projectedMapByHash(hash) {
   if (!cached) return null
   // Обращение освежает запись: вытесняться должна действительно давняя карта,
   // а не та, которой пользуется подключённый игрок.
-  projectedMaps.delete(hash)
-  projectedMaps.set(hash, cached)
+  // Запись найдена только по непустому ключу (аудит PR #131, QA-02: приведение
+  // для проверки типов, поведение то же).
+  const key = /** @type {string} */ (hash)
+  projectedMaps.delete(key)
+  projectedMaps.set(key, cached)
   return cached
 }
 

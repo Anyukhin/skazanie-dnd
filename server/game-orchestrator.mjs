@@ -37,7 +37,7 @@ import {
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
-import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
@@ -118,6 +118,10 @@ function narrationWorldFacts(state, viewer, message, events) {
     query: narrationMemoryQuery(state, message, events),
     limit: NARRATION_WORLD_FACT_LIMIT,
     asOfMinutes: state.mechanics?.world_time?.elapsed_minutes,
+    // Без совпадений рассказчик не получает ничего. Режим 'all' отдавал
+    // первые записи по id, и на вопрос о драконе в brief уходил чужой долг
+    // как будто относящийся к делу (исследование PR #136, N11).
+    whenUnmatched: 'none',
   })
   return records
     .filter((record) => record.kind === 'fact' && ['public', 'party'].includes(record.fact?.visibility))
@@ -569,6 +573,69 @@ function structuredCommandTurnId(campaignId, idempotencyKey) {
   return `turn-${digest}`
 }
 
+// Аудит PR #131, CMD-01/02: поля команды, которые не меняют смысла заявки, —
+// транспорт, предусловие версии и серверные пометки. `rest_id` санитайзер
+// отдыха берёт из текущего состояния: после коммита отдыха его уже нет, и
+// честный повтор выглядел бы другой командой. Тип, актёр, цель и прочие
+// параметры входят в отпечаток целиком.
+const COMMAND_FINGERPRINT_IGNORED_FIELDS = new Set([
+  'command_id', 'campaign_id', 'idempotency_key',
+  'expected_state_version', 'expectedStateVersion',
+  'server_authoritative', 'verified_roll', 'request_fingerprint', 'rest_id',
+])
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value ?? null) ?? 'null'
+}
+
+/**
+ * Отпечаток структурированного пакета команд — заявки клиента после
+ * санитайзера маршрута.
+ *
+ * Аудит PR #131, CMD-01: повтор с тем же ключом и тем же текстом, но с другой
+ * целью получал старый `200 replay`. Санитайзер уже отбросил мусорные поля
+ * клиента (повтор атаки с другим `attack_modifier` остаётся повтором), а
+ * серверные дополнения после него — развёртка отдыха, черновик письма — в
+ * отпечаток не попадают: маршрут снимает копию до них.
+ *
+ * @param {unknown} commands
+ * @returns {string}
+ */
+export function structuredCommandsFingerprint(commands) {
+  const semantic = (Array.isArray(commands) ? commands : []).map((command) => (
+    command && typeof command === 'object' && !Array.isArray(command)
+      ? Object.fromEntries(Object.entries(command).filter(([key]) => !COMMAND_FINGERPRINT_IGNORED_FIELDS.has(key)))
+      : command ?? null
+  ))
+  return createHash('sha256').update(canonicalJson(semantic)).digest('hex')
+}
+
+// Смысл заявки задаёт текст: `/api/narrate` и серверные ветки со своими
+// командами (Режиссёр, сборка столкновения, жизненный цикл торговцев) — у
+// последних повтор сверяется собственными отпечатками в событиях.
+const MESSAGE_REQUEST_OPERATION = 'message'
+
+/**
+ * Какая операция стоит за запросом: пакет команд клиента или текст.
+ *
+ * Аудит PR #131, CMD-02: без этой части отпечатка `/commands` и `/api/narrate`
+ * с тем же ключом и той же фразой считались одним запросом, и второй endpoint
+ * молча получал чужой commit. Пакет команд объявляют полем `requestCommands`
+ * только маршруты игрока: `/commands` и сделка торговца.
+ */
+function requestOperationFor(input) {
+  return Array.isArray(input?.requestCommands)
+    ? `commands:${structuredCommandsFingerprint(input.requestCommands)}`
+    : MESSAGE_REQUEST_OPERATION
+}
+
 export function narrationRequestFingerprint({
   campaignId = '',
   playerId = '',
@@ -580,8 +647,11 @@ export function narrationRequestFingerprint({
   supersedesProposalId = '',
   questionCheckId = '',
   questionProposalId = '',
+  // Пустая операция даёт прежний отпечаток: по нему узнаются записи, сделанные
+  // до аудита PR #131 (CMD-01/02).
+  operation = '',
 } = {}) {
-  return createHash('sha256')
+  const hash = createHash('sha256')
     .update(String(campaignId).toUpperCase())
     .update('\0')
     .update(String(playerId))
@@ -601,7 +671,8 @@ export function narrationRequestFingerprint({
     .update(String(questionCheckId))
     .update('\0')
     .update(String(questionProposalId))
-    .digest('hex')
+  if (operation) hash.update('\0').update(`operation:${operation}`)
+  return hash.digest('hex')
 }
 
 function legacyNarrationRequestFingerprint({ campaignId = '', playerId = '', message = '', npcId = '' } = {}) {
@@ -628,9 +699,10 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
   supersedesProposalId = '',
   questionCheckId = '',
   questionProposalId = '',
+  operation = '',
 }) {
   if (!duplicate) return
-  const requestFingerprint = narrationRequestFingerprint({
+  const fields = {
     campaignId,
     playerId,
     message,
@@ -641,12 +713,20 @@ function assertNarrationRequestIdempotency(duplicate, trace, {
     supersedesProposalId,
     questionCheckId,
     questionProposalId,
-  })
+  }
+  const requestFingerprint = narrationRequestFingerprint(fields)
   if (trace?.request_fingerprint) {
+    const stored = String(trace.request_fingerprint)
+    // Аудит PR #131, CMD-01/02: новые трассы хранят отпечаток вместе с
+    // операцией (пакет команд или текст), и несовпадение — конфликт, а не
+    // повтор. Трасса, записанная до этого, хранит отпечаток без операции и
+    // сверяется по-старому.
+    const exact = stored === narrationRequestFingerprint({ ...fields, operation })
+    const compatibleWithoutOperation = Boolean(operation) && stored === requestFingerprint
     const compatibleLegacy = requestKind === 'action'
       && !clarificationId && !supersedesCheckId && !supersedesProposalId
-      && String(trace.request_fingerprint) === legacyNarrationRequestFingerprint({ campaignId, playerId, message, npcId })
-    if (String(trace.request_fingerprint) !== requestFingerprint && !compatibleLegacy) {
+      && stored === legacyNarrationRequestFingerprint({ campaignId, playerId, message, npcId })
+    if (!exact && !compatibleWithoutOperation && !compatibleLegacy) {
       throw new IdempotencyConflictError(campaignId, idempotencyKey)
     }
     return
@@ -922,12 +1002,58 @@ function safeNarrationProviderError(value) {
   return /^[A-Z][A-Z0-9_.:-]*$/u.test(code) ? code : ''
 }
 
+// Перемещение подтверждают только события шага, перехода или пути — не бросок.
+const FREE_ACTION_MOVEMENT_EVENT = /move|travel|arriv|depart|relocat|levelchanged|sceneadvanced/iu
+
+/**
+ * Удачная заявка на перемещение («войти внутрь маяка») без единого события
+ * перемещения или перехода. Импровизация героя не двигает, и её решение
+ * записано с `world_change: false`, поэтому «Вышло: войти внутрь маяка» было
+ * обещанием, которого commit не держит. Плейтест 2026-10-04, MAP2-02: отряд
+ * остался во дворе, а игрок не понял, что делать дальше. Трюк сюда не входит:
+ * он и так говорит «герой остаётся на месте».
+ */
+function unconfirmedFreeActionPassage({ freeAction, message, events, state }) {
+  if (!['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) return false
+  if (freeAction?.reading?.activity_kind === 'stunt' || state?.mechanics?.combat?.active) return false
+  if (!freeActionGoalIsPassage(freeAction?.reading?.goal_summary || message)) return false
+  return !(events ?? []).some((event) => FREE_ACTION_MOVEMENT_EVENT.test(String(event?.event_type ?? '')))
+}
+
+/**
+ * Честный ответ на удачную заявку-перемещение: проверка прошла, но сцена та
+ * же, и вот штатный путь. Автоматического перехода нет и не будет: дверь,
+ * лестница и уход в другое место — свои команды с собственными проверками.
+ */
+function freeActionPassageNarration({ freeAction, events, state }) {
+  const actorId = String((events ?? []).find((event) => event?.event_type === 'ActionDeclared')?.actor_id ?? '')
+  const hero = (state?.players ?? []).find((player) => String(player?.id ?? '') === actorId)
+  const name = trimSentenceEnd(hero?.character || hero?.name, 80) || 'Герой'
+  const opener = freeAction?.kind === 'check_success' ? 'Проверка удалась' : 'Попытка удалась'
+  return `${opener}, но сама сцена от этого не изменилась: ${name} пока на прежнем месте. `
+    + 'Путь дальше — на карте: дверь и проход — шагами по клеткам, лестница — через её меню, '
+    + 'а в другое место отряд переходит через «Решение группы».'
+}
+
+/**
+ * «Сохранено в хронике, предмет не создан». Заявка «снимаю копию схемы»
+ * подтверждается только как запись хода: предмета-документа сервер не
+ * создаёт. Плейтест 2026-10-04, QP-07: ответ «Ты снимаешь копию схемы…»
+ * игрок читал как вещь и искал её в инвентаре.
+ */
+function freeActionCopyNote({ freeAction, message, events }) {
+  if (!['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) return ''
+  if (!freeActionIsCopyRequest(message)) return ''
+  if ((events ?? []).some((event) => /item|loot/iu.test(String(event?.event_type ?? '')))) return ''
+  return 'Копия осталась записью в хронике отряда: отдельного документа в инвентаре нет.'
+}
+
 /**
  * Короткий offline-текст свободного действия. Он опирается на исходную
  * задумку и уже записанные события, поэтому не может закрыть дверь, нанести
  * урон или объявить навык, которого нет в commit.
  */
-function deterministicFreeActionNarration({ freeAction, message, events, state }) {
+function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false }) {
   const kind = String(freeAction?.kind ?? '')
   if (kind === 'hazard_contact') {
     const effects = freeActionEffectText(events, state)
@@ -948,13 +1074,15 @@ function deterministicFreeActionNarration({ freeAction, message, events, state }
     ? `${rawGoal.charAt(0).toLocaleLowerCase('ru')}${rawGoal.slice(1)}`
     : rawGoal
   const failed = kind === 'check_failure'
-  const parts = [freeAction?.reading?.activity_kind === 'stunt'
-    ? (failed ? 'Трюк сорвался.' : 'Трюк удался.')
-    : goal
-      // «Вышло», а не «Получилось»: guard передачи вещей читает «получил…
-      // монетку» как полученный предмет и выбрасывал весь текст.
-      ? `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
-      : (failed ? 'Не вышло.' : 'Вышло.')]
+  const parts = [unconfirmedPassage && !failed
+    ? freeActionPassageNarration({ freeAction, events, state })
+    : freeAction?.reading?.activity_kind === 'stunt'
+      ? (failed ? 'Трюк сорвался.' : 'Трюк удался.')
+      : goal
+        // «Вышло», а не «Получилось»: guard передачи вещей читает «получил…
+        // монетку» как полученный предмет и выбрасывал весь текст.
+        ? `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
+        : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
   parts.push(...effects)
   const time = freeActionTimeText(events)
@@ -1408,6 +1536,7 @@ export class GameOrchestrator {
     plan,
     authoritativeState,
     idempotencyKey,
+    requestFingerprint = null,
     turnId,
     started,
     mode,
@@ -1494,7 +1623,12 @@ export class GameOrchestrator {
     let renderedPromptVersion = null
     let renderedFailureReason = ''
     let renderedElapsedMs = 0
+    // Заявка-перемещение без события перемещения получает серверный ответ со
+    // штатным путём, а не пересказ модели: модели велено показать, «как герой
+    // делает заявленное», и она описала бы вход, которого не было (MAP2-02).
+    const unconfirmedPassage = unconfirmedFreeActionPassage({ freeAction, message, events: publicCommittedEvents, state })
     const narrateCommittedImprovisation = !freeAction.duplicate
+      && !unconfirmedPassage
       && freeAction.reading?.source !== 'deterministic-trivial'
       && ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
       && committedEvents.length > 0
@@ -1526,9 +1660,10 @@ export class GameOrchestrator {
       message,
       events: publicCommittedEvents,
       state: narrationState,
+      unconfirmedPassage,
     })
     const deterministicProvider = /^deterministic(?:-|$)/u.test(renderedProvider)
-    const preferredNarration = deterministicProvider
+    const preferredNarration = deterministicProvider || unconfirmedPassage
       ? deterministicNarration || candidateNarration || renderedNarration
       : renderedNarration || candidateNarration || deterministicNarration
     const candidateVerification = verifyNarration(preferredNarration, brief, { knownRuleIds: [] })
@@ -1548,7 +1683,7 @@ export class GameOrchestrator {
     const repairedFrom = [...safeNarrationViolations(renderedVerification?.repaired_from), ...safeNarrationViolations(rejectedCandidateViolations)]
       .filter((entry, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(entry)) === index)
     const rendererProviderError = safeNarrationProviderError(renderedVerification?.provider_error)
-    const narration = candidateVerification.valid && preferredNarration
+    const chosenNarration = candidateVerification.valid && preferredNarration
       ? preferredNarration
       : groundedVerification?.valid && groundedNarration
         ? groundedNarration
@@ -1562,6 +1697,10 @@ export class GameOrchestrator {
             : freeAction.kind === 'check_failure'
               ? 'Не вышло.'
               : 'Действие не получило подтверждённого последствия. Уточните, чего герой хочет добиться.'
+    // Пометка дописывается к любому тексту — модели и запасному: она про то,
+    // чего commit не содержит, и пересказ его не отменяет (QP-07).
+    const copyNote = freeActionCopyNote({ freeAction, message, events: committedEvents })
+    const narration = copyNote ? `${chosenNarration} ${copyNote}` : chosenNarration
     const acceptedRenderedNarration = !deterministicProvider
       && Boolean(renderedNarration)
       && renderedNarration === preferredNarration
@@ -1639,37 +1778,46 @@ export class GameOrchestrator {
         intent: freeAction.confirmation_required ? { ...intent, pending_step: 'proposal' } : intent,
       })
     }
+    const freeActionTrace = {
+      turnId,
+      campaignId,
+      idempotencyKey,
+      // Аудит PR #131, CMD-02: без отпечатка повтор ключа свободного действия
+      // структурированной командой `/commands` молча получал этот commit.
+      // Восстановленная трасса (SEC-03) ставит его в null сама.
+      requestFingerprint,
+      mode,
+      intent,
+      retrievalQueries,
+      retrievedRules,
+      plan: {
+        ...plan,
+        proposed_commands: freeAction.commands ?? [],
+        ruling_required: Boolean(freeAction.ruling),
+        ruling_draft: freeAction.ruling ?? null,
+        narration_constraints: constraints,
+        ...(freeAction.context_metadata ? { agent_contexts: [freeAction.context_metadata] } : {}),
+      },
+      engineResult: { commands: freeAction.commands ?? [], events: committedEvents, rolls: freeAction.rolls ?? [] },
+      stateBefore: authoritativeState.state_version,
+      stateAfter: state.state_version,
+      verification,
+      latency: this.now() - started,
+      narration: {
+        narration,
+        verification,
+        prompt_version: narrationPromptVersion,
+        provider: response.provider,
+      },
+      ruling: freeAction.ruling ?? null,
+    }
     if (!idempotentReplay) {
       if (committedEvents.length) this.rememberNarration(campaignId, narration)
-      this.saveTrace({
-        turnId,
-        campaignId,
-        idempotencyKey,
-        mode,
-        intent,
-        retrievalQueries,
-        retrievedRules,
-        plan: {
-          ...plan,
-          proposed_commands: freeAction.commands ?? [],
-          ruling_required: Boolean(freeAction.ruling),
-          ruling_draft: freeAction.ruling ?? null,
-          narration_constraints: constraints,
-          ...(freeAction.context_metadata ? { agent_contexts: [freeAction.context_metadata] } : {}),
-        },
-        engineResult: { commands: freeAction.commands ?? [], events: committedEvents, rolls: freeAction.rolls ?? [] },
-        stateBefore: authoritativeState.state_version,
-        stateAfter: state.state_version,
-        verification,
-        latency: this.now() - started,
-        narration: {
-          narration,
-          verification,
-          prompt_version: narrationPromptVersion,
-          provider: response.provider,
-        },
-        ruling: freeAction.ruling ?? null,
-      })
+      this.saveTrace(freeActionTrace)
+    } else {
+      // Аудит PR #131, SEC-03: повтор свободного действия, чей commit пережил
+      // сбой записи трассы, восстанавливает её; существующую не трогает.
+      this.recoverMissingTrace(freeActionTrace)
     }
     return response
   }
@@ -1908,6 +2056,9 @@ export class GameOrchestrator {
 
   async _handle(input) {
     const started = this.now()
+    // Считается до любых серверных правок команд (парлей, ручной бросок):
+    // отпечаток описывает заявку клиента, а не её исполнение.
+    const requestOperation = requestOperationFor(input)
     const originalState = normalizeCampaignState(input.state ?? {})
     const campaignId = String(input.campaignId ?? input.campaign_id ?? originalState.sessionCode ?? originalState.campaign_id ?? '')
     const playerId = String(input.playerId ?? input.player_id ?? originalState.activePlayerId ?? '')
@@ -2106,22 +2257,7 @@ export class GameOrchestrator {
     const duplicate = typeof this.eventStore.getByIdempotencyKey === 'function'
       ? await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
       : null
-    const requestFingerprint = narrationRequestFingerprint({
-      campaignId,
-      playerId,
-      message,
-      npcId: explicitNpcId,
-      requestKind,
-      clarificationId,
-      supersedesCheckId,
-      supersedesProposalId,
-      questionCheckId,
-      questionProposalId,
-    })
-    const requestTrace = duplicate && this.traceStore && typeof this.traceStore.get === 'function'
-      ? this.traceStore.get(campaignId, turnId)
-      : null
-    assertNarrationRequestIdempotency(duplicate, requestTrace, {
+    const idempotencyRequest = {
       campaignId,
       idempotencyKey,
       playerId,
@@ -2133,7 +2269,16 @@ export class GameOrchestrator {
       supersedesProposalId,
       questionCheckId,
       questionProposalId,
-    })
+      operation: requestOperation,
+    }
+    // Аудит PR #131, CMD-01/02: в трассу пишется отпечаток с операцией, и
+    // повтор сверяет с ним и пакет команд, и выбор endpoint.
+    const requestFingerprint = narrationRequestFingerprint(idempotencyRequest)
+    const traceFor = (commit) => (commit && this.traceStore && typeof this.traceStore.get === 'function'
+      ? this.traceStore.get(campaignId, turnId)
+      : null)
+    const requestTrace = traceFor(duplicate)
+    assertNarrationRequestIdempotency(duplicate, requestTrace, idempotencyRequest)
     // Парлей: единственная развилка на оба входа.
     //
     // Кнопка хотбара приходит сюда командой `ProposeParley`, свободная фраза —
@@ -2539,6 +2684,7 @@ export class GameOrchestrator {
         plan,
         authoritativeState,
         idempotencyKey,
+        requestFingerprint,
         turnId,
         started,
         mode,
@@ -2647,7 +2793,19 @@ export class GameOrchestrator {
     }
     if (planCheckCommand && verifiedRoll) {
       // Кости из реестра передаются движку; математику он пересчитывает сам.
-      const { context: _checkContext, ...verifiedRollPayload } = verifiedRoll
+      //
+      // Аудит PR #131, SEC-01: бросок обязан быть выдан под карточку **этой**
+      // ветки — обычной проверки (`ability_action`), зарегистрированной выше.
+      // Ничейный бросок отсекает реестр (`ROLL_UNBOUND`), заявку и версию
+      // обстановки сверяет `validateContext` маршрута `/api/narrate`; здесь
+      // закрыт последний зазор — кость от парлея, молитвы или другой карточки
+      // того же героя обычной проверкой не становится.
+      const { context: checkContext, ...verifiedRollPayload } = verifiedRoll
+      if (String(checkContext?.kind ?? '') !== 'ability_action') {
+        const error = new Error('Этот бросок регистрировался не для этой проверки. Объявите действие заново.')
+        error.code = 'ROLL_CONTEXT_MISMATCH'
+        throw error
+      }
       planCheckCommand.verified_roll = verifiedRollPayload
     }
 
@@ -2747,6 +2905,10 @@ export class GameOrchestrator {
           if (!(error instanceof IdempotencyConflictError) && error?.code !== 'IDEMPOTENCY_CONFLICT') throw error
           committed = await this.eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
           if (!committed) throw error
+          // Аудит PR #131, CMD-01: параллельный запрос с тем же ключом успел
+          // первым. Его commit — повтор только при том же намерении; если его
+          // трасса ещё не записана, сверка идёт по-прежнему.
+          assertNarrationRequestIdempotency(committed, traceFor(committed), idempotencyRequest)
           replayedCommit = true
           break
         }
@@ -2867,8 +3029,12 @@ export class GameOrchestrator {
       idempotent_replay: idempotentReplay,
       ...(storedSocialNarration ? { turn_consumed: true, action_kind: 'social' } : {}),
     }
+    const turnTrace = { turnId, campaignId, idempotencyKey, requestFingerprint, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration: { ...narration, visibility: privateSocialNarration ? 'specific_player' : 'party' }, ruling: plan.ruling_draft }
     if (!idempotentReplay) {
-      this.saveTrace({ turnId, campaignId, idempotencyKey, requestFingerprint, mode, intent, retrievalQueries, retrievedRules, plan, engineResult: { ...engineResult, events: committedEvents }, stateBefore: authoritativeState.state_version, stateAfter: committed.state_version, verification: narration.verification, latency: this.now() - started, narration: { ...narration, visibility: privateSocialNarration ? 'specific_player' : 'party' }, ruling: plan.ruling_draft })
+      this.saveTrace(turnTrace)
+    } else if (!replayTrace) {
+      // Аудит PR #131, SEC-03: commit есть, трассы нет — повтор её восстанавливает.
+      this.recoverMissingTrace(turnTrace)
     }
     return response
   }
@@ -2927,9 +3093,50 @@ export class GameOrchestrator {
     }
   }
 
-  saveTrace({ turnId, campaignId, idempotencyKey = null, requestFingerprint = null, mode, intent, retrievalQueries, retrievedRules, plan, engineResult = {}, stateBefore, stateAfter, verification = {}, latency, narration = null, ruling = null }) {
+  /**
+   * Аудит PR #131, SEC-03: восстановление трассы, потерянной после commit.
+   *
+   * Ход фиксируется в журнале раньше, чем пишется его трасса. Если запись
+   * трассы упала (диск, права, остановка процесса), события уже на месте, а
+   * повтор с тем же ключом читался как дубликат и трассу не писал — `/why`
+   * оставался пустым навсегда. Теперь повтор, не нашедший трассы, собирает её
+   * заново: события, броски и версии — из записанного commit, прочтение
+   * заявки — из самого повтора. Отпечаток запроса не выдумывается (`null`):
+   * исходный запрос в журнале не хранится, и чужой текст под тем же ключом не
+   * должен стать эталоном для следующих повторов. Сбой восстановления ход не
+   * ломает — ответ игроку уже собран из журнала.
+   */
+  recoverMissingTrace(trace) {
+    if (!this.traceStore || typeof this.traceStore.get !== 'function') return null
+    const events = Array.isArray(trace.engineResult?.events) ? trace.engineResult.events : []
+    if (!events.length) return null
+    try {
+      if (this.traceStore.get(trace.campaignId, trace.turnId)) return null
+      return this.saveTrace({
+        ...trace,
+        requestFingerprint: null,
+        stateBefore: Number(events[0]?.state_version_before ?? trace.stateBefore),
+        latency: 0,
+        createdAt: events.at(-1)?.created_at ?? null,
+        recovery: {
+          reason: 'trace_missing_after_commit',
+          events_source: 'event_store',
+          request_source: 'idempotent_retry',
+          recovered_at: new Date().toISOString(),
+        },
+      }, { ifAbsent: true })
+    } catch (error) {
+      console.warn('[Сказание] Трасса хода не восстановлена:', error?.code ?? error?.message)
+      return null
+    }
+  }
+
+  saveTrace({ turnId, campaignId, idempotencyKey = null, requestFingerprint = null, mode, intent, retrievalQueries, retrievedRules, plan, engineResult = {}, stateBefore, stateAfter, verification = {}, latency, narration = null, ruling = null, recovery = null, createdAt = null }, { ifAbsent = false } = {}) {
     if (!this.traceStore) return null
-    return this.traceStore.save({
+    const write = ifAbsent && typeof this.traceStore.saveIfAbsent === 'function'
+      ? (input) => this.traceStore.saveIfAbsent(input).trace
+      : (input) => this.traceStore.save(input)
+    return write({
       schema_version: TURN_TRACE_SCHEMA_VERSION,
       turn_id: turnId,
       campaign_id: campaignId,
@@ -2961,7 +3168,7 @@ export class GameOrchestrator {
       state_version_after: stateAfter,
       verification_result: verification,
       latency_ms: latency,
-      token_usage: {},
+      token_usage: narration?.token_usage ?? {},
       narration_result: narration ? {
         narration: narration.narration,
         visibility: narration.visibility ?? 'party',
@@ -2972,6 +3179,8 @@ export class GameOrchestrator {
         provider: narration.provider ?? null,
       } : null,
       ruling,
+      ...(recovery ? { recovery } : {}),
+      ...(createdAt ? { created_at: createdAt } : {}),
     })
   }
 }

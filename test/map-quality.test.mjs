@@ -381,3 +381,14 @@ test('шкаф перед окном — ошибка проверки, а ге�
     }
   }
 })
+
+test('у карты без комнат и дверей петель нет: пустой граф не даёт «одну петлю»', () => {
+  // Формула E − V + 1 считала граф связным и давала лесу и дороге loops=1
+  // (исследование PR #136). Теперь E − V + C.
+  for (const [location, theme] of [['Поляна в Чернолесье', 'лес'], ['Тракт у старого моста', 'дорога']]) {
+    const { map } = generateSceneGeometry({ location, theme, seed: 'empty-graph', useLibrary: false })
+    const report = auditTacticalMap(map)
+    assert.equal(report.stats.rooms, 0, location)
+    assert.equal(report.stats.loops, 0, location)
+  }
+})

@@ -111,6 +111,20 @@ const PERSON_WORD = /(?<![\p{L}\p{M}])(?:хозя(?:ин|ина|ину|ином|
 const QUOTED = String.raw`«([^»]{1,120})»|"([^"]{1,120})"|“([^”]{1,120})”|„([^“”]{1,120})[“”]`
 
 /**
+ * Описание дороги: «вдоль соляных складов», «через лес», «по маршруту от
+ * Высокой пристани», «по свежим следам». Это то, как идут, а не куда.
+ *
+ * Фраза «Отправляюсь к смотровой дамбе по маршруту от Высокой пристани вдоль
+ * соляных складов» дала локацию «Смотровой дамбе по маршруту от Высокой
+ * пристани вдоль соляных складов» и цель «Найти в Смотровой дамбе по маршруту
+ * … другой путь» (плейтест 2026-10-04): название обрывалось только на союзе и
+ * знаке препинания. «По» считается дорогой лишь перед словом пути — «к дому по
+ * соседству» и «в палату по делам гильдий» название не теряют.
+ */
+const ROUTE_NOUN = String.raw`(?:маршрут|дорог|тропинк|троп|тракт|след|берег|улиц|мост|набережн|пут|склон|кромк|рек|течени|направлени)`
+const ROUTE = String.raw`(?:вдоль|через|мимо|минуя|сквозь|огибая|обходя|в\s+обход|по\s+(?:[\p{L}-]+\s+){0,2}?${ROUTE_NOUN}${NOUN_END})(?![\p{L}\p{M}])`
+
+/**
  * Куда собрались: глагол ухода или движения, предлог и название до ближайшей
  * границы. Сама по себе эта связка уходом ещё не является — «уходим в тень» ей
  * тоже удовлетворяет.
@@ -129,8 +143,13 @@ const QUOTED = String.raw`«([^»]{1,120})»|"([^"]{1,120})"|“([^”]{1,120})�
 // «ёлочка» — обрывок среза, а не место. Старые карточки голосования хранят
 // подписи, обрезанные посреди названия («идём в «Другой п»), и такой обрывок
 // становился именем новой локации (плейтест 2026-10-04, QP-05).
+//
+// Описание дороги (`ROUTE`) стоит по обе стороны названия и в него не входит
+// (плейтест 2026-10-04): перед предлогом — «иду по свежим следам к провалу»,
+// «иду от пристани вдоль складов к молу»; после названия — «к дамбе по
+// маршруту от пристани» (шестая группа, её читает `destinationIn`).
 const DESTINATION = new RegExp(
-  String.raw`(?<![\p{L}\p{M}])(?:${LEAVE}|${HEAD_TO})\s+(?:отсюда\s+|из\s+[^,.;!?]{1,80}\s+)?(?:${PURPOSE_INFINITIVE}(?:\s+[^\s,.;!?—]+){0,3}?\s+)?(?:в|во|на|к|ко|до)\s+(?:(?:${QUOTED})|(?![«"“„])([^,.;!?—]{1,120}?)(?=\s+(?:и|а|но|чтобы|затем|потом|сохранив|бросив|отказавшись|оставив)\s|\s+${PURPOSE_INFINITIVE}|[,.;!?—]|$))`,
+  String.raw`(?<![\p{L}\p{M}])(?:${LEAVE}|${HEAD_TO})\s+(?:отсюда\s+|из\s+[^,.;!?]{1,80}\s+)?(?:(?:${ROUTE}|от(?![\p{L}\p{M}]))[^,.;!?—]{0,80}?\s+)?(?:${PURPOSE_INFINITIVE}(?:\s+[^\s,.;!?—]+){0,3}?\s+)?(?:в|во|на|к|ко|до)\s+(?:(?:${QUOTED})|(?![«"“„])([^,.;!?—]{1,120}?)(?:\s+(${ROUTE}[^,.;!?—]{0,120}?))?(?=\s+(?:и|а|но|чтобы|затем|потом|сохранив|бросив|отказавшись|оставив)\s|\s+${PURPOSE_INFINITIVE}|[,.;!?—]|$))`,
   'iu',
 )
 
@@ -299,28 +318,39 @@ function worldMapDestinationLocationId(text) {
  * углу или к человеку перевешивает место, если назван раньше него: «в дальний
  * угол таверны», «к хозяйке таверны».
  *
+ * Описание дороги после названия («по маршруту от Высокой пристани вдоль
+ * соляных складов») в пункт назначения не попадает, но признаком ухода
+ * остаётся: место в нём узнаётся так же, как до разделения. Иначе фраза,
+ * которую сейчас узнаёт только «пристань» в хвосте, перестала бы быть уходом
+ * вовсе (плейтест 2026-10-04).
+ *
+ * `inScene` — названо ли раньше места (а без места — где угодно) то, что
+ * стоит внутри сцены: угол, стойка, собеседник.
+ *
  * @param {string} text
  * @param {ExitContext} context
- * @returns {{destination: string, isPlace: boolean}}
+ * @returns {{destination: string, isPlace: boolean, inScene: boolean}}
  */
 function destinationIn(text, context) {
   const match = DESTINATION.exec(text)
-  if (!match) return { destination: '', isPlace: false }
+  if (!match) return { destination: '', isPlace: false, inScene: false }
   const quoted = compact(match[1] ?? match[2] ?? match[3] ?? match[4] ?? '', 120)
-  const phrase = compact(match[5] ?? '', 120)
   // Название в кавычках после «в» — всегда место: кавычки ставит либо клиент
   // карты мира, либо сам сервер, собирая вариант голосования.
-  if (quoted) return { destination: quoted, isPlace: true }
-  const placeAt = firstIndex(PLACE_WORD, phrase)
-  const known = namesKnownPlace(phrase, context.knownPlaces)
-  if (placeAt < 0 && !known) return { destination: phrase, isPlace: false }
-  const anchor = placeAt < 0 ? phrase.length : placeAt
-  const inScene = [
+  if (quoted) return { destination: quoted, isPlace: true, inScene: false }
+  const name = compact(match[5] ?? '', 120)
+  const phrase = compact(`${name} ${match[6] ?? ''}`, 240)
+  const scene = [
     firstIndex(INSIDE_SCENE, phrase),
     firstIndex(PERSON_WORD, phrase),
     namesPresentPerson(phrase, context.presentNames),
-  ].some((index) => index >= 0 && index < anchor)
-  return { destination: phrase, isPlace: !inScene }
+  ]
+  const placeAt = firstIndex(PLACE_WORD, phrase)
+  const known = namesKnownPlace(name, context.knownPlaces) || namesKnownPlace(phrase, context.knownPlaces)
+  if (placeAt < 0 && !known) return { destination: name, isPlace: false, inScene: scene.some((index) => index >= 0) }
+  const anchor = placeAt < 0 ? phrase.length : placeAt
+  const inScene = scene.some((index) => index >= 0 && index < anchor)
+  return { destination: name, isPlace: !inScene, inScene }
 }
 
 /**
@@ -413,6 +443,38 @@ export function travelDestinationIsPlace(destination, options = {}) {
   const text = compact(destination, 120).replace(/[«»]/gu, '')
   if (!text) return true
   return destinationIn(`Отправляемся в ${text}`, exitContext(options)).isPlace
+}
+
+/** «Не иду туда», «не уходим из деревни» — отказ от движения, а не заявка. */
+const NEGATED_MOVEMENT = new RegExp(String.raw`(?<![\p{L}\p{M}])не\s+(?:${LEAVE}|${HEAD_TO})(?![\p{L}\p{M}])`, 'iu')
+
+/** «Иду к нему», «к ним» — местоимение, а не название. */
+const PRONOUN_DESTINATION = /^(?:нему|ней|ним|нам|вам|тебе|мне|себе|этому|этой|тому|той|туда|сюда)$/iu
+
+/**
+ * Пункт назначения, который игрок назвал, а словарь ухода местом не узнал:
+ * «иду по свежим следам к провалу у старой арки», «отправляюсь к старой арке».
+ * Пустая строка — если фраза не о движении к названному месту, если место
+ * узнано (тогда это уход), если названо то, что стоит в сцене (угол, стойка,
+ * собеседник, «выход»), или если движение отрицается.
+ *
+ * Функция ничего не решает о мире: есть ли такое место, проверяет вызывающий
+ * по карте и сцене. Она лишь отличает «назвал место, которого не знаю» от «не
+ * понял, что делает герой» (плейтест 2026-10-04, QP-06).
+ *
+ * @param {unknown} action
+ * @param {{ knownPlaces?: unknown, presentNames?: unknown }} [options]
+ * @returns {string}
+ */
+export function unrecognizedDestination(action, options = {}) {
+  const text = compact(action, 2_000)
+  if (!text || WORLD_MAP_MARKER.test(text) || NEGATED_MOVEMENT.test(text)) return ''
+  const heading = destinationIn(text, exitContext(options))
+  const destination = heading.destination
+  if (!destination || heading.isPlace || heading.inScene) return ''
+  if (PRONOUN_DESTINATION.test(destination) || destinationIsNotPlace(destination)) return ''
+  if (detectPartyExitRequest(text, options)) return ''
+  return destination
 }
 
 /** Окончания прилагательного в косвенном падеже → именительный; род — для существительного. */
@@ -547,9 +609,43 @@ export function classifyPartyDecision(decision) {
 }
 
 /**
+ * Слова, которые сами по себе места не называют. Цель «Найти в смотровой дамбе
+ * другой путь к разгадке» содержит все слова назначения «другой путь к
+ * разгадке», и судья свободных действий увёл отряд в новую локацию «Другой
+ * путь к разгадке» (плейтест 2026-10-04). Определения вроде «другой», «новый»
+ * не называют ничего; существительное «путь», «выход», «разгадка» — не место,
+ * когда оно главное слово назначения.
+ *
+ * «Дорога» сюда не входит: она в словаре мест (`PLACE_STEMS`), и уход «на
+ * дорогу» решается им, а не целью. «Ключ» и «источник» — тоже: «Серебряный
+ * Ключ» и «Священный источник» бывают местами.
+ */
+const NOT_A_PLACE_ADJECTIVE = /^(?:друг|ин|нов|следующ|прежн|верн|правильн|нужн|обходн|безопасн|кратчайш|коротк)(?:ой|ый|ий|ая|яя|ое|ее|ые|ие|ую|юю|ого|его|ому|ему|ым|им|ых|их|ей|ыми|ими)$/u
+const NOT_A_PLACE_NOUN = /^(?:пут(?:ь|и|ем|ём)|(?:выход|вход|способ|ответ|разгадк|зацепк|след|тайн|правд|истин|решени|причин|смысл|помощ|подсказк|улик|доказательств)\p{L}{0,3}|цел(?:ь|и|ью|ей|ям|ями|ях))$/u
+const ADJECTIVE_ENDING = /(?:ой|ый|ий|ая|яя|ое|ее|ые|ие|ую|юю|ого|его|ому|ему|ым|им|ых|их|ей|ыми|ими)$/u
+
+/**
+ * Главное ли слово назначения — не место: «другой путь к разгадке», «выход»,
+ * «новую зацепку». Главное слово — первое существительное после определений;
+ * если по окончаниям похожи на определение все слова, — последнее.
+ *
+ * @param {unknown} destination
+ * @returns {boolean}
+ */
+export function destinationIsNotPlace(destination) {
+  const words = (String(destination ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}+/gu) ?? [])
+    .filter((word) => word.length >= 3)
+  const meaningful = words.filter((word) => !NOT_A_PLACE_ADJECTIVE.test(word))
+  if (!meaningful.length) return words.length > 0
+  const head = meaningful.find((word) => !ADJECTIVE_ENDING.test(word)) ?? meaningful.at(-1) ?? ''
+  return NOT_A_PLACE_NOUN.test(head)
+}
+
+/**
  * Называет ли цель сцены это место: «Добраться до смотровой дамбы» и
  * «смотровая дамба». Слова сравниваются по общему началу — падеж у цели и у
- * назначения разный. Пустое назначение цель не называет.
+ * назначения разный. Пустое назначение цель не называет, и назначение, главное
+ * слово которого не место («другой путь к разгадке»), — тоже.
  *
  * @param {unknown} destination
  * @param {unknown} objective
@@ -560,6 +656,9 @@ export function objectiveNamesDestination(destination, objective) {
   const wanted = words(destination).filter((word) => word.length >= 4)
   const goal = words(objective)
   if (!wanted.length || !goal.length) return false
+  // Плейтест 2026-10-04: «другой путь к разгадке» совпал с целью слово в слово
+  // и стал локацией; обрывок «Другой п» — тоже.
+  if (destinationIsNotPlace(destination)) return false
   const sameWord = (/** @type {string} */ left, /** @type {string} */ right) => {
     let common = 0
     while (common < left.length && common < right.length && left[common] === right[common]) common += 1
@@ -570,6 +669,44 @@ export function objectiveNamesDestination(destination, objective) {
 
 const SUBORDINATE_START = /^(?:кто|что|чтобы|котор\p{L}*|где|куда|откуда|когда|как|кому|кого|чей|чья|чьё|чьи|пока|если|ведь)(?![\p{L}\p{M}])/iu
 const MOVEMENT_START = /^(?:до(?:браться|йти|ехать|плыть|бежать|лететь|скакать)|при(?:йти|быть|ехать|плыть)|попасть|вернуться|отправиться|пройти|проникнуть|спуститься|подняться|выйти|пробраться|добрести)(?![\p{L}\p{M}])/iu
+
+/**
+ * Части цели по запятым и союзу «и». Придаточное («…, кто звонит», «…, чтобы
+ * успеть») — часть прежней задачи, а не новая: оно приклеивается к предыдущей.
+ *
+ * @param {string} text цель без завершающей точки
+ * @returns {string[]}
+ */
+function objectiveParts(text) {
+  /** @type {string[]} */
+  const parts = []
+  for (const raw of text.split(/\s*[,;]\s*|\s+и\s+/u).map((part) => part.trim()).filter(Boolean)) {
+    if (parts.length && SUBORDINATE_START.test(raw)) parts[parts.length - 1] = `${parts.at(-1)}, ${raw}`
+    else parts.push(raw)
+  }
+  return parts
+}
+
+/**
+ * Зовёт ли цель сцены отряд в это место словами о приходе: «Добраться до
+ * смотровой дамбы, понять источник звона…» зовёт на дамбу. «Расспросить
+ * смотрительницу дамбы» или «не дать толпе открыть шлюзы» место называют, но
+ * никуда не зовут — там дамба и шлюзы, скорее всего, тут же, в сцене.
+ *
+ * Строже, чем `objectiveNamesDestination`, потому что решает без модели: фраза
+ * игрока «Иду к смотровой дамбе» получала «К кому именно подойти?», хотя цель
+ * называла дамбу прямо (плейтест 2026-10-04, QP-02), а «иду к шлюзам» при той
+ * же цели уходом становиться не должно.
+ *
+ * @param {unknown} destination
+ * @param {unknown} objective
+ * @returns {boolean}
+ */
+export function objectiveCallsTo(destination, objective) {
+  const text = compact(objective, 300).replace(/[.!?…]+$/u, '')
+  if (!text || !objectiveNamesDestination(destination, text)) return false
+  return objectiveParts(text).some((part) => MOVEMENT_START.test(part) && objectiveNamesDestination(destination, part))
+}
 
 /**
  * Что остаётся от цели, когда отряд пришёл в названное ею место: из «Добраться
@@ -586,14 +723,7 @@ const MOVEMENT_START = /^(?:до(?:браться|йти|ехать|плыть|�
 export function objectiveRemainder(objective, destination) {
   const text = compact(objective, 300).replace(/[.!?…]+$/u, '')
   if (!text || !objectiveNamesDestination(destination, text)) return null
-  /** @type {string[]} */
-  const parts = []
-  for (const raw of text.split(/\s*[,;]\s*|\s+и\s+/u).map((part) => part.trim()).filter(Boolean)) {
-    // Придаточное («…, кто звонит», «…, чтобы успеть») — часть прежней задачи,
-    // а не новая: оно приклеивается к предыдущей части.
-    if (parts.length && SUBORDINATE_START.test(raw)) parts[parts.length - 1] = `${parts.at(-1)}, ${raw}`
-    else parts.push(raw)
-  }
+  const parts = objectiveParts(text)
   // Приход исполняет только ту часть, что сама о приходе: «добраться до
   // дамбы». «Решить, кому открыть южные ворота» место называет, но у ворот
   // ещё ничего не решено.
@@ -602,6 +732,94 @@ export function objectiveRemainder(objective, destination) {
   if (!rest.length) return ''
   const joined = rest.length === 1 ? rest[0] : `${rest.slice(0, -1).join(', ')} и ${rest.at(-1)}`
   return joined.charAt(0).toLocaleUpperCase('ru') + joined.slice(1)
+}
+
+/**
+ * Цель промежуточной точки составного маршрута: «Продолжить путь из Айрская
+ * башня к «Дормар»». Дальний путь исполняется по одному ребру за сцену
+ * (`fallbackPlan`, `server/scene-architect.mjs`), и следующий пункт маршрута
+ * хранится только в этой цели — отдельного поля у сцены нет. Поэтому формула
+ * одна на всех, кто её пишет и читает: архитектор сцен, подсказки, разбор
+ * «продолжим» и клиент.
+ *
+ * @param {unknown} from
+ * @param {unknown} destination
+ * @returns {string}
+ */
+export function onwardRouteObjective(from, destination) {
+  return `Продолжить путь из ${compact(from, 120)} к «${compact(destination, 120)}»`
+}
+
+const ONWARD_ROUTE_OBJECTIVE = /^Продолжить путь из .+ к «([^«»]{1,120})»$/u
+
+/**
+ * Конечная точка маршрута из цели промежуточной точки; пустая строка — цель не
+ * такая. Узнаётся только формула самого сервера (`onwardRouteObjective`), а не
+ * любая цель со словом «путь»: произвольную цель по совпадению названия места
+ * никто не переписывает.
+ *
+ * @param {unknown} objective
+ * @returns {string}
+ */
+export function onwardRouteTarget(objective) {
+  return compact(ONWARD_ROUTE_OBJECTIVE.exec(compact(objective, 300))?.[1] ?? '', 120)
+}
+
+/**
+ * Следующий пункт маршрута, если сцена — промежуточная точка. Пустая строка,
+ * если цель не такая или зовёт туда, где отряд уже стоит: так выглядит цель,
+ * сохранённая до исправления (плейтест 2026-10-04, SE-14), и звать по ней в
+ * текущее место незачем.
+ *
+ * @param {{ objective?: unknown, location?: unknown } | null | undefined} scene
+ * @returns {string}
+ */
+export function pendingOnwardTarget(scene) {
+  const target = onwardRouteTarget(scene?.objective)
+  if (!target) return ''
+  return target.toLocaleLowerCase('ru') === compact(scene?.location, 120).toLocaleLowerCase('ru') ? '' : target
+}
+
+/**
+ * «Продолжим», «продолжаем путь», «идём дальше». Места фраза не называет и
+ * уходом сама по себе не является: смысл у неё появляется только на
+ * промежуточной точке маршрута (`pendingOnwardTarget`). «Продолжим
+ * приключение» сюда не входит — это просьба к Режиссёру, а не о дороге.
+ */
+const ROUTE_CONTINUATION = /^(?:(?:ну|итак|ладно|что\s+ж|давайте|давай|ребята|всё|все)[,!.]?\s+){0,2}(?:продолж(?:им|аем|ить)(?:\s+(?:путь|маршрут|дорогу|путешествие|поход))?|(?:ид[её]м|пойд[её]м|пошли|двигаемся|двинемся|едем|поехали|отправляемся)\s+дальше|(?:дальше\s+)?в\s+путь)$/iu
+
+/**
+ * @param {unknown} action
+ * @returns {boolean}
+ */
+export function isRouteContinuation(action) {
+  const text = compact(action, 200).toLocaleLowerCase('ru').replace(/[.!…]+$/u, '').trim()
+  return Boolean(text) && ROUTE_CONTINUATION.test(text)
+}
+
+/**
+ * Уход к следующему пункту маршрута по фразе «продолжим» (плейтест 2026-10-04,
+ * SE-11). На промежуточной точке свободное «продолжим» уходило Режиссёру и
+ * получало «Пока ничего не меняется», а путь продолжала только кнопка «Решение
+ * группы». Здесь фраза превращается в тот же уход, что и выбор пункта в этой
+ * кнопке: голосование, его подпись и исполнение — общие, второго пути нет.
+ * Пункт должен быть известной точкой карты мира; идентификатор берётся, только
+ * если имя на карте однозначно.
+ *
+ * @param {unknown} action
+ * @param {Record<string, any>} [state]
+ * @returns {{destination: string, source: 'route', destinationLocationId?: string}|null}
+ */
+export function onwardRouteExitRequest(action, state = {}) {
+  if (!isRouteContinuation(action)) return null
+  const target = pendingOnwardTarget(state?.scene)
+  if (!target) return null
+  /** @type {Array<Record<string, any>>} */
+  const locations = Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : []
+  const known = locations.filter((entry) => entry?.id && entry.known !== false && entry.hidden !== true
+    && entry.visibility !== 'gm_only' && compact(entry.name, 120) === target)
+  if (!known.length) return null
+  return { destination: target, source: 'route', ...(known.length === 1 ? { destinationLocationId: String(known[0].id) } : {}) }
 }
 
 /**
@@ -617,6 +835,9 @@ export function objectiveRemainder(objective, destination) {
  * @returns {{id: string, title: string}|null}
  */
 export function abandonableQuest(state = {}) {
+  // Приведение только для проверки типов: модуль попал в `typecheck:server`
+  // через `action-hints.mjs` (плейтест 2026-10-04, SE-11), рантайм тот же.
+  /** @type {Array<Record<string, any>>} */
   const quests = Array.isArray(state?.worldMemory?.quests) ? state.worldMemory.quests : []
   // Функция вызывается на полном серверном состоянии, а её результат попадает в
   // подпись варианта голосования — то есть на глаза всему столу. Отказаться от

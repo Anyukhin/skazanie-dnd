@@ -349,6 +349,78 @@ test('постоянный мир сохраняет стартовый квес
   assert.equal(starterQuest.clock.max, 4)
 })
 
+test('запасной пролог подаёт угрозу без профиля молвой, а бой без противника получает один понятный отказ', async () => {
+  // Плейтест 2026-10-04, MC-01: «разбойник у моста» из вводных звучал как уже
+  // стоящий перед отрядом, а в сцене не было ни противника, ни встречи.
+  const situation = 'Разбойник у моста требует плату с каждого путника.'
+  const created = await new CampaignBootstrapper().create({
+    code: 'BRIDGE-THREAT', world: { preset: 'Классическое фэнтези', startingLocation: 'Деревня у старого моста', openingSituation: situation },
+    players: [hero],
+  })
+  const narration = created.messages[0].text
+  assert.equal(created.campaignConcept.generatedBy, 'local-storyteller')
+  assert.deepEqual(created.enemies, [])
+  assert.deepEqual(created.npc_world.profiles, {}, 'запасной рассказчик не создаёт боевых профилей')
+  // Угроза названа, но оговорка стоит в том же предложении: собеседник без
+  // модели цитирует пролог по предложению, и молва не становится фактом.
+  const threatSentence = narration.split(/(?<=[.!?…])\s+/u).find((sentence) => /Разбойник у моста/u.test(sentence))
+  assert.ok(threatSentence, narration)
+  assert.match(threatSentence, /молва/u)
+  assert.match(threatSentence, /не видели/u)
+  assert.equal(narration.includes(situation), false, 'угроза без профиля не утверждается как факт сцены')
+
+  const state = normalizeCampaignState(created)
+  assert.throws(
+    () => resolveCommand({ command_type: 'StartCombat', actor_id: hero.id }, state, {
+      diceService: new DiceService({ rng: new SequenceDiceRng([10, 10]) }),
+      context: { allowedActorIds: [hero.id] },
+    }),
+    (error) => error?.code === 'COMBAT_PARTICIPANTS_REQUIRED' && /Ищем бой/u.test(error.message),
+  )
+
+  // Вводные без противника идут дословно, а «оркестр» и «огромный» — не орк и не огр.
+  for (const [code, calm] of [
+    ['CALM-STATION', 'Экипаж прибывает к молчащей орбитальной станции вслед за сигналом бедствия.'],
+    ['CALM-FAIR', 'На огромной ярмарке играет оркестр, и никто не замечает пропажи.'],
+  ]) {
+    const peaceful = await new CampaignBootstrapper().create({ code, world: { openingSituation: calm }, players: [hero] })
+    assert.ok(peaceful.messages[0].text.includes(calm), code)
+    assert.doesNotMatch(peaceful.messages[0].text, /молва/u, code)
+  }
+})
+
+test('стартовая задача получает короткое название, а полный текст зацепки остаётся в описании', async () => {
+  // Плейтест 2026-10-04 (SE, предложение 2): журнал показывал названием задачи
+  // целиком фразу вступления «Отряд просыпается…».
+  const starterQuest = (state) => state.worldMemory.quests.find((quest) => quest.status === 'active' && !String(quest.id).startsWith('quest:chapter:'))
+  const situation = 'Отряд просыпается на рыночной площади после дождя; рядом стоит проводница, которая знает о курьере.'
+  const local = await new CampaignBootstrapper().create({ code: 'TITLE-LOCAL', world: { openingSituation: situation }, players: [hero] })
+  const localQuest = starterQuest(local)
+  assert.ok(localQuest.title.length <= 72, localQuest.title)
+  assert.equal(local.messages[0].text.includes(localQuest.title), false, 'название не повторяет вступление')
+  assert.equal(localQuest.title, local.scene.objective)
+  assert.equal(localQuest.summary, situation, 'полный текст зацепки не потерян')
+  assert.deepEqual(localQuest.objectives, [local.scene.objective])
+
+  const authored = await new CampaignBootstrapper().create({ code: 'TITLE-TIDES', worldTemplateId: 'league-nine-tides', players: [hero] })
+  const authoredQuest = starterQuest(authored)
+  assert.equal(authoredQuest.title, 'Первый отлив за четыреста лет открыл улицу Грунвика')
+  assert.equal(authoredQuest.summary, authored.adventure.currentHook)
+  assert.ok(authoredQuest.summary.startsWith(authoredQuest.title) && authoredQuest.summary.length > authoredQuest.title.length)
+  assert.deepEqual(authoredQuest.objectives, [authored.scene.objective])
+
+  // Короткая зацепка модели остаётся названием, как и раньше.
+  const generated = await new CampaignBootstrapper({ llmClient: new FakeLLM([{ content: JSON.stringify({
+    campaignName: 'Сигнал', partyName: 'Экипаж',
+    openingNarration: 'Нова узнаёт позывной корабля брата.\n\nШлюз станции открывается.',
+    scene: { title: 'Позывной из тишины', location: 'Станция «Тихая гавань»', mood: 'Напряжённое ожидание', objective: 'Найти источник позывного', theme: 'заброшенная космическая станция', danger: 'средняя', map: { layout: 'rooms', width: 13, height: 9 } },
+    hook: 'Позывной пропавшего корабля',
+  }) }]) }).create({ code: 'TITLE-LLM', world: {}, players: [hero] })
+  const generatedQuest = starterQuest(generated)
+  assert.equal(generatedQuest.title, 'Позывной пропавшего корабля')
+  assert.equal(generatedQuest.summary, 'Найти источник позывного')
+})
+
 test('недопустимый режим отклоняется до вызова рассказчика', async () => {
   const llm = new FakeLLM([{ content: '{}' }])
   await assert.rejects(

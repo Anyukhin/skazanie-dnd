@@ -9,7 +9,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { objectiveRemainder } from '../server/party-exit-intent.mjs'
+import { objectiveRemainder, pendingOnwardTarget } from '../server/party-exit-intent.mjs'
 import { normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import { UNTRUSTED_DATA_END, UNTRUSTED_DATA_START } from '../server/security.mjs'
@@ -124,4 +124,94 @@ test('приход, который и был всей целью, закрыва
   const result = advance(initial, sceneArgs)
   assert.equal(result.state.adventure.chapter, 2)
   assert.equal(result.state.worldMemory.quests.find((entry) => entry.id === 'quest:chapter:1').status, 'completed')
+})
+
+// Плейтест 2026-10-04, SE-14: маршрут «Ночной район Ривермарк → Айрская башня →
+// Дормар». В Дормаре цель по-прежнему звала «Продолжить путь из Айрская башня к
+// «Дормар»» — и после перезагрузки: `objectiveRemainder` не узнавал в цели
+// промежуточной точки глагола движения и отдавал её целиком как «остаток».
+function routeCampaign() {
+  return normalizeCampaignState({
+    sessionCode: 'ROUTE-END', activePlayerId: 'hero', partyMemberIds: ['hero'],
+    players: [{ id: 'hero', character: 'Лея', hp: 12, maxHp: 12, inventory: [] }],
+    worldMap: {
+      seed: 'route-end', name: 'Край', width: 1000, height: 640, currentLocationId: 'rivermark',
+      regions: [{ id: 'r', name: 'Долина', x: 500, y: 320, radius: 300, biome: 'plains' }],
+      locations: [
+        { id: 'rivermark', name: 'Ночной район Ривермарк', kind: 'city', x: 200, y: 320, regionId: 'r', summary: '', known: true, visited: true },
+        { id: 'air-tower', name: 'Айрская башня', kind: 'landmark', x: 450, y: 300, regionId: 'r', summary: '', known: true, visited: false },
+        { id: 'dormar', name: 'Дормар', kind: 'village', x: 700, y: 330, regionId: 'r', summary: '', known: true, visited: false },
+      ],
+      routes: [
+        { id: 'route-1', from: 'rivermark', to: 'air-tower', kind: 'road', distance: 2, danger: 'низкая', discovered: true },
+        { id: 'route-2', from: 'air-tower', to: 'dormar', kind: 'road', distance: 2, danger: 'низкая', discovered: true },
+      ],
+    },
+    scene: { title: 'Рынок после дождя', location: 'Ночной район Ривермарк', location_id: 'rivermark', mood: 'Тревога', objective: 'Найти пропавшего курьера', turn: 1, cells: [{ x: 1, y: 1, type: 'floor', revealed: true }] },
+    adventure: { chapter: 1, currentHook: 'Курьер пропал после дождя', unresolvedThreads: [], visitedLocations: ['Ночной район Ривермарк'], history: [] },
+  })
+}
+
+function advanceLeg(state, sceneArgs, commandId) {
+  return resolveCommands([{ command_type: 'AdvanceScene', command_id: commandId, scene_args: sceneArgs }], state,
+    { diceService: new DiceService({ rng: new SequenceDiceRng([]) }), context: { isAdmin: true } })
+}
+
+const TOWARD_DORMAR = { decision: 'Уходим из «Ночной район Ривермарк» и идём в «Дормар»', destinationHint: 'Дормар', destinationLocationId: 'dormar' }
+
+test('составной маршрут: в конечной точке цель больше не зовёт туда же, и replay даёт то же', async () => {
+  const architect = new SceneArchitectAgent()
+  const start = routeCampaign()
+  const first = await architect.plan({ state: start, ...TOWARD_DORMAR })
+  assert.equal(first.sceneArgs.location_id, 'air-tower', 'дальний путь идёт по одному ребру за сцену')
+  assert.equal(first.sceneArgs.objective, 'Продолжить путь из Айрская башня к «Дормар»')
+  const atTower = advanceLeg(start, first.sceneArgs, 'leg-tower')
+  assert.equal(pendingOnwardTarget(atTower.state.scene), 'Дормар', 'на промежуточной точке следующий пункт известен')
+
+  const second = await architect.plan({ state: atTower.state, ...TOWARD_DORMAR, decision: 'Уходим из «Айрская башня» и идём в «Дормар»' })
+  assert.equal(second.sceneArgs.location_id, 'dormar')
+  assert.equal(second.sceneArgs.objective_status, 'completed', 'приход в конечную точку исполняет цель маршрута')
+  assert.equal(second.sceneArgs.carry_unresolved, false)
+  const atDormar = advanceLeg(atTower.state, second.sceneArgs, 'leg-dormar')
+  const scene = atDormar.state.scene
+  assert.equal(scene.location, 'Дормар')
+  assert.doesNotMatch(scene.objective, /Продолжить путь[^»]*к «Дормар»/u)
+  assert.equal(pendingOnwardTarget(scene), '')
+  assert.equal(atDormar.state.adventure.history.at(-1).status, 'completed')
+  assert.equal(atDormar.state.worldMemory.quests.find((quest) => quest.id === 'quest:chapter:2')?.status, 'completed',
+    'задание транзитной главы закрыто приходом, а не висит активным')
+
+  // Перезагрузка страницы читает состояние из потока событий.
+  const replayed = replayEvents(start, [...atTower.events, ...atDormar.events])
+  assert.equal(replayed.scene.location, 'Дормар')
+  assert.equal(replayed.scene.objective, scene.objective)
+  assert.deepEqual(replayed.worldMemory.quests, atDormar.state.worldMemory.quests)
+})
+
+test('составной маршрут при живой модели: цель транзита каноническая, в конечной точке модель не зовёт туда же', async () => {
+  const start = routeCampaign()
+  const transit = await new SceneArchitectAgent({ llmClient: { completeJson: async () => ({
+    location: 'Айрская башня', objective: 'Осмотреть башню и найти ночлег',
+  }) } }).plan({ state: start, ...TOWARD_DORMAR })
+  assert.equal(transit.sceneArgs.location_id, 'air-tower')
+  assert.equal(transit.sceneArgs.objective, 'Продолжить путь из Айрская башня к «Дормар»',
+    'пересказ модели не стирает следующий пункт маршрута')
+  const atTower = advanceLeg(start, transit.sceneArgs, 'leg-tower')
+
+  const arrival = await new SceneArchitectAgent({ llmClient: { completeJson: async () => ({
+    location: 'Дормар', objective: 'Продолжить путь из Айрская башня к «Дормар»',
+  }) } }).plan({ state: atTower.state, ...TOWARD_DORMAR, decision: 'Уходим из «Айрская башня» и идём в «Дормар»' })
+  assert.equal(arrival.sceneArgs.location_id, 'dormar')
+  assert.equal(arrival.sceneArgs.objective_status, 'completed')
+  assert.doesNotMatch(arrival.sceneArgs.objective, /Продолжить путь[^»]*к «Дормар»/u)
+})
+
+test('цель промежуточной точки к другому месту приходом сюда не исполняется', async () => {
+  const start = routeCampaign()
+  const first = await new SceneArchitectAgent().plan({ state: start, ...TOWARD_DORMAR })
+  const atTower = advanceLeg(start, first.sceneArgs, 'leg-tower')
+  // Отряд передумал и вернулся: Дормар так и не достигнут.
+  const back = await new SceneArchitectAgent().plan({ state: atTower.state, decision: 'Уходим из «Айрская башня» и идём в «Ночной район Ривермарк»', destinationHint: 'Ночной район Ривермарк', destinationLocationId: 'rivermark' })
+  assert.equal(back.sceneArgs.location_id, 'rivermark')
+  assert.equal(back.sceneArgs.objective_status, 'unresolved')
 })

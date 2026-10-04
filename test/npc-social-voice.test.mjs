@@ -62,7 +62,7 @@ test('бриф NPC-диалога несёт сцену, цели NPC и пам�
   assert.ok(result)
   assert.equal(requests.length, 1)
 
-  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v6/)
+  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v7/)
   assert.equal(result.prompt_version, NPC_SOCIAL_PROMPT_VERSION)
   const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
 
@@ -227,6 +227,118 @@ test('fallback на вопрос о сигнале вспоминает види
   assert.doesNotMatch(result.reply, /ЧУЖОЙ СЕКРЕТНЫЙ СИГНАЛ/u)
 })
 
+// Плейтест 2026-10-04, QP-01: зацепка плана города называла смотрительницу по
+// имени, а сама смотрительница о ней не знала — в бриф зацепки не попадали.
+function hookedWorldMap() {
+  return {
+    version: 1, name: 'Лига', currentLocationId: 'veld',
+    locations: [
+      {
+        id: 'veld', name: 'Вельдбург', kind: 'port', x: 100, y: 100, known: true, visited: true,
+        storyHooks: ['Мира прячет за стойкой письмо без печати.'],
+        cityOverview: {
+          version: 1, name: 'Вельдбург', summary: 'Город на дамбах.', image: '/assets/maps/city/skazanie/veld-v1.webp',
+          districts: [{ id: 'dike-line', name: 'Линия дамб', x: 400, y: 300, storyHooks: ['Орин сверяет списки шлюзов.'] }],
+          places: [{
+            id: 'high-gate', name: 'Высокие ворота дамбы', kind: 'gate', districtId: 'dike-line', x: 420, y: 355,
+            storyHooks: ['Хозяйка трактира Мира обнаружила подменённую мерную рейку.', 'Шлюз открывается на палец с каждым звоном.'],
+          }],
+        },
+      },
+      // Место, которого отряд не знает: его зацепки игрок не видел, и NPC их не получает.
+      { id: 'sunken', name: 'Затонувший город', kind: 'ruin', x: 300, y: 300, known: false, visited: false, storyHooks: ['Мира тайно служит Дому Глубины.'] },
+    ],
+    routes: [],
+  }
+}
+
+async function briefWithHooks(npcId) {
+  const state = dialogueState()
+  state.worldMap = hookedWorldMap()
+  const requests = []
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => { requests.push(input); return { reply: 'Слушаю.', stance: 'neutral' } } },
+  })
+  await controller.respond({ state, playerId: 'hero', npcId, message: 'Что с мерной рейкой?', turnId: `hooks-${npcId}` })
+  return { brief: untrustedPayload(requests[0].messages[1].content, 'npc_social_brief'), system: requests[0].messages[0].content }
+}
+
+test('публичная зацепка карты, называющая NPC, приходит в его бриф как известное ему', async () => {
+  const { brief, system } = await briefWithHooks('npc:mira')
+  assert.deepEqual(brief.public_hooks_naming_npc, [
+    { place: 'Вельдбург', text: 'Мира прячет за стойкой письмо без печати.' },
+    { place: 'Вельдбург · Высокие ворота дамбы', text: 'Хозяйка трактира Мира обнаружила подменённую мерную рейку.' },
+  ])
+  assert.equal(brief.public_hooks_naming_npc_status, 'complete')
+  // Контракт объясняет модели поле: знать — да, изображать незнание — нет.
+  assert.match(system, /public_hooks_naming_npc/u)
+  assert.match(system, /не отвечай «не\s+знаю»/u)
+})
+
+test('зацепка о другом NPC и зацепка неизвестного отряду места в бриф не попадают', async () => {
+  const mira = await briefWithHooks('npc:mira')
+  assert.doesNotMatch(JSON.stringify(mira.brief), /Дому Глубины|Орин сверяет|Шлюз открывается/u)
+
+  const orin = await briefWithHooks('npc:orin')
+  assert.deepEqual(orin.brief.public_hooks_naming_npc, [{ place: 'Вельдбург · Линия дамб', text: 'Орин сверяет списки шлюзов.' }])
+  assert.doesNotMatch(JSON.stringify(orin.brief.public_hooks_naming_npc), /Мира/u)
+})
+
+// Плейтест 2026-10-04, QP-02 и SE-04: без модели собеседник на любой вопрос
+// дословно зачитывал абзац пролога — пролог лежит фактом отряда и всегда шёл
+// первым, совпал он с вопросом или нет.
+function prologueState() {
+  const state = dialogueState()
+  state.worldMemory = {
+    entities: [{ id: 'loc:tavern', kind: 'location', name: 'Трактир «Пустой кубок»', summary: '', aliases: [], visibility: 'party', tags: [] }],
+    facts: [{
+      id: 'fact:opening:tavern', subject_id: 'loc:tavern', predicate: 'opening_narration', object: 'Подтверждённый пролог сцены',
+      summary: 'Трактир гудит после ярмарки. Из погреба доносится глухой удар колокола, и все кружки звенят в ответ. Хозяйка бледнеет: такого звона здесь не слышали.',
+      visibility: 'party', status: 'active', source_event_ids: [],
+    }],
+    epistemic_claims: [],
+  }
+  return state
+}
+
+const offlineController = () => new NpcSocialController({ llmClient: { completeJson: async () => { throw new Error('timeout') } } })
+
+test('fallback без совпавшего факта честно говорит «ничего нового» и не зачитывает пролог', async () => {
+  for (const [index, message] of [
+    'Что ты знаешь о пропавшем курьере?',
+    // Обращение из досье несёт роль собеседника; «хозяйка трактира» не делает
+    // пролог про трактир и хозяйку ответом на вопрос о караване.
+    'Обращаюсь к Мира (хозяйка трактира): куда пропал караван?',
+  ].entries()) {
+    const result = await offlineController().respond({ state: prologueState(), playerId: 'hero', npcId: 'npc:mira', message, turnId: `prologue-miss-${index}` })
+    assert.equal(result.provider, 'deterministic-social-fallback')
+    assert.match(result.reply, /не сообщает ничего нового/u, message)
+    assert.doesNotMatch(result.reply, /Трактир гудит|колокола|бледнеет/u, message)
+  }
+})
+
+test('fallback отвечает одним совпавшим предложением факта и не повторяет сказанное', async () => {
+  const state = prologueState()
+  const first = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-hit' })
+  assert.equal(first.provider, 'deterministic-social-fallback')
+  assert.equal(first.reply, 'Мира отвечает: «Из погреба доносится глухой удар колокола, и все кружки звенят в ответ.»')
+  assert.doesNotMatch(first.reply, /Трактир гудит|бледнеет/u, 'абзац пролога не зачитывается целиком')
+
+  state.social.conversations.push({ ...first.conversation, id: 'said-bell' })
+  const again = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Ещё раз про колокол?', turnId: 'prologue-again' })
+  assert.match(again.reply, /не сообщает ничего нового/u)
+})
+
+test('fallback подтверждает публичную зацепку о себе, если спросили именно о ней', async () => {
+  const state = dialogueState()
+  state.worldMap = hookedWorldMap()
+  const result = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Какая рейка подменена?', turnId: 'hook-fallback' })
+  assert.equal(result.provider, 'deterministic-social-fallback')
+  assert.equal(result.reply, 'Мира подтверждает: «Хозяйка трактира Мира обнаружила подменённую мерную рейку.»')
+  const unrelated = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:orin', message: 'Какая рейка подменена?', turnId: 'hook-fallback-orin' })
+  assert.match(unrelated.reply, /не сообщает ничего нового/u)
+})
+
 test('структурно неверный ответ NPC не становится прямой речью', async () => {
   const invalidResponses = [
     { reply: 42, stance: 'friendly' },
@@ -244,5 +356,21 @@ test('структурно неверный ответ NPC не становит
     assert.equal(result.provider, 'deterministic-social-fallback')
     assert.notEqual(result.reply, 'Подтверждено.')
     assert.notEqual(result.reply, '42')
+  }
+})
+
+test('без модели исход проверки звучит по-русски, а не служебной английской строкой', async () => {
+  // До 2026-10-04 запасной путь отвечал «Мира is not convinced.» (PR #136).
+  const controller = new NpcSocialController()
+  for (const checkOutcome of [
+    { skill: 'persuasion', ability: 'cha', success: true },
+    { skill: 'persuasion', ability: 'cha', success: false },
+    { skill: 'insight', ability: 'wis', success: true },
+    { skill: 'insight', ability: 'wis', success: false },
+  ]) {
+    const result = await controller.respond({ state: dialogueState(), playerId: 'hero', npcId: 'npc:mira', message: 'Пропусти нас к архиву', turnId: 'turn-check', checkOutcome })
+    const reply = String(result?.reply ?? result?.npc_reply ?? '')
+    assert.ok(reply.startsWith('Мира'), reply)
+    assert.doesNotMatch(reply, /[A-Za-z]{3,}/u, `${checkOutcome.skill}/${checkOutcome.success}: ${reply}`)
   }
 })

@@ -257,7 +257,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .session-code b { color: color-mix(in srgb, var(--well) 10%, var(--text2)); font-size: var(--fs-md); }
 .connection-status { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--well) 2.2%, var(--ally) 19.8%); border-radius: 5px; color: color-mix(in srgb, var(--text2) 25%, var(--ally)); background: rgba(73,100,68,.08); font-size: var(--fs-sm); letter-spacing: .04em; white-space: nowrap; }
 .connection-status.reconnecting, .connection-status.connecting { border-color: rgba(211,153,86,.3); color: color-mix(in srgb, var(--text2) 30%, var(--acc)); background: rgba(192,132,66,.08); }
-.connection-status.offline { border-color: color-mix(in srgb, var(--text) 6%, var(--hp) 24%); color: color-mix(in srgb, var(--text2) 35%, var(--enemy)); background: color-mix(in srgb, var(--spent) 3.2%, var(--hp) 5.9%); }
+.connection-status.offline, .connection-status.revoked { border-color: color-mix(in srgb, var(--text) 6%, var(--hp) 24%); color: color-mix(in srgb, var(--text2) 35%, var(--enemy)); background: color-mix(in srgb, var(--spent) 3.2%, var(--hp) 5.9%); }
 .director-status { height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 10px; border: 1px solid color-mix(in srgb, var(--frame) 8.4%, var(--ally) 15.6%); border-radius: 5px; color: color-mix(in srgb, var(--muted) 40%, var(--ally)); background: rgba(73,100,68,.08); font-size: var(--fs-sm); letter-spacing: .08em; }
 .director-status b { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.05); color: color-mix(in srgb, var(--text) 55%, var(--ally)); font-size: var(--fs-sm); }
 .director-status.escalation, .director-status.climax { border-color: rgba(190,113,66,.32); color: #c38d61; background: rgba(130,69,40,.1); }
@@ -458,7 +458,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .turn-strip-condition { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border: 1px solid rgba(93,153,109,.3); border-radius: 999px; color: #94b59a; font-size: var(--fs-xxs); }
 .turn-strip-condition.partial { border-color: rgba(181,130,67,.35); color: color-mix(in srgb, var(--text2) 40%, var(--acc)); }
 .turn-strip-condition.marker { border-style: dashed; border-color: color-mix(in srgb, var(--frame) 18%, var(--text) 12%); color: color-mix(in srgb, var(--muted) 60%, var(--text2)); }
-.turn-strip-condition i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.turn-strip-condition i { display: grid; place-items: center; flex: 0 0 16px; width: 16px; height: 16px; background: transparent; font-style: normal; line-height: 1; }
+.turn-strip-condition .condition-mark { display: block; width: 16px; height: 16px; margin: 0; object-fit: contain; }
 .turn-strip > .combat-turn-clock { margin-left: auto; }
 .combat-turn-clock.compact { display: grid; grid-template-columns: auto; gap: 2px; min-width: 44px; padding: 0; border: 0; }
 .combat-turn-clock.compact b { font-size: var(--fs-sm); text-align: right; }
@@ -499,7 +500,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .rest-controls > header strong { color: #d2c0a9; font: 600 var(--fs-lg) var(--f-serif); }
 .rest-controls > p { margin: 6px 0 9px; color: color-mix(in srgb, var(--panel) 20%, var(--muted)); font-size: var(--fs-sm); }
 .rest-controls > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.rest-controls button { min-height: 32px; padding: 0 7px; border: 1px solid color-mix(in srgb, var(--text) 1.3%, var(--acc) 24.7%); border-radius: 5px; background: rgba(163,101,43,.1); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
+.rest-controls button { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 7px; border: 1px solid color-mix(in srgb, var(--text) 1.3%, var(--acc) 24.7%); border-radius: 5px; background: rgba(163,101,43,.1); color: #c4935c; font-size: var(--fs-sm); cursor: pointer; }
 .rest-controls button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--acc) 17.5%, var(--acc2) 32.5%); background: rgba(163,101,43,.18); }
 .rest-controls button:disabled { opacity: .38; cursor: default; }
 /* Пленники. Панель повторяет строй «Передышки», но держит собственный тревожный
@@ -2807,7 +2808,8 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
 .token-tactical-badges i{min-width:18px;height:18px;display:grid;place-items:center;padding:0 4px;border:1px solid rgba(137,179,195,.52);border-radius:9px;background:rgba(18,27,31,.92);color:#abd2df;font:800 10px/1 var(--f-ui);font-style:normal;white-space:nowrap;box-shadow:0 2px 7px #000}
 .token-tactical-badges .advantage{border-color:rgba(104,167,116,.58);background:rgba(25,51,31,.94);color:#b8daba;font-size:13px}.token-tactical-badges .disadvantage{border-color:rgba(185,119,83,.62);background:color-mix(in srgb, var(--rail-bg) 70.5%, var(--hp) 23.5%);color:#e0ae91;font-size:13px}.token-tactical-badges .blocked{border-color:color-mix(in srgb, var(--hp) 57.8%, var(--enemy) 10.2%);background:color-mix(in srgb, var(--well) 66.5%, var(--hp) 28.5%);color:#efaaa4;font-size:13px}
 .token-conditions{position:absolute;z-index:8;left:50%;top:calc(100% + 8px);display:flex;gap:2px;transform:translateX(-50%);pointer-events:auto}
-.token-conditions i{width:13px;height:13px;display:grid;place-items:center;border:1px solid color-mix(in srgb, var(--frame) 10%, var(--ally) 40%);border-radius:50%;background:#203126;color:#b9d6bc;font:700 var(--fs-xxs) var(--f-ui);font-style:normal;box-shadow:0 2px 4px #000}
+.token-conditions i{width:18px;height:18px;display:grid;place-items:center;overflow:hidden;border:1px solid color-mix(in srgb, var(--frame) 10%, var(--ally) 40%);border-radius:50%;background:#203126;color:#b9d6bc;font:700 var(--fs-xxs) var(--f-ui);font-style:normal;box-shadow:0 2px 4px #000}
+.token-conditions i .condition-mark{display:block;width:16px;height:16px;object-fit:contain}
 .token-conditions i.partial{border-color:color-mix(in srgb, var(--frame) 5.8%, var(--acc) 52.2%);background:color-mix(in srgb, var(--frame) 65%, var(--acc-ink));color:color-mix(in srgb, var(--text) 50%, var(--acc))}.token-conditions i.marker{border-style:dashed;border-color:color-mix(in srgb, var(--frame) 24.8%, var(--text2) 37.2%);background:color-mix(in srgb, var(--well) 50%, var(--spent));color:color-mix(in srgb, var(--muted) 10%, var(--text2))}
 .token-conditions i[data-condition="paralyzed"]{border-color:rgba(192,158,221,.75);background:#382748;color:#ead9f4}.token-conditions i[data-condition="restrained"]{border-color:color-mix(in srgb, var(--spent) 18%, var(--acc2) 54%);background:color-mix(in srgb, var(--rail-bg) 70%, var(--acc));color:color-mix(in srgb, var(--text) 55%, var(--acc2))}.token-conditions i[data-condition="prone"]{border-radius:3px;border-color:rgba(153,177,191,.7);background:#283941;color:#c9dde6}.token-conditions i[data-condition="frightened"]{border-color:color-mix(in srgb, var(--well) 3.9%, var(--enemy) 74.1%);background:color-mix(in srgb, var(--well) 65%, var(--enemy));color:#f1b1aa}
 /* Полоска героя и призыва теперь с числами и вдвое толще: значки состояний
@@ -3107,7 +3109,7 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
 }
 .combat-icon-symbol {
   position: absolute;
-  inset: 13%;
+  inset: 5%;
   display: block;
   background-image: var(--combat-icon-src);
   background-position: center;
@@ -3117,7 +3119,7 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
   transition: filter .16s ease, transform .16s ease;
 }
 .combat-icon.compact .combat-icon-art:not(.own) { inset: 1px; }
-.combat-icon.compact .combat-icon-symbol { inset: 12%; }
+.combat-icon.compact .combat-icon-symbol { inset: 5%; }
 /* Свои PNG остаются прозрачными исходниками (docs/icon-prompts.md). Фон и рамка
    выбираются компонентом по семантическому семейству и лежат отдельным слоем,
    поэтому новый рисунок автоматически получает готовую карточку. */
@@ -3128,7 +3130,7 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
     inset 0 3px 3px -2px rgba(255, 240, 208, .14),
     inset 0 -5px 9px rgba(0, 0, 0, .58);
 }
-.combat-hotbar .action-tile .combat-icon-symbol { inset: 11%; }
+.combat-hotbar .action-tile .combat-icon-symbol { inset: 5%; }
 .combat-hotbar .action-tile:hover:not(:disabled) .combat-icon-art.own,
 .combat-hotbar .action-tile.selected .combat-icon-art.own {
   box-shadow:

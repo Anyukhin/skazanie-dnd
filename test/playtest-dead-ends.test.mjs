@@ -9,8 +9,8 @@ import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
-import { objectiveRemainder } from '../server/party-exit-intent.mjs'
-import { proposeRoutedTravel } from '../server/player-request-router.mjs'
+import { classifyPartyDecision, objectiveRemainder } from '../server/party-exit-intent.mjs'
+import { proposeAgentInteraction, proposeRoutedTravel, unknownDestinationReply } from '../server/player-request-router.mjs'
 import { actorPosition } from '../server/rules-engine.mjs'
 import { nearestSceneObjectCommand } from '../server/scene-interactions.mjs'
 import { freeActionDiscoveryCommands } from '../server/world-memory.mjs'
@@ -43,6 +43,24 @@ const checks = {
     const card = proposeRoutedTravel({ route: 'travel', destination: entry.destination }, state, entry.text)
     assert.equal(card?.type, 'vote', 'вместо голосования — подсказка «напишите…»')
     assert.equal(card.options.some((option) => /бросаем задание/u.test(option)), false)
+  },
+  // Фраза игрока без модели: карточка ухода с названием места без описания дороги.
+  async exit_vote(state, entry) {
+    const card = proposeAgentInteraction(entry.text, state)
+    assert.equal(card?.type, 'vote', 'вместо голосования — подход к собеседнику или «не понял»')
+    assert.equal(card.options.some((option) => /бросаем задание/u.test(option)), false)
+    assert.equal(classifyPartyDecision(card.options[0]).destinationHint, entry.expect_destination)
+  },
+  // Место, которого нет ни на карте мира, ни в сцене: честный ответ, а не
+  // голосование и не выдуманная точка. Отряд стоит в `at_location_id`.
+  async unknown_place(state, entry) {
+    const location = state.worldMap.locations.find((candidate) => candidate.id === entry.at_location_id)
+    assert.ok(location, `в мире нет точки «${entry.at_location_id}»`)
+    const here = { ...state, scene: { ...state.scene, location: location.name }, worldMap: { ...state.worldMap, currentLocationId: location.id } }
+    assert.equal(proposeAgentInteraction(entry.text, here), null)
+    const reply = unknownDestinationReply(entry.text, here)
+    assert.ok(reply.startsWith(entry.expect_reply_start), reply)
+    assert.doesNotMatch(reply, /Отправляемся в/u)
   },
   async objective_remainder(state, entry) {
     assert.equal(objectiveRemainder(state.scene.objective, entry.destination), entry.expect)

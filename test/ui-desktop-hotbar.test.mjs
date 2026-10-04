@@ -33,16 +33,20 @@ test('wide hotbar lays out title, chips and readable detail at the requested thr
   assert.doesNotMatch(styles, /\.hotbar-detail \.detail-description \{[^}]*columns: 2;/)
 })
 
-test('решение группы находится рядом с категориями, а пустая колонка действий не занимает место', async () => {
+test('решение группы и начало боя — в «Отдых и режимы», переговоры — плиткой действия', async () => {
   const source = await readFile(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
   const header = source.slice(source.indexOf('<div className="hotbar-decks">'), source.indexOf('<div className="hotbar-main">'))
   assert.match(header, /Предметы/)
-  assert.match(header, /<\/nav>\s*\{!combatActive && <button/)
-  assert.match(header, /onClick=\{onLeaveLocation\}/)
-  assert.match(header, /disabled=\{leaveLocationDisabled \|\| narrating \|\| tacticalBusy \|\| Boolean\(guardEncounter\)\}/)
-  assert.match(header, /Решение группы/)
-  assert.match(header, /showStartCombat && <button[^>]*className="start-combat-button"[^>]*onClick=\{onStartCombat\}/)
   assert.match(header, /className="hotbar-combat-controls"/)
+  // Макет исследования (холст, Room): решение группы и начало боя — значками
+  // в «Отдых и режимы» колонки хода, а не кнопками в ряду вкладок.
+  assert.doesNotMatch(header, /onLeaveLocation|onStartCombat/)
+  const modes = source.slice(source.indexOf('<div className="hud-modes"'), source.indexOf('className="hud-purse"'))
+  assert.match(modes, /className="hud-mode group-decision-button"/)
+  assert.match(modes, /onClick=\{onLeaveLocation\}/)
+  assert.match(modes, /disabled=\{leaveLocationDisabled \|\| narrating \|\| tacticalBusy \|\| Boolean\(guardEncounter\)\}/)
+  assert.match(modes, /Решение группы/)
+  assert.match(modes, /showStartCombat && <button[^>]*className="hud-mode start-combat-button"[^>]*onClick=\{onStartCombat\}/)
   // Завершение хода живёт в правой колонке панели — рядом с ресурсами хода,
   // как в прототипе стола, а не в ряду колод.
   assert.doesNotMatch(header, /onClick=\{onFinishTurn\}/)
@@ -58,7 +62,8 @@ test('решение группы находится рядом с катего�
   assert.match(tray, /className="hero-cluster-pips"/)
   assert.match(tray, /<SpellSlotBar/)
   assert.doesNotMatch(header, /<SpellSlotBar/, 'ячейки по кругам живут в лотке, а не в ряду вкладок')
-  assert.match(header, /onProposeParley\('persuasion'\)/)
+  // Макет боя: переговоры — плиткой среди действий, цена — действие.
+  assert.match(source, /id: 'propose-parley', cost: 'action', section: 'action', node: <button className="action-tile parley-hotbar"[^\n]*onProposeParley\('persuasion'\)/)
   assert.match(source, /doorsAtHand\.some\(\(door\) => door\.state === 'locked'\) && <div className="hotbar-turn-controls">/)
   assert.doesNotMatch(source, /selectedSceneObjectVerbs\.map/u, 'действия объекта переехали в контекстное меню карты')
   assert.doesNotMatch(source, /className="exploration-leave-location"/)

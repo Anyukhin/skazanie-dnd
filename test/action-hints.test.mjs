@@ -59,6 +59,18 @@ test('в бою подсказок нет: там действия перечи�
   assert.deepEqual(suggestedActionsFor(combat), [])
 })
 
+test('на промежуточной точке маршрута цель называет, как идти дальше', () => {
+  // Плейтест 2026-10-04, SE-11: цель «Продолжить путь из Айрская башня к
+  // «Дормар»» не подсказывала, что путь продолжает кнопка «Решение группы».
+  const objective = 'Продолжить путь из Айрская башня к «Дормар»'
+  const [hint] = suggestedActionsFor(room({ scene: { location: 'Айрская башня', objective, map: { props: [], doors: [] } } }))
+  assert.equal(hint.id, 'objective')
+  assert.equal(hint.text, 'Цель отряда: продолжить путь к «Дормар» — нажмите «Решение группы» или напишите «продолжаем путь»')
+  // Цель, сохранённая до исправления SE-14, в Дормаре в Дормар не зовёт.
+  const [stale] = suggestedActionsFor(room({ scene: { location: 'Дормар', objective, map: { props: [], doors: [] } } }))
+  assert.equal(stale.text, `Цель отряда: ${objective}`)
+})
+
 test('пустая, чужая и бессодержательная комната не рождают подсказок', () => {
   assert.deepEqual(suggestedActionsFor(null), [])
   assert.deepEqual(suggestedActionsFor(undefined), [])
@@ -84,6 +96,39 @@ test('пустая, чужая и бессодержательная комна�
       { id: 'b', name: 'Труп', alive: false },
     ],
   })), [])
+})
+
+/**
+ * Плейтест 2026-10-04, SE-13: подсказка обещала «Можно осмотреть: Длинный
+ * стол», а карточка стола отвечала отключённой кнопкой «подойдите на соседнюю
+ * клетку». Строка теперь меряет тем же `sceneObjectDistance`, что и движок, и
+ * говорит герою-читателю, стоящему дальше соседней клетки, что надо подойти.
+ */
+test('реквизит дальше соседней клетки зовёт героя-читателя подойти, а рядом — нет', () => {
+  const chest = (id, x, y) => ({ ...prop(id, 'chest', ['inspect']), x: x + 0.5, y: y + 0.5, footprint: [{ x, y }] })
+  const withHero = (props, heroAt, mechanics) => ({
+    ...room({ scene: { map: { props, doors: [] } }, ...(mechanics ? { mechanics } : {}) }),
+    players: [{ id: 'hero', character: 'Мира', x: heroAt.x, y: heroAt.y }],
+  })
+  const texts = (hints) => hints.map((hint) => hint.text)
+
+  const far = withHero([chest('chest-1', 6, 4)], { x: 0, y: 0 })
+  assert.deepEqual(texts(suggestedActionsFor(far, 'hero')), ['Можно осмотреть: Сундук — надо подойти вплотную'])
+  // Читателю без героя мерить нечем — строка прежняя, без выдуманной дистанции.
+  assert.deepEqual(texts(suggestedActionsFor(far)), ['Можно осмотреть: Сундук'])
+  assert.deepEqual(texts(suggestedActionsFor(far, 'stranger')), ['Можно осмотреть: Сундук'])
+  // Соседняя клетка, в том числе по диагонали, — уже под рукой.
+  assert.deepEqual(texts(suggestedActionsFor(withHero([chest('chest-1', 6, 4)], { x: 5, y: 3 }), 'hero')), ['Можно осмотреть: Сундук'])
+  // Позиция механики главнее листа: по ней ходит доска.
+  const moved = withHero([chest('chest-1', 6, 4)], { x: 0, y: 0 }, { combat: { active: false }, positions: { hero: { x: 6, y: 5 } } })
+  assert.deepEqual(texts(suggestedActionsFor(moved, 'hero')), ['Можно осмотреть: Сундук'])
+
+  // Три одноимённых стола из протокола — одна строка, по ближайшему: панель не
+  // называет один и тот же предмет дважды с разными обещаниями.
+  const twins = withHero([chest('chest-a', 7, 7), chest('chest-b', 1, 1)], { x: 0, y: 0 })
+  assert.deepEqual(suggestedActionsFor(twins, 'hero'), [{ id: 'prop:chest-b:inspect', text: 'Можно осмотреть: Сундук' }])
+  // Без героя порядок прежний: первым по идентификатору.
+  assert.deepEqual(suggestedActionsFor(twins), [{ id: 'prop:chest-a:inspect', text: 'Можно осмотреть: Сундук' }])
 })
 
 test('обстановка в подсказки не попадает вовсе: её и так видно на доске', () => {
@@ -279,8 +324,10 @@ test('настоящая проекция зала: сундук по-русск
   const hints = projectedHints(tavernState({ leisure: false }))
   const texts = hints.map((hint) => hint.text)
 
+  // Мира стоит у входа, сундук — в дальнем углу: строка честно зовёт подойти
+  // (плейтест 2026-10-04, SE-13).
   assert.deepEqual(texts, [
-    'Можно осмотреть: Сундук',
+    'Можно осмотреть: Сундук — надо подойти вплотную',
     'Можно заговорить с кем-то из местных: Бром (трактирщик)',
     'Цель отряда: Найти пропавшего писаря',
     'Можно уйти из этого места через дверь',
@@ -324,7 +371,7 @@ test('приметная находка в таверне сильнее при�
   const texts = projectedHints(tavernState({ pointOfInterest: true })).map((hint) => hint.text)
 
   assert.deepEqual(texts, [
-    'Можно осмотреть: Сундук',
+    'Можно осмотреть: Сундук — надо подойти вплотную',
     'Можно заговорить с кем-то из местных: Бром (трактирщик)',
     'Цель отряда: Найти пропавшего писаря',
     'Можно уйти из этого места через дверь',
@@ -538,4 +585,16 @@ test('строки изнанки не выносят из проекции ни
   // Тот же вход — тот же список: перестановка читалась бы как изменение мира.
   const room = campaignStateForViewer(state, { role: 'player', heroIds: ['hero'] }, 'hero')
   assert.deepEqual(suggestedActionsFor(room, 'hero'), hints)
+})
+
+test('ведущий получает «Что можно сделать» той же функцией, что игрок', () => {
+  // UX-обход 2026-10-04, «Что сломано», пункт 5: ветка ведущего в проекции
+  // возвращала комнату без подсказок, и владелец стола, играющий своим героем,
+  // видел пустую панель «Что можно сделать».
+  const state = tavernState({ leisure: false })
+  const player = projectedHints(state).map((hint) => hint.text)
+  const admin = campaignStateForViewer(state, { role: 'admin' }, 'hero').suggested_actions
+  assert.ok(Array.isArray(admin) && admin.length > 0, 'у ведущего есть подсказки')
+  const adminTexts = admin.map((hint) => hint.text)
+  for (const text of player) assert.ok(adminTexts.includes(text), `ведущий видит подсказку игрока «${text}»`)
 })

@@ -1,0 +1,58 @@
+[
+  {
+    "path": "/api/campaigns/BROWSER-REVIEW3/commands",
+    "status": 200,
+    "dropped": false,
+    "response_status": 503,
+    "key": "5a7f9b3e-9d1c-48ed-b3ad-3d10d45e7c6a",
+    "type": "MoveActor",
+    "replayed": false,
+    "state_version": 2,
+    "position": {
+      "x": 1,
+      "y": 0
+    }
+  },
+  {
+    "path": "/api/campaigns/BROWSER-REVIEW3/commands",
+    "status": 200,
+    "dropped": false,
+    "response_status": 200,
+    "key": "5a7f9b3e-9d1c-48ed-b3ad-3d10d45e7c6a",
+    "type": "MoveActor",
+    "replayed": true,
+    "state_version": 2,
+    "position": {
+      "x": 1,
+      "y": 0
+    }
+  },
+  {
+    "path": "/api/campaigns/BROWSER-REVIEW3/commands",
+    "status": 200,
+    "dropped": false,
+    "response_status": 503,
+    "key": "d7c00931-302e-4911-9578-a888de829eca",
+    "type": "MoveActor",
+    "replayed": false,
+    "state_version": 4,
+    "position": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  {
+    "path": "/api/campaigns/BROWSER-REVIEW3/commands",
+    "status": 200,
+    "dropped": false,
+    "response_status": 200,
+    "key": "d7c00931-302e-4911-9578-a888de829eca",
+    "type": "MoveActor",
+    "replayed": true,
+    "state_version": 4,
+    "position": {
+      "x": 0,
+      "y": 0
+    }
+  }
+]

@@ -209,6 +209,46 @@ test('подошедший враг получает заготовленное 
   assert.ok(released.events.some((event) => event.event_type === 'ReadiedActionExpired'))
 })
 
+function readiedWizard() {
+  const base = normalizeCampaignState({
+    ...field(),
+    players: [{ ...field().players[0], characterClass: 'wizard', level: 9, abilities: { str: 10, dex: 14, con: 10, int: 18, wis: 12, cha: 10 } }],
+    mechanics: { ...field().mechanics, resources: { guard: { spell_slots_1: { current: 3, max: 3 }, spell_slots_2: { current: 3, max: 3 } } } },
+  })
+  const readied = replayEvents(base, resolveCommand(
+    authoritative({ command_type: 'UseCombatAction', actor_id: 'guard', action_id: 'ready-action', readied_trigger: 'enemy-approaches', readied_spell_id: 'magic-missile' }),
+    base,
+    options(dice()),
+  ).events)
+  return replayEvents(readied, resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'guard' }), readied, options(dice())).events)
+}
+
+test('несработавшая заготовка заклинания снимает и концентрацию', () => {
+  // До 2026-10-04 заготовка сгорала, а пустая концентрация оставалась: требовала
+  // спасбросков и вытесняла следующее заклинание (исследование PR #136).
+  const passed = readiedWizard()
+  assert.ok(passed.mechanics.concentration.guard, 'пока держится — концентрация есть')
+  const round = resolveCommand(authoritative({ command_type: 'EndTurn', actor_id: 'brute' }), passed, options(dice()))
+  const types = round.events.map((event) => event.event_type)
+  assert.ok(types.indexOf('ReadiedActionExpired') < types.indexOf('ConcentrationEnded'))
+  assert.equal(round.events.find((event) => event.event_type === 'ConcentrationEnded').payload.reason, 'readied-expired')
+  const after = replayEvents(passed, round.events)
+  assert.equal(after.mechanics.combat.readied.guard, undefined)
+  assert.equal(after.mechanics.concentration.guard, undefined)
+})
+
+test('потерянная концентрация гасит заготовленное заклинание, и подход врага окна не открывает', () => {
+  const passed = readiedWizard()
+  // Телосложение 10, бросок 1: спасбросок концентрации провален.
+  const damage = resolveCommand(authoritative({ command_type: 'ApplyDamage', actor_id: 'brute', target_id: 'guard', amount: 6, damage_type: 'fire' }), passed, options(dice([1])))
+  assert.equal(damage.events.find((event) => event.event_type === 'ConcentrationEnded')?.payload.reason, 'failed-saving-throw')
+  assert.equal(damage.events.find((event) => event.event_type === 'ReadiedActionExpired')?.payload.reason, 'concentration-lost')
+  const hurt = replayEvents(passed, damage.events)
+  assert.equal(hurt.mechanics.combat.readied.guard, undefined)
+  const moved = resolveCommand(authoritative({ command_type: 'MoveActor', actor_id: 'brute', to: { x: 2, y: 1 } }), hurt, options(dice()))
+  assert.equal(moved.events.some((event) => event.event_type === 'ReactionWindowOpened'), false)
+})
+
 test('заготовка на заклинание срабатывает, когда враг начинает творить', () => {
   const base = field({ foeAt: { x: 2, y: 1 } })
   const caster = normalizeCampaignState({

@@ -30,6 +30,7 @@ import {
   planServerTravel,
 } from './campaign-loop-policy.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
+import { unknownDestinationReply } from './player-request-router.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
 import { planHeroReaction, planHeroTurn } from './party-tactics.mjs'
 import {
@@ -212,6 +213,10 @@ export function materialConsequenceCommands(state, { succeeded = false, reading 
     if (!event || !['party', 'public', undefined, null, ''].includes(event.visibility)) return false
     const type = String(event?.event_type ?? '')
     if (type === 'DoorBarricaded' || type === 'DoorBarricadeCleared') return true
+    // Взлом и выламывание меняют дверь своим событием, без DoorStateChanged, и
+    // до 2026-10-04 сюда не попадали: открытая дверь оставляла факт, а
+    // выломанная — нет (исследование PR #136). Провал двери не меняет.
+    if (type === 'DoorForced' || type === 'DoorLockpicked') return event.payload?.success === true
     if (type === 'DoorStateChanged') return String(event.payload?.state ?? '') !== String(event.payload?.previous_state ?? '')
     if (type !== 'SceneObjectStateChanged') return false
     return event.payload?.success !== false && Boolean(String(event.payload?.state ?? ''))
@@ -229,6 +234,8 @@ export function materialConsequenceCommands(state, { succeeded = false, reading 
     const type = String(event.event_type)
     if (type === 'DoorBarricaded') return 'Дверь забаррикадирована'
     if (type === 'DoorBarricadeCleared') return 'Баррикада двери снята'
+    if (type === 'DoorForced') return 'Дверь выломана'
+    if (type === 'DoorLockpicked') return 'Замок двери взломан'
     if (type === 'DoorStateChanged') return `Дверь ${{ open: 'открыта', closed: 'закрыта', locked: 'заперта', broken: 'выломана' }[payload.state] ?? 'изменилась'}`
     const prop = (state.scene?.map?.props ?? []).find((candidate) => String(candidate?.id) === String(payload.prop_id))
     const asset = String(prop?.assetId ?? '').split(/[\\/]/u).at(-1)?.replace(/\.[a-z0-9]+$/iu, '') ?? ''
@@ -683,7 +690,6 @@ export class AutonomousCampaignOrchestrator {
     const custom = []
     const setupCommands = []
     let travel = null
-    let travelStartedAt = null
 
     if (intent.type === 'continue_exploration') {
       const cells = explorationCells(loaded.state)
@@ -740,7 +746,6 @@ export class AutonomousCampaignOrchestrator {
     if (intent.type === 'end_scene') {
       const destination = intent.destination || `${loaded.state.scene?.location || 'Путь'} — следующая сцена`
       travel = planServerTravel(loaded.state, { campaignId, destination, idempotencyKey: key })
-      travelStartedAt = Number(loaded.state.mechanics?.world_time?.elapsed_minutes) || 0
       const requestedDestination = clean(destination, 160)
       let decisionId = `autonomy-${digest({ campaignId, key, chapter: loaded.state.adventure?.chapter, destination: requestedDestination })}`
       const partyIds = (loaded.state.partyMemberIds?.length
@@ -799,14 +804,6 @@ export class AutonomousCampaignOrchestrator {
     )
     if (questResolution) results.push(questResolution)
     if (travel) {
-      const afterTravel = await this.load(campaignId)
-      const scheduled = await this.executeNpcSchedules(campaignId, {
-        start: travelStartedAt,
-        end: Number(afterTravel.state.mechanics?.world_time?.elapsed_minutes) || travelStartedAt,
-        idempotencyKey: `${key}:travel-schedules`,
-        sourceEventIds: results.flatMap((result) => result.events ?? []).map((entry) => entry.event_id).filter(Boolean),
-      })
-      if (scheduled.result) results.push(scheduled.result)
       const travelEvents = [event(`${key}:travel`, 'TravelResolved', {
         ...travel,
         provenance: { source: 'server-travel-policy' },
@@ -1516,11 +1513,16 @@ export class AutonomousCampaignOrchestrator {
     if (!storedReading
       && String(reading.source ?? '').startsWith('deterministic-default')
       && !hasRecognizedFreeActionApproach(text)) {
+      // Герой идёт к месту, которого нет ни на карте мира, ни в сцене: способ
+      // понятен, неизвестно место. Честный ответ с тем, что можно сделать,
+      // вместо общего «не понял» (плейтест 2026-10-04, QP-06). Раскрытие
+      // предметов — по авторитетной карте, как у разбора пропсов выше.
+      const unknownPlace = unknownDestinationReply(text, loaded.state, { isRevealed: revealedPropPredicate(loaded.state) })
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification',
-        clarification_question: 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться.',
-        narration: 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться. Попытка ничего не расходует.',
+        clarification_question: unknownPlace || 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться.',
+        narration: unknownPlace || 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться. Попытка ничего не расходует.',
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,
@@ -2199,74 +2201,21 @@ export class AutonomousCampaignOrchestrator {
     return this.commitEvents(campaignId, idempotencyKey, events)
   }
 
-  async registerNpcSchedule(campaignId, { npcId, entries, idempotencyKey = `schedule-${npcId}` } = {}) {
-    const loaded = await this.load(campaignId)
-    const npc = (loaded.state.social?.npcs ?? []).find((candidate) => candidate.id === npcId)
-    if (!npc) throw new Error('NPC schedule references an unknown NPC')
-    const normalized = (Array.isArray(entries) ? entries : []).slice(0, 64).map((entry) => ({
-      at_minutes: Math.max(1, Math.min(10_000_000, Number.isSafeInteger(Number(entry.at_minutes)) ? Number(entry.at_minutes) : 1)),
-      action: ['move', 'appear', 'depart'].includes(entry.action) ? entry.action : 'move',
-      location: clean(entry.location, 180),
-      summary: clean(entry.summary, 300),
-    })).sort((a, b) => a.at_minutes - b.at_minutes)
-    let subject = currentSubject(loaded.state)
-    const commands = []
-    if (!subject) {
-      subject = { id: `world-${digest(campaignId)}`, kind: 'concept', name: 'Расписание мира', summary: '', aliases: [], visibility: 'party', tags: [] }
-      commands.push({ command_type: 'UpsertWorldEntity', entity: subject })
-    }
-    commands.push({ command_type: 'RecordWorldFact', fact: {
-      id: `schedule-${npcId}-${digest(normalized)}`, subject_id: subject.id, predicate: 'npc_schedule',
-      object: JSON.stringify({ npc_id: npcId, entries: normalized }), summary: `Расписание NPC ${npc.name}`, visibility: 'gm_only', source_event_ids: [],
-    } })
-    const result = await this.runCommands(campaignId, `${idempotencyKey}:fact`, commands)
-    await this.commitEvents(campaignId, `${idempotencyKey}:event`, [event(`${idempotencyKey}:event`, 'NpcScheduleRegistered', { npc_id: npcId, entries: normalized, provenance: { source: 'server-schedule-policy' } }, [npcId], 'gm_only')])
-    return result
-  }
-
-  async executeNpcSchedules(campaignId, {
-    start = 0,
-    end = 0,
-    idempotencyKey = 'scheduled-actions',
-    sourceEventIds = [],
-  } = {}) {
-    const loaded = await this.load(campaignId)
-    const scheduleFacts = (loaded.state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active' && fact.predicate === 'npc_schedule')
-    const executed = new Set((loaded.state.worldMemory?.facts ?? []).filter((fact) => fact.predicate === 'npc_scheduled_action_executed').map((fact) => fact.object))
-    const actions = []
-    for (const fact of scheduleFacts) {
-      const schedule = parseJsonFact(fact)
-      const npc = (loaded.state.social?.npcs ?? []).find((candidate) => candidate.id === schedule?.npc_id)
-      if (!npc) continue
-      for (const entry of schedule.entries ?? []) {
-        const actionKey = `${schedule.npc_id}:${entry.at_minutes}:${entry.action}`
-        if (entry.at_minutes <= start || entry.at_minutes > end || executed.has(actionKey)) continue
-        const profile = { ...npc, location: entry.location || npc.location, available: entry.action !== 'depart' }
-        actions.push({ command_type: 'UpsertNpcSocialProfile', npc: profile })
-        actions.push({ command_type: 'RecordWorldFact', fact: {
-          id: `schedule-action-${digest(actionKey)}`, subject_id: fact.subject_id, predicate: 'npc_scheduled_action_executed',
-          object: actionKey, summary: entry.summary || `${npc.name}: ${entry.action}`, visibility: 'party', source_event_ids: sourceEventIds,
-        } })
-      }
-    }
-    if (!actions.length) return { scheduled_actions: 0, result: null }
-    const result = await this.runCommands(campaignId, idempotencyKey, actions)
-    return { scheduled_actions: actions.length / 2, result }
-  }
-
+  /**
+   * Сдвиг мировых часов. Расписания NPC здесь больше не исполняются: живой
+   * механизм — `npc.schedule`, его читает `npcProfileAtWorldTime`
+   * (`server/npc-social.mjs`) на текущую минуту. Второй путь
+   * (`registerNpcSchedule`/`executeNpcSchedules`) удалён 2026-10-04: в живых
+   * кампаниях его никто не наполнял, а исполнение переписывало базовое место
+   * NPC мимо первого (исследование PR #136).
+   */
   async advanceTime(campaignId, { amount, unit = 'minute', idempotencyKey = 'advance-time' } = {}) {
     const before = await this.load(campaignId)
     const start = Number(before.state.mechanics.world_time?.elapsed_minutes) || 0
-    const advanced = await this.runCommands(campaignId, `${idempotencyKey}:clock`, [{ command_type: 'AdvanceTime', amount, unit }])
+    await this.runCommands(campaignId, `${idempotencyKey}:clock`, [{ command_type: 'AdvanceTime', amount, unit }])
     const after = await this.load(campaignId)
     const end = Number(after.state.mechanics.world_time?.elapsed_minutes) || start
-    const scheduled = await this.executeNpcSchedules(campaignId, {
-      start,
-      end,
-      idempotencyKey: `${idempotencyKey}:scheduled-actions`,
-      sourceEventIds: advanced.events.map((entry) => entry.event_id).filter(Boolean),
-    })
-    return { before: start, after: end, scheduled_actions: scheduled.scheduled_actions, state: (await this.load(campaignId)).state, admin_commands: 0 }
+    return { before: start, after: end, state: after.state, admin_commands: 0 }
   }
 
   async bindPromise(campaignId, { promiseId, condition, idempotencyKey = `promise-binding-${promiseId}` } = {}) {

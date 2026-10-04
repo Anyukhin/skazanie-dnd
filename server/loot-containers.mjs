@@ -93,9 +93,13 @@ export const NPC_LOOT_SOURCE = 'npc_world.inventories'
 
 /**
  * Виды контейнеров. `corpse` — тело, `captive` — снятое с пленного оружие,
- * `abandoned` — брошенное по уговору парлея, `cache` — схрон (см. границы выше).
+ * `abandoned` — брошенное по уговору парлея, `cache` — схрон (см. границы выше),
+ * `dropped` — оружие, которое герой метнул: оно падает у цели и ждёт, пока его
+ * подберут (решение владельца 2026-10-04, исследование PR #136).
  */
-export const LOOT_CONTAINER_KINDS = Object.freeze(['corpse', 'captive', 'abandoned', 'cache'])
+export const LOOT_CONTAINER_KINDS = Object.freeze(['corpse', 'captive', 'abandoned', 'cache', 'dropped'])
+/** Версия поля `thrown_weapon` в `LootContainerCreated`: вещь уходит из рук героя. */
+export const THROWN_WEAPON_PAYLOAD_SCHEMA_VERSION = 1
 export const LOOT_CONTAINER_STATUSES = Object.freeze(['available', 'emptied'])
 
 export const LOOT_CONTAINER_COMMAND_TYPES = Object.freeze(new Set(['LootContainer']))
@@ -291,6 +295,7 @@ const CONTAINER_TITLES = Object.freeze({
   captive: 'Оружие пленного',
   abandoned: 'Брошенная добыча',
   cache: 'Схрон',
+  dropped: 'Брошенное оружие',
 })
 
 function containerName(kind, enemyName) {
@@ -890,7 +895,110 @@ const CONTAINER_ORIGIN_KINDS = Object.freeze({
   captive: 'looted',
   abandoned: 'found',
   cache: 'found',
+  // Своё оружие, поднятое с земли, не становится находкой: происхождение
+  // остаётся тем, что было у вещи в руке (оно лежит в экземпляре).
+  dropped: 'unknown',
 })
+
+/**
+ * Брошенное героем метательное оружие.
+ *
+ * Дротик, кинжал или ручной топор после броска не возвращаются в руку сами:
+ * вещь падает у цели — и на промахе тоже, — и отряд может её подобрать. Это тот
+ * же контейнер, что у тела, и тот же обыск: второго пути «поднять вещь» нет.
+ * Черновик собирается в той же фиксации, что и бросок, а поле `thrown_weapon`
+ * убирает из руки ровно одну вещь — тем же событием, что кладёт её на землю,
+ * поэтому между броском и падением нет окна, где вещь была бы в двух местах.
+ *
+ * Без записи каталога экземпляр не создать (`server/item-instances.mjs`), и
+ * такая самодельная вещь остаётся в руке, как было до этого правила.
+ *
+ * @param {Record<string, any>} state состояние до броска
+ * @param {{ commandId: string, ownerId: string, item: Record<string, any>, position: {x: number|null, y: number|null} | null }} throwInfo
+ * @returns {Record<string, any> | null} черновик `LootContainerCreated`
+ */
+export function thrownWeaponDropDraft(state, { commandId, ownerId, item, position } = {}) {
+  const catalogId = text(item?.catalog_id ?? item?.catalogId, 120)
+  const itemId = text(item?.id, 120)
+  const owner = text(ownerId, 120)
+  if (!catalogId || !itemId || !owner) return null
+  const locationKey = sceneLootLocationKey(state)
+  const minutes = campaignElapsedMinutes(state)
+  const encounterId = text(state?.mechanics?.encounter?.id ?? state?.mechanics?.encounter?.encounter_id, 160)
+  const declaredOrigin = text(item?.origin, 40)
+  const instance = normalizeItemInstance({
+    item_instance_id: `thrown:${digest(commandId, owner, itemId).slice(0, 24)}`,
+    catalog_id: catalogId,
+    snapshot: { ...clone(item), catalog_id: catalogId },
+    quantity: 1,
+    ...(item?.charges && typeof item.charges === 'object' ? { charges: clone(item.charges) } : {}),
+    owner: { kind: 'container', actor_id: 'pending' },
+    // `source_id` — кто метнул, `template_id` — из какой строки инвентаря: по ним
+    // поднятая вещь возвращается в ту же стопку (`thrownWeaponReturn`).
+    origin: { kind: ITEM_ORIGIN_KINDS.includes(declaredOrigin) ? declaredOrigin : 'unknown', source_id: owner, template_id: itemId },
+    lootable: true,
+  })
+  if (!instance) return null
+  return containerDraft({
+    kind: 'dropped',
+    state,
+    minutes,
+    locationKey,
+    locationName: text(state?.scene?.location, 180),
+    encounterId,
+    sourceIds: [],
+    idParts: [owner, itemId, text(commandId, 160)],
+    anchorPosition: { x: coordinate(position?.x), y: coordinate(position?.y) },
+    prebuiltItems: [instance],
+    nameOverride: `${CONTAINER_TITLES.dropped}: ${text(item?.name, 100) || 'вещь'}`,
+    targetIds: [owner],
+    footprintOverride: null,
+    payloadExtra: {
+      thrown_weapon: {
+        schema_version: THROWN_WEAPON_PAYLOAD_SCHEMA_VERSION,
+        owner_id: owner,
+        item_id: itemId,
+        quantity_before: Math.max(1, integer(item?.quantity, 1)),
+      },
+    },
+  })
+}
+
+/**
+ * Чем в бою оплачивается обыск. Обычно — действием (правило стола). Поднять
+ * своё же брошенное оружие — это взаимодействие с предметом, как по правилам:
+ * первое за ход бесплатно, второе уже стоит действия.
+ *
+ * @returns {'object_interaction' | 'action' | null} `null` — вне боя
+ */
+export function lootCombatActionFor(state, actorId, container) {
+  if (state?.mechanics?.combat?.active !== true) return null
+  const economy = state.mechanics.combat.action_economy?.[text(actorId, 120)] ?? {}
+  return container?.kind === 'dropped' && economy.object_interaction !== false ? 'object_interaction' : 'action'
+}
+
+/**
+ * Куда вернуть поднятое брошенное оружие. Герой, который сам его метнул и
+ * держит ту же стопку, получает вещь обратно в неё: иначе каждый бросок
+ * плодил бы новую неэкипированную строку, и метнуть поднятый кинжал можно было
+ * бы только после смены оружия. Стопки уже нет — вещь возвращается под прежним
+ * идентификатором, если он свободен.
+ *
+ * @returns {{ returnTo: string } | { id: string } | null}
+ */
+function thrownWeaponReturn(state, container, instance, recipientId) {
+  if (container?.kind !== 'dropped') return null
+  const origin = instance?.origin ?? {}
+  const originalId = text(origin.template_id, 120)
+  if (!originalId || text(origin.source_id, 120) !== recipientId) return null
+  const recipient = playerActor(state, recipientId)
+  const stack = (recipient?.inventory ?? []).find((item) => String(item?.id ?? '') === originalId)
+  if (stack) {
+    return text(stack.catalog_id ?? stack.catalogId, 120) === text(instance.catalog_id, 120) ? { returnTo: originalId } : null
+  }
+  const taken = (state?.players ?? []).some((player) => (player?.inventory ?? []).some((item) => String(item?.id ?? '') === originalId))
+  return taken ? null : { id: originalId }
+}
 
 export function inventoryItemFromInstance(instance, { id, quantity, containerKind = '' }) {
   const snapshot = instance?.snapshot && typeof instance.snapshot === 'object' ? instance.snapshot : {}
@@ -985,16 +1093,19 @@ export function validateLootContainerCommand(command, state, context = {}) {
     reject('В бою добыча достаётся тому, кто обыскивает', 'LOOT_RECIPIENT_DURING_COMBAT')
   }
 
-  const items = taken.map(({ instance, quantity }) => inventoryItemFromInstance(instance, {
-    id: lootedItemId(command.command_id, container.id, instance.item_instance_id),
-    quantity,
-    containerKind: container.kind,
-  }))
+  const returns = []
+  const items = taken.map(({ instance, quantity }) => {
+    const back = thrownWeaponReturn(state, container, instance, recipientId)
+    const id = back && 'id' in back ? back.id : lootedItemId(command.command_id, container.id, instance.item_instance_id)
+    if (back && 'returnTo' in back) returns.push({ item_id: id, to_item_id: back.returnTo })
+    return inventoryItemFromInstance(instance, { id, quantity, containerKind: container.kind })
+  })
+  const returnedIds = new Set(returns.map((entry) => entry.item_id))
   const inventory = Array.isArray(recipient.inventory) ? recipient.inventory : []
   const existingIds = new Set((state?.players ?? []).flatMap((player) => (
     (player?.inventory ?? []).map((item) => String(item?.id ?? '')).filter(Boolean)
   )))
-  if (items.some((item) => existingIds.has(String(item.id)))) {
+  if (items.some((item) => !returnedIds.has(String(item.id)) && existingIds.has(String(item.id)))) {
     reject('Идентификатор поднятой вещи уже занят', 'LOOT_ITEM_ID_COLLISION')
   }
   const merged = items.filter((item) => inventory.some((candidate) => !candidate.equipped && !candidate.attuned_to
@@ -1036,9 +1147,11 @@ export function validateLootContainerCommand(command, state, context = {}) {
     loot_container: container,
     loot_items: items,
     loot_remaining: remaining,
+    ...(returns.length ? { loot_returns: returns } : {}),
     // В бою обыск стоит действия — правило стола, а не редакции SRD; просмотр
-    // при этом бесплатен и проходит проекцией, а не командой.
-    loot_combat_action: state?.mechanics?.combat?.active === true ? 'action' : null,
+    // при этом бесплатен и проходит проекцией, а не командой. Своё брошенное
+    // оружие поднимается взаимодействием с предметом (`lootCombatActionFor`).
+    loot_combat_action: lootCombatActionFor(state, ownerId, container),
   }
 }
 
@@ -1059,6 +1172,8 @@ export function lootContainerCommandEvents(command) {
       recipient_id: command.recipient_id,
       lines: (command.lines ?? []).map((line) => ({ ...line })),
       items: clone(command.loot_items ?? []),
+      // Поднятое брошенное оружие — обратно в стопку, из которой его метнули.
+      ...(Array.isArray(command.loot_returns) && command.loot_returns.length ? { returns: clone(command.loot_returns) } : {}),
       remaining_items: clone(remaining),
       remaining_count: remaining.length,
       status_after: remaining.length ? 'available' : 'emptied',
@@ -1157,6 +1272,25 @@ export function applyLootContainerEvent(state, event) {
         state.npc_world = { ...(state.npc_world ?? {}), inventories: nextInventories }
       }
     }
+    // Брошенное героем оружие уходит из руки тем же событием, что ложится на
+    // землю: ровно одна вещь из стопки.
+    const thrown = payload.thrown_weapon && typeof payload.thrown_weapon === 'object' ? payload.thrown_weapon : null
+    if (!alreadyApplied && Number(thrown?.schema_version) === THROWN_WEAPON_PAYLOAD_SCHEMA_VERSION) {
+      const ownerId = text(thrown.owner_id, 120)
+      const itemId = text(thrown.item_id, 120)
+      let touched = false
+      state.players = (Array.isArray(state.players) ? state.players : []).map((player) => {
+        if (actorIdOf(player) !== ownerId) return player
+        const inventory = (Array.isArray(player.inventory) ? player.inventory : []).flatMap((entry) => {
+          if (String(entry?.id ?? '') !== itemId) return [entry]
+          touched = true
+          const left = Math.max(1, integer(entry.quantity, 1)) - 1
+          return left > 0 ? [{ ...entry, quantity: left }] : []
+        })
+        return { ...player, inventory }
+      })
+      return touched ? [ownerId] : []
+    }
     // Вещь переезжает, а не копируется: закрытый инвентарь владельца теряет
     // ровно тот остаток, который лёг в контейнер.
     const movedIds = new Set(container.items.map((item) => String(item.item_instance_id)))
@@ -1194,13 +1328,24 @@ export function applyLootContainerEvent(state, event) {
     const items = (Array.isArray(payload.items) ? payload.items : [])
       .map((item) => normalizeInventoryItem(item, { preserveUnknown: true }))
     if (!recipientId || !items.length) return []
+    const returnTargets = new Map((Array.isArray(payload.returns) ? payload.returns : [])
+      .map((entry) => [text(entry?.item_id, 120), text(entry?.to_item_id, 120)])
+      .filter(([from, to]) => from && to))
     let applied = false
     state.players = (Array.isArray(state.players) ? state.players : []).map((player) => {
       if (actorIdOf(player) !== recipientId) return player
       applied = true
       return {
         ...player,
-        inventory: items.reduce((inventory, item) => addLootedItem(inventory, item), Array.isArray(player.inventory) ? player.inventory : []),
+        inventory: items.reduce((inventory, item) => {
+          const target = returnTargets.get(String(item.id ?? ''))
+          if (target && inventory.some((entry) => String(entry?.id ?? '') === target)) {
+            return inventory.map((entry) => String(entry?.id ?? '') === target
+              ? { ...entry, quantity: Math.min(MAX_STOCK_QUANTITY, integer(entry.quantity, 1) + integer(item.quantity, 1)) }
+              : entry)
+          }
+          return addLootedItem(inventory, item)
+        }, Array.isArray(player.inventory) ? player.inventory : []),
       }
     })
     return applied ? [recipientId] : []
@@ -1401,6 +1546,13 @@ export function lootContainersForViewer(state = {}, { actorId = '', isAdmin = fa
         cellRevealed: revealed == null || container.x == null || container.y == null
           || revealed.has(`${container.x},${container.y}`),
       }))
-      .filter(Boolean),
+      .filter(Boolean)
+      // Цена у каждого контейнера своя: своё брошенное оружие поднимается
+      // взаимодействием с предметом, остальное стоит действия. Считает её та же
+      // `lootCombatActionFor`, что и обыск, — второй таблицы в браузере нет.
+      .map((card) => {
+        const cost = combatActive && actor ? lootCombatActionFor(state, actorId, lootContainerFor(state, card.id)) : null
+        return cost ? { ...card, action_cost: cost } : card
+      }),
   }
 }

@@ -13,10 +13,26 @@ const ITEM_DIR = new URL('../public/assets/items/', import.meta.url)
 const MANIFEST = new URL('../src/item-images.ts', import.meta.url)
 const STARTER_PRESENTATIONS = new URL('../data/starter-item-presentation.json', import.meta.url)
 
-export function starterItemPresentationFor(item) {
+function starterPresentationItems() {
+  return JSON.parse(readFileSync(STARTER_PRESENTATIONS, 'utf8')).items
+}
+
+function namedStarterPresentation(item, entries) {
+  const name = String(item?.name ?? '').trim()
+  return Object.hasOwn(entries, name) ? entries[name] : null
+}
+
+export function starterItemPresentationFor(item, entries = starterPresentationItems()) {
   if (item?.catalog_id || item?.catalogId) return null
-  const entries = JSON.parse(readFileSync(STARTER_PRESENTATIONS, 'utf8')).items
-  return entries[String(item?.name ?? '').trim()] ?? null
+  return namedStarterPresentation(item, entries)
+}
+
+export function legacyStarterItemPresentationFor(item, entries = starterPresentationItems()) {
+  const runtime = String(item?.image ?? '').trim()
+  if (!runtime) return null
+  const presentation = namedStarterPresentation(item, entries)
+  const legacyImages = Array.isArray(presentation?.legacy_images) ? presentation.legacy_images : []
+  return legacyImages.includes(runtime) ? presentation : null
 }
 
 export const ITEM_TYPES = Object.freeze([
@@ -51,7 +67,9 @@ export function itemAssetsOnDisk() {
   }
 }
 
-export function resolveItemImagePath(item, manifest = itemAssetsOnDisk()) {
+export function resolveItemImagePath(item, manifest = itemAssetsOnDisk(), entries = starterPresentationItems()) {
+  const legacyStarter = legacyStarterItemPresentationFor(item, entries)
+  if (legacyStarter?.image) return legacyStarter.image
   const runtime = String(item?.image ?? '').trim()
   if (runtime) return runtime
   const available = new Set(manifest.itemIds)
@@ -61,7 +79,7 @@ export function resolveItemImagePath(item, manifest = itemAssetsOnDisk()) {
       return `/assets/items/item-${normalized}.png`
     }
   }
-  const starter = starterItemPresentationFor(item)
+  const starter = starterItemPresentationFor(item, entries)
   if (starter?.image) return starter.image
   const typeId = manifest.typeIds[String(item?.type ?? '')]
   return typeId ? `/assets/items/${typeId}.png` : null
@@ -94,10 +112,26 @@ export type ItemImageInput = {
   imagePosition?: string
 }
 
-export function starterItemPresentationFor(item: ItemImageInput): { description: string; image: string; imagePosition?: string } | null {
+type StarterPresentation = { description: string; image: string; imagePosition?: string; legacy_images?: string[] }
+
+function namedStarterPresentation(item: ItemImageInput, entries: Record<string, StarterPresentation>) {
+  const name = String(item.name ?? '').trim()
+  return Object.hasOwn(entries, name) ? entries[name] : null
+}
+
+export function starterItemPresentationFor(item: ItemImageInput): StarterPresentation | null {
   if (item.catalog_id) return null
-  const entries = starterPresentation.items as Record<string, { description: string; image: string; imagePosition?: string }>
-  return entries[String(item.name ?? '').trim()] ?? null
+  const entries = starterPresentation.items as Record<string, StarterPresentation>
+  return namedStarterPresentation(item, entries)
+}
+
+export function legacyStarterItemPresentationFor(item: ItemImageInput): StarterPresentation | null {
+  const runtime = String(item.image ?? '').trim()
+  if (!runtime) return null
+  const entries = starterPresentation.items as Record<string, StarterPresentation>
+  const presentation = namedStarterPresentation(item, entries)
+  const legacyImages = Array.isArray(presentation?.legacy_images) ? presentation.legacy_images : []
+  return legacyImages.includes(runtime) ? presentation : null
 }
 
 const normalizeItemIdentifier = (value?: string) => String(value ?? '')
@@ -107,6 +141,8 @@ const normalizeItemIdentifier = (value?: string) => String(value ?? '')
   .replace(/^-+|-+$/gu, '')
 
 export function itemImageFor(item: ItemImageInput): string | null {
+  const legacyStarter = legacyStarterItemPresentationFor(item)
+  if (legacyStarter?.image) return legacyStarter.image
   const runtime = String(item.image ?? '').trim()
   if (runtime) return runtime
   for (const value of [item.id, item.stock_id, item.catalog_id]) {
