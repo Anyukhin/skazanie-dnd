@@ -57,6 +57,7 @@ import { PartyPage } from './PartyPage'
 import { MobileTabBar, type MobilePane } from './MobileTabBar'
 import { LeaveLocationPicker, SceneTransitionBanner, sceneTransitionNotice, type SceneTransitionNotice } from './SceneTransitionOverlay'
 import { doorDirectionFromActor, doorOverlayCells, localizedQuestClockLabel, selectedAttackForecast, shouldAutoOpenCampaignModal } from './desktop-ui.mjs'
+import { characterDraftKey } from './character-draft-storage.mjs'
 import { boardMapArtForTheme, resolveSceneTheme, sceneIllustrationForTheme, type SceneArt, type SceneVisualTheme } from './scene-art'
 import {
   createAtmosphereAudio,
@@ -1965,6 +1966,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         accountName={account.name}
         catalog={characterCreationCatalog ?? aiHealth!.characterCreation!}
         rulesetId={state.ruleset_id}
+        draftKey={characterDraftKey({ accountId: account.id, sessionCode: state.sessionCode, playerId: creatingPlayerId, rulesetId: state.ruleset_id })}
         required={Boolean(state.players.find((player) => player.id === creatingPlayerId)?.characterSetupRequired)}
         onClose={() => { setCreatingPlayerId(null); setHeroWizardDismissed(true) }}
         onImport={async (source) => {

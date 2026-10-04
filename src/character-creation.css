@@ -333,3 +333,12 @@
 .creation-species-traits ul{margin:0;padding-left:18px;color:#97794f}
 .creation-species-traits li+li{margin-top:3px}
 .creation-species-traits>div>span{color:#97794f}
+
+/* Незавершённый черновик предлагается явно, над шагом: продолжить или начать
+   заново. Молча подставлять его нельзя — игрок мог хотеть нового героя. */
+.creation-draft-restore{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;margin:0 0 12px;padding:11px 13px;border:1px solid rgba(211,160,97,.42);border-radius:6px;background:rgba(166,106,49,.14)}
+.creation-draft-restore>span{display:grid;gap:3px;flex:1 1 260px;min-width:0}
+.creation-draft-restore b{color:#efd8b8;font:700 var(--fs-sm) var(--f-ui)}
+.creation-draft-restore small{color:#a99886;font-size:var(--fs-xs);line-height:1.4}
+.creation-draft-restore button{min-height:34px;padding:0 14px;border:1px solid rgba(211,160,97,.42);border-radius:6px;color:#20150b;background:#d4a064;font:700 var(--fs-xs) var(--f-ui)}
+.creation-draft-restore button.secondary{color:#b7aa9a;background:rgba(255,255,255,.035);border-color:rgba(255,255,255,.12)}

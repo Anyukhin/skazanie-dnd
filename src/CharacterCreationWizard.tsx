@@ -16,6 +16,7 @@ import { PhbCharacterOptions } from './PhbCharacterOptions'
 import type { PhbCharacterOptionsValue } from './PhbCharacterOptions'
 import { resolveCharacterCreationFeat } from '../server/character-creation-feats.mjs'
 import { validateClassChoices } from '../server/character-creation-class-options.mjs'
+import { clearCharacterDraft, loadCharacterDraft, saveCharacterDraft } from './character-draft-storage.mjs'
 
 /**
  * «Защита» (Defense) и «Оборона» (Protection) — разные боевые стили, но в
@@ -166,6 +167,7 @@ const abilityLabels: Record<(typeof abilityIds)[number], string> = {
 }
 
 type CreationStepId = 'class' | 'race' | 'subrace' | 'background' | 'abilities' | 'proficiencies' | 'equipment' | 'magic' | 'identity'
+const CREATION_STEP_IDS: CreationStepId[] = ['class', 'race', 'subrace', 'background', 'abilities', 'proficiencies', 'equipment', 'magic', 'identity']
 type SpeciesOption = CharacterCreationCatalog['ability_policy']['species_options'][number]
 type RaceChoice = { id: string; raceId: string; label: string; option: SpeciesOption; subraces: SpeciesOption[] }
 
@@ -355,6 +357,7 @@ export function CharacterCreationWizard({
   accountName,
   catalog,
   rulesetId,
+  draftKey = '',
   required = false,
   onClose,
   onImport,
@@ -365,6 +368,8 @@ export function CharacterCreationWizard({
   accountName: string
   catalog: CharacterCreationCatalog
   rulesetId?: string
+  /** Ключ черновика на этом устройстве (`characterDraftKey`); пусто — не сохранять. */
+  draftKey?: string
   required?: boolean
   onClose: () => void
   onImport: (source: string) => Promise<void>
@@ -374,12 +379,37 @@ export function CharacterCreationWizard({
   const [step, setStep] = useState<CreationStepId>('class')
   const mainRef = useRef<HTMLElement>(null)
   const [furthestStep, setFurthestStep] = useState<CreationStepId>('class')
-  const [draft, setDraft] = useState<CreationDraft>(() => {
-    const initial = initialDraft(catalog)
+  // Серверный бросок характеристик главнее любого черновика: восстановленный
+  // черновик не может принести свои числа вместо выпавших на сервере.
+  const withServerRoll = (base: CreationDraft): CreationDraft => {
     const savedRoll = player.characterCreationRolls?.abilities
     const completedRoll = savedRoll?.scores.length === abilityIds.length
-    return savedRoll ? { ...initial, abilityMethod: 'rolled', abilities: completedRoll ? Object.fromEntries(abilityIds.map((id, index) => [id, savedRoll.scores[index]])) as CharacterAbilityScores : zeroScores() } : initial
-  })
+    if (savedRoll) return { ...base, abilityMethod: 'rolled', abilities: completedRoll ? Object.fromEntries(abilityIds.map((id, index) => [id, savedRoll.scores[index]])) as CharacterAbilityScores : zeroScores() }
+    return base.abilityMethod === 'rolled' ? { ...base, abilityMethod: 'standard_array', abilities: initialDraft(catalog).abilities } : base
+  }
+  const [draft, setDraft] = useState<CreationDraft>(() => withServerRoll(initialDraft(catalog)))
+  // Незавершённый черновик предлагается явно: молча подставить его поверх
+  // нового героя значило бы удивить игрока, который хотел начать заново.
+  const [savedDraft, setSavedDraft] = useState(() => loadCharacterDraft(draftKey, {
+    knownClassIds: catalog.classes.map((entry) => entry.id),
+    knownSteps: CREATION_STEP_IDS,
+  }))
+  const restoreSavedDraft = () => {
+    if (!savedDraft) return
+    setDraft(withServerRoll({ ...initialDraft(catalog), ...(savedDraft.draft as Partial<CreationDraft>) }))
+    if (savedDraft.step) setStep(savedDraft.step as CreationStepId)
+    if (savedDraft.furthestStep) setFurthestStep(savedDraft.furthestStep as CreationStepId)
+    setSavedDraft(null)
+  }
+  const discardSavedDraft = () => {
+    clearCharacterDraft(draftKey)
+    setSavedDraft(null)
+  }
+  useEffect(() => {
+    // Пока игрок не решил судьбу старого черновика, новый его не затирает.
+    if (savedDraft) return
+    saveCharacterDraft(draftKey, { draft, step, furthestStep })
+  }, [draftKey, draft, step, furthestStep, savedDraft])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   // `hero-slot-3` — внутренний идентификатор, игроку он ничего не говорит.
@@ -1012,6 +1042,7 @@ export function CharacterCreationWizard({
     setError('')
     try {
       await onImport(JSON.stringify(document))
+      clearCharacterDraft(draftKey)
       onClose()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось создать персонажа.')
@@ -1057,6 +1088,11 @@ export function CharacterCreationWizard({
           })}
         </nav>
         <main ref={mainRef}>
+          {savedDraft && <div className="creation-draft-restore" role="status">
+            <span><b>Есть незавершённый черновик</b><small>Сохранён на этом устройстве {new Date(savedDraft.savedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}. Сервер всё равно проверит выбор при создании.</small></span>
+            <button type="button" onClick={restoreSavedDraft}>Продолжить черновик</button>
+            <button type="button" className="secondary" onClick={discardSavedDraft}>Начать заново</button>
+          </div>}
           {rulesetId === 'dnd_5e_2014' && <p className="creation-ruleset-note"><ShieldCheck size={15} /><span><b>D&D 5e 2014.</b> Раса и подраса дают прибавки к характеристикам; предыстория — навыки, языки, инструменты, особенность и комплект снаряжения. Расовые и фоновые особенности сохраняются в листе, но не все ещё исполняются движком автоматически.</span></p>}
           <aside className="creation-summary-rail" aria-label="Итог героя">
             <small>ИТОГ ГЕРОЯ</small>
