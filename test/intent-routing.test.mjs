@@ -276,6 +276,8 @@ test('описание пути не становится частью имен�
   assert.deepEqual(detectPartyExitRequest('Идём к старой мельнице вдоль реки'), { destination: 'старой мельнице', source: 'text' })
   assert.deepEqual(detectPartyExitRequest('Идём в деревню Кленовку по тракту'), { destination: 'деревню Кленовку', source: 'text' })
   assert.deepEqual(detectPartyExitRequest('Идём к старому склепу за мельницей'), { destination: 'старому склепу за мельницей', source: 'text' })
+  // Живой плейтест 2026-10-03: так называлось новое место.
+  assert.deepEqual(detectPartyExitRequest('Идём к смотровой дамбе по маршруту от Высокой пристани вдоль соляных складов'), { destination: 'смотровой дамбе', source: 'text' })
   const card = proposeRoutedTravel({ route: 'travel', destination: 'старая дамба вдоль складов' }, fixtureState())
   assert.equal(card?.type, 'vote')
   assert.equal(classifyPartyDecision(card.options[0]).destinationHint, 'Старая дамба')
