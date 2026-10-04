@@ -64,6 +64,7 @@ import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePacks } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
 import {
+  DEFAULT_ON_HOUSE_RULE_IDS,
   INSTALLED_RULESET_IDS,
   LEGACY_DEFAULT_RULESET_ID,
   publicRulesetProfiles,
@@ -94,7 +95,9 @@ import {
   CampaignRulesetError,
   campaignHouseRuleChangeEvent,
   campaignHouseRuleMetadata,
+  campaignHouseRuleSettings,
   campaignRulesetChangeEvent,
+  defaultHouseRuleEvent,
   campaignRulesetMetadata,
   campaignRulesetSettings,
 } from './campaign-ruleset.mjs'
@@ -3330,6 +3333,44 @@ async function reconcileCampaignProjection(campaignId) {
   }
 }
 
+/**
+ * Правила «по умолчанию» для уже идущих кампаний (`DEFAULT_ON_HOUSE_RULE_IDS`).
+ * Событие дописывается тем же производным путём, что и переключатель ведущего;
+ * ключ идемпотентности постоянный, поэтому повторный старт ничего не
+ * дублирует. Кого трогать, решает `defaultHouseRuleEvent`: явный выбор
+ * ведущего и идущий бой оставляют кампанию как есть.
+ */
+async function enableDefaultHouseRules(campaignId) {
+  for (const houseRuleId of DEFAULT_ON_HOUSE_RULE_IDS) {
+    try {
+      const committed = await authoritativeExecutor.commitDerived({
+        campaignId,
+        idempotencyKey: `house-rule-default:${houseRuleId}`,
+        deriveEvents: async (freshState) => {
+          const event = defaultHouseRuleEvent(houseRuleId, freshState, await eventStore.getEvents(campaignId))
+          return event ? [event] : []
+        },
+        deriveMetadata: (events) => campaignHouseRuleMetadata(events[0]),
+        producerCapability: CAMPAIGN_RULESET_CAPABILITY,
+      })
+      if (!committed || committed.replayed) continue
+      const latest = await eventStore.load(campaignId)
+      persistAuthoritativeProjection(campaignId, latest.state, committed.events ?? [])
+      const rule = campaignHouseRuleSettings(latest.state).find((entry) => entry.id === houseRuleId)
+      appendRoomJournal(campaignId, [{
+        id: `house-rule-default-${campaignId}-${houseRuleId}`,
+        speaker: 'system',
+        author: 'Настройки кампании',
+        text: `Домашнее правило «${rule?.label ?? houseRuleId}» включено. ${rule?.description ?? ''}. Выключить можно в «Опциях».`,
+      }])
+      console.log(`[Сказание] ${campaignId}: включено правило ${houseRuleId}`)
+    } catch (error) {
+      if (error?.code === 'CAMPAIGN_NOT_FOUND') continue
+      console.error(`[Сказание] Не удалось включить правило ${houseRuleId} в ${campaignId}:`, error)
+    }
+  }
+}
+
 async function reconcileAllCampaignProjections() {
   for (const campaignId of listRoomCodes()) {
     try {
@@ -6114,6 +6155,9 @@ server.listen(port, host, () => {
       combatTurnCoordinator.nudge(campaignId)
       nudgeWorldClocks(campaignId)
     }
+    void (async () => {
+      for (const campaignId of listRoomCodes()) await enableDefaultHouseRules(campaignId)
+    })()
   }, 250)
   startupJobs.unref()
 })
