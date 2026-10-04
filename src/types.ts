@@ -2157,7 +2157,7 @@ export type LootItemCard = {
 export type LootContainerCard = {
   schema_version?: number
   id: string
-  kind: 'corpse' | 'captive' | 'abandoned' | 'cache'
+  kind: 'corpse' | 'captive' | 'abandoned' | 'cache' | 'dropped'
   name: string
   status: 'available' | 'emptied'
   /**
@@ -2178,6 +2178,8 @@ export type LootContainerCard = {
   item_count: number
   total_weight: number
   can_inspect: boolean
+  /** Цена обыска этого контейнера в бою для героя зрителя; нет — берётся общая `action_cost`. */
+  action_cost?: 'action' | 'object_interaction'
   /**
    * Сколько футов до контейнера. Считает сервер — второй геометрии доски в
    * браузере не заводится. `undefined` значит «померить нечем»: у контейнера
@@ -2195,7 +2197,7 @@ export type LootContainersProjection = {
    * (`validateLootContainerCommand`): идёт бой — обыск стоит действия. Кнопка
    * называет цену до нажатия и своей таблицы правил не держит.
    */
-  action_cost?: 'action' | null
+  action_cost?: 'action' | 'object_interaction' | null
   /**
    * Потрачено ли уже действие этого героя в этом ходу. Вторая половина цены:
    * без неё кнопка называла цену, ничего не зная о том, есть ли чем платить, и
