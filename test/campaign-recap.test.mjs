@@ -216,6 +216,21 @@ test('повторяющаяся рубрика не вытесняет из р�
   assert.match(text, /увела заложника/u)
 })
 
+test('сцены с одинаковым заголовком — разные дела, обе остаются в рекапе', () => {
+  // Без названия от Режиссёра сцена зовётся «Глава N», и номер не растёт, пока
+  // цель не закрыта. Свёртка по любому заголовку теряла смерть NPC из первой
+  // сцены (исследование PR #136, N13).
+  const state = stateWithMemory()
+  state.worldMemory.summaries = [
+    { id: 'summary:scene:1', kind: 'scene', title: 'Глава 2', summary: 'Отряд убил Варго в таверне.', visibility: 'party' },
+    { id: 'summary:scene:2', kind: 'scene', title: 'Рынок', summary: 'Трофеи проданы.', visibility: 'party' },
+    { id: 'summary:scene:3', kind: 'scene', title: 'Глава 2', summary: 'Отряд отдохнул.', visibility: 'party' },
+  ]
+  const sources = recapSources(state)
+  assert.deepEqual(sources.summaries.map((entry) => entry.id), ['summary:scene:1', 'summary:scene:2', 'summary:scene:3'])
+  assert.match(deterministicRecapText(sources), /убил Варго/u)
+})
+
 test('порог перерыва берётся из настройки, мусор откатывается к умолчанию', () => {
   assert.equal(new CampaignRecapService({ gapHours: 24 }).gapHours, 24)
   assert.equal(new CampaignRecapService({ gapHours: 0 }).gapHours, DEFAULT_RECAP_GAP_HOURS)
