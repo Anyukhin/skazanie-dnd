@@ -4032,6 +4032,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
              {hitPointDice && <div title="Кости хитов тратятся на коротком отдыхе, восстанавливаются после долгого"><dt>Кости хитов</dt><dd>{hitPointDiceRemaining}/{hitPointDice.maximum} · к{hitPointDice.die_size}</dd></div>}
            </dl>}
            {/* Камни хода, классовые запасы и ячейки — в лотке над плитками. */}
+           {/* Вне боя на месте реакций — отдых и почта. Кнопки открывают те же
+               панели, что чипы хроники; свёрнутую хронику сначала разворачивают. */}
+           {!combatActive && <div className="hud-modes" role="group" aria-label="Отдых и почта">
+             <span className="hud-side-title">Отдых и почта</span>
+             <div className="hud-mode-grid">
+               <button type="button" className={`hud-mode${openSituational === 'rest' ? ' open' : ''}`} aria-expanded={openSituational === 'rest'} onClick={() => { toggleChat(false); toggleSituational('rest') }} title="Короткий или долгий отдых: восстановление считает сервер"><Flame size={18} aria-hidden="true" /><span>Отдых</span></button>
+               {(letterAddressees.length > 0 || heroLetters.length > 0) && <button type="button" className={`hud-mode${openSituational === 'letters' ? ' open' : ''}`} aria-expanded={openSituational === 'letters'} onClick={() => { toggleChat(false); toggleSituational('letters') }} title="Почта отряда: письма и курьеры"><Mail size={18} aria-hidden="true" /><span>Письма</span>{heroLettersInTransit.length > 0 && <b aria-label={`в пути: ${heroLettersInTransit.length}`}>{heroLettersInTransit.length}</b>}</button>}
+             </div>
+           </div>}
         </div>}
         {/* Завершение хода — главное решение этого ряда, и выглядит оно так
             же: выше соседей, в золоте отправки. Когда тратить больше нечего,
