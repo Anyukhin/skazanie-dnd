@@ -32,6 +32,7 @@ import {
 import { LEGACY_CATALOG_REVISION, loadPropModelCatalog, type PropModelCatalog } from './prop-model-catalog'
 import { DETAIL_ASSET_ROOT, DETAIL_PROP_ATLAS_MANIFEST } from './detail-props'
 import { actorPresentationCenter, boardCameraKey } from './tactical-ui'
+import { moveDifficultPath, moveReachFill, moveReachOutline, moveRoutePath, type BoardMovePreview } from './move-preview'
 import { cellAt, revealedAt } from './tactical-map-client'
 import type { CombatAudio } from './combat-audio'
 import { BoardMiniMap, useMinimapPreference } from './hud-parts'
@@ -528,11 +529,69 @@ export type TacticalBoardProps = {
   }
   /** Цвет временной области прицеливания в объёмном режиме. */
   targetPreviewColor?: string
+  /**
+   * Предпросмотр хода: нить маршрута до клетки под курсором, контур
+   * досягаемости в бою и итог у цели. Оба вида карты рисуют его по одной
+   * геометрии (`src/move-preview.ts`).
+   */
+  movePreview?: BoardMovePreview | null
+}
+
+/**
+ * Нить маршрута и контур досягаемости на двумерной доске. Слой лежит между
+ * холстом карты и клетками с фишками: путь проходит под фигурками, а не
+ * поверх них. Толщина задана в долях клетки — при масштабе нить ведёт себя
+ * как сама карта.
+ */
+function MovePreviewLayer({ preview, columns, rows }: { preview: BoardMovePreview; columns: number; rows: number }) {
+  const fill = moveReachFill(preview)
+  const outline = moveReachOutline(preview)
+  const route = moveRoutePath(preview)
+  const difficult = moveDifficultPath(preview)
+  const end = preview.path[preview.path.length - 1]
+  return (
+    <svg className="move-preview" viewBox={`0 0 ${columns} ${rows}`} preserveAspectRatio="none" aria-hidden="true">
+      {fill && <path className="move-reach-fill" d={fill} />}
+      {outline && <path className="move-reach-shadow" d={outline} />}
+      {outline && <path className="move-reach-edge" d={outline} />}
+      {route && <path className="move-route-shadow" d={route} />}
+      {route && <path className="move-route" d={route} />}
+      {difficult && <path className="move-route-difficult" d={difficult} />}
+      {end && <circle className="move-route-end" cx={end.x + .5} cy={end.y + .5} r={.36} />}
+    </svg>
+  )
+}
+
+/** Итог у цели и метка атаки по возможности: текст, поэтому HTML поверх доски, а не холст. */
+function MovePreviewMarks({ preview, columns }: { preview: BoardMovePreview; columns: number }) {
+  const end = preview.path[preview.path.length - 1]
+  const label = preview.label
+  // У правого края плашка встаёт слева от цели, иначе её обрезала бы рамка.
+  const flip = end ? end.x > columns - 5 : false
+  return (
+    <>
+      {preview.risk && <span
+        className="move-risk-mark"
+        aria-hidden="true"
+        style={{ left: `calc(var(--cell) * ${preview.risk.x + .5})`, top: `calc(var(--cell) * ${preview.risk.y + .5})` }}
+      >!</span>}
+      {end && label && <span
+        className={`move-preview-label${flip ? ' flip' : ''}`}
+        aria-hidden="true"
+        style={{ left: `calc(var(--cell) * ${flip ? end.x : end.x + 1})`, top: `calc(var(--cell) * ${end.y + .5})` }}
+      >
+        <strong>{label.main}</strong>
+        {label.sub && <small>{label.sub}</small>}
+        {label.note && <small>{label.note}</small>}
+        {label.risk && <small className="risk">{label.risk}</small>}
+      </span>}
+    </>
+  )
 }
 
 function TacticalBoard2D({
   map, columns, rows, irregular, ariaLabel, themeKey, artUrl, cells, cellHints, overlayCells, decoration,
-  effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, combatAudio, conditions, conditionVersion, onBackgroundActivate, onCellHover, onCancelAiming, targetHint,
+  effectRenderers, battleLog, visualBatch, animationActors, animationsEnabled, combatAudio, conditions, conditionVersion, onBackgroundActivate, onCellHover, onCancelAiming, targetHint, movePreview,
   levelIndex = 0, lighting = true, campaignId = '', artMode = 'backdrop', viewResetKey, wheelZoomRequiresAltKey = false, focusRequest, passClickThroughAnimation = false,
 }: TacticalBoardProps) {
   const cameraKey = boardCameraKey(map?.locationId, levelIndex, campaignId)
@@ -1545,6 +1604,7 @@ function TacticalBoard2D({
       >
         <canvas ref={canvasRef} className="board-canvas" aria-hidden="true" />
         {decoration}
+        {movePreview && <MovePreviewLayer preview={movePreview} columns={columns} rows={rows} />}
         <div
           className="board-cells"
           style={{
@@ -1628,6 +1688,7 @@ function TacticalBoard2D({
           ))}
         </div>
         <canvas ref={effectsCanvasRef} className="board-effects-canvas" aria-hidden="true" />
+        {movePreview && <MovePreviewMarks preview={movePreview} columns={columns} />}
         {targetHint && <span className={`board-target-hint ${targetHint.tone}`} role="status" style={{
           // Текстовый прицел не должен уезжать за край доски, когда центр
           // области выбран у первой или последней клетки. Ширина подсказки
