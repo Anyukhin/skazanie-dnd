@@ -21,7 +21,7 @@ import type { BoardCombatant } from './app-shared'
 import { AdminView, AgentInteractionCard, CampaignModal, ChatPanel, JournalView, SettingsView } from './AppViews'
 import { CombatTurnClock, DungeonMap, heroStatusFor, heroStatusSummary, type HeroStatus } from './DungeonMap'
 import { RailGrip, useBoardFrame } from './hud-parts'
-import { PartyQuestHud } from './dungeon-map-parts'
+import { ConditionMark, PartyQuestHud } from './dungeon-map-parts'
 import { useAuth } from './auth-client'
 import { AuthScreen } from './AuthScreen'
 import { CharacterEditor, InventoryView } from './InventoryViews'
@@ -182,8 +182,8 @@ function PlayerCard({ player, selected, turn, accessible, typing, deathSaves, st
             принимает только владелец героя в своей полоске жизни. */}
         <div className="hp-line"><i style={{ width: `${Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100}%` }} />{status && status.temporaryHp > 0 && <i className="temp" style={{ left: `${Math.min(100, Math.max(0, player.hp) / Math.max(1, player.maxHp) * 100)}%`, width: `${Math.min(100, status.temporaryHp / Math.max(1, player.maxHp) * 100)}%` }} />}<small>{player.hp}/{player.maxHp}{status && status.temporaryHp > 0 && <em>+{status.temporaryHp}</em>} ОЗ</small></div>
         {status && (status.concentration || status.conditions.length > 0) && <div className="player-status-dots" title={heroStatusSummary(status)} aria-label={heroStatusSummary(status)}>
-          {status.concentration && <i className="concentration" />}
-          {status.conditions.map((condition) => <i key={condition.instanceKey} className={condition.status === 'marker' ? 'marker' : 'condition'} />)}
+          {status.concentration && <span className="party-condition concentration"><ConditionMark id="concentration" label="Концентрация" /></span>}
+          {status.conditions.map((condition) => <span key={condition.instanceKey} className={`party-condition ${condition.status === 'marker' ? 'marker' : 'condition'}`}><ConditionMark id={condition.id} label={condition.statusLabel} /></span>)}
         </div>}
         {downed && <div className="downed-line" title={deathSaves ? `Спасброски от смерти: ${deathSaves.successes} успеха, ${deathSaves.failures} провала` : undefined}>
           <HeartCrack size={11} /><span>{downedLabel}</span>
