@@ -25,7 +25,10 @@ test('полный enforce-flow воспроизводит исследован�
     scene: { title: 'Зал', objective: 'Исследовать руины', cells: [{ x: 0, y: 0, revealed: false }, { x: 1, y: 0, revealed: false }] },
     players: [
       { id: 'hero', character: 'Ада', hp: 7, maxHp: 10, armor: 14, proficiency: 2, abilities: { str: 16, dex: 14, con: 12, int: 12, wis: 12, cha: 12 }, inventory: [] },
-      { id: 'goblin', character: 'Гоблин', hp: 8, maxHp: 8, armor: 12, proficiency: 2, abilities: { str: 8, dex: 12, con: 10, int: 8, wis: 8, cha: 8 }, inventory: [] },
+    ],
+    partyMemberIds: ['hero'],
+    enemies: [
+      { id: 'goblin', character: 'Гоблин', alive: true, x: 0, y: 0, hp: 8, maxHp: 8, armor: 12, proficiency: 2, abilities: { str: 8, dex: 12, con: 10, int: 8, wis: 8, cha: 8 }, inventory: [] },
     ],
     mechanics: { resources: { hero: { spell_slots: { current: 2, max: 2 } } } },
   })
@@ -80,7 +83,7 @@ test('полный enforce-flow воспроизводит исследован�
   await run('Поддерживаю заклинание', { command_type: 'CastSpell', actor_id: 'hero', target_id: 'goblin', name: 'Опутывание', spell_id: 'spell:entangle', resource: 'spell_slots', cost: 1, max: 2, concentration: true, source_rule_ids: [RULE_IDS.concentration] })
   await run('Начинаем бой', { command_type: 'StartCombat', actor_id: 'hero', participant_ids: ['hero', 'goblin'], source_rule_ids: [RULE_IDS.initiative] })
   const attack = await run('Атакую гоблина', { command_type: 'MakeAttack', actor_id: 'hero', target_id: 'goblin', attack_modifier: 5, damage_expression: '1d6', damage_type: 'slashing', source_rule_ids: [RULE_IDS.attack, RULE_IDS.damage] })
-  assert.equal(attack.authoritative_state.players.find((actor) => actor.id === 'goblin').hp, 4)
+  assert.equal(attack.authoritative_state.enemies.find((actor) => actor.id === 'goblin').hp, 4)
   await run('Лечу рану', { command_type: 'ApplyHealing', actor_id: 'hero', amount: 3, source_rule_ids: [RULE_IDS.healing] })
   const condition = await run('Гоблин отравлен', { command_type: 'AddCondition', actor_id: 'hero', target_id: 'goblin', condition: 'poisoned', source_rule_ids: [RULE_IDS.conditions] })
 
@@ -102,7 +105,7 @@ test('полный enforce-flow воспроизводит исследован�
   assert.equal(loaded.state.mechanics.resources.hero.spell_slots.current, 1)
   assert.equal(loaded.state.mechanics.concentration.hero.effect_id, 'spell:entangle')
   assert.equal(loaded.state.players.find((actor) => actor.id === 'hero').hp, 10)
-  assert.equal(loaded.state.players.find((actor) => actor.id === 'goblin').hp, 4)
+  assert.equal(loaded.state.enemies.find((actor) => actor.id === 'goblin').hp, 4)
   assert.equal(loaded.state.mechanics.conditions.goblin[0].id, 'poisoned')
   assert.equal(loaded.state.mechanics.combat.active, false)
 

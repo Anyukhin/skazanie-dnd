@@ -115,3 +115,27 @@ test('сложная N08-фраза остаётся обычным free-action 
   assert.equal(persisted.state.enemies.length, 0)
   assert.equal(persisted.state.mechanics.combat.active, false)
 })
+
+test('развёрнутая фраза начала боя без противников получает отказ и ничего не коммитит', async (t) => {
+  // Плейтест PC-01: «Начать бой с двумя волками…» не проходит короткий шаблон
+  // встречи, идёт свободным текстом в голый StartCombat и раньше записывала
+  // бой из одних героев с немедленной «победой».
+  const message = 'Начать бой с двумя волками во дворе форта.'
+  assert.equal(isEncounterRequest(message), false)
+  const initial = campaign()
+  const { orchestrator, eventStore } = await setup(initial, t)
+  await assert.rejects(
+    orchestrator.handle({
+      state: initial,
+      campaignId: initial.sessionCode,
+      playerId: 'hero',
+      allowedActorIds: ['hero'],
+      message,
+      idempotencyKey: 'combat-entry-empty-start',
+    }),
+    (error) => error?.code === 'COMBAT_PARTICIPANTS_REQUIRED' && /Ищем бой/u.test(error.message),
+  )
+  const persisted = await eventStore.load(initial.sessionCode)
+  assert.equal(persisted.state_version, 0)
+  assert.equal(persisted.state.mechanics.combat.active, false)
+})

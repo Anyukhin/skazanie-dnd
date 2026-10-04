@@ -1537,6 +1537,12 @@ body:has(.spellbook-panel) .game-area .scene-header { visibility: hidden; pointe
 .mechanics-support-badge.support-heuristic { color: #c58b62; }
 .mechanics-support-badge.support-ruling-only { color: #cf746f; }
 .mechanics-support-badge.support-verified { color: #75aa8d; }
+/* Ярлык статуса в строке карточки развития героя: тот же цвет, что у плитки. */
+.mechanics-support-label { font-weight: 700; letter-spacing: .045em; }
+.mechanics-support-label.support-partial { color: color-mix(in srgb, var(--acc) 50%, var(--acc2)); }
+.mechanics-support-label.support-heuristic { color: #c58b62; }
+.mechanics-support-label.support-ruling-only { color: #cf746f; }
+.mechanics-support-label.support-verified { color: #75aa8d; }
 .spellbook-panel article.support-heuristic, .spellbook-panel article.support-ruling-only { border-color: color-mix(in srgb, var(--muted) 7%, var(--enemy) 21%); }
 
 .combat-hotbar .action-tile.spellbook-tile { color: color-mix(in srgb, var(--text) 25%, var(--acc)); background: color-mix(in srgb, var(--well) 46.4%, var(--acc) 11.6%); }

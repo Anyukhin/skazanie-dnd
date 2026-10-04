@@ -29,6 +29,19 @@ function stateFixture() {
   })
 }
 
+// Тот же гоблин, но на стороне противника: бой без живой противостоящей
+// стороны Rules Engine больше не начинает.
+function goblinEnemyFixture() {
+  const state = stateFixture()
+  const goblin = state.players.find((actor) => actor.id === 'goblin')
+  return normalizeCampaignState({
+    ...state,
+    partyMemberIds: ['hero'],
+    players: state.players.filter((actor) => actor.id !== 'goblin'),
+    enemies: [{ ...goblin, alive: true }],
+  })
+}
+
 function dice(values) {
   let id = 0
   return new DiceService({ rng: new SequenceDiceRng(values), idFactory: () => `roll-${++id}`, now: () => '2026-01-01T00:00:00.000Z' })
@@ -252,8 +265,8 @@ test('состояния и концентрация изменяются тол
 })
 
 test('инициатива, порядок хода и экономика действий проверяются кодом', () => {
-  const started = resolveCommand({ command_type: 'StartCombat', participant_ids: ['hero', 'goblin'] }, stateFixture(), { diceService: dice([8, 16]) })
-  const combatState = applyGameEvent(stateFixture(), started.events[0])
+  const started = resolveCommand({ command_type: 'StartCombat', participant_ids: ['hero', 'goblin'] }, goblinEnemyFixture(), { diceService: dice([8, 16]) })
+  const combatState = applyGameEvent(goblinEnemyFixture(), started.events[0])
   assert.equal(combatState.mechanics.combat.initiative[0].actor_id, 'goblin')
   assert.deepEqual(
     combatState.mechanics.combat.initiative.map((entry) => ({ actor: entry.actor_id, roll: entry.roll, modifier: entry.modifier, total: entry.total })),
@@ -278,6 +291,30 @@ test('инициатива, порядок хода и экономика дей
   assert.equal(peaceful.mechanics.world_time.second_remainder, 6)
   assert.equal(peaceful.mechanics.combat.active, false)
   assert.deepEqual(peaceful.mechanics.combat.initiative, [])
+})
+
+test('бой без живой противостоящей стороны не начинается ни на одном пути', () => {
+  // Плейтест PC-01: фраза «Начать бой с двумя волками» через свободный текст
+  // записала бой из двух героев, и координатор тут же объявил победу.
+  const party = stateFixture()
+  const deadGoblin = goblinEnemyFixture()
+  deadGoblin.enemies[0].hp = 0
+  deadGoblin.enemies[0].alive = false
+  for (const [label, state] of [['только герои', party], ['враг уже повержен', deadGoblin]]) {
+    for (const authority of [{}, { server_authoritative: true }]) {
+      assert.throws(
+        () => resolveCommand({ command_type: 'StartCombat', actor_id: 'hero', ...authority }, state, { diceService: dice([10, 10]) }),
+        (error) => error instanceof RulesValidationError
+          && error.code === 'COMBAT_PARTICIPANTS_REQUIRED'
+          && /нет живых противников/u.test(error.message),
+        `${label}: ${JSON.stringify(authority)}`,
+      )
+    }
+  }
+  const started = resolveCommand({ command_type: 'StartCombat', actor_id: 'hero' }, goblinEnemyFixture(), { diceService: dice([10, 12]) })
+  const combatStarted = started.events.find((event) => event.event_type === 'CombatStarted')
+  assert.deepEqual(combatStarted.payload.enemy_ids, ['goblin'])
+  assert.deepEqual(combatStarted.payload.party_ids, ['hero'])
 })
 
 test('исследование не режется на боевые ходы, а в бою скорость ограничивает перемещение', () => {
