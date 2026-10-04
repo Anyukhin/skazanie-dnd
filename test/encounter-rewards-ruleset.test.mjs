@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrator.mjs'
+import { combatNarration } from '../server/combat-narration.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { freezeEncounterOutcomePlan } from '../server/encounter-rewards.mjs'
@@ -82,9 +83,21 @@ test('2014 completion distributes XP, coins and loot once across retry and resta
   assert.equal(firstHero.experience, 50)
   assert.ok(firstHero.currency.gold > 0 || firstHero.currency.silver > 0 || firstHero.currency.copper > 0)
   const firstInventorySize = firstHero.inventory.length
+  // Летопись «Продолжим» строится из тех же событий (`tacticalNarrationOr`,
+  // маршрут autonomy/advance): награда и отдых названы словами, вещи — те,
+  // что легли в инвентарь (плейтест 2026-10-04, MC-03 и MC-05).
+  const chronicle = combatNarration(first.events, afterFirst.state)
+  const rewardItems = firstHero.inventory.filter((item) => item.origin === 'reward')
+  assert.ok(rewardItems.length > 0, 'фикстура обязана выдать вещь награды')
+  assert.match(chronicle, /Награда встречи — доля отряда за победу: [^.]*опыт: 50\./u)
+  for (const item of rewardItems) assert.ok(chronicle.includes(`«${item.name}»`), `в летописи нет «${item.name}»`)
+  assert.match(chronicle, /После победы отряд отдыхает 8 часов и восстанавливает силы/u)
+  assert.equal((chronicle.match(/Награда встречи/gu) ?? []).length, 1)
   const repeated = await makeAutonomy(eventStore).completeEncounter({ campaignId, outcome: 'enemies_defeated', idempotencyKey: 'retry-after-browser' })
   assert.equal(repeated.duplicate, true)
   assert.equal(repeated.state_version, first.state_version)
+  // Повтор не возвращает событий — и второй строки награды не будет.
+  assert.equal(combatNarration(repeated.events, afterFirst.state), '')
   const afterRetry = await eventStore.load(campaignId)
   assert.equal(afterRetry.state.players.find((player) => player.id === 'hero').experience, 50)
   assert.equal(afterRetry.state.players.find((player) => player.id === 'hero').inventory.length, firstInventorySize)
