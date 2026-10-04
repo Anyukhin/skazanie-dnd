@@ -2965,7 +2965,7 @@ export class GameOrchestrator {
       state_version_after: stateAfter,
       verification_result: verification,
       latency_ms: latency,
-      token_usage: {},
+      token_usage: narration?.token_usage ?? {},
       narration_result: narration ? {
         narration: narration.narration,
         visibility: narration.visibility ?? 'party',
