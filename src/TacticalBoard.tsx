@@ -1,7 +1,7 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ActorAppearance, ActorFootprint, BattleEvent, CombatVisualBatch, TacticalMap } from './types'
 import {
-  DEFAULT_BOARD_PALETTE, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
+  DEFAULT_BOARD_PALETTE, PROP_ATLAS_MANIFEST, TILE_CELLS, boardPaletteFrom, createTileCache, drawBoardEffects, drawBoardOverlay, drawMapDecorations,
   syncTileCache, terrainKeysFor, visibleTiles,
   type BoardEffectRenderer, type BoardOverlayCell, type BoardPalette, type BoardScene, type BoardTexture,
   type BoardViewport, type PropAtlas, type TerrainTiles, type TileSurface,
@@ -134,12 +134,6 @@ const REDUCED_MOTION_SPELL_CUE_MS = 120
  * постоянного rAF-цикла у доски не появляется.
  */
 const LEVEL_CROSSFADE_MS = 400
-
-/**
- * Манифест растровых штампов предметов. Собирается `pnpm props:atlas`; его
- * может не быть — тогда доска рисует предметы вектором (решение Р6 плана).
- */
-const PROP_ATLAS_MANIFEST = '/assets/maps/props/prop-atlas.json'
 
 /** Манифест фактур пола, поверхностей и стен. Собирается `pnpm terrain:tiles`. */
 const TERRAIN_MANIFEST = '/assets/maps/terrain/terrain-tiles.json'

@@ -121,6 +121,16 @@ test('этап 3: скит строится по программе — наве
   }
 })
 
+test('этап 3: центр сцены — колодец площади, а не второй колодец рядом с ним', () => {
+  const program = sceneMapRequirementsFor(['Деревня: деревянные дома, колодец на площади, огороды и плетни.'], { npcs: [] })
+  assert.equal(program?.focus, 'well')
+  for (const seed of ['well-a', 'well-b', 'well-c']) {
+    const { map } = generateSceneGeometry({ location: 'Деревня Кленовка', theme: 'деревня', settlementType: 'village', seed, useLibrary: false, requirements: program.items, program })
+    const wells = map.props.filter((prop) => prop.assetId === 'well')
+    assert.equal(wells.length, 1, `${seed}: колодцев ${wells.map((prop) => prop.id).join(', ')}`)
+  }
+})
+
 test('этап 3: карта по программе детерминирована, а сцена без программы строится как прежде', () => {
   const first = serializeTacticalMap(skitMap('skit-det').map)
   const second = serializeTacticalMap(skitMap('skit-det').map)

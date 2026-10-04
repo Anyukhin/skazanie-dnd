@@ -4,7 +4,7 @@ import type {
 } from './types'
 import { areaCells, type AreaGeometryVersion, type AreaPoint, type AreaShape } from './area-geometry'
 import {
-  LIGHT_FULL, lightAt, lightGridFor, lightSourceVisibilityFor, lightSourcesOf,
+  LIGHT_FULL, LIGHT_LINK_EAST, LIGHT_LINK_SOUTH, lightAt, lightGridFor, lightLinksFor, lightSourceVisibilityFor, lightSourcesOf,
   type LightSource,
 } from './board-lighting'
 import { LEGACY_CATALOG_REVISION, propModelFit, propModelFor, type PropModelCatalog } from './prop-model-catalog'
@@ -38,11 +38,12 @@ export const TILE_CELLS = 16
  * заставлено, а где пусто. Поэтому нижний уровень рисует метку — залитое пятно
  * по габариту предмета, не меньше двух пикселей.
  *
- * Между порогами рисуется один силуэт характерной формы. Детали внутри
- * рисунка — обручи бочки, полки шкафа, доски стола — занимают около одной
- * седьмой его размера: при клетке в 20 px это меньше трёх точек, они сливаются
- * в грязь и стоят лишних вызовов. С 22 px деталь уже различима, и рисунок
- * выводится целиком.
+ * Между порогами векторный рисунок заменяется силуэтом характерной формы.
+ * Детали вектора — обручи бочки, полки шкафа, доски стола — занимают около
+ * одной седьмой его размера: при клетке в 20 px это меньше трёх точек, они
+ * сливаются в грязь и стоят лишних вызовов. С 22 px деталь уже различима, и
+ * рисунок выводится целиком. Растр — штамп или вид модели сверху — рисуется
+ * на обоих уровнях: уменьшенный, он остаётся узнаваемым (`drawProps`).
  */
 export const PROP_MIN_CELL_PIXELS = 12
 export const PROP_FULL_DETAIL_CELL_PIXELS = 22
@@ -102,6 +103,8 @@ export type BoardContext2D = {
   lineWidth: number
   globalAlpha: number
   globalCompositeOperation: GlobalCompositeOperation
+  /** Качество уменьшения растра; у поддельного контекста тестов его нет. */
+  imageSmoothingQuality?: ImageSmoothingQuality
 }
 
 /** Растровая текстура: размеры нужны, чтобы вырезать окно по варианту тайла. */
@@ -520,6 +523,13 @@ export function wallTextureKeyFor(material: TacticalMaterial): string {
 export function wallTextureKeyForSide(map: TacticalMap, side: TacticalCell | null | undefined): string {
   return zoneOfCell(map, side)?.wall ?? wallTextureKeyFor(side?.material ?? 'stone')
 }
+
+/**
+ * Манифест растровых штампов предметов. Собирается `pnpm props:atlas`; его
+ * может не быть — тогда доска рисует предметы вектором (решение Р6 плана).
+ * Им же пользуется 3D-доска для плоских предметов без своей модели.
+ */
+export const PROP_ATLAS_MANIFEST = '/assets/maps/props/prop-atlas.json'
 
 /** Кадр спрайта в атласе: окно в пикселях исходного изображения. */
 export type PropFrame = { x: number; y: number; w: number; h: number }
@@ -3627,6 +3637,9 @@ function drawOpenContainerMark(context: BoardContext2D, box: PropBox, palette: B
 export function drawProps(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const level = propDetailLevel(scene.cellSize)
   const frame = tileFrame(scene, tile)
+  // Штамп в 192 точки уменьшается до двадцати: без высокого качества холст
+  // берёт редкие выборки, и рисунок рябит. Тайл запекается один раз.
+  if ('imageSmoothingQuality' in context) context.imageSmoothingQuality = 'high'
   for (const prop of propsInTile(scene.map, tile, scene.cellSize)) {
     const painted = scene.artMode === 'map' && scene.art && prop.id.startsWith('painted:')
     if (painted) {
@@ -3648,12 +3661,15 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     const styleEntry = styleCandidate?.source === 'style' ? styleCandidate : null
     const modelAtlas = styleEntry ? scene.styleModelPropAtlas : scene.modelPropAtlas
     const modelEntry = styleEntry ?? (modelAtlas ? propModelFor(modelAtlas.catalog, canonical, prop.id) : null)
-    const detailed = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
+    // Растровый рисунок — штамп или вид модели сверху — берётся и на общем
+    // плане: уменьшенный, он остаётся бочкой и кустом, а силуэт заливкой
+    // превращал деревню в россыпь оранжевых квадратов и зелёных кругов.
+    // Силуэт остаётся запасным видом, пока атлас не загружен. Ниже
+    // `PROP_MIN_CELL_PIXELS` — только метка.
+    const detailed = level !== 'mark' || ART_ONLY_PROP_ASSETS.has(prop.assetId)
     const modelPreview = detailed ? modelEntry?.preview : undefined
     const modelBox = modelPreview ? propModelPlacementBox(prop, drawing, modelEntry, frame.size) : placement.box
-    // Штамп берётся только на полной детализации: ниже её предмет занимает
-    // считаные пиксели, и силуэт заливкой там и дешевле, и разборчивее.
-    const stamped = level === 'full' || ART_ONLY_PROP_ASSETS.has(prop.assetId) || (scene.map.generator.id === 'ares-fortress' && level === 'simple')
+    const stamped = detailed
     // Кадр ищется в основном атласе, затем в наборе детализации.
     const stampAtlas = !stamped ? null
       : scene.propAtlas?.frames[prop.assetId] ? scene.propAtlas
@@ -3661,6 +3677,14 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     const stamp = stampAtlas?.frames[prop.assetId]
     context.save()
     context.translate((placement.x - frame.minX) * frame.size, (placement.y - frame.minY) * frame.size)
+    // Тень кладётся до поворота: свет у доски один, с северо-запада, и тень
+    // всегда падает к юго-востоку, как бы ни стоял предмет.
+    const standing = !drawing.flat && prop.blocksMove && !prop.mount && !painted
+    if (standing && (modelPreview || stamp)) {
+      const box = modelPreview ? modelBox : placement.box
+      const quarter = Math.round((((prop.rotation % 360) + 360) % 360) / 90) % 2 === 1
+      drawContactShadow(context, quarter ? { hw: box.hh, hh: box.hw } : box, frame.size)
+    }
     if (prop.rotation || painted) context.rotate(((prop.rotation + (painted ? 90 : 0)) * Math.PI) / 180)
     // Декаль лежит на полу: прозрачность возвращается руками, а не `restore`, —
     // поддельный контекст тестов не обязан хранить стек состояний.
@@ -3676,6 +3700,22 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     if (drawing.flat) context.globalAlpha = 1
     context.restore()
   }
+}
+
+/**
+ * Тень стоящего предмета на 2D-доске: мягкое пятно, сдвинутое к юго-востоку, —
+ * свет с северо-запада, тот же, что у светотени рельефа. Без неё растровый
+ * штамп лежал на полу плоской наклейкой, и колонна читалась плиткой пола.
+ * Два пятна разной плотности дают мягкий край без градиента холста: его нет у
+ * поддельного контекста тестов.
+ */
+function drawContactShadow(context: BoardContext2D, box: PropBox, size: number) {
+  const dx = size * 0.12
+  const dy = size * 0.15
+  context.fillStyle = 'rgba(12,9,6,.18)'
+  ellipseShape(context, dx, dy, box.hw * 0.98, box.hh * 0.98)
+  context.fillStyle = 'rgba(12,9,6,.2)'
+  ellipseShape(context, dx * 0.75, dy * 0.75, box.hw * 0.8, box.hh * 0.8)
 }
 
 /** Слой 6: сетка 5 футов. */
@@ -3809,16 +3849,51 @@ function drawWarmHalos(context: BoardContext2D, scene: BoardScene, frame: TileFr
 export function drawLightShading(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
   const grid = lightGridFor(scene.map)
+  const links = lightLinksFor(scene.map)
+  const map = scene.map
   const size = frame.size
+  // Клетка делится на полосы по шесть пикселей: мельче глаз не различает
+  // ступеньку тьмы, а заливок на тайл и так до шестнадцати тысяч.
+  const steps = size < 12 ? 1 : Math.min(8, Math.max(2, Math.round(size / 6)))
   context.save()
   context.fillStyle = scene.palette.lightShadow
   for (let y = frame.minY; y <= frame.maxY; y += 1) {
     for (let x = frame.minX; x <= frame.maxX; x += 1) {
-      if (!revealedAt(scene.map, x, y)) continue
-      const alpha = lightShadowAlpha(lightAt(grid, scene.map, x, y))
-      if (alpha < 0.01) continue
-      context.globalAlpha = alpha
-      context.fillRect((x - frame.minX) * size, (y - frame.minY) * size, size, size)
+      if (!revealedAt(map, x, y)) continue
+      const left = (x - frame.minX) * size
+      const top = (y - frame.minY) * size
+      const own = lightShadowAlpha(lightAt(grid, map, x, y))
+      // Углы: верхний левый, верхний правый, нижний левый, нижний правый.
+      const corners = steps === 1 ? [own, own, own, own] : [
+        lightShadowAlpha(cornerLight(map, grid, links, x, y, x, y)),
+        lightShadowAlpha(cornerLight(map, grid, links, x, y, x + 1, y)),
+        lightShadowAlpha(cornerLight(map, grid, links, x, y, x, y + 1)),
+        lightShadowAlpha(cornerLight(map, grid, links, x, y, x + 1, y + 1)),
+      ]
+      const low = Math.min(...corners)
+      const high = Math.max(...corners)
+      if (high < 0.01) continue
+      if (high - low < 0.012) {
+        context.globalAlpha = (low + high) / 2
+        context.fillRect(left, top, size, size)
+        continue
+      }
+      // Билинейно между углами; границы полос округлены до пикселя, чтобы
+      // соседние полосы не перекрывались и не оставляли щели.
+      for (let row = 0; row < steps; row += 1) {
+        const y0 = Math.round(top + (row * size) / steps)
+        const y1 = Math.round(top + ((row + 1) * size) / steps)
+        const v = (row + 0.5) / steps
+        for (let column = 0; column < steps; column += 1) {
+          const x0 = Math.round(left + (column * size) / steps)
+          const x1 = Math.round(left + ((column + 1) * size) / steps)
+          const u = (column + 0.5) / steps
+          const alpha = (corners[0] * (1 - u) + corners[1] * u) * (1 - v) + (corners[2] * (1 - u) + corners[3] * u) * v
+          if (alpha < 0.01 || x1 <= x0 || y1 <= y0) continue
+          context.globalAlpha = alpha
+          context.fillRect(x0, y0, x1 - x0, y1 - y0)
+        }
+      }
     }
   }
   context.globalAlpha = 1
@@ -3828,6 +3903,47 @@ export function drawLightShading(context: BoardContext2D, scene: BoardScene, til
   // хранить стек состояний.
   context.globalAlpha = 1
   context.restore()
+}
+
+/**
+ * Освещённость угла `(cornerX, cornerY)` клетки `(x, y)`: среднее по клеткам
+ * квадрата 2×2 вокруг угла, связанным с этой клеткой светом внутри квадрата —
+ * без стены и закрытой двери между ними. У двух связанных соседей общий угол
+ * поэтому одинаков, и тьма переходит из клетки в клетку без шва; через стену
+ * связи нет, и граница остаётся резкой, как и сам свет. Нераскрытая клетка в
+ * среднее не входит: тьма не выдаёт, что за туманом.
+ */
+function cornerLight(map: TacticalMap, grid: Uint8Array, links: Uint8Array, x: number, y: number, cornerX: number, cornerY: number) {
+  // Квадрат: 0 — верхний левый, 1 — верхний правый, 2 — нижний левый, 3 — нижний правый.
+  const cells: Array<[number, number]> = [[cornerX - 1, cornerY - 1], [cornerX, cornerY - 1], [cornerX - 1, cornerY], [cornerX, cornerY]]
+  const present = cells.map(([cx, cy]) => revealedAt(map, cx, cy))
+  const link = (cx: number, cy: number, bit: number) => {
+    const index = cellIndex(map, cx, cy)
+    return index >= 0 && (links[index] & bit) !== 0
+  }
+  const edges: Array<[number, number, boolean]> = [
+    [0, 1, link(cornerX - 1, cornerY - 1, LIGHT_LINK_EAST)],
+    [2, 3, link(cornerX - 1, cornerY, LIGHT_LINK_EAST)],
+    [0, 2, link(cornerX - 1, cornerY - 1, LIGHT_LINK_SOUTH)],
+    [1, 3, link(cornerX, cornerY - 1, LIGHT_LINK_SOUTH)],
+  ]
+  const start = cells.findIndex(([cx, cy]) => cx === x && cy === y)
+  const reached = [false, false, false, false]
+  reached[start] = true
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (const [a, b, open] of edges) {
+      if (!open || !present[a] || !present[b]) continue
+      if (reached[a] || reached[b]) { reached[a] = true; reached[b] = true }
+    }
+  }
+  let sum = 0
+  let count = 0
+  for (let index = 0; index < 4; index += 1) {
+    if (!reached[index]) continue
+    sum += lightAt(grid, map, cells[index][0], cells[index][1])
+    count += 1
+  }
+  return sum / count
 }
 
 /** Световая заливка зоны; `null` означает нейтральный яркий свет. */

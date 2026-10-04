@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 
-import { propVisualLayout, resolvePropAssetId, stampFit, PROP_DECAL_ALPHA, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
+import { propDrawingFor, propVisualLayout, resolvePropAssetId, stampFit, PROP_DECAL_ALPHA, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import { detailPropAlias } from './detail-props'
 import type { TacticalProp } from './types'
 import { propModelFit, propModelFor } from './prop-model-catalog'
@@ -375,14 +375,15 @@ function buildGroundDetail(resources: Resources, parent: THREE.Group, layout: La
   else if (kind === 'path-stone' || kind === 'mosaic') { const count = kind === 'mosaic' ? 4 : 3; for (let i = 0; i < count; i += 1) rock(resources, parent, kind, stone, [width / count * 0.75, 0.035, depth / count * 0.75], [(i - (count - 1) / 2) * width / count, 0.03, (i % 2 - 0.5) * depth * 0.3]) }
 }
 
-/** Виды плоских наклеек, которые штамп набора детализации заменяет целиком. */
-const FLOOR_STAMP_KINDS: ReadonlySet<string> = new Set(['rug', 'floor-stain'])
+/** Виды плоских предметов, которые 2D-штамп заменяет целиком. */
+const FLOOR_STAMP_KINDS: ReadonlySet<string> = new Set(['rug', 'floor-stain', 'cave-pool', 'mosaic', 'path-stone', 'fern', 'flowers'])
 
 /**
- * Ковёр, шкура или пятно набора детализации — своим штампом, как на 2D-доске:
+ * Ковёр, шкура, пятно, озерцо или мозаика — своим штампом, как на 2D-доске:
  * тот же габарит, тот же поворот вытянутого рисунка (`stampFit`) и та же
- * полупрозрачность декали. Наклейка не пишет глубину, поэтому сетка и туман
- * ложатся поверх неё, как в 2D, а ножки стола на ковре её закрывают.
+ * прозрачность (декаль полупрозрачна, озерцо — нет). Наклейка не пишет
+ * глубину, поэтому сетка и туман ложатся поверх неё, как в 2D, а ножки стола
+ * на ковре её закрывают.
  */
 function buildFloorStamp(resources: Resources, parent: THREE.Group, layout: Layout, assetId: string, texture: THREE.Texture) {
   const image = texture.image as { width?: number; height?: number } | undefined
@@ -392,7 +393,7 @@ function buildFloorStamp(resources: Resources, parent: THREE.Group, layout: Layo
   let materialValue = resources.materialPool.get(key)
   if (!materialValue) {
     materialValue = new THREE.MeshStandardMaterial({
-      map: texture, transparent: true, opacity: PROP_DECAL_ALPHA, depthWrite: false, roughness: 0.95, metalness: 0,
+      map: texture, transparent: true, opacity: propDrawingFor(assetId).flat ? PROP_DECAL_ALPHA : 1, depthWrite: false, roughness: 0.95, metalness: 0,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4,
     })
     resources.materialPool.set(key, materialValue)

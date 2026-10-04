@@ -1544,8 +1544,12 @@ export function placeColonnade(map, { zoneId, assetId = 'pillar', idPrefix = 'co
     for (let index = 1; index <= inner; index += 1) rows.push(Math.round(first + (last - first) * index / (inner + 1)))
   }
   let placed = 0
+  // В длинном зале опоры — через две клетки, в коротком — через одну: при
+  // шаге в одну клетку у входа склепа вставало по три дюжины колонн, и зал
+  // превращался в частокол.
+  const step = length >= 12 ? 3 : 2
   for (const row of rows) {
-    for (let along = (horizontal ? minX : minY) + 1; along <= (horizontal ? maxX : maxY) - 1; along += 2) {
+    for (let along = (horizontal ? minX : minY) + 1; along <= (horizontal ? maxX : maxY) - 1; along += step) {
       const cell = horizontal ? { x: along, y: row } : { x: row, y: along }
       const key = cellKey(cell)
       if (!inZone.has(key) || clear.has(key) || occupied.has(key)) continue

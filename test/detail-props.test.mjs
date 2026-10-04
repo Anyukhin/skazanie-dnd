@@ -44,6 +44,14 @@ test('клиентская таблица двойников совпадает 
   assert.deepEqual(clientModels, manifestModels, 'список detail-v1 GLB разошёлся с манифестом набора')
 })
 
+test('клиентский список плоских наклеек совпадает с флагом d сервера', () => {
+  const block = /DETAIL_PROP_DECALS[^[]*\[([\s\S]*?)\]\)/u.exec(clientSource)?.[1] ?? ''
+  const client = new Set([...block.matchAll(/'([a-z0-9_]+)'/gu)].map((match) => match[1]))
+  const server = new Set(DETAIL_PROPS.filter((record) => record.kind === 'decal').map((record) => record.id))
+  assert.ok(server.size > 0)
+  assert.deepEqual(client, server, 'по этому списку 3D решает, класть ли наклейку штампом')
+})
+
 test('каждый предмет набора стоит в реестре со штампом, а двойник — прежний предмет', () => {
   assert.equal(validateAssetRegistry().ok, true)
   const atlas = readDetailAtlas()
