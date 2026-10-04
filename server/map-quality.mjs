@@ -315,8 +315,24 @@ export function auditTacticalMap(map) {
     const around = [...new Set([[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => nodeOf(x + dx, y + dy)).filter(Boolean))]
     for (let i = 0; i < around.length; i += 1) for (let j = i + 1; j < around.length; j += 1) links.add([around[i], around[j]].sort().join('|'))
   }
-  const nodes = new Set([...links].flatMap((link) => link.split('|')))
-  const loops = Math.max(0, links.size - nodes.size + 1)
+  // Цикломатическое число E − V + C, где C — число компонент связности. Прежняя
+  // формула E − V + 1 считала граф связным, и у леса или дороги без комнат и
+  // дверей (E = V = 0) получалась «одна петля» (исследование PR #136).
+  /** @type {Map<string, string>} */
+  const parent = new Map()
+  const root = (/** @type {string} */ node) => {
+    let current = node
+    while (parent.get(current) !== current) current = /** @type {string} */ (parent.get(current))
+    return current
+  }
+  for (const link of links) {
+    const [a, b] = link.split('|')
+    if (!parent.has(a)) parent.set(a, a)
+    if (!parent.has(b)) parent.set(b, b)
+    parent.set(root(a), root(b))
+  }
+  const components = new Set([...parent.keys()].map(root)).size
+  const loops = Math.max(0, links.size - parent.size + components)
   const richness = richnessReport(map)
   const play = playabilityReport(map, blockingAt)
   problems.push(...richness.problems, ...play.problems)

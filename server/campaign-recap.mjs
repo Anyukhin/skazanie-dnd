@@ -6,6 +6,7 @@ import { buildDataOnlyContext } from './security.mjs'
 import { atomicWrite } from './store.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { worldMemoryForViewer } from './world-memory.mjs'
+import { OFFSCREEN_CARD_TITLE_PREFIX } from './offscreen-world.mjs'
 
 /**
  * Рекап «В прошлой серии» — задача 2.3 плана `docs/experience-upgrade-plan.md`.
@@ -104,11 +105,20 @@ const PARTY_VIEWER = Object.freeze({ playerId: '', isPartyMember: true })
  * «В прошлой серии» всё, что делал стол, и вечер открылся бы чужими новостями.
  * Поэтому из каждой рубрики остаётся последняя запись — она и отвечает на
  * вопрос «что там сейчас», — а места в окне хватает на дела отряда.
+ *
+ * Сворачивается только эта рубрика. Сводки сцен тоже бывают с одним
+ * заголовком — без названия от Режиссёра сцена зовётся «Глава N», и номер не
+ * растёт, пока цель не закрыта, — но это разные дела отряда. Свёртка по любому
+ * заголовку теряла из рекапа смерть NPC в первой из двух таких сцен
+ * (исследование PR #136, N13).
  */
+const ROLLING_RUBRIC_PREFIX = clean(OFFSCREEN_CARD_TITLE_PREFIX, 160)
+
 function freshestByTitle(summaries) {
   const byTitle = new Map()
   for (const summary of summaries) {
-    const key = clean(summary?.title, 160) || `id:${clean(summary?.id, 120)}`
+    const title = clean(summary?.title, 160)
+    const key = title && title.startsWith(ROLLING_RUBRIC_PREFIX) ? `rubric:${title}` : `id:${clean(summary?.id, 120)}`
     // Свежая запись обязана занять и место в порядке, а не только значение:
     // `Map.set` по существующему ключу оставил бы её на позиции старой.
     byTitle.delete(key)

@@ -2139,6 +2139,7 @@ export class Narrator {
     examples,
     provider,
     startedAt,
+    tokenUsage = null,
   }) {
     const arcRecap = narratorArcRecap(brief, { recentNarrations: recent })
     if (arcRecap) {
@@ -2154,6 +2155,9 @@ export class Narrator {
     })
     return {
       narration,
+      // Расход модели на этот текст. До 2026-10-04 трасса хода писала пустой
+      // `token_usage`, хотя ответ провайдера его нёс (исследование PR #136).
+      ...(tokenUsage && typeof tokenUsage === 'object' ? { token_usage: structuredClone(tokenUsage) } : {}),
       verification: {
         ...verification,
         response_plan: narratorResponsePlan(brief),
@@ -2279,6 +2283,7 @@ export class Narrator {
         role: 'narrator',
       }
       let narration = ''
+      let tokenUsage = null
       try {
         if (typeof this.llmClient.complete === 'function') {
           const completion = await awaitNarrationDeadline(this.llmClient.complete({
@@ -2292,6 +2297,7 @@ export class Narrator {
             }),
           }), deadlineController?.signal)
           narration = String(completion?.content ?? '').trim()
+          tokenUsage = completion?.usage ?? null
         } else {
           // Совместимость с узкими тестовыми fake-клиентами старого контракта.
           const output = await awaitNarrationDeadline(this.llmClient.completeJson({
@@ -2339,6 +2345,7 @@ export class Narrator {
           priorFeedback,
           examples,
           provider: this.llmClient.constructor?.name ?? 'llm',
+          tokenUsage,
         })
       }
       const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })
@@ -2360,6 +2367,8 @@ export class Narrator {
         priorFeedback,
         examples,
         provider: 'deterministic-fallback',
+        // Отклонённый текст всё равно оплачен: расход остаётся в трассе.
+        tokenUsage,
       })
     } finally {
       if (deadline) clearTimeout(deadline)

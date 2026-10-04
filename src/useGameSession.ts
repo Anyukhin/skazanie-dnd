@@ -1930,13 +1930,14 @@ export function useGameSession(options: { accountId?: string } = {}) {
     return executeTacticalCommand({ command_type: 'UseLevelTransition', actor_id: actorId, prop_id: propId }, 'Перейти на другой этаж')
   }, [executeTacticalCommand])
 
-  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number) => {
+  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push' }) => {
     return executeTacticalCommand({
       command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
       ...(targetId ? { target_id: targetId } : {}),
       ...(itemId ? { item_id: itemId } : {}),
       ...(beneficiaryId ? { beneficiary_id: beneficiaryId } : {}),
       ...(slotLevel ? { slot_level: slotLevel } : {}),
+      ...(options?.shoveMode ? { shove_mode: options.shoveMode } : {}),
     }, note ? `Использовать выбранное боевое действие. ${note}` : 'Использовать выбранное боевое действие')
   }, [executeTacticalCommand])
 

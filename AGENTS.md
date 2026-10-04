@@ -20,7 +20,7 @@
   Типы описываются JSDoc-ом (`@typedef`, `@param`, `@returns`) и JSDoc-приведением
   `/** @type {T} */ (expr)` — рантайм при этом не меняется. Если для зелёного
   нужна правка поведения — остановиться и вынести её отдельной задачей.
-  Проверяются 35 файлов (на 2026-10-02): список даёт
+  Проверяются 40 файлов (на 2026-10-04): список даёт
   `grep -rl '^// @ts-check' server/`. `rules-engine.mjs` и `index.mjs` в нём нет.
   Форма тактической клетки (`SceneCell`) объявлена в `server/dynamic-map.mjs`.
 - **`src/` — TypeScript + React + Vite.** Проверяется через `tsc --noEmit -p tsconfig.app.json`.
@@ -272,7 +272,7 @@ commit, механики он не касается.
 | Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs`, `test/roll-binding.test.mjs` |
 | Клиентские поля недоверенные (путь, дальность, цель) | `test/tactical-command-guard.test.mjs` |
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
-| Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs` |
+| Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs`, `test/combat-forecast-disclosure.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
 | Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |

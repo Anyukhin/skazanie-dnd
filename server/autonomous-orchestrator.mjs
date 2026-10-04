@@ -213,6 +213,10 @@ export function materialConsequenceCommands(state, { succeeded = false, reading 
     if (!event || !['party', 'public', undefined, null, ''].includes(event.visibility)) return false
     const type = String(event?.event_type ?? '')
     if (type === 'DoorBarricaded' || type === 'DoorBarricadeCleared') return true
+    // Взлом и выламывание меняют дверь своим событием, без DoorStateChanged, и
+    // до 2026-10-04 сюда не попадали: открытая дверь оставляла факт, а
+    // выломанная — нет (исследование PR #136). Провал двери не меняет.
+    if (type === 'DoorForced' || type === 'DoorLockpicked') return event.payload?.success === true
     if (type === 'DoorStateChanged') return String(event.payload?.state ?? '') !== String(event.payload?.previous_state ?? '')
     if (type !== 'SceneObjectStateChanged') return false
     return event.payload?.success !== false && Boolean(String(event.payload?.state ?? ''))
@@ -230,6 +234,8 @@ export function materialConsequenceCommands(state, { succeeded = false, reading 
     const type = String(event.event_type)
     if (type === 'DoorBarricaded') return 'Дверь забаррикадирована'
     if (type === 'DoorBarricadeCleared') return 'Баррикада двери снята'
+    if (type === 'DoorForced') return 'Дверь выломана'
+    if (type === 'DoorLockpicked') return 'Замок двери взломан'
     if (type === 'DoorStateChanged') return `Дверь ${{ open: 'открыта', closed: 'закрыта', locked: 'заперта', broken: 'выломана' }[payload.state] ?? 'изменилась'}`
     const prop = (state.scene?.map?.props ?? []).find((candidate) => String(candidate?.id) === String(payload.prop_id))
     const asset = String(prop?.assetId ?? '').split(/[\\/]/u).at(-1)?.replace(/\.[a-z0-9]+$/iu, '') ?? ''

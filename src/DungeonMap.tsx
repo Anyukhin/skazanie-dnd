@@ -304,7 +304,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onAttack: (actorId: string, enemyId: string, itemId?: string, choice?: WeaponAttackChoice) => Promise<CommandOutcome>
   onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { itemId?: string; spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
-  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string) => Promise<CommandOutcome>
+  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push' }) => Promise<CommandOutcome>
   onSetSpellBonusPreference?: (actorId: string, enabled: boolean) => Promise<CommandOutcome>
   onSetReactionMode?: (actorId: string, reactionId: string, mode: ReactionMode, reactionName?: string) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
@@ -553,6 +553,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const [attackAbility, setAttackAbility] = useState<WeaponAttackChoice['attackAbility']>()
   const [sneakAttack, setSneakAttack] = useState(false)
   const [knockOut, setKnockOut] = useState(false)
+  // Толчок: «сбить с ног» по умолчанию, переключатель — «оттолкнуть на 5 фт».
+  const [shovePush, setShovePush] = useState(false)
   /* Фильтр колоды по стоимости — чисто экранная выборка по клику на пипсе
      ресурса. Никуда не сохраняется и ничего не запрещает: закрытая плитка
      остаётся закрытой, а видимая — видимой, просто рядом с ней стоят только
@@ -1444,6 +1446,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       : (current) => abilities.includes(current as NonNullable<WeaponAttackChoice['attackAbility']>) ? current : mode?.ability)
   }, [selectedItem?.id, selectedWeaponCatalogCombat?.abilities?.join('|'), weaponModeKey, attackMode, activeShillelaghAbility])
   useEffect(() => { if (!knockoutEligible) setKnockOut(false) }, [knockoutEligible])
+  const shoveSelected = combatMode === 'action' && selectedCombatAction?.id === 'shove'
+  useEffect(() => { if (!shoveSelected) setShovePush(false) }, [shoveSelected])
   useEffect(() => { if (!sneakAttackEligible || sneakAttackSpent) setSneakAttack(false) }, [sneakAttackEligible, sneakAttackSpent])
   useEffect(() => {
     setPendingCommand(null)
@@ -1667,7 +1671,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     } else if (pendingCommand.kind === 'spell-targets' && selectedSpell) {
       outcome = await onCastSpell(selected, selectedSpell.id, { targetIds: pendingCommand.targetIds, ...selectedSpellItemOption, ...selectedSpellSlotOption, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(knockOut && knockoutEligible ? { knockOut: true } : {}), ...(note ? { note } : {}) })
     } else if (pendingCommand.kind === 'action-target' && selectedCombatAction) {
-      outcome = await onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
+      outcome = await onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note, undefined,
+        selectedCombatAction.id === 'shove' && shovePush ? { shoveMode: 'push' } : undefined)
     }
     if (outcome?.ok) {
       if (pendingCommand.kind === 'target' && pendingCommand.sneakAttack) setSneakAttack(false)
@@ -1805,7 +1810,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     if (pendingCommand?.kind === 'area') return `${selectedItem?.name ?? 'Бросок'} → клетка`
     if (pendingCommand?.kind === 'spell-target') return `${selectedSpell?.name ?? 'Заклинание'} → ${pendingTargetName ?? 'цель'}`
     if (pendingCommand?.kind === 'spell-targets') return `${selectedSpell?.name ?? 'Заклинание'} → целей: ${pendingCommand.targetIds.length}${beamDistribution ? ` · лучи: ${beamDistribution}` : ''}`
-    if (pendingCommand?.kind === 'action-target') return `${selectedCombatAction?.name ?? 'Действие'} → ${pendingTargetName ?? 'цель'}`
+    if (pendingCommand?.kind === 'action-target') return `${selectedCombatAction?.id === 'shove' && shovePush ? 'Толчок: оттолкнуть' : selectedCombatAction?.name ?? 'Действие'} → ${pendingTargetName ?? 'цель'}`
     if (selfCastSpell) return `${selfCastSpell.name} → на себя`
     if (selfUseAction) return `${selfUseAction.name} → на себя`
     if (multiTargetSpell) return `${selectedSpell?.name ?? 'Заклинание'} → выбрано ${spellTargetIds.length}/${spellTargetLimit}${beamDistribution ? ` · лучи: ${beamDistribution}` : ''}; Enter — подтвердить`
@@ -3765,8 +3770,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {(!inspectedForecast || !inspectedForecast.in_range) && <p>{inspectedTarget.reason}</p>}
             {inspectedForecast && <div className={`attack-forecast ${inspectedForecast.advantage && !inspectedForecast.disadvantage ? 'advantage' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? 'disadvantage' : ''}`}>
               <header>
-                <b>{inspectedForecast.in_range ? `${inspectedForecast.hit_chance}%` : '—'}</b>
-                <span>{inspectedForecast.in_range ? 'шанс попасть' : 'не достать'}<small>{inspectedForecast.label}{inspectedForecast.in_range ? ` · крит ${inspectedForecast.critical_chance}%` : ` · ${inspectedForecast.unreachable_reason}`}</small></span>
+                {/* Пока КД цели не узнана, сервер не отдаёт и процент: при
+                    известном бонусе атаки он однозначно выдаёт закрытую КД. */}
+                <b>{!inspectedForecast.in_range ? '—' : inspectedForecast.hit_chance == null ? '?' : `${inspectedForecast.hit_chance}%`}</b>
+                <span>{!inspectedForecast.in_range ? 'не достать' : inspectedForecast.hit_chance == null ? 'шанс неизвестен' : 'шанс попасть'}<small>{inspectedForecast.label}{!inspectedForecast.in_range
+                  ? ` · ${inspectedForecast.unreachable_reason}`
+                  : inspectedForecast.critical_on_hit ? ' · попадание станет критом'
+                    : inspectedForecast.critical_chance != null ? ` · крит ${inspectedForecast.critical_chance}%` : ''}</small></span>
               </header>
               <dl>
                 <div><dt>Бросок</dt><dd>d20 {inspectedForecast.attack_modifier >= 0 ? '+' : '−'} {Math.abs(inspectedForecast.attack_modifier)}{inspectedForecast.advantage && !inspectedForecast.disadvantage ? ' с преимуществом' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? ' с помехой' : ''}</dd></div>
@@ -4130,10 +4140,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </div>}
           {/* Переключатели, как «Не убивать» макета: флаг `knock_out` уходит с
               ближайшей атакой ближнего боя, сервер сам решает, сработал ли он. */}
-          {combatActive && knockoutEligible && <div className="hud-toggles" role="group" aria-label="Переключатели">
+          {combatActive && (knockoutEligible || shoveSelected) && <div className="hud-toggles" role="group" aria-label="Переключатели">
             <span className="hud-side-title">Переключатели</span>
             <div className="hud-reaction-grid">
-              <button type="button" className={`hud-reaction hud-toggle-button knockout-turn-toggle${knockOut ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} aria-label={`Не убивать — ${knockOut ? 'включено' : 'выключено'}`} onClick={() => setKnockOut((current) => !current)} title="Не убивать: удар, сводящий ОЗ к нулю, оставит цель с 1 ОЗ без сознания. Только ближний бой"><CombatIcon id="nonlethal" kind="action" size={34} compact /></button>
+              {knockoutEligible && <button type="button" className={`hud-reaction hud-toggle-button knockout-turn-toggle${knockOut ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} aria-label={`Не убивать — ${knockOut ? 'включено' : 'выключено'}`} onClick={() => setKnockOut((current) => !current)} title="Не убивать: удар, сводящий ОЗ к нулю, оставит цель с 1 ОЗ без сознания. Только ближний бой"><CombatIcon id="nonlethal" kind="action" size={34} compact /></button>}
+              {/* Исход толчка выбирается до броска: правило даёт «сбить с ног»
+                  или «оттолкнуть на 5 фт». Стену и занятую клетку проверяет сервер. */}
+              {shoveSelected && <button type="button" className={`hud-reaction hud-toggle-button shove-push-toggle${shovePush ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={shovePush} aria-label={`Толчок отталкивает — ${shovePush ? 'включено' : 'выключено, сбивает с ног'}`} onClick={() => setShovePush((current) => !current)} title="Оттолкнуть: при успехе толчка цель отлетает на 5 футов от вас вместо того, чтобы упасть. Стена или другое существо её остановят"><CombatIcon id="shove" kind="action" size={34} compact /></button>}
             </div>
           </div>}
           {/* Часы хода — под реакциями, как в макете: тот же серверный срок, что

@@ -118,6 +118,10 @@ function narrationWorldFacts(state, viewer, message, events) {
     query: narrationMemoryQuery(state, message, events),
     limit: NARRATION_WORLD_FACT_LIMIT,
     asOfMinutes: state.mechanics?.world_time?.elapsed_minutes,
+    // Без совпадений рассказчик не получает ничего. Режим 'all' отдавал
+    // первые записи по id, и на вопрос о драконе в brief уходил чужой долг
+    // как будто относящийся к делу (исследование PR #136, N11).
+    whenUnmatched: 'none',
   })
   return records
     .filter((record) => record.kind === 'fact' && ['public', 'party'].includes(record.fact?.visibility))
@@ -3031,7 +3035,7 @@ export class GameOrchestrator {
       state_version_after: stateAfter,
       verification_result: verification,
       latency_ms: latency,
-      token_usage: {},
+      token_usage: narration?.token_usage ?? {},
       narration_result: narration ? {
         narration: narration.narration,
         visibility: narration.visibility ?? 'party',

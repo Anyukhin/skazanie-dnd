@@ -582,9 +582,16 @@ function segmentDistance(graph, route) {
 }
 
 /**
- * Поиск пути: обычный BFS по известным маршрутам, кратчайший по числу
- * сегментов. Порядок обхода задан порядком `routes`, поэтому результат
- * детерминирован.
+ * Поиск пути: кратчайший по дням дороги (`distance` сегмента), при равенстве —
+ * по числу сегментов, затем по порядку `routes`. Так же считает курьерская
+ * почта (`server/courier-letters.mjs`) и карта мира в браузере
+ * (`src/world-travel.ts`).
+ *
+ * До 2026-10-04 здесь был BFS по числу сегментов: длинный тракт в один
+ * переход выигрывал у двух коротких, и отряд тратил на дорогу лишние дни —
+ * в сгенерированных мирах примерно у одной пары мест из семидесяти
+ * (исследование PR #136). Узлов на карте не больше пятидесяти, поэтому
+ * очередь — перебор, а не куча: так проще удержать детерминированный порядок.
  */
 function routePath(graph, fromId, toId) {
   if (fromId === toId) return []
@@ -597,18 +604,27 @@ function routePath(graph, fromId, toId) {
     neighbours.get(from).push({ route, next: to })
     neighbours.get(to).push({ route, next: from })
   }
-  const visited = new Set([fromId])
-  const queue = [{ id: fromId, path: [] }]
-  while (queue.length) {
-    const node = queue.shift()
-    if (node.id === toId) return node.path
-    for (const edge of neighbours.get(node.id) ?? []) {
-      if (visited.has(edge.next)) continue
-      visited.add(edge.next)
-      queue.push({ id: edge.next, path: [...node.path, edge.route] })
+  if (!neighbours.has(fromId)) return null
+  const best = new Map([[fromId, { days: 0, path: [] }]])
+  const settled = new Set()
+  while (true) {
+    let current = null
+    for (const [id, entry] of best) {
+      if (settled.has(id)) continue
+      if (!current || entry.days < current.entry.days
+        || (entry.days === current.entry.days && entry.path.length < current.entry.path.length)) current = { id, entry }
+    }
+    if (!current) return null
+    if (current.id === toId) return current.entry.path
+    settled.add(current.id)
+    for (const edge of neighbours.get(current.id) ?? []) {
+      if (settled.has(edge.next)) continue
+      const days = current.entry.days + Math.max(1, segmentDistance(graph, edge.route))
+      const path = [...current.entry.path, edge.route]
+      const known = best.get(edge.next)
+      if (!known || days < known.days || (days === known.days && path.length < known.path.length)) best.set(edge.next, { days, path })
     }
   }
-  return null
 }
 
 /** Более опасный биом из встреченных; при равенстве — регион цели. */
@@ -740,7 +756,7 @@ export function planServerTravel(state = {}, {
     source: facts.source,
     route_id: facts.routeId,
     no_route: facts.noRoute,
-    policy: 'server-travel-v2',
+    policy: 'server-travel-v3',
   }
 }
 

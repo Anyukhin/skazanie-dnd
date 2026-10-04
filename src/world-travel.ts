@@ -21,32 +21,39 @@ export const ROUTE_LABELS: Record<WorldMapRoute['kind'], string> = {
 
 export type WorldRouteSelection = { locationIds: string[]; routes: WorldMapRoute[] }
 
-/** Кратчайший по числу переходов путь по открытым маршрутам. */
+/**
+ * Кратчайший по дням путь по открытым маршрутам; при равных днях — с меньшим
+ * числом переходов. Так же выбирает сервер (`routePath`,
+ * `server/campaign-loop-policy.mjs`): показанный путь и исполненный не
+ * расходятся. До 2026-10-04 оба искали по числу переходов, и длинный тракт в
+ * один переход выигрывал у двух коротких (исследование PR #136).
+ */
 export function shortestRoute(start: string, target: string, routes: WorldMapRoute[]): WorldRouteSelection {
   if (!start || !target || start === target) return { locationIds: start ? [start] : [], routes: [] }
-  const queue = [start]
-  const previous = new Map<string, { locationId: string; route: WorldMapRoute } | null>([[start, null]])
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const current = queue[cursor]
-    if (current === target) break
-    for (const route of routes.filter((candidate) => candidate.discovered && (candidate.from === current || candidate.to === current))) {
-      const next = route.from === current ? route.to : route.from
-      if (previous.has(next)) continue
-      previous.set(next, { locationId: current, route })
-      queue.push(next)
+  const open = routes.filter((route) => route.discovered)
+  type Entry = { days: number; locationIds: string[]; routes: WorldMapRoute[] }
+  const best = new Map<string, Entry>([[start, { days: 0, locationIds: [start], routes: [] }]])
+  const settled = new Set<string>()
+  for (;;) {
+    let current: { id: string; entry: Entry } | null = null
+    for (const [id, entry] of best) {
+      if (settled.has(id)) continue
+      if (!current || entry.days < current.entry.days
+        || (entry.days === current.entry.days && entry.routes.length < current.entry.routes.length)) current = { id, entry }
+    }
+    if (!current) return { locationIds: [], routes: [] }
+    if (current.id === target) return { locationIds: current.entry.locationIds, routes: current.entry.routes }
+    settled.add(current.id)
+    for (const route of open) {
+      if (route.from !== current.id && route.to !== current.id) continue
+      const next = route.from === current.id ? route.to : route.from
+      if (settled.has(next)) continue
+      const days = current.entry.days + Math.max(1, Number(route.distance) || 1)
+      const candidate = { days, locationIds: [...current.entry.locationIds, next], routes: [...current.entry.routes, route] }
+      const known = best.get(next)
+      if (!known || days < known.days || (days === known.days && candidate.routes.length < known.routes.length)) best.set(next, candidate)
     }
   }
-  if (!previous.has(target)) return { locationIds: [], routes: [] }
-  const locationIds = [target]
-  const selectedRoutes: WorldMapRoute[] = []
-  for (let current = target; current !== start;) {
-    const step = previous.get(current)
-    if (!step) break
-    selectedRoutes.unshift(step.route)
-    locationIds.unshift(step.locationId)
-    current = step.locationId
-  }
-  return { locationIds, routes: selectedRoutes }
 }
 
 /** Точка карты, где стоит отряд: по идентификатору, иначе по названию сцены. */

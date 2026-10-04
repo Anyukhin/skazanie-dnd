@@ -1903,7 +1903,7 @@ export type GameState = {
       duration_minutes: number
       risk_score: number
       random_encounter: boolean
-      /** `server-travel-v2`: граф мира или текстовая ветка совместимости. */
+      /** `server-travel-v3` (v2 — до 2026-10-04, путь по числу переходов): граф мира или текстовая ветка совместимости. */
       source?: 'graph' | 'legacy_text'
       /** Заполнен только для одного прямого маршрута графа. */
       route_id?: string | null
@@ -2709,8 +2709,13 @@ export type AttackForecast = {
   disadvantage: boolean
   advantage_sources: string[]
   disadvantage_sources: string[]
+  /** `null` и при недосягаемой цели, и при закрытой КД — различает `armor_known`. */
   hit_chance: number | null
   critical_chance: number | null
+  /** Любое попадание станет критом (обездвиженная цель в упор). */
+  critical_on_hit?: boolean
+  /** КД цели известна этому зрителю; без неё шанс попасть не раскрывается. */
+  armor_known?: boolean
   average_damage: number
 }
 
