@@ -246,6 +246,124 @@ test('владелец prop GLB освобождает boneTexture skinned-мо�
   assert.equal(skeleton.boneTexture, null)
 })
 
+test('ковёр набора ложится на пол 3D своим штампом с габаритом и поворотом 2D', () => {
+  const catalog = catalogModule.validatePropModelCatalog(validCatalog())
+  // Кадр rug_red_large в атласе нарисован стоя: 164 × 288.
+  const stamp = new THREE.Texture({ width: 164, height: 288 })
+  let stampDisposed = 0
+  stamp.addEventListener('dispose', () => { stampDisposed += 1 })
+  const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, {
+    catalog, models: new Map(), stamps: new Map([['rug_red_large', stamp], ['anvil', stamp]]),
+  })
+  const value = prop({ id: 'hall-rug', assetId: 'rug_red_large', x: 6, y: 4, footprint: [], scale: 1.2 })
+  const model = environment.create(value)
+  const meshes = []
+  model.traverse((object) => { if (object.isMesh) meshes.push(object) })
+  assert.deepEqual(meshes.map((mesh) => mesh.name), ['floor-stamp'], 'вместо плашки двойника — одна плоскость со штампом')
+  const [mesh] = meshes
+  assert.equal(model.userData.modelSource, 'stamp')
+  assert.equal(mesh.material.map, stamp)
+  assert.equal(mesh.material.transparent, true)
+  assert.equal(mesh.material.opacity, render.PROP_DECAL_ALPHA, 'полупрозрачность декали — как в 2D')
+  assert.equal(mesh.material.depthWrite, false, 'сетка и туман ложатся поверх ковра, как в 2D')
+  assert.equal(mesh.castShadow, false)
+  const layout = render.propVisualLayout(value)
+  const fit = render.stampFit({ hw: layout.width * render.PROP_FOOTPRINT_FILL / 2, hh: layout.depth * render.PROP_FOOTPRINT_FILL / 2 }, { w: 164, h: 288 })
+  assert.equal(fit.turn, true, 'ковёр, нарисованный стоя, лежит поперёк комнаты')
+  assert.ok(Math.abs(mesh.scale.x - fit.width) < 1e-9 && Math.abs(mesh.scale.z - fit.height) < 1e-9, 'габарит рисунка совпадает с 2D')
+  assert.ok(Math.abs(mesh.rotation.y + Math.PI / 2) < 1e-9, 'поворот на четверть — в ту же сторону, что на холсте')
+  model.updateMatrixWorld(true)
+  const bounds = new THREE.Box3().setFromObject(model)
+  assert.ok(bounds.max.y - bounds.min.y < 1e-9 && bounds.min.y > 0 && bounds.max.y < 0.05, 'наклейка плоская и лежит на полу')
+  const box = bounds.getSize(new THREE.Vector3())
+  assert.ok(Math.abs(box.x - fit.height * layout.scale) < 1e-6 && Math.abs(box.z - fit.width * layout.scale) < 1e-6, 'после поворота длинная сторона идёт вдоль длинной стороны габарита')
+
+  // Без штампа — прежняя процедурная плашка; объёмному предмету штамп не нужен.
+  const fallback = environment.create(prop({ id: 'cell-mat', assetId: 'straw_mat', footprint: [] }))
+  assert.ok(fallback.getObjectByName('rug') && !fallback.getObjectByName('floor-stamp'))
+  const anvil = environment.create(prop({ id: 'forge-anvil', assetId: 'anvil' }))
+  assert.equal(anvil.getObjectByName('floor-stamp'), undefined, 'наковальня остаётся объёмной')
+  environment.dispose()
+  assert.equal(stampDisposed, 0, 'штамп принадлежит загрузке ассетов, а не каталогу окружения')
+})
+
+test('своя модель сильнее штампа, штампом ложатся только плоские наклейки набора', async () => {
+  const detail = await import(pathToFileURL(join(buildDir, 'detail-props.mjs')).href)
+  const { DETAIL_PROPS } = await import('../server/detail-props.mjs')
+  const stamped = DETAIL_PROPS.filter((record) => detail.isDetailFloorStamp(record.id))
+  for (const record of stamped) {
+    assert.equal(record.kind, 'decal', `${record.id}: штамп на полу только у плоской наклейки`)
+    assert.ok(['rug', 'floor_stain'].includes(record.alias), `${record.id}: двойник — плашка, а не объёмная модель`)
+  }
+  for (const id of ['straw_mat', 'rug_red_large', 'bear_pelt', 'snowdrift', 'wine_stain']) assert.ok(detail.isDetailFloorStamp(id), id)
+  for (const id of ['straw_bed', 'anvil', 'reeds', 'ritual_circle', 'rug']) assert.equal(detail.isDetailFloorStamp(id), false, id)
+
+  const catalog = catalogModule.validatePropModelCatalog(validCatalog([entry('mat-a', ['straw_mat'])]))
+  const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, {
+    catalog, models: new Map([['mat-a', fakeTemplate(1, .1, 1)]]), stamps: new Map([['straw_mat', new THREE.Texture({ width: 96, height: 96 })]]),
+  })
+  const model = environment.create(prop({ id: 'modelled-mat', assetId: 'straw_mat', footprint: [{ x: 1, y: 1 }] }))
+  assert.equal(model.userData.modelSource, 'glb')
+  assert.equal(model.getObjectByName('floor-stamp'), undefined)
+  environment.dispose()
+})
+
+test('загрузка вырезает штампы плоских наклеек из атласа и повторяет запрос после сбоя', async () => {
+  const revision = 'stamp-test'
+  const frames = { straw_mat: { x: 10, y: 20, w: 96, h: 95 }, mud_patch: { x: 0, y: 0, w: 96, h: 96 }, barrel: { x: 0, y: 0, w: 64, h: 64 } }
+  let atlasBroken = true
+  const requested = []
+  const drawn = []
+  const json = (body) => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => body, text: async () => JSON.stringify(body) })
+  const missing = { ok: false, status: 404, headers: { get: () => null }, json: async () => null, text: async () => '' }
+  const saved = { window: globalThis.window, fetch: globalThis.fetch, Image: globalThis.Image, document: globalThis.document }
+  globalThis.window = {}
+  globalThis.fetch = async (url) => {
+    requested.push(String(url))
+    if (String(url).endsWith(`releases/${revision}/manifest.json`)) {
+      const release = `/assets/models/environment/releases/${revision}/`
+      const model = { ...entry('mud-a', ['mud_patch']), url: `${release}skazanie/mud-a.glb` }
+      return json({ version: 1, models: [model], atlas: { image: `${release}atlas.png`, key: 'stamp-atlas' }, release: { id: revision } })
+    }
+    if (String(url) === '/assets/maps/detail-v1/prop-atlas.json') return atlasBroken ? missing : json({ image: 'prop-atlas.png', frames })
+    return missing
+  }
+  globalThis.Image = class {
+    set src(value) { this.url = value; this.naturalWidth = 2048; setTimeout(() => this.onload?.(), 0) }
+  }
+  globalThis.document = {
+    createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage: (...args) => drawn.push(args) }) }),
+  }
+  try {
+    const props = [
+      prop({ id: 'cell-mat', assetId: 'straw_mat', footprint: [] }),
+      prop({ id: 'bog', assetId: 'mud_patch', footprint: [] }),
+      prop({ id: 'cask', assetId: 'barrel' }),
+    ]
+    assert.equal(await assetsModule.loadPropModelAssets(props, new AbortController().signal, revision), null, 'без атласа и моделей остаются процедурные плашки')
+    atlasBroken = false
+    const assets = await assetsModule.loadPropModelAssets(props, new AbortController().signal, revision)
+    assert.ok(assets, 'второй запрос атласа после сбоя проходит')
+    assert.deepEqual([...assets.stamps.keys()], ['straw_mat'], 'штамп только у плоской наклейки без своей модели')
+    assert.equal(requested.filter((url) => url.endsWith('prop-atlas.json')).length, 2)
+    const texture = assets.stamps.get('straw_mat')
+    assert.equal(texture.image.width, 96)
+    assert.equal(texture.image.height, 95)
+    assert.deepEqual(drawn.at(-1).slice(1), [10, 20, 96, 95, 0, 0, 96, 95], 'кадр вырезан из атласа целиком')
+    let disposed = 0
+    texture.addEventListener('dispose', () => { disposed += 1 })
+    assets.dispose()
+    assets.dispose()
+    assert.equal(disposed, 1, 'штамп освобождает загрузка ассетов, один раз')
+    assert.equal(assets.stamps.size, 0)
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete globalThis[key]
+      else globalThis[key] = value
+    }
+  }
+})
+
 test('загрузка ассетов без browser window безопасно возвращает fallback', async () => {
   assert.equal(await assetsModule.loadPropModelAssets([], new AbortController().signal), null)
 })
