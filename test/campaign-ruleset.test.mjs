@@ -9,6 +9,7 @@ import {
   campaignRulesetChangeEvent,
   campaignRulesetMetadata,
   campaignRulesetSettings,
+  defaultHouseRuleEvent,
 } from '../server/campaign-ruleset.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents } from '../server/rules-engine.mjs'
 
@@ -99,4 +100,22 @@ test('переключить можно только объявленное пр
   assert.throws(() => campaignHouseRuleChangeEvent('house:bg3-opening-strike', 'yes', base), { code: 'HOUSE_RULE_VALUE_INVALID' })
   const fighting = normalizeCampaignState({ ...state(), mechanics: { ...base.mechanics, combat: { ...base.mechanics.combat, active: true } } })
   assert.throws(() => campaignHouseRuleChangeEvent('house:bg3-opening-strike', true, fighting), { code: 'HOUSE_RULE_DURING_COMBAT' })
+})
+
+test('правило BG3 включается идущей кампании по умолчанию, но не против воли ведущего', () => {
+  const old = normalizeCampaignState({ ...state(), enabled_house_rules: ['skazanie:class-resources-2024-v1'] })
+  const event = defaultHouseRuleEvent('house:bg3-opening-strike', old, [], { now: '2026-10-04T21:00:00.000Z' })
+  assert.equal(event.event_type, 'CampaignHouseRuleChanged')
+  assert.equal(event.payload.reason, 'default-on')
+  assert.equal(event.actor_id, null, 'включает сервер, а не игрок')
+  const after = applyGameEvent(old, event)
+  assert.ok(after.enabled_house_rules.includes('house:bg3-opening-strike'))
+  assert.ok(after.enabled_house_rules.includes('skazanie:class-resources-2024-v1'), 'прочие правила кампании на месте')
+
+  assert.equal(defaultHouseRuleEvent('house:bg3-opening-strike', after, [event]), null, 'уже включено — второго события нет')
+  const turnedOff = campaignHouseRuleChangeEvent('house:bg3-opening-strike', false, after, { actorId: 'owner' })
+  const off = applyGameEvent(after, turnedOff)
+  assert.equal(defaultHouseRuleEvent('house:bg3-opening-strike', off, [event, turnedOff]), null, 'выключил ведущий — умолчание его не перебивает')
+  const fighting = normalizeCampaignState({ ...old, mechanics: { ...old.mechanics, combat: { ...old.mechanics.combat, active: true } } })
+  assert.equal(defaultHouseRuleEvent('house:bg3-opening-strike', fighting, []), null, 'посреди боя правило не меняется')
 })

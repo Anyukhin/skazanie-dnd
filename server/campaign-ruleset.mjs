@@ -97,6 +97,28 @@ export function campaignHouseRuleChangeEvent(houseRuleId, enabled, state, {
   }
 }
 
+/**
+ * Включение правила «по умолчанию» в уже идущей кампании. Возвращает событие
+ * или `null`, если трогать кампанию не нужно:
+ * - правило уже включено;
+ * - ведущий уже переключал его сам — его выбор, в том числе «выключено»,
+ *   важнее умолчания;
+ * - идёт бой: правила боя посреди него не меняют, сервер попробует при
+ *   следующем старте.
+ *
+ * Событие дописывается в журнал, а не правит историю: прошлые команды уже
+ * записаны своими событиями, и replay их не меняется.
+ */
+export function defaultHouseRuleEvent(houseRuleId, state, history = [], { now = new Date().toISOString() } = {}) {
+  if (state?.mechanics?.combat?.active === true) return null
+  const id = String(houseRuleId ?? '')
+  const toggledBefore = (Array.isArray(history) ? history : []).some((event) => event?.event_type === HOUSE_RULE_EVENT_TYPE
+    && String(event?.payload?.house_rule_id ?? '') === id)
+  if (toggledBefore) return null
+  const event = campaignHouseRuleChangeEvent(id, true, state, { actorId: null, now })
+  return event ? { ...event, payload: { ...event.payload, reason: 'default-on' } } : null
+}
+
 export function campaignHouseRuleMetadata(event) {
   if (event?.event_type !== HOUSE_RULE_EVENT_TYPE) return {}
   return { enabled_house_rules: [...event.payload.enabled_house_rules_after] }

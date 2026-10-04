@@ -18,6 +18,14 @@ export const CLASS_RESOURCES_2024_POLICY_ID = 'skazanie:class-resources-2024-v1'
 export const BG3_OPENING_STRIKE_HOUSE_RULE_ID = 'house:bg3-opening-strike'
 
 /**
+ * Правила, которые сервер сам включает и уже идущим кампаниям — при старте,
+ * событием `CampaignHouseRuleChanged` (`defaultHouseRuleEvent`). Решение
+ * владельца от 2026-10-04: удар как в BG3 включён у всех, пока ведущий его
+ * явно не выключит.
+ */
+export const DEFAULT_ON_HOUSE_RULE_IDS = Object.freeze([BG3_OPENING_STRIKE_HOUSE_RULE_ID])
+
+/**
  * Домашние правила, которые ведущий переключает в настройках идущей кампании.
  * Сюда попадает только правило, решающее исход в момент команды: его итог
  * записан событиями, поэтому смена правила не меняет replay прошлого.
