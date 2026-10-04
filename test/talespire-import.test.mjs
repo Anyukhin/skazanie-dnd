@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { gzipSync } from 'node:zlib'
 
-import { decodeSlab, SLAB_MAX_TEXT_LENGTH } from '../server/talespire-slab.mjs'
-import { importTaleSpireSlab, repairImportedLevel, roomLabelFor } from '../server/talespire-import.mjs'
+import { decodeSlab, SLAB_MAX_INSTANCES, SLAB_MAX_LAYOUTS, SLAB_MAX_TEXT_LENGTH } from '../server/talespire-slab.mjs'
+import { TALESPIRE_MAX_SOURCE_CELLS, importTaleSpireSlab, repairImportedLevel, roomLabelFor } from '../server/talespire-import.mjs'
 import { addProp, cellAt, createTacticalMap, deserializeTacticalMap, edgeList, reachableCells, setCell, validateTacticalMap } from '../server/tactical-map.mjs'
 import { DOORWAY_SIGHT_CELLS, cellsVisibleFrom } from '../server/rules/tactical-geometry.mjs'
-import { ASSETS, HOUSE_SLAB, encodeSlabV1, encodeSlabV2, housePlacements } from './talespire-fixtures.mjs'
+import { ASSETS, HOUSE_SLAB, encodeSlabV1, encodeSlabV1Raw, encodeSlabV2, housePlacements, pickAsset } from './talespire-fixtures.mjs'
 
 /**
  * Импорт карт из TaleSpire: разбор слэба и проекция на клетки.
@@ -70,6 +70,72 @@ test('мусор вместо слэба получает понятный ко�
   ]) {
     assert.throws(() => decodeSlab(input), (error) => error.code === code, `ожидался ${code}`)
   }
+})
+
+const failsWith = (code) => (error) => error.code === code
+
+test('аудит PR #131, MAP-BOUNDARY-01: число видов и объектов ограничено до сборки экземпляров', () => {
+  // Одинаковые записи сжимаются почти без остатка: предел сжатого слэба такую
+  // лавину не держит, держит только предел числа объектов.
+  const flood = encodeSlabV2(Array.from({ length: SLAB_MAX_INSTANCES + 1 }, () => ({ asset: ASSETS.floor, x: 1, y: 0, z: 1 })))
+  assert.ok(Buffer.from(flood, 'base64').length < 30720)
+  const started = performance.now()
+  assert.throws(() => decodeSlab(flood), failsWith('SLAB_TOO_MANY_INSTANCES'))
+  assert.throws(() => importTaleSpireSlab(flood), failsWith('SLAB_TOO_MANY_INSTANCES'))
+  assert.ok(performance.now() - started < 2000, 'отказ по заголовкам видов, без сборки экземпляров')
+
+  // Видов больше, чем ассетов во всей таблице: отказ до чтения их описаний.
+  const header = Buffer.alloc(10)
+  header.writeUInt32LE(0xD1CEFACE, 0)
+  header.writeUInt16LE(2, 4)
+  header.writeUInt16LE(SLAB_MAX_LAYOUTS + 1, 6)
+  const kinds = gzipSync(Buffer.concat([header, Buffer.alloc((SLAB_MAX_LAYOUTS + 1) * 20 + 2)])).toString('base64')
+  assert.throws(() => decodeSlab(kinds), failsWith('SLAB_TOO_MANY_LAYOUTS'))
+})
+
+test('аудит PR #131, MAP-BOUNDARY-01: стопка плит у предела объектов разбирается без квадрата', () => {
+  // Прежде каждая поверхность клетки сверялась с каждой: 50 тысяч плит в одной
+  // клетке — больше десятка секунд. Теперь это доли секунды, а карта та же,
+  // что у комнаты без стопки: нижние плиты — подложка.
+  const room = []
+  for (let x = 0; x < 10; x += 1) for (let z = 0; z < 10; z += 1) room.push({ asset: ASSETS.floor, x, y: 0, z })
+  const stack = Array.from({ length: SLAB_MAX_INSTANCES - room.length }, () => ({ asset: ASSETS.floor, x: 1, y: 0, z: 1 }))
+  const slab = encodeSlabV2([...stack, ...room])
+  const started = performance.now()
+  const result = importTaleSpireSlab(slab)
+  assert.ok(performance.now() - started < 5000, `стопка разбиралась ${Math.round(performance.now() - started)} мс`)
+  assert.equal(result.source.instances, SLAB_MAX_INSTANCES)
+  assert.equal(result.stats.floorCells, 100)
+})
+
+test('аудит PR #131, MAP-BOUNDARY-01: площадь исходных коробок ограничена до первого обхода клеток', () => {
+  const big = pickAsset((row) => row[0] === 't' && row[1] === 'floor' && Math.abs(row[5] - 4) < 0.01 && Math.abs(row[7] - 4) < 0.01)
+  const side = 8
+  const count = Math.floor(TALESPIRE_MAX_SOURCE_CELLS / (side * side)) + 1
+  const tiles = Array.from({ length: count }, (_, index) => ({ asset: big, x: (index % 10) * side, y: 0, z: (Math.floor(index / 10) % 10) * side }))
+  assert.throws(() => importTaleSpireSlab(encodeSlabV2(tiles)), failsWith('TALESPIRE_SLAB_TOO_COMPLEX'))
+  // На пределе — обычная карта 80×80 из крупных плит внахлёст.
+  const result = importTaleSpireSlab(encodeSlabV2(tiles.slice(0, -1)))
+  assert.equal(result.stats.floorCells, 80 * 80)
+})
+
+test('аудит PR #131, MAP-BOUNDARY-02: v1 — конечное, но огромное отклоняется при разборе; далёкая доска законна', () => {
+  const floor = (center, extent = [0.5, 0.25, 0.5]) => ({ asset: ASSETS.floor, center, extent })
+  const room = []
+  for (let x = 0; x < 10; x += 1) for (let z = 0; z < 10; z += 1) room.push(floor([x + 0.5, 0.25, z + 0.5]))
+  // Центр 1e30 конечен; у числа больше 2^53 `x += 1` ничего не прибавляет,
+  // и обход клеток такой коробки не кончился бы.
+  assert.throws(() => importTaleSpireSlab(encodeSlabV1Raw([...room, floor([1e30, 0.25, 0.5])])), failsWith('SLAB_COORDINATE_OUT_OF_RANGE'))
+  assert.throws(() => importTaleSpireSlab(encodeSlabV1Raw([...room, floor([1e17, 0.25, 0.5], [20, 0.25, 0.5])])), failsWith('SLAB_COORDINATE_OUT_OF_RANGE'))
+  // Коробка в сто тысяч клеток поперёк — не ассет TaleSpire.
+  assert.throws(() => importTaleSpireSlab(encodeSlabV1Raw([...room, floor([5, 0.25, 5], [100_000, 0.25, 100_000])])), failsWith('SLAB_EXTENT_TOO_LARGE'))
+
+  // Старые слэбы несут мировые координаты: постройка вдали от начала доски
+  // даёт ту же карту, что и у начала.
+  const near = importTaleSpireSlab(encodeSlabV1Raw(room))
+  const far = importTaleSpireSlab(encodeSlabV1Raw(room.map((record) => ({ ...record, center: [record.center[0] + 100_000, record.center[1], record.center[2] - 100_000] }))))
+  const withoutSeed = (result) => result.levels.map((level) => ({ ...level.map, seed: '' }))
+  assert.deepEqual(withoutSeed(far), withoutSeed(near))
 })
 
 // --- проекция на клетки ------------------------------------------------------
