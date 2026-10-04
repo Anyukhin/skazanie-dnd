@@ -139,7 +139,9 @@ import {
   lootContainerFor,
   normalizeLootContainersState,
   normalizeLootLines,
+  lootCombatActionFor,
   planLootContainerDrafts,
+  thrownWeaponDropDraft,
   validateLootContainerCommand,
 } from './loot-containers.mjs'
 import {
@@ -5185,9 +5187,11 @@ function assertTurn(command, state, context = {}) {
     // Правило стола: обыск одного контейнера в бою стоит действия
     // (`docs/rules-coverage.md`, раздел «Контейнеры добычи и обыск»). Смотреть
     // в контейнер при этом бесплатно — содержимое приезжает проекцией, а не
-    // командой, и хода не стоит.
+    // командой, и хода не стоит. Своё брошенное оружие поднимается свободным
+    // взаимодействием с предметом, пока оно не потрачено.
     const economy = combat.action_economy[command.actor_id]
-    if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
+    const cost = lootCombatActionFor(state, command.actor_id, lootContainerFor(state, command.container_id))
+    if (cost !== 'object_interaction' && economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'ProposeParley') {
     // Окрик посреди схватки стоит действия — и стоит его даже тогда, когда в
     // ответ летит только насмешка. Бесплатный парлей превратился бы в
@@ -13029,6 +13033,20 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           weapon_name: String(selectedProfile.item?.name ?? ''),
           ...heroExpenditure,
         }, [command.actor_id]))
+      }
+      // Метательное оружие героя падает у цели — и на промахе тоже — и ждёт,
+      // пока его подберут (решение владельца 2026-10-04, исследование PR #136).
+      // До этого кинжал можно было метать каждый ход, не выпуская из руки.
+      if (attackKind === 'thrown' && selectedProfile?.item && !isEnemyActor(state, command.actor_id)) {
+        const drop = thrownWeaponDropDraft(state, {
+          commandId: command.command_id, ownerId: command.actor_id, item: selectedProfile.item, position: actorPosition(state, targetId),
+        })
+        if (drop) {
+          events.push({
+            ...eventFrom({ ...commandWithRules(command, RULE_IDS.attack), visibility: drop.visibility }, drop.event_type, drop.payload, drop.target_ids),
+            event_schema_version: drop.event_schema_version,
+          })
+        }
       }
       if (helped) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'helped' }, [command.actor_id]))
       if (hidden) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'hidden' }, [command.actor_id]))
@@ -21827,8 +21845,9 @@ function hasteOnlyActionFrame(economy) {
 
 function commandRequiresNormalActionFrame(command, economy) {
   switch (String(command?.command_type ?? '')) {
-    case 'IdentifyEnemy':
     case 'LootContainer':
+      return command?.loot_combat_action !== 'object_interaction'
+    case 'IdentifyEnemy':
     case 'ProposeParley':
     case 'CalmBeast':
     case 'FeedBeast':

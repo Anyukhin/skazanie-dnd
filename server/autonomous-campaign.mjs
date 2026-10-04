@@ -125,8 +125,6 @@ export function normalizeAutonomyState(input = {}) {
     scene_resolutions: (Array.isArray(source.scene_resolutions) ? clone(source.scene_resolutions) : []).slice(-100),
     reputations,
     witness_graph: (Array.isArray(source.witness_graph) ? clone(source.witness_graph) : []).slice(-500),
-    npc_schedules: source.npc_schedules && typeof source.npc_schedules === 'object' && !Array.isArray(source.npc_schedules) ? clone(source.npc_schedules) : {},
-    npc_actions: (Array.isArray(source.npc_actions) ? clone(source.npc_actions) : []).slice(-500),
     pacing: source.pacing && typeof source.pacing === 'object' && !Array.isArray(source.pacing)
       ? {
           beat: Math.max(0, Number(source.pacing.beat) || 0),
@@ -162,25 +160,6 @@ export function serverReputationDelta({ severity = 'minor', outcome = 'neutral' 
   return table[outcome]?.[severity] ?? 0
 }
 
-export function scheduledNpcEvents(state = {}, elapsedMinutes = 0) {
-  const autonomy = normalizeAutonomyState(state.autonomy)
-  const start = Math.max(0, Number(state.mechanics?.world_time?.elapsed_minutes) || 0)
-  const end = start + Math.max(0, Number(elapsedMinutes) || 0)
-  const events = []
-  for (const [npcId, schedule] of Object.entries(autonomy.npc_schedules).sort(([a], [b]) => a.localeCompare(b))) {
-    for (const entry of (Array.isArray(schedule?.entries) ? schedule.entries : [])) {
-      const at = Math.max(0, Number(entry.at_minutes) || 0)
-      const key = `schedule:${npcId}:${at}:${clean(entry.action, 80)}`
-      if (at <= start || at > end || autonomy.applied_consequences.includes(key)) continue
-      events.push({ event_type: 'NpcScheduledActionExecuted', payload: {
-        consequence_key: key, npc_id: npcId, at_minutes: at, action: clean(entry.action, 80),
-        location: clean(entry.location, 180), summary: clean(entry.summary, 300),
-      }, target_ids: [npcId], visibility: entry.visibility === 'public' ? 'public' : 'party' })
-    }
-  }
-  return events
-}
-
 export function ensureAvailableHook(state = {}, source = 'fail-safe') {
   const open = (state.autonomy?.hooks ?? []).find((hook) => hook.status === 'available')
   if (open) return null
@@ -212,8 +191,8 @@ export function applyAutonomyEvent(input, event) {
     autonomy.reputations[id] = Math.max(-100, Math.min(100, (autonomy.reputations[id] ?? 0) + Number(payload.delta || 0)))
   }
   if (event.event_type === 'WitnessConsequencePropagated') autonomy.witness_graph.push(clone(payload))
-  if (event.event_type === 'NpcScheduleRegistered') autonomy.npc_schedules[clean(payload.npc_id, 120)] = clone(payload.schedule)
-  if (event.event_type === 'NpcScheduledActionExecuted') autonomy.npc_actions.push(clone(payload))
+  // NpcScheduleRegistered и NpcScheduledActionExecuted остаются в старых журналах
+  // (второй механизм расписаний удалён 2026-10-04) и при replay ничего не меняют.
   if (payload.consequence_key) autonomy.applied_consequences = [...new Set([...autonomy.applied_consequences, clean(payload.consequence_key, 160)])].slice(-2_000)
   return normalizeAutonomyState(autonomy)
 }

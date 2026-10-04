@@ -159,6 +159,8 @@ test('докупленная пачка складывается со стрел
   )
 })
 
+// Своя механика брошенного копья — контейнер `dropped` у цели
+// (`test/thrown-weapon-drop.test.mjs`), а не расход боеприпаса.
 test('метательное оружие боеприпаса не просит: у брошенного копья своя механика', () => {
   const spear = { ...materializeCatalogItem('srd_5_2_1:spear', { id: 'spear' }), equipped: true }
   const state = archerState({ inventory: [spear] })

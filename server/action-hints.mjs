@@ -187,6 +187,7 @@ const LOOT_HINT_PHRASES = Object.freeze({
   captive: 'забрать оружие пленного',
   abandoned: 'разобрать брошенное',
   cache: 'вскрыть схрон',
+  dropped: 'подобрать брошенное оружие',
 })
 
 /**
