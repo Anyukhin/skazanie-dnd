@@ -2244,10 +2244,9 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
 .cell-block-mark::before, .cell-block-mark::after { content: ''; position: absolute; left: 0; top: calc(50% - 1px); width: 100%; height: 2px; border-radius: 2px; background: color-mix(in srgb, var(--text) 22%, var(--hp) 66%); box-shadow: 0 0 4px rgba(0,0,0,.7); }
 .cell-block-mark::before { transform: rotate(45deg); }
 .cell-block-mark::after { transform: rotate(-45deg); }
-.board-cell.move-target { cursor: crosshair; box-shadow: inset 0 0 0 2px rgba(102,177,118,.38), inset 0 0 18px rgba(69,141,86,.18); }
-.board-cell.move-target::after { content: ''; position: absolute; z-index: 1; width: 10px; height: 10px; border: 1px solid rgba(146,213,158,.72); border-radius: 50%; background: rgba(83,157,99,.18); box-shadow: 0 0 10px rgba(82,176,104,.55); }
-.board-cell.move-target.opportunity-risk { box-shadow: inset 0 0 0 2px rgba(216,92,70,.68), inset 0 0 22px rgba(165,48,35,.28); }
-.board-cell.move-target.opportunity-risk::after { content: '!'; display: grid; place-items: center; width: 15px; height: 15px; border-color: rgba(255,168,126,.88); background: rgba(139,37,28,.78); color: #ffe0c3; box-shadow: 0 0 12px rgba(224,66,42,.78); font: 800 var(--fs-md) Inter, sans-serif; }
+/* Цель хода отмечает кольцо на конце нити маршрута (`.move-preview`), а
+   опасный выход из ближнего боя — ромб на самом шаге; клетке остаётся курсор. */
+.board-cell.move-target { cursor: crosshair; }
 .scene-object-hotspot { position:absolute; inset:12%; z-index:3; padding:0; border:1px solid transparent; border-radius:35%; background:transparent; cursor:pointer; pointer-events:auto; }
 .scene-object-hotspot[data-selected="true"] { border:2px solid rgba(236,187,118,.92); box-shadow:0 0 16px rgba(218,137,53,.78); }
 .scene-object-hotspot:focus-visible { outline:2px solid rgba(236,187,118,.92); outline-offset:2px; }
@@ -2784,9 +2783,6 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
 .initiative-ribbon .death-save-track{display:grid;place-items:center;min-width:58px;padding:3px 6px;border:1px solid color-mix(in srgb, var(--muted) 3%, var(--hp) 27%);border-radius:3px;background:rgba(113,35,31,.12);color:color-mix(in srgb, var(--text) 35%, var(--hp));font-size: var(--fs-sm);letter-spacing:.04em}.initiative-ribbon .death-save-track.stable{border-color:rgba(91,146,112,.32);background:rgba(51,104,70,.12);color:#81b493}
 
 /* Tactical combat 0.2: route preview, target validation and readable state. */
-.board-cell.route-step{z-index:2;box-shadow:inset 0 0 0 2px rgba(116,207,141,.75),inset 0 0 22px rgba(57,151,89,.34)}
-.board-cell.route-destination{box-shadow:inset 0 0 0 3px rgba(176,235,158,.9),inset 0 0 27px rgba(69,180,95,.5)}
-.route-step-badge{position:absolute;z-index:3;display:grid;place-items:center;width:15px;height:15px;border:1px solid rgba(194,235,180,.8);border-radius:50%;background:rgba(35,91,51,.88);color:#e1f3d9;font:700 var(--fs-sm) var(--f-ui);box-shadow:0 2px 6px #000}
 .enemy-token.unavailable-target,.map-token.unavailable-target{cursor:help;filter:grayscale(.35) brightness(.78);box-shadow:0 4px 9px #000,0 0 0 3px color-mix(in srgb, var(--bg) 18.9%, var(--enemy) 23.1%)}
 .enemy-token.command-selected,.map-token.command-selected{filter:none;box-shadow:0 4px 9px #000,0 0 0 3px rgba(229,169,91,.9),0 0 22px rgba(218,137,53,.72);animation:target-lock-pulse 1.4s ease-in-out infinite}@keyframes target-lock-pulse{50%{box-shadow:0 4px 9px #000,0 0 0 4px rgba(236,187,118,.98),0 0 30px rgba(218,137,53,.88)}}
 .enemy-token.multi-target-selected,.map-token.multi-target-selected{filter:none;box-shadow:0 4px 9px #000,0 0 0 4px rgba(116,202,219,.96),0 0 24px rgba(74,177,204,.78);animation:multi-target-pulse 1.2s ease-in-out infinite}@keyframes multi-target-pulse{50%{box-shadow:0 4px 9px #000,0 0 0 5px rgba(159,226,236,.98),0 0 32px rgba(74,177,204,.94)}}

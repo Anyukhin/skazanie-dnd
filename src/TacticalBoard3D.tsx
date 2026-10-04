@@ -5,6 +5,7 @@ import type { BoardAnimationActor, TacticalBoardProps } from './TacticalBoard'
 import { actorFootprintSize, actorPresentationCenter, actorPresentationSize, boardCameraKey } from './tactical-ui'
 import { cellAt, revealedAt } from './tactical-map-client'
 import { DEFAULT_BOARD_PALETTE, boardPaletteFrom, drawBoardEffects, drawBoardOverlay, type BoardScene } from './board-render'
+import { moveDifficultPath, moveReachFill, moveReachOutline, moveRoutePath } from './move-preview'
 import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatAnimationCuesFromEvents, combatAnimationUsesReducedMotion, shouldDeferDefeat, attackOutcome, strikeImpactProgress, strikeMotionProgress, strikeUsesProjectile, type CombatAnimationCue } from './combat-animation'
 import { createSpellEffectRenderer, isSpellAnimationCue, systemPrefersReducedMotion } from './spell-effects'
 import { createCombatEffect3D } from './board3d-effects'
@@ -156,6 +157,8 @@ function actorHeight(map: TacticalMap, actor: BoardAnimationActor, catalog: Acto
 export default function TacticalBoard3D(props: Props) {
   const host = useRef<HTMLDivElement>(null)
   const targetHintElement = useRef<HTMLSpanElement>(null)
+  const moveLabelElement = useRef<HTMLSpanElement>(null)
+  const moveRiskElement = useRef<HTMLSpanElement>(null)
   const runtime = useRef<Runtime | null>(null)
   const latest = useRef(props)
   latest.current = props
@@ -467,6 +470,25 @@ export default function TacticalBoard3D(props: Props) {
         targetHintElement.current.style.top = `${Math.min(height - 32, screen.y + 22)}px`
         targetHintElement.current.style.visibility = screen.visible ? 'visible' : 'hidden'
       }
+      // Итог хода — справа от цели, у правого края окна — слева; метка атаки
+      // по возможности — на шаге, который уводит из досягаемости врага.
+      const movePreview = current.movePreview
+      const moveEnd = movePreview?.path[movePreview.path.length - 1]
+      if (moveLabelElement.current && movePreview?.label && moveEnd) {
+        const screen = pointOnScreen(new THREE.Vector3(moveEnd.x + .5, terrainHeightAt(current.map, moveEnd.x, moveEnd.y), moveEnd.y + .5), width, height)
+        const flip = screen.x > width - 190
+        moveLabelElement.current.classList.toggle('flip', flip)
+        moveLabelElement.current.style.left = `${screen.x + (flip ? -24 : 24)}px`
+        moveLabelElement.current.style.top = `${screen.y}px`
+        moveLabelElement.current.style.visibility = screen.visible ? 'visible' : 'hidden'
+      }
+      if (moveRiskElement.current && movePreview?.risk) {
+        const risk = movePreview.risk
+        const screen = pointOnScreen(new THREE.Vector3(risk.x + .5, terrainHeightAt(current.map, Math.round(risk.x), Math.round(risk.y)), risk.y + .5), width, height)
+        moveRiskElement.current.style.left = `${screen.x}px`
+        moveRiskElement.current.style.top = `${screen.y}px`
+        moveRiskElement.current.style.visibility = screen.visible ? 'visible' : 'hidden'
+      }
       labelsDirty = false
     }
     function boardScene(canvas: HTMLCanvasElement): BoardScene | null {
@@ -503,6 +525,7 @@ export default function TacticalBoard3D(props: Props) {
         context.lineWidth = 1.5
         context.strokeRect(actor.x * size + 2, actor.y * size + 2, side * size - 4, side * size - 4)
       }
+      const movePreview = current.movePreview
       for (const node of current.cells) {
         const classes = node.className.split(' ')
         const spellPreview = classes.includes('spell-preview-cell')
@@ -511,8 +534,10 @@ export default function TacticalBoard3D(props: Props) {
         const route = classes.some((entry) => /^(move-path|route|pending-move|move-selected)/.test(entry))
         const reachable = classes.includes('reachable') || classes.includes('move-reachable')
         const hover = hoverKey === `${node.x},${node.y}`
-        const selected = classes.some((entry) => ['command-center', 'scene-object-selected', 'loot-focused', 'move-target'].includes(entry))
-        const danger = classes.includes('opportunity-risk') && (hover || route)
+        // Цель хода и опасный выход из ближнего боя показывает нить маршрута
+        // с меткой; заливка клетки поверх неё только путала бы.
+        const selected = classes.some((entry) => ['command-center', 'scene-object-selected', 'loot-focused', ...(movePreview ? [] : ['move-target'])].includes(entry))
+        const danger = !movePreview && classes.includes('opportunity-risk') && (hover || route)
         if (!blast && !route && !reachable && !hover && !selected) continue
         context.fillStyle = blast || danger ? 'rgba(226,98,36,.48)' : route || selected ? 'rgba(228,191,100,.5)' : hover ? 'rgba(250,223,159,.3)' : 'rgba(194,169,103,.12)'
         context.fillRect(node.x * size + 1, node.y * size + 1, size - 2, size - 2)
@@ -520,6 +545,46 @@ export default function TacticalBoard3D(props: Props) {
         context.lineWidth = hover || route || selected ? 2 : 1
         context.strokeRect(node.x * size + 1, node.y * size + 1, size - 2, size - 2)
       }
+      if (movePreview) {
+        // Та же геометрия, что у двумерной доски: строка пути в долях клетки,
+        // холст масштабируется до клетки текстуры. Линии толще, чем в 2D:
+        // слой лежит на земле под травой и в наклоне камеры сужается.
+        context.save()
+        context.scale(size, size)
+        context.lineCap = 'round'
+        context.lineJoin = 'round'
+        const fill = moveReachFill(movePreview)
+        if (fill) { context.fillStyle = 'rgba(232,189,106,.12)'; context.fill(new Path2D(fill)) }
+        const outline = moveReachOutline(movePreview)
+        if (outline) {
+          const edge = new Path2D(outline)
+          context.strokeStyle = 'rgba(10,7,4,.55)'; context.lineWidth = .17; context.stroke(edge)
+          context.strokeStyle = '#efc777'; context.lineWidth = .09; context.stroke(edge)
+        }
+        const routePath = moveRoutePath(movePreview)
+        if (routePath) {
+          const thread = new Path2D(routePath)
+          context.strokeStyle = 'rgba(10,7,4,.6)'; context.lineWidth = .32; context.stroke(thread)
+          context.strokeStyle = '#efc777'; context.lineWidth = .17; context.stroke(thread)
+          const difficult = moveDifficultPath(movePreview)
+          if (difficult) {
+            context.setLineDash([.05, .19])
+            context.strokeStyle = '#24170a'; context.lineWidth = .17; context.stroke(new Path2D(difficult))
+            context.setLineDash([])
+          }
+        }
+        const end = movePreview.path[movePreview.path.length - 1]
+        if (end) {
+          context.beginPath()
+          context.arc(end.x + .5, end.y + .5, .36, 0, Math.PI * 2)
+          context.fillStyle = 'rgba(232,189,106,.18)'; context.fill()
+          context.strokeStyle = '#efc777'; context.lineWidth = .09; context.stroke()
+        }
+        context.restore()
+      }
+      // Метки хода стоят над картой экранными элементами: их место
+      // пересчитывается вместе с остальными подписями.
+      labelsDirty = true
       if (current.trajectory) {
         const path = current.trajectory
         context.strokeStyle = '#f8db98'
@@ -1305,6 +1370,13 @@ export default function TacticalBoard3D(props: Props) {
       </div>)}
     </div>
     {props.targetHint && <span ref={targetHintElement} className={`board-target-hint ${props.targetHint.tone}`} role="status">{props.targetHint.text}</span>}
+    {props.movePreview?.risk && <span ref={moveRiskElement} className="move-risk-mark" aria-hidden="true" style={{ visibility: 'hidden' }}>!</span>}
+    {props.movePreview?.label && props.movePreview.path.length > 0 && <span ref={moveLabelElement} className="move-preview-label" aria-hidden="true" style={{ visibility: 'hidden' }}>
+      <strong>{props.movePreview.label.main}</strong>
+      {props.movePreview.label.sub && <small>{props.movePreview.label.sub}</small>}
+      {props.movePreview.label.note && <small>{props.movePreview.label.note}</small>}
+      {props.movePreview.label.risk && <small className="risk">{props.movePreview.label.risk}</small>}
+    </span>}
     {props.animationsEnabled !== false && playing && <button type="button" className="board3d-skip" onClick={() => runtime.current?.skip()}>Пропустить анимацию</button>}
     <p className="board3d-help">Перетащить — сдвиг · Правая кнопка — поворот · {props.wheelZoomRequiresAltKey ? 'Alt + колесо' : 'Колесо'} — масштаб</p>
   </div>
