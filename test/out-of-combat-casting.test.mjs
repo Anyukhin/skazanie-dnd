@@ -84,12 +84,14 @@ test('вне боя лечение союзника проходит, трати
   assert.equal(after.mechanics.combat.active, false, 'лечение не начинает бой')
 })
 
-test('вне боя боевое заклинание отвергается: нападение начинается с инициативы', () => {
-  assert.throws(
-    () => cast(camp(), { spell_id: 'sacred-flame', target_id: 'wolf' }),
-    (error) => error.code === 'COMBAT_NOT_ACTIVE',
-    'заговор с уроном обязан требовать инициативы',
-  )
+test('вне боя боевое заклинание открывает бой: нападение начинается с инициативы', () => {
+  // Раньше такой заговор отвергался; теперь он, как в BG3, сам открывает бой,
+  // но инициатива по-прежнему идёт первой (test/exploration-opening-strike.test.mjs).
+  const result = cast(camp(), { spell_id: 'sacred-flame', target_id: 'wolf' })
+  const types = result.events.map((event) => event.event_type)
+  assert.ok(types.includes('CombatStarted'), 'заговор с уроном обязан начинать с инициативы')
+  const cast_ = types.indexOf('SpellCast')
+  assert.ok(cast_ < 0 || cast_ > types.indexOf('CombatStarted'), 'заклинание не опережает инициативу')
 })
 
 test('вне боя мирное заклинание во врага не проходит', () => {

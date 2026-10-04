@@ -29,7 +29,7 @@ test('ruleset lock carries a version and one matching pack', () => {
     ruleset_id: 'dnd_5e_2014',
     ruleset_version: '2014.1.0',
     enabled_rule_packs: ['dnd_5e_2014'],
-    enabled_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1'],
+    enabled_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1', 'house:bg3-opening-strike'],
   })
   assert.equal(rulesetProfile('srd_5_2_1').process_default_allowed, true)
   assert.throws(() => rulesetProfile('invented'), (error) => error.code === 'RULESET_INVALID')

@@ -383,6 +383,19 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`После победы отряд отдыхает ${hours} и восстанавливает силы: продолжительный отдых завершён.`)
     } else if (event.event_type === 'CombatStarted') {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
+      // Бой открыт ударом из исследования. Отложенный удар обязан сказать о
+      // себе: иначе игрок видит начавшийся бой и не понимает, куда делся замах.
+      const opening = payload.opening_action
+      if (opening?.actor_id) {
+        const attacker = tacticalActorName(state, opening.actor_id)
+        // Нейтральный NPC после удара — уже противник: имя берётся из боя.
+        const victim = opening.npc_id ? ` на ${accusativeName(tacticalActorName(state, opening.npc_id))}` : ''
+        meaningful.push(opening.free_strike === true
+          ? `${attacker} нападает${victim} вне очереди, пока никто не успел опомниться, — удар не отнимает его ход.`
+          : opening.status === 'deferred'
+            ? `${attacker} нападает${victim}, но первым ходит ${tacticalActorName(state, opening.first_actor_id)}: удар придётся повторить в свой ход.`
+            : `${attacker} нападает${victim} первым и открывает бой.`)
+      }
       const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))
       if (surprised.length) meaningful.push(`Застигнуты врасплох: ${surprised.join(', ')} — первый ход они теряют и не могут использовать реакцию.`)
     } else if (event.event_type === 'ReactionWindowOpened' && windowsByPreference.has(String(payload.id ?? ''))) {

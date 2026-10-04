@@ -189,13 +189,22 @@ test('server-authoritative attack ignores client combat numbers and uses persist
 })
 
 test('server-authoritative attack cannot bypass combat initiative', () => {
+  // Удар из исследования не отвергается, а открывает бой: сначала инициатива,
+  // и только затем — удар, если нападающий ходит первым
+  // (test/exploration-opening-strike.test.mjs). Обойти инициативу нельзя.
   const state = fixture({ mechanics: { combat: { active: false } } })
   state.enemies[0].x = 1
   state.mechanics.positions.wolf = { x: 1, y: 1 }
-  assert.throws(() => resolveCommand({
-    command_type: 'MakeAttack', actor_id: 'hero', target_id: 'wolf', server_authoritative: true,
-  }, state, { diceService: dice([20, 6]), context: { serverAuthoritativeCombat: true } }),
-  (error) => error instanceof RulesValidationError && error.code === 'COMBAT_NOT_ACTIVE')
+  const command = { command_type: 'MakeAttack', actor_id: 'hero', target_id: 'wolf', server_authoritative: true }
+  const first = resolveCommand(command, state, { diceService: dice([20, 6, 10, 4]), context: { serverAuthoritativeCombat: true } })
+  const types = first.events.map((event) => event.event_type)
+  assert.ok(types.indexOf('CombatStarted') >= 0 && types.indexOf('CombatStarted') < types.indexOf('AttackResolved'))
+  const second = resolveCommand(command, state, { diceService: dice([1, 20]), context: { serverAuthoritativeCombat: true } })
+  assert.ok(second.events.some((event) => event.event_type === 'CombatStarted'))
+  assert.equal(second.events.some((event) => event.event_type === 'AttackResolved'), false, 'волк ходит первым — удар ждёт хода героя')
+  // NPC-планировщик своей командой бой не открывает: у него прежний отказ.
+  assert.throws(() => resolveCommand(command, state, { diceService: dice([20, 6]), context: { serverAuthoritativeCombat: true, isNpcScheduler: true } }),
+    (error) => error instanceof RulesValidationError && error.code === 'COMBAT_NOT_ACTIVE')
 })
 
 test('movement path and cumulative speed are enforced from authoritative state', () => {

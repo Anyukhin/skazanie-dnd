@@ -40,6 +40,7 @@ import { spellIdFromEffect } from './spell-effects'
 import { localizedQuestClockLabel } from './desktop-ui.mjs'
 import type { SceneVisualTheme } from './scene-art'
 import { factionDisplayName, reputationImpactForTier } from './player-experience'
+import { HIDDEN_LINE_OF_FIRE_REASON, revealedLineOfFireCells } from './line-of-fire.mjs'
 
 export type EnemyVisualKind = 'construct' | 'undead' | 'beast' | 'mystic' | 'raider'
 
@@ -489,6 +490,27 @@ export function actorTrajectoryBlockReason(state: GameState, from: BoardTrajecto
 
 export function hasClearBoardTrajectory(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {
   return actorTrajectoryBlockReason(state, from, to) == null
+}
+
+/**
+ * Линия огня от существа к существу — как у сервера (`actorTrajectoryDetails`):
+ * только через раскрытые клетки их площадей. Для линии в клетку остаётся
+ * `actorTrajectoryBlockReason`: сервер берёт её без фильтра тумана.
+ */
+export function actorLineOfFireBlockReason(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {
+  const { starts, ends } = revealedLineOfFireCells(state.scene.cells, actorFootprintCells(from), actorFootprintCells(to))
+  if (!starts.length || !ends.length) return HIDDEN_LINE_OF_FIRE_REASON
+  let firstReason: string | null = null
+  for (const start of starts) for (const end of ends) {
+    const reason = boardTrajectoryBlockReason(state, start, end)
+    if (reason == null) return null
+    firstReason ??= reason
+  }
+  return firstReason ?? 'Траектория недоступна'
+}
+
+export function hasClearActorLineOfFire(state: GameState, from: BoardTrajectoryActor, to: BoardTrajectoryActor) {
+  return actorLineOfFireBlockReason(state, from, to) == null
 }
 
 export function inferredCombatItem(item: Player['inventory'][number]) {

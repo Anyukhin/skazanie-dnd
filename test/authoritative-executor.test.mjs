@@ -300,7 +300,7 @@ test('таблица производных событий читается це
   // Пополнение лавки остаётся за Rules Engine: часы — единственный производитель,
   // который расщепляется на два входа, и это записано в плане.
   assert.deepEqual(table.economyClock, ['MerchantEconomyClockAdvanced'])
-  assert.deepEqual(table.campaignRuleset, ['CampaignRulesetChanged'])
+  assert.deepEqual(table.campaignRuleset, ['CampaignHouseRuleChanged', 'CampaignRulesetChanged'])
   // Часы молвы расщепляются так же: слухи — команды памяти мира через
   // `executeCommands`, а сюда приходит только реакция мира на дошедший слух.
   assert.deepEqual(table.worldRumor, ['FactionReputationAdjusted'])

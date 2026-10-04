@@ -84,6 +84,9 @@ const DERIVED_EVENT_ALLOWLIST = new Map([
     'PublicDieRolled',
   ])],
   [CAMPAIGN_RULESET_CAPABILITY, new Set([
+    // Переключение домашнего правила ведущим: тот же производитель настроек
+    // кампании и та же граница — меняется только `enabled_house_rules`.
+    'CampaignHouseRuleChanged',
     'CampaignRulesetChanged',
   ])],
 ])
