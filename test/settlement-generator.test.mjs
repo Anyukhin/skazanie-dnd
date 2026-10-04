@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { buildSettlementScene, SETTLEMENT_GENERATOR } from '../server/settlement-generator.mjs'
+import { auditTacticalMap } from '../server/map-quality.mjs'
 import { cellAt, edgeNeighbor, reachableCells, serializeTacticalMap, validateTacticalMap } from '../server/tactical-map.mjs'
 
 const theme = { id: 'settlement', label: 'Поселение', surfaceMaterial: 'grass', streetMaterial: 'earth', houseMaterial: 'wood' }
@@ -151,4 +152,18 @@ test('деревенская река петляет и выходит к пес
     if (edgeBetween(town, x, y, x, y + 1)?.kind === 'ledge') quay += 1
   }
   assert.ok(quay >= town.width, `набережной ${quay} рёбер`)
+})
+
+test('у каждой двери поселения есть дорога: дом в глубине получает тропу к улице', () => {
+  // Замечание владельца 2026-10-03: «Дом 9» стоял в углу деревни, дверью в
+  // чужой двор, и к нему не вела ни одна дорожка. Теперь дверь дома в
+  // глубине выбирается по настоящей тропе до улицы, а тропа прокладывается.
+  let paths = 0
+  for (const topology of topologies) for (const scale of ['village', 'town']) for (const seed of ['a', 'b', 'c']) {
+    const built = buildSettlementScene({ seed: `road-${topology}-${scale}-${seed}`, width: 48, height: 44, locationId: topology, theme, design: { topology, scale, density: 'dense' } })
+    const problems = auditTacticalMap(built.map).problems.filter((problem) => ['DOOR_OFF_ROAD', 'PATH_BLOCKED'].includes(problem.code))
+    assert.deepEqual(problems, [], `${topology}/${scale}/${seed}`)
+    if (built.map.zones.some((zone) => zone.id === 'path')) paths += 1
+  }
+  assert.ok(paths > 0, 'хоть у одного поселения есть дома в глубине с тропой')
 })

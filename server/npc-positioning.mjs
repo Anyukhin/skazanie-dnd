@@ -7,6 +7,8 @@ import {
   normalizeInventoryItem,
 } from './merchant-economy.mjs'
 import { factionIdsForNpc } from './reputation-policy.mjs'
+import { normalizeScenePosts, requirementAssets, requirementTerrain } from './scene-requirements.mjs'
+import { platformCells } from './map-quality.mjs'
 import { retentionMode } from './retention-context.mjs'
 import { cellAt, deserializeTacticalMap, movementStepBlocked } from './tactical-map.mjs'
 import { footprintCellsFor, footprintDistanceFeet, footprintMetadataForSize, normalizeFootprintMetadata } from './actor-footprint.mjs'
@@ -325,6 +327,13 @@ function actorOccupiedCells(state) {
 }
 
 function preferredAssets(npc = {}) {
+  // Пост из программы сцены (`scene.map_requirements.posts`) точнее догадки
+  // по роли: «хранитель записей стоит у запертого ящика» — значит, у ящика.
+  const post = Array.isArray(npc.post_assets) ? npc.post_assets.map(String) : []
+  return [...post, ...roleAssets(npc).filter((asset) => !post.includes(asset))]
+}
+
+function roleAssets(npc = {}) {
   const role = `${text(npc.role, 160)} ${(Array.isArray(npc.tags) ? npc.tags : []).join(' ')}`.toLocaleLowerCase('ru')
   if (/корол|правител|king|ruler|marshal|archivist|messenger/iu.test(role)) return ['table_royal', 'table_long', 'table_small', 'table_round', 'bookshelf']
   if (/торгов|merchant|трактир|innkeep|бармен|barkeep/iu.test(role)) return ['bar_counter', 'table_long', 'table_round', 'stall', 'counter']
@@ -390,6 +399,9 @@ function candidateCells(map, npc, occupied, propOccupied, footprint = null) {
   const anchorId = (npc.tags ?? []).find((tag) => String(tag).startsWith('anchor:'))?.slice(7)
   const assignedProp = map.props.find((prop) => prop.id === anchorId)
   const props = assignedProp ? [assignedProp] : suitableProps(map, npc)
+  // Пост без предмета — настил: житель стоит на самом настиле, а не у
+  // случайного стола (мастер настилов в программе скита).
+  const terrain = npc.post_terrain === 'platform' ? new Set(platformCells(map).map(keyOf)) : null
   const candidates = []
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
@@ -416,6 +428,9 @@ function candidateCells(map, npc, occupied, propOccupied, footprint = null) {
         y,
         anchor_prop_id: anchorDistance <= 2 ? String(anchor?.id ?? '') : '',
         score: [
+          // Клетка настила впереди любой другой; занятый настил не оставляет
+          // жителя без места — он встанет по обычной мерке.
+          terrain?.size && !terrain.has(keyOf(position)) ? 1 : 0,
           anchorRank,
           anchorDistance === 1 ? 0 : anchorDistance === 2 ? 1 : 2,
           anchorDistance,
@@ -467,7 +482,10 @@ export function planSceneNpcPlacementEvents(state = {}) {
     }
   }
   const events = []
-  for (const npc of present) {
+  const posts = normalizeScenePosts(state.scene?.map_requirements)
+  for (const presentNpc of present) {
+    const post = posts.find((entry) => entry.npc === text(presentNpc.name, 120))
+    const npc = post ? { ...presentNpc, post_assets: requirementAssets(post.id), post_terrain: requirementTerrain(post.id) } : presentNpc
     const existing = world.placements.find((placement) => placement.npc_id === String(npc.id) && placement.location_id === locationId)
     const footprint = existing ? existing.footprint ?? null : npcSpawnFootprintFor(state, npc.id)
     if (existing && placementCellAllowed(map, existing, occupied, propOccupied, footprint)) {

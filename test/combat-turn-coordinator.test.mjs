@@ -5,10 +5,12 @@ import { join } from 'node:path'
 import test from 'node:test'
 
 import {
+  ACTIVE_TURN_LIMIT_FACTOR,
   CombatTurnCoordinator,
   activeTurnActorIds,
   combatTurnClock,
   combatTurnClockForState,
+  turnActivityKey,
 } from '../server/combat-turn-coordinator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
@@ -799,4 +801,65 @@ test('павший герой на недособранном месте не о
     const events = await store.getEvents(campaignId)
     assert.ok(events.some((event) => event.event_type === expected), `${campaignId}: ${expected}`)
   }
+})
+
+// Плейтест 2026-10-02: двое новичков теряли ходы, пока искали врага на карте и
+// разбирались с панелью. Действующий игрок срок не теряет — каждое его
+// действие отсчитывает срок заново, — но и не растягивает ход без конца.
+test('действие владельца хода отсчитывает срок заново, но не дальше потолка', () => {
+  const state = fixture()
+  state.mechanics.combat.turn_started_at = '2026-07-30T12:00:00.000Z'
+  const at = (iso) => combatTurnClock(state, [], { timeoutMs: 60_000, now: Date.parse('2026-07-30T12:00:50.000Z'), activityAt: iso })
+  assert.equal(at(null).deadline_at, '2026-07-30T12:01:00.000Z')
+  assert.equal(at(null).activity_at, undefined, 'без действия часы прежние')
+  assert.equal(at('2026-07-30T12:00:50.000Z').deadline_at, '2026-07-30T12:01:50.000Z')
+  assert.equal(at('2026-07-30T12:02:30.000Z').deadline_at, '2026-07-30T12:03:00.000Z', `потолок — ${ACTIVE_TURN_LIMIT_FACTOR} срока от начала хода`)
+})
+
+test('отпечаток хода меняет только экономика владельца часов', () => {
+  const state = fixture()
+  const before = turnActivityKey(state)
+  const wolfActed = structuredClone(state)
+  wolfActed.mechanics.combat.action_economy.wolf.action = false
+  assert.equal(turnActivityKey(wolfActed), before, 'действие чужого существа срок героя не двигает')
+  const heroMoved = structuredClone(state)
+  heroMoved.mechanics.combat.action_economy.hero.movement_spent = 15
+  assert.notEqual(turnActivityKey(heroMoved), before)
+})
+
+test('координатор продлевает срок после хода героя и не продлевает без него', async (t) => {
+  let nowMs = Date.parse('2026-07-30T12:00:00.000Z')
+  const state = fixture()
+  state.mechanics.combat.turn_started_at = '2026-07-30T12:00:00.000Z'
+  state.mechanics.combat.turn_started_event_id = 'turn-start'
+  let current = { state, state_version: 1 }
+  const scheduled = []
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: { load: async () => structuredClone(current) },
+    rulesEngine: engine(),
+    runNpcTurns: async () => ({ events: [] }),
+    timeoutMs: 120_000,
+    now: () => nowMs,
+    setTimer: (_callback, delay) => { scheduled.push(delay); return { delay } },
+    clearTimer: () => {},
+  })
+  t.after(() => coordinator.close())
+
+  await coordinator.settleNow('ACTIVE-HERO')
+  assert.equal(scheduled.at(-1), 120_000)
+
+  // Сто секунд спустя герой сделал шаг — срок отсчитывается от шага.
+  nowMs += 100_000
+  const moved = structuredClone(state)
+  moved.mechanics.combat.action_economy.hero.movement_spent = 10
+  current = { state: moved, state_version: 2 }
+  await coordinator.settleNow('ACTIVE-HERO')
+  assert.equal(scheduled.at(-1), 120_000)
+  assert.equal(coordinator.clockFor('ACTIVE-HERO').activity_at, new Date(nowMs).toISOString())
+
+  // Ещё 30 секунд без новых действий — срок не сдвигается.
+  nowMs += 30_000
+  current = { state: moved, state_version: 3 }
+  await coordinator.settleNow('ACTIVE-HERO')
+  assert.equal(scheduled.at(-1), 90_000)
 })

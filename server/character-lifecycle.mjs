@@ -14,6 +14,7 @@ import {
   combatResourceMaximumsFor,
   combatResourceRecoveryFor,
   normalizedCombatSubclassFor,
+  ONE_ON_SHORT_REST,
 } from './combat-actions.mjs'
 import {
   combatSpellsFor,
@@ -29,6 +30,8 @@ import {
   validateCompleteBackgroundChoices,
   resolveStarterEquipmentChoices,
   starterEquipmentCatalogFor,
+  STARTER_KIT_2024_POLICY,
+  starterKit2024Preview,
   withStarterKit,
 } from './starter-kit.mjs'
 import {
@@ -396,7 +399,7 @@ export function characterCreationCatalog(rulesetId = LEGACY_DEFAULT_RULESET_ID) 
           options: skillRule.skills.map((id) => clone(skillsById.get(id))).filter(Boolean),
         } : null,
         feature_choice_groups: featureChoiceGroupsFor(actor).map((group) => ({ ...group, options: phbClass && classOption.classKey === 'fighter' ? group.options.filter((entry) => PHB_FIGHTING_STYLES[entry.id]) : group.options })),
-        starter_equipment: clone(starterByClass.get(classOption.classKey) ?? null),
+        starter_equipment: clone(starterByClass.get(classOption.classKey) ?? (rulesetId === DND_2014_RULESET_ID ? null : starterKit2024Preview(classOption.classKey))),
         spell_selection: spellRules ? {
           ...spellRules,
           spellcastingAbility: phbClass?.spellcasting?.ability ?? availableSpells[0]?.spellcastingAbility ?? null,
@@ -689,7 +692,7 @@ export function deriveCharacterSheet(actor, options = {}) {
     speed,
     hit_points: hitPoints,
     species_traits: clone(canonical.speciesBenefits ?? null),
-    class_resources: classResourcePlan(canonical),
+    class_resources: classResourcePlan(canonical, { classResources2024: options.classResources2024 === true }),
   }
 }
 
@@ -716,31 +719,32 @@ export function normalizeCharacterSheet(actor, options = {}) {
  * All resource maxima come from the existing class/action and spell catalogs.
  * The returned recovery map is the only policy a rest integration should use.
  */
-export function classResourcePlan(actor) {
+export function classResourcePlan(actor, { classResources2024 = false } = {}) {
   const maximums = {
     ...spellSlotMaximumsFor(actor),
-    ...combatResourceMaximumsFor(actor),
+    ...combatResourceMaximumsFor(actor, { classResources2024 }),
   }
   const recovery = {
     ...Object.fromEntries(Object.keys(spellSlotMaximumsFor(actor)).map((resource) => [resource,
       resource === 'pact_slots' ? 'short_or_long' : 'long'])),
-    ...combatResourceRecoveryFor(actor),
+    ...combatResourceRecoveryFor(actor, { classResources2024 }),
   }
   const byRest = {
-    short: Object.keys(maximums).filter((resource) => recovery[resource] === 'short_or_long'),
-    long: Object.keys(maximums).filter((resource) => ['long', 'short_or_long'].includes(recovery[resource])),
+    short: Object.keys(maximums).filter((resource) => ['short_or_long', ONE_ON_SHORT_REST].includes(recovery[resource])),
+    long: Object.keys(maximums).filter((resource) => ['long', 'short_or_long', ONE_ON_SHORT_REST].includes(recovery[resource])),
   }
   return { maximums, recovery, by_rest: byRest }
 }
 
-export function resourcesAfterRest(actor, resources, kind) {
+export function resourcesAfterRest(actor, resources, kind, options = {}) {
   if (!['short', 'long'].includes(kind)) throw new CharacterLifecycleValidationError('kind отдыха должен быть short или long', 'INVALID_REST_KIND')
-  const plan = classResourcePlan(actor)
+  const plan = classResourcePlan(actor, options)
   const source = isRecord(resources) ? resources : {}
   return Object.fromEntries(Object.entries(plan.maximums).map(([resource, maximum]) => {
     const current = Math.max(0, Math.min(maximum, Number(source[resource]?.current ?? maximum) || 0))
     const restored = kind === 'long' || plan.recovery[resource] === 'short_or_long'
-    return [resource, { current: restored ? maximum : current, max: maximum, recovery: plan.recovery[resource] }]
+    const oneBack = kind === 'short' && plan.recovery[resource] === ONE_ON_SHORT_REST
+    return [resource, { current: restored ? maximum : oneBack ? Math.min(maximum, current + 1) : current, max: maximum, recovery: plan.recovery[resource] }]
   }))
 }
 
@@ -978,8 +982,10 @@ export function validateCharacterImportCommand(command, state, context = {}) {
     ...(parsed.creation ? { creation_result: parsed.creation } : {}),
     derived_sheet: parsed.sheet,
     ruleset_id: rulesetId,
-    starter_equipment_policy_id: starterCatalog?.policy_id ?? null,
-    starter_equipment_policy_version: starterCatalog?.policy_version ?? null,
+    // У 2024 своего каталога выбора нет: метка говорит reducer-у, что герою
+    // положен набор «вариант A», а не прежний упрощённый.
+    starter_equipment_policy_id: starterCatalog?.policy_id ?? (rulesetId === DND_2014_RULESET_ID ? null : STARTER_KIT_2024_POLICY.policy_id),
+    starter_equipment_policy_version: starterCatalog?.policy_version ?? (rulesetId === DND_2014_RULESET_ID ? null : STARTER_KIT_2024_POLICY.policy_version),
     species_policy_version: speciesPolicy.policy_version,
     source_rule_ids: Array.isArray(command.source_rule_ids) && command.source_rule_ids.length
       ? [...command.source_rule_ids]
@@ -1112,6 +1118,7 @@ export function applyCharacterLifecycleEvent(state, event) {
       }, {
         rulesetId: eventRulesetId,
         starterPolicyVersion: payload.starter_equipment_policy_version ?? 1,
+        starterPolicyId: payload.starter_equipment_policy_id ?? null,
       })
       updated.initials = updated.character.slice(0, 2).toLocaleUpperCase('ru')
     }

@@ -112,7 +112,7 @@ import {
   pointInAreaEffect,
   type MovementPath,
 } from './tactical-ui'
-import { fallbackCombatActions } from './combat-actions'
+import { SUPERSEDED_FEATURE_POOLS, fallbackCombatActions } from './combat-actions'
 import { allCatalogCombatSpells, fallbackCombatSpells } from './combat-spells'
 import { CombatIcon } from './CombatIcon'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -226,7 +226,32 @@ const REQUEST_KIND_OPTIONS: ReadonlyArray<readonly [PlayerRequestKind, string, s
   ['discussion', 'Отряду', 'Обсуждение с отрядом — план без действия героя'],
 ]
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, statusContent, children }: {
+/* Классовые запасы ряда — без ячеек заклинаний, они живут в `SpellSlotBar`.
+   Один запас приезжает под двумя ключами: рукописным (`second_wind`) и
+   каталожным (`feature_fighter-vtoroe-dyhanie`) — сервер кладёт оба
+   (`server/combat-actions.mjs:288` и `:295`), и после резолва подписи
+   близнецы неотличимы: у воина в ряду стояли два чипа «второе дыхан… ●».
+   Схлопываем их в один — но только когда сходятся и подпись, и заряд, и
+   запас. Разошедшиеся счётчики схлопывать нельзя: это уже серверный баг, и
+   спрятанный он покажет игроку один заряд там, где учтено два. Оба сырых
+   ключа уходят в подсказку чипа. Перебор здесь линейный по ряду: запасов у
+   героя единицы, а порядок сортировки схлопывание не ломает. */
+function heroClassPoolRowsFrom(resources: Record<string, { current?: number; max?: number } | undefined>) {
+  return Object.entries(resources)
+    .map(([key, pool]) => ({ key, current: Math.max(0, Number(pool?.current ?? 0)), max: Math.max(0, Number(pool?.max ?? 0)) }))
+    .filter((entry) => entry.max > 0 && !SUPERSEDED_FEATURE_POOLS.has(entry.key))
+    .sort((left, right) => heroResourceRank(left.key) - heroResourceRank(right.key) || left.key.localeCompare(right.key, 'ru'))
+    .reduce<Array<{ keys: string[]; current: number; max: number }>>((rows, entry) => {
+      const twin = rows.find((row) => row.current === entry.current && row.max === entry.max
+        && heroResourceLabel(row.keys[0]) === heroResourceLabel(entry.key))
+      if (twin) twin.keys.push(entry.key)
+      else rows.push({ keys: [entry.key], current: entry.current, max: entry.max })
+      return rows
+    }, [])
+    .filter((row) => !isSpellSlotPool(row.keys[0]) && row.keys[0] !== 'pact_slots')
+}
+
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -281,6 +306,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onTypingChange: (actorId: string, typing: boolean) => void
   narrating: boolean
   playerHud?: ReactNode
+  /** Ходит не герой зрителя: вместо чужих неактивных плиток — кто ходит и чей лист внизу. */
+  foreignTurn?: { turnName: string; heroName: string } | null
   statusContent: React.ReactNode
   children?: React.ReactNode
 }) {
@@ -560,6 +587,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         return `${action} — ${visibleNpcTactic.tactic}`
       })()
     : null
+  /* Герой на нуле хитов ещё не мёртв: он лежит без сознания и бросает
+     спасброски. С доски он пропадал вместе с убитыми врагами, и поднять его
+     было нечем — ни «Лечащим словом», ни стабилизацией, хотя сервер это
+     разрешает (плейтест 2026-10-03). Мёртвым считается только запись смерти. */
+  const heroIsDead = (heroId: string) => state.mechanics?.death?.heroes?.[heroId]?.status === 'dead'
+    || (state.mechanics?.conditions?.[heroId] ?? []).some((condition) => condition.id === 'dead')
   const animationActors: BoardAnimationActor[] = [
     ...players.map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.character, color: player.color, kind: 'hero' as const, archetype: player.characterClass ?? player.role, footprint: player.footprint, defeated: player.hp <= 0 })),
     ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const, archetype: enemy.creature_type, footprint: enemy.footprint, defeated: enemy.alive === false })),
@@ -1055,6 +1088,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const reachable = selected && active && movementAvailable
     ? new Set([...movementPaths.entries()].filter(([, route]) => route.costFeet <= movementLimit).map(([key]) => key))
     : new Set<string>()
+  // Выбранная клетка принадлежит ходу, в котором её выбрали: после смены хода
+  // второй клик по ней не должен двигать уже другого героя.
+  useEffect(() => { setPendingMoveKey(null) }, [turnActorId, selected, combatActive])
+  const pendingMovePoint = combatActive && pendingMoveKey && reachable.has(pendingMoveKey)
+    ? (() => { const [x, y] = pendingMoveKey.split(',').map(Number); return { x, y } })()
+    : null
   const previewMoveKey = pendingMoveKey ?? hoveredMoveKey
   const previewRoute = previewMoveKey ? movementPaths.get(previewMoveKey) ?? null : null
   const maneuverPath = state.pendingAction?.proposal.actor_id === turnActorId ? state.pendingAction.proposal.path : null
@@ -1082,31 +1121,38 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   ]
   /* Показываем только то, что у героя есть: пустого ряда «ячейки» у воина не
      будет вовсе, потому что в `activeResources` их нет. */
-  /* Один запас приезжает под двумя ключами: рукописным (`second_wind`) и
-     каталожным (`feature_fighter-vtoroe-dyhanie`) — сервер кладёт оба
-     (`server/combat-actions.mjs:288` и `:295`), и после резолва подписи
-     близнецы неотличимы: у воина в ряду стояли два чипа «второе дыхан… ●».
-     Схлопываем их в один — но только когда сходятся и подпись, и заряд, и
-     запас. Разошедшиеся счётчики схлопывать нельзя: это уже серверный баг, и
-     спрятанный он покажет игроку один заряд там, где учтено два. Оба сырых
-     ключа уходят в подсказку чипа. Перебор здесь линейный по ряду: запасов у
-     героя единицы, а порядок сортировки схлопывание не ломает. */
-  const heroResourceRows = Object.entries(activeResources)
-    .map(([key, pool]) => ({ key, current: Math.max(0, Number(pool?.current ?? 0)), max: Math.max(0, Number(pool?.max ?? 0)) }))
-    .filter((entry) => entry.max > 0)
-    .sort((left, right) => heroResourceRank(left.key) - heroResourceRank(right.key) || left.key.localeCompare(right.key, 'ru'))
-    .reduce<Array<{ keys: string[]; current: number; max: number }>>((rows, entry) => {
-      const twin = rows.find((row) => row.current === entry.current && row.max === entry.max
-        && heroResourceLabel(row.keys[0]) === heroResourceLabel(entry.key))
-      if (twin) twin.keys.push(entry.key)
-      else rows.push({ keys: [entry.key], current: entry.current, max: entry.max })
-      return rows
-    }, [])
-  const heroClassPoolRows = heroResourceRows.filter((row) => !isSpellSlotPool(row.keys[0]) && row.keys[0] !== 'pact_slots')
+  const heroClassPoolRows = heroClassPoolRowsFrom(activeResources)
+  /* Чужой ход: колонка ресурсов и ячейки принадлежат герою зрителя, а не
+     ходящему. Плитки чужого героя спрятаны с плейтеста 2026-10-02, но колонка
+     осталась: воин видел у себя скорость жреца, его «божественный канал» и —
+     хуже всего — его реакцию, хотя свою реакцию игрок тратит как раз в чужой
+     ход (плейтест 2026-10-03). */
+  const viewerHero = combatActive && foreignTurn ? players.find((player) => player.id === typingActorId) : undefined
+  const railEconomy = viewerHero ? combat.action_economy?.[viewerHero.id] : economy
+  const railMovement = viewerHero
+    ? actorMovementPresentation(state.mechanics?.movement?.[viewerHero.id], viewerHero.speed ?? 0, railEconomy, combatActive)
+    : movement
+  const railMovementAvailable = viewerHero ? railMovement.available : movementAvailable
+  const railRemainingFeet = viewerHero ? railMovement.remaining : remainingFeet
+  const railSpeedFeet = viewerHero ? railMovement.budget : speedFeet
+  const railMovementRatio = viewerHero
+    ? railMovementAvailable && railSpeedFeet > 0 ? Math.max(0, Math.min(1, railRemainingFeet / railSpeedFeet)) : 0
+    : movementRatio
+  const railActionCount = viewerHero
+    ? Number(railEconomy?.action !== false) + Math.max(0, Number(railEconomy?.extra_actions) || 0)
+    : Number(actionReady) + Math.max(0, Number(economy?.extra_actions) || 0)
+  const railPips: typeof heroPips = viewerHero ? [
+    { id: 'action', label: 'Действие', ready: railEconomy?.action !== false, note: '' },
+    { id: 'bonus_action', label: 'Бонус', ready: railEconomy?.bonus_action !== false, note: '' },
+    { id: 'reaction', label: 'Реакция', ready: railEconomy?.reaction !== false, note: '' },
+  ] : heroPips
+  const railResources = viewerHero ? heroResourcesFor(state, viewerHero.id, viewerHero) : activeResources
+  const railClassPoolRows = viewerHero ? heroClassPoolRowsFrom(railResources) : heroClassPoolRows
+  const railName = viewerHero?.character ?? activeName
   /* Спасброски от смерти — у того же героя, что и полоска жизни слева: у
      ходящего героя, а в ход противника — у героя зрителя, который ждёт
      своего броска весь чужой ход. */
-  const ownHero = activeHero ?? players.find((player) => player.id === typingActorId)
+  const ownHero = viewerHero ?? activeHero ?? players.find((player) => player.id === typingActorId)
   const ownDeathSaves = ownHero && ownHero.hp <= 0 ? state.mechanics?.death?.saving_throws?.[ownHero.id] : undefined
   const ownHeroDead = Boolean(ownHero && (state.mechanics?.death?.heroes?.[ownHero.id]?.status === 'dead'
     || (state.mechanics?.conditions?.[ownHero.id] ?? []).some((condition) => condition.id === 'dead')))
@@ -1721,7 +1767,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const fullActorIds = new Set<string>()
   const sceneCellByKey = new Map(state.scene.cells.map((sceneCell) => [boardPositionKey(sceneCell.x, sceneCell.y), sceneCell]))
   for (const actor of animationActors) {
-    if (actor.defeated) continue
+    if (actor.defeated && !(actor.kind === 'hero' && !heroIsDead(actor.id))) continue
     const rawLayout = actorFootprintLayout(actor)
     if (!rawLayout) continue
     const rawSize = actorFootprintSize(actor)
@@ -1743,7 +1789,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   }
   for (const cell of state.scene.cells) {
     const actorAtCell = actorByCell.get(boardPositionKey(cell.x, cell.y))
-    const player = actorAtCell?.kind === 'hero' ? players.find((item) => item.id === actorAtCell.id && item.hp > 0) : undefined
+    const player = actorAtCell?.kind === 'hero' ? players.find((item) => item.id === actorAtCell.id && (item.hp > 0 || !heroIsDead(item.id))) : undefined
     const enemy = actorAtCell?.kind === 'enemy' ? state.enemies?.find((item) => item.id === actorAtCell.id && item.alive) : undefined
     const summon = actorAtCell?.kind === 'summon' ? state.actors?.find((item) => item.id === actorAtCell.id && item.alive) : undefined
     const sceneNpc = !player && !enemy && !summon
@@ -1881,6 +1927,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       && actorDistanceFeet(selectedSpellPrimary, actorAtCell) <= selectedSpellTargetSeparationFeet
       && hasClearBoardTrajectory(state, selectedSpellPrimary, actorAtCell),
     )
+    // Дальше пяти футов сервер требует чистую траекторию для любого заклинания
+    // на существо (проверка цели CastSpell). Без неё «Лечащее слово» сквозь
+    // стену подсвечивалось допустимой целью, а отказ приходил уже с сервера
+    // (плейтест 2026-10-03).
     const canHealActorHere = Boolean(
       actorAtCell
       && (actorAtCell.kind === 'hero' || actorAtCell.kind === 'summon' || areaTargetSelectionActive || longstriderTargeting && actorAtCell.kind === 'neutral')
@@ -1891,7 +1941,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       && spellEconomyReady
       && (areaTargetSelectionActive
         ? areaTargetInBlast
-        : (chainSecondaryTargetAllowed || (!longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, actorAtCell))) && actorTargetDistance <= selectedSpellRange)),
+        : (chainSecondaryTargetAllowed || (actorTargetDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, actorAtCell))) && actorTargetDistance <= selectedSpellRange)),
     )
     const multiTargetSelected = Boolean(multiTargetSpell && actorAtCell && selectedSpellTargetSet.has(actorAtCell.id))
     const multiTargetSeparationReason = actorAtCell ? spellTargetSeparationReason(actorAtCell) : null
@@ -2400,7 +2450,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
           // разрешено, и решает это `spellEconomyReady`, повторяющий правило движка.
           const playerInBlast = Boolean(areaTargetSelectionActive && spellAffectedIds.has(player.id))
-          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && (['ally', 'creature'].includes(selectedSpell.target) || areaTargetSelectionActive) && spellEconomyReady && (areaTargetSelectionActive ? playerInBlast : healingDistance <= selectedSpellRange && (!longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, player)))))
+          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && (['ally', 'creature'].includes(selectedSpell.target) || areaTargetSelectionActive) && spellEconomyReady && (areaTargetSelectionActive ? playerInBlast : healingDistance <= selectedSpellRange && (healingDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, player)))))
           const playerKnockedOut = state.mechanics?.resting?.[player.id]?.reason === 'knockout'
           const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && player.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'stabilize' || player.hp === 0) && (selectedCombatAction.id !== 'first-aid' || playerKnockedOut))
           const playerCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere || multiTargetSelectable)
@@ -2412,12 +2462,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           const playerTargetCheck = evaluateCombatTarget({
             selected: Boolean(selected && (combatActive || spellEconomyReady)), economyReady: targetEconomyReady,
             unavailableReason: targetUnavailableReason,
-            targetAlive: player.hp > 0 || selectedCombatAction?.id === 'stabilize', targetTeam: 'ally', acceptedTarget,
+            targetAlive: player.hp > 0 || !heroIsDead(player.id), targetTeam: 'ally', acceptedTarget,
             distanceFeet: healingDistance, rangeFeet: targetRangeFeet,
             clearTrajectory: !longstriderTargeting && targetRangeFeet <= CELL_FEET || Boolean(active && hasClearBoardTrajectory(state, active, player)),
             resourceReady: targetResourceReady, specialBlockReason: playerSpecialBlock,
           })
-          const playerTargetReason = multiTargetSpell && multiTargetSelected
+          // Вне боя и без выбранного заклинания наведение на союзника — просто
+          // взгляд на фишку. Прежде здесь звучал отказ «Сейчас этим участником
+          // нельзя командовать» — даже над собственным героем.
+          const playerIdleHover = !combatActive && combatMode !== 'magic' && !playerCommandAllowed && !areaTargetSelectionActive && !multiTargetSpell
+          const playerTargetReason = playerIdleHover
+            ? player.id === selected ? 'Ваш герой. Клик по клетке карты — перемещение.' : 'Союзник по отряду'
+            : multiTargetSpell && multiTargetSelected
             ? 'Цель выбрана · клик уберёт её'
             : areaTargetSelectionActive && !playerInBlast
               ? 'Существо вне сферы 30 футов'
@@ -2428,7 +2484,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   : playerCommandAllowed ? 'Допустимая цель' : playerTargetCheck.reason ?? 'Выбранная команда не подходит для союзника'
           const playerConditions = (state.mechanics?.conditions?.[player.id] ?? []).map(conditionPresentation)
           return <button
-             className={'map-token hero-token ' + (actorHasFullArea ? 'large-actor ' : '') + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (linkedParticipantIds.includes(player.id) ? 'journal-linked ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid || multiTargetSelectable ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (multiTargetSelected ? 'multi-target-selected ' : '') + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
+             className={'map-token hero-token ' + (actorHasFullArea ? 'large-actor ' : '') + (focusedParticipantId === player.id ? 'initiative-focus ' : '') + (linkedParticipantIds.includes(player.id) ? 'journal-linked ' : '') + (selected === player.id ? 'selected' : '') + ' ' + (openTokenLabelId === player.id ? 'label-open' : '') + ' ' + (player.id === turnActorId ? 'active-turn' : '') + ' ' + (canHeal || canAid || multiTargetSelectable ? 'targetable healing-target' : combatActive && selected && player.id !== turnActorId ? 'unavailable-target' : '') + ' ' + (pendingTargetId === player.id ? 'command-selected' : '') + ' ' + (multiTargetSelected ? 'multi-target-selected ' : '') + (player.hp <= 0 ? 'downed ' : '') + (player.maxHp > 0 && player.hp / player.maxHp <= .25 ? 'critical' : player.maxHp > 0 && player.hp / player.maxHp <= .5 ? 'wounded' : '')}
             data-actor-id={player.id}
             data-face={heroFaceMode(player)}
              style={{ ...heroFaceStyle(player, { '--token': player.color } as React.CSSProperties), ...actorTokenStyle }}
@@ -2454,7 +2510,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           // `combatActive` здесь больше нет: вне боя мирное заклинание на союзника
           // разрешено, и решает это `spellEconomyReady`, повторяющий правило движка.
           const summonInBlast = Boolean(areaTargetSelectionActive && spellAffectedIds.has(summon.id))
-          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && (['ally', 'creature'].includes(selectedSpell.target) || areaTargetSelectionActive) && spellEconomyReady && (areaTargetSelectionActive ? summonInBlast : healingDistance <= selectedSpellRange && (!longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, summon)))))
+          const canHeal = Boolean(selected && combatMode === 'magic' && selectedSpell && (['ally', 'creature'].includes(selectedSpell.target) || areaTargetSelectionActive) && spellEconomyReady && (areaTargetSelectionActive ? summonInBlast : healingDistance <= selectedSpellRange && (healingDistance <= CELL_FEET && !longstriderTargeting || Boolean(active && hasClearBoardTrajectory(state, active, summon)))))
           const summonKnockedOut = state.mechanics?.resting?.[summon.id]?.reason === 'knockout'
           const canAid = Boolean(combatActive && selected && combatMode === 'action' && selectedCombatAction && ['ally', 'creature'].includes(selectedCombatAction.target) && selectedActionEconomyReady && summon.id !== selected && healingDistance <= selectedCombatAction.range && (selectedCombatAction.id !== 'first-aid' || summonKnockedOut))
           const summonCommandAllowed = Boolean(canHeal || canAid || canThrowHere || canPointSpellHere || multiTargetSelectable)
@@ -2733,6 +2789,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           ...(targetSelectionHintOrigin ? { anchor: 'grid-intersection' as const } : {}),
           text: spellTargetSelectionText,
           tone: 'warning',
+        } : pendingMovePoint ? {
+          // В бою первый клик по клетке только показывает маршрут. Без этой
+          // подсказки игрок кликал, видел подсвеченный путь — и ждал хода,
+          // который не наступал. Живой прогон 2026-10-02.
+          point: pendingMovePoint,
+          text: 'Нажмите ещё раз, чтобы идти сюда',
+          tone: 'warning',
         } : undefined}
         onCellHover={pointSpellSelected ? (point) => {
           if (areaTargetSelectionActive) return
@@ -2743,6 +2806,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         visualBatch={visualBatch}
         animationActors={animationActors}
         focusActorId={typingActorId}
+        passClickThroughAnimation={combatActive}
+        autoFocusKey={combatActive ? (turnActorId === typingActorId ? `turn:${combat.round ?? 1}:${turnActorId}` : 'combat') : ''}
         animationsEnabled={combatAnimations}
         combatAudio={combatAudio}
         conditions={state.mechanics?.conditions}
@@ -3562,7 +3627,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             его действиями, как в прототипе стола. */}
         {playerHud && <div className="turn-rail-hero turn-rail-player-hud">{playerHud}</div>}
         <div className="hotbar-decks">
-        <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий">
+        {/* Колоды и их счётчики — ходящего героя; в чужой ход их нет, как и плиток. */}
+        <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий" hidden={Boolean(viewerHero)}>
           {([
             ['common', 'Основные', <Footprints size={18} />],
             ['weapon', 'Атаки', <Swords size={18} />],
@@ -3599,9 +3665,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         </div>}
         {/* Ячейки по кругам — над плитками, как в макете заклинателя. */}
         <SpellSlotBar
-          resources={activeResources}
+          resources={railResources}
           filterLevel={slotLevelFilter}
-          concentration={activeHero ? heroStatusForActor(state, activeHero.id).concentration : null}
+          concentration={(viewerHero ?? activeHero) ? heroStatusForActor(state, (viewerHero ?? activeHero)!.id).concentration : null}
           onToggleLevel={(level) => {
             setSlotLevelFilter((current) => current === level ? null : level)
             setActiveDeck('magic')
@@ -3627,7 +3693,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               пипса: снять её можно и мышью, и Escape. Чип стоит у нижней
               кромки карточки, а не строкой кластера: это контекст колоды. */}
           {combatActive && costFilter && <p className="hero-cluster-filter" role="status">Показаны: {HOTBAR_COST_FILTER_LABELS[costFilter]} · <button type="button" onClick={() => setCostFilter(null)} title="Снять фильтр стоимости (Escape)">сбросить</button></p>}
-          <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия" ref={hotbarActionsRef} style={{ '--tile-cols': tileColumns } as React.CSSProperties}>
+          {/* Чужой ход: плитки ходящего героя второму игроку не нужны — нажать
+              их он всё равно не может, а читал как свои (плейтест 2026-10-02). */}
+          {combatActive && foreignTurn && <p className="hotbar-foreign-turn" role="status">Сейчас ходит <b>{foreignTurn.turnName}</b>. Ваш герой — {foreignTurn.heroName}: действия героя откроются в ваш ход.</p>}
+          <div className="hotbar-actions" role="tabpanel" aria-label="Доступные действия" ref={hotbarActionsRef} hidden={Boolean(combatActive && foreignTurn)} style={{ '--tile-cols': tileColumns } as React.CSSProperties}>
             {visibleTiles.map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
               key: id,
               draggable: !tilesLocked,
@@ -3778,28 +3847,28 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           stable={ownDeathSaves.stable}
           dead={ownHeroDead}
         />}
-        {!(ownHero && ownDeathSaves) && <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${activeName}`}>
+        {!(ownHero && ownDeathSaves) && <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${railName}`}>
           <div className="hero-cluster-pips" role="group" aria-label={combatActive ? 'Экономика хода' : 'Экономика хода вне боя не расходуется'}>
-            {heroPips.map((pip) => <button type="button" key={pip.id}
+            {railPips.map((pip) => <button type="button" key={pip.id}
               className={`hero-pip ${pip.id} ${combatActive && pip.ready ? 'ready' : 'spent'} ${costFilter === pip.id ? 'filtering' : ''}`}
-              aria-pressed={costFilter === pip.id} disabled={!combatActive}
+              aria-pressed={costFilter === pip.id} disabled={!combatActive || Boolean(viewerHero)}
               onClick={() => setCostFilter((current) => current === pip.id ? null : pip.id)}
               title={!combatActive ? 'Вне боя действия не расходуются' : `${pip.label}: ${pip.note || (pip.ready ? 'доступно' : 'потрачено')}`}
-            ><i className="hero-pip-shape" aria-hidden="true" /><span>{pip.label}</span><b>{!combatActive ? '—' : pip.id === 'action' ? Number(actionReady) + Math.max(0, Number(economy?.extra_actions) || 0) : Number(pip.ready)}</b></button>)}
+            ><i className="hero-pip-shape" aria-hidden="true" /><span>{pip.label}</span><b>{!combatActive ? '—' : pip.id === 'action' ? railActionCount : Number(pip.ready)}</b></button>)}
           </div>
-          {state.mechanics?.movement?.[turnActorId] && <div className="hero-cluster-speed" aria-label="Скорость героя">
-            <span>Скорость: <b>{movement.currentSpeed} фт</b> · базовая {movement.baseSpeed} фт</span>
-            {movement.effects.filter((effect) => effect.applied).map((effect) => <span key={effect.effect_id}>{effect.name} {effect.bonus_feet >= 0 ? '+' : ''}{effect.bonus_feet} фт</span>)}
+          {state.mechanics?.movement?.[viewerHero?.id ?? turnActorId] && <div className="hero-cluster-speed" aria-label="Скорость героя">
+            <span>Скорость: <b>{railMovement.currentSpeed} фт</b> · базовая {railMovement.baseSpeed} фт</span>
+            {railMovement.effects.filter((effect) => effect.applied).map((effect) => <span key={effect.effect_id}>{effect.name} {effect.bonus_feet >= 0 ? '+' : ''}{effect.bonus_feet} фт</span>)}
           </div>}
-          <div className={`hero-cluster-move ${movementAvailable ? 'ready' : 'spent'}`} title={movement.blockedReason ?? undefined}>
-            <span>Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{width:`${!movementAvailable ? 0 : combatActive ? Math.round(movementRatio * 100) : 100}%`}} /></span>
-            <b>{movement.blockedReason ? 'Недоступно' : combatActive ? `${movementAvailable ? remainingFeet : 0}/${speedFeet} фт` : `${movement.currentSpeed} фт · свободно`}</b>
+          <div className={`hero-cluster-move ${railMovementAvailable ? 'ready' : 'spent'}`} title={railMovement.blockedReason ?? undefined}>
+            <span>Движение</span><span className="hero-cluster-move-bar" aria-hidden="true"><i style={{width:`${!railMovementAvailable ? 0 : combatActive ? Math.round(railMovementRatio * 100) : 100}%`}} /></span>
+            <b>{railMovement.blockedReason ? 'Недоступно' : combatActive ? `${railMovementAvailable ? railRemainingFeet : 0}/${railSpeedFeet} фт` : `${railMovement.currentSpeed} фт · свободно`}</b>
           </div>
-          {movement.blockedReason && <p className="hero-cluster-movement-note" role="status">{movement.blockedReason}</p>}
-          {movement.effects.length > 0 && <ul className="hero-cluster-movement-effects" aria-label="Эффекты скорости">
-            {movement.effects.map((effect) => <li key={effect.effect_id}>{effect.name} · ещё {movementEffectTimeLabel(effect.remaining_seconds)}{effect.applied ? '' : ' · бонус не используется'}</li>)}
+          {railMovement.blockedReason && <p className="hero-cluster-movement-note" role="status">{railMovement.blockedReason}</p>}
+          {railMovement.effects.length > 0 && <ul className="hero-cluster-movement-effects" aria-label="Эффекты скорости">
+            {railMovement.effects.map((effect) => <li key={effect.effect_id}>{effect.name} · ещё {movementEffectTimeLabel(effect.remaining_seconds)}{effect.applied ? '' : ' · бонус не используется'}</li>)}
           </ul>}
-          {combatActive && weaponAttacksUsed > 0 && weaponAttacksLeft > 0 && <small>Атак в действии осталось: {weaponAttacksLeft}</small>}
+          {combatActive && !viewerHero && weaponAttacksUsed > 0 && weaponAttacksLeft > 0 && <small>Атак в действии осталось: {weaponAttacksLeft}</small>}
            {/* Вне боя — справка героя, как `.infob` макета: пассивная
                внимательность из листа и кости хитов из `mechanics.hit_point_dice`. */}
            {!combatActive && activeHero && (activeHero.characterSheet?.passive_perception != null || hitPointDice) && <dl className="hud-infob" aria-label="Справка героя">
@@ -3808,8 +3877,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
            </dl>}
            {/* Ячейки заклинаний переехали в полосу над плитками (`SpellSlotBar`):
                здесь остаются только классовые запасы. */}
-           {heroClassPoolRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Классовые запасы">
-             {heroClassPoolRows.map((row) => <span key={row.keys.join('+')}
+           {railClassPoolRows.length > 0 && <div className="hero-cluster-resources" role="group" aria-label="Классовые запасы">
+             {railClassPoolRows.map((row) => <span key={row.keys.join('+')}
                className={`hero-resource class-pool ${row.current > 0 ? 'ready' : 'spent'}`}
                title={heroResourceTitle(row.keys, row.current, row.max)} aria-label={heroResourceTitle(row.keys, row.current, row.max)}
              ><em>{heroResourceShortLabel(row.keys[0])}</em>{row.max <= 6

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { isOptionalFeatureSelected } from './character-progression.mjs'
+import { CLASS_RESOURCES_2024_POLICY_ID, DND_2014_RULESET_ID } from './ruleset-config.mjs'
 
 const catalogPayload = JSON.parse(readFileSync(new URL('../data/dndsu-class-actions-1-12.json', import.meta.url), 'utf8'))
 const GENERATED_CLASSES = new Map(catalogPayload.classes.map((entry) => [entry.classKey, Object.freeze(entry)]))
@@ -173,7 +174,7 @@ const MANEUVERS = Object.freeze([
   ['grappling-strike', 'Захватывающий удар', 'bonus_action', 'enemy', { condition: 'grappled' }],
   ['bait-and-switch', 'Обман и смена', 'free', 'ally', { condition: 'guarded' }],
   ['evasive-footwork', 'Уклонение ногами', 'free', 'self', { condition: 'evasive-footwork' }],
-].map(([id, name, actionType, target, extra]) => action(id, name, { actionType, target, range: target === 'self' ? 0 : target === 'ally' ? 5 : 600, minimumLevel: 3, resource: 'superiority_dice', requiresWeapon: target === 'enemy' && actionType === 'action', description: 'Манёвр мастера боевых искусств; расходует кость превосходства.', effect: extra.heal ? { kind: 'heal', dice: '1d8', ability: 'cha' } : target === 'enemy' ? { kind: 'weapon_attack', attacks: 1, extraDamage: '1d8', ...extra } : { kind: 'condition', condition: extra.condition, duration: 'until-next-turn' } })))
+].map(([id, name, actionType, target, extra]) => action(id, name, { actionType, target, range: target === 'self' ? 0 : target === 'ally' ? 5 : 600, minimumLevel: 3, resource: 'superiority_dice', requiresWeapon: target === 'enemy' && actionType === 'action', description: target === 'enemy' && actionType === 'action' ? 'Манёвр мастера боевых искусств: одна из атак действия «Атака»; кость превосходства тратится только при попадании.' : 'Манёвр мастера боевых искусств; расходует кость превосходства.', effect: extra.heal ? { kind: 'heal', dice: '1d8', ability: 'cha' } : target === 'enemy' ? { kind: 'weapon_attack', attacks: 1, extraDamage: '1d8', ...extra } : { kind: 'condition', condition: extra.condition, duration: 'until-next-turn' } })))
 
 function actorClass(actor) {
   const role = roleText(actor)
@@ -245,6 +246,21 @@ function curatedActionNamesFor(curated) {
 }
 
 /**
+ * Каталожная «шапка» умения, чей запас уже ведёт curated-пул под другим
+ * именем. «Божественный канал» dnd.su — не действие, а счётчик «Изгнания
+ * нежити» и «Божественной искры», которые тратят `channel_divinity`; его
+ * собственный `feature_*` был вторым, недостижимым запасом — в бою жрец видел
+ * «1/1» и «3/3» (плейтест 2026-10-03).
+ */
+const GENERATED_POOLS_OWNED_BY_CURATED = Object.freeze({
+  'cleric-bozhestvennyy-kanal': 'channel_divinity',
+})
+
+function generatedPoolSuperseded(entry, curatedNames) {
+  return curatedNames.has(normalizedName(entry.name)) || Object.hasOwn(GENERATED_POOLS_OWNED_BY_CURATED, entry.id)
+}
+
+/**
  * Каталожные пулы, заменённые реализованными действиями, определяются
  * той же политикой, что и список `combatActionsFor`.
  *
@@ -256,7 +272,7 @@ export function supersededFeatureResourceIdsFor(actor) {
   const subclass = actorSubclass(actor, classKey)
   const curatedNames = curatedActionNamesFor(curatedActionsFor(actor, classKey, subclass))
   return generatedActionsFor(classKey, subclass)
-    .filter((entry) => entry.uses && curatedNames.has(normalizedName(entry.name)))
+    .filter((entry) => entry.uses && generatedPoolSuperseded(entry, curatedNames))
     .map((entry) => `feature_${entry.id}`)
 }
 
@@ -329,7 +345,38 @@ export function weaponAttacksPerActionFor(actor) {
   return Math.max(1, Math.min(4, Number(tier?.[1] ?? extra.effect?.attacks ?? 1)))
 }
 
-export function combatResourceMaximumsFor(actor) {
+/**
+ * Политика запасов редакции 2024. Таблица ниже исторически написана по 2014:
+ * «Божественный канал» 1/2, «Второе дыхание» 1, «Дикий облик» 2, и короткий
+ * отдых возвращает их целиком. В 2024 зарядов больше, а короткий отдых
+ * возвращает один. Число берётся из таблицы при каждом пересчёте, поэтому
+ * подмена для всех 2024-кампаний разом изменила бы запасы уже идущих при
+ * replay. Отсюда маркер в `enabled_house_rules`: его получают только кампании,
+ * созданные с профилем 2024 после 2026-10-03, — по тому же пути, что и
+ * политика экономики торговцев.
+ */
+export { CLASS_RESOURCES_2024_POLICY_ID }
+
+/**
+ * Флаг таблицы запасов для состояния кампании: маркер политики и не 2014.
+ * @param {any} state
+ */
+export function classResourceOptionsFor(state) {
+  const policies = Array.isArray(state?.enabled_house_rules) ? state.enabled_house_rules.map(String) : []
+  return { classResources2024: String(state?.ruleset_id ?? '') !== DND_2014_RULESET_ID && policies.includes(CLASS_RESOURCES_2024_POLICY_ID) }
+}
+
+/**
+ * Восстановление «один заряд за короткий отдых, все — за продолжительный».
+ * Отличается от `short_or_long`, который за короткий отдых возвращает всё.
+ */
+export const ONE_ON_SHORT_REST = 'one_short_all_long'
+
+/**
+ * @param {any} actor
+ * @param {{ classResources2024?: boolean }} [options]
+ */
+export function combatResourceMaximumsFor(actor, { classResources2024 = false } = {}) {
   const level = Math.max(1, Math.min(12, Number(actor?.level) || 1))
   const classKey = actorClass(actor)
   const subclass = actorSubclass(actor, classKey)
@@ -338,10 +385,10 @@ export function combatResourceMaximumsFor(actor) {
   const resources = {}
   if (classKey === 'barbarian') resources.rage = level >= 12 ? 5 : level >= 6 ? 4 : level >= 3 ? 3 : 2
   if (classKey === 'bard') resources.bardic_inspiration = Math.max(1, Number(actor?.abilities?.cha ? Math.floor((Number(actor.abilities.cha) - 10) / 2) : 1))
-  if (classKey === 'cleric' && level >= 2) resources.channel_divinity = level >= 6 ? 2 : 1
-  if (classKey === 'druid' && level >= 2) resources.wild_shape = 2
+  if (classKey === 'cleric' && level >= 2) resources.channel_divinity = classResources2024 ? (level >= 18 ? 4 : level >= 6 ? 3 : 2) : level >= 6 ? 2 : 1
+  if (classKey === 'druid' && level >= 2) resources.wild_shape = classResources2024 ? (level >= 17 ? 4 : level >= 6 ? 3 : 2) : 2
   if (classKey === 'fighter') {
-    resources.second_wind = 1
+    resources.second_wind = classResources2024 ? (level >= 10 ? 4 : level >= 4 ? 3 : 2) : 1
     if (level >= 2) resources.action_surge = 1
     if (level >= 9) resources.indomitable = 1
     if (level >= 3 && normalizedName(subclass) === normalizedName('Мастер боевых искусств') && MANEUVERS.some((entry) => isOptionalFeatureSelected(actor, entry.id))) resources.superiority_dice = level >= 7 ? 5 : 4
@@ -355,7 +402,7 @@ export function combatResourceMaximumsFor(actor) {
   if (classKey === 'sorcerer' && level >= 2) resources.sorcery_points = level
   if (classKey === 'wizard') resources.arcane_recovery = 1
   for (const entry of generatedActionsFor(classKey, subclass)) {
-    if (!entry.uses || level < entry.minimumLevel || curatedNames.has(normalizedName(entry.name))) continue
+    if (!entry.uses || level < entry.minimumLevel || generatedPoolSuperseded(entry, curatedNames)) continue
     const maximum = entry.uses.maximum === 'proficiency' ? proficiency
       : String(entry.uses.maximum).startsWith('ability:')
         ? Math.max(1, Math.floor((Number(actor?.abilities?.[String(entry.uses.maximum).slice(8)]) - 10) / 2))
@@ -376,18 +423,22 @@ export function combatResourceMaximumsFor(actor) {
  * recovery timing deliberately live together so a rest cannot restore every
  * pool merely because a client happened to name it.
  */
-export function combatResourceRecoveryFor(actor) {
+/**
+ * @param {any} actor
+ * @param {{ classResources2024?: boolean }} [options]
+ */
+export function combatResourceRecoveryFor(actor, { classResources2024 = false } = {}) {
   const level = Math.max(1, Math.min(12, Number(actor?.level) || 1))
   const classKey = actorClass(actor)
   const subclass = actorSubclass(actor, classKey)
   const curatedNames = curatedActionNamesFor(curatedActionsFor(actor, classKey, subclass))
   const recovery = {}
-  if (classKey === 'barbarian') recovery.rage = 'long'
+  if (classKey === 'barbarian') recovery.rage = classResources2024 ? ONE_ON_SHORT_REST : 'long'
   if (classKey === 'bard') recovery.bardic_inspiration = level >= 5 ? 'short_or_long' : 'long'
-  if (classKey === 'cleric' && level >= 2) recovery.channel_divinity = 'short_or_long'
-  if (classKey === 'druid' && level >= 2) recovery.wild_shape = 'short_or_long'
+  if (classKey === 'cleric' && level >= 2) recovery.channel_divinity = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'
+  if (classKey === 'druid' && level >= 2) recovery.wild_shape = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'
   if (classKey === 'fighter') {
-    recovery.second_wind = 'short_or_long'
+    recovery.second_wind = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'
     if (level >= 2) recovery.action_surge = 'short_or_long'
     if (level >= 9) recovery.indomitable = 'long'
     if (level >= 3 && normalizedName(subclass) === normalizedName('Мастер боевых искусств')) recovery.superiority_dice = 'short_or_long'
@@ -401,7 +452,7 @@ export function combatResourceRecoveryFor(actor) {
   if (classKey === 'sorcerer' && level >= 2) recovery.sorcery_points = 'long'
   if (classKey === 'wizard') recovery.arcane_recovery = 'long'
   for (const entry of generatedActionsFor(classKey, subclass)) {
-    if (!entry.uses || level < entry.minimumLevel || curatedNames.has(normalizedName(entry.name))) continue
+    if (!entry.uses || level < entry.minimumLevel || generatedPoolSuperseded(entry, curatedNames)) continue
     recovery[`feature_${entry.id}`] = entry.uses.recovery === 'short_or_long' ? 'short_or_long' : 'long'
   }
   for (const spell of [...(Array.isArray(actor?.speciesBenefits?.innate_spells) ? actor.speciesBenefits.innate_spells : []), ...(actor?.creationSpellGrants ?? [])]) {

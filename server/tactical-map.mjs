@@ -2022,3 +2022,111 @@ export function legacyEdgeMask(map, x, y) {
   }
   return edges.join('')
 }
+
+// --- поворот карты к дороге ----------------------------------------------
+
+/** Стороны, с которых отряд входит на карту. */
+export const ENTRY_SIDES = Object.freeze(['west', 'east', 'north', 'south'])
+
+/**
+ * Карта, повёрнутая так, чтобы вход, построенный генератором у западного края,
+ * оказался со стороны `side` — откуда отряд пришёл по дороге карты мира.
+ * Восток — зеркало по горизонтали, север — транспонирование (западный край
+ * становится северным), юг — транспонирование и зеркало по вертикали.
+ *
+ * Перекладываются клетки со всеми слоями и опасностями, зоны, рёбра, двери,
+ * предметы с футпринтом, опорой на стену и поворотом, точки появления и
+ * подписи. Механика от поворота не меняется: это та же карта, иначе лежащая.
+ * Поворот предмета приближённый — у зеркала модель тоже зеркалится, а
+ * асимметричная модель смотрит туда, куда её повернёт новый угол.
+ *
+ * @param {TacticalMap} map
+ * @param {string} side
+ * @returns {TacticalMap} та же карта для `west` и неизвестной стороны, иначе новая
+ */
+export function orientTacticalMap(map, side) {
+  if (!ENTRY_SIDES.includes(side) || side === 'west') return map
+  const { width, height } = map
+  const transpose = side === 'north' || side === 'south'
+  const nextWidth = transpose ? height : width
+  const nextHeight = transpose ? width : height
+  /** @param {number} x @param {number} y клетка */
+  const cell = (x, y) => (side === 'east' ? { x: width - 1 - x, y }
+    : side === 'north' ? { x: y, y: x }
+      : { x: y, y: width - 1 - x })
+  /** @param {number} x @param {number} y непрерывная координата (центр клетки — x + 0.5) */
+  const point = (x, y) => (side === 'east' ? { x: width - x, y }
+    : side === 'north' ? { x: y, y: x }
+      : { x: y, y: width - x })
+  /** @param {number} degrees */
+  const turn = (degrees) => {
+    const angle = Number(degrees) || 0
+    const mirrored = side === 'east' ? 180 - angle : side === 'north' ? 90 - angle : 270 + angle
+    return ((Math.round(mirrored) % 360) + 360) % 360
+  }
+  /** @type {Record<string, 'n'|'e'|'s'|'w'>} */
+  const sides = side === 'east' ? { n: 'n', s: 's', e: 'w', w: 'e' }
+    : side === 'north' ? { n: 'w', w: 'n', s: 'e', e: 's' }
+      : { n: 'w', w: 's', s: 'e', e: 'n' }
+  const next = createTacticalMap({
+    width: nextWidth,
+    height: nextHeight,
+    locationId: map.locationId,
+    levelIndex: map.levelIndex,
+    levelLabel: map.levelLabel,
+    seed: map.seed,
+    generator: map.generator,
+    theme: map.theme,
+    tilesetId: map.tilesetId,
+    sizeClass: map.sizeClass,
+    catalogRevision: map.catalogRevision ?? null,
+  })
+  next.zones = map.zones.map((zone) => ({ ...zone }))
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+    const source = cellAt(map, x, y)
+    if (!source) continue
+    const target = cell(x, y)
+    setCell(next, target.x, target.y, {
+      passable: source.passable, moveCost: source.moveCost, surface: source.surface, hazardId: source.hazardId,
+      material: source.material, elevation: source.elevation, zone: source.zone, variant: source.variant, revealed: source.revealed,
+    })
+  }
+  for (const edge of edgeList(map)) {
+    if (edge.kind === 'door') continue
+    const a = cell(edge.x, edge.y)
+    const neighbor = edgeNeighbor(edge)
+    const b = cell(neighbor.x, neighbor.y)
+    setEdge(next, a.x, a.y, b.x, b.y, { kind: edge.kind, blocksMove: edge.blocksMove, blocksSight: edge.blocksSight, cover: edge.cover })
+  }
+  for (const door of map.doors) {
+    const a = cell(door.x, door.y)
+    const neighbor = edgeNeighbor(door)
+    const b = cell(neighbor.x, neighbor.y)
+    const edge = edgeBetween(map, door.x, door.y, neighbor.x, neighbor.y)
+    const canonical = canonicalEdge(a.x, a.y, b.x, b.y)
+    setDoor(next, {
+      ...door,
+      x: canonical.x,
+      y: canonical.y,
+      dir: canonical.dir,
+      blocksMove: edge?.blocksMove === true,
+      blocksSight: edge?.blocksSight === true,
+      ...(door.barricade ? { barricade: { ...door.barricade, side_x: cell(door.barricade.side_x, door.barricade.side_y).x, side_y: cell(door.barricade.side_x, door.barricade.side_y).y } } : {}),
+    })
+  }
+  next.props = map.props.map((prop) => {
+    const at = point(prop.x, prop.y)
+    return {
+      ...prop,
+      x: at.x,
+      y: at.y,
+      rotation: turn(prop.rotation),
+      footprint: prop.footprint.map((spot) => cell(spot.x, spot.y)),
+      ...(prop.mount?.kind === 'wall' ? { mount: { ...prop.mount, side: sides[prop.mount.side] ?? prop.mount.side } } : {}),
+    }
+  })
+  next.spawnPoints = map.spawnPoints.map((spawn) => ({ ...spawn, ...cell(spawn.x, spawn.y) }))
+  next.overlays = { ...map.overlays, roomLabels: map.overlays.roomLabels.map((label) => ({ ...label })) }
+  next.legacyShape = [...map.legacyShape]
+  return next
+}

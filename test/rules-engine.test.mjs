@@ -513,7 +513,7 @@ test('падение до нуля HP автоматически заверша�
   state.mechanics.concentration.hero = { effect_id: 'spell:web' }
   state.mechanics.temporary_hp.hero = 0
   const result = resolveCommand({ command_type: 'ApplyDamage', actor_id: 'goblin', target_id: 'hero', amount: 8, damage_type: 'cold' }, state, { diceService: dice([]) })
-  assert.deepEqual(result.events.map((event) => event.event_type), ['DamageApplied', 'HitPointsReducedToZero', 'ConcentrationEnded'])
+  assert.deepEqual(result.events.map((event) => event.event_type), ['DamageApplied', 'HitPointsReducedToZero', 'ConditionAdded', 'ConcentrationEnded'])
   assert.equal(result.events.at(-1).payload.reason, 'incapacitated')
   const after = result.events.reduce(applyGameEvent, state)
   assert.equal(after.players[0].hp, 0)

@@ -5,7 +5,12 @@
  * Два режима одного маршрута:
  * - `mode: 'preview'` — разбор слэба без записи: этажи, сводка и
  *   предупреждения. Ведущий смотрит карту до того, как её увидят игроки;
- * - `mode: 'apply'` — команда `ImportLocationMap` через общий исполнитель.
+ * - `mode: 'apply'` — команда `ImportLocationMap` через общий исполнитель;
+ * - `mode: 'rebuild'` — команда `RebuildLocationMap`: карта текущей сцены
+ *   строится заново по программе сцены (этап 8 `docs/map-generation-plan.md`),
+ *   `text` — необязательное описание места словами ведущего. Не во время боя
+ *   и не при открытой проверке героя: бросок, заявленный на прежней карте,
+ *   на новой потерял бы смысл.
  *   Полномочие ведущего передаётся флагом контекста, который ставит только
  *   этот маршрут; Rules Engine без флага команду не исполняет.
  *
@@ -20,7 +25,7 @@ import { TaleSpireImportError, importTaleSpireSlab } from '../talespire-import.m
 import { SLAB_MAX_TEXT_LENGTH, TaleSpireSlabError } from '../talespire-slab.mjs'
 import { worldLocationById } from '../world-map.mjs'
 
-const CONFLICT_CODES = new Set(['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'MAP_IMPORT_DURING_COMBAT'])
+const CONFLICT_CODES = new Set(['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'MAP_IMPORT_DURING_COMBAT', 'MAP_REBUILD_DURING_COMBAT', 'MAP_REBUILD_DECISION_OPEN', 'MAP_REBUILD_CHECK_OPEN'])
 
 /**
  * @param {{
@@ -34,11 +39,12 @@ const CONFLICT_CODES = new Set(['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT'
  *   persistAuthoritativeProjection: (campaignId: string, state: any, events: any[], journal?: any, options?: any) => any,
  *   campaignHeroIds: (user: any, campaignId: string) => string[],
  *   viewerStateFor: (state: any, user: any, actorId: string) => any,
+ *   hasOpenCheck?: (campaignId: string, stateVersion: number) => boolean,
  * }} deps
  */
 export function createMapImportRoutes(deps) {
   const { requireUser, getRoom, campaignMembershipFor, readBody, json, eventStore, authoritativeExecutor,
-    persistAuthoritativeProjection, campaignHeroIds, viewerStateFor } = deps
+    persistAuthoritativeProjection, campaignHeroIds, viewerStateFor, hasOpenCheck = () => false } = deps
   /** @param {any} res @param {number} status @param {unknown} body */
   const send = (res, status, body) => { json(res, status, body); return true }
 
@@ -62,6 +68,43 @@ export function createMapImportRoutes(deps) {
         return send(res, 403, { error: 'Загружать карту может только ведущий кампании', code: 'MAP_IMPORT_FORBIDDEN' })
       }
       const body = await readBody(req)
+      if (body.mode === 'rebuild') {
+        const state = room.state
+        if (campaignIsReadOnly(state)) {
+          return send(res, 409, { error: 'Завершённая или архивная кампания доступна только для чтения', code: 'CAMPAIGN_READ_ONLY' })
+        }
+        if (hasOpenCheck(campaignId, Number(state.state_version))) {
+          return send(res, 409, { error: 'Сначала завершите открытую проверку героя', code: 'MAP_REBUILD_CHECK_OPEN' })
+        }
+        const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').trim().slice(0, 200)
+        if (!idempotencyKey) return send(res, 400, { error: 'Нужен idempotency_key', code: 'IDEMPOTENCY_KEY_REQUIRED' })
+        const text = typeof body.text === 'string' ? body.text.slice(0, 2000) : ''
+        const committed = await authoritativeExecutor.executeCommands({
+          campaignId,
+          idempotencyKey,
+          commands: [{
+            command_type: 'RebuildLocationMap',
+            command_id: `map-rebuild:${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`,
+            text,
+          }],
+          context: { mapImportAuthorized: true },
+        })
+        const duplicate = Boolean(committed.replayed || committed.duplicate)
+        const projected = duplicate
+          ? { state: getRoom(campaignId)?.state ?? committed.state, version: getRoom(campaignId)?.version }
+          : persistAuthoritativeProjection(campaignId, committed.state, committed.events ?? [], null, { forceProjectorRefresh: true })
+        const responseState = projected?.state ?? committed.state
+        const actorId = campaignHeroIds(user, campaignId)
+          .find((id) => responseState.players?.some((/** @type {any} */ player) => String(player.id) === String(id))) ?? ''
+        const event = (committed.events ?? []).find((/** @type {any} */ candidate) => candidate?.event_type === 'LocationMapImported')
+        return send(res, 200, {
+          mode: 'rebuild',
+          duplicate,
+          warnings: event?.payload?.warnings ?? [],
+          version: projected?.version ?? room.version,
+          state: viewerStateFor(responseState, user, actorId),
+        })
+      }
       const slab = typeof body.slab === 'string' ? body.slab : ''
       if (!slab.trim()) return send(res, 400, { error: 'Вставьте строку слэба TaleSpire', code: 'SLAB_EMPTY' })
       if (slab.length > SLAB_MAX_TEXT_LENGTH) return send(res, 400, { error: 'Слэб длиннее, чем допускает TaleSpire', code: 'SLAB_TOO_LARGE' })

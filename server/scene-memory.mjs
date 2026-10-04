@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { campaignArcPlan } from './campaign-loop-policy.mjs'
-import { normalizeWorldMemory } from './world-memory.mjs'
+import { gmSecretFact, normalizeGmSecrets, normalizeWorldMemory } from './world-memory.mjs'
 import { campaignModeFor } from './campaign-stories.mjs'
 
 const clone = (value) => structuredClone(value)
@@ -93,9 +93,11 @@ export function sceneWorldMemoryEventId(commandId) {
 
 /**
  * Derives bounded canonical memory updates from an already validated scene transition.
- * It never accepts a free-form memory payload from the model.
+ * It never accepts a free-form memory payload from the model. Единственный текст
+ * модели здесь — заготовки ведущего (`secrets`): они проходят тот же
+ * `normalizeGmSecrets`, что и стартовые, и пишутся только скрытыми фактами.
  */
-export function sceneWorldMemoryEvents(state, transition, { commandId = '', sourceEventId = '' } = {}) {
+export function sceneWorldMemoryEvents(state, transition, { commandId = '', sourceEventId = '', secrets = [] } = {}) {
   const memory = ensureSceneWorldMemory(state.worldMemory, state)
   const clockMax = campaignArcPlan(state)?.chapter_clock_max ?? 4
   const previousScene = state.scene ?? {}
@@ -121,13 +123,39 @@ export function sceneWorldMemoryEvents(state, transition, { commandId = '', sour
   const previousQuest = memory.quests.find((quest) => quest.id === previousQuestId)
     ?? sceneQuest({ chapter: previousChapter, scene: previousScene, adventure: state.adventure, locationId: previousLocation.id, clockMax })
   const previousStatus = outcome.status === 'abandoned' ? 'abandoned' : outcome.status === 'completed' ? 'completed' : 'active'
-  if (campaignModeFor(state) !== 'persistent') add('QuestUpserted', { quest: {
-    ...clone(previousQuest),
-    summary: clean(outcome.outcome || previousQuest.summary, 1_000),
-    status: previousStatus,
-  } })
+  // Цель продолжается в новом месте (`continued`): то же задание главы, те же
+  // часы, но цель — её остаток, и новое место становится сущностью задания,
+  // чтобы находки здесь засчитывались как продвижение. Второе задание с тем же
+  // номером главы перезаписало бы часы с нуля.
+  const continued = outcome.status === 'continued'
+  if (campaignModeFor(state) !== 'persistent') add('QuestUpserted', { quest: continued
+    ? {
+      ...clone(previousQuest),
+      status: 'active',
+      objectives: clean(nextScene.objective, 300) ? [clean(nextScene.objective, 300)] : clone(previousQuest.objectives ?? []),
+      entity_ids: [...new Set([...(previousQuest.entity_ids ?? []), nextLocation.id])],
+    }
+    : {
+      ...clone(previousQuest),
+      summary: clean(outcome.outcome || previousQuest.summary, 1_000),
+      status: previousStatus,
+    } })
 
-  if (campaignModeFor(state) !== 'persistent' && clean(nextScene.objective, 300)) {
+  // Та же формулировка живёт и в стартовом задании кампании (его цель — цель
+  // первой сцены). Иначе журнал продолжал звать «добраться до дамбы», когда
+  // отряд уже стоит на ней. Меняется только эта цель, а не задание целиком.
+  if (continued && clean(nextScene.objective, 300)) {
+    const before = clean(previousScene.objective, 300)
+    for (const quest of memory.quests) {
+      if (quest.id === previousQuest.id || quest.status !== 'active' || !(quest.objectives ?? []).some((objective) => clean(objective, 300) === before)) continue
+      add('QuestUpserted', { quest: {
+        ...clone(quest),
+        objectives: (quest.objectives ?? []).map((objective) => clean(objective, 300) === before ? clean(nextScene.objective, 300) : objective),
+      } }, quest.visibility === 'gm_only' ? 'gm_only' : 'party')
+    }
+  }
+
+  if (!continued && campaignModeFor(state) !== 'persistent' && clean(nextScene.objective, 300)) {
     const nextQuest = sceneQuest({ chapter: nextChapter, scene: nextScene, adventure: nextAdventure, locationId: nextLocation.id, clockMax })
     add('QuestUpserted', { quest: nextQuest })
   }
@@ -159,5 +187,18 @@ export function sceneWorldMemoryEvents(state, transition, { commandId = '', sour
   }
   if (!memory.facts.some((fact) => fact.id === transitionFact.id)) add('WorldFactRecorded', { fact: transitionFact })
   if (!memory.facts.some((fact) => fact.id === arrivalFact.id)) add('WorldFactRecorded', { fact: arrivalFact })
+  // Заготовки ведущего новой области (map_architect/v7): скрытые факты места,
+  // которые открывает удачный поиск. Событие и факт — gm_only: игрок узнаёт
+  // тайну только находкой. Без этого в каждой области после первой удачная
+  // проверка открывала разве что знающего собеседника.
+  for (const [index, secret] of normalizeGmSecrets(secrets, { limit: 3 }).entries()) {
+    const fact = gmSecretFact({ ...secret, holder: '' }, {
+      subjectId: nextLocation.id,
+      salt: `scene:${clean(commandId, 160)}:${nextLocation.id}`,
+      index,
+      sourceCommandId: clean(commandId, 160),
+    })
+    if (!memory.facts.some((existing) => existing.id === fact.id)) add('WorldFactRecorded', { fact }, 'gm_only')
+  }
   return events
 }

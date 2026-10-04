@@ -29,3 +29,19 @@ export function chronicleMatchesFilter(speaker, filter, isStoryCard = false) {
 export function isChronicleNearBottom(viewport, threshold = 56) {
   return viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= threshold
 }
+
+/**
+ * Следить ли за лентой после события прокрутки. Отпускает низ только движение
+ * вверх: плавная прокрутка к новой записи сама шлёт события `scroll`, пока ещё
+ * не доехала до низа, и прежняя проверка «у низа ли мы» на первом же таком
+ * событии выключала слежение — дальше ответы копились счётчиком «↓ N», хотя
+ * игрок ленту не трогал. Живой прогон 2026-10-02.
+ *
+ * @param {{ scrollHeight: number, clientHeight: number, scrollTop: number }} viewport
+ * @param {number} previousScrollTop положение ленты на прошлом событии
+ * @param {boolean} following следили ли за лентой до этого события
+ */
+export function chronicleFollowAfterScroll(viewport, previousScrollTop, following) {
+  if (isChronicleNearBottom(viewport)) return true
+  return viewport.scrollTop < previousScrollTop - 1 ? false : following
+}

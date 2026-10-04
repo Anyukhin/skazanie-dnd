@@ -1163,6 +1163,14 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
   // двухклеточный прилавок площади или крона дуба во дворе иначе выступали
   // на подход к двери соседнего дома — резерв зоны их не видел.
   const thresholds = doorThresholds(map)
+  // Тропа к двери дома (`path`, поселение v5) закрыта так же: двухклеточный
+  // ящик кладовой у стены выступал на неё и перекрывал путь к двери.
+  // Крайняя клетка карты тоже: предмет на ней обрезан краем доски, к нему не
+  // подойти со всех сторон (критерий плана карт: «никакой предмет не стоит на
+  // крайней клетке»; корпус программ находил там поленницы и бочки).
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (cellAt(map, x, y)?.zone === 'path' || x === 0 || y === 0 || x === map.width - 1 || y === map.height - 1) thresholds.add(`${x},${y}`)
+  }
 
   for (const plan of zones ?? []) {
     const cells = zoneCells(map, plan.zoneId)
@@ -1398,7 +1406,21 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
 }
 
 /** Темы, по которым предмет считается вещью под крышей. */
-const INDOOR_THEMES = new Set(['interior', 'tavern', 'house', 'temple', 'crypt', 'dungeon', 'cave'])
+export const INDOOR_THEMES = new Set(['interior', 'tavern', 'house', 'temple', 'crypt', 'dungeon', 'cave'])
+
+/**
+ * Переживут ли предметы ремонт доступа. Ремонт меняет только `map.props`,
+ * поэтому проба идёт на мелкой копии карты.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string[]} ids
+ */
+function survivesAccessRepair(map, ids) {
+  const probe = { ...map, props: [...map.props] }
+  ensurePropAccess(probe)
+  const kept = new Set(probe.props.map((prop) => prop.id))
+  return ids.every((id) => kept.has(id))
+}
 
 /**
  * Обещанное сценой: ставит недостающие предметы из списка «вид → штук». Сцена
@@ -1426,7 +1448,9 @@ export function placeRequiredProps(map, wanted, { seed }) {
     const indoor = asset.themes.some((theme) => INDOOR_THEMES.has(theme)) && !asset.themes.includes('exterior')
     // Зоны с местом: сначала подходящего рода, крупные первыми — там проще
     // не задеть проход.
-    const sized = map.zones.map((zone) => ({ zone, size: zoneCells(map, zone.id).length })).filter((entry) => entry.size >= 4)
+    // Тропа к двери (`path`, поселение v5) — проход, а не место для обещанного.
+    const sized = map.zones.filter((zone) => zone.id !== 'path')
+      .map((zone) => ({ zone, size: zoneCells(map, zone.id).length })).filter((entry) => entry.size >= 4)
     const fitting = sized.filter(({ zone }) => (indoor ? zone.kind === 'interior' : zone.kind !== 'interior'))
     const order = (fitting.length ? fitting : sized).sort((left, right) => right.size - left.size || left.zone.id.localeCompare(right.zone.id))
     for (let attempt = 0; missing > 0 && attempt < missing + order.length * 2; attempt += 1) {
@@ -1442,6 +1466,14 @@ export function placeRequiredProps(map, wanted, { seed }) {
       // Свой префикс: номер по счётчику расстановки мог совпасть с предметом,
       // который ремонт доступа уже убрал и чей номер освободился.
       for (const prop of map.props.slice(before)) prop.id = `required-${index}-${attempt}-${asset.id}`
+      // Место, которое ремонт доступа потом расчистит (телега поперёк прохода
+      // между рядами могил), обещанному не годится: снимаем и ищем другое.
+      // Иначе предмет ставился и тут же пропадал — со сдвигом случайного
+      // добора пропадала и обещанная «телега гробовщика».
+      if (placedNow > 0 && !survivesAccessRepair(map, map.props.slice(before).map((prop) => prop.id))) {
+        map.props = map.props.slice(0, before)
+        continue
+      }
       missing -= placedNow
       added += placedNow
     }

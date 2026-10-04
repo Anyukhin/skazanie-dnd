@@ -10,7 +10,7 @@
  */
 import { footprintCellsFor, footprintDistanceFeet, footprintSizeFor } from '../actor-footprint.mjs'
 import { sceneNpcOccupiedCells, sceneNpcTransitCells } from '../npc-positioning.mjs'
-import { deserializeTacticalMap, edgeBetween, movementStepBlocked } from '../tactical-map.mjs'
+import { cellAt, deserializeTacticalMap, edgeBetween, movementStepBlocked } from '../tactical-map.mjs'
 import { actorId, actorPosition, findActor, isLivingActor, listActors } from './actors.mjs'
 import { RulesValidationError, safeInteger, usesDnd2014 } from './core.mjs'
 
@@ -107,6 +107,65 @@ export function isTransparentMapCell(cell) {
   return cell.passable === true || cell.surface === 'water'
 }
 
+/** Дальность обзора, на которую распахнутая дверь открывает соседнее помещение. */
+export const DOORWAY_SIGHT_CELLS = 9
+
+/**
+ * Дальность разведки при перемещении. Меньше дверной: дверь открывает целое
+ * помещение разом, а шаг — только то, что вокруг героя, иначе карта
+ * раскрывалась бы вперёд отряда и исследовать было бы нечего.
+ */
+export const MOVEMENT_SIGHT_CELLS = 6
+
+/**
+ * Клетки, которые видны от `origin` после того, как проём открылся: обход в
+ * ширину по проходимым клеткам, не пересекающий ни глухие рёбра, ни закрытые
+ * двери. Это не полноценный расчёт линии обзора — он и не нужен: задача узкая,
+ * открыть игроку ровно то помещение, куда теперь ведёт открытая дверь, вместо
+ * чёрного пятна, в которое нельзя даже шагнуть (`isWalkableCell` считает
+ * нераскрытую клетку непроходимой).
+ *
+ * Вынесено из `rules-engine.mjs` 2026-10-03: тем же правилом импорт карты
+ * TaleSpire раскрывает то, что видно от входа сквозь окна и открытые двери.
+ *
+ * @param {import('../tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}} origin
+ * @param {{ radius?: number, openedDoorId?: string|null }} [options]
+ * @returns {Array<{x: number, y: number}>}
+ */
+export function cellsVisibleFrom(map, origin, { radius = DOORWAY_SIGHT_CELLS, openedDoorId = null } = {}) {
+  const opened = openedDoorId == null ? '' : String(openedDoorId)
+  const start = { x: Math.floor(Number(origin?.x)), y: Math.floor(Number(origin?.y)) }
+  if (!Number.isSafeInteger(start.x) || !Number.isSafeInteger(start.y)) return []
+  if (!cellAt(map, start.x, start.y)) return []
+  const seen = new Map([[`${start.x},${start.y}`, 0]])
+  const queue = [start]
+  const found = [start]
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const current = queue[cursor]
+    const distance = seen.get(`${current.x},${current.y}`) ?? 0
+    if (distance >= radius) continue
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = { x: current.x + dx, y: current.y + dy }
+      const key = `${next.x},${next.y}`
+      if (seen.has(key)) continue
+      const cell = cellAt(map, next.x, next.y)
+      if (!cell) continue
+      const edge = edgeBetween(map, current.x, current.y, next.x, next.y)
+      // Дверь, которую открывают прямо сейчас, ещё числится закрытой: событие
+      // состояния применится позже, а раскрытие считается по будущей карте.
+      const justOpened = opened && String(edge?.doorId ?? '') === opened
+      if (edge?.blocksSight === true && !justOpened) continue
+      seen.set(key, distance + 1)
+      found.push(next)
+      // Стену видно, но сквозь неё не смотрят: дальше обход не идёт. Воду —
+      // смотрят: правило прозрачности то же, что у линии действия.
+      if (isTransparentMapCell(cell)) queue.push(next)
+    }
+  }
+  return found
+}
+
 /**
  * Перекрыт ли шаг линии обзора ребром: стеной или иной кромкой с
  * `blocksSight`, либо закрытой дверью. Диагональный шаг перекрыт, если
@@ -129,10 +188,41 @@ export function sightEdgeBlocked(map, from, to) {
   })
 }
 
-export function occupiedPositions(state, exceptActorId = null) {
+/**
+ * Герой на нуле хитов, пока он не погиб, — всё ещё существо на своей клетке:
+ * закончить на ней ход нельзя. Прежде клетка умирающего считалась свободной,
+ * враг вставал на неё, и поднятый лечением герой делил клетку с врагом
+ * (массовый прогон боевого стенда 2026-10-04, сценарий «healing»). Пройти
+ * сквозь клетку недееспособного можно — набор для прохода просит
+ * `includeDowned: false`.
+ */
+function occupiesSpace(state, actor, includeDowned) {
+  if (isLivingActor(actor)) return true
+  if (!includeDowned) return false
+  const id = actorId(actor)
+  return actor?.alive !== false
+    && (state?.players ?? []).some((player) => actorId(player) === id)
+    && state?.mechanics?.death?.heroes?.[id]?.status !== 'dead'
+}
+
+/**
+ * Клетки умирающих героев (на нуле хитов, но не погибших): на них нельзя
+ * остановиться, но сквозь них можно пройти. Отдельно — чтобы поиск пути не
+ * обходил участников второй раз.
+ */
+export function downedHeroPositions(state, exceptActorId = null) {
+  const cells = new Set()
+  for (const actor of state?.players ?? []) {
+    if (actorId(actor) === String(exceptActorId ?? '') || isLivingActor(actor) || !occupiesSpace(state, actor, true)) continue
+    for (const cell of actorFootprintCellsAt(state, actorId(actor))) cells.add(positionKey(cell))
+  }
+  return cells
+}
+
+export function occupiedPositions(state, exceptActorId = null, { includeDowned = true } = {}) {
   const occupied = new Set()
   for (const actor of listActors(state)) {
-    if (actorId(actor) === String(exceptActorId ?? '') || !isLivingActor(actor)) continue
+    if (actorId(actor) === String(exceptActorId ?? '') || !occupiesSpace(state, actor, includeDowned)) continue
     for (const cell of actorFootprintCellsAt(state, actorId(actor))) occupied.add(positionKey(cell))
   }
   // Социальные NPC не входят в listActors, но их сохранённые посты занимают
@@ -221,6 +311,9 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
   const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const propOccupied = map ? propMovementPositions(map) : new Set()
   const occupied = occupiedPositions(state, actorIdValue)
+  // Сквозь умирающего героя проходят, остановиться на нём — нельзя.
+  const downed = downedHeroPositions(state, actorIdValue)
+  const passOccupied = downed.size ? new Set([...occupied].filter((key) => !downed.has(key))) : occupied
   const hasSceneNpcs = Boolean(state?.npc_world?.placements?.length || state?.scene_npcs?.length)
   const npcTransit = hasSceneNpcs ? sceneNpcTransitCells(state) : new Set()
   const npcOccupied = hasSceneNpcs ? sceneNpcOccupiedCells(state) : new Set()
@@ -266,17 +359,18 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
       if (npcOccupied.has(key) && (key === target || !npcTransit.has(key))) return false
       if (allowTarget) return true
       if (key === target && occupied.has(key)) return false
-      return !occupied.has(key) || npcTransit.has(key) || canPassOccupied(position)
+      return !passOccupied.has(key) || npcTransit.has(key) || canPassOccupied(position)
     }
     const footprint = footprintCellsFor(mover, position)
     if (!footprint.length) return false
     if (map && footprintPlacementEdgesBlocked(map, mover, position)) return false
     const passThroughLarger = canPassOccupied(position)
+    const blocking = positionKey(position) === target ? occupied : passOccupied
     for (const cell of footprint) {
       const key = positionKey(cell)
       if (!isWalkableCell(cells.get(key)) || propOccupied.has(key)) return false
       if (npcOccupied.has(key) && (key === target || !npcTransit.has(key))) return false
-      if (!occupied.has(key)) continue
+      if (!blocking.has(key)) continue
       if (npcTransit.has(key)) continue
       if (allowTarget) continue
       if (!passThroughLarger) return false

@@ -26,6 +26,74 @@ function tacticalActorName(state, id) {
   return String(actor?.character || actor?.name || expected || 'Участник')
 }
 
+/**
+ * Выбывший противник: место в инициативе за ним остаётся — по его ходам
+ * считаются сроки наложенных им эффектов, — но рассказывать о его ходе
+ * нечего. Плейтест 2026-10-03: убитый хобгоблин каждый раунд «завершал ход».
+ * Герой на нуле не выбывший: его ход — спасбросок от смерти.
+ */
+function defeatedEnemy(state, id) {
+  const expected = String(id || '')
+  const enemy = (state?.enemies ?? []).find((candidate) => String(candidate.id ?? '') === expected)
+  return Boolean(enemy) && Number(enemy.hp) <= 0
+}
+
+/**
+ * Причина конца боя — служебный код (`enemies_defeated`, `party_defeated`…),
+ * а читает её игрок. Плейтест 2026-10-03: «Столкновение завершено: resolved».
+ * Незнакомый код не печатается: лучше общее «исход подтверждён», чем латиница.
+ */
+const ENCOUNTER_END_TEXT = Object.freeze({
+  resolved: 'исход подтверждён',
+  victory: 'победа',
+  enemies_defeated: 'противники повержены',
+  party_defeated: 'отряд пал',
+  party_incapacitated: 'отряд не может продолжать бой',
+  surrendered: 'противник сдался',
+  truce: 'стороны заключили перемирие',
+  parley: 'стороны договорились',
+  fled: 'противник бежал',
+})
+
+/**
+ * @param {unknown} reason
+ * @returns {string}
+ */
+export function encounterEndText(reason) {
+  const code = String(reason ?? '').trim()
+  if (Object.hasOwn(ENCOUNTER_END_TEXT, code)) return ENCOUNTER_END_TEXT[/** @type {keyof typeof ENCOUNTER_END_TEXT} */ (code)]
+  // Свободный русский текст ведущего (ruling) проходит как есть.
+  return /[а-яё]/iu.test(code) && !/[a-z]/iu.test(code) ? code.slice(0, 120) : ENCOUNTER_END_TEXT.resolved
+}
+
+const MASCULINE_CONSONANT = /[бвгджзклмнпрстфхцчшщ]$/u
+
+/**
+ * Винительный падеж имени цели для «атакует …»: «Разбойника 1», «Гоблина-воина»,
+ * «Гиену». Склоняется только однословное имя (через дефис — по частям, номер
+ * не трогается) с однозначным окончанием: мужское на согласную и женское на
+ * «-а/-я». Многословные имена, мягкий знак и прочее остаются как есть —
+ * лучше «атакует Тень», чем «атакует Теня». Плейтест 2026-10-02: «атакует
+ * Разбойник 1».
+ *
+ * @param {string} name
+ * @returns {string}
+ */
+export function accusativeName(name) {
+  const match = /^([А-ЯЁа-яё]+(?:-[А-ЯЁа-яё]+)*)(\s+\d+)?$/u.exec(String(name ?? '').trim())
+  if (!match) return String(name ?? '')
+  const parts = match[1].split('-')
+  const declined = parts.map((part) => {
+    const lower = part.toLocaleLowerCase('ru')
+    if (MASCULINE_CONSONANT.test(lower)) return `${part}а`
+    if (/[^и]а$/u.test(lower)) return `${part.slice(0, -1)}у`
+    if (/я$/u.test(lower) && lower.length > 2) return `${part.slice(0, -1)}ю`
+    return null
+  })
+  if (declined.some((part) => part == null)) return String(name ?? '')
+  return `${declined.join('-')}${match[2] ?? ''}`
+}
+
 function tacticalActorIsEnemy(state, id) {
   const expected = String(id || '')
   return (state?.enemies ?? []).some((candidate) => String(candidate.id ?? candidate.actor_id ?? '') === expected)
@@ -202,7 +270,7 @@ function tacticalNarrationLines(events, state) {
       const names = (payload.encounter?.enemies ?? []).map((enemy) => String(enemy?.name ?? '')).filter(Boolean).slice(0, 12)
       meaningful.push(`На поле появляются противники: ${names.join(', ')}.`)
     } else if (event.event_type === 'EncounterEnded') {
-      meaningful.push(`Столкновение завершено: ${String(payload.reason ?? payload.outcome ?? 'resolved')}.`)
+      meaningful.push(`Столкновение завершено: ${encounterEndText(payload.reason ?? payload.outcome)}.`)
     } else if (event.event_type === 'CombatStarted') {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
       const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))
@@ -259,8 +327,8 @@ function tacticalNarrationLines(events, state) {
           : payload.critical ? 'критическое попадание' : 'попадание'
         : 'промах'
       meaningful.push(targetIsEnemy
-        ? `${actor} атакует ${target}${reason}: ${outcome}.`
-        : `${actor} атакует ${target}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
+        ? `${actor} атакует ${accusativeName(target)}${reason}: ${outcome}.`
+        : `${actor} атакует ${accusativeName(target)}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
     } else if (event.event_type === 'NpcItemUsed') {
       // Подпись приходит готовой из закрытой таблицы тактик
       // (`NPC_ITEM_TACTICS`, `server/npc-equipment.mjs`) и намеренно
@@ -386,6 +454,13 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target} приходит в сознание с 1 ОЗ после необходимого времени покоя.`)
     } else if (event.event_type === 'HealingApplied' && payload.spell_id === 'aura-of-life') {
       meaningful.push(`Аура жизни возвращает ${target} 1 ОЗ в начале хода.`)
+    } else if (event.event_type === 'HealingApplied' && Number(payload.applied_amount) > 0) {
+      // Лечение молчало: хроника писала «творит заклинание «Лечащее слово»», и
+      // сколько вернулось, игрок искал в листе. Свои ОЗ отряд видит числом,
+      // чужие — качественно, как и урон.
+      meaningful.push(targetIsEnemy
+        ? `${target} восстанавливает силы.`
+        : `${target} восстанавливает ${Number(payload.applied_amount)} ОЗ; ОЗ ${Number(payload.hp_before) || 0} → ${Number(payload.hp_after) || 0}.`)
     } else if (event.event_type === 'HitPointMaximumReductionPrevented') {
       meaningful.push(`Аура жизни защищает максимум ОЗ ${target} от уменьшения.`)
     } else if (event.event_type === 'HitPointMaximumReduced') {
@@ -401,7 +476,7 @@ function tacticalNarrationLines(events, state) {
     } else if (event.event_type === 'HeroDied') {
       meaningful.push(partyFailed
         ? `${target} погибает. Последний герой отряда пал, и история завершилась поражением.`
-        : `${target} погибает. Его судьбу нужно разрешить: воскресить героя или заменить новым.`)
+        : `${target} погибает. Судьбу героя нужно разрешить: воскресить или заменить новым.`)
     } else if (event.event_type === 'HeroResurrected') {
       meaningful.push(`${target} возвращается к жизни с 1 ОЗ.`)
     } else if (event.event_type === 'HeroReplaced') {
@@ -534,10 +609,14 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(String(payload.line || `${String(payload.beast_name || 'Зверь')} отгоняет мелкую тварь.`))
     } else if (event.event_type === 'CombatEnded') {
       meaningful.push(`Бой завершён в раунде ${Number(payload.round) || 1}.`)
+    } else if (event.event_type === 'TurnEnded' && payload.auto_skip_reason === 'turn-timeout') {
+      // Пропуск по часам — событие для стола, а не служебная строка: игрок
+      // должен понять, почему за него ничего не сделано.
+      meaningful.push(`${actor}: время хода вышло, ход пропущен.`)
     } else if (event.event_type === 'TurnEnded') {
-      turns.push(`${actor} завершает ход.`)
+      if (!defeatedEnemy(state, event.actor_id)) turns.push(`${actor} завершает ход.`)
     } else if (event.event_type === 'TurnStarted') {
-      turns.push(`Начинается ход ${target}, раунд ${Number(payload.round) || 1}.`)
+      if (!defeatedEnemy(state, targetId)) turns.push(`Начинается ход ${target}, раунд ${Number(payload.round) || 1}.`)
     }
   }
   // Небо дописывается последним и в порядке приоритета не участвует: сначала

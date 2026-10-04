@@ -76,6 +76,7 @@ function CharacterDevelopmentWizard({
   stagedSetup,
   levelUpRequested,
   completed = false,
+  review,
   targetLevel,
   saving,
   valid,
@@ -93,6 +94,8 @@ function CharacterDevelopmentWizard({
   stagedSetup: boolean
   levelUpRequested: boolean
   completed?: boolean
+  /** Итоговая подготовка последнего уровня: сохранить выбор или пропустить. */
+  review?: string
   targetLevel: number
   saving: boolean
   valid: boolean
@@ -109,7 +112,7 @@ function CharacterDevelopmentWizard({
   useEffect(() => { mainRef.current?.scrollTo({ top: 0, behavior: 'auto' }) }, [draft.level, stage])
   const finish = (advance: boolean) => { void onFinish(advance) }
   const message = completed ? 'Все обязательные выборы сохранены. Герой готов к приключению.' : notice || (valid
-    ? stagedSetup ? draft.level >= targetLevel ? `Выбор уровня ${draft.level} готов. Можно завершить подготовку.` : `Выбор уровня ${draft.level} готов. Следующий шаг — уровень ${draft.level + 1}.`
+    ? review ? review : stagedSetup ? draft.level >= targetLevel ? `Выбор уровня ${draft.level} готов. Можно завершить подготовку.` : `Выбор уровня ${draft.level} готов. Следующий шаг — уровень ${draft.level + 1}.`
       : levelUpRequested ? 'Проверьте выборы и подтвердите повышение уровня.' : 'Изменения можно сохранить сейчас или применить при повышении уровня.'
     : hint)
 
@@ -141,7 +144,10 @@ function CharacterDevelopmentWizard({
         <div className={notice || !valid ? 'creation-error' : ''} role={notice || !valid ? 'alert' : undefined}>{message}</div>
         {completed ? <span><button type="button" className="primary" onClick={onClose}>К приключению</button></span> : <span>
           <button type="button" disabled={saving || currentIndex === 0} onClick={() => onStageChange(stages[currentIndex - 1]?.id ?? stage)}><ArrowLeft size={15} />Назад</button>
-          {last ? <>
+          {last ? review ? <>
+            <button type="button" disabled={saving} onClick={onClose}>Пропустить</button>
+            <button type="button" className="primary" disabled={saving} onClick={() => finish(false)}><Check size={15} />Сохранить выбор</button>
+          </> : <>
             {!stagedSetup && !levelUpRequested && <button type="button" disabled={saving} onClick={() => finish(false)}>Сохранить выборы</button>}
             {!stagedSetup && !levelUpRequested && <button type="button" className="primary" disabled={saving} onClick={() => finish(true)}><Sparkles size={15} />Повысить уровень</button>}
             {(stagedSetup || levelUpRequested) && <button type="button" className="primary" disabled={saving} onClick={() => finish(true)}><Sparkles size={15} />{stagedSetup ? draft.level >= targetLevel ? 'Завершить подготовку' : 'Сохранить и продолжить' : 'Подтвердить повышение'}</button>}
@@ -204,7 +210,19 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
   const subclassValid = !subclassUnlocked || Boolean(draft.subclass)
   const abilityScoreChoiceLevels = classKey === 'fighter' ? [4, 6, 8, 12] : classKey === 'rogue' ? [4, 8, 10, 12] : [4, 8, 12]
   const stagedSetup = player.characterSetupStage === 'leveling'
-  const setupTargetLevel = Math.max(draft.level, Math.min(12, Number(targetLevel) || draft.level))
+  // Сервер закрывает поэтапное создание сразу после повышения до стартового
+  // уровня: подготовка заклинаний не обязательна, и мастер прыгал на «Герой
+  // готов», не показав новые круги (боевой плейтест 2026-10-03). Последний
+  // уровень открывается шагом магии, пока у заклинателя есть свободные места.
+  // Счёт идёт по сохранённому листу, а не по черновику, чтобы шаг не исчезал,
+  // пока игрок отмечает заклинания.
+  const savedPreparedLeveled = developmentSpells.filter((spell) => spell.level > 0 && (player.preparedSpellIds ?? []).includes(spell.id)).length
+  const finalPreparationReview = startedAsSetup.current && !player.characterSetupRequired && player.level >= targetLevel
+    && Boolean(spellRules && spellRules.mode !== 'known' && savedPreparedLeveled < spellRules.preparedLimit)
+  // Зависимость от player обязательна: эффект выше сбрасывает шаг на «Класс»
+  // при каждом обновлении листа, а после повышения их приходит несколько.
+  useEffect(() => { if (finalPreparationReview) setDevelopmentStage('spells') }, [finalPreparationReview, player])
+  const setupTargetLevel =Math.max(draft.level, Math.min(12, Number(targetLevel) || draft.level))
   const stagedAbilityScoreLevel = abilityScoreChoiceLevels.find((level) => level <= draft.level && !draft.abilityScoreIncreases?.[String(level)] && !draft.levelFeats?.[String(level)]) ?? null
   const [abilityScoreChoice, setAbilityScoreChoice] = useState<string[]>([])
   const [improvementMode, setImprovementMode] = useState<'abilities' | 'feat'>('abilities')
@@ -403,7 +421,7 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
     { label: 'Уровень', value: stagedSetup ? `${draft.level} из ${setupTargetLevel}` : `${draft.level}` },
     { label: 'Подкласс', value: draft.subclass || (subclassUnlocked ? 'нужно выбрать' : 'ещё не открыт') },
     { label: 'Навыки', value: classSkillRules ? `${selectedClassSkills.length}/${classSkillRules.choiceCount}` : 'не требуется' },
-    ...(spellRules ? [{ label: 'Магия', value: `${knownCantrips} заговоров · ${knownLeveled} заклинаний` }] : []),
+    ...(spellRules ? [{ label: 'Магия', value: `заговоры ${knownCantrips} · ${spellRules.mode === 'known' ? `известно ${knownLeveled}` : `подготовлено ${preparedLeveled}`}` }] : []),
   ]
   const developmentContent = <div className="development-stage-content">
     {developmentStage === 'class' && <section className="advancement-block development-stage-intro">
@@ -483,6 +501,24 @@ export function CharacterEditor({ player, rulesetId, phbCatalog, targetLevel = p
       </> : <p className="advancement-empty">Заклинания появятся здесь автоматически, если выбран класс-заклинатель.</p>}
     </section>}
   </div>
+
+  if (finalPreparationReview) return <CharacterDevelopmentWizard
+    draft={draft}
+    stages={developmentStages}
+    stage={developmentStage}
+    onStageChange={setDevelopmentStage}
+    stagedSetup={false}
+    levelUpRequested={false}
+    review={`Уровень ${player.level}: подготовлено ${preparedLeveled} из ${spellRules?.preparedLimit ?? 0}. Подготовьте заклинания нового уровня или поменяйте выбор позже в листе героя.`}
+    targetLevel={setupTargetLevel}
+    saving={saving}
+    valid={developmentValid}
+    notice={notice}
+    hint={developmentHint}
+    onFinish={saveCharacter}
+    onClose={onClose}
+    summary={developmentSummary}
+  >{developmentContent}</CharacterDevelopmentWizard>
 
   if (startedAsSetup.current && !player.characterSetupRequired && player.level >= targetLevel) return <CharacterDevelopmentWizard
     draft={draft}

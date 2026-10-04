@@ -1036,6 +1036,22 @@ function spawnBounds(cells, party) {
 }
 
 /**
+ * Стороны клетки, закрытые для шага, в форме поля `walls` сборщика: тонкая
+ * стена **и окно**. Окно держит шаг так же, как стена; прежде сборщик его не
+ * видел, и поиск появления «проходил» сквозь окно в запертый дом — враги
+ * вставали внутри, в двух клетках от отряда за стеной (сквозной прогон MVP).
+ *
+ * @param {{ walls?: unknown, windows?: unknown }} cell клетка `scene.cells`
+ * @returns {'e'|'s'|'es'|''}
+ */
+export function encounterBarrierSides(cell) {
+  const sides = `${typeof cell?.walls === 'string' ? cell.walls : ''}${typeof cell?.windows === 'string' ? cell.windows : ''}`
+  const east = sides.includes('e')
+  const south = sides.includes('s')
+  return east && south ? 'es' : east ? 'e' : south ? 's' : ''
+}
+
+/**
  * Стоит ли тонкая стена между соседними клетками. Стена записана у западной
  * или северной клетки пары: восточное ребро — `e`, южное — `s`.
  *
@@ -1055,7 +1071,19 @@ function thinWallBetween(cellsByKey, a, b) {
   return false
 }
 
+/**
+ * Клетки появления противника. Сначала — по эту сторону дверей: засада на
+ * улице не начинается с пауков в запертом доме за стеной, к которым отряду
+ * не подойти, не открыв дверь (сквозной прогон MVP после поселения v5: бой
+ * не кончался — враги стояли в доме в двух клетках от героев). Только если по
+ * эту сторону места нет вовсе — тесная комната, — враг может стоять за дверью.
+ */
 function safePlacementCells(cells, party, bounds = null) {
+  const sameArea = placementCellsWithin(cells, party, bounds, { throughDoors: false })
+  return sameArea.length ? sameArea : placementCellsWithin(cells, party, bounds, { throughDoors: true })
+}
+
+function placementCellsWithin(cells, party, bounds, { throughDoors }) {
   const occupied = new Set(party.map(positionKey))
   const walkable = new Map(cells
     .filter((cell) => cell.revealed && WALKABLE_TYPES.has(cell.type) && cell.occupied !== true)
@@ -1067,6 +1095,9 @@ function safePlacementCells(cells, party, bounds = null) {
     const key = positionKey(current)
     if (reachable.has(key)) continue
     reachable.add(key)
+    // Клетка двери досягаема, но сквозь неё поиск не идёт: за дверью — уже
+    // другое помещение.
+    if (!throughDoors && current.type === 'door' && !party.some((member) => positionKey(member) === key)) continue
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const neighbor = walkable.get(`${current.x + dx},${current.y + dy}`)
       // Сквозь тонкую стену враг к отряду не пройдёт — эта клетка не «рядом».
@@ -1078,6 +1109,8 @@ function safePlacementCells(cells, party, bounds = null) {
     && cell.revealed
     && WALKABLE_TYPES.has(cell.type)
     && reachable.has(positionKey(cell))
+    // Клетка двери может лежать по ту сторону полотна; в проёме врагу не место.
+    && (throughDoors || cell.type !== 'door')
     && cell.feature == null
     && cell.occupied !== true
     && !occupied.has(positionKey(cell))

@@ -20,7 +20,8 @@ import { applyRoomFloors, buildingWallStyleFor } from './room-floors.mjs'
  * одинаковых домов. Его результат всё ещё обычная TacticalMap, поэтому старые
  * проекция, движение, реквизит и сохранение не получают второго формата.
  */
-export const SETTLEMENT_GENERATOR = Object.freeze({ id: 'settlement-layout', version: '4' })
+// v5 (2026-10-03): дверь дома в глубине — по тропе до улицы, и тропа проложена.
+export const SETTLEMENT_GENERATOR = Object.freeze({ id: 'settlement-layout', version: '5' })
 
 const TOPOLOGIES = new Set(['organic', 'linear', 'crossroads', 'market', 'courtyard', 'harbor', 'river', 'terraced', 'gate'])
 const CLIMATES = new Set(['temperate', 'arid', 'cold', 'wetland'])
@@ -72,7 +73,9 @@ function designFor(theme, seed, input = {}) {
   const density = DENSITIES.has(input.density) ? input.density : random() < 0.25 ? 'sparse' : random() < 0.75 ? 'mixed' : 'dense'
   const buildingUse = BUILDING_USES.has(input.building_use) ? input.building_use : /таверн|трактир/u.test(value) ? 'tavern' : /рынок|торгов|лавк/u.test(value) ? 'shop' : 'dwelling'
   const scale = ['village', 'town', 'city'].includes(input.scale) ? input.scale : ''
-  return { topology, climate, architecture: pickArchitecture(theme, input), density, building_use: buildingUse, scale }
+  // Площадь посреди деревни: её просит центр программы сцены — навес,
+  // колодец, костёр, вокруг которых стоят люди (`server/scene-program-layout.mjs`).
+  return { topology, climate, architecture: pickArchitecture(theme, input), density, building_use: buildingUse, scale, square: input.square === true }
 }
 
 function materials(design, theme) {
@@ -610,7 +613,11 @@ function frontageSpecs(map, random, target) {
   // Сначала переулки: дом у переулка короче улицы, а главная улица добирает
   // промежутки между ними.
   const laneFirst = random() < 0.5
-  fronts.sort((left, right) => (laneFirst ? Number(Boolean(right.dx)) - Number(Boolean(left.dx)) : 0)
+  // Дворы у площади — первыми: дом у площади смотрит на неё дверью, а не
+  // на боковую улицу (план карт, «дома к площади»).
+  const onSquare = (/** @type {{x: number, y: number}} */ front) => Number(cellAt(map, front.x, front.y)?.zone === 'square')
+  fronts.sort((left, right) => onSquare(right) - onSquare(left)
+    || (laneFirst ? Number(Boolean(right.dx)) - Number(Boolean(left.dx)) : 0)
     || sideOrder.indexOf(`${left.dy},${left.dx}`) - sideOrder.indexOf(`${right.dy},${right.dx}`)
     || (left.dy ? left.x - right.x || left.y - right.y : left.y - right.y || left.x - right.x))
   for (const front of fronts) {
@@ -660,12 +667,9 @@ function backRowSpecs(map, specs, random, target) {
     for (const cell of shapeCells(spec)) for (let ry = -2; ry <= 2; ry += 1) for (let rx = -2; rx <= 2; rx += 1) occupied.add(key(cell.x + rx, cell.y + ry))
   }
   specs.forEach(reserve)
-  /** @type {Array<{x: number, y: number}>} */
-  const streets = []
-  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
-    if (['street', 'square'].includes(cellAt(map, x, y)?.zone ?? '')) streets.push({ x, y })
-  }
-  if (!streets.length) return []
+  if (!map.zones.some((zone) => zone.id === 'street' || zone.id === 'square')) return []
+  // Стены домов — препятствие для тропы: она обходит соседей, а не идёт сквозь.
+  const walls = new Set(specs.flatMap((spec) => shapeCells(spec).map(cellKey)))
   const result = []
   const sizes = shuffled([[7, 5], [6, 5], [5, 6], [5, 7], [6, 6]], random)
   for (let y = 2; y < map.height - 6 && specs.length + result.length < target; y += 1) {
@@ -673,20 +677,139 @@ function backRowSpecs(map, specs, random, target) {
       for (const [w, h] of sizes) {
         const spec = makeSpec(x, y, w, h)
         if (!canPlace(spec, occupied, map)) continue
-        // Дверь — посередине стороны, обращённой к ближайшей улице.
-        const center = { x: x + (w - 1) / 2, y: y + (h - 1) / 2 }
-        const nearest = streets.reduce((best, cell) => (Math.abs(cell.x - center.x) + Math.abs(cell.y - center.y) < Math.abs(best.x - center.x) + Math.abs(best.y - center.y) ? cell : best))
-        const dx = nearest.x - center.x
-        const dy = nearest.y - center.y
-        if (Math.abs(dx) > Math.abs(dy)) { spec.doorX = dx > 0 ? x + w - 1 : x; spec.doorY = y + Math.floor(h / 2) }
-        else { spec.doorX = x + Math.floor(w / 2); spec.doorY = dy > 0 ? y + h - 1 : y }
+        // Дверь — на той стороне, откуда настоящая тропа до улицы короче
+        // всего. Прежде дверь смотрела на ближайшую клетку улицы по прямой,
+        // и у дома в углу деревни она выходила в чужой двор, а тропы не было
+        // вовсе (замечание владельца 2026-10-03: «Дом 9» без дорожки).
+        const own = new Set(shapeCells(spec).map(cellKey))
+        const blocked = new Set([...walls, ...own])
+        let best = null
+        for (const side of doorSides(spec)) {
+          const route = routeToRoad(map, side.outside, blocked)
+          if (!route) continue
+          // Дверь к краю карты — в забор околицы, и тропа шла бы вдоль края:
+          // такая сторона дороже, чем тропа на шесть клеток длиннее.
+          const atEdge = side.outside.x <= 1 || side.outside.y <= 1 || side.outside.x >= map.width - 2 || side.outside.y >= map.height - 2
+          const cost = route.length + (atEdge ? EDGE_DOOR_PENALTY : 0)
+          if (!best || cost < best.cost) best = { side, route, cost }
+        }
+        if (!best || best.route.length > MAX_DOOR_PATH) continue
+        spec.doorX = best.side.door.x
+        spec.doorY = best.side.door.y
         result.push(spec)
         reserve(spec)
+        for (const cell of own) walls.add(cell)
         break
       }
     }
   }
   return result
+}
+
+/** Длиннее этой тропы дом в глубине не ставится: к нему пришлось бы идти через полдеревни. */
+const MAX_DOOR_PATH = 14
+
+/** Цена двери, что смотрит на край карты, — в клетках тропы. */
+const EDGE_DOOR_PENALTY = 6
+
+/**
+ * Середины четырёх сторон дома: клетка двери в стене и клетка снаружи.
+ * @param {ReturnType<typeof makeSpec>} spec
+ */
+function doorSides(spec) {
+  const midX = spec.x + Math.floor(spec.w / 2)
+  const midY = spec.y + Math.floor(spec.h / 2)
+  return [
+    { door: { x: midX, y: spec.y + spec.h - 1 }, outside: { x: midX, y: spec.y + spec.h } },
+    { door: { x: midX, y: spec.y }, outside: { x: midX, y: spec.y - 1 } },
+    { door: { x: spec.x, y: midY }, outside: { x: spec.x - 1, y: midY } },
+    { door: { x: spec.x + spec.w - 1, y: midY }, outside: { x: spec.x + spec.w, y: midY } },
+  ]
+}
+
+/** Улица, площадь или уже проложенная тропа. */
+function roadAt(map, x, y) {
+  return ['street', 'square', 'path'].includes(cellAt(map, x, y)?.zone ?? '')
+}
+
+/**
+ * Кратчайшая тропа по открытой земле от клетки до улицы: от `start` до первой
+ * клетки, что сама дорога или стоит к ней вплотную. `null` — пути нет.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}} start
+ * @param {Set<string>} blocked клетки построек
+ * @returns {Array<{x: number, y: number}>|null}
+ */
+function routeToRoad(map, start, blocked) {
+  const open = (/** @type {number} */ x, /** @type {number} */ y) => {
+    const cell = cellAt(map, x, y)
+    return Boolean(cell?.passable) && cell?.surface !== 'water' && !blocked.has(key(x, y))
+      && x > 0 && y > 0 && x < map.width - 1 && y < map.height - 1
+  }
+  const touchesRoad = (/** @type {number} */ x, /** @type {number} */ y) => roadAt(map, x, y)
+    || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => roadAt(map, x + dx, y + dy))
+  if (!open(start.x, start.y)) return null
+  // Клетка у края карты втрое дороже: тропа идёт между домами, а не вдоль
+  // забора околицы. Поиск — Дейкстра по малым целым ценам, по корзинам.
+  const costOf = (/** @type {number} */ x, /** @type {number} */ y) => (x <= 1 || y <= 1 || x >= map.width - 2 || y >= map.height - 2 ? 3 : 1)
+  const previous = new Map([[cellKey(start), null]])
+  const best = new Map([[cellKey(start), 0]])
+  /** @type {Array<Array<{x: number, y: number}>>} */
+  const buckets = [[start]]
+  for (let distance = 0; distance < buckets.length; distance += 1) {
+    for (const current of buckets[distance] ?? []) {
+      if (best.get(cellKey(current)) !== distance) continue
+      if (touchesRoad(current.x, current.y)) {
+        const route = []
+        for (let step = current; step; step = previous.get(cellKey(step))) route.unshift(step)
+        return route
+      }
+      for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+        const next = { x: current.x + dx, y: current.y + dy }
+        if (!open(next.x, next.y)) continue
+        const total = distance + costOf(next.x, next.y)
+        if (total >= (best.get(cellKey(next)) ?? Number.POSITIVE_INFINITY)) continue
+        best.set(cellKey(next), total)
+        previous.set(cellKey(next), current)
+        ;(buckets[total] ??= []).push(next)
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Тропа от каждой двери дома, которая не выходит прямо к улице: клетки
+ * открытой земли до ближайшей улицы получают зону `path` и материал улицы.
+ * Обстановку на тропу расстановка не ставит — у зоны нет плана, — поэтому
+ * тропа остаётся проходом.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} material
+ * @returns {number} сколько троп проложено
+ */
+function layDoorPaths(map, material) {
+  const buildingCells = new Set()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (!cell) continue
+    if (String(cell.zone).startsWith('building-') || (!cell.passable && cell.zone === '')) buildingCells.add(key(x, y))
+  }
+  let laid = 0
+  for (const door of map.doors) {
+    if (!/^building-\d+-door$/u.test(door.id)) continue
+    const outside = [{ x: door.x, y: door.y }, edgeNeighbor(door)]
+      .find((point) => !String(cellAt(map, point.x, point.y)?.zone ?? '').startsWith('building-') && cellAt(map, point.x, point.y)?.passable)
+    if (!outside) continue
+    const route = routeToRoad(map, outside, buildingCells)
+    // Дверь у самой улицы (палисадник в клетку) тропы не требует.
+    if (!route || route.length === 1) continue
+    if (!map.zones.some((zone) => zone.id === 'path')) addZone(map, { id: 'path', kind: 'exterior', material, lightLevel: 'bright', floorDirection: 'horizontal' })
+    for (const point of route) if (!roadAt(map, point.x, point.y)) setCell(map, point.x, point.y, { material, zone: 'path', revealed: true })
+    laid += 1
+  }
+  return laid
 }
 
 /**
@@ -733,6 +856,29 @@ function paintVillageLanes(map, random, material) {
     }
   }
   return painted
+}
+
+/**
+ * Площадь посреди деревни: прямоугольник 9×7 вокруг клетки улицы, ближайшей
+ * к середине карты. Деревня с навесом или колодцем в центре сцены прежде
+ * ставила его прямо на проезжую улицу — площади у деревни не было вовсе.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} material
+ */
+function carveVillageSquare(map, material) {
+  const middle = { x: Math.floor(map.width / 2), y: Math.floor(map.height / 2) }
+  let center = null
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (cellAt(map, x, y)?.zone !== 'street') continue
+    const distance = Math.abs(x - middle.x) + Math.abs(y - middle.y)
+    if (!center || distance < center.distance) center = { x, y, distance }
+  }
+  if (!center) return
+  for (let y = center.y - 3; y <= center.y + 3; y += 1) for (let x = center.x - 4; x <= center.x + 4; x += 1) {
+    if (x < 2 || y < 2 || x > map.width - 3 || y > map.height - 3) continue
+    paintSquare(map, x, y, material)
+  }
 }
 
 /** Наименьший размер карты поселения по масштабу. */
@@ -1094,7 +1240,8 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   const urban = chosen.scale === 'town' || chosen.scale === 'city'
   // Площадь посреди поселения — площадь, а не «внутренний двор»: так
   // называется двор внутри одного дома.
-  if (urban || chosen.topology === 'market' || chosen.topology === 'courtyard') {
+  const villageSquare = chosen.square && !urban && chosen.topology !== 'market' && chosen.topology !== 'courtyard'
+  if (urban || chosen.topology === 'market' || chosen.topology === 'courtyard' || villageSquare) {
     addZone(map, { id: 'square', kind: 'exterior', material: materialsForMap.street, lightLevel: 'bright', floorDirection: 'horizontal', label: chosen.topology === 'market' || urban ? 'Торговая площадь' : 'Площадь' })
   }
   // Река течёт: у неё своя фактура струй, у гавани — прежняя стоячая вода.
@@ -1109,6 +1256,9 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   // Деревня: улицы прокладывает прежний планировщик своей топологии, а дома
   // ставятся вдоль них; если по улице встало меньше, остаётся прежний набор.
   const legacy = urban && planner === 'street' ? [] : buildingSpecs(map, chosen, random)
+  // Площадь вырезается по уже проложенной улице и до домов: дома встают
+  // вдоль улиц и площади, поэтому дома у площади смотрят на неё дверью.
+  if (villageSquare) carveVillageSquare(map, materialsForMap.street)
   // Редкая застройка — хутор или выселки: три-пять дворов, а не деревня.
   const villageTarget = chosen.density === 'dense' ? 14 : chosen.density === 'sparse' ? 5 : 12
   const villageStreet = planner === 'street' && !urban && chosen.scale === 'village'
@@ -1148,6 +1298,8 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
     const cell = cellAt(map, x, y)
     if (cell?.zone === 'common' && (x === 0 || x === safeWidth - 1 || y === 0 || y === safeHeight - 1)) setCell(map, x, y, { passable: false, material: materialsForMap.surface, zone: '' })
   }
+  // К каждой двери, что не выходит прямо на улицу, — тропа (версия 5).
+  layDoorPaths(map, materialsForMap.street)
   const entranceRow = Array.from({ length: safeHeight }, (_, y) => y)
     .filter((y) => cellAt(map, 1, y)?.zone === 'street')
     .sort((left, right) => Math.abs(left - centerY) - Math.abs(right - centerY))[0] ?? centerY

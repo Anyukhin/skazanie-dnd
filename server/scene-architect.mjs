@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { publicAdventureMemory } from './adventure-director.mjs'
 import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
-import { classifyPartyDecision } from './party-exit-intent.mjs'
+import { classifyPartyDecision, objectiveRemainder } from './party-exit-intent.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { normalizeSceneMapDesign, sceneMapDesignFor } from './scene-map-design.mjs'
@@ -11,6 +11,7 @@ import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { SCENE_THEME_IDS } from './scene-themes.mjs'
 import { worldLocationById } from './world-map.mjs'
+import { normalizeGmSecrets } from './world-memory.mjs'
 
 /**
  * Один идентификатор роли на код и на новые трассы. Прежнее имя
@@ -21,7 +22,7 @@ import { worldLocationById } from './world-map.mjs'
 export const SCENE_ARCHITECT_AGENT_ID = 'scene_architect'
 export const LEGACY_SCENE_ARCHITECT_AGENT_ID = 'AgentCartographer'
 
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v6.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/map_architect/v8.txt', import.meta.url)), 'utf8')
 
 function clean(value, maximum = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -405,7 +406,14 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
     : ''
   const knownKind = knownDestination?.kind ?? chosen?.kind ?? ''
   const location = destination.charAt(0).toLocaleUpperCase('ru') + destination.slice(1)
-  const chapter = Math.max(1, Number(state.adventure?.chapter) || 1) + 1
+  // Отряд пришёл туда, куда звала цель сцены (вариант А владельца,
+  // 2026-10-03): это шаг той же главы, цель — её остаток. Если приход и был
+  // всей целью, она выполнена. Отказ от задания и транзит к дальней точке
+  // сюда не относятся.
+  const remainder = abandonsQuest || onwardDestination ? null : objectiveRemainder(state.scene?.objective, location)
+  const continues = Boolean(remainder)
+  const reached = remainder === ''
+  const chapter = Math.max(1, Number(state.adventure?.chapter) || 1) + (continues ? 0 : 1)
   const oldHook = clean(state.adventure?.currentHook, 240)
   const oldObjective = clean(state.scene?.objective, 160)
   const requestedHook = /печат[ьи]\s+архивариуса/iu.test(action) ? 'Печать архивариуса остаётся незавершённой нитью и может открыть другой путь.' : ''
@@ -451,21 +459,29 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
     location,
     ...(knownDestination?.id ? { location_id: knownDestination.id } : {}),
     mood: streets ? 'Шумная передышка за городскими стенами, где опасность прячется среди людей' : 'Неизведанное место, в котором путь ещё предстоит найти',
-    objective: onwardDestination
+    objective: continues
+      ? remainder
+      : onwardDestination
       ? `Продолжить путь из ${location} к «${onwardDestination}»`
       : abandonsQuest
       ? `Осмотреться в ${location} и найти новую цель`
       : oldHook ? `Найти в ${location} другой путь к разгадке: ${oldHook}` : `Осмотреться в ${location} и найти другой путь`,
-    transition: `Отряд отступает из «${from}» и следует принятому решению: ${clean(decision, 220)}.`,
+    transition: continues || reached
+      ? `Отряд идёт из «${from}» туда, куда звала цель, — к «${location}».`
+      : `Отряд отступает из «${from}» и следует принятому решению: ${clean(decision, 220)}.`,
     arrival: streets ? `Дорога выводит героев к воротам. За ними открываются улицы локации «${location}» — с площадями, переулками и местами, где можно искать сведения.` : `Путь из «${from}» приводит героев в новую локацию — «${location}».`,
     hook,
     theme: plannedMap.theme,
     danger: plannedMap.danger,
     outcome: abandonsQuest
       ? `Отряд покинул «${from}», отказавшись от прежнего задания.`
-      : `Отряд покинул «${from}», не закрыв прежнюю сюжетную нить.`,
-    objective_status: abandonsQuest ? 'abandoned' : 'unresolved',
-    carry_unresolved: !abandonsQuest,
+      : continues
+        ? `Отряд добрался до «${location}»; дело продолжается здесь.`
+        : reached
+          ? `Отряд добрался до «${location}» — цель достигнута.`
+          : `Отряд покинул «${from}», не закрыв прежнюю сюжетную нить.`,
+    objective_status: abandonsQuest ? 'abandoned' : continues ? 'continued' : reached ? 'completed' : 'unresolved',
+    carry_unresolved: !abandonsQuest && !continues && !reached,
     map: {
       layout: plannedMap.layout,
       scale: plannedMap.scale,
@@ -481,6 +497,10 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
     },
   }
 }
+
+// «Прежняя цель остаётся незавершённой» — то, что модель писала при приходе
+// туда, куда звала сама цель (живой прогон 2026-10-02 и 2026-10-03).
+const UNFINISHED_GOAL = /незаверш|не\s+закры|брошен|оставлен[а-яё]*\s+(?:цел|задан|нит)/iu
 
 function normalizePlan(value, fallback) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
@@ -504,23 +524,35 @@ function normalizePlan(value, fallback) {
   const arrival = clean(source.arrival, 500)
   const transition = clean(source.transition, 500)
   const outcome = clean(source.outcome, 240)
+  const continued = fallback.objective_status === 'continued'
   return {
-    title: clean(source.title, 80) || fallback.title,
+    // Цель продолжается — глава та же: «Глава N+1» в заголовке модели была бы
+    // неправдой, а цель новой сцены — канонический остаток прежней.
+    title: continued && /глава\s+\d/iu.test(clean(source.title, 80)) ? fallback.title : clean(source.title, 80) || fallback.title,
     location,
     mood: clean(source.mood, 160) || fallback.mood,
-    objective: clean(source.objective, 160) || fallback.objective,
-    transition: inventedDuration.test(transition) ? 'Отряд следует подтверждённому маршруту.' : transition || fallback.transition,
+    objective: continued ? fallback.objective : clean(source.objective, 160) || fallback.objective,
+    transition: inventedDuration.test(transition) ? 'Отряд следует подтверждённому маршруту.' : continued && UNFINISHED_GOAL.test(transition) ? fallback.transition : transition || fallback.transition,
     arrival: inventedDuration.test(arrival) ? `Отряд прибывает в локацию «${location}».` : arrival || fallback.arrival,
     hook: clean(source.hook, 240) || fallback.hook,
     theme: clean(source.theme, 80) || fallback.theme,
     danger: danger.has(source.danger) ? source.danger : fallback.danger,
-    outcome: inventedDuration.test(outcome) ? fallback.outcome : outcome || fallback.outcome,
+    outcome: inventedDuration.test(outcome) || (continued && UNFINISHED_GOAL.test(outcome)) ? fallback.outcome : outcome || fallback.outcome,
     // Это следствие подтверждённого решения группы, а не творческая часть
     // ответа модели. Уход не может превратиться в «цель завершена», а явный
     // отказ — снова открыть оставленную нить.
     objective_status: fallback.objective_status,
     carry_unresolved: fallback.carry_unresolved,
     ...(levels.length ? { levels } : {}),
+    // Заготовки ведущего новой области (map_architect/v7). Хранителя у них нет:
+    // жителей сцены расставляет сервер, и называть их архитектор не вправе.
+    // Поле `secrets` вырезается из трасс и `/why` фильтром тайных ключей, а в
+    // `SceneAdvanced` не попадает — его пишет `sceneWorldMemoryEvents` скрытыми
+    // фактами.
+    ...(() => {
+      const secrets = normalizeGmSecrets(source.secrets, { limit: 3 }).map((secret) => ({ ...secret, holder: '' }))
+      return secrets.length ? { secrets } : {}
+    })(),
     map: {
       ...(typeof mapSource.theme_id === 'string' && SCENE_THEME_IDS.has(mapSource.theme_id)
         ? { theme_id: mapSource.theme_id }
@@ -716,7 +748,11 @@ export class SceneArchitectAgent {
           // Решение партии и текст разрешения — свободный текст игроков; память
           // кампании тоже могла быть записана из их слов. Всё уходит только
           // внутри UNTRUSTED_DATA, снаружи не остаётся ни одной их строки.
-          { role: 'user', content: buildDataOnlyContext({ scene_planning: { selected_party_decision: clean(decision, 500), destination_hint: resolvedDestinationHint, destination_location_id: authoritativeDestination?.id ?? null, quest_abandoned: abandonsQuest === true, ...planningBrief, full_resolution_context: clean(action, 2000) } }) },
+          { role: 'user', content: buildDataOnlyContext({ scene_planning: { selected_party_decision: clean(decision, 500), destination_hint: resolvedDestinationHint, destination_location_id: authoritativeDestination?.id ?? null, quest_abandoned: abandonsQuest === true,
+            // Отряд пришёл туда, куда звала цель: модель не должна писать
+            // «прежняя цель остаётся незавершённой» (map_architect/v7).
+            ...(fallback.objective_status === 'continued' ? { objective_continues: true, objective_after_arrival: fallback.objective } : {}),
+            ...planningBrief, full_resolution_context: clean(action, 2000) } }) },
         ],
         temperature: 0.45,
         maxTokens: 1000,

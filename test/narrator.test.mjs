@@ -238,3 +238,19 @@ test('асинхронный verdict уходит следующим ходом 
   const tail = second.slice(closingEnd)
   assert.equal(tail.includes(forged), false, 'подделка из ответа модели стоит там же, где инструкции')
 })
+
+test('этап 7 плана карт: Рассказчик не описывает то, что сцена обещала, а карта не держит', async () => {
+  const { verifyNarratorCraft } = await import('../server/narrator.mjs')
+  const brief = {
+    visible_events: [],
+    known_environment: { scene: { landmarks: [{ kind: 'well', label: 'колодец', count: 1, where: 'рядом' }], landmarks_absent: [{ kind: 'shelter', label: 'навес' }] } },
+  }
+  const base = { valid: true, violations: [] }
+  const codes = (text) => verifyNarratorCraft(text, brief, base).violations.map((violation) => violation.code)
+  assert.ok(codes('Под общим навесом шепчутся жители.').includes('ABSENT_LANDMARK_MENTIONED'), 'навеса на карте нет — описывать его нельзя')
+  assert.equal(codes('У колодца шепчутся жители.').includes('ABSENT_LANDMARK_MENTIONED'), false, 'колодец на карте есть')
+  assert.equal(codes('Площадь стоит без навеса, под дождём.').includes('ABSENT_LANDMARK_MENTIONED'), false, 'отрицание — не описание')
+  const noProgram = { visible_events: [], known_environment: { scene: {} } }
+  assert.equal(verifyNarratorCraft('Под общим навесом шепчутся жители.', noProgram, base).violations.some((violation) => violation.code === 'ABSENT_LANDMARK_MENTIONED'), false,
+    'без программы сцены прежнее поведение')
+})

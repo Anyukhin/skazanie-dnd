@@ -12,11 +12,13 @@ import { findNarratorCliches } from './narrator-craft-quality.mjs'
 import { promptForModelRole } from './model-style-profiles.mjs'
 import { npcDossiersForNarrator } from './npc-social.mjs'
 import { canonicalCombatSpellFor } from './combat-spells.mjs'
+import { accusativeName } from './combat-narration.mjs'
 import { worldClockNarration } from './weather.mjs'
 import { sceneCanonFromEnvironment, sensoryAnchorConflicts } from './scene-canon.mjs'
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
+import { requirementMention } from './scene-requirements.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v11'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v12'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v2'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
@@ -38,7 +40,7 @@ export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
 export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
 export const NARRATOR_DEFAULT_TIMEOUT_MS = 12_000
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v11.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v12.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v2.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
@@ -235,12 +237,18 @@ export function narratorResponsePlan(brief) {
     || (event?.event_type === 'DoorStateChanged' && event?.payload?.state !== 'open')) && !hasReactions
   const moment = narratorMomentFor(brief)
   const speechAct = declarationOnly ? 'acknowledge_intent' : events.length || hasReactions ? 'report_result' : 'describe_scene'
+  // Находка, записанная сервером, — и есть результат удачного поиска. Прежняя
+  // формулировка для успеха запрещала «новые находки» без исключения, и
+  // модель отвечала «новой зацепки нет» поверх подтверждённой улики.
+  const discovered = events.some(event => event?.event_type === 'WorldFactRecorded' && event?.payload?.fact?.predicate === 'discovery')
   return {
     version: 'narrator-response-plan/v2',
     mode: 'world_narration',
     speech_act: speechAct,
     must_answer: declarationOnly
       ? 'Кратко пояснить, что намерение ещё не стало выполненным действием.'
+      : discovered
+        ? 'Показать, как герой делает заявленное в player_intent, и прямо назвать находку из события WorldFactRecorded (predicate discovery) — её смысл, своими словами; сверх неё находок, сведений и согласия NPC не добавлять.'
       : freeOutcome === 'success'
         ? 'Показать, как герой делает заявленное в player_intent, и как это выглядит со стороны; новых находок, сведений и согласия NPC не добавлять.'
         : freeOutcome === 'failure'
@@ -703,21 +711,24 @@ function memoryFocusIsRecalled(narration, focus) {
 
 function memoryFocusReminder(focus, variant = 0) {
   if (!focus) return ''
+  // Имя стоит после тире, в именительном падеже: рода и падежа собеседника
+  // шаблон не знает, и «Мара Трижды-Мерная прежде говорил», «обещанию Мара»
+  // звучали в хронике живой партии 2026-10-02.
   if (focus.kind === 'promise') {
     return [
-      `Открытым остаётся обещание ${focus.label}: ${focus.cue}`,
-      `${focus.label} всё ещё связан открытым обещанием: ${focus.cue}`,
-      `Прежнее обещание от ${focus.label} не закрыто: ${focus.cue}`,
-      `Нынешний шаг возвращает к обещанию ${focus.label}: ${focus.cue}`,
+      `Открытым остаётся обещание — ${focus.label}: ${focus.cue}`,
+      `Обещание всё ещё не закрыто — ${focus.label}: ${focus.cue}`,
+      `Прежнее обещание не исполнено — ${focus.label}: ${focus.cue}`,
+      `Нынешний шаг возвращает к обещанию — ${focus.label}: ${focus.cue}`,
     ][variant % 4]
   }
   if (focus.kind === 'interaction') {
     const cue = focus.cue.replace(/[.!?]+$/u, '')
     return [
-      `${focus.label} прежде говорил: «${cue}»`,
-      `В прошлой беседе ${focus.label} оставил такую деталь: «${cue}»`,
-      `Из прежних слов ${focus.label} важно одно: «${cue}»`,
-      `Ответ ${focus.label} из прошлой встречи звучал так: «${cue}»`,
+      `Прежние слова звучат снова — ${focus.label}: «${cue}»`,
+      `Из прошлой беседы помнится — ${focus.label}: «${cue}»`,
+      `Ещё раньше было сказано — ${focus.label}: «${cue}»`,
+      `В памяти остался прежний ответ — ${focus.label}: «${cue}»`,
     ][variant % 4]
   }
   if (focus.kind === 'decision') {
@@ -1356,6 +1367,13 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
   for (const violation of contentBoundaryViolations(text, narratorContentDirectives(brief))) {
     add(violation.code, violation.message, violation.match)
   }
+  // Карта и слова говорят одно (этап 7 `docs/map-generation-plan.md`): то,
+  // что текст сцены обещал, а на карте не встало, Рассказчик не описывает.
+  const absent = brief.known_environment?.scene?.landmarks_absent
+  for (const landmark of Array.isArray(absent) ? absent : []) {
+    const mention = requirementMention(currentText, String(landmark?.kind ?? ''))
+    if (mention) add('ABSENT_LANDMARK_MENTIONED', `Повествование описывает то, чего нет на карте: ${sceneText(landmark?.label, 60)}`, mention)
+  }
   const arcRecap = narratorArcRecap(brief, { recentNarrations })
   if (!arcRecapIsPresent(text, arcRecap)) {
     add(
@@ -1644,6 +1662,15 @@ function publicSpellLabel(payload) {
   return catalogName ? `«${sceneText(catalogName, 120)}»` : 'заклинания'
 }
 
+/**
+ * «спасбросок от «Священное пламя»» — название в кавычках не склоняется, и
+ * после «от» ему нужно родовое слово (плейтест 2026-10-03).
+ */
+function spellSourceLabel(payload) {
+  const label = publicSpellLabel(payload)
+  return label.startsWith('«') ? `заклинания ${label}` : label
+}
+
 function reactionActionLabel(payload) {
   const explicit = [payload?.name, ...(Array.isArray(payload?.action_options) ? payload.action_options.map((option) => option?.name) : [])]
     .map((value) => sceneText(value, 120))
@@ -1662,7 +1689,13 @@ function reactionActionText(payload) {
  */
 function qualitativeEventSummary(event, resolveName) {
   const payload = event?.payload ?? {}
-  const named = (id, fallback) => sceneText(id ? resolveName(id) : fallback, 120)
+  // Неразрешённый идентификатор — не имя. Резолвер отдаёт сам id, если брифу
+  // участник неизвестен (призыв), и в рассказ попадало «summon-hero-slot-…
+  // завершает ход» — ещё и без цифр после чистки (плейтест 2026-10-03).
+  const named = (id, fallback) => {
+    const resolved = id ? resolveName(id) : ''
+    return sceneText(resolved && resolved !== String(id) ? resolved : fallback, 120)
+  }
   const actor = named(event?.actor_id, 'Участник')
   const target = named((event?.target_ids ?? [])[0], 'Цель')
   switch (event?.event_type) {
@@ -1681,13 +1714,14 @@ function qualitativeEventSummary(event, resolveName) {
     case 'NpcSavingThrowResolved':
     case 'SpellSavingThrowResolved': {
       const outcome = confirmedOutcome(payload, 'saved')
-      return `${target}: спасбросок от ${publicSpellLabel(payload)} ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
+      return `${target}: спасбросок от ${spellSourceLabel(payload)} ${outcome ? `завершился ${outcome}` : 'завершён; его исход пока неизвестен'}`
     }
     case 'SpellCast': return `${actor} применяет ${payload.name ? `«${sceneText(payload.name, 120)}»` : 'заклинание'}`
     case 'ConcentrationSavingThrowResolved':
       return payload.saved === true ? `${actor} сохраняет концентрацию` : `${actor} теряет концентрацию`
     case 'AttackResolved':
-      return payload.hit === true ? `${actor} поражает ${target}` : `${actor} не достигает цели атакой`
+      // «поражает Хобгоблин» — цель в винительном, если окончание однозначно.
+      return payload.hit === true ? `${actor} поражает ${accusativeName(target)}` : `${actor} не достигает цели атакой`
     case 'AreaAttackResolved':
       return `${sceneText(payload.item_name || 'Атака', 64)} поражает указанную область`
     case 'DamageApplied':
@@ -1697,6 +1731,24 @@ function qualitativeEventSummary(event, resolveName) {
         : `${target} получает урон`
     case 'HealingApplied':
       return `${target} получает лечение`
+    case 'TimeAdvanced':
+      // Сводка «Проходит 6 сек.» после чистки чисел становилась «Проходит
+      // сек.» (плейтест 2026-10-03). Ход времени виден по часам сцены, а
+      // смену времени суток рассказывает своё событие.
+      return ''
+    case 'HitPointsReducedToZero':
+      // Смерть рассказчик не объявляет. Герой со счётчиком спасбросков
+      // остаётся на поле без сознания, остальные просто выбывают из боя.
+      return payload.successes != null || payload.failures != null
+        ? `${target} падает без сознания`
+        : `${target} выбывает из боя`
+    case 'ConditionAdded':
+      // Упавший на нуле лежит — это уже сказано строкой «падает без сознания».
+      if (payload.trigger === 'unconscious') return ''
+      return playerFacingSummary(eventSummary(event, (id) => {
+        const resolved = resolveName(id)
+        return resolved === String(id) ? '' : resolved
+      }), event?.event_type)
     case 'HitPointMaximumReduced':
       return `Запас сил ${target} ограничен`
     case 'ActorMoved':
@@ -1819,7 +1871,10 @@ function qualitativeEventSummary(event, resolveName) {
     case 'SocialSceneOpened':
       return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
     default:
-      return playerFacingSummary(eventSummary(event, resolveName), event?.event_type)
+      return playerFacingSummary(eventSummary(event, (id) => {
+        const resolved = resolveName(id)
+        return resolved === String(id) ? '' : resolved
+      }), event?.event_type)
   }
 }
 
@@ -1851,6 +1906,16 @@ function withoutVisibleNumbers(value) {
     .trim()
 }
 
+/** События хода, которые запасной рассказчик опускает, когда фраз не хватает. */
+const ROUTINE_NARRATION_EVENTS = new Set(['TurnStarted', 'TurnEnded', 'DieRolled', 'CombatRoundTimeMarked', 'ResourceSpent'])
+
+/**
+ * Ход боя. Обстановку сцены к нему запасной рассказчик не дописывает: «Атмосфера
+ * полна тайн…» после каждого удара читалась как заевшая пластинка (плейтест
+ * 2026-10-03), а место схватки и так на доске.
+ */
+const COMBAT_TURN_EVENTS = new Set(['TurnStarted', 'TurnEnded', 'AttackResolved', 'AreaAttackResolved', 'HitPointsReducedToZero', 'DeathSavingThrowRolled', 'CombatRoundTimeMarked'])
+
 function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const responsePlan = narratorResponsePlan(brief)
   const allOutcomeEvents = brief.visible_events.filter(event => !isDeclarationEvent(event))
@@ -1860,11 +1925,17 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const outcomeEvents = discovery
     ? allOutcomeEvents.filter(event => !['AbilityCheckResolved', 'DieRolled', 'RollResolved'].includes(event?.event_type))
     : allOutcomeEvents
-  const summaries = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
+  const ordered = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
     // Подтверждённая судьба NPC не должна исчезнуть за расходом ячейки и бросками.
     .sort((left, right) => Number(right.event_type === 'NpcDied') - Number(left.event_type === 'NpcDied'))
+  // В рассказ идут четыре фразы. Когда событий больше, служебные уступают
+  // место значимым: раньше «оружие завершает ход, начинается ход ветерана»
+  // съедали место, и падение героя без сознания не звучало вовсе.
+  const essential = ordered.filter((event) => !ROUTINE_NARRATION_EVENTS.has(String(event?.event_type ?? '')))
+  const summaries = (ordered.length > 4 && essential.length ? essential : ordered)
     .map((event) => withoutVisibleNumbers(qualitativeEventSummary(event, resolve)))
     .filter(Boolean)
+  const combatTurn = brief.visible_events.some((event) => COMBAT_TURN_EVENTS.has(String(event?.event_type ?? '')))
   const { opening, quest } = responsePlan.include_scene_detail ? deterministicFraming(brief, variant) : {}
   const memory = responsePlan.include_memory ? withoutVisibleNumbers(memoryFocusReminder(narratorMemoryFocus(brief), variant)) : ''
   const recapText = withoutVisibleNumbers(sceneText(arcRecap?.epilogue, 480))
@@ -1890,7 +1961,8 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
         ][variant % 4]
   const memorySentence = narrationSentence(memory)
   const dialogueOnly = outcomeEvents.length > 0 && outcomeEvents.every(event => event?.event_type === 'NpcConversationRecorded')
-  return [recap, body, dialogueOnly || discovery ? '' : opening, dialogueOnly || discovery ? '' : memorySentence].filter(Boolean).join(' ')
+  const quiet = dialogueOnly || discovery || combatTurn
+  return [recap, body, quiet ? '' : opening, quiet ? '' : memorySentence].filter(Boolean).join(' ')
 }
 
 export function deterministicNarration(brief, resolveName, { recentNarrations = [] } = {}) {

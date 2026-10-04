@@ -74,8 +74,62 @@ function topicStems(value) {
  * лежит улика, кто лжёт. `object` — JSON `{ topic, skills, holder }`.
  */
 const GM_SECRET_PREDICATES = new Set(['gm_secret'])
+
+/** Навыки, которыми можно открыть заготовку ведущего. */
+export const GM_SECRET_SKILLS = Object.freeze(['investigation', 'perception', 'survival', 'insight', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+
+/**
+ * Заготовки ведущего из ответа модели — `campaign_creator` для первой сцены и
+ * `map_architect` для новой области. Один нормализатор на оба пути: модель
+ * задаёт только текст находки, тему, навыки и знающего NPC, а что и когда
+ * раскрыть, решает `freeActionDiscoveryCommands`. Короче двенадцати знаков —
+ * не находка; навык вне списка отбрасывается, без навыков — поиск и осмотр.
+ *
+ * @param {unknown} value
+ * @param {{ limit?: number }} [options]
+ * @returns {Array<{ clue: string, topic: string, skills: string[], holder: string }>}
+ */
+export function normalizeGmSecrets(value, { limit = 4 } = {}) {
+  if (!Array.isArray(value)) return []
+  const allowed = new Set(GM_SECRET_SKILLS)
+  return value.slice(0, Math.max(0, limit)).map((entry) => {
+    const source = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry : {}
+    const skills = [...new Set((Array.isArray(source.skills) ? source.skills : [])
+      .map((skill) => text(skill, 40).toLocaleLowerCase('en').replace(/[\s-]+/gu, '_'))
+      .filter((skill) => allowed.has(skill)))].slice(0, 3)
+    return {
+      clue: text(source.clue, 600),
+      topic: text(source.topic, 160),
+      skills: skills.length ? skills : ['investigation', 'perception'],
+      holder: text(source.holder, 120),
+    }
+  }).filter((secret) => secret.clue.length >= 12)
+}
+
+/**
+ * Скрытый факт заготовки. Id детерминирован от пространства, соли и текста:
+ * повтор того же коммита не заводит второй тайны.
+ *
+ * @param {{ clue: string, topic: string, skills: string[], holder: string }} secret
+ * @param {{ subjectId: string, salt: string, index: number, sourceCommandId?: string, recordedAtMinutes?: number }} input
+ */
+export function gmSecretFact(secret, { subjectId, salt, index, sourceCommandId = '', recordedAtMinutes = 0 }) {
+  return {
+    id: `fact:secret:${createHash('sha256').update(`gm-secret\u0000${salt}\u0000${index}\u0000${secret.clue}`).digest('hex').slice(0, 24)}`,
+    subject_id: subjectId,
+    predicate: 'gm_secret',
+    object: JSON.stringify({ topic: secret.topic, skills: secret.skills.map((skill) => skill.replace(/_/gu, '-')), holder: secret.holder }),
+    summary: secret.clue,
+    visibility: 'gm_only',
+    source_event_ids: [],
+    source_command_id: sourceCommandId,
+    supersedes_fact_id: '',
+    status: 'active',
+    recorded_at_minutes: recordedAtMinutes,
+  }
+}
 // «Осматриваюсь», «ищу что-нибудь», «изучаю место» — общий поиск без темы.
-const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|прислуш\p{L}*)(?![\p{L}\p{M}])/iu
+const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|прислуш\p{L}*|смотр\p{L}*|высматр\p{L}*|наблюда\p{L}*|пригляд\p{L}*)(?![\p{L}\p{M}])/iu
 
 const SEARCH_SKILLS = new Set(['perception', 'investigation', 'survival'])
 const SECRET_STOP_STEMS = new Set(['геро', 'чтоб', 'кото', 'этог', 'свой', 'свои', 'своё', 'этот', 'этой', 'есть', 'было', 'была', 'были', 'него', 'тоже', 'лишь', 'пока', 'кто-', 'когд', 'толь', 'сейч', 'здес', 'очен', 'всех', 'весь', 'вижу', 'смот', 'ищу-'])
@@ -161,6 +215,46 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
 }
 
 /**
+ * Знающий собеседник — находка, когда заготовки ведущего на эту тему нет.
+ * Прежде удачный поиск без секрета записывал «зацепку» из одних слов заявки, и
+ * рассказчик честно отвечал «новой зацепки нет» (плейтест 2026-10-02:
+ * Внимательность 23 против СЛ 15). Теперь успех открывает то, что в сцене
+ * действительно есть и скрыто от игроков: цель присутствующего NPC, связанную
+ * со словами заявки. Цели NPC проекция игроку не отдаёт — значит, это знание,
+ * а не повтор. Одну и ту же цель второй раз не открываем.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} spokenText
+ * @returns {{ npc: Record<string, any>, goal: string, score: number } | null}
+ */
+function presentNpcLead(state = {}, spokenText = '') {
+  const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
+  const spoken = secretStems(spokenText)
+  if (!spoken.size) return null
+  const revealed = (state.worldMemory?.facts ?? [])
+    .filter((fact) => fact?.predicate === 'discovery')
+    .map((fact) => text(fact.summary, 1_000).toLocaleLowerCase('ru'))
+  const leads = (state.social?.npcs ?? [])
+    .filter((npc) => npc?.available !== false && npc?.visibility !== 'gm_only' && text(npc?.name, 120))
+    .filter((npc) => !location || !npc.location || text(npc.location, 160).toLocaleLowerCase('ru') === location)
+    .flatMap((npc) => (Array.isArray(npc.goals) ? npc.goals : []).map((goal) => text(goal, 240)).filter(Boolean)
+      .filter((goal) => !revealed.some((summary) => summary.includes(goal.toLocaleLowerCase('ru'))))
+      .map((goal) => {
+        const topic = secretStems(`${goal} ${text(npc.role, 160)}`)
+        return { npc, goal, score: [...spoken].filter((stem) => topic.has(stem)).length }
+      }))
+    .filter((lead) => lead.score > 0)
+    .sort((left, right) => right.score - left.score || text(left.npc.id, 120).localeCompare(text(right.npc.id, 120)))
+  return leads[0] ?? null
+}
+
+function npcLeadSummary(lead) {
+  const role = text(lead.npc.role, 160)
+  const goal = lead.goal.replace(/[.!?…]+$/u, '')
+  return `${text(lead.npc.name, 120)}${role ? `, ${role},` : ''} явно знает об этом больше, чем говорит, — и хочет ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}.`
+}
+
+/**
  * Улики свободного действия. Успешная проверка познавательного навыка, слова
  * которой совпали с активным поручением, становится фактом `discovery` о
  * сущности этого поручения. Именно такие факты `questProgressEvidenceFor`
@@ -189,9 +283,22 @@ export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, ski
   const secret = secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}`, topicalOnly: unrolled })
   if (secret) return [secret]
   if (unrolled) return []
+  const lead = presentNpcLead(state, `${actionText} ${goalSummary}`)
   const spoken = topicStems(`${actionText} ${goalSummary}`)
-  if (!spoken.size) return []
   const entities = new Set((state.worldMemory?.entities ?? []).map((entity) => String(entity?.id ?? '')))
+  const leadCommand = (subjectId, salt) => ({
+    command_type: 'RecordWorldFact',
+    fact: {
+      id: `fact-discovery-${createHash('sha256').update(`${sourceEventId}\u0000${salt}`).digest('hex').slice(0, 24)}`,
+      subject_id: subjectId,
+      predicate: 'discovery',
+      object: 'clue',
+      summary: npcLeadSummary(lead),
+      visibility: 'party',
+      source_event_ids: [sourceEventId],
+    },
+  })
+  if (!spoken.size) return []
   const commands = []
   for (const quest of state.worldMemory?.quests ?? []) {
     // Скрытое от отряда поручение не получает улики: её текст ушёл бы игрокам.
@@ -200,6 +307,12 @@ export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, ski
     if (![...spoken].some((stem) => topic.has(stem))) continue
     const subjectId = (quest.entity_ids ?? []).map(String).find((entityId) => entities.has(entityId))
     if (!subjectId) continue
+    // Есть знающий собеседник — улика по делу называет его, а не пересказывает
+    // заявку: одна содержательная находка лучше двух пустых.
+    if (lead) {
+      commands.push(leadCommand(subjectId, quest.id))
+      break
+    }
     const title = text(quest.title, 160).replace(/[.!?…]+$/u, '')
     const rawGoal = text(goalSummary || actionText, 200).replace(/[.!?…]+$/u, '')
     const goal = rawGoal.charAt(0).toLocaleLowerCase('ru') + rawGoal.slice(1)
@@ -216,6 +329,13 @@ export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, ski
       },
     })
     if (commands.length >= 2) break
+  }
+  // Поручения по теме нет, а знающий собеседник есть: находка — о самом месте.
+  if (!commands.length && lead) {
+    const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
+    const here = (state.worldMemory?.entities ?? [])
+      .find((entity) => location && text(entity?.name, 160).toLocaleLowerCase('ru') === location)
+    if (here?.id) commands.push(leadCommand(String(here.id), `lead:${text(lead.npc.id, 120)}`))
   }
   return commands
 }

@@ -53,7 +53,7 @@ test('Narrator выдаёт только проверенные закончен
   assert.equal(result.narration, narration)
   assert.equal(result.verification.valid, true)
   assert.equal(result.prompt_version, NARRATOR_PROMPT_VERSION)
-  assert.match(request.messages[0].content, /PROMPT_ID: narrator\/v11/u)
+  assert.match(request.messages[0].content, /PROMPT_ID: narrator\/v12/u)
   assert.equal(Object.hasOwn(request, 'jsonExpected'), false)
 })
 

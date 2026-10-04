@@ -2532,7 +2532,13 @@ export function turnExplanationForViewer(explanation, user, actorId = '', state 
   const enemyIds = new Set((state?.enemies ?? []).map((enemy) => text(enemy?.id ?? enemy?.actor_id, 120)))
   return {
     ...explanation,
-    commands: (Array.isArray(explanation.commands) ? explanation.commands : []).map((command) => {
+    commands: (Array.isArray(explanation.commands) ? explanation.commands : []).map((rawCommand) => {
+      // Заготовки ведущего новой области едут в `scene_args.secrets` команды
+      // перехода. Трасса режет ключ при записи, но разбор хода не должен
+      // полагаться на то, откуда пришла команда.
+      const command = rawCommand?.scene_args && typeof rawCommand.scene_args === 'object' && Object.hasOwn(rawCommand.scene_args, 'secrets')
+        ? { ...rawCommand, scene_args: Object.fromEntries(Object.entries(rawCommand.scene_args).filter(([key]) => key !== 'secrets')) }
+        : rawCommand
       if (!enemyIds.has(String(command?.actor_id ?? ''))) return command
       return {
         type: text(command?.type ?? command?.command_type, 80),

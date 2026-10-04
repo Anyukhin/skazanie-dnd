@@ -179,11 +179,35 @@ test('placement uses only revealed walkable feature-free cells not occupied by t
     difficulty: 'hard',
     theme: 'beasts',
   }))
-  assert.equal(proposal.threat.quantity_cap, 2)
+  // Клетка двери — проём: враг в нём не появляется (2026-10-03).
+  assert.equal(proposal.threat.quantity_cap, 1)
   assert.deepEqual(
     new Set(proposal.enemies.map((enemy) => `${enemy.x},${enemy.y}`)),
-    new Set(['3,0', '4,0']),
+    new Set(['3,0']),
   )
+})
+
+test('враг появляется по эту сторону двери, а за дверь уходит, только когда здесь тесно', () => {
+  // Сквозной прогон MVP после поселения v5: засада на улице поставила пауков
+  // в запертый дом в двух клетках от героев, и бой не кончался.
+  const street = [0, 1, 2, 3, 4].map((x) => ({ x, y: 0, type: 'floor', revealed: true }))
+  const house = [{ x: 5, y: 0, type: 'door', revealed: true }, ...[6, 7, 8, 9].map((x) => ({ x, y: 0, type: 'floor', revealed: true }))]
+  const proposal = assembleEncounter(baseInput({
+    scene: { cells: [...street, ...house] },
+    party: [{ id: 'hero', level: 1, x: 0, y: 0 }],
+    difficulty: 'easy',
+    theme: 'beasts',
+  }))
+  assert.ok(proposal.enemies.every((enemy) => enemy.x <= 4), 'все враги на улице, ни одного за дверью')
+  // Улица слишком мала — ни одной клетки на дистанции появления: тогда
+  // враг может стоять за дверью, иначе боя не было бы вовсе.
+  const cramped = assembleEncounter(baseInput({
+    scene: { cells: [{ x: 0, y: 0, type: 'floor', revealed: true }, { x: 1, y: 0, type: 'door', revealed: true }, ...[2, 3, 4, 5].map((x) => ({ x, y: 0, type: 'floor', revealed: true }))] },
+    party: [{ id: 'hero', level: 1, x: 0, y: 0 }],
+    difficulty: 'easy',
+    theme: 'beasts',
+  }))
+  assert.ok(cramped.enemies.length >= 1)
 })
 
 test('placement rejects an adjacent cell and a revealed but disconnected walkable island', () => {
@@ -305,4 +329,17 @@ test('сборщик видит тонкие стены: площадь суще
     }
   }
   expectCode(() => assembleEncounter(baseInput({ scene: { cells: [{ x: 0, y: 0, type: 'floor', revealed: true, walls: 'n' }] } })), 'INVALID_SCENE_CELL_WALLS')
+})
+
+test('окно держит шаг, как стена: сквозь него враг в дом не появляется', async () => {
+  const { encounterBarrierSides } = await import('../server/encounter-assembler.mjs')
+  assert.equal(encounterBarrierSides({ windows: 'e' }), 'e')
+  assert.equal(encounterBarrierSides({ walls: 's', windows: 'e' }), 'es')
+  assert.equal(encounterBarrierSides({}), '')
+  // Улица и дом за окном: окно на восточном ребре клетки 4.
+  const cells = [...[0, 1, 2, 3].map((x) => ({ x, y: 0, type: 'floor', revealed: true })),
+    { x: 4, y: 0, type: 'floor', revealed: true, walls: encounterBarrierSides({ windows: 'e' }) },
+    ...[5, 6, 7, 8, 9].map((x) => ({ x, y: 0, type: 'floor', revealed: true }))]
+  const proposal = assembleEncounter(baseInput({ scene: { cells }, party: [{ id: 'hero', level: 1, x: 0, y: 0 }], difficulty: 'easy', theme: 'beasts' }))
+  assert.ok(proposal.enemies.every((enemy) => enemy.x <= 4), 'враги по эту сторону окна')
 })

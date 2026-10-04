@@ -5,9 +5,10 @@
 //
 // Здесь он под тестом впервые.
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { COMBAT_NARRATION_EVENT_TYPES, combatNarration, combatNarrator, hasCombatNarrationEvent } from '../server/combat-narration.mjs'
+import { COMBAT_NARRATION_EVENT_TYPES, accusativeName, combatNarration, encounterEndText, combatNarrator, hasCombatNarrationEvent } from '../server/combat-narration.mjs'
 import { assertNarratorContract } from '../server/deterministic-narration.mjs'
 
 const state = {
@@ -38,6 +39,30 @@ test('урон и попадание по врагу не называют ег�
   assert.match(text, /7 урона/, 'нанесённый урон игрок видеть обязан')
 })
 
+test('лечение называет, сколько вернулось герою, и не выдаёт ОЗ врага', () => {
+  // Живой прогон 2026-10-02: после «Лечащего слова» хроника писала только
+  // «творит заклинание», и сколько вернулось, приходилось искать в листе.
+  const healed = combatNarration([
+    event('SpellCast', { spell_id: 'healing-word', name: 'Лечащее слово' }, ['hero']),
+    event('HealingApplied', { applied_amount: 9, hp_before: 2, hp_after: 11 }, ['hero']),
+  ], state)
+  assert.match(healed, /Лира восстанавливает 9 ОЗ; ОЗ 2 → 11/u)
+  const enemy = combatNarration([event('HealingApplied', { applied_amount: 5, hp_before: 3, hp_after: 8 }, ['wolf'])], state)
+  assert.match(enemy, /Волк восстанавливает силы/u)
+  assert.doesNotMatch(enemy, /\d/u, 'ОЗ врага в тексте быть не должно')
+})
+
+test('пропуск хода по часам виден в хронике, а обычное завершение остаётся служебным', () => {
+  const skipped = combatNarration([event('TurnEnded', { round: 2, auto_skipped: true, auto_skip_reason: 'turn-timeout' })], state)
+  assert.match(skipped, /Лира: время хода вышло, ход пропущен/u)
+  const withAttack = combatNarration([
+    event('TurnEnded', { round: 2, auto_skipped: true, auto_skip_reason: 'turn-timeout' }),
+    event('DamageApplied', { applied_amount: 9, hp_before: 11, hp_after: 2 }, ['hero']),
+  ], state)
+  assert.match(withAttack, /время хода вышло/u, 'пропуск не вытесняется уроном')
+  assert.match(withAttack, /9 урона/u)
+})
+
 test('залп из нескольких лучей называет заклинание один раз и сохраняет все атаки', () => {
   const spellCast = (commandId, economyConsumed = undefined) => ({
     ...event('SpellCast', {
@@ -60,7 +85,7 @@ test('залп из нескольких лучей называет закли�
     attack('rays:beam:3'),
   ], state)
   assert.equal((text.match(/творит заклинание «Палящий луч»/gu) ?? []).length, 1)
-  assert.equal((text.match(/атакует Волк/gu) ?? []).length, 3)
+  assert.equal((text.match(/атакует Волка/gu) ?? []).length, 3)
 })
 
 test('persisted beam events use canonical event_id while command_id is shared', () => {
@@ -218,4 +243,46 @@ test('поднятый максимум ОЗ получает свою стро�
   ], state)
   assert.match(enemy, /Волк/u)
   assert.doesNotMatch(enemy, /20|25/u, 'числа чужого листа за столом не называют')
+})
+
+test('цель атаки склоняется, только когда окончание однозначно', () => {
+  // Плейтест 2026-10-02: «Фарн Оникс атакует Разбойник 1».
+  assert.equal(accusativeName('Разбойник 1'), 'Разбойника 1')
+  assert.equal(accusativeName('Гоблин-воин'), 'Гоблина-воина')
+  assert.equal(accusativeName('Гиена'), 'Гиену')
+  assert.equal(accusativeName('Гарпия'), 'Гарпию')
+  for (const name of ['Тень', 'Зомби', 'Брам Тихий Молот', 'Торн «Без Весла»']) assert.equal(accusativeName(name), name, name)
+  // Клиентская строка боя держит то же правило отдельной копией.
+  const client = readFileSync(new URL('../src/app-shared.tsx', import.meta.url), 'utf8')
+  assert.match(client, /export function accusativeName/u)
+  assert.ok(client.includes('/[бвгджзклмнпрстфхцчшщ]$/u.test(lower)'), 'правило мужского рода совпадает с серверным')
+})
+
+test('конец боя называется по-русски, служебный код игроку не печатается', () => {
+  // Плейтест 2026-10-03: «Столкновение завершено: resolved», а в обычной
+  // победе — «enemies_defeated».
+  assert.equal(encounterEndText('enemies_defeated'), 'противники повержены')
+  assert.equal(encounterEndText('party_defeated'), 'отряд пал')
+  assert.equal(encounterEndText('resolved'), 'исход подтверждён')
+  assert.equal(encounterEndText(undefined), 'исход подтверждён')
+  assert.equal(encounterEndText('some_new_code'), 'исход подтверждён')
+  assert.equal(encounterEndText('стража разняла драку'), 'стража разняла драку')
+  const text = combatNarration([{ event_type: 'EncounterEnded', payload: { reason: 'enemies_defeated', outcome: 'enemies_defeated' } }], {})
+  assert.match(text, /Столкновение завершено: противники повержены\./u)
+  assert.doesNotMatch(text, /[a-z]_[a-z]/u)
+})
+
+test('ход выбывшего противника в хронику не попадает, ход упавшего героя — попадает', () => {
+  // Плейтест 2026-10-03: убитый хобгоблин каждый раунд «завершал ход», и
+  // между ходами героев в ленте стояли строки о мёртвом.
+  const fallen = { ...state, players: [{ id: 'hero', character: 'Лира', hp: 0, maxHp: 24 }], enemies: [{ id: 'wolf', name: 'Волк', hp: 0, maxHp: 20 }] }
+  const wolfTurn = [
+    { event_type: 'TurnEnded', actor_id: 'wolf', target_ids: ['wolf'], payload: { round: 3 } },
+    { event_type: 'TurnStarted', actor_id: 'wolf', target_ids: ['hero'], payload: { round: 4 } },
+  ]
+  const text = combatNarration(wolfTurn, fallen)
+  assert.doesNotMatch(text, /Волк/u)
+  assert.match(text, /Начинается ход Лира, раунд 4/u)
+  const alive = combatNarration(wolfTurn, state)
+  assert.match(alive, /Волк завершает ход/u)
 })

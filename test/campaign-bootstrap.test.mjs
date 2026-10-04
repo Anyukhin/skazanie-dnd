@@ -155,8 +155,10 @@ test('стартовый набор соответствует классу и �
   })
   assert.equal(fighter.players[0].characterClass, 'fighter')
   assert.equal(fighter.players[0].abilities.str, 16)
-  assert.equal(fighter.players[0].inventory[0].catalog_id, 'srd_5_2_1:longsword')
-  assert.equal(fighter.players[0].inventory[0].combat.damage, '1d8')
+  // Набор 2024 «вариант A»: кольчуга и двуручный меч (SRD 5.2.1).
+  assert.equal(fighter.players[0].inventory[0].catalog_id, 'srd_5_2_1:chain-mail')
+  assert.equal(fighter.players[0].inventory[1].catalog_id, 'srd_5_2_1:greatsword')
+  assert.equal(fighter.players[0].inventory[1].combat.damage, '2d6')
 
   const importedInventory = [{ id: 'keepsake', name: 'Памятный знак', type: 'quest', quantity: 1, equipped: false }]
   const imported = await new CampaignBootstrapper().create({

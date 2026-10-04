@@ -1,3 +1,5 @@
+import { encounterEndText } from './combat-narration.mjs'
+
 /**
  * Содержимое сводки завершённой сцены — задача 2.1 плана
  * `docs/experience-upgrade-plan.md`.
@@ -61,11 +63,11 @@ export function notableSceneMoments(events = []) {
         break
       }
       case 'EncounterOutcomeRecorded': {
-        if (payload.outcome) add(`столкновение завершилось: ${payload.outcome}`)
+        if (payload.outcome) add(`столкновение завершилось: ${encounterEndText(payload.outcome)}`)
         break
       }
       case 'EncounterEnded': {
-        add(`бой окончен (${payload.reason || payload.outcome || 'исход подтверждён'})`)
+        add(`бой окончен (${encounterEndText(payload.reason || payload.outcome)})`)
         break
       }
       case 'RulingRecorded': {

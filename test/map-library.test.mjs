@@ -8,6 +8,7 @@ import { levelKey } from '../server/adventure-director.mjs'
 import { generateBuildingScene } from '../server/building-generator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
+  MIN_LIBRARY_QUALITY,
   MIN_LIBRARY_SCORE,
   MapLibrary,
   chooseLibraryMap,
@@ -72,7 +73,7 @@ test('подбор: вид места обязателен, климат не с
     entryFor('tavern-desert', { climate: 'arid' }),
     entryFor('cave-a', { place_kinds: ['cave'], types: ['caves'] }),
     entryFor('tavern-scifi', { passport: { features: ['common_room'], interior_share: 0.8, floor_cells: 500, material: 'metal', summary: '', genre: 'scifi' } }),
-    entryFor('glade', { place_kinds: ['wilds'], types: ['nature'], passport: { features: ['exterior'], interior_share: 0.05, floor_cells: 600, material: 'grass', summary: '' } }),
+    entryFor('glade', { place_kinds: ['wilds'], types: ['nature'], passport: { features: ['exterior', 'grove'], interior_share: 0.05, floor_cells: 600, material: 'grass', summary: '' } }),
   ]
   const tavern = libraryRequestFor({ themeId: 'building', buildingUse: 'tavern' })
   assert.equal(chooseLibraryMap(entries, tavern, { seed: 'a' })?.id, 'tavern-a', 'пустынная таверна в умеренном мире не встаёт')
@@ -81,6 +82,10 @@ test('подбор: вид места обязателен, климат не с
   assert.equal(chooseLibraryMap(entries, libraryRequestFor({ themeId: 'temple' }), { seed: 'a' }), null, 'нет храма — генератор сам')
   assert.equal(chooseLibraryMap(entries, libraryRequestFor({ themeId: 'forest', climate: 'arid' }), { seed: 'a' }), null, 'лесная поляна в пустыню не попадает')
   assert.equal(chooseLibraryMap(entries, libraryRequestFor({ themeId: 'forest' }), { seed: 'a' })?.id, 'glade')
+  // Уличная сцена требует признака вида места: «природа» по метке автора без
+  // рощи и стоянки на карте — не лес (этап 0 плана карт).
+  const bare = [entryFor('bare-field', { place_kinds: ['wilds'], types: ['nature'], passport: { features: ['exterior'], interior_share: 0.05, floor_cells: 600, material: 'grass', summary: '' } })]
+  assert.equal(chooseLibraryMap(bare, libraryRequestFor({ themeId: 'forest' }), { seed: 'a' }), null)
   assert.equal(chooseLibraryMap(entries, libraryRequestFor({ themeId: 'building', buildingUse: 'tavern', world: 'орбитальная станция будущего' }), { seed: 'a' })?.id, 'tavern-scifi', 'бар станции — из научно-фантастического набора')
   // Выбор среди равных детерминирован по сиду места.
   const twins = [entryFor('twin-a'), entryFor('twin-b'), entryFor('twin-c')]
@@ -217,6 +222,34 @@ test('ферма деревней не считается, даже если б�
     'хутор из нескольких построек деревней остаётся — по своему второму тегу')
 })
 
+test('библиотечная карта, чей паспорт обещает навес, а карта его не держит, проверку не проходит', (t) => {
+  // Этап 4 плана карт: готовая карта проходит ту же проверку по программе,
+  // что и сгенерированная. Паспорт говорит «навес есть», подбор её выбирает,
+  // но на самой карте навеса нет — сцену строит генератор.
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-check-'))
+  t.after(() => {
+    setActiveMapLibrary(null)
+    rmSync(storage, { recursive: true, force: true })
+  })
+  const library = new MapLibrary(storage)
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-awning' })
+  const entry = yardEntry('tt-awning', { cells: 600, props: { market_awning: 1 } })
+  library.put(entry, imported.levels)
+  setActiveMapLibrary(library)
+  const request = libraryRequestFor({ themeId: 'settlement', requirements: [{ id: 'shelter', count: 1 }] })
+  assert.equal(chooseLibraryMap([entry], request, { seed: 'a' })?.id, 'tt-awning', 'по паспорту карта подходит')
+  const dice = new DiceService({ rng: new SequenceDiceRng([]), idFactory: () => 'roll', now: () => '2026-10-02T00:00:00.000Z' })
+  const advanced = resolveCommand({
+    command_type: 'AdvanceScene',
+    command_id: 'awning',
+    scene_args: { title: 'Кленовка', location: 'Деревня Кленовка', theme: 'деревня', settlement_type: 'village', objective: 'Найти старосту', arrival: 'Посреди деревни — общий навес.' },
+  }, tavernState(), { diceService: dice, context: { isAdmin: true } }).events.find((event) => event.event_type === 'SceneAdvanced')
+  assert.equal(advanced.payload.scene.map_source, undefined, 'карта без навеса не выбрана')
+  assert.equal(advanced.payload.scene.map_requirements.focus, 'shelter')
+  assert.equal(advanced.payload.scene.map_requirements.missing, undefined, 'генератор навес поставил')
+  assert.ok(deserializeTacticalMap(advanced.payload.scene.map).props.some((prop) => prop.assetId === 'market_awning'))
+})
+
 test('уличной сцене нужна площадь её вида места: двор 16×16 — не деревня', () => {
   const village = libraryRequestFor({ themeId: 'settlement' })
   assert.equal(chooseLibraryMap([yardEntry('yard', { cells: 256 })], village, { seed: 'a' }), null, '80×80 футов — двор одного дома')
@@ -273,8 +306,9 @@ test('деревня с обещанным навесом строится ге�
   const promised = advance('promised', 'Посреди деревни — общий навес, под ним ящик с документами; к реке ведут три настила.')
   assert.equal(promised.payload.scene.map_source, undefined, 'обещанного навеса на библиотечной карте нет')
   assert.deepEqual(promised.payload.scene.map_requirements, {
-    version: 'scene-requirements/v1',
+    version: 'scene-requirements/v3',
     items: [{ id: 'shelter', count: 1 }, { id: 'crate', count: 1 }, { id: 'platform', count: 3 }],
+    focus: 'shelter',
   })
   const initial = tavernState()
   const after = applyGameEvent(initial, promised)
@@ -283,4 +317,43 @@ test('деревня с обещанным навесом строится ге�
   assert.deepEqual(normalizeCampaignState(after).scene.map_requirements, promised.payload.scene.map_requirements, 'нормализация состояния поле не теряет')
   const view = campaignStateForViewer(after, { id: 'player', role: 'player' }, 'hero-a')
   assert.equal(view.scene.map_requirements, undefined, 'служебный список карты игроку не отдаётся')
+})
+
+test('этап 5: обязательные якоря программы отбирают карту, оценка качества импорта — тоже', () => {
+  const program = { items: [{ id: 'shelter', count: 1 }, { id: 'well', count: 1 }, { id: 'chest', count: 1 }], focus: 'shelter', posts: [{ npc: 'Терен', id: 'chest' }], clues: ['well'] }
+  const request = libraryRequestFor({ themeId: 'settlement', requirements: program.items, program })
+  assert.deepEqual(request.required.sort(), ['chest', 'shelter', 'well'])
+  // Паспорт якорей: у одной карты два обязательных из трёх, у другой — один.
+  const two = yardEntry('two-of-three', { cells: 600 })
+  two.passport.anchors = { shelter: 1, well: 1 }
+  const one = yardEntry('one-of-three', { cells: 600 })
+  one.passport.anchors = { shelter: 1 }
+  assert.equal(chooseLibraryMap([one], request, { seed: 'a' }), null, 'меньше 60% обязательного — карта не годится')
+  assert.equal(chooseLibraryMap([one, two], request, { seed: 'a' })?.id, 'two-of-three')
+  // Старый паспорт без якорей: якоря выводятся из счётчика предметов.
+  const legacy = yardEntry('legacy', { cells: 600, props: { market_awning: 1, well: 1, chest: 1 } })
+  assert.equal(chooseLibraryMap([legacy], request, { seed: 'a' })?.id, 'legacy')
+  // Карта с плохой оценкой импорта в автоподбор не идёт.
+  const poor = yardEntry('poor', { cells: 600, props: { market_awning: 1, well: 1, chest: 1 } })
+  poor.passport.quality = { score: MIN_LIBRARY_QUALITY - 0.1, reachable: 0.6, dropped: 0.4, cells: 600 }
+  assert.equal(chooseLibraryMap([poor], request, { seed: 'a' }), null)
+})
+
+test('этап 5: карта, не прошедшая проверку программы, уступает следующей, а не сразу генератору', (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-next-'))
+  t.after(() => rmSync(storage, { recursive: true, force: true }))
+  const library = new MapLibrary(storage)
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-next' })
+  library.put(yardEntry('tt-first', { cells: 600 }), imported.levels)
+  library.put(yardEntry('tt-second', { cells: 600 }), imported.levels)
+  const seen = []
+  const picked = library.pick(libraryRequestFor({ themeId: 'settlement' }), {
+    seed: 'next',
+    check: () => {
+      seen.push('check')
+      return seen.length > 1
+    },
+  })
+  assert.ok(picked, 'вторая карта выбрана')
+  assert.equal(seen.length, 2, 'первую отбросила проверка, вторую она пропустила')
 })

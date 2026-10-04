@@ -3184,6 +3184,8 @@ export type StarterEquipmentItem = {
 
 export type StarterEquipmentClass = {
   class_id: DndClassKey
+  /** Подпись набора без выбора — у 2024 это «вариант A», у воина с оговоркой про вариант B. */
+  summary?: string
   fixed_items?: StarterEquipmentItem[]
   fixed_narrative_items?: StarterEquipmentItem[]
   choice_groups: Array<{

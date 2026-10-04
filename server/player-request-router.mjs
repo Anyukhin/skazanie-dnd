@@ -1,5 +1,5 @@
 import { interpretResolvedPartyDecision } from './scene-architect.mjs'
-import { abandonableQuest, detectPartyExitRequest, exitContextFromState, partyDestinationLabel, travelDestinationIsPlace } from './party-exit-intent.mjs'
+import { abandonableQuest, detectPartyExitRequest, exitContextFromState, objectiveNamesDestination, partyDestinationLabel, travelDestinationIsPlace } from './party-exit-intent.mjs'
 import { knownWorldLore, retrieveKnownWorldMemory, worldMemoryForViewer } from './world-memory.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { isSceneObservationRequest } from './intent-parser.mjs'
@@ -20,8 +20,8 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v11', purpose: 'Финальное повествование из подтверждённых результатов' },
-  map_architect: { id: 'map_architect', prompt_id: 'map_architect/v6', purpose: 'Динамическая архитектура новой локации и игровой карты' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v12', purpose: 'Финальное повествование из подтверждённых результатов' },
+  map_architect: { id: 'map_architect', prompt_id: 'map_architect/v8', purpose: 'Динамическая архитектура новой локации и игровой карты' },
   action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v8', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })
 
@@ -252,6 +252,10 @@ function abandonLabel(questTitle, destination) {
   return `${lead} «${fitted}»`
 }
 
+// Сверка «цель называет место» живёт в `party-exit-intent.mjs`: её читает и
+// архитектор сцен, а он роутер не импортирует.
+export { objectiveNamesDestination }
+
 /**
  * @param {unknown} action
  * @param {Record<string, any>} [state]
@@ -298,7 +302,10 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
     // тот же разговор за столом, и разводить его на два голосования незачем.
     // Подпись несёт название задания только для игрока; какое задание закрыть,
     // сервер выбирает сам через `abandonableQuest` в момент исполнения.
-    const quest = abandonableQuest(state)
+    // Идти туда, куда зовёт сама цель сцены, — не отказ от задания: вариант
+    // «уходим к смотровой дамбе и бросаем задание» при цели «добраться до
+    // смотровой дамбы» противоречил сам себе. Живой прогон 2026-10-02.
+    const quest = objectiveNamesDestination(destination, state.scene?.objective) ? null : abandonableQuest(state)
     const abandonOption = quest ? abandonLabel(quest.title, phrase) : ''
     return {
       type: 'vote',
@@ -327,7 +334,12 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
 export function proposeRoutedTravel(hint, state = {}, action = '') {
   if (hint?.route !== 'travel' || state.agentInteraction) return null
   const destination = String(hint.destination ?? '').replace(/[«»]/gu, '').replace(/\s+/gu, ' ').trim().slice(0, 80)
-  if (!travelDestinationIsPlace(destination, exitContextFromState(state))) return null
+  // Место из цели сцены годится и без родового слова: «смотровой дамбы» нет
+  // в словаре мест, но цель прямо зовёт отряд туда, и отвечать «напишите
+  // «Отправляемся в…»» было тупиком.
+  if (!travelDestinationIsPlace(destination, exitContextFromState(state))
+    && !(objectiveNamesDestination(destination, state.scene?.objective)
+      && !objectiveNamesDestination(destination, state.scene?.location))) return null
   const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state, { sourceText: String(action ?? '') })
   if (card?.type !== 'vote') return null
   return {

@@ -53,6 +53,10 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
   // Один ключ на один предпросмотр: повторное нажатие «Применить» после сбоя
   // сети не создаст второго импорта.
   const applyKey = useRef('')
+  // Перестройка по программе сцены (этап 8): описание места словами ведущего
+  // и свой ключ на одну попытку — повтор после сбоя сети не перестроит дважды.
+  const [description, setDescription] = useState('')
+  const rebuildKey = useRef('')
 
   const options = useMemo(() => {
     const others = locations.filter((location) => location.id !== currentLocationId)
@@ -109,6 +113,33 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
     }
   }
 
+  const rebuild = async () => {
+    setBusy(true)
+    setError('')
+    setDone('')
+    if (!rebuildKey.current) rebuildKey.current = `map-rebuild:${crypto.randomUUID()}`
+    try {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/map-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'rebuild', text: description, idempotency_key: rebuildKey.current }),
+      })
+      const body = await response.json().catch(() => null) as Record<string, unknown> | null
+      if (!response.ok || !body) throw new Error(String(body?.error || 'Не удалось перестроить карту'))
+      const state = body.state as GameState | undefined
+      if (!state) throw new Error('Сервер не вернул состояние кампании')
+      const warnings = Array.isArray(body.warnings) ? body.warnings.map(String) : []
+      const message = `Карта «${currentLocationName || 'текущей сцены'}» перестроена по описанию${warnings.length ? `; не встало: ${warnings.length}` : ''}`
+      await onApplied({ version: typeof body.version === 'number' ? body.version : undefined, state, message })
+      rebuildKey.current = ''
+      setDone(message)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось перестроить карту')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const level = preview?.levels.find((entry) => entry.index === levelIndex) ?? preview?.levels[0]
   const target = options.find((option) => option.id === locationId)
   return (
@@ -133,6 +164,17 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
           <button type="button" onClick={() => { void runPreview() }} disabled={busy || !slab.trim()}>{busy && !preview ? 'Разбираем…' : 'Предпросмотр'}</button>
           {preview && <button type="button" className="primary" onClick={() => { void apply() }} disabled={busy}>{busy ? 'Применяем…' : `Применить к «${target?.name.replace(/ — текущая сцена$/u, '') ?? preview.location.name}»`}</button>}
         </div>
+        {locationId === currentLocationId && <section className="map-import-rebuild" aria-labelledby="map-rebuild-title">
+          <h3 id="map-rebuild-title">Перестроить по описанию сцены</h3>
+          <p>Карта текущей сцены строится заново: что обещано словами — навес, колодец, настилы, — встанет на неё, жители — на свои посты, отряд — у входа. Прежняя карта останется в журнале. Не во время боя и не при открытой проверке.</p>
+          <label className="map-import-field">
+            <span>Описание места (необязательно)</span>
+            <textarea value={description} onChange={(event) => { setDescription(event.target.value); rebuildKey.current = '' }} rows={3} maxLength={2000} placeholder="В центре — общий навес, к реке ведут три настила…" disabled={busy} />
+          </label>
+          <div className="map-import-actions">
+            <button type="button" onClick={() => { void rebuild() }} disabled={busy}>{busy ? 'Перестраиваем…' : 'Перестроить карту'}</button>
+          </div>
+        </section>}
         {error && <p className="error-text" role="alert">{error}</p>}
         {done && <p className="map-import-done" role="status">{done}</p>}
         {preview && <>

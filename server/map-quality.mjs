@@ -17,8 +17,11 @@
  *
  * Модуль — лист: читает только саму карту, ничего не меняет и не знает,
  * каким генератором она построена. Поэтому одна проверка годится и для
- * процедурных карт, и для импортированных из TaleSpire.
+ * процедурных карт, и для импортированных из TaleSpire. Проверка по программе
+ * сцены (`programReport`) берёт словарь обещанного у `scene-requirements.mjs` —
+ * такого же листа.
  */
+import { normalizeSceneRequirements, requiredProgramKinds, requirementAssets, requirementTerrain, requirementsCoverage } from './scene-requirements.mjs'
 import { cellAt, edgeBetween, edgeList, edgeNeighbor, reachableCells } from './tactical-map.mjs'
 
 /** @typedef {import('./tactical-map.mjs').TacticalMap} TacticalMap */
@@ -181,6 +184,26 @@ export function auditTacticalMap(map) {
       // Окно в толстой стене смотрит из зала в клетку кладки — это нормально;
       // плохо окно между двумя проходимыми помещениями.
       if (a?.passable && b?.passable && kindAt(edge.x, edge.y) === 'interior' && kindAt(next.x, next.y) === 'interior') add('WINDOW_BETWEEN_ROOMS', `${edge.x},${edge.y},${edge.dir}`)
+    }
+  }
+
+  // --- двери поселения выходят к дороге -------------------------------------
+  // В поселении (у карты есть зона улицы) дверь дома ведёт на улицу, площадь
+  // или тропу, а не в чужой двор: «Дом 9» стоял в углу деревни дверью в поле,
+  // без единой дорожки (замечание владельца 2026-10-03).
+  if (map.zones.some((zone) => zone.id === 'street')) {
+    const road = (/** @type {number} */ x, /** @type {number} */ y) => ['street', 'square', 'path'].includes(cellAt(map, x, y)?.zone ?? '')
+    for (const door of map.doors) {
+      const next = edgeNeighbor(door)
+      const sides = [{ x: door.x, y: door.y }, next]
+      const outside = sides.find((point) => kindAt(point.x, point.y) === 'exterior' && cellAt(map, point.x, point.y)?.passable)
+      if (!outside || !sides.some((point) => kindAt(point.x, point.y) === 'interior')) continue
+      const touches = road(outside.x, outside.y) || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => road(outside.x + dx, outside.y + dy))
+      if (!touches) add('DOOR_OFF_ROAD', `${door.id}@${outside.x},${outside.y}`)
+    }
+    // Тропа — проход: предмет, мешающий шагу, на ней перекрыл бы путь к двери.
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      if (cellAt(map, x, y)?.zone === 'path' && blockingAt.has(`${x},${y}`)) add('PATH_BLOCKED', `${blockingAt.get(`${x},${y}`)}@${x},${y}`)
     }
   }
 
@@ -490,6 +513,223 @@ export function playabilityReport(map, blockingAt) {
     problems,
     warnings,
     stats: { spawn_room: spawnRoom, cover_pct: Math.round(coverShare * 100), hall_cover_pct: Math.round(barestHall * 100), sightline_ft: sightline * 5 },
+  }
+}
+
+/**
+ * Клетки настилов: наружный деревянный пол выше земли. Настил узнаётся по
+ * самой карте, а не по пометке генератора, поэтому мостки готовой карты
+ * считаются так же.
+ *
+ * @param {TacticalMap} map
+ * @returns {Array<{x: number, y: number}>}
+ */
+export function platformCells(map) {
+  const kind = new Map(map.zones.map((zone) => [zone.id, zone.kind]))
+  /** @type {Array<{x: number, y: number}>} */
+  const cells = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (cell?.passable && cell.material === 'wood' && cell.elevation > 0 && kind.get(cell.zone) !== 'interior') cells.push({ x, y })
+  }
+  return cells
+}
+
+/**
+ * Сколько настилов на карте: связные пятна из `platformCells`.
+ * @param {TacticalMap} map
+ * @returns {number}
+ */
+export function countPlatforms(map) {
+  const raised = new Set(platformCells(map).map((point) => `${point.x},${point.y}`))
+  /** @type {Set<string>} */
+  const seen = new Set()
+  let count = 0
+  for (const start of raised) {
+    if (seen.has(start)) continue
+    count += 1
+    const queue = [start]
+    seen.add(start)
+    for (let index = 0; index < queue.length; index += 1) {
+      const [x, y] = queue[index].split(',').map(Number)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = `${x + dx},${y + dy}`
+        if (seen.has(key) || !raised.has(key)) continue
+        seen.add(key)
+        queue.push(key)
+      }
+    }
+  }
+  return count
+}
+
+/**
+ * Наименьшая карта под масштаб поселения: деревня из четырёх домов на поле
+ * 16×16 деревней не выглядит (этап 4 `docs/map-generation-plan.md`).
+ */
+export const SETTLEMENT_MIN_SIZE = Object.freeze({ width: 24, height: 20 })
+
+/** Доля глухого в сцене под открытым небом, после которой площадь — не площадь. */
+const OPEN_SCENE_BLOCKED_SHARE = 0.35
+
+/** Закуток недосягаемых клеток больше этого — уже не огрех, а потерянная часть карты. */
+const POCKET_LIMIT = 4
+
+/** Простор у центра сцены: свободных досягаемых клеток в двух шагах вокруг предмета. */
+const FOCUS_RADIUS = 2
+const FOCUS_MIN_ROOM = 6
+
+/**
+ * Проверка карты против программы сцены (`scene.map_requirements`): обещанное
+ * стоит на карте и до него можно дойти от входа отряда. Одна мерка для
+ * сгенерированной и для библиотечной карты.
+ *
+ * Провал (`problems`): нет обязательного якоря — центра, поста жителя или
+ * улики; якорь не досягаем от входа; карта меньше минимума масштаба; открытая
+ * сцена глуха больше чем на треть; потерян закуток больше четырёх клеток.
+ * Остальное обещанное и предмет на крайней клетке — предупреждения: лишняя
+ * бочка не повод строить карту заново.
+ *
+ * Досягаемость — тем же поиском, что у аудита: перепад высот правила шага не
+ * трогают, поэтому настил в два фута проходим, а глухая клетка — нет.
+ *
+ * @param {TacticalMap} map
+ * @param {unknown} program
+ * @param {{ minSize?: { width: number, height: number }|null, openScene?: boolean }} [options]
+ *   `openScene` — место, где собираются люди (поселение, площадь с центром):
+ *   там глухое больше трети — провал. Лес густ по природе и под мерку не идёт.
+ * @returns {{ problems: MapProblem[], warnings: MapProblem[], missing: string[], stats: Record<string, number> }}
+ */
+export function programReport(map, program, { minSize = null, openScene = false } = {}) {
+  /** @type {MapProblem[]} */
+  const problems = []
+  /** @type {MapProblem[]} */
+  const warnings = []
+  const items = normalizeSceneRequirements(program)
+  const required = new Set(requiredProgramKinds(program))
+  /** @type {Record<string, number>} */
+  const props = {}
+  for (const prop of map.props) props[prop.assetId] = (props[prop.assetId] ?? 0) + 1
+  const platforms = countPlatforms(map)
+  const coverage = requirementsCoverage(items, props, { platform: platforms })
+  /** @type {string[]} */
+  const missing = []
+  for (const id of coverage.missing) {
+    if (required.has(id)) {
+      missing.push(id)
+      problems.push({ code: 'PROGRAM_ANCHOR_MISSING', detail: id })
+    } else warnings.push({ code: 'PROGRAM_ITEM_MISSING', detail: id })
+  }
+
+  /** @type {Set<string>} */
+  const blocked = new Set()
+  for (const prop of map.props) {
+    if (!prop.blocksMove || prop.mount) continue
+    for (const point of prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]) blocked.add(`${point.x},${point.y}`)
+  }
+  const party = map.spawnPoints.find((point) => point.role === 'party')
+  const reached = party ? reachableCells(map, party.x, party.y, { blockedCells: blocked }) : new Set()
+  // Якорь досягаем, если отряд встаёт на его клетку или рядом с ней.
+  const near = (/** @type {Array<{x: number, y: number}>} */ cells) => cells.some((point) => [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]
+    .some(([dx, dy]) => reached.has(`${point.x + dx},${point.y + dy}`)))
+  for (const id of coverage.met) {
+    if (!required.has(id)) continue
+    const assets = new Set(requirementAssets(id))
+    const anchors = requirementTerrain(id) === 'platform'
+      ? platformCells(map).map((point) => [point])
+      : map.props.filter((prop) => assets.has(prop.assetId))
+        .map((prop) => (prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]))
+    if (!anchors.some(near)) problems.push({ code: 'PROGRAM_ANCHOR_UNREACHABLE', detail: id })
+  }
+
+  // Центр сцены — место, где стоят люди: вокруг него нужен простор. Лагерь в
+  // лесу густ, но у костра — поляна; навес не втиснут между сараями.
+  const focus = typeof (/** @type {any} */ (program)?.focus) === 'string' ? /** @type {any} */ (program).focus : ''
+  if (focus && coverage.met.includes(focus) && !requirementTerrain(focus)) {
+    const assets = new Set(requirementAssets(focus))
+    let roomiest = 0
+    for (const prop of map.props) {
+      if (!assets.has(prop.assetId)) continue
+      const own = new Set((prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]).map((point) => `${point.x},${point.y}`))
+      /** @type {Set<string>} */
+      const around = new Set()
+      for (const key of own) {
+        const [x, y] = key.split(',').map(Number)
+        for (let dy = -FOCUS_RADIUS; dy <= FOCUS_RADIUS; dy += 1) for (let dx = -FOCUS_RADIUS; dx <= FOCUS_RADIUS; dx += 1) {
+          const at = `${x + dx},${y + dy}`
+          if (!own.has(at) && reached.has(at) && !blocked.has(at)) around.add(at)
+        }
+      }
+      roomiest = Math.max(roomiest, around.size)
+    }
+    if (roomiest < FOCUS_MIN_ROOM) problems.push({ code: 'FOCUS_CRAMPED', detail: `${focus}: ${roomiest} кл.` })
+  }
+
+  let edgeProps = 0
+  for (const prop of map.props) {
+    if (prop.transition || prop.mount) continue
+    const cells = prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
+    if (cells.some((point) => point.x <= 0 || point.y <= 0 || point.x >= map.width - 1 || point.y >= map.height - 1)) {
+      edgeProps += 1
+      warnings.push({ code: 'PROP_ON_EDGE', detail: `${prop.assetId}@${Math.floor(prop.x)},${Math.floor(prop.y)}` })
+    }
+  }
+
+  if (minSize && (map.width < minSize.width || map.height < minSize.height)) {
+    problems.push({ code: 'SCENE_TOO_SMALL', detail: `${map.width}×${map.height} < ${minSize.width}×${minSize.height}` })
+  }
+
+  // Глухое и потерянное считаются по суше: вода гавани — часть места, а не помеха.
+  const zoneKind = new Map(map.zones.map((zone) => [zone.id, zone.kind]))
+  const outdoors = party ? zoneKind.get(cellAt(map, party.x, party.y)?.zone ?? '') !== 'interior' : false
+  let land = 0
+  let solid = 0
+  /** @type {Set<string>} */
+  const lost = new Set()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (!cell || cell.surface === 'water') continue
+    land += 1
+    if (!cell.passable || blocked.has(`${x},${y}`)) solid += 1
+    else if (party && !reached.has(`${x},${y}`)) lost.add(`${x},${y}`)
+  }
+  const blockedShare = land ? solid / land : 0
+  if (openScene && outdoors && blockedShare > OPEN_SCENE_BLOCKED_SHARE) problems.push({ code: 'OPEN_SCENE_CLUTTERED', detail: `${Math.round(blockedShare * 100)}%` })
+  let largestPocket = 0
+  /** @type {Set<string>} */
+  const seen = new Set()
+  for (const start of lost) {
+    if (seen.has(start)) continue
+    const queue = [start]
+    seen.add(start)
+    for (let index = 0; index < queue.length; index += 1) {
+      const [x, y] = queue[index].split(',').map(Number)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = `${x + dx},${y + dy}`
+        if (!lost.has(key) || seen.has(key)) continue
+        // Закуток — то, что связано шагом; стена на ребре делит его на части.
+        if (edgeBetween(map, x, y, x + dx, y + dy)?.blocksMove) continue
+        seen.add(key)
+        queue.push(key)
+      }
+    }
+    largestPocket = Math.max(largestPocket, queue.length)
+  }
+  if (largestPocket > POCKET_LIMIT) problems.push({ code: 'UNREACHABLE_POCKET', detail: `${largestPocket} кл.` })
+
+  return {
+    problems,
+    warnings,
+    missing,
+    stats: {
+      program_items: items.length,
+      program_required: required.size,
+      program_met: coverage.met.length,
+      platforms,
+      edge_props: edgeProps,
+      blocked_pct: Math.round(blockedShare * 100),
+      largest_pocket: largestPocket,
+    },
   }
 }
 

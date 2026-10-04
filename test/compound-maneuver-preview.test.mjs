@@ -174,7 +174,7 @@ test('реальная люстра даёт bounded ruling, swing preview и о
   assert.ok(accepted.mechanics.some((event) => event.event_type === 'AttackResolved'))
   assert.match(accepted.narration, /удерживается за люстру и продолжает манёвр/u)
   assert.match(accepted.narration, /перемещается на \d+ фт\./u)
-  assert.match(accepted.narration, /атакует Огр: (?:попадание|промах)/u)
+  assert.match(accepted.narration, /атакует Огра: (?:попадание|промах)/u)
   assert.doesNotMatch(accepted.narration, /athletics|СЛ|КД|ОЗ/iu)
   assert.equal(accepted.mechanics.find((event) => event.event_type === 'SwingResolved').house_rule_id, 'skazanie:scene-swing-v1')
   assert.equal(accepted.mechanics.find((event) => event.event_type === 'DamageApplied')?.payload.item_damage_rider, undefined)

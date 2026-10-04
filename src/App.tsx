@@ -28,7 +28,7 @@ import { CharacterCreationWizard } from './CharacterCreationWizard'
 import { DiceTray } from './DiceTray'
 import { DiceRollScene, type DiceRollResult } from './DiceRollScene'
 import { useGameSession, type CommandOutcome, type ConnectionState, type EncounterAssemblyOptions, type ShopAssemblyOptions } from './useGameSession'
-import { isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
+import { awaitsDecisionContinuation, isAdventureContinuation, isDirectorPartyDecision, isEncounterRequest } from './director-continuation.mjs'
 import { chronicleMatchesFilter, isChronicleNearBottom, type ChronicleFilter } from './chat-chronicle.mjs'
 import { atmosphereScreenAttenuation, atmosphereScreenFor } from './atmosphere-screen.mjs'
 import { createScreenMusic, type ScreenMusicPlayer } from './screen-music'
@@ -580,21 +580,50 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Ссылка остаётся на экране: буфер обмена есть не везде. По http с адреса
+  // сети `navigator.clipboard` нет вовсе, и прежде кнопка писала «Скопировано»,
+  // ничего не скопировав, а созданная одноразовая ссылка терялась.
+  const [link, setLink] = useState('')
+  const linkRef = useRef<HTMLInputElement>(null)
   useDialogEscape(onClose)
+  const copyLink = async (value: string) => {
+    try {
+      if (!navigator.clipboard || !window.isSecureContext) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(value)
+      return true
+    } catch {
+      const input = linkRef.current
+      if (!input) return false
+      input.focus()
+      input.select()
+      try { return document.execCommand('copy') } catch { return false }
+    }
+  }
   const copy = async () => {
     setBusy(true)
     setError('')
     try {
-      const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/invites`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      })
-      const body = await response.json().catch(() => null) as { token?: string; error?: string } | null
-      if (!response.ok || !body?.token) throw new Error(body?.error || 'Не удалось создать приглашение')
-      await navigator.clipboard?.writeText(`${location.origin}?room=${encodeURIComponent(code)}#invite=${encodeURIComponent(body.token)}`)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
+      let value = link
+      if (!value) {
+        const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        })
+        const body = await response.json().catch(() => null) as { token?: string; error?: string } | null
+        if (!response.ok || !body?.token) throw new Error(body?.error || 'Не удалось создать приглашение')
+        value = `${location.origin}?room=${encodeURIComponent(code)}#invite=${encodeURIComponent(body.token)}`
+        setLink(value)
+        // Поле со ссылкой появляется этим же рендером; ждём его, чтобы запасное
+        // копирование через выделение нашло, что выделять.
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+      }
+      if (await copyLink(value)) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1800)
+      } else {
+        setError('Браузер не дал скопировать автоматически — выделите ссылку в поле и скопируйте вручную.')
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось создать приглашение')
     } finally {
@@ -609,7 +638,8 @@ function InviteModal({ code, onClose }: { code: string; onClose: () => void }) {
         <span className="eyebrow">ПРИГЛАШЕНИЕ В ОТРЯД</span>
         <h2 id="invite-modal-title">Соберите героев</h2>
         <p>Создайте одноразовую ссылку. Она закрепляет за новым игроком одного свободного героя и действует семь дней.</p>
-        <div className="invite-code"><span>{code}</span><button onClick={copy} disabled={busy}><Copy size={16} />{busy ? 'Создаём…' : copied ? 'Скопировано' : 'Копировать'}</button></div>
+        <div className="invite-code"><span>{code}</span><button onClick={copy} disabled={busy}><Copy size={16} />{busy ? 'Создаём…' : copied ? 'Скопировано' : link ? 'Копировать' : 'Создать и скопировать'}</button></div>
+        {link && <input ref={linkRef} className="invite-link" readOnly value={link} aria-label="Ссылка-приглашение" onFocus={(event) => event.currentTarget.select()} />}
         {error && <p className="error-text">{error}</p>}
         <small className="modal-note">Секрет приглашения передаётся во фрагменте ссылки и удаляется из адреса после входа.</small>
       </div>
@@ -693,7 +723,7 @@ function DeathScreen({ heroes, partyDefeated, busy, error, canResolve, onResolve
     <section className="death-screen" role="dialog" aria-modal="true" aria-label={partyDefeated ? 'История завершена' : 'Судьба погибшего героя'}>
       <div className="death-emblem"><Skull size={39} /></div>
       <span className="death-eyebrow">{partyDefeated ? 'КОНЕЦ ИСТОРИИ' : 'СУДЬБА ГЕРОЯ'}</span>
-      <h1>{partyDefeated ? 'Отряд погиб' : heroes.length > 1 ? 'Герои пали' : `${heroes[0]?.character ?? 'Герой'} погиб`}</h1>
+      <h1>{partyDefeated ? 'Отряд погиб' : heroes.length > 1 ? 'Герои пали' : `${heroes[0]?.character ?? 'Герой'}: путь окончен`}</h1>
       <p>{partyDefeated
         ? 'В живых не осталось ни одного героя. Эта история завершена: действия, новые сцены и бои в этом мире больше недоступны.'
         : 'Погибший герой больше не может действовать. Чтобы продолжить историю, воскресите его или приведите в отряд нового героя.'}</p>
@@ -1543,6 +1573,10 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const mapSummon = state.actors?.find((actor) => actor.id === mapActorId && actor.alive)
 
   const canControlHero = Boolean(mapHero && partyIdSet.has(mapActorId) && (isAdmin || accessibleHeroIds.includes(mapActorId)))
+  // Лист героя внизу — свой, пока ходит чужой. Прежде второй игрок в чужой ход
+  // видел портрет, хиты и движение того, кто ходит (плейтест 2026-10-02), и
+  // свой лист мог открыть только дождавшись очереди.
+  const hudHero = mapHero && canControlHero ? mapHero : activePlayer
   const summonControllerIds = mapSummon ? [mapSummon.ownerId, mapSummon.controllerId] : []
   const canControlSummon = Boolean(mapSummon && mapSummon.faction === 'party' && (isAdmin || summonControllerIds.some((id) => accessibleHeroIds.includes(id))))
   const canAct = !tacticalBusy && !directorBusy && !pendingTacticalCommand && !mapHero?.characterSetupRequired && lifecycleStatus === 'active' && !partyDefeated && !deadHeroIds.has(mapActorId) && (canControlHero || canControlSummon)
@@ -1580,14 +1614,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   const canAnswerReaction = Boolean(reactionWindow && lifecycleStatus === 'active' && (isAdmin || accessibleHeroIds.includes(reactionWindow.actor_id) || accessibleHeroIds.includes(reactionControllerId)))
   const visibleTypingActorIds = (state.presence?.typing_actor_ids ?? []).filter((actorId) => actorId !== activePlayer.id)
   const narratorAvailability = narratorAvailabilityMessage(aiHealth, campaignAi?.settings.model)
-  const continueSceneInteraction = () => {
+  const continueSceneInteraction = (): Promise<CommandOutcome> => {
     if (isDirectorPartyDecision(state.agentInteraction)) {
-      if (state.agentInteraction?.status === 'resolved') {
-        void advanceAdventure('Продолжить подтверждённый переход.', activePlayer.id, state.agentInteraction.id)
-      }
-      return
+      return state.agentInteraction?.status === 'resolved'
+        ? advanceAdventure('Продолжить подтверждённый переход.', activePlayer.id, state.agentInteraction.id)
+        : Promise.resolve({ ok: false, error: 'Голосование ещё не завершено.' })
     }
-    continueAgentInteraction(activePlayer.id)
+    return continueAgentInteraction(activePlayer.id)
   }
 
   const roomHeaderBar = <RoomHeaderBar
@@ -1717,7 +1750,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             leaveLocationDisabled={travelBlocked}
             onOpenMerchant={openMerchant}
             onFinishTurn={finishMapTurn}
-            onFreeAction={(text, kind) => (isAdventureContinuation(text, { requestKind: kind ?? 'action' })
+            onFreeAction={(text, kind) => isAdventureContinuation(text, { requestKind: kind ?? 'action' }) && awaitsDecisionContinuation(state.agentInteraction)
+              ? continueSceneInteraction()
+              : (isAdventureContinuation(text, { requestKind: kind ?? 'action' })
               || (!combatActive && !(state.enemies ?? []).some((enemy) => enemy.alive !== false)
                 && isEncounterRequest(text, { requestKind: kind ?? 'action' })))
               ? advanceAdventure(text, activePlayer.id)
@@ -1741,10 +1776,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
             onCompleteRest={() => completeRest(activePlayer.id)}
             onTypingChange={updateTypingPresence}
             narrating={state.isNarrating}
-            playerHud={<PlayerHud player={mapHero ?? activePlayer} combatActive={combatActive} status={heroStatusByHero[(mapHero ?? activePlayer).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(mapHero ?? activePlayer).id] ?? [])} onCharacter={() => openHeroEditor((mapHero ?? activePlayer).id)} onInventory={() => navigate('inventory')} />}
+            foreignTurn={combatActive && !canControlHero && !canControlSummon ? { turnName: turnActorName, heroName: activePlayer.character } : null}
+            playerHud={<PlayerHud player={hudHero} combatActive={combatActive} status={heroStatusByHero[(hudHero).id]} hazards={((state.mechanics as { hazards?: Record<string, Array<{ id: string; label?: string; severity?: string; description?: string }>> } | undefined)?.hazards?.[(hudHero).id] ?? [])} onCharacter={() => openHeroEditor((hudHero).id)} onInventory={() => navigate('inventory')} />}
             statusContent={<><SceneHeader {...state.scene} chapter={state.adventure?.chapter ?? 1} illustration={sceneIllustration} illustrationKey={sceneLocationKey} locationArtUrl={locationArtUrl} scenicBackdrop={scenicBackdrop} wantedSigns={state.law?.signs ?? []} weather={state.weather_by_actor?.[activePlayer.id] ?? state.weather} />{roomHeaderBar}</>}
           >
-            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={continueSceneInteraction} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
+            <ChatPanel messages={state.messages} isNarrating={state.isNarrating} interaction={state.agentInteraction} players={partyPlayers} typingActorIds={visibleTypingActorIds} currentPlayerId={activePlayer.id} canAct={canAct} combatActive={combatActive} suggestedActions={actionHints} sceneKey={`${state.scene.location}|${state.scene.title}`} onVote={(optionId) => voteAgentInteraction(activePlayer.id, optionId)} onAbstain={() => { void abstainAgentInteraction(activePlayer.id) }} onRollInteraction={() => { void rollAgentInteraction(activePlayer.id) }} onContinueInteraction={() => { void continueSceneInteraction() }} onWhy={() => { void submitAction('/why', activePlayer.id) }} onSpeak={voiceSupported && voiceMode !== 'off' ? (text) => speakNarration(text, narrationVoice) : null} />
           </DungeonMap>
         </div>}
         {view === 'world-map' && <WorldMapView state={state} busy={travelBlocked} onTravel={(action) => {

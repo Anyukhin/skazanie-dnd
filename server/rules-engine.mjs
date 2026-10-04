@@ -8,6 +8,8 @@ import { DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './rul
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import {
   createSceneTransition,
+  generateSceneGeometry,
+  knownWorldKind,
   levelKey,
   levelSeed,
   normalizeLocationMaps,
@@ -23,6 +25,7 @@ import {
 import { generateLevelMap, levelLabelFor } from './level-generator.mjs'
 import { ensureCampaignWorldMap, worldLocationById } from './world-map.mjs'
 import { TaleSpireImportError, importTaleSpireSlab } from './talespire-import.mjs'
+import { SCENE_REQUIREMENTS_VERSION, normalizeSceneRequirements, sceneMapRequirementsFor } from './scene-requirements.mjs'
 import { SLAB_MAX_TEXT_LENGTH, TaleSpireSlabError } from './talespire-slab.mjs'
 import {
   applyCombatBounds,
@@ -280,7 +283,7 @@ import {
   planSceneNpcPlacementEvents,
   validateNpcWorldCommand,
 } from './npc-positioning.mjs'
-import { ENCOUNTER_PROPOSAL_VERSION, EncounterAssemblyError, assembleEncounter, encounterDifficultyLabel } from './encounter-assembler.mjs'
+import { ENCOUNTER_PROPOSAL_VERSION, EncounterAssemblyError, assembleEncounter, encounterBarrierSides, encounterDifficultyLabel } from './encounter-assembler.mjs'
 import { footprintCellsFor, footprintDistanceFeet, footprintMetadataForSize, footprintSizeFor, normalizeFootprintMetadata } from './actor-footprint.mjs'
 import { normalizeEnemyLoadout } from './enemy-loadouts.mjs'
 import {
@@ -398,9 +401,11 @@ import {
 import {
   combatActionFor,
   combatActionsFor,
+  classResourceOptionsFor,
   combatResourceMaximumsFor,
   combatResourceRecoveryFor,
   normalizedCombatSubclassFor,
+  ONE_ON_SHORT_REST,
   weaponAttacksPerActionFor,
 } from './combat-actions.mjs'
 import { characterClassKey, isSkillProficient, normalizedClassSkillProficiencies, normalizedSelectedFeatureIds, skillAbility } from './character-progression.mjs'
@@ -492,10 +497,12 @@ import {
   weatherRangedPenalty,
   worldClockEventDrafts,
 } from './weather.mjs'
+import { encounterEndText } from './combat-narration.mjs'
 import { DEFAULT_RULESET_ID, RulesValidationError, safeInteger, usesDnd2014 } from './rules/core.mjs'
 import { actorHp, actorId, actorPosition, findActor, isEnemyActor, isLivingActor, listActors } from './rules/actors.mjs'
 import {
   actorFootprintCellsAt, actorTrajectoryDetails, coverBetween, creatureSizeRank, footprintPlacementEdgesBlocked,
+  cellsVisibleFrom, DOORWAY_SIGHT_CELLS, MOVEMENT_SIGHT_CELLS,
   footprintStepBlocked, highGroundBetween, isTransparentCell, isTransparentMapCell, isWalkableCell, lineCells,
   occupiedPositions, positionKey, propMovementPositions, sceneTacticalMap, sceneTacticalMapCache, shortestTacticalPath,
   sightEdgeBlocked, tacticalCellMap, trajectoryDetails,
@@ -808,7 +815,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   'StartConcentration', 'EndConcentration', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem',
   'RecordRuling', 'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
   'CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability', 'CreateEncounter',
-  'AdvanceScene', 'ImportLocationMap',
+  'AdvanceScene', 'ImportLocationMap', 'RebuildLocationMap',
   'UpsertWorldEntity', 'RecordWorldFact', 'RevealWorldFact', 'RecordKnowledgeRevelation',
   'RecordWorldRelationship', 'UpsertQuest', 'AdvanceQuestClock', 'ResolveQuest', 'InvalidateQuest',
   'UpsertNarrativeThread', 'AdvanceNarrativeThreadClock',
@@ -875,6 +882,10 @@ const SCENE_ADVANCE_FIELDS = new Set([
   // `outcome`: тот короткой строкой уходит в летопись приключения (240 знаков),
   // а сводке нужно несколько предложений с перечнем заметных событий.
   'scene_summary',
+  // Заготовки ведущего новой области (map_architect/v7). Форму проверяет
+  // `normalizeGmSecrets` в `sceneWorldMemoryEvents`; в `SceneAdvanced` поле не
+  // попадает, только скрытыми фактами `gm_secret`.
+  'secrets',
 ])
 
 const SCENE_MAP_FIELDS = new Set(['layout', 'scale', 'pattern', 'material', 'width', 'height', 'openness', 'water', 'featureCount'])
@@ -1996,7 +2007,7 @@ export function normalizeCampaignState(input = {}) {
     }
     let characterSheet = null
     try {
-      characterSheet = deriveCharacterSheet(normalizedActor)
+      characterSheet = deriveCharacterSheet(normalizedActor, classResourceOptionsFor(state))
     } catch {
       // Old snapshots without a supported class remain replayable; the
       // normalized sheet becomes available once the build is migrated.
@@ -2036,7 +2047,7 @@ export function normalizeCampaignState(input = {}) {
     for (const [resource, maximum] of Object.entries(spellSlotMaximumsFor(actor))) {
       if (!mechanics.resources[id][resource]) mechanics.resources[id][resource] = { current: maximum, max: maximum }
     }
-    for (const [resource, maximum] of Object.entries(combatResourceMaximumsFor(actor))) {
+    for (const [resource, maximum] of Object.entries(combatResourceMaximumsFor(actor, classResourceOptionsFor(state)))) {
       if (!mechanics.resources[id][resource]) mechanics.resources[id][resource] = { current: maximum, max: maximum }
     }
     const x = Number(actor?.x)
@@ -2612,57 +2623,6 @@ function setSceneDoorState(state, doorId, doorState) {
   return writeSceneTacticalMap(state, map)
 }
 
-/** Дальность обзора, на которую распахнутая дверь открывает соседнее помещение. */
-const DOORWAY_SIGHT_CELLS = 9
-
-/**
- * Дальность разведки при перемещении. Меньше дверной: дверь открывает целое
- * помещение разом, а шаг — только то, что вокруг героя, иначе карта
- * раскрывалась бы вперёд отряда и исследовать было бы нечего.
- */
-const MOVEMENT_SIGHT_CELLS = 6
-
-/**
- * Клетки, которые видны от `origin` после того, как проём открылся: обход в
- * ширину по проходимым клеткам, не пересекающий ни глухие рёбра, ни закрытые
- * двери. Это не полноценный расчёт линии обзора — он и не нужен: задача узкая,
- * открыть игроку ровно то помещение, куда теперь ведёт открытая дверь, вместо
- * чёрного пятна, в которое нельзя даже шагнуть (`isWalkableCell` считает
- * нераскрытую клетку непроходимой).
- */
-function cellsVisibleFrom(map, origin, { radius = DOORWAY_SIGHT_CELLS, openedDoorId = null } = {}) {
-  const opened = openedDoorId == null ? '' : String(openedDoorId)
-  const start = { x: Math.floor(Number(origin?.x)), y: Math.floor(Number(origin?.y)) }
-  if (!Number.isSafeInteger(start.x) || !Number.isSafeInteger(start.y)) return []
-  if (!cellAt(map, start.x, start.y)) return []
-  const seen = new Map([[`${start.x},${start.y}`, 0]])
-  const queue = [start]
-  const found = [start]
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const current = queue[cursor]
-    const distance = seen.get(`${current.x},${current.y}`) ?? 0
-    if (distance >= radius) continue
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const next = { x: current.x + dx, y: current.y + dy }
-      const key = `${next.x},${next.y}`
-      if (seen.has(key)) continue
-      const cell = cellAt(map, next.x, next.y)
-      if (!cell) continue
-      const edge = edgeBetween(map, current.x, current.y, next.x, next.y)
-      // Дверь, которую открывают прямо сейчас, ещё числится закрытой: событие
-      // состояния применится позже, а раскрытие считается по будущей карте.
-      const justOpened = opened && String(edge?.doorId ?? '') === opened
-      if (edge?.blocksSight === true && !justOpened) continue
-      seen.set(key, distance + 1)
-      found.push(next)
-      // Стену видно, но сквозь неё не смотрят: дальше обход не идёт. Воду —
-      // смотрят: правило прозрачности то же, что у линии действия.
-      if (isTransparentMapCell(cell)) queue.push(next)
-    }
-  }
-  return found
-}
-
 /** Ставит предмет в клетку, заменяя прежний предмет той же клетки. */
 function setSceneObjectPropState(state, propId, propState) {
   const map = ensureSceneTacticalMap(state)
@@ -3063,6 +3023,7 @@ function trustedAttackProfile(state, actor, actionId = null) {
   const explicitFlatDamage = profile.damage_amount ?? profile.damageAmount
   let expression
   let flatDamage = null
+  let unarmedStrike = false
   if (Number.isFinite(Number(explicitFlatDamage))) {
     expression = null
     flatDamage = Math.max(0, safeInteger(explicitFlatDamage, 0))
@@ -3070,8 +3031,10 @@ function trustedAttackProfile(state, actor, actionId = null) {
     try { expression = parseDiceExpression(damageExpression).canonical }
     catch { expression = diceExpression(damageDice, Number.isSafeInteger(Number(damageBonus)) ? Number(damageBonus) : strength, enemy ? 6 : 1) }
   } else if (!enemy && !Number.isSafeInteger(Number(damageDice))) {
+    // Безоружный удар героя: 1 + модификатор Силы, дробящий урон.
     expression = null
     flatDamage = Math.max(0, 1 + strength)
+    unarmedStrike = true
   } else {
     expression = diceExpression(damageDice, Number.isSafeInteger(Number(damageBonus)) ? Number(damageBonus) : strength, 6)
   }
@@ -3083,7 +3046,7 @@ function trustedAttackProfile(state, actor, actionId = null) {
     modifier: Math.max(-100, Math.min(100, modifier)),
     damage_expression: expression,
     damage_amount: flatDamage,
-    damage_type: String(profile.damage_type ?? profile.damageType ?? actor?.damageType ?? 'slashing').slice(0, 40),
+    damage_type: String(profile.damage_type ?? profile.damageType ?? actor?.damageType ?? (unarmedStrike ? 'bludgeoning' : 'slashing')).slice(0, 40),
     range_feet: Math.max(5, Math.min(600, range)),
     normal_range_feet: Math.max(5, Math.min(600, safeInteger(profile.normal_range_feet ?? profile.normalRangeFeet, range))),
     advantage: Boolean(profile.advantage ?? actor?.attackAdvantage),
@@ -3590,6 +3553,34 @@ function assertVoluntaryMovementPath(state, actorIdValue, from, to, path) {
   }
 }
 
+/**
+ * Оружие героя для атаки, которую он не уточнил: свободная заявка «бью
+ * гоблина» и «подбегаю и бью». Без `item_id` движок честно считает безоружный
+ * удар (1 + модификатор Силы), и плут с коротким мечом в руке бил на 0 урона
+ * (HTTP-прогон боёв 2026-10-04). Берётся надетое оружие: для ближнего манёвра —
+ * ближнее, для удара с места — первое, которым цель достаётся отсюда.
+ */
+function equippedWeaponAttacks(state, actor) {
+  if (!(state.players ?? []).some((player) => actorId(player) === actorId(actor))) return []
+  const result = []
+  for (const item of Array.isArray(actor?.inventory) ? actor.inventory : []) {
+    if (!item?.equipped || item.type !== 'weapon' || Number(item.quantity ?? 1) <= 0) continue
+    let profile = null
+    try { profile = itemAttackProfile(state, actor, item.id) } catch (error) { if (!(error instanceof RulesValidationError)) throw error }
+    if (profile) result.push({ itemId: String(item.id), profile })
+  }
+  return result
+}
+
+export function defaultAttackItemIdFor(rawState, actorIdValue, targetIdValue) {
+  const state = normalizeCampaignState(rawState)
+  const actor = findActor(state, actorIdValue)
+  if (!actor || !findActor(state, targetIdValue)) return null
+  const usable = equippedWeaponAttacks(state, actor)
+    .filter(({ itemId }) => attackForecast(state, actorIdValue, targetIdValue, { itemId })?.in_range)
+  return (usable.find(({ profile }) => profile.kind === 'melee') ?? usable[0])?.itemId ?? null
+}
+
 /** Маршрут составной ближней атаки. Числа, путь и клетки выбирает движок. */
 export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   const state = normalizeCampaignState(rawState)
@@ -3599,7 +3590,9 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   if (!actor || !target || !isEnemyActor(state, targetIdValue) || !isLivingActor(target)) {
     throw new RulesValidationError('Выберите живого противника на карте', 'INVALID_TARGET')
   }
-  const profile = trustedAttackProfile(state, actor)
+  const weapon = equippedWeaponAttacks(state, actor).find(({ profile: candidate }) => candidate.kind === 'melee') ?? null
+  const profile = weapon?.profile ?? trustedAttackProfile(state, actor)
+  const weaponOption = weapon ? { itemId: weapon.itemId } : {}
   if (!profile || profile.kind !== 'melee') throw new RulesValidationError('Для этого манёвра нужно оружие ближнего боя', 'MELEE_WEAPON_REQUIRED')
   const from = actorPosition(state, actorIdValue)
   const targetAt = actorPosition(state, targetIdValue)
@@ -3615,7 +3608,7 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
   const budget = movementForActor(state, actorIdValue).movement_remaining
   const radius = Math.max(1, Math.min(6, Math.floor(Number(profile.range_feet || 5) / 5)))
   const candidates = []
-  const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, server_authoritative: true }
+  const attack = { command_type: 'MakeAttack', actor_id: actorIdValue, target_id: targetIdValue, ...(weapon ? { item_id: weapon.itemId } : {}), server_authoritative: true }
   let attackRefusal = null
   for (let x = targetAt.x - radius; x <= targetAt.x + radius; x += 1) {
     for (let y = targetAt.y - radius; y <= targetAt.y + radius; y += 1) {
@@ -3628,7 +3621,7 @@ export function previewApproachAttack(rawState, actorIdValue, targetIdValue) {
       const cost = path.reduce((total, step) => total + stepCost(step, map), 0)
       if (cost > budget) continue
       const atDestination = { ...state, mechanics: { ...state.mechanics, positions: { ...state.mechanics.positions, [actorIdValue]: to } } }
-      if (!attackForecast(atDestination, actorIdValue, targetIdValue)?.in_range) continue
+      if (!attackForecast(atDestination, actorIdValue, targetIdValue, weaponOption)?.in_range) continue
       try { validateCommand(attack, atDestination, { allowedActorIds: [actorIdValue] }) }
       catch (error) { if (!(error instanceof RulesValidationError)) throw error; attackRefusal ??= error; continue }
       candidates.push({ to, path, cost })
@@ -4435,6 +4428,11 @@ function normalizeCommand(input, state) {
     // Лишний символ сверх предела оставлен намеренно: разборщик слэба сам
     // откажет с понятным кодом, а не получит молча обрезанную строку.
     command.slab = typeof command.slab === 'string' ? command.slab.slice(0, SLAB_MAX_TEXT_LENGTH + 1) : ''
+  }
+  if (command.command_type === 'RebuildLocationMap') {
+    // Описание места словами ведущего: у сцены, созданной до программы
+    // сцены, обещанного в ней нет, и ведущий может вставить пролог.
+    command.text = String(command.text ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 2000)
   }
   if (command.command_type === 'ReceiveNpcBlessing') {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
@@ -5458,9 +5456,9 @@ function assembleEncounterFromState(state, command) {
     revealed: cell?.revealed === true,
     ...(cell?.feature == null ? {} : { feature: String(cell.feature) }),
     ...(creatureCells.has(`${Number(cell?.x)},${Number(cell?.y)}`) || blockedProps.has(`${Number(cell?.x)},${Number(cell?.y)}`) ? { occupied: true } : {}),
-    // Тонкие стены сборщик видит по клеткам: иначе крупное существо встаёт
-    // поперёк перегородки, и проверка ниже отклоняет всю встречу.
-    ...(typeof cell?.walls === 'string' && /^(?:e|s|es)$/u.test(cell.walls) ? { walls: cell.walls } : {}),
+    // Тонкие стены и окна сборщик видит по клеткам: иначе крупное существо
+    // встаёт поперёк перегородки, а враг — в доме за окном.
+    ...(encounterBarrierSides(cell) ? { walls: encounterBarrierSides(cell) } : {}),
   }))
   return validateEncounterPlacements(assembleEncounter({
     ruleset_id: state.ruleset_id,
@@ -6172,6 +6170,22 @@ export function validateCommand(input, rawState, context = {}) {
     }
     if (!command.slab) throw new RulesValidationError('Вставьте строку слэба TaleSpire', 'SLAB_EMPTY')
     command.location_id = locationId
+  }
+  if (command.command_type === 'RebuildLocationMap') {
+    // Перестройка карты — решение ведущего, тем же флагом владельческого
+    // маршрута, что и импорт: ни `/commands`, ни модель его не несут.
+    if (context?.mapImportAuthorized !== true) {
+      throw new RulesValidationError('Перестраивать карту может только ведущий кампании', 'MAP_IMPORT_FORBIDDEN')
+    }
+    if (!sceneLocationId(state) || !state.scene?.map) {
+      throw new RulesValidationError('У текущей сцены нет карты, которую можно перестроить', 'MAP_REBUILD_NO_SCENE')
+    }
+    if (state.mechanics.combat.active) {
+      throw new RulesValidationError('Карту текущей сцены нельзя перестроить во время боя', 'MAP_REBUILD_DURING_COMBAT')
+    }
+    if (state.agentInteraction && ['open', 'pending', 'voting'].includes(String(state.agentInteraction.status ?? 'open'))) {
+      throw new RulesValidationError('Сначала завершите решение отряда: голосование идёт по этой карте', 'MAP_REBUILD_DECISION_OPEN')
+    }
   }
   if (command.command_type === 'AdvanceScene') {
     if (context?.isAdmin !== true && context?.isDirector !== true) {
@@ -7042,7 +7056,7 @@ export function validateCommand(input, rawState, context = {}) {
   // боя, то есть редакция его как раз описывает, и оси у него теперь объявлены
   // (`COMMAND_RULES`). `CalmBeast` сюда не входил и не входит — это проверка
   // характеристики с укусом на провале, и правила у неё свои.
-  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'ImportLocationMap', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', 'ScareWithBeast', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
+  if (!command.source_rule_ids.length && !command.house_rule_id && !command.ruling_id && !['DeclareAction', 'RevealArea', 'UpdateObjective', 'SpawnEntity', 'GrantItem', 'RecordRuling', 'AdvanceScene', 'ImportLocationMap', 'RebuildLocationMap', 'UseLevelTransition', 'CreateEncounter', 'CompleteCampaign', 'AdvanceCampaignArc', 'ScareWithBeast', ...WORLD_MEMORY_COMMAND_TYPES, ...NPC_SOCIAL_COMMAND_TYPES, ...NPC_WORLD_COMMAND_TYPES, ...CAPTIVE_COMMAND_TYPES, ...CHARACTER_BUILD_COMMAND_TYPES, ...ITEM_LIFECYCLE_COMMAND_TYPES, ...CHARACTER_LIFECYCLE_COMMAND_TYPES].includes(command.command_type)) {
     throw new RulesValidationError('Для механического решения нужен rule_id, house_rule_id или ruling_id', 'PROVENANCE_REQUIRED')
   }
   if (['ApplyDamage', 'ApplyHealing', 'ReduceHitPointMaximum', 'GrantTemporaryHitPoints'].includes(command.command_type)) {
@@ -8281,6 +8295,22 @@ function deathSavingThrowAtTurnStart(state, command, actorIdValue, diceService) 
   return { events, rolls: [...modifierRolls, roll] }
 }
 
+/**
+ * «Без сознания» по правилам обеих редакций — ещё и «сбит с ног»: упавший на
+ * нуле герой лежит, и поднятый лечением встаёт за половину скорости. Отдельным
+ * `ConditionAdded`, а не флагом падения: прежние события падения в replay ничью
+ * позу не меняют, и снять «сбит с ног» можно тем же путём, что всегда.
+ * Плейтест 2026-10-03: упавший герой лежал на доске стоя — без «сбит с ног».
+ */
+function fallsProneEvents(state, command, targetIdValue) {
+  if ((state.mechanics.conditions[targetIdValue] ?? []).some((condition) => condition.id === 'prone')) return []
+  return [eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+    condition: 'prone',
+    duration: null,
+    trigger: 'unconscious',
+  }, [targetIdValue])]
+}
+
 function zeroHitPointDamageConsequences(state, command, targetIdValue, payload, { critical = false } = {}) {
   if (safeInteger(payload?.applied_amount, 0) <= 0 || safeInteger(payload?.hp_after, -1) !== 0) return []
   const target = findActor(state, targetIdValue)
@@ -8324,11 +8354,14 @@ function zeroHitPointDamageConsequences(state, command, targetIdValue, payload, 
     }, [targetIdValue])]
   }
   if (hpBefore > 0) {
-    return [eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', {
-      condition: 'unconscious',
-      successes: 0,
-      failures: 0,
-    }, [targetIdValue])]
+    return [
+      eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HitPointsReducedToZero', {
+        condition: 'unconscious',
+        successes: 0,
+        failures: 0,
+      }, [targetIdValue]),
+      ...fallsProneEvents(state, command, targetIdValue),
+    ]
   }
 
   const tracker = deathSaveTracker(state, targetIdValue)
@@ -9852,8 +9885,18 @@ function isOwnCombatTurn(state, id) {
 }
 
 function assertBonusActionSpellAllowed(state, id, spell, actionType) {
-  if (!usesDnd2014(state) || !isOwnCombatTurn(state, id)) return
+  if (!isOwnCombatTurn(state, id)) return
   const economy = state.mechanics.combat.action_economy[id] ?? {}
+  if (!usesDnd2014(state)) {
+    // Редакция 2024: «за ход тратится только одна ячейка заклинания» — магия
+    // действием и бонусным действием с ячейками в один ход невозможна. До
+    // боевого плейтеста 2026-10-03 правило не проверялось, и жрец творил
+    // «Направляющий снаряд» и «Лечащее слово» одним ходом.
+    if (spell?.slotResource && economy.slot_spell_cast_2024) {
+      throw new RulesValidationError('На этом ходу ячейка заклинания уже потрачена: за ход тратится только одна', 'ONE_SPELL_SLOT_PER_TURN')
+    }
+    return
+  }
   if (actionType === 'bonus_action' && economy.other_spell_cast_2014
     || actionType !== 'bonus_action' && economy.bonus_spell_cast_2014 && !(spell.level === 0 && actionType === 'action')) {
     throw new RulesValidationError('После магии бонусным действием на этом ходу разрешён только заговор со временем накладывания «1 действие»', 'BONUS_ACTION_SPELL_RESTRICTION')
@@ -13244,6 +13287,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           && payload.hp_after > 0 && finalPayload.hp_after === 0 && playerActor(state, targetId)
         if (poisonStabilizes) {
           events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.zeroHp), 'HitPointsReducedToZero', { condition: 'unconscious' }, [targetId]))
+          events.push(...fallsProneEvents(state, attackCommand, targetId))
           events.push(eventFrom(commandWithRules(attackCommand, RULE_IDS.zeroHp), 'HeroStabilized', { method: 'monster-poison' }, [targetId]))
           const minutes = Math.max(1, safeInteger(onHit.poison_on_zero.poisoned_minutes, 60))
           for (const condition of ['poisoned', ...(onHit.poison_on_zero.paralyzed_while_poisoned ? ['paralyzed'] : [])]) {
@@ -14916,7 +14960,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', { requested_amount: amount, applied_amount: after - before, hp_before: before, hp_after: after, ...healing }, [actionTargetId]))
         events.push(actionEvent())
       } else if (action.effect?.kind === 'weapon_attack') {
-        spendActionResource()
+        // Манёвр мастера боевых искусств — надбавка к попаданию: кость
+        // превосходства тратится, когда удар попал, а промах её не сжигает
+        // (плейтест 2026-10-03). Прочие удары с запасом платят заранее.
+        const spendOnHit = action.resource === 'superiority_dice'
+        if (!spendOnHit) spendActionResource()
+        let resourceSpent = !spendOnHit
         const level = Math.max(1, safeInteger(actor?.level, 1))
         const tier = Object.entries(action.effect.attacksByLevel ?? {}).sort(([left], [right]) => Number(right) - Number(left)).find(([minimum]) => level >= Number(minimum))
         const attacks = Math.max(1, safeInteger(tier?.[1] ?? action.effect.attacks, 1))
@@ -14943,6 +14992,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const attackEvent = attackResult.events.find((event) => event.event_type === 'AttackResolved')
           const hit = Boolean(attackEvent?.payload?.hit)
           landed ||= hit
+          if (hit && !resourceSpent) {
+            const spent = events.length
+            spendActionResource()
+            attackResult.events.splice(attackResult.events.indexOf(attackEvent) + 1, 0, ...events.splice(spent))
+            resourceSpent = true
+          }
           if (hit) {
             let extraExpression = action.effect.extraDamage
             if (action.effect.extraDamageByLevel === 'sneak') extraExpression = `${Math.ceil(level / 2)}d6`
@@ -15305,6 +15360,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           kind: spell.kind,
           action_type: effectiveActionType,
           ...(usesDnd2014(state) ? { spellcasting_2014_version: 1 } : {}),
+          // Метка версии, а не вывод из ResourceSpent: старые события её не
+          // несут, и replay сохранённых кампаний не меняет экономику хода.
+          ...(!usesDnd2014(state) && spentSlotResource ? { slot_spell_2024_version: 1 } : {}),
           ...((context.additionalBeam || context.readiedRelease) ? { economy_consumed: false } : {}),
           level: spell.level,
           slot_level: command.slot_level ?? spell.level,
@@ -20265,6 +20323,63 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       break
     }
+    case 'RebuildLocationMap': {
+      // Этап 8 `docs/map-generation-plan.md`: карта уже сыгранной локации
+      // строится заново по программе сцены. Событие — то же
+      // `LocationMapImported`, что и у импорта: отряд встаёт у входа, прочие —
+      // на ближайшие свободные клетки, жители — на посты, а прежняя карта
+      // остаётся в потоке событий. Своего reducer у перестройки нет.
+      const locationId = sceneLocationId(state)
+      const scene = state.scene ?? {}
+      const location = String(scene.location ?? '')
+      const residents = (Array.isArray(state.social?.npcs) ? state.social.npcs : [])
+        .filter((npc) => npc?.available !== false && String(npc?.location ?? '').toLocaleLowerCase('ru') === location.toLocaleLowerCase('ru'))
+        .map((npc) => ({ name: npc.name, role: npc.role, summary: npc.public_summary }))
+      const stored = normalizeSceneRequirements(scene.map_requirements)
+      const fresh = sceneMapRequirementsFor([location, scene.title, scene.mood, scene.objective, command.text], { npcs: residents })
+      // Сохранённая программа сильнее догадки, слова ведущего её дополняют.
+      const program = stored.length && !command.text ? clone(scene.map_requirements) : fresh
+      const seed = `${stableLocationMapSeed(state.worldMap, locationId, location)}:rebuild:${safeInteger(state.state_version, 0)}`
+      const geometry = generateSceneGeometry({
+        theme: String(scene.theme ?? ''),
+        location,
+        sceneKind: String(scene.scene_kind ?? ''),
+        worldKind: knownWorldKind(state.worldMap, locationId, location),
+        seed,
+        locationId,
+        description: [scene.title, scene.mood, command.text].filter(Boolean).join(' ').slice(0, 2000),
+        useLibrary: false,
+        requirements: program?.items ?? [],
+        program,
+      })
+      const ground = geometry.map
+      ground.locationId = locationId
+      const entrance = ground.spawnPoints.find((point) => point.role === 'party')
+      const serialized = serializeTacticalMap(ground)
+      const payload = {
+        schema_version: 2,
+        location_id: locationId,
+        location_name: String(worldLocationById(state.worldMap, locationId)?.name ?? location ?? locationId).slice(0, 120) || locationId,
+        source: { format: 'scene-program-rebuild', version: SCENE_REQUIREMENTS_VERSION, seed },
+        stats: {},
+        warnings: (geometry.missing ?? []).map((id) => `Обязательное не встало на карту: ${id}`).slice(0, 20),
+        levels: [{ index: 0, label: String(ground.levelLabel ?? '').slice(0, 120) || sceneLevelLabel(state, 0), map: serialized }],
+        applied_to_scene: true,
+        ...(program ? { map_requirements: { ...program, ...(geometry.missing?.length ? { missing: geometry.missing } : {}) } } : {}),
+        clear_library_source: true,
+      }
+      payload.party_positions = sceneAdvancePartyPositions(state, {
+        entrance,
+        scene: { cells: legacyCellsFromTacticalMap(ground), map: serialized },
+      })
+      payload.relocations = planImportRelocations(state, ground, payload.party_positions)
+      const rebuildEvent = eventFrom({ ...command, visibility: 'party' }, 'LocationMapImported', payload,
+        payload.party_positions.map((position) => position.actor_id))
+      events.push(rebuildEvent)
+      const applied = applyGameEvent(state, rebuildEvent)
+      events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(applied)))
+      break
+    }
     case 'AdvanceScene': {
       const expiredAtSceneChange = new Set(summonIdsExpiredAt(state, worldTimeSeconds(state)))
       events.push(...summonExpiryEvents(
@@ -20357,7 +20472,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }, []))
         }
       }
-      for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId })) {
+      for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId, secrets: command.scene_args?.secrets })) {
         events.push(eventFrom({ ...command, visibility: memoryEvent.visibility }, memoryEvent.event_type, memoryEvent.payload, memoryEvent.target_ids))
       }
       const priorTitle = String(state.scene?.title || state.scene?.location || 'Предыдущая сцена').slice(0, 180)
@@ -21262,7 +21377,7 @@ function refreshPlayerDerivedState(state, actorIds) {
     if (requested.size && !requested.has(actorId(actor))) return actor
     let characterSheet = actor.characterSheet ?? null
     try {
-      characterSheet = deriveCharacterSheet(actor)
+      characterSheet = deriveCharacterSheet(actor, classResourceOptionsFor(state))
     } catch {}
     return {
       ...actor,
@@ -22198,6 +22313,14 @@ function applyGameEventCurrent(rawState, event) {
         return position ? { ...player, ...position } : player
       })
       state.mechanics.positions = { ...state.mechanics.positions, ...Object.fromEntries(accepted.positions) }
+      // Перестройка по программе (schema 2): сцена получает программу, под
+      // которую строилась карта, и теряет атрибуцию прежней готовой карты.
+      // У событий импорта этих полей нет — они применяются как раньше.
+      if (payload.map_requirements && typeof payload.map_requirements === 'object') state.scene.map_requirements = clone(payload.map_requirements)
+      if (payload.clear_library_source === true) {
+        delete state.scene.map_source
+        delete state.scene.layout
+      }
       state.mapFeedback = []
       rememberKnownLevel(state, locationId, 0, state.scene.level.label)
       break
@@ -23517,6 +23640,9 @@ function applyGameEventCurrent(rawState, event) {
         if (payload.action_type === 'bonus_action') economy.bonus_spell_cast_2014 = true
         else if (payload.level !== 0 || payload.action_type !== 'action') economy.other_spell_cast_2014 = true
       }
+      if (payload.slot_spell_2024_version === 1 && isOwnCombatTurn(state, event.actor_id)) {
+        (state.mechanics.combat.action_economy[event.actor_id] ??= actionEconomy()).slot_spell_cast_2024 = true
+      }
       if (state.mechanics.combat.active && event.actor_id && payload.economy_consumed !== false) {
         const resource = payload.action_type === 'bonus_action' ? 'bonus_action' : payload.action_type === 'reaction' ? 'reaction' : 'action'
         const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
@@ -24061,12 +24187,15 @@ function applyGameEventCurrent(rawState, event) {
       const actor = findActor(state, target)
       const kind = payload.kind === 'long' ? 'long' : 'short'
       const pools = state.mechanics.resources[target] ?? {}
-      const recovery = actor ? combatResourceRecoveryFor(actor) : {}
+      const recovery = actor ? combatResourceRecoveryFor(actor, classResourceOptionsFor(state)) : {}
       state.mechanics.resources[target] = Object.fromEntries(Object.entries(pools).map(([resource, pool]) => [resource, {
         ...pool,
         current: kind === 'long' || resource === 'pact_slots' || recovery[resource] === 'short_or_long'
           ? Math.max(0, safeInteger(pool.max, 0))
-          : Math.max(0, safeInteger(pool.current, 0)),
+          // Редакция 2024: короткий отдых возвращает один заряд, а не все.
+          : kind === 'short' && recovery[resource] === ONE_ON_SHORT_REST
+            ? Math.min(Math.max(0, safeInteger(pool.max, 0)), Math.max(0, safeInteger(pool.current, 0)) + 1)
+            : Math.max(0, safeInteger(pool.current, 0)),
       }]))
       if (kind === 'long' && actor) {
         replaceActor(state, target, (candidate) => ({ ...candidate, hp: actorMaxHp(candidate) }))
@@ -24372,7 +24501,7 @@ function applyGameEventCurrent(rawState, event) {
         const actor = state.players.find((candidate) => actorId(candidate) === String(target))
         if (actor && Number(payload.schema_version) >= 2 && payload.creation_benefits && typeof payload.creation_benefits === 'object') {
           try {
-            const sheet = deriveCharacterSheet(actor, { rulesetId: state.ruleset_id })
+            const sheet = deriveCharacterSheet(actor, { rulesetId: state.ruleset_id, ...classResourceOptionsFor(state) })
             state.players = state.players.map((candidate) => actorId(candidate) === String(target)
               ? {
                   ...candidate,
@@ -24412,7 +24541,7 @@ function applyGameEventCurrent(rawState, event) {
       }
       let leveledActor = state.players.find((actor) => actorId(actor) === String(target))
       if (leveledActor) {
-        const sheet = deriveCharacterSheet(leveledActor)
+        const sheet = deriveCharacterSheet(leveledActor, classResourceOptionsFor(state))
         state.players = state.players.map((actor) => actorId(actor) === String(target) ? {
           ...actor,
           proficiency: sheet.proficiency_bonus,
@@ -24423,7 +24552,7 @@ function applyGameEventCurrent(rawState, event) {
           combatActions: combatActionsFor(actor),
         } : actor)
         leveledActor = state.players.find((actor) => actorId(actor) === String(target))
-        const plan = classResourcePlan(leveledActor)
+        const plan = classResourcePlan(leveledActor, classResourceOptionsFor(state))
         const resources = state.mechanics.resources[target] ?? {}
         // Ячейка, полученная с уровнем, доступна сразу: прибавка максимума
         // прибавляется и к текущему запасу. Без версии — прежнее правило.
@@ -24779,7 +24908,9 @@ export function eventSummary(event, resolveName = (id) => id) {
   const named = (id) => (id == null || id === '' ? id : resolveName(id))
   switch (event.event_type) {
     case 'CampaignRulesetChanged': return `Правила кампании изменены: ${payload.ruleset_id_after} · ${payload.ruleset_version_after}`
-    case 'LocationMapImported': return `Ведущий загрузил карту «${payload.location_name || payload.location_id}»: ${Array.isArray(payload.levels) ? payload.levels.length : 0} эт.`
+    case 'LocationMapImported': return payload.source?.format === 'scene-program-rebuild'
+      ? `Ведущий перестроил карту «${payload.location_name || payload.location_id}» по описанию сцены`
+      : `Ведущий загрузил карту «${payload.location_name || payload.location_id}»: ${Array.isArray(payload.levels) ? payload.levels.length : 0} эт.`
     case 'MapLevelChanged': return `${Number(payload.to_level) > Number(payload.from_level) ? 'Партия поднимается' : 'Партия спускается'}: ${payload.level_label || `этаж ${payload.to_level}`}`
     case 'SceneObjectOperated': return `${named(event.actor_id) || 'Герой'} взаимодействует с объектом ${payload.prop_id}: ${payload.intent}`
     case 'SceneObjectCheckResolved': return `${named(event.actor_id) || 'Герой'} проверяет объект ${payload.prop_id}: ${payload.success ? 'успех' : 'неудача'} (${payload.total}/${payload.difficulty})`
@@ -24826,8 +24957,8 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'RandomEncounterTriggered': return `В пути возникла случайная встреча: ${payload.theme || 'unknown'} (${payload.difficulty || 'medium'})`
     case 'SceneAdvanced': return `Сцена перемещена из ${payload.location_before || 'прежней локации'} в ${payload.location_after || payload.scene?.location || 'новую локацию'}`
     case 'EncounterCreated': return `Создано столкновение: ${(payload.encounter?.enemies ?? []).map((enemy) => enemy.name).join(', ')}`
-    case 'EncounterEnded': return `Столкновение завершено: ${payload.reason || payload.outcome || 'resolved'}`
-    case 'EncounterOutcomeRecorded': return `Исход встречи подтверждён сервером: ${payload.outcome || 'resolved'}`
+    case 'EncounterEnded': return `Столкновение завершено: ${encounterEndText(payload.reason || payload.outcome)}`
+    case 'EncounterOutcomeRecorded': return `Исход встречи подтверждён сервером: ${encounterEndText(payload.outcome)}`
     case 'EncounterCoinsRolled': return `С противников собрано ${safeInteger(payload.total_cp, 0)} мм`
     case 'ServerLootGenerated': return `Найдена добыча: ${(payload.loot ?? []).map((item) => `${item.name} ×${item.quantity ?? 1}`).join(', ') || 'нет предметов'}`
     case 'EncounterRewardsDistributed': return `Награда распределена между ${(payload.allocations ?? []).map((allocation) => named(allocation.recipient_id)).join(', ') || 'никем; всё осталось нераспределённым'}`

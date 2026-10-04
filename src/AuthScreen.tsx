@@ -9,7 +9,10 @@ export function AuthScreen({ loading, error, setupRequired, onLogin, onRegister,
   onRegister: (name: string, email: string, password: string) => Promise<void>
   onSetupAdmin: (name: string, email: string, password: string, setupToken: string) => Promise<void>
 }) {
-  const [mode, setMode] = useState<'login' | 'register' | 'setup'>(setupRequired ? 'setup' : 'login')
+  // По ссылке-приглашению чаще приходит новый игрок: форма сразу открывается
+  // на регистрации, а «Войти» остаётся во вкладке для тех, у кого аккаунт есть.
+  const [invited] = useState(() => /(?:^#|&)invite=/u.test(location.hash))
+  const [mode, setMode] = useState<'login' | 'register' | 'setup'>(setupRequired ? 'setup' : invited ? 'register' : 'login')
   const [busy, setBusy] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -50,7 +53,7 @@ export function AuthScreen({ loading, error, setupRequired, onLogin, onRegister,
         <form onSubmit={submit}>
           <span className="auth-form-eyebrow">{mode === 'login' ? 'ВОЗВРАЩЕНИЕ В КАМПАНИЮ' : mode === 'register' ? 'НОВЫЙ УЧАСТНИК' : 'ПЕРВОНАЧАЛЬНАЯ НАСТРОЙКА'}</span>
           <h2>{mode === 'login' ? 'С возвращением' : mode === 'register' ? 'Присоединиться к отряду' : 'Создать администратора'}</h2>
-          <p>{mode === 'login' ? 'Ваши герои уже ждут продолжения.' : mode === 'register' ? 'После регистрации вы сможете создать кампанию и своего героя или войти по приглашению владельца.' : 'Это единственная учётная запись с полным доступом к миру, героям и игрокам.'}</p>
+          <p>{mode === 'login' ? 'Ваши герои уже ждут продолжения.' : mode === 'register' ? (invited ? 'Вас пригласили в отряд. Создайте аккаунт — за вами закрепится свободное место героя. Если аккаунт уже есть, войдите во вкладке «Войти».' : 'После регистрации вы сможете создать кампанию и своего героя или войти по приглашению владельца.') : 'Это единственная учётная запись с полным доступом к миру, героям и игрокам.'}</p>
           {mode !== 'login' && <label><span>Имя</span><div><UserRound size={16} /><input value={name} onChange={(event) => setName(event.target.value)} required placeholder="Как к вам обращаться" /></div></label>}
           <label><span>Электронная почта</span><div><Mail size={16} /><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="player@example.com" autoComplete="email" /></div></label>
           <label><span>Пароль</span><div><KeyRound size={16} /><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required minLength={10} placeholder="Минимум 10 символов" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} /></div></label>

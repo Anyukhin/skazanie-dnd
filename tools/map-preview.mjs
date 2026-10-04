@@ -5,6 +5,11 @@
  *   pnpm maps:preview -- --location "Таверна «Рог»" --theme таверна
  *   node tools/map-preview.mjs --location "Деревня Кленовка" --theme деревня --settlement village --seed s1
  *   node tools/map-preview.mjs --preset all --audit      # эталонные сцены, только сводка проверок
+ *   node tools/map-preview.mjs --location "Скит Трёх Настилов" --theme деревня --settlement village \
+ *     --text "В центре — общий навес, к реке ведут три настила" --npc "Илва:староста" --seed s1
+ *     # программа сцены из текста (этап 6 `docs/map-generation-plan.md`): что обещано,
+ *     # путь — библиотека (`--library <каталог хранилища>`) или генератор и с какой
+ *     # попытки, где встали якоря и посты жителей, итог проверки по программе
  *
  * Клетка — два символа по горизонтали, рёбра между клетками рисуются
  * отдельными символами: «|» и «-» — стена, «D» — дверь, «w» — окно,
@@ -172,6 +177,8 @@ if (!direct) {
     writeFileSync(jsonFile, JSON.stringify(gallery.map(({ map, ...rest }) => ({ ...rest, svg: renderSvg(map) }))))
     console.log(`Данные: ${jsonFile}`)
   }
+} else if (flag('text')) {
+  await printProgramScene()
 } else {
   printOne({
     location: flag('location') ?? 'Таверна «Рог»',
@@ -263,4 +270,62 @@ export function renderSvg(map, cell = 14) {
 function galleryHtml(gallery, title) {
   const cards = gallery.map(({ label, size, seed, map, report }) => `<figure><figcaption><b>${label}</b> · ${map.width}×${map.height} · ${size} · ${seed}<br><small>${summarizeProblems(report.problems)}${report.warnings.length ? ` · ${summarizeProblems(report.warnings)}` : ''}<br>${Object.entries(report.stats).map(([k, v]) => `${k}=${v}`).join(' ')}</small></figcaption>${renderSvg(map)}</figure>`).join('')
   return `<!doctype html><meta charset="utf-8"><title>${title}</title><style>body{background:#191612;color:#eee;font:13px sans-serif}figure{display:inline-block;vertical-align:top;margin:8px;background:#26211b;padding:6px}svg{display:block;max-width:560px;height:auto}small{color:#bbb}</style><h1>${title}</h1>${cards}`
+}
+
+/**
+ * Сцена по программе из текста: что обещано, каким путём построена карта,
+ * где встали якоря и посты жителей, итог проверки по программе.
+ */
+async function printProgramScene() {
+  const { sceneMapRequirementsFor, requirementAssets, requirementLabel, requirementTerrain, requiredProgramKinds } = await import('../server/scene-requirements.mjs')
+  const { programReport, platformCells, SETTLEMENT_MIN_SIZE } = await import('../server/map-quality.mjs')
+  const { resolveSceneTheme } = await import('../server/scene-themes.mjs')
+  const location = flag('location') ?? 'Место'
+  const theme = flag('theme') ?? ''
+  const settlementType = flag('settlement') ?? ''
+  /** @type {Array<{name: string, role: string}>} */
+  const npcs = []
+  args.forEach((value, index) => {
+    if (value !== '--npc') return
+    const [name, role = ''] = String(args[index + 1] ?? '').split(':')
+    if (name) npcs.push({ name: name.trim(), role: role.trim() })
+  })
+  const library = flag('library')
+  if (library) {
+    const { MapLibrary, setActiveMapLibrary } = await import('../server/map-library.mjs')
+    setActiveMapLibrary(new MapLibrary(library))
+  }
+  const program = sceneMapRequirementsFor([location, flag('text')], { npcs })
+  console.log(`== программа: ${program ? program.version : 'пусто — текст ничего не обещает'}`)
+  if (program) {
+    const required = new Set(requiredProgramKinds(program))
+    console.log(`   обещано: ${program.items.map((item) => `${requirementLabel(item.id)}${item.count > 1 ? ` ×${item.count}` : ''}${required.has(item.id) ? '*' : ''}`).join(', ')}  (* — обязательное)`)
+    if (program.focus) console.log(`   центр: ${requirementLabel(program.focus)}`)
+    for (const post of program.posts ?? []) console.log(`   пост: ${post.npc} — ${requirementLabel(post.id)}`)
+  }
+  const geometry = generateSceneGeometry({
+    location, theme, settlementType, seed: flag('seed') ?? 'preview', useLibrary: Boolean(library),
+    requirements: program?.items ?? [], program,
+    map: { width: Number(flag('width')) || undefined, height: Number(flag('height')) || undefined },
+  })
+  const map = geometry.map
+  const seed = String(map.seed ?? '')
+  const path = seed.startsWith('library:') ? `библиотека — ${seed.split(':')[1]}`
+    : `генератор ${map.generator?.id ?? '?'}, ${seed.includes(':attempt-') ? `попытка ${Number(seed.split(':attempt-')[1]) + 1} — прежние не прошли проверку` : 'с первой попытки'}`
+  console.log(`== путь: ${path} | ${map.width}×${map.height}`)
+  console.log(renderAscii(map))
+  if (program) {
+    for (const item of program.items) {
+      const spots = requirementTerrain(item.id)
+        ? platformCells(map).map((cell) => `${cell.x},${cell.y}`)
+        : map.props.filter((prop) => requirementAssets(item.id).includes(prop.assetId)).map((prop) => `${Math.floor(prop.x)},${Math.floor(prop.y)}`)
+      console.log(`   ${requirementLabel(item.id)}: ${spots.length ? spots.slice(0, 8).join(' ') : 'нет на карте'}`)
+    }
+    const settlement = resolveSceneTheme({ location, theme, settlementType }).kind === 'settlement'
+    const report = programReport(map, program, { minSize: settlement ? SETTLEMENT_MIN_SIZE : null, openScene: settlement })
+    console.log(`== проверка по программе: ${summarizeProblems(report.problems)}`)
+    if (report.warnings.length) console.log(`   замечания: ${summarizeProblems(report.warnings)}`)
+    if (geometry.missing) console.log(`   невоплощённое обязательное: ${geometry.missing.map(requirementLabel).join(', ')}`)
+  }
+  console.log(`== общая проверка: ${summarizeProblems(auditTacticalMap(map).problems)}`)
 }

@@ -115,9 +115,13 @@ test('NPC plan и авторитетное исполнение одинаков
   const mixed = stateFor({ traits, effects: [webAt(), mudAt()] })
   const mixedPlan = planNpcTurn(mixed, 'spider')
   const mixedMove = mixedPlan.find((command) => command.command_type === 'MoveActor')
-  assert.deepEqual(mixedMove?.to, { x: 2, y: 0 }, 'смешанная клетка оплачивается как difficult terrain')
-  const mixedResult = resolveCommand({ ...mixedMove, command_id: 'mixed-move', server_authoritative: true }, mixed, {
-    diceService: dice(), context: { isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true },
-  })
-  assert.equal(mixedResult.events.find((event) => event.event_type === 'ActorMoved').payload.movement_cost, 10)
+  // Смешанная клетка стоит 10 футов, и своих 10 футов до героя не хватает —
+  // паук бежит Рывком: 10 за смешанную клетку и 5 за следующую.
+  assert.equal(mixedPlan[0].action_id, 'dash')
+  assert.deepEqual(mixedMove?.to, { x: 1, y: 0 }, 'смешанная клетка оплачивается как difficult terrain')
+  const context = { isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true }
+  const dashed = resolveCommand({ ...mixedPlan[0], command_id: 'mixed-dash', server_authoritative: true }, mixed, { diceService: dice(), context })
+  const afterDash = dashed.events.reduce(applyGameEvent, mixed)
+  const mixedResult = resolveCommand({ ...mixedMove, command_id: 'mixed-move', server_authoritative: true }, afterDash, { diceService: dice(), context })
+  assert.equal(mixedResult.events.find((event) => event.event_type === 'ActorMoved').payload.movement_cost, 15)
 })

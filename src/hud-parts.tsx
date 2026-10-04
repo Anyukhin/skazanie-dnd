@@ -310,7 +310,7 @@ export function DeathSavesPanel({ name, successes, failures, stable, dead }: { n
     <div className="hud-ds-title">Спасброски от смерти</div>
     {row(successes, 'ok', 'Успехи')}
     {row(failures, 'no', 'Провалы')}
-    <p className="hud-ds-note">{dead ? `${name} погиб.` : stable ? `${name} стабилизирован, но без сознания. Поднять его может лечение.` : 'Бросок d20 делает сервер в начале хода героя: 10+ — успех, 20 — встать с 1 хитом.'}</p>
+    <p className="hud-ds-note">{dead ? `${name}: путь окончен.` : stable ? `${name}: состояние стабильно, но сознания нет. Поднимет только лечение.` : 'Бросок d20 делает сервер в начале хода героя: 10+ — успех, 20 — встать с 1 хитом.'}</p>
   </section>
 }
 

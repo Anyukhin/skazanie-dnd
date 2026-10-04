@@ -195,7 +195,11 @@ test('обычный игрок начинает бой с видимым NPC ч
   }
   assert.deepEqual(combatMap.layers.present, beforeMap.layers.present)
   assert.deepEqual(combatMap.layers.passable, beforeMap.layers.passable)
-  assert.doesNotMatch(JSON.stringify(first.body.mechanics), /astohan:ares-v1|action_profiles|provenance/u)
+  // Лист авторского существа не уезжает игроку: ни id профиля, ни боевые
+  // профили, ни его происхождение. Просто слово provenance ловить нельзя —
+  // оно есть у безобидной метки политики свидетелей (WitnessConsequencePropagated),
+  // которая появляется, едва враг, добежав Рывком, получает удар.
+  assert.doesNotMatch(JSON.stringify(first.body.mechanics), /astohan:ares-v1|action_profiles|server-owned-authored-npc-profile/u)
 
   const duplicate = await request(baseUrl, `/api/campaigns/${SESSION}/commands`, {
     method: 'POST', cookie, key: 'npc-entry-attack', body: attackBody('npc-entry-attack'),

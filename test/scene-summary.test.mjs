@@ -63,7 +63,7 @@ test('заметными считаются последствия и исход
     event('AbilityCheckResolved', { success: true }),
   ])
   assert.ok(moments.includes('Отряд поджёг разлитое масло'))
-  assert.ok(moments.includes('столкновение завершилось: victory'))
+  assert.ok(moments.includes('столкновение завершилось: победа'))
   assert.ok(moments.includes('Прыгаю с люстры на огра — удалось'))
   assert.ok(moments.includes('дано обещание: Вернуть Мире долг до заката'))
   assert.ok(moments.includes('куплено: Верёвка ×2'))

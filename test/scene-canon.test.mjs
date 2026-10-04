@@ -207,12 +207,12 @@ test('сенсорные якоря следуют канону: в тумане
   assert.match(night.light, /лун|звёзд/u)
 })
 
-test('Рассказчик получает канон отдельным блоком narrator/v11', async () => {
+test('Рассказчик получает канон отдельным блоком (с narrator/v11)', async () => {
   const llm = new FakeLLM([{ content: 'Туман лежит на досках причала.' }])
   const narrator = new Narrator({ llmClient: llm, asyncFeedback: false })
   await narrator.render(briefWith({ scene: { location: 'Причал Аквилона' }, world_clock: worldClock({ weather: 'fog' }) }))
   const [request] = llm.requests
-  assert.match(request.messages[0].content, /PROMPT_ID: narrator\/v11/u)
+  assert.match(request.messages[0].content, /PROMPT_ID: narrator\/v12/u)
   assert.match(request.messages[0].content, /scene_canon/u)
   const payload = untrustedPayload(request.messages[1].content, 'scene_canon')
   assert.equal(payload.weather, 'Туман')
@@ -223,7 +223,7 @@ test('Рассказчик получает канон отдельным бло
 test('автор кампании получает серверные часы и небо первого утра по краям', async () => {
   const { state, llm } = await pierCampaign()
   const content = llm.requests[0].messages[1].content
-  assert.match(llm.requests[0].messages[0].content, /PROMPT_ID: campaign_creator\/v7/u)
+  assert.match(llm.requests[0].messages[0].content, /PROMPT_ID: campaign_creator\/v8/u)
   const clock = untrustedPayload(content, 'starting_world_clock')
   assert.deepEqual(clock, { day: 1, clock: '08:00', time_of_day: 'morning', time_of_day_label: 'Утро' })
   const table = untrustedPayload(content, 'starting_weather_by_biome')

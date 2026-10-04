@@ -277,7 +277,7 @@ test('этап 1: два игрока получают SSE presence, комми�
     key,
     body: {
       idempotency_key: key,
-      command: { command_type: 'EquipItem', actor_id: actorId, item_id: `${actorId}-starter-longsword`, equipped: false },
+      command: { command_type: 'EquipItem', actor_id: actorId, item_id: `${actorId}-starter-kit2024-1`, equipped: false },
     },
   })
   const [ownerEquip, guestEquip] = await Promise.all([

@@ -135,7 +135,7 @@ import {
   courierLetterPromiseFrom,
   courierToneFor,
 } from './courier-letters.mjs'
-import { DEADLY_ENCOUNTER_WARNING, assembleEncounter } from './encounter-assembler.mjs'
+import { DEADLY_ENCOUNTER_WARNING, assembleEncounter, encounterBarrierSides } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
@@ -322,6 +322,7 @@ setActiveMapLibrary(String(process.env.DND_MAP_LIBRARY ?? '').toLowerCase() === 
 const handleMapImportRoute = createMapImportRoutes({
   requireUser, getRoom, campaignMembershipFor, readBody, json, eventStore, authoritativeExecutor,
   persistAuthoritativeProjection, campaignHeroIds, viewerStateFor,
+  hasOpenCheck: (campaignId, stateVersion) => rollRegistry.hasOpenCheck({ campaignId, stateVersion }),
 })
 
 /**
@@ -398,7 +399,20 @@ const combatTurnCoordinator = new CombatTurnCoordinator({
     return actorIds.every((actorId) => heroes.has(String(actorId)) && !assigned.has(String(actorId)))
   },
   onCommitted: ({ campaignId, state, events }) => {
-    persistAuthoritativeProjection(campaignId, state, events)
+    // Ходы врагов после пропуска по часам и сам пропуск идут мимо маршрута
+    // команды, и в хронику не попадали: живой прогон 2026-10-02 — разбойник
+    // снял герою 9 ОЗ, а в ленте не было ни строки. Запись детерминирована по
+    // первому событию, повторная проекция её не удваивает.
+    const { main, sky } = tacticalNarrationParts(events, state)
+    const text = [main, sky].filter(Boolean).join(' ')
+    const anchor = events.find((event) => event?.event_id)?.event_id ?? events[0]?.command_id ?? state?.state_version
+    persistAuthoritativeProjection(campaignId, state, events, text && anchor != null ? {
+      id: combatMessageId(`auto-turn:${anchor}`),
+      text,
+      turnConsumed: true,
+      speaker: 'system',
+      author: 'Система боя',
+    } : null)
   },
   onClockChanged: (campaignId) => {
     broadcastCampaignRoom(campaignId)
@@ -4003,7 +4017,14 @@ const server = createServer((req, res) => {
         enabled_rule_packs: state.enabled_rule_packs,
         enabled_house_rules: state.enabled_house_rules,
       })
-      const room = saveRoom(code, { ...initialized.state, engine_mode: 'enforce', state_projector_version: GAME_STATE_PROJECTOR_VERSION }, 0)
+      // Журнал принадлежит комнате, а не движку: импорт состояния без него
+      // ронял клиент на первом же рендере («messages is not iterable»).
+      const room = saveRoom(code, {
+        ...initialized.state,
+        messages: Array.isArray(initialized.state?.messages) ? initialized.state.messages : [],
+        engine_mode: 'enforce',
+        state_projector_version: GAME_STATE_PROJECTOR_VERSION,
+      }, 0)
       // Первое место — создателя. Мастер создания мира с пустыми местами так
       // и обещает: «первое место всегда ваше», — поэтому такая кампания
       // закрепляет его и за администратором. Без этого место 1 уходило в
@@ -4730,6 +4751,9 @@ const server = createServer((req, res) => {
           x: Number(cell.x), y: Number(cell.y), type: String(cell.type ?? 'floor'), revealed: cell.revealed === true,
           ...(cell.feature == null ? {} : { feature: String(cell.feature) }),
           ...(previewOccupiedCells.has(`${Number(cell.x)},${Number(cell.y)}`) ? { occupied: true } : {}),
+          // Предпросмотр видит те же стены и окна, что и движок, — иначе оценка
+          // угрозы считалась бы по другой расстановке.
+          ...(encounterBarrierSides(cell) ? { walls: encounterBarrierSides(cell) } : {}),
         })) },
         party,
         difficulty,
@@ -5136,14 +5160,21 @@ const server = createServer((req, res) => {
         creative_provider: creativeMoment?.provider ?? null,
       }
       else if (journalNarration) result = { ...result, narration_message_id: narrationMessageId }
+      // Критический момент не стирает боевой лог из хроники: строка с бросками и
+      // уроном ложится перед текстом рассказчика. Иначе свой удар, сваливший
+      // врага, игрок видел без единого числа, а удары врага — с числами
+      // (плейтест 2026-10-03).
+      const combatLog = creativeMoment && tactical.main
+        ? { id: combatMessageId(`${idempotencyKey}:log`), text: tactical.main, turnConsumed: false, speaker: 'system', author: 'Система боя' }
+        : null
       const projected = result.authoritative_state
-        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? {
+        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? [combatLog, {
           id: narrationMessageId,
           text: journalNarration,
           turnConsumed: types.has('EndTurn'),
           speaker: creativeMoment ? 'narrator' : 'system',
           author: creativeMoment ? 'Рассказчик' : 'Система боя',
-        } : null, { awaitProjection: true })
+        }].filter(Boolean) : null, { awaitProjection: true })
         : null
       if (projected?.projectionAck) await projected.projectionAck
       const responseState = projected?.state ?? result.authoritative_state

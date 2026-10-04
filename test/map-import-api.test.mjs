@@ -154,4 +154,24 @@ test('импорт карты по HTTP: предпросмотр, примен�
   assert.ok(bypass.status >= 400, `обход должен отклоняться: ${bypass.status} ${bypass.text}`)
   const after = await request(baseUrl, '/api/rooms/MAPIMP', { cookie: ownerCookie })
   assert.equal(after.body.version, applied.body.version, 'отказ обходного пути ничего не записал')
+
+  // Этап 8: перестройка карты текущей сцены по программе — тем же маршрутом.
+  const rebuild = { mode: 'rebuild', text: 'В центре двора колодец, у стены — три бочки.', idempotency_key: 'map-rebuild:1' }
+  const guestRebuild = await request(baseUrl, path, { method: 'POST', cookie: guestCookie, body: rebuild })
+  assert.equal(guestRebuild.status, 403, guestRebuild.text)
+  const rebuilt = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: rebuild })
+  assert.equal(rebuilt.status, 200, rebuilt.text)
+  assert.equal(rebuilt.body.mode, 'rebuild')
+  assert.equal(rebuilt.body.duplicate, false)
+  assert.notEqual(rebuilt.body.state.scene.map.generator.id, 'talespire-slab', 'карта построена генератором заново')
+  assert.equal(rebuilt.body.state.scene.map_source, undefined)
+  const rebuiltAgain = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: rebuild })
+  assert.equal(rebuiltAgain.body.duplicate, true, 'повтор ключа — прежний коммит')
+  assert.equal(rebuiltAgain.body.version, rebuilt.body.version)
+  const rebuildBypass = await request(baseUrl, '/api/campaigns/MAPIMP/commands', {
+    method: 'POST',
+    cookie: ownerCookie,
+    body: { idempotency_key: 'map-rebuild:bypass', message: 'перестройка в обход', command: { command_type: 'RebuildLocationMap', actor_id: 'hero-1' } },
+  })
+  assert.ok(rebuildBypass.status >= 400, `обход перестройки отклоняется: ${rebuildBypass.status}`)
 })

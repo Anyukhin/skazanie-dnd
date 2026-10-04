@@ -1,6 +1,65 @@
 import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 import { campaignModeFor } from './campaign-stories.mjs'
 import { questStateForViewer } from './quest-consequences.mjs'
+import { platformCells } from './map-quality.mjs'
+import { normalizeSceneRequirements, requirementAssets, requirementLabel, requirementTerrain } from './scene-requirements.mjs'
+
+/** Сторона света от героя до якоря: север вверху карты. */
+function directionWord(dx, dy) {
+  if (Math.hypot(dx, dy) <= 3) return 'рядом'
+  const angle = Math.atan2(-dy, dx) * 180 / Math.PI
+  const sectors = ['к востоку', 'к северо-востоку', 'к северу', 'к северо-западу', 'к западу', 'к юго-западу', 'к югу', 'к юго-востоку']
+  return sectors[Math.round(((angle + 360) % 360) / 45) % 8]
+}
+
+/**
+ * Якоря программы сцены на карте (этап 7 `docs/map-generation-plan.md`):
+ * что из обещанного текстом действительно стоит на карте и видно отряду, и в
+ * какой стороне. И отдельно — что текст обещал, а карты нет: Рассказчик об
+ * этом молчит, чтобы слова и доска говорили одно.
+ *
+ * Видимое — только на раскрытых клетках: якорь за закрытой дверью Рассказчик
+ * не называет. Отсутствующее берётся из программы, а её пишут слова сцены,
+ * которые игрок уже прочёл, поэтому список ничего не выдаёт.
+ *
+ * @param {Record<string, any>} scene
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}|null} position
+ */
+function sceneLandmarks(scene, map, position) {
+  const items = normalizeSceneRequirements(scene.map_requirements)
+  if (!items.length) return null
+  const origin = position ?? map.spawnPoints?.find((point) => point.role === 'party') ?? { x: map.width / 2, y: map.height / 2 }
+  const landmarks = []
+  const absent = []
+  for (const item of items) {
+    const terrain = requirementTerrain(item.id)
+    const assets = new Set(requirementAssets(item.id))
+    const all = terrain ? platformCells(map).map((cell) => [cell])
+      : (map.props ?? []).filter((prop) => assets.has(prop.assetId)).map((prop) => (prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]))
+    if (!all.length) {
+      absent.push(item.id)
+      continue
+    }
+    const visible = all.filter((cells) => cells.every((point) => cellAt(map, point.x, point.y)?.revealed))
+    if (!visible.length) continue
+    const points = visible.flat()
+    const cx = points.reduce((sum, point) => sum + point.x, 0) / points.length
+    const cy = points.reduce((sum, point) => sum + point.y, 0) / points.length
+    landmarks.push({
+      kind: item.id,
+      label: requirementLabel(item.id),
+      count: terrain ? Math.max(1, Math.round(visible.length / 6)) : visible.length,
+      where: directionWord(cx - Number(origin.x), cy - Number(origin.y)),
+      ...(scene.map_requirements?.focus === item.id ? { focus: true } : {}),
+    })
+  }
+  const missing = Array.isArray(scene.map_requirements?.missing) ? scene.map_requirements.missing.map(String) : []
+  return {
+    landmarks: landmarks.slice(0, 12),
+    landmarks_absent: [...new Set([...absent, ...missing])].map((id) => ({ kind: id, label: requirementLabel(id) })).slice(0, 12),
+  }
+}
 
 const clean = (value, maximum) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 export const AGENT_CONTEXT_SCHEMA_VERSION = 1
@@ -122,7 +181,9 @@ export function sceneContextForAgent(state = {}, actorId = '') {
   const visibleAreas = zones.filter((zone) => discovered.has(zone.id) && zone.label)
   const objectSelection = boundedSelectionMetadata({ scope: 'visible_interactable_objects_in_current_area', candidateCount: visibleObjects.length, limit: 16 })
   const areaSelection = boundedSelectionMetadata({ scope: 'visible_discovered_areas_in_current_location', candidateCount: visibleAreas.length, limit: 16 })
+  const program = sceneLandmarks(scene, map, position ? { x: Number(position.x), y: Number(position.y) } : null)
   return { ...context,
+    ...(program ? program : {}),
     context_metadata: metadata,
     ...(currentZone ? { id: `${scene.location_id || scene.location}:${currentZone.id}`, theme: currentZone.label || currentZone.kind } : {}),
     spatial_context: {

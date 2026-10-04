@@ -49,6 +49,7 @@ import {
 } from './npc-equipment.mjs'
 import { truceHolds } from './parley.mjs'
 import { footprintCellsFor, footprintDistanceFeet } from './actor-footprint.mjs'
+import { occupiedPositions, positionKey } from './rules/tactical-geometry.mjs'
 
 const CELL_FEET = 5
 
@@ -228,6 +229,28 @@ function averageDamage(expression, flat = 0) {
   return Number(match[1]) * (Number(match[2]) + 1) / 2 + Number(match[3] || 0)
 }
 
+/**
+ * «Держит дистанцию» — тактика стрелка, а не всякого, у кого за спиной
+ * арбалет. Черта стоит и у ветерана, рыцаря, холмового великана, чей главный
+ * удар — ближний; с ней ветеран пятился от воина восемнадцать раундов
+ * (плейтест 2026-10-03). Отходит тот, чей лучший дальний удар против средней
+ * брони (КД 15) не слабее лучшего ближнего, или у кого ближнего удара нет.
+ */
+function prefersRangedCombat(enemy) {
+  const expected = (profile) => {
+    const hitChance = Math.min(.95, Math.max(.05, (6 + (Number(profile?.attack_modifier) || 0)) / 20))
+    return averageDamage(profile?.damage_expression, profile?.damage_amount) * hitChance
+  }
+  const profiles = Array.isArray(enemy?.action_profiles) ? enemy.action_profiles : []
+  const best = (kind) => profiles.filter((profile) => profile?.kind === kind).reduce((top, profile) => Math.max(top, expected(profile)), -1)
+  const melee = best('melee')
+  return melee < 0 || best('ranged') >= melee
+}
+
+function keepsDistance(enemy) {
+  return hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance) && prefersRangedCombat(enemy)
+}
+
 function adjacentEnemyAlly(state, enemy, target) {
   const targetId = actorId(target)
   return livingEnemies(state).some((ally) => actorId(ally) !== actorId(enemy)
@@ -353,12 +376,13 @@ function candidatePositions(state, enemy, budgetFeet, anchor, prefer = 'near') {
   const occupied = new Set([...livingParty(state), ...livingEnemies(state)]
     .flatMap((actor) => footprintCellsFor(actor, actorPosition(state, actorId(actor))))
     .map((position) => `${position.x}:${position.y}`))
+  const stopBlocked = stopBlockedFor(state, actorId(enemy))
   const cellByKey = new Map((state.scene?.cells ?? []).map((cell) => [`${Number(cell.x)}:${Number(cell.y)}`, cell]))
   const reachable = (state.scene?.cells ?? [])
     .filter((cell) => cell.revealed && ['floor', 'door'].includes(cell.type))
     .map((cell) => ({ x: Number(cell.x), y: Number(cell.y) }))
     .filter((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)) <= maximumSteps)
-    .filter((cell) => footprintCellsFor(enemy, cell).every((point) => {
+    .filter((cell) => !stopBlocked(cell) && footprintCellsFor(enemy, cell).every((point) => {
       const key = `${point.x}:${point.y}`
       return cellByKey.get(key)?.revealed && ['floor', 'door'].includes(cellByKey.get(key)?.type) && !occupied.has(key)
     }))
@@ -398,9 +422,11 @@ function firingPositionFor(state, enemy, target, profile) {
   if (!from || !targetAt) return null
   const budgetFeet = remainingMovementFeet(state, enemy)
   const threats = rangedThreats(state, enemy)
+  const staysInReach = withinReachOfAdjacentHostiles(state, enemy)
   const positionScore = (position) => {
     const distanceFeet = distanceFeetBetweenActors(state, actorId(enemy), actorId(target), position, targetAt)
     if (distanceFeet < CELL_FEET || distanceFeet > profile.range_feet) return null
+    if (!staysInReach(position)) return null
     if (!hasClearActorTrajectory(state, actorId(enemy), actorId(target), position, targetAt)) return null
     const cover = targetCoverLevel(state, actorId(enemy), actorId(target), position, targetAt)
     return (cover === 'none' ? CLEAR_SHOT_BONUS : 0)
@@ -423,6 +449,24 @@ function firingPositionFor(state, enemy, target, profile) {
   // Отбор по близости к цели прятал бы от стрелка высоту у него под ногами.
   const ranked = rankedPositions(state, enemy, budgetFeet, from, positionScore, current)
   return firstAffordable(state, enemy, ranked, budgetFeet)
+}
+
+/**
+ * Клетки, куда можно отойти, не выходя из досягаемости соседей-противников.
+ * Шаг за пределы чужой досягаемости — это атака по возможности, а огневая
+ * позиция её не стоит: в плейтесте 2026-10-03 ветеран, стоя вплотную к воину,
+ * отступил на клетку ради выстрела из арбалета и подставился под удар.
+ * Досягаемость считается в пять футов — так её видит большинство героев.
+ */
+function withinReachOfAdjacentHostiles(state, enemy) {
+  const enemyId = actorId(enemy)
+  const from = actorPosition(state, enemyId)
+  const adjacent = from
+    ? attackableTargetsFor(state, enemy)
+      .map((hostile) => ({ id: actorId(hostile), at: actorPosition(state, actorId(hostile)) }))
+      .filter((hostile) => hostile.at && distanceFeetBetweenActors(state, enemyId, hostile.id, from, hostile.at) <= CELL_FEET)
+    : []
+  return (position) => adjacent.every((hostile) => distanceFeetBetweenActors(state, enemyId, hostile.id, position, hostile.at) <= CELL_FEET)
 }
 
 /**
@@ -532,6 +576,39 @@ function bloodiedRetreatFor(state, enemy) {
   return firstAffordable(state, enemy, ranked, budgetFeet)?.destination ?? null
 }
 
+/**
+ * Ближний удар после подхода. Существо, которое рубит не хуже, чем стреляет,
+ * идёт к удару охотнее, чем стоит и стреляет; стрелок — наоборот, при равном
+ * уроне остаётся на месте.
+ */
+function reachableMeleeScore(enemy) {
+  return prefersRangedCombat(enemy) ? 980 : 1_010
+}
+
+/**
+ * Шанс попасть по КД цели; выстрел в упор — с помехой. Профиль без бонуса
+ * атаки (спасбросок, область) оценивается средним шансом: сравнивать его
+ * с атакой по КД не на чем.
+ */
+function hitChanceFor(profile, targetArmor, disadvantage) {
+  // Профиль движка (`attackProfileFor`) несёт бонус в `modifier`, сырой
+  // профиль стат-блока — в `attack_modifier`.
+  const modifier = Number(profile?.modifier ?? profile?.attack_modifier)
+  if (!['melee', 'ranged'].includes(String(profile?.kind)) || !Number.isFinite(modifier)) return .6
+  const chance = Math.min(.95, Math.max(.05, (21 + modifier - targetArmor) / 20))
+  return disadvantage ? chance * chance : chance
+}
+
+/** Дойдёт ли существо до удара своей скоростью этого хода, без Рывка. */
+function meleeReachableThisTurn(state, enemy, path, profile) {
+  if (!Array.isArray(path) || !path.length) return false
+  if (state.mechanics?.combat?.action_economy?.[actorId(enemy)]?.action === false) return false
+  const rangeCells = Math.max(1, Math.floor((profile?.range_feet ?? CELL_FEET) / CELL_FEET))
+  const approachSteps = Math.max(0, path.length - rangeCells)
+  if (!approachSteps) return false
+  return affordablePathPrefix(state, actorId(enemy), path, approachSteps, remainingMovementFeet(state, enemy)).steps >= approachSteps
+}
+
 function targetCandidates(state, enemy) {
   const enemyAt = actorPosition(state, actorId(enemy))
   const profiles = actionProfiles(state, enemy)
@@ -572,11 +649,22 @@ function targetCandidates(state, enemy) {
         && distanceFeet >= CELL_FEET && distanceFeet <= profile.range_feet
         && !hasClearActorTrajectory(state, actorId(enemy), actorId(target), enemyAt, targetAt)
       const relentlessPursuit = hasTrait(enemy, NPC_BEHAVIOR_POLICIES.relentlessPursuit)
+      // «Добить» — только тем, что попадёт без помехи: выстрел в упор её
+      // получает, и ветеран менял меч на арбалет ради выстрела, который
+      // скорее промажет (плейтест 2026-10-03).
+      const finishingBlow = damage >= targetHp && !rangedAtMeleePenalty
+      // Урон сравнивается ожидаемый — средний на шанс попасть по КД цели, —
+      // а ближний удар, до которого существо дойдёт своей скоростью, почти
+      // равен удару с места. Иначе ветеран с десяти футов стрелял из арбалета
+      // (+3) вместо двух шагов к мечу (+5): средний урон арбалета выше, а
+      // «в досягаемости» было только оно (плейтест 2026-10-03).
+      const expectedDamage = damage * hitChanceFor(profile, targetArmor, Boolean(rangedAtMeleePenalty))
+      const reachableMelee = !inRange && profile.kind === 'melee' && meleeReachableThisTurn(state, enemy, path, profile)
       // Демон не выбирает — он бьёт ближайшего.
-      const score = hostileToAll ? Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 - pathDistance * 50 : Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 + Math.min(300, damage * 12)
+      const score = hostileToAll ? Number(inRange && !blockedShot) * 1_000 + Number(Boolean(path)) * 400 - pathDistance * 50 : Number(inRange && !blockedShot) * 1_000 + (reachableMelee ? reachableMeleeScore(enemy) : 0) + Number(Boolean(path)) * 400 + Math.min(300, expectedDamage * 24)
         + (relentlessPursuit
           ? Math.max(0, 800 - pathDistance * 80)
-          : damage >= targetHp ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))
+          : finishingBlow ? 260 : Math.round((1 - targetHp / Math.max(targetHp, Number(target.maxHp) || targetHp)) * 100))
         + (relentlessPursuit ? 0 : Math.max(0, 22 - targetArmor) * 4 + controlValue + packValue) + rechargeValue
         - pathDistance * 3 - rangedAtMeleePenalty - coverPenalty + highGround
       candidates.push({ actor: target, path, inRange: inRange && !blockedShot, blockedShot, coverLevel, distance: pathDistance, profile, score })
@@ -596,16 +684,34 @@ function targetCandidates(state, enemy) {
  */
 function affordablePathPrefix(state, actorIdValue, path, maximumSteps, budgetFeet) {
   const { stepCost } = movementStepCostFor(state, String(actorIdValue))
+  const stopBlocked = stopBlockedFor(state, actorIdValue)
   const limit = Math.min(Math.max(0, maximumSteps), Array.isArray(path) ? path.length : 0)
   let steps = 0
   let costFeet = 0
+  let walkedFeet = 0
   for (let index = 0; index < limit; index += 1) {
-    const next = costFeet + stepCost(path[index])
+    const next = walkedFeet + stepCost(path[index])
     if (next > budgetFeet) break
-    costFeet = next
+    walkedFeet = next
+    // Сквозь клетку мирного NPC или союзника путь идёт, но остановиться в ней
+    // нельзя: отрезок кончается на последней клетке, где ход законно завершить.
+    if (stopBlocked(path[index])) continue
+    costFeet = walkedFeet
     steps = index + 1
   }
   return { steps, costFeet }
+}
+
+/**
+ * Где ходу нельзя закончиться: тот же набор занятых клеток, что проверяет
+ * `MoveActor`, — живые участники боя и мирные NPC сцены. Планировщик знал
+ * только героев и врагов и вёл ветерана в клетку жительницы; движок отвергал
+ * ход, и бой вставал навсегда (боевой плейтест 2026-10-03).
+ */
+function stopBlockedFor(state, actorIdValue) {
+  const occupied = occupiedPositions(state, String(actorIdValue))
+  const actor = findActor(state, String(actorIdValue))
+  return (position) => footprintCellsFor(actor, position).some((cell) => occupied.has(positionKey(cell)))
 }
 
 function retreatDestination(state, enemy, target, profile) {
@@ -616,9 +722,11 @@ function retreatDestination(state, enemy, target, profile) {
   const maximumSteps = Math.max(0, Math.floor(budgetFeet / CELL_FEET))
   if (!maximumSteps) return null
   const { stepCost } = movementStepCostFor(state, actorId(enemy))
+  const stopBlocked = stopBlockedFor(state, actorId(enemy))
   let best = null
   for (const cell of state.scene?.cells ?? []) {
     if (!cell.revealed || !['floor', 'door'].includes(cell.type)) continue
+    if (stopBlocked({ x: Number(cell.x), y: Number(cell.y) })) continue
     const path = shortestTacticalPath(state, actorId(enemy), { x: Number(cell.x), y: Number(cell.y) })
     if (!path?.length || path.length > maximumSteps) continue
     // Отступление тоже платит за местность. Кандидаты по-прежнему ищутся
@@ -1184,7 +1292,7 @@ export function planNpcTurn(rawState, enemyId) {
     movementOnlyPhase = true
   } else if (candidate.inRange
     && profile.kind === 'ranged'
-    && hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance)
+    && keepsDistance(enemy)
     && !adjacentPartyMember(state, enemy)
     && meleeThreatWithinReach(state, enemy)) {
     const retreat = retreatDestination(state, enemy, candidate.actor, profile)
@@ -1194,7 +1302,7 @@ export function planNpcTurn(rawState, enemyId) {
     } else {
       commands.push(...attackCommands(state, enemy, targetId, profile))
     }
-  } else if (candidate.inRange && profile.kind === 'ranged' && hasTrait(enemy, NPC_BEHAVIOR_POLICIES.keepDistance) && adjacent && !hasTrait(enemy, 'nimble-escape')) {
+  } else if (candidate.inRange && profile.kind === 'ranged' && keepsDistance(enemy) && adjacent && !hasTrait(enemy, 'nimble-escape')) {
     const retreat = retreatDestination(state, enemy, candidate.actor, profile)
     if (retreat) {
       commands.push({ command_type: 'MoveActor', actor_id: String(enemyId), to: retreat, monster_ability: 'keep-distance' })
@@ -1240,9 +1348,20 @@ export function planNpcTurn(rawState, enemyId) {
     const approachSteps = Math.max(0, candidate.path.length - rangeCells)
     const affordable = affordablePathPrefix(state, enemyId, candidate.path, approachSteps, availableFeet)
     const needsAggressive = aggressiveAvailable && affordable.steps < approachSteps
-    const reach = needsAggressive
+    // Рывок — когда и вся скорость не доводит до удара: действие всё равно
+    // пропадёт, так лучше бежать. Без него враг вне досягаемости полз по
+    // тридцать футов за ход (плейтест 2026-10-03). Начатая атака действие уже
+    // заняла — тогда только шаг. Склянка, долетающая с места, ценнее бега.
+    const needsDash = !needsAggressive && affordable.steps < approachSteps
+      && actionEconomy.action !== false && usedBeforePlan === 0
+      && !thrownFlaskCommandFor(state, enemy, usableEquipment, currentEconomy, enemyAt)
+    const reach = needsAggressive || needsDash
       ? affordablePathPrefix(state, enemyId, candidate.path, approachSteps, availableFeet + speedFeet)
       : affordable
+    if (needsDash && reach.steps > affordable.steps) {
+      commands.push({ command_type: 'UseCombatAction', actor_id: String(enemyId), action_id: 'dash' })
+    }
+    const dashed = needsDash && reach.steps > affordable.steps
     if (reach.steps > 0) {
       plannedMovementFeet = reach.costFeet
       plannedPosition = candidate.path[reach.steps - 1]
@@ -1253,7 +1372,7 @@ export function planNpcTurn(rawState, enemyId) {
     const distanceAfterMove = destination && targetAt
       ? distanceFeetBetweenActors(state, enemyId, targetId, destination, targetAt)
       : Number.MAX_SAFE_INTEGER
-    if (profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet
+    if (!dashed && profile && distanceAfterMove >= CELL_FEET && distanceAfterMove <= profile.range_feet
       && (profile.range_feet <= CELL_FEET || hasClearActorTrajectory(state, enemyId, targetId, destination, targetAt))) {
       commands.push(...attackCommands(state, enemy, targetId, profile))
     }

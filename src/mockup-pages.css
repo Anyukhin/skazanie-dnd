@@ -209,6 +209,8 @@
      полоска хода колонки (`turn-strip`). */
   .status-bar > .initiative-ribbon.combat { top: calc(60px + 8px); left: 96px; right: 8px; max-width: none; transform: none; overflow-x: auto; }
   .status-bar > .initiative-ribbon.combat > .initiative-active-chip { display: none; }
+  /* На телефоне лента прокручивается сама — ей нужны касания целиком. */
+  .status-bar > .initiative-ribbon.combat { pointer-events: auto; }
   .mobile-pane-chronicle .status-bar > .initiative-ribbon.combat { display: none; }
 
   /* Карта: отряд поверх поля прячется — героя выбирают в «Отряде». */

@@ -228,8 +228,9 @@ export function occupiedBoardPositions(state: GameState, exceptId?: string) {
     if (actor.id === exceptId || !living) return
     for (const cell of actorFootprintCells(actor)) occupied.add(boardPositionKey(cell.x, cell.y))
   }
+  // Умирающий герой занимает клетку, пока не погиб: встать на неё нельзя.
   state.players.forEach((actor) => {
-    addActor(actor, actor.hp > 0)
+    addActor(actor, actor.hp > 0 || state.mechanics?.death?.heroes?.[actor.id]?.status !== 'dead')
   })
   ;(state.enemies ?? []).forEach((actor) => {
     addActor(actor, actor.alive)
@@ -268,6 +269,12 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
   const npcTransit = new Set((state.scene_npcs ?? [])
     .filter((npc) => npc.alive !== false && npc.stance !== 'hostile')
     .map((npc) => boardPositionKey(npc.x, npc.y)))
+  // Умирающего героя можно пройти насквозь, но встать на его клетку нельзя —
+  // так же, как мирного NPC (`occupiedPositions` на сервере).
+  for (const hero of state.players) {
+    if (hero.id === actor.id || hero.hp > 0 || state.mechanics?.death?.heroes?.[hero.id]?.status === 'dead') continue
+    for (const cell of actorFootprintCells(hero)) npcTransit.add(boardPositionKey(cell.x, cell.y))
+  }
   const propBlocked = new Set<string>()
   for (const prop of map?.props ?? []) {
     if (!prop.blocksMove) continue

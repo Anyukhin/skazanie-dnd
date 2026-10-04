@@ -64,6 +64,10 @@ button.header-chip.earned { border-color: var(--acc-line); color: var(--acc2); }
    шапки на него не действует. Вне боя режим сцены уже назван в шапке. */
 .status-bar > .initiative-ribbon.exploration { display: none; }
 .status-bar > .initiative-ribbon.combat { position: absolute; z-index: 16; top: calc(var(--status) + 10px); left: calc((100% - var(--server-column)) / 2); transform: translateX(-50%); max-width: calc(100% - var(--server-column) - 460px); padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--float); }
+/* Плашка лежит поверх доски, как и отряд: щелчок мимо аватаров уходит в клетку
+   под ней. Плейтест 2026-10-03: клетки под лентой было не выбрать вовсе. */
+.status-bar > .initiative-ribbon.combat { pointer-events: none; }
+.status-bar > .initiative-ribbon.combat :is(ol, button) { pointer-events: auto; }
 
 /* ---- отряд поверх поля ---- */
 .party-overlay { grid-area: board; z-index: 15; align-self: start; justify-self: start; display: flex; flex-direction: column; gap: 6px; width: 210px; margin: 60px 0 0 12px; pointer-events: none; }

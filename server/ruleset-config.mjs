@@ -1,6 +1,12 @@
 export const DND_2014_RULESET_ID = 'dnd_5e_2014'
 export const LEGACY_DEFAULT_RULESET_ID = 'srd_5_2_1'
 export const NEW_WORLD_DEFAULT_RULESET_ID = DND_2014_RULESET_ID
+/**
+ * Запасы классов по таблицам 2024 (`server/combat-actions.mjs`). Только для
+ * кампаний, созданных после 2026-10-03: прежние живут по старой таблице, чтобы
+ * их replay не менял уже начисленные запасы.
+ */
+export const CLASS_RESOURCES_2024_POLICY_ID = 'skazanie:class-resources-2024-v1'
 
 const profiles = [
   {
@@ -31,7 +37,7 @@ const profiles = [
     creation_enabled: true,
     process_default_allowed: true,
     enabled_rule_packs: ['srd_5_2_1'],
-    default_house_rules: [],
+    default_house_rules: [CLASS_RESOURCES_2024_POLICY_ID],
     limitations: [
       'Покрытие классов, заклинаний, существ и предметов остаётся частичным.',
     ],

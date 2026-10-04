@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { normalizeLandmarks } from './scene-requirements.mjs'
 
 const FIELDS = Object.freeze({
   topology: ['organic', 'linear', 'crossroads', 'market', 'courtyard', 'harbor', 'river', 'terraced', 'gate'],
@@ -12,12 +13,20 @@ const FIELDS = Object.freeze({
 
 const clean = (value, limit = 1600) => String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase('ru').slice(0, limit)
 
-/** Только замысел места. Геометрия, проходимость и численные правила принадлежат генератору. */
+/**
+ * Только замысел места. Геометрия, проходимость и численные правила принадлежат генератору.
+ * Якоря (`landmarks`, этап 2 `docs/map-generation-plan.md`) — виды из закрытого
+ * словаря `server/scene-requirements.mjs` с ролью: что обязано стоять на карте.
+ */
 export function normalizeSceneMapDesign(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return Object.fromEntries(Object.entries(FIELDS)
-    .filter(([key, allowed]) => allowed.includes(value[key]))
-    .map(([key]) => [key, value[key]]))
+  const landmarks = normalizeLandmarks(value.landmarks)
+  return {
+    ...Object.fromEntries(Object.entries(FIELDS)
+      .filter(([key, allowed]) => allowed.includes(value[key]))
+      .map(([key]) => [key, value[key]])),
+    ...(landmarks.length ? { landmarks } : {}),
+  }
 }
 
 function seededChoice(values, seed, purpose) {
@@ -70,7 +79,9 @@ export function sceneMapDesignFor({
   const river = !dryWatercourse && /речн|междуреч|дельт|\b(?:river|canal)\b|(?<![\p{L}\p{M}])рек(?:а|и|у|е|ой|ою|ам|ах)?(?![\p{L}\p{M}])|канал|двух берег|два берег/u.test(local)
   let topology
   if (river) topology = 'river'
-  else if (kind === 'port' || /(?<![\p{L}\p{M}])порт(?:а|у|ом|е|ы|ов[а-яё]*|ами|ах)?(?![\p{L}\p{M}])|гаван|пристан|верф|причал|морск.*берег|\b(?:harbou?r|port)\b/u.test(local)) topology = 'harbor'
+  // Дамба, плотина, шлюз, набережная — тоже край воды: плейтест 2026-10-02,
+  // «Смотровая дамба над соляными полями» строилась сухой деревней.
+  else if (kind === 'port' || /(?<![\p{L}\p{M}])порт(?:а|у|ом|е|ы|ов[а-яё]*|ами|ах)?(?![\p{L}\p{M}])|гаван|пристан|верф|причал|морск.*берег|(?<![\p{L}\p{M}])(?:дамб|плотин|шлюз|набережн|волнолом)|\b(?:harbou?r|port)\b/u.test(local)) topology = 'harbor'
   else if (/(?<![\p{L}\p{M}])(?:ворот|врат)|застав|приврат/u.test(local)) topology = 'gate'
   else if (/террас|горн|склон|кряж|на скал|\bmountains\b/u.test(local)) topology = 'terraced'
   else if (/рыноч|рынок|базар|торгов[а-яё]* площад/u.test(local)) topology = 'market'

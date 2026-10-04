@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { RULE_IDS, RulesValidationError, abilityModifier, findActor, skillProficiencyForActor, previewApproachAttack, previewLongJumpAttack, previewSwingAttack, swingPropForText } from './rules-engine.mjs'
+import { RULE_IDS, RulesValidationError, abilityModifier, defaultAttackItemIdFor, findActor, skillProficiencyForActor, previewApproachAttack, previewLongJumpAttack, previewSwingAttack, swingPropForText } from './rules-engine.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
@@ -153,10 +153,12 @@ export class Adjudicator {
       }
       case 'attack': {
         const targetId = intent.targets?.[0]
+        // Заявка «бью гоблина» — удар тем, что в руках, а не безоружный.
+        const itemId = targetId ? defaultAttackItemIdFor(state, intent.actor_id, targetId) : null
         return {
           ...base,
           rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]),
-          proposed_commands: [{ command_type: 'MakeAttack', actor_id: intent.actor_id, target_id: targetId, ...attackProfile(actor), source_rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]) }],
+          proposed_commands: [{ command_type: 'MakeAttack', actor_id: intent.actor_id, target_id: targetId, ...attackProfile(actor), ...(itemId ? { item_id: itemId } : {}), source_rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]) }],
           roll_requests: [{ expression: '1d20', purpose: 'attack', actor_id: intent.actor_id }],
           confidence: 0.82,
         }

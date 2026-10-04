@@ -509,7 +509,39 @@ function validateOpening(raw, path, worldMap, defaults = {}) {
     },
     hook: text(source.hook, `${path}.hook`, TEXT_LIMITS.short),
     npcs: normalizedNpcs,
+    secrets: validateOpeningSecrets(source.secrets, `${path}.secrets`, normalizedNpcs),
   }
+}
+
+const OPENING_SECRET_SKILLS = new Set(['investigation', 'perception', 'survival', 'insight', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+
+/**
+ * Заготовки ведущего первой сцены: что в ней уже правда и спрятано от героев.
+ * Хранитель обязан быть среди NPC сцены — иначе секрет некому выдать в
+ * разговоре, и он открывался бы только броском.
+ */
+function validateOpeningSecrets(raw, path, npcs) {
+  if (raw == null) return []
+  const entries = array(raw, path)
+  if (entries.length > 6) throw new WorldTemplateCatalogError(`${path} не должен содержать больше шести записей`)
+  const names = new Set(npcs.map((npc) => npc.name))
+  return entries.map((rawSecret, index) => {
+    const secretPath = `${path}[${index}]`
+    const secret = object(rawSecret, secretPath)
+    const skills = array(secret.skills, `${secretPath}.skills`, 1).map((skill, skillIndex) => {
+      const value = text(skill, `${secretPath}.skills[${skillIndex}]`, 40)
+      if (!OPENING_SECRET_SKILLS.has(value)) throw new WorldTemplateCatalogError(`${secretPath}.skills содержит неизвестный навык «${value}»`)
+      return value
+    })
+    const holder = optionalText(secret.holder, `${secretPath}.holder`, TEXT_LIMITS.name)
+    if (holder && !names.has(holder)) throw new WorldTemplateCatalogError(`${secretPath}.holder «${holder}» не найден среди NPC сцены`)
+    return {
+      topic: text(secret.topic, `${secretPath}.topic`, TEXT_LIMITS.short),
+      skills,
+      ...(holder ? { holder } : {}),
+      clue: text(secret.clue, `${secretPath}.clue`, TEXT_LIMITS.short),
+    }
+  })
 }
 
 function validateWorldRules(raw, path, openingNpcs, factions) {
@@ -864,6 +896,10 @@ export function worldTemplateOpening(templateValue, overrides = {}) {
     scene,
     hook: opening.hook,
     npcs: clone(opening.npcs),
+    // Заготовки ведущего авторского мира: без них удачный поиск в первой сцене
+    // открывал пустую «зацепку» (плейтест 2026-10-02). Нормализует и прячет
+    // их тот же `normalizeOpeningSecrets`, что и ответ campaign_creator.
+    secrets: clone(opening.secrets ?? []),
     ...(worldRules ? { worldRules, world_rules: clone(worldRules) } : {}),
   }
 }

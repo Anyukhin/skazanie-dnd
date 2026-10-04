@@ -335,7 +335,8 @@ test('каждый игрок заполняет свой серверный с�
   assert.equal(ownerHero.character, 'Бранн')
   assert.equal(ownerHero.maxHp, 11)
   assert.equal(ownerHero.proficiency, 2)
-  assert.ok(ownerHero.inventory.some((item) => item.catalog_id === 'srd_5_2_1:longsword'))
+  // Набор 2024 «вариант A» вместо прежнего «длинный меч, кожаный доспех, щит».
+  assert.ok(ownerHero.inventory.some((item) => item.catalog_id === 'srd_5_2_1:chain-mail' || item.catalog_id === 'srd_5_2_1:studded-leather-armor'))
 
   const duplicate = await command(baseUrl, ownerCookie, 'slot-1', importDocument(), 'owner-character')
   assert.equal(duplicate.status, 200, duplicate.text)

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import {
+  chronicleFollowAfterScroll,
   chronicleMatchesFilter,
   chronicleMessageText,
   isChronicleNearBottom,
@@ -43,6 +44,16 @@ test('desktop chronicle follows new events only while the reader remains at the 
   assert.equal(isChronicleNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 600 }), true)
   assert.equal(isChronicleNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 550 }), true)
   assert.equal(isChronicleNearBottom({ scrollHeight: 1000, clientHeight: 400, scrollTop: 500 }), false)
+})
+
+test('плавная прокрутка к новой записи не выключает слежение за лентой', () => {
+  // Живой прогон 2026-10-02: smooth scrollIntoView шлёт scroll на полпути, и
+  // проверка «у низа ли мы» выключала слежение — ответы копились под «↓ N».
+  const midway = { scrollHeight: 1400, clientHeight: 560, scrollTop: 500 }
+  assert.equal(chronicleFollowAfterScroll(midway, 300, true), true, 'движение вниз слежение не снимает')
+  assert.equal(chronicleFollowAfterScroll(midway, 700, true), false, 'игрок прокрутил вверх — лента его не дёргает')
+  assert.equal(chronicleFollowAfterScroll(midway, 500, false), false, 'стоящая лента не включает слежение сама')
+  assert.equal(chronicleFollowAfterScroll({ scrollHeight: 1400, clientHeight: 560, scrollTop: 840 }, 900, false), true, 'возврат к низу снова включает слежение')
 })
 
 test('the combat context does not render a second copy of the latest chronicle event', async () => {
