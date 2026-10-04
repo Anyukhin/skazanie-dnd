@@ -138,7 +138,7 @@ const REACTION_ACTION_LABELS = Object.freeze({
   'readied-attack': 'Подготовленная атака',
   'readied-spell': 'Подготовленное заклинание',
   'cast:shield': 'Щит',
-  'uncanny-dodge': 'Необычное уклонение',
+  'uncanny-dodge': 'Невероятное уклонение',
 })
 
 export function damageTypeLabel(damageType) {
@@ -253,6 +253,11 @@ function tacticalNarrationLines(events, state) {
   const sceneInteraction = sceneInteractionNarration(events)
   if (sceneInteraction) meaningful.push(sceneInteraction)
   const partyFailed = (events ?? []).some((event) => event?.event_type === 'CampaignFailed')
+  // Окна, которые закрыл режим реакции героя («сразу» или «никогда»), никто не
+  // видел: строка «получает возможность…» описывала бы вопрос, которого не было.
+  const windowsByPreference = new Map((events ?? [])
+    .filter((event) => event?.event_type === 'ReactionWindowClosed' && event?.payload?.reaction_preference)
+    .map((event) => [String(event.payload.id ?? ''), String(event.payload.reaction_preference)]))
   for (const event of events ?? []) {
     const payload = event.payload ?? {}
     const actor = tacticalActorName(state, event.actor_id)
@@ -275,6 +280,11 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
       const surprised = (payload.surprised ?? []).map((id) => tacticalActorName(state, id))
       if (surprised.length) meaningful.push(`Застигнуты врасплох: ${surprised.join(', ')} — первый ход они теряют и не могут использовать реакцию.`)
+    } else if (event.event_type === 'ReactionWindowOpened' && windowsByPreference.has(String(payload.id ?? ''))) {
+      // Ответ уже дан заранее — о нём скажет строка самой реакции.
+    } else if (event.event_type === 'ReactionWindowClosed' && payload.reaction_preference) {
+      // «Никогда» молчит: отказ без вопроса — не событие боя. «Сразу» описано
+      // строкой использованной реакции ниже.
     } else if (event.event_type === 'ReactionWindowOpened') {
       const reactor = tacticalActorName(state, (event.target_ids ?? [])[0] ?? payload.target_id)
       const source = tacticalActorName(state, payload.source_actor_id ?? event.actor_id)
@@ -326,9 +336,16 @@ function tacticalNarrationLines(events, state) {
           ? 'критическое попадание — цель не может защищаться'
           : payload.critical ? 'критическое попадание' : 'попадание'
         : 'промах'
+      // «Щит», поднятый реакцией на этот удар, в `armor_class` ещё не входит:
+      // движок сравнил бросок с прежним КД и снял попадание. Без поправки
+      // строка читалась как «13 против КД 12 — промах».
+      const total = Number(payload.total) || 0
+      const baseArmorClass = Number(payload.armor_class) || 0
+      const shownArmorClass = payload.shielded_by_reaction === true && !payload.hit && total >= baseArmorClass ? baseArmorClass + 5 : baseArmorClass
+      const shieldNote = payload.shielded_by_reaction === true ? ' с «Щитом»' : ''
       meaningful.push(targetIsEnemy
         ? `${actor} атакует ${accusativeName(target)}${reason}: ${outcome}.`
-        : `${actor} атакует ${accusativeName(target)}${reason}: ${Number(payload.total) || 0} против КД ${Number(payload.armor_class) || 0} — ${outcome}.`)
+        : `${actor} атакует ${accusativeName(target)}${reason}: ${total} против КД ${shownArmorClass}${shieldNote} — ${outcome}.`)
     } else if (event.event_type === 'NpcItemUsed') {
       // Подпись приходит готовой из закрытой таблицы тактик
       // (`NPC_ITEM_TACTICS`, `server/npc-equipment.mjs`) и намеренно
@@ -363,8 +380,12 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target}: «${String(payload.name || payload.action_id || 'особый приём')}» снова наготове.`)
     } else if (event.event_type === 'AreaAttackResolved') {
       meaningful.push(`${actor} бросает ${payload.item_name || 'снаряд'} в область радиусом ${Number(payload.radius_feet) || 0} фт.`)
+    } else if (event.event_type === 'CombatActionUsed' && payload.reaction_preference === 'never') {
+      // Отказ по режиму «никогда» хроника не пишет.
     } else if (event.event_type === 'CombatActionUsed' && (payload.action_type === 'reaction' || payload.reaction_window_id)) {
-      meaningful.push(`${actor} использует ${reactionActionText(payload)}.`)
+      meaningful.push(payload.reaction_preference === 'auto'
+        ? `${actor} сразу использует ${reactionActionText(payload)}.`
+        : `${actor} использует ${reactionActionText(payload)}.`)
     } else if (event.event_type === 'CombatActionUsed' && payload.monster_action === true) {
       meaningful.push(`${actor} использует приём «${String(payload.name || 'особая атака')}».`)
     } else if (event.event_type === 'CombatActionUsed') {

@@ -307,6 +307,37 @@ function domainSpellIdsFor(actor) {
   return ids
 }
 
+/**
+ * Бонус атаки заклинанием героя по характеристике заклинателя: модификатор
+ * характеристики плюс бонус мастерства. Одна формула и для движка (`CastSpell`
+ * в rules-engine), и для листа героя на панели стола: СЛ спасброска, которую
+ * игрок видит у портрета, обязана совпадать с той, что применит сервер.
+ *
+ * @param {any} actor
+ * @param {string} ability
+ * @returns {number}
+ */
+export function heroSpellAttackModifier(actor, ability) {
+  const raw = Number(actor?.abilities?.[ability])
+  const score = Number.isSafeInteger(raw) ? raw : 10
+  const proficiency = Number(actor?.proficiency)
+  return Math.floor((score - 10) / 2) + Math.max(0, Number.isSafeInteger(proficiency) ? proficiency : 0)
+}
+
+/**
+ * Сводка заклинателя класса для листа героя: характеристика, бонус атаки и
+ * СЛ спасброска (8 + бонус атаки). У класса без заклинаний — `null`.
+ *
+ * @param {any} actor
+ * @returns {{ ability: string, attack_bonus: number, save_dc: number } | null}
+ */
+export function heroSpellcastingSummaryFor(actor) {
+  const profile = casterProfile(actor)
+  if (!profile) return null
+  const attackBonus = heroSpellAttackModifier(actor, profile.ability)
+  return { ability: profile.ability, attack_bonus: attackBonus, save_dc: 8 + attackBonus }
+}
+
 export function combatSpellsFor(actor, options = {}) {
   const rulesetId = rulesetIdOf(options)
   const profile = casterProfile(actor)

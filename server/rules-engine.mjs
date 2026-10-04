@@ -287,6 +287,14 @@ import { ENCOUNTER_PROPOSAL_VERSION, EncounterAssemblyError, assembleEncounter, 
 import { footprintCellsFor, footprintDistanceFeet, footprintMetadataForSize, footprintSizeFor, normalizeFootprintMetadata } from './actor-footprint.mjs'
 import { normalizeEnemyLoadout } from './enemy-loadouts.mjs'
 import {
+  REACTION_MODE_SCHEMA_VERSION,
+  isConfigurableReaction,
+  isReactionMode,
+  normalizeReactionPreferences,
+  planReactionByPreference,
+  reactionModeFor,
+} from './reaction-preferences.mjs'
+import {
   NPC_ACTION_UNAVAILABLE_MESSAGES,
   NPC_EQUIPMENT_EVENT_SCHEMA_VERSION,
   NPC_EQUIPMENT_POLICY_ID,
@@ -376,6 +384,7 @@ import {
   combatSpellFor,
   combatSpellsFor,
   fixedSpellSlotLevelFor,
+  heroSpellAttackModifier,
   isHostileSummon,
   isPartySummon,
   isUntargetableSummon,
@@ -795,6 +804,7 @@ const COMMAND_RULES = Object.freeze({
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
+  SetReactionPreference: [RULE_IDS.reaction],
   EquipItem: [RULE_IDS.actions],
   UseItem: [RULE_IDS.actions],
   TransferItem: [],
@@ -830,7 +840,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...TAVERN_COMMAND_TYPES,
   ...COURIER_LETTER_COMMAND_TYPES,
   ...BLESSING_COMMAND_TYPES,
-  'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference',
+  'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
 ])
@@ -1883,6 +1893,11 @@ export function normalizeCampaignState(input = {}) {
   mechanics.item_appraisals = clone(state.mechanics?.item_appraisals ?? {})
   mechanics.scene_interactions = normalizeSceneInteractions(state.mechanics?.scene_interactions)
   mechanics.enemy_knowledge = normalizeEnemyKnowledge(state.mechanics?.enemy_knowledge)
+  // Режимы реакций героев. Поля нет, пока никто ничего не настроил: старые
+  // снимки и replay без него сохраняют прежнюю форму состояния.
+  const reactionPreferences = normalizeReactionPreferences(state.mechanics?.reaction_preferences)
+  if (Object.keys(reactionPreferences).length) mechanics.reaction_preferences = reactionPreferences
+  else delete mechanics.reaction_preferences
   mechanics.encounter = state.mechanics?.encounter && typeof state.mechanics.encounter === 'object'
     ? encounterWithoutLoadouts(state.mechanics.encounter)
     : null
@@ -11743,7 +11758,109 @@ function closeFinishedSpellBuffs(result, before) {
   return extra.length ? { ...result, events: [...result.events, ...extra] } : result
 }
 
+const REACTION_PREFERENCE_LABELS = Object.freeze({
+  'opportunity-attack': 'Атака по возможности', 'cast:counterspell': 'Контрзаклинание', 'cast:shield': 'Щит',
+  'cast:absorb-elements': 'Поглощение стихий', 'cast:hellish-rebuke': 'Адское возмездие', 'cast:silvery-barbs': 'Искусная острота',
+  'uncanny-dodge': 'Невероятное уклонение', parry: 'Парирование', riposte: 'Ответный удар',
+})
+const REACTION_PREFERENCE_SPELL_IDS = Object.freeze(['counterspell', 'shield', 'absorb-elements', 'hellish-rebuke', 'silvery-barbs'])
+const REACTION_PREFERENCE_ACTION_IDS = Object.freeze(['uncanny-dodge', 'parry', 'riposte'])
+
+/**
+ * Реакции героя, которым можно задать режим, вместе с текущим режимом.
+ * Список собирает сервер — по нему же `SetReactionPreference` сверяет запрос,
+ * а панель героя рисует кнопки: второго перечня реакций у клиента нет.
+ *
+ * @returns {Array<{ id: string, name: string, kind: 'spell' | 'action', spell_id?: string, mode: 'ask' | 'auto' | 'never' }>}
+ */
+export function heroReactionModesFor(state, heroId) {
+  const id = String(heroId ?? '')
+  const hero = (state?.players ?? []).find((player) => actorId(player) === id)
+  if (!hero) return []
+  const entries = [{ id: 'opportunity-attack', name: 'Атака по возможности', kind: 'action' }]
+  for (const spellId of REACTION_PREFERENCE_SPELL_IDS) {
+    const spell = combatSpellFor(hero, spellId, { rulesetId: state?.ruleset_id })
+    if (spell?.actionType === 'reaction') entries.push({ id: `cast:${spell.id}`, name: spell.name, kind: 'spell', spell_id: spell.id })
+  }
+  for (const actionIdValue of REACTION_PREFERENCE_ACTION_IDS) {
+    const action = combatActionFor(hero, actionIdValue)
+    if (action?.actionType === 'reaction') entries.push({ id: action.id, name: action.name, kind: 'action' })
+  }
+  return entries
+    .filter((entry) => isConfigurableReaction(entry.id))
+    .map((entry) => ({ ...entry, mode: reactionModeFor(state?.mechanics?.reaction_preferences, id, entry.id) }))
+}
+
+// Сколько окон подряд режимы реакций могут закрыть в одной команде. Каждое
+// принятое окно тратит реакцию героя, поэтому настоящая цепочка коротка
+// (удар по возможности врага → «Щит» → ответ следующего героя); предел —
+// страховка от ошибки в правилах, а не правило.
+const REACTION_PREFERENCE_CHAIN_LIMIT = 8
+
+/**
+ * Режимы реакций «сразу» и «никогда» исполняются здесь, внутри той же команды,
+ * что открыла окно: ответ сервера за героя — обычный `UseCombatAction`, тот же,
+ * что отправил бы щелчок игрока, поэтому оплата, проверки и продолжение
+ * прерванного действия идут прежним путём. Окно не успевает уйти игрокам, не
+ * ждёт часов хода и не требует второго commit: повтор с тем же ключом
+ * возвращает тот же результат, а replay видит обычные события.
+ *
+ * Если ответ не прошёл проверку движка, окно остаётся открытым и спрашивает,
+ * как если бы режима не было: режим — удобство, а не обход правил.
+ */
+function resolveReactionPreferences(result, rawState, input, diceService) {
+  const preferenceEvents = (events) => events.some((event) => event?.event_type === 'ReactionPreferenceChanged')
+  const hasPreferences = Object.keys(rawState?.mechanics?.reaction_preferences ?? {}).length > 0
+  if (!hasPreferences && !preferenceEvents(result.events)) return result
+  const windowWasOpen = Boolean(rawState?.mechanics?.combat?.reaction_window)
+  if (!windowWasOpen && !result.events.some((event) => event?.event_type === 'ReactionWindowOpened')) return result
+  let combined = result
+  let after = result.events.reduce(applyGameEvent, normalizeCampaignState(rawState))
+  for (let step = 0; step < REACTION_PREFERENCE_CHAIN_LIMIT; step += 1) {
+    const window = after.mechanics.combat.reaction_window
+    if (!window || !after.players.some((player) => actorId(player) === String(window.actor_id ?? ''))) return combined
+    const plan = planReactionByPreference(after.mechanics.reaction_preferences, window)
+    if (!plan) return combined
+    const followUp = {
+      command_type: 'UseCombatAction',
+      command_id: `${String(result.command?.command_id ?? input?.command_id ?? 'command')}:reaction-preference:${step + 1}`,
+      ...(result.command?.campaign_id != null ? { campaign_id: result.command.campaign_id } : {}),
+      actor_id: String(window.actor_id),
+      action_id: plan.action_id,
+      ...(plan.mode === 'never'
+        ? { auto_skip_reason: 'reaction-preference' }
+        : window.source_actor_id ? { target_id: String(window.source_actor_id) } : {}),
+      server_authoritative: true,
+      expected_state_version: after.state_version,
+    }
+    let answer
+    try {
+      answer = resolveCommandWithPauses(followUp, after, { diceService, context: { isAdmin: true, serverAuthoritativeCombat: true } })
+    } catch (error) {
+      if (error instanceof RulesValidationError) return combined
+      throw error
+    }
+    // Помечаем, что окно закрыл режим, а не игрок: хроника не пишет «получает
+    // возможность…» про окно, которого никто не видел, а часы хода не
+    // продлеваются за ожидание, которого не было.
+    for (const event of answer.events) {
+      const closesWindow = event.event_type === 'ReactionWindowClosed' && String(event.payload?.id ?? '') === String(window.id)
+      const answersWindow = event.event_type === 'CombatActionUsed' && String(event.payload?.reaction_window_id ?? '') === String(window.id)
+      if (closesWindow || answersWindow) event.payload = { ...event.payload, reaction_preference: plan.mode }
+    }
+    combined = { ...combined, events: [...combined.events, ...answer.events], rolls: [...(combined.rolls ?? []), ...(answer.rolls ?? [])] }
+    after = answer.events.reduce(applyGameEvent, after)
+  }
+  return combined
+}
+
 export function resolveCommand(input, rawState, { diceService, context = {} } = {}) {
+  const result = resolveCommandWithPauses(input, rawState, { diceService, context })
+  if (safeInteger(context?.__resolve_depth, 0) !== 0) return result
+  return resolveReactionPreferences(result, rawState, input, diceService)
+}
+
+function resolveCommandWithPauses(input, rawState, { diceService, context = {} } = {}) {
   try {
     const resolved = resolveCommandInternal(input, rawState, { diceService, context })
     const afterAction = closeEnervationAfterOtherAction(resolved, rawState)
@@ -13854,6 +13971,27 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'SpellBonusPreferenceChanged', { spell_id: 'bless', condition: 'bless-d4', enabled: command.enabled, schema_version: 1 }, [command.actor_id]))
       break
+    case 'SetReactionPreference': {
+      // Режим реакции — заранее данный ответ игрока, а не новое действие:
+      // очередь хода, бой и экономика его не касаются. Список допустимых
+      // реакций — тот же, что проекция отдаёт панели героя.
+      const reactionIdValue = String(command.reaction_id ?? '')
+      if (!state.players.some((player) => actorId(player) === command.actor_id)) {
+        throw new RulesValidationError('Режим реакции задаётся только герою отряда', 'REACTION_PREFERENCE_INVALID')
+      }
+      if (!isReactionMode(command.mode)) {
+        throw new RulesValidationError('Режим реакции — «спрашивать», «сразу» или «никогда»', 'REACTION_PREFERENCE_INVALID')
+      }
+      if (!heroReactionModesFor(state, command.actor_id).some((entry) => entry.id === reactionIdValue)) {
+        throw new RulesValidationError('У героя нет такой реакции', 'REACTION_PREFERENCE_INVALID')
+      }
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionPreferenceChanged', {
+        reaction_id: reactionIdValue,
+        mode: command.mode,
+        schema_version: REACTION_MODE_SCHEMA_VERSION,
+      }, [command.actor_id]))
+      break
+    }
     case 'RemoveCondition':
       events.push(eventFrom(command, 'ConditionRemoved', { condition: String(command.condition) }, [targetId]))
       break
@@ -13882,11 +14020,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           throw error
         }
       }
+      // Отказ за героя бывает двух родов: истекли часы хода или хозяин героя
+      // заранее выбрал для этой реакции «никогда» (`reaction-preferences.mjs`).
       const automaticDeclinePayload = command.action_id === 'decline-reaction'
         && command.server_authoritative === true
         && context.serverAuthoritativeCombat === true
-        && String(command.auto_skip_reason ?? '') === 'turn-timeout'
-        ? { auto_declined: true, auto_decline_reason: 'turn-timeout' }
+        && ['turn-timeout', 'reaction-preference'].includes(String(command.auto_skip_reason ?? ''))
+        ? { auto_declined: true, auto_decline_reason: String(command.auto_skip_reason) }
         : {}
       const resumePendingSpell = () => {
         if (!reactionWindow?.pending_spell_command) return
@@ -15286,7 +15426,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const monsterSpell = spell.monsterSpell ?? null
         const spellAttackModifier = monsterSpell
           ? monsterSpell.attackBonus
-          : spellModifier + Math.max(0, safeInteger(actor?.proficiency, 0))
+          : heroSpellAttackModifier(actor, spellAbility)
         const spellSaveDc = monsterSpell ? monsterSpell.saveDc : 8 + spellAttackModifier
         // «X в день» тратится маркером состояния — тем же способом, что и
         // потраченный приём стат-блока (`monster-action-used`). Порядковый
@@ -22744,6 +22884,22 @@ function applyGameEventCurrent(rawState, event) {
       }
       break
     }
+    case 'ReactionPreferenceChanged': {
+      const reactionIdValue = String(payload.reaction_id ?? '')
+      if (payload.schema_version === REACTION_MODE_SCHEMA_VERSION && target && isConfigurableReaction(reactionIdValue) && isReactionMode(payload.mode)) {
+        // «Спрашивать» — значение по умолчанию и не хранится: пустой герой и
+        // пустой реестр исчезают, и состояние без настроек выглядит как раньше.
+        const heroModes = { ...(state.mechanics.reaction_preferences?.[target] ?? {}) }
+        if (payload.mode === 'ask') delete heroModes[reactionIdValue]
+        else heroModes[reactionIdValue] = payload.mode
+        const preferences = { ...(state.mechanics.reaction_preferences ?? {}) }
+        if (Object.keys(heroModes).length) preferences[target] = heroModes
+        else delete preferences[target]
+        if (Object.keys(preferences).length) state.mechanics.reaction_preferences = preferences
+        else delete state.mechanics.reaction_preferences
+      }
+      break
+    }
     case 'SpellBonusPreferenceChanged':
       if (payload.schema_version === 1 && payload.spell_id === 'bless' && typeof payload.enabled === 'boolean') {
         state.mechanics.conditions[target] = (state.mechanics.conditions[target] ?? []).map((condition) => condition.id === 'bless-d4' ? { ...condition, bonus_enabled: payload.enabled } : condition)
@@ -23627,7 +23783,9 @@ function applyGameEventCurrent(rawState, event) {
         // другой, откладывало бы автопропуск бесконечно и таймер переставал бы
         // что-либо гарантировать.
         const used = safeInteger(state.mechanics.combat.turn_reaction_extensions, 0)
-        if (payload.free_choice !== true && used < TURN_REACTION_EXTENSION_LIMIT) {
+        // Окно, закрытое режимом реакции, никого не ждало: ход не прерывался,
+        // и продлевать нечего.
+        if (payload.free_choice !== true && payload.reaction_preference == null && used < TURN_REACTION_EXTENSION_LIMIT) {
           state.mechanics.combat.turn_reaction_extensions = used + 1
           state.mechanics.combat.turn_started_at = event.created_at ?? null
           state.mechanics.combat.turn_started_event_id = event.event_id ?? null
@@ -24875,6 +25033,7 @@ export function resolveCommands(commands, initialState, options) {
       try { validateCommand({ ...item, expected_state_version: expected }, state, options.context) }
       catch (error) { if (error instanceof RulesValidationError) break; throw error }
     }
+    const windowBefore = String(state.mechanics?.combat?.reaction_window?.id ?? '')
     const result = resolveCommand({ ...item, expected_state_version: expected }, state, options)
     validatedCommands.push(result.command)
     for (const event of result.events) {
@@ -24896,6 +25055,16 @@ export function resolveCommands(commands, initialState, options) {
     }
     allRolls.push(...result.rolls)
     commandIndex += 1
+    // Команда остановилась на окне реакции: удар ждёт «Щита», перемещение —
+    // ответа на удар вдогонку. Остаток плана — продолжение того же хода, и
+    // исполнять его до ответа нельзя: прежде следующая команда («конец хода»
+    // за врагом) упиралась в `COMBAT_REACTION_PENDING`, план откатывался
+    // целиком, и окно «спрашивать» игроку так и не открывалось — бой стоял,
+    // пока кубики не давали исход без окна. Теперь план фиксируется до окна;
+    // после ответа планировщик ходов сам доводит ход до конца.
+    const pausedWindow = state.mechanics?.combat?.reaction_window
+    if (pausedWindow && (pausedWindow.pending_command || pausedWindow.pending_spell_command)
+      && String(pausedWindow.id ?? '') !== windowBefore) break
   }
   return { commands: validatedCommands, events: allEvents, rolls: allRolls, state }
 }
@@ -25149,6 +25318,7 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'CourierLetterReturned': return `Письмо вернулось: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата не нашли'}`
     case 'CourierLetterUnanswered': return `Ответа от ${payload.addressee_name || payload.addressee_id || 'адресата'} не будет: ${payload.reason === 'dead' ? 'адресата нет в живых' : 'адресата больше не найти'}`
     case 'CourierLetterAnswered': return `Пришёл ответ от ${payload.addressee_name || payload.addressee_id || 'адресата'}`
+    case 'ReactionPreferenceChanged': return `${named(event.actor_id) || 'Герой'}: реакция «${REACTION_PREFERENCE_LABELS[payload.reaction_id] ?? payload.reaction_id}» — ${payload.mode === 'auto' ? 'сразу' : payload.mode === 'never' ? 'никогда' : 'спрашивать'}`
     default: return event.event_type
   }
 }

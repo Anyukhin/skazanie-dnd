@@ -1652,7 +1652,7 @@ const REACTION_ACTION_LABELS = Object.freeze({
   'readied-attack': 'Подготовленная атака',
   'readied-spell': 'Подготовленное заклинание',
   'cast:shield': 'Щит',
-  'uncanny-dodge': 'Необычное уклонение',
+  'uncanny-dodge': 'Невероятное уклонение',
 })
 
 function publicSpellLabel(payload) {

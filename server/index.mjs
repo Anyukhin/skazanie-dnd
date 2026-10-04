@@ -489,7 +489,7 @@ const PUBLIC_DIE_SIDES = new Set([4, 6, 8, 10, 12, 20, 100])
 // Парлей стоит здесь же: переговоры посреди боя — такое же действие на доске,
 // как опознание врага, и после уговора бой обязан продолжиться тем же
 // `settleCombatContinuation`, который двигает очередь после любой боевой команды.
-const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'AttackNpc', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'SetSpellBonusPreference', 'IdentifyEnemy', 'ProposeParley', 'SettleParley', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
+const PLAYER_COMBAT_COMMANDS = new Set(['StartCombat', 'AttackNpc', 'MoveActor', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'CastSpell', 'UseCombatAction', 'SetSpellBonusPreference', 'SetReactionPreference', 'IdentifyEnemy', 'ProposeParley', 'SettleParley', 'OperateDoor', 'OperateSceneObject', 'UseLevelTransition', 'EndTurn', 'ResolveHeroDeath'])
 const PLAYER_NPC_COMBAT_COMMANDS = new Set(['AttackNpc'])
 const PLAYER_REST_COMMANDS = new Set(['StartRest', 'SpendHitPointDie', 'CompleteRest'])
 const PLAYER_CHARACTER_COMMANDS = new Set(['SetCharacterChoices', 'SetSpellSelections'])
@@ -1213,6 +1213,9 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
   assertPlayerCombatActorPermission(user, state, input)
   const base = authoritativeCombatCommandBase(input)
   if (type === 'SetSpellBonusPreference') return { ...base, spell_id: String(input.spell_id ?? ''), enabled: input.enabled }
+  // Режим реакции: из запроса берутся только реакция и режим. Есть ли у героя
+  // такая реакция и допустим ли режим, решает Rules Engine.
+  if (type === 'SetReactionPreference') return { ...base, reaction_id: String(input.reaction_id ?? '').slice(0, 80), mode: String(input.mode ?? '').slice(0, 16) }
   if (type === 'MoveActor') return { ...base, to: { x: input?.to?.x, y: input?.to?.y } }
   if (type === 'MakeAttack') {
     const target = String(input?.target_id ?? input?.targetId ?? '')

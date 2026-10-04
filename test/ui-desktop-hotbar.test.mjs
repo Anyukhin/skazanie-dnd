@@ -49,7 +49,15 @@ test('решение группы находится рядом с катего�
   const side = source.slice(source.indexOf('<aside className="turn-rail-side"'), source.indexOf('</aside>', source.indexOf('<aside className="turn-rail-side"')))
   assert.match(side, /className=\{`end-turn-hotbar/)
   assert.match(side, /onClick=\{onFinishTurn\}/)
-  assert.match(side, /className="hero-cluster-pips"/)
+  // Раскладка BG3 (2026-10-04): остаток движения — кольцом вокруг кнопки хода,
+  // реакции — рядом с ней; камни действия, бонуса и реакции переехали в лоток
+  // над плитками, где по щелчку фильтруют панель.
+  assert.match(side, /className="end-turn-ring"/)
+  assert.match(side, /className="hud-reactions"/)
+  const tray = source.slice(source.indexOf('<div className="hud-tray"'), source.indexOf('<div className="hotbar-decks">'))
+  assert.match(tray, /className="hero-cluster-pips"/)
+  assert.match(tray, /<SpellSlotBar/)
+  assert.doesNotMatch(header, /<SpellSlotBar/, 'ячейки по кругам живут в лотке, а не в ряду вкладок')
   assert.match(header, /onProposeParley\('persuasion'\)/)
   assert.match(source, /doorsAtHand\.some\(\(door\) => door\.state === 'locked'\) && <div className="hotbar-turn-controls">/)
   assert.doesNotMatch(source, /selectedSceneObjectVerbs\.map/u, 'действия объекта переехали в контекстное меню карты')

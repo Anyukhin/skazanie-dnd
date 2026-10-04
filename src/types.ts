@@ -242,6 +242,10 @@ export type Player = {
     experience_for_next_level: number | null
     proficiency_bonus: number
     passive_perception: number
+    /** Инициатива из листа: модификатор Ловкости и бонусы происхождения. */
+    initiative?: number
+    /** Сводка заклинателя — только своему герою, та же формула, что у CastSpell. */
+    spellcaster?: { ability: string; attack_bonus: number; save_dc: number } | null
     armor_class: { value: number }
     speed: { value: number }
     hit_points: { value: number; hitDie: number }
@@ -277,6 +281,8 @@ export type Player = {
   }
   combatSpells?: CombatSpell[]
   combatActions?: CombatAction[]
+  /** Реакции своего героя и их режимы; у чужих героев поля нет. */
+  reactionModes?: HeroReactionMode[]
   hp: number
   maxHp: number
   armor: number
@@ -2742,7 +2748,21 @@ export type CombatMechanics = {
   parley_attempts?: number
 }
 
+/** Режим реакции, как в BG3: спросить в окне, ответить сразу или не отвечать. */
+export type ReactionMode = 'ask' | 'auto' | 'never'
+
+/** Реакция своего героя с режимом — список собирает сервер (`heroReactionModesFor`). */
+export type HeroReactionMode = {
+  id: string
+  name: string
+  kind: 'spell' | 'action'
+  spell_id?: string
+  mode: ReactionMode
+}
+
 export type GameMechanics = Record<string, unknown> & {
+  /** Свои режимы реакций; чужие проекция не отдаёт. */
+  reaction_preferences?: Record<string, Record<string, ReactionMode>>
   movement?: Record<string, ActorMovementProjection>
   combat?: CombatMechanics
   campaign_lifecycle?: {

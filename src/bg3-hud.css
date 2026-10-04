@@ -1,0 +1,511 @@
+/* Нижняя панель стола в духе Baldur's Gate 3 (холст «Сказание — улучшения
+   UI/UX», 2026-10-04). Раскладка: герой слева; в центре лоток ресурсов хода,
+   плитки секциями по цене хода и вкладки-фильтры; справа реакции и кнопка
+   «Завершить ход» в кольце остатка движения. Хроника сворачивается во вкладку
+   у края доски, поле ввода тянется по высоте.
+
+   Файл подключается после prototype-layout.css и действует только на столе
+   (≥ 761px): телефонную раскладку держит mockup-pages.css. Цвета — токены
+   палитры (hud-palette.css), своих оттенков здесь нет. */
+
+@media (min-width: 761px) {
+  .game-area, .game-area.exploration-active {
+    --rail: calc(270px * var(--ui-readable-scale, 1));
+    --hud-cell: calc(48px * var(--ui-readable-scale, 1));
+    --hud-hero-w: calc(360px * var(--ui-readable-scale, 1));
+  }
+
+  /* ---------------- сетка панели ---------------- */
+
+  /* Атрибут hidden сильнее любой раскладки ниже: в чужой ход вкладки и плитки
+     ходящего героя прячутся именно им, и display: flex не должен их вернуть. */
+  .game-area .turn-rail [hidden] { display: none !important; }
+
+
+  .game-area .turn-rail {
+    grid-template-columns: var(--hud-hero-w) minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'hero tray side' 'hero main side' 'hero decks decks';
+    gap: 6px 16px;
+    padding: 12px 16px 10px;
+    align-content: stretch;
+  }
+  .game-area .turn-rail > .turn-rail-hero { grid-area: hero; min-width: 0; min-height: 0; }
+  .game-area .turn-rail > .hud-tray { grid-area: tray; }
+  .game-area .turn-rail > .combat-hotbar { grid-area: main; }
+  .game-area .turn-rail > .hotbar-decks { grid-area: decks; }
+  .game-area .turn-rail > .turn-rail-side { grid-area: side; }
+
+  /* ---------------- герой ---------------- */
+
+  .game-area .turn-rail > .turn-rail-hero > .player-hud {
+    height: 100%;
+    display: grid;
+    grid-template-columns: calc(148px * var(--ui-readable-scale, 1)) minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    gap: 6px 14px;
+    align-content: start;
+    padding: 0;
+  }
+  .game-area .turn-rail-hero .hud-identity { display: contents; }
+  .game-area .turn-rail-hero .hud-portrait-frame {
+    position: relative;
+    grid-column: 1;
+    grid-row: 1 / -1;
+    align-self: center;
+    width: calc(148px * var(--ui-readable-scale, 1));
+    height: calc(148px * var(--ui-readable-scale, 1));
+    overflow: hidden;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--acc2), 0 0 0 5px var(--rail-bg), 0 0 0 6px var(--line2);
+  }
+  .game-area .turn-rail-hero .hud-portrait-frame > .hud-portrait { width: 100%; height: 100%; border: 0; border-radius: 50%; box-shadow: none; }
+  .game-area .turn-rail-hero .hud-portrait-damage { position: absolute; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--hp) 38%, transparent); pointer-events: none; transition: height .35s; }
+  .game-area .turn-rail-hero .hud-portrait-hp {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    padding-bottom: 2px;
+    background: color-mix(in srgb, var(--hp) 82%, #000);
+    color: #fff;
+    font: 700 15px/1 var(--f-ui);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .02em;
+    white-space: nowrap;
+  }
+  .game-area .turn-rail-hero .hud-portrait-hp.down { font-size: var(--fs-xxs); }
+  .game-area .turn-rail-hero .hud-identity > span:not(.hud-portrait-frame) { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .game-area .turn-rail-hero .hud-identity strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; font: 700 20px/1.1 var(--f-display); letter-spacing: .03em; }
+  .game-area .turn-rail-hero .hud-identity small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; color: var(--text2); font: italic 500 var(--fs-xs)/1.3 var(--f-ui); }
+  .game-area .turn-rail-hero .hud-stats { grid-column: 2; grid-row: 2; display: flex; gap: 4px; margin: 0; }
+  .game-area .turn-rail-hero .hud-stats > div { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 3px 2px; border: 1px solid var(--line2); border-radius: 4px; background: var(--well); }
+  .game-area .turn-rail-hero .hud-stats dt { color: var(--text2); font: 600 var(--fs-xxs)/1.1 var(--f-label); white-space: nowrap; }
+  .game-area .turn-rail-hero .hud-stats dd { margin: 0; color: var(--text); font: 700 var(--fs-md)/1.2 var(--f-ui); font-variant-numeric: tabular-nums; }
+  /* ОЗ — полосой в портрете; длинная полоса под именем повторяла бы их. */
+  .game-area .turn-rail-hero .hud-health { display: none; }
+  .game-area .turn-rail-hero .hud-weapons { grid-column: 2; grid-row: 3; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+  .game-area .turn-rail-hero .hud-weapon { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 9px 2px 2px; border: 1px solid var(--line2); border-radius: 6px; background: var(--well); color: var(--text); font: 600 var(--fs-xs) var(--f-ui); }
+  .game-area .turn-rail-hero .hud-weapon > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game-area .turn-rail-hero .hud-vitals { grid-column: 2; grid-row: 5; justify-self: end; align-self: end; }
+  .game-area .turn-rail-hero .hud-vitals > span { display: none; }
+  .game-area .turn-rail-hero .hud-status { grid-column: 2; grid-row: 4; align-self: start; display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+  .game-area .turn-rail-hero .hud-actions { grid-column: 2; grid-row: 5; justify-self: start; align-self: end; display: flex; gap: 6px; }
+  .game-area .turn-rail-hero .hud-actions > button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--well); color: var(--acc2); font: 600 var(--fs-xs) var(--f-ui); cursor: pointer; }
+  .game-area .turn-rail-hero .hud-actions > button:hover { border-color: var(--acc2); }
+  .game-area .turn-rail-hero .hud-actions > button > b { color: var(--text2); font-variant-numeric: tabular-nums; }
+
+  /* ---------------- лоток ресурсов хода ---------------- */
+
+  .game-area .turn-rail > .hud-tray {
+    justify-self: center;
+    display: flex; align-items: center; gap: 10px;
+    min-width: 0; max-width: 100%;
+    padding: 3px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--well);
+  }
+  .game-area .turn-rail > .hud-tray:empty { display: none; }
+  .game-area .hud-tray > * + * { padding-left: 10px; border-left: 1px solid var(--line); }
+  .game-area .hud-tray .hero-cluster-pips { display: flex; flex-wrap: nowrap; gap: 4px; flex: none; }
+  .game-area .hud-tray .hero-pip { flex: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: 13px; background: transparent; color: var(--text2); font: 600 var(--fs-xs) var(--f-ui); cursor: pointer; }
+  .game-area .hud-tray .hero-pip b { display: none; }
+  .game-area .hud-tray .hero-pip.spent { opacity: .45; }
+  .game-area .hud-tray .hero-pip.filtering { border-color: var(--acc2); background: var(--acc-soft); color: var(--acc2); }
+  .game-area .hud-tray .hero-pip:disabled { cursor: default; }
+  .game-area .hud-tray .hero-cluster-resources { display: flex; flex-wrap: nowrap; align-items: center; gap: 12px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+  .game-area .hud-tray .hero-resource.class-pool { display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; white-space: nowrap; }
+  .game-area .hud-tray .hero-resource.class-pool em { color: var(--text2); font: 600 var(--fs-xs) var(--f-label); font-style: normal; }
+  .game-area .hud-tray .hero-resource.class-pool > i { display: inline-flex; gap: 4px; }
+  .game-area .hud-tray .hero-resource.class-pool u { width: 9px; height: 9px; transform: rotate(45deg); background: var(--acc2); text-decoration: none; }
+  .game-area .hud-tray .hero-resource.class-pool u.spent { background: transparent; box-shadow: inset 0 0 0 1px var(--spent); }
+  .game-area .hud-tray .hud-slotbar { flex: 0 1 auto; min-width: 0; }
+
+  /* ---------------- плитки секциями ---------------- */
+
+  .game-area .turn-rail > .combat-hotbar {
+    position: relative;
+    display: flex; align-items: stretch; gap: 10px;
+    min-width: 0; min-height: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--well);
+  }
+  .game-area .turn-rail .hotbar-main { position: relative; flex: 1 1 auto; min-width: 0; display: flex; align-items: stretch; gap: 8px; }
+  .game-area .turn-rail .tile-toolbar { flex: none; width: 26px; display: flex; flex-direction: column; gap: 4px; }
+  .game-area .turn-rail .hotbar-actions-shell { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .game-area .turn-rail .hotbar-actions { display: flex; align-items: stretch; gap: 0; min-width: 0; overflow: hidden; }
+  .game-area .turn-rail .hotbar-section {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(var(--hud-rows, 3), var(--hud-cell));
+    grid-auto-columns: minmax(var(--hud-cell), 1fr);
+    gap: 4px;
+    flex: var(--section-cols, 1) 1 0;
+    min-width: calc(var(--section-cols, 1) * (var(--hud-cell) + 4px) - 4px);
+  }
+  /* Самая многочисленная секция — только иконки, лишнее уходит в прокрутку. */
+  .game-area .turn-rail .hotbar-section.compact {
+    flex: 0 1 auto;
+    grid-auto-columns: var(--hud-cell);
+    min-width: calc(var(--hud-cell) * 2 + 4px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+  .game-area .turn-rail .hotbar-section-divider { flex: none; align-self: stretch; width: 2px; margin: 0 10px; border-radius: 1px; background: color-mix(in srgb, var(--enemy) 70%, transparent); }
+
+  .game-area .turn-rail .hotbar-section .action-tile {
+    width: auto; height: var(--hud-cell);
+    display: flex; align-items: center; gap: 6px;
+    container-type: inline-size;
+  }
+  .game-area .turn-rail .hotbar-section .action-tile > .combat-icon { flex: none; width: calc(var(--hud-cell) - 2px); height: calc(var(--hud-cell) - 2px); }
+  /* Широкой ячейке — подпись в две строки; узкой — только иконка (подпись
+     остаётся доступным именем кнопки и её подсказкой). */
+  .game-area .turn-rail .hotbar-section .action-tile > strong {
+    position: static; left: auto; width: auto; height: auto;
+    flex: 1 1 auto; min-width: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; white-space: normal;
+    padding-right: 6px;
+    color: var(--text);
+    font: 600 var(--fs-xs)/1.15 var(--f-ui);
+    text-align: left;
+  }
+  @container (max-width: 109px) {
+    .game-area .turn-rail .hotbar-section .action-tile > strong { position: absolute; left: -9999px; width: 1px; height: 1px; }
+  }
+  .game-area .turn-rail .hotbar-section .action-tile > .tile-level,
+  .game-area .turn-rail .hotbar-section .action-tile > .tile-conc { position: absolute; z-index: 5; pointer-events: none; }
+  .game-area .turn-rail .hotbar-section .action-tile > .tile-level {
+    left: 3px; top: 3px;
+    padding: 0 3px;
+    border: 1px solid color-mix(in srgb, var(--react) 55%, transparent);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--well) 88%, transparent);
+    color: color-mix(in srgb, var(--react) 55%, var(--text));
+    font: 700 9px/11px var(--f-label);
+    font-style: normal;
+  }
+  .game-area .turn-rail .hotbar-section .action-tile > .tile-conc { right: 3px; top: 19px; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--react) 60%, var(--text)); }
+  .game-area .turn-rail .hotbar-section .action-tile > .tile-conc.holding { box-shadow: inset 0 0 0 1.5px var(--acc2), 0 0 6px var(--acc2); background: var(--acc2); }
+  /* Углы ячейки: круг — слева сверху, счётчик — справа сверху, цена — справа
+     снизу, знак механики — слева снизу, концентрация — под счётчиком. Замок
+     недоступных компонентов — по центру поверх иконки; буквы компонентов в
+     ячейку не помещаются и остаются в подсказке и для читалки. */
+  .game-area .turn-rail .hotbar-section .action-tile .spell-component-lock { top: 50%; left: 50%; transform: translate(-50%, -50%); }
+  .game-area .turn-rail .hotbar-section .action-tile .spell-components.compact { left: -9999px; bottom: auto; width: 1px; height: 1px; overflow: hidden; }
+  .game-area .turn-rail .hotbar-empty { align-self: center; }
+
+  /* «Своё действие» — бой и сцена словами через хронику. */
+  .game-area .turn-rail .own-action-tile {
+    flex: none;
+    width: calc(54px * var(--ui-readable-scale, 1));
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    padding: 8px 0;
+    border: 1px solid var(--acc-line);
+    border-radius: 8px;
+    background: var(--acc-soft);
+    color: var(--acc2);
+    font: 700 var(--fs-sm) var(--f-display);
+    cursor: pointer;
+  }
+  .game-area .turn-rail .own-action-tile:hover { border-color: var(--acc2); }
+  .game-area .turn-rail .own-action-tile > span { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+  /* Пока идёт действие или открыта проверка, плитки заблокированы: панель
+     затемняется целиком, а причина стоит посередине, а не поверх нижнего ряда. */
+  .game-area .turn-rail > .combat-hotbar > .tactical-command-status { position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0; padding: 12px 24px; border-radius: 8px; background: color-mix(in srgb, var(--rail-bg) 78%, transparent); color: var(--text); font: 600 var(--fs-sm)/1.4 var(--f-ui); text-align: center; }
+
+  /* ---------------- вкладки-фильтры и кнопки сцены ---------------- */
+
+  .game-area .turn-rail > .hotbar-decks { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; border-radius: 0; background: none; }
+  .game-area .turn-rail > .hotbar-decks > .hotbar-tabs { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+  .game-area .turn-rail > .hotbar-decks > .hotbar-tabs button { flex: none; }
+  .game-area .turn-rail > .hotbar-decks > .group-decision-button,
+  .game-area .turn-rail > .hotbar-decks > .start-combat-button,
+  .game-area .turn-rail > .hotbar-decks > .hotbar-combat-controls { flex: none; width: auto; }
+  .game-area .turn-rail > .hotbar-decks > .hotbar-combat-controls { display: flex; align-items: center; gap: 6px; }
+
+  /* ---------------- реакции и завершение хода ---------------- */
+
+  .game-area .turn-rail > .turn-rail-side { display: flex; flex-direction: row; align-items: stretch; gap: 14px; min-width: 0; padding: 0; border: 0; overflow: visible; }
+  .game-area .turn-rail-side .hotbar-hero-cluster { display: flex; flex-direction: column; gap: 8px; max-width: 220px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--well); }
+  .game-area .turn-rail-side .hotbar-hero-cluster:not(:has(> *)) { display: none; }
+  .game-area .turn-rail-side .hotbar-hero-cluster { align-self: center; }
+  .game-area .turn-rail-side .hud-reactions { display: flex; flex-direction: column; gap: 6px; }
+  .game-area .turn-rail-side .hud-side-title { color: var(--text2); font: 700 var(--fs-xs) var(--f-label); letter-spacing: .05em; text-align: center; }
+  .game-area .turn-rail-side .hud-reaction-grid { display: grid; grid-template-columns: repeat(2, 38px); gap: 6px; justify-content: center; }
+  .game-area .turn-rail-side .hud-reaction { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line2); border-radius: 6px; background: var(--rail-bg); }
+  .game-area .turn-rail-side .hud-reaction.spent { opacity: .4; filter: grayscale(1); }
+  .game-area .turn-rail-side .hud-reaction .combat-icon { width: 34px; height: 34px; }
+
+  .game-area .turn-rail-side .end-turn-dock { flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+  .game-area .turn-rail-side .end-turn-tag { padding: 2px 9px; border: 1px solid color-mix(in srgb, var(--bonus) 70%, transparent); border-radius: 10px; color: var(--bonus); font: 600 var(--fs-xxs) var(--f-ui); white-space: nowrap; }
+  .game-area .turn-rail-side .end-turn-ring { position: relative; width: calc(132px * var(--ui-readable-scale, 1)); height: calc(132px * var(--ui-readable-scale, 1)); display: grid; place-items: center; }
+  .game-area .turn-rail-side .end-turn-ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); pointer-events: none; }
+  .game-area .turn-rail-side .end-turn-ring circle { fill: none; stroke-width: 7; }
+  .game-area .turn-rail-side .end-turn-ring .track { stroke: color-mix(in srgb, var(--acc2) 18%, transparent); }
+  .game-area .turn-rail-side .end-turn-ring .fill { stroke: var(--acc2); stroke-linecap: round; transition: stroke-dasharray .35s; }
+  .game-area .turn-rail-side .end-turn-ring .end-turn-hotbar {
+    position: relative; z-index: 1;
+    width: 76%; height: 76%;
+    min-height: 0;
+    margin: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    padding: 0;
+    border: 2px solid var(--acc2);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--enemy) 45%, var(--rail-bg));
+    color: var(--text);
+    font: 700 var(--fs-sm)/1.1 var(--f-display);
+    text-align: center;
+  }
+  .game-area .turn-rail-side .end-turn-ring .end-turn-hotbar:hover:not(:disabled) { background: color-mix(in srgb, var(--enemy) 60%, var(--rail-bg)); }
+  .game-area .turn-rail-side .end-turn-ring .end-turn-hotbar:disabled { border-color: var(--line2); background: var(--well); color: var(--muted); }
+  .game-area .turn-rail-side .end-turn-ring .end-turn-hotbar > span { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0 8px; }
+  .game-area .turn-rail-side .end-turn-ring .end-turn-hotbar kbd { color: var(--text2); font: 500 var(--fs-xxs) var(--f-ui); }
+  .game-area .turn-rail-side .end-turn-move { color: var(--acc2); font: 600 var(--fs-xs) var(--f-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .game-area .turn-rail-side .end-turn-move.spent { color: var(--muted); }
+
+  /* ---------------- хроника: свернуть и открыть ---------------- */
+
+  .app:has(.server-column[data-collapsed="true"]) { --server-column: 44px; }
+  .game-area:has(> .server-column[data-collapsed="true"]) { grid-template-columns: minmax(0, 1fr) 44px; }
+  .game-area > .server-column[data-collapsed="true"],
+  .game-area:has(> .server-column[data-collapsed="true"]) > .dialogue-composer { display: none; }
+  .server-column > .chat-collapse-button {
+    position: absolute; left: -15px; top: 10px; z-index: 6;
+    width: 28px; height: 28px;
+    display: grid; place-items: center;
+    padding: 0;
+    border: 1px solid var(--line2);
+    border-radius: 50%;
+    background: var(--pop);
+    color: var(--acc2);
+    cursor: pointer;
+  }
+  .server-column > .chat-collapse-button:hover { border-color: var(--acc2); }
+  .game-area > .chat-reopen-tab {
+    grid-column: 2; grid-row: 2 / -1;
+    align-self: stretch; justify-self: stretch;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin: 0; padding: 18px 0;
+    writing-mode: vertical-rl;
+    border: 0;
+    border-left: 1px solid var(--line);
+    border-radius: 0;
+    background: var(--pop);
+    color: var(--acc2);
+    font: 700 var(--fs-md) var(--f-display);
+    letter-spacing: .04em;
+    cursor: pointer;
+  }
+  .game-area > .chat-reopen-tab:hover { background: var(--acc-soft); }
+
+  /* ---------------- задачи отряда в исследовании ---------------- */
+
+  /* Плашка задач стояла в том же углу доски, что и карточки отряда, и
+     пряталась под ними целиком. Её место — сверху по центру, под надписью
+     «Исследование»: в бою там лента инициативы, а вне боя — цель сцены. */
+  .game-area.exploration-active .map-stage > .party-quest-hud { left: 50%; top: 46px; width: min(360px, calc(100% - 520px)); transform: translateX(-50%); }
+
+  /* ---------------- высота поля ввода ---------------- */
+
+  .dialogue-composer > .composer-resize { flex: none; height: 14px; margin: -12px 0 2px; display: flex; align-items: center; justify-content: center; cursor: row-resize; touch-action: none; }
+  .dialogue-composer > .composer-resize > i { width: 34px; height: 4px; border-radius: 2px; background: var(--line2); }
+  .dialogue-composer > .composer-resize:hover > i,
+  .dialogue-composer > .composer-resize:focus-visible > i { background: var(--acc2); }
+  .dialogue-composer > .composer-resize:focus-visible { outline: none; }
+  .dialogue-composer textarea[style*="height"] { max-height: 50vh; resize: none; }
+}
+
+/* Телефон: новые части панели встают в общую колонку, хроника не сворачивается. */
+@media (max-width: 760px) {
+  .turn-rail-hero .hud-action-label { display: none; }
+  .turn-rail > .hud-tray { order: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .turn-rail > .hud-tray:empty { display: none; }
+  .turn-rail .hotbar-actions { display: flex; gap: 6px; overflow-x: auto; }
+  .turn-rail .hotbar-section { display: flex; gap: 6px; }
+  .turn-rail .hotbar-section-divider, .turn-rail .own-action-tile, .server-column > .chat-collapse-button, .game-area > .chat-reopen-tab, .dialogue-composer > .composer-resize { display: none; }
+  .turn-rail-side .end-turn-ring > svg { display: none; }
+  .turn-rail-hero .hud-portrait-damage, .turn-rail-hero .hud-portrait-hp, .turn-rail-hero .hud-stats { display: none; }
+}
+
+/* Переспрос «Завершить ход?» — поверх кольца и реакций, внутри панели: у неё
+   overflow: auto, и всплывашка над панелью обрезалась бы. */
+@media (min-width: 761px) {
+  .game-area .turn-rail-side .end-turn-dock { position: relative; }
+  .game-area .turn-rail-side .end-turn-confirm {
+    position: absolute; right: 0; top: 50%; z-index: 30;
+    transform: translateY(-50%);
+    width: 260px;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid var(--acc2);
+    border-top: 3px solid var(--enemy);
+    border-radius: 8px;
+    background: var(--pop);
+    box-shadow: var(--shadow);
+    color: var(--text);
+    font: 500 var(--fs-sm)/1.4 var(--f-ui);
+    text-align: left;
+  }
+  .game-area .end-turn-confirm > b { color: var(--acc2); font: 700 var(--fs-lg)/1.2 var(--f-display); }
+  .game-area .end-turn-confirm > span { color: var(--text2); }
+  .game-area .end-turn-confirm > ul { margin: 0; padding-left: 18px; }
+  .game-area .end-turn-confirm-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .game-area .end-turn-confirm-actions > button { flex: 1; height: 34px; border: 1px solid var(--line2); border-radius: 6px; background: var(--well); color: var(--text); font: 600 var(--fs-sm) var(--f-ui); cursor: pointer; }
+  .game-area .end-turn-confirm-actions > button.confirm { border-color: var(--enemy); background: color-mix(in srgb, var(--enemy) 45%, var(--rail-bg)); }
+  .game-area .end-turn-confirm-actions > button:hover:not(:disabled) { border-color: var(--acc2); }
+  .game-area .end-turn-confirm > label { display: flex; align-items: center; gap: 6px; color: var(--text2); font-size: var(--fs-xs); }
+}
+
+/* ---------------- лента очерёдности в духе BG3 ----------------
+   Портреты — вертикальными карточками: свои в бирюзовой рамке, противники в
+   красной, ходящий крупнее и с шевроном. Урон заливает карточку снизу. За
+   чертой с номером раунда — те, кто уже сходил: они ходят в следующем. */
+@media (min-width: 761px) {
+  .initiative-ribbon.combat { height: auto; align-items: flex-end; gap: 10px; padding: 6px 12px 6px; }
+  .initiative-ribbon.combat > header { align-self: center; }
+  .initiative-ribbon.combat > .initiative-active-chip { align-self: center; }
+  .initiative-ribbon.combat > ol { align-items: flex-end; gap: 6px; padding: 4px 2px 16px; overflow-y: visible; }
+  .initiative-ribbon.combat li { position: relative; }
+  .initiative-ribbon.combat .initiative-avatar-button {
+    width: 44px; height: 60px;
+    padding: 0;
+    overflow: hidden;
+    border: 2px solid color-mix(in srgb, var(--ally) 85%, var(--text));
+    border-radius: 4px;
+    background: var(--well);
+  }
+  .initiative-ribbon.combat li.enemy .initiative-avatar-button { border-color: color-mix(in srgb, var(--enemy) 85%, var(--text)); }
+  .initiative-ribbon.combat li.summon .initiative-avatar-button { border-color: color-mix(in srgb, var(--ally) 55%, var(--muted)); border-style: dashed; }
+  .initiative-ribbon.combat li.boss .initiative-avatar-button { border-color: var(--acc2); }
+  .initiative-ribbon.combat li.active .initiative-avatar-button { width: 56px; height: 76px; border-color: var(--text); box-shadow: 0 0 14px color-mix(in srgb, var(--acc2) 55%, transparent); }
+  .initiative-ribbon.combat li.active::after { content: ''; position: absolute; left: 50%; bottom: -12px; width: 0; height: 0; transform: translateX(-50%); border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 9px solid var(--text); }
+  .initiative-ribbon.combat .initiative-avatar { width: 100%; height: 100%; border-radius: 0; }
+  .initiative-ribbon.combat .initiative-avatar.portrait { background-size: cover; }
+  .initiative-ribbon.combat .initiative-avatar > .hero-face-initials { font-size: var(--fs-sm); }
+  .initiative-ribbon.combat .initiative-health { display: none; }
+  .initiative-ribbon.combat .initiative-damage { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; background: color-mix(in srgb, var(--hp) 50%, transparent); pointer-events: none; }
+  .initiative-ribbon.combat .initiative-order { left: 2px; top: 2px; }
+  .initiative-ribbon.combat .initiative-turn-dot { display: none; }
+  .initiative-ribbon.combat .initiative-status-label { bottom: auto; top: 2px; left: auto; right: 2px; transform: none; display: none; }
+  /* Метка «Следующий» внутри карточки обрезалась её краем: следующего видно по рамке. */
+  .initiative-ribbon.combat li.next .initiative-avatar-button { box-shadow: 0 0 0 2px var(--rail-bg), 0 0 0 3px color-mix(in srgb, var(--ally) 70%, transparent); }
+  .initiative-ribbon.combat .initiative-boss-badge { left: auto; right: 2px; bottom: 2px; }
+  .initiative-ribbon.combat .initiative-round-divider { align-self: stretch; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0 3px; color: var(--acc2); font: 700 var(--fs-sm) var(--f-display); }
+  .initiative-ribbon.combat .initiative-round-divider::before,
+  .initiative-ribbon.combat .initiative-round-divider::after { content: ''; flex: 1; width: 1px; background: var(--acc-line); }
+
+  /* Выбранная цель — плашкой под лентой, пока удар ждёт подтверждения. */
+  .map-stage > .combat-target-plate {
+    position: absolute; left: 50%; top: 128px; z-index: 14;
+    transform: translateX(-50%);
+    width: min(380px, calc(100% - 520px));
+    display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 4px 10px;
+    padding: 8px 14px 10px;
+    border: 1px solid var(--line2);
+    border-top: 3px solid var(--enemy);
+    border-radius: 8px;
+    background: var(--pop);
+    box-shadow: var(--shadow);
+    pointer-events: none;
+  }
+  .map-stage > .combat-target-plate.ally { border-top-color: var(--ally); }
+  .combat-target-plate > strong { color: var(--text); font: 700 var(--fs-xl)/1.1 var(--f-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .combat-target-plate-tag { padding: 0 6px; border: 1px solid var(--acc2); border-radius: 8px; color: var(--acc2); font: 600 var(--fs-xxs) var(--f-ui); }
+  .combat-target-plate-bar { grid-column: 1 / -1; position: relative; height: 16px; overflow: hidden; border: 1px solid var(--line2); border-radius: 3px; background: var(--hp-bg); }
+  .combat-target-plate-bar > u { position: absolute; left: 0; top: 0; bottom: 0; background: var(--hp); text-decoration: none; }
+  .combat-target-plate.ally .combat-target-plate-bar > u { background: var(--ally); }
+  .combat-target-plate-bar > b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font: 700 var(--fs-xxs) var(--f-ui); text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
+  .combat-target-plate > small { grid-column: 1 / -1; color: var(--text2); font: italic 500 var(--fs-xs) var(--f-ui); }
+}
+
+/* ---------------- проверка d20 в арке, как в BG3 ---------------- */
+@media (min-width: 761px) {
+  .pending-check-overlay .dice-check { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+  .pending-check-overlay .dice-check > .dice-copy { text-align: center; }
+  .dice-arch {
+    align-self: center;
+    width: min(300px, 100%);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 22px 18px 14px;
+    border: 2px solid var(--acc2);
+    border-bottom-width: 1px;
+    border-radius: 150px 150px 12px 12px;
+    background: var(--well);
+    box-shadow: inset 0 0 0 4px var(--well), inset 0 0 0 5px var(--acc-line);
+  }
+  .dice-arch-dc { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+  .dice-arch-dc small { color: var(--text2); font: 600 var(--fs-sm) var(--f-label); letter-spacing: .12em; }
+  .dice-arch-dc b { margin-top: 4px; color: var(--text); font: 700 54px/1 var(--f-display); }
+  .dice-arch-rule { position: relative; width: 82%; height: 1px; background: var(--acc-line); }
+  .dice-arch-rule > i { position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; transform: translate(-50%, -50%) rotate(45deg); background: var(--acc2); }
+  .dice-arch .d20-button { width: 100%; height: auto; min-height: 0; flex-direction: column; gap: 6px; padding: 8px 0 4px; border: 0; background: none; box-shadow: none; }
+  .dice-arch .d20-button > i { width: 84px; height: 84px; }
+  .dice-arch .d20-button > i b { font-size: 30px; }
+  .dice-arch-terms { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+  .dice-term { display: inline-flex; flex-direction: column; align-items: center; min-width: 70px; padding: 4px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--rail-bg); }
+  .dice-term b { color: var(--text); font: 700 var(--fs-lg)/1.1 var(--f-ui); font-variant-numeric: tabular-nums; }
+  .dice-term small { color: var(--text2); font: 500 var(--fs-xxs) var(--f-ui); }
+  .dice-term.swing.advantage { border-color: color-mix(in srgb, var(--ally) 70%, transparent); }
+  .dice-term.swing.disadvantage { border-color: color-mix(in srgb, var(--enemy) 70%, transparent); }
+  .dice-arch-verdict { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: 4px; }
+  .dice-arch-verdict.success { background: color-mix(in srgb, var(--ally) 30%, transparent); }
+  .dice-arch-verdict.failure { background: color-mix(in srgb, var(--enemy) 32%, transparent); }
+  .dice-arch-verdict b { color: var(--text); font: 700 var(--fs-xl)/1.1 var(--f-display); letter-spacing: .06em; }
+  .dice-arch-verdict small { color: var(--text2); font: 600 var(--fs-xs) var(--f-ui); font-variant-numeric: tabular-nums; }
+}
+
+/* «Отдых и почта» вне боя — на месте реакций. */
+@media (min-width: 761px) {
+  .game-area .turn-rail-side .hud-modes { display: flex; flex-direction: column; gap: 6px; }
+  .game-area .turn-rail-side .hud-mode-grid { display: flex; gap: 6px; justify-content: center; }
+  .game-area .turn-rail-side .hud-mode { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; padding: 8px 8px 6px; border: 1px solid var(--line2); border-radius: 6px; background: var(--rail-bg); color: var(--acc2); font: 600 var(--fs-xs) var(--f-ui); cursor: pointer; }
+  .game-area .turn-rail-side .hud-mode:hover, .game-area .turn-rail-side .hud-mode.open { border-color: var(--acc2); background: var(--acc-soft); }
+  .game-area .turn-rail-side .hud-mode > b { position: absolute; right: 4px; top: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--enemy); color: #fff; font: 700 var(--fs-xxs)/16px var(--f-ui); text-align: center; }
+
+  /* Панель отдыха и писем лежит поверх хроники: смесь 49 % + 49 % оставляла
+     её полупрозрачной, и строки хроники просвечивали сквозь кнопки. */
+  .game-area .situational-overlay { background: color-mix(in srgb, var(--well) 50%, var(--panel)); }
+}
+
+/* Режимы реакций (холст, карточка 5): облачко «спрашивать» в углу кнопки,
+   «никогда» — серая кнопка, «сразу» — без метки, реакция срабатывает сама.
+   Щелчок по реакции открывает панель режимов над панелью героя. */
+@media (min-width: 761px) {
+  .game-area .turn-rail-side button.hud-reaction { position: relative; padding: 0; cursor: pointer; }
+  .game-area .turn-rail-side button.hud-reaction:hover, .game-area .turn-rail-side button.hud-reaction[aria-expanded="true"] { border-color: var(--acc2); }
+  .game-area .turn-rail-side button.hud-reaction:focus-visible { outline: 2px solid var(--acc2); outline-offset: 2px; }
+  .game-area .turn-rail-side .hud-reaction.mode-never { border-color: var(--line); background: var(--well); }
+  .game-area .turn-rail-side .hud-reaction.mode-never .combat-icon { opacity: .45; filter: grayscale(1); }
+  .game-area .turn-rail-side .hud-reaction .reaction-ask-mark { position: absolute; right: 1px; top: 1px; }
+}
+.reaction-ask-mark { pointer-events: none; }
+.reaction-ask-mark path { fill: var(--acc2); stroke: var(--rail-bg); stroke-width: .8; stroke-linejoin: round; }
+
+.reaction-modes-panel { position: fixed; z-index: 60; width: min(440px, calc(100vw - 32px)); max-height: min(70vh, 520px); overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line2); border-top: 3px solid var(--acc2); border-radius: 8px; background: var(--pop); box-shadow: var(--shadow); color: var(--text); box-sizing: border-box; }
+.reaction-modes-panel > header { display: flex; align-items: baseline; gap: 8px; }
+.reaction-modes-panel > header strong { color: var(--acc2); font: 700 var(--fs-md, 18px) var(--f-display, var(--f-ui)); }
+.reaction-modes-panel > header span { color: var(--text2); font: 600 var(--fs-sm) var(--f-ui); }
+.reaction-modes-close { margin-left: auto; width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--text2); cursor: pointer; }
+.reaction-modes-close:hover { color: var(--text); border-color: var(--line2); }
+.reaction-modes-panel > p { margin: 0; color: var(--muted); font: 400 var(--fs-xs) / 1.4 var(--f-ui); }
+.reaction-modes-panel > ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.reaction-mode-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.reaction-mode-icon { position: relative; width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line2); border-radius: 6px; background: var(--rail-bg); }
+.reaction-mode-icon .combat-icon { width: 34px; height: 34px; }
+.reaction-mode-icon .reaction-ask-mark { position: absolute; right: 1px; top: 1px; }
+.reaction-mode-row.mode-never .reaction-mode-icon { background: var(--well); border-color: var(--line); }
+.reaction-mode-row.mode-never .reaction-mode-icon .combat-icon { opacity: .45; filter: grayscale(1); }
+.reaction-mode-name { min-width: 0; color: var(--text); font: 600 var(--fs-sm) var(--f-ui); overflow-wrap: anywhere; }
+.reaction-mode-row.mode-never .reaction-mode-name { color: var(--muted); }
+.reaction-mode-seg { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--well); }
+.reaction-mode-seg button { height: 28px; padding: 0 9px; border: 0; border-radius: 4px; background: transparent; color: var(--text2); font: 700 var(--fs-xs) var(--f-ui); cursor: pointer; }
+.reaction-mode-seg button:hover { color: var(--text); }
+.reaction-mode-seg button[aria-checked="true"] { background: var(--acc-soft, var(--raise)); color: var(--acc2); box-shadow: inset 0 0 0 1px var(--line2); }
+.reaction-mode-seg button[aria-disabled="true"] { cursor: progress; }
+.reaction-mode-seg button:focus-visible { outline: 2px solid var(--acc2); outline-offset: 1px; }

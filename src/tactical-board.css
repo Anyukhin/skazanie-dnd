@@ -233,9 +233,10 @@
    поселения клетка — 11 px, герой сжимался до неё, а разбойник оставался 44 px
    и накрывал четыре клетки: не видно, где он стоит и куда по нему кликать. */
 .tactical-scroll .board-cell .enemy-token:not(.large-actor) {
+  --enemy-token-border: 1px;
   width: min(calc(var(--cell) * .9), 44px);
   height: min(calc(var(--cell) * .98), 48px);
-  border-width: 1px;
+  border-width: var(--enemy-token-border);
 }
 /* Предпросмотр хода (`src/move-preview.ts`): нить маршрута через центры клеток
    и контур досягаемости. Толщина в долях клетки — слой масштабируется вместе с
@@ -391,6 +392,26 @@
 .tactical-scroll .map-token:focus-visible .token-label,
 .tactical-scroll .enemy-token:hover .enemy-nameplate,
 .tactical-scroll .enemy-token:focus-visible .enemy-nameplate { opacity: 1; }
+
+/* Подпись лежит внутри фишки, а у фишки свой слой (герои 4, враги 5), поэтому
+   подпись не поднимется над соседней фишкой, которая рисуется позже. Фишка с
+   видимой подписью поднимается сама: доступная цель — над прочими фишками,
+   фишка под курсором или в фокусе — над всеми. Оба слоя ниже холста эффектов
+   заклинаний (9). Если под врагом стоит другая фишка, подпись встаёт над ним
+   («nameplate-above» ставит DungeonMap): верхний ряд рисуется раньше. */
+.tactical-scroll .board-cell .enemy-token.targetable { z-index: 6; }
+.tactical-scroll .board-cell :is(.map-token, .enemy-token):is(:hover, :focus-visible, .initiative-focus) { z-index: 8; }
+/* Значки состояний — у нижнего края самой фишки, а не под ней: под фишкой
+   они уходили в соседнюю клетку, и следующая фишка их закрывала. */
+.tactical-scroll .board-cell :is(.map-token, .enemy-token) .token-conditions { top: auto; bottom: 0; }
+/* Круг героя занимает 0,82 клетки: значки опускаются в зазор под ним, чтобы не
+   закрывать инициалы, и кончаются ровно на краю своей клетки. */
+.tactical-scroll .board-cell .map-token .token-conditions { bottom: calc(var(--cell) * -.09); }
+.tactical-scroll .enemy-token.nameplate-above .enemy-nameplate {
+  top: auto;
+  bottom: calc(100% + 6px * var(--counter-scale, 1));
+  transform-origin: 50% 100%;
+}
 .tactical-scroll .neutral-token-menu {
   transform: translateX(-50%) scale(var(--counter-scale, 1));
   transform-origin: 50% 0;

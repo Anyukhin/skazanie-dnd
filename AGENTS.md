@@ -159,7 +159,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
 `weather.mjs`, `offscreen-world.mjs`, `loot-containers.mjs`, `tavern-life.mjs`,
 `courier-letters.mjs`, `talespire-slab.mjs`, `talespire-import.mjs`, `map-library.mjs`,
 `thin-walls.mjs`, `room-floors.mjs`, `detail-props.mjs`, `scene-features.mjs`,
-`scene-dressing.mjs` (виньетки по тексту сцены, трудная местность, низкая мебель и развалины поверх планировки).
+`scene-dressing.mjs` (виньетки по тексту сцены, трудная местность, низкая мебель и развалины поверх планировки),
+`reaction-preferences.mjs` (режимы реакций героя: какое окно реакции сервер закрывает сам).
 Не описывать их как «агентов».
 
 **Готовые карты (TaleSpire):** `talespire-slab.mjs` разбирает строку слэба,
