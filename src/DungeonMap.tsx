@@ -50,6 +50,9 @@ import {
   HandHeart,
   Feather,
   PanelRightClose,
+  ChevronsRight,
+  Plus,
+  Minus,
 } from 'lucide-react'
 import type {
   CombatAction,
@@ -188,6 +191,10 @@ import {
   PartyQuestHud,
   type PendingCombatCommand,
   RAIL_HEIGHT_KEY,
+  HUD_ROWS_KEY,
+  HUD_ROWS_MIN,
+  HUD_ROWS_DEFAULT,
+  hudRowsLimit,
   SCENE_OBJECT_VERB_LABELS,
   sceneObjectCells,
   sceneObjectLabel,
@@ -419,7 +426,22 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /* Высота панели и ширина хроники переживают перезагрузку. Описание действия
      больше не отделено ручкой: она дробила нижнюю полосу и заставляла текст
      переноситься, хотя рядом оставалось свободное место. */
-  const [railHeight, setRailHeight] = useState(() => Number(window.localStorage.getItem(RAIL_HEIGHT_KEY)) || 0)
+  /* Высота панели — рядами плиток (2–5), как «+ / − ряд» в BG3: ручка над
+     панелью, кнопки «+» и «−» и стрелки дают одно и то же. Прежняя высота в
+     пикселях обрезала плитки снизу или оставляла под ними пустое поле. */
+  const [hudRowsChoice, setHudRowsChoice] = useState(() => {
+    const saved = Number(viewerStorage.get(HUD_ROWS_KEY))
+    return Number.isInteger(saved) && saved >= HUD_ROWS_MIN ? saved : HUD_ROWS_DEFAULT
+  })
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight)
+  const hudRowsMax = hudRowsLimit(viewportHeight)
+  const hudRows = Math.min(hudRowsChoice, hudRowsMax)
+  const setHudRows = (next: number) => {
+    const value = Math.max(HUD_ROWS_MIN, Math.min(hudRowsMax, next))
+    setHudRowsChoice(value)
+    viewerStorage.set(HUD_ROWS_KEY, String(value))
+  }
+  const turnRailRef = useRef<HTMLElement | null>(null)
   const [serverWidth, setServerWidth] = useState(() => Number(window.localStorage.getItem(SERVER_WIDTH_KEY)) || 0)
   const [chatCollapsed, setChatCollapsed] = useState(() => viewerStorage.get(CHAT_COLLAPSED_KEY) === 'collapsed')
   const toggleChat = useCallback((collapsed: boolean) => {
@@ -476,27 +498,52 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   useDialogEscape(() => setSelectedSceneObjectId(null), Boolean(selectedSceneObjectId))
   useEffect(() => {
     const root = document.documentElement.style
-    if (railHeight) root.setProperty('--ui-rail-height', `${railHeight}px`)
-    else root.removeProperty('--ui-rail-height')
+    root.removeProperty('--ui-rail-height')
     if (serverWidth) root.setProperty('--ui-server-column', `${serverWidth}px`)
     else root.removeProperty('--ui-server-column')
     root.setProperty('--ui-tile-rows', '2')
-  }, [railHeight, serverWidth])
+  }, [serverWidth])
+  // Прежняя высота в пикселях больше не читается — ключ убирается, чтобы не всплыл.
+  useEffect(() => { viewerStorage.remove(RAIL_HEIGHT_KEY) }, [])
+  useEffect(() => {
+    const onResize = () => setViewportHeight(window.innerHeight)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  /* Настоящая высота панели — для слоя окна реакции, который стоит над ней. */
+  useEffect(() => {
+    const rail = turnRailRef.current
+    if (!rail || typeof ResizeObserver === 'undefined') return
+    const root = document.documentElement.style
+    const observer = new ResizeObserver(() => root.setProperty('--hud-rail-h', `${Math.round(rail.getBoundingClientRect().height)}px`))
+    observer.observe(rail)
+    return () => { observer.disconnect(); root.removeProperty('--hud-rail-h') }
+  }, [])
   const startRailResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
     const startY = event.clientY
-    const startHeight = document.querySelector('.turn-rail')?.getBoundingClientRect().height ?? 292
+    const startRows = hudRows
+    // Шаг — ряд плиток с зазором: панель растёт и сжимается целыми рядами.
+    const step = (document.querySelector('.turn-rail .hotbar-section .action-tile')?.getBoundingClientRect().height ?? 48) + 4
+    let latest = startRows
     const move = (moveEvent: PointerEvent) => {
-      const next = Math.round(Math.min(window.innerHeight * .45, Math.max(120, startHeight + (startY - moveEvent.clientY))))
-      setRailHeight(next)
+      latest = Math.max(HUD_ROWS_MIN, Math.min(hudRowsMax, startRows + Math.round((startY - moveEvent.clientY) / step)))
+      setHudRowsChoice(latest)
     }
     const stop = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
-      setRailHeight((value) => { if (value) window.localStorage.setItem(RAIL_HEIGHT_KEY, String(value)); return value })
+      viewerStorage.set(HUD_ROWS_KEY, String(latest))
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop)
+  }
+  const resizeRailWithKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowUp') setHudRows(hudRows + 1)
+    else if (event.key === 'ArrowDown') setHudRows(hudRows - 1)
+    else if (event.key === 'Home' || event.key === 'Enter') setHudRows(HUD_ROWS_DEFAULT)
+    else return
+    event.preventDefault()
   }
   const startServerResize = (event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -572,6 +619,25 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const hotbarActionsRef = useRef<HTMLDivElement | null>(null)
   const tileTip = useTileTooltip(hotbarActionsRef)
   const fitTileColumns = useFitColumns(hotbarActionsRef)
+  /* Ширина ряда плиток и размер ячейки: самая длинная секция занимает целое
+     число колонок, а что не влезло — уходит на страницы (▲ 1/2 ▼), как в
+     макете. Прокрутка показывала у края обрезанную половину плитки. */
+  const [hotbarBox, setHotbarBox] = useState({ width: 0, cell: 48 })
+  const [compactPage, setCompactPage] = useState(0)
+  useEffect(() => {
+    const element = hotbarActionsRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const measure = () => {
+      const tile = element.querySelector<HTMLElement>('.hotbar-section .action-tile')
+      const cell = Math.round(tile?.getBoundingClientRect().height || 48)
+      const width = element.clientWidth
+      setHotbarBox((current) => current.width === width && current.cell === cell ? current : { width, cell })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   const [spellbookOpen, setSpellbookOpen] = useState(false)
   // Escape закрывает книгу заклинаний и разговор с NPC и возвращает фокус тому,
   // кто их открыл. Оба окна живут прямо в разметке доски, поэтому признак «окно
@@ -2804,6 +2870,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     })
   })
   if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
+  /* Переговоры — плиткой среди действий, как в макете боя: цена — действие,
+     отклик решает мораль противника. */
+  if (combatActive && !truce && (activeDeck === 'all' || activeDeck === 'common')) deckTiles.push({ id: 'propose-parley', cost: 'action', section: 'action', node: <button className="action-tile parley-hotbar" disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck) || !actionReady} onClick={() => { void onProposeParley('persuasion') }}
+    title={canAct && !actionReady ? 'Действие на этом ходу уже потрачено: переговоры станут доступны в следующий ход' : parleyAttempted ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника' : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
+  ><CombatIcon id="parley" kind="action" hint="переговоры перемирие поговорить" /><strong>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</strong><small>Убеждение</small><i className="action-cost action">действие</i></button> })
   if (inDeck('items')) combatItems.filter((item) => item.type !== 'weapon').forEach((item) => deckTiles.push({ id: item.id, cost: 'action', section: 'items', node: <button key={item.id} className={`action-tile item ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !actionReady || actionsLocked} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={`${item.name} — ${item.description}`}><CombatIcon id={item.id} kind="item" hint={`${item.name} ${item.type} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.quantity} шт. · {item.combat?.radius ? `радиус ${item.combat.radius} фт` : 'предмет'}</small><i className="action-cost action">действие</i></button> }))
   const tileOrderKey = `${turnActorId}:${activeDeck}`
   const savedTileOrder = tileOrder[tileOrderKey] ?? []
@@ -2826,7 +2897,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      компактной — только иконки, лишнее уходит в прокрутку, — а свободная ширина
      достаётся малым секциям под подписи. Так у волшебника двенадцатого уровня
      заклинания не выдавливают оружие и бонусные действия с панели. */
-  const hudRows = 3
   const hotbarSections: Array<{ id: HotbarSection | 'deck'; tiles: typeof visibleTiles }> = activeDeck === 'all'
     ? (['action', 'spell', 'bonus', 'items'] as HotbarSection[])
         .map((id) => ({ id, tiles: visibleTiles.filter((tile) => tile.section === id) }))
@@ -2837,6 +2907,23 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const largestSection = hotbarSections.length > 1
     ? hotbarSections.reduce((best, section) => section.tiles.length > best.tiles.length ? section : best)
     : hotbarSections[0] && hotbarSections[0].tiles.length > hudRows * 2 ? hotbarSections[0] : null
+  // Колонки длинной секции: остальные секции держат свой минимум, черта — 22 px.
+  const compactNeeded = largestSection ? Math.ceil(largestSection.tiles.length / hudRows) : 0
+  const compactLayout = (() => {
+    // На телефоне плитки идут одной лентой с прокруткой — страниц там нет.
+    if (!largestSection || hotbarBox.width <= 0 || window.matchMedia('(max-width: 760px)').matches) return { cols: compactNeeded, pages: 1 }
+    const step = hotbarBox.cell + 4
+    const otherCols = hotbarSections.filter((section) => section !== largestSection).reduce((sum, section) => sum + Math.max(1, Math.ceil(section.tiles.length / hudRows)), 0)
+    const fixed = (hotbarSections.length - 1) * 22 - hotbarSections.length * 4 + otherCols * step
+    const fit = (pager: number) => Math.floor((hotbarBox.width - fixed - pager) / step)
+    if (fit(0) >= compactNeeded) return { cols: compactNeeded, pages: 1 }
+    const cols = Math.max(1, fit(26))
+    return { cols, pages: Math.ceil(compactNeeded / cols) }
+  })()
+  const compactPageIndex = Math.min(compactPage, compactLayout.pages - 1)
+  const sectionTiles = (section: (typeof hotbarSections)[number]) => section === largestSection && compactLayout.pages > 1
+    ? section.tiles.slice(compactPageIndex * compactLayout.cols * hudRows, (compactPageIndex + 1) * compactLayout.cols * hudRows)
+    : section.tiles
   /* Реакции героя — справа от плиток: они не нажимаются, а срабатывают в окне
      реакции, поэтому панель только показывает, чем герой может ответить и не
      потрачена ли реакция в этом раунде. */
@@ -3866,9 +3953,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         <button type="submit" disabled={composerBlocked || ((conversationOnly || !preparedLabel || awaitingTarget) && !freeText.trim())} title={narrating ? 'Рассказчик разрешает предыдущее действие' : combatActive && !canAct ? `Сейчас ходит ${activeName}` : awaitingTarget ? 'Сначала выберите цель на карте' : !preparedLabel && !freeText.trim() ? 'Сначала опишите действие' : 'Отправить действие'}><CombatIcon id="custom-action" kind="action" size={17} compact />Отправить</button>
       </form>
       </div>
-      <section className="turn-rail">
-        {/* Ручка высоты: тянется вверх и вниз, значение переживает перезагрузку. */}
-        <div className="rail-resize" role="separator" aria-orientation="horizontal" aria-label="Высота нижней панели" onPointerDown={startRailResize} onDoubleClick={() => { setRailHeight(0); window.localStorage.removeItem(RAIL_HEIGHT_KEY) }} title="Потяните, чтобы изменить высоту. Двойной щелчок — вернуть обычную" />
+      <section className="turn-rail" ref={turnRailRef} data-rows={hudRows} style={{ '--hud-rows': hudRows } as React.CSSProperties}>
+        {/* Ручка высоты: тянется вверх и вниз на целый ряд плиток, число рядов
+            переживает перезагрузку. Стрелки — ряд, Enter — три ряда. */}
+        <div className="rail-resize" role="separator" aria-orientation="horizontal" aria-label="Высота нижней панели, рядов плиток" aria-valuemin={HUD_ROWS_MIN} aria-valuemax={hudRowsMax} aria-valuenow={hudRows} tabIndex={0} onPointerDown={startRailResize} onKeyDown={resizeRailWithKeys} onDoubleClick={() => setHudRows(HUD_ROWS_DEFAULT)} title="Потяните, чтобы добавить или убрать ряд плиток. Двойной щелчок — три ряда" />
       {/* Свободный ввод присутствует во ВСЕХ состояниях, включая бой. Продуктовые
           принципы 2 и 3 требуют, чтобы предложения интерфейса не были границами;
           раньше в бою на месте этого поля стоял только хотбар, и у принципа не было
@@ -3913,37 +4001,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {/* Колоды и их счётчики — ходящего героя; в чужой ход их нет, как и плиток. */}
         <nav className="hotbar-tabs" role="tablist" aria-label="Категории действий" hidden={Boolean(viewerHero)}>
           {([
-            ['all', 'Все', <Sparkles size={18} />],
-            ['common', 'Общие', <CombatIcon id="common-actions" kind="action" size={18} compact />],
-            ['weapon', 'Атаки', <Swords size={18} />],
-            ['magic', 'Заклинания', <Sparkles size={18} />],
-            ['class', 'Классовые', <Shield size={18} />],
-            ['items', 'Предметы', <Gem size={18} />],
-          ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={activeDeck === deck ? 'active' : ''} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy} title={`${label}: ${DECK_HINTS[deck]}${deckCounts[deck] ? ` · плиток: ${deckCounts[deck]}` : ''}`}>{icon}<span>{label}</span>{deckCounts[deck] > 0 && <b className="hotbar-tab-count" aria-label={`плиток: ${deckCounts[deck]}`}>{deckCounts[deck]}</b>}</button>)}
+            ['all', 'Все', <ChevronsRight size={18} aria-hidden="true" />],
+            ['common', 'Общие', null],
+            ['weapon', 'Атаки', null],
+            ['magic', 'Заклинания', null],
+            ['class', 'Классовые', null],
+            ['items', 'Предметы', null],
+          ] as Array<[CombatDeck, string, React.ReactNode]>).map(([deck, label, icon]) => <button type="button" key={deck} role="tab" aria-selected={activeDeck === deck} className={`${activeDeck === deck ? 'active' : ''}${icon ? ' icon-tab' : ''}`} onClick={() => setActiveDeck(deck)} disabled={tacticalBusy} title={`${label}: ${DECK_HINTS[deck]}${deckCounts[deck] ? ` · плиток: ${deckCounts[deck]}` : ''}`}>{icon}<span>{label}</span>{deckCounts[deck] > 0 && <b className="hotbar-tab-count" aria-label={`плиток: ${deckCounts[deck]}`}>{deckCounts[deck]}</b>}</button>)}
         </nav>
-        {!combatActive && <button
-          type="button"
-          className="group-decision-button"
-          disabled={leaveLocationDisabled || narrating || tacticalBusy || Boolean(guardEncounter)}
-          onClick={onLeaveLocation}
-          title={guardEncounter
-            ? 'Стража стоит перед отрядом — сначала ответьте офицеру'
-            : leaveLocationDisabled
-              ? 'Сначала завершите текущее действие или проверку'
-            : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
-        ><CombatIcon id="group-vote" kind="action" size={18} compact /><span>Решение группы</span></button>}
-        {showStartCombat && <button type="button" className="start-combat-button" disabled={!canAct || tacticalBusy} onClick={onStartCombat} title="Бросить инициативу и начать бой"><Swords size={18} /><span>Начать бой</span></button>}
         {combatActive && <div className="hotbar-combat-controls">
-            {combatActive && !truce && <button
-              className="parley-hotbar"
-              disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck) || !actionReady}
-              onClick={() => { void onProposeParley('persuasion') }}
-              title={canAct && !actionReady
-                ? 'Действие на этом ходу уже потрачено: переговоры станут доступны в следующий ход'
-                : parleyAttempted
-                ? 'Повторный окрик в этом бою идёт с помехой. Тратит действие; отклик решает мораль противника'
-                : 'Проверка Убеждения против серверной СЛ по морали противника. Тратит действие'}
-            ><CombatIcon id="propose-parley" kind="action" hint="переговоры перемирие поговорить" size={18} compact /><span>{parleyAttempted ? 'Переговоры (помеха)' : 'Переговоры'}</span></button>}
             {combatActive && selectedItem && needsWeaponChange && <button disabled={!canAct || tacticalBusy || !actionReady} onClick={() => selected && onChangeWeapon(selected, selectedItem.id)}><CombatIcon id={`swap-${selectedItem.id}`} kind="swap" hint={`сменить оружие ${selectedItem.name}`} size={18} compact /><span>Сменить оружие</span></button>}
         </div>}
         </div>
@@ -3953,10 +4019,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           зарезервировано всегда, поэтому показывать арсенал ничего не стоит. */}
       <section className={`tactical-control combat-hotbar ${combatActive ? '' : 'out-of-combat'}`} aria-label={combatActive ? `Панель боевых действий: ${activeName}` : `Панель действий вне боя: ${activeName}`}>
         <div className="hotbar-main">
-          {/* Замок защищает сохранённую расстановку плиток от перетаскивания. */}
-          <div className="tile-toolbar" role="group" aria-label="Настройки панели действий">
-            <button type="button" className={tilesLocked ? '' : 'active'} aria-pressed={!tilesLocked} onClick={() => { const next = !tilesLocked; setTilesLocked(next); window.localStorage.setItem(TILE_LOCK_KEY, next ? 'locked' : 'unlocked') }} title={tilesLocked ? 'Разблокировать: плитки можно перетаскивать' : 'Заблокировать: расстановка сохранится'}>{tilesLocked ? <Lock size={15} /> : <LockOpen size={15} />}</button>
-          </div>
           {/* Кнопки хода живут внутри карточки действий, прижатые к её правому
               краю: они завершают тот же выбор, что и плитки, а отдельной колонкой
               между колодой и описанием рвала строку надвое. Прокрутка плиток их
@@ -3973,8 +4035,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {/* Пустых гнёзд нет: свободную ширину забирают подписи малых секций. */}
             {hotbarSections.map((section, index) => <Fragment key={section.id}>
               {index > 0 && <span className="hotbar-section-divider" aria-hidden="true" />}
-              <div className={`hotbar-section ${section.id}${largestSection === section ? ' compact' : ''}`} role="group" aria-label={HOTBAR_SECTION_LABELS[section.id]} style={{ '--section-cols': Math.max(1, Math.ceil(section.tiles.length / hudRows)) } as React.CSSProperties}>
-                {section.tiles.map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
+              <div className={`hotbar-section ${section.id}${largestSection === section ? ' compact' : ''}`} role="group" aria-label={HOTBAR_SECTION_LABELS[section.id]} style={{ '--section-cols': largestSection === section ? compactLayout.cols : Math.max(1, Math.ceil(section.tiles.length / hudRows)) } as React.CSSProperties}>
+                {sectionTiles(section).map(({ id, node }) => cloneElement(node as React.ReactElement<Record<string, unknown>>, {
                   key: id,
                   draggable: !tilesLocked,
                   onDragStart: () => setDraggedTileId(id),
@@ -3984,6 +4046,11 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   className: `${(node.props as { className?: string }).className ?? ''}${tilesLocked ? '' : ' movable'}`,
                 }))}
               </div>
+              {largestSection === section && compactLayout.pages > 1 && <div className="hotbar-pager" role="group" aria-label={`Страницы секции: ${compactPageIndex + 1} из ${compactLayout.pages}`}>
+                <button type="button" disabled={compactPageIndex <= 0} onClick={() => setCompactPage(compactPageIndex - 1)} aria-label="Предыдущая страница" title="Предыдущая страница">▲</button>
+                <span aria-hidden="true">{compactPageIndex + 1}<br />{compactLayout.pages}</span>
+                <button type="button" disabled={compactPageIndex >= compactLayout.pages - 1} onClick={() => setCompactPage(compactPageIndex + 1)} aria-label="Следующая страница" title="Следующая страница">▼</button>
+              </div>}
             </Fragment>)}
             {((activeDeck === 'magic' && !spells.length) || (activeDeck === 'class' && !combatActions.some((action) => action.category === 'class')) || (activeDeck === 'items' && !combatItems.some((item) => item.type !== 'weapon'))) && <div className="hotbar-empty"><LockKeyhole size={18} /><span>У героя нет доступных действий этой категории</span></div>}
             {/* Фильтр может не оставить ничего — и тогда пустая карточка обязана
@@ -4018,6 +4085,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             })}
            </div>}
            </div>
+        </div>
+        <span className="hotbar-section-divider own-action-divider" aria-hidden="true" />
+        <button type="button" className="own-action-tile" onClick={openChatForOwnAction} title="Своё действие: опишите словами — Рассказчик разберёт, а цена хода спишется так же, как с панели"><Feather size={22} aria-hidden="true" /><span>Своё действие</span></button>
+        {/* Настройка панели, как в макете: замок бережёт расстановку плиток,
+            «+» и «−» добавляют и убирают ряд, рядом — параметры действия. */}
+        <div className="hud-panel-tools" role="group" aria-label="Настройка панели">
+          <button type="button" className={tilesLocked ? '' : 'active'} aria-pressed={!tilesLocked} onClick={() => { const next = !tilesLocked; setTilesLocked(next); window.localStorage.setItem(TILE_LOCK_KEY, next ? 'locked' : 'unlocked') }} title={tilesLocked ? 'Разблокировать: плитки можно перетаскивать' : 'Заблокировать: расстановка сохранится'} aria-label={tilesLocked ? 'Панель закреплена — открыть для перестановки' : 'Панель открыта — закрепить расстановку'}>{tilesLocked ? <Lock size={15} /> : <LockOpen size={15} />}</button>
+          <button type="button" className="hud-row-button" disabled={hudRows >= hudRowsMax} onClick={() => setHudRows(hudRows + 1)} title="Добавить ряд плиток" aria-label="Добавить ряд"><Plus size={16} /></button>
+          <button type="button" className="hud-row-button" disabled={hudRows <= HUD_ROWS_MIN} onClick={() => setHudRows(hudRows - 1)} title="Убрать ряд плиток" aria-label="Убрать ряд"><Minus size={16} /></button>
            {(combatActive || (combatMode === 'magic' && selectedSpell)) && <details className="hotbar-detail">
             <summary aria-label="Параметры действия" title="Параметры действия"><SlidersHorizontal size={15} /></summary>
             <div className="hotbar-detail-content">
@@ -4108,7 +4184,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             </div>
           </details>}
         </div>
-        <button type="button" className="own-action-tile" onClick={openChatForOwnAction} title="Своё действие: опишите словами — Рассказчик разберёт, а цена хода спишется так же, как с панели"><Feather size={22} aria-hidden="true" /><span>Своё действие</span></button>
         {tacticalBusy && <p className="tactical-command-status"><RefreshCw className={state.pendingAction?.status === 'ready' || state.pendingCheck?.status === 'ready' ? '' : 'spinning'} size={12} />{state.pendingAction?.status === 'ready' || state.pendingCheck?.status === 'ready' ? 'Сначала подтвердите предложение ведущего или откажитесь от него.' : 'Действие идёт, мир отзывается на него…'}</p>}
         {/* Отказ команды больше не рисуется здесь своей строкой: он уходит в
             общую ленту тостов над всем экраном (`ErrorToasts`). Раньше строка
@@ -4130,7 +4205,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {!(ownHero && ownDeathSaves) && <div className="hotbar-hero-cluster player-resource-panel" aria-label={`Ресурсы героя: ${railName}`}>
           {combatActive && heroReactions.length > 0 && <div className="hud-reactions" role="group" aria-label={`Реакции героя${railReactionReady ? '' : ': реакция этого раунда потрачена'}`}>
             <span className="hud-side-title">Реакции</span>
-            <div className="hud-reaction-grid">
+            <div className="hud-reaction-grid" style={{ '--reaction-cols': heroReactions.length > 4 ? 3 : 2 } as React.CSSProperties}>
               {/* Облачко — «спрашивать», серая — «никогда», без метки — «сразу».
                   Щелчок открывает режимы всех реакций героя. */}
               {heroReactions.slice(0, 6).map((reaction) => canSetReactionModes
@@ -4162,12 +4237,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {railMovement.effects.map((effect) => <li key={effect.effect_id}>{effect.name} · ещё {movementEffectTimeLabel(effect.remaining_seconds)}{effect.applied ? '' : ' · бонус не используется'}</li>)}
           </ul>}
           {combatActive && !viewerHero && weaponAttacksUsed > 0 && weaponAttacksLeft > 0 && <small>Атак в действии осталось: {weaponAttacksLeft}</small>}
-           {/* Вне боя — справка героя, как `.infob` макета: пассивная
-               внимательность из листа и кости хитов из `mechanics.hit_point_dice`. */}
-           {!combatActive && activeHero && (activeHero.characterSheet?.passive_perception != null || hitPointDice) && <dl className="hud-infob" aria-label="Справка героя">
-             {activeHero.characterSheet?.passive_perception != null && <div title="Пассивная Мудрость (Внимательность): что герой замечает, не тратя действий"><dt>Пасс. внимательность</dt><dd>{activeHero.characterSheet.passive_perception}</dd></div>}
-             {hitPointDice && <div title="Кости хитов тратятся на коротком отдыхе, восстанавливаются после долгого"><dt>Кости хитов</dt><dd>{hitPointDiceRemaining}/{hitPointDice.maximum} · к{hitPointDice.die_size}</dd></div>}
-           </dl>}
            {/* Камни хода, классовые запасы и ячейки — в лотке над плитками. */}
            {/* Вне боя на месте реакций — отдых, почта и режимы реакций. Кнопки
                отдыха и писем открывают те же панели, что чипы хроники;
@@ -4175,9 +4244,22 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
            {!combatActive && <div className="hud-modes" role="group" aria-label="Отдых и режимы">
              <span className="hud-side-title">Отдых и режимы</span>
              <div className="hud-mode-grid">
-               <button type="button" className={`hud-mode${openSituational === 'rest' ? ' open' : ''}`} aria-expanded={openSituational === 'rest'} onClick={() => { toggleChat(false); toggleSituational('rest') }} title="Короткий или долгий отдых: восстановление считает сервер"><CombatIcon id="short-rest" kind="action" size={22} compact /><span>Отдых</span></button>
-               {(letterAddressees.length > 0 || heroLetters.length > 0) && <button type="button" className={`hud-mode${openSituational === 'letters' ? ' open' : ''}`} aria-expanded={openSituational === 'letters'} onClick={() => { toggleChat(false); toggleSituational('letters') }} title="Почта отряда: письма и курьеры"><CombatIcon id="letters" kind="action" size={22} compact /><span>Письма</span>{heroLettersInTransit.length > 0 && <b aria-label={`в пути: ${heroLettersInTransit.length}`}>{heroLettersInTransit.length}</b>}</button>}
-               {canSetReactionModes && <button type="button" data-reaction-modes-anchor="" className={`hud-mode${reactionMenu ? ' open' : ''}`} aria-haspopup="dialog" aria-expanded={Boolean(reactionMenu)} onClick={(event) => openReactionModes(event.currentTarget)} title="Режимы реакций: спрашивать, сразу или никогда"><RefreshCw size={18} aria-hidden="true" /><span>Реакции</span></button>}
+               <button type="button" className={`hud-mode${openSituational === 'rest' ? ' open' : ''}`} aria-expanded={openSituational === 'rest'} onClick={() => { toggleChat(false); toggleSituational('rest') }} title={`Короткий или долгий отдых: восстановление считает сервер${hitPointDice ? `. Кости хитов: ${hitPointDiceRemaining} из ${hitPointDice.maximum}, к${hitPointDice.die_size}` : ''}`}><CombatIcon id="short-rest" kind="action" size={30} compact /><span>Отдых</span></button>
+               {(letterAddressees.length > 0 || heroLetters.length > 0) && <button type="button" className={`hud-mode${openSituational === 'letters' ? ' open' : ''}`} aria-expanded={openSituational === 'letters'} onClick={() => { toggleChat(false); toggleSituational('letters') }} title="Почта отряда: письма и курьеры"><CombatIcon id="letters" kind="action" size={30} compact /><span>Письма</span>{heroLettersInTransit.length > 0 && <b aria-label={`в пути: ${heroLettersInTransit.length}`}>{heroLettersInTransit.length}</b>}</button>}
+               {canSetReactionModes && <button type="button" data-reaction-modes-anchor="" className={`hud-mode${reactionMenu ? ' open' : ''}`} aria-haspopup="dialog" aria-expanded={Boolean(reactionMenu)} onClick={(event) => openReactionModes(event.currentTarget)} title="Режимы реакций: спрашивать, сразу или никогда"><RefreshCw size={22} aria-hidden="true" /><span>Реакции</span></button>}
+               <button
+                 type="button"
+                 className="hud-mode group-decision-button"
+                 disabled={leaveLocationDisabled || narrating || tacticalBusy || Boolean(guardEncounter)}
+                 onClick={onLeaveLocation}
+                 title={guardEncounter
+                   ? 'Стража стоит перед отрядом — сначала ответьте офицеру'
+                   : leaveLocationDisabled
+                     ? 'Сначала завершите текущее действие или проверку'
+                   : 'Предложить отряду покинуть локацию. Переход начнётся после решения группы'}
+                 aria-label="Решение группы"
+               ><CombatIcon id="group-vote" kind="action" size={30} compact /><span>Решение группы</span></button>
+               {showStartCombat && <button type="button" className="hud-mode start-combat-button" disabled={!canAct || tacticalBusy} onClick={onStartCombat} title="Бросить инициативу и начать бой"><Swords size={22} aria-hidden="true" /><span>Начать бой</span></button>}
              </div>
              {reactionHero?.currency && <div className="hud-purse" aria-label={`Кошелёк: ${purseText(reactionHero.currency)}`}><span className="hud-purse-coin" aria-hidden="true" /><span>Кошелёк</span><b>{purseText(reactionHero.currency)}</b></div>}
            </div>}
