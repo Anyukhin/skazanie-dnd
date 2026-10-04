@@ -59,6 +59,9 @@ for (const name of readdirSync(buildDir)) {
   const source = readFileSync(join(buildDir, name), 'utf8')
     .replace(/(from\s+["'])(\.\/[^"']+)(["'])/gu, '$1$2.mjs$3')
     .replace(/from (["'])(?:react\/jsx-runtime|react|lucide-react)\1/gu, 'from "./ui-runtime.mjs"')
+    // Общие с сервером листы (`server/*.mjs`) — настоящие файлы репозитория:
+    // из временного каталога относительный путь `../server/` никуда не ведёт.
+    .replace(/(from\s+["'])\.\.\/server\/([^"']+)(["'])/gu, (_, open, file, close) => `${open}${new URL(`../server/${file}`, import.meta.url).href}${close}`)
   writeFileSync(join(buildDir, name.replace(/\.js$/u, '.mjs')), source)
 }
 const { DAMAGE_TYPE_LABELS, battleEventText, damageAmountText, damageTypeLabel } = await import(pathToFileURL(modulePath).href)
@@ -352,4 +355,11 @@ test('поступок противника со снаряжением назы
     battleEventText(state(), { id: 'b6', type: 'npc-item', actorId: 'foe' }),
     'Берсерк пускает в ход своё снаряжение.',
   )
+})
+
+test('конец концентрации в журнале назван словами, а не служебным ключом', () => {
+  // До 2026-10-04 строка была «Концентрация Ады прекращена · failed-saving-throw».
+  const text = battleEventText(state(), { id: 'c1', type: 'concentration-end', actorId: 'hero', reason: 'failed-saving-throw' })
+  assert.match(text, /спасбросок концентрации провален/u)
+  assert.doesNotMatch(text, /failed-saving-throw/u)
 })
