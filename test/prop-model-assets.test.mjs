@@ -253,8 +253,11 @@ test('ковёр набора ложится на пол 3D своим штам�
   let stampDisposed = 0
   stamp.addEventListener('dispose', () => { stampDisposed += 1 })
   const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, {
-    catalog, models: new Map(), stamps: new Map([['rug_red_large', stamp], ['anvil', stamp]]),
+    catalog, models: new Map(), stamps: new Map([['rug_red_large', stamp], ['anvil', stamp], ['cave_pool', stamp]]),
   })
+  // Озерцо в 2D непрозрачно — и в 3D его штамп не просвечивает.
+  const pool = environment.create(prop({ id: 'grotto-pool', assetId: 'cave_pool', footprint: [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }] }))
+  assert.equal(pool.getObjectByName('floor-stamp')?.material.opacity, 1)
   const value = prop({ id: 'hall-rug', assetId: 'rug_red_large', x: 6, y: 4, footprint: [], scale: 1.2 })
   const model = environment.create(value)
   const meshes = []
@@ -293,10 +296,11 @@ test('своя модель сильнее штампа, штампом ложа
   const stamped = DETAIL_PROPS.filter((record) => detail.isDetailFloorStamp(record.id))
   for (const record of stamped) {
     assert.equal(record.kind, 'decal', `${record.id}: штамп на полу только у плоской наклейки`)
-    assert.ok(['rug', 'floor_stain'].includes(record.alias), `${record.id}: двойник — плашка, а не объёмная модель`)
+    assert.ok(['rug', 'floor_stain', 'mosaic', 'path_stone', 'fern', 'flowers'].includes(record.alias), `${record.id}: двойник с плоским рисунком`)
   }
-  for (const id of ['straw_mat', 'rug_red_large', 'bear_pelt', 'snowdrift', 'wine_stain']) assert.ok(detail.isDetailFloorStamp(id), id)
-  for (const id of ['straw_bed', 'anvil', 'reeds', 'ritual_circle', 'rug']) assert.equal(detail.isDetailFloorStamp(id), false, id)
+  for (const id of ['straw_mat', 'rug_red_large', 'bear_pelt', 'snowdrift', 'wine_stain', 'drain_grate', 'leaf_litter', 'lily_pads', 'ritual_circle']) assert.ok(detail.isDetailFloorStamp(id), id)
+  // Камыш стоит стеной, у колеи и плюща есть свои модели, ковёр основного набора — не предмет набора.
+  for (const id of ['straw_bed', 'anvil', 'reeds', 'mine_rail', 'wall_ivy', 'arcane_stone', 'rug']) assert.equal(detail.isDetailFloorStamp(id), false, id)
 
   const catalog = catalogModule.validatePropModelCatalog(validCatalog([entry('mat-a', ['straw_mat'])]))
   const environment = propsModule.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, {
@@ -326,10 +330,13 @@ test('загрузка вырезает штампы плоских наклее
       return json({ version: 1, models: [model], atlas: { image: `${release}atlas.png`, key: 'stamp-atlas' }, release: { id: revision } })
     }
     if (String(url) === '/assets/maps/detail-v1/prop-atlas.json') return atlasBroken ? missing : json({ image: 'prop-atlas.png', frames })
+    // Основной атлас: картинка — путь от /assets/ с хешем, как у 2D-доски.
+    if (String(url) === '/assets/maps/props/prop-atlas.json') return json({ image: 'maps/props/prop-atlas.png', imageHash: 'abc123', frames: { cave_pool: { x: 4, y: 6, w: 192, h: 180 } } })
     return missing
   }
+  const images = []
   globalThis.Image = class {
-    set src(value) { this.url = value; this.naturalWidth = 2048; setTimeout(() => this.onload?.(), 0) }
+    set src(value) { this.url = value; images.push(value); this.naturalWidth = 2048; setTimeout(() => this.onload?.(), 0) }
   }
   globalThis.document = {
     createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage: (...args) => drawn.push(args) }) }),
@@ -342,14 +349,16 @@ test('загрузка вырезает штампы плоских наклее
     ]
     assert.equal(await assetsModule.loadPropModelAssets(props, new AbortController().signal, revision), null, 'без атласа и моделей остаются процедурные плашки')
     atlasBroken = false
-    const assets = await assetsModule.loadPropModelAssets(props, new AbortController().signal, revision)
+    const assets = await assetsModule.loadPropModelAssets([...props, prop({ id: 'grotto', assetId: 'cave_pool' })], new AbortController().signal, revision)
     assert.ok(assets, 'второй запрос атласа после сбоя проходит')
-    assert.deepEqual([...assets.stamps.keys()], ['straw_mat'], 'штамп только у плоской наклейки без своей модели')
-    assert.equal(requested.filter((url) => url.endsWith('prop-atlas.json')).length, 2)
+    assert.deepEqual([...assets.stamps.keys()].sort(), ['cave_pool', 'straw_mat'], 'штамп только у плоского предмета без своей модели')
+    assert.equal(requested.filter((url) => url === '/assets/maps/detail-v1/prop-atlas.json').length, 2)
+    assert.ok(images.includes('/assets/maps/props/prop-atlas.png?v=abc123'), 'озерцо берёт основной атлас с хешем картинки')
     const texture = assets.stamps.get('straw_mat')
     assert.equal(texture.image.width, 96)
     assert.equal(texture.image.height, 95)
-    assert.deepEqual(drawn.at(-1).slice(1), [10, 20, 96, 95, 0, 0, 96, 95], 'кадр вырезан из атласа целиком')
+    assert.ok(drawn.some((args) => args.slice(1).join() === [10, 20, 96, 95, 0, 0, 96, 95].join()), 'кадр вырезан из атласа целиком')
+    assert.equal(assets.stamps.get('cave_pool').image.width, 192)
     let disposed = 0
     texture.addEventListener('dispose', () => { disposed += 1 })
     assets.dispose()

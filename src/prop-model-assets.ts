@@ -7,57 +7,89 @@ import {
 } from './model-assets'
 import { loadPropModelCatalog, propModelFor, type PropModelCatalog } from './prop-model-catalog'
 import { createStyleMaterialBinder, type GraphicsStylePack } from './board3d-style'
-import { resolvePropAssetId, withStyleProps, type PropFrame } from './board-render'
+import { PROP_ATLAS_MANIFEST, resolvePropAssetId, withStyleProps, type PropFrame } from './board-render'
 import { DETAIL_ASSET_ROOT, DETAIL_PROP_ATLAS_MANIFEST, isDetailFloorStamp } from './detail-props'
 import type { TacticalProp } from './types'
 
 export type PropModelAssets = {
   catalog: PropModelCatalog
   models: Map<string, THREE.Group>
-  /** Штампы плоских наклеек набора детализации по `assetId` (`isDetailFloorStamp`). */
+  /** Штампы плоских предметов по `assetId` (`isFloorStamp`). */
   stamps?: Map<string, THREE.Texture>
   dispose: () => void
 }
 
 type StampAtlas = { image: HTMLImageElement; frames: Record<string, PropFrame> }
-
-let stampAtlas: Promise<StampAtlas | null> | null = null
+type StampSource = 'core' | 'detail'
 
 /**
- * Атлас штампов набора детализации для 3D-доски. Манифест и картинка
- * запрашиваются один раз на приложение; это тот же файл, что рисует 2D-доска,
- * и второй раз он приходит из кэша браузера. Неудача не запоминается:
- * следующая сцена попробует снова, а пока лежит процедурная плашка.
+ * Плоские предметы основного набора, которые 3D кладёт их 2D-штампом:
+ * процедурная модель у них — цветная плашка, а кадр в основном атласе есть.
  */
-function loadStampAtlas(): Promise<StampAtlas | null> {
-  if (stampAtlas) return stampAtlas
-  const pending: Promise<StampAtlas | null> = fetch(DETAIL_PROP_ATLAS_MANIFEST, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) })
+const CORE_FLOOR_STAMPS: ReadonlySet<string> = new Set(['rug', 'floor_stain', 'cave_pool', 'mosaic'])
+
+/** Ложится ли предмет на пол 3D-доски своим штампом, если своей модели нет. */
+export function isFloorStamp(assetId: string): boolean {
+  return CORE_FLOOR_STAMPS.has(assetId) || isDetailFloorStamp(assetId)
+}
+
+const stampAtlases = new Map<StampSource, Promise<StampAtlas | null>>()
+
+/**
+ * Атлас штампов для 3D-доски: основной (`maps/props`) или набора детализации.
+ * Манифест и картинка запрашиваются один раз на приложение; это те же файлы,
+ * что рисует 2D-доска, и второй раз они приходят из кэша браузера. Неудача
+ * не запоминается: следующая сцена попробует снова, а пока лежит процедурная
+ * плашка.
+ */
+function loadStampAtlas(source: StampSource): Promise<StampAtlas | null> {
+  const cached = stampAtlases.get(source)
+  if (cached) return cached
+  const manifestUrl = source === 'core' ? PROP_ATLAS_MANIFEST : DETAIL_PROP_ATLAS_MANIFEST
+  const pending: Promise<StampAtlas | null> = fetch(manifestUrl, { cache: 'no-cache', signal: AbortSignal.timeout(10_000) })
     .then((response) => (response.ok ? response.json() : null))
     .then((manifest) => new Promise<StampAtlas | null>((resolve) => {
       const frames = manifest?.frames
       const name = typeof manifest?.image === 'string' ? manifest.image : ''
-      if (!/^[a-z0-9_-]+\.png$/u.test(name) || !frames) { resolve(null); return }
+      // Основной атлас называет картинку путём от `/assets/` и метит её
+      // хешем, как и для 2D-доски; атлас набора — именем файла у манифеста.
+      const valid = source === 'core' ? /^maps\/[a-z0-9_/-]+\.png$/u.test(name) : /^[a-z0-9_-]+\.png$/u.test(name)
+      if (!valid || !frames) { resolve(null); return }
+      const hash = typeof manifest?.imageHash === 'string' ? manifest.imageHash : ''
       const image = new Image()
       image.decoding = 'async'
       image.onload = () => resolve(image.naturalWidth ? { image, frames } : null)
       image.onerror = () => resolve(null)
-      image.src = `${DETAIL_ASSET_ROOT}${name}`
+      image.src = source === 'core'
+        ? `/assets/${name}${hash ? `?v=${encodeURIComponent(hash)}` : ''}`
+        : `${DETAIL_ASSET_ROOT}${name}`
     }))
     .catch(() => null)
-  stampAtlas = pending
-  void pending.then((atlas) => { if (!atlas && stampAtlas === pending) stampAtlas = null })
+  stampAtlases.set(source, pending)
+  void pending.then((atlas) => { if (!atlas && stampAtlases.get(source) === pending) stampAtlases.delete(source) })
   return pending
 }
 
 /**
  * Кадры штампов отдельными фактурами: плоскость наклейки берёт свой кадр
  * целиком. Вырезка из атласа вместо окна UV — иначе каждая наклейка грузила
- * бы в видеопамять весь атлас набора.
+ * бы в видеопамять весь атлас.
  */
-async function loadDetailStamps(assetIds: readonly string[], signal: AbortSignal): Promise<Map<string, THREE.Texture>> {
+async function loadFloorStamps(assetIds: readonly string[], signal: AbortSignal): Promise<Map<string, THREE.Texture>> {
   const stamps = new Map<string, THREE.Texture>()
-  const atlas = await loadStampAtlas()
-  if (!atlas || signal.aborted || typeof document === 'undefined') return stamps
+  const core = assetIds.filter((assetId) => CORE_FLOOR_STAMPS.has(assetId))
+  const detail = assetIds.filter((assetId) => !CORE_FLOOR_STAMPS.has(assetId))
+  const [coreAtlas, detailAtlas] = await Promise.all([
+    core.length ? loadStampAtlas('core') : null,
+    detail.length ? loadStampAtlas('detail') : null,
+  ])
+  if (signal.aborted || typeof document === 'undefined') return stamps
+  if (coreAtlas) cutStamps(coreAtlas, core, stamps)
+  if (detailAtlas) cutStamps(detailAtlas, detail, stamps)
+  return stamps
+}
+
+function cutStamps(atlas: StampAtlas, assetIds: readonly string[], stamps: Map<string, THREE.Texture>) {
   for (const assetId of assetIds) {
     const frame = atlas.frames[assetId]
     if (!frame) continue
@@ -73,7 +105,6 @@ async function loadDetailStamps(assetIds: readonly string[], signal: AbortSignal
     texture.needsUpdate = true
     stamps.set(assetId, texture)
   }
-  return stamps
 }
 
 async function modelBuffer(url: string, signal: AbortSignal) {
@@ -211,9 +242,9 @@ export async function loadPropModelAssets(props: readonly TacticalProp[], signal
   // Плоская наклейка без своей модели ложится на пол штампом; модель, если
   // она есть в выпуске или пакете стиля, сильнее штампа.
   const stampIds = [...new Set(props.map((prop) => resolvePropAssetId(prop.assetId)))]
-    .filter((assetId) => isDetailFloorStamp(assetId) && !catalog.models.some((entry) => entry.assetIds.includes(assetId)))
+    .filter((assetId) => isFloorStamp(assetId) && !catalog.models.some((entry) => entry.assetIds.includes(assetId)))
   if (!entries.size && !stampIds.length) return null
-  const stampsLoading = stampIds.length ? loadDetailStamps(stampIds, signal) : Promise.resolve(new Map<string, THREE.Texture>())
+  const stampsLoading = stampIds.length ? loadFloorStamps(stampIds, signal) : Promise.resolve(new Map<string, THREE.Texture>())
   const loader = new GLTFLoader()
   registerCspSafeEmbeddedTextureLoader(loader)
   // Модели пакета стиля без своих текстур: материалы `skz:*` общие на всю загрузку.

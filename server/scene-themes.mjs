@@ -115,7 +115,7 @@ export const SCENE_THEMES = Object.freeze([
       { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 4, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_INTERIOR_CAPS } },
       // Алтарная — шаблон `altar`: алтарь, курильница, подушки и свечи вокруг.
       { density: 14, purpose: 'altar', require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3 } },
-      { density: 18, theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1 } },
+      { density: 18, colonnade: false, theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1 } },
     ],
   },
   {
@@ -131,11 +131,14 @@ export const SCENE_THEMES = Object.freeze([
     prefer: ['grave', 'urn', 'crypt_niche', 'bone_pile', 'cobweb', 'statue'],
     // Склеп тоже разный по помещениям: у входа — стражи и свет, в галерее —
     // ниши вдоль стен, в погребальной — саркофаг, в тайнике — урны и кости.
+    // Предметы набора детализации (курильница, свечная стойка, постамент,
+    // стол подношений, монолит, цепи) — по одному-два: без них во всём склепе
+    // было четырнадцать видов предметов.
     propPlans: [
-      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier'], prefer: ['cobweb', 'urn', 'statue', 'candelabra', 'banner'], caps: { sarcophagus: 0, grave: 0, statue: 2, candelabra: 1, urn: 2, cobweb: 3, candle: 2, ...CRYPT_INTERIOR_CAPS } },
-      { density: 14, extraThemes: ['interior', 'cave'], require: ['crypt_niche', 'crypt_niche', 'urn'], prefer: ['crypt_niche', 'urn', 'cobweb', 'bone_pile', 'rubble_heap', 'candle', 'torch_wall'], caps: { sarcophagus: 0, statue: 0, rubble_heap: 2, urn: 4, cobweb: 3, candle: 2, ...CRYPT_INTERIOR_CAPS, ...CRYPT_CAVE_CAPS } },
-      { density: 16, extraThemes: ['interior'], require: ['sarcophagus', 'brazier', 'brazier'], prefer: ['grave', 'urn', 'crypt_niche', 'cobweb', 'candelabra', 'offering_bowl'], caps: { sarcophagus: 2, statue: 2, candelabra: 2, urn: 3, grave: 4, cobweb: 3, candle: 2, ...CRYPT_INTERIOR_CAPS } },
-      { density: 20, extraThemes: ['interior', 'cave'], require: ['urn', 'bone_pile', 'chest'], prefer: ['urn', 'bone_pile', 'cobweb', 'crypt_niche', 'chest', 'coin_pile', 'rubble_heap'], caps: { sarcophagus: 1, chest: 2, coin_pile: 2, urn: 6, cobweb: 3, candle: 2, ...CRYPT_INTERIOR_CAPS, ...CRYPT_CAVE_CAPS } },
+      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier'], prefer: ['cobweb', 'urn', 'statue', 'candelabra', 'banner', 'incense_burner', 'statue_plinth', 'wall_ivy'], caps: { sarcophagus: 0, grave: 0, statue: 2, candelabra: 1, urn: 2, cobweb: 3, candle: 2, incense_burner: 1, statue_plinth: 1, wall_ivy: 2, ...CRYPT_INTERIOR_CAPS } },
+      { density: 14, extraThemes: ['interior', 'cave'], require: ['crypt_niche', 'crypt_niche', 'urn'], prefer: ['crypt_niche', 'urn', 'cobweb', 'bone_pile', 'rubble_heap', 'candle', 'torch_wall', 'candle_rack', 'bone_heap', 'wall_ivy_corner'], caps: { crypt_niche: 10, sarcophagus: 0, statue: 0, rubble_heap: 2, urn: 4, cobweb: 3, candle: 2, candle_rack: 2, bone_heap: 1, wall_ivy_corner: 2, ...CRYPT_INTERIOR_CAPS, ...CRYPT_CAVE_CAPS } },
+      { density: 16, extraThemes: ['interior'], require: ['sarcophagus', 'brazier', 'brazier'], prefer: ['grave', 'urn', 'crypt_niche', 'cobweb', 'candelabra', 'offering_bowl', 'offering_table', 'incense_burner', 'obsidian_monolith', 'candle_rack'], caps: { sarcophagus: 2, statue: 2, candelabra: 2, urn: 3, grave: 4, cobweb: 3, candle: 2, offering_table: 1, incense_burner: 1, obsidian_monolith: 1, candle_rack: 1, ...CRYPT_INTERIOR_CAPS } },
+      { density: 20, colonnade: false, extraThemes: ['interior', 'cave'], require: ['urn', 'bone_pile', 'chest'], prefer: ['urn', 'bone_pile', 'cobweb', 'crypt_niche', 'chest', 'coin_pile', 'rubble_heap', 'chain_coil', 'strongbox', 'bone_heap'], caps: { sarcophagus: 1, chest: 2, coin_pile: 2, urn: 6, cobweb: 3, candle: 2, chain_coil: 1, strongbox: 1, bone_heap: 1, ...CRYPT_INTERIOR_CAPS, ...CRYPT_CAVE_CAPS } },
     ],
     locked: true,
   },
@@ -181,8 +184,10 @@ export const SCENE_THEMES = Object.freeze([
     // Дальний зал — логово: кости, лужа, костровище и чужая добыча.
     propPlans: [
       { density: 12, extraThemes: ['forest'], require: ['boulder', 'rubble_heap'], prefer: ['boulder', 'rock_small', 'fern', 'bush', 'stalagmite', 'rubble_heap'], caps: { tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_spruce: 0, tree_dead: 0, cart: 0, well: 0, haystack: 0, signpost: 0, milestone: 0, lamp_post: 0, roadside_shrine: 0, hitching_post: 0, water_trough: 0, wagon_wheel: 0, flowers: 0, woodpile: 0, path_stone: 0, campfire: 0, grass_tuft: 1 } },
-      { density: 16, extraThemes: ['forest'], require: ['stalagmite', 'ore_vein'], prefer: ['stalagmite', 'ore_vein', 'rubble_heap', 'mushroom_cluster', 'rock_small', 'boulder', 'cobweb'], caps: { tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_spruce: 0, tree_dead: 0, cart: 0, well: 0, haystack: 0, signpost: 0, milestone: 0, lamp_post: 0, roadside_shrine: 0, hitching_post: 0, water_trough: 0, wagon_wheel: 0, flowers: 0, woodpile: 0, path_stone: 0, campfire: 0, grass_tuft: 0, fern: 0, bush: 0, shrub: 0, fallen_log: 0, tree_stump: 0 } },
-      { density: 16, extraThemes: ['interior', 'forest'], require: ['cave_pool', 'bone_pile', 'campfire', 'chest'], prefer: ['bone_pile', 'mushroom_cluster', 'stalagmite', 'sack', 'crate', 'barrel', 'cobweb', 'rubble_heap'], caps: { tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_spruce: 0, tree_dead: 0, cart: 0, well: 0, haystack: 0, signpost: 0, milestone: 0, lamp_post: 0, roadside_shrine: 0, hitching_post: 0, water_trough: 0, wagon_wheel: 0, flowers: 0, woodpile: 0, path_stone: 0, campfire: 1, chest: 1, crate: 2, barrel: 1, sack: 2, grass_tuft: 0, fern: 0, bush: 0, shrub: 0, fallen_log: 0, tree_stump: 0 } },
+      // Штрек — выработка: крепь, рельсы, вагонетка и кристаллы в породе.
+      { density: 16, extraThemes: ['forest'], require: ['stalagmite', 'ore_vein'], prefer: ['stalagmite', 'ore_vein', 'rubble_heap', 'mushroom_cluster', 'rock_small', 'boulder', 'cobweb', 'timber_shoring', 'mine_rail', 'mine_cart', 'crystal_cluster'], caps: { timber_shoring: 2, mine_rail: 2, mine_cart: 1, crystal_cluster: 2, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_spruce: 0, tree_dead: 0, cart: 0, well: 0, haystack: 0, signpost: 0, milestone: 0, lamp_post: 0, roadside_shrine: 0, hitching_post: 0, water_trough: 0, wagon_wheel: 0, flowers: 0, woodpile: 0, path_stone: 0, campfire: 0, grass_tuft: 0, fern: 0, bush: 0, shrub: 0, fallen_log: 0, tree_stump: 0 } },
+      // Логово: гигантские грибы и кристаллы у воды, тёмный монолит.
+      { density: 16, extraThemes: ['interior', 'forest'], require: ['cave_pool', 'bone_pile', 'campfire', 'chest'], prefer: ['bone_pile', 'mushroom_cluster', 'stalagmite', 'sack', 'crate', 'barrel', 'cobweb', 'rubble_heap', 'giant_fungus', 'crystal_cluster', 'obsidian_monolith'], caps: { giant_fungus: 2, crystal_cluster: 2, obsidian_monolith: 1, tree_oak: 0, tree_pine: 0, tree_birch: 0, tree_spruce: 0, tree_dead: 0, cart: 0, well: 0, haystack: 0, signpost: 0, milestone: 0, lamp_post: 0, roadside_shrine: 0, hitching_post: 0, water_trough: 0, wagon_wheel: 0, flowers: 0, woodpile: 0, path_stone: 0, campfire: 1, chest: 1, crate: 2, barrel: 1, sack: 2, grass_tuft: 0, fern: 0, bush: 0, shrub: 0, fallen_log: 0, tree_stump: 0 } },
     ],
   },
   {
@@ -214,7 +219,10 @@ export const SCENE_THEMES = Object.freeze([
     match: /дорог|тракт|путь|перекрёст|перекрест|мост|брод|перевал/iu,
     density: 12,
     require: ['milestone', 'tree_birch', 'cart', 'roadside_shrine'],
-    prefer: ['tree_birch', 'tree_dead', 'bush', 'boulder', 'fern', 'path_stone', 'milestone'],
+    // Обочина тракта — не одни кусты и валуны: указатель, пни, поваленное
+    // дерево, луговые цветы и клевер, мелкие камни. Прежде на всю дорогу
+    // приходилось десять видов предметов.
+    prefer: ['tree_birch', 'tree_dead', 'bush', 'boulder', 'fern', 'path_stone', 'milestone', 'signpost', 'tree_stump', 'fallen_log', 'flowers', 'shrub', 'rock_small', 'tree_oak', 'clover_patch', 'forest_plant', 'grass_tuft', 'woodpile'],
     road: true,
   },
   {
@@ -1033,6 +1041,53 @@ function placeGraveRows(map, seed) {
   }
 }
 
+/** Предельное число камышей и речных камней на берегу одной карты. */
+const SHORE_CAPS = Object.freeze({ reeds: 10, river_rocks: 6 })
+
+/**
+ * Берег реки и пруда: камыш и речные камни на сухих клетках у воды. Генератор
+ * ставит предметы только на проходимый пол и о воде не знает, поэтому оба
+ * штампа набора прежде не появлялись ни на одной карте, а берег был голой
+ * травой. Это наклейки без клетки: проходу и укрытиям они не мешают. У моста
+ * берег остаётся чистым — там дорога.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string|number} seed
+ * @returns {number} сколько поставлено
+ */
+export function dressWaterEdges(map, seed) {
+  const random = randomFor(`shore:${seed}`)
+  const water = (/** @type {number} */ x, /** @type {number} */ y) => cellAt(map, x, y)?.surface === 'water'
+  const nearCrossing = (/** @type {number} */ x, /** @type {number} */ y) => [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => cellAt(map, x + dx, y + dy)?.zone === 'crossing'))
+  /** @type {Record<string, number>} */
+  const counts = { reeds: 0, river_rocks: 0 }
+  let placed = 0
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell?.passable || cell.surface === 'water' || nearCrossing(x, y)) continue
+      const toward = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dy]) => water(x + dx, y + dy))
+      if (!toward) continue
+      const roll = random()
+      const assetId = roll < 0.22 ? 'reeds' : roll < 0.32 ? 'river_rocks' : null
+      if (!assetId || counts[assetId] >= SHORE_CAPS[/** @type {keyof typeof SHORE_CAPS} */ (assetId)]) continue
+      const asset = assetById(assetId)
+      if (!asset) continue
+      counts[assetId] += 1
+      placed += 1
+      // Наклейка сдвинута к воде: камыш растёт у самой кромки.
+      addProp(map, {
+        id: `shore-${assetId}-${counts[assetId]}`, assetId,
+        x: x + 0.5 + toward[0] * 0.28, y: y + 0.5 + toward[1] * 0.28,
+        rotation: Math.floor(random() * 4) * 90, scale: 0.85 + random() * 0.3,
+        footprint: [], zOrder: 0, blocksMove: false, blocksSight: false,
+        cover: 'none', destructible: false, hp: 0, interactive: false,
+      })
+    }
+  }
+  return placed
+}
+
 /** Наибольший перепад между проходимыми соседями, в футах: шаг без лазания. */
 export const OPEN_TERRAIN_MAX_STEP_FEET = 3
 
@@ -1464,7 +1519,8 @@ export function buildThemedScene({
     // Просторный зал без опор — голое поле боя: от лучника негде укрыться.
     // Зал от сотни клеток получает колоннаду, даже если план её не просил;
     // камеры — нет, у них своя структура. Коридор подземелья шириной в зал
-    // получает опоры, как зал.
+    // получает опоры, как зал. Кладовая (ризница храма, тайник склепа)
+    // отказывается явно: без отказа в склепе выходило семьдесят пять колонн.
     const zoneSize = (/** @type {string} */ zoneId) => {
       let cells = 0
       for (let y = 0; y < built.map.height; y += 1) for (let x = 0; x < built.map.width; x += 1) {
@@ -1475,7 +1531,7 @@ export function buildThemedScene({
     }
     labelled.forEach((zone, index) => {
       const asked = plans.length && plans[index % plans.length]?.colonnade
-      const spacious = zone.label !== 'Камеры' && zoneSize(zone.id) >= SPACIOUS_HALL_CELLS
+      const spacious = zone.label !== 'Камеры' && plans[index % plans.length]?.colonnade !== false && zoneSize(zone.id) >= SPACIOUS_HALL_CELLS
       if (asked || spacious) placeColonnade(built.map, { zoneId: zone.id, assetId: 'pillar' })
     })
     const map = placeProps(built.map, {
@@ -1522,6 +1578,10 @@ export function buildThemedScene({
       woodpile: 3, village_fence: 6, water_trough: 1, hitching_post: 2, signpost: 1, roadside_shrine: 1,
       // Зелень разная: кустов, цветов и камней — не больше дюжины каждого.
       bush: 12, shrub: 8, flowers: 10, rock_small: 8, grass_tuft: 6,
+      // Двор фермы — у нескольких домов, а не у каждого: без предела деревня
+      // в восемь домов получала шестнадцать пугал и четырнадцать курятников.
+      scarecrow: 2, chicken_coop: 3, garden_bed: 6, hay_bales: 3, rain_barrel: 5, flower_bed: 4,
+      grain_sacks: 3, sawhorse: 1, lumber_pile: 2, flour_bin: 1,
     }
     // В городе колодец и прилавки стоят на площади, а дворы за домами —
     // сады и огороды: деревья, кусты, поленницы, без сена и прилавков.
@@ -1649,6 +1709,9 @@ export function buildThemedScene({
       // Лестница не встала — этажа нет.
       if (!map.props.some((prop) => prop.transition)) sceneLevels = []
     }
+    // Река речного города — с тем же берегом, что за городом; у гавани
+    // каменная набережная, камышу там не место.
+    if (design.topology === 'river') dressWaterEdges(map, seed)
     ensurePropAccess(map)
     return { map, theme: definition.id, warnings: built.warnings, ...(sceneLevels.length ? { levels: sceneLevels } : {}) }
   }
@@ -1706,6 +1769,7 @@ export function buildThemedScene({
       ...camp,
     }],
   })
+  dressWaterEdges(map, seed)
   ensurePropAccess(map)
   return { map, theme: definition.id, warnings: [] }
 }

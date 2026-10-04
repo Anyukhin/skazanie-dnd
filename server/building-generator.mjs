@@ -838,15 +838,15 @@ function releaseDesignSpawn(map, point) {
 function designPropPlans(design, rooms, includeDecorativeTransition = true) {
   /** @param {string} zoneId @returns {boolean} */
   const has = (zoneId) => rooms.some((room) => room.zoneId === zoneId)
-  /** @type {Array<{zoneId: string, purpose: string, theme: string, density: number, require: string[], prefer: string[]}>} */
+  /** @type {Array<{zoneId: string, purpose: string, theme: string, density: number, require: string[], prefer: string[], caps?: Record<string, number>}>} */
   const plans = []
-  /** @param {string} zoneId @param {string} purpose @param {string[]} require @param {string[]} prefer @param {string} theme @param {number} density */
-  const add = (zoneId, purpose, require, prefer = [], theme = 'interior', density = 22) => {
+  /** @param {string} zoneId @param {string} purpose @param {string[]} require @param {string[]} prefer @param {string} theme @param {number} density @param {Record<string, number>} [caps] */
+  const add = (zoneId, purpose, require, prefer = [], theme = 'interior', density = 22, caps = undefined) => {
     const factor = design.density === 'sparse' ? 0.65 : design.density === 'dense' ? 1.3 : 1
     // Участок вокруг дома — не комната плана, но зона карты есть всегда.
     // Прежде проверка «есть ли такая комната» отсекала и его: двор ни разу
     // не получал ни дерева, ни поленницы.
-    if (has(zoneId) || zoneId === 'yard') plans.push({ zoneId, purpose, theme, density: Math.round(density * factor), require, prefer })
+    if (has(zoneId) || zoneId === 'yard') plans.push({ zoneId, purpose, theme, density: Math.round(density * factor), require, prefer, ...(caps ? { caps } : {}) })
   }
   if (design.building_use === 'tavern') {
     const hallRequired = ['bar_counter', 'bar_shelf', 'fireplace', 'table_round', 'table_small', 'table_long', 'chandelier', 'lantern_wall']
@@ -899,7 +899,10 @@ function designPropPlans(design, rooms, includeDecorativeTransition = true) {
   add('corridor', 'corridor', ['lantern_wall'], ['lantern_wall', 'banner', 'chest'], 'interior', 6)
   add('courtyard', 'courtyard', ['well', 'cart'], ['well', 'cart', 'woodpile', 'bush', 'tree_oak', 'tree_birch'], 'yard', 14)
   const yardRequire = design.climate === 'arid' ? ['tree_dead'] : design.climate === 'cold' ? ['tree_pine', 'woodpile'] : ['tree_oak', 'woodpile']
-  add('yard', 'exterior', yardRequire, ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'boulder', 'woodpile', 'water_trough', 'barrel'], 'yard', design.climate === 'arid' ? 4 : 6)
+  // Участок — сад и хозяйство, а не склад одного предмета: без предела двор
+  // лавки получал шесть поилок и пять валунов подряд.
+  add('yard', 'exterior', yardRequire, ['tree_oak', 'tree_birch', 'tree_pine', 'bush', 'boulder', 'woodpile', 'water_trough', 'barrel', 'flowers', 'shrub', 'tree_stump', 'rain_barrel', 'flower_bed', 'garden_bed'], 'yard', design.climate === 'arid' ? 4 : 6,
+    { water_trough: 1, boulder: 3, rock_small: 4, barrel: 2, woodpile: 2, rain_barrel: 2, flower_bed: 2, garden_bed: 2, hay_bales: 1, chicken_coop: 1, scarecrow: 1, tree_stump: 2, cart: 1, well: 1 })
   return plans
 }
 

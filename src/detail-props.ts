@@ -87,17 +87,33 @@ export function detailPropModelUrl(assetId: string): string | null {
   return DETAIL_PROP_MODELS.has(assetId) ? `${DETAIL_ASSET_ROOT}models/${assetId}.glb` : null
 }
 
-/** Двойники, чья процедурная модель в 3D — лишь цветная плашка на полу. */
-const FLOOR_STAMP_ALIASES: ReadonlySet<string> = new Set(['rug', 'floor_stain'])
+/**
+ * Плоские штампы набора без клетки — флаг `d` в `server/detail-props.mjs`.
+ * Согласие с сервером держит `test/detail-props.test.mjs`.
+ */
+export const DETAIL_PROP_DECALS: ReadonlySet<string> = new Set([
+  'sawdust', 'flour_spill', 'paper_scatter', 'rug_blue', 'rug_round', 'rug_red_large', 'rug_runner', 'bear_pelt',
+  'hide_rug', 'wolf_pelt', 'prayer_rug', 'straw_mat', 'drain_grate', 'straw_scatter', 'scorch_mark', 'reeds',
+  'river_rocks', 'lily_pads', 'scree', 'pebbles', 'leaf_litter', 'wine_stain', 'floor_crack', 'mine_rail',
+  'clover_patch', 'forest_plant', 'wall_ivy', 'wall_ivy_corner', 'wall_ivy_wide', 'snowdrift', 'sand_dune',
+  'lily_pad_cluster', 'mud_patch', 'ritual_circle',
+])
 
 /**
- * Ложится ли предмет набора на пол 3D-доски своим штампом. Ковры, шкуры,
- * тюфяки и пятна — плоские наклейки (флаг `d` в `server/detail-props.mjs`),
- * и плашка двойника не передаёт ни цвета, ни узора: красный ковёр выходил
- * бурым, а снежный нанос — тёмным пятном. Растительность и камни остаются
- * объёмными процедурными моделями. Своя GLB-модель, если появится, сильнее штампа.
+ * Двойники, чья модель в 3D для плоской наклейки не годится: цветная плашка,
+ * россыпь камешков дорожки или кустик папоротника вместо рисунка. Камыш
+ * (двойник — пучок травы) остаётся объёмным: он и стоит стеной.
+ */
+const FLOOR_STAMP_ALIASES: ReadonlySet<string> = new Set(['rug', 'floor_stain', 'mosaic', 'path_stone', 'fern', 'flowers'])
+
+/**
+ * Ложится ли предмет набора на пол 3D-доски своим штампом. Ковры, тюфяки,
+ * пятна, решётка стока, осыпь, опавшая листва и кувшинки — плоские наклейки,
+ * и модель двойника не передаёт ни цвета, ни рисунка: красный ковёр выходил
+ * бурым, снежный нанос — тёмным пятном, а решётка стока — камешками дорожки.
+ * Своя модель — GLB набора или пакета стиля — сильнее штампа.
  */
 export function isDetailFloorStamp(assetId: string): boolean {
   const alias = DETAIL_PROP_ALIASES[assetId]
-  return alias !== undefined && FLOOR_STAMP_ALIASES.has(alias) && !DETAIL_PROP_MODELS.has(assetId)
+  return DETAIL_PROP_DECALS.has(assetId) && alias !== undefined && FLOOR_STAMP_ALIASES.has(alias) && !DETAIL_PROP_MODELS.has(assetId)
 }
