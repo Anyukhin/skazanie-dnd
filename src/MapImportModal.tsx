@@ -56,6 +56,7 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
   // Перестройка по программе сцены (этап 8): описание места словами ведущего
   // и свой ключ на одну попытку — повтор после сбоя сети не перестроит дважды.
   const [description, setDescription] = useState('')
+  const [preserveLayout, setPreserveLayout] = useState(false)
   const rebuildKey = useRef('')
 
   const options = useMemo(() => {
@@ -122,16 +123,20 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
       const response = await fetch(`/api/campaigns/${encodeURIComponent(code)}/map-import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'rebuild', text: description, idempotency_key: rebuildKey.current }),
+        body: JSON.stringify({ mode: 'rebuild', text: description, preserve_layout: preserveLayout, idempotency_key: rebuildKey.current }),
       })
       const body = await response.json().catch(() => null) as Record<string, unknown> | null
       if (!response.ok || !body) throw new Error(String(body?.error || 'Не удалось перестроить карту'))
       const state = body.state as GameState | undefined
       if (!state) throw new Error('Сервер не вернул состояние кампании')
       const warnings = Array.isArray(body.warnings) ? body.warnings.map(String) : []
-      const message = `Карта «${currentLocationName || 'текущей сцены'}» перестроена по описанию${warnings.length ? `; не встало: ${warnings.length}` : ''}`
+      const refreshed = body.preserve_layout === true
+      const message = refreshed
+        ? `Покрытия карты «${currentLocationName || 'текущей сцены'}» обновлены без изменения планировки`
+        : `Карта «${currentLocationName || 'текущей сцены'}» перестроена по описанию${warnings.length ? `; не встало: ${warnings.length}` : ''}`
       await onApplied({ version: typeof body.version === 'number' ? body.version : undefined, state, message })
       rebuildKey.current = ''
+      setPreserveLayout(false)
       setDone(message)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось перестроить карту')
@@ -149,6 +154,7 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
         <div className="modal-icon"><MapIcon size={23} /></div>
         <span className="eyebrow">ИМПОРТ КАРТЫ</span>
         <h2 id="map-import-title">Карта из TaleSpire</h2>
+        <p className="modal-note">Приближённая тактическая схема. Точная конструкция здания не сохраняется: форма и высота крыши, арки и часть проёмов могут отличаться от оригинала. Для готовой игровой сцены используйте «Перестроить карту» ниже.</p>
         <p>В TaleSpire включите строительство, выделите область вместе с полом и нажмите Ctrl+C. Вставьте строку сюда: сервер разберёт этажи, стены, двери и предметы и нарисует их нашими тайлами.</p>
         <label className="map-import-field">
           <span>Локация</span>
@@ -166,13 +172,17 @@ export function MapImportModal({ code, locations, currentLocationId, currentLoca
         </div>
         {locationId === currentLocationId && <section className="map-import-rebuild" aria-labelledby="map-rebuild-title">
           <h3 id="map-rebuild-title">Перестроить по описанию сцены</h3>
-          <p>Карта текущей сцены строится заново: что обещано словами — навес, колодец, настилы, — встанет на неё, жители — на свои посты, отряд — у входа. Прежняя карта останется в журнале. Не во время боя и не при открытой проверке.</p>
+          <p>Полная перестройка меняет геометрию по описанию сцены. Для исправления только покрытия включите безопасное обновление ниже. Не во время боя и не при открытой проверке.</p>
           <label className="map-import-field">
             <span>Описание места (необязательно)</span>
             <textarea value={description} onChange={(event) => { setDescription(event.target.value); rebuildKey.current = '' }} rows={3} maxLength={2000} placeholder="В центре — общий навес, к реке ведут три настила…" disabled={busy} />
           </label>
+          <label className="map-import-preserve">
+            <input type="checkbox" checked={preserveLayout} onChange={(event) => { setPreserveLayout(event.target.checked); rebuildKey.current = '' }} disabled={busy} />
+            <span>Обновить только покрытия: сохранить планировку, двери, этажи, позиции героев и NPC и туман войны</span>
+          </label>
           <div className="map-import-actions">
-            <button type="button" onClick={() => { void rebuild() }} disabled={busy}>{busy ? 'Перестраиваем…' : 'Перестроить карту'}</button>
+            <button type="button" onClick={() => { void rebuild() }} disabled={busy}>{busy ? (preserveLayout ? 'Обновляем покрытия…' : 'Перестраиваем…') : preserveLayout ? 'Обновить покрытия' : 'Перестроить карту'}</button>
           </div>
         </section>}
         {error && <p className="error-text" role="alert">{error}</p>}

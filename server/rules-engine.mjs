@@ -16,6 +16,7 @@ import {
   publicAdventureMemory,
   rememberCurrentSceneMap,
   rememberSceneMap,
+  refreshSceneFloors,
   sceneLevelIndex,
   sceneLocationId,
   sceneMapForLocation,
@@ -4455,6 +4456,7 @@ function normalizeCommand(input, state) {
     // Описание места словами ведущего: у сцены, созданной до программы
     // сцены, обещанного в ней нет, и ведущий может вставить пролог.
     command.text = String(command.text ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 2000)
+    command.preserve_layout = command.preserve_layout === true
   }
   if (command.command_type === 'ReceiveNpcBlessing') {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
@@ -20747,13 +20749,59 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       break
     }
     case 'RebuildLocationMap': {
+      const locationId = sceneLocationId(state)
+      const scene = state.scene ?? {}
+      if (command.preserve_layout === true) {
+        // Ремонт карты ведущим: сохраняем каждую клетку, описывающую геометрию,
+        // и перекрашиваем только пол внутри помещений. Событие всё равно несёт
+        // все этажи, поэтому replay не обращается к хранилищу.
+        const activeLevel = sceneLevelIndex(state)
+        /** @type {Map<number, import('./tactical-map.mjs').TacticalMap>} */
+        const maps = new Map()
+        try { maps.set(activeLevel, deserializeTacticalMap(clone(scene.map))) } catch {
+          throw new RulesValidationError('Текущая карта повреждена и не может быть обновлена', 'MAP_REBUILD_NO_SCENE')
+        }
+        const levels = new Set([0, activeLevel])
+        const prefix = `${locationId}@L`
+        for (const key of Object.keys(state.locationMaps ?? {})) {
+          if (key === locationId) levels.add(0)
+          else if (key.startsWith(prefix)) {
+            const level = Number(key.slice(prefix.length))
+            if (Number.isSafeInteger(level)) levels.add(level)
+          }
+        }
+        for (const level of [...levels].sort((left, right) => left - right)) {
+          if (maps.has(level)) continue
+          const remembered = rememberedLevelMap(state, locationId, level)
+          if (remembered) maps.set(level, remembered)
+        }
+        if (!maps.has(0)) throw new RulesValidationError('Для обновления покрытия нужен сохранённый этаж входа', 'MAP_REBUILD_NO_SCENE')
+        let refreshedZones = 0
+        for (const map of maps.values()) refreshedZones += refreshSceneFloors(map, map.theme || scene.theme || '')
+        const payload = {
+          schema_version: 2,
+          location_id: locationId,
+          location_name: String(worldLocationById(state.worldMap, locationId)?.name ?? scene.location ?? locationId).slice(0, 120) || locationId,
+          source: { format: 'scene-floor-refresh', version: 1 },
+          stats: { floor_zones: refreshedZones },
+          warnings: [],
+          levels: [...maps.entries()].sort(([left], [right]) => left - right).map(([index, map]) => ({
+            index,
+            label: String(map.levelLabel ?? '').slice(0, 120) || sceneLevelLabel(state, index),
+            map: serializeTacticalMap(map),
+          })),
+          applied_to_scene: true,
+          preserve_layout: true,
+        }
+        const refreshEvent = eventFrom({ ...command, visibility: 'party' }, 'LocationMapImported', payload, sceneAdvancePartyIds(state))
+        events.push(refreshEvent)
+        break
+      }
       // Этап 8 `docs/map-generation-plan.md`: карта уже сыгранной локации
       // строится заново по программе сцены. Событие — то же
       // `LocationMapImported`, что и у импорта: отряд встаёт у входа, прочие —
       // на ближайшие свободные клетки, жители — на посты, а прежняя карта
       // остаётся в потоке событий. Своего reducer у перестройки нет.
-      const locationId = sceneLocationId(state)
-      const scene = state.scene ?? {}
       const location = String(scene.location ?? '')
       const residents = (Array.isArray(state.social?.npcs) ? state.social.npcs : [])
         .filter((npc) => npc?.available !== false && String(npc?.location ?? '').toLocaleLowerCase('ru') === location.toLocaleLowerCase('ru'))
@@ -22732,6 +22780,7 @@ function applyGameEventCurrent(rawState, event) {
     case 'LocationMapImported': {
       const locationId = String(payload.location_id ?? '').slice(0, 120)
       if (!locationId) break
+      const preserveLayout = payload.preserve_layout === true
       /** @type {Map<number, object>} */
       const maps = new Map()
       for (const level of Array.isArray(payload.levels) ? payload.levels : []) {
@@ -22744,12 +22793,12 @@ function applyGameEventCurrent(rawState, event) {
       const ownKey = (key) => key === locationId || key.startsWith(levelPrefix)
       state.locationMaps = Object.fromEntries(Object.entries(normalizeLocationMaps(state.locationMaps))
         .filter(([key]) => !ownKey(key)))
-      if (state.levelEntities && typeof state.levelEntities === 'object') {
+      if (!preserveLayout && state.levelEntities && typeof state.levelEntities === 'object') {
         const stashes = Object.fromEntries(Object.entries(state.levelEntities).filter(([key]) => !ownKey(key)))
         if (Object.keys(stashes).length) state.levelEntities = stashes
         else delete state.levelEntities
       }
-      if (state.locationLevels && typeof state.locationLevels === 'object' && !Array.isArray(state.locationLevels)) {
+      if (!preserveLayout && state.locationLevels && typeof state.locationLevels === 'object' && !Array.isArray(state.locationLevels)) {
         const known = { ...state.locationLevels }
         delete known[locationId]
         state.locationLevels = known
@@ -22759,11 +22808,18 @@ function applyGameEventCurrent(rawState, event) {
       }
       if (payload.applied_to_scene !== true || sceneLocationId(state) !== locationId || !state.scene || typeof state.scene !== 'object') break
 
-      const ground = maps.get(0)
-      state.scene.level = { index: 0, label: String(ground.levelLabel ?? '').slice(0, 120) || sceneLevelLabel(state, 0) }
+      const previousLevel = sceneLevelIndex(state)
+      const activeIndex = preserveLayout && maps.has(previousLevel) ? previousLevel : 0
+      const ground = maps.get(activeIndex) ?? maps.get(0)
+      state.scene.level = {
+        index: activeIndex,
+        label: String(ground.levelLabel ?? '').slice(0, 120) || sceneLevelLabel(state, activeIndex),
+      }
       writeSceneTacticalMap(state, ground)
-      const world = normalizeNpcWorldState(state.npc_world)
-      state.npc_world = { ...world, placements: world.placements.filter((placement) => placement.location_id !== locationId) }
+      if (!preserveLayout) {
+        const world = normalizeNpcWorldState(state.npc_world)
+        state.npc_world = { ...world, placements: world.placements.filter((placement) => placement.location_id !== locationId) }
+      }
       /** @type {Set<string>} */
       const relocatedCells = new Set()
       const removedEntities = new Set()
@@ -22814,8 +22870,10 @@ function applyGameEventCurrent(rawState, event) {
         delete state.scene.map_source
         delete state.scene.layout
       }
-      state.mapFeedback = []
-      rememberKnownLevel(state, locationId, 0, state.scene.level.label)
+      if (!preserveLayout) {
+        state.mapFeedback = []
+        rememberKnownLevel(state, locationId, 0, state.scene.level.label)
+      }
       break
     }
     /**
@@ -25434,7 +25492,9 @@ export function eventSummary(event, resolveName = (id) => id) {
     case 'CampaignRulesetChanged': return `Правила кампании изменены: ${payload.ruleset_id_after} · ${payload.ruleset_version_after}`
     case 'LocationMapImported': return payload.source?.format === 'scene-program-rebuild'
       ? `Ведущий перестроил карту «${payload.location_name || payload.location_id}» по описанию сцены`
-      : `Ведущий загрузил карту «${payload.location_name || payload.location_id}»: ${Array.isArray(payload.levels) ? payload.levels.length : 0} эт.`
+      : payload.source?.format === 'scene-floor-refresh'
+        ? `Ведущий обновил покрытия карты «${payload.location_name || payload.location_id}»`
+        : `Ведущий загрузил карту «${payload.location_name || payload.location_id}»: ${Array.isArray(payload.levels) ? payload.levels.length : 0} эт.`
     case 'MapLevelChanged': return `${Number(payload.to_level) > Number(payload.from_level) ? 'Партия поднимается' : 'Партия спускается'}: ${payload.level_label || `этаж ${payload.to_level}`}`
     case 'SceneObjectOperated': return `${named(event.actor_id) || 'Герой'} взаимодействует с объектом ${payload.prop_id}: ${payload.intent}`
     case 'SceneObjectCheckResolved': return `${named(event.actor_id) || 'Герой'} проверяет объект ${payload.prop_id}: ${payload.success ? 'успех' : 'неудача'} (${payload.total}/${payload.difficulty})`

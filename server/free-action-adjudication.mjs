@@ -318,6 +318,7 @@ export function resolutionModeFor({ plausibility, risk } = {}) {
  * характеристика и навык выбираются независимо друг от друга.
  */
 const APPROACH_PATTERNS = Object.freeze([
+  { test: /(?:протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*|войд\p{L}*|вхож\p{L}*|проник\p{L}*)[^.!?]{0,100}внутр\p{L}*/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'plausible', risk: 'minor', obstacle: 'проход' },
   { test: /(?<![\p{L}\p{M}])(?:сальто|кувырк\p{L}*|кувырок|кульбит\p{L}*|фляк\p{L}*|рондат\p{L}*|балансир\p{L}*|пируэт\p{L}*|акробатическ\p{L}*\s+(?:трюк|переворот))(?![\p{L}\p{M}])/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'minor', obstacle: 'равновесие и точность движения' },
   { test: /(?:отвле[кч]|переключ\p{L}*\s+внимани|шум\p{L}*\s+приманк)/iu, ability: 'cha', skill: 'performance', plausibility: 'plausible', risk: 'minor', obstacle: 'внимание собеседника' },
   { test: /(подпира|баррикад|завал|подпер|держ\w+\s+двер)/iu, ability: 'str', skill: 'athletics', plausibility: 'plausible', risk: 'minor', obstacle: 'дверь' },
@@ -1342,7 +1343,7 @@ const PASSAGE_GOAL_PATTERN = new RegExp('(?<![\\p{L}\\p{M}])(?:' + [
   'приблизиться|приближусь|приблизимся|приближаюсь|приближаемся',
   'переправиться|переправлюсь|переправимся|переправляюсь|переправляемся',
   'переплыть|переплыву|переплывём|переплывем|переплываю|переплываем',
-  'протиснуться|протиснусь|протискиваюсь|протискиваемся',
+  'протис\\p{L}*',
   'проскользнуть|проскользну|проскальзываю|проскальзываем',
   'прорваться|прорвусь|прорвёмся|прорвемся|прорываюсь|прорываемся',
   'уйти|уйду|уйдём|уйдем|ухожу|уходим',
@@ -1362,6 +1363,144 @@ const PASSAGE_GOAL_PATTERN = new RegExp('(?<![\\p{L}\\p{M}])(?:' + [
  */
 export function freeActionGoalIsPassage(goal = '') {
   return PASSAGE_GOAL_PATTERN.test(clean(goal, 500))
+}
+
+// Свободный текст может назвать вход без ID клетки. Такой вход разрешается
+// только через уже существующее server-owned ребро двери из внешней зоны во
+// внутреннюю, по раскрытому короткому пути. Иначе проверка не получает права
+// телепортировать героя через стену или туман.
+const INWARD_PASSAGE_PATTERN = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,100}(?:внутр\p{L}*|(?<![\p{L}\p{M}])(?:в|во)\s+(?:монастыр\p{L}*|здани\p{L}*|храм\p{L}*|башн\p{L}*|крепост\p{L}*|замк\p{L}*|дом\p{L}*|маяк\p{L}*))(?![\p{L}\p{M}])/iu
+const PASSAGE_MAX_STEPS = 6
+const BUILDING_DESTINATION_STEMS = Object.freeze(['монастыр', 'здани', 'храм', 'башн', 'крепост', 'замк', 'дом', 'маяк'])
+const PASSAGE_ALTERNATE_ROUTE_PATTERN = /(?:через|сквозь)\s+(?:окн\p{L}*|щел\p{L}*|стен\p{L}*|пролом\p{L}*|про[её]м\p{L}*|люк\p{L}*|реш[её]тк\p{L}*|ворот\p{L}*)/iu
+
+function mapZone(map, cell) {
+  const zone = map?.zones?.find((candidate) => String(candidate?.id ?? '') === String(cell?.zone ?? ''))
+  return zone?.kind === 'interior' || zone?.kind === 'exterior' ? zone.kind : null
+}
+
+function positionKey(position) {
+  return `${position.x},${position.y}`
+}
+
+// Porch/yard cells are sometimes labelled as interior rooms by imported maps.
+// The approach side is therefore the component reachable from exterior cells
+// without crossing any door, rather than the raw zone kind alone.
+function exteriorApproachCells(map) {
+  const reached = new Set()
+  const queue = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (!cell?.passable || mapZone(map, cell) !== 'exterior') continue
+    const key = positionKey({ x, y })
+    reached.add(key)
+    queue.push({ x, y })
+  }
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = { x: current.x + dx, y: current.y + dy }
+      const key = positionKey(next)
+      if (reached.has(key)) continue
+      const cell = cellAt(map, next.x, next.y)
+      if (!cell?.passable) continue
+      const edge = edgeBetween(map, current.x, current.y, next.x, next.y)
+      if (edge?.kind === 'door' || edge?.blocksMove === true) continue
+      reached.add(key)
+      queue.push(next)
+    }
+  }
+  return reached
+}
+
+function pathCrossesInwardDoor(map, outside, from, path) {
+  let previous = from
+  for (const next of path) {
+    const edge = edgeBetween(map, previous.x, previous.y, next.x, next.y)
+    if (edge?.kind === 'door'
+      && outside.has(positionKey(previous))
+      && !outside.has(positionKey(next))) return String(edge.doorId ?? '')
+    previous = next
+  }
+  return ''
+}
+
+function inwardPassageAction(value) {
+  if (/[«»"“”„?]/u.test(value)) return false
+  if (!INWARD_PASSAGE_PATTERN.test(value)) return false
+  if (/(?:можно\s+ли|могу\s+ли|если|что\s+если)/iu.test(value)) return false
+  const verb = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])/iu
+  return !/(?<![\p{L}\p{M}])не\s+/iu.test(value.slice(0, Math.max(0, value.search(verb))))
+}
+
+function passageDestinationMatchesScene(state, action) {
+  const mentioned = BUILDING_DESTINATION_STEMS.filter((stem) => action.toLocaleLowerCase('ru').replace(/ё/gu, 'е').includes(stem))
+  if (!mentioned.length) return true
+  const scene = `${state?.scene?.location ?? ''} ${state?.scene?.title ?? ''}`.toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  return mentioned.some((stem) => scene.includes(stem))
+}
+
+/**
+ * Планирует bounded-вход свободного действия. Возвращает только клетку,
+ * которую затем ещё раз проверит `MoveActor` в Rules Engine.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} actorId
+ * @param {string} text
+ * @returns {{to: {x: number, y: number}, path: Array<{x: number, y: number}>}|null}
+ */
+export function freeActionPassageDestination(state = {}, actorId = '', text = '') {
+  const plan = freeActionPassagePlan(state, actorId, text)
+  return plan.status === 'ready' ? plan.destination : null
+}
+
+/**
+ * Проверяет допустимость входа. Перемещение разрешает только исходный текст
+ * игрока; сформулированная моделью цель не заменяет его намерение.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} actorId
+ * @param {string} text
+ * @returns {{status: 'not_applicable'|'blocked'|'already_inside'|'ambiguous'|'ready', reason?: string, door_ids?: string[], door_id?: string, destination?: {to: {x: number, y: number}, path: Array<{x: number, y: number}>}}}
+ */
+export function freeActionPassagePlan(state = {}, actorId = '', text = '') {
+  const action = clean(text, 1_500)
+  if (!inwardPassageAction(action)) return { status: 'not_applicable' }
+  if (PASSAGE_ALTERNATE_ROUTE_PATTERN.test(action)) return { status: 'blocked', reason: 'alternate_route' }
+  if (!passageDestinationMatchesScene(state, action)) return { status: 'blocked', reason: 'destination_mismatch' }
+  const from = actorPosition(state, actorId)
+  if (!from || !state?.scene?.map) return { status: 'blocked', reason: 'map_unavailable' }
+  let map
+  try { map = deserializeTacticalMap(state.scene.map) } catch { return { status: 'blocked', reason: 'map_unavailable' } }
+  const origin = cellAt(map, from.x, from.y)
+  const outside = exteriorApproachCells(map)
+  if (!origin || !outside.has(positionKey(from))) return { status: 'already_inside' }
+  const candidates = []
+  for (const door of [...(map.doors ?? [])].sort((left, right) => (
+    left.y - right.y || left.x - right.x || String(left.id).localeCompare(String(right.id))
+  ))) {
+    const first = { x: Number(door.x), y: Number(door.y) }
+    const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
+    const sides = [first, second].map((position) => ({ position, cell: cellAt(map, position.x, position.y) }))
+    const entry = sides.find(({ position, cell }) => cell?.revealed === true && cell.passable
+      && !outside.has(positionKey(position))
+      && sides.some(({ position: otherPosition, cell: other }) => other?.passable && outside.has(positionKey(otherPosition))))
+    if (!entry) continue
+    const path = shortestTacticalPath(state, actorId, entry.position)
+    if (!Array.isArray(path) || path.length === 0 || path.length > PASSAGE_MAX_STEPS) continue
+    if (path.some((step) => cellAt(map, step.x, step.y)?.revealed !== true)) continue
+    const crossedDoorId = pathCrossesInwardDoor(map, outside, from, path)
+    if (crossedDoorId !== String(door.id)) continue
+    candidates.push({ door_id: String(door.id), to: entry.position, path })
+  }
+  candidates.sort((left, right) => left.path.length - right.path.length
+    || left.to.y - right.to.y || left.to.x - right.to.x || left.door_id.localeCompare(right.door_id))
+  if (!candidates.length) return { status: 'blocked', reason: 'no_open_path' }
+  const shortest = candidates[0].path.length
+  const tied = candidates.filter((candidate) => candidate.path.length === shortest)
+  if (tied.length > 1) return { status: 'ambiguous', door_ids: tied.map((candidate) => candidate.door_id) }
+  const { door_id, ...destination } = candidates[0]
+  return { status: 'ready', door_id, destination }
 }
 
 /**
@@ -1386,16 +1525,18 @@ export function freeActionIsCopyRequest(text = '') {
  * оказаться: проверка знания или поиска честно говорит «узнаете то, что здесь
  * можно узнать», а не «найдёте улику».
  */
-export function freeActionSuccessPromise(reading = {}) {
+export function freeActionSuccessPromise(reading = {}, { passageAvailable = false } = {}) {
   const goal = clean(reading.goal_summary, 160).replace(/[.!?…]+$/u, '')
   const lowered = goal ? goal.charAt(0).toLocaleLowerCase('ru') + goal.slice(1) : ''
   if (reading.activity_kind === 'knowledge' || DISCOVERY_STYLE_SKILLS.has(String(reading.skill ?? '').replace(/-/gu, '_'))) {
     return 'Выйдет — герой заметит или вспомнит то, что здесь можно узнать.'
   }
-  // Карточка не обещает перехода, которого бросок не сделает (плейтест
-  // 2026-10-04, MAP2-02): «Выйдет — войти внутрь маяка» читалось как вход.
+  // Карточка обещает вход только когда сервер заранее нашёл короткий открытый
+  // путь. Без него успех проверки сообщает способ продолжения, а не телепорт.
   if (freeActionGoalIsPassage(goal)) {
-    return 'Выйдет — станет ясно, как пройти, но сам бросок героя не переместит: дальше — по карте или через «Решение группы».'
+    return passageAvailable
+      ? 'Выйдет — герой протиснется внутрь по ближайшему открытому проходу.'
+      : 'Выйдет — станет ясно, как пройти, но без подтверждённого открытого прохода герой не переместится: сначала откройте дверь или выберите путь на карте.'
   }
   return lowered ? `Выйдет — ${lowered}.` : 'Выйдет — задуманное получится.'
 }

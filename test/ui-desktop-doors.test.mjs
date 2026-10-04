@@ -32,10 +32,43 @@ test('door controls connect hover and focus to the board overlay and expose lock
 
 test('ordinary doors are clickable on the map and locked doors keep an explicit choice', async () => {
   const source = await readFile(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
-  assert.match(source, /className=\{`door-hotspot door-hotspot--\$\{door\.dir\} door-hotspot--\$\{door\.state\}`\}/u)
+  assert.match(source, /className=\{`door-hotspot door-hotspot--\$\{edge\} door-hotspot--\$\{door\.state\}\$\{/u)
   assert.match(source, /onOperateDoor\(selected, door\.id, door\.state === 'open' \? 'close' : 'open'\)/u)
-  assert.match(source, /if \(locked \|\| !selected\) return/u)
+  assert.match(source, /if \(locked \|\| !selected \|\| !atHand\) return/u)
   assert.doesNotMatch(source, /className="door-control" disabled=\{!canAct \|\| tacticalBusy\} onClick=\{\(\) => selected && onOperateDoor\(selected, door\.id, door\.state === 'open' \? 'close' : 'open'\)/u)
+})
+
+test('visible doors stay discoverable from a distance and explain how to approach', async () => {
+  const source = await readFile(new URL('../src/DungeonMap.tsx', import.meta.url), 'utf8')
+  assert.match(source, /const visibleDoors = boardMap[\s\S]*?boardMap\.doors/u)
+  assert.match(source, /for \(const door of visibleDoors\)/u)
+  assert.match(source, /door-hotspot--out-of-reach/u)
+  assert.match(source, /Подойдите вплотную к двери/u)
+})
+
+test('door hit targets keep the edge position in both board views', async () => {
+  const [twoD, threeD] = await Promise.all([
+    readFile(new URL('../src/tactical-board.css', import.meta.url), 'utf8'),
+    readFile(new URL('../src/board3d.css', import.meta.url), 'utf8'),
+  ])
+  assert.match(twoD, /\.door-hotspot--e[\s\S]*right: -7%[\s\S]*width: 18%/u)
+  assert.match(twoD, /\.door-hotspot--s[\s\S]*bottom: -7%[\s\S]*height: 18%/u)
+  assert.match(twoD, /min-width: calc\(18px \* var\(--counter-scale, 1\)\)/u)
+  assert.match(twoD, /min-height: calc\(18px \* var\(--counter-scale, 1\)\)/u)
+  assert.match(twoD, /\.door-hotspot--out-of-reach\s*\{[\s\S]*z-index: 1/u)
+  assert.match(threeD, /\.board3d-hotspot[\s\S]*\.door-hotspot--e[\s\S]*right: -18%[\s\S]*width: 36%/u)
+  assert.match(threeD, /\.board3d-hotspot[\s\S]*\.door-hotspot--s[\s\S]*bottom: -18%[\s\S]*height: 36%/u)
+})
+
+test('3D door targets follow projected edge endpoints when the camera rotates', async () => {
+  const source = await readFile(new URL('../src/TacticalBoard3D.tsx', import.meta.url), 'utf8')
+  assert.match(source, /querySelectorAll<HTMLButtonElement>\('\.door-hotspot'\)/u)
+  assert.match(source, /\[\.22, \.78\]\.flatMap/u)
+  assert.match(source, /projectDoorPoint\(fraction, BOARD3D_WALL_HEIGHT\)/u)
+  assert.match(source, /hotspot\.style\.left =/u)
+  assert.match(source, /hotspot\.style\.top =/u)
+  assert.match(source, /reachableDoor = node\.querySelector\('\.door-hotspot:not\(\.door-hotspot--out-of-reach\)'\)/u)
+  assert.match(source, /reachableDoor \? 100 : 0/u)
 })
 
 test('у запертой двери два пути кнопками: отмычка гаснет без владения, сила остаётся', async () => {

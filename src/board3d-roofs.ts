@@ -2,7 +2,7 @@ import * as THREE from 'three'
 
 import type { BoardPalette } from './board-render'
 import type { TacticalCell, TacticalMap, TacticalZone } from './types'
-import { cellAt, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
+import { cellAt, edgeBetween, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 import { terrainHeightAt } from './board3d-terrain'
 import type { GraphicsStylePack } from './board3d-style'
 import { STRUCTURAL_ROLES, structuralInstance, type StructuralModelAssets, type StructuralRole } from './board3d-structural'
@@ -194,6 +194,38 @@ function geometryFromPositions(positions: number[]) {
 }
 
 /**
+ * Верхняя панель стены с наклонной верхней кромкой. Четыре промежуточные
+ * точки по длине совпадают с полуклеточными изломами hip-сетки и не дают
+ * плоскому коробу пересекать скат в одном конце и висеть в другом.
+ */
+function createUpperWallPanelGeometry(horizontal: boolean, bottom: number, topAt: (progress: number, across: number) => number) {
+  const segments = 4
+  const width = horizontal ? 1 : 1 / 6
+  const depth = horizontal ? 1 / 6 : 1
+  const geometry = new THREE.BoxGeometry(width, 1, depth, horizontal ? segments : 1, 1, horizontal ? 1 : segments)
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute
+  for (let index = 0; index < position.count; index += 1) {
+    const along = horizontal ? position.getX(index) : position.getZ(index)
+    const across = horizontal ? position.getZ(index) : position.getX(index)
+    const progress = Math.max(0, Math.min(1, along + .5))
+    const top = topAt(progress, across)
+    position.setY(index, position.getY(index) > 0 ? top : bottom)
+  }
+  // Верх панели закрыт кровлей: собственная крышка коробки здесь лишь
+  // спорит с её треугольниками на стыках скатов и проступает белой полосой.
+  const cap = geometry.groups.find((group) => group.materialIndex === 2)
+  const indices = geometry.getIndex()
+  if (cap && indices) {
+    geometry.setIndex([...indices.array.slice(0, cap.start), ...indices.array.slice(cap.start + cap.count)])
+    geometry.clearGroups()
+  }
+  geometry.computeVertexNormals()
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+/**
  * Замкнутая тонкая призма одного ската. Ось длины лежит вдоль локального X.
  * `covering` задаёт UV для черепицы: u — вдоль конька, v — от карниза вверх по
  * скату, в повторах фактуры; `across` кладёт доски вдоль ската.
@@ -319,12 +351,13 @@ function addUpperWallPanels(
   fullWallHeight: number,
   seenEdges: Set<string>,
   style: RoofStyle | null,
+  edges = structuralEdges(map, rect),
+  roof: RoofSurface | null = null,
+  roofBaseY: number | null = null,
 ) {
-  const height = fullWallHeight - cutWallHeight
-  if (height <= 0) return
   const color = ['wood', 'earth'].includes(rect.zone.material) ? palette.prop : palette.wall
   const plainMaterial = style ? null : roofMaterial(resources, color, { roughness: .94 })
-  for (const edge of structuralEdges(map, rect)) {
+  for (const edge of edges) {
     // Стиль продолжает кладку срезанной стены вверх той же фактурой: рисунок
     // по мировым координатам сходится на линии среза без шва.
     let panelMaterial = plainMaterial
@@ -340,16 +373,31 @@ function addUpperWallPanels(
     const horizontal = edge.dir === 's'
     const centerX = edge.dir === 'e' ? edge.x + 1 : edge.x + .5
     const centerZ = edge.dir === 'e' ? edge.y + .5 : edge.y + 1
-    const geometry = horizontal
-      ? new THREE.BoxGeometry(1, height, 1 / 6)
-      : new THREE.BoxGeometry(1 / 6, height, 1)
-    const baseY = edgeBaseY(map, edge)
-    addMesh(resources, parent, `roof-wall-upper:${edge.x},${edge.y},${edge.dir}`, geometry, panelMaterial!, [
-      centerX,
-      baseY + cutWallHeight + height / 2,
-      centerZ,
-    ])
-    if (fachwerk && style) addFachwerkTimbers(resources, parent, edge, style.look('timber'), baseY + cutWallHeight, height, seenEdges)
+    const wallBaseY = edgeBaseY(map, edge)
+    const roofOriginY = roofBaseY ?? wallBaseY
+    // Небольшой заход под кровлю убирает борьбу совпадающих поверхностей:
+    // иначе белая верхняя грань кладки мерцает поверх однослойной вальмы.
+    const wallTopAt = (x: number, z: number) => Math.max(cutWallHeight,
+      roofOriginY + fullWallHeight + (roof ? roof.heightAt(x, z) - roof.skinThickness - .003 : 0) - wallBaseY)
+    const start = horizontal
+      ? { x: edge.x, z: edge.y + 1 }
+      : { x: edge.x + 1, z: edge.y }
+    const end = horizontal
+      ? { x: edge.x + 1, z: edge.y + 1 }
+      : { x: edge.x + 1, z: edge.y + 1 }
+    const topAt = (progress: number, across: number) => wallTopAt(
+      start.x + (end.x - start.x) * progress + (horizontal ? 0 : across),
+      start.z + (end.z - start.z) * progress + (horizontal ? across : 0),
+    )
+    const topSamples = [0, .25, .5, .75, 1].flatMap((progress) => [topAt(progress, -1 / 12), topAt(progress, 1 / 12)])
+    const height = Math.max(...topSamples) - cutWallHeight
+    if (height <= 0) continue
+    const geometry = createUpperWallPanelGeometry(horizontal, cutWallHeight, topAt)
+    addMesh(resources, parent, `roof-wall-upper:${edge.x},${edge.y},${edge.dir}`, geometry, panelMaterial!, [centerX, wallBaseY, centerZ])
+    if (fachwerk && style) {
+      const timberHeight = Math.max(0, Math.min(...topSamples) - cutWallHeight)
+      if (timberHeight > 0) addFachwerkTimbers(resources, parent, edge, style.look('timber'), wallBaseY + cutWallHeight, timberHeight, seenEdges)
+    }
   }
 }
 
@@ -430,7 +478,7 @@ function createVaultRibGeometry(span: number, width: number, thickness = .10, se
 }
 
 function isInsideRect(cell: TacticalCell | null, rect: RoofRect) {
-  return Boolean(cell?.revealed && cell.passable && rect.members.has(cellKey(cell.x, cell.y))
+  return Boolean(cell?.passable && rect.members.has(cellKey(cell.x, cell.y))
     && cell.x >= rect.minX && cell.x <= rect.maxX && cell.y >= rect.minY && cell.y <= rect.maxY)
 }
 
@@ -580,6 +628,8 @@ type RoofSurface = {
   heightAt: (x: number, z: number) => number
   /** Подъём ската на клетку по горизонтали. */
   slope: number
+  /** Толщина оболочки между верхом кровли и её нижней стороной. */
+  skinThickness: number
   /** Место слухового окна у двускатной крыши: середина ближнего ската. */
   dormer?: { x: number; z: number; yaw: number }
 }
@@ -593,6 +643,7 @@ function addPitchedRoof(
   eaveHeight: number,
   map: TacticalMap,
   style: RoofStyle | null,
+  inferred = false,
 ) {
   if (!rect.sides.size) return false
   const bounds = roofBounds(rect)
@@ -641,6 +692,7 @@ function addPitchedRoof(
 
   const structural = roofObject(new THREE.Group())
   structural.name = piece.name.replace('roof-pitched', 'roof-structure')
+  if (inferred) structural.userData.board3dInferredRoof = true
   structural.position.copy(piece.position)
   const eaveGeometry = ownGeometry(resources, new THREE.BoxGeometry(length, ROOF_EAVE_HEIGHT, ROOF_EAVE_WIDTH))
   const farSide: RoofSide = ridgeAlongX ? 'north' : 'west'
@@ -661,6 +713,7 @@ function addPitchedRoof(
   const surface: RoofSurface = {
     heightAt: (x, z) => Math.max(0, rise * (1 - Math.abs(ridgeAlongX ? z - centerZ : x - centerX) / half)),
     slope: rise / half,
+    skinThickness: ROOF_THICKNESS,
     // Окно смотрит на ближний скат; сдвиг от края держит модель внутри крыши.
     dormer: ridgeAlongX
       ? { x: centerX, z: bounds.maxY + .08, yaw: 0 }
@@ -818,20 +871,143 @@ type RoofBuilding = {
   cells: TacticalCell[]
   zone: TacticalZone
   baseY: number
+  /** Есть клетки, раскрытые только наружным контуром; детали скрыты в cutaway. */
+  inferred?: boolean
 }
 
 /**
- * Дома для скатных крыш: связные области раскрытых клеток скатных комнат.
- * Комнаты одного дома за перегородками — одна крыша, а не лоскуты по комнатам;
- * своды склепов и пещеры сюда не входят, у них своя крыша по комнате.
+ * Наружный контур дома может быть открыт раньше пола: игрок видит двор и
+ * фасад, а клетки комнат всё ещё в тумане. В этом случае цельная крыша дома
+ * разрешена, но соседнее нераскрытое здание остаётся без оболочки.
  */
-function buildRoofBuildings(map: TacticalMap) {
-  const pitched = new Map<string, TacticalCell>()
-  const zoneById = new Map(map.zones.map((zone) => [zone.id, zone]))
+function exteriorDiscovered(map: TacticalMap, cells: TacticalCell[]) {
+  const zoneKinds = new Map(map.zones.map((zone) => [zone.id, zone.kind]))
+  const members = new Set(cells.map((cell) => cellKey(cell.x, cell.y)))
+  const exterior = (cell: TacticalCell | null) => cell?.revealed && zoneKinds.get(cell.zone) === 'exterior'
+  for (const cell of cells) {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const neighbor = cellAt(map, cell.x + dx, cell.y + dy)
+      if (members.has(cellKey(cell.x + dx, cell.y + dy))) continue
+      if (exterior(neighbor)) return true
+      // Импортированные карты иногда держат фасад отдельной непроходимой
+      // клеткой. Один дополнительный шаг на улицу сохраняет ту же границу.
+      if (!neighbor?.revealed || neighbor.passable) continue
+      for (const [ddx, ddy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (exterior(cellAt(map, cell.x + dx + ddx, cell.y + dy + ddy))) return true
+      }
+    }
+  }
+  return false
+}
+
+function hiddenPassableComponents(map: TacticalMap) {
+  const candidates = new Map<string, TacticalCell>()
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
     const cell = cellAt(map, x, y)
-    const zone = cell?.revealed && cell.passable ? zoneById.get(cell.zone ?? '') : undefined
-    if (cell && zone?.kind === 'interior' && roofStyle(map, zone) === 'gable') pitched.set(cellKey(x, y), cell)
+    if (cell?.passable && !cell.revealed) candidates.set(cellKey(x, y), cell)
+  }
+  const result: TacticalCell[][] = []
+  const visited = new Set<string>()
+  for (const [start, first] of candidates) {
+    if (visited.has(start)) continue
+    const cells: TacticalCell[] = [], queue = [first]
+    visited.add(start)
+    while (queue.length) {
+      const cell = queue.pop()!
+      cells.push(cell)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = cellKey(cell.x + dx, cell.y + dy)
+        const next = candidates.get(key)
+        if (next && !visited.has(key)) { visited.add(key); queue.push(next) }
+      }
+    }
+    result.push(cells)
+  }
+  return result
+}
+
+function structuralBoundary(map: TacticalMap, first: TacticalCell, second: TacticalCell) {
+  const edge = edgeBetween(map, first.x, first.y, second.x, second.y)
+  return Boolean(edge && STRUCTURAL_EDGES.has(edge.kind))
+}
+
+function touchesCells(map: TacticalMap, cells: TacticalCell[], targets: Set<string>) {
+  for (const cell of cells) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const neighbor = cellAt(map, cell.x + dx, cell.y + dy)
+    if (neighbor && targets.has(cellKey(neighbor.x, neighbor.y)) && structuralBoundary(map, cell, neighbor)) return true
+  }
+  return false
+}
+
+/**
+ * Дома для скатных крыш: связные области комнат, чьи фасады уже обнаружены
+ * или чьи полы раскрыты. Комнаты одного дома за перегородками — одна крыша,
+ * а не лоскуты по комнатам; своды склепов и пещеры сюда не входят.
+ */
+function buildRoofBuildings(map: TacticalMap) {
+  const zoneById = new Map(map.zones.map((zone) => [zone.id, zone]))
+  const hiddenFallbackZone: TacticalZone = {
+    id: '__revealed-building-shell', kind: 'interior', material: 'stone', lightLevel: 'dim',
+    floorDirection: 'horizontal', label: '',
+  }
+  zoneById.set(hiddenFallbackZone.id, hiddenFallbackZone)
+  const candidates = new Map<string, TacticalCell>()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    const zone = cell?.passable ? zoneById.get(cell.zone ?? '') : undefined
+    if (cell && zone?.kind === 'interior' && roofStyle(map, zone) === 'gable') candidates.set(cellKey(x, y), cell)
+  }
+  const hiddenComponents = hiddenPassableComponents(map)
+  const pitched = new Map<string, TacticalCell>()
+  const inferred = new Set<string>()
+  const discovered = new Set<string>()
+  for (const [start, first] of candidates) {
+    if (discovered.has(start)) continue
+    const cells: TacticalCell[] = []
+    const queue = [first]
+    discovered.add(start)
+    while (queue.length) {
+      const cell = queue.pop()!
+      cells.push(cell)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const key = cellKey(cell.x + dx, cell.y + dy)
+        const next = candidates.get(key)
+        if (next && !discovered.has(key)) { discovered.add(key); queue.push(next) }
+      }
+    }
+    const allExterior = exteriorDiscovered(map, cells)
+    for (const cell of (allExterior ? cells : cells.filter((entry) => entry.revealed))) pitched.set(cellKey(cell.x, cell.y), cell)
+    if (!allExterior) continue
+    const members = new Set(cells.map((cell) => cellKey(cell.x, cell.y)))
+    const zone = [...new Set(cells.map((cell) => cell.zone).filter(Boolean))]
+      .map((id) => zoneById.get(id))
+      .find((entry): entry is TacticalZone => Boolean(entry))
+    if (!zone) continue
+    for (const hidden of hiddenComponents) {
+      if (!touchesCells(map, hidden, members)) continue
+      for (const cell of hidden) {
+        const inferredCell = cell.zone ? cell : { ...cell, zone: zone.id }
+        pitched.set(cellKey(cell.x, cell.y), inferredCell)
+        inferred.add(cellKey(cell.x, cell.y))
+      }
+    }
+  }
+  // A room may be completely hidden while its outside wall is already visible.
+  // This path is available when the authoritative/admin map still carries its
+  // zone; public maps use the discovered visible-room path above.
+  for (const hidden of hiddenComponents) {
+    if (!hidden.length || hidden.some((cell) => pitched.has(cellKey(cell.x, cell.y)))) continue
+    if (!exteriorDiscovered(map, hidden)) continue
+    const zone = [...new Set(hidden.map((cell) => cell.zone).filter(Boolean))]
+      .map((id) => zoneById.get(id))
+      .find((entry): entry is TacticalZone => Boolean(entry && entry.kind === 'interior' && roofStyle(map, entry) === 'gable'))
+      ?? (exteriorDiscovered(map, hidden) ? hiddenFallbackZone : null)
+    if (!zone) continue
+    for (const cell of hidden) {
+      const inferredCell = cell.zone ? cell : { ...cell, zone: zone.id }
+      pitched.set(cellKey(cell.x, cell.y), inferredCell)
+      inferred.add(cellKey(cell.x, cell.y))
+    }
   }
   const solid = (x: number, y: number) => {
     const cell = cellAt(map, x, y)
@@ -866,7 +1042,7 @@ function buildRoofBuildings(map: TacticalMap) {
       const outline = structuralSides(map, candidate)
       candidate.sides = outline.sides
       candidate.ring = outline.ring
-      if (candidate.sides.size) buildings.push({ rect: candidate, footprint: members, cells, zone, baseY })
+      if (candidate.sides.size) buildings.push({ rect: candidate, footprint: members, cells, zone, baseY, inferred: cells.some((cell) => !cell.revealed || inferred.has(cellKey(cell.x, cell.y))) })
       continue
     }
     // Без стен на краю это навес или двор, а не дом: крыша не нужна.
@@ -892,9 +1068,64 @@ function buildRoofBuildings(map: TacticalMap) {
           && solid(x + dx, y + dy) && !members.has(cellKey(x + dx, y)) && !members.has(cellKey(x, y + dy))) footprint.add(cellKey(x + dx, y + dy))
       }
     }
-    buildings.push({ rect: null, footprint, cells, zone, baseY })
+    buildings.push({ rect: null, footprint, cells, zone, baseY, inferred: cells.some((cell) => !cell.revealed || inferred.has(cellKey(cell.x, cell.y))) })
   }
   return buildings
+}
+
+/**
+ * Периметр уже выбранного дома. В отличие от `buildRoofRects` он использует
+ * полный корпус здания, включая inferred-клетки, поэтому фасад не обрывается
+ * на последней раскрытой комнате. Видимые внутренние стены и дверные линии
+ * тоже получают верхнюю панель: это не раскрывает туман, потому что ребро уже
+ * пришло в публичной проекции.
+ */
+function buildingUpperWallEdges(map: TacticalMap, building: RoofBuilding) {
+  const members = new Set(building.cells.map((cell) => cellKey(cell.x, cell.y)))
+  const zoneKinds = new Map(map.zones.map((zone) => [zone.id, zone.kind]))
+  const opening = new Set(['door', 'window', 'loophole', 'grate'])
+  const result: Array<ReturnType<typeof edgeList>[number]> = []
+  for (const edge of edgeList(map)) {
+    if (!STRUCTURAL_EDGES.has(edge.kind)) continue
+    const neighbor = edgeNeighbor(edge)
+    const owner = cellAt(map, edge.x, edge.y)
+    const other = cellAt(map, neighbor.x, neighbor.y)
+    const ownerInside = members.has(cellKey(edge.x, edge.y))
+    const otherInside = members.has(cellKey(neighbor.x, neighbor.y))
+    if (!ownerInside && !otherInside) continue
+    if (!(revealedAt(map, edge.x, edge.y) || revealedAt(map, neighbor.x, neighbor.y))) continue
+
+    if (ownerInside === otherInside) {
+      // Стена между двумя раскрытыми комнатами — известная часть конструкции.
+      // Скрытая внутренняя стена не попадает в оболочку; видимый проём всё же
+      // получает перемычку и верх стены, как линия наружной двери.
+      if (ownerInside && otherInside && (owner?.revealed && other?.revealed || opening.has(edge.kind))) result.push(edge)
+      continue
+    }
+
+    const outside = ownerInside ? other : owner
+    const outsideKind = outside?.zone ? zoneKinds.get(outside.zone) : undefined
+    if (outside?.passable === true && (!outsideKind || outsideKind === 'interior') && !opening.has(edge.kind)) continue
+    result.push(edge)
+  }
+  return result
+}
+
+function roofRectForBuilding(building: RoofBuilding): RoofRect {
+  const xs = building.cells.map((cell) => cell.x)
+  const ys = building.cells.map((cell) => cell.y)
+  return {
+    zone: building.zone,
+    cells: building.cells,
+    members: new Set(building.cells.map((cell) => cellKey(cell.x, cell.y))),
+    minX: Math.min(...xs),
+    minY: Math.min(...ys),
+    maxX: Math.max(...xs),
+    maxY: Math.max(...ys),
+    sides: new Set(),
+    ring: new Set(),
+    baseY: building.baseY,
+  }
 }
 
 /** Крышные роли загружаются только для домов с уже валидным контуром крыши. */
@@ -941,6 +1172,7 @@ function addHipRoof(
 
   const structural = roofObject(new THREE.Group())
   structural.name = piece.name.replace('roof-hip', 'roof-structure')
+  if (building.inferred) structural.userData.board3dInferredRoof = true
   structural.position.set(0, y, 0)
   // Карниз: брус под краем свеса, со срезом в углах, как сам свес.
   for (const run of hipRoofRuns(building.footprint)) {
@@ -963,7 +1195,7 @@ function addHipRoof(
     beam.lookAt(rafter.to.clone().add(new THREE.Vector3(0, y - RAFTER_DROP, 0)))
   })
   structureGroup.add(structural)
-  const surface: RoofSurface = { heightAt: (x, z) => slope * distance(x, z), slope }
+  const surface: RoofSurface = { heightAt: (x, z) => slope * distance(x, z), slope, skinThickness: 0 }
   return surface
 }
 
@@ -1044,17 +1276,25 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
   const seenUpperWallEdges = new Set<string>()
   const painted = packHasRoofLooks(options.stylePack) ? createRoofStyle(options.stylePack, resources, options) : null
   group.userData.roofStyle = painted ? 'painted' : 'plain'
-  // Верх стен и своды — по комнатам, скатные крыши — по домам целиком.
+  // Своды остаются по комнатам. Скатные дома получают верх стен ниже вместе
+  // с полной оболочкой: там доступен тот же inferred-корпус, что и у крыши.
   for (const rect of buildRoofRects(map)) {
     const style = roofStyle(map, rect.zone)
     if (!style) continue
-    addUpperWallPanels(resources, upperWalls, map, rect, palette, cutWallHeight, fullWallHeight, seenUpperWallEdges, painted)
-    if (style === 'vault') addVaultRoof(resources, shells, structures, rect, palette, fullWallHeight, painted)
+    if (style === 'vault') {
+      addUpperWallPanels(resources, upperWalls, map, rect, palette, cutWallHeight, fullWallHeight, seenUpperWallEdges, painted)
+      addVaultRoof(resources, shells, structures, rect, palette, fullWallHeight, painted)
+    }
   }
   for (const building of buildRoofBuildings(map)) {
     const built = building.rect
-      ? addPitchedRoof(resources, shells, structures, building.rect, palette, fullWallHeight, map, painted)
+      ? addPitchedRoof(resources, shells, structures, building.rect, palette, fullWallHeight, map, painted, building.inferred)
       : addHipRoof(resources, shells, structures, building, palette, fullWallHeight, map, painted)
+    if (built) {
+      const rect = building.rect ?? roofRectForBuilding(building)
+      addUpperWallPanels(resources, upperWalls, map, rect, palette, cutWallHeight, fullWallHeight,
+        seenUpperWallEdges, painted, buildingUpperWallEdges(map, building), built, building.baseY)
+    }
     if (built && painted) addRoofDecorations(structures, building, options.structuralAssets, fullWallHeight, built)
   }
 
@@ -1072,7 +1312,9 @@ export function createBoard3DRoofs(map: TacticalMap, palette: BoardPalette, opti
     })
     structures.traverse((object) => { object.userData.board3dRoof = true })
     structures.traverse((object) => {
-      if (object.userData.board3dOpaqueRoof === true || object.userData.board3dRoofInterior === true) object.visible = mode === 'full'
+      if (object.userData.board3dInferredRoof === true
+        || object.userData.board3dOpaqueRoof === true
+        || object.userData.board3dRoofInterior === true) object.visible = mode === 'full'
     })
   }
   applyMode()
