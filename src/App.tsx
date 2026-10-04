@@ -546,7 +546,7 @@ function DiceCheckCard({ check, onRoll, onCancel, busy = false, children }: { ch
           <small>{check.result.value} {check.modifier >= 0 ? '+' : '−'} {Math.abs(check.modifier)} = {check.result.total}{typeof check.result.difficulty === 'number' ? ` против ${check.result.difficulty}` : ''}</small>
         </span>}
       </div>
-      <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажми на кость — что выпадет, то и будет.'}</p>
+      <p>{resolving ? 'Рассказчик учитывает результат и продолжает сцену…' : check.proposal ? 'До подтверждения ход и ресурсы не расходуются. Можно отказаться и описать другой способ.' : 'Нажмите на кость — что выпадет, то и будет.'}</p>
       <div className="dice-check__footer">
         {children}
         <button className="cancel-check cancel-check--dismiss" onClick={onCancel} disabled={busy || check.status === 'rolling' || (Boolean(check.proposal) && check.status === 'resolving')}>{check.result ? 'Закрыть проверку' : 'Отказаться от действия'}</button>

@@ -1122,7 +1122,7 @@ export function CharacterCreationWizard({
           })}
         </nav>
         <main ref={mainRef}>
-          {rulesetId === 'dnd_5e_2014' && <p className="creation-ruleset-note"><ShieldCheck size={15} /><span><b>D&D 5e 2014.</b> Раса и подраса дают прибавки к характеристикам; предыстория — навыки, языки, инструменты, особенность и комплект снаряжения. Расовые и фоновые особенности сохраняются в листе, но не все ещё исполняются движком автоматически.</span></p>}
+          {rulesetId === 'dnd_5e_2014' && <p className="creation-ruleset-note"><ShieldCheck size={15} /><span><b>D&D 5e 2014.</b> Раса и подраса дают прибавки к характеристикам; предыстория — навыки, языки, инструменты, особенность и комплект снаряжения. Некоторые особенности расы и предыстории пока нужно отыгрывать словами: игра их запомнит, но сама не применит.</span></p>}
           <aside className="creation-summary-rail" aria-label="Итог героя">
             <small>ИТОГ ГЕРОЯ</small>
             <h3>{draft.character.trim() || 'Безымянный герой'}</h3>

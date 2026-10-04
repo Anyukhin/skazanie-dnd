@@ -2207,7 +2207,7 @@ export function useGameSession(options: { accountId?: string } = {}) {
       }),
     })
     const result = await response.json().catch(() => null) as EncounterAssemblyResult | null
-    if (!response.ok) throw await responseCommandError(response, result, `EncounterAssembler отклонил запрос (${response.status})`)
+    if (!response.ok) throw await responseCommandError(response, result, `Столкновение не собрано (${response.status})`)
     if (!result?.authoritative_state || !result.encounter_proposal) throw new Error('Сервер не вернул собранное столкновение')
     if (result.room_version != null) roomVersion.current = latestRoomVersion(roomVersion.current, result.room_version)
     applyRemote(mergeTacticalCommandState(stateRef.current, result.authoritative_state, result, requestId))
