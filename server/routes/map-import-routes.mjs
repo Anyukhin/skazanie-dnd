@@ -6,11 +6,11 @@
  * - `mode: 'preview'` — разбор слэба без записи: этажи, сводка и
  *   предупреждения. Ведущий смотрит карту до того, как её увидят игроки;
  * - `mode: 'apply'` — команда `ImportLocationMap` через общий исполнитель;
- * - `mode: 'rebuild'` — команда `RebuildLocationMap`: карта текущей сцены
- *   строится заново по программе сцены (этап 8 `docs/map-generation-plan.md`),
- *   `text` — необязательное описание места словами ведущего. Не во время боя
- *   и не при открытой проверке героя: бросок, заявленный на прежней карте,
- *   на новой потерял бы смысл.
+ * - `mode: 'rebuild'` — команда `RebuildLocationMap`: по умолчанию карта
+ *   текущей сцены строится заново по программе сцены (этап 8
+ *   `docs/map-generation-plan.md`), а `preserve_layout: true` обновляет только
+ *   покрытия уже сохранённых этажей. `text` — необязательное описание места
+ *   словами ведущего. Не во время боя и не при открытой проверке героя.
  *   Полномочие ведущего передаётся флагом контекста, который ставит только
  *   этот маршрут; Rules Engine без флага команду не исполняет.
  *
@@ -86,6 +86,15 @@ export function createMapImportRoutes(deps) {
         const idempotencyKey = String(body.idempotency_key ?? req.headers['x-idempotency-key'] ?? '').trim().slice(0, 200)
         if (!idempotencyKey) return send(res, 400, { error: 'Нужен idempotency_key', code: 'IDEMPOTENCY_KEY_REQUIRED' })
         const text = typeof body.text === 'string' ? body.text.slice(0, 2000) : ''
+        const preserveLayout = body.preserve_layout === true
+        const previous = await eventStore.getByIdempotencyKey(campaignId, idempotencyKey)
+        if (previous) {
+          const recorded = previous.events?.find((/** @type {any} */ event) => event?.event_type === 'LocationMapImported')
+          const rebuildFormat = ['scene-program-rebuild', 'scene-floor-refresh'].includes(String(recorded?.payload?.source?.format ?? ''))
+          if (!recorded || !rebuildFormat || (recorded.payload?.preserve_layout === true) !== preserveLayout) {
+            return send(res, 409, { error: 'Этот idempotency_key уже использован для другого режима перестройки', code: 'IDEMPOTENCY_CONFLICT' })
+          }
+        }
         const committed = await authoritativeExecutor.executeCommands({
           campaignId,
           idempotencyKey,
@@ -93,6 +102,7 @@ export function createMapImportRoutes(deps) {
             command_type: 'RebuildLocationMap',
             command_id: `map-rebuild:${createHash('sha256').update(`${campaignId}\0${idempotencyKey}`).digest('hex').slice(0, 24)}`,
             text,
+            preserve_layout: preserveLayout,
           }],
           context: { mapImportAuthorized: true },
         })
@@ -106,6 +116,7 @@ export function createMapImportRoutes(deps) {
         const event = (committed.events ?? []).find((/** @type {any} */ candidate) => candidate?.event_type === 'LocationMapImported')
         return send(res, 200, {
           mode: 'rebuild',
+          preserve_layout: event?.payload?.preserve_layout === true,
           duplicate,
           warnings: event?.payload?.warnings ?? [],
           version: projected?.version ?? room.version,

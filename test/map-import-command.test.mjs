@@ -15,6 +15,7 @@ import {
   deserializeTacticalMap,
   legacyCellsFromTacticalMap,
   serializeTacticalMap,
+  setCell,
 } from '../server/tactical-map.mjs'
 import { mechanicsForViewer } from '../server/viewer-projection.mjs'
 import { HOUSE_SLAB } from './talespire-fixtures.mjs'
@@ -219,6 +220,78 @@ test('этап 8: ведущий перестраивает карту теку�
   assert.equal(replayed.scene.map.width, after.scene.map.width)
   assert.deepEqual(replayed.scene.map_requirements, after.scene.map_requirements)
   assert.ok(result.events.length >= 1 && state.scene.map === before, 'прежняя карта не тронута: она в состоянии до события')
+})
+
+test('этап 8: обновление пола сохраняет библиотечную планировку, этажи, позиции, NPC и туман', () => {
+  const imported = resolveCommand(importCommand(), sceneState(), options(AUTHORIZED))
+  const state = imported.events.reduce((current, event) => applyGameEvent(current, event), sceneState())
+  state.scene.theme = 'монастырь'
+  state.scene.map_source = { kind: 'map-library', id: 'tt-stave-temple', title: 'Stave Temple' }
+  state.scene.layout = 'внизу: зал и святилище'
+  const paintGrass = (serialized) => {
+    const map = deserializeTacticalMap(serialized)
+    map.theme = 'temple'
+    const interiors = new Set(map.zones.filter((zone) => zone.kind === 'interior').map((zone) => zone.id))
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      if (cellAt(map, x, y)?.passable && interiors.has(cellAt(map, x, y)?.zone)) setCell(map, x, y, { material: 'grass' })
+    }
+    return serializeTacticalMap(map)
+  }
+  state.scene.map = paintGrass(state.scene.map)
+  state.scene.cells = legacyCellsFromTacticalMap(deserializeTacticalMap(state.scene.map))
+  state.locationMaps = Object.fromEntries(Object.entries(state.locationMaps).map(([key, record]) => {
+    if (!record?.map) return [key, record]
+    const map = paintGrass(record.map)
+    return [key, { ...record, map, cells: legacyCellsFromTacticalMap(deserializeTacticalMap(map)) }]
+  }))
+  state.npc_world = {
+    ...state.npc_world,
+    placements: [{ npc_id: 'npc-keeper', location_id: 'loc-house', x: 4, y: 4, role: 'witness' }],
+  }
+  const beforeMap = deserializeTacticalMap(state.scene.map)
+  const before = {
+    map: serializeTacticalMap(beforeMap),
+    players: state.players.map((player) => ({ id: player.id, x: player.x, y: player.y })),
+    positions: structuredClone(state.mechanics.positions),
+    enemies: structuredClone(state.enemies),
+    entities: structuredClone(state.entities),
+    npcWorld: structuredClone(state.npc_world),
+    revealed: beforeMap.layers.revealed,
+  }
+  const result = resolveCommand({
+    command_type: 'RebuildLocationMap', command_id: 'refresh-floors-1', actor_id: PARTY[0], preserve_layout: true,
+  }, state, options(AUTHORIZED))
+  const event = result.events.find((entry) => entry.event_type === 'LocationMapImported')
+  assert.ok(event)
+  assert.equal(event.payload.preserve_layout, true)
+  assert.equal(event.payload.source.format, 'scene-floor-refresh')
+  assert.deepEqual(event.payload.levels.map((level) => level.index), [0, 1])
+
+  const after = result.events.reduce((current, event) => applyGameEvent(current, event), state)
+  const afterMap = deserializeTacticalMap(after.scene.map)
+  assert.deepEqual(afterMap.doors, beforeMap.doors)
+  assert.deepEqual(afterMap.edges, beforeMap.edges)
+  assert.deepEqual(afterMap.props, beforeMap.props)
+  assert.deepEqual(afterMap.layers.revealed, before.revealed, 'туман войны не раскрывается заново')
+  assert.deepEqual(after.players.map((player) => ({ id: player.id, x: player.x, y: player.y })), before.players)
+  assert.deepEqual(after.mechanics.positions, before.positions)
+  assert.deepEqual(after.enemies, before.enemies)
+  assert.deepEqual(after.entities, before.entities)
+  assert.deepEqual(after.scene.map_source, state.scene.map_source)
+  assert.equal(after.scene.layout, state.scene.layout)
+  assert.deepEqual(after.npc_world.placements.map((placement) => ({
+    npc_id: placement.npc_id, location_id: placement.location_id, x: placement.x, y: placement.y,
+  })), before.npcWorld.placements.map((placement) => ({
+    npc_id: placement.npc_id, location_id: placement.location_id, x: placement.x, y: placement.y,
+  })))
+  assert.ok([...Array(afterMap.height * afterMap.width).keys()].some((index) => {
+    const x = index % afterMap.width
+    const y = Math.floor(index / afterMap.width)
+    const cell = cellAt(afterMap, x, y)
+    const zone = afterMap.zones.find((candidate) => candidate.id === cell?.zone)
+    return cell?.passable && zone?.kind === 'interior' && cell.material === 'marble'
+  }), 'внутренний пол обновлён')
+  assert.deepEqual(replayEvents(state, result.events), after, 'обновление пола сходится на replay')
 })
 
 test('этап 8: перестройка — только ведущему, не в бою и не при открытом голосовании', () => {

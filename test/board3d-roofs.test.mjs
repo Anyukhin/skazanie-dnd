@@ -7,6 +7,7 @@ import test from 'node:test'
 
 import { addZone, cellAt as serverCellAt, createTacticalMap, serializeTacticalMap, setCell, setEdge } from '../server/tactical-map.mjs'
 import { buildThemedScene } from '../server/scene-themes.mjs'
+import { publicTacticalMapWithHashFor } from '../server/viewer-projection.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-roofs-test-'))
@@ -250,8 +251,115 @@ test('нераскрытое помещение за стенами закрыт
   } finally {
     controller.dispose()
   }
+  const discoveredBuilding = roofs3d.createBoard3DRoofs(decoded, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  try {
+    assert.ok(meshesNamed(discoveredBuilding.group, 'roof-slope:').length >= 2,
+      'полный вид снаружи должен показывать крышу здания, даже если пол внутри ещё в тумане')
+  } finally {
+    discoveredBuilding.dispose()
+  }
   // Одна нераскрытая клетка в видимой комнате — туман, а не дом.
   assert.equal(roofs3d.closedUnrevealedRegions(mapFor({ hidden: { x: 3, y: 3 } })).length, 0)
+})
+
+test('полная крыша открытого фасада не раскрывает дальний дом в тумане', () => {
+  const map = createTacticalMap({ width: 15, height: 8, seed: 'roof-discovery-boundary', theme: 'building' })
+  addZone(map, { id: 'room', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Дом' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Двор' })
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    setCell(map, x, y, { passable: true, material: 'grass', zone: 'yard', revealed: true })
+  }
+  const rooms = [{ x: 2, y: 2 }, { x: 9, y: 2 }]
+  for (const room of rooms) for (let y = room.y; y < room.y + 3; y += 1) for (let x = room.x; x < room.x + 3; x += 1) {
+    setCell(map, x, y, { passable: true, material: 'stone', zone: 'room', revealed: false })
+  }
+  // Дальний дом и его фасад остаются в тумане: один открытый дом не даёт
+  // права показать соседнюю постройку.
+  for (let y = 1; y <= 5; y += 1) for (let x = 8; x <= 12; x += 1) {
+    setCell(map, x, y, { passable: true, material: 'grass', zone: 'yard', revealed: false })
+  }
+  for (const room of rooms) {
+    for (let x = room.x; x < room.x + 3; x += 1) {
+      setEdge(map, x, room.y, x, room.y - 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+      setEdge(map, x, room.y + 2, x, room.y + 3, { kind: 'wall', blocksMove: true, blocksSight: true })
+    }
+    for (let y = room.y; y < room.y + 3; y += 1) {
+      setEdge(map, room.x, y, room.x - 1, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+      setEdge(map, room.x + 2, y, room.x + 3, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+    }
+  }
+  const decoded = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+  const controller = roofs3d.createBoard3DRoofs(decoded, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  try {
+    const roofs = meshesNamed(controller.group, 'roof-pitched:')
+    assert.equal(roofs.length, 1, 'крыша появляется только над обнаруженным фасадом')
+    const bounds = new THREE.Box3().setFromObject(roofs[0])
+    assert.ok(bounds.containsPoint(new THREE.Vector3(3.5, 1.8, 3.5)), 'крыша открытого дома покрывает скрытый зал')
+    assert.equal(bounds.containsPoint(new THREE.Vector3(10.5, 1.8, 3.5)), false, 'дальний дом остаётся в тумане')
+  } finally {
+    controller.dispose()
+  }
+})
+
+test('публичная проекция сохраняет оболочку обнаруженного дома без зоны туманной комнаты', () => {
+  const source = createTacticalMap({ width: 10, height: 8, seed: 'roof-public-projection', theme: 'building' })
+  addZone(source, { id: 'room', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Дом' })
+  addZone(source, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Двор' })
+  for (let y = 0; y < source.height; y += 1) for (let x = 0; x < source.width; x += 1) {
+    setCell(source, x, y, { passable: true, material: 'grass', zone: 'yard', revealed: true })
+  }
+  for (let y = 2; y <= 4; y += 1) for (let x = 2; x <= 6; x += 1) {
+    setCell(source, x, y, { passable: true, material: 'stone', zone: 'room', revealed: x <= 3 })
+    setEdge(source, x, 2, x, 1, { kind: 'wall', blocksMove: true, blocksSight: true })
+    setEdge(source, x, 4, x, 5, { kind: 'wall', blocksMove: true, blocksSight: true })
+  }
+  for (let y = 2; y <= 4; y += 1) {
+    setEdge(source, 2, y, 1, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+    setEdge(source, 6, y, 7, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+    setEdge(source, 3, y, 4, y, { kind: 'wall', blocksMove: true, blocksSight: true })
+  }
+  const projected = publicTacticalMapWithHashFor(serializeTacticalMap(source))?.map
+  const map = mapClient.decodeTacticalMap(projected)
+  const controller = roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  try {
+    const slopes = meshesNamed(controller.group, 'roof-slope:')
+    controller.group.updateMatrixWorld(true)
+    assert.ok(slopes.length >= 2, 'публичная карта всё ещё строит крышу по обнаруженному фасаду')
+    assert.ok(slopes.some((mesh) => new THREE.Box3().setFromObject(mesh).containsPoint(new THREE.Vector3(5.5, 1.8, 3.5))),
+      'оболочка доходит до комнаты, скрытой от игрока')
+    const hiddenFacade = controller.group.getObjectByName('roof-wall-upper:5,1,s')
+    assert.ok(hiddenFacade, 'видимый снаружи фасад под скрытой комнатой должен доходить до крыши')
+    const roofUnderside = controller.group.getObjectByName('roof-slope:far')
+    assert.ok(roofUnderside)
+    controller.group.updateMatrixWorld(true)
+    const facadePosition = hiddenFacade.geometry.getAttribute('position')
+    const facadeRay = new THREE.Raycaster()
+    for (const along of [-.5, 0, .5]) for (const across of [-1 / 12, 1 / 12]) {
+      let top = -Infinity
+      for (let index = 0; index < facadePosition.count; index += 1) {
+        if (Math.abs(facadePosition.getX(index) - along) > 1e-5 || Math.abs(facadePosition.getZ(index) - across) > 1e-5) continue
+        top = Math.max(top, facadePosition.getY(index))
+      }
+      assert.ok(Number.isFinite(top), `верхняя вершина фасада ${along},${across}`)
+      const world = hiddenFacade.localToWorld(new THREE.Vector3(along, top, across))
+      facadeRay.set(new THREE.Vector3(world.x, 10, world.z), new THREE.Vector3(0, -1, 0))
+      const roofHit = facadeRay.intersectObject(roofUnderside, false)[0]
+      assert.ok(roofHit, `скат над фасадом ${along},${across}`)
+      assert.ok(Math.abs(world.y - roofHit.point.y) <= .005,
+        `щель под двускатной крышей ${along},${across}: ${world.y} / ${roofHit.point.y}`)
+    }
+    assert.equal(controller.group.getObjectByName('roof-wall-upper:3,2,e'), undefined,
+      'скрытая внутренняя перегородка не должна просачиваться в оболочку')
+    const inferred = []
+    controller.group.getObjectByName('roof-structures')?.traverse((object) => {
+      if (object.userData.board3dInferredRoof === true) inferred.push(object)
+    })
+    assert.ok(inferred.length > 0, 'скрытый объём помечен как inferred')
+    controller.setMode('cutaway')
+    assert.equal(inferred.every((object) => object.visible === false), true, 'стропила скрытого объёма не видны в cutaway')
+  } finally {
+    controller.dispose()
+  }
 })
 
 // ------------------------------------------------------ рисованный стиль
@@ -416,6 +524,64 @@ function houseMap(cells, zones = { main: cells }) {
   return mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
 }
 
+test('скрытый Г-образный дом получает цельную inferred-крышу, а детали скрываются в cutaway', () => {
+  const source = createTacticalMap({ width: 12, height: 12, seed: 'hidden-hip-roof', theme: 'building' })
+  addZone(source, { id: 'room', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Дом' })
+  addZone(source, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Двор' })
+  for (let y = 0; y < source.height; y += 1) for (let x = 0; x < source.width; x += 1) {
+    setCell(source, x, y, { passable: true, material: 'grass', zone: 'yard', revealed: true })
+  }
+  const cells = [...rectCells(2, 2, 5, 2), ...rectCells(2, 4, 3, 3)]
+  const members = footprintOf(cells)
+  for (const [x, y] of cells) setCell(source, x, y, { passable: true, material: 'stone', zone: 'room', revealed: false })
+  // Один раскрытый фрагмент толстой кладки входит в footprint вальмы. Стена
+  // под её внутренним краем должна подняться к скату, а не остаться на 1.8.
+  setCell(source, 1, 2, { passable: false, material: 'stone', zone: '', revealed: true })
+  for (const [x, y] of cells) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    if (members.has(`${x + dx},${y + dy}`)) continue
+    setEdge(source, x, y, x + dx, y + dy, { kind: 'wall', blocksMove: true, blocksSight: true })
+  }
+  const map = mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(source))))
+  const controller = roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  try {
+    assert.equal(meshesNamed(controller.group, 'roof-hip:').length, 1, 'скрытый Г-образный дом получает одну вальму')
+    assert.equal(meshesNamed(controller.group, 'roof-pitched:').length, 0)
+    const upperWalls = meshesNamed(controller.group, 'roof-wall-upper:')
+    assert.ok(upperWalls.length > 0, 'у inferred вальмы сохраняется видимый внешний верх стены')
+    assert.ok(upperWalls.some((mesh) => new THREE.Box3().setFromObject(mesh).max.y > roofs3d.BOARD3D_FULL_WALL_HEIGHT + .03),
+      'верх стены следует под скат над кольцом кладки')
+    const ringPanel = controller.group.getObjectByName('roof-wall-upper:1,2,e')
+    const hipSurface = controller.group.getObjectByName('roof-slope:hip')
+    assert.ok(ringPanel && hipSurface)
+    controller.group.updateMatrixWorld(true)
+    const ringPosition = ringPanel.geometry.getAttribute('position')
+    const topByAlong = new Map()
+    for (let index = 0; index < ringPosition.count; index += 1) {
+      const along = Math.round(ringPosition.getZ(index) * 1000) / 1000
+      const y = ringPosition.getY(index)
+      if (y > (topByAlong.get(along) ?? -Infinity)) topByAlong.set(along, y)
+    }
+    const ray = new THREE.Raycaster()
+    for (const along of [-.25, 0, .25]) {
+      const localY = topByAlong.get(along)
+      assert.ok(Number.isFinite(localY), `верхняя вершина стены в ${along}`)
+      const world = ringPanel.localToWorld(new THREE.Vector3(0, localY, along))
+      ray.set(new THREE.Vector3(world.x, 10, world.z), new THREE.Vector3(0, -1, 0))
+      const hit = ray.intersectObject(hipSurface, false)[0]
+      assert.ok(hit, `скат под верхом стены в ${along}`)
+      assert.ok(Math.abs(world.y - hit.point.y) <= .005, `щель под hip скатом в ${along}: ${world.y} / ${hit.point.y}`)
+    }
+    const structures = controller.group.getObjectByName('roof-structures')
+    const inferred = []
+    structures?.traverse((object) => { if (object.userData.board3dInferredRoof === true) inferred.push(object) })
+    assert.ok(inferred.length > 0, 'структура скрытого дома помечена inferred')
+    controller.setMode('cutaway')
+    assert.equal(inferred.every((object) => object.visible === false), true, 'детали скрытого дома не просачиваются в cutaway')
+  } finally {
+    controller.dispose()
+  }
+})
+
 test('Г-образный дом получает одну цельную крышу, а не две пересекающиеся', () => {
   const map = houseMap([...rectCells(1, 1, 6, 3), ...rectCells(1, 4, 3, 4)])
   const controller = roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
@@ -437,6 +603,30 @@ test('дом из двух комнат за перегородкой — одн
     assert.equal(pitched.length, 1, 'одна крыша на весь дом')
     assert.equal(pitched[0].rotation.y, 0, 'конёк вдоль длинной стороны (по X)')
     assert.equal(meshesNamed(controller.group, 'roof-hip:').length, 0)
+  } finally { controller.dispose() }
+})
+
+test('видимая дверь между корпусами получает верх стены под общей крышей', () => {
+  const map = houseMap(null, { hall: rectCells(1, 1, 4, 3), porch: rectCells(5, 1, 3, 3) })
+  setEdge(map, 4, 2, 5, 2, { kind: 'door', blocksMove: false, blocksSight: false })
+  const controller = roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  try {
+    const panel = controller.group.getObjectByName('roof-wall-upper:4,2,e')
+    assert.ok(panel, 'верх двери не должен отрываться от общей крыши')
+    assert.ok(new THREE.Box3().setFromObject(panel).max.y >= roofs3d.BOARD3D_FULL_WALL_HEIGHT - .001)
+  } finally { controller.dispose() }
+})
+
+test('верх стены держит низкий фасад, когда пол дома поднимается выше улицы', () => {
+  const map = houseMap(rectCells(1, 1, 4, 2))
+  setCell(map, 2, 1, { elevation: 5 })
+  const controller = roofs3d.createBoard3DRoofs(map, render.DEFAULT_BOARD_PALETTE, { mode: 'full' })
+  try {
+    const panel = controller.group.getObjectByName('roof-wall-upper:1,0,s')
+    assert.ok(panel)
+    const bounds = new THREE.Box3().setFromObject(panel)
+    assert.ok(Math.abs(bounds.min.y - .68) <= .001, `низ фасада не следует своей отметке: ${bounds.min.y}`)
+    assert.ok(bounds.max.y > 2.6, `верх фасада не дошёл до общей отметки крыши: ${bounds.max.y}`)
   } finally { controller.dispose() }
 })
 

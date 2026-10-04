@@ -126,6 +126,72 @@
 .board3d-cell .loot-cell-marker { pointer-events: auto; }
 .board3d-hotspot { position: absolute; inset: 15%; pointer-events: none; }
 .board3d-hotspot :is(button, [role="button"]) { pointer-events: auto; }
+/* В 3D подписи клеток стоят над проекцией центра клетки. Для двери слой
+   раскрывается на всю клетку, а кнопка уходит к нужному ребру; иначе общий
+   inset 15% оставляет узкую дверь без кликабельной зоны. */
+.board3d-hotspot:has(> .door-hotspot) { inset: 0; z-index: 2; }
+.board3d-hotspot > .door-hotspot {
+  position: absolute;
+  z-index: 1;
+  display: block;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  appearance: none;
+}
+.board3d-hotspot > .door-hotspot--e {
+  top: 12%;
+  right: -18%;
+  width: 36%;
+  height: 76%;
+}
+.board3d-hotspot > .door-hotspot--s {
+  left: 12%;
+  bottom: -18%;
+  width: 76%;
+  height: 36%;
+}
+.board3d-hotspot > .door-hotspot--w {
+  top: 12%;
+  left: -18%;
+  width: 36%;
+  height: 76%;
+}
+.board3d-hotspot > .door-hotspot--n {
+  left: 12%;
+  top: -18%;
+  width: 76%;
+  height: 36%;
+}
+.board3d-hotspot > .door-hotspot:hover,
+.board3d-hotspot > .door-hotspot:focus-visible {
+  border-color: rgba(238, 187, 112, .9);
+  background: rgba(203, 130, 49, .22);
+  box-shadow: 0 0 calc(var(--cell) * .16) rgba(225, 145, 54, .78);
+  outline: none;
+}
+.board3d-hotspot > .door-hotspot--locked:hover,
+.board3d-hotspot > .door-hotspot--locked:focus-visible,
+.board3d-hotspot > .door-hotspot--out-of-reach:hover,
+.board3d-hotspot > .door-hotspot--out-of-reach:focus-visible {
+  border-color: rgba(214, 117, 94, .96);
+  background: rgba(155, 55, 42, .22);
+  box-shadow: 0 0 calc(var(--cell) * .16) rgba(193, 75, 59, .72);
+}
+.board3d-hotspot > .door-hotspot--out-of-reach {
+  z-index: 0;
+  cursor: not-allowed;
+}
+.board3d-hotspot > .door-hotspot:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
 /* Итог хода и метка атаки по возможности над объёмной картой: место ставит
    `drawLabels`, масштаб доски их не касается. */
 .board3d .move-preview-label { position: absolute; z-index: 4; transform: translate(0, -50%); }

@@ -6,6 +6,7 @@ import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
 import { LIBRARY_SEED_PREFIX, activeMapLibrary, libraryIdsInUse, libraryRequestFor } from './map-library.mjs'
 import { sceneInteractionCatalogEntry, sceneInteractionFallbackAssets } from './scene-interactions.mjs'
 import { REFERENCE_SIZE } from './building-generator.mjs'
+import { applyRoomFloors } from './room-floors.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { sceneMapDesignFor, worldLocationDesignContext } from './scene-map-design.mjs'
 import { normalizeSceneRequirements, sceneMapRequirementsFor } from './scene-requirements.mjs'
@@ -35,6 +36,67 @@ function text(value, maxLength, fallback = '') {
 function integer(value, fallback, minimum, maximum) {
   const number = Number(value)
   return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
+}
+
+/**
+ * Нормализует покрытия уже собранной карты по теме, не меняя её планировку.
+ * Библиотечный путь и owner-only refresh используют одну функцию: иначе
+ * повторное открытие старой карты могло вернуть траву внутрь храма.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} theme
+ * @returns {number} сколько интерьерных зон получили правило пола
+ */
+export function refreshSceneFloors(map, theme = '') {
+  const normalized = String(theme ?? '').trim().toLocaleLowerCase('ru')
+  if (normalized !== 'temple' && !/храм|монастыр|святилищ|собор|капищ/iu.test(normalized)) return 0
+  promoteTempleNave(map)
+  return applyRoomFloors(map, {
+    use: 'temple', architecture: 'marble', defaultFloor: { material: 'marble', floor: 'mosaic' },
+  })
+}
+
+/**
+ * В библиотечной карте Stave Temple импорт пометил крытый неф как двор.
+ * Крыша и ряды скамей подтверждены изображением автора на TalesTavern.
+ * У этой карты известен непограничный прямоугольник с двенадцатью скамьями;
+ * перекрашиваем и классифицируем весь его исходный zoneId, включая края.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ */
+function promoteTempleNave(map) {
+  if (!String(map.seed ?? '').startsWith('library:tt-stave-temple:')) return
+  const zoneById = new Map(map.zones.map((zone) => [zone.id, zone]))
+  /** @type {Map<string, number>} */
+  const candidates = new Map()
+  for (const prop of map.props) {
+    if (!['bench', 'prayer_bench'].includes(String(prop.assetId))) continue
+    const zones = new Set(prop.footprint.map((point) => cellAt(map, point.x, point.y)?.zone).filter(Boolean))
+    for (const zoneId of zones) {
+      if (zoneById.get(zoneId)?.kind !== 'exterior') continue
+      candidates.set(zoneId, (candidates.get(zoneId) ?? 0) + 1)
+    }
+  }
+  for (const [zoneId, benches] of candidates) {
+    if (benches < 4) continue
+    const zone = zoneById.get(zoneId)
+    if (!zone) continue
+    let touchesBorder = false
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (cell?.passable && cell.zone === zoneId && (x === 0 || y === 0 || x === map.width - 1 || y === map.height - 1)) touchesBorder = true
+    }
+    if (touchesBorder) continue
+    zone.kind = 'interior'
+    zone.material = 'marble'
+    zone.lightLevel = 'dim'
+    zone.floorDirection = 'horizontal'
+    zone.label = 'Неф'
+    map.overlays = {
+      ...(map.overlays ?? {}),
+      roomLabels: [...(map.overlays?.roomLabels ?? []).filter((entry) => entry.zoneId !== zoneId), { zoneId, label: 'Неф' }],
+    }
+  }
 }
 
 /**
@@ -489,6 +551,10 @@ function librarySceneGeometry({ entry, levels }, { locationId, theme }) {
     map.locationId = publicText(locationId, 120)
     map.seed = `${LIBRARY_SEED_PREFIX}${entry.id}:${Number(level.index) || 0}`
     map.theme = text(theme, 60)
+    // Импортированный слэб хранит материал исходной плитки. У храмов это
+    // иногда трава даже под крышей; применяем тот же контракт пола, что и у
+    // процедурного храма, оставляя открытый двор с его исходным покрытием.
+    refreshSceneFloors(map, map.theme)
     return { index: Number(level.index) || 0, label: text(level.label, 120), map }
   })
   const ground = maps.find((level) => level.index === 0)?.map ?? maps[0].map

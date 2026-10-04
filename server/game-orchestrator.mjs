@@ -1010,12 +1010,13 @@ const FREE_ACTION_MOVEMENT_EVENT = /move|travel|arriv|depart|relocat|levelchange
  * перемещения или перехода. Импровизация героя не двигает, и её решение
  * записано с `world_change: false`, поэтому «Вышло: войти внутрь маяка» было
  * обещанием, которого commit не держит. Плейтест 2026-10-04, MAP2-02: отряд
- * остался во дворе, а игрок не понял, что делать дальше. Трюк сюда не входит:
- * он и так говорит «герой остаётся на месте».
+ * остался во дворе, а игрок не понял, что делать дальше. Даже если арбитр
+ * назвал подход трюком, passage-цель обязана получить такой же честный
+ * fallback, когда безопасного `ActorMoved` не было.
  */
 function unconfirmedFreeActionPassage({ freeAction, message, events, state }) {
   if (!['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) return false
-  if (freeAction?.reading?.activity_kind === 'stunt' || state?.mechanics?.combat?.active) return false
+  if (state?.mechanics?.combat?.active) return false
   if (!freeActionGoalIsPassage(freeAction?.reading?.goal_summary || message)) return false
   return !(events ?? []).some((event) => FREE_ACTION_MOVEMENT_EVENT.test(String(event?.event_type ?? '')))
 }
@@ -1688,7 +1689,7 @@ export class GameOrchestrator {
       : groundedVerification?.valid && groundedNarration
         ? groundedNarration
         : freeAction.kind === 'clarification'
-          ? 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
+          ? candidateNarration || deterministicNarration || 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
           // Исход уже записан событиями: если ни один текст не прошёл guard,
           // честнее короткое «вышло / не вышло», чем просьба уточнить уже
           // сыгранное действие.

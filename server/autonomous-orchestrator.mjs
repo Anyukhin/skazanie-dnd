@@ -60,6 +60,7 @@ import {
   damageTypeLabelRu,
   FREE_ACTION_RESOLUTION_POLICY_VERSION,
   freeActionResolutionPolicy,
+  freeActionPassagePlan,
   freeActionSuccessPromise,
   hasRecognizedFreeActionApproach,
   interpretFreeAction,
@@ -1051,6 +1052,26 @@ export class AutonomousCampaignOrchestrator {
         return { ...unchanged, kind: 'clarification', narration: `${error.message}. Измените способ или выберите доступную цель на карте.` }
       }
     }
+    const passagePlan = previousCommit?.events?.length
+      ? { status: 'not_applicable' }
+      : freeActionPassagePlan(loaded.state, actorId, text)
+    if (['blocked', 'already_inside', 'ambiguous'].includes(passagePlan.status)) {
+      const narration = passagePlan.status === 'ambiguous'
+        ? `Поблизости несколько одинаково близких входов (${(passagePlan.door_ids ?? []).join(', ')}). Выберите дверь на карте.`
+        : passagePlan.status === 'already_inside'
+          ? 'Герой уже находится внутри этой сцены.'
+          : passagePlan.reason === 'destination_mismatch'
+            ? 'В текущей сцене нет названного здания. Уточните место, не меняя его словами.'
+            : passagePlan.reason === 'alternate_route'
+              ? 'Этот способ требует отдельного окна, пролома или щели. Выберите подтверждённый проход на карте.'
+              : 'Откройте дверь на карте и повторите действие.'
+      return {
+        context_metadata: actionContextMetadata,
+        kind: 'clarification', narration, turn_consumed: false, admin_commands: 0,
+        state: loaded.state, state_version: loaded.state_version,
+        events: [], commands: [], rolls: [], duplicate: false,
+      }
+    }
     if (text.length < 8 || isNoise(text) || /^(?:это|туда|сделать|что-то|как-нибудь)[?.!]*$/iu.test(text)) {
       const commit = await run([declaration])
       verifyDuplicate(commit)
@@ -1583,6 +1604,9 @@ export class AutonomousCampaignOrchestrator {
     }
 
     const outcomePolicy = freeActionResolutionPolicy(reading)
+    const passageDestination = !loaded.state.mechanics?.combat?.active && passagePlan.status === 'ready'
+      ? passagePlan.destination
+      : null
     const stakes = stakesFor({
       ability: reading.ability,
       skill: reading.skill,
@@ -1623,9 +1647,14 @@ export class AutonomousCampaignOrchestrator {
 
     // Автоуспех — тоже событие: replay обязан его воспроизводить.
     if (resolution.mode === 'auto_success') {
+      const successRuling = { ...ruling, outcome: 'success', world_change: Boolean(passageDestination) }
       const commit = await run([
         declaration,
-        { command_type: 'RecordRuling', ruling: { ...ruling, outcome: 'success' }, ruling_id: ruling.id },
+        { command_type: 'RecordRuling', ruling: successRuling, ruling_id: ruling.id },
+        ...(passageDestination ? [{
+          command_type: 'MoveActor', actor_id: actorId, to: passageDestination.to,
+          server_authoritative: true, ruling_id: ruling.id,
+        }] : []),
         ...(!loaded.state.mechanics?.combat?.active && outcomePolicy.success_minutes > 0
           ? [{ command_type: 'AdvanceTime', amount: outcomePolicy.success_minutes, unit: 'minute' }] : []),
       ])
@@ -1719,9 +1748,11 @@ export class AutonomousCampaignOrchestrator {
       approach: reading.approach_summary,
       cost: inCombat ? actionCost.slot || 'свободное взаимодействие' : outcomePolicy.cost,
       on_success: inCombat ? effectPreview.effect.id === 'none' ? 'Попытка будет отмечена в истории без механического эффекта.' : effectPreview.summary
-        : reading.activity_kind === 'stunt'
+        : passageDestination
+          ? freeActionSuccessPromise(reading, { passageAvailable: true })
+          : reading.activity_kind === 'stunt'
           ? 'Трюк удаётся; герой остаётся на месте.'
-          : freeActionSuccessPromise(reading),
+          : freeActionSuccessPromise(reading, { passageAvailable: false }),
       on_failure: inCombat
         ? `${actionCost.cost === 'free' ? 'Задумка не удастся; действие и бонусное действие сохранятся.' : `Задумка не удастся; ${actionCost.slot} будет потрачено.`}${failure.damage_expression ? ` ${failure.summary}` : ''}`
         : failure.summary,
@@ -1801,7 +1832,7 @@ export class AutonomousCampaignOrchestrator {
     const checkEvent = (checkCommit.events ?? []).find((entry) => entry.event_type === 'AbilityCheckResolved')
     const succeeded = checkEvent?.payload?.success === true
     const consequence = outcomePolicy.failure
-    const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure' }
+    const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure', world_change: succeeded && Boolean(passageDestination) }
     // Внутри раунда время не идёт и цель отряда не переписывается: ход занимает
     // секунды, а «следующая цель» посреди боя ломала бы сцену.
     const effectPlan = succeeded && inCombat
@@ -1811,6 +1842,10 @@ export class AutonomousCampaignOrchestrator {
       : null
     const followUp = [
       { command_type: 'RecordRuling', ruling: outcomeRuling, ruling_id: ruling.id },
+      ...(succeeded && passageDestination ? [{
+        command_type: 'MoveActor', actor_id: actorId, to: passageDestination.to,
+        server_authoritative: true, ruling_id: ruling.id,
+      }] : []),
       ...(effectPlan?.commands ?? []),
       ...(!succeeded && consequence.damage_expression ? [{
         command_type: 'ApplyDamage', actor_id: actorId, target_id: actorId,
