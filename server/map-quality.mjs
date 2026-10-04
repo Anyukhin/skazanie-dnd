@@ -577,7 +577,31 @@ const POCKET_LIMIT = 4
 
 /** Простор у центра сцены: свободных досягаемых клеток в двух шагах вокруг предмета. */
 const FOCUS_RADIUS = 2
-const FOCUS_MIN_ROOM = 6
+export const FOCUS_MIN_ROOM = 6
+
+/**
+ * Простор у предмета центра сцены: свободные досягаемые клетки в двух шагах
+ * вокруг его следа. Одна мерка для проверки программы и для расстановки
+ * центра (`placeSceneFocus`), иначе расстановка засчитывает предмет, который
+ * проверка потом назовёт зажатым.
+ *
+ * @param {Array<{x: number, y: number}>} footprint
+ * @param {Set<string>} reached клетки, досягаемые от входа отряда
+ * @param {Set<string>} blocked клетки под глухими предметами
+ * @returns {number}
+ */
+export function focusRoom(footprint, reached, blocked) {
+  const own = new Set(footprint.map((point) => `${point.x},${point.y}`))
+  /** @type {Set<string>} */
+  const around = new Set()
+  for (const point of footprint) {
+    for (let dy = -FOCUS_RADIUS; dy <= FOCUS_RADIUS; dy += 1) for (let dx = -FOCUS_RADIUS; dx <= FOCUS_RADIUS; dx += 1) {
+      const at = `${point.x + dx},${point.y + dy}`
+      if (!own.has(at) && reached.has(at) && !blocked.has(at)) around.add(at)
+    }
+  }
+  return around.size
+}
 
 /**
  * Проверка карты против программы сцены (`scene.map_requirements`): обещанное
@@ -650,17 +674,7 @@ export function programReport(map, program, { minSize = null, openScene = false 
     let roomiest = 0
     for (const prop of map.props) {
       if (!assets.has(prop.assetId)) continue
-      const own = new Set((prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]).map((point) => `${point.x},${point.y}`))
-      /** @type {Set<string>} */
-      const around = new Set()
-      for (const key of own) {
-        const [x, y] = key.split(',').map(Number)
-        for (let dy = -FOCUS_RADIUS; dy <= FOCUS_RADIUS; dy += 1) for (let dx = -FOCUS_RADIUS; dx <= FOCUS_RADIUS; dx += 1) {
-          const at = `${x + dx},${y + dy}`
-          if (!own.has(at) && reached.has(at) && !blocked.has(at)) around.add(at)
-        }
-      }
-      roomiest = Math.max(roomiest, around.size)
+      roomiest = Math.max(roomiest, focusRoom(prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }], reached, blocked))
     }
     if (roomiest < FOCUS_MIN_ROOM) problems.push({ code: 'FOCUS_CRAMPED', detail: `${focus}: ${roomiest} кл.` })
   }

@@ -187,6 +187,19 @@ test('этап 4: малая деревня, глухая площадь и пр
   assert.deepEqual(programReport(edge, null).warnings.map((warning) => warning.code), ['PROP_ON_EDGE'])
 })
 
+test('этап 3: зажатый в тупике колодец центром не засчитывается и уступает место', () => {
+  const map = field()
+  // Тупик справа: колодец в конце прохода в две клетки, вокруг глухо.
+  for (let y = 0; y < 10; y += 1) for (let x = 8; x < 12; x += 1) if (!(y === 5 && x <= 10)) setCell(map, x, y, { passable: false })
+  addProp(map, { id: 'prop-1-well', assetId: 'well', x: 10.5, y: 5.5, footprint: [{ x: 10, y: 5 }], blocksMove: true })
+  const program = { items: [{ id: 'well', count: 1 }], focus: 'well' }
+  assert.deepEqual(programReport(map, program).problems, [{ code: 'FOCUS_CRAMPED', detail: 'well: 2 кл.' }])
+  applyScenePlan(map, program, { seed: 'field-nook' })
+  const wells = map.props.filter((prop) => prop.assetId === 'well')
+  assert.deepEqual(wells.map((prop) => prop.id), ['program-focus-well'], 'второй колодец рядом с зажатым не встаёт')
+  assert.deepEqual(programReport(map, program).problems, [])
+})
+
 test('этап 3–4: настил считается по клеткам карты и воплощает программу', () => {
   const map = field()
   const program = { items: [{ id: 'platform', count: 2 }], focus: 'platform' }
