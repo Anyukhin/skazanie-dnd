@@ -150,7 +150,18 @@ export const NPC_CONVERSATION_STANCE_LABELS = {
   hostile: 'враждебно',
 } as const
 
+/** Прежняя высота панели в пикселях: больше не читается, ключ только удаляется. */
 export const RAIL_HEIGHT_KEY = 'skazanie-rail-height-v1'
+/** Высота нижней панели — рядами плиток, как «+ / − ряд» в BG3. */
+export const HUD_ROWS_KEY = 'skazanie-hud-rows-v1'
+export const HUD_ROWS_MIN = 2
+export const HUD_ROWS_MAX = 5
+export const HUD_ROWS_DEFAULT = 3
+/** Сколько рядов помещается: панель не выше 40 % окна, доска остаётся главной.
+    112 px — лоток, вкладки и поля панели, 52 px — ряд плиток с зазором. */
+export function hudRowsLimit(viewportHeight: number) {
+  return Math.max(HUD_ROWS_MIN, Math.min(HUD_ROWS_MAX, Math.floor((viewportHeight * .4 - 112) / 52)))
+}
 export const SERVER_WIDTH_KEY = 'skazanie-server-width-v1'
 export const TILE_LOCK_KEY = 'skazanie-tiles-locked-v1'
 export const TILE_ORDER_KEY = 'skazanie-tile-order-v1'

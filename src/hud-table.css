@@ -163,7 +163,7 @@ button.hud-slot[aria-pressed="true"] { background: var(--acc-soft); color: var(-
 
 /* ---------------- окно реакции над панелью героя ---------------- */
 
-.reaction-backdrop.hud-react-layer { position: fixed; inset: auto 0 calc(var(--ui-rail-height, 214px) + 12px) var(--rail-w, 84px); right: var(--server-column, 380px); z-index: 140; display: flex; justify-content: center; padding: 0 12px; background: none; backdrop-filter: none; pointer-events: none; }
+.reaction-backdrop.hud-react-layer { position: fixed; inset: auto 0 calc(var(--hud-rail-h, var(--ui-rail-height, 214px)) + 12px) var(--rail-w, 84px); right: var(--server-column, 380px); z-index: 140; display: flex; justify-content: center; padding: 0 12px; background: none; backdrop-filter: none; pointer-events: none; }
 .hud-react-layer > .reaction-prompt { position: relative; width: min(520px, 100%); max-height: min(70vh, 560px); overflow: auto; border: 1px solid var(--acc2); border-radius: 10px; background: var(--pop); box-shadow: var(--shadow); pointer-events: auto; }
 .hud-react-layer > .reaction-prompt > header { padding: 12px 14px; }
 .hud-react-layer > .reaction-prompt > header strong { font-size: var(--fs-2xl); }
