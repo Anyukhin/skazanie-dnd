@@ -3723,8 +3723,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {(!inspectedForecast || !inspectedForecast.in_range) && <p>{inspectedTarget.reason}</p>}
             {inspectedForecast && <div className={`attack-forecast ${inspectedForecast.advantage && !inspectedForecast.disadvantage ? 'advantage' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? 'disadvantage' : ''}`}>
               <header>
-                <b>{inspectedForecast.in_range ? `${inspectedForecast.hit_chance}%` : '—'}</b>
-                <span>{inspectedForecast.in_range ? 'шанс попасть' : 'не достать'}<small>{inspectedForecast.label}{inspectedForecast.in_range ? ` · крит ${inspectedForecast.critical_chance}%` : ` · ${inspectedForecast.unreachable_reason}`}</small></span>
+                {/* Пока КД цели не узнана, сервер не отдаёт и процент: при
+                    известном бонусе атаки он однозначно выдаёт закрытую КД. */}
+                <b>{!inspectedForecast.in_range ? '—' : inspectedForecast.hit_chance == null ? '?' : `${inspectedForecast.hit_chance}%`}</b>
+                <span>{!inspectedForecast.in_range ? 'не достать' : inspectedForecast.hit_chance == null ? 'шанс неизвестен' : 'шанс попасть'}<small>{inspectedForecast.label}{!inspectedForecast.in_range
+                  ? ` · ${inspectedForecast.unreachable_reason}`
+                  : inspectedForecast.critical_on_hit ? ' · попадание станет критом'
+                    : inspectedForecast.critical_chance != null ? ` · крит ${inspectedForecast.critical_chance}%` : ''}</small></span>
               </header>
               <dl>
                 <div><dt>Бросок</dt><dd>d20 {inspectedForecast.attack_modifier >= 0 ? '+' : '−'} {Math.abs(inspectedForecast.attack_modifier)}{inspectedForecast.advantage && !inspectedForecast.disadvantage ? ' с преимуществом' : inspectedForecast.disadvantage && !inspectedForecast.advantage ? ' с помехой' : ''}</dd></div>

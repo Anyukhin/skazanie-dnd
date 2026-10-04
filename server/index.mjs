@@ -93,7 +93,7 @@ import {
   campaignRulesetMetadata,
   campaignRulesetSettings,
 } from './campaign-ruleset.mjs'
-import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, attackForecast, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
+import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorNameResolver, applyGameEvent, assertSendLetterAllowed, normalizeCampaignState, npcCombatRequestFingerprint } from './rules-engine.mjs'
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
@@ -138,6 +138,7 @@ import {
 import { DEADLY_ENCOUNTER_WARNING, assembleEncounter, encounterBarrierSides } from './encounter-assembler.mjs'
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
+import { withCombatForecast } from './combat-forecast-view.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { assertCampaignPlayable, lifecycleEventForAction } from './campaign-lifecycle.mjs'
@@ -2273,43 +2274,6 @@ function campaignVoterCount(campaignId, state = {}) {
  * игрок видит шанс попадания и его причины до клика, но не получает скрытые
  * параметры врага — КД раскрывается только там, где уже раскрыто здоровье.
  */
-function withCombatForecast(projected, trustedState, viewerActorId) {
-  if (!projected || !trustedState?.mechanics?.combat?.active) return projected
-  const attackerId = String(trustedState.mechanics.combat.initiative?.[trustedState.mechanics.combat.active_index ?? 0]?.actor_id ?? '')
-  if (!attackerId) return projected
-  // Прогноз нужен только тому, кто сейчас ходит: чужой ход игрок не планирует.
-  const controls = String(viewerActorId ?? '') === attackerId
-    || (projected.players ?? []).some((player) => String(player.id) === attackerId)
-  if (!controls) return projected
-  const attacker = (trustedState.players ?? []).concat(trustedState.actors ?? []).find((actor) => String(actor.id) === attackerId)
-  if (!attacker) return projected
-  const options = [
-    ...(attacker.inventory ?? []).filter((item) => item?.equipped && item?.combat?.kind).map((item) => ({ itemId: String(item.id), label: String(item.name ?? 'Оружие') })),
-    { itemId: null, label: 'Базовая атака' },
-  ].slice(0, 6)
-  const forecast = {}
-  for (const enemy of trustedState.enemies ?? []) {
-    if (!enemy || enemy.alive === false || Number(enemy.hp) <= 0) continue
-    const enemyId = String(enemy.id)
-    const visible = (projected.enemies ?? []).find((candidate) => String(candidate.id) === enemyId)
-    if (!visible) continue
-    const exact = visible.healthKnown === 'exact'
-    const entries = []
-    for (const option of options) {
-      const shot = attackForecast(trustedState, attackerId, enemyId, { itemId: option.itemId })
-      if (!shot) continue
-      entries.push({
-        ...shot,
-        label: option.label,
-        item_id: option.itemId,
-        ...(exact ? {} : { armor_class: null, cover_bonus: shot.cover_bonus }),
-      })
-    }
-    if (entries.length) forecast[enemyId] = entries
-  }
-  return Object.keys(forecast).length ? { ...projected, combatForecast: { actor_id: attackerId, targets: forecast } } : projected
-}
-
 function viewerStateFor(state, user, actorId) {
   return withCombatForecast(campaignStateForViewer(state, user, actorId), state, actorId)
 }

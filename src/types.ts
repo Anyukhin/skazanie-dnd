@@ -2709,8 +2709,13 @@ export type AttackForecast = {
   disadvantage: boolean
   advantage_sources: string[]
   disadvantage_sources: string[]
+  /** `null` и при недосягаемой цели, и при закрытой КД — различает `armor_known`. */
   hit_chance: number | null
   critical_chance: number | null
+  /** Любое попадание станет критом (обездвиженная цель в упор). */
+  critical_on_hit?: boolean
+  /** КД цели известна этому зрителю; без неё шанс попасть не раскрывается. */
+  armor_known?: boolean
   average_damage: number
 }
 

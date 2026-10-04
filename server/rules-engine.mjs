@@ -3893,9 +3893,8 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
   const swing = attackSwingShape(state, attackerIdValue, targetIdValue, profile, { actorAt, targetAt, distanceFeet })
   const hitChance = d20HitChance(armorClass - modifier, swing)
   // Крит по обездвиженной цели в упор гарантирован правилами, а не костью.
-  const criticalChance = swing.automaticCritical && distanceFeet != null && distanceFeet <= (profile.kind === 'melee' ? profile.normal_range_feet : 5)
-    ? hitChance
-    : d20HitChance(20, swing)
+  const criticalOnHit = Boolean(swing.automaticCritical && distanceFeet != null && distanceFeet <= (profile.kind === 'melee' ? profile.normal_range_feet : 5))
+  const criticalChance = criticalOnHit ? hitChance : d20HitChance(20, swing)
   const reachable = inRange && !blockedTrajectory
   return {
     action_id: String(profile.id ?? actionId ?? ''),
@@ -3918,6 +3917,9 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
     disadvantage_sources: reachable ? swing.disadvantageSources : [],
     hit_chance: reachable ? Math.round(hitChance * 100) : null,
     critical_chance: reachable ? Math.round(criticalChance * 100) : null,
+    // Любое попадание станет критом: тогда шанс крита равен шансу попасть и
+    // зависит от КД цели. Проекция зрителя по этому флагу прячет и его.
+    critical_on_hit: reachable && criticalOnHit,
     average_damage: averageDamageOf(profile),
   }
 }
