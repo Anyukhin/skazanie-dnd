@@ -100,6 +100,7 @@ import { GAME_REDUCER_VERSION, GAME_STATE_PROJECTOR_VERSION, RulesEngine, actorN
 import { runNpcTurnScheduler } from './npc-turn-scheduler.mjs'
 import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-coordinator.mjs'
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
+import { claimStorageWriter } from './backup-service.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect.mjs'
 import { partyOptionLabel, proposeAgentInteraction, proposeRoutedTravel, resolvePartyDecision } from './player-request-router.mjs'
@@ -161,7 +162,7 @@ import {
   resolvePartyRoll,
   resolvePartyVote,
 } from './party-decision.mjs'
-import { compareProjection } from './projection-integrity.mjs'
+import { CANONICAL_PROJECTION_FIELDS, compareProjection } from './projection-integrity.mjs'
 import { characterCreationCatalog, createCharacterSlot } from './character-lifecycle.mjs'
 import {
   NPC_PORTRAIT_GENERATION_LIMIT,
@@ -218,6 +219,15 @@ const imageModel = process.env.DND_IMAGE_MODEL || 'openai/gpt-image-1'
  * новые готовятся заранее режимом подготовки.
  */
 const runtimeImageGeneration = ['on', 'true', '1', 'yes'].includes(String(process.env.DND_RUNTIME_IMAGE_GENERATION ?? '').trim().toLowerCase())
+// Аудит PR #131, RCV-05: сервер объявляет себя писателем storage до первой
+// записи, и `pnpm backup` не снимает копию с живого хранилища. Отметка
+// снимается при любом штатном выходе; после аварии её распознают устаревшей
+// по pid и по остановившемуся сигналу (`server/backup-service.mjs`).
+const storageWriter = claimStorageWriter(storageDir)
+process.once('exit', () => storageWriter.release())
+// Без обработчика SIGINT/SIGTERM завершают процесс мимо события 'exit', и
+// отметка оставалась бы до признания устаревшей. Выход штатный, с кодом сигнала.
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.once(signal, () => process.exit(code))
 const generatedDir = join(storageDir, 'generated', 'items')
 mkdirSync(generatedDir, { recursive: true })
 const usageLedger = new DurableUsageLedger({
@@ -3187,8 +3197,17 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const currentStateVersion = Number(room.state.state_version ?? 0)
     if (proposedStateVersion < currentStateVersion) return room
     if (!forceProjectorRefresh && proposedStateVersion === currentStateVersion && !journalMessage) {
-      const projectionAck = acknowledge(proposedStateVersion)
-      return projectionAck ? { ...room, projectionAck } : room
+      // Аудит PR #131, SEC-02: равная версия ещё не значит равное содержимое.
+      // Раньше этот быстрый путь подтверждал проекцию без сверки и без hash:
+      // комната, изменённая вне журнала при той же `state_version`, снимала
+      // pending checkpoint и оставалась расходящейся. Теперь подтверждается
+      // только совпавшая проекция с вычисленным здесь hash, а расхождение идёт
+      // ниже, в полную перезапись комнаты из авторитетного состояния.
+      const comparison = compareProjection(engineState, room.state)
+      if (comparison.matched) {
+        const projectionAck = acknowledge(proposedStateVersion, { projectionHash: comparison.projected_hash })
+        return projectionAck ? { ...room, projectionAck } : room
+      }
     }
     // Раньше здесь жили два списка типов событий: `refreshInventory` на
     // одиннадцать `Item*`-типов и `characterBuildChanged` на четыре. Забыть тип
@@ -3228,8 +3247,14 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     }
     if (messages.length > JOURNAL_HISTORY_LIMIT) messages.splice(0, messages.length - JOURNAL_HISTORY_LIMIT)
     const onlineById = new Map((room.state.players ?? []).map((player) => [String(player.id), Boolean(player.online)]))
+    // Аудит PR #131, SEC-02: «из движка целиком» включает и удаление. Поле,
+    // которое движок снял (например, `tacticalTurn` при смене сцены), раньше
+    // переживало слияние с прежней комнатой, и сверка этой комнаты не сходилась
+    // уже никогда — ни здесь, ни при восстановлении на GET.
+    const roomBase = { ...room.state }
+    for (const field of CANONICAL_PROJECTION_FIELDS) if (!Object.hasOwn(engineState, field)) delete roomBase[field]
     const next = normalizeCampaignState({
-      ...room.state,
+      ...roomBase,
       ...engineState,
       agentInteraction: engineState.agentInteraction ?? null,
       players: (engineState.players ?? []).map((player) => ({
@@ -3300,6 +3325,44 @@ async function reconcileAllCampaignProjections() {
     } catch (error) {
       console.error(`[Сказание] Не удалось восстановить projection ${campaignId}:`, error)
     }
+  }
+}
+
+/**
+ * Аудит PR #131, SEC-04: резерв броска, взятый `consume` до commit, снимается,
+ * если запрос упал, а commit по его ключу так и не появился. Исход читается из
+ * журнала, а не из исключения: ошибка после commit (проекция, летопись) бросок
+ * не возвращает. Не удалось прочитать журнал — бросок остаётся потреблённым.
+ *
+ * Исключение — `ROLL_CONTEXT_MISMATCH`: кость подали не к той заявке, под
+ * которую она брошена (другой подход, другая карточка). Это не сбой хода, а
+ * отвергнутая попытка переиграть объявленное решение, и кость сгорает, как и
+ * прежде (`test/tavern-api.test.mjs`).
+ */
+async function finishFailedRollReservation(reservation, error) {
+  if (!reservation) return
+  let committed = true
+  if (error?.code !== 'ROLL_CONTEXT_MISMATCH') {
+    try {
+      committed = Boolean(await eventStore.getByIdempotencyKey(reservation.campaignId, reservation.idempotencyKey))
+    } catch { /* исход неизвестен — резерв не снимаем */ }
+  }
+  try {
+    rollRegistry.finishReservation(reservation.rollId, { idempotencyKey: reservation.idempotencyKey, committed })
+  } catch (error) {
+    console.warn('[Сказание] Резерв броска не снят:', error?.code ?? error?.message)
+  }
+}
+
+/** Аудит PR #131, SEC-04: на старте держателей нет — осиротевшие резервы снимаются. */
+async function releaseOrphanRollReservations() {
+  try {
+    const released = await rollRegistry.releaseOrphanReservations(async (campaignId, idempotencyKey) => (
+      Boolean(await eventStore.getByIdempotencyKey(campaignId, idempotencyKey))
+    ))
+    if (released.length) console.warn(`[Сказание] Сняты резервы бросков без commit: ${released.length}`)
+  } catch (error) {
+    console.error('[Сказание] Не удалось проверить резервы бросков:', error)
   }
 }
 
@@ -5124,6 +5187,8 @@ async function handleHttpRequest(req, res) {
     // дело могло и не дойти.
     let lootRequestActorId = ''
     let lootRequestContainerId = ''
+    // Аудит PR #131, SEC-04: резерв броска до исхода хода.
+    let rollReservation = null
     try {
       const room = getRoom(commandMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
@@ -5328,10 +5393,16 @@ async function handleHttpRequest(req, res) {
       let verifiedRoll = null
       if (body.roll?.roll_id) {
         verifiedRoll = rollRegistry.consume(body.roll.roll_id, { campaignId: commandMatch[1], actorId: actor, idempotencyKey })
+        rollReservation = { rollId: body.roll.roll_id, campaignId: commandMatch[1], idempotencyKey }
       } else if (body.roll) {
         throw commandPolicyError('Принимается только серверный roll_id', 'UNVERIFIED_ROLL')
       }
       let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, requestCommands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]), manualRoll, verifiedRoll })
+      // Ход исполнен: бросок остаётся потреблённым, как и прежде.
+      if (rollReservation) {
+        rollRegistry.finishReservation(rollReservation.rollId, { idempotencyKey, committed: true })
+        rollReservation = null
+      }
       // Карточка проверки: мир не изменился, продолжать бой и проецировать
       // нечего. Ответ уходит игроку как есть.
       if (result.check) return json(res, 200, turnResultForViewer({ ...result, room_version: room.version }, user, actor))
@@ -5417,6 +5488,7 @@ async function handleHttpRequest(req, res) {
       const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
+      await finishFailedRollReservation(rollReservation, error)
       const internal = !error?.code || ['EIO', 'ENOSPC', 'CORRUPT_EVENT_LOG', 'CAMPAIGN_RECOVERY_REQUIRED', 'INVALID_STORE_FILE'].includes(error.code)
       const status = internal ? 500
         : ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'ENCOUNTER_ALREADY_PRESENT', 'ENCOUNTER_DURING_COMBAT'].includes(error?.code) ? 409
@@ -5637,6 +5709,8 @@ async function handleHttpRequest(req, res) {
   if (req.url === '/api/narrate' && req.method === 'POST') {
     const user = requireUser(req, res); if (!user) return
     let narrationTransport = null
+    // Аудит PR #131, SEC-04: резерв броска до исхода хода.
+    let rollReservation = null
     try {
       const body = await readBody(req)
       const action = String(body.action || '').trim().slice(0, 2_000)
@@ -5723,6 +5797,7 @@ async function handleHttpRequest(req, res) {
             }
           },
         })
+        rollReservation = { rollId: body.roll.roll_id, campaignId, idempotencyKey }
       } else if (body.roll && mode === 'enforce') {
         return json(res, 400, { error: 'Enforce-режим принимает только серверный roll_id', code: 'UNVERIFIED_ROLL' })
       }
@@ -5852,6 +5927,11 @@ async function handleHttpRequest(req, res) {
           }
         }
       })
+      // Ход исполнен: бросок остаётся потреблённым, как и прежде.
+      if (rollReservation) {
+        rollRegistry.finishReservation(rollReservation.rollId, { idempotencyKey, committed: true })
+        rollReservation = null
+      }
       if (result.idempotent_replay) {
         const persistedNarration = (getRoom(campaignId).state?.messages ?? [])
           .find((message) => String(message.id) === streamMessageId)
@@ -5953,6 +6033,7 @@ async function handleHttpRequest(req, res) {
           })
         } catch { /* Ошибка SSE не подменяет исход авторитетного запроса. */ }
       }
+      await finishFailedRollReservation(rollReservation, error)
       const status = ['STATE_VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'PARTY_DECISION_ALREADY_CONSUMED'].includes(error?.code) ? 409 : error?.code === 'ROLL_ALREADY_USED' || error?.code === 'ROLL_FORBIDDEN' ? 400 : error?.code?.startsWith('LLM_') ? 502 : 400
       if (res.destroyed || res.writableEnded) return
       return json(res, status, { error: error instanceof Error ? error.message : 'Ошибка игрового оркестратора', code: error?.code })
@@ -5964,6 +6045,7 @@ async function handleHttpRequest(req, res) {
 }
 
 await reconcileAllCampaignProjections()
+await releaseOrphanRollReservations()
 // Простаивающее соединение держим дольше клиентского keep-alive (у fetch/undici
 // это 4–5 секунд, у обратных прокси — до минуты). При стандартных 5 секундах
 // сервер под нагрузкой закрывал сокет ровно тогда, когда клиент отправлял по

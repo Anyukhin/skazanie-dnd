@@ -35,6 +35,13 @@ const CANONICAL_FIELDS = Object.freeze([
   'engine_mode',
 ])
 
+/**
+ * Поля комнаты, которые целиком принадлежат движку. Проекция обязана снимать
+ * из комнаты поле, которого в авторитетном состоянии больше нет (аудит PR #131,
+ * SEC-02), иначе сверка расходится навсегда.
+ */
+export const CANONICAL_PROJECTION_FIELDS = CANONICAL_FIELDS
+
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue)
   if (!value || typeof value !== 'object') return value
