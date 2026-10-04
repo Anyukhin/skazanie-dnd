@@ -92,6 +92,21 @@ test('дверь становится фактом без AbilityCheckResolved, 
   }), [])
 })
 
+test('выломанная и взломанная дверь тоже становятся фактом, неудачная попытка — нет', () => {
+  // Взлом и выламывание меняют дверь своим событием, без DoorStateChanged. До
+  // 2026-10-04 открытая дверь оставляла факт, а выломанная — нет (PR #136).
+  for (const [event_type, text] of [['DoorForced', /Дверь выломана/u], ['DoorLockpicked', /Замок двери взломан/u]]) {
+    const success = { event_type, event_id: `evt-${event_type}`, visibility: 'party', payload: { door_id: 'door-1', success: true, previous_state: 'locked' } }
+    const fact = materialConsequenceCommands(state(), { succeeded: true, committedEvents: [success] })
+      .find((command) => command.command_type === 'RecordWorldFact')?.fact
+    assert.ok(fact, event_type)
+    assert.match(fact.summary, text)
+    assert.deepEqual(fact.source_event_ids, [`evt-${event_type}`])
+    const failure = { ...success, event_id: `evt-${event_type}-fail`, payload: { ...success.payload, success: false } }
+    assert.deepEqual(materialConsequenceCommands(state(), { succeeded: true, committedEvents: [failure] }), [], `${event_type}: провал`)
+  }
+})
+
 test('провал мир не меняет, даже если ставка была смертельной', () => {
   assert.deepEqual(
     materialConsequenceCommands(state(), { succeeded: false, reading: reading({ risk: 'deadly' }), checkEvent: checkEvent() }),
