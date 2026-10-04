@@ -27,6 +27,9 @@
 .creation-spells article.blocked button{cursor:pointer}
 .character-creation-wizard>footer .creation-error{color:#e6a5a0}
 
+/* Покупка сверх остатка и корзина дороже бюджета (плейтест 2026-10-04). */
+.creation-form p.creation-purchase-warning{color:#e6a5a0}
+
 /* Выбор числа мест героев в мастере кампании. */
 .slot-count-picker{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .slot-count-picker button{display:grid;gap:3px;place-items:center;padding:10px 6px;border:1px solid rgba(255,255,255,.09);border-radius:7px;background:rgba(255,255,255,.02);color:#a9a094;cursor:pointer}

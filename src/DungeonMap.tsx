@@ -115,10 +115,14 @@ import {
   mechanicsSupportPresentation,
   movementCellReason,
   pointInAreaEffect,
+  sceneObjectApproachHint,
+  sceneObjectDistanceFeet,
   type MovementPath,
 } from './tactical-ui'
 import { SUPERSEDED_FEATURE_POOLS, fallbackCombatActions } from './combat-actions'
-import { allCatalogCombatSpells, fallbackCombatSpells } from './combat-spells'
+import { allCatalogCombatSpells, fallbackCombatSpells, spellSelectionRules } from './combat-spells'
+import { heroSpellCounts, heroSpellSummary, heroSpellTileLabel } from './spellbook-summary.mjs'
+import { spellRangeLabel } from './SpellDetail'
 import { CombatIcon } from './CombatIcon'
 import { ReactionAskMark, ReactionModesPanel, reactionIconId, reactionModeTitle } from './ReactionModes'
 import { TacticalBoard, type BoardAnimationActor, type BoardCellHint, type BoardCellNode } from './TacticalBoard'
@@ -960,6 +964,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
          fallback, но не переносим из него решение о доступности. */
       return fallback?.components && !spell.components ? { ...spell, components: fallback.components } : spell
     })
+  /* Плейтест 2026-10-04, OB-02 / MG-02: `spells` — список класса до
+     доступного круга, а не книга героя; «45 в списке» новичок читал как свои
+     сорок пять заклинаний. Счётчики разведены по тому же флагу `prepared`,
+     которым решается доступность ниже, и по книге героя (`knownSpellIds`). */
+  const heroSpellTally = heroSpellCounts(spells, { mode: spellSelectionRules(activeHero)?.mode ?? null, knownSpellIds: activeHero?.knownSpellIds ?? null })
+  const heroSpellLine = heroSpellSummary(heroSpellTally)
   const hotbarSpells = spells.filter((spell) => hotbarSpellIds.includes(spell.id) && spellActionType(spell) !== 'reaction')
   const selectedSpell = spells.find((spell) => spell.id === selectedSpellId) ?? spells[0]
   const selectedSpellItemOption = selectedSpell?.id === 'shillelagh' && shillelaghItemId ? { itemId: shillelaghItemId } : {}
@@ -1094,6 +1104,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     : []
   const selectedSceneObject = interactiveSceneObjects.find((prop) => prop.id === selectedSceneObjectId) ?? null
   const selectedSceneObjectAtHand = Boolean(selectedSceneObject && sceneObjectsAtHand.some((prop) => prop.id === selectedSceneObject.id))
+  /* Плейтест 2026-10-04, SE-13: закрытые действия объясняются с расстоянием —
+     той же мерой, что решает «под рукой» строкой выше. */
+  const selectedSceneObjectApproach = sceneObjectApproachHint(selectedSceneObject ? sceneObjectDistanceFeet(active, sceneObjectCells(selectedSceneObject)) : null)
   /* Благословения приезжают готовой карточкой: цена требы, СЛ молитвы и то,
      прошли ли сутки, посчитаны сервером (`server/blessings.mjs`). Своей
      арифметики суток здесь нет — иначе кнопка обещала бы одно, а движок делал
@@ -2225,7 +2238,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           onClick={(event) => event.stopPropagation()}
         >
           <header>
-            <span><b>{sceneObjectLabel(sceneObject)}</b><small>{selectedSceneObjectAtHand ? 'Выберите действие' : 'Подойдите к объекту на соседнюю клетку'}</small></span>
+            <span><b>{sceneObjectLabel(sceneObject)}</b><small>{selectedSceneObjectAtHand ? 'Выберите действие' : selectedSceneObjectApproach}</small></span>
             <button type="button" className="scene-object-menu-close" aria-label="Закрыть действия объекта" onClick={() => setSelectedSceneObjectId(null)}><X size={13} /></button>
           </header>
           {sceneObjectVerbs(sceneObject).map((intent) => {
@@ -2235,7 +2248,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
               || (intent === 'pray' && (blessingHeld || !blessingAvailable || combatActive))
               || (intent === 'lockpick' && !lockpickAllowed)
             const title = unavailable
-              ? 'Подойдите к объекту на соседнюю клетку'
+              ? selectedSceneObjectApproach
               : intent === 'pray'
                 ? (combatActive ? 'Посреди боя благословений не раздают' : blessingPrayerHint)
                 : intent === 'lockpick'
@@ -2724,7 +2737,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      или занятого действия. Числа берутся из серверной проекции, поэтому
      счётчик не может обещать выстрел, в котором движок откажет. */
   if (inDeck('weapon')) combatItems.filter((item) => item.type === 'weapon').forEach((item) => { const ammunition = ammunitionSupplyFor(activeHero?.inventory, item); const quiverEmpty = Boolean(ammunition && ammunition.shots <= 0); const ammunitionLabel = ammunition ? `${ammunition.shots}×${ammunition.unit}` : ''; deckTiles.push({ id: item.id, cost: 'action', section: 'action', node: <button key={item.id} className={`action-tile weapon ${combatMode === 'weapon' && selectedItemId === item.id ? 'selected' : ''}`} disabled={!selected || !weaponAttackReady || actionsLocked || quiverEmpty} onClick={() => { setSelectedItemId(item.id); setCombatMode('weapon') }} title={quiverEmpty ? `${item.name}: колчан пуст — для выстрела нужен боеприпас «${ammunition?.unit}»` : ammunition ? `${item.name} ${ammunitionLabel}: ${item.description || item.properties}` : `${item.name}: ${item.description || item.properties}`}><CombatIcon id={item.id} kind="weapon" hint={`${item.name} ${item.combat?.kind ?? ''} ${item.combat?.damageType ?? ''}`} /><strong>{item.name}</strong><small>{item.combat?.damage ?? 'атака'} · {item.combat?.normalRange ?? 5} фт{ammunition ? ` · ${ammunitionLabel}` : ''}</small>{ammunition && <em>{ammunition.shots}</em>}<i className="action-cost action">действие</i></button> }) })
-  if (activeDeck === 'magic' || (activeDeck === 'all' && spells.length > 0)) deckTiles.push({ id: 'spellbook', section: 'spell', node: <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={tacticalBusy} title={`Открыть полный каталог: ${spells.length} заклинаний в списке героя`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{spells.length} в списке</small></button> })
+  if (activeDeck === 'magic' || (activeDeck === 'all' && spells.length > 0)) deckTiles.push({ id: 'spellbook', section: 'spell', node: <button className="action-tile spellbook-tile" onClick={() => setSpellbookOpen(true)} disabled={tacticalBusy} title={`Открыть книгу заклинаний. ${heroSpellLine}. Весь каталог — отдельной вкладкой внутри`}><CombatIcon id="spellbook" kind="spellbook" hint="книга заклинаний" /><strong>Книга</strong><small>{heroSpellTileLabel(heroSpellTally)}</small></button> })
   const slotFilteredSpells = slotLevelFilter
     ? hotbarSpells.filter((spell) => spell.level > 0 && spell.level <= slotLevelFilter)
     : hotbarSpells
@@ -2766,7 +2779,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
         {spell.level > 0 && <i className="tile-level" aria-hidden="true">{SPELL_LEVEL_ROMANS[spell.level - 1]}</i>}
         {spell.concentration && <i className={`tile-conc${heroConcentration === spell.name ? ' holding' : ''}`} aria-hidden="true" />}
         <strong>{spell.name}</strong>
-        <small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRange(spell)} фт</small>
+        {/* Плейтест 2026-10-04, MG-03: плитка писала «5 фт», а книга —
+            «Касание». Подпись дальности одна на всё — `spellRangeLabel`. */}
+        <small>{spell.level ? `${spell.level} круг` : 'заговор'} · {spellRangeLabel(spell)}</small>
         <SpellComponentsLine spell={spell} compact />
         {pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}
         {componentAvailability.blocked && <i id={componentReasonId} className="spell-component-lock" title={componentReason ?? 'Недоступно: нужные компоненты недоступны'} aria-label={componentReason ?? 'Недоступно: нужные компоненты недоступны'}><Lock size={11} aria-hidden="true" /></i>}
@@ -3072,6 +3087,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       {spellbookOpen && <Suspense fallback={<section className="spellbook-catalog spellbook-loading" role="dialog" aria-modal="true" aria-label={`Книга заклинаний: ${activeName}`} onPointerDown={(event) => event.stopPropagation()}><p role="status">Открываем книгу заклинаний…</p><button type="button" onClick={() => setSpellbookOpen(false)}>Закрыть</button></section>}><Spellbook
         spells={spells}
         catalogSpells={spellbookSpells}
+        heroSummary={heroSpellLine}
         activeName={activeName}
         initialSpellId={selectedSpell?.id}
         pinnedSpellIds={hotbarSpellIds}
@@ -3982,7 +3998,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             <div className="hotbar-detail-content">
             {combatMode === 'magic' && selectedSpell ? <>
               <DetailHeader title={selectedSpell.name} description={selectedSpell.description} meta={<>
-                {selectedSpellRange > 0 ? <i className="detail-chip" title={`Дальность: ${selectedSpellRange} фт`}>{selectedSpellRange} фт</i> : <i className="detail-chip" title="Заклинание на себя">на себя</i>}
+                {/* Подпись — та же, что в книге (MG-03, плейтест 2026-10-04):
+                    «Касание», а не «5 фт». Футы остаются в подсказке: по ним
+                    доска меряет досягаемость. */}
+                <i className="detail-chip" title={selectedSpellRange > 0 ? `Дальность на карте: ${selectedSpellRange} фт` : 'Заклинание на себя'}>{spellRangeLabel(selectedSpell)}</i>
                 {selectedSpell.concentration ? <i className="detail-chip mark" title="Требует концентрации">К</i> : null}
                 {supportMark(selectedSpellSupport.status) ? <i className={`detail-chip mark support-${selectedSpellSupport.status}`} title={`${selectedSpellSupport.label}. ${selectedSpellSupport.explanation}`}>{supportMark(selectedSpellSupport.status)}</i> : null}
               </>} />

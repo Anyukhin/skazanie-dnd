@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { awaitsDecisionContinuation, isAdventureContinuation, isDirectorPartyDecision } from '../src/director-continuation.mjs'
+import { awaitsDecisionContinuation, continuesOnwardRoute, isAdventureContinuation, isDirectorPartyDecision } from '../src/director-continuation.mjs'
 
 test('явная просьба продолжить историю доступна через свободный ввод', () => {
   for (const text of ['продолжим', 'Продолжим!', ' Продолжить  приключение. ', 'продолжаем историю', 'продолжить историю']) {
@@ -35,4 +35,17 @@ test('«продолжим» после принятого решения про
   assert.equal(awaitsDecisionContinuation({ status: 'resolved', resolvedOptionId: 'yes', questAcceptance: {} }), false)
   // Исполненное решение сервер снимает: повторного перехода не будет.
   assert.equal(awaitsDecisionContinuation(null), false)
+})
+
+test('«продолжим» на промежуточной точке маршрута уходит заявкой, а не Режиссёру', () => {
+  // Плейтест 2026-10-04, SE-11: в Айрской башне «продолжим» дало «Пока ничего
+  // не меняется», путь продолжила только кнопка «Решение группы». Голосование
+  // ухода к следующему пункту открывает сервер из обычной заявки.
+  const tower = { location: 'Айрская башня', objective: 'Продолжить путь из Айрская башня к «Дормар»' }
+  for (const text of ['продолжим', 'Продолжаем путь', 'идём дальше']) assert.equal(continuesOnwardRoute(text, tower), true, text)
+  assert.equal(continuesOnwardRoute('продолжим приключение', tower), false, 'просьба к Режиссёру остаётся его')
+  assert.equal(continuesOnwardRoute('продолжим', { location: 'Айрская башня', objective: 'Найти курьера' }), false)
+  assert.equal(continuesOnwardRoute('продолжим', { ...tower, location: 'Дормар' }), false, 'устаревшая цель в конечной точке никуда не зовёт')
+  assert.equal(continuesOnwardRoute('продолжим', tower, { requestKind: 'question' }), false)
+  assert.equal(continuesOnwardRoute('продолжим', tower, { npcId: 'mira' }), false)
 })

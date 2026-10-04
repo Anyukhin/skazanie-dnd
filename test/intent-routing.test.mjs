@@ -258,6 +258,24 @@ test('маршрут talk и clarify переспрашивают без про�
   assert.deepEqual(unclear.mechanics, [])
 })
 
+test('без модели уход к неизвестному месту получает честный ответ, а не «не понял способ действия»', async () => {
+  // Плейтест 2026-10-04, QP-06: после улики о «провале у старой арки» фраза
+  // упиралась в общее «Я не понял способ действия». Ответ проходит тот же
+  // guard повествования, что и любое уточнение, и ничего не коммитит.
+  const { eventStore, handle } = await orchestratorWith(async (state, actorId, text, fallback) => fallback)
+  const before = (await eventStore.load('ROUTING')).state_version
+  const unknown = await handle('Иду по свежим следам к провалу у старой арки, чтобы найти телегу или следы груза.', 'unknown-place-1')
+  assert.equal(unknown.free_action_outcome, 'clarification')
+  assert.match(unknown.narration, /^К провалу у старой арки\? Такого места пока нет ни на карте мира, ни среди отмеченного в этой сцене\./u)
+  assert.match(unknown.narration, /осмотритесь или идите по следам/u)
+  assert.equal(unknown.check, undefined)
+  assert.deepEqual(unknown.mechanics, [])
+  assert.equal((await eventStore.load('ROUTING')).state_version, before)
+  // Непонятное действие без названного места — по-прежнему общее уточнение.
+  const unclear = await handle('Делаю нечто невнятное с воздухом вокруг', 'unknown-place-2')
+  assert.match(unclear.narration, /Я не понял способ действия/u)
+})
+
 test('в бою маршрут travel не предлагается: заявка судится как обычная попытка', async () => {
   const { orchestrator, handle } = await orchestratorWith(async () => ({ ...reading, route: 'travel', destination: 'Каменный Град' }), {
     mechanics: { combat: { active: true, round: 1, active_index: 0, initiative: [{ actor_id: 'hero-1' }], action_economy: { 'hero-1': { action: true, bonus_action: true, movement: true } } } },
