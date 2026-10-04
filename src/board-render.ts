@@ -467,8 +467,8 @@ export type BoardScene = {
   modelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
   /** Атлас style pack: выбирается только для style-варианта, базовый atlas не подменяется. */
   styleModelPropAtlas?: { catalog: PropModelCatalog; texture: BoardTexture; key: string } | null
-  /** Подписывать ли высоту поверх клетки; у объёмного пола высота уже видна геометрией. */
-  showElevationLabels?: boolean
+  /** Рисовать ли рельеф высоты (светотень, горизонтали, обрывы); у объёмного пола высота уже видна геометрией. */
+  showElevationRelief?: boolean
   /**
    * Рисовать ли запечённый свет (`src/board-lighting.ts`): тьму по сетке
    * освещённости, мягкие тени вдоль стен и тёплые ореолы источников.
@@ -3921,6 +3921,111 @@ function firstHazardCells(map: TacticalMap) {
  * местности и цвет/контур/подпись опасности. Они входят в тайловый кэш, потому
  * что меняются только вместе с картой.
  */
+// --- рельеф ------------------------------------------------------------------
+
+/**
+ * Шаг горизонталей. Правило высоты (преимущество сверху,
+ * `highGroundBetween` в `server/rules/tactical-geometry.mjs`) считает от пяти
+ * футов, и генератор ставит уступы по пять и десять: каждая линия на доске —
+ * граница, за которой высота уже меняет бой.
+ */
+export const CONTOUR_STEP_FEET = 5
+/** Перепад между соседними клетками, который рисуется обрывом с бергштрихами. */
+export const CLIFF_FEET = 10
+
+/** Высота раскрытой клетки; нераскрытая не выдаёт рельефа соседу. */
+function revealedElevation(map: TacticalMap, x: number, y: number): number | null {
+  const cell = cellAt(map, x, y)
+  return cell?.revealed ? cell.elevation : null
+}
+
+/** Стороны клетки: сдвиг к соседу и отрезок стороны в долях клетки. */
+const RELIEF_SIDES = [
+  { dx: 0, dy: -1, from: [0, 0], to: [1, 0], inward: [0, 1] },
+  { dx: 1, dy: 0, from: [1, 0], to: [1, 1], inward: [-1, 0] },
+  { dx: 0, dy: 1, from: [0, 1], to: [1, 1], inward: [0, -1] },
+  { dx: -1, dy: 0, from: [0, 0], to: [0, 1], inward: [1, 0] },
+] as const
+
+/**
+ * Высота на 2D-доске — языком карты местности, а не подписью в каждой
+ * клетке: светотень склона (свет с северо-запада, как на бумажной карте),
+ * лёгкая окраска по высоте, горизонталь через каждые пять футов и обрыв с
+ * бергштрихами там, где соседи расходятся на десять футов и больше. Точное
+ * число остаётся в подсказке клетки под курсором. Каждая клетка рисует
+ * только внутри себя, поэтому шов тайла линию не режет.
+ */
+export function drawElevationRelief(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
+  if (scene.showElevationRelief === false) return
+  const frame = tileFrame(scene, tile)
+  const size = frame.size
+  const map = scene.map
+  const contour = Math.max(1.25, size / 15)
+  const cliff = Math.max(1.5, size / 10)
+  context.save()
+  for (let y = frame.minY; y <= frame.maxY; y += 1) {
+    for (let x = frame.minX; x <= frame.maxX; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell?.revealed) continue
+      const height = cell.elevation
+      const near = (dx: number, dy: number) => revealedElevation(map, x + dx, y + dy)
+      const around = (dx: number, dy: number) => near(dx, dy) ?? height
+      if (height === 0 && [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dy]) => around(dx, dy) === 0)) continue
+      const left = (x - frame.minX) * size
+      const top = (y - frame.minY) * size
+      // Склон к свету светлее, от света темнее: подъём на восток и на юг
+      // смотрит на северо-западный свет.
+      const slope = (around(1, 0) - around(-1, 0) + around(0, 1) - around(0, -1)) / 2
+      if (slope !== 0) {
+        const strength = Math.min(.24, Math.abs(slope) * .045)
+        context.fillStyle = slope > 0 ? `rgba(255,238,204,${strength})` : `rgba(22,15,30,${strength * 1.15})`
+        context.fillRect(left, top, size, size)
+      }
+      // Плато без склона узнаётся по тону: выше — теплее и светлее, ниже — темнее.
+      if (height !== 0) {
+        const tint = Math.min(.24, Math.abs(height) * .02)
+        context.fillStyle = height > 0 ? `rgba(255,226,170,${tint})` : `rgba(18,24,40,${tint * 1.3})`
+        context.fillRect(left, top, size, size)
+      }
+      for (const side of RELIEF_SIDES) {
+        const other = near(side.dx, side.dy)
+        if (other === null) continue
+        const drop = height - other
+        const steep = Math.abs(drop) >= CLIFF_FEET
+        if (!steep && Math.floor(height / CONTOUR_STEP_FEET) === Math.floor(other / CONTOUR_STEP_FEET)) continue
+        const higher = drop > 0
+        const width = steep ? cliff : contour
+        // Линия лежит внутри своей клетки на полширины от стороны.
+        const offsetX = side.inward[0] * width / 2, offsetY = side.inward[1] * width / 2
+        const x0 = left + side.from[0] * size + offsetX, y0 = top + side.from[1] * size + offsetY
+        const x1 = left + side.to[0] * size + offsetX, y1 = top + side.to[1] * size + offsetY
+        context.lineWidth = width
+        context.strokeStyle = steep
+          ? (higher ? 'rgba(34,22,13,.82)' : 'rgba(34,22,13,.36)')
+          : (higher ? 'rgba(255,241,212,.72)' : 'rgba(46,31,19,.8)')
+        context.beginPath()
+        context.moveTo(x0, y0)
+        context.lineTo(x1, y1)
+        context.stroke()
+        // Бергштрихи — короткие штрихи вниз по склону от бровки обрыва.
+        if (steep && !higher) {
+          const tick = size * .26
+          context.lineWidth = Math.max(1, size / 22)
+          context.strokeStyle = 'rgba(34,22,13,.7)'
+          context.beginPath()
+          for (let step = .125; step < 1; step += .25) {
+            const px = x0 + (x1 - x0) * step, py = y0 + (y1 - y0) * step
+            context.moveTo(px, py)
+            context.lineTo(px + side.inward[0] * tick, py + side.inward[1] * tick)
+          }
+          context.stroke()
+        }
+      }
+    }
+  }
+  context.restore()
+}
+
 export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, tile: BoardTile) {
   const frame = tileFrame(scene, tile)
   const size = frame.size
@@ -3945,23 +4050,6 @@ export function drawCellFeatures(context: BoardContext2D, scene: BoardScene, til
           context.lineTo(left + to, top + (size - (to - offset)))
         }
         context.stroke()
-      }
-      if (cell.elevation !== 0 && scene.showElevationLabels !== false) {
-        const upward = cell.elevation > 0
-        context.strokeStyle = upward ? 'rgba(238,207,148,.62)' : 'rgba(131,174,190,.58)'
-        context.fillStyle = upward ? 'rgba(238,207,148,.88)' : 'rgba(160,202,216,.84)'
-        context.lineWidth = Math.max(1, size / 28)
-        context.beginPath()
-        context.moveTo(left + size * .08, top + size * .24)
-        context.lineTo(left + size * .23, top + size * .09)
-        context.lineTo(left + size * .38, top + size * .24)
-        context.stroke()
-        if (size >= 22) {
-          context.font = `700 ${Math.max(7, Math.min(10, size / 4.4))}px 'Alegreya Sans', sans-serif`
-          context.textAlign = 'left'
-          context.textBaseline = 'top'
-          context.fillText(`${cell.elevation > 0 ? '+' : ''}${cell.elevation} фт`, left + size * .08, top + size * .3, size * .82)
-        }
       }
       if (!cell.hazardId) continue
       const visual = hazardPresentation(cell.hazardId)
@@ -4007,6 +4095,7 @@ export function drawTerrainTile(context: BoardContext2D, scene: BoardScene, tile
   drawZoneBackground(context, scene, tile)
   drawFloorTiles(context, scene, tile)
   if (!painted) drawDecals(context, scene, tile)
+  drawElevationRelief(context, scene, tile)
   drawEdgeSegments(context, scene, tile)
   drawProps(context, scene, tile)
   // Слой света — единственное, что снимает настройка зрителя. Туман войны

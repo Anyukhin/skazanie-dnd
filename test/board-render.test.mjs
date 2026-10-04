@@ -311,16 +311,44 @@ test('геометрия длящейся области берётся из are
   )
 })
 
-test('ступень высоты подписана прямо на раскрытой клетке', () => {
-  const map = sampleMap()
-  setCell(map, 4, 0, { elevation: 5, revealed: true })
-  const context = recordingContext()
-  render.drawCellFeatures(context, {
-    map: decoded(map),
-    palette: render.DEFAULT_BOARD_PALETTE,
-    cellSize: 32,
-  }, { tileX: 0, tileY: 0 })
-  assert.ok(context.ops.some((item) => item.op === 'fillText' && item.text === '+5 фт'))
+test('высота на 2D — рельеф без подписей: горизонталь на уступе 5 футов, обрыв на 10', () => {
+  // Ровная раскрытая площадка 5×3; угловая клетка 0,2 скрыта туманом.
+  const ground = (heights = {}) => {
+    const map = createTacticalMap({ width: 5, height: 3, seed: 'relief' })
+    for (let y = 0; y < 3; y += 1) for (let x = 0; x < 5; x += 1) {
+      setCell(map, x, y, { passable: true, material: 'stone', revealed: !(x === 0 && y === 2), elevation: heights[`${x},${y}`] ?? 0 })
+    }
+    return { map: decoded(map), palette: render.DEFAULT_BOARD_PALETTE, cellSize: 32 }
+  }
+  const draw = (scene, fn = render.drawElevationRelief) => {
+    const context = recordingContext()
+    fn(context, scene, { tileX: 0, tileY: 0 })
+    return context.ops
+  }
+  const strokes = (ops, prefix) => ops.filter((item) => item.op === 'stroke' && (!prefix || String(item.value).startsWith(prefix)))
+
+  const ledge = ground({ '2,1': 5 })
+  assert.equal(draw(ledge, render.drawCellFeatures).filter((item) => item.op === 'fillText').length, 0, 'в клетке нет надписи «+5 фт»')
+  // Уступ в 5 футов: светлая кромка на высокой клетке и тёмная линия на низкой.
+  const contour = draw(ledge)
+  assert.equal(strokes(contour, 'rgba(255,241,212').length, 4, 'кромка со всех четырёх сторон поднятой клетки')
+  assert.equal(strokes(contour, 'rgba(46,31,19').length, 4, 'по линии у каждого соседа')
+  assert.equal(strokes(contour, 'rgba(34,22,13').length, 0, 'это ещё не обрыв')
+
+  // Перепад в 10 футов — обрыв: бровка сверху, штрихи вниз по склону у соседа.
+  const cliff = draw(ground({ '2,1': 10 }))
+  assert.equal(strokes(cliff, 'rgba(34,22,13,.82').length, 4, 'бровка обрыва')
+  assert.equal(strokes(cliff, 'rgba(34,22,13,.7)').length, 4, 'бергштрихи у каждого нижнего соседа')
+
+  // Шаг внутри одной ступени (2 фута) горизонтали не даёт — только светотень.
+  const soft = draw(ground({ '2,1': 2 }))
+  assert.equal(strokes(soft).length, 0)
+  assert.ok(soft.some((item) => item.op === 'fillRect'), 'склон всё равно оттенён')
+
+  // Нераскрытая клетка не выдаёт своей высоты ни линией, ни тенью.
+  assert.equal(draw(ground({ '0,2': 10 })).filter((item) => item.op === 'stroke' || item.op === 'fillRect').length, 0)
+  // Ровная карта рельефа не рисует вовсе.
+  assert.equal(draw(ground()).filter((item) => item.op === 'stroke' || item.op === 'fillRect').length, 0)
 })
 
 test('канонизация ребра на клиенте совпадает с серверной', () => {

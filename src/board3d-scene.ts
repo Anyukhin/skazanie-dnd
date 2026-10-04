@@ -684,7 +684,7 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
     const context = canvas.getContext('2d')
     if (!context) return null
     context.clearRect(0, 0, canvas.width, canvas.height)
-    const scene: BoardScene = { map, palette, cellSize: pixelsPerCell, terrain, artMode: 'backdrop', showElevationLabels: false }
+    const scene: BoardScene = { map, palette, cellSize: pixelsPerCell, terrain, artMode: 'backdrop', showElevationRelief: false }
     // Над плитками стиля холст несёт только то, что важно для игры: опасные
     // клетки, сетку и туман. Покрытие и пятна рисует сам пол стиля.
     const tilesX = Math.max(1, Math.ceil(map.width / TILE_CELLS))
