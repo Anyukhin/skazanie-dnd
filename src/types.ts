@@ -1903,7 +1903,7 @@ export type GameState = {
       duration_minutes: number
       risk_score: number
       random_encounter: boolean
-      /** `server-travel-v2`: граф мира или текстовая ветка совместимости. */
+      /** `server-travel-v3` (v2 — до 2026-10-04, путь по числу переходов): граф мира или текстовая ветка совместимости. */
       source?: 'graph' | 'legacy_text'
       /** Заполнен только для одного прямого маршрута графа. */
       route_id?: string | null

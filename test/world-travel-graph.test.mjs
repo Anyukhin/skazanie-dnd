@@ -273,7 +273,7 @@ test('кампания без карты мира считается по пре
     source: 'legacy_text',
     route_id: null,
     no_route: false,
-    policy: 'server-travel-v2',
+    policy: 'server-travel-v3',
   })
 
   assert.deepEqual(planServerTravel(legacyState, {
@@ -292,7 +292,7 @@ test('кампания без карты мира считается по пре
     source: 'legacy_text',
     route_id: null,
     no_route: false,
-    policy: 'server-travel-v2',
+    policy: 'server-travel-v3',
   })
 })
 
@@ -319,4 +319,42 @@ test('в теле planServerTravel не осталось регулярных в
   assert.doesNotMatch(body, /\/\([^\n]+\)\/[a-z]*/u, 'литералов регулярных выражений в теле быть не должно')
   assert.doesNotMatch(body, /лес|тракт|болот|пустош|ущель|перевал|пещер|forest|marsh|mountain|crypt|склеп|кладбищ/iu)
   assert.doesNotMatch(body, /\.test\(/u)
+})
+
+test('путь выбирается по дням дороги, а не по числу переходов', () => {
+  // Прямой тракт в 8 дней против двух переходов по 1 дню. До 2026-10-04 поиск
+  // шёл по числу переходов и брал длинный тракт (исследование PR #136).
+  const map = worldMap({
+    regions: [region('reg-plains', 'plains')],
+    locations: [
+      place('loc-start', 'Тихая застава', 'reg-plains', 200, 300),
+      place('loc-middle', 'Брод', 'reg-plains', 400, 300),
+      place('loc-target', 'Дальний рубеж', 'reg-plains', 600, 300),
+    ],
+    routes: [
+      road('route-long', 'loc-start', 'loc-target', { distance: 8, danger: 'высокая' }),
+      road('route-a', 'loc-start', 'loc-middle', { distance: 1 }),
+      road('route-b', 'loc-middle', 'loc-target', { distance: 1 }),
+    ],
+  })
+  const travel = planServerTravel(travelState(map), options)
+  assert.equal(travel.distance_band, 'near', '1 + 1 = 2 дня, а не 8')
+  assert.equal(travel.route_id, null, 'путь составной')
+})
+
+test('при равных днях выигрывает путь с меньшим числом переходов', () => {
+  const map = worldMap({
+    regions: [region('reg-plains', 'plains')],
+    locations: [
+      place('loc-start', 'Тихая застава', 'reg-plains', 200, 300),
+      place('loc-middle', 'Брод', 'reg-plains', 400, 300),
+      place('loc-target', 'Дальний рубеж', 'reg-plains', 600, 300),
+    ],
+    routes: [
+      road('route-a', 'loc-start', 'loc-middle', { distance: 2 }),
+      road('route-b', 'loc-middle', 'loc-target', { distance: 2 }),
+      road('route-direct', 'loc-start', 'loc-target', { distance: 4 }),
+    ],
+  })
+  assert.equal(planServerTravel(travelState(map), options).route_id, 'route-direct')
 })
