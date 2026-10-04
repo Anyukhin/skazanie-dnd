@@ -179,7 +179,8 @@ function quoteTotal(quote: MerchantQuote | undefined, quantity: number) {
   return Math.max(0, Math.round(quote.unit_price_cp)) * Math.max(1, Math.floor(quantity || 1))
 }
 
-function QuoteBreakdown({ quote, quantity, direction }: { quote?: MerchantQuote; quantity: number; direction: 'buy' | 'sell' }) {
+function QuoteBreakdown({ quote, quantity, direction, soldOut = false }: { quote?: MerchantQuote; quantity: number; direction: 'buy' | 'sell'; soldOut?: boolean }) {
+  if (soldOut) return <div className="merchant-no-quote">Товар распродан</div>
   if (!quote || quote.unit_price_cp <= 0) return <div className="merchant-no-quote">Торговец пока не назвал цену</div>
   const breakdown = quote.breakdown
   const total = quoteTotal(quote, quantity)
@@ -459,14 +460,18 @@ export function MerchantScreen({ merchant, player, sceneLocation, stateVersion, 
             // монет» — `max_quantity` при отказе равен нулю, и кнопка сваливалась
             // в денежный текст, ни разу не назвав настоящую причину.
             const tradeRefusal = quote?.can_buy === false ? (quote.unavailable_reason || 'Торговец отказывает отряду') : ''
-            const stateLabel = tradeRefusal || !quote ? 'Нет котировки' : stockAvailable < 1 ? 'Нет в наличии' : quote.can_afford === false || purchaseMax < 1 ? 'Недостаточно монет' : `${stockAvailable} в наличии`
+            // Остаток проверяется раньше котировки: на распроданный товар цену
+            // не называют, и игрок читал «Нет котировки» и «Торговец пока не
+            // назвал цену» даже после обновления (плейтест 2026-10-04, MP-01).
+            const soldOut = stockAvailable < 1
+            const stateLabel = soldOut ? 'Нет в наличии' : tradeRefusal ? 'Отказано' : !quote ? 'Нет котировки' : quote.can_afford === false || purchaseMax < 1 ? 'Недостаточно монет' : `${stockAvailable} в наличии`
             return <article className="merchant-item" key={item.stock_id}>
-              <div className="merchant-item-title"><MerchantItemArtwork item={item} name={item.name} /><span><small>{categoryLabel(item.type)}{item.rarity ? ` · ${item.rarity}` : ''}</small><h3>{item.name}</h3><p>{item.description || 'Описание предмета не указано.'}</p></span><em className={`merchant-item-state ${tradeRefusal || !quote || stockAvailable < 1 || quote.can_afford === false ? 'warning' : 'available'}`}>{stateLabel}</em></div>
-              <QuoteBreakdown quote={quote} quantity={quantity} direction="buy" />
+              <div className="merchant-item-title"><MerchantItemArtwork item={item} name={item.name} /><span><small>{categoryLabel(item.type)}{item.rarity ? ` · ${item.rarity}` : ''}</small><h3>{item.name}</h3><p>{item.description || 'Описание предмета не указано.'}</p></span><em className={`merchant-item-state ${soldOut || tradeRefusal || !quote || quote.can_afford === false ? 'warning' : 'available'}`}>{stateLabel}</em></div>
+              <QuoteBreakdown quote={quote} quantity={quantity} direction="buy" soldOut={soldOut} />
               {tradeRefusal && <p className="merchant-refusal">{tradeRefusal}</p>}
               <div className="merchant-item-actions">
                 <QuantityPicker value={quantity} max={purchaseMax} disabled={controlsDisabled || !quote || purchaseMax < 1 || quote.can_buy === false} onChange={(next) => setBuyQuantities((values) => ({ ...values, [item.stock_id]: next }))} />
-                <button type="button" onClick={() => onBuy(shownMerchant.id, player.id, item.stock_id, quantity)} disabled={controlsDisabled || !quote || purchaseMax < 1 || quote.can_afford === false || quote.can_buy === false} title={tradeRefusal || undefined}><ShoppingBag size={15} />{!quote ? 'Нет котировки' : tradeRefusal ? 'Отказано' : stockAvailable < 1 ? 'Нет в наличии' : quote.can_afford === false || purchaseMax < 1 ? 'Недостаточно монет' : `Купить · ${formatCopper(quoteTotal(quote, quantity) ?? undefined)}`}</button>
+                <button type="button" onClick={() => onBuy(shownMerchant.id, player.id, item.stock_id, quantity)} disabled={controlsDisabled || !quote || purchaseMax < 1 || quote.can_afford === false || quote.can_buy === false} title={tradeRefusal || undefined}><ShoppingBag size={15} />{soldOut ? 'Нет в наличии' : !quote ? 'Нет котировки' : tradeRefusal ? 'Отказано' : quote.can_afford === false || purchaseMax < 1 ? 'Недостаточно монет' : `Купить · ${formatCopper(quoteTotal(quote, quantity) ?? undefined)}`}</button>
               </div>
             </article>
           })}</div>}

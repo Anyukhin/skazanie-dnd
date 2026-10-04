@@ -27,3 +27,13 @@ for (const level of [1, 2, 4]) {
     assert.throws(() => validateCharacterBuildCommand({ ...command, known_spell_ids: [...cantrips, ...spells.slice(0, maximum + 1)] }, state, { allowedActorIds: [player.id] }), { code: 'SPELL_SELECTION_NOT_ALLOWED' })
   })
 }
+
+test('карточка развития показывает статус механики тем же словарём, что мастер и бой', () => {
+  // Плейтест 2026-10-04, MG-01: при создании «Обнаружение магии» помечалось
+  // «НУЖНО РЕШЕНИЕ», а в развитии героя ярлык пропадал.
+  const list = source.slice(source.indexOf('<div className="development-spell-list">'), source.indexOf('</> : <p className="advancement-empty">Заклинания появятся'))
+  assert.ok(list.length > 0, 'список заклинаний развития не найден')
+  assert.match(list, /mechanicsSupportPresentation\(spell\.mechanicsSupport, spell\.supportNote\)/u)
+  assert.match(list, /\{support\.shortLabel\}/u)
+  assert.match(source, /import \{ mechanicsSupportPresentation \} from '\.\/tactical-ui'/u)
+})

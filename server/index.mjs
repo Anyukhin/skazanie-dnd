@@ -99,7 +99,7 @@ import { CombatTurnCoordinator, combatTurnClockForState } from './combat-turn-co
 import { FileTraceStore, buildTurnExplanation, isMechanicalTrace } from './trace-store.mjs'
 import { createSceneTransition } from './adventure-director.mjs'
 import { SCENE_ARCHITECT_AGENT_ID, SceneArchitectAgent } from './scene-architect.mjs'
-import { proposeAgentInteraction, proposeRoutedTravel, resolvePartyDecision } from './player-request-router.mjs'
+import { partyOptionLabel, proposeAgentInteraction, proposeRoutedTravel, resolvePartyDecision } from './player-request-router.mjs'
 import { planHeroCombatCommand } from './party-tactics.mjs'
 import { abandonableQuest, classifyPartyDecision } from './party-exit-intent.mjs'
 import { finishQuestDecision, questDecisionChronicleEntry, requestQuestDecision } from './quest-decisions.mjs'
@@ -2597,7 +2597,7 @@ function executeTool(name, args, effects, state = {}) {
     if (effects.interaction) return { error: 'Одновременно разрешено только одно активное решение группы' }
     const options = (Array.isArray(args.options) ? args.options : []).map((option, index) => ({
       id: `option-${index + 1}`,
-      label: String(option || '').replace(/\s+/g, ' ').trim().slice(0, 100),
+      label: partyOptionLabel(option),
     })).filter((option) => option.label).slice(0, 4)
     if (options.length < 2) return { error: 'Для решения нужны хотя бы два варианта' }
     const destinationLocationId = String(args.destinationLocationId ?? args.destination_location_id ?? '')

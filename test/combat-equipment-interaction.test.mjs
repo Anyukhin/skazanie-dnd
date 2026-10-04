@@ -143,6 +143,25 @@ test('двуручное оружие не достаётся поверх на�
   assert.throws(() => equip(initial, 'equip-greatsword', 'greatsword', true), (error) => error.code === 'TWO_HANDED_WITH_SHIELD')
 })
 
+test('смена оружия в бою не берёт двуручное поверх щита и не тратит на это действие', () => {
+  // Плейтест 2026-10-04, PC-02: воин со щитом сменил меч на лёгкий арбалет,
+  // потратил действие, и каждый следующий выстрел отклонялся щитом.
+  const initial = battle({ inventory: [
+    item('srd_5_2_1:shield', 'shield', true),
+    item('srd_5_2_1:mace', 'mace', true),
+    item('srd_5_2_1:light-crossbow', 'crossbow', false),
+    item('srd_5_2_1:longsword', 'longsword', false),
+  ] })
+  const change = (itemId) => resolveCommand({
+    campaign_id: 'combat-equip', command_id: `change-${itemId}`, command_type: 'ChangeWeapon',
+    actor_id: 'cleric', item_id: itemId, expected_state_version: initial.state_version,
+  }, initial, { diceService: new DiceService(), ...context })
+  assert.throws(() => change('crossbow'), (error) => error.code === 'TWO_HANDED_WITH_SHIELD' && /щит/u.test(error.message))
+  assert.equal(initial.mechanics.combat.action_economy.cleric.action, true)
+  // Универсальное оружие держится и одной рукой — со щитом его менять можно.
+  assert.ok(change('longsword').events.some((event) => event.event_type === 'EquipmentChanged'))
+})
+
 test('достать предмет занятого ручного слота нельзя одним взаимодействием', () => {
   const initial = battle({ inventory: [
     item('srd_5_2_1:mace', 'mace', true),
