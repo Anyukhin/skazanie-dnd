@@ -1,0 +1,31 @@
+[
+  {
+    "path": "/api/campaigns/BROWSER-REVIEW3/commands",
+    "status": 200,
+    "dropped": false,
+    "response_status": null,
+    "held": true,
+    "key": "dabbf2d7-2a63-49db-9cfa-8c94930f79b9",
+    "type": "MoveActor",
+    "replayed": false,
+    "state_version": 8,
+    "position": {
+      "x": 2,
+      "y": 0
+    }
+  },
+  {
+    "path": "/api/campaigns/BROWSER-REVIEW3/commands",
+    "status": 200,
+    "dropped": false,
+    "response_status": 200,
+    "key": "dabbf2d7-2a63-49db-9cfa-8c94930f79b9",
+    "type": "MoveActor",
+    "replayed": true,
+    "state_version": 8,
+    "position": {
+      "x": 2,
+      "y": 0
+    }
+  }
+]

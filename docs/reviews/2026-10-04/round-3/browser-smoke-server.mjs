@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { createServer, request as httpRequest } from 'node:http'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { freePort } from '../../../../test/free-port.mjs'
 
@@ -16,6 +16,9 @@ const backendPort = await freePort()
 const backend = `http://127.0.0.1:${backendPort}`
 const credentials = { email: 'review-player@example.test', password: 'local-review-only-password' }
 const campaign = 'BROWSER-REVIEW3'
+const switchTest = process.argv.includes('--switch-test')
+const receiptsArgument = process.argv.find(value => value.startsWith('--receipts='))
+const durableReceipts = receiptsArgument ? resolve(receiptsArgument.slice('--receipts='.length)) : null
 let logs = ''
 const serverPath = fileURLToPath(new URL('../../../../server/index.mjs', import.meta.url))
 const child = spawn(process.execPath, [serverPath], {
@@ -44,20 +47,36 @@ async function api(path, { method = 'GET', cookie = '', body } = {}) {
 
 const sockets = new Set()
 const requests = []
+const heldTimers = new Set()
 const proxy = createServer((req, res) => {
   const command = req.method === 'POST' && /^\/api\/campaigns\/[^/]+\/commands$/u.test(req.url ?? '')
+  const narrate = req.method === 'POST' && req.url === '/api/narrate'
+  const tracked = command || narrate
   const drop = command && existsSync(join(root, 'drop-next-command'))
   const fail = command && existsSync(join(root, 'fail-command-responses'))
+  const hold = tracked && switchTest && existsSync(join(root, 'hold-command-responses'))
   if (drop) rmSync(join(root, 'drop-next-command'))
   const chunks = []
-  req.on('data', chunk => { if (command) chunks.push(chunk) })
+  req.on('data', chunk => { if (tracked) chunks.push(chunk) })
   const upstream = httpRequest({
     hostname: '127.0.0.1', port: backendPort, method: req.method, path: req.url,
     headers: req.headers,
   }, result => {
     const reply = []
-    if (command) result.on('data', chunk => reply.push(chunk))
-    if (fail) {
+    if (tracked) result.on('data', chunk => reply.push(chunk))
+    if (hold) {
+      result.resume()
+      result.once('end', () => {
+        writeFileSync(join(root, 'held-response.json'), JSON.stringify({ path: req.url, status: result.statusCode }))
+        const timer = setInterval(() => {
+          if (!res.destroyed && existsSync(join(root, 'hold-command-responses'))) return
+          clearInterval(timer)
+          heldTimers.delete(timer)
+          if (!res.destroyed) { res.writeHead(result.statusCode ?? 502, result.headers); res.end(Buffer.concat(reply)) }
+        }, 50)
+        heldTimers.add(timer)
+      })
+    } else if (fail) {
       result.resume()
       result.once('end', () => {
         res.writeHead(503, { 'content-type': 'application/json' })
@@ -67,7 +86,7 @@ const proxy = createServer((req, res) => {
       result.resume()
       result.once('end', () => { res.destroy(); writeFileSync(join(root, 'last-drop.json'), JSON.stringify({ status: result.statusCode, path: req.url })) })
     } else { res.writeHead(result.statusCode ?? 502, result.headers); result.pipe(res) }
-    if (command) result.once('end', () => {
+    if (tracked) result.once('end', () => {
       let input = {}
       try { input = JSON.parse(Buffer.concat(chunks).toString()) } catch { /* Только диагностика синтетического ввода. */ }
       let output = {}
@@ -75,13 +94,15 @@ const proxy = createServer((req, res) => {
       const hero = output.authoritative_state?.players?.find(player => player.id === 'review-hero')
       requests.push({
         path: req.url, status: result.statusCode, dropped: drop,
-        response_status: fail ? 503 : drop ? null : result.statusCode,
-        key: input.idempotency_key, type: input.command?.command_type,
+        response_status: hold ? null : fail ? 503 : drop ? null : result.statusCode,
+        ...(hold ? { held: true } : {}),
+        key: input.idempotency_key, type: input.command?.command_type ?? (narrate ? 'narrate' : null),
         replayed: output.idempotent_replay ?? null,
         state_version: output.authoritative_state?.state_version ?? null,
         position: hero ? { x: hero.x, y: hero.y } : null,
       })
       writeFileSync(join(root, 'command-receipts.json'), JSON.stringify(requests, null, 2))
+      if (durableReceipts) writeFileSync(durableReceipts, JSON.stringify(requests, null, 2))
     })
   })
   upstream.on('error', () => { if (!res.destroyed) { res.writeHead(502); res.end('{}') } })
@@ -91,6 +112,7 @@ const proxy = createServer((req, res) => {
 proxy.on('connection', socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)) })
 
 async function stop() {
+  for (const timer of heldTimers) clearInterval(timer)
   for (const socket of sockets) socket.destroy()
   if (proxy.listening) await new Promise(resolve => proxy.close(resolve))
   if (child.exitCode == null) {
@@ -126,6 +148,24 @@ try {
   }
   const created = await api('/api/campaigns', { method: 'POST', cookie: admin.cookie, body: { code: campaign, name: state.campaign, state } })
   assert.equal(created.status, 201, JSON.stringify(created.value))
+  if (switchTest) {
+    const other = structuredClone(state)
+    other.sessionCode = 'BROWSER-OTHER4'
+    other.campaign = 'Вторая кампания проверки'
+    other.scene.title = 'Комната Б'
+    other.scene.location = 'Вторая площадь'
+    const second = await api('/api/campaigns', { method: 'POST', cookie: admin.cookie, body: {
+      code: other.sessionCode, name: other.campaign, state: other,
+    } })
+    assert.equal(second.status, 201, JSON.stringify(second.value))
+    for (let i = 0; i < 3; i++) {
+      const seeded = await api(`/api/campaigns/${campaign}/commands`, { method: 'POST', cookie: admin.cookie, body: {
+        idempotency_key: `queue-fixture-${i}`, message: 'Подготовить версию первой кампании',
+        command: { command_type: 'MoveActor', actor_id: 'review-hero', to: { x: i % 2 ? 1 : 2, y: 1 } },
+      } })
+      assert.equal(seeded.status, 200, JSON.stringify(seeded.value))
+    }
+  }
   const player = await api('/api/auth/register', { method: 'POST', body: { name: 'Игрок стенда', ...credentials } })
   assert.equal(player.status, 201)
   const users = await api('/api/admin/users', { cookie: admin.cookie })
@@ -139,10 +179,20 @@ try {
   const info = { url: `http://127.0.0.2:${address.port}`, campaign, root, credentials,
     helper_pid: process.pid, backend_pid: child.pid, backend_port: backendPort,
     arm: join(root, 'drop-next-command'), fail: join(root, 'fail-command-responses'),
+    ...(switchTest ? { other_campaign: 'BROWSER-OTHER4', hold: join(root, 'hold-command-responses'), pulse: join(root, 'pulse-a') } : {}),
     receipts: join(root, 'command-receipts.json'), stop: join(root, 'stop') }
   console.log(JSON.stringify(info))
   const deadline = Date.now() + 20 * 60 * 1000
+  let pulse = 0
   while (!stopRequested && !existsSync(info.stop) && Date.now() < deadline && child.exitCode == null) {
+    if (switchTest && existsSync(info.pulse)) {
+      rmSync(info.pulse)
+      const result = await api(`/api/campaigns/${campaign}/commands`, { method: 'POST', cookie: admin.cookie, body: {
+        idempotency_key: `queue-pulse-${++pulse}`, message: 'Синтетическое обновление A для очереди',
+        command: { command_type: 'MoveActor', actor_id: 'review-hero', to: { x: 4 + pulse % 2, y: 1 } },
+      } })
+      writeFileSync(join(root, 'last-pulse.json'), JSON.stringify({ status: result.status, version: result.value.room_version, state_version: result.value.authoritative_state?.state_version }))
+    }
     await new Promise(resolve => setTimeout(resolve, 500))
   }
 } finally {

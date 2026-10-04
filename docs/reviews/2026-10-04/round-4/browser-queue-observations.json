@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "baseline": "e1d927f5aa68dc9eca912b527cccf3974ba3e9e7",
+  "browser": "Codex In-app Browser",
+  "synthetic_data": true,
+  "no_llm": true,
+  "input_kind": "ordinary narrate, manual check enabled",
+  "initial_campaign": "BROWSER-REVIEW3",
+  "requested_campaign": "BROWSER-OTHER4",
+  "action": "Проверяю силу",
+  "control_flow": [
+    "hold narrate response",
+    "inject a valid server update of A via temporary admin fixture",
+    "select B from normal CampaignModal"
+  ],
+  "observed_after_switch": {
+    "url_campaign": "BROWSER-OTHER4",
+    "heading": "Тихая площадь",
+    "visible_campaign": "BROWSER-REVIEW3",
+    "action_enabled": true,
+    "journal_contains_A_action": true
+  },
+  "expected_heading": "Комната Б",
+  "injected_server_update": {
+    "status": 200,
+    "room_version": 6,
+    "state_version": 8
+  },
+  "notes": [
+    "Один тестовый аккаунт имеет доступ к двум готовым legacy-кампаниям.",
+    "Изменение A выполняет синтетический admin fixture, а переключение — настоящий UI игрока.",
+    "Данные React и browser storage напрямую не редактировались.",
+    "Скриншот и DOM наблюдались через cua_repl; JSON фиксирует ручное наблюдение, а не автоматический browser test."
+  ],
+  "after_reload": {
+    "url_campaign": "BROWSER-OTHER4",
+    "heading": "Комната Б",
+    "journal_contains_A_action": false
+  }
+}
