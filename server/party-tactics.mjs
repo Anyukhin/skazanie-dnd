@@ -16,6 +16,7 @@ import {
 import { combatActionsFor } from './combat-actions.mjs'
 import { combatSpellsFor, fixedSpellSlotLevelFor } from './combat-spells.mjs'
 import { footprintCellsFor, footprintDistanceFeet } from './actor-footprint.mjs'
+import { occupiedPositions } from './rules/tactical-geometry.mjs'
 
 /**
  * Тактика автономного героя — серверная политика, а не решение модели.
@@ -682,12 +683,16 @@ function movementCandidateFor(state, actorIdValue, targetIdValue, itemId = null)
   let chosen = null
   let chosenCost = 0
   let spent = 0
+  // Сквозь союзника идут, но остановиться на его клетке нельзя: такой шаг
+  // оплачивается и пропускается как точка остановки.
+  const occupied = occupiedPositions(validationState, String(actorIdValue))
   for (const step of path) {
     if (adjacentThreats.some((threat) => actorDistanceFeet(state, threat.id, actorIdValue, threat.at, step) > 5)) break
     const stepCost = movementCostOfPath(validationState, actorIdValue, [step])
     if (spent + stepCost > budget) break
     spent += stepCost
     if (String(step.x) === String(to.x) && String(step.y) === String(to.y)) break
+    if (footprintCellsFor(actor, step).some((cell) => occupied.has(`${cell.x},${cell.y}`))) continue
     const attackState = structuredClone(validationState)
     attackState.mechanics.positions[actorIdValue] = { x: step.x, y: step.y }
     const forecast = attackForecast(attackState, actorIdValue, targetIdValue, itemId ? { itemId } : {})

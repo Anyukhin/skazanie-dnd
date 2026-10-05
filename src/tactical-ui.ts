@@ -275,6 +275,23 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
     if (hero.id === actor.id || hero.hp > 0 || state.mechanics?.death?.heroes?.[hero.id]?.status === 'dead') continue
     for (const cell of actorFootprintCells(hero)) npcTransit.add(boardPositionKey(cell.x, cell.y))
   }
+  // Сквозь живого союзника тоже проходят, а встать на его клетку нельзя
+  // (`allyPassablePositions` на сервере, PHB 2014). Союзник героя — другие
+  // герои и призывы отряда, союзник противника — другие противники, кроме
+  // призыва, враждебного всем.
+  const moverIsEnemy = (state.enemies ?? []).some((enemy) => enemy.id === actor.id)
+  const allies: BoardActor[] = moverIsEnemy
+    ? (state.enemies ?? []).filter((enemy) => enemy.alive && (enemy as { faction?: string }).faction !== 'hostile')
+    : [...state.players.filter((hero) => hero.hp > 0), ...(state.actors ?? []).filter((summon) => summon.alive && summon.faction === 'party')]
+  for (const ally of allies) {
+    if (ally.id === actor.id) continue
+    for (const cell of actorFootprintCells(ally)) npcTransit.add(boardPositionKey(cell.x, cell.y))
+  }
+  // Чужое пространство — труднопроходимая местность: проход сквозь союзника,
+  // лежащего героя или мирного NPC стоит вдвое, как и на сервере.
+  const creatureCells = occupiedBoardPositions(state, actor.id)
+  const throughCreature = (position: { x: number; y: number }) => actorFootprintCells(actor, position)
+    .some((cell) => creatureCells.has(boardPositionKey(cell.x, cell.y)))
   const propBlocked = new Set<string>()
   for (const prop of map?.props ?? []) {
     if (!prop.blocksMove) continue
@@ -376,7 +393,8 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
       // Закрытая и запертая дверь останавливают шаг ровно так же, как на
       // сервере: иначе предпросмотр вёл бы маршрут сквозь запертую дверь.
       if (footprintStepBlocked({ x, y }, { x: nextX, y: nextY })) continue
-      const difficultTerrain = !ignoresDifficultTerrain && isDifficultTerrain(state, { x: nextX, y: nextY }, map)
+      const difficultTerrain = !ignoresDifficultTerrain
+        && (isDifficultTerrain(state, { x: nextX, y: nextY }, map) || throughCreature({ x: nextX, y: nextY }))
       const nextCost = current.cost + cellFeet * (1 + (difficultTerrain ? 1 : 0) + (crawling ? 1 : 0))
       if (nextCost >= (costs.get(next) ?? Number.POSITIVE_INFINITY)) continue
       costs.set(next, nextCost)
@@ -398,7 +416,7 @@ export function buildMovementPaths(state: GameState, actor: BoardActor, cellFeet
     const baseCostFeet = path.length * cellFeet
     const difficultTerrainFeet = ignoresDifficultTerrain
       ? 0
-      : path.filter((step) => isDifficultTerrain(state, step, map)).length * cellFeet
+      : path.filter((step) => isDifficultTerrain(state, step, map) || throughCreature(step)).length * cellFeet
     const crawlingFeet = crawling ? path.length * cellFeet : 0
     const costFeet = costs.get(destination) ?? baseCostFeet + difficultTerrainFeet + crawlingFeet
     result.set(destination, { path, baseCostFeet, difficultTerrainFeet, crawlingFeet, costFeet })
