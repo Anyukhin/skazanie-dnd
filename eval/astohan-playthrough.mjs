@@ -37,8 +37,8 @@ import { abilityScoreChoiceLevelsFor, classSkillRuleFor, featureChoiceGroupsFor,
 import { characterCreationChoicesComplete } from '../server/character-lifecycle.mjs'
 import { combatClassCatalogInfo, combatSubclassOptionsFor, normalizedCombatSubclassFor } from '../server/combat-actions.mjs'
 import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells.mjs'
-import { previewApproachAttack } from '../server/rules-engine.mjs'
-import { shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
+import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
+import { actorFootprintCellsAt, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -599,7 +599,8 @@ function combatSnapshot(state) {
 let directorSeq = 0
 async function director(playerAction = 'Продолжить приключение', { interactionId, quiet = false } = {}) {
   const key = `bot-director-${++directorSeq}`
-  const seen = messageIds(await room())
+  const before = await room()
+  const seen = messageIds(before)
   const result = await request(`/api/campaigns/${CODE}/autonomy/advance`, {
     method: 'POST', account: accounts.owner, key,
     body: { idempotency_key: key, player_action: playerAction, actor_id: accounts.owner.heroId, ...(interactionId ? { interaction_id: interactionId } : {}) },
@@ -607,7 +608,10 @@ async function director(playerAction = 'Продолжить приключен�
   stats.directorSteps += 1
   if (result.status !== 200) {
     const code = result.body?.code ?? ''
-    if (!['COMBAT_ACTIVE', 'PARTY_DECISION_OPEN', 'CAMPAIGN_READ_ONLY'].includes(code)) finding('major', 'director-refused', `Режиссёр на «${playerAction}»: ${result.status} ${code} — ${short(result.body?.error, 200)}`)
+    // ENCOUNTER_ALREADY_PRESENT — честный отказ: отряд выведен из строя, а
+    // враги прежней встречи ещё стоят на поле. Новую встречу поверх неё
+    // сервер собирать и не должен.
+    if (!['COMBAT_ACTIVE', 'PARTY_DECISION_OPEN', 'CAMPAIGN_READ_ONLY', 'ENCOUNTER_ALREADY_PRESENT'].includes(code)) finding('major', 'director-refused', `Режиссёр на «${playerAction}»: ${result.status} ${code} — ${short(result.body?.error, 200)}`)
     if (!quiet) note(`- 🎬 Режиссёр отказал: ${code || result.status}`)
     return null
   }
@@ -616,9 +620,13 @@ async function director(playerAction = 'Продолжить приключен�
   // Строку Режиссёра сервер дописывает в ленту комнаты после того, как собрал
   // состояние ответа, поэтому новые сообщения ищутся в свежем снимке комнаты:
   // по `result.body.state` детектор молчания срабатывал на каждом шаге.
-  const fresh = newMessages(seen, await room()).map((entry) => short(entry.text ?? entry.content, 500)).filter(Boolean)
+  const after = await room()
+  const fresh = newMessages(seen, after).map((entry) => short(entry.text ?? entry.content, 500)).filter(Boolean)
+  // Подтверждённый переход меняет сцену, и её вступление приходит своим путём —
+  // смена места сама по себе видимый шаг, а не молчание Режиссёра.
+  const sceneChanged = sceneKey(after) !== sceneKey(before)
   note(`- 🎬 Режиссёр (${playerAction}) → **${type}**${result.body.reward?.xp ? `, опыт ${result.body.reward.xp}` : ''}${fresh.length ? `: ${fresh.join(' ⏐ ')}` : ' (в хронике ничего нового)'}`)
-  if (!fresh.length && !['COMBAT_ACTIVE'].includes(type) && !result.body.state?.agentInteraction) finding('minor', 'director-silent', `шаг Режиссёра ${type} на «${playerAction}» не добавил в хронику ни строки`)
+  if (!fresh.length && !sceneChanged && !['COMBAT_ACTIVE'].includes(type) && !result.body.state?.agentInteraction) finding('minor', 'director-silent', `шаг Режиссёра ${type} на «${playerAction}» не добавил в хронику ни строки`)
   return result.body
 }
 
@@ -805,12 +813,24 @@ async function meleeApproach(actorId, targetId) {
   }
   const targetAt = fresh.mechanics.positions?.[targetId]
   if (!targetAt) return
-  const path = (shortestTacticalPath(fresh, actorId, targetAt, { allowOccupiedDestination: true }) ?? []).slice(0, -1)
-  const me = heroOf(fresh, actorId)
-  const spent = Number(fresh.mechanics.combat.action_economy?.[actorId]?.movement_spent ?? 0)
-  const budget = Math.max(0, Math.floor(((Number(me.speed) || 25) - spent) / 5))
-  const stop = path.slice(0, budget)
-  const occupied = new Set([...fresh.players, ...(fresh.enemies ?? [])].filter((entry) => entry.id !== actorId && isUp(entry)).map((entry) => { const p = fresh.mechanics.positions?.[entry.id] ?? entry; return `${p.x},${p.y}` }))
+  // До удара не дойти — идём, сколько хватает скорости. Путь режется по цене
+  // шага движка (трудная местность), а занятыми считаются все клетки тела:
+  // крупный зверь занимает 2×2, и по одной опорной клетке бот вставал внутрь
+  // него — INVALID_DESTINATION раунд за раундом (серия сидов 2026-10-05).
+  const rules = normalizeCampaignState(fresh)
+  const path = (shortestTacticalPath(rules, actorId, targetAt, { allowOccupiedDestination: true }) ?? []).slice(0, -1)
+  const { stepCost } = movementStepCostFor(rules, actorId)
+  let budgetFeet = Number(movementForActor(rules, actorId).movement_remaining) || 0
+  const stop = []
+  for (const step of path) {
+    budgetFeet -= stepCost(step)
+    if (budgetFeet < 0) break
+    stop.push(step)
+  }
+  const occupied = new Set([...rules.players, ...(rules.enemies ?? [])]
+    .filter((entry) => entry.id !== actorId && isUp(entry))
+    .flatMap((entry) => actorFootprintCellsAt(rules, entry.id))
+    .map((cell) => `${cell.x},${cell.y}`))
   while (stop.length && occupied.has(`${stop.at(-1).x},${stop.at(-1).y}`)) stop.pop()
   if (!stop.length) return
   const moved = await command(actorId, { command_type: 'MoveActor', to: stop.at(-1) }, 'Подойти', { expectFailure: true })
