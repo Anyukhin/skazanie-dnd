@@ -654,3 +654,16 @@ test('органические шаблоны создают разные нер
 
   assert.equal(new Set(maps.map((cells) => cells.map((cell) => `${cell.x},${cell.y}`).join('|'))).size, formats.length)
 })
+
+test('цель новой сцены — название в кавычках и обрезка по слову, а не «в Пепельная застава … пох»', async () => {
+  // Прогон Асстохана (2026-10-05): цель «Найти в Пепельная застава другой путь
+  // к разгадке: … с забытым пох» — название без склонения и обрыв на полуслове.
+  const hook = 'Саргат разоряет равнины и собирает сведения о героях, а три свежих донесения связывают его охоту с забытым походом самого короля'
+  const state = { ...brodState, adventure: { ...(brodState.adventure ?? {}), currentHook: hook } }
+  const planned = await new SceneArchitectAgent().plan({ action: '[РЕШЕНИЕ ГРУППЫ] Покинуть «Тихий Брод»', state, decision: 'Покинуть «Тихий Брод»', destinationHint: '' })
+  const objective = planned.sceneArgs.objective
+  assert.match(objective, /«Эствуд»/u, objective)
+  assert.ok(objective.length <= 160, objective)
+  assert.match(objective, /(?:[.!?…»]|[а-яё])$/iu)
+  assert.doesNotMatch(objective, /\s\p{L}{1,3}$/u, `обрыв на полуслове: ${objective}`)
+})

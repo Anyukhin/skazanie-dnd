@@ -4700,6 +4700,19 @@ function deathSaveTracker(state, id) {
   }
 }
 
+/**
+ * Цель в пределах длины, обрезанная по границе слова с многоточием. Срез по
+ * знакам оставлял игроку «…другой путь к раз» (прогон Асстохана, 2026-10-05).
+ * Работает при создании события: сохранённые события и replay не меняются.
+ */
+function objectiveWithinLimit(value, maximum) {
+  const text = String(value || '').replace(/\s+/gu, ' ').trim()
+  if (text.length <= maximum) return text
+  const cut = text.slice(0, maximum - 1)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > maximum / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:—-]+$/u, '')}…`
+}
+
 function isDeadHero(state, id) {
   return state?.mechanics?.death?.heroes?.[String(id)]?.status === 'dead'
 }
@@ -21139,7 +21152,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       break
     case 'UpdateObjective':
-      events.push(eventFrom(command, 'ObjectiveUpdated', { objective: String(command.objective || '').slice(0, 120) }, []))
+      events.push(eventFrom(command, 'ObjectiveUpdated', { objective: objectiveWithinLimit(command.objective, 120) }, []))
       break
     case 'SpawnEntity':
       events.push(eventFrom(command, 'EntitySpawned', { entity: clone(command.entity ?? {}) }, []))

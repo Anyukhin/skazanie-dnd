@@ -122,3 +122,14 @@ test('встречу без единого героя в сознании дви
     (error) => error.code === 'PARTY_UNAVAILABLE' && /без сознания/u.test(error.message),
   )
 })
+
+test('цель длиннее предела обрезается по слову с многоточием', () => {
+  const objective = 'Найти в «Пепельная застава» другой путь к разгадке: Саргат разоряет равнины и собирает сведения о героях, а три донесения связывают его'
+  const result = resolveCommand(authoritative({ command_type: 'UpdateObjective', command_id: 'long-objective', objective }), afterVictory(), options(dice()))
+  const saved = result.events.find((event) => event.event_type === 'ObjectiveUpdated').payload.objective
+  assert.ok(saved.length <= 120, saved)
+  assert.match(saved, /…$/u)
+  assert.ok(objective.startsWith(saved.slice(0, -1)), 'обрезка не меняет слов')
+  assert.match(saved.slice(0, -1), /\p{L}$/u)
+  assert.equal(objective[saved.length - 1], ' ', `обрыв на полуслове: ${saved}`)
+})

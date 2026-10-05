@@ -28,6 +28,19 @@ function clean(value, maximum = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
 }
 
+/**
+ * Обрезка по границе слова с многоточием. Цель сцены дальше режется до 160
+ * знаков, и склейка «Найти в … другой путь: <зацепка>» обрывалась посреди
+ * слова — «…с забытым пох» (прогон Асстохана, 2026-10-05).
+ */
+function clipWords(value, maximum) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maximum) return text
+  const cut = text.slice(0, Math.max(0, maximum - 1))
+  const space = cut.lastIndexOf(' ')
+  return `${(space > maximum / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:—-]+$/u, '')}…`
+}
+
 function clampInteger(value, fallback, minimum, maximum) {
   const number = Number(value)
   return Number.isSafeInteger(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
@@ -477,8 +490,10 @@ function fallbackPlan({ action, state, decision, destinationHint, destinationLoc
       : onwardDestination
       ? onwardRouteObjective(location, onwardDestination)
       : abandonsQuest
-      ? `Осмотреться в ${location} и найти новую цель`
-      : oldHook ? `Найти в ${location} другой путь к разгадке: ${oldHook}` : `Осмотреться в ${location} и найти другой путь`,
+      // Название — в кавычках, как в строках перехода: без кавычек «в Пепельная
+      // застава» читалось ошибкой склонения, а склонять имена места нечем.
+      ? `Осмотреться в «${location}» и найти новую цель`
+      : oldHook ? clipWords(`Найти в «${location}» другой путь к разгадке: ${oldHook}`, 160) : `Осмотреться в «${location}» и найти другой путь`,
     transition: continues || reached
       ? `Отряд идёт из «${from}» туда, куда звала цель, — к «${location}».`
       : `Отряд отступает из «${from}» и следует принятому решению: ${clean(decision, 220)}.`,
