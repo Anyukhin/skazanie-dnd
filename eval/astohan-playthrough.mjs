@@ -552,7 +552,12 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
       const options = clarification.options ?? clarification.choices ?? []
       note(`> ❓ уточнение: ${short(clarification.question, 300)}${options.length ? ` [${options.map((entry) => entry.label ?? entry).join(' / ')}]` : ''}`)
       if (hop >= 1) { stats.deadEnds += 1; finding('major', 'clarify-loop', `повторное уточнение на «${short(action, 90)}»: ${short(clarification.question, 160)}`); break }
-      const pick = options[0]?.label ?? options[0]?.text ?? options[0] ?? action
+      // Варианты бывают только текстом («Можно, например, осмотреть место
+      // внимательнее, …») — живой игрок выбрал бы первый, а не повторил фразу.
+      const offered = /Можно, например, ([^,.;(]+)/u.exec(String(clarification.question ?? answer.narration ?? ''))?.[1]?.trim()
+      const firstPerson = offered && offered
+        .replace(/^осмотреть/u, 'Осматриваю').replace(/^расспросить/u, 'Расспрашиваю').replace(/^отправиться/u, 'Отправляюсь')
+      const pick = options[0]?.label ?? options[0]?.text ?? options[0] ?? firstPerson ?? action
       body = { ...baseBody, action: typeof pick === 'string' ? pick : action, idempotency_key: `bot-say-${++narrateSeq}`, clarification_id: clarification.id }
       continue
     }
