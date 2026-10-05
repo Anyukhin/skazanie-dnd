@@ -99,6 +99,9 @@ function summarize(results) {
       wins: stats.combatWins,
       deaths: stats.heroDeaths,
       dead_ends: stats.deadEnds,
+      corpus: stats.corpus ? `${stats.corpus.deadEnds}/${stats.corpus.said}` : '—',
+      text: scorecard.criteria?.find((entry) => entry.id === 'Т')?.score ?? '—',
+      consistency: scorecard.criteria?.find((entry) => entry.id === 'С')?.score ?? '—',
       refused: stats.commandRefused,
       blockers: scorecard.blockers,
       critical: scorecard.critical,
@@ -140,11 +143,11 @@ function writeSummary(results, summary) {
     '',
     `Сиды ${SEEDS.join(', ')} · параллельно ${PARALLEL}${MINUTES ? ` · бюджет ${MINUTES} мин на сид` : ''} · до конца дошли **${summary.finished} из ${results.length}** (победой ${summary.completed}) · оценка средняя **${summary.mean ?? '—'}**, худшая ${summary.min ?? '—'}`,
     '',
-    '| Сид | Исход | Оценка | Мин | Глав | Боёв (побед) | Смертей | Тупиков | Отказов команд | Блок / крит / серьёзн |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| Сид | Исход | Оценка | Мин | Глав | Боёв (побед) | Смертей | Тупиков | На реальных фразах | Текст | Согласованность | Отказов команд | Блок / крит / серьёзн |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...summary.rows.map((row) => row.overall == null
-      ? `| ${row.seed} | ${cell(row.status)} | — | — | — | — | — | — | — | — |`
-      : `| [${row.seed}](seed-${row.seed}/report.md) | ${row.status} | ${row.overall} | ${row.minutes} | ${row.chapters} | ${row.combats} (${row.wins}) | ${row.deaths} | ${row.dead_ends} | ${row.refused} | ${row.blockers} / ${row.critical} / ${row.major} |`),
+      ? `| ${row.seed} | ${cell(row.status)} | — | — | — | — | — | — | — | — | — | — | — |`
+      : `| [${row.seed}](seed-${row.seed}/report.md) | ${row.status} | ${row.overall} | ${row.minutes} | ${row.chapters} | ${row.combats} (${row.wins}) | ${row.deaths} | ${row.dead_ends} | ${row.corpus} | ${row.text} | ${row.consistency} | ${row.refused} | ${row.blockers} / ${row.critical} / ${row.major} |`),
     '',
     '## Находки по видам',
     '',

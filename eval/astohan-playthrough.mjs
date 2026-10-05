@@ -1,34 +1,40 @@
 /**
- * Сквозной прогон кампании «Асстоханские равнины» двумя ботами через HTTP
+ * Сквозной прогон кампании «Асстоханские равнины» ботами через HTTP
  * (eval, в тесты не входит). Пункт 5 плана `docs/playable-goal.md`: «вечер за
  * несколько минут» — без браузера, но тем же путём, что и сайт.
  *
  * Что делает:
  *  - поднимает изолированный сервер на временном хранилище (порт свой);
- *  - заводит владельца и второго игрока, приглашение и вход по нему;
+ *  - заводит владельца и игроков по приглашениям — по аккаунту на героя;
  *  - создаёт кампанию из авторского мира `astohan-plains` так же, как мастер
  *    создания на сайте (редакция 2014, стартовый уровень 7);
- *  - создаёт двух героев импортом и поэтапным повышением до 7-го уровня,
- *    выборы каждого уровня берёт из серверного каталога;
- *  - играет сценарий: поручение Ареса, принятие задания голосованием, улики
- *    из заготовок ведущего, дорога по карте мира, бой ботом через команды
- *    доски, добыча, отдых, Режиссёр до финала арки или до лимита времени;
+ *  - создаёт героев (по умолчанию воин, жрица, маг, плут) импортом и
+ *    поэтапным повышением до 7-го уровня, выборы уровня — из серверного каталога;
+ *  - играет сценарий: поручение Ареса, принятие задания голосованием, торговля,
+ *    улики из заготовок ведущего, реальные фразы игроков из
+ *    `eval/player-phrases.json`, дорога по карте мира, бой ботом через команды
+ *    доски (огненный шар, скрытая атака, зелье, переговоры), добыча, отдых,
+ *    Режиссёр до финала арки или до лимита времени;
  *  - по пути ловит тупики, ответы 5xx, отказы законным командам, зависший бой;
  *  - в конце проверяет идемпотентность, перезапуск, проекцию второго игрока,
- *    replay (`tools/audit-cutover.mjs`) и пишет отчёт с оценкой.
+ *    replay (`tools/audit-cutover.mjs`), меряет текст рассказчика и пишет
+ *    отчёт с оценкой.
  *
  *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
  *   node eval/astohan-playthrough.mjs --seed 7        # повторяемые кости
+ *   node eval/astohan-playthrough.mjs --party fighter,cleric   # быстрый прогон вдвоём
  *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
+ *   node eval/astohan-playthrough.mjs --live --judge  # плюс оценка текста моделью-судьёй
  *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
  *
  * Итог — `<out>/report.md` (оценка и находки), `<out>/transcript.md`
- * (хроника: реплика → ответ), `<out>/report.json` (всё для сравнения прогонов).
- * Ключ модели не печатается и в отчёт не попадает.
+ * (хроника: реплика → ответ), `<out>/narration-sample.md` (выборка текста
+ * рассказчика для чтения глазами), `<out>/report.json` (всё для сравнения
+ * прогонов). Ключ модели не печатается и в отчёт не попадает.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,6 +47,9 @@ import { movementForActor, movementStepCostFor, normalizeCampaignState, previewA
 import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
 import { footprintCellsFor } from '../server/actor-footprint.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
+import { findNarratorCliches } from '../server/narrator-craft-quality.mjs'
+import { measureNarratorCraft } from './narrator-craft-metrics.mjs'
+import { judgeContext, narrationConsistency, sceneContinuity, sceneMapConsistency } from './consistency-checks.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const argv = process.argv.slice(2)
@@ -51,6 +60,9 @@ const option = (name, fallback) => {
 }
 const LIVE = flag('live')
 const KEEP = flag('keep')
+// Судья тратит вызовы модели, поэтому включается только явно.
+const JUDGE = flag('judge')
+const PARTY = option('party', 'fighter,cleric,wizard,rogue').split(',').map((entry) => entry.trim()).filter(Boolean)
 const SEED = option('seed', null)
 const MINUTES = Number(option('minutes', LIVE ? 25 : 20))
 const PORT = Number(option('port', 8900 + Math.floor(Math.random() * 90)))
@@ -64,6 +76,17 @@ const DEADLINE = Date.now() + MINUTES * 60_000
 const startedAt = Date.now()
 const base = `http://127.0.0.1:${PORT}`
 const setupToken = `astohan-${randomUUID()}`
+
+// Сервер берёт ключ из `.env` своей рабочей папки. В отдельном worktree
+// `.env` нет (он в .gitignore), и прогон с --live молча шёл без модели —
+// отчёт о «живой» игре был бы ложным. Значение ключа не читается в вывод.
+if (LIVE || JUDGE) {
+  const envText = (() => { try { return readFileSync(join(ROOT, '.env'), 'utf8') } catch { return '' } })()
+  if (!process.env.ROUTERAI_API_KEY && !/^ROUTERAI_API_KEY=\S+/mu.test(envText)) {
+    console.error(`--live/--judge: в ${join(ROOT, '.env')} нет ROUTERAI_API_KEY. В отдельной рабочей копии скопируйте .env из основной папки.`)
+    process.exit(2)
+  }
+}
 
 mkdirSync(OUT, { recursive: true })
 const storage = mkdtempSync(join(tmpdir(), 'skazanie-astohan-'))
@@ -82,7 +105,16 @@ const stats = {
   deadEnds: 0, http5xx: 0, rateLimited: 0, votes: 0, travels: 0, directorSteps: 0, directorIntents: {},
   combats: 0, combatRounds: 0, combatWins: 0, heroDowns: 0, heroDeaths: 0, playerCommands: 0, commandRefused: 0,
   lootTaken: 0, rests: 0, levelUps: 0, restarts: 0, scenes: [], chapters: 0,
+  // Реальные фразы игроков: сколько сказано и сколько из них упёрлось в тупик, по видам.
+  corpus: { said: 0, deadEnds: 0, byKind: {} },
+  trade: { bought: 0, sold: 0, refused: 0 }, potionsUsed: 0,
+  parley: { attempts: 0, truces: 0, outcomes: [] },
+  spells: {}, sneakAttacks: 0,
+  // Сколько ответов сверено с картой и механикой и какие расхождения нашлись.
+  consistencyChecked: 0, consistency: {},
 }
+/** Текст рассказчика за прогон: для метрик, выборки и судьи. */
+const narrations = []
 let currentStage = 'startup'
 
 function finding(severity, kind, message, context = {}) {
@@ -187,7 +219,7 @@ async function request(path, { method = 'GET', account, body, key, timeoutMs = 1
   return { status: 429, body: null, text: 'rate limited', ms: Date.now() - started }
 }
 
-const accounts = {}
+const accounts = { players: [] }
 const cookieOf = (result) => result.response?.headers.get('set-cookie')?.split(';')[0] ?? ''
 
 // Живой поток: держит игрока «в сети» для голосований и мерит первое слово
@@ -240,8 +272,8 @@ async function room(account = accounts.owner) {
   if (result.status !== 200) throw new Error(`Комната недоступна (${result.status}): ${result.text.slice(0, 300)}`)
   return result.body.state
 }
-const heroIds = () => [accounts.owner.heroId, accounts.guest.heroId]
-const accountFor = (actorId) => Object.values(accounts).find((account) => account.heroId === actorId) ?? accounts.owner
+const heroIds = () => accounts.players.map((account) => account.heroId)
+const accountFor = (actorId) => accounts.players.find((account) => account.heroId === actorId) ?? accounts.owner
 const heroOf = (state, actorId) => state.players.find((player) => player.id === actorId)
 const lifecycleStatus = (state) => state?.mechanics?.campaign_lifecycle?.status ?? 'active'
 const sceneKey = (state) => `${state.worldMap?.currentLocationId ?? '?'}|${state.scene?.location ?? '?'}|${state.adventure?.chapter ?? '?'}`
@@ -275,7 +307,7 @@ async function command(actorId, commandValue, label = commandValue.command_type,
 // Создание героев: импорт первого уровня и поэтапное повышение до седьмого
 
 const HERO_PLANS = {
-  owner: {
+  fighter: {
     name: 'Торвальд', characterClass: 'fighter', role: 'Воин · ур. 1', species: 'Холмовой дварф',
     document: {
       character: 'Торвальд', name: 'Владелец', role: 'Воин · ур. 1', characterClass: 'fighter', species: 'Холмовой дварф',
@@ -297,7 +329,7 @@ const HERO_PLANS = {
     asi: ['str', 'con'],
     cantrips: [], spells: [],
   },
-  guest: {
+  cleric: {
     name: 'Ильва', characterClass: 'cleric', role: 'Жрец · ур. 1', species: 'Холмовой дварф',
     document: {
       character: 'Ильва', name: 'Гость', role: 'Жрец · ур. 1', characterClass: 'cleric', species: 'Холмовой дварф',
@@ -320,6 +352,50 @@ const HERO_PLANS = {
     asi: ['wis', 'wis'],
     cantrips: ['sacred-flame', 'guidance', 'spare-the-dying', 'thaumaturgy', 'light'],
     spells: ['healing-word', 'cure-wounds', 'guiding-bolt', 'bless', 'spiritual-weapon', 'prayer-of-healing', 'spirit-guardians', 'mass-healing-word', 'revivify', 'aid', 'lesser-restoration', 'guardian-of-faith', 'death-ward'],
+  },
+  wizard: {
+    name: 'Мирра', characterClass: 'wizard', role: 'Волшебник · ур. 1', species: 'Скальный гном',
+    document: {
+      character: 'Мирра', name: 'Третий игрок', role: 'Волшебник · ур. 1', characterClass: 'wizard', species: 'Скальный гном',
+      background: 'Мудрец', backgroundId: 'sage', backgroundChoices: { tools: [], languages: ['elvish', 'draconic'] },
+      starterEquipmentChoices: { weapon: ['quarterstaff'], focus: ['arcane-focus'], pack: ['scholars-pack'] },
+      level: 1, experience: 0,
+      abilities: { str: 8, dex: 13, con: 15, int: 17, wis: 12, cha: 10 },
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
+        baseScores: { str: 8, dex: 13, con: 14, int: 15, wis: 12, cha: 10 },
+        originBonusProfileId: 'gnome-rock', originBonuses: { str: 0, dex: 0, con: 1, int: 2, wis: 0, cha: 0 }, speciesOptionId: 'gnome-rock',
+      },
+      baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['insight', 'investigation'], selectedFeatureIds: [],
+      knownSpellIds: ['fire-bolt', 'mage-hand', 'ray-of-frost', 'magic-missile', 'shield', 'mage-armor', 'sleep', 'thunderwave', 'burning-hands'],
+      preparedSpellIds: ['magic-missile', 'shield', 'mage-armor', 'sleep'],
+    },
+    skills: ['insight', 'investigation', 'arcana', 'history'],
+    subclass: ['Школа Воплощения'],
+    asi: ['int', 'int'],
+    cantrips: ['fire-bolt', 'ray-of-frost', 'mage-hand', 'light', 'shocking-grasp'],
+    spells: ['magic-missile', 'fireball', 'shield', 'misty-step', 'scorching-ray', 'mage-armor', 'lightning-bolt', 'ice-storm', 'thunderwave', 'burning-hands', 'sleep', 'hold-person', 'web', 'counterspell', 'haste', 'fly', 'polymorph', 'greater-invisibility', 'detect-magic', 'absorb-elements', 'banishment', 'dimension-door', 'chromatic-orb', 'ice-knife'],
+  },
+  rogue: {
+    name: 'Шорох', characterClass: 'rogue', role: 'Плут · ур. 1', species: 'Легконогий полурослик',
+    document: {
+      character: 'Шорох', name: 'Четвёртый игрок', role: 'Плут · ур. 1', characterClass: 'rogue', species: 'Легконогий полурослик',
+      background: 'Преступник', backgroundId: 'criminal', backgroundChoices: { tools: ['dice_set'], languages: [] },
+      starterEquipmentChoices: { primary: ['rapier'], secondary: ['shortbow'], pack: ['burglars-pack'] },
+      level: 1, experience: 0,
+      abilities: { str: 8, dex: 17, con: 14, int: 12, wis: 13, cha: 11 },
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
+        baseScores: { str: 8, dex: 15, con: 14, int: 12, wis: 13, cha: 10 },
+        originBonusProfileId: 'halfling-lightfoot', originBonuses: { str: 0, dex: 2, con: 0, int: 0, wis: 0, cha: 1 }, speciesOptionId: 'halfling-lightfoot',
+      },
+      baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['acrobatics', 'perception', 'sleight_of_hand', 'investigation'],
+      selectedFeatureIds: [], knownSpellIds: [], preparedSpellIds: [],
+    },
+    skills: ['acrobatics', 'perception', 'sleight_of_hand', 'investigation'],
+    subclass: ['Вор'],
+    asi: ['dex', 'dex'],
+    cantrips: [], spells: [],
   },
 }
 
@@ -427,6 +503,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
   note(`\n**${hero?.character ?? actorId}${label ? ` · ${label}` : ''}:** ${action}`)
   let final = null
   const steps = []
+  let rolledCheck = null
   for (let hop = 0; hop < 4; hop += 1) {
     const sentAt = Date.now()
     const result = await request('/api/narrate', { method: 'POST', account, body, key: body.idempotency_key })
@@ -445,7 +522,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
     steps.push(answer)
     final = answer
     const text = String(answer.narration ?? '')
-    if (text) note(`> ${short(text, 1400)}`)
+    if (text) { note(`> ${short(text, 1400)}`); narrations.push({ kind: 'reply', action, label, text }) }
     if (answer.check && !answer.mechanics?.some((event) => event.event_type === 'AbilityCheckResolved')) {
       stats.checks += 1
       const check = answer.check
@@ -456,6 +533,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
         return { status: rolled.status, body: rolled.body, steps }
       }
       if (rolled.body.success) stats.checkSuccess += 1
+      rolledCheck = { success: rolled.body.success, total: rolled.body.total, difficulty: rolled.body.difficulty, label: check.label, skill: check.skill }
       note(`> 🎲 ${rolled.body.value} + ${rolled.body.modifier} = **${rolled.body.total}** против ${rolled.body.difficulty ?? '?'} → ${rolled.body.success ? 'успех' : 'провал'}`)
       body = { ...baseBody, idempotency_key: `bot-say-${++narrateSeq}`, roll: { roll_id: rolled.body.roll_id }, ...(answer.clarification?.id ? { clarification_id: answer.clarification.id } : {}) }
       const resolved = await sayFollowUp(body, account, steps)
@@ -486,6 +564,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
     break
   }
   classifyOutcome(action, final, expect)
+  await checkNarrationConsistency(action, final?.narration, rolledCheck)
   return { status: 200, body: final, steps }
 }
 
@@ -501,7 +580,7 @@ async function sayFollowUp(body, account, steps) {
     return null
   }
   steps.push(result.body)
-  if (result.body.narration) note(`> ${short(result.body.narration, 1400)}`)
+  if (result.body.narration) { note(`> ${short(result.body.narration, 1400)}`); narrations.push({ kind: 'roll', action: body.action, label: 'после броска', text: String(result.body.narration) }) }
   return result.body
 }
 
@@ -520,7 +599,8 @@ function classifyOutcome(action, answer, expect) {
   const normalized = text.replace(/\s+/gu, ' ').trim()
   if (normalized.length > 60) {
     const seenBefore = answersSeen.get(normalized)
-    if (seenBefore && seenBefore !== action) finding('major', 'repeated-answer', `на «${short(action, 70)}» тот же ответ, что и на «${short(seenBefore, 70)}»: «${short(normalized, 140)}»`)
+    // Служебные заявки карты мира и решения группы отвечают шаблоном голосования — это не повтор рассказчика.
+    if (seenBefore && seenBefore !== action && !/^\[/u.test(action)) finding('major', 'repeated-answer', `на «${short(action, 70)}» тот же ответ, что и на «${short(seenBefore, 70)}»: «${short(normalized, 140)}»`)
     else answersSeen.set(normalized, action)
     const opening = String(template.opening?.narration ?? '').replace(/\s+/gu, ' ').slice(60, 160)
     if (opening && normalized.includes(opening) && !/^\[|прошл|^что мы/iu.test(action)) finding('major', 'parrots-opening', `ответ на «${short(action, 70)}» пересказывает вступление кампании`)
@@ -623,12 +703,22 @@ async function director(playerAction = 'Продолжить приключен�
   // состояние ответа, поэтому новые сообщения ищутся в свежем снимке комнаты:
   // по `result.body.state` детектор молчания срабатывал на каждом шаге.
   const after = await room()
+  for (const entry of newMessages(seen, after)) {
+    if (entry.speaker !== 'narrator' || !entry.text) continue
+    narrations.push({ kind: 'director', action: playerAction, label: type, text: String(entry.text) })
+    for (const issue of narrationConsistency(String(entry.text), after)) recordConsistency(issue, `Режиссёр, ${type}`)
+    stats.consistencyChecked += 1
+  }
   const fresh = newMessages(seen, after).map((entry) => short(entry.text ?? entry.content, 500)).filter(Boolean)
   // Подтверждённый переход меняет сцену, и её вступление приходит своим путём —
   // смена места сама по себе видимый шаг, а не молчание Режиссёра.
   const sceneChanged = sceneKey(after) !== sceneKey(before)
   note(`- 🎬 Режиссёр (${playerAction}) → **${type}**${result.body.reward?.xp ? `, опыт ${result.body.reward.xp}` : ''}${fresh.length ? `: ${fresh.join(' ⏐ ')}` : ' (в хронике ничего нового)'}`)
   if (!fresh.length && !sceneChanged && !['COMBAT_ACTIVE'].includes(type) && !result.body.state?.agentInteraction) finding('minor', 'director-silent', `шаг Режиссёра ${type} на «${playerAction}» не добавил в хронику ни строки`)
+  // Игрок просит идти дальше, а Режиссёр отвечает «ничего не меняется» — тот же тупик,
+  // что и «не понял» на свободную реплику (прогон с моделью 2026-10-05, Обсидиановый перевал).
+  const stalled = fresh.find((line) => DEAD_END.some((pattern) => pattern.test(line)))
+  if (stalled && !sceneChanged) { stats.deadEnds += 1; finding('major', 'director-dead-end', `Режиссёр на «${playerAction}» (${type}): «${short(stalled, 160)}»`) }
   return result.body
 }
 
@@ -691,7 +781,7 @@ async function playCombat(label) {
   const heroesUp = state.players.filter(isUp).length
   if (!state.mechanics.combat.active) {
     if ((state.enemies ?? []).every((enemy) => !isUp(enemy))) stats.combatWins += 1
-    note(`- итог боя: раундов ${maxRound}, ${ended?.reason ?? ended?.text ?? '?'}, героев на ногах ${heroesUp}/2`)
+    note(`- итог боя: раундов ${maxRound}, ${ended?.reason ?? ended?.text ?? '?'}, героев на ногах ${heroesUp}/${heroIds().length}`)
   }
   const tally = {}
   for (const entry of state.battleLog ?? []) {
@@ -736,7 +826,10 @@ async function heroTurnActions(state, actorId) {
     if (conditions.includes('prone')) await command(actorId, { command_type: 'UseCombatAction', action_id: 'stand-up' }, 'Встать', { expectFailure: true })
     const at = state.mechanics.positions?.[actorId] ?? me
     const foes = (state.enemies ?? []).filter(isUp).map((enemy) => ({ enemy, at: state.mechanics.positions?.[enemy.id] ?? enemy })).sort((a, b) => distance(at, a.at) - distance(at, b.at))
-    if (me.characterClass === 'cleric') await clericTurn(state, actorId, at, foes)
+    if (await tryParley(state, actorId, foes)) { /* действие ушло на переговоры */ }
+    else if (me.characterClass === 'cleric') await clericTurn(state, actorId, at, foes)
+    else if (me.characterClass === 'wizard') await wizardTurn(state, actorId, at, foes)
+    else if (me.characterClass === 'rogue') await rogueTurn(state, actorId, at, foes)
     else await fighterTurn(state, actorId, foes)
   } else {
     stats.heroDowns += 1
@@ -750,10 +843,97 @@ async function heroTurnActions(state, actorId) {
   else if (ended.status !== 200) finding('major', 'end-turn-refused', `EndTurn ${actorId}: ${ended.body?.code} — ${short(ended.body?.error, 200)}`)
 }
 
-const EXPECTED_REFUSALS = /TARGET_OUT_OF_RANGE|TRAJECTORY|COVER|VISIBLE|SPEED|PATH|DIFFICULT|OCCUPIED|DESTINATION|NO_ACTION|ACTION_USED|ALREADY|INSUFFICIENT|SLOT|BONUS_ACTION|ONE_SPELL|CONCENTRATION|LINE_OF_SIGHT/u
+const EXPECTED_REFUSALS = /TARGET_OUT_OF_RANGE|TRAJECTORY|COVER|VISIBLE|SPEED|PATH|DIFFICULT|OCCUPIED|DESTINATION|NO_ACTION|ACTION_USED|ACTION_SPENT|ALREADY|INSUFFICIENT|SLOT|BONUS_ACTION|ONE_SPELL|CONCENTRATION|LINE_OF_SIGHT|REACTION_PENDING/u
+
+/** Слот заклинания уровня `level` у героя: сколько осталось. */
+const slotsLeft = (state, actorId, level) => Number(state.mechanics.resources?.[actorId]?.[`spell_slots_${level}`]?.current ?? 0)
+const countSpell = (spellId, result) => { if (result?.status === 200) stats.spells[spellId] = (stats.spells[spellId] ?? 0) + 1 }
+
+/**
+ * Переговоры посреди боя: раз за прогон, когда враги уже потеряли бойца, а
+ * ходит жрица (убеждение) или плут (запугивание). Действие уходит на попытку,
+ * как и у живого игрока; при перемирии бот выбирает самый мирный исход.
+ */
+async function tryParley(state, actorId, foes) {
+  const me = heroOf(state, actorId)
+  if (stats.parley.attempts >= 1 || !['cleric', 'rogue'].includes(me.characterClass)) return false
+  const fallen = (state.enemies ?? []).filter((enemy) => !isUp(enemy)).length
+  if (Number(state.mechanics.combat.round) < 2 || !fallen || !foes.length) return false
+  stats.parley.attempts += 1
+  const skill = me.characterClass === 'cleric' ? 'persuasion' : 'intimidation'
+  const proposed = await command(actorId, { command_type: 'ProposeParley', skill }, `Переговоры (${skill === 'persuasion' ? 'убеждение' : 'запугивание'})`, { expectFailure: true })
+  if (proposed.status !== 200) {
+    if (!/PARLEY|TRUCE|ACTION_SPENT/u.test(String(proposed.body?.code))) finding('major', 'parley-refused', `ProposeParley: ${proposed.body?.code} — ${short(proposed.body?.error, 200)}`)
+    return false
+  }
+  const truce = (await room(accountFor(actorId))).mechanics.combat?.truce
+  if (!truce) { note('- 🕊 переговоры: враги отказались'); stats.parley.outcomes.push('refused'); return true }
+  stats.parley.truces += 1
+  const outcome = ['surrender', 'withdraw', 'tribute', 'resume'].find((entry) => (truce.outcomes ?? []).includes(entry)) ?? 'resume'
+  const settled = await command(actorId, { command_type: 'SettleParley', outcome }, `Условие перемирия: ${outcome}`, { expectFailure: true })
+  stats.parley.outcomes.push(settled.status === 200 ? outcome : `${outcome}:${settled.body?.code}`)
+  if (settled.status !== 200) finding('major', 'parley-settle-refused', `SettleParley ${outcome}: ${settled.body?.code} — ${short(settled.body?.error, 200)}`)
+  note(`- 🕊 переговоры: перемирие, исходы ${JSON.stringify(truce.outcomes)}, выбран «${outcome}»`)
+  return true
+}
+
+/** Огненный шар по скоплению врагов, где нет своих; иначе волшебная стрела или огненный снаряд. */
+async function wizardTurn(state, actorId, at, foes) {
+  if (!foes.length) return
+  const allies = state.players.filter((player) => isUp(player)).map((player) => state.mechanics.positions?.[player.id] ?? player)
+  const cluster = foes.map(({ at: point }) => ({
+    point,
+    hit: foes.filter((other) => distance(point, other.at) <= 20).length,
+    friendly: allies.some((ally) => distance(point, ally) <= 20),
+  })).filter((entry) => !entry.friendly && entry.hit >= 2 && distance(at, entry.point) <= 150).sort((a, b) => b.hit - a.hit)[0]
+  if (cluster && slotsLeft(state, actorId, 3) > 0) {
+    const fireball = await command(actorId, { command_type: 'CastSpell', spell_id: 'fireball', to: { x: cluster.point.x, y: cluster.point.y }, slot_level: 3 }, `Огненный шар (${cluster.hit} цели)`, { expectFailure: true })
+    countSpell('fireball', fireball)
+    if (fireball.status === 200) return
+    if (!EXPECTED_REFUSALS.test(String(fireball.body?.code))) finding('major', 'fireball-refused', `Огненный шар: ${fireball.body?.code} — ${short(fireball.body?.error, 200)}`)
+  }
+  const target = foes[0]
+  if (distance(at, target.at) <= 120 && slotsLeft(state, actorId, 1) > 0 && foes.length === 1) {
+    const missile = await command(actorId, { command_type: 'CastSpell', spell_id: 'magic-missile', target_id: target.enemy.id, slot_level: 1 }, 'Волшебная стрела', { expectFailure: true })
+    countSpell('magic-missile', missile)
+    if (missile.status === 200) return
+  }
+  if (distance(at, target.at) <= 120) {
+    const bolt = await command(actorId, { command_type: 'CastSpell', spell_id: 'fire-bolt', target_id: target.enemy.id }, 'Огненный снаряд', { expectFailure: true })
+    countSpell('fire-bolt', bolt)
+    if (bolt.status === 200) return
+    if (!EXPECTED_REFUSALS.test(String(bolt.body?.code))) finding('major', 'cantrip-refused', `Огненный снаряд: ${bolt.body?.code} — ${short(bolt.body?.error, 200)}`)
+  }
+  await meleeApproach(actorId, target.enemy.id)
+}
+
+/** Плут стреляет из короткого лука со скрытой атакой, если рядом с целью стоит союзник. */
+async function rogueTurn(state, actorId, at, foes) {
+  if (!foes.length) return
+  const me = heroOf(state, actorId)
+  const bow = (me.inventory ?? []).find((item) => /shortbow/u.test(String(item.catalog_id)))
+  const target = foes.find(({ enemy, at: point }) => state.players.some((ally) => ally.id !== actorId && isUp(ally) && distance(state.mechanics.positions?.[ally.id] ?? ally, point) <= 5)) ?? foes[0]
+  if (bow && distance(at, target.at) <= 80 && distance(at, target.at) > 5) {
+    const flanked = state.players.some((ally) => ally.id !== actorId && isUp(ally) && distance(state.mechanics.positions?.[ally.id] ?? ally, target.at) <= 5)
+    // Лук не в руках — сначала сменить оружие, как кнопкой на панели.
+    if (!bow.equipped) await command(actorId, { command_type: 'ChangeWeapon', item_id: bow.id }, 'Взять короткий лук', { expectFailure: true })
+    let shot = await command(actorId, { command_type: 'MakeAttack', target_id: target.enemy.id, item_id: bow.id, ...(flanked ? { sneak_attack: true } : {}) }, flanked ? 'Выстрел со скрытой атакой' : 'Выстрел', { expectFailure: true })
+    if (shot.status === 200 && flanked) stats.sneakAttacks += 1
+    if (shot.status !== 200 && /SNEAK_ATTACK/u.test(String(shot.body?.code))) shot = await command(actorId, { command_type: 'MakeAttack', target_id: target.enemy.id, item_id: bow.id }, 'Выстрел', { expectFailure: true })
+    if (shot.status === 200) return
+    if (!EXPECTED_REFUSALS.test(String(shot.body?.code)) && !/WEAPON|EQUIP|AMMUNITION/u.test(String(shot.body?.code))) finding('major', 'shot-refused', `Выстрел плута: ${shot.body?.code} — ${short(shot.body?.error, 200)}`)
+  }
+  await meleeApproach(actorId, target.enemy.id)
+}
 
 async function fighterTurn(state, actorId, foes) {
   const me = heroOf(state, actorId)
+  const potion = (me.inventory ?? []).find((item) => /potion-of-healing/u.test(String(item.catalog_id)) && Number(item.quantity ?? 1) > 0)
+  if (potion && Number(me.hp) < Number(me.maxHp) * 0.35) {
+    const drank = await command(actorId, { command_type: 'UseItem', item_id: potion.id, target_id: actorId }, 'Выпить лечебное зелье', { expectFailure: true })
+    if (drank.status === 200) stats.potionsUsed += 1
+    else finding('major', 'potion-refused', `Лечебное зелье: ${drank.body?.code} — ${short(drank.body?.error, 200)}`)
+  }
   if (Number(me.hp) < Number(me.maxHp) * 0.4) await command(actorId, { command_type: 'UseCombatAction', action_id: 'second-wind' }, 'Второе дыхание', { expectFailure: true })
   const target = foes[0]
   if (!target) return
@@ -875,13 +1055,17 @@ async function freeCasterHand(actorId, refusal) {
 
 async function clericTurn(state, actorId, at, foes) {
   const slots = (level) => Number(state.mechanics.resources?.[actorId]?.[`spell_slots_${level}`]?.current ?? 0)
-  const ally = state.players.find((player) => player.id !== actorId)
-  const allyAt = ally ? state.mechanics.positions?.[ally.id] ?? ally : null
-  if (ally && allyAt && Number(ally.hp) < Number(ally.maxHp) * 0.35 && distance(at, allyAt) <= 60) {
+  // Самый раненый живой союзник в пределах 60 футов, включая лежащего на 0 ОЗ.
+  const ally = state.players
+    .filter((player) => player.id !== actorId && state.mechanics.death?.heroes?.[player.id]?.status !== 'dead')
+    .filter((player) => distance(at, state.mechanics.positions?.[player.id] ?? player) <= 60)
+    .sort((a, b) => Number(a.hp) / Math.max(1, Number(a.maxHp)) - Number(b.hp) / Math.max(1, Number(b.maxHp)))[0]
+  if (ally && Number(ally.hp) < Number(ally.maxHp) * 0.35) {
     const level = [1, 2, 3].find((entry) => slots(entry) > 0)
     if (level) {
       let healed = await command(actorId, { command_type: 'CastSpell', spell_id: 'healing-word', target_id: ally.id, slot_level: level }, 'Лечащее слово', { expectFailure: true })
       if (healed.status !== 200 && await freeCasterHand(actorId, healed)) healed = await command(actorId, { command_type: 'CastSpell', spell_id: 'healing-word', target_id: ally.id, slot_level: level }, 'Лечащее слово', { expectFailure: true })
+      countSpell('healing-word', healed)
       if (healed.status !== 200 && !EXPECTED_REFUSALS.test(String(healed.body?.code))) finding('major', 'heal-refused', `Лечащее слово: ${healed.body?.code} — ${short(healed.body?.error, 200)}`)
     }
   }
@@ -889,9 +1073,11 @@ async function clericTurn(state, actorId, at, foes) {
   if (!target) return
   if (distance(at, target.at) <= 60) {
     const bolt = slots(1) > 1 ? await command(actorId, { command_type: 'CastSpell', spell_id: 'guiding-bolt', target_id: target.enemy.id, slot_level: 1 }, 'Направляющий снаряд', { expectFailure: true }) : null
+    countSpell('guiding-bolt', bolt)
     if (bolt?.status === 200) return
     let flame = await command(actorId, { command_type: 'CastSpell', spell_id: 'sacred-flame', target_id: target.enemy.id }, 'Священное пламя', { expectFailure: true })
     if (flame.status !== 200 && await freeCasterHand(actorId, flame)) flame = await command(actorId, { command_type: 'CastSpell', spell_id: 'sacred-flame', target_id: target.enemy.id }, 'Священное пламя', { expectFailure: true })
+    countSpell('sacred-flame', flame)
     if (flame.status === 200) return
     if (!EXPECTED_REFUSALS.test(String(flame.body?.code))) finding('major', 'cantrip-refused', `Священное пламя: ${flame.body?.code} — ${short(flame.body?.error, 200)}`)
   }
@@ -980,10 +1166,37 @@ function sceneSnapshot(state) {
   return { chapter: state.adventure?.chapter, location: state.scene?.location, locationId: state.worldMap?.currentLocationId, title: state.scene?.title, objective: state.scene?.objective, cells, props, npcs: npcs.slice(0, 8) }
 }
 
-function trackScene(state) {
+// ---------------------------------------------------------------------------
+// Согласованность: рассказчик против карты, броска, механики и часов;
+// карта сцены против аудита и собственного текста (`eval/consistency-checks.mjs`)
+
+/** Расхождение согласованности — в находки и в счётчик по коду. */
+function recordConsistency(issue, where = '') {
+  stats.consistency[issue.code] = (stats.consistency[issue.code] ?? 0) + 1
+  finding(issue.severity, `consistency-${issue.code.toLowerCase().replace(/_/gu, '-')}`, `${issue.message}${where ? ` — ${where}` : ''}`)
+}
+
+/** Ответ рассказчика сверяется с тем, что сейчас на самом деле в сцене. */
+async function checkNarrationConsistency(action, text, check = null) {
+  if (!text) return
+  const state = await room()
+  stats.consistencyChecked += 1
+  for (const issue of narrationConsistency(String(text), state, { check })) recordConsistency(issue, `на «${short(action, 70)}»`)
+  // Контекст в момент ответа — для судьи: без него он не знает, что на карте и чем кончился бросок.
+  const entry = narrations.findLast((item) => item.text === String(text))
+  if (entry) entry.context = judgeContext(state, { check, recentNarrations: narrations.slice(-4, -1).map((item) => item.text) })
+}
+
+async function trackScene(state) {
   const snap = sceneSnapshot(state)
   const last = stats.scenes.at(-1)
   if (last && last.location === snap.location && last.chapter === snap.chapter) return
+  // Новая сцена: построена ли карта и держит ли она текст сцены, не заглушка ли имя.
+  // Карта — по полному виду ведущего: проекция игрока прячет нераскрытые клетки,
+  // и аудит принимал их за проходы за край карты.
+  let full = state
+  try { full = await room(accounts.admin) } catch { full = state }
+  for (const issue of [...sceneMapConsistency(full), ...sceneContinuity(state, last)]) recordConsistency(issue, `сцена ${snap.chapter}`)
   stats.scenes.push(snap)
   stats.chapters = Math.max(stats.chapters, Number(snap.chapter) || 0)
   note(`\n### 📍 Сцена ${snap.chapter}: ${snap.location} — «${snap.title}»\nЦель: ${snap.objective ?? '—'} · карта ${snap.cells} клеток, ${snap.props} предметов · рядом: ${snap.npcs.join(', ') || 'никого'}`)
@@ -993,14 +1206,29 @@ function trackScene(state) {
 // ---------------------------------------------------------------------------
 // Проверки целостности
 
+/** Путь в JSON до первой строки, содержащей `needle`, — чтобы утечку было где искать. */
+function jsonPathOf(value, needle, path = 'state') {
+  if (typeof value === 'string') return value.includes(needle) ? path : null
+  if (!value || typeof value !== 'object') return null
+  for (const [key, child] of Object.entries(value)) {
+    const found = jsonPathOf(child, needle, Array.isArray(value) ? `${path}[${key}]` : `${path}.${key}`)
+    if (found) return found
+  }
+  return null
+}
+
 async function checkGuestProjection(when) {
   const guestState = await room(accounts.guest)
   const json = JSON.stringify(guestState)
   const leaks = []
+  // Найденная заготовка законно видна обоим: её открывает факт мира, видимый
+  // отряду. Модель пересказывает находку своими словами, поэтому по хронике
+  // находку не узнать — проверяется сам факт.
+  const partyFacts = JSON.stringify((guestState.worldMemory?.facts ?? []).filter((fact) => fact?.visibility !== 'gm_only'))
   for (const secret of template.opening.secrets ?? []) {
     const clue = String(secret.clue ?? '').slice(0, 60)
-    // Найденная заготовка законно видна обоим; утечка — только ненайденная.
-    if (clue && json.includes(clue) && !transcript.join('\n').includes(clue.slice(0, 40))) leaks.push(`заготовка «${secret.topic}»`)
+    if (!clue || !json.includes(clue) || partyFacts.includes(clue) || transcript.join('\n').includes(clue.slice(0, 40))) continue
+    leaks.push(`заготовка «${secret.topic}» (в ${jsonPathOf(guestState, clue) ?? '?'})`)
   }
   if (/"gm_secret"|"gmSecret"|"secrets":\s*\[\s*\{/u.test(json)) leaks.push('поле секретов ведущего')
   const enemyHp = (guestState.enemies ?? []).filter((enemy) => Number.isFinite(enemy.hp) && enemy.hpVisibility === 'hidden')
@@ -1028,7 +1256,7 @@ async function restartAndCompare(reason) {
   startServer()
   await waitForHealth()
   stats.restarts += 1
-  for (const account of [accounts.owner, accounts.guest]) await openStream(account)
+  for (const account of accounts.players) await openStream(account)
   const after = await room()
   const pick = (state) => JSON.stringify({ v: state.state_version, combat: state.mechanics.combat, hp: state.players.map((p) => [p.id, p.hp]), loc: state.worldMap?.currentLocationId, chapter: state.adventure?.chapter, vote: state.agentInteraction?.id ?? null })
   if (pick(before) !== pick(after)) finding('critical', 'restart-drift', `перезапуск (${reason}) изменил состояние: ${short(pick(before), 200)} → ${short(pick(after), 200)}`)
@@ -1047,6 +1275,69 @@ function runCutoverAudit() {
 
 const ROUTE_PLAN = ['astohan-ash-watch', 'astohan-obsidian-pass', 'astohan-vulkanis-brazier']
 
+// Реальные фразы игроков. Уход из сцены и нападение на NPC бот не говорит:
+// они уводят сценарий в сторону, а дорогу и бой он проверяет своими путями.
+const CORPUS_KINDS = new Set(['explore', 'social', 'question', 'creative', 'provocation', 'offtopic'])
+const corpus = (() => {
+  try {
+    return JSON.parse(readFileSync(join(ROOT, 'eval', 'player-phrases.json'), 'utf8')).phrases.filter((entry) => CORPUS_KINDS.has(entry.kind))
+  } catch { return [] }
+})()
+// Порядок фраз зависит от сида: серия сидов проходит по всему корпусу, а один сид повторяется.
+let corpusCursor = Math.abs(Number(SEED ?? Math.floor(Math.random() * 1000))) * 7
+async function sayRealPhrase(count = 1) {
+  for (let index = 0; index < count && corpus.length; index += 1) {
+    if ((await room()).mechanics.combat?.active) return
+    const phrase = corpus[corpusCursor % corpus.length]
+    const actorId = heroIds()[corpusCursor % heroIds().length]
+    corpusCursor += 1
+    const before = stats.deadEnds
+    await say(actorId, phrase.text, { label: `реальная фраза · ${phrase.kind}` })
+    const deadEnd = stats.deadEnds > before
+    stats.corpus.said += 1
+    if (deadEnd) stats.corpus.deadEnds += 1
+    const row = (stats.corpus.byKind[phrase.kind] ??= { said: 0, deadEnds: 0 })
+    row.said += 1
+    if (deadEnd) row.deadEnds += 1
+    await settleInteraction('real-phrase')
+  }
+}
+
+/** Торговля у купца сцены: лечебное зелье для воина и продажа лишнего арбалета. */
+async function tradeAtMerchant() {
+  const state = await room()
+  const merchants = Array.isArray(state.merchants) ? state.merchants : Object.values(state.merchants ?? {})
+  const merchant = merchants.find((entry) => entry && entry.can_trade !== false)
+  if (!merchant) { finding('minor', 'no-merchant', `в сцене «${state.scene?.location}» нет торговца`); return }
+  const buyer = heroIds()[0]
+  const view = await request(`/api/campaigns/${CODE}/merchants/${encodeURIComponent(merchant.id)}?actor_id=${encodeURIComponent(buyer)}`, { account: accountFor(buyer) })
+  if (view.status !== 200) { stats.trade.refused += 1; finding('major', 'merchant-view', `лавка «${merchant.name}»: ${view.status} ${view.body?.code ?? ''} — ${short(view.body?.error, 200)}`); return }
+  // Зелье за 50 зм стартовому герою 2014 не по карману — тогда самое дешёвое, что по карману.
+  const quotes = view.body.merchant_view?.buy_quotes ?? []
+  const quote = quotes.find((entry) => /healing|лечени/iu.test(`${entry.stock_id} ${entry.name ?? ''}`) && entry.can_afford !== false)
+    ?? quotes.filter((entry) => entry.can_afford !== false).sort((a, b) => Number(a.unit_price_cp) - Number(b.unit_price_cp))[0]
+  if (quote) {
+    const key = `bot-buy-${randomUUID()}`
+    const bought = await request(`/api/campaigns/${CODE}/merchants/${encodeURIComponent(merchant.id)}/commands`, {
+      method: 'POST', account: accountFor(buyer), key,
+      body: { idempotency_key: key, command: { command_type: 'BuyItem', actor_id: buyer, stock_id: quote.stock_id, quantity: 1, expected_state_version: view.body.merchant_view.expected_state_version ?? view.body.merchant_view.state_version } },
+    })
+    if (bought.status === 200) { stats.trade.bought += 1; note(`- 🛒 ${heroOf(state, buyer)?.character} покупает у «${merchant.name}»: ${quote.name ?? quote.stock_id} за ${quote.total_price_cp ?? quote.unit_price_cp} мм`) }
+    else { stats.trade.refused += 1; finding('major', 'buy-refused', `BuyItem ${quote.stock_id}: ${bought.body?.code} — ${short(bought.body?.error, 200)}`) }
+  } else finding('minor', 'nothing-affordable', `у «${merchant.name}» герою ничего не по карману`)
+  const fresh = await request(`/api/campaigns/${CODE}/merchants/${encodeURIComponent(merchant.id)}?actor_id=${encodeURIComponent(buyer)}`, { account: accountFor(buyer) })
+  const sale = (fresh.body?.merchant_view?.sell_quotes ?? []).find((entry) => entry.can_sell && /crossbow|арбалет/iu.test(`${entry.item_id} ${entry.name ?? ''}`))
+    ?? (fresh.body?.merchant_view?.sell_quotes ?? []).find((entry) => entry.can_sell)
+  if (!sale) return
+  const key = `bot-sell-${randomUUID()}`
+  const sold = await request(`/api/campaigns/${CODE}/merchants/${encodeURIComponent(merchant.id)}/commands`, {
+    method: 'POST', account: accountFor(buyer), key,
+    body: { idempotency_key: key, command: { command_type: 'SellItem', actor_id: buyer, item_id: sale.item_id, quantity: 1, expected_state_version: fresh.body.merchant_view.expected_state_version ?? fresh.body.merchant_view.state_version } },
+  })
+  if (sold.status === 200) { stats.trade.sold += 1; note(`- 💰 продано «${sale.name ?? sale.item_id}» за ${sale.unit_price_cp} мм`) }
+  else { stats.trade.refused += 1; finding('major', 'sell-refused', `SellItem ${sale.item_id}: ${sold.body?.code} — ${short(sold.body?.error, 200)}`) }
+}
+
 async function exploreScene(state, round) {
   const scene = sceneSnapshot(state)
   const owner = accounts.owner.heroId
@@ -1062,12 +1353,13 @@ async function exploreScene(state, round) {
     await say(actorId, text, { label })
     await settleInteraction('explore')
   }
+  if (round === 0) await sayRealPhrase(2)
 }
 
 async function openingScene() {
   stage('Сцена 1: военная галерея Штормберга')
   let state = await room()
-  trackScene(state)
+  await trackScene(state)
   const owner = accounts.owner.heroId
   const guest = accounts.guest.heroId
   await say(owner, 'Ваше величество, какое поручение вы даёте нам и что известно о Саргате?', { label: 'к королю' })
@@ -1083,6 +1375,8 @@ async function openingScene() {
   await say(guest, 'Расспрашиваю Миру Венн об исчезнувшем сборщике налогов у Миттлайда.', { label: 'Мира Венн' })
   await say(owner, 'Наблюдаю за королём Аресом, когда маршал произносит имя Вулканиса.', { label: 'Арес и Вулканис' })
   await say(guest, 'Что мы уже знаем о Пепельной заставе?', { label: 'вопрос', requestKind: 'question', expect: 'any' })
+  await tradeAtMerchant()
+  await sayRealPhrase(2)
   await settleInteraction('opening')
   await director('Продолжить приключение')
   await settleInteraction('opening-director')
@@ -1104,7 +1398,7 @@ async function playUntilFinale() {
       await restIfHurt()
       continue
     }
-    trackScene(state)
+    await trackScene(state)
     const key = sceneKey(state)
     if (key !== lastScene) { lastScene = key; exploreRound = 0; idleDirector = 0; stage(`Сцена ${state.adventure?.chapter}: ${state.scene?.location}`) }
     if (exploreRound < 2) {
@@ -1140,7 +1434,131 @@ function percentile(values, p) {
   return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))]
 }
 
-function grade(final, usage, audit) {
+// ---------------------------------------------------------------------------
+// Текст рассказчика: метрики без модели, выборка для чтения, судья по флагу
+
+/** Метрики всего текста прогона: штампы, повторы, служебные коды, пустые ответы. */
+function narrationQuality() {
+  const texts = narrations.map((entry) => entry.text.replace(/\s+/gu, ' ').trim()).filter(Boolean)
+  const craft = measureNarratorCraft(texts.map((text, index) => ({ id: `n${index}`, kind: 'narrator', text })))
+  const counts = new Map()
+  for (const text of texts) counts.set(text, (counts.get(text) ?? 0) + 1)
+  const repeated = [...counts.values()].filter((count) => count > 1).reduce((sum, count) => sum + count - 1, 0)
+  const cliches = texts.flatMap((text) => findNarratorCliches(text).map((entry) => entry.match))
+  const lengths = texts.map((text) => text.length)
+  return {
+    samples: texts.length,
+    average_chars: lengths.length ? Math.round(lengths.reduce((sum, value) => sum + value, 0) / lengths.length) : 0,
+    short_share_pct: texts.length ? Math.round(100 * texts.filter((text) => text.length < 40).length / texts.length) : 0,
+    repeated_share_pct: texts.length ? Math.round(100 * repeated / texts.length) : 0,
+    ngram_overlap_pct: craft.ngram_overlap.pairwise_jaccard_pct,
+    cliches: cliches.length,
+    cliche_examples: [...new Set(cliches)].slice(0, 8),
+    raw_identifiers: texts.filter((text) => RAW_CODE.test(text)).length,
+  }
+}
+
+/** Выборка для чтения глазами: равномерно по прогону, без повторов, разных видов. */
+function narrationSample(limit = 14) {
+  const unique = []
+  const seen = new Set()
+  for (const entry of narrations) {
+    const key = entry.text.replace(/\s+/gu, ' ').trim()
+    if (key.length < 20 || seen.has(key)) continue
+    seen.add(key)
+    unique.push(entry)
+  }
+  if (unique.length <= limit) return unique
+  const step = unique.length / limit
+  return Array.from({ length: limit }, (_, index) => unique[Math.floor(index * step)])
+}
+
+const JUDGE_RUBRIC = `Ты — редактор текстовой ролевой игры по D&D на русском. Оцени ответ ведущего на реплику игрока.
+Критерии, каждый от 1 до 5:
+- relevance: отвечает на то, что сделал или спросил игрок, а не пересказывает общее;
+- concreteness: конкретные детали места, людей, последствий; без воды и общих слов;
+- consequence: у действия есть видимый исход или ясный следующий шаг;
+- style: живой русский язык, без канцелярита, штампов, служебных слов и кодов;
+- voice: если говорит персонаж — у него свой голос; если не говорит — ставь 3;
+- consistency: не противоречит контексту — предметам на карте, персонажам в сцене, исходу броска, времени суток и тому, что ведущий говорил раньше; называет только то, что есть. Без контекста ставь 3.
+Верни только JSON: {"relevance":n,"concreteness":n,"consequence":n,"style":n,"voice":n,"consistency":n,"issue":"главная проблема одной фразой или пусто","contradiction":"противоречие контексту одной фразой или пусто"}.`
+
+/** Оценка выборки моделью-судьёй. Только с --judge: это вызовы модели за деньги. */
+async function judgeNarration(sample) {
+  if (!JUDGE) return null
+  await import('dotenv/config')
+  if (!process.env.ROUTERAI_API_KEY) { finding('minor', 'judge-unavailable', 'для --judge нужен ROUTERAI_API_KEY в .env'); return null }
+  const { RouterAIClient } = await import('../server/llm-client.mjs')
+  const client = new RouterAIClient({ maxTokens: 400, timeoutMs: 30_000 })
+  const pricing = modelPricing(client.model)
+  const verdicts = []
+  let costRub = 0
+  for (const entry of sample) {
+    try {
+      const result = await client.complete({ messages: [
+        { role: 'system', content: JUDGE_RUBRIC },
+        { role: 'user', content: `${entry.context ? `Контекст сцены в момент ответа:\n${entry.context}\n\n` : ''}Реплика игрока: ${entry.action}\n\nОтвет ведущего: ${entry.text}` },
+      ] }, { json: true })
+      costRub += callCostRub(result.usage, pricing)
+      const scores = ['relevance', 'concreteness', 'consequence', 'style', 'voice', 'consistency'].map((key) => Number(result.json?.[key])).filter((value) => value >= 1 && value <= 5)
+      verdicts.push({ action: short(entry.action, 120), text: short(entry.text, 300), ...result.json, average: scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null })
+    } catch (error) {
+      verdicts.push({ action: short(entry.action, 120), error: String(error?.code ?? error?.message ?? error).slice(0, 120) })
+    }
+  }
+  const averages = verdicts.map((entry) => entry.average).filter(Number.isFinite)
+  const consistencyScores = verdicts.map((entry) => Number(entry.consistency)).filter((value) => value >= 1 && value <= 5)
+  return { model: client.model, verdicts, consistency_average: consistencyScores.length ? Math.round(10 * consistencyScores.reduce((sum, value) => sum + value, 0) / consistencyScores.length) / 10 : null, contradictions: verdicts.map((entry) => entry.contradiction).filter(Boolean), average: averages.length ? Math.round(10 * averages.reduce((sum, value) => sum + value, 0) / averages.length) / 10 : null, cost_rub: Math.round(costRub * 100) / 100 }
+}
+
+/** Цена токенов модели из последнего снимка каталога RouterAI (₽ за токен). */
+function modelPricing(model) {
+  try {
+    const catalogs = readdirSync(join(ROOT, 'eval')).filter((name) => /^routerai-catalog-.*\.json$/u.test(name)).sort()
+    const catalog = JSON.parse(readFileSync(join(ROOT, 'eval', catalogs.at(-1)), 'utf8'))
+    return catalog.data.find((entry) => entry.id === model)?.pricing ?? null
+  } catch { return null }
+}
+function callCostRub(usage, pricing) {
+  if (Number.isFinite(Number(usage?.cost))) return Number(usage.cost)
+  if (!pricing) return 0
+  return (Number(usage?.prompt_tokens ?? usage?.input_tokens) || 0) * pricing.prompt + (Number(usage?.completion_tokens ?? usage?.output_tokens) || 0) * pricing.completion
+}
+
+/**
+ * Оценка текста от 1 до 10. Без судьи — только то, что меряется надёжно:
+ * повторы, служебные коды, штампы, пустые ответы. Судья (1–5) заменяет её,
+ * когда есть: это ближе к тому, что видит игрок, но стоит денег.
+ */
+function narrationScore(quality, judge) {
+  if (judge?.average != null) return Math.round(judge.average * 2 * 10) / 10
+  if (!quality.samples) return null
+  let score = 10
+  if (quality.repeated_share_pct > 10) score -= 3
+  else if (quality.repeated_share_pct > 3) score -= 1
+  if (quality.ngram_overlap_pct > 5) score -= 2
+  if (quality.raw_identifiers) score -= 2
+  if (quality.cliches) score -= 1
+  if (quality.short_share_pct > 15) score -= 2
+  return Math.max(1, score)
+}
+
+/** Согласованность 1–10: расхождения с картой и механикой на сверенный ответ, вместе с оценкой судьи. */
+function consistencyScore(judge) {
+  if (!stats.consistencyChecked && !Object.keys(stats.consistency).length) return null
+  const issues = findings.filter((entry) => entry.kind.startsWith('consistency-'))
+  const severe = issues.filter((entry) => entry.severity !== 'minor').length
+  const minor = issues.length - severe
+  const perAnswer = (severe * 3 + minor) / Math.max(1, stats.consistencyChecked)
+  const own = Math.max(1, Math.round((10 - perAnswer * 20) * 10) / 10)
+  return judge?.consistency_average != null ? Math.round(((own + judge.consistency_average * 2) / 2) * 10) / 10 : own
+}
+function consistencyDetail(judge) {
+  const top = Object.entries(stats.consistency).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([code, count]) => `${code} ×${count}`).join(', ')
+  return `сверено ответов ${stats.consistencyChecked}, сцен ${stats.scenes.length}; расхождения: ${top || 'нет'}${judge?.consistency_average != null ? `; судья по согласованности ${judge.consistency_average}/5` : ''}`
+}
+
+function grade(final, usage, audit, quality, judge) {
   const status = lifecycleStatus(final)
   const blockers = findings.filter((entry) => entry.severity === 'blocker').length
   const critical = findings.filter((entry) => entry.severity === 'critical').length
@@ -1151,12 +1569,18 @@ function grade(final, usage, audit) {
   const p50 = percentile(firstWords, 50)
   const p95 = percentile(firstWords, 95)
   const criteria = [
-    { id: 1, name: 'Нет тупиков', score: deadShare <= 0.02 ? 10 : deadShare <= 0.05 ? 7 : deadShare <= 0.1 ? 4 : 1, detail: `${stats.deadEnds} тупиков на ${stats.narrate} реплик (${(deadShare * 100).toFixed(1)} %), уточнений ${stats.clarifications}` },
+    { id: 1, name: 'Нет тупиков', score: deadShare <= 0.02 ? 10 : deadShare <= 0.05 ? 7 : deadShare <= 0.1 ? 4 : 1, detail: `${stats.deadEnds} тупиков на ${stats.narrate} реплик (${(deadShare * 100).toFixed(1)} %), уточнений ${stats.clarifications}; на реальных фразах игроков — ${stats.corpus.deadEnds} из ${stats.corpus.said}` },
     { id: 2, name: 'Успех что-то даёт', score: stats.discoveries + stats.discoveryEmpty === 0 ? 5 : Math.round(10 * stats.discoveries / (stats.discoveries + stats.discoveryEmpty)), detail: `находок ${stats.discoveries}, пустых успехов ${stats.discoveryEmpty}` },
     { id: 3, name: 'Сюжет движется', score: status === 'completed' ? 10 : stats.chapters >= 3 ? 6 : stats.chapters >= 2 ? 4 : 1, detail: `исход кампании: ${status}, глав ${stats.chapters}, сцен ${stats.scenes.length}, шагов Режиссёра ${stats.directorSteps}` },
     { id: 4, name: 'Бой', score: stats.combats === 0 ? 3 : Math.max(1, 10 - 3 * findings.filter((entry) => /combat|approach|move-refused|end-turn|heal|cantrip/u.test(entry.kind)).length), detail: `боёв ${stats.combats}, побед ${stats.combatWins}, раундов ${stats.combatRounds}, падений героев ${stats.heroDowns}, смертей ${stats.heroDeaths}` },
     { id: 7, name: 'Темп', score: p50 == null ? 5 : LIVE ? (p50 <= 4000 && p95 <= 10000 ? 10 : p50 <= 6000 ? 6 : 3) : (p95 <= 1500 ? 10 : 6), detail: `первое слово p50 ${p50 ?? '—'} мс, p95 ${p95 ?? '—'} мс${LIVE ? '' : ' (без модели — это время сервера, не модели)'}` },
-    { id: 8, name: 'Бюджет', score: !LIVE ? null : usage?.cost_rub == null ? 5 : usage.cost_rub <= 50 * (MINUTES / 180) ? 10 : 5, detail: LIVE ? `вызовов модели ${usage?.requests ?? '?'}, токенов ${usage?.tokens ?? '?'}` : 'без модели не меряется' },
+    // Бюджет цели — 50 ₽ на трёхчасовой вечер; прогон короче, поэтому порог
+    // пересчитан на его фактическую длительность.
+    // Бот говорит в разы чаще людей, поэтому вечер пересчитывается не по
+    // времени, а по числу реплик: ~150 реплик отряда за три часа игры.
+    { id: 8, name: 'Бюджет', score: !LIVE ? null : usage?.per_evening_rub == null ? 5 : usage.per_evening_rub <= 50 ? 10 : usage.per_evening_rub <= 75 ? 6 : 3, detail: LIVE ? `вызовов модели ${usage?.requests ?? '?'}, токенов ${usage?.tokens ?? '?'}, ≈${usage?.cost_rub ?? '?'} ₽ (${usage?.cost_source ?? '?'}); ≈${usage?.per_action_rub ?? '?'} ₽ на реплику, вечер в ${EVENING_ACTIONS} реплик ≈${usage?.per_evening_rub ?? '?'} ₽ (цель ≤ 50 ₽)` : 'без модели не меряется' },
+    { id: 'Т', name: 'Текст рассказчика', score: narrationScore(quality, judge), detail: `${quality.samples} ответов, в среднем ${quality.average_chars} знаков; повторы ${quality.repeated_share_pct} %, пересечение 3-грамм ${quality.ngram_overlap_pct} %, штампов ${quality.cliches}, служебных кодов ${quality.raw_identifiers}, коротких ${quality.short_share_pct} %${judge?.average != null ? `; судья ${judge.model}: ${judge.average}/5` : ''}` },
+    { id: 'С', name: 'Согласованность', score: consistencyScore(judge), detail: consistencyDetail(judge) },
     { id: 9, name: 'Устойчивость', score: Math.max(1, 10 - 4 * findings.filter((entry) => /restart|replay|idempotency|transport|http-5xx/u.test(entry.kind)).length), detail: `перезапусков ${stats.restarts}, 5xx ${stats.http5xx}, audit-cutover ${audit.status === 0 ? 'чистый' : `код ${audit.status}`}` },
   ]
   const scored = criteria.filter((entry) => entry.score != null)
@@ -1165,16 +1589,38 @@ function grade(final, usage, audit) {
   return { criteria, overall, blockers, critical, major, status, p50, p95 }
 }
 
+/** Реплик отряда (свободных и шагов Режиссёра) за трёхчасовой вечер — для пересчёта цены. */
+const EVENING_ACTIONS = 150
+
 async function usageReport() {
   const usage = await request('/api/admin/usage', { account: accounts.admin })
   if (usage.status !== 200) return null
+  // Учёт расхода сервера (`server/usage-ledger.mjs`) называет токены и цену
+  // поставщика; если поставщик цену не прислал, она оценивается по каталогу.
   const report = usage.body.usage ?? {}
-  const requests = report.requests ?? report.total_requests ?? report.count ?? null
-  const tokens = report.tokens ?? report.total_tokens ?? report.used_tokens ?? null
-  return { requests, tokens, raw: usage.body }
+  const architect = usage.body.architect ?? {}
+  const requests = (report.requests ?? 0) + (architect.requests ?? 0)
+  const tokens = (report.committed_tokens ?? 0) + (architect.committed_tokens ?? 0)
+  let costRub = Number(report.provider_cost ?? 0) + Number(architect.provider_cost ?? 0)
+  let costSource = 'цена поставщика'
+  if (!(costRub > 0) && tokens > 0) {
+    const env = (() => { try { return readFileSync(join(ROOT, '.env'), 'utf8') } catch { return '' } })()
+    const model = process.env.DND_AI_MODEL || /^DND_AI_MODEL=(.+)$/mu.exec(env)?.[1]?.trim() || ''
+    const pricing = modelPricing(model)
+    costRub = callCostRub({ prompt_tokens: report.input_tokens ?? 0, completion_tokens: report.output_tokens ?? 0 }, pricing)
+    costSource = pricing ? `оценка по каталогу для ${model}` : 'нет цены'
+  }
+  const perAction = costRub / Math.max(1, stats.narrate + stats.directorSteps)
+  return {
+    requests, tokens, input_tokens: report.input_tokens ?? null, output_tokens: report.output_tokens ?? null,
+    failed_requests: report.failed_requests ?? null,
+    cost_rub: Math.round(costRub * 100) / 100, cost_source: costSource,
+    per_action_rub: Math.round(perAction * 1000) / 1000,
+    per_evening_rub: Math.round(perAction * EVENING_ACTIONS * 100) / 100,
+  }
 }
 
-function writeReport(final, scorecard, usage, audit) {
+function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
   const minutes = ((Date.now() - startedAt) / 60_000).toFixed(1)
   const byRoute = {}
   for (const entry of timings) (byRoute[entry.route] ??= []).push(entry.ms)
@@ -1209,6 +1655,26 @@ function writeReport(final, scorecard, usage, audit) {
     '',
     ...(findingLines.length ? findingLines : ['Нет.']),
     '',
+    '## Текст рассказчика',
+    '',
+    `Ответов ${quality.samples}, в среднем ${quality.average_chars} знаков. Повторы ${quality.repeated_share_pct} %, пересечение 3-грамм между ответами ${quality.ngram_overlap_pct} %, коротких (< 40 знаков) ${quality.short_share_pct} %, служебных кодов ${quality.raw_identifiers}, штампов ${quality.cliches}${quality.cliche_examples.length ? ` (${quality.cliche_examples.map((entry) => `«${entry}»`).join(', ')})` : ''}.`,
+    judge ? `Судья ${judge.model}: средняя ${judge.average ?? '—'}/5 по ${judge.verdicts.length} ответам, ≈${judge.cost_rub} ₽. Главные замечания: ${judge.verdicts.map((entry) => entry.issue).filter(Boolean).slice(0, 6).map((issue) => `«${short(issue, 120)}»`).join('; ') || 'нет'}.` : 'Судья не запускался (флаг --judge).',
+    `Выборка из ${sample.length} ответов для чтения глазами — narration-sample.md.`,
+    '',
+    '## Согласованность',
+    '',
+    `Сверено ответов рассказчика ${stats.consistencyChecked}, сцен ${stats.scenes.length}. Расхождения по видам: ${Object.entries(stats.consistency).sort((a, b) => b[1] - a[1]).map(([code, count]) => `${code} ×${count}`).join(', ') || 'нет'}.`,
+    'Что проверяется: предметы, которые называет рассказчик, против карты сцены; исход броска против текста после него; смерть героя и реплики отсутствующих NPC против механики; время суток против часов мира; склонение названий мест и обрывы на полуслове; аудит построения каждой карты (`map-quality`), её программа и то, что обещает текст самой сцены; имена-заглушки и переименование места.',
+    judge?.contradictions?.length ? `Противоречия, которые нашёл судья: ${judge.contradictions.slice(0, 6).map((entry) => `«${short(entry, 140)}»`).join('; ')}.` : '',
+    '',
+    '## Реальные фразы игроков',
+    '',
+    `Сказано ${stats.corpus.said}, тупиков ${stats.corpus.deadEnds}. По видам: ${Object.entries(stats.corpus.byKind).map(([kind, row]) => `${kind} ${row.deadEnds}/${row.said}`).join(', ') || '—'}.`,
+    '',
+    '## Механики отряда',
+    '',
+    `Отряд: ${PARTY.join(', ')}. Заклинания: ${Object.entries(stats.spells).map(([id, count]) => `${id} ×${count}`).join(', ') || '—'}; скрытых атак ${stats.sneakAttacks}; зелий выпито ${stats.potionsUsed}. Торговля: куплено ${stats.trade.bought}, продано ${stats.trade.sold}, отказов ${stats.trade.refused}. Переговоры: попыток ${stats.parley.attempts}, перемирий ${stats.parley.truces}, исходы ${stats.parley.outcomes.join(', ') || '—'}.`,
+    '',
     '## Путь отряда',
     '',
     ...stats.scenes.map((scene) => `- глава ${scene.chapter}: **${scene.location}** — «${scene.title}» (${scene.cells} клеток, ${scene.props} предметов; рядом: ${scene.npcs.join(', ') || 'никого'})`),
@@ -1232,8 +1698,19 @@ function writeReport(final, scorecard, usage, audit) {
     '```',
   ].join('\n')
   writeFileSync(join(OUT, 'report.md'), md)
+  writeFileSync(join(OUT, 'narration-sample.md'), [
+    `# Текст рассказчика — выборка прогона ${STAMP}`,
+    '',
+    'Для чтения глазами: равномерно по прогону, без повторов. Вопросы к каждому ответу — отвечает ли он на реплику, есть ли конкретика и последствие, живой ли язык, слышен ли голос персонажа.',
+    ...sample.map((entry, index) => {
+      const verdict = judge?.verdicts?.find((item) => item.text === short(entry.text, 300))
+      const kind = entry.kind === 'director' ? 'Режиссёр' : entry.kind === 'roll' ? 'После броска' : 'Ответ'
+      const score = verdict?.average != null ? `\n\n_Судья: ${verdict.average.toFixed(1)}/5${verdict.issue ? ` — ${verdict.issue}` : ''}_` : ''
+      return `\n## ${index + 1}. ${kind} · ${entry.label}\n\n**Игрок:** ${entry.action}\n\n> ${entry.text.replace(/\n+/gu, '\n> ')}${score}`
+    }),
+  ].join('\n') + '\n')
   writeFileSync(join(OUT, 'transcript.md'), `# Хроника прогона ${STAMP}\n${transcript.join('\n')}\n`)
-  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage: usage ? { requests: usage.requests, tokens: usage.tokens } : null, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage, narration: { quality, judge }, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
   const serverErrors = logs.split('\n').filter((line) => /error|ошибк|exception|unhandled/iu.test(line) && !/ROUTERAI|api[_-]?key/iu.test(line)).slice(0, 60)
   writeFileSync(join(OUT, 'server-errors.log'), serverErrors.join('\n'))
 }
@@ -1247,29 +1724,36 @@ async function main() {
   await waitForHealth()
   const admin = await request('/api/auth/setup-admin', { method: 'POST', body: { name: 'Стенд', email: 'admin@astohan.test', password: 'astohan-admin-password', setupToken } })
   accounts.admin = { name: 'admin', cookie: cookieOf(admin) }
-  const owner = await request('/api/auth/register', { method: 'POST', body: { name: 'Владелец', email: 'owner@astohan.test', password: 'astohan-owner-password' } })
-  const guest = await request('/api/auth/register', { method: 'POST', body: { name: 'Гость', email: 'guest@astohan.test', password: 'astohan-guest-password' } })
-  accounts.owner = { name: 'owner', cookie: cookieOf(owner), heroId: 'hero-slot-1' }
-  accounts.guest = { name: 'guest', cookie: cookieOf(guest), heroId: 'hero-slot-2' }
+  const unknown = PARTY.filter((classKey) => !HERO_PLANS[classKey])
+  if (unknown.length || PARTY.length < 2) throw new Error(`--party: нужно от двух героев из ${Object.keys(HERO_PLANS).join(', ')}; непонятно: ${unknown.join(', ')}`)
+  // По аккаунту на героя: первый — владелец кампании, остальные входят по приглашению.
+  for (const [index, classKey] of PARTY.entries()) {
+    const registered = await request('/api/auth/register', { method: 'POST', body: { name: `Игрок ${index + 1}`, email: `player${index + 1}@astohan.test`, password: `astohan-player-${index + 1}-password` } })
+    accounts.players.push({ name: index === 0 ? 'owner' : `player${index + 1}`, cookie: cookieOf(registered), heroId: `hero-slot-${index + 1}`, plan: HERO_PLANS[classKey] })
+  }
+  accounts.owner = accounts.players[0]
+  accounts.guest = accounts.players[1]
   const created = await request('/api/campaigns', { method: 'POST', account: accounts.owner, body: {
     code: CODE, name: 'Асстоханские равнины',
-    bootstrap: { partyName: 'Пепельный отряд', world: {}, worldTemplateId: TEMPLATE_ID, slotCount: 2, startLevel: START_LEVEL, rulesetId: RULESET_ID, campaignMode: 'adventure' },
+    bootstrap: { partyName: 'Пепельный отряд', world: {}, worldTemplateId: TEMPLATE_ID, slotCount: PARTY.length, startLevel: START_LEVEL, rulesetId: RULESET_ID, campaignMode: 'adventure' },
   } })
   if (created.status !== 201) throw new Error(`Кампания не создана: ${created.status} ${created.text.slice(0, 400)}`)
-  note(`Кампания «${created.body.state.campaign}», старт в «${created.body.state.scene.location}», редакция ${created.body.state.ruleset_id}, мир ${created.body.state.worldMap?.locations?.length} мест`)
-  const invite = await request(`/api/campaigns/${CODE}/invites`, { method: 'POST', account: accounts.owner, body: { hero_ids: ['hero-slot-2'] } })
-  const joined = await request(`/api/campaigns/${CODE}/join`, { method: 'POST', account: accounts.guest, body: { invite_token: invite.body?.token } })
-  if (joined.status !== 200) throw new Error(`Второй игрок не вошёл: ${joined.status} ${joined.text.slice(0, 300)}`)
-  await openStream(accounts.owner)
-  await openStream(accounts.guest)
+  note(`Кампания «${created.body.state.campaign}», старт в «${created.body.state.scene.location}», редакция ${created.body.state.ruleset_id}, мир ${created.body.state.worldMap?.locations?.length} мест, отряд: ${PARTY.join(', ')}`)
+  for (const account of accounts.players.slice(1)) {
+    const invite = await request(`/api/campaigns/${CODE}/invites`, { method: 'POST', account: accounts.owner, body: { hero_ids: [account.heroId] } })
+    const joined = await request(`/api/campaigns/${CODE}/join`, { method: 'POST', account, body: { invite_token: invite.body?.token } })
+    if (joined.status !== 200) throw new Error(`Игрок ${account.name} не вошёл: ${joined.status} ${joined.text.slice(0, 300)}`)
+  }
+  for (const account of accounts.players) await openStream(account)
   await checkGuestProjection('до первой реплики')
 
   stage('Создание героев 7-го уровня')
-  const built = [await buildHero(accounts.owner, HERO_PLANS.owner), await buildHero(accounts.guest, HERO_PLANS.guest)]
+  const built = []
+  for (const account of accounts.players) built.push(await buildHero(account, account.plan))
   if (!built.every(Boolean)) throw new Error('Герои не созданы — дальше прогон не имеет смысла')
 
   await openingScene()
-  if (await travelTo('astohan-ash-watch')) trackScene(await room())
+  if (await travelTo('astohan-ash-watch')) await trackScene(await room())
   let final = await playUntilFinale()
 
   stage('Проверки целостности')
@@ -1300,9 +1784,13 @@ if (LIVE) {
   startServer()
   try { await waitForHealth(); usage = await usageReport() } catch { /* без замера */ }
   await stopServer()
+  if (!usage?.requests) finding('critical', 'live-without-model', 'прогон с --live не сделал ни одного вызова модели: сервер работал без ключа или модель недоступна — отчёт описывает игру без модели')
 }
-const scorecard = grade(final, usage, audit)
-writeReport(final, scorecard, usage, audit)
+const quality = narrationQuality()
+const sample = narrationSample()
+const judge = await judgeNarration(sample)
+const scorecard = grade(final, usage, audit, quality, judge)
+writeReport(final, scorecard, usage, audit, quality, judge, sample)
 console.log(`\nИтог: ${scorecard.status}, оценка ${scorecard.overall}/10, блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}`)
 console.log(`Отчёт: ${relative(ROOT, join(OUT, 'report.md'))}`)
 if (!KEEP) rmSync(storage, { recursive: true, force: true })
