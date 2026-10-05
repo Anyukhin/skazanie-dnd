@@ -33,7 +33,15 @@ const DIRECT_QUESTION_PATTERN = /^(?:а\s+если|если\s+(?:я|мы)(?=[^?]
 const INTERROGATIVE_QUESTION_PATTERN = /^(?:какой|какая|какое|какие|каков\p{L}*|который|которая|которое|когда|сколько|кто|что|где|куда|откуда|почему|зачем|чей|чья|чьё|чьи|как)(?![\p{L}\p{M}])[^?]{0,200}\?+\s*$/iu
 // Вопрос о знаниях героя («что я знаю про…») по-прежнему идёт заявкой: на него
 // без вызова модели отвечает Хранитель мира (`answerKnownLore`) прямо в ходе.
-const KNOWN_LORE_QUESTION_PATTERN = /(?:что\s+(?:я|мы)\s+(?:уже\s+|вообще\s+)?зна|кто\s+так|что\s+так|помню\s+ли|помним\s+ли)/iu
+/**
+ * Просьба к ведущему объяснить мир или обстановку: «Поясни, что это за мир»,
+ * «Напомни, где мы». Без шаблона такая фраза считалась действием героя, и
+ * сервер «выполнял» её — игрок получал «Вышло.» (реальная фраза из партии,
+ * сквозной прогон Асстохана 2026-10-05). Шаблон узкий: просьба «расскажи» к
+ * собеседнику в сцене остаётся репликой.
+ */
+const GM_EXPLAIN_PATTERN = /^(?:поясни|поясните|объясни|объясните|расскажи|расскажите|напомни|напомните|подскажи|подскажите)(?:\s+(?:мне|нам))?[,\s]+(?:что\s+(?:это\s+)?за\s+мир|что\s+это\s+за\s+(?:место|мир)|где\s+(?:мы|я)(?:\s|$|[?.!])|что\s+(?:здесь|тут|сейчас)\s+происходит|что\s+(?:нам|мне)\s+(?:делать|нужно\s+делать)|какая\s+(?:у\s+нас\s+)?цель|как\s+(?:тут\s+)?играть)/iu
+const KNOWN_LORE_QUESTION_PATTERN =/(?:что\s+(?:я|мы)\s+(?:уже\s+|вообще\s+)?зна|кто\s+так|что\s+так|помню\s+ли|помним\s+ли)/iu
 const SECOND_PERSON_PATTERN =/(?<![\p{L}\p{M}])(?:ты|вы|тебя|вас|тебе|вам|твой|твоя|твоё|ваш|ваша|ваше)(?![\p{L}\p{M}])/iu
 /** Реплика вне игры: «(ooc) …», «((…))», «// вне игры». */
 const OUT_OF_CHARACTER_PATTERN = /^(?:\(\(|\(\s*(?:ooc|оос|офф|офтоп|вне\s+игры)\s*\)|\/\/|(?:ooc|оос|офф)[:\s]|вне\s+игры[:,\s])/iu
@@ -84,7 +92,7 @@ export function inferRequestKind(value) {
     : raw
   if (!text || EXPLICIT_NPC_SPEECH_PATTERN.test(text) || SPOKEN_OPENING_PATTERN.test(text)) return 'action'
   if (OUT_OF_CHARACTER_PATTERN.test(text) || PARTY_COMPANY_QUESTION_PATTERN.test(text)) return 'discussion'
-  if (DIRECT_QUESTION_PATTERN.test(text) || DIRECT_QUESTION_PATTERN.test(raw) || SCENE_OBSERVATION_PATTERN.test(text)) return 'question'
+  if (DIRECT_QUESTION_PATTERN.test(text) || DIRECT_QUESTION_PATTERN.test(raw) || SCENE_OBSERVATION_PATTERN.test(text) || GM_EXPLAIN_PATTERN.test(text) || GM_EXPLAIN_PATTERN.test(raw)) return 'question'
   if (INTERROGATIVE_QUESTION_PATTERN.test(text) && !SECOND_PERSON_PATTERN.test(text)
     && !KNOWN_LORE_QUESTION_PATTERN.test(text)) return 'question'
   // Предложение отряду куда-то пойти — заявка: дальше её рассудит карточка ухода
