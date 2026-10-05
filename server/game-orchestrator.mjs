@@ -1026,14 +1026,50 @@ function unconfirmedFreeActionPassage({ freeAction, message, events, state }) {
  * же, и вот штатный путь. Автоматического перехода нет и не будет: дверь,
  * лестница и уход в другое место — свои команды с собственными проверками.
  */
-function freeActionPassageNarration({ freeAction, events, state }) {
+function freeActionHeroName(events, state) {
   const actorId = String((events ?? []).find((event) => event?.event_type === 'ActionDeclared')?.actor_id ?? '')
   const hero = (state?.players ?? []).find((player) => String(player?.id ?? '') === actorId)
-  const name = trimSentenceEnd(hero?.character || hero?.name, 80) || 'Герой'
+  return trimSentenceEnd(hero?.character || hero?.name, 80) || 'Герой'
+}
+
+function freeActionPassageNarration({ freeAction, events, state }) {
+  const name = freeActionHeroName(events, state)
   const opener = freeAction?.kind === 'check_success' ? 'Проверка удалась' : 'Попытка удалась'
   return `${opener}, но сама сцена от этого не изменилась: ${name} пока на прежнем месте. `
     + 'Путь дальше — на карте: дверь и проход — шагами по клеткам, лестница — через её меню, '
     + 'а в другое место отряд переходит через «Решение группы».'
+}
+
+// Цель — узнать или договориться: итог такой заявки — показания или реплика,
+// а их подтверждает только событие факта или разговора.
+const FREE_ACTION_KNOWLEDGE_GOAL = /(?<![\p{L}])(?:узна|вызна|разузна|выясн|выспрос|расспрос|спроси|выведа|понять|поясни|объясни|услыш|подслуш|поговор|разговор|договор|убедить(?!ся)|уговор)/iu
+const FREE_ACTION_DISCLOSURE_EVENT = /^(?:WorldFact(?:Recorded|Revealed)|KnowledgeRevealed|Clue\w*|NpcSocial\w*|NpcConversation\w*)$/u
+
+function unconfirmedFreeActionDisclosure({ freeAction, message, events }) {
+  if (!['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) return false
+  if (!FREE_ACTION_KNOWLEDGE_GOAL.test(String(freeAction?.reading?.goal_summary || message || ''))) return false
+  return !(events ?? []).some((event) => FREE_ACTION_DISCLOSURE_EVENT.test(String(event?.event_type ?? '')))
+}
+
+/**
+ * Честный ответ, когда исход записан, а пересказать цель нельзя: «Вышло:
+ * узнать у стражи…» обещает знание, которого commit не содержит, а если и
+ * черновик модели, и пересказ цели не прошли guard, игрок получал одно слово
+ * «Вышло.» (прогон Асстохана, 2026-10-05). Ответ говорит, что сцена прежняя,
+ * и называет штатный путь к такой цели.
+ */
+function freeActionUnchangedSceneNarration({ freeAction, message, events, state }) {
+  const name = freeActionHeroName(events, state)
+  const goal = String(freeAction?.reading?.goal_summary || message || '')
+  const failed = freeAction?.kind === 'check_failure'
+  const route = FREE_ACTION_KNOWLEDGE_GOAL.test(goal)
+    ? 'Чтобы узнать новое, обратитесь к собеседнику по имени — так начинается разговор — или осмотрите место: у этого есть проверка и итог.'
+    : freeActionGoalIsPassage(goal)
+      ? 'Путь дальше — на карте: дверь и проход — шагами по клеткам, лестница — через её меню, а в другое место отряд переходит через «Решение группы».'
+      : 'Если нужен другой итог, опишите, чего именно герой добивается.'
+  return failed
+    ? `${name}: не вышло, сцена прежняя. ${route}`
+    : `${name}: попытка засчитана, но сцена от неё не изменилась — нового пока ничего. ${route}`
 }
 
 /**
@@ -1055,6 +1091,10 @@ function freeActionCopyNote({ freeAction, message, events }) {
  * урон или объявить навык, которого нет в commit.
  */
 function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false }) {
+  if (!unconfirmedPassage && unconfirmedFreeActionDisclosure({ freeAction, message, events })) {
+    return [freeActionUnchangedSceneNarration({ freeAction, message, events, state }), ...freeActionEffectText(events, state), freeActionTimeText(events)]
+      .filter(Boolean).join(' ')
+  }
   const kind = String(freeAction?.kind ?? '')
   if (kind === 'hazard_contact') {
     const effects = freeActionEffectText(events, state)
@@ -1684,11 +1724,20 @@ export class GameOrchestrator {
     const repairedFrom = [...safeNarrationViolations(renderedVerification?.repaired_from), ...safeNarrationViolations(rejectedCandidateViolations)]
       .filter((entry, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(entry)) === index)
     const rendererProviderError = safeNarrationProviderError(renderedVerification?.provider_error)
+    // Текст модели не прошёл guard — сначала свой запасной текст и честный
+    // ответ «сцена прежняя», и только потом голое «вышло / не вышло».
+    const fallbackNarrations = ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
+      ? [deterministicNarration, freeActionUnchangedSceneNarration({ freeAction, message, events: publicCommittedEvents, state: narrationState })]
+      : []
+    const verifiedFallback = fallbackNarrations
+      .find((text) => text && text !== preferredNarration && verifyNarration(text, brief, { knownRuleIds: [] }).valid) ?? ''
     const chosenNarration = candidateVerification.valid && preferredNarration
       ? preferredNarration
-      : groundedVerification?.valid && groundedNarration
-        ? groundedNarration
-        : freeAction.kind === 'clarification'
+      : verifiedFallback
+        ? verifiedFallback
+        : groundedVerification?.valid && groundedNarration
+          ? groundedNarration
+          : freeAction.kind === 'clarification'
           ? candidateNarration || deterministicNarration || 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
           // Исход уже записан событиями: если ни один текст не прошёл guard,
           // честнее короткое «вышло / не вышло», чем просьба уточнить уже
