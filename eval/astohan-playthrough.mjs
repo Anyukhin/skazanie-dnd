@@ -39,6 +39,7 @@ import { combatClassCatalogInfo, combatSubclassOptionsFor, normalizedCombatSubcl
 import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells.mjs'
 import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
 import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
+import { footprintCellsFor } from '../server/actor-footprint.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -821,8 +822,26 @@ async function meleeApproach(actorId, targetId) {
   // Хиты врага игроку не видны; без них занятость считала его мёртвым, и
   // путь шёл сквозь тело медведя прямо в его клетку (сид 5, 2026-10-05).
   const rules = normalizeCampaignState({ ...fresh, enemies: (fresh.enemies ?? []).map((enemy) => (enemy.hp == null && isUp(enemy) ? { ...enemy, hp: Number(enemy.maxHp) || 1 } : enemy)) })
-  const path = (shortestTacticalPath(rules, actorId, targetAt, { allowOccupiedDestination: true }) ?? []).slice(0, -1)
-  const { stepCost } = movementStepCostFor(rules, actorId)
+  const { stepCost, map } = movementStepCostFor(rules, actorId)
+  // Цель пути — свободная клетка вплотную к телу врага, а не его опорная клетка:
+  // она занята им самим, и путь «в неё» не находился. Воин стоял в двенадцати
+  // клетках от совомеда и тридцать раундов заканчивал ход (сид 3, 2026-10-05).
+  const target = (rules.enemies ?? []).find((enemy) => enemy.id === targetId)
+  const body = new Set(footprintCellsFor(target, targetAt).map((cell) => `${cell.x},${cell.y}`))
+  const taken = occupiedPositions(rules, actorId)
+  const goals = new Map()
+  for (const key of body) {
+    const [x, y] = key.split(',').map(Number)
+    for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) {
+      const goal = `${x + dx},${y + dy}`
+      if (!body.has(goal) && !taken.has(goal)) goals.set(goal, { x: x + dx, y: y + dy })
+    }
+  }
+  const costOf = (steps) => steps.reduce((total, step) => total + stepCost(step, map), 0)
+  const path = [...goals.values()]
+    .map((goal) => shortestTacticalPath(rules, actorId, goal, { tacticalMap: map, stepCost }))
+    .filter((candidate) => Array.isArray(candidate) && candidate.length)
+    .sort((left, right) => costOf(left) - costOf(right))[0] ?? []
   let budgetFeet = Number(movementForActor(rules, actorId).movement_remaining) || 0
   const stop = []
   for (const step of path) {
