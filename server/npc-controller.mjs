@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { actorPosition, findActor, isEnemyActor, isLivingActor, shortestTacticalPath, movementForActor } from './rules-engine.mjs'
+import { actorPosition, findActor, isEnemyActor, isLivingActor, shortestTacticalPath, movementForActor, movementStepCostFor } from './rules-engine.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
@@ -106,16 +106,27 @@ function farthestReachableDestination(state, enemyId) {
   const enemy = findActor(state, enemyId)
   const from = actorPosition(state, enemyId)
   if (!enemy || !from) return null
-  const maximumSteps = Math.max(0, Math.floor(movementForActor(state, enemyId).movement_remaining / 5))
+  // Бюджет — футы, а не клетки: `MoveActor` берёт взвешенный путь (трудная
+  // местность, ползком, крупное тело) и отвергает всё, что дороже остатка
+  // скорости. Счёт шагами без цены выбирал клетку, до которой зверь не дойдёт,
+  // и бой вставал на отвергнутом бегстве навсегда (прогон Асстохана 2026-10-04).
+  const budgetFeet = Math.max(0, Number(movementForActor(state, enemyId).movement_remaining) || 0)
+  const maximumSteps = Math.floor(budgetFeet / 5)
+  if (!maximumSteps) return null
+  const { map, stepCost } = movementStepCostFor(state, enemyId)
   const heroes = (state.players ?? []).filter(isLivingActor).map((hero) => ({
     actor: hero,
     at: actorPosition(state, actorId(hero)),
   })).filter((hero) => hero.at)
-  const candidates = (state.scene?.cells ?? []).filter((cell) => cell.revealed === true && (cell.type === 'floor' || cell.type === 'door'))
+  // Шаг идёт по четырём сторонам, поэтому дальше манхэттенского радиуса бюджета
+  // не дойти ни при какой цене — такие клетки отсеиваются до поиска пути.
+  const candidates = (state.scene?.cells ?? []).filter((cell) => cell.revealed === true && (cell.type === 'floor' || cell.type === 'door')
+    && Math.abs(Number(cell.x) - from.x) + Math.abs(Number(cell.y) - from.y) <= maximumSteps)
   let best = null
   for (const cell of candidates) {
-    const path = shortestTacticalPath(state, enemyId, { x: Number(cell.x), y: Number(cell.y) })
+    const path = shortestTacticalPath(state, enemyId, { x: Number(cell.x), y: Number(cell.y) }, { tacticalMap: map, stepCost })
     if (!path?.length || path.length > maximumSteps) continue
+    if (path.reduce((total, step) => total + stepCost(step, map), 0) > budgetFeet) continue
     const destination = path[path.length - 1]
     const heroDistance = heroes.length
       ? Math.min(...heroes.map((hero) => (footprintDistanceFeet(enemy, hero.actor, destination, hero.at) ?? Number.MAX_SAFE_INTEGER) / 5))

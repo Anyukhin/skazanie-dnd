@@ -200,14 +200,18 @@ export function campaignArcClimaxSatisfied(state = {}) {
   const position = campaignArcPosition(state)
   if (!position?.is_final) return false
   const encounter = state.mechanics?.encounter
+  // Финальная глава — любая начиная с последней по плану, как и `is_final`.
+  // Отряд вправе уйти дальше по дороге, не дав боя кульминации; при строгом
+  // равенстве развязка после этого становилась недостижимой навсегда, и
+  // Режиссёр крутил встречи по кругу (прогон Асстохана 2026-10-05, глава 8).
   const combatResolved = Boolean(encounter
     && encounter.status === 'ended'
     && encounter.difficulty === 'hard'
-    && Number(encounter.created_in_chapter) === position.target_scenes
+    && Number(encounter.created_in_chapter) >= position.target_scenes
     && encounterOutcomeRecorded(state, encounter))
   const sceneResolved = (state.autonomy?.scene_resolutions ?? []).some((entry) => (
     entry?.status === 'confirmed'
-      && Number(entry.chapter) === position.target_scenes
+      && Number(entry.chapter) >= position.target_scenes
       && ['negotiation', 'objective', 'decision'].includes(entry.resolution)
   ))
   return combatResolved || sceneResolved

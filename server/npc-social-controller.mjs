@@ -422,7 +422,12 @@ function fallbackAnswer(profile, message, hooks, facts, alreadySaid) {
   ]
   let best = null
   for (const candidate of candidates) {
-    for (const sentence of clean(candidate.text, 1_000).split(/(?<=[.!?…])\s+/u).map((part) => clean(part, 320)).filter(Boolean)) {
+    const sentences = clean(candidate.text, 1_000).split(/(?<=[.!?…])\s+/u).map((part) => clean(part, 320)).filter(Boolean)
+    // Факт хранится с пределом длины, и абзац пролога обрывается на полуслове.
+    // Хвост без знака конца — не предложение: король отвечал «…отводит взгляд,
+    // когда архивист п» (прогон Асстохана 2026-10-05).
+    if (sentences.length > 1 && !/[.!?…»"')]$/u.test(sentences.at(-1))) sentences.pop()
+    for (const sentence of sentences) {
       const words = plainWords(sentence)
       const score = stems.filter((stem) => words.some((word) => word.startsWith(stem))).length
       if (score < 1 || alreadySaid(sentence)) continue

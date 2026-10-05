@@ -1,0 +1,1291 @@
+/**
+ * Сквозной прогон кампании «Асстоханские равнины» двумя ботами через HTTP
+ * (eval, в тесты не входит). Пункт 5 плана `docs/playable-goal.md`: «вечер за
+ * несколько минут» — без браузера, но тем же путём, что и сайт.
+ *
+ * Что делает:
+ *  - поднимает изолированный сервер на временном хранилище (порт свой);
+ *  - заводит владельца и второго игрока, приглашение и вход по нему;
+ *  - создаёт кампанию из авторского мира `astohan-plains` так же, как мастер
+ *    создания на сайте (редакция 2014, стартовый уровень 7);
+ *  - создаёт двух героев импортом и поэтапным повышением до 7-го уровня,
+ *    выборы каждого уровня берёт из серверного каталога;
+ *  - играет сценарий: поручение Ареса, принятие задания голосованием, улики
+ *    из заготовок ведущего, дорога по карте мира, бой ботом через команды
+ *    доски, добыча, отдых, Режиссёр до финала арки или до лимита времени;
+ *  - по пути ловит тупики, ответы 5xx, отказы законным командам, зависший бой;
+ *  - в конце проверяет идемпотентность, перезапуск, проекцию второго игрока,
+ *    replay (`tools/audit-cutover.mjs`) и пишет отчёт с оценкой.
+ *
+ *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
+ *   node eval/astohan-playthrough.mjs --seed 7        # повторяемые кости
+ *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
+ *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
+ *
+ * Итог — `<out>/report.md` (оценка и находки), `<out>/transcript.md`
+ * (хроника: реплика → ответ), `<out>/report.json` (всё для сравнения прогонов).
+ * Ключ модели не печатается и в отчёт не попадает.
+ */
+import { spawn, spawnSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, relative, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { abilityScoreChoiceLevelsFor, classSkillRuleFor, featureChoiceGroupsFor, normalizedClassSkillProficiencies } from '../server/character-progression.mjs'
+import { characterCreationChoicesComplete } from '../server/character-lifecycle.mjs'
+import { combatClassCatalogInfo, combatSubclassOptionsFor, normalizedCombatSubclassFor } from '../server/combat-actions.mjs'
+import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells.mjs'
+import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
+import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
+import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const argv = process.argv.slice(2)
+const flag = (name) => argv.includes(`--${name}`)
+const option = (name, fallback) => {
+  const index = argv.indexOf(`--${name}`)
+  return index >= 0 && argv[index + 1] ? argv[index + 1] : fallback
+}
+const LIVE = flag('live')
+const KEEP = flag('keep')
+const SEED = option('seed', null)
+const MINUTES = Number(option('minutes', LIVE ? 25 : 20))
+const PORT = Number(option('port', 8900 + Math.floor(Math.random() * 90)))
+const STAMP = new Date().toISOString().replace(/[:.]/gu, '-').slice(0, 19)
+const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}${LIVE ? '-live' : ''}`)))
+const CODE = 'ASTOHAN-RUN'
+const TEMPLATE_ID = 'astohan-plains'
+const RULESET_ID = 'dnd_5e_2014'
+const START_LEVEL = 7
+const DEADLINE = Date.now() + MINUTES * 60_000
+const startedAt = Date.now()
+const base = `http://127.0.0.1:${PORT}`
+const setupToken = `astohan-${randomUUID()}`
+
+mkdirSync(OUT, { recursive: true })
+const storage = mkdtempSync(join(tmpdir(), 'skazanie-astohan-'))
+const template = JSON.parse(readFileSync(join(ROOT, 'data', 'campaign-worlds-v1.json'), 'utf8')).templates.find((entry) => entry.id === TEMPLATE_ID)
+if (!template) throw new Error(`В каталоге нет мира ${TEMPLATE_ID}`)
+
+// ---------------------------------------------------------------------------
+// Журнал прогона: находки, хроника, замеры
+
+const findings = []
+const transcript = []
+const timings = []
+const narrateLatency = []
+const stats = {
+  narrate: 0, narrateRefused: 0, checks: 0, checkSuccess: 0, discoveries: 0, discoveryEmpty: 0, clarifications: 0,
+  deadEnds: 0, http5xx: 0, rateLimited: 0, votes: 0, travels: 0, directorSteps: 0, directorIntents: {},
+  combats: 0, combatRounds: 0, combatWins: 0, heroDowns: 0, heroDeaths: 0, playerCommands: 0, commandRefused: 0,
+  lootTaken: 0, rests: 0, levelUps: 0, restarts: 0, scenes: [], chapters: 0,
+}
+let currentStage = 'startup'
+
+function finding(severity, kind, message, context = {}) {
+  const entry = { severity, kind, stage: currentStage, at_s: Math.round((Date.now() - startedAt) / 1000), message, ...context }
+  findings.push(entry)
+  console.log(`  [${severity}] ${kind}: ${message}`)
+  return entry
+}
+function note(line) {
+  transcript.push(line)
+}
+function stage(name) {
+  currentStage = name
+  note(`\n## ${name}\n`)
+  console.log(`\n== ${name} (${Math.round((Date.now() - startedAt) / 1000)} с)`)
+}
+const timeLeft = () => DEADLINE - Date.now()
+const short = (text, limit = 400) => {
+  const value = String(text ?? '').replace(/\s+/gu, ' ').trim()
+  return value.length > limit ? `${value.slice(0, limit)}…` : value
+}
+
+// ---------------------------------------------------------------------------
+// Сервер
+
+let child = null
+let logs = ''
+function startServer() {
+  const preload = SEED == null ? [] : ['--import', './eval/playtest-seeded-dice.mjs']
+  const env = {
+    ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(PORT), DND_STORAGE_DIR: storage,
+    ADMIN_SETUP_TOKEN: setupToken, COOKIE_SECURE: 'false', NODE_ENV: 'test',
+    // Ход героя бот делает за секунды; срок хода не должен отдавать его NPC.
+    DND_COMBAT_TURN_TIMEOUT_MS: '3600000',
+    ...(SEED == null ? {} : { PLAYTEST_DICE_SEED: String(SEED) }),
+  }
+  // Без --live ключ обнуляется явно: dotenv не перекрывает уже заданные
+  // переменные, и пустая строка выигрывает у ключа из .env.
+  if (!LIVE) env.ROUTERAI_API_KEY = ''
+  child = spawn(process.execPath, [...preload, 'server/index.mjs'], { cwd: ROOT, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  child.stdout.on('data', (chunk) => { logs += chunk })
+  child.stderr.on('data', (chunk) => { logs += chunk })
+}
+async function stopServer() {
+  if (!child || child.exitCode != null) return
+  await new Promise((done) => { child.once('exit', done); child.kill() })
+}
+async function waitForHealth() {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (child.exitCode != null) throw new Error(`Сервер завершился с кодом ${child.exitCode}\n${logs.slice(-2000)}`)
+    try { if ((await fetch(`${base}/api/health`)).ok) return } catch { /* запускается */ }
+    await sleep(100)
+  }
+  throw new Error(`Сервер не поднялся\n${logs.slice(-2000)}`)
+}
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
+process.on('exit', () => { try { child?.kill() } catch { /* уже остановлен */ } })
+
+// ---------------------------------------------------------------------------
+// HTTP с замерами
+
+async function request(path, { method = 'GET', account, body, key, timeoutMs = 120_000 } = {}) {
+  const started = Date.now()
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    let response
+    try {
+      response = await fetch(`${base}${path}`, {
+        method, signal: controller.signal,
+        headers: {
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...(account?.cookie ? { Cookie: account.cookie } : {}),
+          ...(key ? { 'X-Idempotency-Key': key } : {}),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      })
+    } catch (error) {
+      clearTimeout(timer)
+      finding('critical', 'transport', `${method} ${path}: ${error?.name ?? error} после ${Date.now() - started} мс`)
+      return { status: 0, body: null, text: String(error), ms: Date.now() - started }
+    }
+    clearTimeout(timer)
+    const text = await response.text()
+    let parsed = null
+    try { parsed = text ? JSON.parse(text) : null } catch { /* тело не JSON */ }
+    const ms = Date.now() - started
+    const route = path.replace(/\/[A-Z0-9-]{3,24}(?=\/|$)/u, '/:code').replace(/\?.*$/u, '').replace(/party-decisions\/[^/]+/u, 'party-decisions/:id').replace(/merchants\/[^/]+/u, 'merchants/:id')
+    timings.push({ route: `${method} ${route}`, ms, status: response.status })
+    if (response.status === 429 && attempt < 5) {
+      stats.rateLimited += 1
+      finding('minor', 'rate-limit', `${method} ${route}: 429, бот ждёт 30 с`)
+      await sleep(30_000)
+      continue
+    }
+    if (response.status >= 500) {
+      stats.http5xx += 1
+      finding('critical', 'http-5xx', `${method} ${route} → ${response.status}: ${short(parsed?.error ?? text, 300)}`, { code: parsed?.code })
+    }
+    return { status: response.status, body: parsed, text, ms, response }
+  }
+  return { status: 429, body: null, text: 'rate limited', ms: Date.now() - started }
+}
+
+const accounts = {}
+const cookieOf = (result) => result.response?.headers.get('set-cookie')?.split(';')[0] ?? ''
+
+// Живой поток: держит игрока «в сети» для голосований и мерит первое слово
+// рассказчика по событиям narration.*.
+const streamFirstText = new Map()
+const streamComplete = new Map()
+async function openStream(account) {
+  account.stream?.abort()
+  const controller = new AbortController()
+  account.stream = controller
+  try {
+    const response = await fetch(`${base}/api/campaigns/${CODE}/stream`, { headers: { Cookie: account.cookie, Accept: 'text/event-stream' }, signal: controller.signal })
+    if (!response.ok) { finding('major', 'stream', `поток ${account.name}: ${response.status}`); return }
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    ;(async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          let index
+          while ((index = buffer.indexOf('\n\n')) >= 0) {
+            const block = buffer.slice(0, index)
+            buffer = buffer.slice(index + 2)
+            const event = /^event: (.+)$/mu.exec(block)?.[1]
+            const data = /^data: (.+)$/mu.exec(block)?.[1]
+            if (!event?.startsWith('narration.') || !data) continue
+            let payload = null
+            try { payload = JSON.parse(data) } catch { continue }
+            const id = String(payload.messageId ?? payload.message_id ?? '')
+            if (!id) continue
+            if (payload.text && !streamFirstText.has(id)) streamFirstText.set(id, Date.now())
+            if (event === 'narration.complete') streamComplete.set(id, Date.now())
+          }
+        }
+      } catch { /* поток закрыт */ }
+    })()
+  } catch (error) {
+    if (error?.name !== 'AbortError') finding('major', 'stream', `поток ${account.name}: ${error}`)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Состояние комнаты
+
+async function room(account = accounts.owner) {
+  const result = await request(`/api/rooms/${CODE}`, { account })
+  if (result.status !== 200) throw new Error(`Комната недоступна (${result.status}): ${result.text.slice(0, 300)}`)
+  return result.body.state
+}
+const heroIds = () => [accounts.owner.heroId, accounts.guest.heroId]
+const accountFor = (actorId) => Object.values(accounts).find((account) => account.heroId === actorId) ?? accounts.owner
+const heroOf = (state, actorId) => state.players.find((player) => player.id === actorId)
+const lifecycleStatus = (state) => state?.mechanics?.campaign_lifecycle?.status ?? 'active'
+const sceneKey = (state) => `${state.worldMap?.currentLocationId ?? '?'}|${state.scene?.location ?? '?'}|${state.adventure?.chapter ?? '?'}`
+
+let commandSeq = 0
+/** Команды текущего хода героя — для строки хода в хронике боя. */
+let turnLog = null
+/** Сообщения хроники, появившиеся после известного набора id. */
+function newMessages(before, state) {
+  return (state?.messages ?? []).filter((entry) => !before.has(String(entry.id)) && entry.role !== 'player' && entry.type !== 'player')
+}
+const messageIds = (state) => new Set((state?.messages ?? []).map((entry) => String(entry.id)))
+async function command(actorId, commandValue, label = commandValue.command_type, { expectFailure = false } = {}) {
+  const account = accountFor(actorId)
+  const key = `bot-${commandValue.command_type}-${++commandSeq}`
+  const result = await request(`/api/campaigns/${CODE}/commands`, {
+    method: 'POST', account, key,
+    body: { idempotency_key: key, message: label, command: { actor_id: actorId, ...commandValue } },
+  })
+  stats.playerCommands += 1
+  if (turnLog && result.status === 200 && /MakeAttack|CastSpell|MakeAreaAttack/u.test(commandValue.command_type)) combatActs[actorId] = (combatActs[actorId] ?? 0) + 1
+  turnLog?.push(`${label}${result.status === 200 ? ' ✓' : ` ✗${result.body?.code ? ` ${result.body.code}` : ''}`}`)
+  if (result.status !== 200) {
+    stats.commandRefused += 1
+    if (!expectFailure && result.status < 500) note(`- ⚠ ${label}: отказ ${result.status} ${result.body?.code ?? ''} — ${short(result.body?.error, 200)}`)
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// Создание героев: импорт первого уровня и поэтапное повышение до седьмого
+
+const HERO_PLANS = {
+  owner: {
+    name: 'Торвальд', characterClass: 'fighter', role: 'Воин · ур. 1', species: 'Холмовой дварф',
+    document: {
+      character: 'Торвальд', name: 'Владелец', role: 'Воин · ур. 1', characterClass: 'fighter', species: 'Холмовой дварф',
+      background: 'Солдат', backgroundId: 'soldier', backgroundChoices: { tools: ['dice_set'], languages: [] },
+      speciesChoices: { 'artisan-tool': ['smiths_tools'] },
+      starterEquipmentChoices: { armor: ['chain-mail'], 'melee-loadout': ['longsword-shield'], secondary: ['light-crossbow'], pack: ['explorers-pack'] },
+      level: 1, experience: 0,
+      abilities: { str: 15, dex: 14, con: 15, int: 12, wis: 11, cha: 8 },
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
+        baseScores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
+        originBonusProfileId: 'dwarf-hill', originBonuses: { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: 0 }, speciesOptionId: 'dwarf-hill',
+      },
+      baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['athletics', 'perception'],
+      selectedFeatureIds: ['fighting-style-defense'], knownSpellIds: [], preparedSpellIds: [],
+    },
+    skills: ['athletics', 'perception', 'survival', 'intimidation', 'insight'],
+    subclass: ['Чемпион'],
+    asi: ['str', 'con'],
+    cantrips: [], spells: [],
+  },
+  guest: {
+    name: 'Ильва', characterClass: 'cleric', role: 'Жрец · ур. 1', species: 'Холмовой дварф',
+    document: {
+      character: 'Ильва', name: 'Гость', role: 'Жрец · ур. 1', characterClass: 'cleric', species: 'Холмовой дварф',
+      background: 'Прислужник', backgroundId: 'acolyte', backgroundChoices: { tools: [], languages: ['elvish', 'giant'], replacementSkills: [], replacementTools: [] },
+      speciesChoices: { 'artisan-tool': ['brewers_supplies'] },
+      level: 1, experience: 0,
+      abilities: { str: 13, dex: 10, con: 16, int: 8, wis: 16, cha: 12 },
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.dnd-5e-2014', policyVersion: 2, method: 'standard_array',
+        baseScores: { str: 13, dex: 10, con: 14, int: 8, wis: 15, cha: 12 },
+        originBonusProfileId: 'dwarf-hill', originBonuses: { str: 0, dex: 0, con: 2, int: 0, wis: 1, cha: 0 }, speciesOptionId: 'dwarf-hill',
+      },
+      baseSpeed: 25, hitPointIncreases: [], classSkillProficiencies: ['medicine', 'persuasion'],
+      subclass: 'Домен жизни',
+      selectedFeatureIds: [], knownSpellIds: ['sacred-flame', 'guidance', 'spare-the-dying'], preparedSpellIds: ['cure-wounds', 'healing-word', 'guiding-bolt', 'bless'],
+      phbCreation: { schema_version: 1, classChoices: {} },
+    },
+    skills: ['medicine', 'persuasion', 'history'],
+    subclass: ['Домен жизни', 'Жизнь'],
+    asi: ['wis', 'wis'],
+    cantrips: ['sacred-flame', 'guidance', 'spare-the-dying', 'thaumaturgy', 'light'],
+    spells: ['healing-word', 'cure-wounds', 'guiding-bolt', 'bless', 'spiritual-weapon', 'prayer-of-healing', 'spirit-guardians', 'mass-healing-word', 'revivify', 'aid', 'lesser-restoration', 'guardian-of-faith', 'death-ward'],
+  },
+}
+
+/** Недостающие выборы текущего уровня — тем же каталогом, что и проверка сервера. */
+function pendingChoices(actor, plan, rulesetId) {
+  const commands = []
+  const skillRule = classSkillRuleFor(actor)
+  let skills = normalizedClassSkillProficiencies(actor)
+  if (skillRule && skills.length !== skillRule.choiceCount) {
+    const allowed = skillRule.skills
+    skills = [...new Set([...plan.skills, ...allowed])].filter((id) => allowed.includes(id)).slice(0, skillRule.choiceCount)
+  }
+  const subclassOptions = combatSubclassOptionsFor(actor)
+  let subclass = normalizedCombatSubclassFor(actor) ? String(actor.subclass ?? '') : String(actor.subclass ?? '')
+  const subclassName = (entry) => String(entry?.name ?? entry?.label ?? entry?.id ?? entry)
+  const subclassLevel = Number(combatClassCatalogInfo().classes.find((entry) => entry.classKey === actor.characterClass)?.subclassLevel ?? 99)
+  if (!normalizedCombatSubclassFor(actor) && subclassOptions.length && Number(actor.level) >= subclassLevel) {
+    const preferred = subclassOptions.find((entry) => plan.subclass.some((name) => subclassName(entry).toLocaleLowerCase('ru').includes(name.toLocaleLowerCase('ru'))))
+    subclass = subclassName(preferred ?? subclassOptions[0])
+  }
+  const probe = { ...actor, subclass, classSkillProficiencies: skills }
+  const selected = new Set(actor.selectedFeatureIds ?? [])
+  const features = []
+  for (const group of featureChoiceGroupsFor(probe)) {
+    const kept = group.options.filter((entry) => selected.has(entry.id)).map((entry) => entry.id)
+    const extra = group.options.map((entry) => entry.id).filter((id) => !kept.includes(id))
+    features.push(...[...kept, ...extra].slice(0, group.choiceCount))
+  }
+  const asiLevel = abilityScoreChoiceLevelsFor(actor).find((level) => level <= Number(actor.level) && !actor.abilityScoreIncreases?.[String(level)] && !actor.levelFeats?.[String(level)])
+  const choice = {
+    command_type: 'SetCharacterChoices', subclass, class_skill_proficiencies: skills, selected_feature_ids: features,
+    ...(asiLevel ? { ability_score_level: asiLevel, ability_score_increases: plan.asi.filter((id) => Number(actor.abilities?.[id] ?? 20) < 20).length === plan.asi.length ? plan.asi : ['con', 'con'] } : {}),
+  }
+  if (characterCreationChoicesComplete(actor, { rulesetId })) return []
+  const changed = asiLevel || subclass !== String(actor.subclass ?? '') || JSON.stringify(skills) !== JSON.stringify(actor.classSkillProficiencies ?? [])
+    || JSON.stringify([...features].sort()) !== JSON.stringify([...(actor.selectedFeatureIds ?? [])].sort())
+  if (changed) commands.push(choice)
+  const rules = spellSelectionRulesFor(probe)
+  if (rules) {
+    const spells = combatSpellsFor({ ...probe, knownSpellIds: undefined, preparedSpellIds: undefined }, { rulesetId })
+    const byId = new Map(spells.map((spell) => [spell.id, spell]))
+    const cantrips = [...new Set([...plan.cantrips, ...spells.filter((spell) => spell.level === 0).map((spell) => spell.id)])].filter((id) => byId.get(id)?.level === 0).slice(0, rules.cantrips)
+    const leveledPool = [...new Set([...plan.spells, ...spells.filter((spell) => spell.level > 0).map((spell) => spell.id)])].filter((id) => (byId.get(id)?.level ?? 0) > 0)
+    const known = rules.mode === 'known' ? [...cantrips, ...leveledPool.slice(0, rules.spellsKnown)] : rules.mode === 'spellbook' ? [...cantrips, ...leveledPool.slice(0, rules.spellbookMinimum)] : cantrips
+    const prepared = rules.mode === 'known' ? [] : leveledPool.slice(0, rules.preparedLimit)
+    if (JSON.stringify(known) !== JSON.stringify(actor.knownSpellIds ?? []) || JSON.stringify(prepared) !== JSON.stringify(actor.preparedSpellIds ?? [])) {
+      commands.push({ command_type: 'SetSpellSelections', known_spell_ids: known, prepared_spell_ids: prepared })
+    }
+  }
+  return commands
+}
+
+async function buildHero(account, plan) {
+  const actorId = account.heroId
+  const imported = await command(actorId, { command_type: 'ImportCharacter', document: { schema: 'skazanie.character', schema_version: 1, character: plan.document } }, `Импорт: ${plan.name}`)
+  if (imported.status !== 200) {
+    finding('blocker', 'character-import', `${plan.name}: импорт отклонён ${imported.body?.code ?? imported.status} — ${short(imported.body?.error ?? imported.text, 300)}`)
+    return false
+  }
+  for (let guard = 0; guard < 40; guard += 1) {
+    const state = await room(account)
+    const actor = heroOf(state, actorId)
+    if (!actor.characterSetupRequired && Number(actor.level) >= START_LEVEL) break
+    for (const choice of pendingChoices(actor, plan, state.ruleset_id)) {
+      const saved = await command(actorId, choice, `${choice.command_type} ур. ${actor.level}`)
+      if (saved.status !== 200) finding('major', 'character-choice', `${plan.name}, ур. ${actor.level}: ${choice.command_type} отклонён ${saved.body?.code} — ${short(saved.body?.error, 240)}`, { command: choice })
+    }
+    const fresh = heroOf(await room(account), actorId)
+    if (Number(fresh.level) >= START_LEVEL) {
+      if (fresh.characterSetupRequired) finding('blocker', 'character-setup', `${plan.name}: на ${fresh.level} уровне подготовка не закрылась`)
+      break
+    }
+    const leveled = await command(actorId, { command_type: 'LevelUp', expected_level: Number(fresh.level) }, `Повышение до ${Number(fresh.level) + 1}`)
+    if (leveled.status !== 200) {
+      finding('blocker', 'level-up', `${plan.name}: LevelUp с ${fresh.level} отклонён ${leveled.body?.code} — ${short(leveled.body?.error, 240)}`)
+      return false
+    }
+    stats.levelUps += 1
+  }
+  const hero = heroOf(await room(account), actorId)
+  note(`- ${hero.character}: ${hero.role}, ур. ${hero.level}, ОЗ ${hero.hp}/${hero.maxHp}, КД ${hero.armor}, подкласс «${hero.subclass ?? '—'}», заклинаний ${(hero.preparedSpellIds ?? []).length + (hero.knownSpellIds ?? []).length}`)
+  if (hero.characterSetupRequired) return false
+  if (Number(hero.level) !== START_LEVEL) finding('blocker', 'character-level', `${plan.name}: уровень ${hero.level} вместо ${START_LEVEL}`)
+  if (!(Number(hero.maxHp) > 30)) finding('major', 'character-hp', `${plan.name}: подозрительно мало ОЗ на 7 уровне — ${hero.maxHp}`)
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Свободные реплики: ручной бросок, уточнение, подтверждение, классификация
+
+const DEAD_END = [
+  /действие недоступно/iu, /недоступно для этого/iu, /назовите (собеседника|по имени)/iu, /новой зацепки нет/iu, /зацепки нет/iu,
+  /пока ничего не меняется/iu, /не понял/iu, /не удалось понять/iu, /ничего не происходит/iu, /сначала уточните/iu,
+  /ведущий временно недоступен/iu, /\bundefined\b|\bnull\b|\[object Object\]/u, /\{\{|\}\}/u,
+]
+const RAW_CODE = /\b[A-Z][A-Z_]{5,}\b|\bquest:[a-z]|\bastohan-[a-z]|\bhero-slot-\d|\bencounter-[0-9a-f]{4}/u
+const DISCOVERY_SKILLS = new Set(['perception', 'investigation', 'insight', 'survival', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+
+let narrateSeq = 0
+async function say(actorId, action, { label = '', requestKind, npcId, expect = 'outcome' } = {}) {
+  const account = accountFor(actorId)
+  const hero = heroOf(await room(account), actorId)
+  const baseBody = { action, campaign_id: CODE, actor_id: actorId, manual_roll: true, ...(requestKind ? { request_kind: requestKind } : {}), ...(npcId ? { npc_id: npcId } : {}) }
+  let body = { ...baseBody, idempotency_key: `bot-say-${++narrateSeq}` }
+  note(`\n**${hero?.character ?? actorId}${label ? ` · ${label}` : ''}:** ${action}`)
+  let final = null
+  const steps = []
+  for (let hop = 0; hop < 4; hop += 1) {
+    const sentAt = Date.now()
+    const result = await request('/api/narrate', { method: 'POST', account, body, key: body.idempotency_key })
+    stats.narrate += 1
+    const messageId = result.body?.narration_message_id
+    const firstText = messageId ? streamFirstText.get(messageId) : null
+    narrateLatency.push({ ms: result.ms, first_word_ms: firstText ? firstText - sentAt : null, label, hop })
+    if (result.status !== 200) {
+      stats.narrateRefused += 1
+      note(`> ⚠ отказ ${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error ?? result.text, 300)}`)
+      const fatal = !['NOT_ACTIVE_ACTOR', 'COMBAT_ACTIVE', 'PARTY_DECISION_OPEN'].includes(result.body?.code)
+      if (fatal) { stats.deadEnds += 1; finding('major', 'narrate-refused', `«${short(action, 90)}» → ${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error, 200)}`) }
+      return { status: result.status, body: result.body, steps }
+    }
+    const answer = result.body
+    steps.push(answer)
+    final = answer
+    const text = String(answer.narration ?? '')
+    if (text) note(`> ${short(text, 1400)}`)
+    if (answer.check && !answer.mechanics?.some((event) => event.event_type === 'AbilityCheckResolved')) {
+      stats.checks += 1
+      const check = answer.check
+      note(`> 🎲 проверка: ${check.label ?? check.skill ?? check.ability} СЛ ${check.difficulty ?? '?'}${check.advantage ? ' (преимущество)' : ''}${check.disadvantage ? ' (помеха)' : ''}`)
+      const rolled = await request('/api/roll', { method: 'POST', account, body: { checkId: check.check_id, playerId: actorId, campaignId: CODE } })
+      if (rolled.status !== 200) {
+        finding('major', 'roll-refused', `бросок по «${check.label}» → ${rolled.status} ${rolled.body?.code ?? ''}: ${short(rolled.body?.error, 200)}`)
+        return { status: rolled.status, body: rolled.body, steps }
+      }
+      if (rolled.body.success) stats.checkSuccess += 1
+      note(`> 🎲 ${rolled.body.value} + ${rolled.body.modifier} = **${rolled.body.total}** против ${rolled.body.difficulty ?? '?'} → ${rolled.body.success ? 'успех' : 'провал'}`)
+      body = { ...baseBody, idempotency_key: `bot-say-${++narrateSeq}`, roll: { roll_id: rolled.body.roll_id }, ...(answer.clarification?.id ? { clarification_id: answer.clarification.id } : {}) }
+      const resolved = await sayFollowUp(body, account, steps)
+      final = resolved ?? final
+      const skill = String(check.skill ?? '').replace(/_/gu, '-')
+      if (rolled.body.success && DISCOVERY_SKILLS.has(skill)) {
+        const facts = (final?.mechanics ?? []).filter((event) => event.event_type === 'WorldFactRecorded')
+        if (facts.length) { stats.discoveries += 1; note(`> 🔎 находка: ${facts.map((event) => short(event.payload?.object ?? event.payload?.value ?? event.payload?.text ?? JSON.stringify(event.payload), 160)).join(' | ')}`) }
+        else { stats.discoveryEmpty += 1; finding('major', 'empty-success', `успех ${check.label} (${rolled.body.total} против ${rolled.body.difficulty}) не записал находку: «${short(action, 90)}»`) }
+      }
+      break
+    }
+    if (answer.clarification && !answer.check) {
+      stats.clarifications += 1
+      const clarification = answer.clarification
+      const options = clarification.options ?? clarification.choices ?? []
+      note(`> ❓ уточнение: ${short(clarification.question, 300)}${options.length ? ` [${options.map((entry) => entry.label ?? entry).join(' / ')}]` : ''}`)
+      if (hop >= 1) { stats.deadEnds += 1; finding('major', 'clarify-loop', `повторное уточнение на «${short(action, 90)}»: ${short(clarification.question, 160)}`); break }
+      const pick = options[0]?.label ?? options[0]?.text ?? options[0] ?? action
+      body = { ...baseBody, action: typeof pick === 'string' ? pick : action, idempotency_key: `bot-say-${++narrateSeq}`, clarification_id: clarification.id }
+      continue
+    }
+    if (answer.action_proposal?.id) {
+      note(`> ✋ предложение: ${answer.action_proposal.kind}`)
+      body = { ...baseBody, idempotency_key: `bot-say-${++narrateSeq}`, confirmed_proposal_id: answer.action_proposal.id }
+      continue
+    }
+    break
+  }
+  classifyOutcome(action, final, expect)
+  return { status: 200, body: final, steps }
+}
+
+async function sayFollowUp(body, account, steps) {
+  const sentAt = Date.now()
+  const result = await request('/api/narrate', { method: 'POST', account, body, key: body.idempotency_key })
+  stats.narrate += 1
+  const messageId = result.body?.narration_message_id
+  const firstText = messageId ? streamFirstText.get(messageId) : null
+  narrateLatency.push({ ms: result.ms, first_word_ms: firstText ? firstText - sentAt : null, label: 'roll', hop: 1 })
+  if (result.status !== 200) {
+    finding('major', 'roll-narrate-refused', `продолжение броска → ${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error, 200)}`)
+    return null
+  }
+  steps.push(result.body)
+  if (result.body.narration) note(`> ${short(result.body.narration, 1400)}`)
+  return result.body
+}
+
+const answersSeen = new Map()
+function classifyOutcome(action, answer, expect) {
+  if (!answer) return
+  const text = String(answer.narration ?? '')
+  const events = answer.mechanics ?? []
+  const deadEnd = DEAD_END.find((pattern) => pattern.test(text))
+  if (deadEnd) { stats.deadEnds += 1; finding('major', 'dead-end', `«${short(action, 90)}» → «${short(text, 220)}»`, { pattern: String(deadEnd) }) }
+  else if (!text.trim() && !events.length && expect === 'outcome') { stats.deadEnds += 1; finding('major', 'silent', `«${short(action, 90)}»: ни текста, ни событий`) }
+  else if (expect === 'outcome' && text.trim().length < 40 && !events.some((event) => /Check|Attack|Damage|Moved/u.test(event.event_type))) {
+    stats.deadEnds += 1
+    finding('major', 'empty-answer', `«${short(action, 90)}» → только «${short(text, 80)}»`)
+  }
+  const normalized = text.replace(/\s+/gu, ' ').trim()
+  if (normalized.length > 60) {
+    const seenBefore = answersSeen.get(normalized)
+    if (seenBefore && seenBefore !== action) finding('major', 'repeated-answer', `на «${short(action, 70)}» тот же ответ, что и на «${short(seenBefore, 70)}»: «${short(normalized, 140)}»`)
+    else answersSeen.set(normalized, action)
+    const opening = String(template.opening?.narration ?? '').replace(/\s+/gu, ' ').slice(60, 160)
+    if (opening && normalized.includes(opening) && !/^\[|прошл|^что мы/iu.test(action)) finding('major', 'parrots-opening', `ответ на «${short(action, 70)}» пересказывает вступление кампании`)
+  }
+  const raw = RAW_CODE.exec(text)
+  if (raw) finding('minor', 'raw-identifier', `в тексте для игрока служебное «${raw[0]}»: «${short(text, 200)}»`)
+  if (text.length > 2600) finding('minor', 'long-narration', `ответ на «${short(action, 60)}» длиной ${text.length} символов`)
+}
+
+// ---------------------------------------------------------------------------
+// Голосования и Режиссёр
+
+async function settleInteraction(reason = '') {
+  for (let guard = 0; guard < 6; guard += 1) {
+    const state = await room()
+    const interaction = state.agentInteraction
+    if (!interaction) return state
+    if (interaction.status === 'open') {
+      if (interaction.type === 'roll') {
+        for (const actorId of heroIds()) {
+          const key = `bot-share-roll-${randomUUID()}`
+          const rolled = await request(`/api/campaigns/${CODE}/party-decisions/${encodeURIComponent(interaction.id)}/roll`, { method: 'POST', account: accountFor(actorId), key, body: { actor_id: actorId, idempotency_key: key } })
+          if (rolled.status !== 200 && rolled.status < 500) note(`- общий бросок ${actorId}: ${rolled.status} ${rolled.body?.code ?? ''}`)
+        }
+        continue
+      }
+      const options = interaction.options ?? []
+      const preferred = options.find((entry) => /^(accept|continue|go|yes)$/u.test(String(entry.id)))
+        ?? options.find((entry) => /принять|продолж|идём|в путь|да\b|отправ/iu.test(String(entry.label)))
+        ?? options[0]
+      note(`- 🗳 голосование «${short(interaction.question ?? interaction.title ?? interaction.id, 160)}»: ${options.map((entry) => entry.label).join(' / ')} → «${preferred?.label}»`)
+      for (const actorId of heroIds()) {
+        const key = `bot-vote-${randomUUID()}`
+        const vote = await request(`/api/campaigns/${CODE}/party-decisions/${encodeURIComponent(interaction.id)}/votes`, { method: 'POST', account: accountFor(actorId), key, body: { actor_id: actorId, option_id: preferred?.id, idempotency_key: key } })
+        stats.votes += 1
+        if (vote.status !== 200) {
+          const code = vote.body?.code ?? ''
+          if (!/ALREADY|RESOLVED|CLOSED/u.test(code)) finding('major', 'vote-refused', `голос ${actorId} в «${interaction.id}»: ${vote.status} ${code} — ${short(vote.body?.error, 200)}`)
+        }
+        if (vote.body?.state?.agentInteraction?.status !== 'open') break
+      }
+      continue
+    }
+    if (interaction.status === 'resolved') {
+      if (interaction.questAcceptance || interaction.questAbandonment) return state
+      const winner = (interaction.options ?? []).find((entry) => entry.id === interaction.resolvedOptionId)
+      if (isDirectorPartyDecision(interaction)) {
+        const advanced = await director('Продолжить подтверждённый переход.', { interactionId: interaction.id, quiet: true })
+        if (!advanced) return room()
+      } else if (winner) {
+        await say(accounts.owner.heroId, `[РЕШЕНИЕ ГРУППЫ] ${winner.label}`, { label: 'решение группы', expect: 'any' })
+      } else return state
+      const after = await room()
+      if (after.agentInteraction?.id === interaction.id && after.agentInteraction.status === 'resolved') {
+        finding('major', 'vote-stuck', `решение «${interaction.id}» принято, но продолжение его не закрыло (${reason})`)
+        return after
+      }
+      continue
+    }
+    return state
+  }
+  return room()
+}
+
+/** Кто где стоит и в каком состоянии — чтобы разобрать зависший бой без хранилища. */
+function combatSnapshot(state) {
+  const conditions = (id) => (state.mechanics.conditions?.[id] ?? []).map((entry) => String(entry?.id ?? entry)).join('+')
+  const actor = (entry) => {
+    const at = state.mechanics.positions?.[entry.id] ?? { x: entry.x, y: entry.y }
+    const flags = conditions(entry.id)
+    return `${entry.character ?? entry.name ?? entry.id} ${entry.hp}/${entry.maxHp} @${at?.x},${at?.y}${entry.size ? ` ${entry.size}` : ''}${flags ? ` [${flags}]` : ''}`
+  }
+  // Хиты врага в проекции игрока скрыты: живым считается всякий, кто не выбыл.
+  const enemies = (state.enemies ?? []).filter(isUp)
+  return [...state.players.map(actor), ...enemies.map(actor)].join('; ')
+}
+
+let directorSeq = 0
+async function director(playerAction = 'Продолжить приключение', { interactionId, quiet = false } = {}) {
+  const key = `bot-director-${++directorSeq}`
+  const before = await room()
+  const seen = messageIds(before)
+  const result = await request(`/api/campaigns/${CODE}/autonomy/advance`, {
+    method: 'POST', account: accounts.owner, key,
+    body: { idempotency_key: key, player_action: playerAction, actor_id: accounts.owner.heroId, ...(interactionId ? { interaction_id: interactionId } : {}) },
+  })
+  stats.directorSteps += 1
+  if (result.status !== 200) {
+    const code = result.body?.code ?? ''
+    // ENCOUNTER_ALREADY_PRESENT — честный отказ: отряд выведен из строя, а
+    // враги прежней встречи ещё стоят на поле. Новую встречу поверх неё
+    // сервер собирать и не должен.
+    if (!['COMBAT_ACTIVE', 'PARTY_DECISION_OPEN', 'CAMPAIGN_READ_ONLY', 'ENCOUNTER_ALREADY_PRESENT'].includes(code)) finding('major', 'director-refused', `Режиссёр на «${playerAction}»: ${result.status} ${code} — ${short(result.body?.error, 200)}`)
+    if (!quiet) note(`- 🎬 Режиссёр отказал: ${code || result.status}`)
+    return null
+  }
+  const type = result.body.intent?.type ?? '?'
+  stats.directorIntents[type] = (stats.directorIntents[type] ?? 0) + 1
+  // Строку Режиссёра сервер дописывает в ленту комнаты после того, как собрал
+  // состояние ответа, поэтому новые сообщения ищутся в свежем снимке комнаты:
+  // по `result.body.state` детектор молчания срабатывал на каждом шаге.
+  const after = await room()
+  const fresh = newMessages(seen, after).map((entry) => short(entry.text ?? entry.content, 500)).filter(Boolean)
+  // Подтверждённый переход меняет сцену, и её вступление приходит своим путём —
+  // смена места сама по себе видимый шаг, а не молчание Режиссёра.
+  const sceneChanged = sceneKey(after) !== sceneKey(before)
+  note(`- 🎬 Режиссёр (${playerAction}) → **${type}**${result.body.reward?.xp ? `, опыт ${result.body.reward.xp}` : ''}${fresh.length ? `: ${fresh.join(' ⏐ ')}` : ' (в хронике ничего нового)'}`)
+  if (!fresh.length && !sceneChanged && !['COMBAT_ACTIVE'].includes(type) && !result.body.state?.agentInteraction) finding('minor', 'director-silent', `шаг Режиссёра ${type} на «${playerAction}» не добавил в хронику ни строки`)
+  return result.body
+}
+
+// ---------------------------------------------------------------------------
+// Бой
+
+const distance = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) * 5
+// У врагов в проекции игрока ОЗ скрыты: живой — пока не помечен павшим.
+const isUp = (actor) => actor?.alive !== false && actor?.defeated !== true && !(actor?.hp != null && Number(actor.hp) <= 0)
+
+let combatAbandoned = false
+/** Удачные атаки и боевые заклинания героев в текущем бою. */
+let combatActs = {}
+async function playCombat(label) {
+  let state = await room()
+  if (!state.mechanics?.combat?.active) return state
+  stats.combats += 1
+  combatActs = {}
+  const enemies = (state.enemies ?? []).map((enemy) => enemy.name).join(', ')
+  note(`\n### ⚔ Бой: ${label} — ${enemies}`)
+  console.log(`  бой: ${enemies}`)
+  let lastVersion = -1
+  let stuck = 0
+  let maxRound = 0
+  for (let step = 0; step < 600 && timeLeft() > 0; step += 1) {
+    state = await room()
+    const combat = state.mechanics.combat
+    if (!combat.active) break
+    maxRound = Math.max(maxRound, Number(combat.round) || 0)
+    if (combat.round > 30) {
+      finding('blocker', 'combat-long', `бой «${label}» идёт ${combat.round} раундов — прогон остановлен`)
+      note(`- ⛔ снимок зависшего боя: ${combatSnapshot(state)}`)
+      combatAbandoned = true
+      break
+    }
+    if (state.state_version === lastVersion) stuck += 1
+    else { stuck = 0; lastVersion = state.state_version }
+    if (stuck === 3) await request(`/api/campaigns/${CODE}/system-tick`, { method: 'POST', account: accounts.owner })
+    if (stuck > 6) {
+      finding('blocker', 'combat-stuck', `бой «${label}» встал: ходит ${combat.initiative[combat.active_index]?.actor_id}, окно реакции ${combat.reaction_window?.trigger ?? 'нет'}; сервер: ${short(logs.split('\n').filter((line) => /не выполнена|Error/u.test(line)).at(-1), 200)}`)
+      combatAbandoned = true
+      break
+    }
+    if (combat.reaction_window) {
+      const actorId = String(combat.reaction_window.actor_id)
+      if (heroIds().includes(actorId)) await command(actorId, { command_type: 'UseCombatAction', action_id: 'decline-reaction' }, 'Пропустить реакцию')
+      else await request(`/api/campaigns/${CODE}/system-tick`, { method: 'POST', account: accounts.owner })
+      continue
+    }
+    const activeId = String(combat.initiative[combat.active_index]?.actor_id ?? '')
+    if (!heroIds().includes(activeId)) {
+      await sleep(150)
+      continue
+    }
+    await heroTurn(state, activeId)
+  }
+  state = await room()
+  stats.combatRounds += maxRound
+  const ended = (state.battleLog ?? []).findLast((entry) => entry.type === 'combat-end')
+  const heroesUp = state.players.filter(isUp).length
+  if (!state.mechanics.combat.active) {
+    if ((state.enemies ?? []).every((enemy) => !isUp(enemy))) stats.combatWins += 1
+    note(`- итог боя: раундов ${maxRound}, ${ended?.reason ?? ended?.text ?? '?'}, героев на ногах ${heroesUp}/2`)
+  }
+  const tally = {}
+  for (const entry of state.battleLog ?? []) {
+    if (entry.type !== 'attack' && entry.type !== 'damage') continue
+    const who = heroOf(state, entry.actorId)?.character ?? (state.enemies ?? []).find((enemy) => enemy.id === entry.actorId)?.name ?? entry.actorId
+    const row = (tally[who] ??= { attacks: 0, hits: 0, damage: 0 })
+    if (entry.type === 'attack') { row.attacks += 1; if (entry.roll?.hit) row.hits += 1 }
+    if (Number.isFinite(Number(entry.damage)) && Number(entry.damage) > 0) row.damage += Number(entry.damage)
+  }
+  note(`- сводка атак: ${Object.entries(tally).map(([who, row]) => `${who} ${row.hits}/${row.attacks}${row.damage ? `, урон ${row.damage}` : ''}`).join('; ') || 'атак нет'}`)
+  for (const hero of state.players) {
+    const acted = combatActs[hero.id] ?? 0
+    if (maxRound >= 4 && acted === 0) finding('major', 'hero-idle', `${hero.character} за ${maxRound} раундов «${label}» не провёл ни одной атаки или боевого заклинания`)
+  }
+  for (const actorId of heroIds()) {
+    if (state.mechanics.death?.heroes?.[actorId]?.status === 'dead') {
+      stats.heroDeaths += 1
+      finding('minor', 'hero-died', `${heroOf(state, actorId)?.character} погиб в бою «${label}» — воскрешаю`)
+      await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+    }
+  }
+  return room()
+}
+
+async function heroTurn(state, actorId) {
+  turnLog = []
+  try { await heroTurnActions(state, actorId) } finally {
+    note(`- р${state.mechanics.combat.round} ${heroOf(state, actorId)?.character} (${heroOf(state, actorId)?.hp} ОЗ): ${turnLog.join(', ') || 'ничего'}`)
+    turnLog = null
+  }
+}
+
+async function heroTurnActions(state, actorId) {
+  const me = heroOf(state, actorId)
+  const fate = state.mechanics.death?.heroes?.[actorId]
+  if (fate?.status === 'dead') {
+    await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+    return
+  }
+  if (isUp(me)) {
+    const conditions = (state.mechanics.conditions?.[actorId] ?? []).map((entry) => String(entry?.id ?? entry))
+    if (conditions.includes('prone')) await command(actorId, { command_type: 'UseCombatAction', action_id: 'stand-up' }, 'Встать', { expectFailure: true })
+    const at = state.mechanics.positions?.[actorId] ?? me
+    const foes = (state.enemies ?? []).filter(isUp).map((enemy) => ({ enemy, at: state.mechanics.positions?.[enemy.id] ?? enemy })).sort((a, b) => distance(at, a.at) - distance(at, b.at))
+    if (me.characterClass === 'cleric') await clericTurn(state, actorId, at, foes)
+    else await fighterTurn(state, actorId, foes)
+  } else {
+    stats.heroDowns += 1
+  }
+  const after = await room()
+  const combat = after.mechanics.combat
+  if (!combat.active || combat.reaction_window) return
+  if (String(combat.initiative[combat.active_index]?.actor_id) !== actorId) return
+  const ended = await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход')
+  if (ended.status !== 200 && ended.body?.code === 'HERO_DEAD_UNRESOLVED') await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
+  else if (ended.status !== 200) finding('major', 'end-turn-refused', `EndTurn ${actorId}: ${ended.body?.code} — ${short(ended.body?.error, 200)}`)
+}
+
+const EXPECTED_REFUSALS = /TARGET_OUT_OF_RANGE|TRAJECTORY|COVER|VISIBLE|SPEED|PATH|DIFFICULT|OCCUPIED|DESTINATION|NO_ACTION|ACTION_USED|ALREADY|INSUFFICIENT|SLOT|BONUS_ACTION|ONE_SPELL|CONCENTRATION|LINE_OF_SIGHT/u
+
+async function fighterTurn(state, actorId, foes) {
+  const me = heroOf(state, actorId)
+  if (Number(me.hp) < Number(me.maxHp) * 0.4) await command(actorId, { command_type: 'UseCombatAction', action_id: 'second-wind' }, 'Второе дыхание', { expectFailure: true })
+  const target = foes[0]
+  if (!target) return
+  await meleeApproach(actorId, target.enemy.id)
+}
+
+async function meleeApproach(actorId, targetId) {
+  let fresh = await room(accountFor(actorId))
+  let route = null
+  // Помощник маршрута проверяет «живой ли враг» по ОЗ, а проекция игрока их прячет.
+  const preview = { ...fresh, enemies: (fresh.enemies ?? []).map((enemy) => (enemy.hp == null && isUp(enemy) ? { ...enemy, hp: Number(enemy.maxHp) || 1 } : enemy)) }
+  try { route = previewApproachAttack(preview, actorId, targetId) } catch (error) { route = null; turnLog?.push(`(маршрут: ${error?.code ?? error?.message ?? error})`) }
+  if (!route) {
+    // Враг уже рядом: бьём надетым оружием без манёвра.
+    const at = fresh.mechanics.positions?.[actorId]
+    const adjacent = (fresh.enemies ?? []).filter(isUp).find((enemy) => at && distance(at, fresh.mechanics.positions?.[enemy.id] ?? enemy) <= 5)
+    if (adjacent) {
+      const weapon = (heroOf(fresh, actorId)?.inventory ?? []).find((item) => item.equipped && /weapon/u.test(String(item.type)) && !/crossbow|bow|арбалет|лук/iu.test(`${item.catalog_id} ${item.name}`))
+      for (let swing = 0; swing < 3; swing += 1) {
+        const hit = await command(actorId, { command_type: 'MakeAttack', target_id: adjacent.id, ...(weapon ? { item_id: weapon.id } : {}) }, 'Ударить', { expectFailure: true })
+        if (hit.status !== 200) {
+          if (swing === 0 && !EXPECTED_REFUSALS.test(String(hit.body?.code))) finding('major', 'attack-refused', `MakeAttack ${actorId}→${adjacent.id}: ${hit.body?.code} — ${short(hit.body?.error, 200)}`)
+          break
+        }
+        const after = await room(accountFor(actorId))
+        if (!after.mechanics.combat.active || !isUp((after.enemies ?? []).find((enemy) => enemy.id === adjacent.id))) break
+      }
+      return
+    }
+  }
+  if (route) {
+    for (const step of route.commands) {
+      const { server_authoritative: _ignored, actor_id: _actor, ...clean } = step
+      const sent = await command(actorId, clean, step.command_type === 'MoveActor' ? 'Подойти' : 'Ударить', { expectFailure: true })
+      if (sent.status !== 200) {
+        if (!EXPECTED_REFUSALS.test(String(sent.body?.code))) finding('major', 'approach-refused', `${step.command_type} ${actorId}→${targetId}: ${sent.body?.code} — ${short(sent.body?.error, 200)}`)
+        return
+      }
+    }
+    // Дополнительная атака: бьём того же или соседнего, пока сервер не скажет «хватит».
+    for (let extra = 0; extra < 3; extra += 1) {
+      fresh = await room(accountFor(actorId))
+      if (!fresh.mechanics.combat.active) return
+      // Серия атак кончилась: действие израсходовано и продолжения Атаки нет.
+      // Движок снимает `action` уже после первого удара, а Дополнительную
+      // атаку считает парой `attacks_used` / `attacks_allowed`. Без проверки
+      // бот бил «ещё раз» сверх неё и копил отказы ACTION_SPENT.
+      const economy = fresh.mechanics.combat.action_economy?.[actorId] ?? {}
+      const attackContinues = Number(economy.attacks_used) > 0 && Number(economy.attacks_used) < Number(economy.attacks_allowed)
+      if (economy.action === false && !attackContinues) return
+      const at = fresh.mechanics.positions?.[actorId]
+      const adjacent = (fresh.enemies ?? []).filter(isUp).find((enemy) => distance(at, fresh.mechanics.positions?.[enemy.id] ?? enemy) <= 5)
+      if (!adjacent) return
+      const weapon = route.commands.find((entry) => entry.command_type === 'MakeAttack')?.item_id
+      const again = await command(actorId, { command_type: 'MakeAttack', target_id: adjacent.id, ...(weapon ? { item_id: weapon } : {}) }, 'Ещё удар', { expectFailure: true })
+      if (again.status !== 200) return
+    }
+    return
+  }
+  const targetAt = fresh.mechanics.positions?.[targetId]
+  if (!targetAt) return
+  // До удара не дойти — идём, сколько хватает скорости. Путь режется по цене
+  // шага движка (трудная местность), а занятыми считаются все клетки тела:
+  // крупный зверь занимает 2×2, и по одной опорной клетке бот вставал внутрь
+  // него — INVALID_DESTINATION раунд за раундом (серия сидов 2026-10-05).
+  // Хиты врага игроку не видны; без них занятость считала его мёртвым, и
+  // путь шёл сквозь тело медведя прямо в его клетку (сид 5, 2026-10-05).
+  const rules = normalizeCampaignState({ ...fresh, enemies: (fresh.enemies ?? []).map((enemy) => (enemy.hp == null && isUp(enemy) ? { ...enemy, hp: Number(enemy.maxHp) || 1 } : enemy)) })
+  const path = (shortestTacticalPath(rules, actorId, targetAt, { allowOccupiedDestination: true }) ?? []).slice(0, -1)
+  const { stepCost } = movementStepCostFor(rules, actorId)
+  let budgetFeet = Number(movementForActor(rules, actorId).movement_remaining) || 0
+  const stop = []
+  for (const step of path) {
+    budgetFeet -= stepCost(step)
+    if (budgetFeet < 0) break
+    stop.push(step)
+  }
+  // Занятость — тем же набором, что проверяет MoveActor: сдавшийся или
+  // оглушённый зверь лежит на своих клетках, и встать на них нельзя.
+  const occupied = occupiedPositions(rules, actorId)
+  while (stop.length && occupied.has(`${stop.at(-1).x},${stop.at(-1).y}`)) stop.pop()
+  if (!stop.length) return
+  const moved = await command(actorId, { command_type: 'MoveActor', to: stop.at(-1) }, 'Подойти', { expectFailure: true })
+  if (moved.status !== 200 && !EXPECTED_REFUSALS.test(String(moved.body?.code))) finding('major', 'move-refused', `MoveActor ${actorId}: ${moved.body?.code} — ${short(moved.body?.error, 200)}`)
+}
+
+let somaticNoted = false
+/** Жрец со щитом и булавой не может жестикулировать: как живой игрок, убирает булаву. */
+async function freeCasterHand(actorId, refusal) {
+  if (refusal?.body?.code !== 'SPELL_SOMATIC_COMPONENT_BLOCKED') return false
+  const hero = heroOf(await room(accountFor(actorId)), actorId)
+  const weapon = (hero?.inventory ?? []).find((item) => item.equipped && /weapon/u.test(String(item.type)))
+  if (!weapon) return false
+  if (!somaticNoted) {
+    somaticNoted = true
+    finding('minor', 'rules-friction', `${hero.character} со стартовым снаряжением (оружие + щит) не может читать «Священное пламя» и «Лечение ран», пока не уберёт оружие — правило PHB, но без подсказки игроку это выглядит как поломка`)
+  }
+  const stowed = await command(actorId, { command_type: 'EquipItem', item_id: weapon.id, equipped: false }, `Убрать «${weapon.name}»`, { expectFailure: true })
+  return stowed.status === 200
+}
+
+async function clericTurn(state, actorId, at, foes) {
+  const slots = (level) => Number(state.mechanics.resources?.[actorId]?.[`spell_slots_${level}`]?.current ?? 0)
+  const ally = state.players.find((player) => player.id !== actorId)
+  const allyAt = ally ? state.mechanics.positions?.[ally.id] ?? ally : null
+  if (ally && allyAt && Number(ally.hp) < Number(ally.maxHp) * 0.35 && distance(at, allyAt) <= 60) {
+    const level = [1, 2, 3].find((entry) => slots(entry) > 0)
+    if (level) {
+      let healed = await command(actorId, { command_type: 'CastSpell', spell_id: 'healing-word', target_id: ally.id, slot_level: level }, 'Лечащее слово', { expectFailure: true })
+      if (healed.status !== 200 && await freeCasterHand(actorId, healed)) healed = await command(actorId, { command_type: 'CastSpell', spell_id: 'healing-word', target_id: ally.id, slot_level: level }, 'Лечащее слово', { expectFailure: true })
+      if (healed.status !== 200 && !EXPECTED_REFUSALS.test(String(healed.body?.code))) finding('major', 'heal-refused', `Лечащее слово: ${healed.body?.code} — ${short(healed.body?.error, 200)}`)
+    }
+  }
+  const target = foes[0]
+  if (!target) return
+  if (distance(at, target.at) <= 60) {
+    const bolt = slots(1) > 1 ? await command(actorId, { command_type: 'CastSpell', spell_id: 'guiding-bolt', target_id: target.enemy.id, slot_level: 1 }, 'Направляющий снаряд', { expectFailure: true }) : null
+    if (bolt?.status === 200) return
+    let flame = await command(actorId, { command_type: 'CastSpell', spell_id: 'sacred-flame', target_id: target.enemy.id }, 'Священное пламя', { expectFailure: true })
+    if (flame.status !== 200 && await freeCasterHand(actorId, flame)) flame = await command(actorId, { command_type: 'CastSpell', spell_id: 'sacred-flame', target_id: target.enemy.id }, 'Священное пламя', { expectFailure: true })
+    if (flame.status === 200) return
+    if (!EXPECTED_REFUSALS.test(String(flame.body?.code))) finding('major', 'cantrip-refused', `Священное пламя: ${flame.body?.code} — ${short(flame.body?.error, 200)}`)
+  }
+  await meleeApproach(actorId, target.enemy.id)
+}
+
+// ---------------------------------------------------------------------------
+// После боя и между сценами
+
+async function lootAll() {
+  const state = await room()
+  const containers = Array.isArray(state.loot_containers) ? state.loot_containers : Object.values(state.loot_containers?.containers ?? state.loot_containers ?? {})
+  for (const container of containers) {
+    if (!container || typeof container !== 'object') continue
+    if (container.status && !['open', 'available', 'unlooted', 'partial'].includes(container.status)) continue
+    const lines = (container.items ?? []).map((item) => ({ item_instance_id: item.item_instance_id, quantity: item.quantity ?? 1 })).filter((line) => line.item_instance_id)
+    if (!lines.length) continue
+    const taken = await command(accounts.owner.heroId, { command_type: 'LootContainer', container_id: container.id, lines }, 'Обыскать')
+    if (taken.status === 200) { stats.lootTaken += lines.length; note(`- 🎒 добыча из «${container.name ?? container.id}»: ${(container.items ?? []).map((item) => item.name).join(', ')}`) }
+    else finding('major', 'loot-refused', `LootContainer ${container.id}: ${taken.body?.code} — ${short(taken.body?.error, 200)}`)
+  }
+}
+
+/**
+ * Отдых — личный: `StartRest` начинает его одному герою, сервер сам
+ * проматывает час (короткий) или восемь часов и завершает (долгий). Прежний
+ * бот начинал отдых только владельцу, тратил одну кость хитов и долгого отдыха
+ * не брал вовсе — отряд шёл в тяжёлый бой кульминации с 8/74 и 1/66 хитов и
+ * раз за разом падал (серия сидов 2026-10-05, сид 4).
+ */
+async function restIfHurt() {
+  const state = await room()
+  if (state.mechanics.combat?.active) return
+  const heroes = heroIds().map((actorId) => heroOf(state, actorId)).filter(Boolean)
+  const living = heroes.filter((hero) => Number(hero.hp) > 0)
+  if (!living.some((hero) => Number(hero.hp) < Number(hero.maxHp) * 0.7)) return
+  const badly = living.length < heroes.length || living.some((hero) => Number(hero.hp) < Number(hero.maxHp) * 0.4)
+  let kind = badly ? 'long' : 'short'
+  for (const hero of living) {
+    const label = kind === 'long' ? 'Долгий отдых' : 'Короткий отдых'
+    let started = await command(hero.id, { command_type: 'StartRest', kind }, label, { expectFailure: true })
+    if (started.status !== 200 && kind === 'long') {
+      note(`- долгий отдых не начат: ${started.body?.code} — ${short(started.body?.error, 160)}; беру короткий`)
+      kind = 'short'
+      started = await command(hero.id, { command_type: 'StartRest', kind }, 'Короткий отдых', { expectFailure: true })
+    }
+    if (started.status !== 200) { note(`- отдых ${hero.character} не начат: ${started.body?.code} — ${short(started.body?.error, 160)}`); continue }
+    stats.rests += 1
+    if (kind !== 'short') continue
+    for (let die = 0; die < 20; die += 1) {
+      const current = heroOf(await room(), hero.id)
+      if (!current || Number(current.hp) >= Number(current.maxHp) * 0.9) break
+      const spent = await command(hero.id, { command_type: 'SpendHitPointDie' }, 'Кость хитов', { expectFailure: true })
+      if (spent.status !== 200) break
+    }
+    await command(hero.id, { command_type: 'CompleteRest' }, 'Закончить отдых', { expectFailure: true })
+  }
+  const after = await room()
+  note(`- 💤 ${kind === 'long' ? 'долгий' : 'короткий'} отдых: ${after.players.map((player) => `${player.character} ${player.hp}/${player.maxHp}`).join(', ')}`)
+}
+
+async function travelTo(locationId) {
+  const state = await room()
+  const map = state.worldMap
+  const current = map?.locations?.find((entry) => entry.id === map.currentLocationId)
+  const target = map?.locations?.find((entry) => entry.id === locationId)
+  if (!current || !target) { finding('major', 'travel-target', `нет точки ${locationId} или текущей ${map?.currentLocationId}`); return false }
+  const action = `[ГЛОБАЛЬНАЯ КАРТА] [destination_location_id=${encodeURIComponent(target.id)}] Отряд предлагает отправиться из «${current.name}» в «${target.name}». Выбранный путь: ${current.name} → ${target.name}.`
+  stats.travels += 1
+  await say(accounts.owner.heroId, action, { label: `дорога в «${target.name}»`, expect: 'any' })
+  await settleInteraction('travel')
+  const after = await room()
+  if (after.mechanics.combat?.active) await playCombat(`засада по дороге в «${target.name}»`)
+  const arrived = await room()
+  if (arrived.worldMap?.currentLocationId !== target.id) {
+    finding('major', 'travel-failed', `после предложения пути отряд в «${arrived.worldMap?.currentLocationId}», а не в «${target.id}» (сцена «${arrived.scene?.location}»)`)
+    return false
+  }
+  return true
+}
+
+function sceneSnapshot(state) {
+  const npcs = (state.social?.npcs ?? []).filter((npc) => npc.present !== false && (npc.location === state.scene?.location || npc.placement)).map((npc) => npc.name)
+  const cells = state.scene?.cells?.length ?? 0
+  const props = state.scene?.map?.props?.length ?? 0
+  return { chapter: state.adventure?.chapter, location: state.scene?.location, locationId: state.worldMap?.currentLocationId, title: state.scene?.title, objective: state.scene?.objective, cells, props, npcs: npcs.slice(0, 8) }
+}
+
+function trackScene(state) {
+  const snap = sceneSnapshot(state)
+  const last = stats.scenes.at(-1)
+  if (last && last.location === snap.location && last.chapter === snap.chapter) return
+  stats.scenes.push(snap)
+  stats.chapters = Math.max(stats.chapters, Number(snap.chapter) || 0)
+  note(`\n### 📍 Сцена ${snap.chapter}: ${snap.location} — «${snap.title}»\nЦель: ${snap.objective ?? '—'} · карта ${snap.cells} клеток, ${snap.props} предметов · рядом: ${snap.npcs.join(', ') || 'никого'}`)
+  if (!snap.cells) finding('major', 'scene-no-map', `сцена «${snap.location}» без тактической карты`)
+}
+
+// ---------------------------------------------------------------------------
+// Проверки целостности
+
+async function checkGuestProjection(when) {
+  const guestState = await room(accounts.guest)
+  const json = JSON.stringify(guestState)
+  const leaks = []
+  for (const secret of template.opening.secrets ?? []) {
+    const clue = String(secret.clue ?? '').slice(0, 60)
+    // Найденная заготовка законно видна обоим; утечка — только ненайденная.
+    if (clue && json.includes(clue) && !transcript.join('\n').includes(clue.slice(0, 40))) leaks.push(`заготовка «${secret.topic}»`)
+  }
+  if (/"gm_secret"|"gmSecret"|"secrets":\s*\[\s*\{/u.test(json)) leaks.push('поле секретов ведущего')
+  const enemyHp = (guestState.enemies ?? []).filter((enemy) => Number.isFinite(enemy.hp) && enemy.hpVisibility === 'hidden')
+  if (enemyHp.length) leaks.push('скрытые ОЗ врагов')
+  if (leaks.length) finding('critical', 'projection-leak', `${when}: второй игрок видит ${leaks.join(', ')}`)
+  return leaks
+}
+
+async function checkIdempotency() {
+  const key = `bot-idem-${randomUUID()}`
+  // Действие с серверным броском без ручной фазы: оно точно записывается коммитом.
+  const body = { action: 'Внимательно осматриваю всё вокруг, ищу следы и тайники', campaign_id: CODE, actor_id: accounts.guest.heroId, idempotency_key: key }
+  const first = await request('/api/narrate', { method: 'POST', account: accounts.guest, body, key })
+  const second = await request('/api/narrate', { method: 'POST', account: accounts.guest, body, key })
+  if (first.status !== 200 || second.status !== 200) { note(`- идемпотентность: ${first.status}/${second.status} ${second.body?.code ?? ''}`); return }
+  if (second.body.state_version !== first.body.state_version) finding('critical', 'idempotency', `повтор с тем же ключом сдвинул версию ${first.body.state_version} → ${second.body.state_version}`)
+  const forged = await request('/api/narrate', { method: 'POST', account: accounts.guest, body: { ...body, action: 'Совсем другое действие' }, key })
+  if (forged.status === 200 && forged.body?.state_version !== first.body.state_version) finding('critical', 'idempotency-conflict', `другой текст под тем же ключом записал новый ход (${first.body.state_version} → ${forged.body.state_version})`)
+  else if (forged.status !== 409) note(`- идемпотентность: другой текст под тем же ключом → ${forged.status}${forged.body?.idempotent_replay ? ' (возвращён прежний ответ)' : ''}`)
+}
+
+async function restartAndCompare(reason) {
+  const before = await room()
+  await stopServer()
+  startServer()
+  await waitForHealth()
+  stats.restarts += 1
+  for (const account of [accounts.owner, accounts.guest]) await openStream(account)
+  const after = await room()
+  const pick = (state) => JSON.stringify({ v: state.state_version, combat: state.mechanics.combat, hp: state.players.map((p) => [p.id, p.hp]), loc: state.worldMap?.currentLocationId, chapter: state.adventure?.chapter, vote: state.agentInteraction?.id ?? null })
+  if (pick(before) !== pick(after)) finding('critical', 'restart-drift', `перезапуск (${reason}) изменил состояние: ${short(pick(before), 200)} → ${short(pick(after), 200)}`)
+  else note(`- 🔁 перезапуск сервера (${reason}): состояние совпало, версия ${after.state_version}`)
+}
+
+function runCutoverAudit() {
+  const audit = spawnSync(process.execPath, ['tools/audit-cutover.mjs', '--storage', storage], { cwd: ROOT, encoding: 'utf8', timeout: 180_000, env: { ...process.env, ROUTERAI_API_KEY: '' } })
+  const output = `${audit.stdout ?? ''}${audit.stderr ?? ''}`
+  if (audit.status !== 0) finding('critical', 'replay-audit', `audit-cutover вернул ${audit.status}: ${short(output, 400)}`)
+  return { status: audit.status, output: short(output, 2000) }
+}
+
+// ---------------------------------------------------------------------------
+// Сценарий
+
+const ROUTE_PLAN = ['astohan-ash-watch', 'astohan-obsidian-pass', 'astohan-vulkanis-brazier']
+
+async function exploreScene(state, round) {
+  const scene = sceneSnapshot(state)
+  const owner = accounts.owner.heroId
+  const guest = accounts.guest.heroId
+  const presentNpc = (state.social?.npcs ?? []).find((npc) => scene.npcs.includes(npc.name))
+  const lines = [
+    [guest, `Внимательно осматриваю ${scene.location}: ищу следы того, что здесь произошло, и всё, что связано с драконом Саргатом.`, 'осмотр'],
+    [owner, 'Иду по следам, которые мы нашли, и пытаюсь понять, куда они ведут.', 'следы'],
+    ...(presentNpc ? [[guest, `Обращаюсь к ${presentNpc.name}: что вы видели в последние дни и кто ещё может знать о налётах дракона?`, 'разговор']] : []),
+  ]
+  for (const [actorId, text, label] of lines.slice(0, round === 0 ? 3 : 1)) {
+    if ((await room()).mechanics.combat?.active) return
+    await say(actorId, text, { label })
+    await settleInteraction('explore')
+  }
+}
+
+async function openingScene() {
+  stage('Сцена 1: военная галерея Штормберга')
+  let state = await room()
+  trackScene(state)
+  const owner = accounts.owner.heroId
+  const guest = accounts.guest.heroId
+  await say(owner, 'Ваше величество, какое поручение вы даёте нам и что известно о Саргате?', { label: 'к королю' })
+  const accepted = await request(`/api/campaigns/${CODE}/quests/accept`, { method: 'POST', account: accounts.owner, key: `bot-quest-${randomUUID()}`, body: { actor_id: owner, quest_id: 'quest:astohan-crown-report', idempotency_key: `bot-quest-${randomUUID()}` } })
+  if (accepted.status !== 200) finding('major', 'quest-accept', `принять «Вернуть донесение короне»: ${accepted.status} ${accepted.body?.code ?? ''} — ${short(accepted.body?.error, 200)}`)
+  await settleInteraction('quest')
+  state = await room()
+  const quest = state.worldMemory?.quests?.find((entry) => entry.id === 'quest:astohan-crown-report')
+  note(`- 📜 задание «${quest?.title ?? '?'}»: ${quest?.status ?? 'нет в журнале'}`)
+  if (quest && quest.status !== 'active') finding('major', 'quest-not-active', `после голосования задание в статусе ${quest.status}`)
+  await say(guest, 'Изучаю донесение о сожжённой Пепельной заставе: кто открыл ворота и откуда начинаются следы когтей?', { label: 'донесение' })
+  await say(owner, 'Присматриваюсь к Орену Фалю: правду ли он говорит о человеке в порту, который расспрашивал о последней охоте на Вулканиса?', { label: 'проницательность' })
+  await say(guest, 'Расспрашиваю Миру Венн об исчезнувшем сборщике налогов у Миттлайда.', { label: 'Мира Венн' })
+  await say(owner, 'Наблюдаю за королём Аресом, когда маршал произносит имя Вулканиса.', { label: 'Арес и Вулканис' })
+  await say(guest, 'Что мы уже знаем о Пепельной заставе?', { label: 'вопрос', requestKind: 'question', expect: 'any' })
+  await settleInteraction('opening')
+  await director('Продолжить приключение')
+  await settleInteraction('opening-director')
+}
+
+async function playUntilFinale() {
+  let leg = 0
+  let lastScene = ''
+  let exploreRound = 0
+  let idleDirector = 0
+  for (let tick = 0; tick < 120 && timeLeft() > 60_000; tick += 1) {
+    let state = await settleInteraction('loop')
+    if (lifecycleStatus(state) !== 'active') return state
+    if (state.mechanics.combat?.active) {
+      if (combatAbandoned) return state
+      if (!stats.restarts && stats.combats >= 1) await restartAndCompare('посреди боя')
+      state = await playCombat(`сцена ${state.adventure?.chapter}, ${state.scene?.location}`)
+      await lootAll()
+      await restIfHurt()
+      continue
+    }
+    trackScene(state)
+    const key = sceneKey(state)
+    if (key !== lastScene) { lastScene = key; exploreRound = 0; idleDirector = 0; stage(`Сцена ${state.adventure?.chapter}: ${state.scene?.location}`) }
+    if (exploreRound < 2) {
+      await exploreScene(state, exploreRound)
+      exploreRound += 1
+      continue
+    }
+    const arc = state.autonomy?.pacing ?? {}
+    const finale = Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc?.target_scenes ?? 99)
+    const action = idleDirector >= 3 ? 'Перейти дальше' : finale || arc.phase === 'climax' ? 'Ищем бой с Саргатом и его слугами' : idleDirector === 1 ? 'Ищем бой с теми, кто разорил эти земли' : 'Продолжить приключение'
+    const before = state.state_version
+    const advanced = await director(action)
+    await settleInteraction('director')
+    const after = await room()
+    if (!advanced || after.state_version === before) idleDirector += 1
+    else if (sceneKey(after) === key && !after.mechanics.combat?.active) idleDirector += 1
+    if (idleDirector >= 5 && leg < ROUTE_PLAN.length) {
+      const next = ROUTE_PLAN.slice(leg).find((id) => after.worldMap?.routes?.some((route) => route.discovered !== false && [route.from, route.to].includes(id) && [route.from, route.to].includes(after.worldMap.currentLocationId)))
+      leg += 1
+      if (next) { await travelTo(next); idleDirector = 0 }
+    }
+    if (idleDirector >= 8) { finding('blocker', 'story-stalled', `сюжет встал в сцене ${after.adventure?.chapter} «${after.scene?.location}»: Режиссёр ${idleDirector} шагов подряд ничего не продвинул`); return after }
+  }
+  return room()
+}
+
+// ---------------------------------------------------------------------------
+// Оценка
+
+function percentile(values, p) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b)
+  if (!sorted.length) return null
+  return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))]
+}
+
+function grade(final, usage, audit) {
+  const status = lifecycleStatus(final)
+  const blockers = findings.filter((entry) => entry.severity === 'blocker').length
+  const critical = findings.filter((entry) => entry.severity === 'critical').length
+  const major = findings.filter((entry) => entry.severity === 'major').length
+  const meaningful = Math.max(1, stats.narrate)
+  const deadShare = stats.deadEnds / meaningful
+  const firstWords = narrateLatency.map((entry) => entry.first_word_ms ?? entry.ms)
+  const p50 = percentile(firstWords, 50)
+  const p95 = percentile(firstWords, 95)
+  const criteria = [
+    { id: 1, name: 'Нет тупиков', score: deadShare <= 0.02 ? 10 : deadShare <= 0.05 ? 7 : deadShare <= 0.1 ? 4 : 1, detail: `${stats.deadEnds} тупиков на ${stats.narrate} реплик (${(deadShare * 100).toFixed(1)} %), уточнений ${stats.clarifications}` },
+    { id: 2, name: 'Успех что-то даёт', score: stats.discoveries + stats.discoveryEmpty === 0 ? 5 : Math.round(10 * stats.discoveries / (stats.discoveries + stats.discoveryEmpty)), detail: `находок ${stats.discoveries}, пустых успехов ${stats.discoveryEmpty}` },
+    { id: 3, name: 'Сюжет движется', score: status === 'completed' ? 10 : stats.chapters >= 3 ? 6 : stats.chapters >= 2 ? 4 : 1, detail: `исход кампании: ${status}, глав ${stats.chapters}, сцен ${stats.scenes.length}, шагов Режиссёра ${stats.directorSteps}` },
+    { id: 4, name: 'Бой', score: stats.combats === 0 ? 3 : Math.max(1, 10 - 3 * findings.filter((entry) => /combat|approach|move-refused|end-turn|heal|cantrip/u.test(entry.kind)).length), detail: `боёв ${stats.combats}, побед ${stats.combatWins}, раундов ${stats.combatRounds}, падений героев ${stats.heroDowns}, смертей ${stats.heroDeaths}` },
+    { id: 7, name: 'Темп', score: p50 == null ? 5 : LIVE ? (p50 <= 4000 && p95 <= 10000 ? 10 : p50 <= 6000 ? 6 : 3) : (p95 <= 1500 ? 10 : 6), detail: `первое слово p50 ${p50 ?? '—'} мс, p95 ${p95 ?? '—'} мс${LIVE ? '' : ' (без модели — это время сервера, не модели)'}` },
+    { id: 8, name: 'Бюджет', score: !LIVE ? null : usage?.cost_rub == null ? 5 : usage.cost_rub <= 50 * (MINUTES / 180) ? 10 : 5, detail: LIVE ? `вызовов модели ${usage?.requests ?? '?'}, токенов ${usage?.tokens ?? '?'}` : 'без модели не меряется' },
+    { id: 9, name: 'Устойчивость', score: Math.max(1, 10 - 4 * findings.filter((entry) => /restart|replay|idempotency|transport|http-5xx/u.test(entry.kind)).length), detail: `перезапусков ${stats.restarts}, 5xx ${stats.http5xx}, audit-cutover ${audit.status === 0 ? 'чистый' : `код ${audit.status}`}` },
+  ]
+  const scored = criteria.filter((entry) => entry.score != null)
+  const average = scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length
+  const overall = Math.max(1, Math.round((average - blockers * 1.5 - critical * 1) * 10) / 10)
+  return { criteria, overall, blockers, critical, major, status, p50, p95 }
+}
+
+async function usageReport() {
+  const usage = await request('/api/admin/usage', { account: accounts.admin })
+  if (usage.status !== 200) return null
+  const report = usage.body.usage ?? {}
+  const requests = report.requests ?? report.total_requests ?? report.count ?? null
+  const tokens = report.tokens ?? report.total_tokens ?? report.used_tokens ?? null
+  return { requests, tokens, raw: usage.body }
+}
+
+function writeReport(final, scorecard, usage, audit) {
+  const minutes = ((Date.now() - startedAt) / 60_000).toFixed(1)
+  const byRoute = {}
+  for (const entry of timings) (byRoute[entry.route] ??= []).push(entry.ms)
+  const routeLines = Object.entries(byRoute).sort((a, b) => b[1].length - a[1].length).slice(0, 14)
+    .map(([route, values]) => `| \`${route}\` | ${values.length} | ${percentile(values, 50)} | ${percentile(values, 95)} | ${Math.max(...values)} |`)
+  const severityOrder = { blocker: 0, critical: 1, major: 2, minor: 3 }
+  const grouped = new Map()
+  for (const entry of findings) {
+    const key = `${entry.severity}|${entry.kind}`
+    const bucket = grouped.get(key) ?? { ...entry, count: 0, examples: [] }
+    bucket.count += 1
+    if (bucket.examples.length < 3) bucket.examples.push(`${entry.stage}: ${entry.message}`)
+    grouped.set(key, bucket)
+  }
+  const findingLines = [...grouped.values()].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || b.count - a.count)
+    .map((entry) => `- **${entry.severity}** \`${entry.kind}\` ×${entry.count}\n${entry.examples.map((line) => `  - ${line}`).join('\n')}`)
+  const md = [
+    `# Прогон «Асстоханские равнины» — ${STAMP}`,
+    '',
+    `Режим: **${LIVE ? 'с моделью' : 'без модели'}**${SEED != null ? `, сид костей ${SEED}` : ''} · длительность ${minutes} мин · исход кампании **${scorecard.status}** · итоговая оценка **${scorecard.overall}/10**`,
+    `Блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}, мелких ${findings.length - scorecard.blockers - scorecard.critical - scorecard.major}.`,
+    '',
+    '## Критерии цели «Первый вечер без ведущего»',
+    '',
+    '| # | Критерий | Оценка | Замер |',
+    '| --- | --- | --- | --- |',
+    ...scorecard.criteria.map((entry) => `| ${entry.id} | ${entry.name} | ${entry.score ?? '—'} | ${entry.detail} |`),
+    '',
+    'Критерии 5 (вид места) и 6 (двое за столом в интерфейсе) этот прогон не меряет: первый — `pnpm maps:preview -- --preset all --audit`, второй — ручной плейтест.',
+    '',
+    '## Находки',
+    '',
+    ...(findingLines.length ? findingLines : ['Нет.']),
+    '',
+    '## Путь отряда',
+    '',
+    ...stats.scenes.map((scene) => `- глава ${scene.chapter}: **${scene.location}** — «${scene.title}» (${scene.cells} клеток, ${scene.props} предметов; рядом: ${scene.npcs.join(', ') || 'никого'})`),
+    '',
+    '## Счётчики',
+    '',
+    '```json',
+    JSON.stringify(stats, null, 2),
+    '```',
+    '',
+    '## Темп запросов (мс)',
+    '',
+    '| Маршрут | Кол-во | p50 | p95 | max |',
+    '| --- | --- | --- | --- | --- |',
+    ...routeLines,
+    '',
+    `audit-cutover: код ${audit.status}`,
+    '',
+    '```',
+    audit.output,
+    '```',
+  ].join('\n')
+  writeFileSync(join(OUT, 'report.md'), md)
+  writeFileSync(join(OUT, 'transcript.md'), `# Хроника прогона ${STAMP}\n${transcript.join('\n')}\n`)
+  writeFileSync(join(OUT, 'report.json'), JSON.stringify({ stamp: STAMP, live: LIVE, seed: SEED, minutes: Number(minutes), scorecard, stats, findings, narrateLatency, usage: usage ? { requests: usage.requests, tokens: usage.tokens } : null, audit, final: { lifecycle: final?.mechanics?.campaign_lifecycle ?? null, chapter: final?.adventure?.chapter, location: final?.scene?.location } }, null, 2))
+  const serverErrors = logs.split('\n').filter((line) => /error|ошибк|exception|unhandled/iu.test(line) && !/ROUTERAI|api[_-]?key/iu.test(line)).slice(0, 60)
+  writeFileSync(join(OUT, 'server-errors.log'), serverErrors.join('\n'))
+}
+
+// ---------------------------------------------------------------------------
+// Прогон
+
+async function main() {
+  stage('Подготовка')
+  startServer()
+  await waitForHealth()
+  const admin = await request('/api/auth/setup-admin', { method: 'POST', body: { name: 'Стенд', email: 'admin@astohan.test', password: 'astohan-admin-password', setupToken } })
+  accounts.admin = { name: 'admin', cookie: cookieOf(admin) }
+  const owner = await request('/api/auth/register', { method: 'POST', body: { name: 'Владелец', email: 'owner@astohan.test', password: 'astohan-owner-password' } })
+  const guest = await request('/api/auth/register', { method: 'POST', body: { name: 'Гость', email: 'guest@astohan.test', password: 'astohan-guest-password' } })
+  accounts.owner = { name: 'owner', cookie: cookieOf(owner), heroId: 'hero-slot-1' }
+  accounts.guest = { name: 'guest', cookie: cookieOf(guest), heroId: 'hero-slot-2' }
+  const created = await request('/api/campaigns', { method: 'POST', account: accounts.owner, body: {
+    code: CODE, name: 'Асстоханские равнины',
+    bootstrap: { partyName: 'Пепельный отряд', world: {}, worldTemplateId: TEMPLATE_ID, slotCount: 2, startLevel: START_LEVEL, rulesetId: RULESET_ID, campaignMode: 'adventure' },
+  } })
+  if (created.status !== 201) throw new Error(`Кампания не создана: ${created.status} ${created.text.slice(0, 400)}`)
+  note(`Кампания «${created.body.state.campaign}», старт в «${created.body.state.scene.location}», редакция ${created.body.state.ruleset_id}, мир ${created.body.state.worldMap?.locations?.length} мест`)
+  const invite = await request(`/api/campaigns/${CODE}/invites`, { method: 'POST', account: accounts.owner, body: { hero_ids: ['hero-slot-2'] } })
+  const joined = await request(`/api/campaigns/${CODE}/join`, { method: 'POST', account: accounts.guest, body: { invite_token: invite.body?.token } })
+  if (joined.status !== 200) throw new Error(`Второй игрок не вошёл: ${joined.status} ${joined.text.slice(0, 300)}`)
+  await openStream(accounts.owner)
+  await openStream(accounts.guest)
+  await checkGuestProjection('до первой реплики')
+
+  stage('Создание героев 7-го уровня')
+  const built = [await buildHero(accounts.owner, HERO_PLANS.owner), await buildHero(accounts.guest, HERO_PLANS.guest)]
+  if (!built.every(Boolean)) throw new Error('Герои не созданы — дальше прогон не имеет смысла')
+
+  await openingScene()
+  if (await travelTo('astohan-ash-watch')) trackScene(await room())
+  let final = await playUntilFinale()
+
+  stage('Проверки целостности')
+  await checkIdempotency()
+  await checkGuestProjection('в конце прогона')
+  if (stats.restarts === 0) await restartAndCompare('в конце')
+  final = await room()
+  if (lifecycleStatus(final) === 'active') {
+    finding('major', 'not-completed', `за ${MINUTES} мин кампания не дошла до финала: глава ${final.adventure?.chapter}, «${final.scene?.location}», фаза ${final.autonomy?.pacing?.phase ?? '?'}`)
+  } else {
+    note(`\n### Эпилог\n${final.mechanics.campaign_lifecycle?.epilogue ?? '—'}`)
+  }
+  return final
+}
+
+let final = null
+let fatal = null
+try {
+  final = await main()
+} catch (error) {
+  fatal = error
+  finding('blocker', 'run-aborted', short(error?.stack ?? error, 600))
+}
+await stopServer()
+const audit = runCutoverAudit()
+let usage = null
+if (LIVE) {
+  startServer()
+  try { await waitForHealth(); usage = await usageReport() } catch { /* без замера */ }
+  await stopServer()
+}
+const scorecard = grade(final, usage, audit)
+writeReport(final, scorecard, usage, audit)
+console.log(`\nИтог: ${scorecard.status}, оценка ${scorecard.overall}/10, блокеров ${scorecard.blockers}, критичных ${scorecard.critical}, серьёзных ${scorecard.major}`)
+console.log(`Отчёт: ${relative(ROOT, join(OUT, 'report.md'))}`)
+if (!KEEP) rmSync(storage, { recursive: true, force: true })
+else console.log(`Хранилище оставлено: ${storage}`)
+process.exit(fatal ? 1 : 0)

@@ -296,3 +296,28 @@ test('описание пути не становится частью имен�
   // Живой плейтест 2026-10-03: так называлось новое место.
   assert.deepEqual(detectPartyExitRequest('Идём к смотровой дамбе по маршруту от Высокой пристани вдоль соляных складов'), { destination: 'смотровой дамбе', source: 'text' })
 })
+
+// Прогон Асстохана 2026-10-04: обращение по титулу и наблюдение за реакцией
+// человека — реплики собеседнику. Наблюдение за местом остаётся осмотром, даже
+// если в той же фразе назван человек.
+test('титул и наблюдение за человеком находят собеседника, наблюдение за местом — нет', async () => {
+  const state = {
+    scene: { location: 'Тронный зал' },
+    social: { npcs: [
+      { id: 'king', name: 'Король Арес', role: 'король Валедора', location: 'Тронный зал', available: true },
+      { id: 'marshal', name: 'Маршал Ивара Тейн', role: 'маршал', location: 'Тронный зал', available: true },
+      { id: 'villain', name: 'Саргат', role: 'чародей', location: 'Пепельные пустоши', available: true },
+    ] },
+  }
+  const parse = (message) => new IntentParser().parse({ message, playerId: 'hero', visibleState: state })
+  const honorific = await parse('Ваше величество, что известно о Саргате?')
+  assert.equal(honorific.intent, 'social')
+  assert.deepEqual(honorific.targets, ['king'])
+  const watch = await parse('Наблюдаю за королём Аресом, когда маршал произносит имя Вулканиса.')
+  assert.equal(watch.intent, 'social')
+  assert.equal(watch.approach, 'insight')
+  assert.deepEqual(watch.targets, ['king'])
+  const place = await parse('Наблюдаю за воротами, пока маршал отвернулся.')
+  assert.notEqual(place.intent, 'social')
+  assert.notEqual(place.approach, 'insight')
+})

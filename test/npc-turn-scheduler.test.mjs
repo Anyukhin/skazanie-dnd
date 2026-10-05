@@ -425,6 +425,124 @@ test('fleeing NPC remains a valid opportunity-attack target until the reaction i
   assert.equal(afterReaction.enemies[0].alive, false)
 })
 
+// Прогон Асстохана 2026-10-04: раненый зверь решал бежать, планировщик выбирал
+// клетку по числу шагов, а `MoveActor` считал взвешенно и отвечал
+// SPEED_EXCEEDED. Ползком каждый шаг стоит 10 футов — тот же разрыв без карты.
+test('fleeing NPC picks a destination the weighted path can actually pay for', () => {
+  const state = fixture()
+  state.enemies[0] = { ...state.enemies[0], hp: 5, maxHp: 20, speed: 30, x: 3, y: 1 }
+  state.mechanics.positions.wolf = { x: 3, y: 1 }
+  state.mechanics.combat.active_index = 1
+  state.mechanics.conditions.wolf = [{ id: 'prone' }]
+  const commands = commandsForMoraleDecision(state, 'wolf', { disposition: 'flee' })
+  const move = commands.find((command) => command.command_type === 'MoveActor')
+  assert.ok(move, 'путь бегства найден')
+  const steps = Math.abs(move.to.x - 3) + Math.abs(move.to.y - 1)
+  assert.ok(steps <= 3, `ползком на 30 футов не уйти дальше трёх клеток, план — ${steps}`)
+  const result = new RulesEngine({ diceService: boundedDice() }).resolvePlan({ commands }, state, {
+    isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true,
+  })
+  const after = result.events.reduce(applyGameEvent, state)
+  assert.deepEqual([after.mechanics.positions.wolf.x, after.mechanics.positions.wolf.y], [move.to.x, move.to.y])
+  assert.ok(after.mechanics.conditions.wolf.some((condition) => condition.id === 'fled'))
+})
+
+test('a morale plan the engine rejects falls back to an ordinary turn instead of stalling', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-cornered-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const state = fixture({ sessionCode: 'NPC-CORNERED' })
+  state.mechanics.combat.active_index = 1
+  state.enemies[0] = { ...state.enemies[0], hp: 5, maxHp: 20, speed: 30 }
+  const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  await eventStore.initializeCampaign({ campaign_id: 'NPC-CORNERED', initial_state: state })
+  // Движок вправе отвергнуть бегство (скорость, путь, зона); здесь отказ
+  // смоделирован прямо, чтобы проверять не причину, а поведение планировщика.
+  class RejectingFleeEngine extends RulesEngine {
+    resolvePlan(plan, ...rest) {
+      const proposed = plan?.proposed_commands ?? plan?.commands ?? []
+      if (proposed.some((command) => command.command_type === 'AddCondition' && command.condition === 'fled')) {
+        throw new RulesValidationError('Недостаточно скорости для этого перемещения', 'SPEED_EXCEEDED')
+      }
+      return super.resolvePlan(plan, ...rest)
+    }
+  }
+  let creativeCalls = 0
+  const result = await runNpcTurnScheduler({
+    campaignId: 'NPC-CORNERED', eventStore,
+    rulesEngine: new RejectingFleeEngine({ diceService: boundedDice() }),
+    npcController: {
+      async decide() {
+        creativeCalls += 1
+        return { disposition: 'flee', reaction: 'Волк пятится.', provider: 'fake-agent' }
+      },
+    },
+  })
+  assert.equal(creativeCalls, 1, 'после отказа модель о том же существе не спрашивают')
+  const wolfTurn = result.turns.find((turn) => turn.actor_id === 'wolf')
+  assert.equal(wolfTurn.creative_decision.disposition, 'flee')
+  assert.equal(wolfTurn.creative_decision.rejected, 'SPEED_EXCEEDED')
+  assert.equal(wolfTurn.creative_decision.applied, 'fight')
+  assert.equal(wolfTurn.tactic, 'загнан в угол')
+  assert.match(wolfTurn.idempotency_key, /morale-cornered/u)
+  assert.ok(result.state.mechanics.conditions.wolf.some((condition) => condition.id === 'morale-tested'))
+  assert.equal(result.state.mechanics.conditions.wolf.some((condition) => condition.id === 'fled'), false)
+  assert.equal(result.state.activePlayerId, 'hero', 'ход вернулся герою — бой не встал')
+})
+
+// Серия сидов Асстохана 2026-10-05: медведь и кабан весь бой заканчивали ход
+// на месте. Путь к удару искался в клетку самой цели, а квадрат 2×2 туда не
+// встаёт — рядом стена, край карты или второй герой, — хотя встать рядом и
+// ударить место есть.
+test('a large creature approaches and strikes a target whose own cell cannot hold its body', () => {
+  const state = fixture({ sessionCode: 'NPC-LARGE-CORRIDOR' })
+  // Зал 10×5 и коридор шириной в клетку вниз от (5,5); герой стоит в его устье.
+  state.scene.cells = [
+    ...cells(10, 5),
+    ...[5, 6, 7].map((y) => ({ x: 5, y, type: 'floor', revealed: true })),
+  ]
+  state.players[0] = { ...state.players[0], x: 5, y: 5 }
+  state.mechanics.positions.hero = { x: 5, y: 5 }
+  state.enemies[0] = { ...state.enemies[0], id: 'wolf', name: 'Бурый медведь', size: 'large', footprint: { version: 1, size: 2 }, speed: 40, x: 1, y: 1 }
+  state.mechanics.positions.wolf = { x: 1, y: 1 }
+  state.mechanics.combat.active_index = 1
+  const commands = planNpcTurn(state, 'wolf')
+  assert.deepEqual(commands.map((command) => command.command_type), ['MoveActor', 'MakeAttack', 'EndTurn'])
+  const result = new RulesEngine({ diceService: boundedDice() }).resolvePlan({ proposed_commands: commands.map((command, index) => ({ ...command, server_authoritative: true, command_id: `large-${index}` })) }, state, {
+    isAdmin: true, isNpcScheduler: true, serverAuthoritativeCombat: true,
+  })
+  assert.ok(result.events.some((event) => event.event_type === 'ActorMoved'))
+  assert.ok(result.events.some((event) => event.event_type === 'AttackResolved' && event.payload.target_id === 'hero'))
+})
+
+// test/npc-combat-entry-api.test.mjs зависал примерно раз в пять прогонов:
+// недособранный спутник вне очереди падал на 0 хитов, спасбросков ему бросать
+// негде, а бой ждал их и крутил пустые раунды до предела планировщика.
+test('a fallen companion outside the initiative does not hold the combat open forever', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-npc-unqueued-dying-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const state = fixture({ sessionCode: 'NPC-UNQUEUED-DYING' })
+  state.partyMemberIds = ['hero', 'companion']
+  state.players[0] = { ...state.players[0], hp: 0 }
+  state.players.push({ ...state.players[0], id: 'companion', character: 'Спутник', hp: 0, characterSetupRequired: true, x: 0, y: 0 })
+  state.mechanics.positions.companion = { x: 0, y: 0 }
+  state.mechanics.conditions.hero = [{ id: 'unconscious' }]
+  state.mechanics.conditions.companion = [{ id: 'unconscious' }]
+  state.mechanics.death = { campaign_status: 'active', heroes: {}, saving_throws: {
+    hero: { successes: 3, failures: 0, stable: true },
+    companion: { successes: 0, failures: 0, stable: false },
+  } }
+  state.mechanics.combat.active_index = 1
+  const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  await eventStore.initializeCampaign({ campaign_id: 'NPC-UNQUEUED-DYING', initial_state: state })
+  const result = await runNpcTurnScheduler({
+    campaignId: 'NPC-UNQUEUED-DYING', eventStore, rulesEngine: new RulesEngine({ diceService: boundedDice() }), maxTurns: 12,
+  })
+  assert.equal(result.state.mechanics.combat.active, false, 'бой закончен, а не упёрся в предел ходов')
+  const ended = result.events.find((event) => event.event_type === 'CombatEnded')
+  assert.ok(ended)
+  assert.equal(ended.payload.reason, 'party_incapacitated')
+})
+
 test('every approved monster can plan and resolve a nearby and distant turn', () => {
   for (const [catalogId, block] of Object.entries(SRD_5_2_1_MONSTER_ALLOWLIST)) {
     const maximumReachCells = Math.max(...block.action_profiles.map((profile) => Math.max(1, Math.floor(profile.range_feet / 5))))

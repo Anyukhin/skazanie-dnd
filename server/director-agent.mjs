@@ -154,7 +154,10 @@ export function fallbackDirectorIntent(state = {}, playerAction = '') {
   const outcomes = Array.isArray(state.autonomy?.encounter_outcomes) ? state.autonomy.encounter_outcomes : []
   const outcomeRecorded = encounter?.id && outcomes.some((entry) => entry.encounter_id === encounter.id)
   if ((!encounter || encounter.status === 'ended') && affirmativePlayerAction(playerAction, 'encounter')) {
-    return normalizeDirectorIntent({ type: 'request_encounter', theme: 'beasts', difficulty: 'medium', reason: 'Игрок явно запросил столкновение; сервер проверит и соберёт встречу.' })
+    // В финальной главе арки бой, который отряд ищет сам, и есть кульминация:
+    // развязку засчитывает только тяжёлая встреча. Средняя здесь означала бы,
+    // что без модели кампания не заканчивается никогда.
+    return normalizeDirectorIntent({ type: 'request_encounter', theme: 'beasts', difficulty: arc?.is_final ? 'hard' : 'medium', reason: 'Игрок явно запросил столкновение; сервер проверит и соберёт встречу.' })
   }
   if (!state.mechanics?.combat?.active && affirmativePlayerAction(playerAction, 'transition')) {
     return normalizeDirectorIntent({ type: 'end_scene', destination: `След ${Math.max(2, Number(state.adventure?.chapter || 1) + 1)}`, reason: 'Игрок явно подтвердил переход после разрешённого столкновения.' })
