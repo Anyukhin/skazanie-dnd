@@ -535,7 +535,10 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
       if (rolled.body.success) stats.checkSuccess += 1
       rolledCheck = { success: rolled.body.success, total: rolled.body.total, difficulty: rolled.body.difficulty, label: check.label, skill: check.skill }
       note(`> 🎲 ${rolled.body.value} + ${rolled.body.modifier} = **${rolled.body.total}** против ${rolled.body.difficulty ?? '?'} → ${rolled.body.success ? 'успех' : 'провал'}`)
-      body = { ...baseBody, idempotency_key: `bot-say-${++narrateSeq}`, roll: { roll_id: rolled.body.roll_id }, ...(answer.clarification?.id ? { clarification_id: answer.clarification.id } : {}) }
+      // Бросок продолжает ту заявку, на которую выдана проверка: после
+      // уточнения это выбранный вариант, а не исходная фраза — иначе сервер
+      // законно отвечает ROLL_CONTEXT_MISMATCH.
+      body = { ...baseBody, action: body.action, idempotency_key: `bot-say-${++narrateSeq}`, roll: { roll_id: rolled.body.roll_id }, ...(answer.clarification?.id ? { clarification_id: answer.clarification.id } : {}) }
       const resolved = await sayFollowUp(body, account, steps)
       final = resolved ?? final
       const skill = String(check.skill ?? '').replace(/_/gu, '-')
