@@ -582,10 +582,12 @@ function graphLocation(graph, { locationId = '', name = '' } = {}) {
 
 /**
  * Куда вести отряд, когда Режиссёр закрывает сцену без названного места:
- * соседняя точка карты мира по открытой дороге — сначала ещё не посещённая,
- * затем ближайшая. Прежде место называлось заглушкой «След N»: ни игрок, ни
- * рассказчик не знали, где они, а карта мира стояла на прежней точке (прогон
- * Асстохана, 2026-10-05). `null` — карты мира нет или соседей нет.
+ * ближайшая по длине открытых дорог ещё не посещённая точка карты мира — даже
+ * через несколько переходов, путь до неё считает сам переход. Если всё
+ * достижимое уже посещено — ближайший сосед. Прежде место называлось
+ * заглушкой «След N», а затем — соседом без цели: отряд ходил застава →
+ * перевал → застава → столица, и финал случался в Штормберге (прогоны
+ * Асстохана, 2026-10-05). `null` — карты мира нет или идти некуда.
  */
 export function nextWorldMapDestination(state = {}) {
   const graph = worldTravelGraph(state)
@@ -593,6 +595,24 @@ export function nextWorldMapDestination(state = {}) {
   const current = graphLocation(graph, { locationId: graph.currentLocationId, name: state.scene?.location })
   if (!current) return null
   const currentId = clean(current.id, 120)
+  // Дейкстра по открытым дорогам: ближайшая непосещённая точка.
+  const distance = new Map([[currentId, 0]])
+  const done = new Set()
+  for (;;) {
+    let nearest = null
+    for (const [id, value] of distance) if (!done.has(id) && (nearest === null || value < distance.get(nearest))) nearest = id
+    if (nearest === null) break
+    done.add(nearest)
+    const location = graph.byId.get(nearest)
+    if (nearest !== currentId && location && location.visited !== true) return clean(location.name, 180) || null
+    for (const route of graph.routes) {
+      const ends = [clean(route.from, 120), clean(route.to, 120)]
+      if (!ends.includes(nearest)) continue
+      const other = ends[0] === nearest ? ends[1] : ends[0]
+      const next = distance.get(nearest) + Math.max(1, segmentDistance(graph, route))
+      if (!done.has(other) && next < (distance.get(other) ?? Infinity)) distance.set(other, next)
+    }
+  }
   const neighbours = graph.routes
     .filter((route) => [clean(route.from, 120), clean(route.to, 120)].includes(currentId))
     .map((route) => ({ route, location: graph.byId.get(clean(route.from, 120) === currentId ? clean(route.to, 120) : clean(route.from, 120)) }))

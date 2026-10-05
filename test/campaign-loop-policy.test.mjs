@@ -208,6 +208,14 @@ test('без модели следующая сцена — соседняя т�
   const intent = fallbackDirectorIntent({ ...at('astohan-ash-watch'), adventure: { chapter: 2 }, mechanics: { combat: { active: false } } }, 'Перейти дальше')
   assert.equal(intent.type, 'end_scene')
   assert.equal(intent.destination, 'Обсидиановый перевал')
+  // Тупик перевала: оба соседа уже пройдены, дорога к логову ещё не открыта.
+  // Прежде отряд шёл назад в заставу и в столицу; теперь — к ближайшему
+  // непосещённому месту через пройденные, путь считает сам переход.
+  worldMap.locations.find((entry) => entry.id === 'astohan-ash-watch').visited = true
+  worldMap.locations.find((entry) => entry.id === 'astohan-obsidian-pass').visited = true
+  assert.equal(nextWorldMapDestination(at('astohan-obsidian-pass')), 'Озеро Двух Отражений')
+  for (const location of worldMap.locations) location.visited = true
+  assert.equal(nextWorldMapDestination(at('astohan-obsidian-pass')), 'Пепельная застава', 'всё пройдено — ближайший сосед')
 })
 
 test('one-evening climax requires a matching recorded hard encounter outcome', () => {

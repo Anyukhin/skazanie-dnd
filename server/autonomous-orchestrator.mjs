@@ -53,6 +53,7 @@ import {
   campaignCanAutoComplete,
 } from './campaign-lifecycle.mjs'
 import { questTitleFromObjective } from './scene-memory.mjs'
+import { SCENE_REQUIREMENT_KINDS } from './scene-requirements.mjs'
 import {
   attemptFingerprint,
   bindFreeActionReadingToState,
@@ -306,6 +307,45 @@ const questGoal = (quest) => clean(questTitleFromObjective(quest?.title), 180)
 function nextHook(state, reason = '') {
   const quest = openQuest(state)
   return clean(reason, 300) || (quest ? `Продолжить квест «${questGoal(quest)}»` : `Исследовать ${state.scene?.location || 'окрестности'} и найти новую зацепку`)
+}
+
+/** Название предмета карты по словарю программы сцены: «колодец», «сундук». */
+const PROP_LABEL_BY_ASSET = new Map(SCENE_REQUIREMENT_KINDS.flatMap((kind) => (kind.assets ?? []).map((asset) => [asset, kind.label])))
+
+/**
+ * Строка ленты после шага Режиссёра, у которого нет «громких» событий.
+ *
+ * Шаг пишет запасной рассказчик с пустым брифом, а раскрытие области и смена
+ * цели в нём фраз не имеют — игрок получал «Пока ничего не меняется:
+ * следующий шаг за отрядом» и с моделью, и без неё (прогоны Асстохана,
+ * 2026-10-05: пять раз за прогон). Теперь шаг говорит, что сделал: что
+ * открылось в новых клетках, а если смотреть больше не на что — цель и куда
+ * идти дальше. Пустая строка — у шага есть свой текст.
+ *
+ * @param {string} intentType
+ * @param {Array<{ event_type?: string, payload?: any }>} events события шага
+ * @param {any} state состояние после шага
+ */
+export function directorStepNarration(intentType, events = [], state = {}) {
+  if (!['continue_exploration', 'offer_next_hook'].includes(String(intentType))) return ''
+  const revealed = new Set(events.filter((event) => event?.event_type === 'AreaRevealed')
+    .flatMap((event) => event.payload?.cells ?? []).map((cell) => `${cell.x},${cell.y}`))
+  const objective = clean(state.scene?.objective, 160)
+  const onward = nextWorldMapDestination(state)
+  if (revealed.size) {
+    const seen = []
+    for (const prop of state.scene?.map?.props ?? []) {
+      const label = PROP_LABEL_BY_ASSET.get(prop?.assetId)
+      const cells = Array.isArray(prop?.footprint) && prop.footprint.length ? prop.footprint : [{ x: Math.floor(prop?.x), y: Math.floor(prop?.y) }]
+      if (label && !seen.includes(label) && cells.some((cell) => revealed.has(`${cell.x},${cell.y}`))) seen.push(label)
+    }
+    return `Отряд продвигается дальше и осматривается: открывается новая часть «${clean(state.scene?.location, 120) || 'места'}»${seen.length ? ` — здесь ${seen.slice(0, 4).join(', ')}` : ''}.`
+  }
+  return [
+    intentType === 'continue_exploration' ? 'Здесь отряд осмотрел всё, что было на виду.' : '',
+    objective ? `Цель: ${objective.replace(/[.!…]+$/u, '')}.` : '',
+    onward ? `Дальше можно отправиться в «${clean(onward, 120)}» — скажите «Перейти дальше».` : '',
+  ].filter(Boolean).join(' ')
 }
 
 /**
@@ -2194,7 +2234,9 @@ export class AutonomousCampaignOrchestrator {
         const downtime = completedDowntime(afterConsequences.state, {
           kind: 'long_rest',
           durationMinutes: 480 + stableRecoveryMinutes,
-          reason: stableRecoveryMinutes ? 'post_encounter_recovery_after_stabilisation' : 'post_encounter_recovery',
+          // После поражения — своя причина: иначе лента говорила «после победы».
+          reason: plan.outcome === 'party_incapacitated' ? 'post_defeat_recovery'
+            : stableRecoveryMinutes ? 'post_encounter_recovery_after_stabilisation' : 'post_encounter_recovery',
         })
         const recoveryCommands = [
           ...restingHeroes.map((hero) => ({ command_type: 'StartRest', actor_id: String(hero.id), kind: 'long' })),

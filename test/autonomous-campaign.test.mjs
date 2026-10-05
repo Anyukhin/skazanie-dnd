@@ -340,7 +340,7 @@ test('после поражения без смертей отряд прихо�
   const result = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'party_incapacitated' })
   assert.equal(result.state.mechanics.combat.active, false)
   for (const hero of result.state.players) assert.equal(hero.hp, hero.maxHp, `${hero.id} должен прийти в себя и отдохнуть`)
-  assert.equal(result.state.autonomy.downtime_history.at(-1)?.reason, 'post_encounter_recovery_after_stabilisation')
+  assert.equal(result.state.autonomy.downtime_history.at(-1)?.reason, 'post_defeat_recovery', 'после поражения — не «после победы»')
   for (const enemy of result.state.enemies) {
     assert.equal(enemy.alive, false, `${enemy.id}: победитель уходит, а не стоит над отрядом`)
     assert.ok((result.state.mechanics.conditions[enemy.id] ?? []).some((condition) => condition.id === 'fled'))
@@ -558,3 +558,25 @@ test('eval set is measurable, contains 30+ scenarios and several long campaigns'
 function cleanObjective(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
+
+test('шаг Режиссёра без громких событий говорит, что сделал, а не «Пока ничего не меняется»', async () => {
+  // Прогоны Асстохана (2026-10-05): после continue_exploration и offer_next_hook
+  // лента пять раз за прогон получала «Пока ничего не меняется» — и с моделью,
+  // и без неё: строку шага пишет запасной рассказчик, у которого для раскрытия
+  // области и смены цели нет фраз.
+  const { directorStepNarration } = await import('../server/autonomous-orchestrator.mjs')
+  const { readFile } = await import('node:fs/promises')
+  const template = JSON.parse(await readFile(new URL('../data/campaign-worlds-v1.json', import.meta.url), 'utf8')).templates.find((entry) => entry.id === 'astohan-plains')
+  const state = {
+    scene: { location: 'Пепельная застава', objective: 'Найти, кто открыл ворота', map: { props: [{ assetId: 'well', x: 3.5, y: 3.5, footprint: [{ x: 3, y: 3 }] }, { assetId: 'chest', x: 9.5, y: 9.5 }] } },
+    worldMap: { ...structuredClone(template.world_map), currentLocationId: 'astohan-ash-watch' },
+  }
+  const revealed = directorStepNarration('continue_exploration', [{ event_type: 'AreaRevealed', payload: { cells: [{ x: 3, y: 3 }, { x: 4, y: 3 }] } }], state)
+  assert.match(revealed, /открывается новая часть «Пепельная застава» — здесь колодец\./u)
+  assert.doesNotMatch(revealed, /сундук/u, 'сундук в нераскрытой клетке не называется')
+  const exhausted = directorStepNarration('continue_exploration', [{ event_type: 'ObjectiveUpdated', payload: {} }], state)
+  assert.match(exhausted, /осмотрел всё/u)
+  assert.match(exhausted, /Цель: Найти, кто открыл ворота\./u)
+  assert.match(exhausted, /Дальше можно отправиться в «Обсидиановый перевал» — скажите «Перейти дальше»\./u)
+  assert.equal(directorStepNarration('advance_quest_clock', [], state), '', 'у прочих шагов свой текст')
+})
