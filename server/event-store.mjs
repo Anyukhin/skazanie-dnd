@@ -3,6 +3,7 @@ import { externalizeMaps, internalizeMaps } from './map-store.mjs'
 import {
   closeSync,
   existsSync,
+  fstatSync,
   fsyncSync,
   mkdirSync,
   openSync,
@@ -19,6 +20,9 @@ import { RETENTION_REDUCER_VERSION, withRetentionMode } from './retention-contex
 const STORE_SCHEMA_VERSION = 1
 const EVENT_FILE = /^(\d{16})-(\d{16})-([a-zA-Z0-9-]+)\.json$/
 const SNAPSHOT_FILE = /^(\d{16})\.json$/
+// Тот же порядок, что у `localeCompare` без аргументов, но без создания
+// сравнителя на каждое сравнение: журнал сортируется при каждой сверке.
+const FILE_NAME_ORDER = new Intl.Collator()
 
 export class EventStoreError extends Error {
   constructor(message, code = 'EVENT_STORE_ERROR', details = {}) {
@@ -190,6 +194,31 @@ function readJson(file, label) {
   }
 }
 
+/** Отпечаток файла для сверки индекса журнала с диском: размер, время, inode. */
+function fileFingerprint(stat) {
+  return stat ? `${stat.size}:${stat.mtimeMs}:${stat.ino}` : ''
+}
+
+/**
+ * `readJson` с отпечатком того же открытого файла: одно открытие вместо
+ * `stat` по пути и отдельного чтения. Ошибки — те же, что у `readJson`.
+ */
+function readJsonWithFingerprint(file, label) {
+  let descriptor
+  try {
+    descriptor = openSync(file, 'r')
+    const fingerprint = fileFingerprint(fstatSync(descriptor))
+    const value = JSON.parse(readFileSync(descriptor, 'utf8'))
+    return { value, fingerprint }
+  } catch (error) {
+    throw new EventStoreError(`Cannot read ${label} ${file}: ${error instanceof Error ? error.message : String(error)}`, 'INVALID_STORE_FILE', { file })
+  } finally {
+    if (descriptor !== undefined) {
+      try { closeSync(descriptor) } catch { /* best effort */ }
+    }
+  }
+}
+
 function uniqueStrings(values) {
   return [...new Set((Array.isArray(values) ? values : []).map(String).filter(Boolean))]
 }
@@ -226,6 +255,7 @@ export class FileEventStore {
     mapStore = null,
     reducerVersion = RETENTION_REDUCER_VERSION,
     reducerNormalizesInput = false,
+    headCacheLimit = 32,
   } = {}) {
     if (!rootDir) throw new EventStoreError('rootDir is required', 'INVALID_CONFIGURATION')
     if (typeof reducer !== 'function') throw new EventStoreError('A synchronous reducer(state, event) is required', 'INVALID_CONFIGURATION')
@@ -253,9 +283,26 @@ export class FileEventStore {
     // Хранилище карт, адресуемое по содержимому. Необязательно: без него
     // снимок пишется как раньше, целиком.
     this.mapStore = mapStore ?? null
-    // Последнее загруженное состояние каждой кампании. Подробности — у
-    // `_cachedHead`.
+    // Последнее загруженное состояние кампании. Подробности — у `_cachedHead`.
+    // Кэш ограничен: каждая запись — полное состояние мира, а сервер за жизнь
+    // процесса открывает сколько угодно кампаний. Вытесняется давняя.
+    const cacheLimit = Number(headCacheLimit)
+    if (!Number.isSafeInteger(cacheLimit) || cacheLimit < 1) throw new EventStoreError('headCacheLimit must be a positive safe integer', 'INVALID_CONFIGURATION')
+    this.headCacheLimit = cacheLimit
     this._headCache = new Map()
+    // Разобранный журнал коммитов кампании. Подробности — у `_readCommitFiles`.
+    // Ограничен тем же числом кампаний, что и кэш головы.
+    this._commitIndex = new Map()
+  }
+
+  /**
+   * Запись в ограниченный кэш: свежая — в конец, давние вытесняются сначала.
+   * @param {Map<string, any>} cache
+   */
+  _rememberRecent(cache, key, value) {
+    cache.delete(key)
+    cache.set(key, value)
+    while (cache.size > this.headCacheLimit) cache.delete(cache.keys().next().value)
   }
 
   /**
@@ -270,9 +317,9 @@ export class FileEventStore {
    *
    * Кэш держит приватную копию состояния ровно для одной версии — головы
    * потока — и узнаёт её по номеру версии И id последнего коммита. Журнал
-   * коммитов по-прежнему перечитывается при каждой загрузке, поэтому коммит
-   * другого процесса (или восстановленный бэкап) меняет ключ, и кэш
-   * промахивается. Нестандартные загрузки — прошлая версия, `fromInitial`,
+   * коммитов по-прежнему сверяется с диском при каждой загрузке (см.
+   * `_readCommitFiles`), поэтому коммит другого процесса (или восстановленный
+   * бэкап) меняет ключ, и кэш промахивается. Нестандартные загрузки — прошлая версия, `fromInitial`,
    * `useSnapshots: false`, принудительная версия reducer — кэш обходят:
    * на них держатся replay-аудиты, и они обязаны честно переиграть поток.
    * Состояние в кэше — результат того же детерминированного replay, поэтому
@@ -284,13 +331,15 @@ export class FileEventStore {
     if (!lastCommitId) return null
     const entry = this._headCache.get(layout.campaignId)
     if (!entry || entry.lastCommitId !== lastCommitId || entry.version !== commits.at(-1).state_version_after) return null
+    // Попадание освежает запись: вытесняется кампания, к которой давно не обращались.
+    this._rememberRecent(this._headCache, layout.campaignId, entry)
     return entry
   }
 
   _rememberHead(layout, commits, state, { reducerVersion, eventsApplied }) {
     const lastCommit = commits.at(-1)
     if (!lastCommit?.commit_id) return
-    this._headCache.set(layout.campaignId, {
+    this._rememberRecent(this._headCache, layout.campaignId, {
       lastCommitId: lastCommit.commit_id,
       version: lastCommit.state_version_after,
       reducerVersion,
@@ -479,17 +528,63 @@ export class FileEventStore {
     return commits
   }
 
+  /**
+   * Журнал коммитов с инкрементальным разбором.
+   *
+   * Раньше каждая загрузка, commit, поиск по ключу идемпотентности и сверка
+   * проекции читали и разбирали КАЖДЫЙ файл журнала: на кампании в 578
+   * коммитов это 580 чтений и ~1,5 МБ JSON на один вызов, несколько раз за
+   * HTTP-запрос. Теперь разобранный журнал запоминается, а с диском сверяется
+   * дёшево: `readdir` (новые и исчезнувшие файлы) и `stat` каждого файла
+   * (размер, время изменения, inode). Разбирается только то, чего в индексе
+   * ещё нет или что изменилось на месте.
+   *
+   * Файл коммита пишется один раз (`atomicWrite` с `exclusive`), так что
+   * штатно изменения бывают только в хвосте. Всё остальное — правка или порча
+   * файла на месте, исчезнувший файл, восстановленный бэкап — сверка
+   * замечает, и журнал перечитывается с первого расходящегося файла: все
+   * проверки непрерывности ниже проходят так же, как при полном чтении, и
+   * ошибка указывает на тот же первый испорченный файл. Сверка со
+   * свидетельствами головы (RCV-01) живёт в `_readCommits` и от индекса не
+   * зависит.
+   *
+   * Наружу записи коммитов не уходят без копии (`jsonClone` в `getEvents`,
+   * `pendingProjection` и ответах на повтор), а reducer получает копию
+   * каждого события в `_applyEvent`; поэтому индекс отдаёт свои объекты
+   * без копирования, но массив — всегда новый.
+   */
   _readCommitFiles(layout) {
-    if (!existsSync(layout.events)) return []
+    if (!existsSync(layout.events)) {
+      this._commitIndex.delete(layout.campaignId)
+      return []
+    }
     const files = readdirSync(layout.events)
       .map((name) => ({ name, match: name.match(EVENT_FILE) }))
       .filter((entry) => entry.match)
-      .sort((left, right) => left.name.localeCompare(right.name))
+      .sort((left, right) => FILE_NAME_ORDER.compare(left.name, right.name))
+    const cached = this._commitIndex.get(layout.campaignId)
+    // Пока индекс и диск совпадают, запись берётся из индекса; с первого
+    // расхождения файлы читаются заново, вместе с отпечатком.
+    const fingerprints = []
+    if (cached) {
+      while (fingerprints.length < cached.names.length && fingerprints.length < files.length
+        && cached.names[fingerprints.length] === files[fingerprints.length].name) {
+        const index = fingerprints.length
+        const fingerprint = fileFingerprint(statSync(join(layout.events, files[index].name), { throwIfNoEntry: false }))
+        if (!fingerprint || fingerprint !== cached.fingerprints[index]) break
+        fingerprints.push(fingerprint)
+      }
+    }
+    const reused = fingerprints.length
+    // Кэш больше не описывает журнал — забываем его до успешного разбора:
+    // ошибка ниже не должна оставить в индексе непроверенный хвост.
+    this._commitIndex.delete(layout.campaignId)
 
-    const commits = []
-    let version = 0
-    for (const { name, match } of files) {
-      const commit = readJson(join(layout.events, name), 'event commit')
+    const commits = cached ? cached.commits.slice(0, reused) : []
+    let version = commits.at(-1)?.state_version_after ?? 0
+    for (const { name, match } of files.slice(reused)) {
+      const { value: commit, fingerprint } = readJsonWithFingerprint(join(layout.events, name), 'event commit')
+      fingerprints.push(fingerprint)
       const start = Number(match[1])
       const end = Number(match[2])
       if (commit.campaign_id !== layout.campaignId) throw new CorruptEventLogError(layout.campaignId, `${name} belongs to another campaign`)
@@ -509,7 +604,12 @@ export class FileEventStore {
       version = end
       commits.push(commit)
     }
-    return commits
+    this._rememberRecent(this._commitIndex, layout.campaignId, {
+      names: files.map(({ name }) => name),
+      fingerprints,
+      commits,
+    })
+    return commits.slice()
   }
 
   _readMetadata(layout, stateVersion = 0) {
@@ -644,8 +744,10 @@ export class FileEventStore {
     )
   }
 
-  // Проверенные записи передаются только внутри _withLock. Внешние чтения
-  // всегда перечитывают журнал, чтобы видеть коммиты другого процесса.
+  // Проверенные записи передаются внутри _withLock либо в пределах одного
+  // синхронного вызова, который только что сам их прочитал. Каждый новый
+  // внешний вызов сверяет журнал с диском заново, чтобы видеть коммиты другого
+  // процесса; публичные options записей не принимают.
   _load(layout, { atVersion, useSnapshots = true, reducerVersion = null, fromInitial = false } = {}, knownCommits = null) {
     const commits = knownCommits ?? this._readCommits(layout)
     if (!this._exists(layout)) throw new CampaignNotFoundError(layout.campaignId)
@@ -973,9 +1075,11 @@ export class FileEventStore {
     const layout = this._layout(campaignId)
     if (!this._exists(layout)) return null
     const key = safeId(idempotencyKey, 'idempotency_key')
-    const commit = this._readCommits(layout).find((item) => item.idempotency_key === key)
+    // Тело синхронно: журнал, прочитанный здесь, и есть журнал загрузки ниже.
+    const commits = this._readCommits(layout)
+    const commit = commits.find((item) => item.idempotency_key === key)
     if (!commit) return null
-    const loaded = this._load(layout, { atVersion: commit.state_version_after })
+    const loaded = this._load(layout, { atVersion: commit.state_version_after }, commits)
     return {
       ...loaded,
       events: jsonClone(commit.events),
@@ -1026,7 +1130,13 @@ export class FileEventStore {
     return jsonClone(this._readMetadata(layout, stateVersion))
   }
 
-  async pendingProjection(campaignId) {
+  /**
+   * @param {string} campaignId
+   * @param {{ withState?: boolean }} [options] `withState: false` — без
+   *   состояния головы: вызывающему нужны только checkpoint и события, а копия
+   *   мира стоит дороже всего остального ответа.
+   */
+  async pendingProjection(campaignId, { withState = true } = {}) {
     const layout = this._layout(campaignId)
     if (!this._exists(layout)) throw new CampaignNotFoundError(layout.campaignId)
     const commits = this._readCommits(layout)
@@ -1034,7 +1144,8 @@ export class FileEventStore {
     const metadata = this._readMetadata(layout, currentVersion)
     const checkpoint = Math.max(0, Math.min(currentVersion, Number(metadata.projection_checkpoint_version) || 0))
     if (checkpoint >= currentVersion) return null
-    const loaded = this._load(layout)
+    // Тело синхронно: журнал, прочитанный выше, и есть журнал загрузки.
+    const loaded = withState ? this._load(layout, {}, commits) : null
     const events = commits
       .filter((commit) => commit.state_version_after > checkpoint)
       .flatMap((commit) => commit.events)
@@ -1042,7 +1153,7 @@ export class FileEventStore {
       campaign_id: layout.campaignId,
       checkpoint_version: checkpoint,
       state_version: currentVersion,
-      state: loaded.state,
+      ...(loaded ? { state: loaded.state } : {}),
       events: jsonClone(events),
     }
   }
