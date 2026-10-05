@@ -219,6 +219,42 @@ export function downedHeroPositions(state, exceptActorId = null) {
   return cells
 }
 
+/**
+ * Сторона существа для прохода сквозь клетку. Отряд — герои и их призывы,
+ * противники — `state.enemies`, кроме призыва, враждебного всем («Призыв
+ * низших демонов»). Неизвестная сторона союзником не считается.
+ */
+function movementSide(state, actor) {
+  const id = actorId(actor)
+  if ((state?.players ?? []).some((player) => actorId(player) === id)) return 'party'
+  if (actor?.kind === 'summon' && (actor?.ownerId || actor?.owner_id)) {
+    if (actor.faction === 'party') return 'party'
+    if (actor.faction === 'hostile') return null
+  }
+  if ((state?.enemies ?? []).some((enemy) => actorId(enemy) === id)) return 'enemies'
+  return null
+}
+
+/**
+ * Клетки живых союзников: сквозь них проходят, остановиться на них нельзя
+ * (PHB 2014, «Перемещение вокруг других существ» — пространство
+ * невраждебного существа). Плату за проход как по труднопроходимой местности
+ * берёт цена шага (`movementStepCostFor`). Прежде союзник запирал своих: в
+ * узком проходе воин пять раундов стоял за строем (прогон Асстохана с
+ * моделью, 2026-10-06; находка №34 аудита правил).
+ */
+export function allyPassablePositions(state, moverId) {
+  const cells = new Set()
+  const mover = findActor(state, moverId)
+  const side = mover ? movementSide(state, mover) : null
+  if (!side) return cells
+  for (const actor of listActors(state)) {
+    if (actorId(actor) === String(moverId) || !isLivingActor(actor) || movementSide(state, actor) !== side) continue
+    for (const cell of actorFootprintCellsAt(state, actorId(actor))) cells.add(positionKey(cell))
+  }
+  return cells
+}
+
 export function occupiedPositions(state, exceptActorId = null, { includeDowned = true } = {}) {
   const occupied = new Set()
   for (const actor of listActors(state)) {
@@ -311,9 +347,10 @@ export function shortestTacticalPath(state, actorIdValue, destination, {
   const map = tacticalMap === undefined ? sceneTacticalMap(state) : tacticalMap
   const propOccupied = map ? propMovementPositions(map) : new Set()
   const occupied = occupiedPositions(state, actorIdValue)
-  // Сквозь умирающего героя проходят, остановиться на нём — нельзя.
-  const downed = downedHeroPositions(state, actorIdValue)
-  const passOccupied = downed.size ? new Set([...occupied].filter((key) => !downed.has(key))) : occupied
+  // Сквозь умирающего героя и живого союзника проходят, остановиться на них —
+  // нельзя.
+  const passable = new Set([...downedHeroPositions(state, actorIdValue), ...allyPassablePositions(state, actorIdValue)])
+  const passOccupied = passable.size ? new Set([...occupied].filter((key) => !passable.has(key))) : occupied
   const hasSceneNpcs = Boolean(state?.npc_world?.placements?.length || state?.scene_npcs?.length)
   const npcTransit = hasSceneNpcs ? sceneNpcTransitCells(state) : new Set()
   const npcOccupied = hasSceneNpcs ? sceneNpcOccupiedCells(state) : new Set()

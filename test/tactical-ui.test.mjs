@@ -255,6 +255,24 @@ test('предпросмотр пропускает мирного NPC тран�
   assert.equal(paths.has('3,0'), false)
 })
 
+test('предпросмотр ведёт сквозь союзника по цене труднопроходимой местности, но не сквозь врага', () => {
+  // Узкий проход: жрица стоит между воином и врагом (прогон Асстохана,
+  // 2026-10-06). Сервер теперь пропускает сквозь союзника — предпросмотр
+  // обязан показать тот же маршрут и ту же цену.
+  const current = {
+    players: [{ id: 'warrior', x: 0, y: 0, hp: 10 }, { id: 'priest', x: 1, y: 0, hp: 10 }],
+    enemies: [{ id: 'wolf', x: 5, y: 0, alive: true }],
+    actors: [],
+    scene: { cells: Array.from({ length: 7 }, (_, x) => ({ x, y: 0, type: 'floor', revealed: true })) },
+  }
+  const paths = tacticalUi.buildMovementPaths(current, current.players[0], 5)
+  assert.equal(paths.has('1,0'), false, 'на клетке союзника не встать')
+  assert.deepEqual(paths.get('3,0')?.path, [{ x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }])
+  assert.equal(paths.get('3,0')?.costFeet, 20)
+  assert.equal(paths.get('3,0')?.difficultTerrainFeet, 5)
+  assert.equal(paths.has('6,0'), false, 'сквозь врага пути нет')
+})
+
 test('труднопроходимая область удваивает только затронутые шаги и объясняет стоимость', () => {
   const current = state()
   current.mechanics = {

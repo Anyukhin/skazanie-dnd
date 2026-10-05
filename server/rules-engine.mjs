@@ -9391,10 +9391,20 @@ export function movementStepCostFor(state, actorIdValue, { tacticalMap } = {}) {
     const terrain = difficultKindsAt(step, pathMap)
     return terrain.other || (terrain.web && !webWalker)
   }
+  // Чужое пространство — труднопроходимая местность (PHB 2014, «Перемещение
+  // вокруг других существ»). Войти в него поиск пути даёт только тем, кому
+  // проход разрешён (союзник, умирающий герой, мирный NPC, полурослик сквозь
+  // крупного), а встать там нельзя. С рельефом плата не складывается:
+  // труднопроходимость у клетки одна.
+  const creatureCells = occupiedPositions(state, actorIdValue)
+  const throughCreatureAt = (step) => creatureCells.size > 0
+    && (moverFootprintSide > 1 ? footprintCellsFor(mover, step) : [step]).some((cell) => creatureCells.has(positionKey(cell)))
   const stepCost = (step, pathMap = map) => 5
-    + (chargesDifficultAt(step, pathMap) ? 5 * (heavyTerrainMultiplierAt(state, step, difficultTerrain, moverFootprintSide > 1 ? mover : null) - 1) : 0)
+    + (chargesDifficultAt(step, pathMap)
+      ? 5 * (heavyTerrainMultiplierAt(state, step, difficultTerrain, moverFootprintSide > 1 ? mover : null) - 1)
+      : !ignoresTerrain && throughCreatureAt(step) ? 5 : 0)
     + (crawling ? 5 : 0)
-  return { map, stepCost, difficultAt, chargesDifficultAt, ignoresTerrain, webWalker, crawling }
+  return { map, stepCost, difficultAt, chargesDifficultAt, throughCreatureAt, ignoresTerrain, webWalker, crawling }
 }
 
 /** Во что обойдётся уже выбранный маршрут: та же формула, применённая к списку. */
