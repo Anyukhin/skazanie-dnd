@@ -331,6 +331,50 @@ test('сборщик видит тонкие стены: площадь суще
   expectCode(() => assembleEncounter(baseInput({ scene: { cells: [{ x: 0, y: 0, type: 'floor', revealed: true, walls: 'n' }] } })), 'INVALID_SCENE_CELL_WALLS')
 })
 
+test('крупное существо не встаёт в карман, откуда его тело не дойдёт до отряда', () => {
+  // Сид 3 сквозного прогона «Асстоханских равнин»: совомед 2×2 появился между
+  // реквизитом, в кармане, связанном с отрядом проходом в одну клетку, и
+  // тридцать раундов не мог сдвинуться. Здесь то же в чистом виде: коридор
+  // шириной в клетку (тело 2×2 в нём не помещается) и карман 3×2 под ним,
+  // соединённый с коридором единственной клеткой (7,3).
+  const corridor = Array.from({ length: 10 }, (_, x) => ({ x, y: 2, type: 'floor', revealed: true }))
+  const pocket = [6, 7, 8].flatMap((x) => [4, 5].map((y) => ({ x, y, type: 'floor', revealed: true })))
+  const field = [...corridor, { x: 7, y: 3, type: 'floor', revealed: true }, ...pocket]
+  let large = 0
+  for (const ruleset_id of [undefined, 'dnd_5e_2014']) {
+    for (const difficulty of ['easy', 'medium', 'hard']) {
+      for (let seed = 1; seed <= 6; seed += 1) {
+        let proposal
+        try {
+          proposal = assembleEncounter(baseInput({
+            scene: { cells: field }, party: [{ id: 'hero', level: 5, x: 0, y: 2 }], theme: 'beasts', difficulty,
+            seed: `pocket:${difficulty}:${seed}`, ...(ruleset_id ? { ruleset_id } : {}),
+          }))
+        } catch (error) {
+          // Встречи может не быть вовсе, если у темы нет одноклеточного состава, — но не крупный враг в кармане.
+          assert.equal(error.code, 'NO_SAFE_PLACEMENT_CELLS')
+          continue
+        }
+        for (const enemy of proposal.enemies) {
+          const size = enemy.footprint?.size ?? 1
+          if (size > 1) large += 1
+          assert.ok(size === 1 || enemy.y < 3, `${difficulty}/${seed}: ${enemy.name} площадью ${size} стоит в кармане (${enemy.x},${enemy.y})`)
+        }
+      }
+    }
+  }
+  assert.equal(large, 0, 'крупному существу на этой карте места нет: тело не проходит в коридор')
+})
+
+test('крупное существо по-прежнему встаёт на открытом поле рядом с отрядом', () => {
+  let large = 0
+  for (let seed = 1; seed <= 8; seed += 1) {
+    const proposal = assembleEncounter(baseInput({ scene: { cells: cells(14, 10) }, theme: 'beasts', difficulty: 'hard', seed: `open:${seed}`, ruleset_id: 'dnd_5e_2014' }))
+    large += proposal.enemies.filter((enemy) => (enemy.footprint?.size ?? 1) > 1).length
+  }
+  assert.ok(large > 0, 'проверка кармана не должна вычистить крупных зверей с открытой местности')
+})
+
 test('окно держит шаг, как стена: сквозь него враг в дом не появляется', async () => {
   const { encounterBarrierSides } = await import('../server/encounter-assembler.mjs')
   assert.equal(encounterBarrierSides({ windows: 'e' }), 'e')

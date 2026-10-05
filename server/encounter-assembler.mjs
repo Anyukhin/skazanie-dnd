@@ -6,7 +6,7 @@ import { SIZE_CLASSES } from './tactical-map.mjs'
 import { loadDndsu2014Content } from './dndsu-2014-content.mjs'
 import { enemyFrom2014 } from './combat-lab-monsters.mjs'
 import { selectEncounterRoster } from './combat-lab-encounter-math.mjs'
-import { footprintCellsFor, footprintMetadataForSize } from './actor-footprint.mjs'
+import { footprintCellsFor, footprintMetadataForSize, footprintSizeFor } from './actor-footprint.mjs'
 
 const classicContent = await loadDndsu2014Content()
 
@@ -1180,13 +1180,67 @@ function placementFits(cellsByKey, actor, position, occupied) {
   })
 }
 
+/**
+ * Якоря, откуда тело стороной `side` клеток дойдёт до удара по отряду.
+ *
+ * Заливка клеток появления идёт клеткой 1×1, и для крупного существа её мало:
+ * карман между реквизитом, связанный с отрядом проходами в одну клетку, для
+ * неё «рядом». Сквозной прогон «Асстоханских равнин» (сид 3) поставил туда
+ * совомеда 2×2 — тридцать раундов он не мог сдвинуться, а бой не кончался.
+ *
+ * Обратная заливка по положениям всего тела: от якорей, чья площадь касается
+ * героя (досягаемость 5 футов), шагами по четырём сторонам, где тело целиком
+ * помещается и не пересекает тонкую стену. Диагональных шагов нет — оценка
+ * осторожная: она может отвергнуть место, откуда движок нашёл бы путь
+ * наискосок, но не пропустит карман.
+ */
+function strikeReachableAnchors(cellsByKey, party, side) {
+  const partyKeys = new Set(party.map(positionKey))
+  const probe = { footprint: { version: 1, size: side } }
+  const fits = (anchor) => placementFits(cellsByKey, probe, anchor, partyKeys)
+  const touchesParty = (anchor) => footprintCellsFor(probe, anchor).some((cell) => party.some((member) => (
+    Math.max(Math.abs(member.x - cell.x), Math.abs(member.y - cell.y)) <= 1
+  )))
+  const reachable = new Set()
+  const queue = []
+  for (const cell of cellsByKey.values()) {
+    const anchor = { x: cell.x, y: cell.y }
+    if (fits(anchor) && touchesParty(anchor)) {
+      reachable.add(positionKey(anchor))
+      queue.push(anchor)
+    }
+  }
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = { x: current.x + dx, y: current.y + dy }
+      const key = positionKey(next)
+      if (reachable.has(key) || !fits(next)) continue
+      // Каждая клетка тела переходит в соседнюю: ребро между ними не должно быть стеной.
+      if (footprintCellsFor(probe, current).some((cell) => thinWallBetween(cellsByKey, cell, { x: cell.x + dx, y: cell.y + dy }))) continue
+      reachable.add(key)
+      queue.push(next)
+    }
+  }
+  return reachable
+}
+
 /** Ставит врагов по одному, резервируя все клетки их площади. */
 function deterministicEnemyPlacements(cells, party, enemies, orderedCandidates) {
   const cellsByKey = new Map(cells.map((cell) => [positionKey(cell), cell]))
   const occupied = new Set(party.map(positionKey))
+  const reachableBySide = new Map()
+  const reachableFor = (enemy) => {
+    const side = footprintSizeFor(enemy)
+    if (side <= 1) return null
+    if (!reachableBySide.has(side)) reachableBySide.set(side, strikeReachableAnchors(cellsByKey, party, side))
+    return reachableBySide.get(side)
+  }
   const positions = []
   for (const enemy of enemies) {
-    const position = orderedCandidates.find((candidate) => placementFits(cellsByKey, enemy, candidate, occupied))
+    const reachable = reachableFor(enemy)
+    const position = orderedCandidates.find((candidate) => placementFits(cellsByKey, enemy, candidate, occupied)
+      && (!reachable || reachable.has(positionKey(candidate))))
     if (!position) throw new EncounterAssemblyError('Нет безопасной клетки для площади существа', 'NO_SAFE_PLACEMENT_CELLS')
     positions.push(position)
     for (const key of placementKeysFor(enemy, position)) occupied.add(key)
