@@ -9,7 +9,7 @@ import { Adjudicator } from '../server/adjudicator.mjs'
 import { AutonomousCampaignOrchestrator } from '../server/autonomous-orchestrator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
-import { freeActionGoalIsPassage } from '../server/free-action-adjudication.mjs'
+import { freeActionGoalIsPassage, freeActionPassageDestination, freeActionPassagePlan } from '../server/free-action-adjudication.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
 import { createItemInstance } from '../server/item-instances.mjs'
@@ -17,7 +17,7 @@ import { Narrator } from '../server/narrator.mjs'
 import { buildNarrationBrief, verifyNarration } from '../server/security.mjs'
 import { RollRegistry } from '../server/roll-registry.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
-import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
+import { addProp, addZone, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell, setDoor } from '../server/tactical-map.mjs'
 
 function hero(id, character = id) {
   return {
@@ -33,6 +33,39 @@ function campaign(overrides = {}) {
     scene: { title: 'Зал', location: 'Старый трактир', objective: 'Осмотреть зал', cells: [] },
     players: [hero('hero', 'Ада'), hero('other', 'Бор')],
     ...overrides,
+  })
+}
+
+function passageCampaign(doorState = 'open') {
+  const map = createTacticalMap({ width: 5, height: 3, locationId: 'passage-fixture', seed: 'passage-fixture', sizeClass: 'arena' })
+  addZone(map, { id: 'outside', kind: 'exterior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Снаружи' })
+  addZone(map, { id: 'inside', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Монастырь' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 5; x += 1) {
+    setCell(map, x, y, { passable: y === 1, revealed: true, zone: x < 2 ? 'outside' : 'inside' })
+  }
+  setDoor(map, { id: 'passage-door', x: 1, y: 1, dir: 'e', state: doorState })
+  return campaign({
+    scene: {
+      title: 'Вход', location: 'Монастырь', objective: 'Войти внутрь',
+      cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map),
+    },
+    players: [hero('hero', 'Ада'), hero('other', 'Бор')],
+    mechanics: { combat: { active: false }, positions: { hero: { x: 0, y: 1 }, other: { x: 4, y: 1 } } },
+  })
+}
+
+function porchPassageCampaign(doorState = 'open') {
+  const map = createTacticalMap({ width: 6, height: 3, locationId: 'porch-fixture', seed: 'porch-fixture', sizeClass: 'arena' })
+  addZone(map, { id: 'outside', kind: 'exterior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Снаружи' })
+  addZone(map, { id: 'porch', kind: 'interior', material: 'stone', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Крыльцо' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Зал' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 6; x += 1) {
+    setCell(map, x, y, { passable: y === 1, revealed: true, zone: x === 0 ? 'outside' : x < 3 ? 'porch' : 'hall' })
+  }
+  setDoor(map, { id: 'porch-door', x: 2, y: 1, dir: 'e', state: doorState })
+  return campaign({
+    scene: { title: 'Монастырь', location: 'Монастырь', objective: 'Войти внутрь', cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    mechanics: { combat: { active: false }, positions: { hero: { x: 0, y: 1 }, other: { x: 5, y: 1 } } },
   })
 }
 
@@ -772,7 +805,7 @@ const passageReading = (overrides = {}) => ({
 })
 const PASSAGE_TEXT = 'Вхожу через дверь башни внутрь маяка, следуя за найденным рычагом.'
 
-test('удачная заявка «войти внутрь» не обещает перехода, а называет штатный путь — MAP2-02', async () => {
+test('заявка «войти внутрь» без подтверждённой карты уточняется до броска — MAP2-02', async () => {
   let renderCalls = 0
   const { orchestrator } = await setup(campaign(), {
     reading: passageReading(),
@@ -781,17 +814,100 @@ test('удачная заявка «войти внутрь» не обещае�
   })
   const result = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage', campaign()))
 
+  assert.equal(result.free_action_outcome, 'clarification')
+  assert.deepEqual(result.mechanics, [])
+  assert.match(result.narration, /названного здания|место/u)
+  assert.equal(renderCalls, 0, 'заблокированный вход не вызывает Narrator')
+})
+
+test('успешное «протиснуться внутрь» двигает героя через открытую дверь одним commit и replay — MAP2-03', async () => {
+  const initial = passageCampaign('open')
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([18]) }) })
+  const { orchestrator, eventStore } = await setup(initial, {
+    rollRegistry: registry,
+    reading: passageReading({
+      goal_summary: 'Протиснуться внутрь монастыря',
+      approach_summary: 'Протиснуться через открытый вход',
+      obstacle: 'вход в монастырь',
+    }),
+  })
+  const text = 'Я протискиваусь внутрь монастыря'
+  const offered = await orchestrator.handle(actionInput(text, 'free-passage-move-offer', initial))
+  assert.equal(offered.free_action_outcome, 'check_required')
+  assert.match(offered.check.proposal.on_success, /протиснется внутрь/u)
+  const issued = registry.issue({ checkId: offered.check.check_id, campaignId: 'FREE-ACTION', actorId: 'hero' })
+  const verifiedRoll = registry.consume(issued.roll_id, { campaignId: 'FREE-ACTION', actorId: 'hero', idempotencyKey: 'free-passage-move-resolve' })
+  const input = { ...actionInput(text, 'free-passage-move-resolve', initial), verifiedRoll }
+  const result = await orchestrator.handle(input)
+  const moved = result.mechanics.find((event) => event.event_type === 'ActorMoved')
   assert.equal(result.free_action_outcome, 'check_success')
-  assert.deepEqual(result.mechanics.map((event) => event.event_type), ['ActionDeclared', 'AbilityCheckResolved', 'RulingRecorded', 'TimeAdvanced'])
+  assert.ok(moved)
+  assert.deepEqual(moved.payload.to, { x: 2, y: 1 })
+  assert.equal(result.ruling.world_change, true)
+  assert.doesNotMatch(result.narration, /прежнем месте|сцена от этого не изменилась/u)
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
+  const replay = await orchestrator.handle(input)
+  assert.equal(replay.idempotent_replay, true)
+  assert.deepEqual(replay.mechanics, result.mechanics)
+  assert.deepEqual((await eventStore.replay('FREE-ACTION')).state, (await eventStore.load('FREE-ACTION')).state)
+})
+
+test('успешное «протиснуться внутрь» не телепортирует через закрытую дверь', async () => {
+  const initial = passageCampaign('closed')
+  const { orchestrator, eventStore, narratorCalls } = await setup(initial)
+  const text = 'Я протискиваусь внутрь монастыря'
+  const result = await orchestrator.handle(actionInput(text, 'free-passage-closed', initial))
+  assert.equal(result.free_action_outcome, 'clarification')
+  assert.deepEqual(result.mechanics, [])
+  assert.match(result.narration, /открыт|карт/u)
+  assert.equal(narratorCalls(), 0)
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 0, y: 1 })
+})
+
+test('провал «протиснуться внутрь» не двигает героя даже при открытой двери', async () => {
+  const initial = passageCampaign('open')
+  const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([1]) }) })
+  const { orchestrator, eventStore } = await setup(initial, {
+    rollRegistry: registry,
+    diceRolls: [3],
+    reading: passageReading({
+      goal_summary: 'Протиснуться внутрь монастыря',
+      ability: 'dex', skill: 'acrobatics', activity_kind: 'stunt',
+    }),
+  })
+  const text = 'Я протискиваусь внутрь монастыря'
+  const offered = await orchestrator.handle(actionInput(text, 'free-passage-fail-offer', initial))
+  const issued = registry.issue({ checkId: offered.check.check_id, campaignId: 'FREE-ACTION', actorId: 'hero' })
+  const verifiedRoll = registry.consume(issued.roll_id, { campaignId: 'FREE-ACTION', actorId: 'hero', idempotencyKey: 'free-passage-fail-resolve' })
+  const result = await orchestrator.handle({ ...actionInput(text, 'free-passage-fail-resolve', initial), verifiedRoll })
+  assert.equal(result.free_action_outcome, 'check_failure')
+  assert.equal(result.mechanics.some((event) => event.event_type === 'ActorMoved'), false)
   assert.equal(result.ruling.world_change, false)
-  // Перехода нет и автоматически не появляется.
-  assert.equal(result.mechanics.some((event) => /Moved|LevelChanged|SceneAdvanced|DoorStateChanged/u.test(event.event_type)), false)
-  assert.doesNotMatch(result.narration, /Вышло: войти|оказывается внутри/u)
-  assert.match(result.narration, /^Проверка удалась, но сама сцена от этого не изменилась: Ада пока на прежнем месте\./u)
-  assert.match(result.narration, /на карте/u)
-  assert.match(result.narration, /«Решение группы»/u)
-  assert.equal(result.verification.valid, true)
-  assert.equal(renderCalls, 0, 'ответ на перемещение без перемещения — серверный')
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 0, y: 1 })
+})
+
+test('название другого здания не выбирает ближайший интерьер молча', () => {
+  const state = passageCampaign('open')
+  state.scene.location = 'Старый трактир'
+  assert.equal(freeActionPassageDestination(state, 'hero', 'Я протискиваусь внутрь монастыря', 'Протиснуться внутрь монастыря'), null)
+})
+
+test('крыльцо с interior-меткой считается внешним подходом до следующей двери', () => {
+  const open = freeActionPassagePlan(porchPassageCampaign('open'), 'hero', 'Я протискиваюсь внутрь монастыря')
+  assert.equal(open.status, 'ready')
+  assert.equal(open.door_id, 'porch-door')
+  assert.deepEqual(open.destination.to, { x: 3, y: 1 })
+  const closed = freeActionPassagePlan(porchPassageCampaign('closed'), 'hero', 'Я протискиваюсь внутрь монастыря')
+  assert.deepEqual(closed, { status: 'blocked', reason: 'no_open_path' })
+})
+
+test('произнесённый или вопросительный passage-текст не авторизует перемещение', () => {
+  const state = passageCampaign('open')
+  const goal = 'Протиснуться внутрь монастыря'
+  assert.equal(freeActionPassageDestination(state, 'hero', 'Говорю: «Я протискиваюсь внутрь монастыря»', goal), null)
+  assert.equal(freeActionPassageDestination(state, 'hero', 'Можно протиснуться внутрь монастыря?', goal), null)
+  assert.equal(freeActionPassageDestination(state, 'hero', 'Осматриваюсь у двери', goal), null)
+  assert.equal(freeActionPassageDestination(state, 'hero', 'Я протискиваюсь внутрь через окно', goal), null)
 })
 
 test('запасной рассказчик не меняет «Вышло: …» у цели без перемещения и у провала — MAP2-02', async () => {
@@ -803,19 +919,19 @@ test('запасной рассказчик не меняет «Вышло: …�
   assert.equal(shouted.free_action_outcome, 'check_success')
   assert.match(shouted.narration, /^Вышло: крикнуть «Пожар!» на весь двор\./u)
 
-  const failed = await setup(campaign(), { narrator: new Narrator(), reading: passageReading(), diceRolls: [1, 1, 1, 1] })
-  const missed = await failed.orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage-fail', campaign()))
-  assert.equal(missed.free_action_outcome, 'check_failure')
-  assert.match(missed.narration, /^Не вышло: войти внутрь маяка\./u)
 })
 
-test('карточка броска на перемещение не сулит вход — MAP2-02', async () => {
+test('карточка броска на перемещение сулит вход только для открытого короткого пути — MAP2-02', async () => {
   const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([18]) }) })
-  const { orchestrator } = await setup(campaign(), { rollRegistry: registry, reading: passageReading() })
-  const offered = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage-card', campaign()))
+  const initial = passageCampaign('open')
+  const text = 'Я протискиваюсь внутрь монастыря'
+  const { orchestrator } = await setup(initial, {
+    rollRegistry: registry,
+    reading: passageReading({ goal_summary: 'Протиснуться внутрь монастыря' }),
+  })
+  const offered = await orchestrator.handle(actionInput(text, 'free-passage-card', initial))
   assert.equal(offered.free_action_outcome, 'check_required')
-  assert.doesNotMatch(offered.check.proposal.on_success, /войти внутрь маяка/u)
-  assert.match(offered.check.proposal.on_success, /не переместит/u)
+  assert.match(offered.check.proposal.on_success, /протиснется внутрь/u)
 
   assert.equal(freeActionGoalIsPassage('Перебраться через стену во двор'), true)
   assert.equal(freeActionGoalIsPassage('Пройти мимо стражи незамеченным'), true)

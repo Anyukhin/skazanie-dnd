@@ -100,16 +100,16 @@ export function buildingWallStyleFor({ use = '', architecture = 'wood', urban = 
  * стены рисуются по материалу зоны.
  *
  * @param {import('./tactical-map.mjs').TacticalMap} map
- * @param {{use?: string, architecture?: string, wall?: string|null, zones?: (zone: import('./tactical-map.mjs').TacticalZone) => boolean}} [options]
+ * @param {{use?: string, architecture?: string, wall?: string|null, defaultFloor?: {material: string, floor: string|null}|null, zones?: (zone: import('./tactical-map.mjs').TacticalZone) => boolean}} [options]
  * @returns {number} сколько помещений получили свой пол
  */
-export function applyRoomFloors(map, { use = '', architecture = 'wood', wall = null, zones = () => true } = {}) {
+export function applyRoomFloors(map, { use = '', architecture = 'wood', wall = null, defaultFloor = null, zones = () => true } = {}) {
   /** @type {Map<string, {material: string, floor: string|null}>} */
   const chosen = new Map()
   for (const zone of map.zones) {
     if (zone.kind !== 'interior' || zone.id === 'walls' || !zones(zone)) continue
     if (wall && WALL_STYLES.includes(wall)) zone.wall = wall
-    const floor = roomFloorFor(zone, { use, architecture })
+    const floor = roomFloorFor(zone, { use, architecture }) ?? defaultFloor
     if (!floor) continue
     chosen.set(zone.id, floor)
     if (floor.floor && FLOOR_STYLES.includes(floor.floor)) zone.floor = floor.floor

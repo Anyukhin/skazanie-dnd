@@ -137,7 +137,7 @@ import {
   spellVisualProfile,
   systemPrefersReducedMotion,
 } from './spell-effects'
-import { doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
+import { cellAt, doorsReachableFrom, sceneTacticalMap } from './tactical-map-client'
 import { combatActionTargetGuard } from './tactical-command-guard.mjs'
 import { sceneMapContentSignature } from './scene-map-cache'
 import { circularGridPointLineOfEffect, createSpellTargetRenderer, maskSpellAreaCells, spellPreviewActors } from './spell-targeting'
@@ -1224,6 +1224,17 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     }
     return renderers
   }, [state.mechanics?.active_effects, state.mechanics?.concentration, players, state.enemies, state.actors])
+  /* Двери остаются видимыми на всей раскрытой карте, даже если до них ещё
+     нужно дойти: иначе закрытая дверь выглядит как обычная стена и игрок не
+     понимает, почему путь обрывается. Сервер всё равно проверяет близость;
+     кнопка на расстоянии только объясняет, куда подойти. */
+  const visibleDoors = boardMap
+    ? boardMap.doors.filter((door) => {
+      if (door.state === 'broken') return false
+      const neighbor = door.dir === 'e' ? { x: door.x + 1, y: door.y } : { x: door.x, y: door.y + 1 }
+      return Boolean(cellAt(boardMap, door.x, door.y)?.revealed || cellAt(boardMap, neighbor.x, neighbor.y)?.revealed)
+    })
+    : []
   /* Двери, до которых активный участник дотягивается рукой. Открыть или закрыть
      дверь — свободное взаимодействие, выломать — действие; какое именно из них
      доступно, решает состояние полотна. */
@@ -2088,11 +2099,22 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const boardCells: BoardCellNode[] = []
   const boardOverlay: BoardOverlayCell[] = []
   const visibleMapFeedback = useTransientMapFeedback(state.mapFeedback)
-  const doorHotspotsByCell = new Map<string, typeof doorsAtHand>()
-  for (const door of doorsAtHand) {
-    const key = boardPositionKey(door.x, door.y)
+  type DoorHotspot = { door: (typeof visibleDoors)[number]; edge: 'e' | 's' | 'w' | 'n' }
+  const doorHotspotsByCell = new Map<string, DoorHotspot[]>()
+  for (const door of visibleDoors) {
+    if (!boardMap) continue
+    const neighbor = door.dir === 'e' ? { x: door.x + 1, y: door.y } : { x: door.x, y: door.y + 1 }
+    const ownerVisible = Boolean(cellAt(boardMap, door.x, door.y)?.revealed)
+    const neighborVisible = Boolean(cellAt(boardMap, neighbor.x, neighbor.y)?.revealed)
+    const anchor = ownerVisible
+      ? { x: door.x, y: door.y, edge: door.dir }
+      : neighborVisible
+        ? { x: neighbor.x, y: neighbor.y, edge: door.dir === 'e' ? 'w' as const : 'n' as const }
+        : null
+    if (!anchor) continue
+    const key = boardPositionKey(anchor.x, anchor.y)
     const doors = doorHotspotsByCell.get(key) ?? []
-    doors.push(door)
+    doors.push({ door, edge: anchor.edge })
     doorHotspotsByCell.set(key, doors)
   }
   // Подсказки клеток без узла: причина недоступности обязана остаться на всех
@@ -2444,19 +2466,27 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     }
 
     const doorHotspot = doorHotspots.length > 0
-      ? <>{doorHotspots.map((door) => {
+      ? <>{doorHotspots.map(({ door, edge }) => {
           const direction = active ? doorDirectionFromActor(door, active) : ''
           const locked = door.state === 'locked'
+          const atHand = doorsAtHand.some((candidate) => candidate.id === door.id)
+          const approachHint = atHand
+            ? ''
+            : active
+              ? 'Подойдите вплотную к двери, чтобы взаимодействовать'
+              : 'Выберите героя, чтобы подойти к двери'
           const label = locked
-            ? `Запертая дверь на ${direction}. Выберите отмычку или выломать в панели действий`
-            : `${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}`
+            ? `Запертая дверь на ${direction}. ${atHand ? 'Выберите отмычку или выломать в панели действий' : approachHint}`
+            : `${door.state === 'open' ? 'Закрыть' : 'Открыть'} дверь на ${direction}${approachHint ? `. ${approachHint}` : ''}`
           return <button
             key={door.id}
             type="button"
-            className={`door-hotspot door-hotspot--${door.dir} door-hotspot--${door.state}`}
+            className={`door-hotspot door-hotspot--${edge} door-hotspot--${door.state}${atHand ? '' : ' door-hotspot--out-of-reach'}`}
             data-door-id={door.id}
+            data-door-edge={edge}
             aria-label={label}
             title={locked ? `${label}. Щелчок не ломает дверь автоматически` : `${label}: свободное взаимодействие`}
+            aria-disabled={!atHand || undefined}
             disabled={!canAct || tacticalBusy}
             onPointerDown={(event) => event.stopPropagation()}
             onPointerUp={(event) => event.stopPropagation()}
@@ -2466,7 +2496,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             onBlur={() => setHoveredDoorId((current) => current === door.id ? null : current)}
             onClick={(event) => {
               event.stopPropagation()
-              if (locked || !selected) return
+              if (locked || !selected || !atHand) return
               void onOperateDoor(selected, door.id, door.state === 'open' ? 'close' : 'open')
             }}
           />
@@ -2982,10 +3012,10 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </>,
     })
   }
-  const highlightedDoor = doorsAtHand.find((door) => door.id === hoveredDoorId)
-  if (highlightedDoor) {
+  const highlightedDoor = visibleDoors.find((door) => door.id === hoveredDoorId)
+  if (highlightedDoor && boardMap) {
     for (const cell of doorOverlayCells(highlightedDoor)) {
-      boardOverlay.push({ ...cell, kind: 'command-range' })
+      if (cellAt(boardMap, cell.x, cell.y)?.revealed) boardOverlay.push({ ...cell, kind: 'command-range' })
     }
   }
   const highlightedSceneObject = sceneObjectsAtHand.find((prop) => (

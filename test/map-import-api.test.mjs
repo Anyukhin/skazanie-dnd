@@ -9,6 +9,7 @@ import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import { SLAB_MAX_INSTANCES } from '../server/talespire-slab.mjs'
 import { ASSETS, HOUSE_SLAB, encodeSlabV1, encodeSlabV1Raw, encodeSlabV2, housePlacements } from './talespire-fixtures.mjs'
+import { deserializeTacticalMap } from '../server/tactical-map.mjs'
 
 /**
  * HTTP-путь импорта карты из TaleSpire: `POST /api/campaigns/:id/map-import`.
@@ -218,11 +219,40 @@ test('импорт карты по HTTP: предпросмотр, примен�
   assert.deepEqual(applied.body.levels, [{ index: 0, label: 'Первый этаж' }, { index: 1, label: 'Второй этаж' }])
   assert.equal(applied.body.state.scene.map.generator.id, 'talespire-slab')
 
+  // Безопасное обновление меняет только покрытие: геометрия, туман и позиции
+  // остаются прежними, а owner route возвращает явный режим операции.
+  const refreshBefore = await request(baseUrl, '/api/rooms/MAPIMP', { cookie: ownerCookie })
+  const refreshBeforeMap = deserializeTacticalMap(refreshBefore.body.state.scene.map)
+  const guestRefresh = await request(baseUrl, path, {
+    method: 'POST', cookie: guestCookie,
+    body: { mode: 'rebuild', preserve_layout: true, idempotency_key: 'map-refresh:guest' },
+  })
+  assert.equal(guestRefresh.status, 403, guestRefresh.text)
+  const refresh = await request(baseUrl, path, {
+    method: 'POST', cookie: ownerCookie,
+    body: { mode: 'rebuild', preserve_layout: true, idempotency_key: 'map-refresh:floors-1' },
+  })
+  assert.equal(refresh.status, 200, refresh.text)
+  assert.equal(refresh.body.preserve_layout, true)
+  const refreshAfterMap = deserializeTacticalMap(refresh.body.state.scene.map)
+  assert.deepEqual(refreshAfterMap.doors, refreshBeforeMap.doors)
+  assert.deepEqual(refreshAfterMap.edges, refreshBeforeMap.edges)
+  assert.deepEqual(refreshAfterMap.props, refreshBeforeMap.props)
+  assert.deepEqual(refreshAfterMap.layers.revealed, refreshBeforeMap.layers.revealed)
+  assert.deepEqual(refresh.body.state.players.map((player) => ({ id: player.id, x: player.x, y: player.y })),
+    refreshBefore.body.state.players.map((player) => ({ id: player.id, x: player.x, y: player.y })))
+
   // Повтор того же ключа — прежний коммит, а не второй импорт.
   const repeated = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: apply })
   assert.equal(repeated.status, 200, repeated.text)
   assert.equal(repeated.body.duplicate, true)
-  assert.equal(repeated.body.version, applied.body.version)
+  assert.equal(repeated.body.version, refresh.body.version)
+  const refreshConflict = await request(baseUrl, path, {
+    method: 'POST', cookie: ownerCookie,
+    body: { mode: 'rebuild', preserve_layout: false, idempotency_key: 'map-refresh:floors-1' },
+  })
+  assert.equal(refreshConflict.status, 409, refreshConflict.text)
+  assert.equal(refreshConflict.body.code, 'IDEMPOTENCY_CONFLICT')
   const conflicting = await request(baseUrl, path, { method: 'POST', cookie: ownerCookie, body: { ...apply, slab: encodeSlabV1(housePlacements()) } })
   assert.equal(conflicting.status, 409, conflicting.text)
   assert.equal(conflicting.body.code, 'IDEMPOTENCY_CONFLICT')
@@ -240,7 +270,7 @@ test('импорт карты по HTTP: предпросмотр, примен�
   })
   assert.ok(bypass.status >= 400, `обход должен отклоняться: ${bypass.status} ${bypass.text}`)
   const after = await request(baseUrl, '/api/rooms/MAPIMP', { cookie: ownerCookie })
-  assert.equal(after.body.version, applied.body.version, 'отказ обходного пути ничего не записал')
+  assert.equal(after.body.version, refresh.body.version, 'отказ обходного пути ничего не записал')
 
   // Этап 8: перестройка карты текущей сцены по программе — тем же маршрутом.
   const rebuild = { mode: 'rebuild', text: 'В центре двора колодец, у стены — три бочки.', idempotency_key: 'map-rebuild:1' }

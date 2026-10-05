@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { generateSceneGeometry } from '../server/adventure-director.mjs'
+import { generateSceneGeometry, refreshSceneFloors } from '../server/adventure-director.mjs'
 import { applyRoomFloors, buildingWallStyleFor, roomFloorFor } from '../server/room-floors.mjs'
 import {
-  addZone, cellAt, createTacticalMap, deserializeTacticalMap, edgeBetween, serializeTacticalMap, setCell,
+  addProp, addZone, cellAt, createTacticalMap, deserializeTacticalMap, edgeBetween, serializeTacticalMap, setCell,
 } from '../server/tactical-map.mjs'
 
 /** Материал и рисунок пола каждой комнаты карты. */
@@ -79,4 +79,34 @@ test('пол и кладка — только отрисовка: правила
   const strange = createTacticalMap({ width: 1, height: 1 })
   addZone(strange, { id: 'x', kind: 'interior', floor: 'lava', wall: 'glass' })
   assert.equal('floor' in strange.zones[0] || 'wall' in strange.zones[0], false)
+})
+
+test('храмовый импорт выделяет неф по рядам скамей, а настоящий двор остаётся травой', () => {
+  const map = createTacticalMap({ width: 12, height: 8, fill: { passable: true, material: 'grass' }, theme: 'temple', seed: 'library:tt-stave-temple:0' })
+  addZone(map, { id: 'outside', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Двор' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'grass', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Двор' })
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) setCell(map, x, y, { zone: x > 0 && x < map.width - 1 && y > 0 && y < map.height - 1 ? 'yard' : 'outside' })
+  for (const [index, x] of [4, 5, 6, 7].entries()) {
+    addProp(map, { id: `bench-${index}`, assetId: 'bench', x: x + 0.5, y: 3.5, footprint: [{ x, y: 3 }] })
+  }
+
+  refreshSceneFloors(map, 'temple')
+
+  assert.equal(cellAt(map, 5, 3).zone, 'yard')
+  assert.equal(map.zones.find((zone) => zone.id === 'yard')?.kind, 'interior')
+  assert.equal(cellAt(map, 5, 3).material, 'marble')
+  assert.equal(cellAt(map, 1, 1).material, 'marble')
+  assert.equal(cellAt(map, 0, 0).zone, 'outside')
+  assert.equal(cellAt(map, 0, 0).material, 'grass')
+
+  const other = structuredClone(map)
+  other.seed = 'library:other-temple:0'
+  other.zones.find((zone) => zone.id === 'yard').kind = 'exterior'
+  other.zones.find((zone) => zone.id === 'yard').material = 'grass'
+  for (let y = 0; y < other.height; y += 1) for (let x = 0; x < other.width; x += 1) {
+    if (cellAt(other, x, y)?.zone === 'yard') setCell(other, x, y, { material: 'grass' })
+  }
+  refreshSceneFloors(other, 'temple')
+  assert.equal(other.zones.find((zone) => zone.id === 'yard')?.kind, 'exterior')
+  assert.equal(cellAt(other, 5, 3).material, 'grass')
 })

@@ -30,3 +30,5 @@
 .map-import-rebuild { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line, rgba(255,255,255,.12)); display: grid; gap: 8px; }
 .map-import-rebuild h3 { margin: 0; font: 600 var(--fs-md, 15px) var(--f-ui, inherit); }
 .map-import-rebuild p { margin: 0; color: var(--muted, #a99f8c); font-size: var(--fs-sm, 13px); }
+.map-import-preserve { display: flex; align-items: flex-start; gap: 8px; color: var(--muted, #a99f8c); font-size: var(--fs-sm, 13px); line-height: 1.4; cursor: pointer; }
+.map-import-preserve input { margin: 2px 0 0; accent-color: #c79458; }

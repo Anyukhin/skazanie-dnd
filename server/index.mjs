@@ -346,8 +346,9 @@ const handleCombatLabRoute = createCombatLabRoutes({ combatLabRuns, CombatLabErr
 const authoritativeExecutor = new AuthoritativeExecutor({ eventStore, rulesEngine })
 // Библиотека готовых карт (`<storage>/map-library`). Пустая библиотека ничего
 // не меняет: генератор сцены спрашивает её и уходит к процедурной карте.
-// DND_MAP_LIBRARY=off выключает подбор целиком.
-setActiveMapLibrary(String(process.env.DND_MAP_LIBRARY ?? '').toLowerCase() === 'off' ? null : new MapLibrary(storageDir))
+// Клеточная проекция TaleSpire не сохраняет исходную конструкцию. До появления
+// точного переноса библиотека используется только при явном включении владельцем.
+setActiveMapLibrary(String(process.env.DND_MAP_LIBRARY ?? '').trim().toLowerCase() === 'on' ? new MapLibrary(storageDir) : null)
 const handleMapImportRoute = createMapImportRoutes({
   requireUser, getRoom, campaignMembershipFor, readBody, json, eventStore, authoritativeExecutor,
   persistAuthoritativeProjection, campaignHeroIds, viewerStateFor,

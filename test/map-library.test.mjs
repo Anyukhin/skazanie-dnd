@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { levelKey } from '../server/adventure-director.mjs'
+import { generateSceneGeometry, levelKey } from '../server/adventure-director.mjs'
 import { generateBuildingScene } from '../server/building-generator.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
@@ -22,7 +22,7 @@ import {
 } from '../server/map-library.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand } from '../server/rules-engine.mjs'
 import { importTaleSpireSlab } from '../server/talespire-import.mjs'
-import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
+import { cellAt, deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 import { campaignStateForViewer, mechanicsForViewer } from '../server/viewer-projection.mjs'
 import { HOUSE_SLAB } from './talespire-fixtures.mjs'
 
@@ -186,6 +186,46 @@ test('переход в таверну берёт карту из библиот
   const secondScene = second.events.find((candidate) => candidate.event_type === 'SceneAdvanced')
   assert.equal(secondScene.payload.scene.map_source, undefined)
   assert.ok(!String(deserializeTacticalMap(secondScene.payload.scene.map).seed).startsWith('library:'))
+})
+
+test('библиотечный храм получает мраморный пол внутри, даже если исходный слэб пометил его травой', (t) => {
+  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-library-temple-floor-'))
+  t.after(() => {
+    setActiveMapLibrary(null)
+    rmSync(storage, { recursive: true, force: true })
+  })
+  const imported = importTaleSpireSlab(HOUSE_SLAB, { locationId: 'tt-temple' })
+  const levels = imported.levels.map((level) => {
+    const map = deserializeTacticalMap(level.map)
+    const interior = new Set(map.zones.filter((zone) => zone.kind === 'interior').map((zone) => zone.id))
+    for (const zone of map.zones) if (interior.has(zone.id)) zone.material = 'grass'
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      if (cellAt(map, x, y)?.passable && interior.has(cellAt(map, x, y)?.zone)) setCell(map, x, y, { material: 'grass' })
+    }
+    return { ...level, map: serializeTacticalMap(map) }
+  })
+  const passport = {
+    ...imported.passport,
+    features: [...new Set([...imported.passport.features, 'shrine', 'interior'])],
+    interior_share: 0.8,
+    floor_cells: 500,
+    material: 'grass',
+  }
+  const library = new MapLibrary(storage)
+  library.put(entryFor('tt-temple', { place_kinds: ['temple'], types: ['church'], passport }), levels)
+  setActiveMapLibrary(library)
+
+  const { map } = generateSceneGeometry({
+    location: 'Монастырь Скальных Обетков', theme: 'монастырь', seed: 'temple-floor-regression', useLibrary: true,
+  })
+  const interiorCells = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    const zone = map.zones.find((candidate) => candidate.id === cell?.zone)
+    if (cell?.passable && zone?.kind === 'interior') interiorCells.push(cell)
+  }
+  assert.ok(interiorCells.length > 0)
+  assert.deepEqual([...new Set(interiorCells.map((cell) => cell.material))], ['marble'])
 })
 
 test('без подключённой библиотеки генератор работает как раньше', () => {

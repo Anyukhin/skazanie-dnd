@@ -10,7 +10,7 @@ import { COMBAT_ANIMATION_QUEUE_LIMIT, combatAnimationCuesFromBattleLog, combatA
 import { createSpellEffectRenderer, isSpellAnimationCue, systemPrefersReducedMotion } from './spell-effects'
 import { createCombatEffect3D } from './board3d-effects'
 import { createSpellEffect3D } from './board3d-spell-effects'
-import { createBoard3DScene, nearestPropPickTarget } from './board3d-scene'
+import { BOARD3D_WALL_HEIGHT, createBoard3DScene, nearestPropPickTarget } from './board3d-scene'
 import { combatAudioSpatialFromScreen } from './combat-audio'
 import type { Board3DRoofMode } from './board3d-roofs'
 import { boardCameraFitZoom, shouldInitialFitBoardCamera } from './board3d-camera'
@@ -449,7 +449,54 @@ export default function TacticalBoard3D(props: Props) {
         node.style.height = `${size}px`
         node.style.setProperty('--cell', `${size}px`)
         node.style.visibility = screen.visible ? 'visible' : 'hidden'
-        node.style.zIndex = String(20 + Math.round(screen.y))
+        // Соседние дверные зоны могут перекрываться после проекции. Горячая
+        // дверь должна выиграть hit-test у дальней, иначе клик по открываемой
+        // двери попадает в безопасную подсказку соседней.
+        const reachableDoor = node.querySelector('.door-hotspot:not(.door-hotspot--out-of-reach)')
+        node.style.zIndex = String(20 + Math.round(screen.y) + (reachableDoor ? 100 : 0))
+        // Дверь лежит на ребре, а не в центре клетки. В перспективе и после
+        // поворота камеры это ребро больше не совпадает с «восточной» или
+        // «южной» стороной экранного квадрата, поэтому хит-зона считается по
+        // двум спроецированным концам дверного проёма.
+        for (const hotspot of node.querySelectorAll<HTMLButtonElement>('.door-hotspot')) {
+          const edge = hotspot.dataset.doorEdge
+          if (edge !== 'e' && edge !== 's' && edge !== 'w' && edge !== 'n') continue
+          const vertical = edge === 'e' || edge === 'w'
+          const edgeX = edge === 'e' ? x + 1 : x
+          const edgeY = edge === 's' ? y + 1 : y
+          const otherX = edge === 'e' ? x + 1 : edge === 'w' ? x - 1 : x
+          const otherY = edge === 's' ? y + 1 : edge === 'n' ? y - 1 : y
+          const terrainY = Math.max(
+            terrainHeightAt(current.map, x, y),
+            terrainHeightAt(current.map, otherX, otherY),
+          ) + .08
+          const projectDoorPoint = (fraction: number, heightOffset = 0) => pointOnScreen(
+            vertical
+              ? new THREE.Vector3(edgeX, terrainY + heightOffset, y + fraction)
+              : new THREE.Vector3(x + fraction, terrainY + heightOffset, edgeY),
+            width,
+            height,
+          )
+          const points = [.22, .78].flatMap((fraction) => [
+            projectDoorPoint(fraction),
+            projectDoorPoint(fraction, BOARD3D_WALL_HEIGHT),
+          ])
+          const padding = Math.max(5, Math.min(12, size * .12))
+          const minX = Math.min(...points.map((point) => point.x))
+          const maxX = Math.max(...points.map((point) => point.x))
+          const minY = Math.min(...points.map((point) => point.y))
+          const maxY = Math.max(...points.map((point) => point.y))
+          const hitWidth = Math.max(18, Math.min(size * 1.5, maxX - minX + padding * 2))
+          const hitHeight = Math.max(18, Math.min(size * 1.5, maxY - minY + padding * 2))
+          const centreX = (minX + maxX) / 2
+          const centreY = (minY + maxY) / 2
+          hotspot.style.left = `${centreX - screen.x + size / 2 - hitWidth / 2}px`
+          hotspot.style.top = `${centreY - screen.y + size / 2 - hitHeight / 2}px`
+          hotspot.style.right = 'auto'
+          hotspot.style.bottom = 'auto'
+          hotspot.style.width = `${hitWidth}px`
+          hotspot.style.height = `${hitHeight}px`
+        }
       }
       const buttonsByActor = new Map([...element.querySelectorAll<HTMLElement>('[data-actor-id]')].map((node) => [node.dataset.actorId, node]))
       for (const [id, view] of actorViews) {
