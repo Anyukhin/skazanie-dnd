@@ -1673,19 +1673,38 @@ export async function runNpcTurnScheduler({
     const creativeDecision = npcController && isMoraleMoment(state, currentId)
       ? await npcController.decide({ state, enemyId: currentId })
       : null
-    const commands = creativeDecision
+    let commands = creativeDecision
       ? commandsForMoraleDecision(state, currentId, creativeDecision, ordinaryCommands)
       : ordinaryCommands
     const actionEconomy = state.mechanics?.combat?.action_economy?.[currentId] ?? {}
     const attackPhase = Math.max(0, Number(actionEconomy.attacks_used) || 0)
     const movementPhase = Math.max(0, Number(actionEconomy.movement_spent) || 0)
     const actionSpentPhase = actionEconomy.action === false ? 1 : 0
-    const suffix = creativeDecision ? `morale-${creativeDecision.disposition}` : isCombatCapable(state, current) ? `turn-a${attackPhase}-m${movementPhase}-s${actionSpentPhase}` : 'skip'
-    const key = schedulerKey(campaignId, state, currentId, suffix)
-    const plan = await commitPlan({
-      campaignId, eventStore, rulesEngine, loaded, commands, key,
-      recovery: { state, actorId: currentId, suffix },
-    })
+    let suffix = creativeDecision ? `morale-${creativeDecision.disposition}` : isCombatCapable(state, current) ? `turn-a${attackPhase}-m${movementPhase}-s${actionSpentPhase}` : 'skip'
+    let key = schedulerKey(campaignId, state, currentId, suffix)
+    let cornered = null
+    let plan
+    try {
+      plan = await commitPlan({
+        campaignId, eventStore, rulesEngine, loaded, commands, key,
+        recovery: { state, actorId: currentId, suffix },
+      })
+    } catch (error) {
+      // Решение морали — намерение, и движок вправе его отвергнуть: бегству
+      // может не хватить скорости или пути. Повторять отвергнутый план на
+      // каждом тике значило бы встать навсегда, поэтому загнанное существо
+      // дерётся обычным ходом, а проверка морали считается пройденной — второй
+      // раз модель о нём не спрашивают.
+      if (!creativeDecision || !(error instanceof RulesValidationError) || creativeDecision.disposition === 'fight') throw error
+      cornered = String(error.code ?? 'RULES_REJECTED').slice(0, 80)
+      commands = commandsForMoraleDecision(state, currentId, { disposition: 'fight' }, ordinaryCommands)
+      suffix = 'morale-cornered'
+      key = schedulerKey(campaignId, state, currentId, suffix)
+      plan = await commitPlan({
+        campaignId, eventStore, rulesEngine, loaded, commands, key,
+        recovery: { state, actorId: currentId, suffix },
+      })
+    }
     if (duplicateWithoutProgress(loaded, plan.committed)) return { state: loaded.state, state_version: loaded.state_version, turns, events }
     const { committed } = plan
     const planKey = plan.key ?? key
@@ -1700,10 +1719,12 @@ export async function runNpcTurnScheduler({
         disposition: creativeDecision.disposition,
         reaction: creativeDecision.reaction,
         provider: creativeDecision.provider,
+        ...(cornered ? { rejected: cornered, applied: 'fight' } : {}),
       } : null,
-      ...(creativeDecision ? {
-        tactic: creativeDecision.disposition === 'surrender' ? 'слом морали' : 'пытается спастись',
-      } : ordinaryTactic ?? {}),
+      ...(cornered ? { ...(ordinaryTactic ?? {}), tactic: 'загнан в угол' }
+        : creativeDecision ? {
+          tactic: creativeDecision.disposition === 'surrender' ? 'слом морали' : 'пытается спастись',
+        } : ordinaryTactic ?? {}),
       idempotency_key: planKey,
       state_version: committed.state_version,
     })
