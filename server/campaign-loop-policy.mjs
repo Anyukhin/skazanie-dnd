@@ -375,7 +375,11 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}, context
     ...(explicitEncounter ? ['request_encounter'] : []),
     ...(explicitTransition ? ['end_scene'] : []),
   ])].filter((type) => !blocked.has(type))
-  const candidates = allowed.length ? allowed : availability.types
+  // Все намерения фазы уже исчерпаны защитой от застоя (бой главы был,
+  // задание главы не закрыто): прежде брался весь список фазы, и Режиссёр
+  // повторял continue_exploration — «Пока ничего не меняется» по кругу (прогон
+  // Асстохана с моделью, 2026-10-05). Тогда он подсказывает следующий шаг.
+  const candidates = allowed.length ? allowed : blocked.has('offer_next_hook') ? availability.types : ['offer_next_hook']
   const proposedQuest = proposed.type === 'advance_quest_clock'
     ? (state.worldMemory?.quests ?? []).find((quest) => String(quest?.id ?? '') === String(proposed.quest_id ?? ''))
     : null
@@ -574,6 +578,29 @@ function graphLocation(graph, { locationId = '', name = '' } = {}) {
   if (byId) return byId
   const expected = nameKey(name)
   return expected ? graph.locations.find((location) => nameKey(location.name) === expected) ?? null : null
+}
+
+/**
+ * Куда вести отряд, когда Режиссёр закрывает сцену без названного места:
+ * соседняя точка карты мира по открытой дороге — сначала ещё не посещённая,
+ * затем ближайшая. Прежде место называлось заглушкой «След N»: ни игрок, ни
+ * рассказчик не знали, где они, а карта мира стояла на прежней точке (прогон
+ * Асстохана, 2026-10-05). `null` — карты мира нет или соседей нет.
+ */
+export function nextWorldMapDestination(state = {}) {
+  const graph = worldTravelGraph(state)
+  if (!graph) return null
+  const current = graphLocation(graph, { locationId: graph.currentLocationId, name: state.scene?.location })
+  if (!current) return null
+  const currentId = clean(current.id, 120)
+  const neighbours = graph.routes
+    .filter((route) => [clean(route.from, 120), clean(route.to, 120)].includes(currentId))
+    .map((route) => ({ route, location: graph.byId.get(clean(route.from, 120) === currentId ? clean(route.to, 120) : clean(route.from, 120)) }))
+    .filter((entry) => entry.location)
+    .sort((left, right) => Number(left.location.visited === true) - Number(right.location.visited === true)
+      || segmentDistance(graph, left.route) - segmentDistance(graph, right.route)
+      || clean(left.location.name, 180).localeCompare(clean(right.location.name, 180), 'ru'))
+  return clean(neighbours[0]?.location?.name, 180) || null
 }
 
 const routeEndpoints = (graph, route) => [

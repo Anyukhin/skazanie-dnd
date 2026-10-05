@@ -151,7 +151,9 @@ test('нарушенное обещание из AdvanceTime доходит до
   await new DirectorAgent({ llmClient: { completeJson: async (input) => {
     directorRequests.push(input)
     return { type: 'continue_exploration', reason: 'Сохранить причинную линию обещания.' }
-  } } }).choose({ state: response.authoritative_state, playerAction: 'Продолжить путь после задержки Марты' })
+  // «Продолжить путь…» — прямая просьба уйти, её решают игроки без модели
+  // (director-agent, 2026-10-05); здесь проверяется контекст для модели.
+  } } }).choose({ state: response.authoritative_state, playerAction: 'Обсуждаем, почему Марта задержалась' })
   assert.match(directorRequests[0].messages[1].content, /promise:late/u)
   assert.match(directorRequests[0].messages[1].content, /Марта принесёт карту к рассвету/u)
   assert.doesNotMatch(directorRequests[0].messages[1].content, /promise:private|Личная улика/u)
