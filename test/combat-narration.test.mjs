@@ -321,6 +321,13 @@ test('отдых после победы — одна строка за отря
   ], party)
   assert.equal(text, 'После победы отряд отдыхает 8 часов и восстанавливает силы: продолжительный отдых завершён.')
   assert.equal(hasCombatNarrationEvent([event('DowntimeResolved')]), true)
+  // После поражения без смертей — не «после победы» (прогон Асстохана, 2026-10-06).
+  const defeat = combatNarration([
+    { event_type: 'DowntimeResolved', actor_id: null, target_ids: ['ally', 'hero'], payload: {
+      kind: 'long_rest', duration_minutes: 720, participant_ids: ['ally', 'hero'], reason: 'post_defeat_recovery',
+    } },
+  ], party)
+  assert.equal(defeat, 'Отряд приходит в себя после поражения: противники ушли, герои отдыхают 12 часов и восстанавливают силы.')
 })
 
 test('награда встречи называет вещи, монеты и опыт только из события — MC-05', () => {

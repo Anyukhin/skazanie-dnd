@@ -76,7 +76,7 @@ const POST_VICTORY_REST_MINUTES = 480
 const POST_VICTORY_STABLE_RECOVERY_MINUTES = 240
 
 /** Причины `DowntimeResolved`, которые пишет политика `post_encounter_recovery`. */
-const POST_VICTORY_DOWNTIME_REASONS = new Set(['post_encounter_recovery', 'post_encounter_recovery_after_stabilisation'])
+const POST_VICTORY_DOWNTIME_REASONS = new Set(['post_encounter_recovery', 'post_encounter_recovery_after_stabilisation', 'post_defeat_recovery'])
 
 /** «1 час», «2 часа», «8 часов». */
 function hoursLabelRu(value) {
@@ -380,7 +380,10 @@ function tacticalNarrationLines(events, state) {
       if (line) meaningful.push(line)
     } else if (event.event_type === 'DowntimeResolved' && POST_VICTORY_DOWNTIME_REASONS.has(String(payload.reason ?? ''))) {
       const hours = hoursLabelRu((Number(payload.duration_minutes) || POST_VICTORY_REST_MINUTES) / 60)
-      meaningful.push(`После победы отряд отдыхает ${hours} и восстанавливает силы: продолжительный отдых завершён.`)
+      meaningful.push(String(payload.reason) === 'post_defeat_recovery'
+        // Поражение без смертей: победители ушли, отряд очнулся и отдохнул (autonomous-orchestrator).
+        ? `Отряд приходит в себя после поражения: противники ушли, герои отдыхают ${hours} и восстанавливают силы.`
+        : `После победы отряд отдыхает ${hours} и восстанавливает силы: продолжительный отдых завершён.`)
     } else if (event.event_type === 'CombatStarted') {
       meaningful.push(`Бой начался, инициатива определена для ${(event.target_ids ?? []).length} участников.`)
       // Бой открыт ударом из исследования. Отложенный удар обязан сказать о
