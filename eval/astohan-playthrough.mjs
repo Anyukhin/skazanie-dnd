@@ -571,7 +571,7 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
     }
     break
   }
-  classifyOutcome(action, final, expect)
+  classifyOutcome(action, final, expect, rolledCheck)
   await checkNarrationConsistency(action, final?.narration, rolledCheck)
   return { status: 200, body: final, steps }
 }
@@ -593,11 +593,15 @@ async function sayFollowUp(body, account, steps) {
 }
 
 const answersSeen = new Map()
-function classifyOutcome(action, answer, expect) {
+function classifyOutcome(action, answer, expect, rolledCheck = null) {
   if (!answer) return
   const text = String(answer.narration ?? '')
   const events = answer.mechanics ?? []
-  const deadEnd = DEAD_END.find((pattern) => pattern.test(text))
+  // После проваленного броска «не удалось понять, куда ведут следы» — честный
+  // исход проверки, а не «я не понял заявку» (прогон с моделью 2026-10-06).
+  const deadEnd = DEAD_END
+    .filter((pattern) => !(rolledCheck?.success === false && String(pattern) === String(/не удалось понять/iu)))
+    .find((pattern) => pattern.test(text))
   if (deadEnd) { stats.deadEnds += 1; finding('major', 'dead-end', `«${short(action, 90)}» → «${short(text, 220)}»`, { pattern: String(deadEnd) }) }
   else if (!text.trim() && !events.length && expect === 'outcome') { stats.deadEnds += 1; finding('major', 'silent', `«${short(action, 90)}»: ни текста, ни событий`) }
   else if (expect === 'outcome' && text.trim().length < 40 && !events.some((event) => /Check|Attack|Damage|Moved/u.test(event.event_type))) {
@@ -1234,7 +1238,15 @@ function jsonPathOf(value, needle, path = 'state') {
 }
 
 async function checkGuestProjection(when) {
-  const guestState = await room(accounts.guest)
+  const fullGuestState = await room(accounts.guest)
+  // Тайну, которую герой узнал сам (собеседник раскрыл её ему — событие
+  // KnowledgeRevealed), проекция законно показывает этому игроку вместе с
+  // пометкой gm_secret. Утечка — только то, чего он не узнавал (прогон с
+  // моделью 2026-10-06: Мира Венн рассказала Ильве о сборщике налогов).
+  const knownFactIds = new Set((fullGuestState.worldMemory?.knowledge_revealed ?? []).map((entry) => String(entry.fact_id)))
+  const guestState = knownFactIds.size
+    ? { ...fullGuestState, worldMemory: { ...fullGuestState.worldMemory, facts: (fullGuestState.worldMemory?.facts ?? []).filter((fact) => !knownFactIds.has(String(fact?.id))) } }
+    : fullGuestState
   const json = JSON.stringify(guestState)
   const leaks = []
   // Найденная заготовка законно видна обоим: её открывает факт мира, видимый
