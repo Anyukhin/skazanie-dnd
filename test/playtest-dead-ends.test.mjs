@@ -24,7 +24,9 @@ const hero = {
   inventory: [], x: 3, y: 2,
 }
 
-const campaign = () => new CampaignBootstrapper().create({ code: 'DEAD-ENDS', worldTemplateId: corpus.world_template_id, players: [hero] })
+// Строка может указать свой мир: тупики «Асстоханских равнин» проверяются на
+// их собственной кампании, остальные — на мире корпуса по умолчанию.
+const campaign = (worldTemplateId = corpus.world_template_id) => new CampaignBootstrapper().create({ code: 'DEAD-ENDS', worldTemplateId, players: [hero] })
 
 const checks = {
   async social_target(state, entry) {
@@ -82,6 +84,7 @@ test('корпус живых тупиков: у каждой строки из�
   for (const entry of corpus.cases) {
     assert.ok(checks[entry.kind], `${entry.id}: неизвестный вид «${entry.kind}»`)
     assert.ok(entry.source, `${entry.id}: без происхождения`)
+    if (entry.world_template_id) assert.match(entry.world_template_id, /^[a-z0-9-]+$/u, `${entry.id}: мир задаётся id шаблона`)
     assert.equal(ids.has(entry.id), false, `${entry.id}: повтор`)
     ids.add(entry.id)
   }
@@ -89,6 +92,6 @@ test('корпус живых тупиков: у каждой строки из�
 
 for (const entry of corpus.cases) {
   test(`${entry.id}: ${entry.text ?? entry.destination}`, async () => {
-    await checks[entry.kind](await campaign(), entry)
+    await checks[entry.kind](await campaign(entry.world_template_id), entry)
   })
 }

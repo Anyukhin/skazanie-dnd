@@ -329,6 +329,19 @@ test('fallback отвечает одним совпавшим предложен
   assert.match(again.reply, /не сообщает ничего нового/u)
 })
 
+// Прогон Асстохана 2026-10-05: длинный пролог обрезан пределом длины, и хвост
+// «…когда архивист п» звучал ответом короля как целое предложение.
+test('fallback не отвечает оборванным хвостом длинного факта', async () => {
+  const state = prologueState()
+  // Факт собеседника режется до 500 символов; 440 символов вступления ставят
+  // границу посреди фразы о колоколе.
+  state.worldMemory.facts[0].summary = `${'Трактир гудит после ярмарки, и никто не слышит соседа. '.repeat(8)}Удар колокола из погреба слышен всем, и все кружки в зале звенят ему в ответ.`
+  const result = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-cut' })
+  assert.equal(result.provider, 'deterministic-social-fallback')
+  assert.match(result.reply, /не сообщает ничего нового|[.!?…]»$/u, result.reply)
+  assert.doesNotMatch(result.reply, /колокол[^»]*[^.!?…]»$/u, 'обрубок фразы не становится репликой')
+})
+
 test('fallback подтверждает публичную зацепку о себе, если спросили именно о ней', async () => {
   const state = dialogueState()
   state.worldMap = hookedWorldMap()

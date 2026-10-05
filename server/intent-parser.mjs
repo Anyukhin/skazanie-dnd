@@ -337,9 +337,30 @@ function roleHeadScore(lowerMessage, alias) {
   return qualifiers.some((word) => messageWords.some((candidate) => sameRoleWord(word, candidate))) ? 0.8 : 0.6
 }
 
+/**
+ * Обращение по титулу вместо имени: «Ваше величество, какое поручение…» —
+ * реплика королю, хотя ни имени, ни роли в ней нет. Без этого фраза уходила в
+ * импровизацию, а целью становился тот, о ком спрашивают (прогон Асстохана
+ * 2026-10-04: «…что известно о Саргате?» — цель Саргат).
+ */
+const HONORIFIC_ADDRESSES = Object.freeze([
+  [/^ваш[ае]\s+(?:королевское\s+)?величеств/iu, /(?<![\p{L}\p{M}])(?:корол|королев|цар|импер|monarch|king|queen)/iu],
+  [/^ваш[ае]\s+высочеств/iu, /(?<![\p{L}\p{M}])(?:принц|принцесс|княж|наследни|prince|princess)/iu],
+  [/^ваш[ае]\s+(?:светлость|сиятельство)/iu, /(?<![\p{L}\p{M}])(?:герцог|граф|князь|княгин|лорд|леди|duke|count|lord|lady)/iu],
+])
+
+function honorificAddressedActors(address, visibleState) {
+  const role = HONORIFIC_ADDRESSES.find(([pattern]) => pattern.test(address.trim()))?.[1]
+  if (!role) return []
+  return presentSocialActors(visibleState).filter((actor) => [actor.name, actor.character, actor.role, ...(Array.isArray(actor.tags) ? actor.tags : [])]
+    .some((value) => role.test(String(value ?? ''))))
+}
+
 function directlyAddressedActors(message, visibleState) {
   const address = /^([\p{L}\p{M} -]{2,80})[:,]\s*\S/iu.exec(message)?.[1]
   if (!address) return []
+  const honorific = honorificAddressedActors(address, visibleState)
+  if (honorific.length) return honorific
   const words = wordTokens(address)
   return presentSocialActors(visibleState).filter(actor => {
     const names = [...socialAliasesFor(actor), wordTokens(actor.name)[0]].filter(Boolean)
@@ -386,6 +407,21 @@ function boundedSocialSkill(skill, text) {
   return skill
 }
 
+/**
+ * Наблюдение за человеком в сцене — чтение его реакции, то есть
+ * Проницательность к собеседнику, а не свободная импровизация: «Наблюдаю за
+ * королём Аресом, когда маршал произносит имя Вулканиса» дважды подряд
+ * получало «я не понял способ действия» (прогон Асстохана 2026-10-04).
+ * Человек должен стоять сразу за глаголом: «наблюдаю за воротами, пока
+ * стражник отвернулся» — это Внимательность к воротам, а не к стражнику.
+ */
+const WATCH_PERSON_PATTERN = /(?<![\p{L}\p{M}])(?:наблюда\p{L}*|присматрива\p{L}*|приглядыва\p{L}*|всматрива\p{L}*|вглядыва\p{L}*|слежу|следим|следить)(?:\s+(?:внимательно|пристально|молча|украдкой|исподтишка))?\s+(?:за|к|в)\s+([^,.!?;:]{2,60})/iu
+
+function watchedSocialActors(text, visibleState) {
+  const watched = WATCH_PERSON_PATTERN.exec(text)?.[1]
+  return watched ? resolvePresentSocialActors(watched, visibleState) : []
+}
+
 function inferApproach(message) {
   return APPROACH_PATTERNS.find(([, pattern]) => pattern.test(message))?.[0] ?? 'unspecified'
 }
@@ -399,7 +435,8 @@ export class IntentParser {
       free_action_kind: null,
     }
     const operativeText = affirmativeActionText(text)
-    const socialSkill = boundedSocialSkill(classifyNpcSocialCheck(text), text)
+    const watchedActors = watchedSocialActors(operativeText, visibleState)
+    const socialSkill = boundedSocialSkill(classifyNpcSocialCheck(text), text) ?? (watchedActors.length ? 'insight' : null)
     const freeActionKind = classifyFreeActionKind(operativeText)
     const addressedActors = directlyAddressedActors(text, visibleState)
     const spoken = addressedActors.length > 0 || EXPLICIT_NPC_SPEECH_PATTERN.test(text) || SPOKEN_OPENING_PATTERN.test(text)
@@ -434,7 +471,9 @@ export class IntentParser {
       && !EXPLICIT_CHECK_PATTERN.test(text)
       ? 'improvised_action'
       : detectedIntent
-    const socialTargets = intent === 'social' ? addressedActors.length ? addressedActors : resolvePresentSocialActors(text, visibleState) : []
+    const socialTargets = intent === 'social'
+      ? addressedActors.length ? addressedActors : watchedActors.length ? watchedActors : resolvePresentSocialActors(text, visibleState)
+      : []
     const mentioned = intent === 'social' && socialTargets.length ? socialTargets : mentionedActors(text, visibleState)
     const targets = mentioned.map((actor) => String(actor.id)).filter((id) => id !== String(playerId ?? ''))
     const requiresTarget = intent === 'attack' || intent === 'damage' || intent === 'approach_attack' || intent === 'compound_maneuver'
