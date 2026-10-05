@@ -1,0 +1,440 @@
+/* Стиль разделов «Таверна: кожа, пергамент и золото» (холст «Редизайн
+   „Сказания“», ряды 5–6, 2026-10-05). Действует только на страницах вне
+   игровой комнаты: журнал, отряд, вещи, опции, админ, мир, стенд. Корни этих
+   страниц — `.section-page`, `.world-map-page`, `.combat-lab-page`; у стола
+   корень `.game-area`, и сюда он не попадает намеренно: его оформление
+   владелец оставил как есть.
+
+   Краски выводятся из токенов палитры (hud-palette.css): золото — из `--acc`
+   и `--acc2`, кожа — из `--bg`, поэтому все восемь палитр получают то же
+   тиснение. Пергамент и воск заданы числом: это предметы на столе, а не
+   поверхность интерфейса, и в любой палитре они выглядят одинаково.
+
+   Файл подключается последним (main.tsx), чтобы переопределять базовые
+   правила тех же селекторов без роста специфичности. */
+
+.section-page, .world-map-page, .combat-lab-page {
+  --rt-gold: var(--acc2);
+  --rt-gold-deep: var(--acc);
+  --rt-gold-hi: color-mix(in srgb, var(--acc2) 72%, #fff);
+  --rt-gold-lo: color-mix(in srgb, var(--acc) 65%, #000);
+  --rt-line: color-mix(in srgb, var(--acc) 55%, transparent);
+  --rt-line-soft: color-mix(in srgb, var(--acc) 28%, transparent);
+  --rt-card-top: color-mix(in srgb, var(--raise) 86%, var(--acc) 14%);
+  --rt-card-bottom: color-mix(in srgb, var(--panel) 92%, var(--acc) 8%);
+  --rt-well: color-mix(in srgb, var(--well) 80%, var(--bg));
+  --rt-parch: #e9dcc0;
+  --rt-parch-ink: #2b2117;
+  --rt-parch-muted: #6f5636;
+  --rt-parch-line: rgba(90, 60, 20, .28);
+  --rt-wax: #8f2a1f;
+  --rt-emboss: inset 0 0 0 1px rgba(0, 0, 0, .7), inset 0 0 0 2px color-mix(in srgb, var(--acc2) 18%, transparent), inset 0 0 40px rgba(0, 0, 0, .28), 0 12px 30px rgba(0, 0, 0, .45);
+  --rt-gild: linear-gradient(180deg, var(--rt-gold-hi) 0%, var(--rt-gold) 40%, var(--rt-gold-deep) 70%, var(--rt-gold) 100%);
+  --rt-gold-button: linear-gradient(180deg, var(--rt-gold-hi), var(--rt-gold) 55%, var(--rt-gold-deep));
+  --rt-corner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.4' stroke-linecap='round' d='M1 39V12C1 6 6 1 12 1h27M6 30c0-8 4-12 10-12-4 2-6 6-5 9 1 2 4 2 5 0 1-3-2-5-4-4M30 6c-8 0-12 4-12 10 2-4 6-6 9-5 2 1 2 4 0 5-3 1-5-2-4-4'/%3E%3C/svg%3E");
+  --page-well: var(--rt-well);
+  --page-card: var(--rt-card-bottom);
+}
+
+/* ---------------- кожа: фон страниц ---------------- */
+
+.section-page, .world-map-page, .combat-lab-page, .inventory-page, .settings-page, .admin-page {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(rgba(255, 255, 255, .028) 1px, transparent 1.2px),
+    radial-gradient(ellipse at 18% 0%, color-mix(in srgb, var(--acc) 12%, transparent), transparent 55%),
+    radial-gradient(ellipse at 92% 100%, color-mix(in srgb, var(--hp) 10%, transparent), transparent 50%);
+  background-size: 3px 3px, auto, auto;
+}
+
+/* ---------------- заголовки: золото и разделитель с ромбом ---------------- */
+
+.page-header > span, .party-eyebrow, .world-map-header > div:first-child > span,
+.inventory-head > div:first-child > span, .quest-column header, .chapter-list > span,
+.location-kind small, .route-card > header, .route-legend strong {
+  color: var(--rt-gold);
+  font-family: var(--f-label);
+  letter-spacing: .16em;
+  text-transform: none;
+}
+
+.page-header h1, .party-page-header h1, .world-map-header h1, .inventory-head h1,
+.world-map-inspector h2, .combat-lab-page h1 {
+  background: var(--rt-gild);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-family: var(--f-display);
+  font-weight: 700;
+  text-shadow: none;
+}
+
+.page-header, .party-page-header, .world-map-header, .inventory-head {
+  position: relative;
+  padding-bottom: 14px;
+}
+
+.page-header::after, .party-page-header::after, .world-map-header::after, .inventory-head::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--rt-gold) 0%, var(--rt-line-soft) 60%, transparent 100%);
+}
+
+.page-header::before, .party-page-header::before, .world-map-header::before, .inventory-head::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--rt-gold);
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px var(--rt-gold);
+}
+
+.page-header { max-width: none; }
+
+/* ---------------- тиснёная рамка с завитками по углам ---------------- */
+
+.settings-card, .admin-card, .party-hero-card, .party-summary-card, .party-invite-card,
+.world-map-inspector, .campaign-journal-page .journal-stats, .inventory-summary,
+.combat-lab-page fieldset, .combat-lab-observer-runbar {
+  position: relative;
+  border: 1px solid var(--rt-line);
+  border-radius: 6px;
+  background: linear-gradient(180deg, var(--rt-card-top), var(--rt-card-bottom));
+  box-shadow: var(--rt-emboss);
+}
+
+.settings-card::before, .settings-card::after,
+.admin-card::before, .admin-card::after,
+.party-hero-card::before, .party-hero-card::after,
+.party-summary-card::before, .party-summary-card::after,
+.party-invite-card::before, .party-invite-card::after,
+.world-map-inspector::before, .world-map-inspector::after {
+  content: '';
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  background-color: var(--rt-gold);
+  -webkit-mask: var(--rt-corner) center / contain no-repeat;
+  mask: var(--rt-corner) center / contain no-repeat;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.settings-card::before, .admin-card::before, .party-hero-card::before,
+.party-summary-card::before, .party-invite-card::before, .world-map-inspector::before { left: 4px; top: 4px; }
+
+.settings-card::after, .admin-card::after, .party-hero-card::after,
+.party-summary-card::after, .party-invite-card::after, .world-map-inspector::after { right: 4px; bottom: 4px; transform: rotate(180deg); }
+
+.settings-card, .admin-card { padding: 22px; }
+.party-hero-card { padding: 22px; border-radius: 6px; transition: transform .22s cubic-bezier(.2, .8, .2, 1), box-shadow .22s; }
+.party-hero-card:hover { transform: translateY(-3px); }
+.party-hero-card.selected { border-color: var(--rt-gold); box-shadow: var(--rt-emboss), 0 0 18px color-mix(in srgb, var(--acc) 35%, transparent); }
+.party-hero-card.downed { border-color: color-mix(in srgb, var(--hp) 60%, transparent); }
+.party-hero-card.downed::before, .party-hero-card.downed::after { background-color: color-mix(in srgb, var(--hp) 70%, var(--text)); }
+.party-invite-card { border-style: dashed; background: rgba(0, 0, 0, .2); box-shadow: none; }
+.party-invite-card::before, .party-invite-card::after { opacity: .55; }
+
+/* Статистика журнала: одна тиснёная полоса вместо трёх отдельных плиток. */
+.campaign-journal-page .journal-stats { gap: 0; padding: 6px 10px; }
+.campaign-journal-page .journal-stats > div { padding: 10px 22px; border-right: 1px solid var(--rt-line-soft); }
+.campaign-journal-page .journal-stats > div:last-child { border-right: 0; }
+.journal-stats > div { color: var(--rt-gold); }
+.journal-stats b { background: var(--rt-gild); -webkit-background-clip: text; background-clip: text; color: transparent; font: 700 var(--fs-3xl) var(--f-display); }
+.journal-stats small { color: var(--text2); }
+
+/* ---------------- кнопки: кованые и золотые ---------------- */
+
+.party-button, .party-hero-actions button, .travel-button, .quest-abandon-button, .admin-save,
+.admin-card-head button, .inventory-toolbar button, .item-actions button, .character-actions-bar button,
+.combat-lab-page button:not(.board-cell):not(.combat-lab-modes button), .world-map-location-inspector .city-overview-open,
+.settings-card button:not(.setting-row):not(.ui-scale-value):not(.role-button), .world-map-tools button {
+  border: 1px solid var(--rt-line);
+  border-radius: 4px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--raise) 80%, var(--acc) 20%), var(--panel));
+  color: var(--text);
+  font-family: var(--f-label);
+  letter-spacing: .08em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(0, 0, 0, .55), 0 4px 10px rgba(0, 0, 0, .35);
+  transition: transform .12s, box-shadow .18s, border-color .18s;
+}
+
+.party-button:hover:not(:disabled), .party-hero-actions button:hover:not(:disabled), .travel-button:hover:not(:disabled),
+.quest-abandon-button:hover:not(:disabled), .admin-save:hover, .admin-card-head button:hover, .inventory-toolbar button:hover,
+.item-actions button:hover:not(:disabled), .character-actions-bar button:hover:not(:disabled),
+.combat-lab-page button:not(.board-cell):not(.combat-lab-modes button):hover:not(:disabled) {
+  border-color: var(--rt-gold);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--raise) 72%, var(--acc) 28%), var(--panel));
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1), inset 0 0 0 1px rgba(0, 0, 0, .55), 0 8px 18px rgba(0, 0, 0, .45), 0 0 14px color-mix(in srgb, var(--acc) 30%, transparent);
+}
+
+.party-button.primary, .party-hero-actions button.primary, .travel-button, .admin-save, .item-actions button.primary,
+.combat-lab-page button.combat-lab-primary, .world-map-location-inspector .city-overview-open {
+  background: var(--rt-gold-button);
+  border-color: var(--rt-gold-hi);
+  color: var(--acc-ink);
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .3);
+}
+
+.party-button.primary:hover:not(:disabled), .party-hero-actions button.primary:hover:not(:disabled), .travel-button:hover:not(:disabled),
+.admin-save:hover, .item-actions button.primary:hover:not(:disabled), .combat-lab-page button.combat-lab-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rt-gold-hi) 85%, #fff), var(--rt-gold) 55%, var(--rt-gold-deep));
+}
+
+.party-hero-actions button.quiet { background: transparent; box-shadow: none; border-color: var(--rt-line-soft); color: var(--text2); }
+.combat-lab-page button:not(.board-cell):disabled { transform: none; box-shadow: none; }
+
+/* Поля ввода: тёмная чаша с внутренней тенью. */
+.admin-world input, .admin-world textarea, .inventory-toolbar input, .combat-lab-page :is(select, input[type=number], input[type=search]),
+.ui-scale-setting select, .inventory-recipient select, .item-use-target select, .item-charge-spend select {
+  border: 1px solid var(--rt-line-soft);
+  border-radius: 4px;
+  background: var(--rt-well);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, .6);
+}
+
+.admin-world input:focus, .admin-world textarea:focus, .inventory-toolbar input:focus, .ui-scale-setting select:focus {
+  border-color: var(--rt-gold);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, .6), 0 0 0 3px color-mix(in srgb, var(--acc) 20%, transparent);
+}
+
+/* ---------------- отряд ---------------- */
+
+.party-hero-face {
+  width: 88px;
+  height: 88px;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--rt-gold), 0 0 0 6px var(--bg), 0 0 0 7px color-mix(in srgb, var(--acc2) 35%, transparent), 0 6px 14px rgba(0, 0, 0, .6);
+}
+
+.party-hero-face::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -11px;
+  width: 9px;
+  height: 9px;
+  background: var(--rt-gold);
+  transform: translateX(-50%) rotate(45deg);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.party-hero-card.downed .party-hero-face { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px color-mix(in srgb, var(--hp) 75%, var(--text)), 0 0 0 6px var(--bg), 0 6px 14px rgba(0, 0, 0, .6); }
+.party-hero-head h2 { background: var(--rt-gild); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.party-hero-head h2 svg { color: var(--rt-gold); }
+.party-hero-card.downed .party-hero-head h2 { background: none; color: color-mix(in srgb, var(--hp) 70%, var(--text)); }
+
+.party-hp-track {
+  height: 12px;
+  border: 1px solid var(--rt-line);
+  border-radius: 2px;
+  background: var(--rt-well);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .8), inset 0 2px 4px rgba(0, 0, 0, .6);
+}
+
+.party-hp-track i { background: linear-gradient(180deg, color-mix(in srgb, var(--hp) 75%, #fff), var(--hp) 50%, color-mix(in srgb, var(--hp) 65%, #000)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); transition: width .48s cubic-bezier(.2, .8, .2, 1); }
+.party-hp-track i.temp { background: linear-gradient(180deg, color-mix(in srgb, var(--hp-temp, var(--bonus)) 75%, #fff), var(--hp-temp, var(--bonus))); }
+
+.party-stats > div, .party-abilities > div {
+  border: 1px solid var(--rt-line-soft);
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--rt-well), var(--panel));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .04);
+}
+
+.party-abilities dd, .party-stats dd { color: var(--rt-gold); font-family: var(--f-display); }
+.party-abilities dt { font-family: var(--f-label); letter-spacing: .1em; text-transform: none; }
+.party-conditions { padding: 2px 8px; border: 1px solid color-mix(in srgb, var(--rage) 60%, transparent); border-radius: 3px; background: rgba(0, 0, 0, .3); color: var(--rage); font: 700 var(--fs-xs) var(--f-label); letter-spacing: .08em; }
+.party-invite-face { border: 0; box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--rt-line); border-radius: 50%; }
+
+/* ---------------- журнал: пергаментные страницы и восковые печати ---------------- */
+
+.campaign-journal-page .journal-feed {
+  max-width: none;
+  padding: clamp(18px, 2vw, 30px) clamp(20px, 2.4vw, 36px);
+  color: var(--rt-parch-ink);
+  background-color: var(--rt-parch);
+  background-image:
+    radial-gradient(ellipse at 10% 0%, rgba(140, 100, 40, .22), transparent 45%),
+    radial-gradient(ellipse at 95% 90%, rgba(140, 100, 40, .2), transparent 40%),
+    radial-gradient(rgba(90, 60, 20, .06) 1px, transparent 1.2px);
+  background-size: auto, auto, 4px 4px;
+  border: 1px solid #a68a5c;
+  box-shadow: inset 0 0 36px rgba(110, 80, 30, .3), 0 10px 24px rgba(0, 0, 0, .5);
+}
+
+.campaign-journal-page .journal-feed::before { left: calc(clamp(20px, 2.4vw, 36px) + 15px); top: calc(clamp(18px, 2vw, 30px) + 12px); bottom: calc(clamp(18px, 2vw, 30px) + 12px); border-left-color: var(--rt-parch-line); }
+.campaign-journal-page .journal-entry p, .campaign-journal-page .combat-journal-entry p { color: var(--rt-parch-ink); }
+.campaign-journal-page .journal-entry small, .campaign-journal-page .journal-entry span, .campaign-journal-page .journal-entry strong,
+.campaign-journal-page .combat-journal-entry small, .campaign-journal-page .combat-journal-entry span, .campaign-journal-page .combat-journal-entry strong { color: var(--rt-parch-muted); }
+.campaign-journal-page .journal-entry b, .campaign-journal-page .combat-journal-entry b { color: var(--rt-parch-ink); }
+.campaign-journal-page .journal-entry.narrator p::first-letter { float: left; padding: 6px 8px 0 0; color: var(--rt-wax); font: 700 3.1em/.78 var(--f-display); }
+.campaign-journal-page .journal-marker { border: 1px solid #5a3e1a; background: radial-gradient(circle at 38% 32%, #f0cd8c, #b9833c 60%, #7a5220); color: #3a2408; box-shadow: 0 2px 4px rgba(0, 0, 0, .35); }
+.campaign-journal-page .journal-entry.player .journal-marker { background: radial-gradient(circle at 38% 32%, #8f8478, #4d463e 60%, #2a251f); color: #ece3d5; }
+.campaign-journal-page .journal-entry.narrator .journal-marker { background: radial-gradient(circle at 38% 32%, #d0564a, #8f2a1f 60%, #5e1810); color: #f3d2c8; }
+.campaign-journal-page .compact-roll { border-color: var(--rt-parch-line); color: var(--rt-parch-muted); }
+.campaign-journal-page .compact-roll.success { color: #2d5a50; border-color: rgba(45, 90, 80, .45); }
+
+.chapter-list button { border-radius: 4px; }
+.chapter-list button.active { border-color: var(--rt-line); background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 22%, transparent), color-mix(in srgb, var(--acc) 8%, transparent)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+.chapter-list i { color: var(--rt-gold); }
+
+/* Задания — листки пергамента с печатью слева: красный воск у текущей цели,
+   бирюзовый у перенесённой из прошлой арки, золотой у остальных. */
+.campaign-journal-page .quest-card {
+  position: relative;
+  margin: 0 0 12px;
+  padding: 14px 16px 14px 70px;
+  min-height: 70px;
+  border: 1px solid #a68a5c;
+  border-radius: 3px;
+  color: var(--rt-parch-ink);
+  background-color: var(--rt-parch);
+  background-image: radial-gradient(ellipse at 10% 0%, rgba(140, 100, 40, .2), transparent 45%), radial-gradient(rgba(90, 60, 20, .06) 1px, transparent 1.2px);
+  background-size: auto, 4px 4px;
+  box-shadow: inset 0 0 24px rgba(110, 80, 30, .25), 0 8px 18px rgba(0, 0, 0, .45);
+  transition: transform .18s, box-shadow .18s;
+}
+
+.campaign-journal-page .quest-card:hover { transform: translateY(-2px); box-shadow: inset 0 0 24px rgba(110, 80, 30, .25), 0 14px 26px rgba(0, 0, 0, .5); }
+.campaign-journal-page .quest-card:last-child { margin-bottom: 0; }
+
+.campaign-journal-page .quest-card::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #f0cd8c, #b9833c 60%, #7a5220);
+  box-shadow: inset 0 0 0 3px rgba(0, 0, 0, .22), inset 0 0 0 5px rgba(255, 255, 255, .1), 0 3px 8px rgba(0, 0, 0, .5);
+}
+
+.campaign-journal-page .quest-card.current::before { background: radial-gradient(circle at 38% 32%, #d0564a, #8f2a1f 60%, #5e1810); }
+.campaign-journal-page .quest-card.carried::before { background: radial-gradient(circle at 38% 32%, #9ed0c3, #4f8a7d 60%, #2d5a50); }
+.campaign-journal-page .quest-card.thread::before, .campaign-journal-page .quest-card.summary::before { background: radial-gradient(circle at 38% 32%, #8f8478, #4d463e 60%, #2a251f); }
+.campaign-journal-page .quest-card b, .campaign-journal-page .quest-card.carried > b { color: var(--rt-parch-ink); font-family: var(--f-display); font-weight: 700; font-size: var(--fs-2xl); }
+.campaign-journal-page .quest-card p, .campaign-journal-page .quest-card li, .campaign-journal-page .quest-card ul { color: #4a3b2a; }
+.campaign-journal-page .quest-card .quest-tag, .campaign-journal-page .quest-card.carried .quest-tag { border: 1px solid rgba(143, 42, 31, .5); border-radius: 2px; background: transparent; color: var(--rt-wax); font-family: var(--f-label); letter-spacing: .12em; }
+.campaign-journal-page .quest-card.carried .quest-tag { border-color: rgba(45, 90, 80, .5); color: #2d5a50; }
+.campaign-journal-page .quest-card .quest-clock { color: var(--rt-parch-muted); }
+.campaign-journal-page .quest-abandon-button { margin-top: 10px; }
+
+/* ---------------- мир ---------------- */
+
+.world-map-stats span {
+  height: 28px;
+  border: 1px solid var(--rt-line-soft);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--rt-card-top), var(--rt-card-bottom));
+  color: var(--text2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+.world-map-frame { border-color: #5a3e1a; box-shadow: inset 0 0 0 4px rgba(55, 39, 23, .22), 0 0 0 1px var(--rt-line-soft), 0 12px 30px rgba(0, 0, 0, .45); }
+.world-map-inspector { padding: 22px; background: linear-gradient(180deg, var(--rt-card-top), var(--rt-card-bottom)); }
+.world-map-inspector h2 { font-size: var(--fs-4xl); }
+.location-kind > span { border: 0; color: #3a2408; background: radial-gradient(circle at 38% 32%, #f0cd8c, #b9833c 60%, #7a5220); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .22), 0 3px 8px rgba(0, 0, 0, .5); }
+.route-chain, .route-card dl > div, .location-history, .location-hooks { border: 1px solid var(--rt-line-soft); border-radius: 3px; background: rgba(0, 0, 0, .22); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .4); }
+.route-card dd { color: var(--text); }
+.route-chain i { color: var(--rt-gold); }
+.world-map-tools { border-color: #5a3e1a; background: rgba(205, 188, 145, .92); box-shadow: 0 4px 12px rgba(55, 34, 18, .4); }
+.world-map-legend { border-color: #5a3e1a; background: rgba(205, 188, 145, .92); }
+
+/* ---------------- вещи ---------------- */
+
+.inventory-card {
+  border: 1px solid var(--rt-line-soft);
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--rt-card-top), var(--rt-card-bottom));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .6), inset 0 0 0 2px color-mix(in srgb, var(--acc2) 10%, transparent), 0 3px 6px rgba(0, 0, 0, .45);
+  transition: transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .18s, border-color .18s;
+}
+
+.inventory-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--rt-gold);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .6), inset 0 0 0 2px color-mix(in srgb, var(--acc2) 20%, transparent), 0 10px 22px rgba(0, 0, 0, .5), 0 0 16px color-mix(in srgb, var(--acc) 40%, transparent);
+}
+
+.inventory-card--equipped { border-color: var(--rt-gold); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .6), inset 0 0 0 2px color-mix(in srgb, var(--acc2) 25%, transparent), 0 0 0 1px color-mix(in srgb, var(--acc2) 30%, transparent), 0 3px 6px rgba(0, 0, 0, .45); }
+.inventory-categories button { font-family: var(--f-label); letter-spacing: .08em; }
+.inventory-categories button.active { border-bottom-color: var(--rt-gold); color: var(--rt-gold); }
+.inventory-toolbar button { width: auto; min-width: 34px; color: var(--rt-gold); }
+.character-actions-bar { border: 1px solid var(--rt-line-soft); border-radius: 4px; background: linear-gradient(180deg, var(--rt-card-top), var(--rt-card-bottom)); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .55); }
+
+/* ---------------- опции ---------------- */
+
+.settings-card-title { color: var(--rt-gold); border-bottom-color: var(--rt-line-soft); }
+.settings-card-title b { background: var(--rt-gild); -webkit-background-clip: text; background-clip: text; color: transparent; font: 700 var(--fs-2xl) var(--f-display); }
+.setting-row { border-bottom-color: var(--rt-line-soft); }
+.setting-icon { border: 1px solid var(--rt-line-soft); border-radius: 3px; background: linear-gradient(180deg, var(--rt-well), var(--panel)); color: var(--rt-gold); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .5); }
+.setting-row > i { width: 46px; height: 26px; border-radius: 13px; border: 1px solid var(--rt-line); background: linear-gradient(180deg, var(--rt-well), var(--raise)); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .6); }
+.setting-row > i u { top: 3px; left: 3px; width: 18px; height: 18px; background: radial-gradient(circle at 35% 30%, var(--text2), var(--spent)); box-shadow: 0 1px 3px rgba(0, 0, 0, .6); }
+.setting-row > i.on { background: linear-gradient(180deg, var(--rt-well), var(--raise)); border-color: var(--rt-gold); }
+.setting-row > i.on u { left: 23px; background: radial-gradient(circle at 35% 30%, var(--rt-gold-hi), var(--rt-gold-deep)); }
+.ui-scale-setting { border-bottom-color: var(--rt-line-soft); }
+.ui-scale-value { border-color: var(--rt-line); background: var(--rt-well); color: var(--rt-gold); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .5); }
+.ui-scale-range { accent-color: var(--rt-gold); }
+
+/* ---------------- админ и стенд ---------------- */
+
+.admin-card-head { border-bottom-color: var(--rt-line-soft); }
+.admin-card-head > span { color: var(--rt-gold); }
+.admin-card-head b { background: var(--rt-gild); -webkit-background-clip: text; background-clip: text; color: transparent; font: 700 var(--fs-2xl) var(--f-display); }
+.admin-user { border: 1px solid var(--rt-line-soft); border-radius: 3px; background: rgba(0, 0, 0, .22); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .4); }
+.admin-error { border-color: color-mix(in srgb, var(--hp) 50%, transparent); border-radius: 3px; }
+.combat-lab-page fieldset { padding: 16px 18px; }
+.combat-lab-page legend { padding: 0 10px; color: var(--rt-gold); font-family: var(--f-display); }
+.combat-lab-page .combat-lab-modes button[aria-pressed=true] { border-bottom-color: var(--rt-gold); color: var(--rt-gold); }
+
+/* ---------------- движение ----------------
+   Карточки проступают при входе в раздел, лесенкой по 60 мс. Пульсаций
+   здесь нет: всё, что ждёт игрока, живёт на столе. */
+
+@keyframes rt-card-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes rt-ink-in { from { opacity: 0; filter: blur(4px); transform: translateY(6px); } to { opacity: 1; filter: none; transform: none; } }
+
+.settings-card, .admin-card, .party-hero-card, .party-summary-card, .party-invite-card, .inventory-card, .world-map-inspector {
+  animation: rt-card-in .4s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.campaign-journal-page .quest-card, .campaign-journal-page .journal-entry, .campaign-journal-page .combat-journal-entry {
+  animation: rt-ink-in .5s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+:is(.settings-card, .admin-card, .party-hero-card, .party-summary-card, .inventory-card, .quest-card, .journal-entry):nth-child(2) { animation-delay: .06s; }
+:is(.settings-card, .admin-card, .party-hero-card, .party-summary-card, .inventory-card, .quest-card, .journal-entry):nth-child(3) { animation-delay: .12s; }
+:is(.settings-card, .admin-card, .party-hero-card, .party-summary-card, .inventory-card, .quest-card, .journal-entry):nth-child(4) { animation-delay: .18s; }
+:is(.settings-card, .admin-card, .party-hero-card, .party-summary-card, .inventory-card, .quest-card, .journal-entry):nth-child(n + 5) { animation-delay: .24s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-card, .admin-card, .party-hero-card, .party-summary-card, .party-invite-card, .inventory-card, .world-map-inspector,
+  .campaign-journal-page .quest-card, .campaign-journal-page .journal-entry, .campaign-journal-page .combat-journal-entry { animation: none; }
+  .party-hero-card:hover, .inventory-card:hover, .campaign-journal-page .quest-card:hover { transform: none; }
+}
+
+/* Светлая палитра «Пергамент»: золото темнее фона, поэтому тиснение и блики
+   переворачиваются, а страницы журнала остаются теми же листами. */
+:root[data-pal="parchment"] .section-page, :root[data-pal="parchment"] .world-map-page, :root[data-pal="parchment"] .combat-lab-page {
+  --rt-gold-hi: color-mix(in srgb, var(--acc2) 60%, #fff);
+  --rt-emboss: inset 0 0 0 1px rgba(255, 255, 255, .5), inset 0 0 0 2px color-mix(in srgb, var(--acc) 18%, transparent), 0 10px 26px rgba(74, 52, 30, .22);
+  --rt-well: color-mix(in srgb, var(--well) 85%, var(--acc));
+}
+
+@media (max-width: 760px) {
+  .settings-card, .admin-card, .party-hero-card { padding: 16px; }
+  .campaign-journal-page .journal-feed { padding: 14px; }
+  .campaign-journal-page .journal-feed::before { left: 29px; top: 26px; bottom: 26px; }
+}
