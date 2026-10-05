@@ -205,6 +205,19 @@ test('каждая смысловая сцена выбирается адрес
   for (const locationId of publicLocationIds()) assert.ok(locationPresetFor(locationId), locationId + ': missing addressable location preset')
 })
 
+test('каждая авторская карта играбельна по аудиту map-quality: проход, двери и вход свободны', async () => {
+  // Сквозной прогон Асстохана (2026-10-05): на Обсидиановом перевале валун
+  // стоял на единственной клетке прохода от точки появления — 160 клеток из
+  // 171 недостижимы. Проверка сборщика смотрела на клетки и не видела
+  // предметов; аудит каталога нашёл такое в 32 картах из 56.
+  const { auditTacticalMap } = await import('../server/map-quality.mjs')
+  const hard = new Set(['PARTY_SPAWN_BLOCKED', 'UNREACHABLE_FLOOR', 'DOORWAY_BLOCKED', 'SPAWN_CRAMPED'])
+  const broken = decodedCatalog()
+    .map((map) => ({ id: map.locationId, problems: auditTacticalMap(map).problems.filter((problem) => hard.has(problem.code)) }))
+    .filter((entry) => entry.problems.length)
+  assert.deepEqual(broken, [], JSON.stringify(broken))
+})
+
 test('builder детерминирован, не вызывает LLM и не зависит от campaign seed', () => {
   const source = readFileSync(BUILDER_FILE, 'utf8')
   assert.doesNotMatch(source, /llm-client|completeJson|fetch\s*\(/u)
