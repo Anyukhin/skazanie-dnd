@@ -48,7 +48,7 @@ import {
   npcWeaponBindingFor,
 } from './npc-equipment.mjs'
 import { truceHolds } from './parley.mjs'
-import { footprintCellsFor, footprintDistanceFeet } from './actor-footprint.mjs'
+import { footprintCellsFor, footprintDistanceFeet, footprintSizeFor } from './actor-footprint.mjs'
 import { occupiedPositions, positionKey } from './rules/tactical-geometry.mjs'
 
 const CELL_FEET = 5
@@ -85,10 +85,16 @@ function livingParty(state) {
 
 function unstableDyingParty(state) {
   const members = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
+  // Ждать спасбросков можно только от того, у кого есть ход: недособранный
+  // спутник вне очереди их не бросит никогда, и бой крутил пустые раунды до
+  // предела планировщика (тот же предикат у EndCombat в Rules Engine).
+  const combat = state.mechanics?.combat
+  const queued = new Set((combat?.initiative ?? []).map((entry) => String(entry?.actor_id ?? '')))
   return state.players.filter((actor) => {
     const id = actorId(actor)
     const tracker = state.mechanics?.death?.saving_throws?.[id]
     return members.has(id)
+      && (combat?.active !== true || queued.has(id))
       && Number(actor.hp) === 0
       && state.mechanics?.death?.heroes?.[id]?.status !== 'dead'
       && tracker?.stable !== true
@@ -609,6 +615,41 @@ function meleeReachableThisTurn(state, enemy, path, profile) {
   return affordablePathPrefix(state, actorId(enemy), path, approachSteps, remainingMovementFeet(state, enemy)).steps >= approachSteps
 }
 
+/**
+ * Путь крупного тела к удару. Обычный путь ведёт в клетку самой цели, и для
+ * существа 2×2 его часто нет: рядом второй герой или узкий проход, и квадрат в
+ * клетку цели не встаёт, хотя встать рядом и ударить место есть. Без этого
+ * медведь и кабан весь бой стояли на месте и били, только когда герой
+ * подходил сам (серия сидов Асстохана 2026-10-05).
+ *
+ * Возвращается путь в той же форме, что у среднего существа: до клетки удара
+ * и ещё `rangeCells` шагов «в цель», которые подход отрезает сам
+ * (`path.length - rangeCells`). Так все ветки плана читают его одинаково.
+ */
+function footprintStrikePath(state, enemy, target, profiles) {
+  const enemyIdValue = actorId(enemy)
+  const targetIdValue = actorId(target)
+  const side = footprintSizeFor(enemy)
+  const targetAt = actorPosition(state, targetIdValue)
+  if (side <= 1 || !targetAt) return null
+  const reachFeet = Math.max(CELL_FEET, ...profiles.filter((profile) => profile.kind === 'melee').map((profile) => Number(profile.range_feet) || CELL_FEET))
+  const rangeCells = Math.max(1, Math.floor(reachFeet / CELL_FEET))
+  const { map, stepCost } = movementStepCostFor(state, enemyIdValue)
+  let best = null
+  for (let x = targetAt.x - rangeCells - side + 1; x <= targetAt.x + rangeCells; x += 1) {
+    for (let y = targetAt.y - rangeCells - side + 1; y <= targetAt.y + rangeCells; y += 1) {
+      const anchor = { x, y }
+      const distanceFeet = distanceFeetBetweenActors(state, enemyIdValue, targetIdValue, anchor, targetAt)
+      if (distanceFeet < CELL_FEET || distanceFeet > reachFeet) continue
+      const path = shortestTacticalPath(state, enemyIdValue, anchor, { tacticalMap: map, stepCost })
+      if (!path?.length) continue
+      const cost = path.reduce((total, step) => total + stepCost(step, map), 0)
+      if (!best || cost < best.cost || (cost === best.cost && path.length < best.path.length)) best = { path, cost }
+    }
+  }
+  return best ? [...best.path, ...Array.from({ length: rangeCells }, () => ({ ...targetAt }))] : null
+}
+
 function targetCandidates(state, enemy) {
   const enemyAt = actorPosition(state, actorId(enemy))
   const profiles = actionProfiles(state, enemy)
@@ -617,6 +658,7 @@ function targetCandidates(state, enemy) {
   for (const target of attackableTargetsFor(state, enemy)) {
     const targetAt = actorPosition(state, actorId(target))
     const path = shortestTacticalPath(state, actorId(enemy), targetAt, { allowOccupiedDestination: true })
+      ?? footprintStrikePath(state, enemy, target, profiles)
     const pathDistance = path ? path.length : gridDistance({ state, id: actorId(enemy) }, { state, id: actorId(target) })
     const support = adjacentEnemyAlly(state, enemy, target)
     for (const profile of profiles) {

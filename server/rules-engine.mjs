@@ -6391,7 +6391,13 @@ export function validateCommand(input, rawState, context = {}) {
   }
   if (command.command_type === 'EndCombat') {
     const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
-    const pending = state.players.some((hero) => memberIds.has(actorId(hero)) && isUnstableDyingHero(state, actorId(hero)))
+    // Спасброски бросает только тот, кто стоит в очереди. Недособранный
+    // спутник в неё не попадает, и, упав на 0 хитов, он навсегда оставался
+    // «бросающим» — бой не заканчивался никогда (test/npc-combat-entry-api).
+    const queued = new Set((state.mechanics.combat.initiative ?? []).map((entry) => String(entry?.actor_id ?? '')))
+    const pending = state.players.some((hero) => memberIds.has(actorId(hero))
+      && (!state.mechanics.combat.active || queued.has(actorId(hero)))
+      && isUnstableDyingHero(state, actorId(hero)))
     if (pending) throw new RulesValidationError('Нельзя завершить бой, пока герой делает спасброски от смерти', 'DEATH_SAVES_PENDING')
   }
   if (command.command_type === 'ApplyHealing' && isDeadHero(state, targetFor(command))) {
