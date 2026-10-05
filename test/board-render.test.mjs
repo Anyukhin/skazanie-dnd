@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 import {
   addProp, addZone, canonicalEdge, cellAt as serverCellAt, createTacticalMap, edgeBetween as serverEdgeBetween,
@@ -15,31 +12,9 @@ import {
 // компиляция во временный каталог и импорт. Дополнительно нужны типы DOM —
 // отрисовка работает с 2D-контекстом — и дописывание расширений: tsc оставляет
 // спецификаторы без `.js`, а Node ESM их не разрешает.
-const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-board-render-'))
-const outputDir = join(buildDir, 'src')
-const repositoryRoot = fileURLToPath(new URL('..', import.meta.url))
-mkdirSync(outputDir, { recursive: true })
-mkdirSync(join(buildDir, 'server'), { recursive: true })
-copyFileSync(join(repositoryRoot, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board-render.ts', '../src/board-lighting.ts', '../src/board-ambient.ts', '../src/tactical-map-client.ts']
-  .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--rootDir', repositoryRoot, '--outDir', buildDir, ...sources,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(outputDir)) {
-  if (!name.endsWith('.js')) continue
-  const source = readFileSync(join(outputDir, name), 'utf8').replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-  writeFileSync(join(outputDir, name.replace(/\.js$/, '.mjs')), source)
-  rmSync(join(outputDir, name))
-}
-const render = await import(pathToFileURL(join(outputDir, 'board-render.mjs')).href)
-const client = await import(pathToFileURL(join(outputDir, 'tactical-map-client.mjs')).href)
-const lighting = await import(pathToFileURL(join(outputDir, 'board-lighting.mjs')).href)
-const ambient = await import(pathToFileURL(join(outputDir, 'board-ambient.mjs')).href)
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
+const { modules: [render, client, lighting, ambient] } = await compileClientModules([
+  'src/board-render.ts', 'src/tactical-map-client.ts', 'src/board-lighting.ts', 'src/board-ambient.ts',
+])
 
 test('общая раскладка 2D/3D разворачивает футпринт в локальные размеры один раз', () => {
   const footprint = [1, 2, 3, 4].map((y) => ({ x: 2, y }))

@@ -1,22 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
 import test from 'node:test'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { canonicalCombatSpellFor } from '../server/combat-spells.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
-import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand, spellTargetsAt } from '../server/rules-engine.mjs'
+import { normalizeCampaignState, replayEvents, resolveCommand, spellTargetsAt } from '../server/rules-engine.mjs'
+import { dice as kitDice } from './kit/dice.mjs'
+import { applyAll, assertReplayMatches, createCampaignStore } from './kit/engine.mjs'
 
-function dice(values) {
-  let id = 0
-  return new DiceService({
-    rng: new SequenceDiceRng(values),
-    idFactory: () => `mass-cure-roll-${++id}`,
-    now: () => '2026-09-22T12:00:00.000Z',
-  })
-}
+const dice = (values) => kitDice(values, { prefix: 'mass-cure-roll', now: '2026-09-22T12:00:00.000Z' })
 
 const options = (values) => ({
   diceService: dice(values),
@@ -138,7 +128,7 @@ test('Mass Cure Wounds лечит выбранных союзников одни
   const after = replayEvents(state, result.events)
   assert.equal(after.mechanics.resources.caster.spell_slots_5.current, 1)
   assert.equal(after.mechanics.combat.action_economy.caster.action, false)
-  assert.deepEqual(result.events.reduce((next, event) => applyGameEvent(next, event), state), after)
+  assert.deepEqual(applyAll(state, result.events), after)
 })
 
 test('ячейка шестого круга добавляет одну кость, но не добавляет цель; край сферы допустим', () => {
@@ -169,17 +159,12 @@ test('клетка за внешней дугой новой сферы не с�
 
 test('повторный commit Mass Cure Wounds идемпотентен и replay сохраняет расход и лечение', async (t) => {
   const initial = field()
-  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-mass-cure-'))
-  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
-  const store = new FileEventStore({
-    rootDir,
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
+  const store = await createCampaignStore(t, 'mass-cure', initial, {
+    prefix: 'skazanie-mass-cure-',
     initialStateFactory: () => structuredClone(initial),
     snapshotEvery: 0,
     clock: () => new Date('2026-09-22T12:00:00.000Z'),
   })
-  await store.initializeCampaign({ campaign_id: 'mass-cure', initial_state: initial })
   const result = cast(initial, ['ally-1', 'ally-2', 'ally-3', 'ally-4', 'dying', 'summon'], [2, 5, 7], { command_id: 'mass-cure-idempotent' })
   const request = {
     campaign_id: 'mass-cure',
@@ -195,7 +180,7 @@ test('повторный commit Mass Cure Wounds идемпотентен и rep
   assert.equal(first.state.mechanics.resources.caster.spell_slots_5.current, 1)
   assert.equal(retry.state.mechanics.resources.caster.spell_slots_5.current, 1)
   assert.equal((await store.getEvents('mass-cure')).length, result.events.length)
-  assert.deepEqual((await store.replay('mass-cure', { use_snapshots: false })).state, first.state)
+  await assertReplayMatches(store, 'mass-cure', { expected: first.state })
 })
 
 test('нежить, конструкт и healing-blocked не получают исцеление, но выбранная валидная цель получает общий бросок', () => {

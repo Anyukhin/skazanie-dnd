@@ -1,39 +1,18 @@
 import assert from 'node:assert/strict'
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 import { addProp, createTacticalMap, serializeTacticalMap, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
 import { publicTacticalMapFor } from '../server/viewer-projection.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-scene-test-'))
-const outputDir = join(buildDir, 'src')
-mkdirSync(outputDir, { recursive: true })
-mkdirSync(join(buildDir, 'server'), { recursive: true })
-copyFileSync(join(root, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board3d-scene.ts', '../src/board-render.ts', '../src/tactical-map-client.ts']
-  .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--rootDir', root, '--outDir', buildDir, ...sources,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(outputDir)) {
-  if (!name.endsWith('.js')) continue
-  const source = readFileSync(join(outputDir, name), 'utf8')
-    .replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-  writeFileSync(join(outputDir, name.replace(/\.js$/, '.mjs')), source)
-  rmSync(join(outputDir, name))
-}
-const scene3d = await import(pathToFileURL(join(outputDir, 'board3d-scene.mjs')).href)
-const mapClient = await import(pathToFileURL(join(outputDir, 'tactical-map-client.mjs')).href)
-const render = await import(pathToFileURL(join(outputDir, 'board-render.mjs')).href)
+const build = await compileClientModules(['src/board3d-scene.ts', 'src/tactical-map-client.ts', 'src/board-render.ts'])
+const [scene3d, mapClient, render] = build.modules
 const THREE = await import('three')
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 function mapOf({ width = 4, height = 3, revealed = [], elevationAt = () => 0 } = {}) {
   const map = createTacticalMap({ width, height, seed: 'board3d-test', theme: 'building' })
@@ -502,7 +481,7 @@ test('поздняя загрузка artUrl после dispose не вызыв�
   }
 })
 
-const landscape = await import(pathToFileURL(join(outputDir, 'board3d-landscape.mjs')).href)
+const landscape = await build.load('src/board3d-landscape.ts')
 
 function terrainMap({ width, height, cell }) {
   const map = createTacticalMap({ width, height, seed: 'landscape-test', theme: 'forest' })
@@ -642,7 +621,7 @@ test('газон без швов: соседние естественные кл
   assert.equal(color.getX(0), color.getY(0), 'у пола стиля нет зелёного сдвига: цвет даёт фактура')
   tiled.dispose(); seamless.dispose()
 })
-const masonry = await import(pathToFileURL(join(outputDir, 'board3d-masonry.mjs')).href)
+const masonry = await build.load('src/board3d-masonry.ts')
 
 test('кладка: камни вразбежку в пределах прогона, плахи у дерева, без теней от камней', () => {
   const run = { x: 2, z: 3.5, y: 0, length: 1, thickness: 1 / 6, height: .95, alongX: true, color: '#8a8378', seed: 7 }
@@ -676,7 +655,7 @@ test('«Экономное»: стены без отдельных камней 
 })
 
 // Набор моделей местности: tools/build-landscape-kit.mjs → public/assets/models/landscape.
-const landscapeAssets = await import(pathToFileURL(join(outputDir, 'landscape-model-assets.mjs')).href)
+const landscapeAssets = await build.load('src/landscape-model-assets.ts')
 const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js')
 const { createHash } = await import('node:crypto')
 const { existsSync, statSync } = await import('node:fs')

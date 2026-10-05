@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
 import { AuthoritativeExecutor } from '../server/authoritative-executor.mjs'
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
 import { runNpcTurnScheduler } from '../server/npc-turn-scheduler.mjs'
-import { RulesEngine, applyGameEvent, heroReactionModesFor, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
+import { RulesEngine, heroReactionModesFor, normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import { planReactionByPreference, normalizeReactionPreferences } from '../server/reaction-preferences.mjs'
 import { tacticalNarrationParts } from '../server/combat-narration.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
+import { dice as kitDice } from './kit/dice.mjs'
+import { applyAll, createCampaignStore } from './kit/engine.mjs'
 
 const sword = {
   id: 'sword', name: 'Длинный меч', type: 'weapon', equipped: true, quantity: 1,
@@ -21,14 +18,12 @@ const floor = Array.from({ length: 12 * 12 }, (_, index) => ({
   x: index % 12, y: Math.floor(index / 12), type: 'floor', revealed: true,
 }))
 
+// Счётчик общий у бросков и команд, как и прежде: id не повторяются между костями.
 let serial = 0
-function dice(values = []) {
-  return new DiceService({
-    rng: new SequenceDiceRng(values),
-    idFactory: () => `reaction-preference-roll-${++serial}`,
-    now: () => '2026-10-04T12:00:00.000Z',
-  })
-}
+const dice = (values = []) => kitDice(values, {
+  idFactory: () => `reaction-preference-roll-${++serial}`,
+  now: '2026-10-04T12:00:00.000Z',
+})
 
 function resolve(state, command, values = [], context = {}) {
   return resolveCommand({
@@ -41,7 +36,7 @@ function resolve(state, command, values = [], context = {}) {
   })
 }
 
-const apply = (state, result) => result.events.reduce(applyGameEvent, state)
+const apply = (state, result) => applyAll(state, result.events)
 const restart = (state) => normalizeCampaignState(JSON.parse(JSON.stringify(state)))
 
 // Волшебник со «Щитом» и мечом рядом с бойцом: тот же стенд, что у
@@ -156,7 +151,7 @@ test('«никогда» для «Щита»: окно закрывается о
   assert.equal(final.mechanics.resources.hero.spell_slots_1.current, 1, 'ячейка не потрачена')
   assert.equal(final.mechanics.combat.action_economy.hero.reaction, true, 'реакция героя осталась')
   assert.equal(final.mechanics.combat.turn_reaction_extensions ?? 0, 0, 'ожидания не было — продлевать ход нечего')
-  assert.deepEqual(restart(final), normalizeCampaignState(JSON.parse(JSON.stringify(result.events.reduce(applyGameEvent, initial)))), 'replay сходится')
+  assert.deepEqual(restart(final), normalizeCampaignState(JSON.parse(JSON.stringify(applyAll(initial, result.events)))), 'replay сходится')
 
   const { main } = tacticalNarrationParts(result.events, final)
   assert.doesNotMatch(main, /получает возможность/u, 'вопроса, которого не было, хроника не пишет')
@@ -251,13 +246,9 @@ test('проекция: свои режимы — списком у героя, 
 // координатор повторял его, пока кубики не давали исход без окна: игрока так
 // и не спрашивали, а бой стоял.
 async function npcTurnStore(t, preferences) {
-  const root = mkdtempSync(join(tmpdir(), 'skazanie-reaction-npc-'))
-  t.after(() => rmSync(root, { recursive: true, force: true }))
   const initial = reactionState({ activeIndex: 0, preferences })
   initial.enemies[0].level = 1 // одна атака за ход: план врага — удар и конец хода
-  const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
-  await eventStore.initializeCampaign({ campaign_id: 'REACTION-NPC', initial_state: initial })
-  return eventStore
+  return createCampaignStore(t, 'REACTION-NPC', initial, { prefix: 'skazanie-reaction-npc-' })
 }
 const activeActor = (state) => state.mechanics.combat.initiative[state.mechanics.combat.active_index]?.actor_id
 

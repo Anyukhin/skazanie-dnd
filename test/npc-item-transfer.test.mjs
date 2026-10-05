@@ -1,18 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
 import {
   MAX_NPC_INVENTORY_ITEMS,
   normalizeNpcWorldState,
 } from '../server/npc-positioning.mjs'
 import {
   RulesValidationError,
-  applyGameEvent,
   normalizeCampaignState,
   replayEvents,
   resolveCommand,
@@ -23,14 +17,10 @@ import {
   setCell,
 } from '../server/tactical-map.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
+import { dice as kitDice } from './kit/dice.mjs'
+import { applyAll, createCampaignStore } from './kit/engine.mjs'
 
-function dice() {
-  return new DiceService({
-    rng: new SequenceDiceRng([]),
-    idFactory: () => 'npc-transfer-roll',
-    now: () => '2026-07-31T12:00:00.000Z',
-  })
-}
+const dice = () => kitDice([], { idFactory: () => 'npc-transfer-roll', now: '2026-07-31T12:00:00.000Z' })
 
 function sceneMap() {
   const map = createTacticalMap({
@@ -150,7 +140,7 @@ test('TransferItem атомарно убирает предмет у владе�
   assert.equal(result.events[0].payload.recipient_kind, 'npc')
   assert.equal(result.events[0].payload.to_actor_id, 'marta')
 
-  const next = result.events.reduce(applyGameEvent, initial)
+  const next = applyAll(initial, result.events)
   assert.equal(next.players[0].inventory[0].quantity, 2)
   assert.equal(next.npc_world.schema_version, 3)
   assert.equal(next.npc_world.inventories.marta.length, 1)
@@ -168,7 +158,7 @@ test('player projection не раскрывает накопленный инв�
       description: 'Не должно попасть игроку',
     }],
   })
-  const next = resolveTransfer(initial).events.reduce(applyGameEvent, initial)
+  const next = applyAll(initial, resolveTransfer(initial).events)
   const projected = campaignStateForViewer(next, { role: 'player' }, 'hero')
 
   assert.equal(projected.npc_world, undefined)
@@ -243,7 +233,7 @@ test('bounded NPC inventory объединяет стопки и отклоня�
     weight: 2,
   }
   const mergeState = campaign({ npcInventory: [matching] })
-  const merged = resolveTransfer(mergeState).events.reduce(applyGameEvent, mergeState)
+  const merged = applyAll(mergeState, resolveTransfer(mergeState).events)
   assert.equal(merged.npc_world.inventories.marta.length, 1)
   assert.equal(merged.npc_world.inventories.marta[0].quantity, 5)
 
@@ -278,7 +268,7 @@ test('legacy npc_world v1 нормализуется в bounded v3 и replay о�
 
   const initial = campaign()
   const result = resolveTransfer(initial, { commandId: 'legacy-replay' })
-  const next = result.events.reduce(applyGameEvent, initial)
+  const next = applyAll(initial, result.events)
   assert.deepEqual(replayEvents(initial, result.events), next)
 })
 
@@ -301,16 +291,9 @@ test('клиент не может подделать вычисляемый с�
 })
 
 test('повтор commit с тем же idempotency_key не передаёт предмет NPC дважды', async (t) => {
-  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-npc-transfer-'))
-  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
   const initial = campaign()
   const resolved = resolveTransfer(initial, { commandId: 'transfer-idempotent' })
-  const store = new FileEventStore({
-    rootDir,
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-  })
-  await store.initializeCampaign({ campaign_id: 'npc-transfer', initial_state: initial })
+  const store = await createCampaignStore(t, 'npc-transfer', initial, { prefix: 'skazanie-npc-transfer-' })
   const request = {
     campaign_id: 'npc-transfer',
     expected_state_version: 0,

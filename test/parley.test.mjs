@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import {
   PARLEY_BASE_DC,
   mentionsParley,
@@ -19,12 +15,10 @@ import {
 } from '../server/parley.mjs'
 import {
   RulesEngine,
-  applyGameEvent,
   normalizeCampaignState,
   replayEvents,
   resolveCommands,
 } from '../server/rules-engine.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
 import { combatTurnClock } from '../server/combat-turn-coordinator.mjs'
 import { runNpcTurnScheduler } from '../server/npc-turn-scheduler.mjs'
 import { presentSceneNpcs } from '../server/npc-positioning.mjs'
@@ -32,12 +26,10 @@ import { STAGES } from '../server/post-commit-coordinator.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { worldDeedsFeed } from '../server/world-deeds.mjs'
 import { combatNarration } from '../server/combat-narration.mjs'
+import { dice } from './kit/dice.mjs'
+import { applyAll, createCampaignStore, tempDir } from './kit/engine.mjs'
 
 const CAMPAIGN = 'PARLEY'
-
-function dice(values = []) {
-  return new DiceService({ rng: new SequenceDiceRng(values) })
-}
 
 function cells(width = 8, height = 8) {
   const grid = []
@@ -458,7 +450,7 @@ test('перемирие и его разрыв переживают replay', ()
 
   // Повторное применение тех же событий ничего не добавляет: летопись поступков
   // идемпотентна по идентификатору поступка.
-  const twice = events.reduce(applyGameEvent, replayed)
+  const twice = applyAll(replayed, events)
   assert.equal(worldDeedsFeed(twice).filter((deed) => deed.kind === 'treachery').length, 1)
 })
 
@@ -560,16 +552,14 @@ test('перемирие останавливает часы хода, а сня
 })
 
 test('перемирие морозит планировщик ходов NPC, а снятое — возвращает его', async (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'skazanie-parley-scheduler-'))
-  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const root = tempDir(t, 'skazanie-parley-scheduler-')
   /** Ход противника: без перемирия планировщик обязан за него сходить. */
   const enemyTurn = (state) => normalizeCampaignState({
     ...state,
     mechanics: { ...state.mechanics, combat: { ...state.mechanics.combat, active_index: 1 } },
   })
   const scheduler = async (campaignId, state) => {
-    const eventStore = new FileEventStore({ rootDir: root, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
-    await eventStore.initializeCampaign({ campaign_id: campaignId, initial_state: state })
+    const eventStore = await createCampaignStore(t, campaignId, state, { rootDir: root })
     return runNpcTurnScheduler({
       campaignId,
       eventStore,

@@ -1,42 +1,23 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 import { addZone, canonicalEdge, createTacticalMap, serializeTacticalMap, setCell, setDoor, setEdge } from '../server/tactical-map.mjs'
 import { DETAIL_PROPS } from '../server/detail-props.mjs'
 import { GRAPHICS_STYLE_SOURCES, STYLE_RELEASE } from '../tools/graphics-style-sources.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-mkdirSync(join(root, 'tmp'), { recursive: true })
-const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-style-test-'))
-const outputDir = join(buildDir, 'src')
-mkdirSync(join(buildDir, 'server'), { recursive: true })
-copyFileSync(join(root, 'server', 'circular-area-geometry.mjs'), join(buildDir, 'server', 'circular-area-geometry.mjs'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board3d-style.ts', '../src/board3d-floor-tiles.ts', '../src/board3d-walls.ts', '../src/tactical-map-client.ts']
-  .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--rootDir', root, '--outDir', buildDir, ...sources,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(outputDir)) {
-  if (!name.endsWith('.js')) continue
-  const source = readFileSync(join(outputDir, name), 'utf8').replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-  writeFileSync(join(outputDir, name.replace(/\.js$/, '.mjs')), source)
-  rmSync(join(outputDir, name))
-}
-const style = await import(pathToFileURL(join(outputDir, 'board3d-style.mjs')).href)
-const floors = await import(pathToFileURL(join(outputDir, 'board3d-floor-tiles.mjs')).href)
-const landscape = await import(pathToFileURL(join(outputDir, 'board3d-landscape.mjs')).href)
-const mapClient = await import(pathToFileURL(join(outputDir, 'tactical-map-client.mjs')).href)
-const walls = await import(pathToFileURL(join(outputDir, 'board3d-walls.mjs')).href)
+const build = await compileClientModules([
+  'src/board3d-style.ts', 'src/board3d-floor-tiles.ts', 'src/board3d-walls.ts', 'src/tactical-map-client.ts',
+])
+const [style, floors, walls, mapClient] = build.modules
+const landscape = await build.load('src/board3d-landscape.ts')
 const THREE = await import('three')
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 const STYLE_ROOT = join(root, 'public', 'assets', 'styles', 'stylized')
 const manifest = () => JSON.parse(readFileSync(join(STYLE_ROOT, 'manifest.json'), 'utf8'))

@@ -272,11 +272,67 @@ function partiallyBlockedCellsFor(map, revealedAt) {
  * обезличенная сетка, и кэшировать по хешу он может только её. Хеш исходной
  * карты совпал бы у двух игроков с разным раскрытием.
  *
+ * Проекция зависит только от самой карты — ни зритель, ни его герой в неё
+ * не входят: раскрытие общее для отряда. Поэтому она запоминается по объекту
+ * карты (`WeakMap`, уходит вместе с состоянием): рассылка комнаты на N
+ * соединений и каждое SpellCast/SpellAreaCreated в ленте считали её заново
+ * для каждого зрителя. Результат общий для всех зрителей и не изменяется
+ * вызывающими — они только читают его и кладут в ответ.
+ *
  * @param {unknown} value сериализованная карта из `scene.map`
  * @returns {{map: Record<string, unknown>, hash: string, movementBlockedCells: Set<string>} | null}
  */
 function projectPublicTacticalMap(value) {
   if (!value || typeof value !== 'object') return null
+  const cached = publicTacticalMapCache.get(value)
+  const fingerprint = tacticalMapFingerprint(value)
+  if (cached && sameFingerprint(cached.fingerprint, fingerprint)) return cached.projected
+  const projected = computePublicTacticalMap(value)
+  publicTacticalMapCache.set(value, { fingerprint, projected })
+  return projected
+}
+
+/**
+ * @type {WeakMap<object, {fingerprint: unknown[], projected: {map: Record<string, unknown>, hash: string, movementBlockedCells: Set<string>} | null}>}
+ */
+const publicTacticalMapCache = new WeakMap()
+
+/**
+ * Опознание карты для кэша проекции: собственные поля карты и её слоёв по
+ * ссылке. Сериализованная карта неизменяема — reducer строит новое состояние,
+ * — но если кто-то всё же заменит поле или слой (слои — строки) на месте,
+ * отпечаток разойдётся и проекция посчитается заново.
+ *
+ * @param {object} value
+ * @returns {unknown[]}
+ */
+function tacticalMapFingerprint(value) {
+  /** @type {unknown[]} */
+  const fingerprint = []
+  for (const [key, field] of Object.entries(value)) {
+    fingerprint.push(key, field)
+    if (key === 'layers' && field && typeof field === 'object') {
+      for (const [layer, encoded] of Object.entries(field)) fingerprint.push(layer, encoded)
+    }
+  }
+  return fingerprint
+}
+
+/**
+ * @param {unknown[]} left
+ * @param {unknown[]} right
+ */
+function sameFingerprint(left, right) {
+  if (left.length !== right.length) return false
+  for (let index = 0; index < left.length; index += 1) if (!Object.is(left[index], right[index])) return false
+  return true
+}
+
+/**
+ * @param {object} value сериализованная карта из `scene.map`
+ * @returns {{map: Record<string, unknown>, hash: string, movementBlockedCells: Set<string>} | null}
+ */
+function computePublicTacticalMap(value) {
   let map
   try {
     map = deserializeTacticalMap(value)

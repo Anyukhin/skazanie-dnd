@@ -12,8 +12,16 @@ import {
   rollDice,
   rollSharedDie,
 } from './ai-client'
-import type { NarrationPreview, NarrationPreviewPhase } from './ai-client'
 import { playerMessage } from './game-engine'
+import {
+  currentTurnActorId,
+  latestRoomVersion,
+  mergeAuthoritativeState,
+  mergeTacticalCommandState,
+  parseNarrationPreview,
+  pendingActionForSnapshot,
+  twoPhaseCheckCommandFor,
+} from './game-session-state.mjs'
 import { withLootTakenRecord } from './loot-panel-rules.mjs'
 import { forgetSceneMaps, latestSceneMapHash, resolveSceneMap } from './scene-map-cache'
 import { canIssueUiTacticalCommand } from './tactical-command-guard.mjs'
@@ -47,7 +55,7 @@ import {
   takeQueuedRoom,
 } from './room-stream.mjs'
 import type { QueuedRoomSnapshot } from './room-stream.mjs'
-import type { ActionClarification, AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, PlayerRequestKind, ReactionMode, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach, TwoPhaseCheckCommand } from './types'
+import type { ActionClarification, AgentInteraction, AiTurnResult, BattleEvent, CombatVisualBatch, DiceRollEvent, EncounterDifficulty, EncounterProposal, EncounterTheme, GameEvent, GameState, GuardResolution, InventoryItem, ItemUseOptions, LetterAddresseeKind, LootContainersProjection, Merchant, MerchantView, Message, ParleyOutcome, Player, PlayerRequestKind, ReactionMode, RestCommand, RollResult, SceneObjectIntent, TavernDiceApproach } from './types'
 
 const ACTIVE_CAMPAIGN_KEY = 'skazanie-active-campaign-v2'
 const channelNameFor = (campaignId: string) => `skazanie-room:${String(campaignId || '').toUpperCase()}`
@@ -105,36 +113,6 @@ type TacticalCommand =
   | { command_type: 'RollCharacterAbilities'; actor_id: string; roll_index: number }
   | { command_type: 'RollCharacterWealth'; actor_id: string; character_class: string }
   | { command_type: 'LevelUp'; actor_id: string; expected_level: number }
-
-/**
- * Двухфазная ли это команда — та, у которой первая фаза возвращает карточку
- * броска, а не результат.
- *
- * Список закрыт и обязан совпадать с серверным (`server/game-orchestrator.mjs`:
- * `parleyCheckCard`, `guardEscapeCheckCard`, `tavernDiceCheckCard`,
- * `beastTamingCheckCard`, `shrinePrayerCheckCard`). Отдельная
- * функция здесь стоит вместо трёх сравнений по месту потому, что забыть одно из
- * них уже удалось: карточка приходит с сервера, клиент её не показывает, и ход
- * зависает без единой ошибки в консоли.
- *
- * `OperateSceneObject` двухфазна **не целиком**, а ровно одним глаголом: кость
- * бросает только молитва. Осмотр, взлом и поджог решаются серверным броском в
- * тот же запрос, и просить у них карточку значило бы вешать ход на кубик,
- * которого сервер не объявит.
- */
-function twoPhaseCheckCommandFor(command: TacticalCommand): TwoPhaseCheckCommand | null {
-  switch (command.command_type) {
-    case 'ProposeParley':
-    case 'ResolveGuardEncounter':
-    case 'AnswerTavernDiceRound':
-    case 'CalmBeast':
-      return command
-    case 'OperateSceneObject':
-      return command.intent === 'pray' ? command : null
-    default:
-      return null
-  }
-}
 
 type CharacterBuildCommand =
   | {
@@ -264,32 +242,6 @@ type EncounterAssemblyResult = TacticalCommandResult & {
 let localCommandSequence = 0
 const commandId = () => globalThis.crypto?.randomUUID?.() ?? `command-${Date.now()}-${++localCommandSequence}`
 const clock = () => new Intl.DateTimeFormat('ru', { hour: '2-digit', minute: '2-digit' }).format(new Date())
-const NARRATION_PREVIEW_TEXT_MAX_BYTES = 12 * 1024
-const NARRATION_PREVIEW_EVENT_MAX_BYTES = 16 * 1024
-const NARRATION_PREVIEW_PHASES = new Set<NarrationPreviewPhase>([
-  'start', 'streaming', 'complete', 'replaced', 'aborted',
-])
-
-function parseNarrationPreview(value: string): NarrationPreview | null {
-  if (new TextEncoder().encode(value).byteLength > NARRATION_PREVIEW_EVENT_MAX_BYTES) return null
-  const payload = JSON.parse(value) as {
-    message_id?: unknown
-    text?: unknown
-    phase?: unknown
-    replayed?: unknown
-  }
-  const messageId = typeof payload.message_id === 'string' ? payload.message_id : ''
-  const text = typeof payload.text === 'string' ? payload.text : ''
-  const phase = typeof payload.phase === 'string' ? payload.phase as NarrationPreviewPhase : null
-  if (!/^[A-Za-z0-9._:-]{1,120}$/u.test(messageId) || !phase || !NARRATION_PREVIEW_PHASES.has(phase)) return null
-  if (new TextEncoder().encode(text).byteLength > NARRATION_PREVIEW_TEXT_MAX_BYTES) return null
-  return {
-    messageId,
-    text,
-    phase,
-    replayed: payload.replayed === true,
-  }
-}
 
 function apiRequestError(response: Response, details: ApiErrorDetails | null, fallback: string) {
   return new ApiRequestError(details?.error || fallback, response.status, details?.code)
@@ -311,16 +263,6 @@ function stateForPersistence(state: GameState): GameState {
   return { ...state, engine_mode: 'enforce', pendingCheck: null, pendingAction: null, ...(state.isNarrating ? { isNarrating: false } : {}) }
 }
 
-function pendingActionForSnapshot(current: GameState, incoming: GameState) {
-  const pending = current.sessionCode === incoming.sessionCode ? current.pendingAction : null
-  return pending?.status === 'submitting' || pending?.proposal.state_version === incoming.state_version ? pending : null
-}
-
-function latestRoomVersion(current: number, candidate: unknown): number {
-  const version = Number(candidate)
-  return Number.isSafeInteger(version) && version >= 0 ? Math.max(current, version) : current
-}
-
 /**
  * Достраивает карту сцены из клиентского кэша. `null` означает, что дельта
  * пришла от карты, которой у нас нет: обновление потеряно и нужен полный
@@ -339,56 +281,6 @@ function roomUrl(sessionCode: string, mapHash = '') {
   return mapHash ? `${base}?map_hash=${encodeURIComponent(mapHash)}` : base
 }
 
-function currentCombatActorId(state: GameState) {
-  const combat = state.mechanics?.combat
-  if (!combat?.active || !combat.initiative?.length) return state.activePlayerId
-  const index = Math.max(0, Number(combat.active_index) || 0)
-  return combat.initiative[index]?.actor_id ?? state.activePlayerId
-}
-
-function mergeTacticalCommandState(current: GameState, authoritative: GameState, result: TacticalCommandResult, requestId: string): GameState {
-  const currentPlayers = new Map(current.players.map((player) => [player.id, player]))
-  const players = (authoritative.players?.length ? authoritative.players : current.players).map((player) => {
-    const fallback = currentPlayers.get(player.id)
-    return fallback ? {
-      ...fallback,
-      ...player,
-      abilities: { ...fallback.abilities, ...player.abilities },
-      currency: { ...fallback.currency, ...player.currency },
-      inventory: player.inventory ?? fallback.inventory,
-      portrait: player.portrait || fallback.portrait,
-      portraitPosition: player.portraitPosition || fallback.portraitPosition,
-    } : player
-  })
-  const messages = authoritative.messages ?? current.messages
-  const narrationId = result.narration_message_id || `${result.turn_id || requestId}-tactical-narration`
-  const withNarration = result.narration?.trim() && !messages.some((message) => message.id === narrationId)
-    ? [...messages, {
-      id: narrationId,
-      speaker: result.narration_speaker ?? 'system',
-      author: result.narration_author ?? (result.narration_speaker === 'narrator' ? 'Рассказчик' : 'Система боя'),
-      timestamp: clock(),
-      text: result.narration.trim(),
-      turnConsumed: false,
-    }]
-    : messages
-  const next: GameState = {
-    ...current,
-    ...authoritative,
-    engine_mode: authoritative.engine_mode ?? current.engine_mode,
-    turn_clock: authoritative.turn_clock ?? null,
-    players,
-    enemies: authoritative.enemies ?? current.enemies,
-    actors: authoritative.actors ?? current.actors,
-    merchants: authoritative.merchants ?? current.merchants,
-    messages: withNarration,
-    pendingCheck: authoritative.pendingCheck ?? null,
-    agentInteraction: authoritative.agentInteraction ?? null,
-    isNarrating: false,
-  }
-  return { ...next, activePlayerId: currentCombatActorId(next) }
-}
-
 function loadState(): GameState {
   const requested = new URLSearchParams(window.location.search).get('room')?.toUpperCase()
   const selected = requested || localStorage.getItem(ACTIVE_CAMPAIGN_KEY)?.toUpperCase()
@@ -397,52 +289,6 @@ function loadState(): GameState {
   // Never restore a viewer-specific campaign projection from a cross-account
   // local cache. The authenticated room/SSE endpoints repopulate it.
   return { ...structuredClone(emptyState), sessionCode: selected, campaign: 'Загрузка кампании…' }
-}
-
-function mergeAuthoritativeState(current: GameState, result: AiTurnResult | null): GameState {
-  const authoritative = result?.authoritative_state
-  if (!authoritative) return current
-  const eventTypes = new Set((result.mechanics ?? []).map((event) => event.event_type))
-  const byId = new Map(authoritative.players.map((player) => [player.id, player]))
-  const players = current.players.map((player) => {
-    const server = byId.get(player.id)
-    if (!server) return player
-    return {
-      ...player,
-      hp: server.hp,
-      ...(eventTypes.has('ItemGranted') ? { inventory: server.inventory } : {}),
-      ...(eventTypes.has('ActorMoved') || eventTypes.has('SceneAdvanced') || eventTypes.has('MapLevelChanged') ? { x: server.x, y: server.y } : {}),
-    }
-  })
-  // Смена этажа меняет карту, партию и предметы разом — сцену берём целиком.
-  const sceneChanged = ['SceneAdvanced', 'AreaRevealed', 'ObjectiveUpdated', 'EntitySpawned', 'MapLevelChanged'].some((type) => eventTypes.has(type))
-  return {
-    ...current,
-    players,
-    enemies: authoritative.enemies ?? current.enemies,
-    merchants: authoritative.merchants ?? current.merchants,
-    mechanics: authoritative.mechanics,
-    turn_clock: authoritative.turn_clock ?? null,
-    messages: authoritative.messages ?? current.messages,
-    engine_mode: authoritative.engine_mode ?? result.engine_mode ?? current.engine_mode,
-    state_version: authoritative.state_version ?? result.state_version,
-    ruleset_id: authoritative.ruleset_id,
-    ruleset_version: authoritative.ruleset_version,
-    enabled_rule_packs: authoritative.enabled_rule_packs,
-    enabled_house_rules: authoritative.enabled_house_rules,
-    ruleset_locked_at: authoritative.ruleset_locked_at,
-    ...(sceneChanged ? {
-      scene: authoritative.scene,
-      adventure: authoritative.adventure,
-      worldMap: authoritative.worldMap,
-      entities: authoritative.entities,
-      agentInteraction: authoritative.agentInteraction ?? null,
-      activePlayerId: authoritative.activePlayerId ?? current.activePlayerId,
-      tacticalTurn: authoritative.tacticalTurn,
-      mapFeedback: authoritative.mapFeedback ?? [],
-    } : {}),
-    ...(eventTypes.has('RulingRecorded') ? { rulings: authoritative.rulings } : {}),
-  }
 }
 
 export function useGameSession(options: {
@@ -459,7 +305,6 @@ export function useGameSession(options: {
   onAccessRevokedRef.current = options.onAccessRevoked
   const [state, setState] = useState<GameState>(loadState)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
-  const [narrationPreview, setNarrationPreview] = useState<NarrationPreview | null>(null)
   const [lastDialogueAnswer, setLastDialogueAnswer] = useState('')
   const [pendingClarification, setPendingClarification] = useState<ActionClarification | null>(null)
   const [dialogueDraft, setDialogueDraft] = useState<{ id: number; text: string; kind: PlayerRequestKind; actorId: string; campaignId: string } | null>(null)
@@ -472,6 +317,9 @@ export function useGameSession(options: {
   }, [state.sessionCode])
   const [tacticalBusy, setTacticalBusy] = useState(false)
   const [tacticalError, setTacticalError] = useState<string | null>(null)
+  // Стабильная ссылка: стол передаёт её дальше, и новая стрелка на каждой
+  // перерисовке ломала бы сравнение пропсов у потребителей.
+  const clearTacticalError = useCallback(() => setTacticalError(null), [])
   const [merchantBusy, setMerchantBusy] = useState(false)
   const [merchantError, setMerchantError] = useState<string | null>(null)
   const [directorBusy, setDirectorBusy] = useState(false)
@@ -581,11 +429,6 @@ export function useGameSession(options: {
   const applyRoomSnapshot = useCallback((room: RoomSnapshot, sourceCampaignId: string) => {
     if (!room.state) return
     if (!roomSnapshotAcceptable(stateRef.current.sessionCode, sourceCampaignId, room.state)) return
-    setNarrationPreview((current) => (
-      current && room.state?.messages?.some((message) => message.id === current.messageId)
-        ? null
-        : current
-    ))
     roomVersion.current = latestRoomVersion(roomVersion.current, room.version)
     applyRemote(room.state)
   }, [applyRemote])
@@ -745,12 +588,10 @@ export function useGameSession(options: {
         if (!sameCampaign(stateRef.current.sessionCode, campaignId)) return
         const preview = parseNarrationPreview(event.data)
         if (!preview) return
+        // Предпросмотр уходит слушателям `ai-client`, а не в состояние хука:
+        // прежнее состояние никто не читал, а каждый кадр потока
+        // перерисовывал весь стол.
         publishNarrationPreview(state.sessionCode, preview)
-        setNarrationPreview(() => (
-          stateRef.current.pendingAction || stateRef.current.pendingCheck?.proposal || stateRef.current.messages.some((message) => message.id === preview.messageId)
-            ? null
-            : preview
-        ))
       } catch (error) {
         console.warn('Потоковое повествование отклонено:', error)
       }
@@ -856,7 +697,6 @@ export function useGameSession(options: {
   // Пакет анимации принадлежит одной кампании. При смене комнаты это состояние
   // представления сбрасывается, чтобы не проиграть последний ход чужого стола.
   useEffect(() => { setCombatVisualBatch(null) }, [state.sessionCode])
-  useEffect(() => { setNarrationPreview(null) }, [state.sessionCode])
 
   useEffect(() => {
     if (!busy.current && !tacticalBusy && !merchantBusy && !directorBusy) flushQueuedRooms()
@@ -1007,8 +847,7 @@ export function useGameSession(options: {
           { npcId, requestKind, clarificationId: intent.clarificationId,
             supersedesCheckId: intent.supersedesCheckId, supersedesProposalId: intent.supersedesProposalId,
             questionCheckId: intent.questionCheckId, questionProposalId: intent.questionProposalId,
-            manualRoll: narrateRecovery?.manualRoll,
-            onNarrationPreview: setNarrationPreview },
+            manualRoll: narrateRecovery?.manualRoll },
         )
         if (narrateRecovery) clearPendingNarrate(narrateStorage, narrateStorageKey, narrateRecovery.requestId)
       } catch (error) {
@@ -1054,9 +893,6 @@ export function useGameSession(options: {
         return { ok: false, error: message, ...(conflict ? { conflict: true } : {}), ...(uncertain ? { uncertain: true } : {}) }
       }
       if (aiResult?.room_version) roomVersion.current = latestRoomVersion(roomVersion.current, aiResult.room_version)
-      if (aiResult?.narration_message_id) {
-        setNarrationPreview((current) => current?.messageId === aiResult?.narration_message_id ? null : current)
-      }
       if (aiResult?.mechanics?.length) {
         setCombatVisualBatch({
           id: `narrate:${aiResult.turn_id ?? aiResult.state_version ?? Date.now()}`,
@@ -1076,7 +912,6 @@ export function useGameSession(options: {
       const resolvedAction = aiResult?.resolved_action ?? text.trim()
       if (aiResult?.action_proposal) {
         const proposal = aiResult.action_proposal
-        setNarrationPreview(null)
         mutate((current) => ({ ...current, isNarrating: false, pendingAction: {
           proposal, action: resolvedAction, playerId: player.id, status: 'ready', idempotencyKey: commandId(),
         } }))
@@ -1085,7 +920,6 @@ export function useGameSession(options: {
       }
       const check = aiResult?.check ?? null
       if (check) {
-        setNarrationPreview(null)
         mutate((current) => ({
           ...current,
           isNarrating: false,
@@ -1538,7 +1372,7 @@ export function useGameSession(options: {
     if (options.allowUncertainRetry && (!existingPending || existingPending.requestId !== dice.idempotencyKey)) {
       return { ok: false, error: 'Не найдено действие для безопасного повтора.', uncertain: true }
     }
-    const combatActorId = currentCombatActorId(current)
+    const combatActorId = currentTurnActorId(current)
     if (!options.allowUncertainRetry && !canIssueUiTacticalCommand(current.mechanics?.combat, command, combatActorId)) {
       setTacticalError('Сейчас ход другого участника боя.')
       return { ok: false, error: 'Сейчас ход другого участника боя.' }
@@ -2089,7 +1923,7 @@ export function useGameSession(options: {
 
   const finishMapTurn = useCallback(() => {
     const current = stateRef.current
-    return executeTacticalCommand({ command_type: 'EndTurn', actor_id: currentCombatActorId(current) }, 'Завершить ход')
+    return executeTacticalCommand({ command_type: 'EndTurn', actor_id: currentTurnActorId(current) }, 'Завершить ход')
   }, [executeTacticalCommand])
 
   const resolveHeroDeath = useCallback((playerId: string, resolution: 'resurrect' | 'replace', replacementName?: string) => {
@@ -2506,7 +2340,6 @@ export function useGameSession(options: {
 
   return {
     state,
-    narrationPreview,
     lastDialogueAnswer,
     pendingClarification,
     dialogueDraft,
@@ -2524,7 +2357,7 @@ export function useGameSession(options: {
     combatVisualBatch,
     merchantView,
     merchantNarration,
-    clearTacticalError: () => setTacticalError(null),
+    clearTacticalError,
     submitAction,
     confirmPendingAction,
     cancelPendingAction,

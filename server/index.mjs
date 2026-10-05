@@ -45,6 +45,7 @@ import {
 } from './campaign-ai-context.mjs'
 import { DiceService } from './dice-service.mjs'
 import { MapStore } from './map-store.mjs'
+import { RATE_WINDOW_MS, SlidingWindowCounter } from './rate-window.mjs'
 import { FileEventStore } from './event-store.mjs'
 import { DIRECTOR_COMMAND_CAPABILITY, GameOrchestrator } from './game-orchestrator.mjs'
 import { FallbackLLMClient, RouterAIClient } from './llm-client.mjs'
@@ -2218,6 +2219,36 @@ function canAccessRoom(user, room) {
   return (user.heroIds ?? []).some((id) => memberIds.includes(String(id)))
 }
 
+/**
+ * Отказ, который сверка проекции изменить не может, — до самой сверки.
+ *
+ * `reconcileCampaignProjection` стоит на GET комнаты, рукопожатии потока и
+ * командах: читает журнал, истекает голосования, может перезаписать комнату.
+ * Раньше её запускал любой вошедший аккаунт, а права проверялись после. Здесь
+ * отклоняется только окончательный отказ: у кампании есть записи о членстве,
+ * а этого пользователя среди них нет. Членство хранится на сервере, а не в
+ * комнате, поэтому сверка его не даст; ответ тот же 403, что вернула бы
+ * проверка после сверки. Администратор, участник и наследственная кампания
+ * без записей о членстве (там доступ решают герои комнаты, которые сверка
+ * может восстановить) идут прежним путём, без лишнего чтения комнаты.
+ * Любая ошибка здесь тоже значит «решит прежний путь».
+ *
+ * @param {any} user
+ * @param {string} campaignId
+ * @returns {boolean}
+ */
+function accessDeniedBeforeReconcile(user, campaignId) {
+  try {
+    if (!user || user.role === 'admin' || campaignMembership(user, campaignId)) return false
+    const room = getRoom(campaignId)
+    if (!room.state || canAccessRoom(user, room)) return false
+    const sessionCode = String(room.state.sessionCode || '').toUpperCase()
+    return Boolean(sessionCode) && sessionCode === String(campaignId || '').toUpperCase() && campaignHasMemberships(sessionCode)
+  } catch {
+    return false
+  }
+}
+
 function explicitNarrationNpcId(state, user, playerId, rawNpcId) {
   if (rawNpcId == null || rawNpcId === '') return ''
   if (typeof rawNpcId !== 'string') {
@@ -2276,7 +2307,12 @@ function streamConnections(campaignId) {
 function revalidateCampaignStreams(campaignId, { state = null, maxAgeMs = 0 } = {}) {
   const normalized = String(campaignId || '').toUpperCase()
   const connections = streamConnections(normalized)
-  if (!connections.size) return
+  if (!connections.size) {
+    // Без потоков отметка не нужна: следующий поток будет сверен сразу, а это
+    // строже, а не слабее. Иначе карта копила по записи на каждую кампанию.
+    campaignStreamAccessCheckedAt.delete(normalized)
+    return
+  }
   const now = Date.now()
   if (!state && maxAgeMs > 0 && now - (campaignStreamAccessCheckedAt.get(normalized) ?? 0) < maxAgeMs) return
   campaignStreamAccessCheckedAt.set(normalized, now)
@@ -2600,8 +2636,7 @@ function broadcastCampaignRoom(campaignId, suppliedRoom = null) {
  * пустая летопись означает пустой такт. Кампания, где отряд ещё ничего
  * заметного не сделал, не платит за часы вовсе.
  */
-function worldRumorClockHasWork(campaignId) {
-  const room = getRoom(campaignId)
+function worldRumorClockHasWork(campaignId, room = getRoom(campaignId)) {
   if (!room?.state) return false
   // Приостановленная и завершённая кампании доступны только для чтения: такт
   // молвы там всё равно не закоммитится, а ошибка легла бы в лог на каждое
@@ -2614,8 +2649,7 @@ function worldRumorClockHasWork(campaignId) {
  * Есть ли часам голода над чем работать. Такая же дешёвая калитка, как у молвы:
  * без удерживаемых пленных такт не платит за `eventStore.load` вовсе.
  */
-function captiveClockHasWork(campaignId) {
-  const room = getRoom(campaignId)
+function captiveClockHasWork(campaignId, room = getRoom(campaignId)) {
   if (!room?.state) return false
   try { assertCampaignPlayable(room.state) } catch { return false }
   return planCaptiveNeglectCommands(room.state).length > 0
@@ -2679,11 +2713,16 @@ function nudgeWorldClocks(campaignId) {
         entry.pending = false
         const economy = await runMerchantEconomyClock(normalized)
         if (economy.events.length) persistAuthoritativeProjection(normalized, economy.state, economy.events)
-        if (captiveClockHasWork(normalized)) {
+        // Обе калитки читают комнату (до мегабайта JSON). Без работы пленных
+        // между ними нет ни `await`, ни записи — им хватает одного чтения;
+        // после такта пленных комната могла измениться, и читается заново.
+        let gateRoom = getRoom(normalized)
+        if (captiveClockHasWork(normalized, gateRoom)) {
           const captives = await runCaptiveClock(normalized)
           if (captives.events.length) persistAuthoritativeProjection(normalized, captives.state, captives.events)
+          gateRoom = getRoom(normalized)
         }
-        if (!worldRumorClockHasWork(normalized)) continue
+        if (!worldRumorClockHasWork(normalized, gateRoom)) continue
         // Предохранитель от несходящегося такта. Свой коммит часов молвы сам
         // сохраняет комнату, а сохранение комнаты будит драйвер снова: если
         // такт по какой-то причине перестанет быть идемпотентным (например,
@@ -2721,23 +2760,15 @@ onRoomSaved((campaignId, room) => {
   })
 })
 
-const costlyRequests = new Map()
-function exceedsRate(key, limit, windowMs = 10 * 60 * 1000) {
-  const now = Date.now()
-  const recent = (costlyRequests.get(key) || []).filter((time) => now - time < windowMs)
-  recent.push(now)
-  costlyRequests.set(key, recent)
-  return recent.length > limit
+// Окна запросов убирают ключи с истёкшими отметками (`server/rate-window.mjs`).
+const costlyRequests = new SlidingWindowCounter()
+function exceedsRate(key, limit, windowMs = RATE_WINDOW_MS) {
+  return costlyRequests.hit(key, limit, windowMs)
 }
 
-const loginAttempts = new Map()
+const loginAttempts = new SlidingWindowCounter()
 function rateLimited(req) {
-  const key = req.socket.remoteAddress || 'unknown'
-  const now = Date.now()
-  const recent = (loginAttempts.get(key) || []).filter((time) => now - time < 10 * 60 * 1000)
-  recent.push(now)
-  loginAttempts.set(key, recent)
-  return recent.length > 20
+  return loginAttempts.hit(req.socket.remoteAddress || 'unknown', 20)
 }
 
 async function readBody(req) {
@@ -3285,9 +3316,11 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     })
     const saved = saveRoom(campaignId, next, room.version)
     if (!saved.conflict) {
-      if (compareProjection(engineState, saved.room.state).matched) {
+      // Сверка — два sha256 по всему каноническому состоянию: считаем её один раз.
+      const comparison = compareProjection(engineState, saved.room.state)
+      if (comparison.matched) {
         const projectionAck = acknowledge(proposedStateVersion, {
-          projectionHash: compareProjection(engineState, saved.room.state).projected_hash,
+          projectionHash: comparison.projected_hash,
         })
         if (projectionAck) return { ...saved.room, projectionAck }
       }
@@ -3295,10 +3328,12 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     }
   }
   const reconciled = getRoom(campaignId)
-  if (Number(reconciled.state?.state_version ?? -1) >= proposedStateVersion
-    && compareProjection(engineState, reconciled.state).matched) {
+  const reconciledComparison = Number(reconciled.state?.state_version ?? -1) >= proposedStateVersion
+    ? compareProjection(engineState, reconciled.state)
+    : null
+  if (reconciledComparison?.matched) {
     const projectionAck = acknowledge(proposedStateVersion, {
-      projectionHash: compareProjection(engineState, reconciled.state).projected_hash,
+      projectionHash: reconciledComparison.projected_hash,
     })
     return projectionAck ? { ...reconciled, projectionAck } : reconciled
   }
@@ -3307,11 +3342,21 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
 
 async function reconcileCampaignProjection(campaignId) {
   try {
-    await expirePartyDecisionIfNeeded(campaignId)
+    // Сверка идёт на каждом GET комнаты и рукопожатии потока. Раньше она
+    // загружала голову трижды: истечение голосования, сама сверка и
+    // `pendingProjection` — каждая загрузка копирует мир целиком. Теперь
+    // голова читается один раз, а повторно — только после коммита.
     let authoritative = await eventStore.load(campaignId)
+    // Та же калитка, что внутри `expirePartyDecisionIfNeeded`: без истёкшего
+    // голосования он ничего не пишет, и его собственная загрузка не нужна.
+    if (partyDecisionExpiryEvents(authoritative.state, { now: Date.now() }).events.length) {
+      await expirePartyDecisionIfNeeded(campaignId)
+      authoritative = await eventStore.load(campaignId)
+    }
     const questResolution = await finishQuestDecision({ executor: authoritativeExecutor, campaignId, state: authoritative.state })
     if (questResolution) authoritative = await eventStore.load(campaignId)
-    const pending = await eventStore.pendingProjection(campaignId)
+    // Состояние головы уже в руках — сверке нужны только checkpoint и события.
+    const pending = await eventStore.pendingProjection(campaignId, { withState: false })
     const room = getRoom(campaignId)
     const projectedVersion = Number(room.state?.state_version ?? -1)
     const comparison = compareProjection(authoritative.state, room.state)
@@ -3995,6 +4040,7 @@ async function handleHttpRequest(req, res) {
   if (campaignStreamMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
     const campaignId = campaignStreamMatch[1].toUpperCase()
+    if (accessDeniedBeforeReconcile(user, campaignId)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
     const room = await reconcileCampaignProjection(campaignId)
     if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
@@ -4058,7 +4104,13 @@ async function handleHttpRequest(req, res) {
       connection.closed = true
       clearInterval(heartbeat)
       res.off('drain', drain)
-      streamConnections(campaignId).delete(connectionId)
+      const remaining = streamConnections(campaignId)
+      remaining.delete(connectionId)
+      // Последний поток кампании закрыт — её записи в картах потоков не нужны.
+      if (!remaining.size) {
+        campaignStreams.delete(campaignId)
+        campaignStreamAccessCheckedAt.delete(campaignId)
+      }
       queueMicrotask(() => {
         void reconcilePartyDecisionPresence(campaignId)
           .catch((error) => console.error('[Сказание] Не удалось зафиксировать отключение участника:', error?.message || error))
@@ -4079,6 +4131,7 @@ async function handleHttpRequest(req, res) {
     const user = requireUser(req, res); if (!user) return
     const campaignId = questAbandonMatch[1].toUpperCase()
     try {
+      if (accessDeniedBeforeReconcile(user, campaignId)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       const room = await reconcileCampaignProjection(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
@@ -4107,6 +4160,7 @@ async function handleHttpRequest(req, res) {
     const user = requireUser(req, res); if (!user) return
     const campaignId = partyVoteMatch[1].toUpperCase()
     try {
+      if (accessDeniedBeforeReconcile(user, campaignId)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       const room = await reconcileCampaignProjection(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
@@ -4168,6 +4222,7 @@ async function handleHttpRequest(req, res) {
     const user = requireUser(req, res); if (!user) return
     const campaignId = partyRollMatch[1].toUpperCase()
     try {
+      if (accessDeniedBeforeReconcile(user, campaignId)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       const room = await reconcileCampaignProjection(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
@@ -4663,6 +4718,7 @@ async function handleHttpRequest(req, res) {
     const user = requireUser(req, res); if (!user) return
     try {
       const campaignId = dialogueMatch[1].toUpperCase()
+      if (accessDeniedBeforeReconcile(user, campaignId)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       const room = await reconcileCampaignProjection(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
@@ -5729,6 +5785,7 @@ async function handleHttpRequest(req, res) {
   }
   if (roomMatch && req.method === 'GET') {
     const user = requireUser(req, res); if (!user) return
+    if (accessDeniedBeforeReconcile(user, roomMatch[1])) return json(res, 403, { error: 'Нет доступа к этой комнате' })
     const room = await reconcileCampaignProjection(roomMatch[1])
     if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой комнате' })
     if (!room.state) return json(res, 200, room)
@@ -5832,6 +5889,7 @@ async function handleHttpRequest(req, res) {
         })
       }
       const campaignId = String(body.campaignId || body.campaign_id || '')
+      if (accessDeniedBeforeReconcile(user, campaignId)) return json(res, 403, { error: 'Нет доступа к этой кампании' })
       const room = await reconcileCampaignProjection(campaignId)
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
       if (!canAccessRoom(user, room)) return json(res, 403, { error: 'Нет доступа к этой кампании' })

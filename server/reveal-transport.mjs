@@ -101,6 +101,70 @@ export function sceneMapUpdateFor(map, hash, clientHash = '') {
   if (clientHash && clientHash === hash) return { kind: 'unchanged', hash }
   const cached = projectedMapByHash(clientHash)
   if (!cached) return { kind: 'full', hash, map: serialized }
+  // Рассылка комнаты задаёт этот вопрос каждому соединению, а ответ зависит
+  // только от пары «текущая проекция — карта клиента»: у игроков отряда она
+  // обычно одна и та же. Проекция — общий объект из кэша проектора, карта
+  // клиента — объект из кэша выше; обе не меняются на месте. Поэтому ответ
+  // запоминается по этой паре, и сторож видимости (сравнение сериализаций)
+  // проходит один раз на пару, а не на каждого зрителя.
+  const checkKey = `${hash}\n${clientHash}`
+  const remembered = deltaChecksFor(map).get(checkKey)
+  if (remembered && remembered.clientMap === cached) return remembered.update
+  const update = deltaOrFullUpdate(serialized, hash, clientHash, cached)
+  rememberDeltaCheck(map, checkKey, cached, update)
+  return update
+}
+
+/**
+ * Ответы `sceneMapUpdateFor` по текущей проекции, её хешу и хешу клиента.
+ * @type {WeakMap<SerializedMap, Map<string, {clientMap: SerializedMap, update: SceneMapUpdate}>>}
+ */
+const deltaChecks = new WeakMap()
+
+/** Сколько разных карт клиентов помнить на одну проекцию. */
+const DELTA_CHECKS_PER_MAP = 8
+
+/**
+ * @param {SerializedMap} map
+ * @returns {Map<string, {clientMap: SerializedMap, update: SceneMapUpdate}>}
+ */
+function deltaChecksFor(map) {
+  let checks = deltaChecks.get(map)
+  if (!checks) {
+    checks = new Map()
+    deltaChecks.set(map, checks)
+  }
+  return checks
+}
+
+/**
+ * @param {SerializedMap} map
+ * @param {string} checkKey хеш проекции и хеш клиента
+ * @param {SerializedMap} clientMap
+ * @param {SceneMapUpdate} update
+ * @returns {void}
+ */
+function rememberDeltaCheck(map, checkKey, clientMap, update) {
+  const checks = deltaChecksFor(map)
+  checks.delete(checkKey)
+  checks.set(checkKey, { clientMap, update })
+  while (checks.size > DELTA_CHECKS_PER_MAP) {
+    const oldest = checks.keys().next().value
+    if (oldest === undefined) break
+    checks.delete(oldest)
+  }
+}
+
+/**
+ * Дельта от карты клиента либо карта целиком — со сторожем видимости.
+ *
+ * @param {SerializedMap} serialized проекция текущей карты
+ * @param {string} hash хеш этой проекции
+ * @param {string} clientHash что закэшировано у клиента
+ * @param {SerializedMap} cached карта клиента
+ * @returns {SceneMapUpdate}
+ */
+function deltaOrFullUpdate(serialized, hash, clientHash, cached) {
   try {
     // `revealUpdateFor` привязывает дельту к тому хешу, который получила как
     // текущий. Дельта считается от карты клиента, поэтому сюда идёт его хеш;

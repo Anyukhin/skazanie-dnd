@@ -163,7 +163,9 @@ export function createSession(userId) {
 export function userForToken(token) {
   if (!token) return null
   const db = readAuth()
-  const session = db.sessions.find((item) => item.tokenHash === tokenHash(token))
+  // Хеш считается один раз, а не заново для каждой сессии в хранилище.
+  const hash = tokenHash(token)
+  const session = db.sessions.find((item) => item.tokenHash === hash)
   const user = session && db.users.find((item) => item.id === session.userId)
   return user ? publicUser(user, db) : null
 }
@@ -172,7 +174,8 @@ export function deleteSession(token) {
   if (!token) return
   withAuthLock(() => {
     const db = readAuth()
-    db.sessions = db.sessions.filter((item) => item.tokenHash !== tokenHash(token))
+    const hash = tokenHash(token)
+    db.sessions = db.sessions.filter((item) => item.tokenHash !== hash)
     atomicWrite(authFile, db)
   })
 }

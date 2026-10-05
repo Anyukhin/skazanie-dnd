@@ -18,6 +18,7 @@ import { applyGameEvent, eventSummary, normalizeCampaignState, resolveCommand } 
 import { PROJECTED_STATE_KEYS, campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { combatNarration } from '../server/combat-narration.mjs'
 import { addProp, createTacticalMap, serializeTacticalMap } from '../server/tactical-map.mjs'
+import { twoPhaseCheckCommandFor } from '../src/game-session-state.mjs'
 
 const source = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8')
 const session = source('src/useGameSession.ts')
@@ -78,7 +79,11 @@ test('панель подсказок зовёт к святыне, но тол�
 })
 
 test('молитва объявлена двухфазной и на клиенте, и на сервере', () => {
-  assert.match(session, /case 'OperateSceneObject':\s*\n\s*return command\.intent === 'pray' \? command : null/u)
+  // Список двухфазных команд — в чистом модуле сессии: проверяется вызовом.
+  const pray = { command_type: 'OperateSceneObject', actor_id: 'hero', prop_id: 'prop-altar', intent: 'pray' }
+  assert.equal(twoPhaseCheckCommandFor(pray), pray)
+  assert.equal(twoPhaseCheckCommandFor({ ...pray, intent: 'inspect' }), null)
+  assert.match(session, /twoPhaseCheckCommandFor,[\s\S]*?from '\.\/game-session-state\.mjs'/u)
   assert.match(session, /intent === 'pray' \? \{ manualRoll: !autoRollEnabled\(\) \} : undefined/u)
   assert.match(orchestrator, /shrinePrayerCheckCard\(\{ campaignId, playerId, state, command \}\)/u)
   // Сторож второй фазы проверяется поведением (`test/blessings.test.mjs`,

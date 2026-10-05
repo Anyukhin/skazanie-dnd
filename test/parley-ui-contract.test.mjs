@@ -17,6 +17,7 @@ import { PARLEY_OUTCOMES, PARLEY_TERMS } from '../server/parley.mjs'
 const board = ['../src/DungeonMap.tsx', '../src/dungeon-map-parts.tsx'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n')
 const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8')
 const session = readFileSync(new URL('../src/useGameSession.ts', import.meta.url), 'utf8')
+const sessionState = readFileSync(new URL('../src/game-session-state.mjs', import.meta.url), 'utf8')
 const shared = readFileSync(new URL('../src/app-shared.tsx', import.meta.url), 'utf8')
 const styles = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8')
 
@@ -66,7 +67,9 @@ test('ручной бросок парлея двухфазный: карточ�
   // Полный сторож списка — `test/tavern-ui-contract.test.mjs`, здесь довольно
   // того, что парлей из него не выпал.
   assert.match(session, /result\?\.check && twoPhase/u)
-  assert.match(session, /function twoPhaseCheckCommandFor[\s\S]*?case 'ProposeParley':/u)
+  // Сам список живёт в чистом модуле сессии, хук его импортирует.
+  assert.match(session, /twoPhaseCheckCommandFor,[\s\S]*?from '\.\/game-session-state\.mjs'/u)
+  assert.match(sessionState, /function twoPhaseCheckCommandFor[\s\S]*?case 'ProposeParley':/u)
 })
 
 test('переговоры недоступны после расхода действия, а подсказка объясняет почему', () => {

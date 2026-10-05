@@ -15,9 +15,9 @@ import { fetchWithTimeout, getAiHealth, getCharacterCreationCatalog } from './ai
 import {
   ABILITY_LABELS, DIFFICULTY_LABELS, ErrorToasts, HeroFaceInitials, PageHeader, SKILL_LABELS, UI_SCALE_MAX, UI_SCALE_MIN,
   REPUTATION_TIER_LABELS, UI_SCALE_PRESETS, battleEventText, canonicalLocationKey, clampUiScale, damageTypeLabel,
-  combatState, hasHeroPortrait, heroFaceMode, heroFaceStyle, locationsMatch, useDialogEscape,
+  hasHeroPortrait, heroFaceMode, heroFaceStyle, locationsMatch, useDialogEscape,
 } from './app-shared'
-import type { BoardCombatant } from './app-shared'
+import { combatTurnActive, currentTurnActorId } from './game-session-state.mjs'
 import { AdminView, AgentInteractionCard, CampaignModal, ChatPanel, JournalView, SettingsView } from './AppViews'
 import { CombatTurnClock, DungeonMap, heroStatusFor, heroStatusSummary, type HeroStatus } from './DungeonMap'
 import { RailGrip, useBoardFrame } from './hud-parts'
@@ -36,7 +36,7 @@ import { createScreenMusic, type ScreenMusicPlayer } from './screen-music'
 import { createCombatAudio, DEFAULT_COMBAT_AUDIO_SETTINGS, normalizeCombatAudioSettings, type CombatAudio } from './combat-audio'
 import { normalizeVoiceMode, pickNarrationVoice, shouldAutoSpeak, type NarrationVoiceMode } from './narration-tts.mjs'
 import { cancelNarration, observeVoices, russianVoiceAvailable, speakNarration } from './narration-speech'
-import { CELL_FEET, currentTacticalTurn, mapGridDimensions } from './tactical-engine'
+import { currentTacticalTurn, mapGridDimensions } from './tactical-engine'
 import { battleRollContext, battleRollPresentation, boardPositionKey, buildMovementPaths, conditionPresentation, evaluateCombatTarget, mechanicsSupportPresentation, movementCellReason, movementCostLabel, reactionSlotChoices, turnClockPresentation, type MovementPath } from './tactical-ui'
 import { fallbackCombatActions, fallbackCombatResources } from './combat-actions'
 import { fallbackCombatSpells, fallbackSpellResources } from './combat-spells'
@@ -101,39 +101,6 @@ const NARRATION_VOICE_KEY = 'skazanie-narration-voice-v1'
 // себе, не забирая у соседа.
 const ACTION_HINTS_KEY = 'skazanie-action-hints-v1'
 const DEFAULT_DOCUMENT_TITLE = 'Сказание'
-function reachableBoardCells(state: GameState, actor: BoardCombatant, remainingFeet: number) {
-  const result = new Set<string>()
-  const maxSteps = Math.max(0, Math.floor(remainingFeet / CELL_FEET))
-  if (!maxSteps) return result
-  const key = (x: number, y: number) => `${x},${y}`
-  const cells = new Map(state.scene.cells.map((cell) => [key(cell.x, cell.y), cell]))
-  const occupied = new Set<string>()
-  state.players.forEach((item) => { if (item.id !== actor.id && item.hp > 0) occupied.add(key(item.x, item.y)) })
-  ;(state.enemies ?? []).forEach((item) => { if (item.id !== actor.id && item.alive) occupied.add(key(item.x, item.y)) })
-  ;(state.actors ?? []).forEach((item) => { if (item.id !== actor.id && item.alive) occupied.add(key(item.x, item.y)) })
-  const start = key(actor.x, actor.y)
-  const queue: Array<{ x: number; y: number; steps: number }> = [{ x: actor.x, y: actor.y, steps: 0 }]
-  const visited = new Set([start])
-  for (let index = 0; index < queue.length; index += 1) {
-    const current = queue[index]
-    if (current.steps >= maxSteps) continue
-    for (const [x, y] of [[current.x + 1, current.y], [current.x - 1, current.y], [current.x, current.y + 1], [current.x, current.y - 1]]) {
-      const position = key(x, y)
-      const cell = cells.get(position)
-      if (visited.has(position) || occupied.has(position) || !cell?.revealed || (cell.type !== 'floor' && cell.type !== 'door')) continue
-      visited.add(position)
-      result.add(position)
-      queue.push({ x, y, steps: current.steps + 1 })
-    }
-  }
-  return result
-}
-
-function currentTurnActorId(state: GameState) {
-  const combat = combatState(state)
-  if (!combat.active || !combat.initiative?.length) return state.activePlayerId
-  return combat.initiative[Math.max(0, Number(combat.active_index) || 0)]?.actor_id ?? state.activePlayerId
-}
 
 function loadUiScale() {
   const saved = Number(window.localStorage.getItem(UI_SCALE_KEY))
@@ -1113,10 +1080,11 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
   useEffect(() => {
     if (merchantSelection && !selectedMerchant) setMerchantSelection(null)
   }, [merchantSelection, selectedMerchant])
-  const alertTurnActorId = currentTurnActorId(state)
-  const alertCombatActive = Boolean(state.mechanics?.combat?.active && state.mechanics.combat.initiative?.length)
-  const alertActorName = partyPlayers.find((player) => player.id === alertTurnActorId)?.character ?? 'герой'
-  const turnAlertCursor = useRef({ sessionCode: state.sessionCode, actorId: alertTurnActorId })
+  // Чей ход и идёт ли бой — считаются один раз: их читают и сигнал хода, и стол ниже.
+  const turnActorId = currentTurnActorId(state)
+  const combatActive = combatTurnActive(state)
+  const alertActorName = partyPlayers.find((player) => player.id === turnActorId)?.character ?? 'герой'
+  const turnAlertCursor = useRef({ sessionCode: state.sessionCode, actorId: turnActorId })
 
   const changeLifecycle = async (action: 'pause' | 'resume' | 'complete' | 'archive' | 'chain_arcs' | 'conclude_after_arc') => {
     setLifecycleBusy(true)
@@ -1416,13 +1384,13 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     const cursor = turnAlertCursor.current
     if (cursor.sessionCode !== state.sessionCode) {
       cursor.sessionCode = state.sessionCode
-      cursor.actorId = alertTurnActorId
+      cursor.actorId = turnActorId
       document.title = normalDocumentTitle.current
       return
     }
-    if (cursor.actorId === alertTurnActorId) return
-    cursor.actorId = alertTurnActorId
-    if (!alertCombatActive || !accessibleHeroIds.includes(alertTurnActorId)) {
+    if (cursor.actorId === turnActorId) return
+    cursor.actorId = turnActorId
+    if (!combatActive || !accessibleHeroIds.includes(turnActorId)) {
       if (document.hidden) document.title = normalDocumentTitle.current
       return
     }
@@ -1443,7 +1411,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     } catch {
       // Заголовок и звук остаются корректным fallback даже при сбое API ОС.
     }
-  }, [accessibleHeroIds, alertActorName, alertCombatActive, alertTurnActorId, state.sessionCode])
+  }, [accessibleHeroIds, alertActorName, combatActive, turnActorId, state.sessionCode])
   useEffect(() => {
     atmosphereAudioRef.current?.setMood(normalizeAtmosphereMood(sceneTheme), 1.8)
   }, [sceneTheme])
@@ -1629,8 +1597,6 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
     )
   }
 
-  const combatActive = Boolean(state.mechanics?.combat?.active && state.mechanics.combat.initiative?.length)
-  const turnActorId = currentTurnActorId(state)
   const turnPlayer = partyPlayers.find((player) => player.id === turnActorId)
   const turnEnemy = state.enemies?.find((enemy) => enemy.id === turnActorId)
   const turnSummon = state.actors?.find((actor) => actor.id === turnActorId && actor.alive)
