@@ -1196,7 +1196,15 @@ async function trackScene(state) {
   // и аудит принимал их за проходы за край карты.
   let full = state
   try { full = await room(accounts.admin) } catch { full = state }
-  for (const issue of [...sceneMapConsistency(full), ...sceneContinuity(state, last)]) recordConsistency(issue, `сцена ${snap.chapter}`)
+  const sceneIssues = [...sceneMapConsistency(full), ...sceneContinuity(state, last)]
+  for (const issue of sceneIssues) recordConsistency(issue, `сцена ${snap.chapter}`)
+  // Карту с замечанием аудита — в отчёт: карту прогона с моделью иначе не
+  // воспроизвести бесплатно, архитектор сцены строит её по ответу модели.
+  if (sceneIssues.some((issue) => /^(?:MAP_|PROGRAM_|SCENE_TEXT_)/u.test(issue.code)) && full?.scene?.map) {
+    mkdirSync(join(OUT, 'maps'), { recursive: true })
+    const file = join(OUT, 'maps', `${snap.chapter}-${String(snap.location).replace(/[^\p{L}\p{N}]+/gu, '-')}.json`)
+    writeFileSync(file, JSON.stringify({ location: full.scene.location, title: full.scene.title, objective: full.scene.objective, location_id: full.worldMap?.currentLocationId, map_requirements: full.scene.map_requirements ?? null, issues: sceneIssues, map: full.scene.map }, null, 1))
+  }
   stats.scenes.push(snap)
   stats.chapters = Math.max(stats.chapters, Number(snap.chapter) || 0)
   note(`\n### 📍 Сцена ${snap.chapter}: ${snap.location} — «${snap.title}»\nЦель: ${snap.objective ?? '—'} · карта ${snap.cells} клеток, ${snap.props} предметов · рядом: ${snap.npcs.join(', ') || 'никого'}`)
