@@ -17,7 +17,7 @@
  *  - в конце проверяет идемпотентность, перезапуск, проекцию второго игрока,
  *    replay (`tools/audit-cutover.mjs`) и пишет отчёт с оценкой.
  *
- *   node eval/astohan-playthrough.mjs                 # без модели, ~5–10 мин
+ *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
  *   node eval/astohan-playthrough.mjs --seed 7        # повторяемые кости
  *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
  *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
@@ -51,7 +51,7 @@ const option = (name, fallback) => {
 const LIVE = flag('live')
 const KEEP = flag('keep')
 const SEED = option('seed', null)
-const MINUTES = Number(option('minutes', LIVE ? 25 : 12))
+const MINUTES = Number(option('minutes', LIVE ? 25 : 20))
 const PORT = Number(option('port', 8900 + Math.floor(Math.random() * 90)))
 const STAMP = new Date().toISOString().replace(/[:.]/gu, '-').slice(0, 19)
 const OUT = resolve(ROOT, option('out', join('tmp', 'astohan-playtest', `${STAMP}${LIVE ? '-live' : ''}`)))
@@ -584,6 +584,18 @@ async function settleInteraction(reason = '') {
   return room()
 }
 
+/** Кто где стоит и в каком состоянии — чтобы разобрать зависший бой без хранилища. */
+function combatSnapshot(state) {
+  const conditions = (id) => (state.mechanics.conditions?.[id] ?? []).map((entry) => String(entry?.id ?? entry)).join('+')
+  const actor = (entry) => {
+    const at = state.mechanics.positions?.[entry.id] ?? { x: entry.x, y: entry.y }
+    const flags = conditions(entry.id)
+    return `${entry.character ?? entry.name ?? entry.id} ${entry.hp}/${entry.maxHp} @${at?.x},${at?.y}${entry.size ? ` ${entry.size}` : ''}${flags ? ` [${flags}]` : ''}`
+  }
+  const enemies = (state.enemies ?? []).filter((entry) => entry.alive !== false && Number(entry.hp) > 0)
+  return [...state.players.map(actor), ...enemies.map(actor)].join('; ')
+}
+
 let directorSeq = 0
 async function director(playerAction = 'Продолжить приключение', { interactionId, quiet = false } = {}) {
   const key = `bot-director-${++directorSeq}`
@@ -601,7 +613,10 @@ async function director(playerAction = 'Продолжить приключен�
   }
   const type = result.body.intent?.type ?? '?'
   stats.directorIntents[type] = (stats.directorIntents[type] ?? 0) + 1
-  const fresh = newMessages(seen, result.body.state).map((entry) => short(entry.text ?? entry.content, 500)).filter(Boolean)
+  // Строку Режиссёра сервер дописывает в ленту комнаты после того, как собрал
+  // состояние ответа, поэтому новые сообщения ищутся в свежем снимке комнаты:
+  // по `result.body.state` детектор молчания срабатывал на каждом шаге.
+  const fresh = newMessages(seen, await room()).map((entry) => short(entry.text ?? entry.content, 500)).filter(Boolean)
   note(`- 🎬 Режиссёр (${playerAction}) → **${type}**${result.body.reward?.xp ? `, опыт ${result.body.reward.xp}` : ''}${fresh.length ? `: ${fresh.join(' ⏐ ')}` : ' (в хронике ничего нового)'}`)
   if (!fresh.length && !['COMBAT_ACTIVE'].includes(type) && !result.body.state?.agentInteraction) finding('minor', 'director-silent', `шаг Режиссёра ${type} на «${playerAction}» не добавил в хронику ни строки`)
   return result.body
@@ -633,7 +648,12 @@ async function playCombat(label) {
     const combat = state.mechanics.combat
     if (!combat.active) break
     maxRound = Math.max(maxRound, Number(combat.round) || 0)
-    if (combat.round > 30) { finding('blocker', 'combat-long', `бой «${label}» идёт ${combat.round} раундов — прогон остановлен`); combatAbandoned = true; break }
+    if (combat.round > 30) {
+      finding('blocker', 'combat-long', `бой «${label}» идёт ${combat.round} раундов — прогон остановлен`)
+      note(`- ⛔ снимок зависшего боя: ${combatSnapshot(state)}`)
+      combatAbandoned = true
+      break
+    }
     if (state.state_version === lastVersion) stuck += 1
     else { stuck = 0; lastVersion = state.state_version }
     if (stuck === 3) await request(`/api/campaigns/${CODE}/system-tick`, { method: 'POST', account: accounts.owner })
@@ -767,6 +787,13 @@ async function meleeApproach(actorId, targetId) {
     for (let extra = 0; extra < 3; extra += 1) {
       fresh = await room(accountFor(actorId))
       if (!fresh.mechanics.combat.active) return
+      // Серия атак кончилась: действие израсходовано и продолжения Атаки нет.
+      // Движок снимает `action` уже после первого удара, а Дополнительную
+      // атаку считает парой `attacks_used` / `attacks_allowed`. Без проверки
+      // бот бил «ещё раз» сверх неё и копил отказы ACTION_SPENT.
+      const economy = fresh.mechanics.combat.action_economy?.[actorId] ?? {}
+      const attackContinues = Number(economy.attacks_used) > 0 && Number(economy.attacks_used) < Number(economy.attacks_allowed)
+      if (economy.action === false && !attackContinues) return
       const at = fresh.mechanics.positions?.[actorId]
       const adjacent = (fresh.enemies ?? []).filter(isUp).find((enemy) => distance(at, fresh.mechanics.positions?.[enemy.id] ?? enemy) <= 5)
       if (!adjacent) return
@@ -847,20 +874,39 @@ async function lootAll() {
   }
 }
 
-async function restIfHurt(kind = 'short') {
+/**
+ * Отдых — личный: `StartRest` начинает его одному герою, сервер сам
+ * проматывает час (короткий) или восемь часов и завершает (долгий). Прежний
+ * бот начинал отдых только владельцу, тратил одну кость хитов и долгого отдыха
+ * не брал вовсе — отряд шёл в тяжёлый бой кульминации с 8/74 и 1/66 хитов и
+ * раз за разом падал (серия сидов 2026-10-05, сид 4).
+ */
+async function restIfHurt() {
   const state = await room()
   if (state.mechanics.combat?.active) return
-  const hurt = state.players.some((player) => Number(player.hp) < Number(player.maxHp) * 0.7)
-  if (!hurt) return
-  const started = await command(accounts.owner.heroId, { command_type: 'StartRest', kind }, kind === 'long' ? 'Долгий отдых' : 'Короткий отдых', { expectFailure: true })
-  if (started.status !== 200) { note(`- отдых не начат: ${started.body?.code} — ${short(started.body?.error, 160)}`); return }
-  stats.rests += 1
-  if (kind === 'short') {
-    for (const actorId of heroIds()) {
-      const hero = heroOf(await room(), actorId)
-      if (Number(hero.hp) < Number(hero.maxHp)) await command(actorId, { command_type: 'SpendHitPointDie' }, 'Кость хитов', { expectFailure: true })
+  const heroes = heroIds().map((actorId) => heroOf(state, actorId)).filter(Boolean)
+  const living = heroes.filter((hero) => Number(hero.hp) > 0)
+  if (!living.some((hero) => Number(hero.hp) < Number(hero.maxHp) * 0.7)) return
+  const badly = living.length < heroes.length || living.some((hero) => Number(hero.hp) < Number(hero.maxHp) * 0.4)
+  let kind = badly ? 'long' : 'short'
+  for (const hero of living) {
+    const label = kind === 'long' ? 'Долгий отдых' : 'Короткий отдых'
+    let started = await command(hero.id, { command_type: 'StartRest', kind }, label, { expectFailure: true })
+    if (started.status !== 200 && kind === 'long') {
+      note(`- долгий отдых не начат: ${started.body?.code} — ${short(started.body?.error, 160)}; беру короткий`)
+      kind = 'short'
+      started = await command(hero.id, { command_type: 'StartRest', kind }, 'Короткий отдых', { expectFailure: true })
     }
-    for (const actorId of heroIds()) await command(actorId, { command_type: 'CompleteRest' }, 'Закончить отдых', { expectFailure: true })
+    if (started.status !== 200) { note(`- отдых ${hero.character} не начат: ${started.body?.code} — ${short(started.body?.error, 160)}`); continue }
+    stats.rests += 1
+    if (kind !== 'short') continue
+    for (let die = 0; die < 20; die += 1) {
+      const current = heroOf(await room(), hero.id)
+      if (!current || Number(current.hp) >= Number(current.maxHp) * 0.9) break
+      const spent = await command(hero.id, { command_type: 'SpendHitPointDie' }, 'Кость хитов', { expectFailure: true })
+      if (spent.status !== 200) break
+    }
+    await command(hero.id, { command_type: 'CompleteRest' }, 'Закончить отдых', { expectFailure: true })
   }
   const after = await room()
   note(`- 💤 ${kind === 'long' ? 'долгий' : 'короткий'} отдых: ${after.players.map((player) => `${player.character} ${player.hp}/${player.maxHp}`).join(', ')}`)
@@ -1014,7 +1060,7 @@ async function playUntilFinale() {
       if (!stats.restarts && stats.combats >= 1) await restartAndCompare('посреди боя')
       state = await playCombat(`сцена ${state.adventure?.chapter}, ${state.scene?.location}`)
       await lootAll()
-      await restIfHurt('short')
+      await restIfHurt()
       continue
     }
     trackScene(state)
@@ -1026,7 +1072,7 @@ async function playUntilFinale() {
       continue
     }
     const arc = state.autonomy?.pacing ?? {}
-    const finale = Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc_plan?.target_scenes ?? state.autonomy?.arc?.target_scenes ?? 99)
+    const finale = Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc?.target_scenes ?? 99)
     const action = idleDirector >= 3 ? 'Перейти дальше' : finale || arc.phase === 'climax' ? 'Ищем бой с Саргатом и его слугами' : idleDirector === 1 ? 'Ищем бой с теми, кто разорил эти земли' : 'Продолжить приключение'
     const before = state.state_version
     const advanced = await director(action)
