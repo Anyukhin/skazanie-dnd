@@ -10,6 +10,7 @@ import './table-layout.css'
 import './prototype-layout.css'
 import './bg3-hud.css'
 import './mockup-pages.css'
+import './rich-tavern.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
