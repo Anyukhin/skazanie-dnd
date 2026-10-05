@@ -314,6 +314,45 @@ test('climax resolves a triggered quest and completes the campaign replay-identi
   assert.equal((await eventStore.getEvents('AUTONOMY-30')).length, beforeCount)
 })
 
+test('после поражения без смертей отряд приходит в себя, отдыхает, и следующая встреча собирается', async (t) => {
+  // Прогон Асстохана (сид 2, 2026-10-05): бой кончился исходом
+  // party_incapacitated, восстановление шло только после победы, герои
+  // остались на 0 ОЗ, и Режиссёр собирал встречу на пустой отряд — 409
+  // INVALID_PARTY со служебным текстом сборщика.
+  const initial = campaign()
+  initial.partyMemberIds = ['hero', 'ally']
+  initial.players[0] = { ...initial.players[0], hp: 30, maxHp: 30 }
+  initial.players.push({ ...initial.players[0], id: 'ally', character: 'Bryn', x: 1, y: 0 })
+  initial.mechanics.positions.ally = { x: 1, y: 0 }
+  const { eventStore, autonomy } = await fixture(t, initial)
+  await autonomy.runCommands('AUTONOMY-30', 'defeat-encounter', [
+    { command_type: 'CreateEncounter', theme: 'beasts', difficulty: 'easy', seed: 'defeat' },
+    { command_type: 'StartCombat', server_authoritative: true },
+  ])
+  const enemyId = (await eventStore.load('AUTONOMY-30')).state.enemies[0].id
+  for (const heroId of ['hero', 'ally']) {
+    await autonomy.runCommands('AUTONOMY-30', `defeat-down-${heroId}`, [{ command_type: 'ApplyDamage', actor_id: enemyId, target_id: heroId, amount: 30, damage_type: 'slashing' }])
+    await autonomy.commitEventsWithRetry('AUTONOMY-30', `defeat-stable-${heroId}`, [{
+      command_id: `defeat-stable-${heroId}`, event_type: 'HeroStabilized', actor_id: null, target_ids: [heroId],
+      payload: { method: 'three-death-save-successes' }, source_rule_ids: [], house_rule_id: null, ruling_id: null, visibility: 'party',
+    }])
+  }
+  const result = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'party_incapacitated' })
+  assert.equal(result.state.mechanics.combat.active, false)
+  for (const hero of result.state.players) assert.equal(hero.hp, hero.maxHp, `${hero.id} должен прийти в себя и отдохнуть`)
+  assert.equal(result.state.autonomy.downtime_history.at(-1)?.reason, 'post_defeat_recovery', 'после поражения — не «после победы»')
+  for (const enemy of result.state.enemies) {
+    assert.equal(enemy.alive, false, `${enemy.id}: победитель уходит, а не стоит над отрядом`)
+    assert.ok((result.state.mechanics.conditions[enemy.id] ?? []).some((condition) => condition.id === 'fled'))
+  }
+  const next = await autonomy.runCommands('AUTONOMY-30', 'after-defeat-encounter', [
+    { command_type: 'CreateEncounter', theme: 'beasts', difficulty: 'easy', seed: 'after-defeat' },
+  ])
+  assert.ok(next.events.some((entry) => entry.event_type === 'EncounterCreated'))
+  const replayed = await eventStore.replay('AUTONOMY-30', { use_snapshots: false })
+  assert.deepEqual(replayed.state, (await eventStore.load('AUTONOMY-30')).state)
+})
+
 test('мирная финальная сцена проходит через RulesEngine, реальное решение группы и replay', async (t) => {
   const initial = campaign()
   const arc = buildCampaignArcPlan('peaceful-final')
@@ -519,3 +558,25 @@ test('eval set is measurable, contains 30+ scenarios and several long campaigns'
 function cleanObjective(value) {
   return typeof value === 'string' && value.trim().length > 0
 }
+
+test('шаг Режиссёра без громких событий говорит, что сделал, а не «Пока ничего не меняется»', async () => {
+  // Прогоны Асстохана (2026-10-05): после continue_exploration и offer_next_hook
+  // лента пять раз за прогон получала «Пока ничего не меняется» — и с моделью,
+  // и без неё: строку шага пишет запасной рассказчик, у которого для раскрытия
+  // области и смены цели нет фраз.
+  const { directorStepNarration } = await import('../server/autonomous-orchestrator.mjs')
+  const { readFile } = await import('node:fs/promises')
+  const template = JSON.parse(await readFile(new URL('../data/campaign-worlds-v1.json', import.meta.url), 'utf8')).templates.find((entry) => entry.id === 'astohan-plains')
+  const state = {
+    scene: { location: 'Пепельная застава', objective: 'Найти, кто открыл ворота', map: { props: [{ assetId: 'well', x: 3.5, y: 3.5, footprint: [{ x: 3, y: 3 }] }, { assetId: 'chest', x: 9.5, y: 9.5 }] } },
+    worldMap: { ...structuredClone(template.world_map), currentLocationId: 'astohan-ash-watch' },
+  }
+  const revealed = directorStepNarration('continue_exploration', [{ event_type: 'AreaRevealed', payload: { cells: [{ x: 3, y: 3 }, { x: 4, y: 3 }] } }], state)
+  assert.match(revealed, /открывается новая часть «Пепельная застава» — здесь колодец\./u)
+  assert.doesNotMatch(revealed, /сундук/u, 'сундук в нераскрытой клетке не называется')
+  const exhausted = directorStepNarration('continue_exploration', [{ event_type: 'ObjectiveUpdated', payload: {} }], state)
+  assert.match(exhausted, /осмотрел всё/u)
+  assert.match(exhausted, /Цель: Найти, кто открыл ворота\./u)
+  assert.match(exhausted, /Дальше можно отправиться в «Обсидиановый перевал» — скажите «Перейти дальше»\./u)
+  assert.equal(directorStepNarration('advance_quest_clock', [], state), '', 'у прочих шагов свой текст')
+})

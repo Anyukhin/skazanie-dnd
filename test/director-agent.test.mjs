@@ -45,6 +45,22 @@ test('бой, который игроки ищут в финальной гла�
   }
 })
 
+test('прямую просьбу уйти дальше решают игроки, а не модель', async () => {
+  // Прогон Асстохана с моделью (2026-10-05): на «Перейти дальше» модель раз за
+  // разом выбирала continue_exploration — «Пока ничего не меняется», и сюжет
+  // вставал на Обсидиановом перевале в двух прогонах из двух.
+  const llm = new FakeLLM({ response: { type: 'continue_exploration', reason: 'Сначала осмотреться' } })
+  const result = await new DirectorAgent({ llmClient: llm }).choose({ state: state(), playerAction: 'Перейти дальше' })
+  assert.equal(result.intent.type, 'end_scene')
+  assert.equal(result.trace.mode, 'deterministic-explicit-player-request')
+  assert.equal(llm.requests.length, 0, 'модель не спрашивают, когда решение уже принято игроками')
+  // Без прямой команды решает модель, как и прежде.
+  const free = new FakeLLM({ response: { type: 'continue_exploration', reason: 'Сначала осмотреться' } })
+  const asked = await new DirectorAgent({ llmClient: free }).choose({ state: state(), playerAction: 'Может, стоит куда-то перейти?' })
+  assert.equal(free.requests.length, 1)
+  assert.notEqual(asked.trace.reason, 'explicit transition request')
+})
+
 test('невалидный ответ модели откатывается к безопасному server-owned намерению', async () => {
   const llm = new FakeLLM({ response: { hp: 1, damage: 999, type: 'request_encounter' } })
   const director = new DirectorAgent({ llmClient: llm })

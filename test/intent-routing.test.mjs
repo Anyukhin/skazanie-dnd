@@ -271,9 +271,19 @@ test('без модели уход к неизвестному месту пол
   assert.equal(unknown.check, undefined)
   assert.deepEqual(unknown.mechanics, [])
   assert.equal((await eventStore.load('ROUTING')).state_version, before)
-  // Непонятное действие без названного места — по-прежнему общее уточнение.
+  // Непонятное действие без названного места — по-прежнему уточнение, но с
+  // вариантами из сцены, а не общее «не понял» (прогон Асстохана, 2026-10-05:
+  // так отвечали на 8 из 10 реальных фраз игроков без модели).
   const unclear = await handle('Делаю нечто невнятное с воздухом вокруг', 'unknown-place-2')
-  assert.match(unclear.narration, /Я не понял способ действия/u)
+  assert.equal(unclear.free_action_outcome, 'clarification')
+  assert.doesNotMatch(unclear.narration, /Я не понял способ действия/u)
+  assert.match(unclear.narration, /осмотреть место внимательнее/u)
+  assert.match(unclear.narration, /расспросить кого-то из здешних \(/u)
+  assert.equal(unclear.check, undefined)
+  assert.deepEqual(unclear.mechanics, [])
+  const impossible = await handle('Я поднимаю весь замок одной рукой', 'unknown-place-3')
+  assert.equal(impossible.free_action_outcome, 'clarification')
+  assert.match(impossible.narration, /не по силам ни одному смертному/u)
 })
 
 test('в бою маршрут travel не предлагается: заявка судится как обычная попытка', async () => {
@@ -320,4 +330,17 @@ test('титул и наблюдение за человеком находят 
   const place = await parse('Наблюдаю за воротами, пока маршал отвернулся.')
   assert.notEqual(place.intent, 'social')
   assert.notEqual(place.approach, 'insight')
+})
+
+test('просьба к ведущему объяснить мир — вопрос, а не действие героя с итогом «Вышло.»', async () => {
+  // Реальная фраза из партии «Поясни что это за мир» считалась действием, и
+  // сервер «выполнял» её (сквозной прогон Асстохана с моделью, 2026-10-05).
+  const { inferRequestKind } = await import('../server/intent-parser.mjs')
+  for (const text of ['Поясни что это за мир', 'Объясни, что это за мир', 'Напомни, где мы', 'Расскажи, что здесь происходит', 'Подскажи, что нам делать']) {
+    assert.equal(inferRequestKind(text), 'question', text)
+  }
+  // Просьба к собеседнику и рассказ героя остаются репликой и действием.
+  for (const text of ['Расскажи, кто такой Арес', 'Объясняю Аресу план атаки', 'Поясни ему, что мы друзья']) {
+    assert.equal(inferRequestKind(text), 'action', text)
+  }
 })

@@ -921,6 +921,30 @@ test('запасной рассказчик не меняет «Вышло: …�
 
 })
 
+test('цель-знание без подтверждённых показаний получает честный ответ, а не голое «Вышло.»', async () => {
+  // Прогон Асстохана, 2026-10-05: «Вышло: узнать у стражи…» обещало знание,
+  // которого commit не содержит, а когда guard отвергал черновик модели,
+  // игрок получал одно слово «Вышло.» — свой запасной текст даже не пробовался.
+  const reading = passageReading({ goal_summary: 'Узнать у стражи, что творится в округе', approach_summary: 'осторожно', ability: 'cha', skill: 'persuasion' })
+  const text = 'Выведываю у стражи, что творится в округе'
+  const offline = await setup(campaign(), { narrator: new Narrator(), reading })
+  const plain = await offline.orchestrator.handle(actionInput(text, 'free-knowledge-offline', campaign()))
+  assert.equal(plain.free_action_outcome, 'check_success')
+  assert.match(plain.narration, /^Ада: попытка засчитана, но сцена от неё не изменилась/u)
+  assert.match(plain.narration, /обратитесь к собеседнику по имени/u)
+  assert.equal(plain.verification.valid, true)
+
+  // Черновик модели с репликой стражника без подтверждённого разговора.
+  const rejectedDraft = { render: async () => ({ narration: 'Стражник говорит: «В округе неспокойно, на тракте видели дракона».', provider: 'routerai', verification: { valid: true } }) }
+  const live = await setup(campaign(), { narrator: rejectedDraft, reading })
+  const result = await live.orchestrator.handle(actionInput(text, 'free-knowledge-live', campaign()))
+  assert.equal(result.free_action_outcome, 'check_success')
+  assert.doesNotMatch(result.narration, /^(?:Не )?[Вв]ышло.?$/u)
+  assert.doesNotMatch(result.narration, /дракон/u)
+  assert.match(result.narration, /^Ада: попытка засчитана/u)
+  assert.equal(result.verification.valid, true)
+})
+
 test('карточка броска на перемещение сулит вход только для открытого короткого пути — MAP2-02', async () => {
   const registry = new RollRegistry({ diceService: new DiceService({ rng: new SequenceDiceRng([18]) }) })
   const initial = passageCampaign('open')
@@ -988,4 +1012,18 @@ test('дефисное имя врага сохраняет номер и не �
   assert.deepEqual(missingNumber.targets, [])
   assert.deepEqual(missingNumber.missing_information, ['target_id'])
   assert.equal(missingNumber.requires_clarification, true)
+})
+
+test('нераспознанное действие без модели: уточнение с вариантами сцены, честный ответ невозможному, в бою — прежнее', async () => {
+  // Сквозной прогон Асстохана (2026-10-05): на 8 из 10 реальных фраз игроков
+  // без модели звучало общее «Я не понял способ действия» — тупик по критерию 1.
+  const { mundaneActionOutcome } = await import('../server/free-action-adjudication.mjs')
+  const flavor = mundaneActionOutcome('Поднимаю шишку с пола', { heroName: 'Шорох', npcNames: ['Маршал Ивара Тейн'], onward: 'Обсидиановый перевал' })
+  assert.equal(flavor.kind, 'flavor')
+  assert.match(flavor.narration, /^Чего Шорох хочет добиться: «Поднимаю шишку с пола»\?/u)
+  assert.match(flavor.narration, /расспросить кого-то из здешних \(Маршал Ивара Тейн\)/u)
+  assert.match(flavor.narration, /отправиться дальше — в «Обсидиановый перевал»/u)
+  assert.match(flavor.narration, /броска не нужно/u)
+  assert.equal(mundaneActionOutcome('я поднимаю весь замок одной рукой', { heroName: 'Торвальд' }).kind, 'impossible')
+  assert.equal(mundaneActionOutcome('Поднимаю шишку с пола', { inCombat: true }), null, 'в бою действие стоит часть хода — прежнее уточнение')
 })

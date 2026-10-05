@@ -1,0 +1,191 @@
+{
+  "version": 1,
+  "description": "Настоящие реплики игроков из партий и плейтестов. Бот сквозного прогона говорит их по виду: explore — осмотр, social — разговор с присутствующим, exit — уход, question — вопрос о мире, creative — нестандартное действие. Доля тупиков на них — честная, в отличие от заготовленных фраз бота. Пополнение — node eval/collect-player-phrases.mjs, затем разметка kind руками.",
+  "phrases": [
+    {
+      "text": "Осмотреть обелиск и символы на нем",
+      "kind": "explore",
+      "source": "trace:E2E-FIX-713"
+    },
+    {
+      "text": "Почему я не могу дальше пройти",
+      "kind": "question",
+      "source": "trace:E2E-FIX-713"
+    },
+    {
+      "text": "Поговорить со стражниками у ворот, чтобы узнать подробности о пропавшем разведчике.",
+      "kind": "social",
+      "source": "trace:E2E-JUL13"
+    },
+    {
+      "text": "Заканчиваю свой ход",
+      "kind": "turn",
+      "source": "trace:QW12"
+    },
+    {
+      "text": "Поясни что это за мир",
+      "kind": "question",
+      "source": "trace:QW12"
+    },
+    {
+      "text": "Можем ли мы двигаться дальше",
+      "kind": "exit",
+      "source": "trace:RUNE-742"
+    },
+    {
+      "text": "Исследовать затопленный коридор вперёд",
+      "kind": "explore",
+      "source": "trace:RUNE-742"
+    },
+    {
+      "text": "Я предлагаю отсюда уходить и выдвигаться в город",
+      "kind": "exit",
+      "source": "trace:RUNE-742"
+    },
+    {
+      "text": "Осмотреть место встречи",
+      "kind": "explore",
+      "source": "trace:WORLD-02F89866"
+    },
+    {
+      "text": "Давайте уходить отсюда",
+      "kind": "exit",
+      "source": "trace:WORLD-02F89866"
+    },
+    {
+      "text": "Подошел к камню и начинаю осматривать его",
+      "kind": "explore",
+      "source": "trace:WORLD-1B9B1633"
+    },
+    {
+      "text": "Бросаю шишку и пытаюсь поймать её ртом",
+      "kind": "creative",
+      "source": "trace:WORLD-1B9B1633"
+    },
+    {
+      "text": "Поднимаю шишку с пола",
+      "kind": "explore",
+      "source": "trace:WORLD-1B9B1633"
+    },
+    {
+      "text": "Я начинаю драку с королём Аресом",
+      "kind": "attack_npc",
+      "source": "trace:WORLD-87DE2F68"
+    },
+    {
+      "text": "Изучить карту и найти наиболее безопасный путь к Маяку Заката.",
+      "kind": "explore",
+      "source": "trace:WORLD-98E6B8FB"
+    },
+    {
+      "text": "Я протискиваусю внутрь монастыря",
+      "kind": "creative",
+      "source": "trace:WORLD-A3089DB9"
+    },
+    {
+      "text": "Обращаюсь к Мира Ветрокрыл (проводница и очевидец): Что здесь происходит, кто ты?",
+      "kind": "social",
+      "source": "trace:WORLD-A3089DB9"
+    },
+    {
+      "text": "Сделай тройное сальто в воздухе",
+      "kind": "creative",
+      "source": "trace:WORLD-C16A6FF5"
+    },
+    {
+      "text": "герой делает сальто",
+      "kind": "creative",
+      "source": "trace:WORLD-C16A6FF5"
+    },
+    {
+      "text": "сажусь жопой в огонь",
+      "kind": "provocation",
+      "source": "trace:WORLD-C16A6FF5"
+    },
+    {
+      "text": "я поднимаю весь замок одной рукой",
+      "kind": "creative",
+      "source": "trace:WORLD-C16A6FF5"
+    },
+    {
+      "text": "Обращаюсь к Терен Марк (корабельный связной союзного флота): ты пидарас !",
+      "kind": "provocation",
+      "source": "trace:WORLD-C16A6FF5"
+    },
+    {
+      "text": "он делает сальто",
+      "kind": "creative",
+      "source": "trace:WORLD-C16A6FF5"
+    },
+    {
+      "text": "Бегу и врезаюсь в стену",
+      "kind": "creative",
+      "source": "trace:WORLD-C16A6FF5"
+    },
+    {
+      "text": "Сру на лицо Терену",
+      "kind": "provocation",
+      "source": "trace:WORLD-C16A6FF5"
+    },
+    {
+      "text": "Я придерживаю дверь щитом и всматриваюсь в воду. Здесь точно что-то не так.",
+      "kind": "explore",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "Я проверяю сколько детей у меня в инвентаре",
+      "kind": "question",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "Я нападаю на Бранна",
+      "kind": "attack_npc",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "Как запустить роблокс сквидгейм?",
+      "kind": "offtopic",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "Я хочу сооблазнить Бранна",
+      "kind": "creative",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "Послать вперёд свет Мириэль, чтобы разглядеть опасность",
+      "kind": "explore",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "Осторожно войти в воду вдоль бранна",
+      "kind": "explore",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "Действую дальше",
+      "kind": "exit",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "我不是丽儿啊歪了",
+      "kind": "offtopic",
+      "source": "room:RUNE-742"
+    },
+    {
+      "text": "Я протискиваусь внутрь монастыря",
+      "kind": "creative",
+      "source": "room:WORLD-A3089DB9"
+    },
+    {
+      "text": "Что я вижу",
+      "kind": "explore",
+      "source": "room:WORLD-C16A6FF5"
+    },
+    {
+      "text": "Спрашиваю короля Ареса, куда нам идти?",
+      "kind": "social",
+      "source": "playtest-2026-09-05 (в протоколе сокращено многоточием)"
+    }
+  ]
+}

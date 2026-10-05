@@ -11,6 +11,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assetById } from '../server/asset-registry.mjs'
 import { sceneInteractionCatalogEntry } from '../server/scene-interactions.mjs'
+import { auditTacticalMap } from '../server/map-quality.mjs'
 import { buildAuthoredLocationMap, revealInitialArea } from './build-authored-location-maps.mjs'
 import {
   addProp, addSpawnPoint, addZone, cellAt, createTacticalMap,
@@ -893,8 +894,98 @@ export function buildSmallTacticalMap(location, { firstPlayableZone = '' } = {})
     if (placed >= 4) break
   }
   if (!placed) throw new Error(id + ': no native prop placement')
+  repairPlayability(map, plan.floors, reserved)
   map.overlays = { compass: false, scaleBar: false, roomLabels: [] }
   return validateSmallTacticalMap(map)
+}
+
+/** Поломки играбельности по аудиту `map-quality` — их сборщик чинит сам. */
+const PLAYABILITY_CODES = new Set(['PARTY_SPAWN_BLOCKED', 'UNREACHABLE_FLOOR', 'DOORWAY_BLOCKED', 'SPAWN_CRAMPED'])
+
+function playabilityProblems(map) {
+  return auditTacticalMap(map).problems.filter((problem) => PLAYABILITY_CODES.has(problem.code))
+}
+
+/** Сколько проблем и насколько тяжёлых: недостижимый пол весит по клеткам. */
+function playabilityWeight(problems) {
+  return problems.reduce((sum, problem) => {
+    if (problem.code === 'UNREACHABLE_FLOOR') return sum + 100 + (Number(String(problem.detail).split('/')[0]) || 0)
+    return sum + 10
+  }, 0)
+}
+
+/**
+ * Предмет, перекрывший единственный проход или дверной проём, и отряд,
+ * зажатый в трёх клетках у входа. Проверка сборщика считала достижимость по
+ * клеткам и не видела блокирующих предметов: на Обсидиановом перевале валун
+ * стоял на единственной клетке прохода от точки появления, и 160 клеток из
+ * 171 были недостижимы (сквозной прогон Асстохана, 2026-10-05; аудит каталога
+ * нашёл такое в 32 картах из 56). Чинится тем же аудитом, что меряет игра:
+ * мешающий предмет переезжает на ближайшее место, где ничего не ломает, или
+ * уходит с карты; тесная точка появления отряда сдвигается на простор.
+ */
+function repairPlayability(map, floors, reserved) {
+  let problems = playabilityProblems(map)
+  for (let pass = 0; pass < 6 && problems.some((problem) => problem.code !== 'SPAWN_CRAMPED'); pass += 1) {
+    for (const prop of [...map.props].reverse()) {
+      if (!prop.blocksMove) continue
+      const before = playabilityWeight(problems)
+      const index = map.props.indexOf(prop)
+      map.props.splice(index, 1)
+      const without = playabilityProblems(map)
+      if (playabilityWeight(without) >= before) {
+        map.props.splice(index, 0, prop)
+        continue
+      }
+      // Ближайшая клетка, где предмет встаёт и не возвращает ни одной поломки.
+      const occupied = new Set([...reserved, ...map.props.flatMap((other) => other.footprint.map((cell) => key(cell.x, cell.y)))])
+      const width = Math.max(...prop.footprint.map((cell) => cell.x)) - Math.min(...prop.footprint.map((cell) => cell.x)) + 1
+      const height = Math.max(...prop.footprint.map((cell) => cell.y)) - Math.min(...prop.footprint.map((cell) => cell.y)) + 1
+      const origin = { x: Math.min(...prop.footprint.map((cell) => cell.x)), y: Math.min(...prop.footprint.map((cell) => cell.y)) }
+      const candidates = [...floors.keys()].map((raw) => raw.split(',').map(Number))
+        .map(([x, y]) => ({ x, y, distance: Math.abs(x - origin.x) + Math.abs(y - origin.y) }))
+        .sort((a, b) => a.distance - b.distance || a.y - b.y || a.x - b.x)
+      let moved = false
+      for (const candidate of candidates) {
+        const footprint = []
+        for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) footprint.push({ x: candidate.x + dx, y: candidate.y + dy })
+        if (!placementFits(floors, occupied, reserved, footprint, map.width, map.height)) continue
+        const shifted = { ...prop, x: prop.x + candidate.x - origin.x, y: prop.y + candidate.y - origin.y, footprint }
+        map.props.splice(index, 0, shifted)
+        if (playabilityWeight(playabilityProblems(map)) <= playabilityWeight(without)) { moved = true; break }
+        map.props.splice(index, 1)
+      }
+      problems = playabilityProblems(map)
+      if (!moved && !map.props.length) throw new Error(map.locationId + ': после починки на карте не осталось предметов')
+    }
+  }
+  // Тесно у самого входа — не предметы, а форма места: точка появления отряда
+  // переезжает на ближайшую клетку, где вокруг хватает места.
+  if (problems.some((problem) => problem.code === 'SPAWN_CRAMPED')) {
+    const party = map.spawnPoints.find((point) => point.role === 'party')
+    const blocked = new Set(map.props.filter((prop) => prop.blocksMove).flatMap((prop) => prop.footprint.map((cell) => key(cell.x, cell.y))))
+    const others = new Set(map.spawnPoints.filter((point) => point !== party).map((point) => key(point.x, point.y)))
+    const roomAt = (x, y) => {
+      let room = 0
+      for (let dy = -2; dy <= 2; dy += 1) for (let dx = -2; dx <= 2; dx += 1) if (floors.has(key(x + dx, y + dy)) && !blocked.has(key(x + dx, y + dy))) room += 1
+      return room
+    }
+    const better = [...floors.keys()].map((raw) => raw.split(',').map(Number))
+      .filter(([x, y]) => !blocked.has(key(x, y)) && !others.has(key(x, y)) && roomAt(x, y) >= 6)
+      .map(([x, y]) => ({ x, y, distance: Math.abs(x - party.x) + Math.abs(y - party.y) }))
+      .sort((a, b) => a.distance - b.distance || b.y - a.y || a.x - b.x)
+    for (const candidate of better) {
+      const previous = { x: party.x, y: party.y }
+      Object.assign(party, { x: candidate.x, y: candidate.y })
+      if (!playabilityProblems(map).some((problem) => problem.code === 'SPAWN_CRAMPED' || problem.code === 'UNREACHABLE_FLOOR')) {
+        // Стартовое раскрытие — от новой точки и в прежнем радиусе, а не сверху старого.
+        for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.revealed) setCell(map, x, y, { revealed: false })
+        revealInitialArea(map, party, 8)
+        break
+      }
+      Object.assign(party, previous)
+    }
+  }
 }
 
 function loadAresLayout(path = ARES_LAYOUT_FILE) {

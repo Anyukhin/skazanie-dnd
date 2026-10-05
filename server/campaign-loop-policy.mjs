@@ -196,6 +196,14 @@ function encounterOutcomeRecorded(state = {}, encounter = state.mechanics?.encou
   return (state.autonomy?.encounter_outcomes ?? []).some((entry) => entry.encounter_id === encounter.id)
 }
 
+/** Исходы, после которых отряд бой проиграл: развязкой арки они не становятся. */
+const LOST_ENCOUNTER_OUTCOMES = new Set(['party_defeated', 'party_incapacitated'])
+
+function encounterWonOrSettled(state = {}, encounter = state.mechanics?.encounter) {
+  const entry = (state.autonomy?.encounter_outcomes ?? []).findLast((candidate) => candidate.encounter_id === encounter?.id)
+  return Boolean(entry) && !LOST_ENCOUNTER_OUTCOMES.has(String(entry.outcome))
+}
+
 export function campaignArcClimaxSatisfied(state = {}) {
   const position = campaignArcPosition(state)
   if (!position?.is_final) return false
@@ -208,7 +216,11 @@ export function campaignArcClimaxSatisfied(state = {}) {
     && encounter.status === 'ended'
     && encounter.difficulty === 'hard'
     && Number(encounter.created_in_chapter) >= position.target_scenes
-    && encounterOutcomeRecorded(state, encounter))
+    && encounterOutcomeRecorded(state, encounter)
+    // Проигранная кульминация — не победный финал. Прогон Асстохана (сид 2,
+    // 2026-10-05) засчитал CampaignCompleted после боя, в котором отряд лёг
+    // без сознания: теперь Режиссёр даёт отряду прийти в себя и попытку снова.
+    && encounterWonOrSettled(state, encounter))
   const sceneResolved = (state.autonomy?.scene_resolutions ?? []).some((entry) => (
     entry?.status === 'confirmed'
       && Number(entry.chapter) >= position.target_scenes
@@ -363,7 +375,11 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}, context
     ...(explicitEncounter ? ['request_encounter'] : []),
     ...(explicitTransition ? ['end_scene'] : []),
   ])].filter((type) => !blocked.has(type))
-  const candidates = allowed.length ? allowed : availability.types
+  // Все намерения фазы уже исчерпаны защитой от застоя (бой главы был,
+  // задание главы не закрыто): прежде брался весь список фазы, и Режиссёр
+  // повторял continue_exploration — «Пока ничего не меняется» по кругу (прогон
+  // Асстохана с моделью, 2026-10-05). Тогда он подсказывает следующий шаг.
+  const candidates = allowed.length ? allowed : blocked.has('offer_next_hook') ? availability.types : ['offer_next_hook']
   const proposedQuest = proposed.type === 'advance_quest_clock'
     ? (state.worldMemory?.quests ?? []).find((quest) => String(quest?.id ?? '') === String(proposed.quest_id ?? ''))
     : null
@@ -562,6 +578,49 @@ function graphLocation(graph, { locationId = '', name = '' } = {}) {
   if (byId) return byId
   const expected = nameKey(name)
   return expected ? graph.locations.find((location) => nameKey(location.name) === expected) ?? null : null
+}
+
+/**
+ * Куда вести отряд, когда Режиссёр закрывает сцену без названного места:
+ * ближайшая по длине открытых дорог ещё не посещённая точка карты мира — даже
+ * через несколько переходов, путь до неё считает сам переход. Если всё
+ * достижимое уже посещено — ближайший сосед. Прежде место называлось
+ * заглушкой «След N», а затем — соседом без цели: отряд ходил застава →
+ * перевал → застава → столица, и финал случался в Штормберге (прогоны
+ * Асстохана, 2026-10-05). `null` — карты мира нет или идти некуда.
+ */
+export function nextWorldMapDestination(state = {}) {
+  const graph = worldTravelGraph(state)
+  if (!graph) return null
+  const current = graphLocation(graph, { locationId: graph.currentLocationId, name: state.scene?.location })
+  if (!current) return null
+  const currentId = clean(current.id, 120)
+  // Дейкстра по открытым дорогам: ближайшая непосещённая точка.
+  const distance = new Map([[currentId, 0]])
+  const done = new Set()
+  for (;;) {
+    let nearest = null
+    for (const [id, value] of distance) if (!done.has(id) && (nearest === null || value < distance.get(nearest))) nearest = id
+    if (nearest === null) break
+    done.add(nearest)
+    const location = graph.byId.get(nearest)
+    if (nearest !== currentId && location && location.visited !== true) return clean(location.name, 180) || null
+    for (const route of graph.routes) {
+      const ends = [clean(route.from, 120), clean(route.to, 120)]
+      if (!ends.includes(nearest)) continue
+      const other = ends[0] === nearest ? ends[1] : ends[0]
+      const next = distance.get(nearest) + Math.max(1, segmentDistance(graph, route))
+      if (!done.has(other) && next < (distance.get(other) ?? Infinity)) distance.set(other, next)
+    }
+  }
+  const neighbours = graph.routes
+    .filter((route) => [clean(route.from, 120), clean(route.to, 120)].includes(currentId))
+    .map((route) => ({ route, location: graph.byId.get(clean(route.from, 120) === currentId ? clean(route.to, 120) : clean(route.from, 120)) }))
+    .filter((entry) => entry.location)
+    .sort((left, right) => Number(left.location.visited === true) - Number(right.location.visited === true)
+      || segmentDistance(graph, left.route) - segmentDistance(graph, right.route)
+      || clean(left.location.name, 180).localeCompare(clean(right.location.name, 180), 'ru'))
+  return clean(neighbours[0]?.location?.name, 180) || null
 }
 
 const routeEndpoints = (graph, route) => [

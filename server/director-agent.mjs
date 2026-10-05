@@ -12,6 +12,7 @@ import {
   campaignArcPosition,
   confirmedQuestProgress,
   directorObjectiveAfterQuestAbandonment,
+  nextWorldMapDestination,
 } from './campaign-loop-policy.mjs'
 import { npcMechanicsFor } from './npc-positioning.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
@@ -142,6 +143,14 @@ function directorNarrativeMemory(state, playerAction, viewer = { isPartyMember: 
 }
 
 /** A server-owned progression policy used whenever the model is absent or invalid. */
+/**
+ * Место следующей сцены без модели: соседняя точка карты мира. «След N»
+ * остаётся только у кампании без карты мира — там назвать место нечем.
+ */
+function nextSceneDestination(state) {
+  return nextWorldMapDestination(state) ?? `След ${Math.max(2, Number(state.adventure?.chapter || 1) + 1)}`
+}
+
 export function fallbackDirectorIntent(state = {}, playerAction = '') {
   const chapterHistory = currentChapterHistory(state)
   const types = new Set(chapterHistory.map((intent) => intent.type))
@@ -160,13 +169,13 @@ export function fallbackDirectorIntent(state = {}, playerAction = '') {
     return normalizeDirectorIntent({ type: 'request_encounter', theme: 'beasts', difficulty: arc?.is_final ? 'hard' : 'medium', reason: 'Игрок явно запросил столкновение; сервер проверит и соберёт встречу.' })
   }
   if (!state.mechanics?.combat?.active && affirmativePlayerAction(playerAction, 'transition')) {
-    return normalizeDirectorIntent({ type: 'end_scene', destination: `След ${Math.max(2, Number(state.adventure?.chapter || 1) + 1)}`, reason: 'Игрок явно подтвердил переход после разрешённого столкновения.' })
+    return normalizeDirectorIntent({ type: 'end_scene', destination: nextSceneDestination(state), reason: 'Игрок явно подтвердил переход после разрешённого столкновения.' })
   }
 
   if (encounter?.status === 'ended' && outcomeRecorded && !types.has('end_scene')) {
     return normalizeDirectorIntent({
       type: 'end_scene',
-      destination: `След ${Math.max(2, Number(state.adventure?.chapter || 1) + 1)}`,
+      destination: nextSceneDestination(state),
       reason: 'Последствия столкновения подтверждены сервером; история переходит к следующей связанной сцене.',
     })
   }
@@ -289,6 +298,13 @@ export class DirectorAgent {
     const contextMetadata = agentContextMetadata(state, { role: 'director', actorId: state.activePlayerId ?? null, contractVersion: directorPrompt.id })
     const fallback = fallbackDirectorIntent(state, playerAction)
     if (fallback.type === 'request_encounter') return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-explicit-player-request', improv_mode: improv, prompt_id: directorPrompt.id, context_metadata: contextMetadata, reason: 'explicit combat request' } }
+    // Прямая просьба отряда уйти дальше — решение игроков, а не модели. Прежде
+    // её решала модель, и на «Перейти дальше» она раз за разом выбирала
+    // continue_exploration: «Пока ничего не меняется», сюжет вставал (прогон
+    // Асстохана с моделью, 2026-10-05, Обсидиановый перевал, два прогона из двух).
+    if (fallback.type === 'end_scene' && affirmativePlayerAction(playerAction, 'transition')) {
+      return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-explicit-player-request', improv_mode: improv, prompt_id: directorPrompt.id, context_metadata: contextMetadata, reason: 'explicit transition request' } }
+    }
     if (!this.llmClient) return { intent: fallback, trace: { agent: 'DirectorAgent', mode: 'deterministic-fallback', improv_mode: improv, prompt_id: directorPrompt.id, context_metadata: contextMetadata, reason: 'LLM is not configured' } }
     try {
       const result = await this.llmClient.completeJson({

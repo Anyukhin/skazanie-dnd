@@ -82,15 +82,15 @@
           "id": "painted:ash-ash-gate:prop-1",
           "assetId": "cart",
           "x": 4.5,
-          "y": 4.5,
+          "y": 3.5,
           "footprint": [
             {
               "x": 4,
-              "y": 4
+              "y": 3
             },
             {
               "x": 5,
-              "y": 4
+              "y": 3
             }
           ],
           "blocksMove": true,
@@ -861,16 +861,16 @@
           "id": "painted:ash-first-grain-terraces:prop-1",
           "assetId": "cart",
           "x": 7.5,
-          "y": 7.5,
+          "y": 6.5,
           "rotation": 180,
           "footprint": [
             {
               "x": 7,
-              "y": 7
+              "y": 6
             },
             {
               "x": 8,
-              "y": 7
+              "y": 6
             }
           ],
           "blocksMove": true,
@@ -916,24 +916,24 @@
         {
           "id": "painted:ash-first-grain-terraces:prop-4",
           "assetId": "haystack",
-          "x": 5.5,
+          "x": 6.5,
           "y": 13.5,
           "rotation": 90,
           "footprint": [
             {
-              "x": 5,
-              "y": 13
-            },
-            {
               "x": 6,
               "y": 13
             },
             {
-              "x": 5,
+              "x": 7,
+              "y": 13
+            },
+            {
+              "x": 6,
               "y": 14
             },
             {
-              "x": 6,
+              "x": 7,
               "y": 14
             }
           ],
@@ -1860,7 +1860,7 @@
       "layers": {
         "present": "AAAAAAAAAAAA+Ocf+Ocf+Ocf+Ocf+Ocf+P8f+P8f+P8f8NMP8NMP8NMP8NMP8NMPABAAAAAA",
         "passable": "AAAAAAAAAAAA+Ocf+Ocf+Ocf+Ocf+Ocf+P8f+P8f+P8f8NMP8NMP8NMP8NMP8NMPABAAAAAA",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAADgAAHwAABAAABAAABAAABAAABAAABAAAAAA",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADgAAHwAAP4AAFAAABAAABAAABAAABAAABAAAAAA",
         "moveCost": 1,
         "surface": 0,
         "material": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEAAAAAAAAAAQEBAQEBAAABAAEBAQEBAQAAAAAAAAAAAQEBAQEBAAABAAEBAQEBAQAAAAAAAAAAAQEBAQEBAAABAAEBAQEBAQAAAAAAAAAAAQEBAQEBAAABAAEBAQEBAQAAAAAAAAAAAQEBAQEBAAABAAEBAQEBAQAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -2010,7 +2010,7 @@
         {
           "id": "party:ash-talass-akr",
           "x": 12,
-          "y": 16,
+          "y": 15,
           "role": "party"
         },
         {
@@ -2177,12 +2177,12 @@
           "id": "painted:ash-three-sisters-isle:prop-4",
           "assetId": "boulder",
           "x": 8.5,
-          "y": 12.5,
+          "y": 10.5,
           "rotation": 90,
           "footprint": [
             {
               "x": 8,
-              "y": 12
+              "y": 10
             }
           ],
           "blocksMove": true,
@@ -3481,15 +3481,15 @@
           "id": "painted:astohan-forgotten-cliffs:prop-1",
           "assetId": "barrel_stack",
           "x": 4.5,
-          "y": 4.5,
+          "y": 3.5,
           "footprint": [
             {
               "x": 4,
-              "y": 4
+              "y": 3
             },
             {
               "x": 5,
-              "y": 4
+              "y": 3
             }
           ],
           "blocksMove": true,
@@ -4223,7 +4223,7 @@
       "layers": {
         "present": "AAAAAAAAAAAAAAAAwA8AAPwAgP8PAPj/AID/D/D7/wC//w/w+yMAvz8C8Ps/AL8/APD/AwAEAABAAAAABAAAwH8AAAAAAA==",
         "passable": "AAAAAAAAAAAAAAAAwA8AAPwAgP8PAPj/AID/D/D7/wC//w/w+yMAvz8C8Ps/AL8/APD/AwAEAABAAAAABAAAwH8AAAAAAA==",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwH8AAAAAAA==",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAOAADwAQCAPwAA+AMAoD8AAPsfALg/AMD/AwAAAAAAAAAAAAAAAAAAAAAAAA==",
         "moveCost": 1,
         "surface": 0,
         "material": 0,
@@ -4311,11 +4311,11 @@
           "id": "painted:astohan-obsidian-pass:prop-4",
           "assetId": "boulder",
           "x": 6.5,
-          "y": 15.5,
+          "y": 13.5,
           "footprint": [
             {
               "x": 6,
-              "y": 15
+              "y": 13
             }
           ],
           "blocksMove": true,
@@ -4345,7 +4345,7 @@
         {
           "id": "party:astohan-obsidian-pass",
           "x": 14,
-          "y": 18,
+          "y": 14,
           "role": "party"
         },
         {
@@ -4812,7 +4812,7 @@
       "layers": {
         "present": "AAAAAAAAAAAAAAACAIIPwN8f4P8/8P8f8P8P+P8D8H8A8H8A4D8AwB8AAAIAAAIAAB4AAAAA",
         "passable": "AAAAAAAAAAAAAAACAIIPwN8f4P8/8P8f8P8P+P8D8H8A8H8A4D8AwB8AAAIAAAIAAB4AAAAA",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAcAgA8AAAIAAAIAAB4AAAAA",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAcAgA8AwB8AAAIAAAIAAB4AAAAA",
         "moveCost": 1,
         "surface": 0,
         "material": 0,
@@ -4952,7 +4952,7 @@
       "spawnPoints": [
         {
           "id": "party:astohan-smugglers-cave",
-          "x": 12,
+          "x": 11,
           "y": 16,
           "role": "party"
         },
@@ -5747,7 +5747,7 @@
       "layers": {
         "present": "AAAAAAAAAAAAAAAAAQAgHwD4/wDw/wfg/w/A/x8A/3+A//8D8v8HyP8fAP4/APB/AID/AAAgAACAAAAAAgAAAAA=",
         "passable": "AAAAAAAAAAAAAAAAAQAgHwD4/wDw/wfg/w/A/x8A/3+A//8D8v8HyP8fAP4/APB/AID/AAAgAACAAAAAAgAAAAA=",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAABwAAPgAAPAHAOA/AID/AAAgAACAAAAAAgAAAAA=",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAcAAD4AAPwBAPgPAPB/AID/AAAgAACAAAAAAgAAAAA=",
         "moveCost": 1,
         "surface": 0,
         "material": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAwMDAwMAAAAAAAAAAAAAAAAAAAMDAwMDAwMDAwMDAwMAAAAAAAAAAAAAAAADAwMDAwMDAwMDAwMDAwMAAAAAAAAAAAAAAwMDAwMDAwMDAwMDAwMDAAAAAAAAAAAAAAMDAwMDAwMDAwMDAwMDAwAAAAAAAAAAAAAAAwMDAwMDAwMDAwMDAwMDAAAAAAAAAAADAwMDAwMDAwMDAwMDAwMDAwMDAAAAAAAAAAMAAAMDAwMDAwMDAwMDAwMDAwAAAAAAAAAAAwAAAwMDAwMDAwMDAwMDAwMDAAAAAAAAAAAAAAAAAwMDAwMDAwMDAwMDAwAAAAAAAAAAAAAAAAAAAwMDAwMDAwMDAwMAAAAAAAAAAAAAAAAAAAAAAwMDAwMDAwMDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
@@ -5918,7 +5918,7 @@
         {
           "id": "party:astohan-wild-forest",
           "x": 13,
-          "y": 18,
+          "y": 17,
           "role": "party"
         },
         {
@@ -6643,15 +6643,15 @@
           "id": "painted:star-dry-wind-gate:prop-1",
           "assetId": "barrel_stack",
           "x": 4.5,
-          "y": 4.5,
+          "y": 3.5,
           "footprint": [
             {
               "x": 4,
-              "y": 4
+              "y": 3
             },
             {
               "x": 5,
-              "y": 4
+              "y": 3
             }
           ],
           "blocksMove": true,
@@ -6846,23 +6846,23 @@
         {
           "id": "painted:star-forty-wells:prop-1",
           "assetId": "well",
-          "x": 4.5,
+          "x": 6.5,
           "y": 4.5,
           "footprint": [
             {
-              "x": 4,
+              "x": 6,
               "y": 4
             },
             {
-              "x": 5,
+              "x": 7,
               "y": 4
             },
             {
-              "x": 4,
+              "x": 6,
               "y": 5
             },
             {
-              "x": 5,
+              "x": 7,
               "y": 5
             }
           ],
@@ -6900,24 +6900,24 @@
           "id": "painted:star-forty-wells:prop-3",
           "assetId": "well",
           "x": 18.5,
-          "y": 5.5,
+          "y": 4.5,
           "rotation": 180,
           "footprint": [
             {
               "x": 18,
-              "y": 5
+              "y": 4
             },
             {
               "x": 19,
-              "y": 5
+              "y": 4
             },
             {
               "x": 18,
-              "y": 6
+              "y": 5
             },
             {
               "x": 19,
-              "y": 6
+              "y": 5
             }
           ],
           "blocksMove": true,
@@ -7476,16 +7476,16 @@
         {
           "id": "painted:star-mirror-lake:prop-2",
           "assetId": "cart",
-          "x": 11.5,
+          "x": 10.5,
           "y": 9.5,
           "rotation": 180,
           "footprint": [
             {
-              "x": 11,
+              "x": 10,
               "y": 9
             },
             {
-              "x": 12,
+              "x": 11,
               "y": 9
             }
           ],
@@ -7849,11 +7849,11 @@
         {
           "id": "painted:star-nur-kesh:prop-1",
           "assetId": "pillar",
-          "x": 7.5,
+          "x": 6.5,
           "y": 7.5,
           "footprint": [
             {
-              "x": 7,
+              "x": 6,
               "y": 7
             }
           ],
@@ -8005,7 +8005,7 @@
       "layers": {
         "present": "AAAAAAAAAAAAAAAAAAD4A/yBP8Af+P//gf//HwAQAYD//x/4//+B//8fAEAAAAAEAABAAAAABAAAQAAAAAQAAEAAAAAAAA==",
         "passable": "AAAAAAAAAAAAAAAAAAD4A/yBP8Af+B//gT/RHwAQAYD//x/4//+B//8fAEAAAAAEAABAAAAABAAAQAAAAAQAAEAAAAAAAA==",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAA4AAEAAAAAEAABAAAAABAAAQAAAAAQAAEAAAAAAAA==",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARAAAQAQDAfwAA/g8A8P8BAEAAAAAEAABAAAAABAAAQAAAAAQAAEAAAAAAAA==",
         "moveCost": 1,
         "surface": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAUFBQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFBQAFBQUABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         "material": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAICAgICAgIAAAAAAAAAAAICAgICAgIAAAAAAAACAgICAgICAAAAAAAAAAACAgICAgICAAAAAAAAAgICAgICAgICAgICAgICAgICAgICAgAAAAAAAAICAgICAgICAgICAgICAgICAgICAgIAAAAAAAAAAAAAAAAAAAACAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
@@ -8152,7 +8152,7 @@
         {
           "id": "party:star-old-river-ford",
           "x": 14,
-          "y": 18,
+          "y": 13,
           "role": "party"
         },
         {
@@ -8245,16 +8245,16 @@
           "id": "painted:star-red-caravanserai:prop-1",
           "assetId": "crate_stack",
           "x": 6.5,
-          "y": 6.5,
+          "y": 7.5,
           "rotation": 180,
           "footprint": [
             {
               "x": 6,
-              "y": 6
+              "y": 7
             },
             {
               "x": 7,
-              "y": 6
+              "y": 7
             }
           ],
           "blocksMove": true,
@@ -8288,24 +8288,24 @@
           "id": "painted:star-red-caravanserai:prop-3",
           "assetId": "well",
           "x": 17.5,
-          "y": 6.5,
+          "y": 7.5,
           "rotation": 90,
           "footprint": [
             {
               "x": 17,
-              "y": 6
+              "y": 7
             },
             {
               "x": 18,
-              "y": 6
+              "y": 7
             },
             {
               "x": 17,
-              "y": 7
+              "y": 8
             },
             {
               "x": 18,
-              "y": 7
+              "y": 8
             }
           ],
           "blocksMove": true,
@@ -9621,7 +9621,7 @@
       "layers": {
         "present": "AAAAAAAAAAAA4P8H4P8H4P8H4P8H4P8HgP8BgP8BgP8BgP8BgP8BgP8BgP8BABAAABAAAAAA",
         "passable": "AAAAAAAAAAAA4P8H4P8H4P8H4P8H4P8HgP8BgP8BgP8BgO8BgIMBgAEBgJ8BABAAABAAAAAA",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAgAEAgB8AABAAABAAAAAA",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAgAMAgAcAgAMAgAEAgB8AABAAABAAAAAA",
         "moveCost": 1,
         "surface": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQEBAAAAAAAAAAAAAAAAAAAAAAAAAQEBAQEBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "material": 0,
@@ -9741,8 +9741,8 @@
       "spawnPoints": [
         {
           "id": "party:tides-drowned-bell",
-          "x": 12,
-          "y": 16,
+          "x": 11,
+          "y": 14,
           "role": "party"
         },
         {
@@ -9793,7 +9793,7 @@
       "layers": {
         "present": "AAAAAAAAAPj//4H//x/w4/wAP84P8OP8AD/OD/Dj/ID//x/4//+B//8fAOAAAAAOAADgAAAADgAA4ACA//8f+P//AQAAAA==",
         "passable": "AAAAAAAAAAAAAAAADgDw4/wAP84P8OP8AD/OD/Dj/ID//x/4//+B//8fAOAAAAAOAADgAAAADgAA4AAAAAQAAEAAAAAAAA==",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAA4AAOAAAAAOAADgAAAADgAA4AAAAAQAAEAAAAAAAA==",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAA4AAAAB8AAOAAAAAOAADgAAAADgAA4AAAAAQAAEAAAAAAAA==",
         "moveCost": 1,
         "surface": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQEBAQEBAQEBAQEBAAAAAAAAAQEBAQEBAQEBAQAAAAEBAQEBAQEBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAQEBAQEBAQEBAQABAQEBAQEBAQEBAAAAAAAAAQEBAQEBAQEBAQEAAQEBAQEBAQEBAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         "material": 0,
@@ -9948,7 +9948,7 @@
         {
           "id": "party:tides-grunvik",
           "x": 14,
-          "y": 18,
+          "y": 17,
           "role": "party"
         },
         {
@@ -11115,7 +11115,7 @@
       "layers": {
         "present": "AAAAAAAA+P8f+P8f+P8f+P8f+P8f+MMf+P8f+P8f+P8f+P8f+P8f+P8f+P8f+P8fABAAAAAA",
         "passable": "AAAAAAAAAAAAAAAA+MMf+MMf+MMf+MMf+P8f+P8f+P8fABAAABAAABAAABAAABAAABAAAAAA",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAADgAAHwAABAAABAAABAAABAAABAAABAAAAAA",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAEAAAMIAAP8BgP8DwP8HABAAABAAABAAABAAABAAABAAAAAA",
         "moveCost": 1,
         "surface": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQEBAQEBAQEBAQEBAQEBAQEBAAAAAAAAAQEBAQEBAQEBAQEBAQEBAQEBAAAAAAAAAAAAAAAAAAEBAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAEBAQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQEBAQEBAQEBAAEBAQEBAQEBAAAAAAAAAQEBAQEBAQEBAAEBAQEBAQEBAAAAAAAAAQEBAQEBAQEBAAEBAQEBAQEBAAAAAAAAAQEBAQEBAQEBAAEBAQEBAQEBAAAAAAAAAQEBAQEBAQEBAAEBAQEBAQEBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         "material": 0,
@@ -11288,7 +11288,7 @@
         {
           "id": "party:tides-three-koegs",
           "x": 12,
-          "y": 16,
+          "y": 12,
           "role": "party"
         },
         {
@@ -11575,7 +11575,7 @@
       "layers": {
         "present": "AAAAAAAAAAACAIAPANAfAP8/gP8fwP8PwP8H+P8PyP8HyP8HgP8DAP8BABAAABAAABAAAAAA",
         "passable": "AAAAAAAAAAACAIAPANAfAP8/gP8fwP8PwP8H+P8PyP8HyP8HgP8DAP8BABAAABAAABAAAAAA",
-        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAADgAAHwAAP4AAP8BAP8BABAAABAAABAAAAAA",
+        "revealed": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAADgAAHwAAP4AAP8BgP8DAP8BABAAABAAABAAAAAA",
         "moveCost": 1,
         "surface": 0,
         "material": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwMDAwMAAAAAAAAAAAAAAAAAAAAAAwADAwMDAwMDAAAAAAAAAAAAAAADAwMDAwMDAwMCAwMDAwAAAAAAAAAAAAMDAwMDAwMDAwMCAwMDAAAAAAAAAAAAAwMDAwMDAwMDAwMCAwMAAAAAAAAAAAAAAwMDAwMDAwMDAwMCAwAAAAAAAAAAAgICAgICAgICAgICAgICAwMAAAAAAAAAAgAAAwMDAwMDAgMDAwMDAwAAAAAAAAAAAgAAAwMDAwMDAgMDAwMDAwAAAAAAAAAAAAAAAAMDAwMDAgMDAwMDAAAAAAAAAAAAAAAAAAADAwMDAgMDAwMAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -11731,7 +11731,7 @@
         {
           "id": "party:tides-whisper-forest",
           "x": 12,
-          "y": 16,
+          "y": 15,
           "role": "party"
         },
         {

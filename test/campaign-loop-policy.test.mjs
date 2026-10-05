@@ -10,6 +10,7 @@ import {
   campaignArcPosition,
   completedDowntime,
   directorObjectiveAfterQuestAbandonment,
+  nextWorldMapDestination,
   pacingForDirectorIntent,
   planServerTravel,
 } from '../server/campaign-loop-policy.mjs'
@@ -168,6 +169,55 @@ test('one-evening policy preserves player pacing and allows a non-combat final r
   assert.equal(campaignArcPosition(state).phase, 'climax')
 })
 
+test('исчерпав намерения фазы, Режиссёр подсказывает следующий шаг, а не повторяет «ничего не меняется»', () => {
+  // Прогон Асстохана с моделью (2026-10-05): после боя главы в фазе обострения
+  // разрешено только continue_exploration, защита от застоя его блокирует, и
+  // политика брала весь список фазы — тот же continue_exploration по кругу.
+  const arc = buildCampaignArcPlan('stall-probe')
+  // Глава 2 этой арки — фаза обострения; бой главы уже был, подтверждённой
+  // зацепки и собеседника нет — продвинуть сюжет нечем, это и есть тупик главы.
+  const state = {
+    campaignConcept: { arc }, adventure: { chapter: 2 }, scene: { location: 'Застава' },
+    mechanics: { combat: { active: false }, encounter: { id: 'chapter-fight', status: 'ended', difficulty: 'medium', created_in_chapter: 2 } },
+    autonomy: {
+      director_history: [{ intent: { type: 'request_encounter' } }, { intent: { type: 'continue_exploration' } }],
+      director_outcomes: [{ intent_type: 'continue_exploration', state_changed: false }],
+      encounter_outcomes: [{ encounter_id: 'chapter-fight', outcome: 'enemies_defeated' }],
+    },
+    worldMemory: { quests: [{ id: 'q', title: 'Главная нить', status: 'active', clock: { current: 0, max: 4 } }] },
+  }
+  assert.equal(authorizeDirectorIntent(state, { type: 'continue_exploration' }).phase, 'escalation')
+  const result = authorizeDirectorIntent(state, { type: 'continue_exploration' }, { playerAction: 'Продолжить приключение' })
+  assert.equal(result.intent.type, 'offer_next_hook')
+  assert.equal(result.reason, 'anti_stall_replacement')
+  assert.ok(result.intent.hook)
+})
+
+test('без модели следующая сцена — соседняя точка карты мира, а не заглушка «След N»', async () => {
+  // Прогон Асстохана (2026-10-05): сцены звались «След 3», «След 4», а карта
+  // мира стояла на прежней точке — отряд «уходил», не двигаясь.
+  const { readFile } = await import('node:fs/promises')
+  const { fallbackDirectorIntent } = await import('../server/director-agent.mjs')
+  const template = JSON.parse(await readFile(new URL('../data/campaign-worlds-v1.json', import.meta.url), 'utf8')).templates.find((entry) => entry.id === 'astohan-plains')
+  const worldMap = structuredClone(template.world_map)
+  const at = (id) => ({ worldMap: { ...worldMap, currentLocationId: id }, scene: { location: worldMap.locations.find((entry) => entry.id === id).name } })
+  assert.equal(nextWorldMapDestination(at('astohan-stormberg')), 'Пепельная застава', 'непосещённая и ближайшая')
+  worldMap.locations.find((entry) => entry.id === 'astohan-stormberg').visited = true
+  assert.equal(nextWorldMapDestination(at('astohan-ash-watch')), 'Обсидиановый перевал', 'назад в посещённый Штормберг — только если больше некуда')
+  assert.equal(nextWorldMapDestination({ scene: { location: 'Старая дорога' } }), null, 'без карты мира места нет')
+  const intent = fallbackDirectorIntent({ ...at('astohan-ash-watch'), adventure: { chapter: 2 }, mechanics: { combat: { active: false } } }, 'Перейти дальше')
+  assert.equal(intent.type, 'end_scene')
+  assert.equal(intent.destination, 'Обсидиановый перевал')
+  // Тупик перевала: оба соседа уже пройдены, дорога к логову ещё не открыта.
+  // Прежде отряд шёл назад в заставу и в столицу; теперь — к ближайшему
+  // непосещённому месту через пройденные, путь считает сам переход.
+  worldMap.locations.find((entry) => entry.id === 'astohan-ash-watch').visited = true
+  worldMap.locations.find((entry) => entry.id === 'astohan-obsidian-pass').visited = true
+  assert.equal(nextWorldMapDestination(at('astohan-obsidian-pass')), 'Озеро Двух Отражений')
+  for (const location of worldMap.locations) location.visited = true
+  assert.equal(nextWorldMapDestination(at('astohan-obsidian-pass')), 'Пепельная застава', 'всё пройдено — ближайший сосед')
+})
+
 test('one-evening climax requires a matching recorded hard encounter outcome', () => {
   const plan = buildCampaignArcPlan('climax-proof')
   const state = structuredClone(baseState)
@@ -194,6 +244,11 @@ test('one-evening climax requires a matching recorded hard encounter outcome', (
   state.mechanics.encounter.created_in_chapter = plan.target_scenes
   state.autonomy.encounter_outcomes = [{ encounter_id: 'other-encounter', outcome: 'enemies_defeated' }]
   assert.equal(campaignArcClimaxSatisfied(state), false)
+  // Проигранная кульминация — не победный финал (прогон Асстохана, сид 2).
+  for (const lost of ['party_incapacitated', 'party_defeated']) {
+    state.autonomy.encounter_outcomes = [{ encounter_id: 'final-encounter', outcome: lost }]
+    assert.equal(campaignArcClimaxSatisfied(state), false, lost)
+  }
 })
 
 test('закрытый квест не возвращается в intent, когда другой квест ещё активен', () => {

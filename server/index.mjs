@@ -117,7 +117,7 @@ import { campaignStoryChronicleEntry, validateCampaignMode } from './campaign-st
 import { officeChronicleEntry } from './world-offices.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { listWorldTemplates } from './world-template-catalog.mjs'
-import { AutonomousCampaignOrchestrator } from './autonomous-orchestrator.mjs'
+import { AutonomousCampaignOrchestrator, directorStepNarration } from './autonomous-orchestrator.mjs'
 import { ActionAdjudicator } from './action-adjudicator.mjs'
 import { DirectorAgent } from './director-agent.mjs'
 import {
@@ -4995,7 +4995,10 @@ async function handleHttpRequest(req, res) {
       // переход, пересёкший границу времени суток, обязан остаться переходом.
       // Брифу запасного рассказчика небо не показывают вовсе — `briefEvents`
       // приезжают уже без него, иначе «наступил вечер» звучал бы дважды подряд.
-      const directorNarration = tacticalNarrationOr(events, authoritative.state, (briefEvents) => deterministicNarration(
+      // Раскрытие области и смена цели в запасном рассказчике фраз не имеют:
+      // шаг сам говорит, что сделал (directorStepNarration), иначе игрок
+      // слышал «Пока ничего не меняется» и с моделью, и без неё.
+      const directorNarration = tacticalNarrationOr(events, authoritative.state, (briefEvents) => directorStepNarration(result.intent?.type, briefEvents, authoritative.state) || deterministicNarration(
         { visible_events: briefEvents, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
         actorNameResolver(authoritative.state),
       ).narration)
