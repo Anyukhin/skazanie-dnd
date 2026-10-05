@@ -88,7 +88,11 @@ function retrievalMemory(state, { facts = [], claims = [] } = {}) {
   }
 }
 
-function npcFacts(state, profile, message = '') {
+// Запасной ответ берёт из факта одно предложение, поэтому читает факт целиком:
+// при обрезке до 500 знаков последнее предложение пролога отбрасывалось как
+// оборванное, и король на вопрос о Саргате «не сообщал ничего нового», хотя
+// пролог кончается его просьбой остановить Саргата (прогон Асстохана, 2026-10-06).
+function npcFacts(state, profile, message = '', { summaryLimit = 500 } = {}) {
   const speakable = npcSpeakableFactRecords(state, profile)
   const allowedIds = new Set(speakable.map((fact) => String(fact.id)))
   const records = retrieveWorldMemory(retrievalMemory(state, { facts: speakable }), { isAdmin: true }, {
@@ -97,7 +101,7 @@ function npcFacts(state, profile, message = '') {
   return records.filter((record) => record.kind === 'fact' && allowedIds.has(String(record.fact?.id))).map((record) => ({
     id: String(record.fact.id),
     subject: clean(record.entity?.name, 160),
-    summary: clean(record.fact.summary || record.fact.object, 500),
+    summary: clean(record.fact.summary || record.fact.object, summaryLimit),
     // Тайна, которую знает только этот собеседник: её не говорят первому
     // встречному. Модель видит пометку, запасной ответ такой факт не зачитывает.
     ...(['public', 'party'].includes(String(record.fact.visibility)) ? {} : { guarded: true }),
@@ -458,7 +462,7 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
   // Запасной ответ подбирает факты по самому вопросу, без обращения и имени
   // собеседника: иначе «Обращаюсь к смотрительнице дамбы» находило пролог про
   // смотрителя дамбы на любой вопрос (плейтест 2026-10-04, QP-02).
-  const answerFacts = modelReply ? [] : npcFacts(state, profile, fallbackQuestionStems(profile, message).join(' '))
+  const answerFacts = modelReply ? [] : npcFacts(state, profile, fallbackQuestionStems(profile, message).join(' '), { summaryLimit: 4_000 })
   const answerHooks = modelReply ? [] : publicHooksNamingNpc(state, profile)
   const fallback = fallbackDisclosure(profile, answerFacts, claims, checkOutcome, memory, message, answerHooks)
   // Раскрытие фолбэка добавляется только тогда, когда прозвучала его реплика:
