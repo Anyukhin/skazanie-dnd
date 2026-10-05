@@ -1,38 +1,17 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 import { AnimationClip, Bone, Box3, BoxGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, NumberKeyframeTrack, Quaternion, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3 } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 // Сборка должна жить внутри репозитория: с временным каталогом за его
 // пределами Node не видит bare-import `three` из `actor-models.mjs`.
-const testTempRoot = fileURLToPath(new URL('../tmp/', import.meta.url))
-mkdirSync(testTempRoot, { recursive: true })
-const buildDir = mkdtempSync(join(testTempRoot, 'actor-models-'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = [
-  fileURLToPath(new URL('../src/actor-models.ts', import.meta.url)),
-  fileURLToPath(new URL('../src/model-assets.ts', import.meta.url)),
-]
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, ...sources,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(buildDir).filter((name) => name.endsWith('.js'))) {
-  const path = join(buildDir, name)
-  const source = readFileSync(path, 'utf8').replace(/(from\s+["'])(\.\.?\/[^"']+)(["'])/gu, (match, before, specifier, after) => {
-    if (specifier.startsWith('../server/')) return `${before}${new URL(specifier, new URL('../src/', import.meta.url)).href}${after}`
-    return /\.(json|mjs|js)$/u.test(specifier) ? match : `${before}${specifier}.mjs${after}`
-  })
-  writeFileSync(path, source)
-  renameSync(path, path.replace(/\.js$/u, '.mjs'))
-}
-const models = await import(pathToFileURL(join(buildDir, 'actor-models.mjs')).href)
+const { modules: [models] } = await compileClientModules(['src/actor-models.ts', 'src/model-assets.ts'])
 const manifest = JSON.parse(readFileSync(new URL('../public/assets/models/manifest.json', import.meta.url), 'utf8'))
 const kaykitRoot = fileURLToPath(new URL('../public/assets/models/kaykit/', import.meta.url))
 const kaykitAssets = [
@@ -41,7 +20,6 @@ const kaykitAssets = [
   { key: 'rogue', file: 'rogue.glb' },
   { key: 'skeleton', file: 'skeleton-warrior.glb' },
 ]
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 test('каталог фигурок содержит шесть профилей с правами и локальными путями', () => {
   const validated = models.validateModelManifest(manifest)

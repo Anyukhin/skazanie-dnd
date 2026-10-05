@@ -8,6 +8,7 @@ import test from 'node:test'
 
 import * as recovery from '../src/tactical-command-recovery.mjs'
 import * as roomStream from '../src/room-stream.mjs'
+import * as gameSessionState from '../src/game-session-state.mjs'
 import { canIssueUiTacticalCommand } from '../src/tactical-command-guard.mjs'
 import { withLootTakenRecord } from '../src/loot-panel-rules.mjs'
 
@@ -208,6 +209,7 @@ function mountSession({ campaign = 'A', accountId = 'account-a', onAccessRevoked
     canIssueUiTacticalCommand,
     ...recovery,
     ...roomStream,
+    ...gameSessionState,
   }
   const useGameSession = new Function(...Object.keys(context), `${hookCode}\nreturn useGameSession`)(...Object.values(context))
   const props = { accountId, ...(onAccessRevoked ? { onAccessRevoked } : {}) }

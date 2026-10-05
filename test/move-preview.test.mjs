@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, renameSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 /**
  * Предпросмотр хода (`src/move-preview.ts`): нить маршрута вместо номера на
@@ -12,14 +9,7 @@ import test from 'node:test'
  * зависимостей, поэтому собирается в одиночку.
  */
 
-const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-move-preview-'))
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const source = fileURLToPath(new URL('../src/move-preview.ts', import.meta.url))
-const compiled = spawnSync(process.execPath, [compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--strict', '--skipLibCheck', '--outDir', buildDir, source], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-renameSync(join(buildDir, 'move-preview.js'), join(buildDir, 'move-preview.mjs'))
-const preview = await import(pathToFileURL(join(buildDir, 'move-preview.mjs')).href)
+const { modules: [preview] } = await compileClientModules(['src/move-preview.ts'])
 
 /** Числа из строки пути, чтобы сверять точки, а не форматирование. */
 const numbers = (d) => (d.match(/-?\d+(?:\.\d+)?/gu) ?? []).map(Number)

@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 import {
   addProp,
@@ -14,31 +11,11 @@ import {
   setEdge,
 } from '../server/tactical-map.mjs'
 
-const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-map-rebuild-'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = [
-  '../src/board3d-scene-signature.ts', '../src/prop-model-catalog.ts',
-  '../src/scene-map-cache.ts', '../src/tactical-map-client.ts',
-]
-  .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, ...sources,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(buildDir)) {
-  if (!name.endsWith('.js')) continue
-  const file = join(buildDir, name)
-  const source = readFileSync(file, 'utf8').replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-  writeFileSync(join(buildDir, name.replace(/\.js$/u, '.mjs')), source)
-  rmSync(file)
-}
 globalThis.atob ??= (value) => Buffer.from(value, 'base64').toString('binary')
 globalThis.btoa ??= (value) => Buffer.from(value, 'binary').toString('base64')
-const cache = await import(pathToFileURL(join(buildDir, 'scene-map-cache.mjs')).href)
-const client = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
-const signatures = await import(pathToFileURL(join(buildDir, 'board3d-scene-signature.mjs')).href)
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
+const { modules: [cache, client, signatures] } = await compileClientModules([
+  'src/scene-map-cache.ts', 'src/tactical-map-client.ts', 'src/board3d-scene-signature.ts', 'src/prop-model-catalog.ts',
+])
 
 function decoded(map) {
   const value = client.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))

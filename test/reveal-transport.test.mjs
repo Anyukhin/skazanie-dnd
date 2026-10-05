@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 import {
   PROJECTED_MAP_CACHE_LIMIT,
@@ -32,28 +29,11 @@ import {
 
 // --- клиентский разбор компилируется тем же приёмом, что и board-render ---
 
-const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-reveal-transport-'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/scene-map-cache.ts', '../src/tactical-map-client.ts']
-  .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, ...sources,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(buildDir)) {
-  if (!name.endsWith('.js')) continue
-  const source = readFileSync(join(buildDir, name), 'utf8').replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-  writeFileSync(join(buildDir, name.replace(/\.js$/, '.mjs')), source)
-  rmSync(join(buildDir, name))
-}
 // Клиентский модуль пересобирает слой в base64 через `btoa`/`atob`: под Node их
 // нет в глобальной области ровно так, как в браузере, но реализация есть.
 globalThis.atob ??= (value) => Buffer.from(value, 'base64').toString('binary')
 globalThis.btoa ??= (value) => Buffer.from(value, 'binary').toString('base64')
-const cache = await import(pathToFileURL(join(buildDir, 'scene-map-cache.mjs')).href)
-const client = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
+const { modules: [cache, client] } = await compileClientModules(['src/scene-map-cache.ts', 'src/tactical-map-client.ts'])
 
 /** Однородная карта: раскрытие на ней — единственное, что видит проекция. */
 function plainMap({ width = 30, height = 30, revealed = false } = {}) {

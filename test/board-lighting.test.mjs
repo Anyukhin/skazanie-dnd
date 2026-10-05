@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 import {
   addProp, addZone, createTacticalMap, serializeTacticalMap, setCell, setDoor, setEdge,
@@ -20,24 +17,7 @@ import {
  * Клиентский TypeScript компилируется тем же приёмом, что и в
  * `test/board-render.test.mjs`: сборка во временный каталог и импорт.
  */
-const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-board-lighting-'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board-lighting.ts', '../src/tactical-map-client.ts']
-  .map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, ...sources,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(buildDir)) {
-  if (!name.endsWith('.js')) continue
-  const source = readFileSync(join(buildDir, name), 'utf8').replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-  writeFileSync(join(buildDir, name.replace(/\.js$/, '.mjs')), source)
-  rmSync(join(buildDir, name))
-}
-const lighting = await import(pathToFileURL(join(buildDir, 'board-lighting.mjs')).href)
-const client = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
+const { modules: [lighting, client] } = await compileClientModules(['src/board-lighting.ts', 'src/tactical-map-client.ts'])
 
 function decoded(map) {
   const clientMap = client.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))

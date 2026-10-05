@@ -1,32 +1,14 @@
 import assert from 'node:assert/strict'
-import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 import { addProp, createTacticalMap, serializeTacticalMap, setCell } from '../server/tactical-map.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const buildDir = mkdtempSync(join(root, 'tmp', 'board3d-terrain-'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sources = ['../src/board3d-terrain.ts', '../src/tactical-map-client.ts'].map((relative) => fileURLToPath(new URL(relative, import.meta.url)))
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, ...sources,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-for (const name of readdirSync(buildDir)) {
-  if (!name.endsWith('.js')) continue
-  const path = join(buildDir, name)
-  const source = readFileSync(path, 'utf8').replace(/(from\s+["'])(\.\/[^"']+)(["'])/g, '$1$2.mjs$3')
-  writeFileSync(path.replace(/\.js$/u, '.mjs'), source)
-  rmSync(path)
-}
-const terrain = await import(pathToFileURL(join(buildDir, 'board3d-terrain.mjs')).href)
-const client = await import(pathToFileURL(join(buildDir, 'tactical-map-client.mjs')).href)
+const { modules: [terrain, client] } = await compileClientModules(['src/board3d-terrain.ts', 'src/tactical-map-client.ts'])
 const THREE = await import('three')
-process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 function decodedMap() {
   const map = createTacticalMap({ width: 4, height: 3, seed: 'terrain-test', fill: { passable: true, revealed: true, material: 'stone', elevation: 0 } })

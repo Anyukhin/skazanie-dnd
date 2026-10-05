@@ -92,6 +92,7 @@ import {
   useDialogEscape,
 } from './app-shared'
 import type { BoardCombatant } from './app-shared'
+import { activeInitiativeIndex as initiativeIndexOf, combatTurnActive } from './game-session-state.mjs'
 import { LootCellMarker, LootPanel, PostCombatLootSummary, useVanishedLoot } from './LootPanel'
 import { VoiceInput } from './VoiceInput'
 import type { BeastAction, CaptiveAction, CaptiveInterrogationSkill, CommandOutcome, WeaponAttackChoice } from './useGameSession'
@@ -711,12 +712,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const rows = boardMap?.height ?? cellRows
   const irregularMap = state.scene.cells.length < columns * rows
   const combat = combatState(state)
-  const combatActive = Boolean(combat.active && combat.initiative?.length)
+  const combatActive = combatTurnActive(state)
   // Перемирие. Пока оно держится, очередь заморожена сервером, и доска обязана
   // это показать: рамка вокруг поля, карточка условий и заглушённый хотбар.
   const truce = combatActive ? combat.truce ?? null : null
   const parleyAttempted = Math.max(0, Number(combat.parley_attempts) || 0) > 0
-  const activeInitiativeIndex = Math.max(0, Number(combat.active_index) || 0)
+  const activeInitiativeIndex = initiativeIndexOf(combat)
   const visibleBattleRoll = useTransientBattleRoll(state.battleLog)
   const visibleBattleRollContext = visibleBattleRoll ? battleRollContext(visualBatch?.events, visibleBattleRoll) : null
   const visibleNpcTactic = useTransientNpcTactic(visualBatch, state.battleLog)
@@ -738,14 +739,18 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const active: BoardCombatant | undefined = activeHero ?? activeSummon
   const activeName = activeHero?.character ?? activeSummon?.name ?? activeEnemy?.name ?? 'участник боя'
   const sceneLocationId = state.scene.location_id ?? boardMap?.locationId ?? ''
-  const combatActorIds = new Set([
-    ...players.map((player) => player.id),
-    ...(state.enemies ?? []).map((enemy) => enemy.id),
-    ...(state.actors ?? []).map((actor) => actor.id),
-  ])
   // PR #18 отдаёт только viewer-safe scene_npcs. Без этого optional-контракта
   // клиент не рисует spawn-point как персонажа и не угадывает координаты.
-  const sceneNpcs = sceneNpcsAt(state.scene_npcs ?? [], sceneLocationId, { columns, rows }, combatActorIds)
+  // Список запоминается: от него зависят фишки и разбор клеток ниже, а
+  // перерисовка от наведения мыши его не меняет.
+  const sceneNpcs = useMemo(() => {
+    const combatActorIds = new Set([
+      ...players.map((player) => player.id),
+      ...(state.enemies ?? []).map((enemy) => enemy.id),
+      ...(state.actors ?? []).map((actor) => actor.id),
+    ])
+    return sceneNpcsAt(state.scene_npcs ?? [], sceneLocationId, { columns, rows }, combatActorIds)
+  }, [players, state.enemies, state.actors, state.scene_npcs, sceneLocationId, columns, rows])
   const actorNameById = (id?: string) => {
     if (!id) return ''
     return players.find((player) => player.id === id)?.character
@@ -776,12 +781,14 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
      разрешает (плейтест 2026-10-03). Мёртвым считается только запись смерти. */
   const heroIsDead = (heroId: string) => state.mechanics?.death?.heroes?.[heroId]?.status === 'dead'
     || (state.mechanics?.conditions?.[heroId] ?? []).some((condition) => condition.id === 'dead')
-  const animationActors: BoardAnimationActor[] = [
+  // Тот же массив между перерисовками без новых данных: его сравнивают доски
+  // 2D и 3D, и новый объект на каждое наведение мыши заставлял их сверяться.
+  const animationActors = useMemo<BoardAnimationActor[]>(() => [
     ...players.map((player) => ({ id: player.id, x: player.x, y: player.y, label: player.character, color: player.color, kind: 'hero' as const, archetype: player.characterClass ?? player.role, footprint: player.footprint, defeated: player.hp <= 0 })),
     ...(state.enemies ?? []).map((enemy) => ({ id: enemy.id, x: enemy.x, y: enemy.y, label: enemy.name, color: '#c86c5d', kind: 'enemy' as const, archetype: enemy.creature_type, footprint: enemy.footprint, defeated: enemy.alive === false })),
     ...(state.actors ?? []).map((actor) => ({ id: actor.id, x: actor.x, y: actor.y, label: actor.name, color: '#70a78b', kind: 'summon' as const, footprint: actor.footprint, defeated: actor.alive === false })),
     ...sceneNpcs.filter((npc) => npc.alive).map((npc) => ({ id: npc.id, x: npc.x, y: npc.y, label: npc.name, color: '#9d8f72', kind: 'neutral' as const, footprint: npc.footprint })),
-  ].map((actor) => ({ ...actor, appearance: state.actor_appearances?.[actor.id] }))
+  ].map((actor) => ({ ...actor, appearance: state.actor_appearances?.[actor.id] })), [players, state.enemies, state.actors, sceneNpcs, state.actor_appearances])
   /* Субтитр — первое предложение последней реплики Рассказчика; мини-журнал —
      три последних удара: кто → кого, бросок против КД, если она открыта, итог. */
   const latestNarration = [...state.messages].reverse().find((message) => message.speaker === 'narrator')
@@ -1183,7 +1190,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const speedFeet = movement.budget
   const remainingFeet = movement.remaining
   const movementAvailable = movement.available
-  const movementPaths = active ? buildMovementPaths(state, active, CELL_FEET, boardMap) : new Map<string, MovementPath>()
+  // Поиск путей идёт по всей карте; его входы — только состояние, участник и
+  // карта, поэтому перерисовка от наведения или выбора режима его не повторяет.
+  const movementPaths = useMemo(
+    () => active ? buildMovementPaths(state, active, CELL_FEET, boardMap) : new Map<string, MovementPath>(),
+    [state, active, boardMap],
+  )
   const boardEffectRenderers = useMemo<BoardEffectRenderer[]>(() => {
     const activeEffects = state.mechanics?.active_effects ?? []
     const effects: BoardAreaEffect[] = activeEffects
@@ -1311,9 +1323,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     for (const cell of cells) sceneObjectByCell.set(boardPositionKey(cell.x, cell.y), prop)
   }
   const movementLimit = combatActive ? remainingFeet : Number.POSITIVE_INFINITY
-  const reachable = selected && active && movementAvailable
+  const reachable = useMemo(() => selected && active && movementAvailable
     ? new Set([...movementPaths.entries()].filter(([, route]) => route.costFeet <= movementLimit).map(([key]) => key))
-    : new Set<string>()
+    : new Set<string>(), [selected, active, movementAvailable, movementPaths, movementLimit])
   // Выбранная клетка принадлежит ходу, в котором её выбрали: после смены хода
   // второй клик по ней не должен двигать уже другого героя.
   useEffect(() => { setPendingMoveKey(null) }, [turnActorId, selected, combatActive])
@@ -2151,19 +2163,37 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     actorLayoutById.set(actor.id, layout)
     if (fullyRevealed) fullActorIds.add(actor.id)
   }
+  // Указатели по id и по клетке строятся один раз на перерисовку, а не поиском
+  // по спискам в каждой клетке карты. Порядок тот же, что у прежних `find`:
+  // в указатель попадает первый подходящий элемент.
+  const firstById = <T extends { id: string }>(items: readonly T[] | undefined, accept: (item: T) => boolean = () => true) => {
+    const index = new Map<string, T>()
+    for (const item of items ?? []) if (!index.has(item.id) && accept(item)) index.set(item.id, item)
+    return index
+  }
+  const standingPlayerById = firstById(players, (item) => item.hp > 0 || !heroIsDead(item.id))
+  const aliveEnemyById = firstById(state.enemies, (item) => item.alive)
+  const aliveSummonById = firstById(state.actors, (item) => item.alive)
+  const sceneNpcById = firstById(sceneNpcs)
+  const socialNpcById = firstById(state.social?.npcs)
+  const sceneNpcByCell = new Map<string, (typeof sceneNpcs)[number]>()
+  for (const item of sceneNpcs) {
+    const key = boardPositionKey(item.x, item.y)
+    if (!sceneNpcByCell.has(key)) sceneNpcByCell.set(key, item)
+  }
   for (const cell of state.scene.cells) {
     const actorAtCell = actorByCell.get(boardPositionKey(cell.x, cell.y))
-    const player = actorAtCell?.kind === 'hero' ? players.find((item) => item.id === actorAtCell.id && (item.hp > 0 || !heroIsDead(item.id))) : undefined
-    const enemy = actorAtCell?.kind === 'enemy' ? state.enemies?.find((item) => item.id === actorAtCell.id && item.alive) : undefined
-    const summon = actorAtCell?.kind === 'summon' ? state.actors?.find((item) => item.id === actorAtCell.id && item.alive) : undefined
+    const player = actorAtCell?.kind === 'hero' ? standingPlayerById.get(actorAtCell.id) : undefined
+    const enemy = actorAtCell?.kind === 'enemy' ? aliveEnemyById.get(actorAtCell.id) : undefined
+    const summon = actorAtCell?.kind === 'summon' ? aliveSummonById.get(actorAtCell.id) : undefined
     const sceneNpc = !player && !enemy && !summon
       ? actorAtCell?.kind === 'neutral'
-        ? sceneNpcs.find((item) => item.id === actorAtCell.id)
-        : sceneNpcs.find((item) => item.x === cell.x && item.y === cell.y)
+        ? sceneNpcById.get(actorAtCell.id)
+        : sceneNpcByCell.get(boardPositionKey(cell.x, cell.y))
       : undefined
     const sceneNpcStance = visibleNpcStance(sceneNpc?.stance ?? 'neutral')
     const sceneNpcMerchant = sceneNpc ? merchantForSceneNpc(state, sceneNpc.id) : null
-    const sceneNpcSocial = sceneNpc ? state.social?.npcs?.find((npc) => npc.id === sceneNpc.id) : undefined
+    const sceneNpcSocial = sceneNpc ? socialNpcById.get(sceneNpc.id) : undefined
     const sceneNpcGiftBlocked = Boolean(
       combatActive
       || !sceneNpc?.alive

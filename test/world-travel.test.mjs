@@ -1,27 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
-import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+
+import { compileClientModules } from './kit/client-ts.mjs'
 
 // Модуль чистый, но написан на TypeScript. Компилируем настоящий исходник во
 // временный каталог, чтобы проверять алгоритм выбора пути, а не его копию в
 // тесте. Type-only импорт GameState после компиляции исчезает.
-const buildDir = mkdtempSync(join(tmpdir(), 'skazanie-world-travel-'))
-const compiler = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url))
-const sourcePath = fileURLToPath(new URL('../src/world-travel.ts', import.meta.url))
-const compiled = spawnSync(process.execPath, [
-  compiler, '--ignoreConfig', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler',
-  '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, sourcePath,
-], { encoding: 'utf8' })
-assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-const modulePath = join(buildDir, 'world-travel.mjs')
-writeFileSync(modulePath, readFileSync(join(buildDir, 'world-travel.js'), 'utf8'))
-const { currentWorldLocation, neighboringDestinations, reachableDestinations, shortestRoute, travelProposalText } = await import(pathToFileURL(modulePath).href)
-
-test.after(() => rmSync(buildDir, { recursive: true, force: true }))
+const { modules: [{ currentWorldLocation, neighboringDestinations, reachableDestinations, shortestRoute, travelProposalText }] } = await compileClientModules(['src/world-travel.ts'])
 
 function state() {
   return {
