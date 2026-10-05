@@ -186,6 +186,11 @@ test('one-evening climax requires a matching recorded hard encounter outcome', (
   assert.equal(campaignArcClimaxSatisfied(state), true)
   state.mechanics.encounter.created_in_chapter -= 1
   assert.equal(campaignArcClimaxSatisfied(state), false)
+  // Отряд ушёл дальше финальной главы, не дав боя: развязка остаётся достижимой.
+  state.adventure.chapter = plan.target_scenes + 2
+  state.mechanics.encounter.created_in_chapter = plan.target_scenes + 2
+  assert.equal(campaignArcClimaxSatisfied(state), true)
+  state.adventure.chapter = plan.target_scenes
   state.mechanics.encounter.created_in_chapter = plan.target_scenes
   state.autonomy.encounter_outcomes = [{ encounter_id: 'other-encounter', outcome: 'enemies_defeated' }]
   assert.equal(campaignArcClimaxSatisfied(state), false)

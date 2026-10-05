@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import { runWithCampaignAiSettings } from '../server/campaign-ai-context.mjs'
+import { buildCampaignArcPlan } from '../server/campaign-loop-policy.mjs'
 import { DirectorAgent, fallbackDirectorIntent } from '../server/director-agent.mjs'
 import { FakeLLM } from '../server/llm-client.mjs'
 
@@ -27,6 +28,21 @@ test('детерминированный Director проходит исслед�
     history.push(intent)
   }
   assert.notEqual(fallbackDirectorIntent(state(history)).type, 'advance_quest_clock')
+})
+
+// Без модели бой, который отряд ищет сам, — единственный путь к развязке: её
+// засчитывает только тяжёлая встреча финальной главы. Средняя встреча там
+// крутила кампанию по кругу (прогон Асстохана 2026-10-05).
+test('бой, который игроки ищут в финальной главе арки, собирается тяжёлым', () => {
+  const arc = buildCampaignArcPlan('final-fight')
+  const middle = { ...state(), campaignConcept: { arc }, adventure: { chapter: 1 } }
+  assert.equal(fallbackDirectorIntent(middle, 'Ищем бой с угрозой').difficulty, 'medium')
+  for (const chapter of [arc.target_scenes, arc.target_scenes + 3]) {
+    const final = { ...state(), campaignConcept: { arc }, adventure: { chapter } }
+    const intent = fallbackDirectorIntent(final, 'Ищем бой с угрозой')
+    assert.equal(intent.type, 'request_encounter')
+    assert.equal(intent.difficulty, 'hard', `глава ${chapter}`)
+  }
 })
 
 test('невалидный ответ модели откатывается к безопасному server-owned намерению', async () => {
