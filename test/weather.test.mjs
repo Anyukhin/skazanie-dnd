@@ -644,10 +644,11 @@ test('небо дописывается к запасному тексту ро�
   assert.equal(calls, 0, 'запасной рассказчик вызван зря')
   assert.equal(withTurn, combatNarration([knockout, dusk], state), 'на описанном ходу текст прежний')
 
-  // Сторож проводки: маршрут Режиссёра обязан кормить бриф очищенным списком.
+  // Сторож проводки: маршрут Режиссёра обязан кормить очищенным списком и
+  // текст шага (`directorStepNarration`), и бриф запасного рассказчика.
   assert.match(
     source('server/index.mjs'),
-    /tacticalNarrationOr\(events, authoritative\.state, \(briefEvents\) => deterministicNarration\(\s*\{ visible_events: briefEvents,/u,
+    /tacticalNarrationOr\(events, authoritative\.state, \(briefEvents\) => directorStepNarration\(result\.intent\?\.type, briefEvents, authoritative\.state\) \|\| deterministicNarration\(\s*\{ visible_events: briefEvents,/u,
   )
 })
 

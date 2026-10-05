@@ -4942,7 +4942,7 @@ async function handleHttpRequest(req, res) {
       // Раскрытие области и смена цели в запасном рассказчике фраз не имеют:
       // шаг сам говорит, что сделал (directorStepNarration), иначе игрок
       // слышал «Пока ничего не меняется» и с моделью, и без неё.
-      const directorNarration = tacticalNarrationOr(events, authoritative.state, (briefEvents) => directorStepNarration(result.intent?.type, events, authoritative.state) || deterministicNarration(
+      const directorNarration = tacticalNarrationOr(events, authoritative.state, (briefEvents) => directorStepNarration(result.intent?.type, briefEvents, authoritative.state) || deterministicNarration(
         { visible_events: briefEvents, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
         actorNameResolver(authoritative.state),
       ).narration)
