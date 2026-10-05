@@ -38,7 +38,7 @@ import { characterCreationChoicesComplete } from '../server/character-lifecycle.
 import { combatClassCatalogInfo, combatSubclassOptionsFor, normalizedCombatSubclassFor } from '../server/combat-actions.mjs'
 import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells.mjs'
 import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
-import { actorFootprintCellsAt, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
+import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -592,7 +592,8 @@ function combatSnapshot(state) {
     const flags = conditions(entry.id)
     return `${entry.character ?? entry.name ?? entry.id} ${entry.hp}/${entry.maxHp} @${at?.x},${at?.y}${entry.size ? ` ${entry.size}` : ''}${flags ? ` [${flags}]` : ''}`
   }
-  const enemies = (state.enemies ?? []).filter((entry) => entry.alive !== false && Number(entry.hp) > 0)
+  // Хиты врага в проекции игрока скрыты: живым считается всякий, кто не выбыл.
+  const enemies = (state.enemies ?? []).filter(isUp)
   return [...state.players.map(actor), ...enemies.map(actor)].join('; ')
 }
 
@@ -817,7 +818,9 @@ async function meleeApproach(actorId, targetId) {
   // шага движка (трудная местность), а занятыми считаются все клетки тела:
   // крупный зверь занимает 2×2, и по одной опорной клетке бот вставал внутрь
   // него — INVALID_DESTINATION раунд за раундом (серия сидов 2026-10-05).
-  const rules = normalizeCampaignState(fresh)
+  // Хиты врага игроку не видны; без них занятость считала его мёртвым, и
+  // путь шёл сквозь тело медведя прямо в его клетку (сид 5, 2026-10-05).
+  const rules = normalizeCampaignState({ ...fresh, enemies: (fresh.enemies ?? []).map((enemy) => (enemy.hp == null && isUp(enemy) ? { ...enemy, hp: Number(enemy.maxHp) || 1 } : enemy)) })
   const path = (shortestTacticalPath(rules, actorId, targetAt, { allowOccupiedDestination: true }) ?? []).slice(0, -1)
   const { stepCost } = movementStepCostFor(rules, actorId)
   let budgetFeet = Number(movementForActor(rules, actorId).movement_remaining) || 0
@@ -827,10 +830,9 @@ async function meleeApproach(actorId, targetId) {
     if (budgetFeet < 0) break
     stop.push(step)
   }
-  const occupied = new Set([...rules.players, ...(rules.enemies ?? [])]
-    .filter((entry) => entry.id !== actorId && isUp(entry))
-    .flatMap((entry) => actorFootprintCellsAt(rules, entry.id))
-    .map((cell) => `${cell.x},${cell.y}`))
+  // Занятость — тем же набором, что проверяет MoveActor: сдавшийся или
+  // оглушённый зверь лежит на своих клетках, и встать на них нельзя.
+  const occupied = occupiedPositions(rules, actorId)
   while (stop.length && occupied.has(`${stop.at(-1).x},${stop.at(-1).y}`)) stop.pop()
   if (!stop.length) return
   const moved = await command(actorId, { command_type: 'MoveActor', to: stop.at(-1) }, 'Подойти', { expectFailure: true })
