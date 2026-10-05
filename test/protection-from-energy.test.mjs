@@ -1,24 +1,14 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { FileEventStore } from '../server/event-store.mjs'
 import { combatSpellFor } from '../server/combat-spells.mjs'
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand, worldTimeSeconds } from '../server/rules-engine.mjs'
+import { normalizeCampaignState, replayEvents, resolveCommand, worldTimeSeconds } from '../server/rules-engine.mjs'
+import { dice as kitDice } from './kit/dice.mjs'
+import { applyAll, createTestStore } from './kit/engine.mjs'
 
 let sequence = 0
 
-function dice(values = []) {
-  let roll = 0
-  return new DiceService({
-    rng: new SequenceDiceRng(values),
-    idFactory: () => `pfe-roll-${++roll}`,
-    now: () => '2026-09-26T12:00:00.000Z',
-  })
-}
+const dice = (values = []) => kitDice(values, { prefix: 'pfe-roll', now: '2026-09-26T12:00:00.000Z' })
 
 function field({ slot3 = 2, allyX = 2, temporaryHp = 0 } = {}) {
   const cells = Array.from({ length: 100 }, (_, index) => ({
@@ -86,7 +76,7 @@ function run(state, command, context = {}) {
     },
   })
   const replayed = replayEvents(state, result.events)
-  const reduced = result.events.reduce((next, event) => applyGameEvent(next, event), state)
+  const reduced = applyAll(state, result.events)
   assert.deepEqual(replayed, reduced, 'replay должен совпадать с прямым reducer-путём')
   return { ...result, state: replayed }
 }
@@ -230,9 +220,7 @@ test('неизвестный тип и чужой actor отклоняются �
 })
 
 test('record/replay и повтор того же idempotency key возвращают один commit', async (t) => {
-  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-pfe-'))
-  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
-  const store = new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState, snapshotEvery: 0 })
+  const store = createTestStore(t, { prefix: 'skazanie-pfe-', snapshotEvery: 0 })
   const initial = field()
   await store.initializeCampaign({ campaignId: 'pfe-record', initialState: initial, rulesetId: 'dnd_5e_2014', rulesetVersion: '2014.1.0' })
   const resolved = cast(initial, { targetId: 'caster', option: 'acid', commandId: 'record-cast' })

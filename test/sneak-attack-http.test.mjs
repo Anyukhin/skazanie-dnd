@@ -1,9 +1,5 @@
-import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
@@ -15,69 +11,7 @@ import {
   applyGameEvent,
   normalizeCampaignState,
 } from '../server/rules-engine.mjs'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'sneak-attack-http-setup',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    child.once('exit', resolve)
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
-
-async function request(baseUrl, path, {
-  method = 'GET',
-  cookie = '',
-  body,
-  key = '',
-} = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(cookie ? { Cookie: cookie } : {}),
-      ...(key ? { 'X-Idempotency-Key': key } : {}),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
-  const text = await response.text()
-  return { response, status: response.status, body: text ? JSON.parse(text) : null, text }
-}
-
-function sessionCookie(result) {
-  return result.response.headers.get('set-cookie')?.split(';')[0]
-}
+import { registerUser, setupAdmin, startTestServer } from './kit/http.mjs'
 
 function initialState(code) {
   return {
@@ -175,65 +109,29 @@ function attackCommand(key, sneakAttack = true) {
 }
 
 test('HTTP MakeAttack игрока применяет Скрытую атаку плута, защищает ключ и переживает рестарт', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-sneak-attack-http-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
-  })
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-sneak-attack-http-' })
+  const { client: admin } = await setupAdmin(server, { name: 'GM', email: 'gm@sneak-attack.test', password: 'secure-admin-password' })
+  const { client: owner } = await registerUser(server, { name: 'Owner', email: 'owner@sneak-attack.test', password: 'secure-owner-password' })
+  const { client: foreign } = await registerUser(server, { name: 'Foreign', email: 'foreign@sneak-attack.test', password: 'secure-foreign-password' })
 
-  const port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
-
-  const admin = await request(baseUrl, '/api/auth/setup-admin', {
-    method: 'POST',
-    body: { name: 'GM', email: 'gm@sneak-attack.test', password: 'secure-admin-password', setupToken: 'sneak-attack-http-setup' },
-  })
-  const owner = await request(baseUrl, '/api/auth/register', {
-    method: 'POST',
-    body: { name: 'Owner', email: 'owner@sneak-attack.test', password: 'secure-owner-password' },
-  })
-  const foreign = await request(baseUrl, '/api/auth/register', {
-    method: 'POST',
-    body: { name: 'Foreign', email: 'foreign@sneak-attack.test', password: 'secure-foreign-password' },
-  })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
-  assert.equal(owner.status, 201, `${owner.text}\n${logs}`)
-  assert.equal(foreign.status, 201, `${foreign.text}\n${logs}`)
-  const adminCookie = sessionCookie(admin)
-  const ownerCookie = sessionCookie(owner)
-  const foreignCookie = sessionCookie(foreign)
-
-  const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
+  const users = await admin.get('/api/admin/users')
   const ownerUser = users.body.users.find((candidate) => candidate.email === 'owner@sneak-attack.test')
-  const ownership = await request(baseUrl, `/api/admin/users/${ownerUser.id}`, {
-    method: 'PATCH', cookie: adminCookie, body: { heroIds: ['rogue'] },
-  })
-  assert.equal(ownership.status, 200, `${ownership.text}\n${logs}`)
+  const ownership = await admin.patch(`/api/admin/users/${ownerUser.id}`, { heroIds: ['rogue'] })
+  assert.equal(ownership.status, 200, `${ownership.text}\n${server.output()}`)
 
   let selected = null
   for (let attempt = 1; attempt <= 5; attempt += 1) {
     const campaignId = `SNEAK-HTTP-${attempt}`
-    const created = await request(baseUrl, '/api/campaigns', {
-      method: 'POST', cookie: adminCookie,
-      body: { code: campaignId, name: 'Проверка Скрытой атаки', state: initialState(campaignId) },
-    })
-    assert.equal(created.status, 201, `${created.text}\n${logs}`)
+    const created = await admin.post('/api/campaigns', { code: campaignId, name: 'Проверка Скрытой атаки', state: initialState(campaignId) })
+    assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
 
-    const forbidden = await request(baseUrl, `/api/campaigns/${campaignId}/commands`, {
-      method: 'POST', cookie: foreignCookie, key: `sneak-forbidden-${attempt}`, body: attackCommand(`sneak-forbidden-${attempt}`),
-    })
-    assert.equal(forbidden.status, 403, `${forbidden.text}\n${logs}`)
+    const forbidden = await foreign.post(`/api/campaigns/${campaignId}/commands`, attackCommand(`sneak-forbidden-${attempt}`), { idempotencyKey: `sneak-forbidden-${attempt}` })
+    assert.equal(forbidden.status, 403, `${forbidden.text}\n${server.output()}`)
 
     const key = `sneak-attack-${attempt}`
     const command = attackCommand(key)
-    const result = await request(baseUrl, `/api/campaigns/${campaignId}/commands`, {
-      method: 'POST', cookie: ownerCookie, key, body: command,
-    })
-    assert.equal(result.status, 200, `${result.text}\n${logs}`)
+    const result = await owner.post(`/api/campaigns/${campaignId}/commands`, command, { idempotencyKey: key })
+    assert.equal(result.status, 200, `${result.text}\n${server.output()}`)
     if (result.body.mechanics.some((event) => event.event_type === 'SneakAttackApplied')) {
       selected = { campaignId, key, command, result }
       break
@@ -253,27 +151,22 @@ test('HTTP MakeAttack игрока применяет Скрытую атаку 
   assert.equal(sneak.payload.expression, attack.payload.critical ? '6d6' : '3d6')
   assert.equal(sneak.payload.supporter_id, 'ally')
 
-  const duplicate = await request(baseUrl, `/api/campaigns/${campaignId}/commands`, {
-    method: 'POST', cookie: ownerCookie, key, body: command,
-  })
-  assert.equal(duplicate.status, 200, `${duplicate.text}\n${logs}`)
+  const duplicate = await owner.post(`/api/campaigns/${campaignId}/commands`, command, { idempotencyKey: key })
+  assert.equal(duplicate.status, 200, `${duplicate.text}\n${server.output()}`)
   assert.equal(duplicate.body.idempotent_replay, true)
 
-  const conflict = await request(baseUrl, `/api/campaigns/${campaignId}/commands`, {
-    method: 'POST', cookie: ownerCookie, key, body: attackCommand(key, false),
-  })
-  assert.equal(conflict.status, 409, `${conflict.text}\n${logs}`)
+  const conflict = await owner.post(`/api/campaigns/${campaignId}/commands`, attackCommand(key, false), { idempotencyKey: key })
+  assert.equal(conflict.status, 409, `${conflict.text}\n${server.output()}`)
   assert.equal(conflict.body.code, 'IDEMPOTENCY_CONFLICT')
 
-  await stopServer(child)
-  child = null
+  await server.stop()
 
   const eventStore = new FileEventStore({
-    rootDir: join(storage, 'engine'),
+    rootDir: join(server.storageDir, 'engine'),
     reducer: applyGameEvent,
     normalizeState: normalizeCampaignState,
     snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-    mapStore: new MapStore({ rootDir: join(storage, 'engine') }),
+    mapStore: new MapStore({ rootDir: join(server.storageDir, 'engine') }),
   })
   const durable = await eventStore.load(campaignId)
   const enemyHp = durable.state.enemies.find((enemy) => enemy.id === 'enemy').hp
@@ -283,14 +176,9 @@ test('HTTP MakeAttack игрока применяет Скрытую атаку 
   assert.equal(storedEvents.filter((event) => event.event_type === 'AttackResolved').length, 1)
   assert.equal(storedEvents.filter((event) => event.event_type === 'SneakAttackApplied').length, 1)
 
-  const restartPort = await freePort()
-  baseUrl = `http://127.0.0.1:${restartPort}`
-  child = startServer(restartPort, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.start()
 
-  const afterRestart = await request(baseUrl, `/api/campaigns/${campaignId}/commands`, {
-    method: 'POST', cookie: ownerCookie, key, body: command,
-  })
-  assert.equal(afterRestart.status, 200, `${afterRestart.text}\n${logs}`)
+  const afterRestart = await owner.post(`/api/campaigns/${campaignId}/commands`, command, { idempotencyKey: key })
+  assert.equal(afterRestart.status, 200, `${afterRestart.text}\n${server.output()}`)
   assert.equal(afterRestart.body.idempotent_replay, true)
 })

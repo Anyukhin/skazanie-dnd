@@ -1,29 +1,18 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
 import { combatActionsFor } from '../server/combat-actions.mjs'
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
 import {
   RulesValidationError,
-  applyGameEvent,
   normalizeCampaignState,
   replayEvents,
   resolveCommand,
 } from '../server/rules-engine.mjs'
+import { dice as kitDice } from './kit/dice.mjs'
+import { createCampaignStore } from './kit/engine.mjs'
 
-function dice(values = []) {
-  let id = 0
-  return new DiceService({
-    rng: new SequenceDiceRng(values),
-    idFactory: () => `sneak-roll-${++id}`,
-    now: () => '2026-08-09T15:00:00.000Z',
-  })
-}
+const dice = (values = []) => kitDice(values, { prefix: 'sneak-roll', now: '2026-08-09T15:00:00.000Z' })
 
 function floor(width = 8, height = 4) {
   return Array.from({ length: width * height }, (_, index) => ({
@@ -232,12 +221,9 @@ test('класс и свойства оружия берутся с сервер
 })
 
 test('повтор idempotency key не применяет события Скрытой атаки второй раз', async (t) => {
-  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-sneak-attack-'))
-  t.after(() => rmSync(rootDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))
   const initial = sneakState()
   const result = resolveCommand(command({ command_id: 'sneak-idempotent' }), initial, options([15, 2, 1, 1, 1]))
-  const store = new FileEventStore({ rootDir, reducer: applyGameEvent })
-  await store.initializeCampaign({ campaign_id: 'sneak-idempotent', initial_state: initial })
+  const store = await createCampaignStore(t, 'sneak-idempotent', initial, { prefix: 'skazanie-sneak-attack-', normalize: false })
   const request = {
     campaign_id: 'sneak-idempotent', expected_state_version: 0,
     idempotency_key: 'same-sneak-attack', command_id: 'sneak-idempotent', events: result.events,

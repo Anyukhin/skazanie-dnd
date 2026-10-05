@@ -1,17 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
 import { applyGameEvent, normalizeCampaignState, replayEvents, resolveCommand, worldTimeSeconds } from '../server/rules-engine.mjs'
+import { dice as kitDice } from './kit/dice.mjs'
+import { createCampaignStore, reopenStore } from './kit/engine.mjs'
 
-function dice(values = []) {
-  let next = 0
-  return new DiceService({ rng: new SequenceDiceRng(values), idFactory: () => `clock-roll-${++next}`, now: () => '2026-09-21T12:00:00.000Z' })
-}
+const dice = (values = []) => kitDice(values, { prefix: 'clock-roll', now: '2026-09-21T12:00:00.000Z' })
 
 function field({ active = true, group = false, worldTime = {}, conditions = {} } = {}) {
   const hero = (id, x) => ({
@@ -179,19 +173,15 @@ test('десятый раунд пересекает минуту и запус�
 })
 
 test('новые часы и pending marker одинаковы после commit, идемпотентного повтора и restart/replay', async (t) => {
-  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-seconds-'))
-  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
   const initial = field({ worldTime: { elapsed_minutes: 59, second_remainder: 58.75 } })
-  const makeStore = () => new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState, initialStateFactory: () => initial, snapshotEvery: 2 })
-  const store = makeStore()
-  await store.initializeCampaign({ campaign_id: 'seconds', initial_state: initial })
+  const store = await createCampaignStore(t, 'seconds', initial, { prefix: 'skazanie-seconds-', initialStateFactory: () => initial, snapshotEvery: 2 })
   const action = execute(initial, { command_type: 'UseCombatAction', command_id: 'clock-dash', action_id: 'dash' })
   const request = { campaign_id: 'seconds', expected_state_version: 0, idempotency_key: 'dash-once', command_id: 'clock-dash', events: action.events }
   const first = await store.commit(request)
   const duplicate = await store.commit(request)
   assert.equal(duplicate.duplicate, true)
   assert.equal(duplicate.state_version, first.state_version)
-  const restored = await makeStore().replay('seconds', { use_snapshots: false })
+  const restored = await reopenStore(store).replay('seconds', { use_snapshots: false })
   assert.deepEqual(restored.state, first.state)
   assert.equal(restored.state.mechanics.combat.round_time_pending, true)
   const ended = endCombat(restored.state)
@@ -201,8 +191,8 @@ test('новые часы и pending marker одинаковы после commit
   assert.equal(repeated.duplicate, true)
   assert.equal(worldTimeSeconds(final.state), 3_604.75)
   assert.equal(worldTimeSeconds(repeated.state), 3_604.75)
-  const replayed = await makeStore().replay('seconds', { use_snapshots: false })
-  const snapshot = await makeStore().load('seconds')
+  const replayed = await reopenStore(store).replay('seconds', { use_snapshots: false })
+  const snapshot = await reopenStore(store).load('seconds')
   assert.deepEqual(replayed.state, final.state)
   assert.deepEqual(snapshot.state, final.state)
 })

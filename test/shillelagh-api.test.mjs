@@ -1,71 +1,15 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { pathToFileURL } from 'node:url'
-import { freePort } from './free-port.mjs'
 import { shortestTacticalPath } from '../server/rules-engine.mjs'
+import { expectStatus, registerUser, setupAdmin, startTestServer } from './kit/http.mjs'
 
 const CAMPAIGN = 'SHILLELAGH-API'
 const HERO = 'hero-slot-1'
-const SETUP_TOKEN = 'shillelagh-api-setup'
-const DETERMINISTIC_DICE_PRELOAD = pathToFileURL(join(process.cwd(), 'test', 'fixtures', 'shillelagh-deterministic-dice.mjs')).href
+// Предзагрузка проверяет имя хранилища: только skazanie-shillelagh-api-*.
+const DETERMINISTIC_DICE_PRELOAD = 'test/fixtures/shillelagh-deterministic-dice.mjs'
 
-async function startServer(port, storage, log) {
-  const child = spawn(process.execPath, ['--import', DETERMINISTIC_DICE_PRELOAD, 'server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ROUTERAI_BASE_URL: '', ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      COOKIE_SECURE: 'false', NODE_ENV: 'test', GAME_ENGINE_MODE: 'enforce',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => log(String(chunk)))
-  child.stderr.on('data', (chunk) => log(String(chunk)))
-  const baseUrl = `http://127.0.0.1:${port}`
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Сервер завершился: ${log()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return { child, baseUrl }
-    } catch { /* сервер запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Сервер не запустился: ${log()}`)
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...(cookie ? { Cookie: cookie } : {}),
-      ...(key ? { 'X-Idempotency-Key': key } : {}),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
-  const text = await response.text()
-  return { status: response.status, body: text ? JSON.parse(text) : null, text, cookie: response.headers.get('set-cookie')?.split(';')[0] }
-}
-
-function expectStatus(result, expected = 200) {
-  assert.equal(result.status, expected, `${result.text}`)
-  return result.body
-}
-
-function command(baseUrl, cookie, key, value) {
-  return request(baseUrl, `/api/campaigns/${CAMPAIGN}/commands`, {
-    method: 'POST', cookie, key,
-    body: { idempotency_key: key, command: value },
-  })
+function command(client, key, value) {
+  return client.post(`/api/campaigns/${CAMPAIGN}/commands`, { idempotency_key: key, command: value }, { idempotencyKey: key })
 }
 
 const INCAPACITATING_CONDITIONS = new Set(['incapacitated', 'paralyzed', 'petrified', 'stunned', 'unconscious'])
@@ -121,56 +65,24 @@ function druidDocument() {
 }
 
 test('обычный друид через API получает Shillelagh, держит клуб и сохраняет cast/attack после restart', { timeout: 120_000 }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-shillelagh-api-'))
-  let child = null
-  let baseUrl = ''
-  let logs = ''
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+  const server = await startTestServer(t, {
+    preload: DETERMINISTIC_DICE_PRELOAD,
+    storagePrefix: 'skazanie-shillelagh-api-',
   })
+  const { client: admin } = await setupAdmin(server, { name: 'Ведущий', email: 'admin@shillelagh-api.test', password: 'secure-admin-password' })
+  const { client: owner } = await registerUser(server, { name: 'Иара', email: 'owner@shillelagh-api.test', password: 'secure-owner-password' })
+  const { client: guest } = await registerUser(server, { name: 'Гость', email: 'guest@shillelagh-api.test', password: 'secure-guest-password' })
 
-  const restart = async () => {
-    await stopServer(child)
-    const next = await startServer(await freePort(), storage, (chunk) => { if (chunk) logs = `${logs}${chunk}`.slice(-8_000); return logs })
-    child = next.child
-    baseUrl = next.baseUrl
-  }
-  const first = await startServer(await freePort(), storage, (chunk) => { if (chunk) logs = `${logs}${chunk}`.slice(-8_000); return logs })
-  child = first.child
-  baseUrl = first.baseUrl
+  expectStatus(await owner.post('/api/campaigns', { code: CAMPAIGN, name: 'API Дубинка', bootstrap: { slotCount: 2, startLevel: 1, rulesetId: 'dnd_5e_2014', world: { preset: 'Классическое фэнтези' } } }), 201)
+  const invite = expectStatus(await owner.post(`/api/campaigns/${CAMPAIGN}/invites`, { hero_ids: ['hero-slot-2'] }), 201)
+  expectStatus(await guest.post(`/api/campaigns/${CAMPAIGN}/join`, { invite_token: invite.token }))
 
-  const admin = await request(baseUrl, '/api/auth/setup-admin', {
-    method: 'POST', body: { name: 'Ведущий', email: 'admin@shillelagh-api.test', password: 'secure-admin-password', setupToken: SETUP_TOKEN },
-  })
-  const owner = await request(baseUrl, '/api/auth/register', {
-    method: 'POST', body: { name: 'Иара', email: 'owner@shillelagh-api.test', password: 'secure-owner-password' },
-  })
-  const guest = await request(baseUrl, '/api/auth/register', {
-    method: 'POST', body: { name: 'Гость', email: 'guest@shillelagh-api.test', password: 'secure-guest-password' },
-  })
-  expectStatus(admin, 201); expectStatus(owner, 201); expectStatus(guest, 201)
-  const adminCookie = admin.cookie
-  const ownerCookie = owner.cookie
-  const guestCookie = guest.cookie
-
-  expectStatus(await request(baseUrl, '/api/campaigns', {
-    method: 'POST', cookie: ownerCookie,
-    body: { code: CAMPAIGN, name: 'API Дубинка', bootstrap: { slotCount: 2, startLevel: 1, rulesetId: 'dnd_5e_2014', world: { preset: 'Классическое фэнтези' } } },
-  }), 201)
-  const invite = expectStatus(await request(baseUrl, `/api/campaigns/${CAMPAIGN}/invites`, {
-    method: 'POST', cookie: ownerCookie, body: { hero_ids: ['hero-slot-2'] },
-  }), 201)
-  expectStatus(await request(baseUrl, `/api/campaigns/${CAMPAIGN}/join`, {
-    method: 'POST', cookie: guestCookie, body: { invite_token: invite.token },
-  }))
-
-  const imported = expectStatus(await command(baseUrl, ownerCookie, 'druid-import', {
+  const imported = expectStatus(await command(owner, 'druid-import', {
     command_type: 'ImportCharacter', actor_id: HERO, document: druidDocument(),
   }))
   assert.equal(imported.authoritative_state.players.find((actor) => actor.id === HERO).characterClass, 'druid')
 
-  const selected = expectStatus(await command(baseUrl, ownerCookie, 'druid-spells', {
+  const selected = expectStatus(await command(owner, 'druid-spells', {
     command_type: 'SetSpellSelections', actor_id: HERO,
     known_spell_ids: ['druidcraft', 'shillelagh'], prepared_spell_ids: [],
   }))
@@ -184,27 +96,27 @@ test('обычный друид через API получает Shillelagh, де
   const guestDocument = druidDocument()
   guestDocument.character.character = 'Бор'
   guestDocument.character.name = 'Гость'
-  expectStatus(await command(baseUrl, guestCookie, 'guest-druid-import', {
+  expectStatus(await command(guest, 'guest-druid-import', {
     command_type: 'ImportCharacter', actor_id: 'hero-slot-2', document: guestDocument,
   }))
-  expectStatus(await command(baseUrl, guestCookie, 'guest-druid-spells', {
+  expectStatus(await command(guest, 'guest-druid-spells', {
     command_type: 'SetSpellSelections', actor_id: 'hero-slot-2',
     known_spell_ids: ['druidcraft', 'shillelagh'], prepared_spell_ids: [],
   }))
 
-  const released = expectStatus(await command(baseUrl, ownerCookie, 'release-shield', {
+  const released = expectStatus(await command(owner, 'release-shield', {
     command_type: 'EquipItem', actor_id: HERO, item_id: shield.id, equipped: false,
   }))
   assert.equal(released.authoritative_state.players.find((actor) => actor.id === HERO).inventory.find((item) => item.id === club.id).equipped, true)
 
-  const refusal = await command(baseUrl, ownerCookie, 'bad-shillelagh-item', {
+  const refusal = await command(owner, 'bad-shillelagh-item', {
     command_type: 'CastSpell', actor_id: HERO, target_id: HERO, spell_id: 'shillelagh', item_id: shield.id,
   })
   expectStatus(refusal, 400)
   assert.equal(refusal.body.code, 'SHILLELAGH_WEAPON_REQUIRED')
 
   const castCommand = { command_type: 'CastSpell', actor_id: HERO, target_id: HERO, spell_id: 'shillelagh', item_id: club.id }
-  const cast = expectStatus(await command(baseUrl, ownerCookie, 'shillelagh-cast', castCommand))
+  const cast = expectStatus(await command(owner, 'shillelagh-cast', castCommand))
   const spellCast = cast.mechanics.find((event) => event.event_type === 'SpellCast')
   const conditionAdded = cast.mechanics.find((event) => event.event_type === 'ConditionAdded')
   assert.equal(spellCast.payload.item_instance_id, club.id)
@@ -213,21 +125,18 @@ test('обычный друид через API получает Shillelagh, де
   assert.equal(conditionAdded.payload.timing_version, 2)
   assert.equal(conditionAdded.payload.duration, 'seconds:60')
 
-  const replay = expectStatus(await command(baseUrl, ownerCookie, 'shillelagh-cast', castCommand))
+  const replay = expectStatus(await command(owner, 'shillelagh-cast', castCommand))
   assert.equal(replay.idempotent_replay, true)
 
-  const foreign = await command(baseUrl, guestCookie, 'foreign-shillelagh', castCommand)
+  const foreign = await command(guest, 'foreign-shillelagh', castCommand)
   expectStatus(foreign, 403)
   assert.equal(foreign.body.code, 'ACTOR_FORBIDDEN')
 
-  const afterCast = expectStatus(await request(baseUrl, `/api/rooms/${CAMPAIGN}`, { cookie: ownerCookie }))
+  const afterCast = expectStatus(await owner.get(`/api/rooms/${CAMPAIGN}`))
   assert.ok(afterCast.state.mechanics.conditions[HERO].some((condition) => condition.id === 'shillelagh' && condition.source_item_id === club.id))
 
-  const beforeEncounter = expectStatus(await request(baseUrl, `/api/rooms/${CAMPAIGN}`, { cookie: adminCookie }))
-  const encounter = expectStatus(await request(baseUrl, `/api/campaigns/${CAMPAIGN}/encounters/assemble`, {
-    method: 'POST', cookie: adminCookie,
-    body: { idempotency_key: 'shillelagh-encounter', expected_state_version: beforeEncounter.state.state_version, difficulty: 'easy', theme: 'beasts', seed: 'shillelagh-api-encounter' },
-  }))
+  const beforeEncounter = expectStatus(await admin.get(`/api/rooms/${CAMPAIGN}`))
+  const encounter = expectStatus(await admin.post(`/api/campaigns/${CAMPAIGN}/encounters/assemble`, { idempotency_key: 'shillelagh-encounter', expected_state_version: beforeEncounter.state.state_version, difficulty: 'easy', theme: 'beasts', seed: 'shillelagh-api-encounter' }))
   const enemy = encounter.authoritative_state.enemies.find((candidate) => candidate.alive !== false)
   assert.ok(enemy)
   let combatState = encounter.authoritative_state
@@ -241,9 +150,7 @@ test('обычный друид через API получает Shillelagh, де
       const active = combatState.mechanics.combat.initiative[combatState.mechanics.combat.active_index]?.actor_id
       assert.ok(active)
       const beforeEndTurnVersion = Number(combatState.state_version)
-      const nextCombatState = expectStatus(await command(
-        baseUrl,
-        adminCookie,
+      const nextCombatState = expectStatus(await command(admin,
         `shillelagh-end-turn-${beforeEndTurnVersion}-${round}-${active}`,
         { command_type: 'EndTurn', actor_id: active },
       )).authoritative_state
@@ -258,9 +165,7 @@ test('обычный друид через API получает Shillelagh, де
     if (distance <= 5) break
     const to = nextMoveToward(combatState, enemy.id)
     const beforeMoveVersion = Number(combatState.state_version)
-    combatState = expectStatus(await command(
-      baseUrl,
-      ownerCookie,
+    combatState = expectStatus(await command(owner,
       `shillelagh-approach-${beforeMoveVersion}-${round}`,
       { command_type: 'MoveActor', actor_id: HERO, to },
     )).authoritative_state
@@ -270,9 +175,7 @@ test('обычный друид через API получает Shillelagh, де
     const afterDistance = Math.max(Math.abs(Number(afterMove.x) - Number(enemyPosition.x)), Math.abs(Number(afterMove.y) - Number(enemyPosition.y))) * 5
     if (afterDistance > 5) {
       const beforeEndTurnVersion = Number(combatState.state_version)
-      combatState = expectStatus(await command(
-        baseUrl,
-        ownerCookie,
+      combatState = expectStatus(await command(owner,
         `shillelagh-approach-end-${beforeEndTurnVersion}-${round}`,
         { command_type: 'EndTurn', actor_id: HERO },
       )).authoritative_state
@@ -282,7 +185,7 @@ test('обычный друид через API получает Shillelagh, де
   }
   assertHeroCanContinue(combatState)
   assert.equal(combatState.mechanics.combat.initiative[combatState.mechanics.combat.active_index]?.actor_id, HERO)
-  const attack = expectStatus(await command(baseUrl, ownerCookie, 'shillelagh-attack', {
+  const attack = expectStatus(await command(owner, 'shillelagh-attack', {
     command_type: 'MakeAttack', actor_id: HERO, target_id: enemy.id, item_id: club.id,
   }))
   const resolved = attack.mechanics.find((event) => event.event_type === 'AttackResolved')
@@ -291,7 +194,7 @@ test('обычный друид через API получает Shillelagh, де
   assert.equal(resolved.payload.damage_expression, '1d8+3')
   assert.equal(resolved.payload.magical, true)
 
-  await restart()
-  const reopened = expectStatus(await request(baseUrl, `/api/rooms/${CAMPAIGN}`, { cookie: ownerCookie }))
+  await server.restart()
+  const reopened = expectStatus(await owner.get(`/api/rooms/${CAMPAIGN}`))
   assert.ok(reopened.state.mechanics.conditions[HERO].some((condition) => condition.id === 'shillelagh' && condition.source_item_id === club.id))
 })

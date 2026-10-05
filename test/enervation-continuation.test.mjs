@@ -1,12 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
 import test from 'node:test'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 
 import { AuthoritativeExecutor } from '../server/authoritative-executor.mjs'
-import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
 import {
   RulesEngine,
   applyGameEvent,
@@ -15,9 +10,10 @@ import {
   resolveCommand,
 } from '../server/rules-engine.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
+import { dice as kitDice } from './kit/dice.mjs'
+import { applyAll, createCampaignStore } from './kit/engine.mjs'
 
 const authoritative = (command) => ({ ...command, server_authoritative: true })
-const applyAll = (state, events) => events.reduce((current, event) => applyGameEvent(current, event), state)
 
 function initialState({ targetHp = 100, casterHp = 30, defenses = {}, targetAt = { x: 3, y: 1 }, targetTemporaryHp = 0 } = {}) {
   const cells = Array.from({ length: 400 }, (_, index) => ({ x: index % 20, y: Math.floor(index / 20), type: 'floor', revealed: true }))
@@ -42,14 +38,7 @@ function initialState({ targetHp = 100, casterHp = 30, defenses = {}, targetAt =
   })
 }
 
-function dice(values, prefix = 'enervation-continuation') {
-  let id = 0
-  return new DiceService({
-    rng: new SequenceDiceRng(values),
-    idFactory: () => `${prefix}-${++id}`,
-    now: () => '2026-09-24T12:00:00.000Z',
-  })
-}
+const dice = (values, prefix = 'enervation-continuation') => kitDice(values, { prefix, now: '2026-09-24T12:00:00.000Z' })
 
 function castFailed(state) {
   return resolveCommand(authoritative({
@@ -359,8 +348,6 @@ test('сохранённое событие reducer 15 без continuation marke
 })
 
 test('повторный idempotency key возвращает тот же commit', async (t) => {
-  const rootDir = mkdtempSync(join(tmpdir(), 'skazanie-enervation-continuation-'))
-  t.after(() => rmSync(rootDir, { recursive: true, force: true }))
   const initial = initialState()
   const cast = castFailed(initial)
   const casted = applyAll(initial, cast.events)
@@ -377,8 +364,7 @@ test('повторный idempotency key возвращает тот же commit
       },
     },
   })
-  const store = new FileEventStore({ rootDir, reducer: applyGameEvent, normalizeState: normalizeCampaignState })
-  await store.initializeCampaign({ campaign_id: ready.sessionCode, initial_state: ready })
+  const store = await createCampaignStore(t, ready.sessionCode, ready, { prefix: 'skazanie-enervation-continuation-' })
   const executor = new AuthoritativeExecutor({ eventStore: store, rulesEngine: new RulesEngine({ diceService: dice([1, 4, 4, 4, 4, 4, 4, 4, 4, 4]) }) })
   const input = {
     campaignId: ready.sessionCode,
