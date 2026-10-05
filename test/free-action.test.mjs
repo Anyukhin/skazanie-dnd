@@ -989,3 +989,17 @@ test('дефисное имя врага сохраняет номер и не �
   assert.deepEqual(missingNumber.missing_information, ['target_id'])
   assert.equal(missingNumber.requires_clarification, true)
 })
+
+test('нераспознанное действие без модели: уточнение с вариантами сцены, честный ответ невозможному, в бою — прежнее', async () => {
+  // Сквозной прогон Асстохана (2026-10-05): на 8 из 10 реальных фраз игроков
+  // без модели звучало общее «Я не понял способ действия» — тупик по критерию 1.
+  const { mundaneActionOutcome } = await import('../server/free-action-adjudication.mjs')
+  const flavor = mundaneActionOutcome('Поднимаю шишку с пола', { heroName: 'Шорох', npcNames: ['Маршал Ивара Тейн'], onward: 'Обсидиановый перевал' })
+  assert.equal(flavor.kind, 'flavor')
+  assert.match(flavor.narration, /^Чего Шорох хочет добиться: «Поднимаю шишку с пола»\?/u)
+  assert.match(flavor.narration, /расспросить кого-то из здешних \(Маршал Ивара Тейн\)/u)
+  assert.match(flavor.narration, /отправиться дальше — в «Обсидиановый перевал»/u)
+  assert.match(flavor.narration, /броска не нужно/u)
+  assert.equal(mundaneActionOutcome('я поднимаю весь замок одной рукой', { heroName: 'Торвальд' }).kind, 'impossible')
+  assert.equal(mundaneActionOutcome('Поднимаю шишку с пола', { inCombat: true }), null, 'в бою действие стоит часть хода — прежнее уточнение')
+})

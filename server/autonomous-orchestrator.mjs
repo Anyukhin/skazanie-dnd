@@ -26,6 +26,7 @@ import {
   completedDowntime,
   questProgressEvidenceFor,
   directorProgressFingerprint,
+  nextWorldMapDestination,
   pacingForDirectorIntent,
   planServerTravel,
 } from './campaign-loop-policy.mjs'
@@ -66,6 +67,7 @@ import {
   hasRecognizedFreeActionApproach,
   interpretFreeAction,
   harmlessFreeActionReading,
+  mundaneActionOutcome,
   assertFreeActionConfirmation,
   previousFailedAttempt,
   resolveCorpseSearch,
@@ -1540,11 +1542,24 @@ export class AutonomousCampaignOrchestrator {
       // вместо общего «не понял» (плейтест 2026-10-04, QP-06). Раскрытие
       // предметов — по авторитетной карте, как у разбора пропсов выше.
       const unknownPlace = unknownDestinationReply(text, loaded.state, { isRevealed: revealedPropPredicate(loaded.state) })
+      // Вне боя уточнение называет конкретные способы добиться результата, а
+      // невозможное — честно; общее «не понял» осталось только для боя
+      // (см. mundaneActionOutcome). Механика уточнения прежняя: ничего не
+      // коммитится, короткий ответ игрока продолжает заявку.
+      const sceneLocation = clean(loaded.state.scene?.location, 180).toLocaleLowerCase('ru')
+      const mundane = unknownPlace ? null : mundaneActionOutcome(text, {
+        heroName: heroNameForText(loaded.state, actorId),
+        inCombat: loaded.state.mechanics?.combat?.active === true,
+        npcNames: (loaded.state.social?.npcs ?? [])
+          .filter((npc) => npc?.available !== false && npc?.visibility !== 'gm_only' && clean(npc?.location, 180).toLocaleLowerCase('ru') === sceneLocation)
+          .map((npc) => npc.name),
+        onward: nextWorldMapDestination(loaded.state) ?? '',
+      })
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification',
-        clarification_question: unknownPlace || 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться.',
-        narration: unknownPlace || 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться. Попытка ничего не расходует.',
+        clarification_question: unknownPlace || mundane?.narration || 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться.',
+        narration: unknownPlace || mundane?.narration || 'Я не понял способ действия. Опишите, что именно делает герой, с чем или с кем он взаимодействует и какого результата хочет добиться. Попытка ничего не расходует.',
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,
