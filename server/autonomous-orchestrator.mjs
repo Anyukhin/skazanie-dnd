@@ -44,6 +44,7 @@ import {
   previewD20Check,
 } from './rules-engine.mjs'
 import { classifyFreeActionKind } from './intent-parser.mjs'
+import { encounterEndText } from './combat-narration.mjs'
 import {
   buildDeterministicEpilogue,
   buildEpilogueNarrationBrief,
@@ -2126,7 +2127,8 @@ export class AutonomousCampaignOrchestrator {
       subject_id: subject.id,
       predicate: 'encounter_outcome',
       object: plan.outcome,
-      summary: `Встреча завершилась исходом: ${plan.outcome}.`,
+      // Код исхода — для механики (`object`), игроку и эпилогу — русская фраза.
+      summary: `Встреча завершилась: ${encounterEndText(plan.outcome)}.`,
       visibility: 'party',
       source_event_ids: outcomeCommit.events.map((entry) => entry.event_id).filter(Boolean),
     } })
@@ -2134,8 +2136,27 @@ export class AutonomousCampaignOrchestrator {
     const consequences = await this.runCommands(campaignId, `${baseKey}:consequences`, commands)
     if (!consequences.duplicate) emitted.push(...(consequences.events ?? []))
 
-    if (plan.outcome === 'enemies_defeated') {
+    // После поражения без смертей (`party_incapacitated`) враги ушли, а отряд
+    // лежит без сознания. Прежде восстановление шло только после победы: герои
+    // оставались на 0 ОЗ навсегда, и следующая просьба о бое собирала встречу
+    // на пустой отряд — `INVALID_PARTY` (прогон Асстохана, сид 2, 2026-10-05).
+    // Теперь отряд так же приходит в себя через 1d4 часа и отдыхает.
+    if (plan.outcome === 'enemies_defeated' || plan.outcome === 'party_incapacitated') {
       let afterConsequences = await this.load(campaignId)
+      if (plan.outcome === 'party_incapacitated') {
+        // Победители, уложив отряд, уходят — тем же состоянием `fled`, что и
+        // при бегстве по морали. Иначе живые враги стояли бы над спящими
+        // героями без боя, а любая новая встреча получала
+        // ENCOUNTER_ALREADY_PRESENT (тот же прогон, сид 2).
+        const victors = (afterConsequences.state.enemies ?? []).filter(isLivingActor)
+        if (victors.length) {
+          const departed = await this.runCommands(campaignId, `${baseKey}:victors-depart`, victors.map((enemy) => ({
+            command_type: 'AddCondition', actor_id: String(enemy.id), target_id: String(enemy.id), condition: 'fled',
+          })))
+          if (!departed.duplicate) emitted.push(...(departed.events ?? []))
+          afterConsequences = await this.load(campaignId)
+        }
+      }
       const survivors = (state) => {
         const partyIds = new Set((state.partyMemberIds ?? []).map(String))
         return (state.players ?? []).filter((hero) => (

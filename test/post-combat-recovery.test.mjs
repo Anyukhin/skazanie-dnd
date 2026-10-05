@@ -95,3 +95,30 @@ test('короткого ожидания не хватает: срок толь
     (error) => error.code === 'REST_ACTOR_INCAPACITATED',
   )
 })
+
+const wolf = { id: 'wolf', name: 'Волк', hp: 11, maxHp: 11, armor: 13, speed: 40, initiativeBonus: 2, attackBonus: 4, damageDice: 4, damageBonus: 2, damageType: 'piercing', attackRange: 5, abilities: { str: 12, dex: 15, con: 12, int: 3, wis: 12, cha: 6 }, x: 4, y: 3 }
+
+test('герой без сознания бросает инициативу: поднятый лечением ходит, упавший — делает спасброски', () => {
+  // Прогон Асстохана (сид 2, 2026-10-05): бой начался, пока воин лежал на 0 ОЗ
+  // после прошлого поражения, и в очередь его не взяли. Жрица подняла его
+  // лечением, но ходить он не мог; упав снова, не бросал спасброски, и бой
+  // закрылся, оставив его умирать на 0 ОЗ навсегда.
+  const state = normalizeCampaignState({ ...afterVictory(), enemies: [wolf] })
+  const started = resolveCommand(authoritative({ command_type: 'StartCombat', command_id: 'start-with-fallen', actor_id: 'warden' }), state, options(dice([10, 10, 10])))
+  const combat = started.events.find((event) => event.event_type === 'CombatStarted').payload
+  assert.ok(combat.party_ids.includes('fallen'), 'лежащий без сознания герой — участник боя')
+  assert.ok(combat.initiative.some((entry) => entry.actor_id === 'fallen'))
+
+  const dead = normalizeCampaignState({ ...afterVictory(), enemies: [wolf], mechanics: { ...afterVictory().mechanics, death: { saving_throws: {}, heroes: { fallen: { status: 'dead' } }, campaign_status: 'active' } } })
+  const withoutDead = resolveCommand(authoritative({ command_type: 'StartCombat', command_id: 'start-without-dead', actor_id: 'warden' }), dead, options(dice([10, 10])))
+  assert.equal(withoutDead.events.find((event) => event.event_type === 'CombatStarted').payload.party_ids.includes('fallen'), false, 'погибший в бой не встаёт')
+})
+
+test('встречу без единого героя в сознании движок отклоняет понятной фразой, а не служебной ошибкой сборщика', () => {
+  const state = afterVictory()
+  const everyoneDown = normalizeCampaignState({ ...state, players: state.players.map((hero) => ({ ...hero, hp: 0 })) })
+  assert.throws(
+    () => resolveCommand(authoritative({ command_type: 'CreateEncounter', command_id: 'empty-party', actor_id: 'warden', difficulty: 'easy', theme: 'beasts', seed: 'empty' }), everyoneDown, options(dice())),
+    (error) => error.code === 'PARTY_UNAVAILABLE' && /без сознания/u.test(error.message),
+  )
+})

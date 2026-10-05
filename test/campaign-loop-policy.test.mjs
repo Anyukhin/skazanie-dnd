@@ -194,6 +194,11 @@ test('one-evening climax requires a matching recorded hard encounter outcome', (
   state.mechanics.encounter.created_in_chapter = plan.target_scenes
   state.autonomy.encounter_outcomes = [{ encounter_id: 'other-encounter', outcome: 'enemies_defeated' }]
   assert.equal(campaignArcClimaxSatisfied(state), false)
+  // Проигранная кульминация — не победный финал (прогон Асстохана, сид 2).
+  for (const lost of ['party_incapacitated', 'party_defeated']) {
+    state.autonomy.encounter_outcomes = [{ encounter_id: 'final-encounter', outcome: lost }]
+    assert.equal(campaignArcClimaxSatisfied(state), false, lost)
+  }
 })
 
 test('закрытый квест не возвращается в intent, когда другой квест ещё активен', () => {

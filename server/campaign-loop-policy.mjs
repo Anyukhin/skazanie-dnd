@@ -196,6 +196,14 @@ function encounterOutcomeRecorded(state = {}, encounter = state.mechanics?.encou
   return (state.autonomy?.encounter_outcomes ?? []).some((entry) => entry.encounter_id === encounter.id)
 }
 
+/** Исходы, после которых отряд бой проиграл: развязкой арки они не становятся. */
+const LOST_ENCOUNTER_OUTCOMES = new Set(['party_defeated', 'party_incapacitated'])
+
+function encounterWonOrSettled(state = {}, encounter = state.mechanics?.encounter) {
+  const entry = (state.autonomy?.encounter_outcomes ?? []).findLast((candidate) => candidate.encounter_id === encounter?.id)
+  return Boolean(entry) && !LOST_ENCOUNTER_OUTCOMES.has(String(entry.outcome))
+}
+
 export function campaignArcClimaxSatisfied(state = {}) {
   const position = campaignArcPosition(state)
   if (!position?.is_final) return false
@@ -208,7 +216,11 @@ export function campaignArcClimaxSatisfied(state = {}) {
     && encounter.status === 'ended'
     && encounter.difficulty === 'hard'
     && Number(encounter.created_in_chapter) >= position.target_scenes
-    && encounterOutcomeRecorded(state, encounter))
+    && encounterOutcomeRecorded(state, encounter)
+    // Проигранная кульминация — не победный финал. Прогон Асстохана (сид 2,
+    // 2026-10-05) засчитал CampaignCompleted после боя, в котором отряд лёг
+    // без сознания: теперь Режиссёр даёт отряду прийти в себя и попытку снова.
+    && encounterWonOrSettled(state, encounter))
   const sceneResolved = (state.autonomy?.scene_resolutions ?? []).some((entry) => (
     entry?.status === 'confirmed'
       && Number(entry.chapter) >= position.target_scenes

@@ -314,6 +314,45 @@ test('climax resolves a triggered quest and completes the campaign replay-identi
   assert.equal((await eventStore.getEvents('AUTONOMY-30')).length, beforeCount)
 })
 
+test('после поражения без смертей отряд приходит в себя, отдыхает, и следующая встреча собирается', async (t) => {
+  // Прогон Асстохана (сид 2, 2026-10-05): бой кончился исходом
+  // party_incapacitated, восстановление шло только после победы, герои
+  // остались на 0 ОЗ, и Режиссёр собирал встречу на пустой отряд — 409
+  // INVALID_PARTY со служебным текстом сборщика.
+  const initial = campaign()
+  initial.partyMemberIds = ['hero', 'ally']
+  initial.players[0] = { ...initial.players[0], hp: 30, maxHp: 30 }
+  initial.players.push({ ...initial.players[0], id: 'ally', character: 'Bryn', x: 1, y: 0 })
+  initial.mechanics.positions.ally = { x: 1, y: 0 }
+  const { eventStore, autonomy } = await fixture(t, initial)
+  await autonomy.runCommands('AUTONOMY-30', 'defeat-encounter', [
+    { command_type: 'CreateEncounter', theme: 'beasts', difficulty: 'easy', seed: 'defeat' },
+    { command_type: 'StartCombat', server_authoritative: true },
+  ])
+  const enemyId = (await eventStore.load('AUTONOMY-30')).state.enemies[0].id
+  for (const heroId of ['hero', 'ally']) {
+    await autonomy.runCommands('AUTONOMY-30', `defeat-down-${heroId}`, [{ command_type: 'ApplyDamage', actor_id: enemyId, target_id: heroId, amount: 30, damage_type: 'slashing' }])
+    await autonomy.commitEventsWithRetry('AUTONOMY-30', `defeat-stable-${heroId}`, [{
+      command_id: `defeat-stable-${heroId}`, event_type: 'HeroStabilized', actor_id: null, target_ids: [heroId],
+      payload: { method: 'three-death-save-successes' }, source_rule_ids: [], house_rule_id: null, ruling_id: null, visibility: 'party',
+    }])
+  }
+  const result = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'party_incapacitated' })
+  assert.equal(result.state.mechanics.combat.active, false)
+  for (const hero of result.state.players) assert.equal(hero.hp, hero.maxHp, `${hero.id} должен прийти в себя и отдохнуть`)
+  assert.equal(result.state.autonomy.downtime_history.at(-1)?.reason, 'post_encounter_recovery_after_stabilisation')
+  for (const enemy of result.state.enemies) {
+    assert.equal(enemy.alive, false, `${enemy.id}: победитель уходит, а не стоит над отрядом`)
+    assert.ok((result.state.mechanics.conditions[enemy.id] ?? []).some((condition) => condition.id === 'fled'))
+  }
+  const next = await autonomy.runCommands('AUTONOMY-30', 'after-defeat-encounter', [
+    { command_type: 'CreateEncounter', theme: 'beasts', difficulty: 'easy', seed: 'after-defeat' },
+  ])
+  assert.ok(next.events.some((entry) => entry.event_type === 'EncounterCreated'))
+  const replayed = await eventStore.replay('AUTONOMY-30', { use_snapshots: false })
+  assert.deepEqual(replayed.state, (await eventStore.load('AUTONOMY-30')).state)
+})
+
 test('мирная финальная сцена проходит через RulesEngine, реальное решение группы и replay', async (t) => {
   const initial = campaign()
   const arc = buildCampaignArcPlan('peaceful-final')

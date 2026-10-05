@@ -5465,6 +5465,12 @@ function assembleEncounterFromState(state, command) {
       y: position?.y,
     }
   })
+  // Без единого героя в сознании сборщик отвечал своим служебным
+  // «party должен быть непустым ограниченным массивом» — игрок видел его как
+  // отказ Режиссёра (прогон Асстохана, сид 2, 2026-10-05).
+  if (!party.length) {
+    throw new RulesValidationError('Некому вступить в бой: все герои отряда без сознания или погибли. Сначала отряду нужно прийти в себя', 'PARTY_UNAVAILABLE')
+  }
   // Клетки, занятые существами. Раньше противник помечал клетку записью в
   // `feature`; после разделения слоёв занятость передаётся отдельным полем,
   // иначе двое встанут в одну клетку.
@@ -18590,7 +18596,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     case 'StartCombat': {
       const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map((player) => actorId(player)))
-      const partyIds = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor) && !isEmptyHeroSeat(actor)).map(actorId)
+      // Герой без сознания (0 ОЗ, но не погибший) тоже бросает инициативу: его
+      // можно поднять лечением посреди боя, и тогда он обязан ходить, а упав
+      // снова — бросать спасброски. Вне очереди он не делал ни того, ни
+      // другого, и бой закрывался, оставив его умирать на 0 ОЗ навсегда
+      // (прогон Асстохана, сид 2, 2026-10-05).
+      const partyIds = state.players.filter((actor) => memberIds.has(actorId(actor)) && !isEmptyHeroSeat(actor)
+        && (isLivingActor(actor) || (actorHp(actor) === 0 && actor?.alive !== false && !isDeadHero(state, actorId(actor))))).map(actorId)
       const expiredAtStart = new Set(summonIdsExpiredAt(state, worldTimeSeconds(state)))
       events.push(...summonExpiryEvents(
         command,
