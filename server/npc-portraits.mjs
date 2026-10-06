@@ -223,8 +223,8 @@ export function npcPortraitRole(profile) {
   if (/noble|lord|lady|duke|baron|арист|дворян|герцог|барон/iu.test(source)) return 'noble'
   if (/scholar|sage|wizard|mage|alchemist|librarian|уч[её]н|мудрец|маг|алхим|библиот/iu.test(source)) return 'scholar'
   if (/priest|cleric|monk|acolyte|жрец|свящ|монах|послушник/iu.test(source)) return 'priest'
-  if (/artisan|smith|craft|cook|baker|кузнец|ремес|повар|пекар/iu.test(source)) return 'artisan'
-  if (/traveler|ranger|scout|sailor|hunter|путешеств|следопыт|разведчик|моряк|охот/iu.test(source)) return 'traveler'
+  if (/artisan|smith|craft|cook|baker|miller|кузнец|ремес|повар|пекар|мельник/iu.test(source)) return 'artisan'
+  if (/traveler|ranger|scout|sailor|hunter|ferryman|boatman|путешеств|следопыт|разведчик|моряк|охот|перевозчик|лодочник|паромщик/iu.test(source)) return 'traveler'
   return 'commoner'
 }
 
