@@ -204,7 +204,7 @@ export type AttackActorVisual = {
   appearance?: { profile?: string }
 }
 
-const NATURAL_ATTACK_ARCHETYPES = new Set(['beast', 'wolf', 'bear', 'boar', 'lion', 'tiger', 'hound', 'spider'])
+const NATURAL_ATTACK_ARCHETYPES = new Set(['beast', 'wolf', 'bear', 'boar', 'lion', 'tiger', 'hound', 'spider', 'dragon'])
 
 /** Природный удар определяется публичной моделью/архетипом, а не именем NPC. */
 export function attackVisualStyleForActor(
@@ -216,7 +216,7 @@ export function attackVisualStyleForActor(
   const profile = String(actor?.appearance?.profile ?? '').toLocaleLowerCase('en-US')
   const naturalArchetype = NATURAL_ATTACK_ARCHETYPES.has(archetype)
     || /(?:beast|wolf|bear|boar|lion|tiger|hound|spider|snake|rat)/u.test(archetype)
-  if (profile === 'beast' || naturalArchetype || ['wolf', 'beast'].includes(modelKey)) return 'natural'
+  if (profile === 'beast' || profile === 'dragon' || naturalArchetype || ['wolf', 'beast', 'dragon'].includes(modelKey)) return 'natural'
   return attackVisualStyle(cue)
 }
 

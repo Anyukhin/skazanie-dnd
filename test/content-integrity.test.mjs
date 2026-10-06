@@ -116,7 +116,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + 157 рисунков действий подклассов, 26 служебных, 23 состояния и 15
   //   собственных рисунков стартовых вещей вместо картинок заклинаний.
   // + 2 рисунка предметов сценария (Слеза Рыцаря, оберег Ломара).
-  assert.equal(report.integrity.assets, 2162 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
+  // + модель дракона Cethiel/Drummyfish (Саргат) и её NOTICE.
+  assert.equal(report.integrity.assets, 2164 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

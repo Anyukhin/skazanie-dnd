@@ -4,7 +4,7 @@ import {
   publicLoadoutForItems,
 } from './equipment-visuals.mjs'
 
-const PROFILES = Object.freeze(['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast'])
+const PROFILES = Object.freeze(['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast', 'dragon'])
 const EQUIPMENT = Object.freeze(['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger'])
 const HIDDEN_VISIBILITIES = new Set(['gm_only', 'npc_private'])
 const PUBLIC_VISIBILITIES = new Set(['public', 'party'])
@@ -182,10 +182,11 @@ function looksMaskedIdentity(actor) {
 
 /**
  * Выводит грубый профиль из публичных полей личности/класса. `creature_type`
- * намеренно отсутствует: замаскированное имя нельзя восстановить по нему.
+ * читается только после проверки маски: замаскированное имя по нему не
+ * восстановить, а открытый дракон получает фигуру дракона.
  *
- * @param {{kind?: unknown, name?: unknown, role?: unknown, characterClass?: unknown, character_class?: unknown, class_id?: unknown, masked?: boolean, is_masked?: boolean, identity_masked?: boolean, identityMasked?: boolean, masked_identity?: boolean, identified?: boolean, identity_known?: boolean}} [actor]
- * @returns {'warrior'|'mage'|'rogue'|'goblin'|'skeleton'|'beast'}
+ * @param {{kind?: unknown, name?: unknown, role?: unknown, creature_type?: unknown, characterClass?: unknown, character_class?: unknown, class_id?: unknown, masked?: boolean, is_masked?: boolean, identity_masked?: boolean, identityMasked?: boolean, masked_identity?: boolean, identified?: boolean, identity_known?: boolean}} [actor]
+ * @returns {'warrior'|'mage'|'rogue'|'goblin'|'skeleton'|'beast'|'dragon'}
  */
 export function actorProfileFor(actor = {}) {
   const kind = text(actor.kind, 30)
@@ -193,8 +194,12 @@ export function actorProfileFor(actor = {}) {
     ? text(actor.characterClass ?? actor.character_class ?? actor.class_id ?? actor.role, 160)
     : text(actor.role ?? actor.name, 160)
   if (kind !== 'hero' && looksMaskedIdentity(actor)) return kind === 'summon' ? 'beast' : 'warrior'
+  // Тип существа уже публичен в карточке врага: «Саргат» по имени не дракон,
+  // а по `creature_type` — да.
+  if (kind !== 'hero' && text(actor.creature_type, 40) === 'dragon') return 'dragon'
   if (/goblin|гоблин/iu.test(identity)) return 'goblin'
   if (/skeleton|скелет|undead|нежить|зомби/iu.test(identity)) return 'skeleton'
+  if (/dragon|дракон|wyrm|drake|виверн|wyvern/iu.test(identity)) return 'dragon'
   if (/beast|звер|wolf|волк|bear|медвед|boar|кабан/iu.test(identity)) return 'beast'
   if (/wizard|mage|sorcer|warlock|cleric|druid|волшеб|маг|чарод|колдун|жрец|друид/iu.test(identity)) return 'mage'
   if (/rogue|ranger|scout|плут|следопыт|разведчик/iu.test(identity)) return 'rogue'
@@ -213,6 +218,7 @@ export function actorAppearanceFor(kind, actor = {}) {
     kind: appearanceKind,
     name: source.name,
     role: source.role,
+    creature_type: source.creature_type,
     characterClass: source.characterClass,
     character_class: source.character_class,
     class_id: source.class_id,

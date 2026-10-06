@@ -1706,7 +1706,7 @@ export type AssetPreparationReport = {
 
 export type ActorAppearanceV1 = {
   version: 1
-  profile: 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast'
+  profile: 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast' | 'dragon'
   equipment: 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
 }
 

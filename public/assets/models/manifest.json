@@ -490,6 +490,27 @@
       }
     },
     {
+      "key": "dragon",
+      "name_ru": "Дракон",
+      "profile": "dragon",
+      "actorIds": [],
+      "archetypes": [
+        "dragon",
+        "wyrm",
+        "drake",
+        "wyvern",
+        "дракон"
+      ],
+      "url": "/assets/models/cethiel/dragon-15190f872082e85af253/dragon.glb",
+      "height": 2.4,
+      "rights": {
+        "source": "https://opengameart.org/content/cethiels-dragon-3d",
+        "license": "CC0-1.0",
+        "attribution": "Drummyfish и Cethiel (по желанию авторов)",
+        "notes": "Cethiel's Dragon 3D: DAE с четырьмя анимациями собраны в GLB, фактура перекрашена в тёмный кармин (Саргат). Исходник, хеши и изменения: /assets/models/cethiel/dragon-15190f872082e85af253/NOTICE.json."
+      }
+    },
+    {
       "key": "goblin-quaternius",
       "name_ru": "Гоблин",
       "profile": "goblin",
