@@ -28,6 +28,8 @@ type CameraState = { position: THREE.Vector3; target: THREE.Vector3; zoom: numbe
 const cameras = new Map<string, CameraState>()
 const FPS_STORAGE_KEY = 'skazanie-3d-fps'
 const QUALITY_STORAGE_KEY = 'skazanie-3d-quality'
+/** Медиана кадра дольше этого (меньше ~24 кадров) — повод снизить качество. */
+const AUTO_QUALITY_FRAME_MS = 42
 const ROOF_STORAGE_KEY = 'skazanie-3d-roofs'
 
 function roofModeValue(value: unknown): Board3DRoofMode {
@@ -172,6 +174,16 @@ export default function TacticalBoard3D(props: Props) {
   const [roofMode, setRoofMode] = useState<Board3DRoofMode>(() => {
     try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'hidden' }
   })
+  // Автоснижение качества: только пока игрок сам его не выбирал. Большая
+  // нарисованная карта на «Обычном» тяжела для встроенной видеокарты
+  // (Миттлайд 84×70: ~12 кадров на Iris Xe против ~56 на «Экономном»).
+  const autoQuality = useRef((() => { try { return localStorage.getItem(QUALITY_STORAGE_KEY) === null } catch { return false } })())
+  const [qualityNote, setQualityNote] = useState('')
+  const lowerQuality = useRef<(next: Board3DQuality) => void>(() => {})
+  lowerQuality.current = (next) => {
+    setQuality(next)
+    setQualityNote(`Качество снижено до «${BOARD3D_QUALITY[next].label}»: кадров мало. Можно вернуть в меню качества.`)
+  }
   const settings = useRef({ models, catalog, quality, roofMode })
   settings.current = { models, catalog, quality, roofMode }
   const [playing, setPlaying] = useState(false)
@@ -944,6 +956,18 @@ export default function TacticalBoard3D(props: Props) {
           renderer.domElement.dataset.memoryTextures = String(renderer.info.memory.textures)
           renderer.domElement.dataset.queueLength = String(pending.length + (active ? 1 : 0))
           publishModelDiagnostics()
+          // Медиана интервала между кадрами непрерывной отрисовки (анимация,
+          // камера): простой без движения сюда не попадает и за тормоза не идёт.
+          if (autoQuality.current && frameSamples.length >= 30) {
+            const median = [...frameSamples].sort((a, b) => a - b)[Math.floor(frameSamples.length / 2)]
+            const current = settings.current.quality
+            const next: Board3DQuality | null = current === 'high' ? 'balanced' : current === 'balanced' ? 'low' : null
+            if (median > AUTO_QUALITY_FRAME_MS && next) {
+              lowerQuality.current(next)
+              frameSamples.length = 0
+              renderer.domElement.dataset.autoQuality = next
+            }
+          }
           measuredFrames = 0; measuredRenderMs = 0; measuredSince = now
         }
         if (active || pending.length) invalidate()
@@ -1399,9 +1423,13 @@ export default function TacticalBoard3D(props: Props) {
       }}>FPS</button>
       <select className="board3d-quality" aria-label="Качество 3D" title="Качество 3D" value={quality} onChange={(event) => {
         const next = board3DQuality(event.target.value)
+        // Выбор игрока сильнее автоснижения: дальше качество не трогаем.
+        autoQuality.current = false
+        setQualityNote('')
         setQuality(next)
         try { localStorage.setItem(QUALITY_STORAGE_KEY, next) } catch { /* Профиль работает без сохранения. */ }
       }}>{Object.entries(BOARD3D_QUALITY).map(([key, profile]) => <option key={key} value={key}>{profile.label}</option>)}</select>
+      {qualityNote && <span className="board3d-quality-note" role="status">{qualityNote}</span>}
       <select className="board3d-roof-mode" aria-label="Крыша" title="Отображение крыши и сводов" value={roofMode} onChange={(event) => {
         const next = roofModeValue(event.target.value)
         setRoofMode(next)

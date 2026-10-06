@@ -30,7 +30,14 @@ function eligible(mesh: THREE.Mesh, root: THREE.Object3D) {
   if (markedAnimated(root, mesh)) return false
   if (Array.isArray(mesh.material) || !mesh.geometry) return false
   const material = mesh.material
-  if (material.transparent || material.opacity < 1 || material.alphaTest > 0) return false
+  // Вырезанная по альфе листва (клевер, цветы, кусты, деревья) рисуется в
+  // непрозрачном проходе — порядок отрисовки ей не важен, её можно объединять.
+  // Плоская наклейка пола (`floor-stamp`) прозрачна, но лежит на одной высоте
+  // и глубину не пишет: общий экземпляр не меняет того, как она смешивается.
+  const cutout = !material.transparent && material.alphaTest > 0
+  const floorStamp = mesh.name === 'floor-stamp' && material.transparent && material.depthWrite === false
+  if (!floorStamp && (material.transparent || material.opacity < 1)) return false
+  if (material.alphaTest > 0 && !cutout) return false
   if (mesh.matrixWorld.determinant() < 0) return false
   return true
 }

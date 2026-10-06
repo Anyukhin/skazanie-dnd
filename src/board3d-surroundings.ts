@@ -397,7 +397,7 @@ function fallbackModels(): { models: Required<SurroundingsModels>; owned: Array<
 
 // Деревья моделей тяжёлые (тысячи треугольников): потолок держит окрестности
 // заметно легче самой карты.
-const DECOR_LIMITS = { full: 1100, reduced: 650, minimal: 0 } as const
+const DECOR_LIMITS = { full: 1100, reduced: 650, minimal: 260 } as const
 
 /**
  * Окрестности карты: карта — плато, по её краю обрыв из скальных моделей и
@@ -580,7 +580,7 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
     return Array.from({ length: maximum }, (_, index) => list[Math.floor(index * step)])
   }
   // Лиственные модели в несколько раз тяжелее хвойных: их доля меньше.
-  instanceItems(group, 'surroundings-trees', capped(decor.broadleaf, .18))
+  instanceItems(group, 'surroundings-trees', capped(decor.broadleaf, .08))
   instanceItems(group, 'surroundings-conifers', capped(decor.conifers, .45))
   instanceItems(group, 'surroundings-deadwood', capped(decor.dead, .5))
   instanceItems(group, 'surroundings-bushes', capped(decor.bushes, .2))

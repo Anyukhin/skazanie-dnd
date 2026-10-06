@@ -431,7 +431,7 @@ export function createRockModelMaterial(source: THREE.Material, tone: RockTone):
 type ModelInstance = { model: LandscapeModel; matrix: THREE.Matrix4; color: THREE.Color | null; tone: RockTone | null }
 
 /** Сторона участка карты, на которые делятся экземпляры моделей местности, в клетках. */
-export const LANDSCAPE_CHUNK = 6
+export const LANDSCAPE_CHUNK = 12
 
 /**
  * Экземпляры моделей набора: один InstancedMesh на пару (геометрия части,

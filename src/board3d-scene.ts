@@ -10,6 +10,7 @@ import {
   drawGrid,
   materialPalette,
   terrainKeysFor,
+  propDrawingFor,
   visiblePropsOnBoard,
   TILE_CELLS,
   type BoardPalette,
@@ -753,6 +754,9 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     // Источник света не отбрасывает тень сам: иначе чаша жаровни кладёт под
     // себя тёмный диск от собственного огня.
     if (sourceId) model.traverse((object) => { if ((object as THREE.Mesh).isMesh) object.castShadow = false })
+    // Плоское (клевер, цветы, ковёр, кувшинки) тени не отбрасывает: она не видна,
+    // а проход теней на большой карте рисовал бы сотни таких предметов зря.
+    if (propDrawingFor(prop.assetId).flat) model.traverse((object) => { if ((object as THREE.Mesh).isMesh) object.castShadow = false })
     // В сумраке огней больше и они сильнее: они — главный свет подземелья.
     if (!lighting || !sourceId || lights.length >= 4 + Math.round(4 * darkness)) continue
     const profile = LIGHT_SOURCE_ASSETS[sourceId]
