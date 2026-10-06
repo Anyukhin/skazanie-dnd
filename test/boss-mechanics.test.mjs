@@ -533,3 +533,31 @@ test('выбор легендарного действия детерминир�
   assert.equal(chooseLegendaryAction({ actor: boss, remainingUses: 3, targets: [{ id: 'hero', distanceFeet: 90 }] }), null)
   assert.equal(chooseLegendaryAction({ actor: boss, remainingUses: 0, targets: [{ id: 'hero', distanceFeet: 5 }] }), null)
 })
+
+test('легендарное действие с перезарядкой ждёт своих ходов: планировщик и движок его не повторят', () => {
+  const legendary = {
+    ...LEGENDARY,
+    actions: LEGENDARY.actions.map((action) => (action.id === 'wings' ? { ...action, cooldown_turns: 2 } : action)),
+  }
+  const state = fixture({ boss: { legendary } })
+  const wings = { command_type: 'UseLegendaryAction', actor_id: 'boss', legendary_action_id: 'wings', target_id: 'hero' }
+  const first = commit(state, wings)
+  assert.ok(conditionsOf(first.state, 'boss').includes('legendary-cooldown:wings'))
+
+  // Новое окно и свежий запас: дорогой взмах всё ещё перезаряжается.
+  const fresh = normalizeCampaignState({
+    ...first.state,
+    mechanics: {
+      ...first.state.mechanics,
+      conditions: { ...first.state.mechanics.conditions, boss: first.state.mechanics.conditions.boss.filter((entry) => !String(entry.id).startsWith('legendary-action-used:')) },
+      combat: { ...first.state.mechanics.combat, active_index: 2 },
+    },
+  })
+  rejects(fresh, wings, 'LEGENDARY_ACTION_COOLDOWN')
+  assert.equal(planLegendaryAction(fresh, 'boss').legendary_action_id, 'tail', 'планировщик берёт то, что готово')
+
+  // Два собственных хода босса — и взмах снова наготове.
+  const turnEnded = (index) => ({ event_id: `boss-turn-${index}`, event_type: 'TurnEnded', actor_id: 'boss', target_ids: ['boss'], payload: {} })
+  const recharged = [turnEnded(1), turnEnded(2)].reduce(applyGameEvent, fresh)
+  assert.equal(conditionsOf(recharged, 'boss').includes('legendary-cooldown:wings'), false)
+})

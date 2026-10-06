@@ -79,6 +79,26 @@ const SAVE_ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
 const DAMAGE_TYPES = new Set(['fire', 'cold', 'acid', 'lightning', 'poison', 'thunder', 'necrotic', 'radiant', 'force', 'psychic'])
 
 /**
+ * Проклятый рыцарь (`server/scenario-knight.mjs`): кто, где и окно ночи, в
+ * которое он появляется, — минуты суток по часам мира, окно может переходить
+ * через полночь.
+ * @param {any} knight
+ * @param {string} scenarioId
+ * @param {Set<string>} locationIds
+ */
+function validateKnight(knight, scenarioId, locationIds) {
+  const where = `${scenarioId}/knight`
+  if (!ID_PATTERN.test(String(knight.npc_id ?? '')) || !locationIds.has(knight.location_id)) invalid(`${where}: рыцарю нужны id и место-карточка`)
+  const { from_minute: from, to_minute: to } = knight.night ?? {}
+  if (![from, to].every((value) => Number.isSafeInteger(value) && value >= 0 && value < 1_440) || from === to) {
+    invalid(`${where}: окно ночи — две разные минуты суток 0–1439`)
+  }
+  for (const field of ['arrival_text', 'departure_text']) {
+    if (clean(knight[field], 1_000).length < 40) invalid(`${where}: текст ${field}`)
+  }
+}
+
+/**
  * Счётчик внимания главного противника (`server/scenario-attention.mjs`):
  * пороги, места, где за отрядом следят, основы слов темы и незнакомец, который
  * приходит на пороге `stranger_at`.
@@ -189,6 +209,7 @@ function validateScenario(scenario) {
     if (routes.some((/** @type {unknown} */ route) => !Array.isArray(route) || route.length !== 2)) invalid(`${scenario.id}/${reveal.id}: дорога — пара мест`)
   }
   if (scenario.attention != null) validateAttention(scenario.attention, scenario.id, locationIds)
+  if (scenario.knight != null) validateKnight(scenario.knight, scenario.id, locationIds)
   if (beats.filter((/** @type {any} */ beat) => beat.kind === 'finale').length !== 1) invalid(`${scenario.id}: финал должен быть ровно один`)
   if (beats[0]?.kind !== 'prologue') invalid(`${scenario.id}: первый узел — пролог`)
   const endings = Array.isArray(scenario.endings) ? scenario.endings : invalid(`${scenario.id}: endings`)

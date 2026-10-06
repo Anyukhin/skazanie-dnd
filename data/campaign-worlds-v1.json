@@ -4968,7 +4968,11 @@
                   "damage_expression": "2d8+5",
                   "damage_type": "slashing",
                   "range_feet": 5,
-                  "tactical_priority": 8
+                  "tactical_priority": 8,
+                  "on_hit": {
+                    "damage_expression": "2d8",
+                    "damage_type": "cold"
+                  }
                 },
                 {
                   "id": "spectral-lance",
@@ -4998,17 +5002,17 @@
                   },
                   {
                     "id": "wail-of-the-condemned",
-                    "name": "Вой осуждённых",
+                    "name": "Вой Проклятых",
                     "cost": 2,
                     "kind": "save",
                     "save_ability": "con",
                     "save_dc": 17,
-                    "damage_expression": "3d8",
+                    "damage_expression": "4d8",
                     "damage_type": "thunder",
                     "half_on_save": true,
-                    "condition": "frightened",
                     "radius_feet": 30,
-                    "range_feet": 30
+                    "range_feet": 30,
+                    "cooldown_turns": 3
                   }
                 ]
               },
@@ -5017,7 +5021,7 @@
                   "id": "dullahan-form",
                   "name": "Дуннахан",
                   "status": "partial",
-                  "description": "Защиты, иммунитеты, легендарное сопротивление и Вой осуждённых исполняются; возвращение головы и полуночная уязвимость пока не связаны событиями."
+                  "description": "Защиты, иммунитеты, легендарное сопротивление, удар Лунного Судьи с 2к8 холодом и Вой Проклятых (раз в три хода) исполняются; в замке он только с 23:00 до 01:00 по часам мира. Возвращение головы и полуночная неуязвимость пока не связаны событиями."
                 },
                 {
                   "id": "midnight-invulnerability",

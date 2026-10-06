@@ -1147,7 +1147,7 @@ export function planLegendaryAction(rawState, bossId) {
     .map((hero) => ({ id: actorId(hero), at: actorPosition(state, actorId(hero)) }))
     .filter((hero) => hero.at)
     .map((hero) => ({ id: hero.id, distanceFeet: distanceFeetBetweenActors(state, bossId, hero.id, from, hero.at) }))
-  const chosen = chooseLegendaryAction({ actor: boss, remainingUses: remaining, targets })
+  const chosen = chooseLegendaryAction({ actor: boss, remainingUses: remaining, targets, coolingDown: conditions })
   if (!chosen) return null
   return {
     command_type: 'UseLegendaryAction',

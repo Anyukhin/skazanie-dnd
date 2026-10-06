@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import { RULE_IDS, RulesValidationError, abilityModifier, defaultAttackItemIdFor, findActor, skillProficiencyForActor, previewApproachAttack, previewLongJumpAttack, previewSwingAttack, swingPropForText } from './rules-engine.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
+import { waitTargetFromText } from './intent-parser.mjs'
+import { minutesUntilClock } from './weather.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
 export const DIFFICULTY_CATEGORIES = Object.freeze(Object.keys(DIFFICULTY_CLASSES))
@@ -214,6 +216,27 @@ export class Adjudicator {
       }
       case 'end_combat':
         return { ...base, rule_ids: ruleIdsFor([RULE_IDS.initiative, RULE_IDS.turns]), proposed_commands: [{ command_type: 'EndCombat', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.initiative, RULE_IDS.turns]) }], confidence: 0.9 }
+      case 'wait': {
+        // Ожидание до часа суток — то же течение времени, что у отдыха, но
+        // без отдыха: хиты и ресурсы не восстанавливаются. Посреди боя ждать
+        // нечего, а сутки — потолок: «до полуночи» значит до ближайшей.
+        const target = waitTargetFromText(intent.raw_message)
+        if (!target) return { ...base, clarification_required: true, clarification_message: 'До какого часа ждать: полуночи, рассвета, полудня или вечера?' }
+        if (state.mechanics?.combat?.active) {
+          return { ...base, clarification_required: true, clarification_message: 'Посреди боя ждать некогда. Попытка ничего не расходует.' }
+        }
+        const minutes = minutesUntilClock(state.mechanics?.world_time?.elapsed_minutes ?? 0, target.minute)
+        if (!minutes) return { ...base, clarification_required: true, clarification_message: `Ждать не нужно: уже время ${target.label}.` }
+        return {
+          ...base,
+          rule_ids: ruleIdsFor([RULE_IDS.resource]),
+          wait: { target: target.id, label: target.label, minutes },
+          proposed_commands: [
+            { command_type: 'AdvanceTime', amount: minutes, unit: 'minute', source_rule_ids: ruleIdsFor([RULE_IDS.resource]) },
+          ],
+          confidence: 0.9,
+        }
+      }
       case 'rest':
       {
         const kind = /долг|продолж|long/iu.test(intent.raw_message) ? 'long' : 'short'

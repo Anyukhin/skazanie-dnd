@@ -15,6 +15,7 @@ import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
 import { buildScenarioArcPlan, scenarioForWorldTemplate } from './campaign-scenario.mjs'
+import { scenarioNightVisitorIds } from './scenario-knight.mjs'
 import { validateCampaignMode } from './campaign-stories.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
@@ -667,6 +668,7 @@ export class CampaignBootstrapper {
     const starterFactionId = factionEntities[0].id
     const starterQuestId = `quest-${seed.slice(0, 12)}`
     if (selectedCampaignMode === 'persistent') campaignConcept.story_quest_id = starterQuestId
+    const nightVisitorIds = new Set(scenarioNightVisitorIds(scenario))
     const openingNpcs = opening.npcs.map((npc, index) => ({
       id: npc.id || `npc-${seed.slice(0, 12)}-${index + 1}`,
       name: npc.name,
@@ -682,7 +684,9 @@ export class CampaignBootstrapper {
       ...(npc.inventory?.length ? { inventory: structuredClone(npc.inventory) } : {}),
       known_fact_ids: [], visibility: npc.visibility || 'party',
       ...(npc.revealOnPresence === true ? { reveal_on_presence: true } : {}),
-      available: true,
+      // Ночной гость сценария (проклятый рыцарь) приходит только в своё окно
+      // ночи: до него профиль недоступен (`server/scenario-knight.mjs`).
+      available: !nightVisitorIds.has(String(npc.id ?? '')),
       tags: [...new Set([...(npc.tags ?? []), `faction:${factionIdByTemplateId.get(npc.factionId) ?? starterFactionId}`])],
     }))
     const authoredOfficeConfigurations = Array.isArray(opening.worldRules?.offices)

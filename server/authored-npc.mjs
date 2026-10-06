@@ -126,7 +126,7 @@ function normalizeAction(value, path) {
   const source = record(value, path)
   exactFields(source, new Set([
     'id', 'name', 'kind', 'attack_modifier', 'damage_expression', 'damage_type',
-    'range_feet', 'normal_range_feet', 'tactical_priority',
+    'range_feet', 'normal_range_feet', 'tactical_priority', 'on_hit',
   ]), path)
   const damageExpression = clean(source.damage_expression, 40)
   if (!DICE.test(damageExpression)) throw new AuthoredNpcValidationError(`${path}.damage_expression имеет неподдерживаемую формулу`)
@@ -143,7 +143,23 @@ function normalizeAction(value, path) {
     range_feet: range,
     ...(normalRange == null ? {} : { normal_range_feet: normalRange }),
     ...(source.tactical_priority == null ? {} : { tactical_priority: integer(source.tactical_priority, `${path}.tactical_priority`, 0, 20) }),
+    ...(source.on_hit == null ? {} : { on_hit: normalizeOnHit(source.on_hit, `${path}.on_hit`) }),
   }
+}
+
+/**
+ * Дополнительный урон попадания (`2к8 холодом` у клинка Дуннахана). Его
+ * исполняет та же ветка атаки, что и `on_hit` бестиария: кость бросается
+ * отдельно, вид урона — свой. Спасброска и состояния у авторского листа нет.
+ * @param {unknown} value
+ * @param {string} path
+ */
+function normalizeOnHit(value, path) {
+  const source = record(value, path)
+  exactFields(source, new Set(['damage_expression', 'damage_type']), path)
+  const damageExpression = clean(source.damage_expression, 40)
+  if (!DICE.test(damageExpression)) throw new AuthoredNpcValidationError(`${path}.damage_expression имеет неподдерживаемую формулу`)
+  return { damage_expression: damageExpression, damage_type: enumValue(source.damage_type, DAMAGE_TYPES, `${path}.damage_type`) }
 }
 
 function normalizeFeature(value, path) {
@@ -199,7 +215,7 @@ function normalizeLegendary(value, path) {
     exactFields(action, new Set([
       'id', 'name', 'cost', 'kind', 'attack_modifier', 'damage_expression',
       'damage_type', 'range_feet', 'save_ability', 'save_dc', 'half_on_save',
-      'condition', 'radius_feet',
+      'condition', 'radius_feet', 'cooldown_turns',
     ]), actionPath)
     const kind = enumValue(action.kind, new Set(['attack', 'save']), `${actionPath}.kind`)
     const damageExpression = action.damage_expression == null ? null : clean(action.damage_expression, 40)
@@ -220,6 +236,7 @@ function normalizeLegendary(value, path) {
         radius_feet: integer(action.radius_feet, `${actionPath}.radius_feet`, 0, 120),
         ...(action.condition == null ? {} : { condition: enumValue(action.condition, CONDITIONS, `${actionPath}.condition`) }),
       } : {}),
+      ...(action.cooldown_turns == null ? {} : { cooldown_turns: integer(action.cooldown_turns, `${actionPath}.cooldown_turns`, 1, 10) }),
     }
   })
   assertUniqueIds(actions, `${path}.actions`)

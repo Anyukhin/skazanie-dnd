@@ -199,6 +199,15 @@ export function clockMinuteOf(elapsedMinutes) {
   return absoluteMinute(elapsedMinutes) % MINUTES_PER_DAY
 }
 
+/**
+ * Сколько минут ждать до ближайшего наступления минуты суток `target`
+ * (0…1439). Ноль — она наступила ровно сейчас; иначе 1…1439.
+ */
+export function minutesUntilClock(elapsedMinutes, targetMinuteOfDay) {
+  const target = ((Math.trunc(Number(targetMinuteOfDay) || 0) % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY
+  return (target - clockMinuteOf(elapsedMinutes) + MINUTES_PER_DAY) % MINUTES_PER_DAY
+}
+
 /** Часы и минуты строкой: «18:20». Ведущему нужнее цифра, чем слово. */
 export function clockLabelOf(elapsedMinutes) {
   const minute = clockMinuteOf(elapsedMinutes)

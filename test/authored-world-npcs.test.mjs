@@ -195,7 +195,11 @@ test('bootstrap размещает только четырёх героев пе
 })
 
 test('у каждого персонажа действуют собственные социальные СЛ', async () => {
-  const state = await campaign()
+  // Ночной гость (Каэлан) при создании кампании недоступен — он приходит в
+  // замок только в своё окно ночи. СЛ проверяются у всех, как если бы каждый
+  // был на месте.
+  const created = await campaign()
+  const state = { ...created, social: { ...created.social, npcs: created.social.npcs.map((npc) => ({ ...npc, available: true })) } }
   for (const npc of state.social.npcs) {
     const policy = buildNpcSocialCheckPolicy({
       state, npcId: npc.id, heroId: 'hero', message: `Убеждаю ${npc.name} помочь`, turnId: `turn-${npc.id}`,

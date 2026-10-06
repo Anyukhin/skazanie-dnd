@@ -266,6 +266,11 @@ import {
   scenarioStrangerStage,
 } from './scenario-attention.mjs'
 import {
+  SCENARIO_KNIGHT_PRESENCE_EVENT,
+  SCENARIO_KNIGHT_PRESENCE_EVENT_SCHEMA_VERSION,
+  scenarioKnightPresencePlan,
+} from './scenario-knight.mjs'
+import {
   NPC_SOCIAL_COMMAND_TYPES,
   NpcSocialValidationError,
   applyNpcSocialEvent,
@@ -417,6 +422,7 @@ import {
   LEGENDARY_ACTION_CONDITION_PREFIX,
   legendaryActionFor,
   legendaryActionMarker,
+  legendaryCooldownMarker,
   legendaryProfileFor,
   legendaryResistanceDecision,
   legendaryResistanceMarker,
@@ -4978,6 +4984,9 @@ function validateLegendaryActionCommand(command, state, context = {}) {
   // «три подряд по одному поводу».
   if (legendaryWindowSpent(conditions, windowKey)) {
     throw new RulesValidationError('Легендарное действие в этом ходу уже совершено', 'LEGENDARY_ACTION_WINDOW_SPENT')
+  }
+  if (action.cooldownTurns > 0 && conditions.has(legendaryCooldownMarker(action.id))) {
+    throw new RulesValidationError('Это легендарное действие ещё не восстановилось', 'LEGENDARY_ACTION_COOLDOWN')
   }
   const spent = legendaryUsesSpent(conditions)
   if (spent + action.cost > profile.uses) {
@@ -12296,6 +12305,34 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     return elapsedMinutes
   }
 
+  // Ночной гость сценария (проклятый рыцарь) приходит и уходит с часами мира и
+  // с приходом отряда: профиль становится доступным и встаёт на пост тем же
+  // путём, что и любой собеседник, заведённый посреди кампании. Вызывается
+  // после хода времени и после перехода сцены; посреди боя план пуст.
+  const appendScenarioKnightPresence = (sourceCommand) => {
+    const projected = projectEvents(events)
+    const plan = scenarioKnightPresencePlan(projected)
+    if (!plan) return
+    const systemCommand = { ...sourceCommand, actor_id: null }
+    let profileCommand
+    try {
+      profileCommand = validateNpcSocialCommand({ ...systemCommand, command_type: 'UpsertNpcSocialProfile', npc: plan.profile }, projected, { isDirector: true })
+    } catch (error) {
+      if (error instanceof NpcSocialValidationError) throw new RulesValidationError(error.message, error.code)
+      throw error
+    }
+    for (const socialEvent of npcSocialEvents(profileCommand, projected)) {
+      events.push(eventFrom({ ...systemCommand, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+    }
+    if (plan.present) events.push(...npcWorldEventsFrom(systemCommand, planSceneNpcPlacementEvents(projectEvents(events))))
+    if (plan.text) {
+      events.push(eventFrom({ ...systemCommand, visibility: 'public' }, SCENARIO_KNIGHT_PRESENCE_EVENT, {
+        schema_version: SCENARIO_KNIGHT_PRESENCE_EVENT_SCHEMA_VERSION,
+        npc_id: plan.npc_id, location_id: plan.location_id, present: plan.present, text: plan.text,
+      }, [plan.npc_id]))
+    }
+  }
+
   const appendWorldTimeConsequences = (sourceCommand, amount, unit, options = {}) => {
     const sourceState = projectEvents(events)
     const elapsedMinutes = appendTimeAdvance(sourceCommand, amount, unit, { ...options, sourceState })
@@ -12428,6 +12465,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     for (const draft of planCourierLetterTicks(sourceState, { elapsedMinutes })) {
       events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
     }
+    appendScenarioKnightPresence(sourceCommand)
   }
 
   const damageTurnKey = (sourceState) => {
@@ -15618,6 +15656,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         uses_after: declared.uses_after,
         uses_max: declared.uses_max,
       }, [command.actor_id]))
+      if (action.cooldownTurns > 0) {
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+          condition: legendaryCooldownMarker(action.id),
+          duration: `source-turns:${action.cooldownTurns}`,
+          source_actor: command.actor_id,
+        }, [command.actor_id]))
+      }
       if (action.kind === 'attack') {
         const attackerAt = actorPosition(state, command.actor_id)
         const targetAt = actorPosition(state, targetId)
@@ -21155,6 +21200,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           recorded_at_minutes: Math.max(0, safeInteger(state.mechanics?.world_time?.elapsed_minutes, 0)),
         },
       }, []))
+      appendScenarioKnightPresence(command)
       break
     }
     case 'AdvanceTime': {

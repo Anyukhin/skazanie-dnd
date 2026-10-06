@@ -133,7 +133,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 `map-quality`, `weather`, `offscreen-world`, `loot-containers`, `tavern-life`,
 `courier-letters`, `talespire-slab`, `talespire-import`, `map-library`,
 `thin-walls`, `room-floors`, `detail-props`, `scene-features`, `scene-dressing`,
-`reaction-preferences`, `campaign-scenario`, `scenario-attention` (все — `server/*.mjs`).
+`reaction-preferences`, `campaign-scenario`, `scenario-attention`, `scenario-knight` (все — `server/*.mjs`).
 
 **Маршрутизация ввода:** `server/player-request-router.mjs` объявляет
 `PLAYER_REQUEST_ROLES`. `prompt_id` там — метаданные, а не привязка: его не
@@ -149,7 +149,8 @@ pnpm backup           # зашифрованная копия storage в ./backu
 Политика Режиссёра (`campaign-loop-policy`) берёт из него фазу, следующее место
 и встречу; кампании без сценария живут по вечерней арке. Счётчик внимания
 главного противника и сцену незнакомца ведёт `scenario-attention` (реестр
-`scenario_attention` в редьюсере, команда `StageScenarioStranger`).
+`scenario_attention` в редьюсере, команда `StageScenarioStranger`); проклятого
+рыцаря, который приходит только в своё окно ночи, — `scenario-knight`.
 
 **Автономный цикл:** `director-agent` (решение модели) → `autonomous-campaign`
 (контракт намерения, `DIRECTOR_INTENT_TYPES`) → `autonomous-orchestrator`

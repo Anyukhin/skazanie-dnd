@@ -111,8 +111,31 @@ export function isSceneObservationRequest(value) {
 // «долго», `тон` — «стоном», а `rest` — любое английское слово с этой
 // подстрокой, и обычная фраза уезжала в отдых или в проверку Силы.
 const W = '(?<![\\p{L}\\p{M}])'
+/**
+ * Ожидание до часа суток: «ждём до полуночи», «дожидаемся рассвета». Цель —
+ * минута суток по часам мира (`server/weather.mjs`), подпись — родительный
+ * падеж для ответа «Отряд ждёт до полуночи».
+ */
+const WAIT_TARGETS = Object.freeze([
+  Object.freeze({ id: 'midnight', minute: 0, label: 'полуночи', pattern: /полуноч/iu }),
+  Object.freeze({ id: 'dawn', minute: 300, label: 'рассвета', pattern: /рассвет|утр[аео]|зар[иеюя]/iu }),
+  Object.freeze({ id: 'noon', minute: 720, label: 'полудня', pattern: /полудн|полден/iu }),
+  Object.freeze({ id: 'dusk', minute: 1_020, label: 'вечера', pattern: /закат|вечер|сумер/iu }),
+  Object.freeze({ id: 'night', minute: 1_320, label: 'ночи', pattern: /ноч[иь]|темнот|стемне/iu }),
+])
+const WAIT_PATTERN = /(?<![\p{L}\p{M}])(?:жд(?:ём|ем|у|ать|ёт|ут)|подожд\p{L}*|дожида\p{L}*|дождать\p{L}*|дождём\p{L}*|дождемся|выжида\p{L}*|пережида\p{L}*|переждать|караул\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,30}(?:полуноч|рассвет|утр[аео]|зар[иеюя]|полудн|полден|закат|вечер|сумер|ноч[иь]|темнот|стемне)/iu
+
+/** Цель ожидания в тексте игрока или `null`: «ждём до полуночи» → полночь. */
+export function waitTargetFromText(value) {
+  const text = normalizedText(value)
+  if (!WAIT_PATTERN.test(text)) return null
+  const target = WAIT_TARGETS.find((entry) => entry.pattern.test(text))
+  return target ? { id: target.id, minute: target.minute, label: target.label } : null
+}
+
 const INTENT_PATTERNS = [
   ['why', /^\s*\/why\b/i],
+  ['wait', WAIT_PATTERN],
   ['attack', new RegExp(`${W}(атак|удар|бью|стреля|выстрел|рублю|колю|attack|shoot|strike)`, 'iu')],
   ['saving_throw', new RegExp(`${W}(спасброс|saving\\s*throw|save)`, 'iu')],
   ['improvised_action', FREE_ACTION_PATTERNS[0][1]],

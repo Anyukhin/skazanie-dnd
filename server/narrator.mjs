@@ -1870,6 +1870,10 @@ function qualitativeEventSummary(event, resolveName) {
       return worldClockNarration(event).replace(/[.!?]+$/u, '')
     case 'SocialSceneOpened':
       return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
+    case 'ScenarioKnightPresenceChanged':
+      // Приход и уход проклятого рыцаря — авторский текст сценария
+      // (`server/scenario-knight.mjs`); финальная точка снимается, как у неба.
+      return sceneText(payload.text, 600).replace(/[.!?]+$/u, '')
     default:
       return playerFacingSummary(eventSummary(event, (id) => {
         const resolved = resolveName(id)

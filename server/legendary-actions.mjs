@@ -39,6 +39,17 @@ export const LEGENDARY_EVENT_SCHEMA_VERSION = 1
 export const LEGENDARY_ACTION_CONDITION_PREFIX = 'legendary-action-used:'
 /** Потраченное Легендарное сопротивление: `legendary-resistance-used:<n>`. */
 export const LEGENDARY_RESISTANCE_CONDITION_PREFIX = 'legendary-resistance-used:'
+/**
+ * Перезарядка легендарного действия по ходам самого существа: метка
+ * `legendary-cooldown:<id>` со сроком `source-turns:N` тает в конце его ходов.
+ * «Вой Проклятых раз в три хода» — `cooldown_turns: 3`.
+ */
+export const LEGENDARY_COOLDOWN_CONDITION_PREFIX = 'legendary-cooldown:'
+
+/** Метка перезарядки действия. @param {string} actionId */
+export function legendaryCooldownMarker(actionId) {
+  return `${LEGENDARY_COOLDOWN_CONDITION_PREFIX}${actionId}`
+}
 
 /** Виды легендарных действий, которые движок действительно исполняет. */
 export const LEGENDARY_ACTION_KINDS = Object.freeze(['attack', 'save'])
@@ -82,6 +93,7 @@ export function legendaryProfileFor(actor) {
         condition: entry?.condition == null ? null : String(entry.condition),
         rangeFeet: positiveInteger(entry?.range_feet ?? entry?.rangeFeet, 5, 600),
         radiusFeet: positiveInteger(entry?.radius_feet ?? entry?.radiusFeet, 0, 120),
+        cooldownTurns: Math.max(0, Math.min(10, Math.trunc(Number(entry?.cooldown_turns ?? entry?.cooldownTurns) || 0))),
       })
     })
     .filter(Boolean)
@@ -198,13 +210,14 @@ export function legendaryResistanceDecision({ actor, spentUses = 0, conditions =
  * Действие с зоной (`radius_feet`) требует хотя бы двух целей в радиусе, иначе
  * дорогой взмах крыльев разменивался бы на одного героя.
  */
-export function chooseLegendaryAction({ actor, remainingUses, targets = [] }) {
+export function chooseLegendaryAction({ actor, remainingUses, targets = [], coolingDown = new Set() }) {
   const profile = legendaryProfileFor(actor)
   if (!profile) return null
   const available = Math.max(0, Math.trunc(Number(remainingUses) || 0))
   if (available <= 0 || !targets.length) return null
   const affordable = profile.actions
     .filter((action) => action.cost <= available)
+    .filter((action) => !coolingDown.has(legendaryCooldownMarker(action.id)))
     .filter((action) => {
       if (action.radiusFeet <= 0) return targets.some((target) => target.distanceFeet <= action.rangeFeet)
       return targets.filter((target) => target.distanceFeet <= action.radiusFeet).length >= 2
