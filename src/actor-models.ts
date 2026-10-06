@@ -1434,11 +1434,23 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     const targetTime = progress == null ? undefined : MathUtils.clamp(progress, 0, 1) * action.getClip().duration
     if (targetTime != null && activeAction === action && action.paused && Math.abs(action.time - targetTime) < 1e-8) return
     if (activeAction !== action) {
-      activeAction?.stop()
+      const previous = activeAction
       // Смерть и появление проигрываются один раз и остаются в конечной позе.
       const once = (pose === 'death' || pose === 'spawn') && requestedAction === action
       action.clampWhenFinished = once
-      activeAction = action.reset().setLoop(once ? LoopOnce : LoopRepeat, once ? 1 : Infinity).play()
+      action.reset().setLoop(once ? LoopOnce : LoopRepeat, once ? 1 : Infinity)
+      // Возврат к свободной позе (стойка, ходьба) — плавно, за 0,18 с, а не
+      // рывком: замах перетекает в стойку, как в BG3. Такт боя, который
+      // прокручивается по прогрессу, начинается сразу — ему важна точность кадра.
+      if (previous && progress == null) {
+        previous.paused = false
+        action.setEffectiveWeight(1).play()
+        previous.crossFadeTo(action, .18, false)
+      } else {
+        previous?.stop()
+        action.play()
+      }
+      activeAction = action
     }
     if (progress != null) {
       action.paused = true

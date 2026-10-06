@@ -363,6 +363,34 @@ export default function TacticalBoard3D(props: Props) {
     }
     let pending: CombatAnimationCue[] = []
     let lastAnimateAt = 0
+    // Камера боя, как в BG3: плавно подъезжает к тому, кто действует, если он
+    // ушёл из середины экрана, и вздрагивает на крите, тяжёлом ударе и смерти.
+    // Ручное управление не отбирается: цель сбрасывается, как только игрок
+    // сам двигает камеру.
+    let cameraGoal: THREE.Vector3 | null = null
+    let shakeUntil = 0
+    let shakeStrength = 0
+    const SHAKE_MS = 280
+    const followCue = (cue: CombatAnimationCue) => {
+      const focusId = cue.kind === 'strike' || cue.kind === 'impact' || cue.kind === 'death'
+        ? ('targetId' in cue && cue.targetId ? cue.targetId : 'actorId' in cue ? cue.actorId : '')
+        : 'actorId' in cue ? cue.actorId : ''
+      const view = focusId ? actorViews.get(focusId) : null
+      if (!view) return
+      const point = new THREE.Vector3(view.root.position.x, controls.target.y, view.root.position.z)
+      const onScreen = point.clone().project(camera)
+      // В середине экрана камеру не трогаем: игрок и так видит действие.
+      if (Math.abs(onScreen.x) < .55 && Math.abs(onScreen.y) < .55) return
+      cameraGoal = point
+    }
+    const shakeFor = (cue: CombatAnimationCue, now: number) => {
+      const actor = 'targetId' in cue && cue.targetId ? (latest.current.animationActors ?? []).find((entry) => entry.id === cue.targetId) : null
+      const maxHp = Math.max(1, Number((actor as { maxHp?: number } | null)?.maxHp) || 0)
+      const amount = 'amount' in cue && typeof cue.amount === 'number' ? cue.amount : 0
+      const heavy = amount >= Math.max(12, maxHp * .25)
+      const strength = cue.kind === 'death' ? .06 : cue.kind === 'strike' && cue.hit && cue.critical ? .09 : (cue.kind === 'strike' || cue.kind === 'impact') && heavy ? .05 : 0
+      if (strength > 0) { shakeStrength = strength; shakeUntil = now + SHAKE_MS }
+    }
     let active: {
       cue: CombatAnimationCue
       started: number
@@ -806,6 +834,10 @@ export default function TacticalBoard3D(props: Props) {
         if (current.animationsEnabled !== false && cue.kind === 'strike' && model) applyStrikeAppearance(model, cue)
         const startPose = poseForCue(cue)
         if (current.animationsEnabled !== false && startPose) model?.setPose(startPose, 0)
+        if (current.animationsEnabled !== false && !cueReducedMotion) {
+          followCue(cue)
+          shakeFor(cue, now)
+        }
         lastAnimateAt = now
       }
       if (!active) return
@@ -887,6 +919,18 @@ export default function TacticalBoard3D(props: Props) {
         : cue.kind === 'strike' ? progress < strikeImpactProgress(cue) ? '' : attackOutcome(cue) === 'blocked' ? 'Перехвачено' : !cue.hit ? 'Промах' : `${cue.critical ? 'Крит! ' : ''}${cue.amount == null ? '' : `−${cue.amount}`}`
           : cue.kind === 'channel' && cue.amount != null ? `+${cue.amount}` : cue.kind === 'condition' ? cue.label : ''
       floating.textContent = message
+      // Тон цифры по исходу, как в BG3: крит — крупно и золотом, лечение —
+      // зелёным, промах — серым, состояние — мельче. Крит «хлопает» в начале.
+      const critical = cue.kind === 'strike' && cue.hit && cue.critical === true
+      const tone = !message ? ''
+        : critical ? 'crit'
+          : message === 'Промах' || message === 'Перехвачено' ? 'miss'
+            : message.startsWith('+') ? 'heal'
+              : cue.kind === 'condition' ? 'condition'
+                : 'damage'
+      floating.dataset.tone = tone
+      const pop = tone === 'crit' ? 1 + .55 * Math.max(0, 1 - progress * 4) : tone === 'damage' ? 1 + .18 * Math.max(0, 1 - progress * 5) : 1
+      floating.style.transform = `translate(-50%, -100%) scale(${pop.toFixed(3)})`
       if (resultActor && current.map && revealedAt(current.map, resultActor.x, resultActor.y)) {
         // Цифра стоит над тем местом, где фигурка видна сейчас, а не над
         // клеткой из снимка, куда она ещё только придёт.
@@ -930,9 +974,26 @@ export default function TacticalBoard3D(props: Props) {
         }
         if (previousTime && now - previousTime < 250) frameSamples.push(now - previousTime)
         previousTime = now
+        if (cameraGoal) {
+          // Плавный подъезд: каждый кадр — доля оставшегося пути.
+          const step = new THREE.Vector3(cameraGoal.x - controls.target.x, 0, cameraGoal.z - controls.target.z)
+          if (step.lengthSq() < .0004) cameraGoal = null
+          else {
+            step.multiplyScalar(1 - Math.exp(-delta * 5))
+            controls.target.add(step)
+            camera.position.add(step)
+            labelsDirty = true
+          }
+        }
         controls.update()
         if (labelsDirty || active?.cue.kind === 'move' || active?.cue.kind === 'strike') drawLabels()
+        const shaking = shakeUntil > now
+        const shake = shaking
+          ? new THREE.Vector3(Math.sin(now * .09) , Math.sin(now * .13 + 1.3) * .6, Math.cos(now * .11)).multiplyScalar(shakeStrength * ((shakeUntil - now) / SHAKE_MS))
+          : null
+        if (shake) camera.position.add(shake)
         pipeline.render()
+        if (shake) camera.position.sub(shake)
         trackPointShadowDisposal()
         renderedFrames += 1
         renderer.domElement.dataset.frames = String(renderedFrames)
@@ -970,7 +1031,7 @@ export default function TacticalBoard3D(props: Props) {
           }
           measuredFrames = 0; measuredRenderMs = 0; measuredSince = now
         }
-        if (active || pending.length) invalidate()
+        if (active || pending.length || cameraGoal || shakeUntil > now) invalidate()
         // Движение следует частоте экрана без искусственной паузы между кадрами.
         // При reduced motion, выключенных анимациях и скрытой вкладке цикл спит.
         else if (fpsEnabled.current || (motionAllowed && BOARD3D_QUALITY[settings.current.quality].idle
@@ -1358,6 +1419,8 @@ export default function TacticalBoard3D(props: Props) {
     document.addEventListener('visibilitychange', visibility)
     const cameraChanged = () => { labelsDirty = true; invalidate() }
     controls.addEventListener('change', cameraChanged)
+    // Игрок взял камеру сам — подъезд к действию больше не тянет её обратно.
+    controls.addEventListener('start', () => { cameraGoal = null })
     runtime.current = { sync, refresh: invalidate, skip, reset,
       turn(angle) { camera.position.sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), angle).add(controls.target); controls.update(); invalidate() },
       zoom(factor) { labelsDirty = true; camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); invalidate() },

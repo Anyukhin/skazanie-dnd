@@ -201,7 +201,12 @@
 .board3d .combat-lab-piece > img { display: none; }
 .board3d .combat-lab-piece > b { position: absolute; left: 50%; top: 70%; color: #f7e5bf; font-size: 11px; text-shadow: 0 1px 2px #000; }
 .board3d .combat-lab-piece-health { top: -80%; }
-.board3d-floating-result { position: absolute; z-index: 7; pointer-events: none; transform: translate(-50%, -100%); color: #ffde9e; font: 700 23px/1.2 var(--f-serif); text-shadow: 0 2px 3px #000, 0 0 2px #000; white-space: nowrap; }
+.board3d-floating-result { position: absolute; z-index: 7; pointer-events: none; transform: translate(-50%, -100%); transform-origin: 50% 100%; color: #ffde9e; font: 700 23px/1.2 var(--f-serif); text-shadow: 0 2px 3px #000, 0 0 2px #000; white-space: nowrap; }
+.board3d-floating-result[data-tone="damage"] { color: #ff9b80; }
+.board3d-floating-result[data-tone="crit"] { color: #ffd34d; font-size: 34px; letter-spacing: .02em; text-shadow: 0 0 10px rgb(255 160 40 / 70%), 0 2px 3px #000, 0 0 2px #000; }
+.board3d-floating-result[data-tone="heal"] { color: #8ff0a4; }
+.board3d-floating-result[data-tone="miss"] { color: #c9c3b8; font-style: italic; font-size: 20px; }
+.board3d-floating-result[data-tone="condition"] { color: #d9c7ff; font-size: 18px; }
 .board3d-help { position: absolute; z-index: 6; bottom: 10px; right: 12px; width: max-content; max-width: calc(100% - 190px); padding: 4px 8px; margin: 0; pointer-events: none; background: #191913cf; color: #d5c8ae; border-radius: 3px; font-size: 11px; text-align: right; }
 .board3d-skip { position: absolute; z-index: 10; left: 50%; bottom: 42px; transform: translateX(-50%); border-color: #a58a5e; }
 .combat-lab-board-viewport { position: relative; }

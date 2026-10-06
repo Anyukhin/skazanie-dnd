@@ -269,22 +269,28 @@ export function shouldDeferDefeat(
 }
 
 /** Не держим больше старых эффектов, чем игрок ещё способен связать с ходом. */
-export const COMBAT_ANIMATION_QUEUE_LIMIT = 12
-/** Весь подтверждённый пакет, включая движение, удар и состояние NPC, короче 2 с. */
-export const COMBAT_ANIMATION_BATCH_BUDGET_MS = 1_800
+export const COMBAT_ANIMATION_QUEUE_LIMIT = 20
+/**
+ * Весь подтверждённый пакет — движение, удар, попадание, состояние — держится
+ * в пределах 5 с. Раньше было 1,8 с, и ход врага пролетал так быстро, что
+ * замах, удар и падение сливались в одно движение; ориентир — BG3, где каждое
+ * действие читается отдельно. Механику темп не трогает: сервер уже всё решил.
+ */
+export const COMBAT_ANIMATION_BATCH_BUDGET_MS = 5_000
 
 const BASE_DURATIONS = {
-  moveMin: 240,
-  moveMax: 560,
-  strike: 480,
-  impact: 360,
-  death: 420,
-  condition: 360,
-  projectile: 520,
-  burst: 480,
-  beam: 560,
-  aura: 440,
-  channel: 480,
+  moveMin: 320,
+  moveMax: 2_000,
+  moveMsPerCell: 170,
+  strike: 720,
+  impact: 460,
+  death: 900,
+  condition: 420,
+  projectile: 640,
+  burst: 700,
+  beam: 720,
+  aura: 560,
+  channel: 620,
 } as const
 
 const CONDITION_LABELS: Record<string, string> = {
@@ -771,8 +777,9 @@ function conditionLabel(condition: string) {
     ?? condition.split('-').filter(Boolean).map((part) => part.charAt(0).toLocaleUpperCase('ru') + part.slice(1)).join(' ')
 }
 
+/** Шаг идёт со скоростью, а не за фиксированное время: длинный путь — дольше. */
 function moveDuration(pathLength: number) {
-  return Math.min(BASE_DURATIONS.moveMax, Math.max(BASE_DURATIONS.moveMin, pathLength * 70))
+  return Math.min(BASE_DURATIONS.moveMax, Math.max(BASE_DURATIONS.moveMin, pathLength * BASE_DURATIONS.moveMsPerCell))
 }
 
 type BattleLogVisualFields = {

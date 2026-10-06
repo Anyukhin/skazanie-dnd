@@ -375,7 +375,10 @@ function instanceItems(group: THREE.Group, name: string, items: readonly Item[])
 /** Процедурные заменители, пока модели не загружены (и в тестах без браузера). */
 function fallbackModels(): { models: Required<SurroundingsModels>; owned: Array<{ dispose: () => void }> } {
   const material = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: .95, metalness: 0, flatShading: true })
-  const rockMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .92, metalness: 0, flatShading: true })
+  // Оттенок камня (`rockTint`) рассчитан на светлую фактуру моделей набора; у
+  // заменителя фактуры нет, и белая база давала белые глыбы, пока набор не
+  // загрузится. Серо-бурая база даёт под тем же оттенком обычный камень.
+  const rockMaterial = new THREE.MeshStandardMaterial({ color: '#7a7268', roughness: .92, metalness: 0, flatShading: true })
   const wrap = (geometry: THREE.BufferGeometry, mat: THREE.Material): SurroundingsModel => {
     geometry.computeBoundingBox()
     const size = geometry.boundingBox!.getSize(new THREE.Vector3())
