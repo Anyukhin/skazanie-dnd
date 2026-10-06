@@ -906,6 +906,30 @@ export default function TacticalBoard3D(props: Props) {
         const impact = strikeImpactProgress(cue)
         actorViews.get(cue.targetId)?.model.setPose('hit', Math.min(1, (progress - impact) / (1 - impact)))
       }
+      // Промах читается уклонением, как в BG3: цель к моменту удара шагает вбок
+      // от линии атаки и чуть назад, а к концу такта возвращается на место.
+      // Сторона выбирается по id, поэтому у одной цели она одна и та же.
+      // Перехват щитом — не уклонение: там цель стоит и принимает удар.
+      if (!reduced && cue.kind === 'strike' && !cue.hit && attackOutcome(cue) !== 'blocked') {
+        const targetView = actorViews.get(cue.targetId)
+        const target = actorAt(cue.targetId), source = actorAt(cue.actorId)
+        const from = cue.from ?? source, to = cue.to ?? target
+        if (targetView && target && from && to) {
+          const sourceCenter = source ? actorPresentationCenter(current.map, source, from) : { x: from.x + .5, y: from.y + .5 }
+          const targetCenter = actorPresentationCenter(current.map, target, to)
+          const dx = targetCenter.x - sourceCenter.x, dy = targetCenter.y - sourceCenter.y
+          const length = Math.max(.001, Math.hypot(dx, dy))
+          const impact = strikeImpactProgress(cue)
+          const sway = Math.sin(THREE.MathUtils.clamp((progress - impact + .14) / .5, 0, 1) * Math.PI)
+          const side = [...cue.targetId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 2 ? 1 : -1
+          const sideways = .22 * side * sway, backwards = .1 * sway
+          targetView.root.position.set(
+            targetCenter.x + (-dy / length) * sideways + (dx / length) * backwards,
+            actorGround(current.map, target, { ...target, ...to }),
+            targetCenter.y + (dx / length) * sideways + (dy / length) * backwards,
+          )
+        }
+      }
       active.effect?.update(progress)
       applyEffectLights(active.effect?.group)
       const board = boardScene(spell.canvas), context = spell.canvas.getContext('2d')

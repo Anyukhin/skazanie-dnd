@@ -2706,6 +2706,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {trajectoryBlockReason && <i className="blocked" title={trajectoryBlockReason}>×</i>}
           </span>
         )}
+        {/* Хиты героя видны всему отряду, но на фишке — только в бою и только
+            у раненого: здоровый отряд полосками не загромождается (PR #7), а
+            кто истекает кровью, видно сразу, как в BG3. */}
+        {player && cell.revealed && actorIsAnchor && combatActive && player.maxHp > 0 && player.hp < player.maxHp && (
+          <TokenHealthBar
+            fill={Math.max(0, player.hp) / player.maxHp}
+            label={`${Math.max(0, player.hp)}/${player.maxHp}`}
+            className={`hero-health ${player.hp <= 0 ? 'downed' : player.hp / player.maxHp <= .25 ? 'critical' : player.hp / player.maxHp <= .5 ? 'bloodied' : 'scratched'}`}
+          />
+        )}
         {actorHasFullArea && actorIsAnchor && <span className="actor-footprint-area" style={actorTokenStyle} aria-hidden="true" />}
         {enemy && cell.revealed && actorIsAnchor && (
           <button

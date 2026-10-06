@@ -118,7 +118,7 @@
 .board3d-cell .active-turn .enemy-nameplate { color: #ffdc8b !important; }
 .board3d-cell .token-conditions { top: -14px; bottom: auto; }
 .board3d-cell .token-tactical-badges { top: calc(var(--cell) * -1.3); }
-.board3d-cell .enemy-health { top: calc(var(--cell) * -1.15); bottom: auto; }
+.board3d-cell .enemy-health, .board3d-cell .hero-health { top: calc(var(--cell) * -1.15); bottom: auto; }
 .board3d-cell .enemy-health-ring { width: 90%; height: 38%; inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 .board3d-cell .enemy-health-value { display: none; }
 .board3d-cell .neutral-token-menu,
