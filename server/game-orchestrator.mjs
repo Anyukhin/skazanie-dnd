@@ -928,7 +928,7 @@ function mergeClarificationAction(original, answer) {
 
 const INDEPENDENT_ACTION_INTENTS = new Set([
   'attack', 'saving_throw', 'ability_check', 'healing', 'damage', 'cast_spell',
-  'start_combat', 'end_combat', 'end_turn', 'rest', 'wait', 'scenario_knight', 'scenario_treaty', 'scenario_purse', 'scenario_armory', 'social', 'explore',
+  'start_combat', 'end_combat', 'end_turn', 'rest', 'wait', 'scenario_knight', 'scenario_treaty', 'scenario_purse', 'scenario_armory', 'scenario_informant', 'social', 'explore',
   'approach_attack', 'compound_maneuver',
 ])
 
@@ -2606,7 +2606,7 @@ export class GameOrchestrator {
     const deterministicActionIntent = new Set([
       'improvised_action', 'compound_maneuver', 'approach_attack', 'attack', 'damage',
       'ability_check', 'saving_throw', 'healing', 'cast_spell', 'start_combat',
-      'end_combat', 'end_turn', 'rest', 'wait', 'scenario_knight', 'scenario_treaty', 'scenario_purse', 'scenario_armory',
+      'end_combat', 'end_turn', 'rest', 'wait', 'scenario_knight', 'scenario_treaty', 'scenario_purse', 'scenario_armory', 'scenario_informant',
     ])
     const explicitPickpocket = intent.intent === 'improvised_action'
       && /(?:обчищ|обчист|карман|кошел)/iu.test(message)

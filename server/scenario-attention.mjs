@@ -48,6 +48,13 @@ export const SCENARIO_PURSE_EVENT = 'ScenarioPurseGranted'
 /** Королевская оружейная: одна вещь на героя (`ChooseScenarioArmoryItem`). */
 export const SCENARIO_ARMORY_COMMAND_TYPES = Object.freeze(new Set(['ChooseScenarioArmoryItem']))
 export const SCENARIO_ARMORY_EVENT = 'ScenarioArmoryItemChosen'
+/** Осведомитель пепельной сети: выдать страже, отпустить или перевербовать. */
+export const SCENARIO_INFORMANT_COMMAND_TYPES = Object.freeze(new Set(['ResolveScenarioInformant']))
+export const SCENARIO_INFORMANT_CHOICES = Object.freeze(['expose', 'release', 'turn'])
+export const SCENARIO_INFORMANT_EVENT = 'ScenarioInformantResolved'
+export const SCENARIO_INFORMANT_TURN_FAILED_EVENT = 'ScenarioInformantTurnFailed'
+/** Провенанс решения: выдать или отпустить редакция не описывает. */
+export const SCENARIO_INFORMANT_POLICY_ID = 'skazanie:scenario-informant-v1'
 /** Провенанс подарка: редакция стартовых вещей сценария не описывает. */
 export const SCENARIO_ARMORY_POLICY_ID = 'skazanie:scenario-armory-v1'
 export const SCENARIO_STRANGER_STAGES = Object.freeze(['arrive', 'reveal'])
@@ -71,7 +78,7 @@ const integer = (/** @type {unknown} */ value, fallback = 0) => {
  * @typedef {{ delta: number, value: number, reason: string, location_id: string, event_id: string }} AttentionChange
  * @typedef {{ stage: 'none' | 'arrived' | 'revealed', location_id: string, party_acted: boolean }} StrangerState
  * @typedef {{ concluded: boolean, concluded_by: string, attempts: string[] }} TreatyState
- * @typedef {{ schema_version: number, value: number, visit: number, counted: string[], history: AttentionChange[], stranger: StrangerState, treaty: TreatyState, purse_paid: string[], armory_taken: string[] }} ScenarioAttentionState
+ * @typedef {{ schema_version: number, value: number, visit: number, counted: string[], history: AttentionChange[], stranger: StrangerState, treaty: TreatyState, purse_paid: string[], armory_taken: string[], informants: Record<string, string>, informant_turn_failed: string[] }} ScenarioAttentionState
  */
 
 /**
@@ -109,6 +116,12 @@ export function normalizeScenarioAttentionState(input = {}) {
     // Герои, уже получившие кошель короля.
     purse_paid: (Array.isArray(value.purse_paid) ? value.purse_paid : []).map((/** @type {unknown} */ id) => clean(id, 120)).filter(Boolean).slice(-COUNTED_LIMIT),
     armory_taken: (Array.isArray(value.armory_taken) ? value.armory_taken : []).map((/** @type {unknown} */ id) => clean(id, 120)).filter(Boolean).slice(-COUNTED_LIMIT),
+    // Решённые осведомители: id → expose / release / turn; неудачная
+    // перевербовка — одна на осведомителя.
+    informants: Object.fromEntries(Object.entries(value.informants && typeof value.informants === 'object' ? value.informants : {})
+      .map(([id, outcome]) => [clean(id, 80), clean(outcome, 20)])
+      .filter(([id, outcome]) => id && SCENARIO_INFORMANT_CHOICES.includes(outcome))),
+    informant_turn_failed: (Array.isArray(value.informant_turn_failed) ? value.informant_turn_failed : []).map((/** @type {unknown} */ id) => clean(id, 80)).filter(Boolean).slice(-COUNTED_LIMIT),
   }
 }
 
@@ -164,6 +177,24 @@ export function applyScenarioAttentionEvent(ledgerInput, event, state) {
   if (eventType === SCENARIO_PURSE_EVENT) {
     const heroId = clean(event.payload?.hero_id ?? event.actor_id, 120)
     return heroId ? { ...ledger, purse_paid: [...new Set([...ledger.purse_paid, heroId])].slice(-COUNTED_LIMIT) } : ledger
+  }
+  if (eventType === SCENARIO_INFORMANT_TURN_FAILED_EVENT) {
+    const informantId = clean(event.payload?.informant_id, 80)
+    return informantId ? { ...ledger, informant_turn_failed: [...new Set([...ledger.informant_turn_failed, informantId])] } : ledger
+  }
+  if (eventType === SCENARIO_INFORMANT_EVENT) {
+    const informantId = clean(event.payload?.informant_id, 80)
+    const outcome = clean(event.payload?.outcome, 20)
+    if (!informantId || !SCENARIO_INFORMANT_CHOICES.includes(outcome)) return ledger
+    const resolved = { ...ledger, informants: { ...ledger.informants, [informantId]: outcome } }
+    // Поимка на глазах у людей — громкое дело; перевербованный шлёт ложь.
+    // Шаг берётся из данных сценария, а не из события: событие видит игрок,
+    // а счёт внимания — нет.
+    const informant = (config?.informants ?? []).find((/** @type {any} */ entry) => entry.id === informantId)
+    const delta = outcome === 'expose' ? integer(informant?.expose_delta) : outcome === 'turn' ? integer(informant?.turn?.delta) : 0
+    return delta && config
+      ? raise(resolved, config, { delta, reason: `informant-${outcome}`, key: `informant:${informantId}`, locationId: clean(event.payload?.location_id, 120), eventId: clean(event.event_id, 160) })
+      : resolved
   }
   if (eventType === SCENARIO_ARMORY_EVENT) {
     const heroId = clean(event.payload?.hero_id ?? event.actor_id, 120)
@@ -232,6 +263,7 @@ export function scenarioAttention(state = {}) {
     ready: ledger.value >= config.ready_at,
     stranger_stage: ledger.stranger.stage,
     history: ledger.history,
+    informants: ledger.informants,
   }
 }
 
@@ -391,6 +423,30 @@ export function scenarioTreatyActionFromText(value, state = null) {
 }
 
 const PURSE_PATTERN = /(?<![\p{L}\p{M}])(?:кошел\p{L}*|кошёл\p{L}*|жалованье|жалование|плат[аыу]|золото)(?![\p{L}\p{M}])[^.!?]{0,40}(?:корол|арес|казн)|(?:корол|арес|казн)\p{L}*[^.!?]{0,40}(?<![\p{L}\p{M}])(?:кошел\p{L}*|кошёл\p{L}*)/iu
+
+/** @type {Array<[string, RegExp]>} */
+const INFORMANT_VERBS = [
+  ['turn', /(?<![\p{L}\p{M}])(?:перевербов\p{L}*|переманив\p{L}*|перемани\p{L}*|склоня\p{L}*\s+на\s+нашу|работать\s+на\s+нас|шли\p{L}*\s+дракону\s+ложь|ложн\p{L}*\s+вест\p{L}*)/iu],
+  ['expose', /(?<![\p{L}\p{M}])(?:выда\p{L}*|сда\p{L}*|арестов\p{L}*|разоблач\p{L}*|страж\p{L}*)/iu],
+  ['release', /(?<![\p{L}\p{M}])(?:отпуска\p{L}*|отпуст\p{L}*|отпущ\p{L}*|пощад\p{L}*|пусть\s+уход\p{L}*)/iu],
+]
+
+/**
+ * «Выдаём Тобана страже», «перевербовываю перевозчика», «отпускаем мельника» —
+ * решение по осведомителю. Узнаёт его по основам имени из сценария; раскрыт
+ * ли он, место и «одно решение» проверяет Rules Engine.
+ * @param {unknown} value
+ * @param {Array<{ id: string, name_stems: string[] }>} informants
+ */
+export function scenarioInformantActionFromText(value, informants = []) {
+  const text = clean(value, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  if (!text) return null
+  const words = text.split(/[^\p{L}\p{M}]+/u).filter(Boolean)
+  const informant = informants.find((entry) => entry.name_stems.some((stem) => words.some((word) => word.startsWith(stem))))
+  if (!informant) return null
+  const choice = INFORMANT_VERBS.find(([, pattern]) => pattern.test(text))?.[0]
+  return choice ? { action: 'informant', informant_id: informant.id, choice } : null
+}
 
 const ARMORY_PLACE = /(?<![\p{L}\p{M}])(?:оружейн\p{L}*|арсенал\p{L}*|кладов\p{L}*\s+корол\p{L}*)/iu
 const ARMORY_TAKE = /(?<![\p{L}\p{M}])(?:бер[уём]\p{L}*|возьм\p{L}*|выбира\p{L}*|выбер\p{L}*|забира\p{L}*|забер\p{L}*|взять|получ\p{L}*)(?![\p{L}\p{M}])/iu

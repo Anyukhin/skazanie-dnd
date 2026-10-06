@@ -76,6 +76,7 @@ function validateCondition(condition, where, clueIds) {
 }
 
 const SAVE_ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
+const SOCIAL_SKILLS = new Set(['persuasion', 'intimidation', 'deception', 'insight'])
 /** Id предмета каталога сценария (`SCENARIO_ITEM_CATALOG`, `server/item-catalog.mjs`). */
 const SCENARIO_ITEM_ID = /^scenario_[a-z0-9_]+:[a-z0-9]+(?:-[a-z0-9]+)*$/u
 const DAMAGE_TYPES = new Set(['fire', 'cold', 'acid', 'lightning', 'poison', 'thunder', 'necrotic', 'radiant', 'force', 'psychic'])
@@ -153,6 +154,23 @@ function validateAttention(attention, scenarioId, locationIds) {
   if (!Array.isArray(stranger.goals) || !stranger.goals.length) invalid(`${where}: цели незнакомца`)
   for (const field of ['arrival_text', 'reveal_text', 'departure_text']) {
     if (clean(stranger[field], 1_000).length < 40) invalid(`${where}: текст незнакомца ${field}`)
+  }
+  for (const informant of attention.informants ?? []) {
+    const id = `${where}/informants/${informant?.id}`
+    if (!ID_PATTERN.test(String(informant?.id ?? '')) || !clean(informant.name, 120) || !ID_PATTERN.test(String(informant.clue ?? ''))
+      || !locationIds.has(informant.location_id)) invalid(`${id}: id, имя, тайна и место`)
+    if (!Array.isArray(informant.name_stems) || !informant.name_stems.length
+      || informant.name_stems.some((/** @type {unknown} */ stem) => typeof stem !== 'string' || stem.length < 3 || stem !== stem.toLocaleLowerCase('ru'))) {
+      invalid(`${id}: основы имени — строчные, от трёх букв`)
+    }
+    if (!Number.isSafeInteger(informant.expose_delta) || informant.expose_delta < 0 || informant.expose_delta > 6
+      || !Number.isSafeInteger(informant.turn?.delta) || informant.turn.delta > 0 || informant.turn.delta < -6
+      || !SOCIAL_SKILLS.has(informant.turn?.skill) || !Number.isSafeInteger(informant.turn?.dc) || informant.turn.dc < 5 || informant.turn.dc > 30) {
+      invalid(`${id}: шаги внимания и проверка перевербовки`)
+    }
+    for (const field of ['expose_text', 'release_text', 'turn_text', 'turn_failure_text']) {
+      if (clean(informant[field], 1_000).length < 40) invalid(`${id}: текст ${field}`)
+    }
   }
   const breath = stranger.breath
   if (!/^\d{1,2}d(4|6|8|10|12)$/u.test(String(breath?.expression ?? '')) || !SAVE_ABILITIES.has(breath?.ability)
@@ -563,6 +581,31 @@ export function scenarioMilestoneLevel(state) {
 export function scenarioPurseRules(state) {
   const purse = campaignScenario(state)?.progression?.purse
   return purse ? { location_id: String(purse.location_id), dice: String(purse.dice), gold_per_point: Number(purse.gold_per_point) } : null
+}
+
+/**
+ * Осведомители пепельной сети: кто, где и раскрыт ли он уже находкой своей
+ * тайны. Решение по каждому принимается один раз (`ResolveScenarioInformant`).
+ * @param {any} state
+ */
+export function scenarioInformantRules(state) {
+  const scenario = campaignScenario(state)
+  const informants = scenario?.attention?.informants
+  if (!Array.isArray(informants) || !informants.length) return []
+  const found = foundClueFactIds(state)
+  return informants.map((/** @type {any} */ informant) => ({
+    id: String(informant.id),
+    name: clean(informant.name, 120),
+    location_id: String(informant.location_id),
+    name_stems: informant.name_stems.map(String),
+    revealed: found.has(scenarioClueFactId(scenario, informant.clue)),
+    expose_delta: Number(informant.expose_delta),
+    turn: { skill: String(informant.turn.skill), dc: Number(informant.turn.dc), delta: Number(informant.turn.delta) },
+    expose_text: clean(informant.expose_text, 1_000),
+    release_text: clean(informant.release_text, 1_000),
+    turn_text: clean(informant.turn_text, 1_000),
+    turn_failure_text: clean(informant.turn_failure_text, 1_000),
+  }))
 }
 
 /** Королевская оружейная сценария: где выбирают и из чего. @param {any} state */

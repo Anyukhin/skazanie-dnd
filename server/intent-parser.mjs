@@ -1,7 +1,7 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
 import { scenarioKnightActionFromText } from './scenario-knight.mjs'
-import { scenarioArmoryActionFromText, scenarioPurseActionFromText, scenarioTreatyActionFromText } from './scenario-attention.mjs'
-import { scenarioArmoryRules } from './campaign-scenario.mjs'
+import { scenarioArmoryActionFromText, scenarioInformantActionFromText, scenarioPurseActionFromText, scenarioTreatyActionFromText } from './scenario-attention.mjs'
+import { scenarioArmoryRules, scenarioInformantRules } from './campaign-scenario.mjs'
 import { catalogItem } from './item-catalog.mjs'
 import { announcesMovement } from './party-exit-intent.mjs'
 
@@ -497,10 +497,15 @@ export class IntentParser {
       .map((catalogId) => ({ catalog_id: catalogId, name: String(catalogItem(catalogId)?.name ?? '') }))
       .filter((choice) => choice.name)
     const armoryAction = knightAction || treatyAction || purseAction || !armoryChoices.length ? null : scenarioArmoryActionFromText(operativeText, armoryChoices)
+    // Решение по осведомителю пепельной сети — только по уже раскрытому: иначе
+    // «выдаю мельника» в начале линии ушло бы в отказ вместо разговора.
+    const informants = scenarioInformantRules(visibleState).filter((informant) => informant.revealed)
+    const informantAction = knightAction || treatyAction || purseAction || armoryAction || !informants.length ? null : scenarioInformantActionFromText(operativeText, informants)
     const detectedIntent = knightAction ? 'scenario_knight'
       : treatyAction ? 'scenario_treaty'
       : purseAction ? 'scenario_purse'
       : armoryAction ? 'scenario_armory'
+      : informantAction ? 'scenario_informant'
       : spoken ? 'social'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
@@ -550,6 +555,7 @@ export class IntentParser {
       free_action_kind: freeActionKind,
       ...(knightAction ? { scenario_knight: knightAction } : {}),
       ...(armoryAction ? { scenario_armory: armoryAction } : {}),
+      ...(informantAction ? { scenario_informant: informantAction } : {}),
       ...( /нелеталь|не\s+убив|не\s+убива|без\s+убийств/iu.test(text) || /оглуш|нокаут/iu.test(operativeText) ? { knock_out: true } : {}),
       ...(ambiguousSocialTarget ? {
         target_candidates: socialTargets.map((actor) => ({

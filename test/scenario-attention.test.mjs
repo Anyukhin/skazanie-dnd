@@ -330,3 +330,76 @@ test('не ждущий дракон застигнут врасплох; сре
   assert.deepEqual(scenarioFinaleTactics(viaTunnel, ['astohan-sargat']), { readiness: 'unaware', surprise: 'enemies', ambush: null, reason: 'hidden-route' })
   assert.equal(scenarioFinaleTactics(middle.state, ['astohan-ash-goblin']), null, 'без Саргата во встрече тактика не применяется')
 })
+
+// ---------------------------------------------------------------------------
+// Осведомители пепельной сети (раздел 7: +2 за поимку при людях, −1 за
+// перевербованного; линия В: Тобан на мельнице, перевозчик в Митглайде)
+
+async function reveal(run, clueId) {
+  const { campaignScenario, scenarioClueFactId } = await import('../server/campaign-scenario.mjs')
+  const secretId = scenarioClueFactId(campaignScenario(run.state), clueId)
+  const secret = run.state.worldMemory.facts.find((fact) => fact.id === secretId)
+  assert.ok(secret, `тайна ${clueId} записана при входе`)
+  run.apply({ command_type: 'RecordWorldFact', fact: {
+    id: `fact-found-${clueId}`, subject_id: secret.subject_id, predicate: 'discovery', object: 'clue',
+    summary: secret.summary, visibility: 'party', source_event_ids: [], supersedes_fact_id: secretId,
+  } })
+}
+
+test('осведомитель: нераскрытого не выдать; выданный страже при людях — +2 к вниманию, решение одно', async () => {
+  const { IntentParser } = await import('../server/intent-parser.mjs')
+  const { Adjudicator } = await import('../server/adjudicator.mjs')
+  const run = await campaign()
+  await run.travel('astohan-redstone')
+  const before = await new IntentParser().parse({ message: 'Выдаём Тобана страже', playerId: hero.id, visibleState: run.state })
+  assert.notEqual(before.intent, 'scenario_informant', 'пока мельница не раскрыта, Тобан — просто имя')
+  assert.throws(() => run.apply({ command_type: 'ResolveScenarioInformant', actor_id: hero.id, informant_id: 'toban', choice: 'expose' }, {}), { code: 'SCENARIO_INFORMANT_HIDDEN' })
+
+  await reveal(run, 'redstone-mill')
+  const start = run.value()
+  const intent = await new IntentParser().parse({ message: 'Выдаём Тобана страже', playerId: hero.id, visibleState: run.state })
+  assert.equal(intent.intent, 'scenario_informant')
+  assert.deepEqual([intent.scenario_informant.informant_id, intent.scenario_informant.choice], ['toban', 'expose'])
+  const plan = await new Adjudicator().createPlan({ intent, state: run.state, retrievedRules: { results: [], confidence: 1 } })
+  const exposed = run.apply(plan.proposed_commands, { allowedActorIds: [hero.id] })
+  const event = exposed.events.find((entry) => entry.event_type === 'ScenarioInformantResolved')
+  assert.equal(event.payload.outcome, 'expose')
+  assert.match(event.payload.text, /Стража выволакивает Тобана/u)
+  assert.equal(run.value(), start + 2)
+  assert.equal(scenarioAttention(run.state).informants.toban, 'expose')
+  assert.throws(() => run.apply({ command_type: 'ResolveScenarioInformant', actor_id: hero.id, informant_id: 'toban', choice: 'release' }, {}), { code: 'SCENARIO_INFORMANT_RESOLVED' })
+  assertReplay(run)
+})
+
+test('перевербовка перевозчика: Убеждение СЛ 15; успех — −1 к вниманию, провал — одна попытка, дальше выдать или отпустить', async () => {
+  const { maxDice, minDice } = await import('./kit/dice.mjs')
+  const success = await campaign()
+  await success.travel('astohan-mittlayd')
+  await reveal(success, 'mittlayd-informant')
+  const raised = Math.min(3, success.value() + 2)
+  success.state = normalizeCampaignState({ ...success.state, scenario_attention: { ...success.state.scenario_attention, value: raised } })
+  success.initial = success.state
+  success.events = []
+  const turned = success.apply({ command_type: 'ResolveScenarioInformant', actor_id: hero.id, informant_id: 'ferryman', choice: 'turn' }, {}, maxDice())
+  const check = turned.events.find((entry) => entry.event_type === 'AbilityCheckResolved')
+  assert.deepEqual([check.payload.skill, check.payload.difficulty, check.payload.success], ['persuasion', 15, true])
+  assert.equal(scenarioAttention(success.state).informants.ferryman, 'turn')
+  assert.equal(success.value(), raised - 1, 'перевербованный шлёт дракону ложь')
+  assertReplay(success)
+
+  const failure = await campaign()
+  await failure.travel('astohan-mittlayd')
+  await reveal(failure, 'mittlayd-informant')
+  const failed = failure.apply({ command_type: 'ResolveScenarioInformant', actor_id: hero.id, informant_id: 'ferryman', choice: 'turn' }, {}, minDice())
+  assert.ok(failed.events.some((entry) => entry.event_type === 'ScenarioInformantTurnFailed'))
+  assert.throws(() => failure.apply({ command_type: 'ResolveScenarioInformant', actor_id: hero.id, informant_id: 'ferryman', choice: 'turn' }, {}, maxDice()), { code: 'SCENARIO_INFORMANT_TURN_SPENT' })
+  const valueBefore = failure.value()
+  const released = failure.apply({ command_type: 'ResolveScenarioInformant', actor_id: hero.id, informant_id: 'ferryman', choice: 'release' }, {})
+  assert.equal(released.events.find((entry) => entry.event_type === 'ScenarioInformantResolved').payload.outcome, 'release')
+  assert.equal(failure.value(), valueBefore, 'отпущенный счёт не меняет')
+  // Событие видит игрок, а счёт внимания — нет: числа шага в событии нет.
+  const payload = released.events.find((entry) => entry.event_type === 'ScenarioInformantResolved').payload
+  assert.equal(Object.keys(payload).some((key) => /attention|delta/u.test(key)), false)
+  assert.throws(() => failure.apply({ command_type: 'ResolveScenarioInformant', actor_id: hero.id, informant_id: 'toban', choice: 'expose' }, {}), { code: 'SCENARIO_INFORMANT_HIDDEN' })
+  assertReplay(failure)
+})

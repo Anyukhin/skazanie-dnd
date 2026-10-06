@@ -252,7 +252,7 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, scenarioArmoryRules, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_PURSE_COMMAND_TYPES,
@@ -260,6 +260,11 @@ import {
   SCENARIO_ARMORY_COMMAND_TYPES,
   SCENARIO_ARMORY_EVENT,
   SCENARIO_ARMORY_POLICY_ID,
+  SCENARIO_INFORMANT_COMMAND_TYPES,
+  SCENARIO_INFORMANT_CHOICES,
+  SCENARIO_INFORMANT_EVENT,
+  SCENARIO_INFORMANT_TURN_FAILED_EVENT,
+  SCENARIO_INFORMANT_POLICY_ID,
   SCENARIO_TREATY_COMMAND_TYPES,
   SCENARIO_TREATY_CONCLUDED_EVENT,
   SCENARIO_TREATY_REFUSED_EVENT,
@@ -867,6 +872,9 @@ const COMMAND_RULES = Object.freeze({
   ReceiveScenarioPurse: [RULE_IDS.economyCoins],
   // Оружейная короля: подарок сценария, правило 5e тут не участвует.
   ChooseScenarioArmoryItem: [],
+  // Осведомитель: перевербовка — проверка навыка; выдать и отпустить —
+  // решение сценария (провенанс — политика проекта).
+  ResolveScenarioInformant: [],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
@@ -911,6 +919,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...SCENARIO_TREATY_COMMAND_TYPES,
   ...SCENARIO_PURSE_COMMAND_TYPES,
   ...SCENARIO_ARMORY_COMMAND_TYPES,
+  ...SCENARIO_INFORMANT_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
@@ -4404,6 +4413,16 @@ function normalizeCommand(input, state) {
     // Подарок сценария, а не правило редакции: провенанс — политика проекта.
     command.house_rule_id = SCENARIO_ARMORY_POLICY_ID
   }
+  if (SCENARIO_INFORMANT_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса — герой, осведомитель и решение; СЛ и тексты — из сценария.
+    command.target_id = null
+    command.target_ids = []
+    command.informant_id = String(command.informant_id ?? '').slice(0, 80)
+    command.choice = String(command.choice ?? '').slice(0, 20)
+    delete command.difficulty
+    delete command.skill
+    command.house_rule_id = SCENARIO_INFORMANT_POLICY_ID
+  }
   if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса — только герой: противник, навык и СЛ — из данных сценария.
     command.target_id = null
@@ -4591,7 +4610,7 @@ function needsActor(type) {
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer', 'AttackNpc',
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
-    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty', 'ReceiveScenarioPurse', 'ChooseScenarioArmoryItem',
+    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty', 'ReceiveScenarioPurse', 'ChooseScenarioArmoryItem', 'ResolveScenarioInformant',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -6180,6 +6199,29 @@ export function validateCommand(input, rawState, context = {}) {
       throw new RulesValidationError('Этот герой уже получил кошель короля', 'SCENARIO_PURSE_ALREADY_PAID')
     }
     command.visibility = 'party'
+  }
+  if (SCENARIO_INFORMANT_COMMAND_TYPES.has(command.command_type)) {
+    // Осведомитель пепельной сети (`docs/astohan-scenario.md`, линия В и
+    // раздел 7): только раскрытый находкой своей тайны, на своём месте, вне
+    // боя, одно решение; перевербовать можно попытаться один раз.
+    const informant = scenarioInformantRules(state).find((entry) => entry.id === command.informant_id)
+    if (!informant) throw new RulesValidationError('Такого осведомителя в кампании нет', 'SCENARIO_INFORMANT_UNKNOWN')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Решает герой отряда', 'ACTOR_FORBIDDEN')
+    if (!isLivingActor(hero)) throw new RulesValidationError('Герой без сознания ничего не решает', 'ACTOR_DEFEATED')
+    if (!SCENARIO_INFORMANT_CHOICES.includes(command.choice)) throw new RulesValidationError('Осведомителя можно выдать страже, отпустить или перевербовать', 'SCENARIO_INFORMANT_CHOICE_INVALID')
+    if (!informant.revealed) throw new RulesValidationError(`Кто здесь доносит дракону, отряд ещё не знает: ${informant.name} не раскрыт`, 'SCENARIO_INFORMANT_HIDDEN')
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя не до осведомителей', 'SCENARIO_INFORMANT_DURING_COMBAT')
+    if (scenarioLocationId(state) !== informant.location_id) throw new RulesValidationError(`${informant.name} — не здесь`, 'SCENARIO_INFORMANT_WRONG_PLACE')
+    if (state.scenario_attention?.informants?.[informant.id]) throw new RulesValidationError(`Судьба осведомителя уже решена: ${informant.name}`, 'SCENARIO_INFORMANT_RESOLVED')
+    if (command.choice === 'turn' && (state.scenario_attention?.informant_turn_failed ?? []).includes(informant.id)) {
+      throw new RulesValidationError('Перевербовать его уже не вышло: остаётся выдать или отпустить', 'SCENARIO_INFORMANT_TURN_SPENT')
+    }
+    if (command.choice === 'turn') {
+      command.skill = informant.turn.skill
+      command.difficulty = informant.turn.dc
+    }
+    command.visibility = 'public'
   }
   if (SCENARIO_ARMORY_COMMAND_TYPES.has(command.command_type)) {
     // Королевская оружейная (`docs/astohan-scenario.md`, пролог): одна вещь
@@ -19843,6 +19885,36 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), SCENARIO_PURSE_EVENT, {
         schema_version: 1, hero_id: command.actor_id, roll_total: roll.total, gold, currency_before: before, currency_after: after,
       }, [command.actor_id]))
+      break
+    }
+    case 'ResolveScenarioInformant': {
+      const informant = scenarioInformantRules(state).find((entry) => entry.id === command.informant_id)
+      // Шаг внимания в событие не пишется: его считает свёртка по данным
+      // сценария, а счёт внимания игроку не принадлежит.
+      const resolved = (outcome, text) => events.push(eventFrom(command, SCENARIO_INFORMANT_EVENT, {
+        schema_version: 1, informant_id: informant.id, outcome, location_id: informant.location_id, text,
+      }, [command.actor_id]))
+      if (command.choice === 'turn') {
+        const check = resolveCommandInternal({
+          ...command,
+          command_type: 'MakeAbilityCheck',
+          command_id: `${command.command_id}:check`,
+          skill: informant.turn.skill,
+          difficulty: informant.turn.dc,
+          source_rule_ids: [...command.source_rule_ids, rulesetRuleId(RULE_IDS.abilityCheck, command.ruleset_id)],
+        }, state, { diceService, context })
+        events.push(...check.events)
+        rolls.push(...(check.rolls ?? []))
+        const success = check.events.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success === true
+        if (success) resolved('turn', informant.turn_text)
+        else events.push(eventFrom(command, SCENARIO_INFORMANT_TURN_FAILED_EVENT, {
+          schema_version: 1, informant_id: informant.id, text: informant.turn_failure_text,
+        }, [command.actor_id]))
+      } else if (command.choice === 'expose') {
+        resolved('expose', informant.expose_text)
+      } else {
+        resolved('release', informant.release_text)
+      }
       break
     }
     case 'ChooseScenarioArmoryItem': {

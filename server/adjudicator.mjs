@@ -224,6 +224,19 @@ export class Adjudicator {
           proposed_commands: [{ command_type: 'ReceiveScenarioPurse', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.economyCoins]) }],
           confidence: 0.9,
         }
+      case 'scenario_informant':
+        // Осведомитель: раскрыт ли, место, одно решение и СЛ перевербовки
+        // проверяет Rules Engine.
+        return {
+          ...base,
+          rule_ids: intent.scenario_informant?.choice === 'turn' ? ruleIdsFor([RULE_IDS.abilityCheck]) : [],
+          proposed_commands: [{
+            command_type: 'ResolveScenarioInformant', actor_id: intent.actor_id,
+            informant_id: intent.scenario_informant?.informant_id, choice: intent.scenario_informant?.choice,
+            source_rule_ids: intent.scenario_informant?.choice === 'turn' ? ruleIdsFor([RULE_IDS.abilityCheck]) : [],
+          }],
+          confidence: 0.9,
+        }
       case 'scenario_armory':
         // Вещь из королевской оружейной: место, список и «одна на героя»
         // проверяет Rules Engine; без узнанной вещи движок честно откажет.
