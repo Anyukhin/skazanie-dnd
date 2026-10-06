@@ -268,7 +268,7 @@ test('обойдя места линий, отряд зовётся в лого�
     'astohan-mittlayd', 'astohan-quiet-watch-camp', 'astohan-smugglers-cave']
   const at = (visitedIds) => ({
     ...start,
-    scene: { ...start.scene, location: 'Миттлайд', location_id: 'astohan-mittlayd' },
+    scene: { ...start.scene, location: 'Митглайд', location_id: 'astohan-mittlayd' },
     adventure: {
       ...start.adventure,
       visitedLocationIds: ['astohan-stormberg', 'astohan-ash-watch', ...visitedIds],

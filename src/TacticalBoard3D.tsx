@@ -176,7 +176,7 @@ export default function TacticalBoard3D(props: Props) {
   })
   // Автоснижение качества: только пока игрок сам его не выбирал. Большая
   // нарисованная карта на «Обычном» тяжела для встроенной видеокарты
-  // (Миттлайд 84×70: ~12 кадров на Iris Xe против ~56 на «Экономном»).
+  // (Митглайд 84×70: ~12 кадров на Iris Xe против ~56 на «Экономном»).
   const autoQuality = useRef((() => { try { return localStorage.getItem(QUALITY_STORAGE_KEY) === null } catch { return false } })())
   const [qualityNote, setQualityNote] = useState('')
   const lowerQuality = useRef<(next: Board3DQuality) => void>(() => {})

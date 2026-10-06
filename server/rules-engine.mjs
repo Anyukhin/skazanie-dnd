@@ -252,7 +252,7 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_PURSE_COMMAND_TYPES,
@@ -21624,6 +21624,17 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       for (const follow of npcWorldEventsFrom(command, planBeastFollowDrafts(transitionedState))) {
         events.push(follow)
         transitionedState = applyGameEvent(transitionedState, follow)
+      }
+      // Собеседники сценария, которых нет в каталоге мира (комендант Гедрик,
+      // осведомители), входят в сцену до расстановки — тогда им найдётся пост.
+      for (const npc of scenarioLocationNpcs(transitionedState, String(transitionedState.scene?.location_id ?? ''))) {
+        if ((transitionedState.social?.npcs ?? []).some((existing) => existing.id === npc.id)) continue
+        const upsert = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...npc, location: transitionedState.scene?.location } }, transitionedState, { isDirector: true })
+        for (const socialEvent of npcSocialEvents(upsert, transitionedState)) {
+          const event = eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids)
+          events.push(event)
+          transitionedState = applyGameEvent(transitionedState, event)
+        }
       }
       events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(transitionedState)))
       // Закон встречает отряд на входе. Триггер детерминированный и считается по

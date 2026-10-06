@@ -204,6 +204,12 @@ function validateScenario(scenario) {
         invalid(`${scenario.id}/${id}: встреча вне словаря сборщика`)
       }
     }
+    for (const npc of Array.isArray(location.npcs) ? location.npcs : []) {
+      if (!ID_PATTERN.test(String(npc?.id ?? '')) || !clean(npc.name, 120) || !clean(npc.role, 120)
+        || clean(npc.summary, 600).length < 40 || !clean(npc.voice, 300) || !Array.isArray(npc.goals) || !npc.goals.length) {
+        invalid(`${scenario.id}/${id}: NPC сценария ${npc?.id} — id, имя, роль, облик, голос и цели`)
+      }
+    }
     for (const secret of Array.isArray(location.secrets) ? location.secrets : []) {
       const secretId = String(secret?.id ?? '')
       if (!ID_PATTERN.test(secretId) || clueIds.has(secretId)) invalid(`${scenario.id}/${id}: тайна ${secretId}`)
@@ -424,6 +430,37 @@ export function scenarioSceneArgs(state, sceneArgs) {
     objective: card.objective,
     hook: card.objective,
   }
+}
+
+/**
+ * NPC сценария в карточке места — собеседники, которых нет в каталоге мира
+ * (комендант Гедрик, осведомители): переход сцены ставит их в сцену, а свои
+ * тайны они знают по `holders`.
+ * @param {any} state
+ * @param {string} locationId
+ */
+export function scenarioLocationNpcs(state, locationId) {
+  const scenario = campaignScenario(state)
+  const card = scenario ? locationCard(scenario, clean(locationId, 120)) : null
+  if (!card) return []
+  return (card.npcs ?? []).map((/** @type {any} */ npc) => ({
+    id: String(npc.id),
+    name: clean(npc.name, 120),
+    role: clean(npc.role, 120),
+    location_id: card.location_id,
+    public_summary: clean(npc.summary, 600),
+    voice: clean(npc.voice, 300),
+    ...(npc.speech_profile ? { speech_profile: { ...npc.speech_profile } } : {}),
+    ...(npc.social_dcs ? { social_dcs: { ...npc.social_dcs } } : {}),
+    goals: npc.goals.map((/** @type {unknown} */ goal) => clean(goal, 200)),
+    beliefs: (npc.beliefs ?? []).map((/** @type {unknown} */ belief) => clean(belief, 200)),
+    known_fact_ids: scenarioClueFactIdsKnownBy(scenario, String(npc.id)),
+    visibility: 'party',
+    available: true,
+    tags: (npc.tags ?? []).map((/** @type {unknown} */ tag) => clean(tag, 40)),
+    schedule: [],
+    inventory: [],
+  }))
 }
 
 /**
@@ -888,7 +925,7 @@ export function scenarioDestinationIds(state = {}) {
   // Финал зовёт, когда закрыты две линии или когда в открытых линиях не
   // осталось мест, где отряд ещё не был: возвращаться за пропущенной уликой —
   // выбор стола, а не Режиссёра. Прогон Асстохана 2026-10-06 без этого
-  // правила тринадцать сцен ходил между Миттлайдом, лагерем, Редстоуновкой и
+  // правила тринадцать сцен ходил между Митглайдом, лагерем, Редстоуновкой и
   // башней и так и не дошёл до логова.
   const lineUnvisited = pending.filter((beat) => beat.kind === 'line')
     .flatMap((beat) => beat.location_ids)

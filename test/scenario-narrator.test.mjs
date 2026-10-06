@@ -96,3 +96,37 @@ test('справка проходит границу брифа Рассказч
   assert.equal(brief.known_environment.scenario.campaign, scenario.campaign)
   assert.equal(brief.known_environment.scenario.current_beat.title, scenario.current_beat.title)
 })
+
+test('собеседники сценария вне каталога мира — комендант Гедрик и осведомители — входят в сцену и знают свои тайны', async () => {
+  const { replayEvents } = await import('../server/rules-engine.mjs')
+  const initial = normalizeCampaignState(await new CampaignBootstrapper().create({ code: 'SCNPC', worldTemplateId: 'astohan-plains', players: [hero] }))
+  const scenario = campaignScenario(initial)
+  let state = initial
+  const events = []
+  const travel = async (destination) => {
+    for (let hop = 0; hop < 8 && scenarioLocationId(state) !== destination; hop += 1) {
+      const { sceneArgs } = await new SceneArchitectAgent().plan({ state, decision: 'В путь', destinationLocationId: destination })
+      const result = resolveCommands([{ command_id: `scnpc-${destination}-${hop}`, command_type: 'AdvanceScene', scene_args: sceneArgs }], state,
+        { diceService: fixedDice(10), context: { isAdmin: true } })
+      events.push(...result.events)
+      state = normalizeCampaignState(result.state)
+    }
+    assert.equal(scenarioLocationId(state), destination)
+  }
+  assert.equal(state.social.npcs.some((npc) => npc.id === 'astohan-gedrik'), false, 'до прихода отряда коменданта в мире нет')
+  for (const [destination, npcId, clue] of [
+    ['astohan-quiet-watch-camp', 'astohan-gedrik', 'camp-gedrik'],
+    ['astohan-redstone', 'astohan-toban', 'redstone-mill'],
+    ['astohan-mittlayd', 'astohan-lars', 'mittlayd-informant'],
+  ]) {
+    await travel(destination)
+    const npc = state.social.npcs.find((entry) => entry.id === npcId)
+    assert.ok(npc, `${npcId} в сцене`)
+    assert.ok(npc.known_fact_ids.includes(scenarioClueFactId(scenario, clue)), `${npcId} знает свою тайну`)
+    assert.ok(state.worldMemory.facts.some((fact) => fact.id === scenarioClueFactId(scenario, clue)), 'тайна записана при входе')
+  }
+  // Повторный визит не плодит двойников.
+  await travel('astohan-redstone')
+  assert.equal(state.social.npcs.filter((npc) => npc.id === 'astohan-toban').length, 1)
+  assert.deepEqual(replayEvents(initial, events).social.npcs.map((npc) => npc.id).sort(), state.social.npcs.map((npc) => npc.id).sort())
+})

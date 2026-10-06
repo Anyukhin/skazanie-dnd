@@ -14,7 +14,7 @@
   {"id": "scorched", "label": "Выжженная полоса", "kind": "exterior", "material": "earth", "lightLevel": "dim"},
   {"id": "forest-edge", "label": "Опушка Дикого леса", "kind": "exterior", "material": "grass", "lightLevel": "dim"},
   {"id": "forest-trail", "label": "Тропа в Дикий лес", "kind": "exterior", "material": "earth", "lightLevel": "dim"},
-  {"id": "mittlayd-road", "label": "Тракт на Миттлайд", "kind": "exterior", "material": "earth", "lightLevel": "bright"},
+  {"id": "mittlayd-road", "label": "Тракт на Митглайд", "kind": "exterior", "material": "earth", "lightLevel": "bright"},
   {"id": "fields", "label": "Огороды и пашня", "kind": "exterior", "material": "grass", "lightLevel": "bright"},
   {"id": "orchard", "label": "Яблоневый сад", "kind": "exterior", "material": "grass", "lightLevel": "bright"},
   {"id": "pasture", "label": "Пастбище", "kind": "exterior", "material": "grass", "lightLevel": "bright"},
