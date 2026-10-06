@@ -1154,6 +1154,28 @@ async function restIfHurt() {
   note(`- 💤 ${kind === 'long' ? 'долгий' : 'короткий'} отдых: ${after.players.map((player) => `${player.character} ${player.hp}/${player.maxHp}`).join(', ')}`)
 }
 
+/** Число переходов по дорогам глобальной карты между двумя местами (BFS). */
+function routeHops(map, from, to) {
+  if (from === to) return 0
+  const next = new Map()
+  for (const route of map?.routes ?? []) {
+    next.set(route.from, [...(next.get(route.from) ?? []), route.to])
+    next.set(route.to, [...(next.get(route.to) ?? []), route.from])
+  }
+  const seen = new Map([[from, 0]])
+  const queue = [from]
+  while (queue.length) {
+    const at = queue.shift()
+    for (const neighbour of next.get(at) ?? []) {
+      if (seen.has(neighbour)) continue
+      seen.set(neighbour, seen.get(at) + 1)
+      if (neighbour === to) return seen.get(neighbour)
+      queue.push(neighbour)
+    }
+  }
+  return Infinity
+}
+
 async function travelTo(locationId) {
   const state = await room()
   const map = state.worldMap
@@ -1167,6 +1189,14 @@ async function travelTo(locationId) {
   const after = await room()
   if (after.mechanics.combat?.active) await playCombat(`засада по дороге в «${target.name}»`)
   const arrived = await room()
+  // Дальнее место не соседнее: отряд идёт по дорогам с остановками, и каждое
+  // предложение пути — один переход. Остановка ближе к цели — это не провал.
+  const before = routeHops(map, current.id, target.id)
+  const now = routeHops(arrived.worldMap ?? map, arrived.worldMap?.currentLocationId, target.id)
+  if (arrived.worldMap?.currentLocationId !== target.id && now < before) {
+    note(`  по дороге в «${target.name}»: остановка «${arrived.scene?.location}», осталось переходов: ${now}`)
+    return false
+  }
   if (arrived.worldMap?.currentLocationId !== target.id) {
     finding('major', 'travel-failed', `после предложения пути отряд в «${arrived.worldMap?.currentLocationId}», а не в «${target.id}» (сцена «${arrived.scene?.location}»)`)
     return false

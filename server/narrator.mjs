@@ -1874,6 +1874,8 @@ function qualitativeEventSummary(event, resolveName) {
       return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
     case 'ScenarioPurseGranted':
       return `Казначей отсчитывает ${named(payload.hero_id || (event?.target_ids ?? [])[0], 'герою')} кошель короля — ${Number(payload.gold) || 0} золотых`
+    case 'ScenarioArmoryItemChosen':
+      return `Оружейник короля снимает со стойки «${sceneText(payload.item_name, 120) || 'вещь'}» и вручает её ${named(payload.hero_id || (event?.target_ids ?? [])[0], 'герою')}`
     case 'ScenarioTreatyConcluded':
     case 'ScenarioTreatyRefused':
     case 'ScenarioKnightHeadReturned':

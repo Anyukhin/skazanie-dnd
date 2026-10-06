@@ -224,6 +224,15 @@ export class Adjudicator {
           proposed_commands: [{ command_type: 'ReceiveScenarioPurse', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.economyCoins]) }],
           confidence: 0.9,
         }
+      case 'scenario_armory':
+        // Вещь из королевской оружейной: место, список и «одна на героя»
+        // проверяет Rules Engine; без узнанной вещи движок честно откажет.
+        return {
+          ...base,
+          rule_ids: [],
+          proposed_commands: [{ command_type: 'ChooseScenarioArmoryItem', actor_id: intent.actor_id, catalog_id: intent.scenario_armory?.catalog_id ?? null, source_rule_ids: [] }],
+          confidence: 0.9,
+        }
       case 'scenario_treaty':
         // Договор с главным противником финала: правду, место, ранение, СЛ
         // и одну попытку на героя проверяет Rules Engine.

@@ -1,6 +1,8 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
 import { scenarioKnightActionFromText } from './scenario-knight.mjs'
-import { scenarioPurseActionFromText, scenarioTreatyActionFromText } from './scenario-attention.mjs'
+import { scenarioArmoryActionFromText, scenarioPurseActionFromText, scenarioTreatyActionFromText } from './scenario-attention.mjs'
+import { scenarioArmoryRules } from './campaign-scenario.mjs'
+import { catalogItem } from './item-catalog.mjs'
 import { announcesMovement } from './party-exit-intent.mjs'
 
 const CORPSE_SEARCH_VERB = '(?<![\\p{L}\\p{M}])(?:обыск\\p{L}*|провер\\p{L}*|осматр\\p{L}*|ищ\\p{L}*)'
@@ -489,9 +491,16 @@ export class IntentParser {
     // Договор с драконом финала — тоже своя команда сценария, а не реплика.
     const treatyAction = knightAction ? null : scenarioTreatyActionFromText(operativeText, visibleState)
     const purseAction = knightAction || treatyAction ? null : scenarioPurseActionFromText(operativeText)
+    // Вещь из королевской оружейной: названия берутся из каталога, чтобы
+    // «беру плащ защиты из оружейной» узнал именно плащ.
+    const armoryChoices = (scenarioArmoryRules(visibleState)?.catalog_ids ?? [])
+      .map((catalogId) => ({ catalog_id: catalogId, name: String(catalogItem(catalogId)?.name ?? '') }))
+      .filter((choice) => choice.name)
+    const armoryAction = knightAction || treatyAction || purseAction || !armoryChoices.length ? null : scenarioArmoryActionFromText(operativeText, armoryChoices)
     const detectedIntent = knightAction ? 'scenario_knight'
       : treatyAction ? 'scenario_treaty'
       : purseAction ? 'scenario_purse'
+      : armoryAction ? 'scenario_armory'
       : spoken ? 'social'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
@@ -540,6 +549,7 @@ export class IntentParser {
       confidence: intent === 'improvised_action' ? 0.45 : missing.length ? 0.55 : 0.86,
       free_action_kind: freeActionKind,
       ...(knightAction ? { scenario_knight: knightAction } : {}),
+      ...(armoryAction ? { scenario_armory: armoryAction } : {}),
       ...( /нелеталь|не\s+убив|не\s+убива|без\s+убийств/iu.test(text) || /оглуш|нокаут/iu.test(operativeText) ? { knock_out: true } : {}),
       ...(ambiguousSocialTarget ? {
         target_candidates: socialTargets.map((actor) => ({

@@ -252,11 +252,14 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, scenarioArmoryRules, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_PURSE_COMMAND_TYPES,
   SCENARIO_PURSE_EVENT,
+  SCENARIO_ARMORY_COMMAND_TYPES,
+  SCENARIO_ARMORY_EVENT,
+  SCENARIO_ARMORY_POLICY_ID,
   SCENARIO_TREATY_COMMAND_TYPES,
   SCENARIO_TREATY_CONCLUDED_EVENT,
   SCENARIO_TREATY_REFUSED_EVENT,
@@ -862,6 +865,8 @@ const COMMAND_RULES = Object.freeze({
   NegotiateScenarioTreaty: [RULE_IDS.abilityCheck],
   // Кошель короля: монета в кошельке героя — ось экономики.
   ReceiveScenarioPurse: [RULE_IDS.economyCoins],
+  // Оружейная короля: подарок сценария, правило 5e тут не участвует.
+  ChooseScenarioArmoryItem: [],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
@@ -905,6 +910,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...SCENARIO_KNIGHT_COMMAND_TYPES,
   ...SCENARIO_TREATY_COMMAND_TYPES,
   ...SCENARIO_PURSE_COMMAND_TYPES,
+  ...SCENARIO_ARMORY_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
@@ -4389,6 +4395,15 @@ function normalizeCommand(input, state) {
     command.target_ids = []
     delete command.amount
   }
+  if (SCENARIO_ARMORY_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса — герой и выбранная вещь; саму вещь собирает сервер.
+    command.target_id = null
+    command.target_ids = []
+    command.catalog_id = String(command.catalog_id ?? '').slice(0, 120)
+    delete command.armory_item
+    // Подарок сценария, а не правило редакции: провенанс — политика проекта.
+    command.house_rule_id = SCENARIO_ARMORY_POLICY_ID
+  }
   if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса — только герой: противник, навык и СЛ — из данных сценария.
     command.target_id = null
@@ -4576,7 +4591,7 @@ function needsActor(type) {
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer', 'AttackNpc',
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
-    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty', 'ReceiveScenarioPurse',
+    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty', 'ReceiveScenarioPurse', 'ChooseScenarioArmoryItem',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -6164,6 +6179,29 @@ export function validateCommand(input, rawState, context = {}) {
     if ((state.scenario_attention?.purse_paid ?? []).map(String).includes(String(command.actor_id))) {
       throw new RulesValidationError('Этот герой уже получил кошель короля', 'SCENARIO_PURSE_ALREADY_PAID')
     }
+    command.visibility = 'party'
+  }
+  if (SCENARIO_ARMORY_COMMAND_TYPES.has(command.command_type)) {
+    // Королевская оружейная (`docs/astohan-scenario.md`, пролог): одна вещь
+    // на героя из списка сценария, в месте выдачи, вне боя.
+    const rules = scenarioArmoryRules(state)
+    if (!rules) throw new RulesValidationError('В этой кампании королевской оружейной нет', 'SCENARIO_ARMORY_ABSENT')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Вещь из оружейной получает герой отряда', 'ACTOR_FORBIDDEN')
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя оружейная закрыта', 'SCENARIO_ARMORY_DURING_COMBAT')
+    if (scenarioLocationId(state) !== rules.location_id) throw new RulesValidationError('Королевская оружейная — при дворе, в Штормберге', 'SCENARIO_ARMORY_WRONG_PLACE')
+    if ((state.scenario_attention?.armory_taken ?? []).map(String).includes(String(command.actor_id))) {
+      throw new RulesValidationError('Этот герой уже выбрал вещь в оружейной', 'SCENARIO_ARMORY_ALREADY_TAKEN')
+    }
+    if (!rules.catalog_ids.includes(command.catalog_id)) {
+      const names = rules.catalog_ids.map((id) => catalogItem(id)?.name).filter(Boolean).join(', ')
+      throw new RulesValidationError(`Назовите вещь из оружейной: ${names}`, 'SCENARIO_ARMORY_ITEM_UNKNOWN')
+    }
+    command.armory_item = normalizeInventoryItem(
+      materializeCatalogItem(command.catalog_id, { quantity: 1, origin: 'gifted' }),
+      { idFallback: `armory:${command.command_id}`, preserveUnknown: true },
+    )
+    command.armory_item.origin = 'gifted'
     command.visibility = 'party'
   }
   if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
@@ -19804,6 +19842,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const after = copperToCurrency(Math.min(MAX_CURRENCY_CP, currencyToCopper(before) + gold * 100))
       events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), SCENARIO_PURSE_EVENT, {
         schema_version: 1, hero_id: command.actor_id, roll_total: roll.total, gold, currency_before: before, currency_after: after,
+      }, [command.actor_id]))
+      break
+    }
+    case 'ChooseScenarioArmoryItem': {
+      events.push(itemGrantedEventFrom(command, { item: clone(command.armory_item) }, [command.actor_id]))
+      events.push(eventFrom(command, SCENARIO_ARMORY_EVENT, {
+        schema_version: 1, hero_id: command.actor_id, catalog_id: command.catalog_id, item_name: command.armory_item.name,
       }, [command.actor_id]))
       break
     }

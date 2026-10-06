@@ -258,6 +258,12 @@ function validateScenario(scenario) {
       || !Number.isSafeInteger(purse.gold_per_point) || purse.gold_per_point < 1 || purse.gold_per_point > 1_000)) {
       invalid(`${scenario.id}/progression.purse: место, кости и золото за очко`)
     }
+    const armory = progression.armory
+    if (armory != null && (!locationIds.has(armory.location_id) || !Array.isArray(armory.catalog_ids)
+      || armory.catalog_ids.length < 2 || armory.catalog_ids.length > 12
+      || armory.catalog_ids.some((/** @type {unknown} */ id) => !ID_PATTERN.test(String(id ?? '').replace(/^[a-z0-9_]+:/u, ''))))) {
+      invalid(`${scenario.id}/progression.armory: место и от 2 до 12 вещей каталога`)
+    }
   }
   if (beats.filter((/** @type {any} */ beat) => beat.kind === 'finale').length !== 1) invalid(`${scenario.id}: финал должен быть ровно один`)
   if (beats[0]?.kind !== 'prologue') invalid(`${scenario.id}: первый узел — пролог`)
@@ -557,6 +563,12 @@ export function scenarioMilestoneLevel(state) {
 export function scenarioPurseRules(state) {
   const purse = campaignScenario(state)?.progression?.purse
   return purse ? { location_id: String(purse.location_id), dice: String(purse.dice), gold_per_point: Number(purse.gold_per_point) } : null
+}
+
+/** Королевская оружейная сценария: где выбирают и из чего. @param {any} state */
+export function scenarioArmoryRules(state) {
+  const armory = campaignScenario(state)?.progression?.armory
+  return armory ? { location_id: String(armory.location_id), catalog_ids: armory.catalog_ids.map(String) } : null
 }
 
 /** Узел финала сценария. @param {any} scenario */

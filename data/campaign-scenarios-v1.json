@@ -14,7 +14,7 @@
           "title": "Штормберг",
           "mood": "Ветер с моря, военные карты и невысказанная вина",
           "arrival": "Морская столица встречает отряд колоколами гавани: здесь короля Ареса ждут новостей о драконе.",
-          "objective": "Получить кошель короля («берём кошель короля»), а когда правда о походе на Вулканиса будет собрана — сверить её с архивом Орена Фаля и потребовать ответа у короля",
+          "objective": "Получить кошель короля («берём кошель короля») и выбрать по вещи в королевской оружейной («беру плащ защиты из оружейной»), а когда правда о походе на Вулканиса будет собрана — сверить её с архивом Орена Фаля и потребовать ответа у короля",
           "secrets": [
             {
               "id": "stormberg-journal-page",
@@ -370,7 +370,8 @@
         "start_level": 7,
         "levels_per_line": 1,
         "max_level": 10,
-        "purse": { "location_id": "astohan-stormberg", "dice": "1d20", "gold_per_point": 100 }
+        "purse": { "location_id": "astohan-stormberg", "dice": "1d20", "gold_per_point": 100 },
+        "armory": { "location_id": "astohan-stormberg", "catalog_ids": ["srd_5_2_1:longsword-plus-1", "srd_5_2_1:cloak-of-protection", "srd_5_2_1:brooch-of-shielding", "srd_5_2_1:adamantine-chain-mail", "srd_5_2_1:weapon-of-warning-longsword"] }
       },
       "attention": {
         "maximum": 6,

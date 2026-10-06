@@ -45,6 +45,11 @@ export const SCENARIO_TREATY_REFUSED_EVENT = 'ScenarioTreatyRefused'
 /** Кошель короля: раз на героя, в месте выдачи (`ReceiveScenarioPurse`). */
 export const SCENARIO_PURSE_COMMAND_TYPES = Object.freeze(new Set(['ReceiveScenarioPurse']))
 export const SCENARIO_PURSE_EVENT = 'ScenarioPurseGranted'
+/** Королевская оружейная: одна вещь на героя (`ChooseScenarioArmoryItem`). */
+export const SCENARIO_ARMORY_COMMAND_TYPES = Object.freeze(new Set(['ChooseScenarioArmoryItem']))
+export const SCENARIO_ARMORY_EVENT = 'ScenarioArmoryItemChosen'
+/** Провенанс подарка: редакция стартовых вещей сценария не описывает. */
+export const SCENARIO_ARMORY_POLICY_ID = 'skazanie:scenario-armory-v1'
 export const SCENARIO_STRANGER_STAGES = Object.freeze(['arrive', 'reveal'])
 /** Событие шага сцены незнакомца; стадия в нём — уже свершившаяся. */
 export const SCENARIO_STRANGER_EVENT = 'ScenarioStrangerStaged'
@@ -66,7 +71,7 @@ const integer = (/** @type {unknown} */ value, fallback = 0) => {
  * @typedef {{ delta: number, value: number, reason: string, location_id: string, event_id: string }} AttentionChange
  * @typedef {{ stage: 'none' | 'arrived' | 'revealed', location_id: string, party_acted: boolean }} StrangerState
  * @typedef {{ concluded: boolean, concluded_by: string, attempts: string[] }} TreatyState
- * @typedef {{ schema_version: number, value: number, visit: number, counted: string[], history: AttentionChange[], stranger: StrangerState, treaty: TreatyState, purse_paid: string[] }} ScenarioAttentionState
+ * @typedef {{ schema_version: number, value: number, visit: number, counted: string[], history: AttentionChange[], stranger: StrangerState, treaty: TreatyState, purse_paid: string[], armory_taken: string[] }} ScenarioAttentionState
  */
 
 /**
@@ -103,6 +108,7 @@ export function normalizeScenarioAttentionState(input = {}) {
     },
     // Герои, уже получившие кошель короля.
     purse_paid: (Array.isArray(value.purse_paid) ? value.purse_paid : []).map((/** @type {unknown} */ id) => clean(id, 120)).filter(Boolean).slice(-COUNTED_LIMIT),
+    armory_taken: (Array.isArray(value.armory_taken) ? value.armory_taken : []).map((/** @type {unknown} */ id) => clean(id, 120)).filter(Boolean).slice(-COUNTED_LIMIT),
   }
 }
 
@@ -158,6 +164,10 @@ export function applyScenarioAttentionEvent(ledgerInput, event, state) {
   if (eventType === SCENARIO_PURSE_EVENT) {
     const heroId = clean(event.payload?.hero_id ?? event.actor_id, 120)
     return heroId ? { ...ledger, purse_paid: [...new Set([...ledger.purse_paid, heroId])].slice(-COUNTED_LIMIT) } : ledger
+  }
+  if (eventType === SCENARIO_ARMORY_EVENT) {
+    const heroId = clean(event.payload?.hero_id ?? event.actor_id, 120)
+    return heroId ? { ...ledger, armory_taken: [...new Set([...ledger.armory_taken, heroId])].slice(-COUNTED_LIMIT) } : ledger
   }
   if (eventType === SCENARIO_TREATY_CONCLUDED_EVENT || eventType === SCENARIO_TREATY_REFUSED_EVENT) {
     return eventType === SCENARIO_TREATY_CONCLUDED_EVENT
@@ -381,6 +391,34 @@ export function scenarioTreatyActionFromText(value, state = null) {
 }
 
 const PURSE_PATTERN = /(?<![\p{L}\p{M}])(?:кошел\p{L}*|кошёл\p{L}*|жалованье|жалование|плат[аыу]|золото)(?![\p{L}\p{M}])[^.!?]{0,40}(?:корол|арес|казн)|(?:корол|арес|казн)\p{L}*[^.!?]{0,40}(?<![\p{L}\p{M}])(?:кошел\p{L}*|кошёл\p{L}*)/iu
+
+const ARMORY_PLACE = /(?<![\p{L}\p{M}])(?:оружейн\p{L}*|арсенал\p{L}*|кладов\p{L}*\s+корол\p{L}*)/iu
+const ARMORY_TAKE = /(?<![\p{L}\p{M}])(?:бер[уём]\p{L}*|возьм\p{L}*|выбира\p{L}*|выбер\p{L}*|забира\p{L}*|забер\p{L}*|взять|получ\p{L}*)(?![\p{L}\p{M}])/iu
+
+/**
+ * Основы слов названия вещи: «плащ защиты» → «плащ», «защит».
+ * @param {unknown} name
+ */
+function nameStems(name) {
+  return clean(name, 160).toLocaleLowerCase('ru').replace(/ё/gu, 'е').replace(/\+\d/gu, ' ')
+    .split(/[^\p{L}\d]+/u).filter((word) => word.length >= 3).map((word) => word.slice(0, Math.max(3, word.length - 2)))
+}
+
+/**
+ * «Беру плащ защиты из оружейной» — выбрать вещь в королевской оружейной.
+ * Узнаёт вещь по словам её названия; место, «раз на героя» и сам список
+ * проверяет Rules Engine (`ChooseScenarioArmoryItem`).
+ * @param {unknown} value
+ * @param {Array<{ catalog_id: string, name: string }>} choices
+ */
+export function scenarioArmoryActionFromText(value, choices = []) {
+  const text = clean(value, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  if (!text || !ARMORY_PLACE.test(text) || !ARMORY_TAKE.test(text)) return null
+  const scored = choices.map((choice) => ({ choice, hits: nameStems(choice.name).filter((stem) => text.includes(stem)).length, size: nameStems(choice.name).length }))
+    .filter((entry) => entry.hits > 0)
+    .sort((left, right) => right.hits / right.size - left.hits / left.size || right.hits - left.hits)
+  return { action: 'armory', catalog_id: scored[0]?.choice.catalog_id ?? null }
+}
 
 /**
  * «Берём кошель короля» — получить жалованье от короля в начале похода.
