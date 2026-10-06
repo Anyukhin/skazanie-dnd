@@ -247,6 +247,18 @@ function validateScenario(scenario) {
   }
   if (scenario.attention != null) validateAttention(scenario.attention, scenario.id, locationIds)
   if (scenario.knight != null) validateKnight(scenario.knight, scenario.id, locationIds)
+  if (scenario.progression != null) {
+    const progression = scenario.progression
+    const levels = [progression.start_level, progression.levels_per_line, progression.max_level]
+    if (!levels.every((value) => Number.isSafeInteger(value) && value >= 1 && value <= 20) || progression.start_level > progression.max_level) {
+      invalid(`${scenario.id}/progression: уровни — целые 1–20, старт не выше потолка`)
+    }
+    const purse = progression.purse
+    if (purse != null && (!locationIds.has(purse.location_id) || !/^\d{1,2}d(4|6|8|10|12|20)$/u.test(String(purse.dice ?? ''))
+      || !Number.isSafeInteger(purse.gold_per_point) || purse.gold_per_point < 1 || purse.gold_per_point > 1_000)) {
+      invalid(`${scenario.id}/progression.purse: место, кости и золото за очко`)
+    }
+  }
   if (beats.filter((/** @type {any} */ beat) => beat.kind === 'finale').length !== 1) invalid(`${scenario.id}: финал должен быть ровно один`)
   if (beats[0]?.kind !== 'prologue') invalid(`${scenario.id}: первый узел — пролог`)
   const endings = Array.isArray(scenario.endings) ? scenario.endings : invalid(`${scenario.id}: endings`)
@@ -526,6 +538,25 @@ function conditionMet(condition, facts) {
   if (condition?.visited) return facts.visited.has(condition.visited)
   if (condition?.npc_defeated) return npcDefeated(facts.state, condition.npc_defeated)
   return false
+}
+
+/**
+ * Уровень героев по сюжету: старт плюс по уровню за каждую пройденную линию,
+ * не выше потолка (Асстохан: 7 → 10). `null` — у сценария нет вех уровня.
+ * @param {any} state
+ */
+export function scenarioMilestoneLevel(state) {
+  const scenario = campaignScenario(state)
+  const progression = scenario?.progression
+  const progress = scenarioProgress(state)
+  if (!progression || !progress) return null
+  return Math.min(progression.max_level, progression.start_level + progression.levels_per_line * progress.lines_completed)
+}
+
+/** Кошель короля сценария: где выдают и сколько. @param {any} state */
+export function scenarioPurseRules(state) {
+  const purse = campaignScenario(state)?.progression?.purse
+  return purse ? { location_id: String(purse.location_id), dice: String(purse.dice), gold_per_point: Number(purse.gold_per_point) } : null
 }
 
 /** Узел финала сценария. @param {any} scenario */

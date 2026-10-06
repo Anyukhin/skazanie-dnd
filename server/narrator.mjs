@@ -1872,6 +1872,8 @@ function qualitativeEventSummary(event, resolveName) {
       return worldClockNarration(event).replace(/[.!?]+$/u, '')
     case 'SocialSceneOpened':
       return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
+    case 'ScenarioPurseGranted':
+      return `Казначей отсчитывает ${named(payload.hero_id || (event?.target_ids ?? [])[0], 'герою')} кошель короля — ${Number(payload.gold) || 0} золотых`
     case 'ScenarioTreatyConcluded':
     case 'ScenarioTreatyRefused':
     case 'ScenarioKnightHeadReturned':

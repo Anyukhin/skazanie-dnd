@@ -1,6 +1,6 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
 import { scenarioKnightActionFromText } from './scenario-knight.mjs'
-import { scenarioTreatyActionFromText } from './scenario-attention.mjs'
+import { scenarioPurseActionFromText, scenarioTreatyActionFromText } from './scenario-attention.mjs'
 import { announcesMovement } from './party-exit-intent.mjs'
 
 const CORPSE_SEARCH_VERB = '(?<![\\p{L}\\p{M}])(?:обыск\\p{L}*|провер\\p{L}*|осматр\\p{L}*|ищ\\p{L}*)'
@@ -488,8 +488,10 @@ export class IntentParser {
     const knightAction = scenarioKnightActionFromText(operativeText)
     // Договор с драконом финала — тоже своя команда сценария, а не реплика.
     const treatyAction = knightAction ? null : scenarioTreatyActionFromText(operativeText, visibleState)
+    const purseAction = knightAction || treatyAction ? null : scenarioPurseActionFromText(operativeText)
     const detectedIntent = knightAction ? 'scenario_knight'
       : treatyAction ? 'scenario_treaty'
+      : purseAction ? 'scenario_purse'
       : spoken ? 'social'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'

@@ -42,6 +42,9 @@ export const SCENARIO_COMMAND_TYPES = Object.freeze(new Set(['StageScenarioStran
 export const SCENARIO_TREATY_COMMAND_TYPES = Object.freeze(new Set(['NegotiateScenarioTreaty']))
 export const SCENARIO_TREATY_CONCLUDED_EVENT = 'ScenarioTreatyConcluded'
 export const SCENARIO_TREATY_REFUSED_EVENT = 'ScenarioTreatyRefused'
+/** Кошель короля: раз на героя, в месте выдачи (`ReceiveScenarioPurse`). */
+export const SCENARIO_PURSE_COMMAND_TYPES = Object.freeze(new Set(['ReceiveScenarioPurse']))
+export const SCENARIO_PURSE_EVENT = 'ScenarioPurseGranted'
 export const SCENARIO_STRANGER_STAGES = Object.freeze(['arrive', 'reveal'])
 /** Событие шага сцены незнакомца; стадия в нём — уже свершившаяся. */
 export const SCENARIO_STRANGER_EVENT = 'ScenarioStrangerStaged'
@@ -63,7 +66,7 @@ const integer = (/** @type {unknown} */ value, fallback = 0) => {
  * @typedef {{ delta: number, value: number, reason: string, location_id: string, event_id: string }} AttentionChange
  * @typedef {{ stage: 'none' | 'arrived' | 'revealed', location_id: string, party_acted: boolean }} StrangerState
  * @typedef {{ concluded: boolean, concluded_by: string, attempts: string[] }} TreatyState
- * @typedef {{ schema_version: number, value: number, visit: number, counted: string[], history: AttentionChange[], stranger: StrangerState, treaty: TreatyState }} ScenarioAttentionState
+ * @typedef {{ schema_version: number, value: number, visit: number, counted: string[], history: AttentionChange[], stranger: StrangerState, treaty: TreatyState, purse_paid: string[] }} ScenarioAttentionState
  */
 
 /**
@@ -98,6 +101,8 @@ export function normalizeScenarioAttentionState(input = {}) {
       concluded_by: clean(value.treaty?.concluded_by, 120),
       attempts: (Array.isArray(value.treaty?.attempts) ? value.treaty.attempts : []).map((/** @type {unknown} */ id) => clean(id, 120)).filter(Boolean).slice(-COUNTED_LIMIT),
     },
+    // Герои, уже получившие кошель короля.
+    purse_paid: (Array.isArray(value.purse_paid) ? value.purse_paid : []).map((/** @type {unknown} */ id) => clean(id, 120)).filter(Boolean).slice(-COUNTED_LIMIT),
   }
 }
 
@@ -150,6 +155,10 @@ export function applyScenarioAttentionEvent(ledgerInput, event, state) {
   if (!event) return ledger
   // Договор — часть финала, а не внимания: сворачивается и без счётчика.
   const eventType = String(event.event_type ?? '')
+  if (eventType === SCENARIO_PURSE_EVENT) {
+    const heroId = clean(event.payload?.hero_id ?? event.actor_id, 120)
+    return heroId ? { ...ledger, purse_paid: [...new Set([...ledger.purse_paid, heroId])].slice(-COUNTED_LIMIT) } : ledger
+  }
   if (eventType === SCENARIO_TREATY_CONCLUDED_EVENT || eventType === SCENARIO_TREATY_REFUSED_EVENT) {
     return eventType === SCENARIO_TREATY_CONCLUDED_EVENT
       ? { ...ledger, treaty: { ...ledger.treaty, concluded: true, concluded_by: clean(event.actor_id, 120) } }
@@ -369,4 +378,16 @@ export function scenarioTreatyActionFromText(value, state = null) {
   const text = clean(value, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
   // Порядок слов не важен: «предлагаю Саргату договор» и «договор с драконом».
   return text && TREATY_WORDS.test(text) && TREATY_PARTNER.test(text) ? { action: 'treaty' } : null
+}
+
+const PURSE_PATTERN = /(?<![\p{L}\p{M}])(?:кошел\p{L}*|кошёл\p{L}*|жалованье|жалование|плат[аыу]|золото)(?![\p{L}\p{M}])[^.!?]{0,40}(?:корол|арес|казн)|(?:корол|арес|казн)\p{L}*[^.!?]{0,40}(?<![\p{L}\p{M}])(?:кошел\p{L}*|кошёл\p{L}*)/iu
+
+/**
+ * «Берём кошель короля» — получить жалованье от короля в начале похода.
+ * Место и «раз на героя» проверяет Rules Engine (`ReceiveScenarioPurse`).
+ * @param {unknown} value
+ */
+export function scenarioPurseActionFromText(value) {
+  const text = clean(value, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  return text && PURSE_PATTERN.test(text) ? { action: 'purse' } : null
 }

@@ -252,9 +252,11 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioProgress, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
+  SCENARIO_PURSE_COMMAND_TYPES,
+  SCENARIO_PURSE_EVENT,
   SCENARIO_TREATY_COMMAND_TYPES,
   SCENARIO_TREATY_CONCLUDED_EVENT,
   SCENARIO_TREATY_REFUSED_EVENT,
@@ -492,6 +494,7 @@ import {
   characterImportEvent,
   classResourcePlan,
   deriveCharacterSheet,
+  experienceForLevel,
   levelUpEvent,
   proficiencyBonusForLevel,
   validateCharacterImportCommand,
@@ -857,6 +860,8 @@ const COMMAND_RULES = Object.freeze({
   ReleaseCursedKnight: [RULE_IDS.abilityCheck],
   // Договор с главным противником финала: проверка навыка против СЛ сценария.
   NegotiateScenarioTreaty: [RULE_IDS.abilityCheck],
+  // Кошель короля: монета в кошельке героя — ось экономики.
+  ReceiveScenarioPurse: [RULE_IDS.economyCoins],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
@@ -899,6 +904,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...SCENARIO_COMMAND_TYPES,
   ...SCENARIO_KNIGHT_COMMAND_TYPES,
   ...SCENARIO_TREATY_COMMAND_TYPES,
+  ...SCENARIO_PURSE_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
@@ -4377,6 +4383,12 @@ function normalizeCommand(input, state) {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
     delete command.npcId
   }
+  if (SCENARIO_PURSE_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса — только герой: кости и сумма — из данных сценария.
+    command.target_id = null
+    command.target_ids = []
+    delete command.amount
+  }
   if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса — только герой: противник, навык и СЛ — из данных сценария.
     command.target_id = null
@@ -4563,7 +4575,7 @@ function needsActor(type) {
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer', 'AttackNpc',
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
-    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty',
+    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty', 'ReceiveScenarioPurse',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -6127,6 +6139,20 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('На выпивку не хватает монет', 'INSUFFICIENT_FUNDS')
       }
     }
+  }
+  if (SCENARIO_PURSE_COMMAND_TYPES.has(command.command_type)) {
+    // Кошель короля (`docs/astohan-scenario.md`, пролог): раз на героя, в
+    // месте выдачи, вне боя.
+    const rules = scenarioPurseRules(state)
+    if (!rules) throw new RulesValidationError('В этой кампании кошеля от короля нет', 'SCENARIO_PURSE_ABSENT')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Кошель получает герой отряда', 'ACTOR_FORBIDDEN')
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя кошелей не раздают', 'SCENARIO_PURSE_DURING_COMBAT')
+    if (scenarioLocationId(state) !== rules.location_id) throw new RulesValidationError('Кошель выдают в королевской казне, при дворе', 'SCENARIO_PURSE_WRONG_PLACE')
+    if ((state.scenario_attention?.purse_paid ?? []).map(String).includes(String(command.actor_id))) {
+      throw new RulesValidationError('Этот герой уже получил кошель короля', 'SCENARIO_PURSE_ALREADY_PAID')
+    }
+    command.visibility = 'party'
   }
   if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
     // Договор с главным противником финала (`docs/astohan-scenario.md`,
@@ -19720,6 +19746,20 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       break
     }
+    case 'ReceiveScenarioPurse': {
+      const rules = scenarioPurseRules(state)
+      const roll = diceService.roll(rules.dice, 'scenario-purse', command.actor_id, command.visibility ?? 'party')
+      rolls.push(roll)
+      events.push(eventFrom(command, 'DieRolled', roll, []))
+      const gold = Math.max(0, safeInteger(roll.total, 0)) * rules.gold_per_point
+      const hero = playerActor(state, command.actor_id)
+      const before = normalizeCurrency(hero?.currency)
+      const after = copperToCurrency(Math.min(MAX_CURRENCY_CP, currencyToCopper(before) + gold * 100))
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), SCENARIO_PURSE_EVENT, {
+        schema_version: 1, hero_id: command.actor_id, roll_total: roll.total, gold, currency_before: before, currency_after: after,
+      }, [command.actor_id]))
+      break
+    }
     case 'NegotiateScenarioTreaty': {
       const rules = scenarioTreatyRules(state)
       const check = resolveCommandInternal({
@@ -22282,6 +22322,26 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     const story = campaignStoryCompletionDraft(state, resolvedEvents)
     if (story) resolvedEvents.push(eventFrom({ ...command, visibility: story.visibility }, story.event_type, story.payload, story.target_ids))
+    // Уровни за линии сценария (Асстохан: 7 → 10). Линия закрылась этой
+    // командой — каждый герой отряда получает опыт ровно до порога уровня по
+    // сюжету; кто уже выше благодаря боям, ничего не теряет и не получает.
+    // Повысить уровень герой решает сам — обычной командой LevelUp.
+    const levelBefore = scenarioMilestoneLevel(state)
+    if (levelBefore != null) {
+      const levelAfter = scenarioMilestoneLevel(projectEvents(resolvedEvents))
+      if (levelAfter != null && levelAfter > levelBefore) {
+        const projected = projectEvents(resolvedEvents)
+        for (const heroId of uniqueStrings(projected.partyMemberIds ?? [])) {
+          const hero = playerActor(projected, heroId)
+          if (!hero) continue
+          const needed = experienceForLevel(levelAfter) - Math.max(0, safeInteger(hero.experience, 0))
+          if (needed <= 0) continue
+          resolvedEvents.push(eventFrom({ ...command, actor_id: null, visibility: 'party' }, 'ExperienceAwarded', {
+            total_xp: needed, recipients: [heroId], reason: 'scenario-line', target_level: levelAfter,
+          }, [heroId]))
+        }
+      }
+    }
   }
   return { command, events: resolvedEvents, rolls }
 }
@@ -24938,6 +24998,17 @@ function applyGameEventCurrent(rawState, event) {
         state.mechanics.conditions[beastActorId] = (state.mechanics.conditions[beastActorId] ?? [])
           .filter((condition) => !['fled', 'surrendered', 'morale-tested'].includes(String(condition?.id ?? condition)))
         appendBattleLog(state, event, { type: 'beast-tamed', actorId: beastActorId, reason: String(payload.diet ?? 'predator') })
+      }
+      break
+    }
+    case 'ScenarioPurseGranted': {
+      // Кошель короля: монета в кошельке героя; «раз на героя» — в реестре
+      // сценария, который сворачивается ниже.
+      const recipient = String(payload.hero_id ?? event.actor_id ?? '')
+      if (recipient && payload.currency_after) {
+        state.players = state.players.map((player) => actorId(player) === recipient
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player)
       }
       break
     }
