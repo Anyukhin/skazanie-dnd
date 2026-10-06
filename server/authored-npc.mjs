@@ -2,6 +2,7 @@ import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { NPC_PORTRAIT_CHARACTER_ASSETS } from './npc-portraits.mjs'
 import { legendaryProfileFor } from './legendary-actions.mjs'
 import { footprintMetadataForSize } from './actor-footprint.mjs'
+import { monsterAreaAction } from './monster-actions.mjs'
 
 export const AUTHORED_NPC_MECHANICS_STATUSES = Object.freeze(['verified', 'partial', 'ruling-only'])
 
@@ -215,7 +216,7 @@ function normalizeLegendary(value, path) {
     exactFields(action, new Set([
       'id', 'name', 'cost', 'kind', 'attack_modifier', 'damage_expression',
       'damage_type', 'range_feet', 'save_ability', 'save_dc', 'half_on_save',
-      'condition', 'radius_feet', 'cooldown_turns',
+      'condition', 'radius_feet', 'cooldown_turns', 'area_shape',
     ]), actionPath)
     const kind = enumValue(action.kind, new Set(['attack', 'save']), `${actionPath}.kind`)
     const damageExpression = action.damage_expression == null ? null : clean(action.damage_expression, 40)
@@ -234,6 +235,7 @@ function normalizeLegendary(value, path) {
         save_dc: integer(action.save_dc, `${actionPath}.save_dc`, 5, 30),
         half_on_save: action.half_on_save === true,
         radius_feet: integer(action.radius_feet, `${actionPath}.radius_feet`, 0, 120),
+        ...(action.area_shape == null ? {} : { area_shape: enumValue(action.area_shape, new Set(['sphere', 'cone']), `${actionPath}.area_shape`) }),
         ...(action.condition == null ? {} : { condition: enumValue(action.condition, CONDITIONS, `${actionPath}.condition`) }),
       } : {}),
       ...(action.cooldown_turns == null ? {} : { cooldown_turns: integer(action.cooldown_turns, `${actionPath}.cooldown_turns`, 1, 10) }),
@@ -251,6 +253,23 @@ function normalizeLegendary(value, path) {
   return legendary
 }
 
+/**
+ * Особые действия стат-блока — те же записи `save_area`, что у бестиария
+ * (дыхание дракона с перезарядкой 5–6). Принимается только то, что
+ * исполняет `UseMonsterAction`: прочее — честный отказ при загрузке мира,
+ * а не справочная строка, которую бой молча пропустит.
+ */
+function normalizeSpecialActions(value, path) {
+  if (!Array.isArray(value) || value.length > 4) throw new AuthoredNpcValidationError(`${path} должен быть массивом до 4 записей`)
+  const actions = value.map((raw, index) => {
+    const action = clone(record(raw, `${path}[${index}]`))
+    if (!monsterAreaAction(action)) throw new AuthoredNpcValidationError(`${path}[${index}] не исполняется обработчиком областей существ`)
+    return action
+  })
+  assertUniqueIds(actions, path)
+  return actions
+}
+
 export function normalizeAuthoredNpcMechanics(value, path = 'npc.mechanics') {
   const source = record(value, path)
   exactFields(source, new Set([
@@ -258,7 +277,7 @@ export function normalizeAuthoredNpcMechanics(value, path = 'npc.mechanics') {
     'initiative_bonus', 'proficiency_bonus', 'size', 'creature_type', 'abilities',
     'skills', 'saving_throws', 'damage_vulnerabilities', 'damage_resistances',
     'damage_immunities', 'condition_immunities', 'traits', 'action_profiles',
-    'spellcasting', 'legendary', 'features', 'tactics',
+    'spellcasting', 'legendary', 'special_actions', 'features', 'tactics',
   ]), path)
   const challengeRating = clean(source.challenge_rating, 20)
   if (!/^\d{1,2}(?:\/\d{1,2})?$/u.test(challengeRating)) throw new AuthoredNpcValidationError(`${path}.challenge_rating имеет неверный формат`)
@@ -313,6 +332,7 @@ export function normalizeAuthoredNpcMechanics(value, path = 'npc.mechanics') {
     action_profiles: actions,
     ...(source.spellcasting == null ? {} : { spellcasting: normalizeSpellcasting(source.spellcasting, `${path}.spellcasting`) }),
     ...(source.legendary == null ? {} : { legendary: normalizeLegendary(source.legendary, `${path}.legendary`) }),
+    ...(source.special_actions == null ? {} : { special_actions: normalizeSpecialActions(source.special_actions, `${path}.special_actions`) }),
     features,
     tactics,
   }
@@ -365,6 +385,7 @@ export function authoredNpcCombatant({ npc, mechanics: rawMechanics, position } 
     attack_profile: clone(primary),
     ...(mechanics.spellcasting ? { spellcasting: clone(mechanics.spellcasting) } : {}),
     ...(mechanics.legendary ? { legendary: clone(mechanics.legendary) } : {}),
+    ...(mechanics.special_actions?.length ? { special_actions: clone(mechanics.special_actions) } : {}),
     authored_features: clone(mechanics.features),
     authored_tactics: clone(mechanics.tactics),
     x,

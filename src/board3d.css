@@ -211,7 +211,7 @@
 .board3d-skip { position: absolute; z-index: 10; left: 50%; bottom: 42px; transform: translateX(-50%); border-color: #a58a5e; }
 .combat-lab-board-viewport { position: relative; }
 /* 3D-доска абсолютна и своей высоты не даёт: без опоры окно стенда схлопывается в 2px. */
-.combat-lab-field .combat-lab-board-viewport:has(> .board3d) { min-height: clamp(360px, 62vh, 680px); }
+.combat-lab-page .combat-lab-board-viewport:has(> .board3d) { min-height: clamp(360px, 62vh, 680px); }
 /* Общее правило стенда растягивает каждый select на всю ширину — инструменты доски остаются компактными. */
 .combat-lab-page .board3d-tools :is(.board3d-quality, .board3d-roof-mode) { width: auto; max-width: 130px; padding: 4px 7px; border-radius: 3px; }
 .map-stage:has(.board-view-controls) .map-scale-plate { top: auto; bottom: 47px; left: auto; right: 12px; }

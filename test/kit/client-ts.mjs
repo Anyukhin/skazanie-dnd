@@ -76,7 +76,11 @@ function rewriteSpecifiers(code, file, emitted, outDir) {
     if (emitted.has(target) && target.endsWith('.js')) return `${before}${quote}${specifier.replace(/\.js$/u, '.mjs')}${quote}`
     // Несобранный модуль: ссылаемся на настоящий файл в репозитории.
     const original = resolve(sourceDir, specifier)
-    if (existsSync(original) && statSync(original).isFile()) return `${before}${quote}${pathToFileURL(original).href}${quote}`
+    if (existsSync(original) && statSync(original).isFile()) {
+      // Каталоги данных (`data/*.json`) Node импортирует только с атрибутом типа.
+      const json = original.endsWith('.json') && /^from\s*$/u.test(before) ? ' with { type: "json" }' : ''
+      return `${before}${quote}${pathToFileURL(original).href}${quote}${json}`
+    }
     return match
   })
 }

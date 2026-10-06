@@ -59,6 +59,21 @@ export function scenarioNightVisitorIds(scenario) {
 }
 
 /**
+ * Что рыцарь носит с собой с начала кампании: награда упокоения лежит у него
+ * в латах. Мирный путь отдаёт её из рук (`ReleaseCursedKnight`), а павший в
+ * бою рыцарь оставляет её в своём контейнере — тем же путём, что любой
+ * выбывший хозяин (`loot-containers`). Вещь одна: упокоенный уходит навсегда
+ * и в бой больше не встаёт.
+ * @param {{ knight?: { npc_id?: unknown, release?: { reward?: { catalog_id?: unknown } } } } | null | undefined} scenario
+ * @returns {Record<string, string[]>} npc id → catalog ids
+ */
+export function scenarioKnightStartingInventory(scenario) {
+  const npcId = String(scenario?.knight?.npc_id ?? '')
+  const catalogId = String(scenario?.knight?.release?.reward?.catalog_id ?? '')
+  return npcId && catalogId ? { [npcId]: [catalogId] } : {}
+}
+
+/**
  * Минута суток в окне `[from, to)`; окно может переходить через полночь.
  * @param {number} minute
  * @param {{ from_minute: number, to_minute: number }} window

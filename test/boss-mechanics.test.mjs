@@ -561,3 +561,55 @@ test('легендарное действие с перезарядкой ждё
   const recharged = [turnEnded(1), turnEnded(2)].reduce(applyGameEvent, fresh)
   assert.equal(conditionsOf(recharged, 'boss').includes('legendary-cooldown:wings'), false)
 })
+
+test('огненное дыхание конусом бьёт тех, кто перед драконом, а не за спиной', () => {
+  const breath = { id: 'breath', name: 'Огненное дыхание', cost: 3, kind: 'save', save_ability: 'dex', save_dc: 17, damage_expression: '6d6', damage_type: 'fire', half_on_save: true, radius_feet: 30, area_shape: 'cone', range_feet: 30 }
+  const base = fixture({ boss: { legendary: { uses: 3, actions: [breath] } } })
+  // Герой — перед драконом (запад), соратник — у него за спиной (восток):
+  // круг радиусом 30 футов задел бы обоих, конус к герою — только героя.
+  const state = normalizeCampaignState({
+    ...base,
+    players: base.players.map((player) => player.id === 'ally' ? { ...player, x: 8, y: 2 } : player),
+    mechanics: { ...base.mechanics, positions: { ...base.mechanics.positions, ally: { x: 8, y: 2 } } },
+  })
+  const result = commit(state, { command_type: 'UseLegendaryAction', actor_id: 'boss', legendary_action_id: 'breath', target_id: 'hero' }, { rng: new MinimumRng() })
+  const saves = result.events.filter((event) => event.event_type === 'SavingThrowResolved')
+  assert.deepEqual(saves.map((event) => event.target_ids[0]), ['hero'])
+  const used = result.events.find((event) => event.event_type === 'LegendaryActionUsed')
+  assert.equal(used.payload.area.shape, 'cone')
+  assert.deepEqual(used.payload.area.target_ids, ['hero'])
+  assert.equal(used.payload.area.save_dc, undefined, 'СЛ стат-блока в область не попадает')
+
+  const logged = result.state.battleLog.at(-1)
+  assert.equal(logged.type, 'area-attack')
+  assert.deepEqual({ from: logged.from, shape: logged.area.shape, to: { x: logged.area.x, y: logged.area.y }, size: logged.area.radiusFeet },
+    { from: { x: 6, y: 2 }, shape: 'cone', to: { x: 4, y: 2 }, size: 30 })
+  assert.equal(logged.damageType, 'fire')
+
+  // Replay даёт ту же хронику, а игроку она уезжает с формой конуса, но без СЛ.
+  assert.deepEqual(replayEvents(state, result.events).battleLog.at(-1), logged)
+  const room = campaignStateForViewer(result.state, PLAYER, 'hero')
+  const visible = room.battleLog.find((entry) => entry.type === 'area-attack')
+  assert.equal(visible.area.shape, 'cone')
+  assert.deepEqual(visible.from, { x: 6, y: 2 })
+  assert.equal(visible.savingThrowDifficulty, undefined)
+})
+
+test('область невидимого дракона не выдаёт, где он стоит', () => {
+  const breath = { id: 'breath', name: 'Огненное дыхание', cost: 3, kind: 'save', save_ability: 'dex', save_dc: 17, damage_expression: '6d6', damage_type: 'fire', half_on_save: true, radius_feet: 30, area_shape: 'cone', range_feet: 30 }
+  const base = fixture({ boss: { legendary: { uses: 3, actions: [breath] } } })
+  const result = commit(base, { command_type: 'UseLegendaryAction', actor_id: 'boss', legendary_action_id: 'breath', target_id: 'hero' }, { rng: new MinimumRng() })
+  const hidden = normalizeCampaignState({
+    ...result.state,
+    scene: { ...result.state.scene, cells: result.state.scene.cells.map((cell) => cell.x >= 6 ? { ...cell, revealed: false } : cell) },
+  })
+  const room = campaignStateForViewer(hidden, PLAYER, 'hero')
+  const entry = room.battleLog.find((item) => item.type === 'area-attack')
+  assert.ok(entry, 'строка хроники остаётся')
+  assert.equal(entry.from, undefined)
+  assert.equal(entry.area, undefined)
+  const used = mechanicsForViewer(result.events, PLAYER, 'hero', hidden).find((event) => event.event_type === 'LegendaryActionUsed')
+  assert.equal(used.payload.area, undefined, 'и живое событие не несёт область невидимого дракона')
+  const seen = mechanicsForViewer(result.events, PLAYER, 'hero', result.state).find((event) => event.event_type === 'LegendaryActionUsed')
+  assert.equal(seen.payload.area.shape, 'cone', 'видимому дракону область оставлена')
+})

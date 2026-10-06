@@ -265,6 +265,9 @@ test('мирный путь: голова перед ним, Убеждение 
   const tear = released.events.find((event) => event.event_type === 'ItemGranted')
   assert.equal(tear.payload.item.name, 'Слеза Проклятого Рыцаря')
   assert.ok(run.state.players.find((player) => player.id === hero.id).inventory.some((item) => item.name === 'Слеза Проклятого Рыцаря'))
+  // Та самая вещь из его лат, а не вторая копия: у рыцаря её больше нет.
+  assert.equal(tear.payload.source_npc_id, KAELAN)
+  assert.deepEqual(run.state.npc_world.inventories[KAELAN] ?? [], [])
   assert.equal(run.present(), false, 'обретший покой уходит')
   assert.equal(scenarioKnightState(run.state).released, true)
   run.apply({ command_type: 'AdvanceTime', unit: 'minute', amount: 120 })
@@ -287,4 +290,24 @@ test('фразы игрока: «ставлю голову перед рыцар
     assert.equal(plan.proposed_commands[0].command_type, expected.command_type, message)
     if (expected.skill) assert.equal(plan.proposed_commands[0].skill, expected.skill, message)
   }
+})
+
+test('Слеза лежит в латах рыцаря: павший в бою Каэлан оставляет её в своём контейнере', async () => {
+  const run = await midnightAtCastle()
+  const carried = run.state.npc_world.inventories[KAELAN] ?? []
+  assert.deepEqual(carried.map((item) => item.catalog_id), ['scenario_astohan:kaelan-tear'], 'Слеза у рыцаря с начала кампании')
+  standNextToKnight(run)
+  run.apply({ command_type: 'CreateEncounter', npc_id: KAELAN, difficulty: 'deadly', seed: 'knight-fall' }, { isDirector: true })
+  run.apply({ command_type: 'StartCombat', server_authoritative: true }, { isDirector: true })
+  // Голова уже перед ним: неуязвимость снята, силовой урон проходит целиком.
+  const withHead = structuredClone(run.state)
+  withHead.scenario_knight = { ...withHead.scenario_knight, head_returned: true }
+  run.state = normalizeCampaignState(withHead)
+  const killed = run.apply({ command_type: 'ApplyDamage', actor_id: hero.id, target_id: KAELAN, amount: 999, damage_type: 'force', ruling_id: 'test-knight-fall' })
+  const created = killed.events.find((event) => event.event_type === 'LootContainerCreated')
+  assert.ok(created, 'павший рыцарь оставляет контейнер')
+  assert.deepEqual(created.payload.container.items.map((item) => item.catalog_id), ['scenario_astohan:kaelan-tear'])
+  assert.deepEqual(run.state.npc_world.inventories[KAELAN] ?? [], [], 'вещь одна: из лат она переехала в контейнер')
+  const replayed = replayEvents(run.initial, run.events)
+  assert.deepEqual(replayed.npc_world.inventories[KAELAN] ?? [], [])
 })

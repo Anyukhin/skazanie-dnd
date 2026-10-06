@@ -1498,6 +1498,8 @@ export type BattleEvent = {
     radiusFeet: number
     geometryVersion?: AreaGeometryVersion
     gridOrigin?: { x: number; y: number }
+    /** Форма областной атаки существа: конус дыхания, круг взмаха крыльев. */
+    shape?: 'sphere' | 'cone' | 'line'
   }
 }
 

@@ -432,7 +432,9 @@ export function battleEventText(state: GameState, event: BattleLogEvent) {
       ? ` · спасбросок ${abilitySaveLabel(event.ability)} против СЛ ${event.savingThrowDifficulty}`
       : ''
     const kind = damageTypeLabel(event.damageType)
-    return `${actorName(event.actorId)} применяет «${event.itemName ?? 'областную атаку'}» в области радиусом ${event.area?.radiusFeet ?? '?'} фт${save}${kind ? ` · урон ${kind.toLocaleLowerCase('ru')}` : ''}.`
+    const size = event.area?.radiusFeet ?? '?'
+    const where = event.area?.shape === 'cone' ? `конусом ${size} фт` : event.area?.shape === 'line' ? `линией ${size} фт` : `в области радиусом ${size} фт`
+    return `${actorName(event.actorId)} применяет «${event.itemName ?? 'областную атаку'}» ${where}${save}${kind ? ` · урон ${kind.toLocaleLowerCase('ru')}` : ''}.`
   }
   if (event.type === 'equipment') return `${actorName(event.actorId)} экипирует «${event.itemName ?? 'оружие'}».`
   if (event.type === 'summon') return `${actorName(event.actorId)} призывает ${actorName(event.targetId)}.`

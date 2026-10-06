@@ -93,6 +93,9 @@ export function legendaryProfileFor(actor) {
         condition: entry?.condition == null ? null : String(entry.condition),
         rangeFeet: positiveInteger(entry?.range_feet ?? entry?.rangeFeet, 5, 600),
         radiusFeet: positiveInteger(entry?.radius_feet ?? entry?.radiusFeet, 0, 120),
+        // Конус бьёт от существа в сторону объявленной цели на `radius_feet`;
+        // без поля область — круг вокруг существа, как раньше.
+        areaShape: kind === 'save' && String(entry?.area_shape ?? entry?.areaShape) === 'cone' ? 'cone' : 'sphere',
         cooldownTurns: Math.max(0, Math.min(10, Math.trunc(Number(entry?.cooldown_turns ?? entry?.cooldownTurns) || 0))),
       })
     })

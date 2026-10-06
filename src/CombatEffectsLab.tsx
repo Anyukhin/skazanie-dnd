@@ -117,6 +117,8 @@ function attackName(modelKey: string) {
   return `Атака ${STYLE_LABELS[style] ?? style} (${modelKey})`
 }
 
+const DRAGON_BREATH_ID = 'dragon-breath'
+
 const ATTACKS: AttackEntry[] = [
   ...modelKeysForEquipmentSlot('main_hand').map((modelKey) => ({
     type: 'attack' as const,
@@ -138,6 +140,9 @@ const ATTACKS: AttackEntry[] = [
   })),
   { type: 'attack', id: 'unarmed', name: 'Безоружный удар', attackKind: 'melee', modelKey: 'unarmed', equipment: 'unarmed', damageType: 'bludgeoning' },
   { type: 'attack', id: 'natural', name: 'Природная атака', attackKind: 'melee', modelKey: 'natural', equipment: 'unarmed', damageType: 'slashing' },
+  // Область существа: в витрине заклинатель становится драконом и дышит
+  // конусом 30 футов в сторону целей — тем же путём, что Саргат в бою.
+  { type: 'attack', id: DRAGON_BREATH_ID, name: 'Огненное дыхание дракона', attackKind: 'melee', modelKey: 'natural', equipment: 'unarmed', damageType: 'fire' },
 ]
 
 /** Полный production-набор оружия плюс две атаки без каталожной модели. */
@@ -145,7 +150,7 @@ export const COMBAT_EFFECTS_ATTACK_ENTRIES = ATTACKS
 
 export function previewActors(entry?: PreviewEntry): BoardAnimationActor[] {
   if (entry?.type !== 'attack') return PREVIEW_ACTORS
-  const profile = entry.id === 'natural' ? 'beast' : 'mage'
+  const profile = entry.id === DRAGON_BREATH_ID ? 'dragon' : entry.id === 'natural' ? 'beast' : 'mage'
   const appearance = {
     version: 2 as const,
     profile,
@@ -283,6 +288,20 @@ function targetIdsForSpell(spell: CatalogSpell, profile: ReturnType<typeof spell
 }
 
 export function buildPreviewEvents(entry: PreviewEntry, replay: number): GameEvent[] {
+  if (entry.type === 'attack' && entry.id === DRAGON_BREATH_ID) {
+    return [{
+      event_id: `effects-lab:${entry.id}:${replay}`,
+      command_id: `effects-lab:${entry.id}:${replay}`,
+      event_type: 'LegendaryActionUsed',
+      actor_id: 'caster',
+      target_ids: ['caster'],
+      payload: {
+        action_id: 'fire-breath',
+        name: 'Огненное дыхание',
+        area: { shape: 'cone', from: CASTER, to: ENEMY, size_feet: 30, damage_type: 'fire', target_ids: ['enemy'] },
+      },
+    }]
+  }
   if (entry.type === 'attack') {
     const target = attackTargetPoint(entry)
     return [{

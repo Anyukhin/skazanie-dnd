@@ -906,6 +906,27 @@ function publicBattleEventFor(entry, state, actorId = '', visibility = {}) {
       } else delete result.area
     }
   }
+  // Областная атака существа (дыхание, взмах крыльев) несёт источник: его
+  // раскрываем, только когда видны и существо, и обе клетки — иначе форма
+  // конуса из тумана выдала бы, где стоит невидимый дракон.
+  if (entry.type === 'area-attack' && Object.hasOwn(entry, 'from')) {
+    const from = publicPoint(entry.from)
+    const area = publicPoint(entry.area)
+    const visibleActorIds = visibility.visibleActorIds ?? new Set()
+    const visibleCellKeys = visibility.visibleCellKeys ?? new Set()
+    if (!from || !area || !visibleActorIds.has(actingId)
+      || !visibleCellKeys.has(pointKey(from)) || !visibleCellKeys.has(pointKey(area))) {
+      delete result.from
+      delete result.area
+    } else {
+      result.from = from
+      result.area = {
+        ...area,
+        radiusFeet: Math.max(5, integer(entry.area?.radiusFeet, 5)),
+        shape: ['sphere', 'cone', 'line'].includes(entry.area?.shape) ? entry.area.shape : 'sphere',
+      }
+    }
+  }
   if (entry.type === 'move' && (Object.hasOwn(entry, 'from') || Object.hasOwn(entry, 'to'))) {
     const from = publicPoint(entry.from)
     const to = publicPoint(entry.to)
@@ -2154,6 +2175,27 @@ function eventForViewer(event, user, actorId, state = {}) {
     payload.effect = publicEffect
     if (!visibleActorIds.has(String(visible.actor_id))) delete visible.actor_id
     if (Array.isArray(visible.target_ids)) visible.target_ids = visible.target_ids.filter((/** @type {unknown} */ id) => visibleActorIds.has(String(id)))
+  }
+  // Область дыхания или взмаха крыльев: как в хронике — только когда видны
+  // существо и обе клетки; задетые — только видимые зрителю.
+  if (['LegendaryActionUsed', 'CombatActionUsed'].includes(visible.event_type) && payload.area && typeof payload.area === 'object') {
+    const allActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []
+    const visibleActorIds = new Set([...allActors, ...sceneNpcsForViewer(state)].map((/** @type {Loose} */ actor) => String(actor.id)))
+    const visibleCellKeys = publicRevealedCellKeys(publicSceneFor(state?.scene))
+    const from = publicPoint(payload.area.from)
+    const to = publicPoint(payload.area.to)
+    if (!from || !to || !visibleActorIds.has(String(visible.actor_id))
+      || !visibleCellKeys.has(pointKey(from)) || !visibleCellKeys.has(pointKey(to))) delete payload.area
+    else {
+      payload.area = {
+        shape: ['sphere', 'cone', 'line'].includes(payload.area.shape) ? payload.area.shape : 'sphere',
+        from,
+        to,
+        size_feet: Math.max(5, integer(payload.area.size_feet, 5)),
+        ...(payload.area.damage_type ? { damage_type: text(payload.area.damage_type, 40) } : {}),
+        target_ids: (Array.isArray(payload.area.target_ids) ? payload.area.target_ids : []).map(String).filter((/** @type {string} */ id) => visibleActorIds.has(id)),
+      }
+    }
   }
   if (visible.event_type === 'SpellAreaRemoved') {
     const visibleActors = projectVisibleState([...(state.players ?? []), ...(state.actors ?? []), ...(state.enemies ?? [])], viewerFor(state, user, actorId), { forNarrator: true }) ?? []

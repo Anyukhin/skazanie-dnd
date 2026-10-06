@@ -513,6 +513,42 @@ function motionFor(options: CombatAnimationOptions) {
   return (options.reducedMotion ?? systemPrefersReducedMotion()) ? 'reduced' as const : 'full' as const
 }
 
+function monsterAreaCueFromEvent(event: GameEvent): SpellAnimationCue | null {
+  if (event.event_type !== 'LegendaryActionUsed' && event.event_type !== 'CombatActionUsed') return null
+  const area = event.payload?.area as { shape?: unknown; from?: BoardPoint; to?: BoardPoint; size_feet?: unknown; damage_type?: unknown; target_ids?: unknown } | undefined
+  const actorId = String(event.actor_id ?? '')
+  const point = (value: unknown) => {
+    const candidate = value as { x?: unknown; y?: unknown } | null
+    return candidate && Number.isFinite(Number(candidate.x)) && Number.isFinite(Number(candidate.y)) ? { x: Number(candidate.x), y: Number(candidate.y) } : null
+  }
+  const from = point(area?.from)
+  const to = point(area?.to)
+  if (!actorId || !from || !to) return null
+  const shape = areaShape(area?.shape) ?? 'sphere'
+  const damageType = typeof area?.damage_type === 'string' && area.damage_type ? area.damage_type : undefined
+  const profile = spellVisualProfile(MONSTER_AREA_VISUAL_ID, { damageType })
+  return {
+    id: eventId(event, 'burst'),
+    kind: 'burst',
+    actorId,
+    targetIds: uniqueIds(area?.target_ids),
+    origin: from,
+    center: to,
+    shape,
+    originMode: shape === 'sphere' ? 'point' : 'self',
+    sizeFeet: Math.max(5, Number(area?.size_feet) || 5),
+    damageType,
+    spellId: MONSTER_AREA_VISUAL_ID,
+    school: profile.school,
+    durationMs: MONSTER_AREA_DURATION_MS,
+  }
+}
+
+/** Условный id эффекта для областей существ: палитру задаёт вид урона. */
+const MONSTER_AREA_VISUAL_ID = 'monster-area'
+/** Дыхание держится дольше заклинательной вспышки: это кульминация хода босса. */
+const MONSTER_AREA_DURATION_MS = 1200
+
 function burstDuration(spellId: string) {
   // У шара есть две читаемые фазы: полёт и расширение до границы области.
   return spellId === 'fireball' ? 1000 : BASE_DURATIONS.burst
@@ -929,6 +965,13 @@ export function combatAnimationCuesFromEvents(
     const payload = event.payload ?? {}
     const actorId = String(event.actor_id ?? '')
     const targetId = targetIdFor(event)
+    // Та же вспышка, что из хроники (`area-attack`), и с тем же id: живой
+    // пакет и журнал не проигрывают дыхание дважды.
+    const monsterArea = monsterAreaCueFromEvent(event)
+    if (monsterArea) {
+      cues.push(monsterArea)
+      continue
+    }
     if (event.event_type === 'CombatActionUsed') {
       const cue = enervationRepeatCueFromAction(event)
       if (cue) {
@@ -1317,6 +1360,28 @@ export function combatAnimationCuesFromBattleLog(
         to: event.to,
         path,
         durationMs: moveDuration(path.length),
+      })
+      continue
+    }
+    // Дыхание дракона и другие области существ: сервер пишет источник и
+    // направление, доска рисует ту же вспышку, что у заклинаний, цветом урона.
+    if (event.type === 'area-attack' && event.actorId && event.from && event.area) {
+      const shape = battleLogAreaShape(event) ?? 'sphere'
+      const profile = spellVisualProfile(MONSTER_AREA_VISUAL_ID, { damageType: event.damageType })
+      cues.push({
+        id: `${event.id}:burst`,
+        kind: 'burst',
+        actorId: event.actorId,
+        targetIds: uniqueIds(event.targetIds ?? []),
+        origin: event.from,
+        center: { x: event.area.x, y: event.area.y },
+        shape,
+        originMode: shape === 'sphere' ? 'point' : 'self',
+        sizeFeet: event.area.radiusFeet ?? 5,
+        damageType: event.damageType,
+        spellId: MONSTER_AREA_VISUAL_ID,
+        school: profile.school,
+        durationMs: MONSTER_AREA_DURATION_MS,
       })
       continue
     }

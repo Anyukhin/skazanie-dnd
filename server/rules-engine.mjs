@@ -4403,6 +4403,7 @@ function normalizeCommand(input, state) {
     command.target_ids = []
     command.skill = command.command_type === 'ReleaseCursedKnight' ? String(command.skill ?? '').toLowerCase().slice(0, 40) : ''
     delete command.reward_item
+    delete command.reward_source_npc_id
     delete command.difficulty
   }
   if (SCENARIO_COMMAND_TYPES.has(command.command_type)) {
@@ -4751,10 +4752,21 @@ function targetFor(command) {
 }
 
 /** Предпросмотр штатного приёма статблока: форма и цели всегда считаются сервером. */
+/**
+ * Особое действие стат-блока исполняет только существо, чей блок принадлежит
+ * серверу: запись бестиария 2014 или авторский NPC мира, у которого
+ * `special_actions` прошли проверку при загрузке (`authored-npc`).
+ */
+function serverOwnedMonsterActor(actor, state) {
+  if (serverOwned2014StatBlockFor(actor, state)) return actor
+  const enemy = (Array.isArray(state?.enemies) ? state.enemies : []).find((candidate) => candidate === actor)
+  return enemy && actor?.origin?.kind === 'authored-npc' && actor?.provenance?.kind === 'server-owned-authored-npc-profile' ? actor : null
+}
+
 export function previewMonsterAction(rawState, id, actionId, toward) {
   const state = normalizeCampaignState(rawState)
   const actor = findActor(state, String(id))
-  if (!serverOwned2014StatBlockFor(actor, state) || !isLivingActor(actor)) {
+  if (!serverOwnedMonsterActor(actor, state) || !isLivingActor(actor)) {
     throw new RulesValidationError('Приём доступен только действующему существу из каталога 2014', 'MONSTER_ACTION_NOT_AVAILABLE')
   }
   const source = (Array.isArray(actor.special_actions) ? actor.special_actions : []).find(action => String(action.id) === String(actionId))
@@ -6210,11 +6222,17 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('Этой ночью рыцарь уже выслушал этого героя', 'SCENARIO_KNIGHT_ATTEMPT_SPENT')
       }
       command.difficulty = rules.release.dc
+      // Слеза лежит в латах рыцаря с начала кампании: он отдаёт её из рук, и
+      // вещь остаётся одной. Кампании, созданные до этого, своей Слезы у
+      // рыцаря не имеют — им она создаётся по каталогу, как прежде.
+      const carried = (state.npc_world?.inventories?.[rules.npc_id] ?? [])
+        .find((item) => String(item?.catalog_id ?? '') === rules.release.reward.catalog_id)
       command.reward_item = normalizeInventoryItem(
-        materializeCatalogItem(rules.release.reward.catalog_id, { quantity: 1, origin: 'gifted' }),
+        carried ? clone(carried) : materializeCatalogItem(rules.release.reward.catalog_id, { quantity: 1, origin: 'gifted' }),
         { idFallback: `knight-tear:${command.command_id}`, preserveUnknown: true },
       )
       command.reward_item.origin = 'gifted'
+      command.reward_source_npc_id = carried ? rules.npc_id : null
     }
     command.visibility = 'public'
   }
@@ -14224,9 +14242,19 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     case 'UseMonsterAction': {
       const preview = previewMonsterAction(state, command.actor_id, command.action_id, command.to)
-      const { action, affectedIds } = preview
+      const { action, affectedIds, origin, to } = preview
       events.push(eventFrom(commandWithRules(command, RULE_IDS.actions), 'CombatActionUsed', {
         action_id: action.id, name: action.name, action_type: 'action', monster_action: true,
+        // Область для хроники и доски: форма, откуда и куда, кого задело.
+        area: {
+          shape: action.shape,
+          from: origin,
+          to: action.shape === 'sphere' ? origin : to,
+          size_feet: action.length_feet,
+          damage_type: String(action.damage?.[0]?.type ?? ''),
+          save_ability: action.save.ability,
+          target_ids: affectedIds,
+        },
       }, affectedIds))
       const usageMarker = monsterActionSpentMarker(action, conditionIdsFor(state, command.actor_id))
       if (usageMarker) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
@@ -15813,6 +15841,22 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const action = legendaryActionFor(actor, command.legendary_action_id)
       const targetId = String(command.target_id ?? '')
       const target = findActor(state, targetId)
+      // Область спасброска: круг вокруг существа или конус к объявленной цели.
+      // Список задетых считается здесь, до событий, — его же видит клиент.
+      const centre = actorPosition(state, command.actor_id)
+      const toward = action.areaShape === 'cone' ? actorPosition(state, targetId) : centre
+      const caught = action.kind !== 'save' ? [] : action.radiusFeet > 0
+        ? listActors(state).filter((candidate) => {
+          const candidateId = actorId(candidate)
+          const at = actorPosition(state, candidateId)
+          if (!isLivingActor(candidate) || isEnemyActor(state, candidateId) === isEnemyActor(state, command.actor_id) || !at || !centre) return false
+          if (action.areaShape === 'cone') {
+            return Boolean(toward) && hasClearActorTrajectory(state, command.actor_id, candidateId, centre, at)
+              && actorInArea(state, candidateId, at, toward, action.radiusFeet, 'cone', command.actor_id, centre)
+          }
+          return footprintDistanceFeet(candidate, actor, at, centre) <= action.radiusFeet
+        })
+        : [target].filter(Boolean)
       for (let ordinal = declared.uses_before + 1; ordinal <= declared.uses_after; ordinal += 1) {
         events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
           condition: legendaryActionMarker(ordinal, declared.window_key),
@@ -15827,6 +15871,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         uses_before: declared.uses_before,
         uses_after: declared.uses_after,
         uses_max: declared.uses_max,
+        ...(action.kind === 'save' && action.radiusFeet > 0 && centre ? {
+          area: {
+            shape: action.areaShape,
+            from: centre,
+            to: toward ?? centre,
+            size_feet: action.radiusFeet,
+            damage_type: action.damageType,
+            // СЛ — число стат-блока, игроку не принадлежит: в области её нет.
+            save_ability: action.saveAbility,
+            target_ids: caught.map(actorId),
+          },
+        } : {}),
       }, [command.actor_id]))
       if (action.cooldownTurns > 0) {
         events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
@@ -15873,19 +15929,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           events.push(...zeroHitPointDamageConsequences(damageState, command, targetId, payload, { critical }))
         }
       } else {
-        // Действие со спасброском бьёт по всем в радиусе, а не только по
+        // Действие со спасброском бьёт по всем в области, а не только по
         // объявленной цели: цель у команды одна, потому что по ней проверялась
-        // досягаемость, но взмах крыльев не выбирает, кого задеть.
-        const centre = actorPosition(state, command.actor_id)
+        // досягаемость и направление конуса, но дыхание не выбирает, кого задеть.
         const difficulty = action.saveDc ?? monsterSpellcastingFor(actor)?.saveDc ?? 10
-        const caught = action.radiusFeet > 0
-          ? listActors(state).filter((candidate) => {
-            const at = actorPosition(state, actorId(candidate))
-            return isLivingActor(candidate)
-              && isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id)
-              && at && centre && footprintDistanceFeet(candidate, actor, at, centre) <= action.radiusFeet
-          })
-          : [target].filter(Boolean)
         const damageRoll = action.damageExpression
           ? diceService.roll(action.damageExpression, `legendary_damage:${action.id}`, command.actor_id, command.visibility ?? 'public')
           : null
@@ -19831,7 +19878,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(eventFrom(command, SCENARIO_KNIGHT_RELEASED_EVENT, {
           schema_version: 1, npc_id: rules.npc_id, skill: command.skill, text: rules.release.success_text,
         }, [rules.npc_id, command.actor_id]))
-        events.push(itemGrantedEventFrom(command, { item: clone(command.reward_item) }, [command.actor_id]))
+        events.push(itemGrantedEventFrom(command, {
+          item: clone(command.reward_item),
+          ...(command.reward_source_npc_id ? { source_npc_id: command.reward_source_npc_id } : {}),
+        }, [command.actor_id]))
         // Рыцарь уходит: собеседника больше нет, в замок он не вернётся.
         const stored = state.social.npcs.find((npc) => npc.id === rules.npc_id)
         const profile = Object.fromEntries(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs',
@@ -22923,6 +22973,35 @@ function attackEndpointsFor(value) {
   return { from: { x: fromX, y: fromY }, to: { x: toX, y: toY } }
 }
 
+/**
+ * Строка хроники «областная атака» существа — дыхание, взмах крыльев — из
+ * поля `area` события. У событий, записанных до появления поля, его нет:
+ * они остаются прежней строкой, и replay старого журнала не меняется.
+ */
+function battleLogAreaFromPayload(state, event, payload) {
+  const area = payload?.area
+  const point = (value) => value && Number.isSafeInteger(Number(value.x)) && Number.isSafeInteger(Number(value.y))
+    ? { x: Number(value.x), y: Number(value.y) }
+    : null
+  const from = point(area?.from)
+  const to = point(area?.to)
+  if (!from || !to) return null
+  const shape = ['sphere', 'cone', 'line'].includes(String(area.shape)) ? String(area.shape) : 'sphere'
+  return {
+    sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
+    round: state.mechanics.combat.round,
+    type: 'area-attack',
+    actorId: event.actor_id,
+    actorKind: combatActorKind(state, event.actor_id),
+    itemName: String(payload.name ?? payload.action_id ?? ''),
+    from,
+    area: { ...to, radiusFeet: Math.max(5, safeInteger(area.size_feet, 5)), shape },
+    targetIds: (Array.isArray(area.target_ids) ? area.target_ids : []).map(String),
+    ...(area.damage_type ? { damageType: String(area.damage_type) } : {}),
+    ...(area.save_ability ? { ability: String(area.save_ability) } : {}),
+  }
+}
+
 function appendBattleLog(state, event, entry) {
   const id = eventJournalId(state, event)
   if (state.battleLog.some((item) => String(item.id) === id)) return
@@ -24569,6 +24648,13 @@ function applyGameEventCurrent(rawState, event) {
         priceProvenance: payload.price_provenance ?? 'custom', policyId: payload.policy_id ?? ECONOMY_POLICY_ID,
       })
       break
+    case 'LegendaryActionUsed': {
+      // Механику несут соседние события (спасброски, урон, маркеры);
+      // здесь — только строка хроники с областью для доски.
+      const legendaryArea = battleLogAreaFromPayload(state, event, payload)
+      if (legendaryArea) appendBattleLog(state, event, legendaryArea)
+      break
+    }
     case 'CombatActionUsed': {
       if (state.mechanics.combat.active && event.actor_id) {
         const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
@@ -24689,6 +24775,11 @@ function applyGameEventCurrent(rawState, event) {
             : Math.max(0, safeInteger(findActor(state, event.actor_id)?.speed, 30) + safeInteger(updated.movement_bonus, 0))
           state.mechanics.combat.action_economy[event.actor_id] = { ...updated, movement_spent: spent, movement: spent < total }
         }
+      }
+      const actionArea = payload.monster_action ? battleLogAreaFromPayload(state, event, payload) : null
+      if (actionArea) {
+        appendBattleLog(state, event, actionArea)
+        break
       }
       appendBattleLog(state, event, {
         sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round,
@@ -25663,6 +25754,8 @@ function applyGameEventCurrent(rawState, event) {
     case 'ItemGranted':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: [...(Array.isArray(actor.inventory) ? actor.inventory : []), clone(payload.item)] }))
       if (Number(event.event_schema_version) >= 2) refreshPlayerDerivedState(state, [target])
+      // Вещь из рук NPC (Слеза упокоенного рыцаря) уходит из его инвентаря.
+      if (payload.source_npc_id) state.npc_world = applyNpcWorldEvent(state.npc_world, event)
       break
     case 'SpellSelectionsUpdated':
       replaceActor(state, target, (actor) => ({

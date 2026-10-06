@@ -5096,7 +5096,7 @@
               "challenge_rating": "10",
               "xp": 5900,
               "encounter_difficulty": "deadly",
-              "hp": 189,
+              "hp": 178,
               "armor": 18,
               "speed": 40,
               "initiative_bonus": 4,
@@ -5204,28 +5204,47 @@
                     "condition": "prone",
                     "radius_feet": 10,
                     "range_feet": 10
-                  },
-                  {
-                    "id": "fire-breath",
-                    "name": "Огненное дыхание",
-                    "cost": 3,
-                    "kind": "save",
-                    "save_ability": "dex",
-                    "save_dc": 17,
-                    "damage_expression": "6d6",
-                    "damage_type": "fire",
-                    "half_on_save": true,
-                    "radius_feet": 30,
-                    "range_feet": 60
                   }
                 ]
               },
+              "special_actions": [
+                {
+                  "id": "fire-breath",
+                  "name_ru": "Огненное дыхание",
+                  "kind": "save_area",
+                  "area": {
+                    "shape": "cone",
+                    "length_ft": 30
+                  },
+                  "target": "each_creature_in_area",
+                  "save": {
+                    "ability": "dex",
+                    "dc": 17,
+                    "success": "half_damage"
+                  },
+                  "damage": [
+                    {
+                      "expression": "16d6",
+                      "average": 56,
+                      "type": "fire"
+                    }
+                  ],
+                  "recharge": {
+                    "die": "1d6",
+                    "success": [
+                      5,
+                      6
+                    ],
+                    "check": "start_of_turn"
+                  }
+                }
+              ],
               "features": [
                 {
                   "id": "young-red-dragon",
                   "name": "Красный дракон",
                   "status": "partial",
-                  "description": "КД, ОЗ, огненная невосприимчивость и атаки записаны в исполнимой форме; полёт и точная форма конуса дыхания ещё не поддержаны."
+                  "description": "КД, хиты (178 по книге), огненная невосприимчивость и атаки записаны в исполнимой форме; Огненное дыхание — конус 30 футов, 16к6, Ловкость СЛ 17, перезарядка 5–6 (`UseMonsterAction`). Полёт ещё не поддержан."
                 },
                 {
                   "id": "ash-mask",
