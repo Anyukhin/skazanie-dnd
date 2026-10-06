@@ -97,6 +97,16 @@ function validateAttention(attention, scenarioId, locationIds) {
   if (!stems.length || stems.some((/** @type {unknown} */ stem) => typeof stem !== 'string' || stem.length < 4 || stem !== stem.toLocaleLowerCase('ru'))) {
     invalid(`${where}: основы темы — строчные, не короче четырёх букв`)
   }
+  const finale = attention.finale
+  if (!finale || !Number.isSafeInteger(finale.unaware_below) || finale.unaware_below < 1 || finale.unaware_below > readyAt) {
+    invalid(`${where}: финалу нужен порог неведения не выше ready_at`)
+  }
+  if (!Array.isArray(finale.hidden_route) || finale.hidden_route.length !== 2 || finale.hidden_route.some((/** @type {string} */ id) => !locationIds.has(id))) {
+    invalid(`${where}: тайная дорога финала — пара мест сценария`)
+  }
+  if (!ENCOUNTER_THEMES.has(finale.ready_ambush?.theme) || !ENCOUNTER_DIFFICULTIES.has(finale.ready_ambush?.difficulty)) {
+    invalid(`${where}: засада готового дракона — тема и сложность сборщика`)
+  }
   const stranger = attention.stranger
   if (!stranger || !ID_PATTERN.test(String(stranger.npc_id ?? '')) || !clean(stranger.name, 120) || !clean(stranger.role, 80)
     || !clean(stranger.summary, 400) || !clean(stranger.voice, 240)) invalid(`${where}: незнакомцу нужны id, имя, роль, облик и голос`)
@@ -455,8 +465,9 @@ function conditionFacts(state, scenario) {
  * Древу и пещера контрабандистов становятся известны, когда отряд дошёл до
  * перевала, вошёл в лес или вышел на осведомителей. Открытие выводится из
  * состояния при нормализации, поэтому replay его повторяет, а переход сцены
- * записывает уже открытую карту в `SceneAdvanced`. Закрыть открытое оно не
- * может: условие считается только в сторону «известно».
+ * записывает уже открытую карту в `SceneAdvanced`. Закрыть открытое условие
+ * не может: оно считается только в сторону «известно». Единственное
+ * исключение — завал тайного хода, когда дракон готов к отряду.
  * @param {any} state
  * @param {any} worldMap
  */
@@ -466,26 +477,57 @@ export function applyScenarioMapReveals(state, worldMap) {
   const facts = conditionFacts({ ...state, worldMap }, scenario)
   const places = new Set()
   const roads = new Set()
+  const roadKey = (/** @type {unknown} */ from, /** @type {unknown} */ to) => [String(from ?? ''), String(to ?? '')].sort().join('\u0000')
   for (const reveal of scenario.map_reveals) {
     if (!conditionMet(reveal.when, facts)) continue
     for (const locationId of reveal.locations ?? []) places.add(locationId)
-    for (const [from, to] of reveal.routes ?? []) roads.add([from, to].sort().join('\u0000'))
+    for (const [from, to] of reveal.routes ?? []) roads.add(roadKey(from, to))
   }
-  if (!places.size && !roads.size) return worldMap
+  // Готовый к отряду дракон заваливает тайный ход в логово: дорога закрыта,
+  // даже если отряд её уже нашёл. Это тоже вывод из состояния — счёт внимания
+  // назад не идёт, поэтому завал не исчезает.
+  const hidden = scenario.attention?.finale?.hidden_route
+  const collapsed = Array.isArray(hidden) && scenarioAttentionReady(state, scenario) ? roadKey(hidden[0], hidden[1]) : ''
+  if (collapsed) roads.delete(collapsed)
+  if (!places.size && !roads.size && !collapsed) return worldMap
   const locations = Array.isArray(worldMap.locations) ? worldMap.locations : []
   const routes = Array.isArray(worldMap.routes) ? worldMap.routes : []
   const needsChange = locations.some((/** @type {any} */ location) => places.has(location?.id) && location.known === false)
-    || routes.some((/** @type {any} */ route) => roads.has([route?.from, route?.to].sort().join('\u0000')) && route.discovered === false)
+    || routes.some((/** @type {any} */ route) => roads.has(roadKey(route?.from, route?.to)) && route.discovered === false)
+    || routes.some((/** @type {any} */ route) => Boolean(collapsed) && roadKey(route?.from, route?.to) === collapsed && route.discovered !== false)
   if (!needsChange) return worldMap
   return {
     ...worldMap,
     locations: locations.map((/** @type {any} */ location) => (places.has(location?.id) && location.known === false
       ? { ...location, known: true }
       : location)),
-    routes: routes.map((/** @type {any} */ route) => (roads.has([route?.from, route?.to].sort().join('\u0000')) && route.discovered === false
-      ? { ...route, discovered: true }
-      : route)),
+    routes: routes.map((/** @type {any} */ route) => {
+      const key = roadKey(route?.from, route?.to)
+      if (collapsed && key === collapsed) return route.discovered === false ? route : { ...route, discovered: false }
+      return roads.has(key) && route.discovered === false ? { ...route, discovered: true } : route
+    }),
   }
+}
+
+/**
+ * Готов ли главный противник к отряду: счёт внимания дошёл до `ready_at`.
+ * Реестр читается напрямую — модуль внимания импортирует этот, а не наоборот.
+ * @param {any} state
+ * @param {any} [scenario]
+ */
+export function scenarioAttentionReady(state, scenario = campaignScenario(state)) {
+  const attention = scenario?.attention
+  return Boolean(attention) && Number(state?.scenario_attention?.value) >= attention.ready_at
+}
+
+/**
+ * Откуда отряд пришёл в текущее место: последнее покинутое место летописи.
+ * @param {any} state
+ */
+export function scenarioPreviousLocationId(state) {
+  const history = Array.isArray(state?.adventure?.history) ? state.adventure.history : []
+  const last = history.at(-1)
+  return clean(last?.location_id, 120) || clean(worldLocationFor(state, { name: last?.location })?.id, 120)
 }
 
 /**

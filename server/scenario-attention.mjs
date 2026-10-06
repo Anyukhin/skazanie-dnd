@@ -25,13 +25,15 @@
  *    пламя (спасбросок на половину урона у каждого героя в сцене) и улетает:
  *    профиль становится недоступен.
  *
- * Порог `ready_at` — дракон готов к отряду; его последствия в финале читает
- * Режиссёр (`scenarioDirectorBrief`).
+ * Счёт решает и бой финала (`scenarioFinaleTactics`): на пороге `ready_at`
+ * дракон готов — с ним засада слуг, тайный ход завален
+ * (`applyScenarioMapReveals`), внезапности нет; ниже `unaware_below` или при
+ * входе тайным ходом он не ждёт отряд и застигнут врасплох.
  *
  * Модуль — лист графа: он читает состояние и сценарий, но не импортирует Rules
  * Engine. Числа выдоха живут в данных сценария, а не в коде.
  */
-import { campaignScenario, scenarioLocationId } from './campaign-scenario.mjs'
+import { campaignScenario, scenarioAttentionReady, scenarioLocationId, scenarioPreviousLocationId } from './campaign-scenario.mjs'
 
 export const SCENARIO_ATTENTION_SCHEMA_VERSION = 1
 export const SCENARIO_ATTENTION_POLICY_ID = 'skazanie:scenario-attention-v1'
@@ -294,4 +296,35 @@ export function scenarioStrangerNarration(events = [], state = {}) {
   }
   lines.push(clean(stranger.departure_text, 1_000))
   return lines.filter(Boolean).join(' ')
+}
+
+/**
+ * Бой финала по счёту внимания. Только для встречи с главным противником в его
+ * логове; `null` — обычные правила внезапности и обычная сборка.
+ *
+ * - `ready` — дракон готов: к нему добавляется засада (`ambush`), внезапности
+ *   нет ни у кого, даже у прокравшегося отряда;
+ * - `unaware` — дракон не ждёт: счёт ниже `unaware_below` или отряд пришёл
+ *   тайным ходом (`hidden_route`); сторона противника застигнута врасплох.
+ * @param {any} state
+ * @param {string[]} enemyIds
+ * @returns {{ readiness: 'ready' | 'unaware', surprise: 'none' | 'enemies', ambush: { theme: string, difficulty: string } | null, reason: string } | null}
+ */
+export function scenarioFinaleTactics(state = {}, enemyIds = []) {
+  const scenario = campaignScenario(state)
+  const config = scenario?.attention
+  const finale = scenario?.beats?.find((/** @type {any} */ beat) => beat.kind === 'finale')
+  if (!config?.finale || !finale?.boss) return null
+  if (!enemyIds.map(String).includes(finale.boss.npc_id)) return null
+  if (scenarioLocationId(state) !== finale.boss.location_id) return null
+  if (scenarioAttentionReady(state, scenario)) {
+    return { readiness: 'ready', surprise: 'none', ambush: { ...config.finale.ready_ambush }, reason: 'attention-ready' }
+  }
+  const ledger = normalizeScenarioAttentionState(state?.scenario_attention)
+  const [routeA, routeB] = config.finale.hidden_route
+  const cameFrom = scenarioPreviousLocationId(state)
+  const hiddenEntry = cameFrom && [routeA, routeB].includes(cameFrom) && [routeA, routeB].includes(finale.boss.location_id)
+  if (hiddenEntry) return { readiness: 'unaware', surprise: 'enemies', ambush: null, reason: 'hidden-route' }
+  if (ledger.value < config.finale.unaware_below) return { readiness: 'unaware', surprise: 'enemies', ambush: null, reason: 'attention-low' }
+  return null
 }

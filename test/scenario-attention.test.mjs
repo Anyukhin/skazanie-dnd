@@ -11,6 +11,7 @@ import { normalizeCampaignState, replayEvents, resolveCommands } from '../server
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
 import {
   scenarioAttention,
+  scenarioFinaleTactics,
   scenarioStrangerNarration,
   scenarioStrangerNpcId,
   scenarioStrangerStage,
@@ -264,4 +265,68 @@ test('свободный расспрос толпы поднимает счёт
   run.apply(ruling('ruling-open', 'persuasion'))
   assert.equal(run.value(), 1)
   assertReplay(run)
+})
+
+/** Счёт внимания задан напрямую: здесь проверяются последствия, а не поводы. */
+function withAttention(run, value) {
+  run.state = normalizeCampaignState({ ...run.state, scenario_attention: { ...run.state.scenario_attention, value } })
+}
+
+async function lairRun() {
+  const run = await campaign()
+  await run.travel('astohan-obsidian-pass')
+  await run.travel('astohan-vulkanis-brazier')
+  return run
+}
+
+const HIDDEN_ROUTE = ['astohan-smugglers-cave', 'astohan-vulkanis-brazier']
+const hiddenRoute = (state) => state.worldMap.routes.find((route) => HIDDEN_ROUTE.includes(route.from) && HIDDEN_ROUTE.includes(route.to))
+
+test('готовый дракон заваливает лавовый ход, даже уже найденный; ниже порога ход открыт', async () => {
+  const run = await campaign()
+  const found = structuredClone(run.state)
+  hiddenRoute(found).discovered = true
+  run.state = normalizeCampaignState(found)
+  withAttention(run, 5)
+  assert.equal(hiddenRoute(run.state).discovered, true)
+  withAttention(run, 6)
+  assert.equal(hiddenRoute(run.state).discovered, false, 'завал закрывает дорогу')
+})
+
+test('готовый дракон: к Саргату засада, внезапности нет ни у кого', async () => {
+  const run = await lairRun()
+  withAttention(run, 6)
+  const created = run.apply({ command_type: 'CreateEncounter', npc_id: 'astohan-sargat', difficulty: 'deadly', seed: 'lair-ready' }, director)
+  const encounter = created.events.find((event) => event.event_type === 'EncounterCreated').payload.encounter
+  assert.ok(encounter.enemy_ids.includes('astohan-sargat'))
+  assert.ok(encounter.scenario_ambush, 'засада записана во встрече')
+  assert.equal(encounter.scenario_ambush.theme, 'warband')
+  assert.ok(encounter.scenario_ambush.enemy_ids.length >= 1)
+  assert.deepEqual(encounter.enemy_ids.slice(1).filter((id) => encounter.scenario_ambush.enemy_ids.includes(id)), encounter.scenario_ambush.enemy_ids)
+  const started = run.apply({ command_type: 'StartCombat', server_authoritative: true }, director)
+  const combat = started.events.find((event) => event.event_type === 'CombatStarted').payload
+  assert.deepEqual(combat.scenario_finale, { readiness: 'ready', reason: 'attention-ready' })
+  assert.equal(combat.surprised, undefined)
+})
+
+test('не ждущий дракон застигнут врасплох; средний счёт — обычные правила; тайный ход — врасплох', async () => {
+  const run = await lairRun()
+  withAttention(run, 0)
+  run.apply({ command_type: 'CreateEncounter', npc_id: 'astohan-sargat', difficulty: 'deadly', seed: 'lair-unaware' }, director)
+  const started = run.apply({ command_type: 'StartCombat', server_authoritative: true }, director)
+  const combat = started.events.find((event) => event.event_type === 'CombatStarted').payload
+  assert.deepEqual(combat.scenario_finale, { readiness: 'unaware', reason: 'attention-low' })
+  assert.ok(combat.surprised.includes('astohan-sargat'))
+  const condition = started.events.find((event) => event.event_type === 'ConditionAdded' && event.target_ids.includes('astohan-sargat'))
+  assert.equal(condition.payload.condition, 'surprised')
+  assert.equal(condition.payload.source, 'scenario-attention')
+  assert.equal(started.events.some((event) => event.event_type === 'ConditionAdded' && event.target_ids.includes(hero.id)), false, 'отряд не застигнут')
+
+  const middle = await lairRun()
+  withAttention(middle, 4)
+  assert.equal(scenarioFinaleTactics(middle.state, ['astohan-sargat']), null, 'пришли перевалом при счёте 4 — дракон ни готов, ни беспечен')
+  const viaTunnel = structuredClone(middle.state)
+  viaTunnel.adventure.history.at(-1).location_id = 'astohan-smugglers-cave'
+  assert.deepEqual(scenarioFinaleTactics(viaTunnel, ['astohan-sargat']), { readiness: 'unaware', surprise: 'enemies', ambush: null, reason: 'hidden-route' })
+  assert.equal(scenarioFinaleTactics(middle.state, ['astohan-ash-goblin']), null, 'без Саргата во встрече тактика не применяется')
 })

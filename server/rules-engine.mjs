@@ -260,6 +260,7 @@ import {
   SCENARIO_STRANGER_STAGES,
   applyScenarioAttentionEvent,
   normalizeScenarioAttentionState,
+  scenarioFinaleTactics,
   scenarioStrangerBreath,
   scenarioStrangerProfile,
   scenarioStrangerStage,
@@ -5476,8 +5477,20 @@ function assembleEncounterFromState(state, command) {
     const defenders = authoredOfficeParticipants(state, authoredNpcId).filter((id) => id !== authoredNpcId
       && presentSceneNpcs(state).some((candidate) => candidate.id === id) && npcMechanicsFor(state, id)?.status !== 'ruling-only'
       && npcMechanicsFor(state, id) && npcPlacementFor(state, id)).map((id) => npcCombatActorFor(state, id))
-    const enemies = [enemy, ...defenders]
-    const xp = enemies.reduce((sum, entry) => sum + Math.max(0, Number(npcMechanicsFor(state, entry.id)?.xp) || 0), 0)
+    // Готовый к отряду главный противник сценария ждёт не один: сборщик
+    // добавляет засаду по теме и сложности сценария, в обход клеток самого
+    // противника и его стражи. Решает счёт внимания, а не Режиссёр.
+    const tactics = scenarioFinaleTactics(state, [authoredNpcId])
+    const ambush = tactics?.ambush
+      ? assembleEncounter((() => {
+        const taken = new Set([enemy, ...defenders].flatMap((entry) => footprintCellsFor(entry, { x: Number(entry.x), y: Number(entry.y) }).map(positionKey)))
+        const { party, cells } = encounterAssemblyInput(state, taken)
+        return { ruleset_id: state.ruleset_id, scene: { cells }, party, difficulty: tactics.ambush.difficulty, theme: tactics.ambush.theme, seed: `${fingerprint}:ambush` }
+      })())
+      : null
+    const enemies = [enemy, ...defenders, ...(ambush?.enemies ?? [])]
+    const xp = [enemy, ...defenders].reduce((sum, entry) => sum + Math.max(0, Number(npcMechanicsFor(state, entry.id)?.xp) || 0), 0)
+      + Math.max(0, Number(ambush?.xp_spent) || 0)
     return validateEncounterPlacements({
       proposal_id: `encounter-proposal-${fingerprint.slice(0, 24)}`,
       version: ENCOUNTER_PROPOSAL_VERSION,
@@ -5496,8 +5509,27 @@ function assembleEncounterFromState(state, command) {
       },
       enemies,
       source: { kind: 'server-owned-authored-npc-profile', profile_id: mechanics.profile_id },
+      ...(ambush ? { scenario_ambush: { theme: tactics.ambush.theme, difficulty: tactics.ambush.difficulty, reason: tactics.reason, enemy_ids: ambush.enemies.map((entry) => String(entry.id)) } } : {}),
     })
   }
+  const { party, cells } = encounterAssemblyInput(state)
+  return validateEncounterPlacements(assembleEncounter({
+    ruleset_id: state.ruleset_id,
+    scene: { cells },
+    party,
+    difficulty: command.difficulty,
+    theme: command.theme,
+    seed: command.seed,
+  }))
+}
+
+/**
+ * Отряд и клетки сцены для сборщика встречи: живые герои с позициями и клетки
+ * с отметкой занятости (существа, реквизит, `occupiedKeys`) и стенами.
+ * @param {any} state
+ * @param {Set<string>} [occupiedKeys] клетки, которые сборщик обязан обойти
+ */
+function encounterAssemblyInput(state, occupiedKeys = new Set()) {
   const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
   const party = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor) && !isEmptyHeroSeat(actor)).map((actor) => {
     const position = actorPosition(state, actorId(actor))
@@ -5521,7 +5553,7 @@ function assembleEncounterFromState(state, command) {
   // минимальной дистанции. Лишняя пометка сдвинула бы расстановку, не изменив
   // допустимости ни одной клетки.
   const partyPositionIds = new Set(party.map((member) => member.id))
-  const creatureCells = new Set()
+  const creatureCells = new Set(occupiedKeys)
   for (const actor of listActors(state).filter((candidate) => isLivingActor(candidate) && !partyPositionIds.has(actorId(candidate)))) {
     for (const cell of actorFootprintCellsAt(state, actorId(actor))) creatureCells.add(positionKey(cell))
   }
@@ -5545,14 +5577,7 @@ function assembleEncounterFromState(state, command) {
     // встаёт поперёк перегородки, а враг — в доме за окном.
     ...(encounterBarrierSides(cell) ? { walls: encounterBarrierSides(cell) } : {}),
   }))
-  return validateEncounterPlacements(assembleEncounter({
-    ruleset_id: state.ruleset_id,
-    scene: { cells },
-    party,
-    difficulty: command.difficulty,
-    theme: command.theme,
-    seed: command.seed,
-  }))
+  return { party, cells }
 }
 
 /**
@@ -18757,7 +18782,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           shared_with: ownerId,
         })
       }
-      const surprised = surprisedParticipants(state, { party: [...partyIds, ...summonIds], enemies: enemyIds })
+      // Бой с главным противником сценария в логове: внезапность решает счёт
+      // внимания (`scenarioFinaleTactics`). Готовый дракон не застигнут никем,
+      // даже прокравшимся отрядом; не ждущий — застигнут вместе со стражей.
+      const finaleTactics = scenarioFinaleTactics(state, enemyIds)
+      const surprised = finaleTactics?.surprise === 'none' ? []
+        : finaleTactics?.surprise === 'enemies' ? enemyIds
+          : surprisedParticipants(state, { party: [...partyIds, ...summonIds], enemies: enemyIds })
       // Групповая инициатива включается только явно — командой или настройкой
       // кампании. Умолчание остаётся индивидуальным, как в редакции.
       const groupInitiative = command.group_initiative === true || state.campaign?.rules?.group_initiative === true
@@ -18776,7 +18807,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
         : null
       events.push({
-        ...eventFrom(command, 'CombatStarted', { round: 1, initiative, active_index: initiative.length ? 0 : -1, party_ids: partyIds, enemy_ids: enemyIds, combat_instance_id: combatInstanceId, ...(groupInitiative ? { group_initiative: true } : {}), ...(surprised.length ? { surprised } : {}), ...(openingAction ? { opening_action: openingAction } : {}) }, participantIds),
+        ...eventFrom(command, 'CombatStarted', { round: 1, initiative, active_index: initiative.length ? 0 : -1, party_ids: partyIds, enemy_ids: enemyIds, combat_instance_id: combatInstanceId, ...(groupInitiative ? { group_initiative: true } : {}), ...(surprised.length ? { surprised } : {}), ...(finaleTactics ? { scenario_finale: { readiness: finaleTactics.readiness, reason: finaleTactics.reason } } : {}), ...(openingAction ? { opening_action: openingAction } : {}) }, participantIds),
         event_id: combatStartedEventId,
       })
       events.push(...npcWorldEventsFrom(command, npcCombatStanceEventDrafts(state, {
@@ -18786,6 +18817,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       for (const surprisedId of surprised) {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
           condition: 'surprised', duration: 'until-own-turn-end', passive_perception: passivePerception(findActor(state, surprisedId), state),
+          ...(finaleTactics?.surprise === 'enemies' ? { source: 'scenario-attention', reason: finaleTactics.reason } : {}),
         }, [surprisedId]))
       }
       if (initiative.length) events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'TurnStarted', { round: 1, active_index: 0, action_economy_version: ACTION_ECONOMY_EVENT_VERSION }, [initiative[0].actor_id]))

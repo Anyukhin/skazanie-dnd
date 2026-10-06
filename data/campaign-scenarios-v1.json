@@ -328,6 +328,11 @@
         "ready_at": 6,
         "watched_location_ids": ["astohan-redstone", "astohan-mittlayd"],
         "topic_stems": ["дракон", "саргат", "вулканис", "огнедыш"],
+        "finale": {
+          "unaware_below": 3,
+          "hidden_route": ["astohan-smugglers-cave", "astohan-vulkanis-brazier"],
+          "ready_ambush": { "theme": "warband", "difficulty": "medium" }
+        },
         "stranger": {
           "npc_id": "astohan-ash-stranger",
           "name": "Незнакомец в пепельном плаще",
