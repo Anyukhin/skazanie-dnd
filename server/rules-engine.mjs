@@ -254,6 +254,17 @@ import {
 } from './scene-memory.mjs'
 import { applyScenarioMapReveals, scenarioEnding, scenarioSceneArgs, scenarioSecretsFor } from './campaign-scenario.mjs'
 import {
+  SCENARIO_COMMAND_TYPES,
+  SCENARIO_STRANGER_EVENT,
+  SCENARIO_STRANGER_EVENT_SCHEMA_VERSION,
+  SCENARIO_STRANGER_STAGES,
+  applyScenarioAttentionEvent,
+  normalizeScenarioAttentionState,
+  scenarioStrangerBreath,
+  scenarioStrangerProfile,
+  scenarioStrangerStage,
+} from './scenario-attention.mjs'
+import {
   NPC_SOCIAL_COMMAND_TYPES,
   NpcSocialValidationError,
   applyNpcSocialEvent,
@@ -584,7 +595,11 @@ const ATTACK_ACTION_KINDS = Object.freeze(['normal', 'extra', 'surge', 'haste'])
 // исчезал после restart и последующего проигрывания только хвоста журнала.
 // 15: версия, выбранная цель и активация следующего хода «Верного удара» 2014.
 // 16: версии областей 2014 сохраняют уровень фактически потраченной ячейки.
-export const GAME_STATE_PROJECTOR_VERSION = 17
+// 18: внимание главного противника `scenario_attention` выводится редьюсером из
+// журнала. Причина бампа та же, что у летописи и пленных: снимок семнадцатой
+// версии счёта не содержит, а хвост журнала после снимка посчитал бы только
+// расспросы, случившиеся после его границы.
+export const GAME_STATE_PROJECTOR_VERSION = 18
 
 // 15: новые commits получают reducer_version и используют бессрочную
 // retention-политику. Старые commits без маркера replay-ятся через legacy
@@ -808,6 +823,8 @@ const COMMAND_RULES = Object.freeze({
   // Благословение жреца: броска нет (за него платят), монета есть, и состояние
   // на герое — тоже. Три оси, и все три настоящие.
   ReceiveNpcBlessing: [RULE_IDS.economyCoins, RULE_IDS.conditions],
+  // Незнакомец сценария: на втором шаге — выдох со спасброском на половину.
+  StageScenarioStranger: [RULE_IDS.savingThrow, RULE_IDS.damage],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
@@ -847,6 +864,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...TAVERN_COMMAND_TYPES,
   ...COURIER_LETTER_COMMAND_TYPES,
   ...BLESSING_COMMAND_TYPES,
+  ...SCENARIO_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
@@ -2107,6 +2125,7 @@ export function normalizeCampaignState(input = {}) {
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
   state.courier_letters = normalizeCourierLetterState(state.courier_letters)
   state.captives = normalizeCaptivesState(state.captives)
+  state.scenario_attention = normalizeScenarioAttentionState(state.scenario_attention)
   // Контейнеры добычи живут в состоянии кампании, а не в сцене: невзятое
   // обязано пережить и уход со сцены, и подъём на другой этаж.
   state.loot_containers = normalizeLootContainersState(state.loot_containers)
@@ -4317,6 +4336,14 @@ function normalizeCommand(input, state) {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
     delete command.npcId
   }
+  if (SCENARIO_COMMAND_TYPES.has(command.command_type)) {
+    // Сцену сценария ставит сервер: ни актора, ни цели из запроса — только шаг.
+    command.actor_id = null
+    command.target_id = null
+    command.target_ids = []
+    command.stage = SCENARIO_STRANGER_STAGES.includes(String(command.stage)) ? String(command.stage) : ''
+    delete command.npc
+  }
   if (CAPTIVE_COMMAND_TYPES.has(command.command_type)) {
     command.captive_id = String(command.captive_id ?? command.captiveId ?? '').slice(0, 120)
     delete command.captiveId
@@ -6015,6 +6042,27 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('На выпивку не хватает монет', 'INSUFFICIENT_FUNDS')
       }
     }
+  }
+  if (SCENARIO_COMMAND_TYPES.has(command.command_type)) {
+    // Незнакомца приводит и раскрывает Режиссёр или ведущий, а не игрок: иначе
+    // отряд вызывал бы дракона кнопкой или пропускал бы его выдох. Шаг
+    // принимается, только когда его допускает сам сценарий — счётчик внимания,
+    // место и то, что отряд при незнакомце уже что-то сделал.
+    if (context?.isDirector !== true && context?.isAdmin !== true) {
+      throw new RulesValidationError('Сцену сценария ставит только Режиссёр', 'SCENARIO_STAGE_FORBIDDEN')
+    }
+    if (!command.stage) throw new RulesValidationError('Неизвестный шаг сцены незнакомца', 'SCENARIO_STAGE_INVALID')
+    if (scenarioStrangerStage(state) !== command.stage) {
+      throw new RulesValidationError('Этот шаг сцены незнакомца сейчас не к месту', 'SCENARIO_STAGE_NOT_DUE')
+    }
+    try {
+      const profile = scenarioStrangerProfile(state, { available: command.stage === 'arrive' })
+      command.npc = validateNpcSocialCommand({ command_type: 'UpsertNpcSocialProfile', npc: profile }, state, { isDirector: true }).npc
+    } catch (error) {
+      if (error instanceof NpcSocialValidationError) throw new RulesValidationError(error.message, error.code)
+      throw error
+    }
+    command.visibility = 'public'
   }
   if (BLESSING_COMMAND_TYPES.has(command.command_type)) {
     // Благословение просят у живого человека в мирной сцене: посреди боя жрецу
@@ -19420,6 +19468,62 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       break
     }
+    case 'StageScenarioStranger': {
+      const npcId = command.npc.id
+      const locationId = command.npc.location_id
+      const profileEvents = npcSocialEvents({ ...command, command_type: 'UpsertNpcSocialProfile' }, state)
+        .map((socialEvent) => eventFrom({ ...command, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+      if (command.stage === 'arrive') {
+        // Профиль в текущем месте и пост на поле — как у любого собеседника,
+        // заведённого посреди кампании.
+        events.push(...profileEvents)
+        events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(projectEvents(profileEvents))))
+        events.push(eventFrom(command, SCENARIO_STRANGER_EVENT, {
+          schema_version: SCENARIO_STRANGER_EVENT_SCHEMA_VERSION, stage: 'arrived', npc_id: npcId, location_id: locationId,
+        }, [npcId]))
+        break
+      }
+      // Превращение: один бросок урона на всех, спасбросок у каждого героя,
+      // половина при успехе — как у выдоха дракона. Затем он улетает: профиль
+      // остаётся в летописи разговоров, но собеседника больше нет.
+      const breath = scenarioStrangerBreath(state)
+      events.push(eventFrom(command, SCENARIO_STRANGER_EVENT, {
+        schema_version: SCENARIO_STRANGER_EVENT_SCHEMA_VERSION, stage: 'revealed', npc_id: npcId, location_id: locationId, breath,
+      }, [npcId]))
+      const damageRoll = diceService.roll(breath.expression, 'scenario_stranger_breath', null, 'public')
+      rolls.push(damageRoll)
+      events.push(eventFrom(command, 'DieRolled', damageRoll, []))
+      let sweepState = state
+      const heroes = uniqueStrings(state.partyMemberIds ?? [])
+        .map((heroId) => findActor(state, heroId))
+        .filter((hero) => hero && isLivingActor(hero))
+      for (const hero of heroes) {
+        const heroId = actorId(hero)
+        const save = rollSavingThrow(sweepState, heroId, {
+          ability: breath.ability,
+          modifier: abilityModifier(hero?.abilities?.[breath.ability]),
+          purpose: `scenario_stranger_save:${breath.ability}`,
+          visibility: 'public',
+        })
+        rolls.push(save)
+        const saved = savingThrowSucceeded(save, breath.dc)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+          ...save, ability: breath.ability, difficulty: breath.dc, saved, source: 'scenario-stranger',
+        }, [heroId]))
+        const amount = saved ? Math.floor(damageRoll.total / 2) : damageRoll.total
+        if (amount <= 0) continue
+        const damageState = sweepState
+        const payload = resolveDamagePayload(damageState, heroId, amount, breath.damage_type)
+        const applied = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, saved, source: 'scenario-stranger' }, [heroId])
+        events.push(applied)
+        sweepState = applyGameEvent(sweepState, applied)
+        const consequences = zeroHitPointDamageConsequences(damageState, command, heroId, payload)
+        events.push(...consequences)
+        sweepState = consequences.reduce(applyGameEvent, sweepState)
+      }
+      events.push(...profileEvents)
+      break
+    }
     case 'PlaceNpc': {
       const npc = state.social.npcs.find((candidate) => String(candidate.id) === command.npc_id)
       events.push(eventFrom(command, 'NpcPlaced', {
@@ -25373,6 +25477,9 @@ function applyGameEventCurrent(rawState, event) {
   // всю дугу без отдельного снимка.
   state.courier_letters = applyCourierLetterEvent(state.courier_letters, event)
   state.captives = applyCaptiveEvent(state.captives, event, state)
+  // Внимание главного противника сценария — такой же вывод из журнала: место
+  // берётся из сцены, в которой случилось событие, поэтому replay сходится.
+  state.scenario_attention = applyScenarioAttentionEvent(state.scenario_attention, event, state)
   // Реестр зверей — такой же вывод из журнала: подход заводит запись, а ступени,
   // укусы и переезды спутника только меняют её, поэтому replay восстанавливает
   // всю лестницу без отдельного снимка.

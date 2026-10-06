@@ -1580,6 +1580,10 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Тайны в самом реестре нет ни одной, и ключ стоит здесь только затем, чтобы
   // строгий whitelist не выбросил его до подмены.
   'blessings',
+  // Внимание главного противника сценария: счёт, причины и стадия незнакомца.
+  // Принадлежит ведущему целиком и наружу не идёт вовсе: что дракон о них
+  // знает, отряд понимает по тому, кто подсел к нему за стол, а не по цифре.
+  'scenario_attention',
   // Взлом отмычками. Собственного ключа в состоянии нет: карточка выводится из
   // листа героя-зрителя (`lockpickingForViewer`, `server/lockpicking.mjs`) и
   // существует только в проекции. Скрытого в ней нет ни грамма — владение
@@ -1885,6 +1889,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
   // только своей публичной формой (`courierLettersForViewer` ниже): черновик
   // ответа и тон адресата лежат в записи письма с минуты отправки, и сырой
   // ключ показал бы игроку ответ раньше, чем письмо доехало.
+  // `scenario_attention` — счёт внимания главного противника сценария. Он
+  // принадлежит ведущему: игрок узнаёт о нём по незнакомцу за столом.
   // `blessings` — реестр суточных слотов всего отряда. Наружу он идёт только
   // своей публичной формой (`blessingsForViewer` ниже), собранной под
   // конкретного героя: чужой слот игроку не нужен, а карточка обязана отвечать
@@ -1900,6 +1906,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     tavern: _tavern,
     blessings: _blessings,
     courier_letters: _courierLetters,
+    scenario_attention: _scenarioAttention,
     ...publicState
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')

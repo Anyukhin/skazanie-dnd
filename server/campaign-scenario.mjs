@@ -75,6 +75,44 @@ function validateCondition(condition, where, clueIds) {
   invalid(`${where}: неизвестное условие ${key}`)
 }
 
+const SAVE_ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
+const DAMAGE_TYPES = new Set(['fire', 'cold', 'acid', 'lightning', 'poison', 'thunder', 'necrotic', 'radiant', 'force', 'psychic'])
+
+/**
+ * Счётчик внимания главного противника (`server/scenario-attention.mjs`):
+ * пороги, места, где за отрядом следят, основы слов темы и незнакомец, который
+ * приходит на пороге `stranger_at`.
+ * @param {any} attention
+ * @param {string} scenarioId
+ * @param {Set<string>} locationIds
+ */
+function validateAttention(attention, scenarioId, locationIds) {
+  const where = `${scenarioId}/attention`
+  const { maximum, stranger_at: strangerAt, ready_at: readyAt } = attention
+  if (![maximum, strangerAt, readyAt].every((value) => Number.isSafeInteger(value) && value > 0)
+    || strangerAt >= readyAt || readyAt > maximum) invalid(`${where}: пороги 0 < stranger_at < ready_at ≤ maximum`)
+  const watched = Array.isArray(attention.watched_location_ids) ? attention.watched_location_ids : []
+  if (!watched.length || watched.some((/** @type {string} */ id) => !locationIds.has(id))) invalid(`${where}: места наблюдения должны быть карточками`)
+  const stems = Array.isArray(attention.topic_stems) ? attention.topic_stems : []
+  if (!stems.length || stems.some((/** @type {unknown} */ stem) => typeof stem !== 'string' || stem.length < 4 || stem !== stem.toLocaleLowerCase('ru'))) {
+    invalid(`${where}: основы темы — строчные, не короче четырёх букв`)
+  }
+  const stranger = attention.stranger
+  if (!stranger || !ID_PATTERN.test(String(stranger.npc_id ?? '')) || !clean(stranger.name, 120) || !clean(stranger.role, 80)
+    || !clean(stranger.summary, 400) || !clean(stranger.voice, 240)) invalid(`${where}: незнакомцу нужны id, имя, роль, облик и голос`)
+  const places = Array.isArray(stranger.location_ids) ? stranger.location_ids : []
+  if (!places.length || places.some((/** @type {string} */ id) => !locationIds.has(id))) invalid(`${where}: места незнакомца должны быть карточками`)
+  if (!Array.isArray(stranger.goals) || !stranger.goals.length) invalid(`${where}: цели незнакомца`)
+  for (const field of ['arrival_text', 'reveal_text', 'departure_text']) {
+    if (clean(stranger[field], 1_000).length < 40) invalid(`${where}: текст незнакомца ${field}`)
+  }
+  const breath = stranger.breath
+  if (!/^\d{1,2}d(4|6|8|10|12)$/u.test(String(breath?.expression ?? '')) || !SAVE_ABILITIES.has(breath?.ability)
+    || !Number.isSafeInteger(breath?.dc) || breath.dc < 5 || breath.dc > 30 || !DAMAGE_TYPES.has(breath?.damage_type)) {
+    invalid(`${where}: выдох — кости, спасбросок, СЛ 5–30 и вид урона`)
+  }
+}
+
 /**
  * Структура сценария. Ссылки на места и NPC мира проверяет тест каталога —
  * здесь только форма, чтобы модуль не зависел от каталога миров.
@@ -140,6 +178,7 @@ function validateScenario(scenario) {
     }
     if (routes.some((/** @type {unknown} */ route) => !Array.isArray(route) || route.length !== 2)) invalid(`${scenario.id}/${reveal.id}: дорога — пара мест`)
   }
+  if (scenario.attention != null) validateAttention(scenario.attention, scenario.id, locationIds)
   if (beats.filter((/** @type {any} */ beat) => beat.kind === 'finale').length !== 1) invalid(`${scenario.id}: финал должен быть ровно один`)
   if (beats[0]?.kind !== 'prologue') invalid(`${scenario.id}: первый узел — пролог`)
   const endings = Array.isArray(scenario.endings) ? scenario.endings : invalid(`${scenario.id}: endings`)
@@ -336,6 +375,15 @@ function leftLocationIds(state) {
   return ids
 }
 
+/**
+ * Место текущей сцены — id узла карты мира, даже если сцена знает его только
+ * по имени.
+ * @param {any} state
+ */
+export function scenarioLocationId(state) {
+  return currentLocationId(state)
+}
+
 /** @param {any} state */
 function currentLocationId(state) {
   const scene = state?.scene ?? {}
@@ -372,7 +420,8 @@ function conditionMet(condition, facts) {
 
 /**
  * Встреча с главным противником финала — последняя записанная. Исход берётся
- * только у завершённой встречи с записанным `EncounterOutcomeRecorded`.
+ * только у завершённой встречи в месте финала с записанным
+ * `EncounterOutcomeRecorded`.
  * @param {any} state
  * @param {any} scenario
  */
@@ -381,6 +430,10 @@ function bossEncounterOutcome(state, scenario) {
   const encounter = state?.mechanics?.encounter
   if (!finale || !encounter?.id || encounter.status !== 'ended') return ''
   if (!Array.isArray(encounter.enemy_ids) || !encounter.enemy_ids.map(String).includes(finale.boss.npc_id)) return ''
+  // Развязку решает только бой в логове: стычка с ним в другом месте —
+  // эпизод, а не финал кампании.
+  const encounterLocationId = clean(worldLocationFor(state, { name: encounter.location })?.id, 120) || currentLocationId(state)
+  if (encounterLocationId !== finale.boss.location_id) return ''
   const recorded = (Array.isArray(state?.autonomy?.encounter_outcomes) ? state.autonomy.encounter_outcomes : [])
     .some((/** @type {any} */ entry) => String(entry?.encounter_id) === String(encounter.id))
   return recorded ? clean(encounter.outcome, 60) : ''

@@ -16,6 +16,7 @@ import {
   scenarioEncounterIntent,
 } from './campaign-loop-policy.mjs'
 import { scenarioDirectorBrief } from './campaign-scenario.mjs'
+import { scenarioAttention } from './scenario-attention.mjs'
 import { npcMechanicsFor } from './npc-positioning.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { questStateForViewer } from './quest-consequences.mjs'
@@ -43,6 +44,22 @@ function selectionFields(metadata, prefix) {
     [`${prefix}_availability`]: metadata.availability,
     [`${prefix}_complete_within_scope`]: metadata.complete_within_scope,
     ...(metadata.truncation_reason ? { [`${prefix}_truncation_reason`]: metadata.truncation_reason } : {}),
+  }
+}
+
+
+/**
+ * Внимание главного противника для брифа: счёт, пороги и стадия незнакомца.
+ * Историю причин Режиссёру не шлём — ему нужен итог, а не протокол.
+ * @param {NonNullable<ReturnType<typeof scenarioAttention>>} attention
+ */
+function directorAttentionBrief(attention) {
+  return {
+    value: attention.value,
+    stranger_at: attention.stranger_at,
+    ready_at: attention.ready_at,
+    dragon_ready: attention.ready,
+    stranger: attention.stranger_stage,
   }
 }
 
@@ -263,7 +280,13 @@ function publicDirectorBrief(state = {}, playerAction = '', contractVersion = 'd
       } } : {}),
       // Сюжет авторского сценария: узлы, сколько улик найдено и куда звать.
       // Тексты тайн сюда не входят — Режиссёр ведёт темп, а не раскрывает.
-      ...(scenarioDirectorBrief(visibleState) ? { story: scenarioDirectorBrief(visibleState) } : {}),
+      // Внимание главного противника — сколько он знает об отряде и готов ли:
+      // Режиссёр соразмеряет с ним тон сцен и засаду финала. Число игроку не
+      // уходит (`scenario_attention` вырезан из проекции стола).
+      ...(scenarioDirectorBrief(visibleState) ? { story: {
+        ...scenarioDirectorBrief(visibleState),
+        ...(scenarioAttention(state) ? { attention: directorAttentionBrief(scenarioAttention(state)) } : {}),
+      } } : {}),
       active_quests: activeQuests.map((quest) => ({
         id: clean(quest.id, 120), title: clean(quest.title, 160), objectives: (quest.objectives ?? []).map((item) => clean(item, 180)).slice(0, 8),
         clock: quest.clock ? { current: Number(quest.clock.current) || 0, max: Number(quest.clock.max) || 1 } : null,

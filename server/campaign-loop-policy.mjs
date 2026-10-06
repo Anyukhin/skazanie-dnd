@@ -13,6 +13,7 @@ import {
   scenarioPhase,
   scenarioProgress,
 } from './campaign-scenario.mjs'
+import { scenarioStrangerNpcId, scenarioStrangerStage } from './scenario-attention.mjs'
 
 export { QUEST_ABANDONMENT_NEXT_OBJECTIVE, questProgressEvidenceFor }
 
@@ -436,13 +437,22 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}, context
   // В логове сценария бой — всегда с главным противником: ни модель, ни
   // запасной Режиссёр не подменят Саргата стаей зверей.
   if (intent.type === 'request_encounter' && campaignScenario(state)) intent = scenarioEncounterIntent(state, intent)
+  // Незнакомец сценария приходит и раскрывается шагом Режиссёра, что бы ни
+  // предложила модель: порог внимания — правило сценария, а не вкус Режиссёра.
+  // Сам шаг ещё раз проверит Rules Engine (`StageScenarioStranger`).
+  const strangerStage = scenarioStrangerStage(state)
+  if (strangerStage) {
+    intent = normalizeDirectorIntent({ type: 'open_social_scene', npc_id: scenarioStrangerNpcId(state), reason: `scenario-stranger:${strangerStage}` })
+  }
   return {
     intent,
     proposed_intent: proposed,
-    replaced: !accepted,
+    replaced: !accepted || Boolean(strangerStage),
     phase: availability.phase,
     allowed_types: availability.types,
-    reason: accepted
+    reason: strangerStage
+      ? 'scenario_stranger'
+      : accepted
       ? 'intent_allowed'
       : staleQuestIntent
         ? 'closed_quest_replacement'

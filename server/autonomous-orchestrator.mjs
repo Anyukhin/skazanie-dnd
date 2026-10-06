@@ -31,6 +31,7 @@ import {
   planServerTravel,
 } from './campaign-loop-policy.mjs'
 import { scenarioEnding } from './campaign-scenario.mjs'
+import { scenarioStrangerNpcId, scenarioStrangerStage } from './scenario-attention.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { unknownDestinationReply } from './player-request-router.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
@@ -750,7 +751,21 @@ export class AutonomousCampaignOrchestrator {
       if (cells.length) commands.push({ command_type: 'RevealArea', cells })
       else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
     }
-    if (intent.type === 'open_social_scene') {
+    const strangerId = scenarioStrangerNpcId(loaded.state)
+    const strangerStage = intent.type === 'open_social_scene' && strangerId && intent.npc_id === strangerId
+      ? scenarioStrangerStage(loaded.state)
+      : null
+    if (strangerStage) {
+      // Незнакомец сценария: профиль, пост и выдох собирает Rules Engine одной
+      // командой — исполнитель только называет шаг.
+      commands.push({ command_type: 'StageScenarioStranger', stage: strangerStage })
+      commands.push({
+        command_type: 'UpdateObjective',
+        objective: strangerStage === 'arrive' ? 'Понять, чего хочет незнакомец в пепельном плаще' : nextHook(loaded.state),
+      })
+    } else if (intent.type === 'open_social_scene' && strangerId && intent.npc_id === strangerId) {
+      commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
+    } else if (intent.type === 'open_social_scene') {
       let npc = availableNpc(loaded.state, intent.npc_id)
       if (!npc) {
         npc = assembleSocialNpc(loaded.state, {
