@@ -33,11 +33,15 @@
  * Модуль — лист графа: он читает состояние и сценарий, но не импортирует Rules
  * Engine. Числа выдоха живут в данных сценария, а не в коде.
  */
-import { campaignScenario, scenarioAttentionReady, scenarioLocationId, scenarioPreviousLocationId } from './campaign-scenario.mjs'
+import { campaignScenario, scenarioAttentionReady, scenarioLocationId, scenarioPreviousLocationId, scenarioTreatyRules } from './campaign-scenario.mjs'
 
 export const SCENARIO_ATTENTION_SCHEMA_VERSION = 1
 export const SCENARIO_ATTENTION_POLICY_ID = 'skazanie:scenario-attention-v1'
 export const SCENARIO_COMMAND_TYPES = Object.freeze(new Set(['StageScenarioStranger']))
+/** Договор с главным противником финала (`NegotiateScenarioTreaty`). */
+export const SCENARIO_TREATY_COMMAND_TYPES = Object.freeze(new Set(['NegotiateScenarioTreaty']))
+export const SCENARIO_TREATY_CONCLUDED_EVENT = 'ScenarioTreatyConcluded'
+export const SCENARIO_TREATY_REFUSED_EVENT = 'ScenarioTreatyRefused'
 export const SCENARIO_STRANGER_STAGES = Object.freeze(['arrive', 'reveal'])
 /** Событие шага сцены незнакомца; стадия в нём — уже свершившаяся. */
 export const SCENARIO_STRANGER_EVENT = 'ScenarioStrangerStaged'
@@ -58,7 +62,8 @@ const integer = (/** @type {unknown} */ value, fallback = 0) => {
 /**
  * @typedef {{ delta: number, value: number, reason: string, location_id: string, event_id: string }} AttentionChange
  * @typedef {{ stage: 'none' | 'arrived' | 'revealed', location_id: string, party_acted: boolean }} StrangerState
- * @typedef {{ schema_version: number, value: number, visit: number, counted: string[], history: AttentionChange[], stranger: StrangerState }} ScenarioAttentionState
+ * @typedef {{ concluded: boolean, concluded_by: string, attempts: string[] }} TreatyState
+ * @typedef {{ schema_version: number, value: number, visit: number, counted: string[], history: AttentionChange[], stranger: StrangerState, treaty: TreatyState }} ScenarioAttentionState
  */
 
 /**
@@ -85,6 +90,13 @@ export function normalizeScenarioAttentionState(input = {}) {
       stage,
       location_id: clean(stranger.location_id, 120),
       party_acted: stranger.party_acted === true,
+    },
+    // Договор финала: заключён ли и кто из героев уже пробовал (одна
+    // попытка на героя — иначе переговоры превратились бы в перебор бросков).
+    treaty: {
+      concluded: value.treaty?.concluded === true,
+      concluded_by: clean(value.treaty?.concluded_by, 120),
+      attempts: (Array.isArray(value.treaty?.attempts) ? value.treaty.attempts : []).map((/** @type {unknown} */ id) => clean(id, 120)).filter(Boolean).slice(-COUNTED_LIMIT),
     },
   }
 }
@@ -135,7 +147,15 @@ function raise(ledger, config, { delta, reason, key, locationId, eventId }) {
 export function applyScenarioAttentionEvent(ledgerInput, event, state) {
   let ledger = normalizeScenarioAttentionState(ledgerInput)
   const config = attentionConfig(state)
-  if (!config || !event) return ledger
+  if (!event) return ledger
+  // Договор — часть финала, а не внимания: сворачивается и без счётчика.
+  const eventType = String(event.event_type ?? '')
+  if (eventType === SCENARIO_TREATY_CONCLUDED_EVENT || eventType === SCENARIO_TREATY_REFUSED_EVENT) {
+    return eventType === SCENARIO_TREATY_CONCLUDED_EVENT
+      ? { ...ledger, treaty: { ...ledger.treaty, concluded: true, concluded_by: clean(event.actor_id, 120) } }
+      : { ...ledger, treaty: { ...ledger.treaty, attempts: [...ledger.treaty.attempts, clean(event.actor_id, 120)].filter(Boolean).slice(-COUNTED_LIMIT) } }
+  }
+  if (!config) return ledger
   const payload = event.payload ?? {}
   const type = String(event.event_type ?? '')
   const locationId = scenarioLocationId(state)
@@ -327,4 +347,26 @@ export function scenarioFinaleTactics(state = {}, enemyIds = []) {
   if (hiddenEntry) return { readiness: 'unaware', surprise: 'enemies', ambush: null, reason: 'hidden-route' }
   if (ledger.value < config.finale.unaware_below) return { readiness: 'unaware', surprise: 'enemies', ambush: null, reason: 'attention-low' }
   return null
+}
+
+const TREATY_WORDS = /(?<![\p{L}\p{M}])(?:договор\p{L}*|договарива\p{L}*|договорит\p{L}*|мир(?:а|ом|у)?|перемири\p{L}*|сделк\p{L}*|уговор\p{L}*|уговарива\p{L}*|убежда\p{L}*|переговор\p{L}*|виру|вира)(?![\p{L}\p{M}])/iu
+const TREATY_PARTNER = /(?<![\p{L}\p{M}])(?:дракон\p{L}*|саргат\p{L}*)(?![\p{L}\p{M}])/iu
+
+/**
+ * Предложение договора главному противнику в тексте игрока: «предлагаю
+ * Саргату договор», «убеждаю дракона уйти с равнин». Только узнаёт намерение;
+ * правду, ранение и СЛ проверяет Rules Engine (`NegotiateScenarioTreaty`).
+ * Узнаётся только в логове: в деревне «будет ли мир с драконом?» — вопрос
+ * жителю, а не переговоры.
+ * @param {unknown} value
+ * @param {any} [state]
+ */
+export function scenarioTreatyActionFromText(value, state = null) {
+  if (state) {
+    const rules = scenarioTreatyRules(state)
+    if (!rules || scenarioLocationId(state) !== rules.boss_location_id) return null
+  }
+  const text = clean(value, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  // Порядок слов не важен: «предлагаю Саргату договор» и «договор с драконом».
+  return text && TREATY_WORDS.test(text) && TREATY_PARTNER.test(text) ? { action: 'treaty' } : null
 }

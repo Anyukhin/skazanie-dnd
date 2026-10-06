@@ -219,6 +219,19 @@ function validateScenario(scenario) {
         || !ENCOUNTER_DIFFICULTIES.has(beat.boss?.difficulty)) {
         invalid(`${scenario.id}/${id}: финалу нужен главный противник с местом и сложностью`)
       }
+      const threshold = beat.boss.morale?.threshold
+      if (beat.boss.morale != null && !(typeof threshold === 'number' && threshold > 0 && threshold < 1)) {
+        invalid(`${scenario.id}/${id}: порог морали главного противника — доля хитов 0–1`)
+      }
+      if (beat.treaty != null) {
+        const treaty = beat.treaty
+        validateCondition(treaty.truth, `${scenario.id}/${id}.treaty.truth`, clueIds)
+        if (!['persuasion', 'intimidation', 'deception', 'insight'].includes(treaty.skill) || !Number.isSafeInteger(treaty.dc) || treaty.dc < 5 || treaty.dc > 30
+          || !(typeof treaty.wounded_ratio === 'number' && treaty.wounded_ratio > 0 && treaty.wounded_ratio <= 1)
+          || clean(treaty.success_text, 1_000).length < 40 || clean(treaty.failure_text, 1_000).length < 20) {
+          invalid(`${scenario.id}/${id}: договору нужны правда, навык, СЛ, порог ранения и тексты`)
+        }
+      }
     } else validateCondition(beat.complete_when, `${scenario.id}/${id}`, clueIds)
   }
   for (const reveal of Array.isArray(scenario.map_reveals) ? scenario.map_reveals : []) {
@@ -515,6 +528,68 @@ function conditionMet(condition, facts) {
   return false
 }
 
+/** Узел финала сценария. @param {any} scenario */
+function finaleBeat(scenario) {
+  return scenario?.beats?.find((/** @type {any} */ beat) => beat.kind === 'finale') ?? null
+}
+
+/** Договор с главным противником уже заключён (реестр сценария). @param {any} state */
+function treatyConcluded(state) {
+  return state?.scenario_attention?.treaty?.concluded === true
+}
+
+/**
+ * Мораль главного противника сценария: порог доли хитов, на котором он
+ * проверяет мораль, и то, что сломленный он улетает, а не сдаётся. `null` —
+ * это не главный противник или у него нет особой морали.
+ * @param {any} state
+ * @param {string} actorId
+ * @returns {{ threshold: number, flies: true } | null}
+ */
+export function scenarioBossMorale(state, actorId) {
+  const boss = finaleBeat(campaignScenario(state))?.boss
+  if (!boss?.morale || String(actorId) !== boss.npc_id) return null
+  return { threshold: Number(boss.morale.threshold), flies: true }
+}
+
+/**
+ * Договор с главным противником: правда раскрыта (условие `truth`), навык и
+ * СЛ, порог ранения для переговоров посреди боя, тексты. `null` — у сценария
+ * договора нет.
+ * @param {any} state
+ */
+export function scenarioTreatyRules(state) {
+  const scenario = campaignScenario(state)
+  const finale = finaleBeat(scenario)
+  if (!scenario || !finale?.treaty) return null
+  return {
+    boss_npc_id: String(finale.boss.npc_id),
+    boss_location_id: String(finale.boss.location_id),
+    truth_revealed: conditionMet(finale.treaty.truth, conditionFacts(state, scenario)),
+    skill: String(finale.treaty.skill),
+    dc: Number(finale.treaty.dc),
+    wounded_ratio: Number(finale.treaty.wounded_ratio),
+    concluded: treatyConcluded(state),
+    success_text: clean(finale.treaty.success_text, 1_000),
+    failure_text: clean(finale.treaty.failure_text, 1_000),
+  }
+}
+
+/**
+ * Чем закончился бой с главным противником, если не победой: договор —
+ * `parley`, улетевший сломленным — `fled`. `null` — обычная причина.
+ * @param {any} state
+ * @returns {'parley' | 'fled' | null}
+ */
+export function scenarioEncounterEndReason(state) {
+  const boss = finaleBeat(campaignScenario(state))?.boss
+  const encounter = state?.mechanics?.encounter
+  if (!boss || !Array.isArray(encounter?.enemy_ids) || !encounter.enemy_ids.map(String).includes(boss.npc_id)) return null
+  if (treatyConcluded(state)) return 'parley'
+  const conditions = Array.isArray(state?.mechanics?.conditions?.[boss.npc_id]) ? state.mechanics.conditions[boss.npc_id] : []
+  return conditions.some((/** @type {any} */ entry) => String(entry?.id ?? entry) === 'fled') ? 'fled' : null
+}
+
 /**
  * Встреча с главным противником финала — последняя записанная. Исход берётся
  * только у завершённой встречи в месте финала с записанным
@@ -523,6 +598,8 @@ function conditionMet(condition, facts) {
  * @param {any} scenario
  */
 function bossEncounterOutcome(state, scenario) {
+  // Договор, заключённый до боя, — тоже исход финала: боя не было вовсе.
+  if (treatyConcluded(state)) return 'parley'
   const finale = scenario.beats.find((/** @type {any} */ beat) => beat.kind === 'finale')
   const encounter = state?.mechanics?.encounter
   if (!finale || !encounter?.id || encounter.status !== 'ended') return ''

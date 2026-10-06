@@ -30,7 +30,7 @@ import {
   pacingForDirectorIntent,
   planServerTravel,
 } from './campaign-loop-policy.mjs'
-import { scenarioEnding } from './campaign-scenario.mjs'
+import { scenarioEncounterEndReason, scenarioEnding } from './campaign-scenario.mjs'
 import { scenarioStrangerNpcId, scenarioStrangerStage } from './scenario-attention.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { unknownDestinationReply } from './player-request-router.mjs'
@@ -2015,7 +2015,7 @@ export class AutonomousCampaignOrchestrator {
         commands = plan.commands
         heroRule = plan.rule
       } else if (!livingEnemies.length || !livingHeroes.length) {
-        commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : 'enemies_defeated' }]
+        commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : scenarioEncounterEndReason(state) ?? 'enemies_defeated' }]
       } else if (!isLivingActor(actor)) {
         commands = [{ command_type: 'EndTurn', actor_id: actorId }]
       } else if (isEnemyActor(state, actorId)) {
@@ -2221,7 +2221,7 @@ export class AutonomousCampaignOrchestrator {
     // оставались на 0 ОЗ навсегда, и следующая просьба о бое собирала встречу
     // на пустой отряд — `INVALID_PARTY` (прогон Асстохана, сид 2, 2026-10-05).
     // Теперь отряд так же приходит в себя через 1d4 часа и отдыхает.
-    if (plan.outcome === 'enemies_defeated' || plan.outcome === 'party_incapacitated') {
+    if (plan.outcome === 'enemies_defeated' || plan.outcome === 'fled' || plan.outcome === 'party_incapacitated') {
       let afterConsequences = await this.load(campaignId)
       if (plan.outcome === 'party_incapacitated') {
         // Победители, уложив отряд, уходят — тем же состоянием `fled`, что и
@@ -2283,7 +2283,7 @@ export class AutonomousCampaignOrchestrator {
 
     await this.propagateWitnesses(campaignId, {
       sourceEventId: outcomeCommit.events.find((entry) => entry.event_type === 'EncounterOutcomeRecorded')?.event_id,
-      outcome: plan.outcome === 'enemies_defeated' ? 'helpful' : 'harmful',
+      outcome: plan.outcome === 'enemies_defeated' || plan.outcome === 'fled' ? 'helpful' : 'harmful',
       severity: 'major',
       idempotencyKey: `${baseKey}:witnesses`,
     })

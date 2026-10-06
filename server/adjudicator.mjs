@@ -216,6 +216,15 @@ export class Adjudicator {
       }
       case 'end_combat':
         return { ...base, rule_ids: ruleIdsFor([RULE_IDS.initiative, RULE_IDS.turns]), proposed_commands: [{ command_type: 'EndCombat', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.initiative, RULE_IDS.turns]) }], confidence: 0.9 }
+      case 'scenario_treaty':
+        // Договор с главным противником финала: правду, место, ранение, СЛ
+        // и одну попытку на героя проверяет Rules Engine.
+        return {
+          ...base,
+          rule_ids: ruleIdsFor([RULE_IDS.abilityCheck]),
+          proposed_commands: [{ command_type: 'NegotiateScenarioTreaty', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.abilityCheck]) }],
+          confidence: 0.9,
+        }
       case 'scenario_knight': {
         // Голова перед проклятым рыцарем и его упокоение — серверные команды
         // сценария: присутствие, загадку, досягаемость, СЛ и награду проверяет

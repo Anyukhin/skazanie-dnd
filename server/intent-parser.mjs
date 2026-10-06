@@ -1,5 +1,6 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
 import { scenarioKnightActionFromText } from './scenario-knight.mjs'
+import { scenarioTreatyActionFromText } from './scenario-attention.mjs'
 import { announcesMovement } from './party-exit-intent.mjs'
 
 const CORPSE_SEARCH_VERB = '(?<![\\p{L}\\p{M}])(?:обыск\\p{L}*|провер\\p{L}*|осматр\\p{L}*|ищ\\p{L}*)'
@@ -485,7 +486,10 @@ export class IntentParser {
     // «молюсь об упокоении Каэлана») — своя серверная команда, а не реплика:
     // иначе фраза с именем уходила бы в разговор, и голова оставалась у героя.
     const knightAction = scenarioKnightActionFromText(operativeText)
+    // Договор с драконом финала — тоже своя команда сценария, а не реплика.
+    const treatyAction = knightAction ? null : scenarioTreatyActionFromText(operativeText, visibleState)
     const detectedIntent = knightAction ? 'scenario_knight'
+      : treatyAction ? 'scenario_treaty'
       : spoken ? 'social'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'

@@ -14,7 +14,7 @@ import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
-import { buildScenarioArcPlan, scenarioClueFactIdsKnownBy, scenarioForWorldTemplate } from './campaign-scenario.mjs'
+import { buildScenarioArcPlan, scenarioClueFactIdsKnownBy, scenarioForWorldTemplate, scenarioSecretsFor } from './campaign-scenario.mjs'
 import { scenarioNightVisitorIds } from './scenario-knight.mjs'
 import { validateCampaignMode } from './campaign-stories.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
@@ -792,6 +792,18 @@ export class CampaignBootstrapper {
     // Секрет знает только названный хранитель: его он может выдать в
     // разговоре, остальные собеседники о нём не слышали.
     const secretFacts = openingSecretFacts(opening, openingLocationEntity, campaignCode)
+    // Тайны сценария стартового места пишутся сразу: переход сцены записывает
+    // их при входе, а в первое место отряд не входит — он в нём начинает.
+    // Без этого тайны Штормберга (страница журнала, признание Ареса) не
+    // существовали, пока отряд не уйдёт и не вернётся.
+    const scenarioStartSecrets = openingLocationEntity
+      ? scenarioSecretsFor({ campaignConcept }, startingLocationId).map((secret) => ({
+        ...gmSecretFact({ clue: secret.clue, topic: secret.topic, skills: secret.skills, holder: '' }, {
+          subjectId: openingLocationEntity.id, salt: secret.fact_id, index: 0, sourceCommandId: `bootstrap:${campaignCode}`,
+        }),
+        id: secret.fact_id,
+      }))
+      : []
     for (const [index, fact] of secretFacts.entries()) {
       const holder = clean(opening.secrets[index]?.holder, 120).toLocaleLowerCase('ru')
       const npc = holder ? openingNpcs.find((entry) => clean(entry.name, 120).toLocaleLowerCase('ru') === holder) : null
@@ -807,7 +819,7 @@ export class CampaignBootstrapper {
     const starterTitle = starterQuestTitle(opening)
     const initialWorldMemory = {
       ...sceneMemory,
-      facts: [...(sceneMemory.facts ?? []), ...openingFacts, ...secretFacts],
+      facts: [...(sceneMemory.facts ?? []), ...openingFacts, ...secretFacts, ...scenarioStartSecrets],
       entities: [...(sceneMemory.entities ?? []), ...factionEntities],
       quests: [...(sceneMemory.quests ?? []), {
         id: starterQuestId,

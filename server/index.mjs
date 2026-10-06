@@ -4901,7 +4901,9 @@ async function handleHttpRequest(req, res) {
       warnOnDeadlyEncounter(campaignId, events)
       if (body.run_combat === true && result.state.mechanics?.combat?.active) {
         const combat = await autonomousCampaign.runCombat(campaignId, { idempotencyPrefix: `${key}:combat` })
-        if (!combat.state.mechanics?.combat?.active) await autonomousCampaign.completeEncounter({ campaignId, idempotencyKey: `${key}:completion` })
+        // Исход берётся из закрытой встречи: бой с главным противником сценария
+        // может кончиться бегством или договором, а не победой.
+        if (!combat.state.mechanics?.combat?.active) await autonomousCampaign.completeEncounter({ campaignId, outcome: combat.state.mechanics?.encounter?.outcome || 'enemies_defeated', idempotencyKey: `${key}:completion` })
       }
       const authoritative = await autonomousCampaign.load(campaignId)
       persistAuthoritativeProjection(campaignId, authoritative.state, events)

@@ -252,9 +252,12 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, scenarioClueRewardCatalogId, scenarioEnding, scenarioProgress, scenarioSceneArgs, scenarioSecretsFor } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioProgress, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
+  SCENARIO_TREATY_COMMAND_TYPES,
+  SCENARIO_TREATY_CONCLUDED_EVENT,
+  SCENARIO_TREATY_REFUSED_EVENT,
   SCENARIO_STRANGER_EVENT,
   SCENARIO_STRANGER_EVENT_SCHEMA_VERSION,
   SCENARIO_STRANGER_STAGES,
@@ -852,6 +855,8 @@ const COMMAND_RULES = Object.freeze({
   // проверка навыка против СЛ сценария.
   ReturnKnightHead: [RULE_IDS.turns],
   ReleaseCursedKnight: [RULE_IDS.abilityCheck],
+  // Договор с главным противником финала: проверка навыка против СЛ сценария.
+  NegotiateScenarioTreaty: [RULE_IDS.abilityCheck],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
@@ -893,6 +898,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...BLESSING_COMMAND_TYPES,
   ...SCENARIO_COMMAND_TYPES,
   ...SCENARIO_KNIGHT_COMMAND_TYPES,
+  ...SCENARIO_TREATY_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
@@ -4371,6 +4377,13 @@ function normalizeCommand(input, state) {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
     delete command.npcId
   }
+  if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса — только герой: противник, навык и СЛ — из данных сценария.
+    command.target_id = null
+    command.target_ids = []
+    delete command.skill
+    delete command.difficulty
+  }
   if (SCENARIO_KNIGHT_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса берутся только герой и, для упокоения, навык: цель — всегда
     // рыцарь сценария, СЛ и награда — из данных сценария.
@@ -4550,7 +4563,7 @@ function needsActor(type) {
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer', 'AttackNpc',
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
-    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight',
+    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -5169,7 +5182,7 @@ function assertTurn(command, state, context = {}) {
   // посреди боя они доступны только к сломленному моралью зверю, но доступны —
   // и подойти к нему с открытой ладонью посреди чужого хода нельзя. Вне боя
   // функция выходит первой же проверкой, и там уговор ничего не стоит.
-  if (!combat.active || !['UseMonsterAction', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'EquipItem', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateDoor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'LootContainer', 'ReturnKnightHead', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['UseMonsterAction', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'EquipItem', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateDoor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'LootContainer', 'ReturnKnightHead', 'NegotiateScenarioTreaty', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (command.command_type === 'MakeAttack' && command.item_id) {
     const actor = findActor(state, command.actor_id)
     const profile = itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability })
@@ -5273,7 +5286,7 @@ function assertTurn(command, state, context = {}) {
       const label = resource === 'bonus_action' ? 'Бонусное действие' : resource === 'reaction' ? 'Реакция' : 'Действие'
       throw new RulesValidationError(`${label} на этом ходу уже потрачено`, resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : resource === 'reaction' ? 'REACTION_SPENT' : 'ACTION_SPENT')
     }
-  } else if (command.command_type === 'IdentifyEnemy' || command.command_type === 'ReturnKnightHead') {
+  } else if (['IdentifyEnemy', 'ReturnKnightHead', 'NegotiateScenarioTreaty'].includes(command.command_type)) {
     // Опознание стоит действия так же, как импровизация: разглядывать врага
     // бесплатно означало бы лишний ход каждому герою каждый раунд. Поставить
     // голову перед проклятым рыцарем посреди схватки — тоже действие.
@@ -6114,6 +6127,36 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('На выпивку не хватает монет', 'INSUFFICIENT_FUNDS')
       }
     }
+  }
+  if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
+    // Договор с главным противником финала (`docs/astohan-scenario.md`,
+    // развязка «Договор»): только когда правда о походе раскрыта, только в
+    // логове, одна попытка на героя; посреди боя — когда дракон ранен.
+    const rules = scenarioTreatyRules(state)
+    if (!rules) throw new RulesValidationError('В этой кампании договор с противником не предусмотрен', 'SCENARIO_TREATY_ABSENT')
+    if (rules.concluded) throw new RulesValidationError('Договор уже заключён', 'SCENARIO_TREATY_CONCLUDED')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Договаривается только герой отряда', 'ACTOR_FORBIDDEN')
+    if (!isLivingActor(hero)) throw new RulesValidationError('Герой без сознания не ведёт переговоров', 'ACTOR_DEFEATED')
+    if (scenarioLocationId(state) !== rules.boss_location_id) throw new RulesValidationError('Договориться можно только с самим драконом, в его логове', 'SCENARIO_TREATY_WRONG_PLACE')
+    if (!rules.truth_revealed) {
+      throw new RulesValidationError('Саргат не станет слушать, пока правда о походе на Вулканиса не раскрыта', 'SCENARIO_TREATY_TRUTH_MISSING')
+    }
+    if (state.npc_world?.vitals?.[rules.boss_npc_id]?.alive === false) throw new RulesValidationError('Договариваться больше не с кем', 'SCENARIO_TREATY_BOSS_GONE')
+    if ((state.scenario_attention?.treaty?.attempts ?? []).map(String).includes(String(command.actor_id))) {
+      throw new RulesValidationError('Этого героя дракон уже выслушал и не поверил', 'SCENARIO_TREATY_ATTEMPT_SPENT')
+    }
+    if (state.mechanics.combat.active) {
+      const boss = findActor(state, rules.boss_npc_id)
+      if (!boss || !isLivingActor(boss)) throw new RulesValidationError('Договариваться больше не с кем', 'SCENARIO_TREATY_BOSS_GONE')
+      const ratio = actorHp(boss) / Math.max(1, actorMaxHp(boss))
+      if (ratio > rules.wounded_ratio) {
+        throw new RulesValidationError('Пока дракон не ранен всерьёз, он не станет торговаться', 'SCENARIO_TREATY_BOSS_UNHURT')
+      }
+    }
+    command.skill = rules.skill
+    command.difficulty = rules.dc
+    command.visibility = 'public'
   }
   if (SCENARIO_KNIGHT_COMMAND_TYPES.has(command.command_type)) {
     const rules = scenarioKnightRules(state)
@@ -11862,7 +11905,7 @@ const COMBAT_ROUND_TIME_COMMANDS = new Set([
   'UseLegendaryAction', 'MoveActor', 'ChangeWeapon', 'UseItem', 'ActivateItem', 'EquipItem',
   'IdentifyEnemy', 'ResolveImprovisedAction', 'CalmBeast', 'FeedBeast', 'ScareWithBeast',
   'ProposeParley', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateDoor', 'OperateSceneObject',
-  'ReturnKnightHead',
+  'ReturnKnightHead', 'NegotiateScenarioTreaty',
 ])
 
 function withCombatRoundTimeMarker(result, rawState, context) {
@@ -19674,6 +19717,51 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         reason: 'pickpocket-caught',
       })) {
         events.push(eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids))
+      }
+      break
+    }
+    case 'NegotiateScenarioTreaty': {
+      const rules = scenarioTreatyRules(state)
+      const check = resolveCommandInternal({
+        ...command,
+        command_type: 'MakeAbilityCheck',
+        command_id: `${command.command_id}:check`,
+        skill: command.skill,
+        difficulty: command.difficulty,
+        source_rule_ids: [...command.source_rule_ids],
+      }, state, { diceService, context })
+      events.push(...check.events)
+      rolls.push(...(check.rolls ?? []))
+      const resolved = check.events.find((event) => event.event_type === 'AbilityCheckResolved')
+      if (resolved?.payload?.success !== true) {
+        events.push(eventFrom(command, SCENARIO_TREATY_REFUSED_EVENT, {
+          schema_version: 1, npc_id: rules.boss_npc_id, skill: command.skill, text: rules.failure_text,
+        }, [rules.boss_npc_id, command.actor_id]))
+        break
+      }
+      events.push(eventFrom(command, SCENARIO_TREATY_CONCLUDED_EVENT, {
+        schema_version: 1, npc_id: rules.boss_npc_id, skill: command.skill, text: rules.success_text,
+      }, [rules.boss_npc_id, command.actor_id]))
+      if (state.mechanics.combat.active) {
+        // Договор посреди боя: дракон и его слуги уходят, бой закрывается
+        // договором (`scenarioEncounterEndReason`).
+        for (const enemy of (state.enemies ?? []).filter((candidate) => isLivingActor(candidate))) {
+          events.push(eventFrom(commandWithRules({ ...command, actor_id: actorId(enemy) }, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'fled', source_actor: actorId(enemy), source: 'scenario-treaty',
+          }, [actorId(enemy)]))
+        }
+      } else {
+        // До боя: дракон уходит с равнин, собеседника в логове больше нет.
+        const stored = state.social.npcs.find((npc) => npc.id === rules.boss_npc_id)
+        if (stored && stored.available !== false) {
+          const profile = Object.fromEntries(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs',
+            'known_fact_ids', 'social_dcs', 'visibility', 'reveal_on_presence', 'tags', 'schedule', 'inventory']
+            .filter((field) => stored[field] !== undefined).map((field) => [field, clone(stored[field])]))
+          const hidden = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...profile, available: false } }, state, { isDirector: true })
+          for (const socialEvent of npcSocialEvents(hidden, state)) {
+            events.push(eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+          }
+        }
       }
       break
     }

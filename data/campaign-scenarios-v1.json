@@ -22,6 +22,13 @@
               "topic": "вырванная страница журнала похода на Вулканиса",
               "skills": ["investigation", "history"],
               "clue": "В журнале похода на Вулканиса в Архиве Сломанного Клыка вырвана одна страница — та, где записан день после победы над драконом. На корешке остался оттиск печати королевского отряда."
+            },
+            {
+              "id": "ares-confession",
+              "holders": ["astohan-ares"],
+              "topic": "признание короля Ареса о походе на Вулканиса",
+              "skills": ["insight", "history"],
+              "clue": "Арес признаётся: в ночь после победы его отряд разбил кладку Вулканиса, и приказ отдал он сам. Он готов написать это признание своей рукой — ради мира с сыном дракона."
             }
           ]
         },
@@ -313,7 +320,8 @@
             { "clue": "mittlayd-informant" },
             { "clue": "camp-gedrik" },
             { "clue": "smugglers-letter" },
-            { "clue": "stormberg-journal-page" }
+            { "clue": "stormberg-journal-page" },
+            { "clue": "ares-confession" }
           ] }
         },
         {
@@ -325,7 +333,16 @@
           "boss": {
             "npc_id": "astohan-sargat",
             "location_id": "astohan-vulkanis-brazier",
-            "difficulty": "deadly"
+            "difficulty": "deadly",
+            "morale": { "threshold": 0.34 }
+          },
+          "treaty": {
+            "truth": { "count": 2, "of": [{ "clue": "camp-gedrik" }, { "clue": "stormberg-journal-page" }, { "clue": "ares-confession" }] },
+            "skill": "persuasion",
+            "dc": 20,
+            "wounded_ratio": 0.5,
+            "success_text": "Саргат долго молчит, и жар в его пасти гаснет. «Правда стоит больше мести, — рычит он наконец. — Пусть ваш король назовёт её вслух. Я уйду с равнин — но вира за кладку будет уплачена». Дракон расправляет крылья и уходит за горы.",
+            "failure_text": "Саргат скалит зубы: «Слова людей — пепел. Я слышал их тридцать лет»."
           }
         }
       ],
