@@ -1,4 +1,5 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
+import { scenarioKnightActionFromText } from './scenario-knight.mjs'
 import { announcesMovement } from './party-exit-intent.mjs'
 
 const CORPSE_SEARCH_VERB = '(?<![\\p{L}\\p{M}])(?:обыск\\p{L}*|провер\\p{L}*|осматр\\p{L}*|ищ\\p{L}*)'
@@ -480,7 +481,12 @@ export class IntentParser {
     const patternIntent = rawPatternIntent === 'ability_check' && mainClause !== operativeText && checkPattern && !checkPattern.test(mainClause)
       ? 'improvised_action'
       : rawPatternIntent
-    const detectedIntent = spoken ? 'social'
+    // Действие с проклятым рыцарем сценария («ставлю голову перед рыцарем»,
+    // «молюсь об упокоении Каэлана») — своя серверная команда, а не реплика:
+    // иначе фраза с именем уходила бы в разговор, и голова оставалась у героя.
+    const knightAction = scenarioKnightActionFromText(operativeText)
+    const detectedIntent = knightAction ? 'scenario_knight'
+      : spoken ? 'social'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
       : freeActionKind === 'approach_attack' ? 'approach_attack'
@@ -527,6 +533,7 @@ export class IntentParser {
       requires_clarification: missing.length > 0,
       confidence: intent === 'improvised_action' ? 0.45 : missing.length ? 0.55 : 0.86,
       free_action_kind: freeActionKind,
+      ...(knightAction ? { scenario_knight: knightAction } : {}),
       ...( /нелеталь|не\s+убив|не\s+убива|без\s+убийств/iu.test(text) || /оглуш|нокаут/iu.test(operativeText) ? { knock_out: true } : {}),
       ...(ambiguousSocialTarget ? {
         target_candidates: socialTargets.map((actor) => ({

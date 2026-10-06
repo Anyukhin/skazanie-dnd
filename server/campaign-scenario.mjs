@@ -93,8 +93,24 @@ function validateKnight(knight, scenarioId, locationIds) {
   if (![from, to].every((value) => Number.isSafeInteger(value) && value >= 0 && value < 1_440) || from === to) {
     invalid(`${where}: окно ночи — две разные минуты суток 0–1439`)
   }
-  for (const field of ['arrival_text', 'departure_text']) {
+  for (const field of ['arrival_text', 'departure_text', 'ward_laugh_text', 'head_text']) {
     if (clean(knight[field], 1_000).length < 40) invalid(`${where}: текст ${field}`)
+  }
+  if (!ID_PATTERN.test(String(knight.riddle_clue ?? ''))) invalid(`${where}: загадке нужна тайна-разгадка`)
+  if (!Number.isSafeInteger(knight.head_reach_feet) || knight.head_reach_feet < 5 || knight.head_reach_feet > 60) invalid(`${where}: досягаемость головы 5–60 футов`)
+  if (!Array.isArray(knight.ward_resist_except) || knight.ward_resist_except.some((/** @type {string} */ type) => !DAMAGE_TYPES.has(type))) {
+    invalid(`${where}: исключения сопротивления — виды урона`)
+  }
+  const dread = knight.dread
+  if (!SAVE_ABILITIES.has(dread?.ability) || !Number.isSafeInteger(dread?.dc) || dread.dc < 5 || dread.dc > 30
+    || !Number.isSafeInteger(dread?.radius_feet) || dread.radius_feet < 5 || dread.radius_feet > 120) {
+    invalid(`${where}: аура страха — спасбросок, СЛ 5–30 и радиус 5–120 футов`)
+  }
+  const release = knight.release
+  if (!Number.isSafeInteger(release?.dc) || release.dc < 5 || release.dc > 30 || !Array.isArray(release.skills) || !release.skills.length
+    || release.skills.some((/** @type {string} */ skill) => !['persuasion', 'religion', 'insight', 'intimidation', 'deception', 'history'].includes(skill))
+    || !clean(release.reward?.name, 120) || clean(release.success_text, 1_000).length < 40 || clean(release.failure_text, 1_000).length < 20) {
+    invalid(`${where}: мирному пути нужны СЛ, навыки, награда и тексты`)
   }
 }
 

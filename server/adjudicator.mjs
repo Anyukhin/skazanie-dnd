@@ -216,6 +216,21 @@ export class Adjudicator {
       }
       case 'end_combat':
         return { ...base, rule_ids: ruleIdsFor([RULE_IDS.initiative, RULE_IDS.turns]), proposed_commands: [{ command_type: 'EndCombat', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.initiative, RULE_IDS.turns]) }], confidence: 0.9 }
+      case 'scenario_knight': {
+        // Голова перед проклятым рыцарем и его упокоение — серверные команды
+        // сценария: присутствие, загадку, досягаемость, СЛ и награду проверяет
+        // Rules Engine (`ReturnKnightHead`, `ReleaseCursedKnight`).
+        const action = intent.scenario_knight
+        const release = action?.action === 'release'
+        return {
+          ...base,
+          rule_ids: ruleIdsFor([release ? RULE_IDS.abilityCheck : RULE_IDS.turns]),
+          proposed_commands: [release
+            ? { command_type: 'ReleaseCursedKnight', actor_id: intent.actor_id, skill: action.skill, source_rule_ids: ruleIdsFor([RULE_IDS.abilityCheck]) }
+            : { command_type: 'ReturnKnightHead', actor_id: intent.actor_id, source_rule_ids: ruleIdsFor([RULE_IDS.turns]) }],
+          confidence: 0.9,
+        }
+      }
       case 'wait': {
         // Ожидание до часа суток — то же течение времени, что у отдыха, но
         // без отдыха: хиты и ресурсы не восстанавливаются. Посреди боя ждать

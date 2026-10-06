@@ -530,6 +530,10 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target} исчезает с поля боя.`)
     } else if (event.event_type === 'EquipmentChanged') {
       meaningful.push(`${actor} экипирует ${payload.item_name || 'оружие'}${payload.turns_spent ? ', затрачивая действие' : ' перед атакой'}.`)
+    } else if (event.event_type === 'DamageApplied' && payload.immune === true && Number(payload.raw_amount) > 0 && payload.scenario_ward_text) {
+      // Проклятый рыцарь до возвращения головы: удар проходит сквозь пустоту,
+      // и он смеётся с подсказкой (`server/scenario-knight.mjs`).
+      meaningful.push(String(payload.scenario_ward_text))
     } else if (event.event_type === 'DamageApplied' && payload.immune === true && Number(payload.raw_amount) > 0) {
       meaningful.push(`${damageTypeLabel(payload.damage_type)} не действует на ${target}.`)
     } else if (event.event_type === 'ConditionImmunityResolved') {

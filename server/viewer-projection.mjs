@@ -1584,6 +1584,10 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // Принадлежит ведущему целиком и наружу не идёт вовсе: что дракон о них
   // знает, отряд понимает по тому, кто подсел к нему за стол, а не по цифре.
   'scenario_attention',
+  // Реестр проклятого рыцаря: голова, упокоение, кто выдержал ужас. Наружу не
+  // идёт: что голова возвращена, отряд видит в игре, а служебные метки ночей
+  // игроку ни к чему.
+  'scenario_knight',
   // Взлом отмычками. Собственного ключа в состоянии нет: карточка выводится из
   // листа героя-зрителя (`lockpickingForViewer`, `server/lockpicking.mjs`) и
   // существует только в проекции. Скрытого в ней нет ни грамма — владение
@@ -1907,6 +1911,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     blessings: _blessings,
     courier_letters: _courierLetters,
     scenario_attention: _scenarioAttention,
+    scenario_knight: _scenarioKnight,
     ...publicState
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')

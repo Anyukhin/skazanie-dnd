@@ -7,14 +7,15 @@ import test from 'node:test'
 import { Adjudicator } from '../server/adjudicator.mjs'
 import { normalizeAuthoredNpcMechanics } from '../server/authored-npc.mjs'
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { scenarioLocationId } from '../server/campaign-scenario.mjs'
+import { campaignScenario, scenarioClueFactId, scenarioLocationId } from '../server/campaign-scenario.mjs'
+import { combatNarration } from '../server/combat-narration.mjs'
 import { IntentParser } from '../server/intent-parser.mjs'
 import { normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
-import { scenarioKnightPresencePlan } from '../server/scenario-knight.mjs'
+import { scenarioKnightPresencePlan, scenarioKnightState } from '../server/scenario-knight.mjs'
 import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { clockMinuteOf, minutesUntilClock } from '../server/weather.mjs'
-import { fixedDice } from './kit/dice.mjs'
+import { fixedDice, maxDice, minDice } from './kit/dice.mjs'
 
 const KAELAN = 'astohan-kaelan'
 const CLIFFS = 'astohan-forgotten-cliffs'
@@ -28,10 +29,10 @@ async function campaign() {
     code: 'KNIGHT', worldTemplateId: 'astohan-plains', players: [hero],
   }))
   const run = { initial, state: initial, events: [], step: 0 }
-  run.apply = (commands, context = { isAdmin: true }) => {
+  run.apply = (commands, context = { isAdmin: true }, diceService = fixedDice(10)) => {
     run.step += 1
     const list = (Array.isArray(commands) ? commands : [commands]).map((command, index) => ({ command_id: `knight-${run.step}-${index}`, ...command }))
-    const result = resolveCommands(list, run.state, { diceService: fixedDice(10), context })
+    const result = resolveCommands(list, run.state, { diceService, context })
     run.state = normalizeCampaignState(result.state)
     run.events.push(...result.events)
     return result
@@ -137,4 +138,153 @@ test('Лунный Судья добавляет 2к8 холодом, Вой П�
   assert.equal(wail.half_on_save, true)
   assert.equal(wail.radius_feet, 30)
   assert.equal(wail.cooldown_turns, 3)
+})
+
+// ---------------------------------------------------------------------------
+// Загадка: голова, защита, ужас и мирный путь
+
+/** Отряд нашёл тайну часовни — тем же фактом `discovery`, что и удачный поиск. */
+function discoverChapel(run) {
+  const secretId = scenarioClueFactId(campaignScenario(run.state), 'cliffs-chapel')
+  const secret = run.state.worldMemory.facts.find((fact) => fact.id === secretId)
+  assert.ok(secret, 'тайна часовни записана при входе в замок')
+  run.apply({ command_type: 'RecordWorldFact', fact: {
+    id: 'fact-secret-found-chapel', subject_id: secret.subject_id, predicate: 'discovery', object: 'clue',
+    summary: secret.summary, visibility: 'party', source_event_ids: [], supersedes_fact_id: secretId,
+  } })
+}
+
+/** Пост рыцаря на карте. */
+function knightPost(run) {
+  const placements = run.state.npc_world.placements ?? {}
+  const post = placements[KAELAN] ?? Object.values(placements).flat().find((entry) => entry?.npc_id === KAELAN)
+  assert.ok(post, 'у рыцаря есть пост')
+  return post
+}
+
+/** Герой ставится рядом с рыцарем: подготовка сцены, а не проверяемое правило. */
+function standAt(run, x, y) {
+  const state = structuredClone(run.state)
+  state.mechanics.positions = { ...(state.mechanics.positions ?? {}), [hero.id]: { x, y } }
+  const player = state.players.find((entry) => entry.id === hero.id)
+  player.x = x
+  player.y = y
+  run.state = normalizeCampaignState(state)
+}
+
+function standNextToKnight(run) {
+  const post = knightPost(run)
+  standAt(run, Number(post.x) + 1, Number(post.y))
+}
+
+async function midnightAtCastle() {
+  const run = await campaign()
+  await run.travel(CLIFFS)
+  run.waitUntil(0)
+  assert.equal(run.present(), true)
+  return run
+}
+
+test('голову ставят перед рыцарем, только разгадав загадку и подойдя вплотную', async () => {
+  const run = await campaign()
+  await run.travel(CLIFFS)
+  assert.throws(() => run.apply({ command_type: 'ReturnKnightHead', actor_id: hero.id }, {}), { code: 'SCENARIO_KNIGHT_NOT_PRESENT' })
+  run.waitUntil(0)
+  assert.throws(() => run.apply({ command_type: 'ReturnKnightHead', actor_id: hero.id }, {}), { code: 'SCENARIO_KNIGHT_RIDDLE_UNSOLVED' })
+  discoverChapel(run)
+  const post = knightPost(run)
+  standAt(run, Number(post.x) + 6, Number(post.y))
+  assert.throws(() => run.apply({ command_type: 'ReturnKnightHead', actor_id: hero.id }, {}), { code: 'TARGET_OUT_OF_RANGE' })
+  standNextToKnight(run)
+  const returned = run.apply({ command_type: 'ReturnKnightHead', actor_id: hero.id }, {})
+  assert.ok(returned.events.some((event) => event.event_type === 'ScenarioKnightHeadReturned'))
+  assert.equal(scenarioKnightState(run.state).head_returned, true)
+  assert.throws(() => run.apply({ command_type: 'ReturnKnightHead', actor_id: hero.id }, {}), { code: 'SCENARIO_KNIGHT_HEAD_RETURNED' })
+})
+
+test('до возвращения головы рыцарь неуязвим и смеётся с подсказкой; после — сопротивление всему, кроме силы', async () => {
+  const run = await midnightAtCastle()
+  run.apply({ command_type: 'CreateEncounter', npc_id: KAELAN, difficulty: 'deadly', seed: 'knight-fight' }, { isDirector: true })
+  run.apply({ command_type: 'StartCombat', server_authoritative: true }, { isDirector: true })
+  const hit = (type) => run.apply({ command_type: 'ApplyDamage', actor_id: hero.id, target_id: KAELAN, amount: 20, damage_type: type, ruling_id: 'test-knight-damage' })
+    .events.find((event) => event.event_type === 'DamageApplied')
+  const warded = hit('slashing')
+  assert.equal(warded.payload.immune, true)
+  assert.equal(warded.payload.applied_amount, 0)
+  const narration = combatNarration([warded], run.state)
+  assert.match(typeof narration === 'string' ? narration : JSON.stringify(narration), /Голова спит там, где пали небеса/u)
+
+  const withHead = structuredClone(run.state)
+  withHead.scenario_knight = { ...withHead.scenario_knight, head_returned: true }
+  run.state = normalizeCampaignState(withHead)
+  assert.equal(hit('slashing').payload.applied_amount, 10, 'сопротивление режущему')
+  assert.equal(hit('force').payload.applied_amount, 20, 'силовой урон проходит целиком')
+})
+
+test('ужас рыцаря: герой рядом бросает Мудрость СЛ 15 в начале хода', async () => {
+  const run = await midnightAtCastle()
+  standNextToKnight(run)
+  run.apply({ command_type: 'CreateEncounter', npc_id: KAELAN, difficulty: 'deadly', seed: 'knight-dread' }, { isDirector: true })
+  run.apply({ command_type: 'StartCombat', server_authoritative: true }, { isDirector: true })
+  const combat = run.state.mechanics.combat
+  const active = String(combat.initiative[combat.active_index].actor_id)
+  // Ход передаётся до начала хода героя: на нём и бросается спасбросок.
+  const scheduler = { isNpcScheduler: true, isAdmin: true, serverAuthoritativeCombat: true }
+  const handed = active === hero.id
+    ? run.apply([{ command_type: 'EndTurn', actor_id: hero.id }, { command_type: 'EndTurn', actor_id: KAELAN }], scheduler, minDice())
+    : run.apply({ command_type: 'EndTurn', actor_id: active }, scheduler, minDice())
+  const dread = handed.events.find((event) => event.event_type === 'SavingThrowResolved' && event.payload.source === 'scenario-knight-dread')
+  assert.ok(dread, 'спасбросок от ужаса в начале хода героя')
+  assert.equal(dread.payload.difficulty, 15)
+  assert.equal(dread.payload.ability, 'wis')
+  assert.equal(dread.payload.saved, false)
+  assert.ok(handed.events.some((event) => event.event_type === 'ConditionAdded' && event.payload.condition === 'frightened' && event.target_ids.includes(hero.id)))
+})
+
+test('мирный путь: голова перед ним, Убеждение или Религия СЛ 18 — он уходит и отдаёт Слезу; провал — одна попытка за ночь', async () => {
+  const run = await midnightAtCastle()
+  discoverChapel(run)
+  standNextToKnight(run)
+  assert.throws(() => run.apply({ command_type: 'ReleaseCursedKnight', actor_id: hero.id, skill: 'religion' }, {}), { code: 'SCENARIO_KNIGHT_HEAD_MISSING' })
+  run.apply({ command_type: 'ReturnKnightHead', actor_id: hero.id }, {})
+
+  const failed = run.apply({ command_type: 'ReleaseCursedKnight', actor_id: hero.id, skill: 'religion' }, {}, minDice())
+  const failedCheck = failed.events.find((event) => event.event_type === 'AbilityCheckResolved')
+  assert.equal(failedCheck.payload.skill, 'religion')
+  assert.equal(failedCheck.payload.success, false)
+  assert.ok(failed.events.some((event) => event.event_type === 'ScenarioKnightReleaseFailed'))
+  assert.throws(() => run.apply({ command_type: 'ReleaseCursedKnight', actor_id: hero.id, skill: 'persuasion' }, {}), { code: 'SCENARIO_KNIGHT_ATTEMPT_SPENT' })
+
+  // Следующая ночь: рыцарь снова приходит, и герой может попробовать ещё раз.
+  run.apply({ command_type: 'AdvanceTime', unit: 'minute', amount: 120 })
+  run.waitUntil(0)
+  assert.equal(run.present(), true)
+  standNextToKnight(run)
+  const released = run.apply({ command_type: 'ReleaseCursedKnight', actor_id: hero.id, skill: 'persuasion' }, {}, maxDice())
+  assert.ok(released.events.some((event) => event.event_type === 'ScenarioKnightReleased'))
+  const tear = released.events.find((event) => event.event_type === 'ItemGranted')
+  assert.equal(tear.payload.item.name, 'Слеза Проклятого Рыцаря')
+  assert.ok(run.state.players.find((player) => player.id === hero.id).inventory.some((item) => item.name === 'Слеза Проклятого Рыцаря'))
+  assert.equal(run.present(), false, 'обретший покой уходит')
+  assert.equal(scenarioKnightState(run.state).released, true)
+  run.apply({ command_type: 'AdvanceTime', unit: 'minute', amount: 120 })
+  run.waitUntil(0)
+  assert.equal(run.present(), false, 'и больше не приходит')
+  const replayed = replayEvents(run.initial, run.events)
+  assert.deepEqual(replayed.scenario_knight, run.state.scenario_knight)
+})
+
+test('фразы игрока: «ставлю голову перед рыцарем» и «молюсь об упокоении Каэлана» — команды рыцаря', async () => {
+  const run = await campaign()
+  for (const [message, expected] of [
+    ['Ставлю голову перед рыцарем', { command_type: 'ReturnKnightHead' }],
+    ['Молюсь об упокоении Каэлана', { command_type: 'ReleaseCursedKnight', skill: 'religion' }],
+    ['Убеждаю рыцаря обрести покой', { command_type: 'ReleaseCursedKnight', skill: 'persuasion' }],
+  ]) {
+    const intent = await new IntentParser().parse({ message, playerId: hero.id, visibleState: run.state })
+    assert.equal(intent.intent, 'scenario_knight', message)
+    const plan = await new Adjudicator().createPlan({ intent, state: run.state, retrievedRules: { results: [], confidence: 1 } })
+    assert.equal(plan.proposed_commands[0].command_type, expected.command_type, message)
+    if (expected.skill) assert.equal(plan.proposed_commands[0].skill, expected.skill, message)
+  }
 })

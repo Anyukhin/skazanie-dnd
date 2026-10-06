@@ -266,9 +266,23 @@ import {
   scenarioStrangerStage,
 } from './scenario-attention.mjs'
 import {
+  SCENARIO_KNIGHT_COMMAND_TYPES,
+  SCENARIO_KNIGHT_DREAD_SOURCE,
+  SCENARIO_KNIGHT_HEAD_EVENT,
   SCENARIO_KNIGHT_PRESENCE_EVENT,
   SCENARIO_KNIGHT_PRESENCE_EVENT_SCHEMA_VERSION,
+  SCENARIO_KNIGHT_RELEASED_EVENT,
+  SCENARIO_KNIGHT_RELEASE_FAILED_EVENT,
+  applyScenarioKnightEvent,
+  normalizeScenarioKnightState,
+  scenarioKnightDreadFor,
   scenarioKnightPresencePlan,
+  scenarioKnightPresent,
+  scenarioKnightRiddleSolved,
+  scenarioKnightRules,
+  scenarioKnightState,
+  scenarioKnightWard,
+  scenarioNightIndex,
 } from './scenario-knight.mjs'
 import {
   NPC_SOCIAL_COMMAND_TYPES,
@@ -606,7 +620,9 @@ const ATTACK_ACTION_KINDS = Object.freeze(['normal', 'extra', 'surge', 'haste'])
 // журнала. Причина бампа та же, что у летописи и пленных: снимок семнадцатой
 // версии счёта не содержит, а хвост журнала после снимка посчитал бы только
 // расспросы, случившиеся после его границы.
-export const GAME_STATE_PROJECTOR_VERSION = 18
+// 19: реестр проклятого рыцаря `scenario_knight` (голова, упокоение, ужас)
+// выводится редьюсером из журнала — та же причина бампа.
+export const GAME_STATE_PROJECTOR_VERSION = 19
 
 // 15: новые commits получают reducer_version и используют бессрочную
 // retention-политику. Старые commits без маркера replay-ятся через legacy
@@ -832,6 +848,10 @@ const COMMAND_RULES = Object.freeze({
   ReceiveNpcBlessing: [RULE_IDS.economyCoins, RULE_IDS.conditions],
   // Незнакомец сценария: на втором шаге — выдох со спасброском на половину.
   StageScenarioStranger: [RULE_IDS.savingThrow, RULE_IDS.damage],
+  // Проклятый рыцарь: голова перед ним — действие в бою; упокоение —
+  // проверка навыка против СЛ сценария.
+  ReturnKnightHead: [RULE_IDS.turns],
+  ReleaseCursedKnight: [RULE_IDS.abilityCheck],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
@@ -872,6 +892,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...COURIER_LETTER_COMMAND_TYPES,
   ...BLESSING_COMMAND_TYPES,
   ...SCENARIO_COMMAND_TYPES,
+  ...SCENARIO_KNIGHT_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
@@ -2133,6 +2154,7 @@ export function normalizeCampaignState(input = {}) {
   state.courier_letters = normalizeCourierLetterState(state.courier_letters)
   state.captives = normalizeCaptivesState(state.captives)
   state.scenario_attention = normalizeScenarioAttentionState(state.scenario_attention)
+  state.scenario_knight = normalizeScenarioKnightState(state.scenario_knight)
   // Контейнеры добычи живут в состоянии кампании, а не в сцене: невзятое
   // обязано пережить и уход со сцены, и подъём на другой этаж.
   state.loot_containers = normalizeLootContainersState(state.loot_containers)
@@ -4343,6 +4365,15 @@ function normalizeCommand(input, state) {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
     delete command.npcId
   }
+  if (SCENARIO_KNIGHT_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только герой и, для упокоения, навык: цель — всегда
+    // рыцарь сценария, СЛ и награда — из данных сценария.
+    command.target_id = null
+    command.target_ids = []
+    command.skill = command.command_type === 'ReleaseCursedKnight' ? String(command.skill ?? '').toLowerCase().slice(0, 40) : ''
+    delete command.reward_item
+    delete command.difficulty
+  }
   if (SCENARIO_COMMAND_TYPES.has(command.command_type)) {
     // Сцену сценария ставит сервер: ни актора, ни цели из запроса — только шаг.
     command.actor_id = null
@@ -4513,7 +4544,7 @@ function needsActor(type) {
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer', 'AttackNpc',
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
-    'SendLetter', 'ReceiveNpcBlessing',
+    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -5132,7 +5163,7 @@ function assertTurn(command, state, context = {}) {
   // посреди боя они доступны только к сломленному моралью зверю, но доступны —
   // и подойти к нему с открытой ладонью посреди чужого хода нельзя. Вне боя
   // функция выходит первой же проверкой, и там уговор ничего не стоит.
-  if (!combat.active || !['UseMonsterAction', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'EquipItem', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateDoor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'LootContainer', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['UseMonsterAction', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'EquipItem', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateDoor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'LootContainer', 'ReturnKnightHead', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (command.command_type === 'MakeAttack' && command.item_id) {
     const actor = findActor(state, command.actor_id)
     const profile = itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability })
@@ -5236,9 +5267,10 @@ function assertTurn(command, state, context = {}) {
       const label = resource === 'bonus_action' ? 'Бонусное действие' : resource === 'reaction' ? 'Реакция' : 'Действие'
       throw new RulesValidationError(`${label} на этом ходу уже потрачено`, resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : resource === 'reaction' ? 'REACTION_SPENT' : 'ACTION_SPENT')
     }
-  } else if (command.command_type === 'IdentifyEnemy') {
+  } else if (command.command_type === 'IdentifyEnemy' || command.command_type === 'ReturnKnightHead') {
     // Опознание стоит действия так же, как импровизация: разглядывать врага
-    // бесплатно означало бы лишний ход каждому герою каждый раунд.
+    // бесплатно означало бы лишний ход каждому герою каждый раунд. Поставить
+    // голову перед проклятым рыцарем посреди схватки — тоже действие.
     const economy = combat.action_economy[command.actor_id]
     if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'LootContainer') {
@@ -6076,6 +6108,42 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('На выпивку не хватает монет', 'INSUFFICIENT_FUNDS')
       }
     }
+  }
+  if (SCENARIO_KNIGHT_COMMAND_TYPES.has(command.command_type)) {
+    const rules = scenarioKnightRules(state)
+    const knight = scenarioKnightState(state)
+    if (!rules || !knight) throw new RulesValidationError('В этой кампании нет проклятого рыцаря', 'SCENARIO_KNIGHT_ABSENT')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Действует только герой отряда', 'ACTOR_FORBIDDEN')
+    if (!isLivingActor(hero)) throw new RulesValidationError('Герой без сознания ничего не делает', 'ACTOR_DEFEATED')
+    if (knight.released) throw new RulesValidationError('Рыцарь уже обрёл покой', 'SCENARIO_KNIGHT_RELEASED')
+    if (!scenarioKnightPresent(state)) throw new RulesValidationError('Рыцаря сейчас здесь нет: он приходит в полночь', 'SCENARIO_KNIGHT_NOT_PRESENT')
+    if (command.command_type === 'ReturnKnightHead') {
+      if (knight.head_returned) throw new RulesValidationError('Голова уже перед рыцарем', 'SCENARIO_KNIGHT_HEAD_RETURNED')
+      if (!scenarioKnightRiddleSolved(state)) {
+        throw new RulesValidationError('Где его голова, отряд ещё не знает: загадка замка не разгадана', 'SCENARIO_KNIGHT_RIDDLE_UNSOLVED')
+      }
+      const distance = knightDistanceFeet(state, command.actor_id, rules.npc_id)
+      if (distance == null || distance > rules.head_reach_feet) {
+        throw new RulesValidationError(`Голову ставят перед рыцарем: подойдите на ${rules.head_reach_feet} футов`, 'TARGET_OUT_OF_RANGE')
+      }
+    } else {
+      if (state.mechanics.combat.active) throw new RulesValidationError('Упокоить рыцаря можно только без боя', 'SCENARIO_KNIGHT_DURING_COMBAT')
+      if (!knight.head_returned) throw new RulesValidationError('Сначала верните рыцарю его голову', 'SCENARIO_KNIGHT_HEAD_MISSING')
+      if (!rules.release.skills.includes(command.skill)) command.skill = rules.release.skills[0]
+      if (knight.attempts.includes(`${command.actor_id}:${scenarioNightIndex(state)}`)) {
+        throw new RulesValidationError('Этой ночью рыцарь уже выслушал этого героя', 'SCENARIO_KNIGHT_ATTEMPT_SPENT')
+      }
+      command.difficulty = rules.release.dc
+      command.reward_item = normalizeInventoryItem({
+        name: rules.release.reward.name,
+        description: rules.release.reward.description,
+        quantity: 1,
+        quest_item: true,
+        origin: 'gifted',
+      }, { idFallback: `knight-tear:${command.command_id}`, preserveUnknown: true })
+    }
+    command.visibility = 'public'
   }
   if (SCENARIO_COMMAND_TYPES.has(command.command_type)) {
     // Незнакомца приводит и раскрывает Режиссёр или ведущий, а не игрок: иначе
@@ -7510,7 +7578,11 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
   // отсекает урон целиком, а не делит его пополам.
   const conditionImmunity = [...conditionIdsFor(state, targetId)].some((condition) => CONDITION_EFFECTS[condition]?.immuneToAllDamage === true
     || (CONDITION_EFFECTS[condition]?.immuneToDamageTypes ?? []).includes(damageType))
+  // Проклятый рыцарь сценария: до возвращения головы неуязвим ко всему, после —
+  // сопротивляется всему, кроме исключений сценария (`server/scenario-knight.mjs`).
+  const knightWard = scenarioKnightWard(state, targetId)
   const immune = defenses.immunities.includes(damageType) || conditionalImmune || conditionImmunity || isUntargetableSummon(actor)
+    || knightWard?.kind === 'immune'
   const ragingResistance = conditionIdsFor(state, targetId).has('raging') && ['bludgeoning', 'piercing', 'slashing'].includes(damageType)
   const uncannyResistance = conditionIdsFor(state, targetId).has('uncanny-dodge')
   const absorbingResistance = conditionIdsFor(state, targetId).has(`absorbing-element:${damageType}`)
@@ -7522,7 +7594,8 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     const effect = CONDITION_EFFECTS[condition]
     return effect?.resistsAllDamage === true || (effect?.resistsDamageTypes ?? []).includes(damageType)
   })
-  const resistant = source?.ignore_resistance !== true && (defenses.resistances.includes(damageType) || conditionalResistant || itemResistanceSources.length > 0 || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || Boolean(auraOfLife))
+  const knightResistance = knightWard?.kind === 'resist' && !knightWard.except.includes(damageType)
+  const resistant = source?.ignore_resistance !== true && (defenses.resistances.includes(damageType) || conditionalResistant || itemResistanceSources.length > 0 || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || Boolean(auraOfLife) || knightResistance)
   const vulnerable = defenses.vulnerabilities.includes(damageType)
   let afterDefense = immune ? 0 : raw
   // Порядок по SRD 5.2.1: «сопротивление и уязвимость применяются **после** всех
@@ -7573,7 +7646,20 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     hp_after: hpAfter,
     ...(deathWardTriggered ? { death_ward_triggered: true } : {}),
     ...(relentlessEnduranceTriggered ? { relentless_endurance_triggered: true } : {}),
+    ...(knightWard ? { scenario_ward: knightWard.kind, ...(knightWard.kind === 'immune' ? { scenario_ward_text: knightWard.laugh } : {}) } : {}),
   }
+}
+
+/**
+ * Расстояние от героя до проклятого рыцаря в футах: в бою — между фишками,
+ * вне боя — до поста рыцаря на карте. `null` — кого-то из них нет на поле.
+ */
+function knightDistanceFeet(state, heroId, knightId) {
+  if (findActor(state, knightId)) return distanceBetweenActors(state, heroId, knightId)
+  const post = npcPlacementFor(state, knightId)
+  const at = actorPosition(state, heroId)
+  if (!post || !at) return null
+  return Math.max(Math.abs(Number(post.x) - Number(at.x)), Math.abs(Number(post.y) - Number(at.y))) * 5
 }
 
 /**
@@ -11760,6 +11846,7 @@ const COMBAT_ROUND_TIME_COMMANDS = new Set([
   'UseLegendaryAction', 'MoveActor', 'ChangeWeapon', 'UseItem', 'ActivateItem', 'EquipItem',
   'IdentifyEnemy', 'ResolveImprovisedAction', 'CalmBeast', 'FeedBeast', 'ScareWithBeast',
   'ProposeParley', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateDoor', 'OperateSceneObject',
+  'ReturnKnightHead',
 ])
 
 function withCombatRoundTimeMarker(result, rawState, context) {
@@ -19141,6 +19228,35 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       })
       events.push(...areaStartEvents)
       startTurnState = projectEvents(events)
+      // Ужас проклятого рыцаря: герой в его радиусе бросает спасбросок в начале
+      // своего хода, пока голова не возвращена. Провал — испуг до конца хода,
+      // успех — до конца ночи этот герой рыцаря не боится.
+      const knightId = scenarioKnightState(startTurnState)?.npc_id
+      const knightActor = knightId ? findActor(startTurnState, knightId) : null
+      const dread = knightActor && isLivingActor(knightActor) && !isDeadHero(startTurnState, nextId) && actorHp(findActor(startTurnState, nextId)) > 0
+        ? scenarioKnightDreadFor(startTurnState, nextId, knightDistanceFeet(startTurnState, nextId, knightId))
+        : null
+      if (dread) {
+        const dreadActor = findActor(startTurnState, nextId)
+        const save = rollSavingThrow(startTurnState, nextId, {
+          ability: dread.ability,
+          modifier: abilityModifier(dreadActor?.abilities?.[dread.ability]),
+          purpose: `${SCENARIO_KNIGHT_DREAD_SOURCE}:${dread.ability}`,
+          avoid_or_end_condition: 'frightened',
+          visibility: command.visibility,
+        })
+        rolls.push(save)
+        const saved = savingThrowSucceeded(save, dread.dc)
+        events.push(eventFrom(commandWithRules({ ...command, actor_id: dread.source_id }, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+          ...save, ability: dread.ability, difficulty: dread.dc, saved, source: SCENARIO_KNIGHT_DREAD_SOURCE, night: dread.night,
+        }, [nextId]))
+        if (!saved) {
+          events.push(eventFrom(commandWithRules({ ...command, actor_id: dread.source_id }, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'frightened', duration: 'until-own-turn-end', source_actor: dread.source_id, source: SCENARIO_KNIGHT_DREAD_SOURCE,
+          }, [nextId]))
+        }
+        startTurnState = projectEvents(events)
+      }
       const startingActor = findActor(startTurnState, nextId)
       for (const condition of [...(startTurnState.mechanics.conditions[nextId] ?? []).filter((candidate) => candidate.recurring_damage && candidate.recurring_damage_timing !== 'turn-end')]) {
         let effectContinues = true
@@ -19542,6 +19658,49 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         reason: 'pickpocket-caught',
       })) {
         events.push(eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids))
+      }
+      break
+    }
+    case 'ReturnKnightHead': {
+      const rules = scenarioKnightRules(state)
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), SCENARIO_KNIGHT_HEAD_EVENT, {
+        schema_version: 1, npc_id: rules.npc_id, action_spent: Boolean(state.mechanics.combat.active), text: rules.head_text,
+      }, [rules.npc_id]))
+      break
+    }
+    case 'ReleaseCursedKnight': {
+      // Проверка — та же, что у любой проверки навыка героя (Указание,
+      // удача народа, небо), а не урезанная копия: вложенный MakeAbilityCheck.
+      const rules = scenarioKnightRules(state)
+      const check = resolveCommandInternal({
+        ...command,
+        command_type: 'MakeAbilityCheck',
+        command_id: `${command.command_id}:check`,
+        skill: command.skill,
+        difficulty: rules.release.dc,
+        source_rule_ids: [...command.source_rule_ids],
+      }, state, { diceService, context })
+      events.push(...check.events)
+      rolls.push(...(check.rolls ?? []))
+      const resolved = check.events.find((event) => event.event_type === 'AbilityCheckResolved')
+      if (resolved?.payload?.success === true) {
+        events.push(eventFrom(command, SCENARIO_KNIGHT_RELEASED_EVENT, {
+          schema_version: 1, npc_id: rules.npc_id, skill: command.skill, text: rules.release.success_text,
+        }, [rules.npc_id, command.actor_id]))
+        events.push(itemGrantedEventFrom(command, { item: clone(command.reward_item) }, [command.actor_id]))
+        // Рыцарь уходит: собеседника больше нет, в замок он не вернётся.
+        const stored = state.social.npcs.find((npc) => npc.id === rules.npc_id)
+        const profile = Object.fromEntries(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs',
+          'known_fact_ids', 'social_dcs', 'visibility', 'reveal_on_presence', 'tags', 'schedule', 'inventory']
+          .filter((field) => stored?.[field] !== undefined).map((field) => [field, clone(stored[field])]))
+        const hidden = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...profile, available: false } }, state, { isDirector: true })
+        for (const socialEvent of npcSocialEvents(hidden, state)) {
+          events.push(eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+        }
+      } else {
+        events.push(eventFrom(command, SCENARIO_KNIGHT_RELEASE_FAILED_EVENT, {
+          schema_version: 1, npc_id: rules.npc_id, skill: command.skill, night: scenarioNightIndex(state), text: rules.release.failure_text,
+        }, [rules.npc_id, command.actor_id]))
       }
       break
     }
@@ -25145,6 +25304,11 @@ function applyGameEventCurrent(rawState, event) {
       }))
       if (payload.action_spent === true) spendCombatEconomy(state, event.actor_id, 'action')
       break
+    case 'ScenarioKnightHeadReturned':
+      // Голова перед рыцарем посреди схватки стоит действия героя; сама
+      // загадка — в реестре `scenario_knight`, который сворачивается ниже.
+      if (payload.action_spent === true) spendCombatEconomy(state, event.actor_id, 'action')
+      break
     case 'SceneObjectCheckResolved':
       break
     case 'SceneObjectInspected':
@@ -25558,6 +25722,7 @@ function applyGameEventCurrent(rawState, event) {
   // Внимание главного противника сценария — такой же вывод из журнала: место
   // берётся из сцены, в которой случилось событие, поэтому replay сходится.
   state.scenario_attention = applyScenarioAttentionEvent(state.scenario_attention, event, state)
+  state.scenario_knight = applyScenarioKnightEvent(state.scenario_knight, event, state)
   // Реестр зверей — такой же вывод из журнала: подход заводит запись, а ступени,
   // укусы и переезды спутника только меняют её, поэтому replay восстанавливает
   // всю лестницу без отдельного снимка.
