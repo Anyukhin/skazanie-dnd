@@ -16,6 +16,8 @@
  *   - символ из `legend` с `"void": true` — клетки нет (пропасть, скала, край);
  *   - символ из `legend` с `"solid": true` — клетка есть, но непроходима
  *     (обвал, колонна кладки); стены вокруг сборщик ставит сам;
+ *   - `"hazardId"` у символа — опасность клетки (`lava-fire` — лава: огонь для
+ *     механики, свечение в 3D);
  *   - `D` — закрытая дверь, `O` — открытая, `B` — выломанная, `L` — запертая,
  *     `W` — окно. Знак стоит в клетке-пороге: клетка достаётся помещению
  *     (зоне `interior`), а дверь или окно — ребру к соседней зоне;
@@ -130,6 +132,7 @@ export function asciiMapToLayout(source) {
         material: entry?.material ?? zoneDef?.material ?? source.default_material ?? 'stone',
         ...(entry?.surface ? { surface: entry.surface } : {}),
         ...(Number.isSafeInteger(entry?.moveCost) ? { moveCost: entry.moveCost } : {}),
+        ...(typeof entry?.hazardId === 'string' && entry.hazardId ? { hazardId: entry.hazardId } : {}),
       })
     }
   }

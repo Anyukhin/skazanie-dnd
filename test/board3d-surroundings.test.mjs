@@ -63,6 +63,33 @@ test('авторская подсказка: море к северу — без
   built.dispose()
 })
 
+test('море качается волнами: гладь только на стороне моря, у утёса пена, время двигает волны', () => {
+  const meadow = surroundings.createSurroundings(mapWith({ theme: 'building', extra: { surroundings: { biome: 'meadow' } } }), 'reduced')
+  assert.equal(meadow.group.getObjectByName('surroundings-sea'), undefined, 'у луга моря нет')
+  assert.equal(meadow.animated, false)
+  meadow.dispose()
+
+  const map = mapWith({ theme: 'building', extra: { surroundings: { biome: 'meadow', sides: { n: 'sea' } } } })
+  const built = surroundings.createSurroundings(map, 'reduced')
+  const sea = built.group.getObjectByName('surroundings-sea')
+  assert.ok(sea, 'гладь моря на северной стороне')
+  assert.equal(built.animated, true)
+  const position = sea.geometry.getAttribute('position')
+  const coast = sea.geometry.getAttribute('coast')
+  let nearCliff = false
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index), z = position.getZ(index)
+    // Вода только снаружи карты и только с севера (с углами полосы).
+    assert.ok(z <= 0 || x <= 0 || x >= map.width, `вода (${x}, ${z}) заходит на карту или на сушу юга`)
+    if (z === 0 && x > 2 && x < map.width - 2 && coast.getX(index) === 0) nearCliff = true
+  }
+  assert.ok(nearCliff, 'у подножия утёса вода касается берега — там пена')
+  const time = sea.material.userData.time
+  built.animate(12.5)
+  assert.equal(time.value, 12.5)
+  built.dispose()
+})
+
 test('поле окрестностей: проверка, сериализация и поворот вместе с картой', () => {
   assert.equal(normalizeMapSurroundings({ biome: 'lava', sides: { n: 'ocean' } }), null)
   assert.deepEqual(normalizeMapSurroundings({ biome: 'meadow', sides: { n: 'sea', x: 'sea', e: 'forest' } }), { biome: 'meadow', sides: { n: 'sea', e: 'forest' } })

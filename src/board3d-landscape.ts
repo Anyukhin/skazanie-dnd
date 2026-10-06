@@ -58,6 +58,15 @@ function isSolidCell(map: TacticalMap, x: number, y: number) {
 }
 
 /**
+ * Клетка лавы: раскрытая, с опасностью `*lava*` (у рисованных карт — `lava-fire`).
+ * Для правил это огонь и непроходимость; в 3D вместо валунов — светящийся разлом.
+ */
+export function isLavaCell(map: TacticalMap, x: number, y: number): boolean {
+  const cell = cellAt(map, x, y)
+  return Boolean(cell?.revealed && /lava/iu.test(cell.hazardId ?? ''))
+}
+
+/**
  * Стена дома тонкая: с одной стороны помещение, с другой — улица. Порода
  * пещеры тоже граничит с «помещением» (зоны пещеры interior), но снаружи у неё
  * только камень. Поэтому кладка — касание и помещения, и проходимой клетки
@@ -128,7 +137,8 @@ export function isRockCore(map: TacticalMap, x: number, y: number): boolean {
   for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
     if (!dx && !dy) continue
     const cell = cellAt(map, x + dx, y + dy)
-    if (cell?.revealed && !isSolidCell(map, x + dx, y + dy)) return false
+    // У лавы порода видна срезом: глыбы по кромке, а не сплошной блок.
+    if (cell?.revealed && (!isSolidCell(map, x + dx, y + dy) || isLavaCell(map, x + dx, y + dy))) return false
   }
   return true
 }
@@ -337,6 +347,116 @@ export function createWaterMaterial(color = '#3c9a9a'): THREE.MeshStandardMateri
   }
   material.customProgramCacheKey = () => 'board3d-water-v1'
   return material as THREE.MeshStandardMaterial & { userData: { time: { value: number } } }
+}
+
+/** Подъём глади лавы над клеткой: выше швов плиток, ниже оверлеев доски (.022). */
+export const LAVA_SURFACE_LIFT = .016
+
+/**
+ * Гладь лавы по клеткам разлома. Атрибут `crust` в углу — 1, если угол касается
+ * не-лавы: у кромки лава остывает тёмной коркой, к середине раскалена.
+ */
+export function createLavaSurfaceGeometry(map: TacticalMap): THREE.BufferGeometry | null {
+  const positions: number[] = [], crust: number[] = [], indices: number[] = []
+  let vertex = 0
+  const touchesRock = (cx: number, cy: number) => {
+    for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const) {
+      if (!isLavaCell(map, cx + dx, cy + dy)) return 1
+    }
+    return 0
+  }
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (!isLavaCell(map, x, y)) continue
+    const level = terrainHeightAt(map, x, y) + LAVA_SURFACE_LIFT
+    for (const [cx, cy] of [[x, y], [x, y + 1], [x + 1, y + 1], [x + 1, y]] as const) {
+      positions.push(cx, level, cy)
+      crust.push(touchesRock(cx, cy))
+    }
+    indices.push(vertex, vertex + 1, vertex + 2, vertex, vertex + 2, vertex + 3)
+    vertex += 4
+  }
+  if (!vertex) return null
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('crust', new THREE.Float32BufferAttribute(crust, 1))
+  geometry.setIndex(vertex > 65535 ? new THREE.Uint32BufferAttribute(indices, 1) : new THREE.Uint16BufferAttribute(indices, 1))
+  geometry.computeVertexNormals()
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+/**
+ * Материал лавы: тёмные плиты остывшей корки плывут по раскалённому расплаву,
+ * жилы между ними пульсируют. Свечение — emissive выше единицы, его подхватывает
+ * bloom. Анимация — одна униформа времени, как у воды.
+ */
+export function createLavaMaterial(): THREE.MeshStandardMaterial & { userData: { time: { value: number } } } {
+  const material = new THREE.MeshStandardMaterial({ color: '#2a1610', emissive: '#ff6a1a', emissiveIntensity: 1, roughness: .78, metalness: 0 })
+  const time = { value: 0 }
+  material.userData.time = time
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uLavaTime = time
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float crust;\nvarying float vCrust;\nvarying vec2 vLavaXZ;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCrust = crust;\nvLavaXZ = position.xz;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        uniform float uLavaTime;
+        varying float vCrust;
+        varying vec2 vLavaXZ;
+        float lavaHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float lavaNoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          vec2 u = f * f * (3. - 2. * f);
+          return mix(mix(lavaHash(i), lavaHash(i + vec2(1., 0.)), u.x), mix(lavaHash(i + vec2(0., 1.)), lavaHash(i + vec2(1., 1.)), u.x), u.y);
+        }
+        float lavaFbm(vec2 p) { return lavaNoise(p) * .55 + lavaNoise(p * 2.07 + 3.1) * .3 + lavaNoise(p * 4.13 + 7.7) * .15; }`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        {
+          float t = uLavaTime;
+          // Течение: координата сносится и закручивается медленным шумом.
+          vec2 p = vLavaXZ * 1.35;
+          vec2 flow = vec2(lavaFbm(p * .6 + vec2(t * .05, -t * .03)), lavaFbm(p * .6 + vec2(4.2 - t * .04, 1.3 + t * .05)));
+          float plates = lavaFbm(p + flow * 1.8 + vec2(t * .07, t * .04));
+          // Жилы — узкая полоса вокруг середины шума; плиты корки — тёмные острова.
+          float veins = 1. - smoothstep(.0, .11, abs(plates - .5));
+          float molten = smoothstep(.42, .62, lavaFbm(p * .7 - flow + vec2(-t * .03, t * .02)));
+          float pulse = .82 + .18 * sin(t * 1.7 + plates * 9.);
+          float heat = clamp(max(veins, molten * .85) * pulse, 0., 1.);
+          // У кромки лава остывает: корка шире, жар уже.
+          heat *= 1. - smoothstep(.35, 1., vCrust) * .7;
+          vec3 hot = mix(vec3(.55, .07, .01), vec3(1., .42, .06), heat);
+          hot = mix(hot, vec3(1., .82, .38), smoothstep(.8, 1., heat));
+          totalEmissiveRadiance = hot * heat * 2.6;
+          diffuseColor.rgb *= mix(1., .35, heat);
+        }`)
+  }
+  material.customProgramCacheKey = () => 'board3d-lava-v1'
+  return material as THREE.MeshStandardMaterial & { userData: { time: { value: number } } }
+}
+
+/**
+ * Где повесить отсвет лавы: клетки разлома, разнесённые не ближе `spacing`,
+ * сначала самые глубокие (больше соседей-лавы). Свет дорог в прямом рендере —
+ * число точек ограничено `limit`.
+ */
+export function lavaGlowPoints(map: TacticalMap, limit: number, spacing = 7): Array<{ x: number; y: number; z: number }> {
+  if (limit <= 0) return []
+  const candidates: Array<{ x: number; y: number; depth: number }> = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (!isLavaCell(map, x, y)) continue
+    let depth = 0
+    for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) if (isLavaCell(map, x + dx, y + dy)) depth += 1
+    candidates.push({ x, y, depth })
+  }
+  candidates.sort((a, b) => b.depth - a.depth || a.y - b.y || a.x - b.x)
+  const picked: Array<{ x: number; y: number; z: number }> = []
+  for (const cell of candidates) {
+    if (picked.length >= limit) break
+    if (picked.some((point) => Math.hypot(point.x - (cell.x + .5), point.z - (cell.y + .5)) < spacing)) continue
+    picked.push({ x: cell.x + .5, y: terrainHeightAt(map, cell.x, cell.y) + .6, z: cell.y + .5 })
+  }
+  return picked
 }
 
 /** Гранёный валун: икосаэдр со сдвинутыми вершинами, детерминированно по seed. */
@@ -556,7 +676,7 @@ export function createRockClusters(map: TacticalMap, detail: LandscapeDetail, wa
       masonryRuns.push({ x: x + .5, z: y + .75, y: level, length: 1, thickness: .42, height: wallHeight, alongX: true, style, color, seed: x * 13 + y * 29 + 5 })
       continue
     }
-    if (!isRockCell(map, x, y)) continue
+    if (!isRockCell(map, x, y) || isLavaCell(map, x, y)) continue
     const palette = rockPalette(cell.material)
     const pick = (salt: number) => palette[Math.floor(cellNoise(x, y, salt) * palette.length) % palette.length]
     const core = isRockCore(map, x, y) && (cell.material === 'earth' || cell.material === 'stone' || themeSolidKind(map) === 'rock' && map.theme === 'cave')

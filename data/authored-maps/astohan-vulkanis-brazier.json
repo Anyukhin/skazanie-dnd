@@ -24,7 +24,7 @@
   "c": {"zone": "cavern"},
   "C": {"zone": "cavern", "material": "sand"},
   "Q": {"zone": "cavern", "solid": true},
-  "F": {"zone": "fissure", "solid": true},
+  "F": {"zone": "fissure", "solid": true, "hazardId": "lava-fire"},
   "h": {"zone": "hollow"},
   "H": {"zone": "hollow", "material": "sand"},
   "t": {"zone": "hoard"},

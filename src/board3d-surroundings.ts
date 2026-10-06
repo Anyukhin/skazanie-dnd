@@ -399,13 +399,185 @@ function fallbackModels(): { models: Required<SurroundingsModels>; owned: Array<
 // заметно легче самой карты.
 const DECOR_LIMITS = { full: 1100, reduced: 650, minimal: 260 } as const
 
+/** Уровень моря над низиной: подножие утёсов и осыпь уходят под воду. */
+const SEA_LEVEL = .38
+/** Цвет открытого моря; мелководье подмешивается в шейдере. */
+const SEA_DEEP = '#123c4a'
+
+type SeaMaterial = THREE.MeshStandardMaterial & { userData: { time: { value: number } } }
+
+/**
+ * Гладь моря по клеткам полосы со стороной `sea`. Вершины общие на сетке —
+ * волна сдвигает их непрерывно. Атрибут `coast` — расстояние до берега в
+ * клетках (утёс карты или суша низины): у берега пена и прибой; `beach` —
+ * расстояние до суши низины: там вода полого опускается к земле; `fade` гасит
+ * гладь к внешнему краю полосы, как землю.
+ */
+function createSeaGeometry(map: TacticalMap, main: OutdoorBiome, grid: ReturnType<typeof nearestSources>, margin: number): THREE.BufferGeometry | null {
+  const sea = new Uint8Array(grid.width * grid.height)
+  let any = false
+  for (let gy = 0; gy < grid.height; gy += 1) {
+    for (let gx = 0; gx < grid.width; gx += 1) {
+      const index = gy * grid.width + gx
+      if (grid.present[index] || cellBiome(map, main, margin, gx, gy, grid.present, grid.width) !== 'sea') continue
+      sea[index] = 1
+      any = true
+    }
+  }
+  if (!any) return null
+  // Расстояние до низины соседнего биома (луг, лес): там пологий берег.
+  const beachDistance = new Float32Array(grid.width * grid.height).fill(Infinity)
+  const queue: number[] = []
+  for (let index = 0; index < sea.length; index += 1) {
+    if (!sea[index] && !grid.present[index]) { beachDistance[index] = 0; queue.push(index) }
+  }
+  for (let head = 0; head < queue.length; head += 1) {
+    const index = queue[head]
+    const x = index % grid.width, y = Math.floor(index / grid.width)
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx, ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= grid.width || ny >= grid.height) continue
+      const next = ny * grid.width + nx
+      if (grid.present[next] || beachDistance[next] <= beachDistance[index] + 1) continue
+      beachDistance[next] = beachDistance[index] + 1
+      queue.push(next)
+    }
+  }
+  const columns = grid.width + 1
+  const vertexOf = new Int32Array(columns * (grid.height + 1)).fill(-1)
+  const positions: number[] = [], coast: number[] = [], beach: number[] = [], fade: number[] = [], indices: number[] = []
+  const vertex = (vx: number, vy: number) => {
+    const key = vy * columns + vx
+    if (vertexOf[key] >= 0) return vertexOf[key]
+    // Угол делят до четырёх клеток: берег — ближайшая из них к карте или к суше.
+    let cliff = Infinity, land = Infinity
+    for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const) {
+      const cx = vx + dx, cy = vy + dy
+      if (cx < 0 || cy < 0 || cx >= grid.width || cy >= grid.height) continue
+      const index = cy * grid.width + cx
+      cliff = Math.min(cliff, grid.clearance[index] - 1)
+      land = Math.min(land, sea[index] ? beachDistance[index] - .5 : 0)
+    }
+    const edge = Math.min(vx, vy, grid.width - vx, grid.height - vy)
+    vertexOf[key] = positions.length / 3
+    positions.push(vx - margin, 0, vy - margin)
+    const shore = Math.min(cliff, land)
+    coast.push(Number.isFinite(shore) ? Math.max(0, shore) : margin)
+    beach.push(Number.isFinite(land) ? Math.max(0, land) : margin)
+    fade.push(Math.max(0, Math.min(1, edge / (margin * .7))))
+    return vertexOf[key]
+  }
+  for (let gy = 0; gy < grid.height; gy += 1) {
+    for (let gx = 0; gx < grid.width; gx += 1) {
+      if (!sea[gy * grid.width + gx]) continue
+      const a = vertex(gx, gy), b = vertex(gx, gy + 1), c = vertex(gx + 1, gy + 1), d = vertex(gx + 1, gy)
+      indices.push(a, b, c, a, c, d)
+    }
+  }
+  const vertexCount = positions.length / 3
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(Array.from({ length: vertexCount * 3 }, (_, index) => index % 3 === 1 ? 1 : 0), 3))
+  geometry.setAttribute('coast', new THREE.Float32BufferAttribute(coast, 1))
+  geometry.setAttribute('beach', new THREE.Float32BufferAttribute(beach, 1))
+  geometry.setAttribute('fade', new THREE.Float32BufferAttribute(fade, 1))
+  geometry.setIndex(vertexCount > 65535 ? new THREE.Uint32BufferAttribute(indices, 1) : new THREE.Uint16BufferAttribute(indices, 1))
+  geometry.computeBoundingSphere()
+  return geometry
+}
+
+/** Бегущие волны моря: высота и её производные по x и z — для вершины и нормали. */
+const SEA_WAVES_GLSL = `
+  uniform float uSeaTime;
+  attribute float coast;
+  attribute float beach;
+  attribute float fade;
+  varying float vCoast;
+  varying float vFade;
+  varying float vCrest;
+  varying vec2 vSeaXZ;
+  vec3 seaWave(vec2 p, float t) {
+    vec3 sum = vec3(0.);
+    // xy — направление, z — волновое число, w — высота.
+    vec4 waves[4];
+    waves[0] = vec4(.82, .57, .55, .11);
+    waves[1] = vec4(-.35, .94, .9, .06);
+    waves[2] = vec4(.97, -.24, 1.45, .035);
+    waves[3] = vec4(-.7, -.71, 2.3, .02);
+    for (int i = 0; i < 4; i++) {
+      vec2 d = waves[i].xy;
+      float k = waves[i].z;
+      float a = waves[i].w;
+      float phase = dot(d, p) * k + t * sqrt(9.8 * k) * .55;
+      sum.x += a * sin(phase);
+      sum.yz += a * k * cos(phase) * d;
+    }
+    return sum;
+  }`
+
+/**
+ * Материал моря: вершины качают несколько бегущих волн, нормаль считается по
+ * той же формуле. Гребни светлеют, у утёсов белеет пена и катятся полосы
+ * прибоя. Время — одна униформа, как у воды и лавы на карте.
+ */
+function createSeaMaterial(): SeaMaterial {
+  const material = new THREE.MeshStandardMaterial({ color: SEA_DEEP, transparent: true, roughness: .34, metalness: .05, depthWrite: false })
+  const time = { value: 0 }
+  material.userData.time = time
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSeaTime = time
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${SEA_WAVES_GLSL}`)
+      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
+        // У самого утёса волна гаснет: вода не перехлёстывает через камни.
+        vec3 seaH = seaWave(position.xz, uSeaTime) * smoothstep(0., 2.5, coast);
+        objectNormal = normalize(vec3(-seaH.y, 1., -seaH.z));`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        // У пологого берега вода опускается под землю низины: без ступеньки.
+        transformed.y += seaH.x - ${(SEA_LEVEL + .05).toFixed(2)} * (1. - smoothstep(0., 1.6, beach));
+        vCoast = coast;
+        vFade = fade;
+        vCrest = seaH.x;
+        vSeaXZ = position.xz;`)
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uSeaTime;\nvarying float vCoast;\nvarying float vFade;\nvarying float vCrest;\nvarying vec2 vSeaXZ;')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          float t = uSeaTime;
+          // Мелководье у берега бирюзовее, открытое море глубже.
+          float shallow = 1. - smoothstep(0., 6., vCoast);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.05, .32, .34), shallow * .7);
+          // Гребни волн светлеют.
+          diffuseColor.rgb += vec3(.04, .07, .07) * smoothstep(.08, .2, vCrest);
+          // Пена у камней и полосы прибоя, бегущие к утёсу.
+          float jitter = sin(vSeaXZ.x * 1.3 + vSeaXZ.y * .9) * .35 + sin(vSeaXZ.x * .41 - vSeaXZ.y * .77 + t * .3) * .5;
+          float surf = smoothstep(.72, .96, sin((vCoast + jitter) * 2.2 + t * 1.6)) * (1. - smoothstep(.5, 4.5, vCoast));
+          float rim = 1. - smoothstep(0., 1.1, vCoast + jitter * .4);
+          float foam = clamp(max(rim, surf * .8), 0., 1.);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.86, .93, .92), foam * .85);
+          diffuseColor.a = mix(.86, .97, foam) * vFade;
+        }`)
+  }
+  material.customProgramCacheKey = () => 'board3d-sea-v1'
+  return material as SeaMaterial
+}
+
+export type Surroundings = {
+  group: THREE.Group
+  /** Есть ли что качать во времени: море у карты. */
+  animated: boolean
+  /** Время в секундах для волн моря. */
+  animate: (seconds: number) => void
+  dispose: () => void
+}
+
 /**
  * Окрестности карты: карта — плато, по её краю обрыв из скальных моделей и
  * утёсов, у подножия осыпь, ниже — низина биома с деревьями, лугом или морем.
  * `null` — у помещения окрестностей нет. `models` — модели, которые сцена
  * успела загрузить; чего нет, то рисуется заменителем.
  */
-export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' | 'minimal' = 'reduced', models: SurroundingsModels = {}): { group: THREE.Group; dispose: () => void } | null {
+export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' | 'minimal' = 'reduced', models: SurroundingsModels = {}): Surroundings | null {
   const resolved = surroundingsBiome(map)
   if (resolved === 'indoor') return null
   const biome: OutdoorBiome = resolved
@@ -443,6 +615,19 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
   group.add(ground)
   owned.push(groundGeometry, groundMaterial)
   if (texture) owned.push(texture)
+
+  // Море: волнистая гладь над низиной по сторонам `sea`, у утёсов — прибой.
+  const seaGeometry = createSeaGeometry(map, biome, grid, margin)
+  const seaMaterial = seaGeometry ? createSeaMaterial() : null
+  if (seaGeometry && seaMaterial) {
+    const sea = new THREE.Mesh(seaGeometry, seaMaterial)
+    sea.name = 'surroundings-sea'
+    sea.position.y = -drop + SEA_LEVEL
+    sea.receiveShadow = true
+    sea.renderOrder = 1
+    group.add(sea)
+    owned.push(seaGeometry, seaMaterial)
+  }
 
   const object = new THREE.Object3D()
   const matrixFor = (x: number, y: number, z: number, yaw: number, sx: number, sy: number, sz: number, tilt = 0) => {
@@ -587,6 +772,8 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
   instanceItems(group, 'surroundings-rocks', capped(decor.rocks, .3))
   return {
     group,
+    animated: Boolean(seaMaterial),
+    animate: (seconds: number) => { if (seaMaterial) seaMaterial.userData.time.value = seconds },
     dispose: () => {
       for (const resource of owned) resource.dispose()
       group.clear()

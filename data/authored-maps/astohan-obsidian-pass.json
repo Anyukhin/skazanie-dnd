@@ -30,7 +30,7 @@
   "i": {"zone": "overlook", "material": "sand"},
   "f": {"zone": "ascent", "material": "stone"},
   "b": {"zone": "vents"},
-  "H": {"zone": "vents", "solid": true},
+  "H": {"zone": "vents", "solid": true, "hazardId": "lava-fire"},
   "s": {"zone": "scree", "surface": "rubble"},
   "n": {"zone": "narrows"},
   "u": {"zone": "hut"}

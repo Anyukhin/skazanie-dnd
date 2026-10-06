@@ -27,7 +27,7 @@ import { batchEnvironmentMeshes } from './board3d-batching'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, structuralRoofRolesForMap, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
-import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, structuralBridgeRolesForMap, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
+import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createLavaMaterial, createLavaSurfaceGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, lavaGlowPoints, landscapeWantsModels, structuralBridgeRolesForMap, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
 import { SURROUNDINGS_MODEL_ASSETS, createSurroundings, surroundingsModelFromTemplate, type SurroundingsModel, type SurroundingsModels } from './board3d-surroundings'
 import { landscapeModelsOf } from './landscape-model-assets'
@@ -993,6 +993,28 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     water.renderOrder = 2
     groundGroup.add(water)
   }
+  // Лава в разломе: раскалённая гладь с коркой и отсвет на стены пещеры.
+  // Отсвет — несколько точечных огней без теней; на «Экономном» их нет, а гладь
+  // светится и без них.
+  const lavaGeometry = createLavaSurfaceGeometry(map)
+  const lavaMaterial = lavaGeometry ? createLavaMaterial() : null
+  if (lavaGeometry && lavaMaterial) {
+    ownGeometry(resources, lavaGeometry)
+    resources.materials.add(lavaMaterial)
+    const lava = new THREE.Mesh(lavaGeometry, lavaMaterial)
+    lava.name = 'lava-surface'
+    lava.receiveShadow = false
+    lava.castShadow = false
+    groundGroup.add(lava)
+    const glowLimit = options.lighting === false ? 0 : landscapeDetail === 'full' ? 6 : landscapeDetail === 'reduced' ? 3 : 0
+    for (const point of lavaGlowPoints(map, glowLimit)) {
+      const glow = new THREE.PointLight('#ff6a24', 3.2, 6.5, 2)
+      glow.name = 'lava-light'
+      glow.castShadow = false
+      glow.position.set(point.x, point.y, point.z)
+      groundGroup.add(glow)
+    }
+  }
   // Скалы, мосты и растения у воды: сначала процедурные; по загрузке набора
   // моделей пересобираются только эти слои, как предметы по загрузке GLB.
   // Стены, двери и клетки-кладка в рисованном стиле, если пакет уже загружен:
@@ -1284,10 +1306,14 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
 
   return {
     group,
-    /** Вода рябит, пока доска её рисует; на «Экономном» стоит. */
-    animated: Boolean(waterMaterial) && landscapeDetail !== 'minimal',
+    /** Вода рябит, лава течёт, море за краем катит волны; на «Экономном» всё стоит. */
+    get animated() { return Boolean(waterMaterial || lavaMaterial || surroundings?.animated) && landscapeDetail !== 'minimal' },
     animate(nowMs: number) {
-      if (waterMaterial && landscapeDetail !== 'minimal') waterMaterial.userData.time.value = nowMs / 1000
+      if (landscapeDetail === 'minimal') return
+      const seconds = nowMs / 1000
+      if (waterMaterial) waterMaterial.userData.time.value = seconds
+      if (lavaMaterial) lavaMaterial.userData.time.value = seconds
+      surroundings?.animate(seconds)
     },
     getPropPickTargets: () => disposed ? [] : props.pickTargets,
     setRoofMode: (mode: Board3DRoofMode) => roofs.setMode(mode),

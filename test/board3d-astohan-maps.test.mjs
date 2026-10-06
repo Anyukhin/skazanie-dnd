@@ -48,6 +48,64 @@ test('каталог содержит все 14 мест Асстохана', ()
   assert.equal(ASTOHAN.length, 14)
 })
 
+for (const id of ['astohan-vulkanis-brazier', 'astohan-obsidian-pass']) {
+  test(`3D: лава ${id} светится и течёт, валунов на ней нет`, () => {
+    const map = revealedClientMap(ASTOHAN.find((raw) => raw.locationId === id))
+    const lavaCells = []
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = mapClient.cellAt(map, x, y)
+      if (/lava/u.test(cell?.hazardId ?? '')) {
+        lavaCells.push(cell)
+        // Для правил лава — огонь за непроходимой кромкой.
+        assert.equal(cell.passable, false)
+      }
+    }
+    assert.ok(lavaCells.length >= 20, `${id}: клеток лавы ${lavaCells.length}`)
+    const scene = scene3d.createBoard3DScene(map, { landscapeDetail: 'full' })
+    try {
+      const lava = scene.group.getObjectByName('lava-surface')
+      assert.ok(lava, `${id}: нет глади лавы`)
+      assert.equal(lava.geometry.index.count / 6, lavaCells.length, 'гладь — по квадрату на клетку лавы')
+      assert.ok(lava.material.emissiveIntensity > 0)
+      const lights = []
+      scene.group.traverse((object) => { if (object.name === 'lava-light') lights.push(object) })
+      assert.ok(lights.length > 0 && lights.length <= 6, `${id}: огней лавы ${lights.length}`)
+      assert.ok(lights.every((light) => !light.castShadow), 'отсвет лавы без теней')
+      // Валуны скал стоят по своим клеткам; центр ни одного — не в клетке лавы.
+      const lavaKeys = new Set(lavaCells.map((cell) => `${cell.x},${cell.y}`))
+      const rocks = scene.group.getObjectByName('landscape-rocks')
+      const onLava = []
+      rocks?.updateMatrixWorld(true)
+      rocks?.traverse((object) => {
+        if (!object.isInstancedMesh) return
+        const matrix = new object.matrix.constructor()
+        for (let index = 0; index < object.count; index += 1) {
+          object.getMatrixAt(index, matrix)
+          matrix.premultiply(object.matrixWorld)
+          const x = matrix.elements[12], z = matrix.elements[14]
+          const fx = x - Math.floor(x), fz = z - Math.floor(z)
+          if (fx > .3 && fx < .7 && fz > .3 && fz < .7 && lavaKeys.has(`${Math.floor(x)},${Math.floor(z)}`)) onLava.push(`${x.toFixed(1)},${z.toFixed(1)}`)
+        }
+      })
+      assert.deepEqual(onLava, [], `${id}: валуны посреди лавы`)
+      assert.equal(scene.animated, true)
+      scene.animate(4000)
+      assert.equal(lava.material.userData.time.value, 4)
+    } finally {
+      scene.dispose()
+    }
+    const economy = scene3d.createBoard3DScene(map, { landscapeDetail: 'minimal' })
+    try {
+      let lights = 0
+      economy.group.traverse((object) => { if (object.name === 'lava-light') lights += 1 })
+      assert.equal(lights, 0, 'на «Экономном» отсвета нет, гладь светится сама')
+      assert.ok(economy.group.getObjectByName('lava-surface'))
+    } finally {
+      economy.dispose()
+    }
+  })
+}
+
 for (const raw of ASTOHAN) {
   test(`3D: ${raw.locationId} собирается, предметы и двери на месте, геометрия в бюджете`, () => {
     const map = revealedClientMap(raw)
