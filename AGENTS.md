@@ -116,7 +116,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | `server/director-agent.mjs` | `prompts/director/v4_story.txt`, `v4_chaos.txt` | темп, развилки, переходы; вариант по `improv_mode` в `choose()` |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | мораль и перелом боя NPC |
 | `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v7.txt` | социальные сцены; зацепки карты о собеседнике (`public_hooks_naming_npc`) |
-| `server/narrator.mjs` | `prompts/narrator/v12.txt` | текст после commit; якоря карты (`landmarks`, `landmarks_absent`) |
+| `server/narrator.mjs` | `prompts/narrator/v13.txt` | текст после commit; якоря карты (`landmarks`, `landmarks_absent`); сюжет сценария (`scenario`) |
 | `server/scene-architect.mjs` | `prompts/map_architect/v8.txt` | новые области, заготовки (`secrets`), якоря (`map.design.landmarks`) |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v8.txt` | исходная ситуация, заготовки (`secrets`), якоря первой карты |
 | `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v8.txt` | прочтение свободного действия и маршрут (`check`/`travel`/`talk`/`clarify`) |

@@ -14,7 +14,7 @@ import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
-import { buildScenarioArcPlan, scenarioForWorldTemplate } from './campaign-scenario.mjs'
+import { buildScenarioArcPlan, scenarioClueFactIdsKnownBy, scenarioForWorldTemplate } from './campaign-scenario.mjs'
 import { scenarioNightVisitorIds } from './scenario-knight.mjs'
 import { validateCampaignMode } from './campaign-stories.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
@@ -796,6 +796,11 @@ export class CampaignBootstrapper {
       const holder = clean(opening.secrets[index]?.holder, 120).toLocaleLowerCase('ru')
       const npc = holder ? openingNpcs.find((entry) => clean(entry.name, 120).toLocaleLowerCase('ru') === holder) : null
       if (npc) npc.known_fact_ids = [...(npc.known_fact_ids ?? []), fact.id]
+    }
+    // Хранители тайн сценария знают свою часть истории (`holders`).
+    for (const npc of openingNpcs) {
+      const known = scenarioClueFactIdsKnownBy(scenario, String(npc.id ?? ''))
+      if (known.length) npc.known_fact_ids = [...new Set([...(npc.known_fact_ids ?? []), ...known])]
     }
     // Короткое название отдельно от полного текста зацепки: зацепка уходит в
     // summary целиком, цель сцены — в objectives (плейтест 2026-10-04, SE).

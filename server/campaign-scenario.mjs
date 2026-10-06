@@ -192,6 +192,9 @@ function validateScenario(scenario) {
       if (!Array.isArray(secret.skills) || !secret.skills.length || secret.skills.some((/** @type {string} */ skill) => !SECRET_SKILLS.has(skill))) {
         invalid(`${scenario.id}/${secretId}: навыки тайны`)
       }
+      if (secret.holders != null && (!Array.isArray(secret.holders) || secret.holders.some((/** @type {unknown} */ id) => !ID_PATTERN.test(String(id ?? ''))))) {
+        invalid(`${scenario.id}/${secretId}: хранители тайны — id NPC мира`)
+      }
     }
   }
   const beats = Array.isArray(scenario.beats) ? scenario.beats : invalid(`${scenario.id}: beats`)
@@ -389,12 +392,37 @@ export function scenarioSecretsFor(state, locationId) {
   }))
 }
 
-/** @param {any} state */
+/**
+ * Найденные тайны: удачный поиск (`discovery`) или рассказ хранителя тайны в
+ * разговоре (`KnowledgeRevealed` → `worldMemory.knowledge_revealed`).
+ * @param {any} state
+ */
 function foundClueFactIds(state) {
   const facts = Array.isArray(state?.worldMemory?.facts) ? state.worldMemory.facts : []
-  return new Set(facts
+  const ids = new Set(facts
     .filter((/** @type {any} */ fact) => fact?.predicate === 'discovery' && clean(fact.supersedes_fact_id, 200))
     .map((/** @type {any} */ fact) => clean(fact.supersedes_fact_id, 200)))
+  for (const entry of Array.isArray(state?.worldMemory?.knowledge_revealed) ? state.worldMemory.knowledge_revealed : []) {
+    const factId = clean(entry?.fact_id, 200)
+    if (factId) ids.add(factId)
+  }
+  return ids
+}
+
+/**
+ * Тайны сценария, которые знает NPC (`holders` в карточке места): их id
+ * уходят в `known_fact_ids` профиля при создании кампании, и хранитель может
+ * рассказать о них в разговоре — тем же защищённым путём, что и любой
+ * закрытый факт. Сам факт появится, когда отряд придёт в его место.
+ * @param {any} scenario
+ * @param {string} npcId
+ * @returns {string[]}
+ */
+export function scenarioClueFactIdsKnownBy(scenario, npcId) {
+  if (!scenario) return []
+  return scenario.locations.flatMap((/** @type {any} */ location) => (location.secrets ?? [])
+    .filter((/** @type {any} */ secret) => Array.isArray(secret.holders) && secret.holders.includes(npcId))
+    .map((/** @type {any} */ secret) => scenarioClueFactId(scenario, secret.id)))
 }
 
 /** @param {any} state */
@@ -722,6 +750,41 @@ export function scenarioEnding(state = {}) {
   if (!scenario || !progress?.ending) return null
   const ending = scenario.endings.find((/** @type {any} */ entry) => entry.id === progress.ending?.id)
   return ending ? { id: ending.id, title: ending.title, outcome: progress.boss_outcome, epilogue: ending.epilogue } : null
+}
+
+/**
+ * Сюжет для Рассказчика: о чём кампания, где отряд в истории и что уже
+ * найдено — чтобы голос ведущего знал историю, а не только сцену. Состояние
+ * приходит уже спроецированным для отряда; тексты ненайденных тайн сюда не
+ * входят по построению — только названия узлов и найденные улики.
+ * @param {any} state
+ */
+export function scenarioNarratorBrief(state = {}) {
+  const scenario = campaignScenario(state)
+  const progress = scenarioProgress(state)
+  if (!scenario || !progress) return null
+  const card = locationCard(scenario, progress.current_location_id)
+  const current = progress.beats.find((beat) => !beat.completed && beat.location_ids.includes(progress.current_location_id))
+    ?? progress.beats.find((beat) => !beat.completed)
+    ?? null
+  const clueFactIds = new Set(scenario.locations.flatMap((/** @type {any} */ location) => (location.secrets ?? [])
+    .map((/** @type {any} */ secret) => scenarioClueFactId(scenario, secret.id))))
+  const found = (Array.isArray(state?.worldMemory?.facts) ? state.worldMemory.facts : [])
+    .filter((/** @type {any} */ fact) => fact?.predicate === 'discovery' && clueFactIds.has(clean(fact.supersedes_fact_id, 200))
+      && ['party', 'public'].includes(String(fact.visibility ?? 'party')))
+    .map((/** @type {any} */ fact) => clean(fact.summary, 240))
+    .filter(Boolean)
+  const names = new Map(worldLocations(state).map((/** @type {any} */ entry) => [clean(entry.id, 120), clean(entry.name, 120)]))
+  return {
+    campaign: clean(scenario.title, 120),
+    premise: clean(scenario.summary, 600),
+    phase: scenarioPhase(state),
+    ...(card ? { place: { title: clean(card.title, 120), mood: clean(card.mood, 240), objective: clean(card.objective, 240) } } : {}),
+    ...(current ? { current_beat: { title: clean(current.title, 160), summary: clean(current.summary, 240) } } : {}),
+    completed_beats: progress.beats.filter((beat) => beat.completed).map((beat) => clean(beat.title, 160)),
+    found_clues: found.slice(-5),
+    ahead: scenarioDestinationIds(state).map((id) => names.get(id) || id).slice(0, 2),
+  }
 }
 
 /**

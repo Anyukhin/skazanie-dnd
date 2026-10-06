@@ -35,7 +35,7 @@ const promptsRoot = new URL('../prompts/', import.meta.url)
 export const PROMPT_DESCRIPTORS = Object.freeze([
   Object.freeze({ role: 'npc_morale', promptId: 'npc_controller/v1', module: 'npc-controller.mjs', loads: true }),
   Object.freeze({ role: 'npc_social', promptId: 'npc_controller/social_v7', module: 'npc-social-controller.mjs', loads: true }),
-  Object.freeze({ role: 'narrator', promptId: 'narrator/v12', module: 'narrator.mjs', loads: true }),
+  Object.freeze({ role: 'narrator', promptId: 'narrator/v13', module: 'narrator.mjs', loads: true }),
   // Режиссёр — единственная роль с вариантами: промпт выбирается режимом
   // импровизации кампании, поэтому один модуль объявляет два дескриптора.
   Object.freeze({ role: 'director_story', promptId: 'director/v4_story', module: 'director-agent.mjs', loads: true }),

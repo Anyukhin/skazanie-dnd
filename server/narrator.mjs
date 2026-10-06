@@ -18,7 +18,7 @@ import { sceneCanonFromEnvironment, sensoryAnchorConflicts } from './scene-canon
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
 import { requirementMention } from './scene-requirements.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v12'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v13'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v2'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
@@ -40,7 +40,7 @@ export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
 export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
 export const NARRATOR_DEFAULT_TIMEOUT_MS = 12_000
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v12.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v13.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v2.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
@@ -691,6 +691,8 @@ function briefForNarratorPrompt(brief) {
     }))
     promptBrief.visible_state_changes = []
     delete promptBrief.known_environment.world_memory
+    // Короткий ответ — одна-две фразы об исходе: сюжетная справка ему ни к чему.
+    delete promptBrief.known_environment.scenario
     const { sensory_anchors: _sensoryAnchors, ...scene } = promptBrief.known_environment.scene ?? {}
     promptBrief.known_environment.scene = scene
     promptBrief.known_environment.story_context = {

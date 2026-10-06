@@ -20,7 +20,7 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v12', purpose: 'Финальное повествование из подтверждённых результатов' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v13', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v8', purpose: 'Динамическая архитектура новой локации и игровой карты' },
   action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v8', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })

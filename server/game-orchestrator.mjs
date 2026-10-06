@@ -44,11 +44,22 @@ import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedC
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { agentContextMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
+import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
 import { freeActionDiscoveryCommands, retrieveWorldMemory } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
+
+/**
+ * Сюжет авторского сценария для Рассказчика: о чём кампания, текущий узел,
+ * пройденное и найденные улики (`scenarioNarratorBrief`). Считается по
+ * состоянию, спроецированному для отряда, — ненайденного в нём нет.
+ */
+function narrationScenarioContext(state) {
+  const scenario = scenarioNarratorBrief(questStateForViewer(state, { isPartyMember: true }))
+  return scenario ? { scenario } : {}
+}
 
 // A JSON request cannot manufacture this identity. Only server-owned world
 // orchestration may attach it to derived AdvanceScene/merchant commands.
@@ -1642,6 +1653,7 @@ export class GameOrchestrator {
         scene_canon: sceneCanonFor(state, { playerId: viewer?.playerId ?? playerId, actorId: playerId }),
         world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
         story_context: storyContext,
+        ...narrationScenarioContext(state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
       },
       permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents, {
@@ -2996,6 +3008,7 @@ export class GameOrchestrator {
           facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
         },
         story_context: storyContext,
+        ...narrationScenarioContext(committed.state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, committed.state),
       },
       permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),
