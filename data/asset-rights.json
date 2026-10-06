@@ -3478,7 +3478,9 @@
     ["ui/action-icons/wizard-shkola-illyuzii-sobstvennaya-illyuzornost.png", "60f07eabe972978ba03eb5f6fad18dceef27a560b7eaaf25ae0b9cd5b5728ed8", 89897],
     ["ui/action-icons/wizard-shkola-ocharovaniya-instinktivnoe-ocharovanie.png", "d64e132729ca1d8a1b914d93cf05d0286be0bfcb90b2bfb04acafdabbd946140", 91501],
     ["ui/action-icons/wizard-shkola-ograzhdeniya-proektsiya-zaschity.png", "a91fd8ac079a78c1f464f406df0a331eac0ce3117b1123487ff072794938f1bb", 90268],
-    ["ui/action-icons/wizard-voennaya-magiya-magicheskoe-otrazhenie.png", "93ec16850e68323f91965391f1661c1142f47e7b12a6255ecc0cf5598367354b", 79057]
+    ["ui/action-icons/wizard-voennaya-magiya-magicheskoe-otrazhenie.png", "93ec16850e68323f91965391f1661c1142f47e7b12a6255ecc0cf5598367354b", 79057],
+    ["items/item-scenario-astohan-kaelan-tear.png", "354f624cd618cc57ad5292279ece4cfe63f67f44ffc219959eb82a74e33b9526", 357847],
+    ["items/item-scenario-astohan-lomar-ward.png", "2d69668a1c16c895ef17dbe7ca5a0d2968671d97e5a13732730699e8c1e01eb8", 397350]
   ],
   "rights_status": "review_required",
   "distribution": "blocked",

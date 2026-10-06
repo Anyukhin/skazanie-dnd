@@ -252,7 +252,7 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, scenarioEnding, scenarioSceneArgs, scenarioSecretsFor } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, scenarioClueRewardCatalogId, scenarioEnding, scenarioProgress, scenarioSceneArgs, scenarioSecretsFor } from './campaign-scenario.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_STRANGER_EVENT,
@@ -4039,6 +4039,7 @@ function distanceBetweenActors(state, firstActorId, secondActorId) {
  *   immuneToAllDamage?: boolean,
  *   resistsDamageTypes?: readonly string[],
  *   immuneToDamageTypes?: readonly string[],
+ *   suppressesDamageImmunities?: readonly string[],
  *   armorClassBonus?: number,
  *   armorClassFloor?: number,
  *   saveAdvantageAbilities?: readonly string[],
@@ -4093,6 +4094,11 @@ const CONDITION_EFFECTS = Object.freeze({
   'protected-from-energy:acid': { resistsDamageTypes: ['acid'] },
   'protected-from-energy:cold': { resistsDamageTypes: ['cold'] },
   'protected-from-energy:fire': { resistsDamageTypes: ['fire'] },
+  // Предметы сценария «Асстоханские равнины» (`SCENARIO_ITEM_CATALOG`):
+  // оберег Ломара — сопротивление огню отряду на минуту; «Хрупкая Чешуя»
+  // Слезы Рыцаря — дракон на минуту теряет иммунитет к огню.
+  'lomar-ward': { resistsDamageTypes: ['fire'] },
+  'fragile-scale': { suppressesDamageImmunities: ['fire'] },
   'protected-from-energy:lightning': { resistsDamageTypes: ['lightning'] },
   'protected-from-energy:thunder': { resistsDamageTypes: ['thunder'] },
   // Кора не прибавляет к классу доспеха, а задаёт ему нижнюю границу: в тяжёлых
@@ -6135,13 +6141,11 @@ export function validateCommand(input, rawState, context = {}) {
         throw new RulesValidationError('Этой ночью рыцарь уже выслушал этого героя', 'SCENARIO_KNIGHT_ATTEMPT_SPENT')
       }
       command.difficulty = rules.release.dc
-      command.reward_item = normalizeInventoryItem({
-        name: rules.release.reward.name,
-        description: rules.release.reward.description,
-        quantity: 1,
-        quest_item: true,
-        origin: 'gifted',
-      }, { idFallback: `knight-tear:${command.command_id}`, preserveUnknown: true })
+      command.reward_item = normalizeInventoryItem(
+        materializeCatalogItem(rules.release.reward.catalog_id, { quantity: 1, origin: 'gifted' }),
+        { idFallback: `knight-tear:${command.command_id}`, preserveUnknown: true },
+      )
+      command.reward_item.origin = 'gifted'
     }
     command.visibility = 'public'
   }
@@ -6265,6 +6269,15 @@ export function validateCommand(input, rawState, context = {}) {
       if (!target || isDeadHero(state, command.target_id) || target.alive === false
         || (command.use_profile?.kind === 'cast_spell' && !isLivingActor(target))) {
         throw new RulesValidationError('Предмет можно использовать только на живую цель', 'ITEM_TARGET_DEAD')
+      }
+      if (command.use_profile?.kind === 'knight_tear' && String(command.target_id) !== String(command.actor_id)) {
+        // «Хрупкая Чешуя» — только против главного противника сценария и только
+        // в бою с ним; на себя Слеза поднимает щит.
+        const bossId = scenarioProgress(state)?.boss?.npc_id
+        if (!bossId || String(command.target_id) !== String(bossId)) {
+          throw new RulesValidationError('Слезу направляют на себя (щит) или на дракона (Хрупкая Чешуя)', 'INVALID_ITEM_TARGET')
+        }
+        if (!state.mechanics.combat.active) throw new RulesValidationError('«Хрупкая Чешуя» действует только в бою с драконом', 'COMBAT_NOT_ACTIVE')
       }
       if (command.use_profile?.kind === 'stabilize') {
         const tracker = state.mechanics.death.saving_throws[String(command.target_id)]
@@ -7552,10 +7565,13 @@ function defenseFor(state, id) {
   const defense = state.mechanics.defenses[id] ?? {}
   const actor = findActor(state, id)
   const speciesResistances = statBlockDamageList(actor?.speciesBenefits?.mechanics?.damage_resistances)
+  // Состояние может временно снять иммунитет («Хрупкая Чешуя»): урон этого
+  // вида тогда проходит, а сопротивления и уязвимости остаются прежними.
+  const suppressed = new Set([...conditionIdsFor(state, id)].flatMap((condition) => CONDITION_EFFECTS[condition]?.suppressesDamageImmunities ?? []))
   return {
     resistances: [...uniqueStrings(defense.resistances), ...statBlockDamageList(actor?.damage_resistances), ...speciesResistances],
     vulnerabilities: [...uniqueStrings(defense.vulnerabilities), ...statBlockDamageList(actor?.damage_vulnerabilities)],
-    immunities: [...uniqueStrings(defense.immunities), ...statBlockDamageList(actor?.damage_immunities)],
+    immunities: [...uniqueStrings(defense.immunities), ...statBlockDamageList(actor?.damage_immunities)].filter((type) => !suppressed.has(type)),
   }
 }
 
@@ -21541,6 +21557,24 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     case 'RecordNarrativeSummary': {
       const worldEvent = worldMemoryEvent(command)
       events.push(eventFrom(command, worldEvent.event_type, worldEvent.payload, worldEvent.target_ids))
+      // Находка тайны сценария может принести предмет: оберег Ломара лежит на
+      // его столе. Он достаётся нашедшему герою, а без него — первому живому
+      // герою отряда; повторная находка той же тайны предмета не удваивает.
+      const found = command.command_type === 'RecordWorldFact' && command.fact?.predicate === 'discovery'
+        ? String(command.fact?.supersedes_fact_id ?? '') : ''
+      const rewardId = found ? scenarioClueRewardCatalogId(state, found) : null
+      const alreadyFound = rewardId && (state.worldMemory?.facts ?? []).some((fact) => fact?.predicate === 'discovery' && String(fact.supersedes_fact_id ?? '') === found)
+      if (rewardId && !alreadyFound) {
+        const partyIds = uniqueStrings(state.partyMemberIds ?? [])
+        const recipient = partyIds.includes(String(command.actor_id ?? '')) ? String(command.actor_id)
+          : partyIds.find((heroId) => isLivingActor(findActor(state, heroId))) ?? partyIds[0]
+        if (recipient) {
+          const item = normalizeInventoryItem(materializeCatalogItem(rewardId, { quantity: 1, origin: 'found' }), {
+            idFallback: `scenario-reward:${found}`, preserveUnknown: true,
+          })
+          events.push(itemGrantedEventFrom({ ...command, actor_id: recipient }, { item }, [recipient]))
+        }
+      }
       break
     }
     case 'CompleteCampaign': {
@@ -21773,6 +21807,38 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           rider_damage_type: String(use.rider_damage_type ?? 'poison'),
           rider_source_name: String(item.name),
         }, [command.actor_id]))
+      }
+      if (use.kind === 'knight_tear') {
+        // Слеза Проклятого Рыцаря: на себя — «Щит Вечной Стражи» (временные
+        // хиты), на главного противника сценария — «Хрупкая Чешуя».
+        if (String(command.target_id) === String(command.actor_id)) {
+          const amount = Math.max(1, safeInteger(use.shield_temporary_hp, 50))
+          const before = Math.max(0, safeInteger(state.mechanics.temporary_hp[command.actor_id], 0))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'TemporaryHitPointsGranted', {
+            offered: amount, temporary_hp_before: before, temporary_hp_after: Math.max(before, amount),
+            item_id: item.id, item_name: item.name, effect: 'knight-tear-shield',
+          }, [command.actor_id]))
+        } else {
+          const rounds = Math.max(1, safeInteger(use.scale_duration_rounds, 10))
+          const startedAt = worldTimeSeconds(state)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'fragile-scale', duration: `rounds:${rounds}`, source_actor: command.actor_id, source_item_id: item.id,
+            timing_version: 2, started_at_seconds: startedAt, expires_at_seconds: startedAt + rounds * 6,
+          }, [command.target_id]))
+        }
+      }
+      if (use.kind === 'party_fire_ward') {
+        // Оберег Ломара: сопротивление огню каждому живому герою отряда.
+        const rounds = Math.max(1, safeInteger(use.duration_rounds, 10))
+        const startedAt = worldTimeSeconds(state)
+        for (const heroId of uniqueStrings(state.partyMemberIds ?? [])) {
+          const hero = findActor(state, heroId)
+          if (!hero || !isLivingActor(hero)) continue
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'lomar-ward', duration: `rounds:${rounds}`, source_actor: command.actor_id, source_item_id: item.id,
+            timing_version: 2, started_at_seconds: startedAt, expires_at_seconds: startedAt + rounds * 6,
+          }, [heroId]))
+        }
       }
       if (use.kind === 'antitoxin') {
         const durationMinutes = Math.max(1, safeInteger(use.duration_minutes, 60))

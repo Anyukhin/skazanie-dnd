@@ -115,7 +115,8 @@ test('content integrity gate verifies hashes, references, counts and the complet
   // + пакеты стилей графики (`styles/<стиль>`): файлы манифеста и сам манифест.
   // + 157 рисунков действий подклассов, 26 служебных, 23 состояния и 15
   //   собственных рисунков стартовых вещей вместо картинок заклинаний.
-  assert.equal(report.integrity.assets, 2160 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
+  // + 2 рисунка предметов сценария (Слеза Рыцаря, оберег Ломара).
+  assert.equal(report.integrity.assets, 2162 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

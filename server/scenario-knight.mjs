@@ -245,7 +245,7 @@ export function scenarioKnightRules(state = {}) {
     release: {
       dc: Number(config.release.dc),
       skills: [...config.release.skills].map(String),
-      reward: { name: clean(config.release.reward?.name, 120), description: clean(config.release.reward?.description, 400) },
+      reward: { catalog_id: clean(config.release.reward?.catalog_id, 120) },
       success_text: clean(config.release.success_text, 1_000),
       failure_text: clean(config.release.failure_text, 1_000),
     },

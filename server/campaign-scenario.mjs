@@ -76,6 +76,8 @@ function validateCondition(condition, where, clueIds) {
 }
 
 const SAVE_ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
+/** Id предмета каталога сценария (`SCENARIO_ITEM_CATALOG`, `server/item-catalog.mjs`). */
+const SCENARIO_ITEM_ID = /^scenario_[a-z0-9_]+:[a-z0-9]+(?:-[a-z0-9]+)*$/u
 const DAMAGE_TYPES = new Set(['fire', 'cold', 'acid', 'lightning', 'poison', 'thunder', 'necrotic', 'radiant', 'force', 'psychic'])
 
 /**
@@ -109,7 +111,7 @@ function validateKnight(knight, scenarioId, locationIds) {
   const release = knight.release
   if (!Number.isSafeInteger(release?.dc) || release.dc < 5 || release.dc > 30 || !Array.isArray(release.skills) || !release.skills.length
     || release.skills.some((/** @type {string} */ skill) => !['persuasion', 'religion', 'insight', 'intimidation', 'deception', 'history'].includes(skill))
-    || !clean(release.reward?.name, 120) || clean(release.success_text, 1_000).length < 40 || clean(release.failure_text, 1_000).length < 20) {
+    || !SCENARIO_ITEM_ID.test(String(release.reward?.catalog_id ?? '')) || clean(release.success_text, 1_000).length < 40 || clean(release.failure_text, 1_000).length < 20) {
     invalid(`${where}: мирному пути нужны СЛ, навыки, награда и тексты`)
   }
 }
@@ -194,6 +196,9 @@ function validateScenario(scenario) {
       }
       if (secret.holders != null && (!Array.isArray(secret.holders) || secret.holders.some((/** @type {unknown} */ id) => !ID_PATTERN.test(String(id ?? ''))))) {
         invalid(`${scenario.id}/${secretId}: хранители тайны — id NPC мира`)
+      }
+      if (secret.grants_catalog_id != null && !SCENARIO_ITEM_ID.test(String(secret.grants_catalog_id))) {
+        invalid(`${scenario.id}/${secretId}: находка выдаёт предмет каталога сценария`)
       }
     }
   }
@@ -407,6 +412,23 @@ function foundClueFactIds(state) {
     if (factId) ids.add(factId)
   }
   return ids
+}
+
+/**
+ * Предмет, который отряд получает вместе с находкой тайны (`grants_catalog_id`):
+ * оберег Ломара лежит на его столе. `null` — находка предмета не даёт.
+ * @param {any} state
+ * @param {string} clueFactId id тайны сценария (`supersedes_fact_id` находки)
+ */
+export function scenarioClueRewardCatalogId(state, clueFactId) {
+  const scenario = campaignScenario(state)
+  if (!scenario) return null
+  for (const location of scenario.locations) {
+    for (const secret of location.secrets ?? []) {
+      if (secret.grants_catalog_id && scenarioClueFactId(scenario, secret.id) === clueFactId) return String(secret.grants_catalog_id)
+    }
+  }
+  return null
 }
 
 /**
