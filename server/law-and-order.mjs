@@ -213,6 +213,9 @@ export function currentRegionId(state = {}) {
 export function currentSettlement(state = {}) {
   const node = currentWorldNode(state)
   if (!node || !SETTLEMENT_LOCATION_KINDS.has(text(node.kind, 40))) return null
+  // Крепость без гарнизона — не поселение со стражей: в покинутом замке и у
+  // башни отшельника отряд никто не задерживает.
+  if (node.garrison === false) return null
   return {
     node_id: text(node.id, 180),
     name: text(node.name, 180),

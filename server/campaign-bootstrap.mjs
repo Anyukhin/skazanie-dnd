@@ -14,6 +14,7 @@ import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
+import { buildScenarioArcPlan, scenarioForWorldTemplate } from './campaign-scenario.mjs'
 import { validateCampaignMode } from './campaign-stories.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
@@ -549,7 +550,11 @@ export class CampaignBootstrapper {
         generatedBy = 'ai-storyteller'
       } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
     }
-    const arc = selectedCampaignMode === 'adventure' ? buildCampaignArcPlan(seed) : null
+    // У авторского мира со сценарием арку задаёт сюжет (`campaign-scenario.mjs`),
+    // а не хеш: главы, финал и развязки — данные сценария.
+    const scenario = worldTemplate ? scenarioForWorldTemplate(worldTemplate.id) : null
+    const arc = selectedCampaignMode !== 'adventure' ? null
+      : scenario ? buildScenarioArcPlan(scenario) : buildCampaignArcPlan(seed)
     // Пролог — необязательное украшение: письмо-завязка, которое владелец
     // зачитает перед первым вечером. Отказ летописца кампанию не задерживает.
     const prologue = this.loreAuthor && !worldTemplate

@@ -6,13 +6,14 @@
  * отдельного native-grid layout через общий authored-location builder.
  */
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assetById } from '../server/asset-registry.mjs'
 import { sceneInteractionCatalogEntry } from '../server/scene-interactions.mjs'
 import { auditTacticalMap } from '../server/map-quality.mjs'
 import { buildAuthoredLocationMap, revealInitialArea } from './build-authored-location-maps.mjs'
+import { ASCII_MAP_DIR, buildAsciiMapFile } from './build-ascii-location-maps.mjs'
 import {
   addProp, addSpawnPoint, addZone, cellAt, createTacticalMap,
   reachableCells, serializeTacticalMap, setCell, setDoor, setEdge,
@@ -1037,11 +1038,28 @@ export function semanticQaRows(maps) {
   }).sort((a, b) => a.locationId.localeCompare(b.locationId))
 }
 
-export function buildSmallTacticalMaps({ worldPath = WORLD_FILE, manifestPath = OVERVIEW_MANIFEST_FILE, aresPath = ARES_LAYOUT_FILE, outputPath = DEFAULT_OUTPUT, qaOutputPath = '' } = {}) {
+/**
+ * Места, нарисованные вручную (`data/authored-maps/<id>.json`,
+ * `tools/build-ascii-location-maps.mjs`). Их карта берётся из рисунка, а не из
+ * пресета этого сборщика: полная пересборка каталога даёт ту же карту.
+ * @param {string} [dir]
+ * @returns {string[]}
+ */
+export function asciiAuthoredLocationIds(dir = ASCII_MAP_DIR) {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir).filter((name) => name.endsWith('.json')).map((name) => name.slice(0, -'.json'.length)).sort()
+}
+
+export function buildSmallTacticalMaps({ worldPath = WORLD_FILE, manifestPath = OVERVIEW_MANIFEST_FILE, aresPath = ARES_LAYOUT_FILE, outputPath = DEFAULT_OUTPUT, qaOutputPath = '', asciiDir = ASCII_MAP_DIR } = {}) {
   const allLocations = loadLocations(worldPath, { includeExcluded: true })
-  const locations = allLocations.filter((location) => text(location.id) !== EXCLUDED_LOCATION_ID)
+  const drawn = new Set(asciiAuthoredLocationIds(asciiDir))
+  const locations = allLocations.filter((location) => text(location.id) !== EXCLUDED_LOCATION_ID && !drawn.has(text(location.id)))
   const firstZones = loadOverviewZones(manifestPath)
-  const maps = [...locations.map((location) => buildSmallTacticalMap(location, { firstPlayableZone: firstZones.get(text(location.id)) || '' })), buildAresTacticalMap(aresPath)]
+  const maps = [
+    ...locations.map((location) => buildSmallTacticalMap(location, { firstPlayableZone: firstZones.get(text(location.id)) || '' })),
+    ...[...drawn].map((id) => buildAsciiMapFile(resolve(asciiDir, id + '.json')).map),
+    buildAresTacticalMap(aresPath),
+  ]
     .sort((a,b) => a.locationId.localeCompare(b.locationId))
   if (maps.length !== allLocations.length || maps.length !== 56) throw new Error('Ожидалось 56 authored tactical maps, получено ' + maps.length)
   mkdirSync(dirname(resolve(outputPath)), { recursive: true })

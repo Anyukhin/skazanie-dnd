@@ -49,6 +49,8 @@ pnpm content:verify   # целостность контента и лиценз�
 pnpm spells:verify    # override заклинаний против каталога dnd.su;
                       # обязательно после правки data/dndsu-spell-mechanics-overrides.json
 pnpm cutover:audit    # расхождения room/snapshot/replay (данные не меняет)
+node tools/build-ascii-location-maps.mjs --all --check  # нарисованные карты мест
+                      # (data/authored-maps/), без --check — запись в каталог
 pnpm maps:preview     # карта текстом без кампании: --location, --theme, --seed;
                       # --preset all --audit — после правки генераторов карт
 pnpm props:atlas      # атлас предметов: --sheets assets-src/prop-stamps, затем pnpm props:rights
@@ -131,7 +133,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 `map-quality`, `weather`, `offscreen-world`, `loot-containers`, `tavern-life`,
 `courier-letters`, `talespire-slab`, `talespire-import`, `map-library`,
 `thin-walls`, `room-floors`, `detail-props`, `scene-features`, `scene-dressing`,
-`reaction-preferences` (все — `server/*.mjs`).
+`reaction-preferences`, `campaign-scenario` (все — `server/*.mjs`).
 
 **Маршрутизация ввода:** `server/player-request-router.mjs` объявляет
 `PLAYER_REQUEST_ROLES`. `prompt_id` там — метаданные, а не привязка: его не
@@ -139,6 +141,13 @@ pnpm backup           # зашифрованная копия storage в ./backu
 список вариантов). `worldkeeper` (детерминированный `answerKnownLore`) и
 `game_master` (Rules Engine) — без `prompt_id`. Сторож —
 `test/player-request-router.test.mjs`.
+
+**Сценарий авторской кампании:** `campaign-scenario` читает
+`data/campaign-scenarios-v1.json` (сюжет для людей — `docs/astohan-scenario.md`).
+Карточку места накладывает `AdvanceScene`, прогресс сюжета, развязка и
+открытие карты выводятся из состояния — отдельных событий у сценария нет.
+Политика Режиссёра (`campaign-loop-policy`) берёт из него фазу, следующее место
+и встречу; кампании без сценария живут по вечерней арке.
 
 **Автономный цикл:** `director-agent` (решение модели) → `autonomous-campaign`
 (контракт намерения, `DIRECTOR_INTENT_TYPES`) → `autonomous-orchestrator`
@@ -213,6 +222,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | Медленный читатель живого потока не копит кадры: комната и присутствие схлопываются до последнего состояния, очередь соединения ограничена, отзыв прав уходит напрямую | `test/narration-stream.test.mjs`, `test/stream-backpressure-api.test.mjs` |
 | Карта читается только той, на которую указывает её хеш; библиотечная постройка выбирается, только если исправны все её этажи | `test/map-store.test.mjs`, `test/map-library.test.mjs` |
 | Бэкап не снимается с работающего на том же storage сервера без явного `--allow-live` | `test/backup-service.test.mjs`, `test/storage-backup-cli.test.mjs` |
+| Кампания по сценарию идёт по его узлам, финал — исход боя с главным противником, развязка переживает replay | `test/campaign-scenario.test.mjs` |
 
 Если новый инвариант нельзя привязать к тесту — он ещё не инвариант, а намерение.
 

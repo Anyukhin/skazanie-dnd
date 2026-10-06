@@ -252,6 +252,7 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
+import { applyScenarioMapReveals, scenarioEnding, scenarioSceneArgs, scenarioSecretsFor } from './campaign-scenario.mjs'
 import {
   NPC_SOCIAL_COMMAND_TYPES,
   NpcSocialValidationError,
@@ -2086,7 +2087,9 @@ export function normalizeCampaignState(input = {}) {
     visitedLocations: uniqueStrings(adventure.visitedLocations ?? (state.scene?.location ? [state.scene.location] : [])).slice(-50),
   }
   state.locationMaps = normalizeLocationMaps(state.locationMaps)
-  state.worldMap = ensureCampaignWorldMap(state)
+  // Сценарий открывает скрытые места по находкам (`applyScenarioMapReveals`):
+  // вывод из состояния, поэтому replay и перезапуск дают ту же карту.
+  state.worldMap = applyScenarioMapReveals(state, ensureCampaignWorldMap(state))
   // Состояние, сохранённое до перехода на слои, приходит и через replay, и
   // напрямую из room-JSON. Карта достраивается здесь, а производные клетки
   // пересобираются из неё — так у сцены остаётся ровно один источник истины.
@@ -6257,7 +6260,9 @@ export function validateCommand(input, rawState, context = {}) {
     if (guardEncounterIsHere(state)) {
       throw new RulesValidationError('Стража стоит перед отрядом: пока ей не ответили, отряд никуда не уходит', 'GUARD_ENCOUNTER_BLOCKS_SCENE')
     }
-    command.scene_args = normalizeSceneAdvanceArgs(command.scene_args)
+    // Карточка места сценария ложится на любой переход — голосование, шаг
+    // Режиссёра, карту мира: источник сюжета один, и он серверный.
+    command.scene_args = scenarioSceneArgs(state, normalizeSceneAdvanceArgs(command.scene_args))
     command.scene_commerce = normalizeSceneCommerce(command.scene_commerce)
     command.party_decision = normalizePartyDecisionReference(command.party_decision, { required: context?.isDirector === true })
   }
@@ -20984,7 +20989,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }, []))
         }
       }
-      for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId, secrets: command.scene_args?.secrets })) {
+      for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, {
+        commandId: command.command_id,
+        sourceEventId: sceneEventId,
+        secrets: command.scene_args?.secrets,
+        scenarioSecrets: scenarioSecretsFor(state, String(canonicalTransition.scene?.location_id ?? '')),
+      })) {
         events.push(eventFrom({ ...command, visibility: memoryEvent.visibility }, memoryEvent.event_type, memoryEvent.payload, memoryEvent.target_ids))
       }
       const priorTitle = String(state.scene?.title || state.scene?.location || 'Предыдущая сцена').slice(0, 180)
@@ -21192,7 +21202,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       events.push(eventFrom(command, worldEvent.event_type, worldEvent.payload, worldEvent.target_ids))
       break
     }
-    case 'CompleteCampaign':
+    case 'CompleteCampaign': {
+      // Развязку сценария выбирает исход боя с главным противником, а не
+      // команда: поле выводится из состояния здесь же.
+      const ending = scenarioEnding(state)
       events.push(eventFrom(command, 'CampaignCompleted', {
         status: 'completed',
         reason: command.reason,
@@ -21200,8 +21213,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         occurred_at: command.occurred_at || null,
         epilogue: command.epilogue,
         completion_policy: 'campaign-arc-completion-v1',
+        ...(ending ? { ending: { id: ending.id, title: ending.title, outcome: ending.outcome } } : {}),
       }, []))
       break
+    }
     case 'AdvanceCampaignArc': {
       const closingArc = campaignArcPlan(state)
       const nextArc = buildCampaignArcPlan(closingArc.seed, closingArc.arc_number + 1)
@@ -22582,6 +22597,13 @@ function applyGameEventCurrent(rawState, event) {
           ? payload.epilogue_fact_keys.map((key) => String(key).slice(0, 240)).filter(Boolean).slice(0, 64)
           : state.mechanics.campaign_lifecycle.epilogue_fact_keys,
         changed_by: payload.changed_by ?? event.actor_id ?? null,
+        ...(payload.ending && typeof payload.ending === 'object' ? {
+          ending: {
+            id: String(payload.ending.id ?? '').slice(0, 80),
+            title: String(payload.ending.title ?? '').slice(0, 160),
+            outcome: String(payload.ending.outcome ?? '').slice(0, 60),
+          },
+        } : {}),
       }
       break
     case 'CampaignStoryCompleted': {

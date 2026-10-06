@@ -30,6 +30,7 @@ import {
   pacingForDirectorIntent,
   planServerTravel,
 } from './campaign-loop-policy.mjs'
+import { scenarioEnding } from './campaign-scenario.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { unknownDestinationReply } from './player-request-router.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
@@ -582,11 +583,20 @@ export class AutonomousCampaignOrchestrator {
   async completeCampaignIfReady(campaignId, idempotencyKey) {
     const loaded = await this.load(campaignId)
     if (!campaignCanAutoComplete(loaded.state)) return null
-    const fallback = buildDeterministicEpilogue(loaded.state)
+    // Развязку сценария выбрал исход боя; её авторский текст идёт первым, а
+    // рассказчику — фактом брифа: переписать слова он может, исход — нет.
+    const ending = scenarioEnding(loaded.state)
+    const fallback = ending
+      ? `${ending.epilogue} ${buildDeterministicEpilogue(loaded.state)}`.slice(0, 8_000)
+      : buildDeterministicEpilogue(loaded.state)
     let epilogue = fallback
     let provider = 'deterministic'
     if (this.narrator) {
-      const rendered = await this.narrator.render(buildEpilogueNarrationBrief(loaded.state), {
+      const brief = buildEpilogueNarrationBrief(loaded.state)
+      const rendered = await this.narrator.render(ending ? {
+        ...brief,
+        visible_events: [{ event_type: 'CampaignEndingReached', payload: { title: ending.title, outcome: ending.outcome, summary: ending.epilogue } }, ...(brief.visible_events ?? [])],
+      } : brief, {
         style: 'Связный русский эпилог в 3–5 предложениях: эмоциональная развязка без новых фактов и решений за героев.',
       })
       if (rendered.provider && !String(rendered.provider).startsWith('deterministic') && rendered.narration) {

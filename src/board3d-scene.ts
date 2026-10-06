@@ -17,7 +17,7 @@ import {
   type BoardTexture,
   type TerrainTiles,
 } from './board-render'
-import type { TacticalCell, TacticalEdge, TacticalMap } from './types'
+import type { TacticalCell, TacticalEdge, TacticalMap, TacticalProp } from './types'
 import { cellAt, edgeList, edgeNeighbor, revealedAt } from './tactical-map-client'
 import { createEnvironmentModels } from './board3d-props'
 import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
@@ -28,6 +28,9 @@ import { createBoard3DRoofs, structuralRoofRolesForMap, type Board3DRoofMode } f
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, landscapeWantsModels, structuralBridgeRolesForMap, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
+import { SURROUNDINGS_MODEL_ASSETS, createSurroundings, surroundingsModelFromTemplate, type SurroundingsModel, type SurroundingsModels } from './board3d-surroundings'
+import { landscapeModelsOf } from './landscape-model-assets'
+import { propModelFor } from './prop-model-catalog'
 import { loadGraphicsStylePack, peekGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
 import { buildStyledEdges, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, packHasWallLooks, structuralEdgeRolesForMap, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
 import { buildStyledFloors } from './board3d-floor-tiles'
@@ -47,6 +50,8 @@ const TERRAIN_MANIFEST_URL = '/assets/maps/terrain/terrain-tiles.json'
 
 export type Board3DOptions = {
   lighting?: boolean
+  /** Окрестности за краем карты (`board3d-surroundings.ts`); по умолчанию включены. */
+  surroundings?: boolean
   pointLightShadows?: boolean
   palette?: BoardPalette
   /** Режим видимости только визуального слоя крыш; по умолчанию — cutaway. */
@@ -890,6 +895,27 @@ function loadArtTexture(
  * геометрии. Это отдельный слой представления: актёры и боевые эффекты может
  * добавить родительский рендерер в тот же `group`.
  */
+/** Служебные «предметы» для загрузки моделей окрестностей: деревья и утёсы. */
+function surroundingsLoadProps(): TacticalProp[] {
+  return Object.values(SURROUNDINGS_MODEL_ASSETS).flat().map((assetId) => ({
+    id: `__surroundings-${assetId}`,
+    assetId,
+    x: 0,
+    y: 0,
+    rotation: 0,
+    scale: 1,
+    footprint: [],
+    zOrder: 0,
+    blocksMove: false,
+    blocksSight: false,
+    cover: 'none' as const,
+    destructible: false,
+    hp: 0,
+    interactive: false,
+    state: 'default',
+  }))
+}
+
 export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {}) {
   const resources: OwnedResources = { geometries: new Set(), materials: new Set(), textures: new Set() }
   const group = new THREE.Group()
@@ -937,6 +963,21 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
 
   // Местность: вода над дном, скалы на непроходимых клетках, трава.
   const landscapeDetail = options.landscapeDetail ?? 'reduced'
+  // Окрестности: земля, деревья и камни за краем карты вместо пустоты.
+  // Модели окрестностей приходят позже (набор местности, деревья и утёсы
+  // стиль-пака): до них — заменители, по приходу окрестности пересобираются.
+  const surroundingsEnabled = options.surroundings !== false
+  let surroundingsModels: SurroundingsModels = {}
+  const surroundingsOwned: THREE.BufferGeometry[] = []
+  let surroundings = surroundingsEnabled ? createSurroundings(map, landscapeDetail) : null
+  if (surroundings) groundGroup.add(surroundings.group)
+  const rebuildSurroundings = () => {
+    if (!surroundingsEnabled || disposed) return
+    const next = createSurroundings(map, landscapeDetail, surroundingsModels)
+    if (surroundings) { groundGroup.remove(surroundings.group); surroundings.dispose() }
+    surroundings = next
+    if (surroundings) groundGroup.add(surroundings.group)
+  }
   const waterGeometry = createWaterSurfaceGeometry(map)
   const waterMaterial = waterGeometry ? createWaterMaterial() : null
   if (waterGeometry && waterMaterial) {
@@ -964,11 +1005,19 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   let waterPlants: LandscapeInstances | null = null
   let landscapeKit: LandscapeKitHandle | null = null
   const landscapeAbort = new AbortController()
-  if (typeof window !== 'undefined' && landscapeWantsModels(map)) {
+  if (typeof window !== 'undefined' && (landscapeWantsModels(map) || surroundings)) {
     void acquireLandscapeKit(landscapeAbort.signal).then((kit) => {
       if (!kit) return
       if (disposed) { kit.release(); return }
       landscapeKit = kit
+      if (surroundings) {
+        // Камни обрыва — крупные глыбы набора местности (без плоских плит).
+        const cliffRocks = [...landscapeModelsOf(kit, 'cliff'), ...landscapeModelsOf(kit, 'rock').filter((model) => model.size.y >= .4)]
+        if (cliffRocks.length) {
+          surroundingsModels = { ...surroundingsModels, cliffRocks }
+          rebuildSurroundings()
+        }
+      }
       const nextRocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, kit, { skipMasonry: Boolean(styledEdges) })
       rocks.dispose()
       rocks = nextRocks
@@ -1014,11 +1063,28 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     void stylePack.then(async (pack) => {
       resolvedStylePack = pack
       if (disposed) return null
-      return loadPropModelAssets([...visibleProps, ...structuralLoadProps(pack, structuralRoles)], propAbort.signal, map.catalogRevision, pack)
+      return loadPropModelAssets([...visibleProps, ...structuralLoadProps(pack, structuralRoles), ...(surroundings ? surroundingsLoadProps() : [])], propAbort.signal, map.catalogRevision, pack)
     }).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
       const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness)
+      if (surroundings) {
+        const next: SurroundingsModels = { ...surroundingsModels }
+        for (const [role, assetIds] of Object.entries(SURROUNDINGS_MODEL_ASSETS) as Array<[keyof typeof SURROUNDINGS_MODEL_ASSETS, readonly string[]]>) {
+          const list: SurroundingsModel[] = []
+          for (const assetId of assetIds) {
+            const entry = propModelFor(assets.catalog, assetId, `__surroundings-${assetId}`)
+            const template = entry ? assets.models.get(entry.key) : null
+            const model = template ? surroundingsModelFromTemplate(template) : null
+            if (!model) continue
+            list.push(model)
+            for (const part of model.parts) surroundingsOwned.push(part.geometry)
+          }
+          if (list.length) next[role] = list
+        }
+        surroundingsModels = next
+        rebuildSurroundings()
+      }
       props.dispose()
       props = replacement
       propAssets = assets
@@ -1195,6 +1261,8 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     roofs.dispose()
     landscapeAbort.abort()
     rocks.dispose()
+    surroundings?.dispose()
+    for (const geometry of surroundingsOwned) geometry.dispose()
     styledEdges?.dispose()
     grass?.dispose()
     bridges?.dispose()

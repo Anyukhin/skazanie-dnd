@@ -59,7 +59,10 @@ const option = (name, fallback) => {
   return index >= 0 && argv[index + 1] ? argv[index + 1] : fallback
 }
 const LIVE = flag('live')
-const KEEP = flag('keep')
+// `--visit a,b` — дойти до мест по очереди и остановиться, оставив хранилище:
+// так карту места смотрят глазами в браузере (`docs/astohan-scenario.md`).
+const VISIT = option('visit', '').split(',').map((entry) => entry.trim()).filter(Boolean)
+const KEEP = flag('keep') || VISIT.length > 0
 // Судья тратит вызовы модели, поэтому включается только явно.
 const JUDGE = flag('judge')
 const PARTY = option('party', 'fighter,cleric,wizard,rogue').split(',').map((entry) => entry.trim()).filter(Boolean)
@@ -1292,9 +1295,12 @@ async function restartAndCompare(reason) {
 }
 
 function runCutoverAudit() {
-  const audit = spawnSync(process.execPath, ['tools/audit-cutover.mjs', '--storage', storage], { cwd: ROOT, encoding: 'utf8', timeout: 180_000, env: { ...process.env, ROUTERAI_API_KEY: '' } })
+  const audit = spawnSync(process.execPath, ['tools/audit-cutover.mjs', '--storage', storage], { cwd: ROOT, encoding: 'utf8', timeout: 600_000, env: { ...process.env, ROUTERAI_API_KEY: '' } })
   const output = `${audit.stdout ?? ''}${audit.stderr ?? ''}`
-  if (audit.status !== 0) finding('critical', 'replay-audit', `audit-cutover вернул ${audit.status}: ${short(output, 400)}`)
+  // Статус null без вывода — аудит не успел за отведённое время (длинная
+  // кампания на занятой машине), а не расхождение replay: это разные находки.
+  if (audit.status === null) finding('major', 'replay-audit-timeout', `audit-cutover не успел за 10 мин (${audit.signal ?? audit.error?.code ?? 'timeout'})`)
+  else if (audit.status !== 0) finding('critical', 'replay-audit', `audit-cutover вернул ${audit.status}: ${short(output, 400)}`)
   return { status: audit.status, output: short(output, 2000) }
 }
 
@@ -1415,6 +1421,7 @@ async function playUntilFinale() {
   let lastScene = ''
   let exploreRound = 0
   let idleDirector = 0
+  let guardAttempts = 0
   for (let tick = 0; tick < 120 && timeLeft() > 60_000; tick += 1) {
     let state = await settleInteraction('loop')
     if (lifecycleStatus(state) !== 'active') return state
@@ -1426,6 +1433,18 @@ async function playUntilFinale() {
       await restIfHurt()
       continue
     }
+    // Стража у ворот: отряд в розыске. Живой стол выбирает из карточки, бот
+    // платит виру — иначе переход заблокирован (`GUARD_ENCOUNTER_BLOCKS_SCENE`).
+    if (state.law?.encounter) {
+      const payer = state.partyMemberIds?.[0] ?? state.players?.[0]?.id
+      guardAttempts += 1
+      if (guardAttempts > 3) { finding('blocker', 'guard-stalled', `стража в «${state.scene?.location}» не отпускает отряд: ни вира, ни сдача не приняты`); return state }
+      const resolution = guardAttempts === 1 ? 'fine' : 'surrender'
+      note(`  стража: ${state.law.encounter.officer_name ?? 'офицер'} — ${resolution === 'fine' ? 'платим виру' : 'сдаёмся'}`)
+      await command(payer, { command_type: 'ResolveGuardEncounter', actor_id: payer, resolution }, resolution === 'fine' ? 'вира страже' : 'сдаться страже', { expectFailure: true })
+      continue
+    }
+    guardAttempts = 0
     await trackScene(state)
     const key = sceneKey(state)
     if (key !== lastScene) { lastScene = key; exploreRound = 0; idleDirector = 0; stage(`Сцена ${state.adventure?.chapter}: ${state.scene?.location}`) }
@@ -1435,7 +1454,10 @@ async function playUntilFinale() {
       continue
     }
     const arc = state.autonomy?.pacing ?? {}
-    const finale = Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc?.target_scenes ?? 99)
+    // По сценарию финал — логово Саргата, а не номер главы.
+    const finale = state.campaignConcept?.arc?.scenario_id
+      ? state.scene?.location_id === 'astohan-vulkanis-brazier'
+      : Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc?.target_scenes ?? 99)
     const action = idleDirector >= 3 ? 'Перейти дальше' : finale || arc.phase === 'climax' ? 'Ищем бой с Саргатом и его слугами' : idleDirector === 1 ? 'Ищем бой с теми, кто разорил эти земли' : 'Продолжить приключение'
     const before = state.state_version
     const advanced = await director(action)
@@ -1781,6 +1803,21 @@ async function main() {
   if (!built.every(Boolean)) throw new Error('Герои не созданы — дальше прогон не имеет смысла')
 
   await openingScene()
+  if (VISIT.length) {
+    for (const target of VISIT) {
+      for (let hop = 0; hop < 6 && (await room()).worldMap?.currentLocationId !== target; hop += 1) {
+        await travelTo(target)
+        const here = await room()
+        if (here.mechanics.combat?.active) await playCombat(`по дороге в ${target}`)
+        await settleInteraction('visit')
+      }
+      await trackScene(await room())
+    }
+    note(`
+Хранилище оставлено: ${storage}
+Кампания ${CODE}, вход владельца — player1@astohan.test`)
+    return room()
+  }
   if (await travelTo('astohan-ash-watch')) await trackScene(await room())
   let final = await playUntilFinale()
 

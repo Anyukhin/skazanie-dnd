@@ -3,6 +3,16 @@ import { createHash } from 'node:crypto'
 import { normalizeDirectorIntent } from './autonomous-campaign.mjs'
 import { CLOSED_QUEST_STATUSES, QUEST_ABANDONMENT_NEXT_OBJECTIVE, questProgressEvidenceFor } from './world-memory.mjs'
 import { campaignModeFor, persistentStoryQuest } from './campaign-stories.mjs'
+import {
+  SCENARIO_ARC_VERSION,
+  buildScenarioArcPlan,
+  campaignScenario,
+  scenarioDestinationIds,
+  scenarioEncounterFor,
+  scenarioEnding,
+  scenarioPhase,
+  scenarioProgress,
+} from './campaign-scenario.mjs'
 
 export { QUEST_ABANDONMENT_NEXT_OBJECTIVE, questProgressEvidenceFor }
 
@@ -147,6 +157,11 @@ export function buildCampaignArcPlan(seed = '', arcNumber = 1) {
 export function campaignArcPlan(state = {}) {
   if (campaignModeFor(state) === 'persistent') return null
   const raw = state.campaignConcept?.arc
+  // Арка по авторскому сценарию: длину и фазы задают узлы сюжета.
+  if (raw?.version === SCENARIO_ARC_VERSION) {
+    const scenario = campaignScenario(state)
+    return scenario ? buildScenarioArcPlan(scenario) : null
+  }
   if (!raw || raw.version !== ONE_EVENING_ARC_VERSION || raw.preset !== ONE_EVENING_PRESET) return null
   // Арка без номера — сохранение до цепочки арок: это первая арка по определению.
   const canonical = buildCampaignArcPlan(raw.seed, raw.arc_number ?? 1)
@@ -205,6 +220,9 @@ function encounterWonOrSettled(state = {}, encounter = state.mechanics?.encounte
 }
 
 export function campaignArcClimaxSatisfied(state = {}) {
+  // По сценарию развязка одна — исход боя с главным противником. Сложность
+  // встречи тут ни при чём: бой с Саргатом смертельный, а не «тяжёлый».
+  if (campaignScenario(state)) return Boolean(scenarioEnding(state))
   const position = campaignArcPosition(state)
   if (!position?.is_final) return false
   const encounter = state.mechanics?.encounter
@@ -237,14 +255,17 @@ export function campaignArcPosition(state = {}) {
   const sceneBeat = currentChapterIntents(state).length
   const chapterQuest = chapterQuestFor(state, sceneNumber)
   const mainQuest = mainQuestFor(state)
+  // По сценарию финал — это место, а не номер главы: отряд вправе прийти в
+  // логово раньше, чем пройдёт все линии, и вправе не идти туда вовсе.
+  const scenario = scenarioProgress(state)
   return Object.freeze({
     ...plan,
     scene_number: sceneNumber,
     bounded_scene_number: boundedScene,
     scene_beat: sceneBeat,
     remaining_beats: Math.max(0, plan.max_director_beats - sceneBeat),
-    phase: phaseForEveningScene(boundedScene, plan.target_scenes),
-    is_final: sceneNumber >= plan.target_scenes,
+    phase: scenario ? scenarioPhase(state) : phaseForEveningScene(boundedScene, plan.target_scenes),
+    is_final: scenario ? scenario.at_boss_location : sceneNumber >= plan.target_scenes,
     chapter_quest_id: chapterQuest?.id ?? null,
     chapter_quest_status: chapterQuest?.status ?? null,
     main_quest_id: mainQuest?.id ?? null,
@@ -278,8 +299,13 @@ function availableIntentTypes(state = {}) {
   const peacefulSecondChapterExit = chapter === 2
     && encounterOutcomes.length > 0
     && chapterHistory.some((intent) => intent.type === 'advance_quest_clock')
+  // По сценарию место отпускает отряд, когда в нём не осталось ненайденных
+  // тайн: дальше Режиссёр зовёт туда, куда ведёт сюжет.
+  const scenario = scenarioProgress(state)
+  const scenarioPlaceSettled = Boolean(scenario && !scenario.clues
+    .some((clue) => clue.location_id === scenario.current_location_id && !clue.found))
   const endSceneAvailable = arc
-    ? (!arc.is_final && chapterQuestResolved) || (arc.is_final && campaignArcClimaxSatisfied(state))
+    ? (!arc.is_final && (chapterQuestResolved || scenarioPlaceSettled)) || (arc.is_final && campaignArcClimaxSatisfied(state))
     : encounterResolved
       || peacefulSecondChapterExit
       || (chapterQuestResolved && !mainQuestOpen)
@@ -323,7 +349,7 @@ function intentForType(type, state, openQuest) {
     })
   }
   if (type === 'request_encounter') {
-    return normalizeDirectorIntent({
+    return scenarioEncounterIntent(state, {
       type,
       theme: 'beasts',
       difficulty: currentPhase(state) === 'climax' ? 'hard' : 'medium',
@@ -334,7 +360,7 @@ function intentForType(type, state, openQuest) {
     const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
     return normalizeDirectorIntent({
       type,
-      destination: `След главы ${chapter + 1}`,
+      destination: (campaignScenario(state) && nextWorldMapDestination(state)) || `След главы ${chapter + 1}`,
       reason: 'Подтверждённая развязка позволяет перейти к следующей главе.',
     })
   }
@@ -349,6 +375,20 @@ function intentForType(type, state, openQuest) {
     type: 'continue_exploration',
     reason: 'Серверная политика темпа требует нового наблюдаемого шага.',
   })
+}
+
+/**
+ * Встреча по сценарию: в логове — главный противник с его сложностью, в месте
+ * со своей встречей — тема и сложность карточки. Без сценария, а также в месте
+ * без своей встречи намерение остаётся прежним.
+ */
+export function scenarioEncounterIntent(state = {}, intent = {}) {
+  const planned = scenarioEncounterFor(state)
+  if (!planned) return normalizeDirectorIntent(intent)
+  if ('npc_id' in planned) {
+    return normalizeDirectorIntent({ ...intent, npc_id: planned.npc_id, difficulty: planned.difficulty, theme: 'generic' })
+  }
+  return normalizeDirectorIntent({ ...intent, theme: planned.theme, difficulty: planned.difficulty })
 }
 
 /**
@@ -393,6 +433,9 @@ export function authorizeDirectorIntent(state = {}, proposedIntent = {}, context
   const accepted = candidates.includes(proposed.type) && !staleQuestIntent
   const replacementType = accepted ? proposed.type : candidates[0] ?? 'continue_exploration'
   let intent = accepted ? proposed : intentForType(replacementType, state, availability.openQuest)
+  // В логове сценария бой — всегда с главным противником: ни модель, ни
+  // запасной Режиссёр не подменят Саргата стаей зверей.
+  if (intent.type === 'request_encounter' && campaignScenario(state)) intent = scenarioEncounterIntent(state, intent)
   return {
     intent,
     proposed_intent: proposed,
@@ -439,7 +482,9 @@ export function pacingForDirectorIntent(state = {}, intent = {}) {
   const before = clamp(previous.tension, 0, 100)
   const delta = PACING_DELTAS[intent.type] ?? 0
   const after = clamp(before + delta, 0, 100)
-  const phase = arc
+  const phase = arc && campaignScenario(state)
+    ? arc.phase
+    : arc
     ? phaseForEveningScene(
         Math.min(arc.target_scenes, arc.scene_number + (intent.type === 'end_scene' ? 1 : 0)),
         arc.target_scenes,
@@ -595,24 +640,16 @@ export function nextWorldMapDestination(state = {}) {
   const current = graphLocation(graph, { locationId: graph.currentLocationId, name: state.scene?.location })
   if (!current) return null
   const currentId = clean(current.id, 120)
-  // Дейкстра по открытым дорогам: ближайшая непосещённая точка.
-  const distance = new Map([[currentId, 0]])
-  const done = new Set()
-  for (;;) {
-    let nearest = null
-    for (const [id, value] of distance) if (!done.has(id) && (nearest === null || value < distance.get(nearest))) nearest = id
-    if (nearest === null) break
-    done.add(nearest)
-    const location = graph.byId.get(nearest)
-    if (nearest !== currentId && location && location.visited !== true) return clean(location.name, 180) || null
-    for (const route of graph.routes) {
-      const ends = [clean(route.from, 120), clean(route.to, 120)]
-      if (!ends.includes(nearest)) continue
-      const other = ends[0] === nearest ? ends[1] : ends[0]
-      const next = distance.get(nearest) + Math.max(1, segmentDistance(graph, route))
-      if (!done.has(other) && next < (distance.get(other) ?? Infinity)) distance.set(other, next)
-    }
+  // Кампания по сценарию идёт туда, куда зовёт сюжет: в первую по порядку
+  // предпочтения группу мест (`scenarioDestinationIds`) — ближайшую по
+  // дорогам. Карта без пути к ним — прежний поиск непосещённой точки.
+  const scenarioTargets = scenarioDestinationIds(state)
+  if (scenarioTargets.length) {
+    const reachable = nearestWorldLocation(graph, currentId, (location) => scenarioTargets.includes(clean(location.id, 120)))
+    if (reachable) return clean(reachable.name, 180) || null
   }
+  const unvisited = nearestWorldLocation(graph, currentId, (location) => location.visited !== true)
+  if (unvisited) return clean(unvisited.name, 180) || null
   const neighbours = graph.routes
     .filter((route) => [clean(route.from, 120), clean(route.to, 120)].includes(currentId))
     .map((route) => ({ route, location: graph.byId.get(clean(route.from, 120) === currentId ? clean(route.to, 120) : clean(route.from, 120)) }))
@@ -621,6 +658,31 @@ export function nextWorldMapDestination(state = {}) {
       || segmentDistance(graph, left.route) - segmentDistance(graph, right.route)
       || clean(left.location.name, 180).localeCompare(clean(right.location.name, 180), 'ru'))
   return clean(neighbours[0]?.location?.name, 180) || null
+}
+
+/**
+ * Дейкстра по открытым дорогам: ближайшая точка, которую принимает `accept`.
+ * Текущая точка не считается.
+ */
+function nearestWorldLocation(graph, currentId, accept) {
+  const distance = new Map([[currentId, 0]])
+  const done = new Set()
+  for (;;) {
+    let nearest = null
+    for (const [id, value] of distance) if (!done.has(id) && (nearest === null || value < distance.get(nearest))) nearest = id
+    if (nearest === null) break
+    done.add(nearest)
+    const location = graph.byId.get(nearest)
+    if (nearest !== currentId && location && accept(location)) return location
+    for (const route of graph.routes) {
+      const ends = [clean(route.from, 120), clean(route.to, 120)]
+      if (!ends.includes(nearest)) continue
+      const other = ends[0] === nearest ? ends[1] : ends[0]
+      const next = distance.get(nearest) + Math.max(1, segmentDistance(graph, route))
+      if (!done.has(other) && next < (distance.get(other) ?? Infinity)) distance.set(other, next)
+    }
+  }
+  return null
 }
 
 const routeEndpoints = (graph, route) => [

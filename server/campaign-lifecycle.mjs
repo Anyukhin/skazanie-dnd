@@ -2,6 +2,7 @@ import { reputationTier } from './reputation-policy.mjs'
 import { MAX_CAMPAIGN_ARCS, campaignArcClimaxSatisfied, campaignArcPlan, mainQuestFor } from './campaign-loop-policy.mjs'
 import { CLOSED_QUEST_STATUSES } from './world-memory.mjs'
 import { campaignModeFor } from './campaign-stories.mjs'
+import { campaignScenario, scenarioEnding } from './campaign-scenario.mjs'
 
 const STATUSES = new Set(['setup', 'active', 'paused', 'completed', 'failed', 'archived'])
 const TERMINAL = new Set(['completed', 'failed', 'archived'])
@@ -198,6 +199,15 @@ export function normalizeCampaignLifecycle(input, deathStatus = 'active') {
       ? raw.epilogue_fact_keys.map((key) => clean(key, 240)).filter(Boolean).slice(0, 64)
       : [],
     changed_by: raw.changed_by == null ? null : String(raw.changed_by).slice(0, 120),
+    // Развязка сценария (`server/campaign-scenario.mjs`): есть только у
+    // кампании, завершённой по авторскому сюжету.
+    ...(raw.ending && typeof raw.ending === 'object' ? {
+      ending: {
+        id: clean(raw.ending.id, 80),
+        title: clean(raw.ending.title, 160),
+        outcome: clean(raw.ending.outcome, 60),
+      },
+    } : {}),
   }
 }
 
@@ -351,6 +361,10 @@ export function campaignCanAutoComplete(state = {}) {
   if (campaignModeFor(state) === 'persistent') return false
   const lifecycle = normalizeCampaignLifecycle(state?.mechanics?.campaign_lifecycle, state?.mechanics?.death?.campaign_status)
   if (lifecycle.status !== 'active' || state?.mechanics?.combat?.active) return false
+  // Кампания по сценарию заканчивается исходом боя с главным противником —
+  // как бы отряд в этот бой ни вступил: шагом Режиссёра или своим ударом.
+  // Фаза темпа и часы главной нити здесь не нужны: финал задаёт сюжет.
+  if (campaignScenario(state)) return Boolean(scenarioEnding(state))
   if (state?.autonomy?.pacing?.phase !== 'climax') return false
   // Общий выбор главной нити пропускает новые отказы без ухода: следующая
   // самостоятельная цель сможет завершить кампанию по обычным условиям.
@@ -368,6 +382,8 @@ export function campaignCanAutoComplete(state = {}) {
  */
 export function campaignCanAdvanceArc(state = {}) {
   if (!campaignCanAutoComplete(state)) return false
+  // Авторский сюжет кончается своей развязкой: следующей арки у него нет.
+  if (campaignScenario(state)) return false
   const plan = campaignArcPlan(state)
   // Цепочка держится на плане арки: без него сервер не знает ни номера текущей
   // арки, ни того, чем закончилась предыдущая. Старое сохранение доигрывает

@@ -1243,6 +1243,8 @@ export type TacticalMap = {
   theme: string
   tilesetId: string
   overlays: { compass: boolean; scaleBar: boolean; roomLabels: Array<{ zoneId: string; label: string }> }
+  /** Окрестности за краем карты (3D): биом общий и по сторонам света. */
+  surroundings?: { biome?: string; sides?: Partial<Record<'n' | 'e' | 's' | 'w', string>> }
   sizeClass: string
   /**
    * Клиентская производная, которой нет в серверном контракте: отпечаток

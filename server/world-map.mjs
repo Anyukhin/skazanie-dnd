@@ -370,6 +370,9 @@ function normalizeLocations(rawLocations, fallback, regions, currentLocation, cu
       summary: text(raw.summary || raw.description, 320),
       ...normalizeWorldMapLocationLore(raw),
       ...(cityOverview ? { cityOverview } : {}),
+      // Место без гарнизона: укрепление есть, а стражи нет — заброшенный замок,
+      // башня одинокого мага. Закон (`law-and-order.mjs`) туда не приходит.
+      ...(raw.garrison === false ? { garrison: false } : {}),
       known: raw.known !== false,
       visited: raw.visited === true || id === text(currentLocationId, 120) || key(name) === key(currentLocation),
     }]

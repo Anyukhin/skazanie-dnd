@@ -13,7 +13,9 @@ import {
   confirmedQuestProgress,
   directorObjectiveAfterQuestAbandonment,
   nextWorldMapDestination,
+  scenarioEncounterIntent,
 } from './campaign-loop-policy.mjs'
+import { scenarioDirectorBrief } from './campaign-scenario.mjs'
 import { npcMechanicsFor } from './npc-positioning.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { questStateForViewer } from './quest-consequences.mjs'
@@ -166,7 +168,8 @@ export function fallbackDirectorIntent(state = {}, playerAction = '') {
     // В финальной главе арки бой, который отряд ищет сам, и есть кульминация:
     // развязку засчитывает только тяжёлая встреча. Средняя здесь означала бы,
     // что без модели кампания не заканчивается никогда.
-    return normalizeDirectorIntent({ type: 'request_encounter', theme: 'beasts', difficulty: arc?.is_final ? 'hard' : 'medium', reason: 'Игрок явно запросил столкновение; сервер проверит и соберёт встречу.' })
+    // По сценарию встречу выбирает место: в логове — главный противник.
+    return scenarioEncounterIntent(state, { type: 'request_encounter', theme: 'beasts', difficulty: arc?.is_final ? 'hard' : 'medium', reason: 'Игрок явно запросил столкновение; сервер проверит и соберёт встречу.' })
   }
   if (!state.mechanics?.combat?.active && affirmativePlayerAction(playerAction, 'transition')) {
     return normalizeDirectorIntent({ type: 'end_scene', destination: nextSceneDestination(state), reason: 'Игрок явно подтвердил переход после разрешённого столкновения.' })
@@ -258,6 +261,9 @@ function publicDirectorBrief(state = {}, playerAction = '', contractVersion = 'd
         phase: arc.phase,
         climax_required: arc.climax,
       } } : {}),
+      // Сюжет авторского сценария: узлы, сколько улик найдено и куда звать.
+      // Тексты тайн сюда не входят — Режиссёр ведёт темп, а не раскрывает.
+      ...(scenarioDirectorBrief(visibleState) ? { story: scenarioDirectorBrief(visibleState) } : {}),
       active_quests: activeQuests.map((quest) => ({
         id: clean(quest.id, 120), title: clean(quest.title, 160), objectives: (quest.objectives ?? []).map((item) => clean(item, 180)).slice(0, 8),
         clock: quest.clock ? { current: Number(quest.clock.current) || 0, max: Number(quest.clock.max) || 1 } : null,
