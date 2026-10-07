@@ -33,7 +33,8 @@
  * Модуль — лист графа: он читает состояние и сценарий, но не импортирует Rules
  * Engine. Числа выдоха живут в данных сценария, а не в коде.
  */
-import { campaignScenario, scenarioAttentionReady, scenarioLocationId, scenarioPreviousLocationId, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { campaignScenario, scenarioArmoryRules, scenarioAttentionReady, scenarioLocationId, scenarioPreviousLocationId, scenarioPurseRules, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { catalogItem } from './item-catalog.mjs'
 
 export const SCENARIO_ATTENTION_SCHEMA_VERSION = 1
 export const SCENARIO_ATTENTION_POLICY_ID = 'skazanie:scenario-attention-v1'
@@ -484,4 +485,31 @@ export function scenarioArmoryActionFromText(value, choices = []) {
 export function scenarioPurseActionFromText(value) {
   const text = clean(value, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
   return text && PURSE_PATTERN.test(text) ? { action: 'purse' } : null
+}
+
+/**
+ * Двор короля для одного героя-зрителя: ждёт ли его здесь кошель и вещь из
+ * оружейной. Реестр `scenario_attention` в проекцию не идёт целиком (в нём
+ * счёт внимания), а без этой карточки игрок не узнавал, что при дворе есть
+ * что взять: браузерный плейтест 2026-10-07 ушёл из Штормберга с 15 золотыми.
+ * Карточка несёт только то, что герой и так услышал бы при дворе.
+ * @param {any} state
+ * @param {{ playerId?: string }} [options]
+ * @returns {{ purse_available: boolean, armory_available: boolean, armory_items: string[] } | null}
+ */
+export function scenarioCourtForViewer(state, { playerId = '' } = {}) {
+  const purse = scenarioPurseRules(state)
+  const armory = scenarioArmoryRules(state)
+  if (!purse && !armory) return null
+  const here = scenarioLocationId(state)
+  const ledger = normalizeScenarioAttentionState(state?.scenario_attention)
+  const heroId = String(playerId ?? '')
+  const armoryHere = Boolean(armory && here === armory.location_id && heroId && !ledger.armory_taken.includes(heroId))
+  return {
+    purse_available: Boolean(purse && here === purse.location_id && heroId && !ledger.purse_paid.includes(heroId)),
+    armory_available: armoryHere,
+    armory_items: armoryHere && armory
+      ? armory.catalog_ids.map((/** @type {string} */ id) => clean(catalogItem(id)?.name, 80)).filter(Boolean)
+      : [],
+  }
 }

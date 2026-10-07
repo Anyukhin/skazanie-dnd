@@ -1120,7 +1120,17 @@ export function AdminView({ account, state, onUpdateWorld, onAssembleEncounter, 
       {error && <div className="admin-error">{error}</div>}
       <div className="admin-layout">
         <div className="admin-card admin-users"><div className="admin-card-head"><span><Users size={18} /><b>Игроки и герои</b></span><button onClick={() => loadUsers().catch(() => undefined)}><RefreshCw size={14} />Обновить</button></div>
-          <div className="admin-user-list">{users.map((user) => <article key={user.id} className="admin-user"><div><strong>{user.name}</strong><small>{user.email}</small><em>{user.role === 'admin' ? 'АДМИНИСТРАТОР' : 'ИГРОК'}</em></div><div className="admin-hero-access">{state.players.map((hero) => <label key={hero.id}><input type="checkbox" checked={user.role === 'admin' || user.heroIds.includes(hero.id)} disabled={user.role === 'admin'} onChange={() => updateAccess(user, { heroIds: user.heroIds.includes(hero.id) ? user.heroIds.filter((id) => id !== hero.id) : [...user.heroIds, hero.id] })} /><span>{hero.character}</span></label>)}</div>{user.id !== account.id && <button className="role-button" onClick={() => updateAccess(user, { role: user.role === 'admin' ? 'player' : 'admin' })}>{user.role === 'admin' ? 'Сделать игроком' : 'Сделать администратором'}</button>}</article>)}</div>
+          {/* В кампании с приглашениями героя закрепляет членство, а глобальный
+              `heroIds` сервер для неё не читает (`campaignHeroIds`). Флажки по
+              нему показывали, что у пригласившегося игрока нет даже своего героя,
+              и правили поле, которое ни на что не влияет (плейтест 2026-10-07). */}
+          <div className="admin-user-list">{users.map((user) => {
+            const membershipCampaign = users.some((entry) => entry.campaignMemberships?.some((membership) => membership.campaignId === state.sessionCode))
+            const membership = user.campaignMemberships?.find((entry) => entry.campaignId === state.sessionCode)
+            const ownedHeroIds = membershipCampaign ? membership?.heroIds ?? [] : user.heroIds
+            const accessHint = membershipCampaign ? 'Героя в этой кампании закрепляет приглашение' : undefined
+            return <article key={user.id} className="admin-user"><div><strong>{user.name}</strong><small>{user.email}</small><em>{user.role === 'admin' ? 'АДМИНИСТРАТОР' : 'ИГРОК'}</em></div><div className="admin-hero-access">{state.players.map((hero) => <label key={hero.id} title={user.role === 'admin' ? undefined : accessHint}><input type="checkbox" checked={user.role === 'admin' || ownedHeroIds.includes(hero.id)} disabled={user.role === 'admin' || membershipCampaign} onChange={() => updateAccess(user, { heroIds: user.heroIds.includes(hero.id) ? user.heroIds.filter((id) => id !== hero.id) : [...user.heroIds, hero.id] })} /><span>{hero.character}</span></label>)}</div>{user.id !== account.id && <button className="role-button" onClick={() => updateAccess(user, { role: user.role === 'admin' ? 'player' : 'admin' })}>{user.role === 'admin' ? 'Сделать игроком' : 'Сделать администратором'}</button>}</article>
+          })}</div>
         </div>
         <div className="admin-card admin-world"><div className="admin-card-head"><span><Sparkles size={18} /><b>Состояние мира</b></span></div>
           <div className="engine-mode-field"><span>Игровая механика</span><strong>Единый авторитетный движок</strong><small>Движение, атаки, кубики, урон, магия и обычная тактика врагов рассчитываются сервером без AI. Агент включается только при создании кампании и новой области, а также в переломных моментах боя: смерть, бегство или сдача.</small></div>

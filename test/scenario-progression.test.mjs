@@ -11,6 +11,7 @@ import { IntentParser } from '../server/intent-parser.mjs'
 import { currencyToCopper } from '../server/merchant-economy.mjs'
 import { normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
+import { campaignStateForViewer } from '../server/viewer-projection.mjs'
 import { dice, fixedDice } from './kit/dice.mjs'
 
 const heroes = [
@@ -131,6 +132,33 @@ test('королевская оружейная: «беру плащ защит�
   const away = await campaign()
   await away.travel('astohan-ash-watch')
   assert.throws(() => away.apply({ command_type: 'ChooseScenarioArmoryItem', actor_id: heroes[0].id, catalog_id: 'srd_5_2_1:cloak-of-protection' }, {}), { code: 'SCENARIO_ARMORY_WRONG_PLACE' })
+})
+
+// Браузерный плейтест 2026-10-07: кошель и оружейная выдаются только по
+// фразе, а ни цель сцены, ни подсказки о них не говорили — отряд ушёл из
+// Штормберга с 15 золотыми.
+test('при дворе подсказки зовут взять кошель и вещь из оружейной, пока герой их не взял', async () => {
+  const run = await campaign()
+  const hints = (playerId) => campaignStateForViewer(run.state, { role: 'player', heroIds: [playerId] }, playerId).suggested_actions.map((hint) => hint.id)
+  const court = campaignStateForViewer(run.state, { role: 'player', heroIds: [heroes[0].id] }, heroes[0].id).scenario_court
+  assert.equal(court.purse_available, true)
+  assert.ok(court.armory_items.includes('Плащ защиты'))
+  assert.equal(court.armory_items.length, 5)
+  assert.ok(hints(heroes[0].id).includes('court:purse'))
+  assert.ok(hints(heroes[0].id).includes('court:armory'))
+  // Счёт внимания карточка не несёт: реестр по-прежнему закрыт.
+  assert.equal(campaignStateForViewer(run.state, { role: 'player', heroIds: [heroes[0].id] }, heroes[0].id).scenario_attention, undefined)
+
+  run.apply({ command_type: 'ReceiveScenarioPurse', actor_id: heroes[0].id }, { allowedActorIds: [heroes[0].id] }, dice([15]))
+  run.apply({ command_type: 'ChooseScenarioArmoryItem', actor_id: heroes[0].id, catalog_id: 'srd_5_2_1:cloak-of-protection' }, {})
+  assert.deepEqual(hints(heroes[0].id).filter((id) => id.startsWith('court:')), [], 'взявшему — не предлагать')
+  assert.deepEqual(hints(heroes[1].id).filter((id) => id.startsWith('court:')), ['court:armory', 'court:purse'], 'второму герою — его собственные слоты')
+
+  const away = await campaign()
+  await away.travel('astohan-ash-watch')
+  const awayView = campaignStateForViewer(away.state, { role: 'player', heroIds: [heroes[0].id] }, heroes[0].id)
+  assert.deepEqual(awayView.suggested_actions.filter((hint) => hint.id.startsWith('court:')), [])
+  assert.equal(awayView.scenario_court.purse_available, false)
 })
 
 test('все вещи оружейной есть в каталоге и не редкие', async () => {

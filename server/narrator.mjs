@@ -1873,13 +1873,17 @@ function qualitativeEventSummary(event, resolveName) {
     case 'SocialSceneOpened':
       return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
     case 'ScenarioPurseGranted':
-      return `Казначей отсчитывает ${named(payload.hero_id || (event?.target_ids ?? [])[0], 'герою')} кошель короля — ${Number(payload.gold) || 0} золотых`
+      // Имя героя — в именительном: склонять его рассказчик без модели не умеет
+      // («вручает её Кирем Двухпалый», браузерный плейтест 2026-10-07).
+      // Без числа: цифры из запасного текста вычищаются, и оставалось «кошель
+      // короля — золотых». Сумму игрок видит в своём кошельке.
+      return `${named(payload.hero_id || (event?.target_ids ?? [])[0], 'Герой')} получает от казначея тяжёлый кошель короля, полный золота`
     case 'ScenarioInformantResolved':
     case 'ScenarioInformantTurnFailed':
       // Судьба осведомителя — авторский текст сценария.
       return sceneText(payload.text, 1_000).replace(/[.!?]+$/u, '')
     case 'ScenarioArmoryItemChosen':
-      return `Оружейник короля снимает со стойки «${sceneText(payload.item_name, 120) || 'вещь'}» и вручает её ${named(payload.hero_id || (event?.target_ids ?? [])[0], 'герою')}`
+      return `${named(payload.hero_id || (event?.target_ids ?? [])[0], 'Герой')} получает из королевской оружейной «${sceneText(payload.item_name, 120) || 'вещь'}» прямо со стойки оружейника`
     case 'ScenarioTreatyConcluded':
     case 'ScenarioTreatyRefused':
     case 'ScenarioKnightHeadReturned':

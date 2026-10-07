@@ -29,6 +29,7 @@ import { lawForViewer, publicGuardEncounterFor } from './law-and-order.mjs'
 import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { blessingsForViewer } from './blessings.mjs'
 import { lockpickingForViewer } from './lockpicking.mjs'
+import { scenarioCourtForViewer } from './scenario-attention.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -1861,6 +1862,9 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Карточку собирает сервер целиком — второй формулы владения у клиента не
     // появляется, а ни СЛ, ни запертости в ней нет.
     lockpicking: lockpickingForViewer(state, { playerId: String(actorId ?? '') }),
+    // Двор короля сценария: ждут ли этого героя кошель и вещь из оружейной.
+    // Сам реестр внимания закрыт, карточка несёт только его собственные слоты.
+    scenario_court: scenarioCourtForViewer(state, { playerId: String(actorId ?? '') }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state, actorId),
@@ -2103,6 +2107,9 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Карточку собирает сервер целиком — второй формулы владения у клиента не
     // появляется, а ни СЛ, ни запертости в ней нет.
     lockpicking: lockpickingForViewer(state, { playerId: String(actorId ?? '') }),
+    // Двор короля сценария: ждут ли этого героя кошель и вещь из оружейной.
+    // Сам реестр внимания закрыт, карточка несёт только его собственные слоты.
+    scenario_court: scenarioCourtForViewer(state, { playerId: String(actorId ?? '') }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
     // на один вопрос.

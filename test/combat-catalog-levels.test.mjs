@@ -91,3 +91,18 @@ test('заговор масштабируется на 5-м и 11-м уровн�
   const result = resolveCommand({ command_type: 'CastSpell', actor_id: 'wizard', spell_id: 'fire-bolt', target_id: 'target', server_authoritative: true }, state, { diceService: dice([18, 2, 2, 2]), context: { serverAuthoritativeCombat: true } })
   assert.equal(result.events.find((event) => event.event_type === 'AttackResolved').payload.damage_expression, '3d10')
 })
+
+// Браузерный плейтест 2026-10-07: в описаниях способностей игрок читал
+// служебные хвосты каталога латиницей — «лимит: proficiency», «состояние:
+// incapacitated». Их переводит загрузка каталога; данные не меняются.
+test('описания способностей каталога не несут служебных слов латиницей', () => {
+  const leaked = []
+  for (const { classKey, subclassOptions } of combatClassCatalogInfo().classes) {
+    for (const subclass of [null, ...subclassOptions.map((option) => option.name)]) {
+      for (const entry of combatActionsFor({ characterClass: classKey, subclass, level: 12, selectedFeatureIds: [] })) {
+        if (/proficiency|incapacitated|feature-movement|charmed|frightened|poisoned|restrained|unconscious|лимит: ability/u.test(String(entry.description ?? ''))) leaked.push(`${classKey}: ${entry.name} — ${entry.description}`)
+      }
+    }
+  }
+  assert.deepEqual(leaked, [])
+})

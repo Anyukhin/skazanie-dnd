@@ -301,6 +301,14 @@ function prologueState() {
   return state
 }
 
+// Тот же трактир, но факт — местное знание, а не проза пролога: запасной ответ
+// произносит вслух только такие факты (прогон Асстохана 2026-10-07).
+function loreState() {
+  const state = prologueState()
+  state.worldMemory.facts[0] = { ...state.worldMemory.facts[0], id: 'fact:lore:tavern', predicate: 'local_lore', object: 'Местное знание' }
+  return state
+}
+
 const offlineController = () => new NpcSocialController({ llmClient: { completeJson: async () => { throw new Error('timeout') } } })
 
 test('fallback без совпавшего факта честно говорит «ничего нового» и не зачитывает пролог', async () => {
@@ -317,8 +325,19 @@ test('fallback без совпавшего факта честно говори�
   }
 })
 
+// Прогон Асстохана 2026-10-07: пролог лежит фактом отряда, и без модели
+// перевозчик Ларс и стражник Гедрик на любой вопрос произносили «Перед ним три
+// донесения…». Пролог — голос рассказчика, NPC его вслух не говорит, даже
+// если слова вопроса с ним совпали.
+test('fallback не произносит пролог вслух, даже совпавший с вопросом', async () => {
+  const result = await offlineController().respond({ state: prologueState(), playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-aloud' })
+  assert.equal(result.provider, 'deterministic-social-fallback')
+  assert.match(result.reply, /не сообщает ничего нового/u)
+  assert.doesNotMatch(result.reply, /колокол/u)
+})
+
 test('fallback отвечает одним совпавшим предложением факта и не повторяет сказанное', async () => {
-  const state = prologueState()
+  const state = loreState()
   const first = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-hit' })
   assert.equal(first.provider, 'deterministic-social-fallback')
   assert.equal(first.reply, 'Мира отвечает: «Из погреба доносится глухой удар колокола, и все кружки звенят в ответ.»')
@@ -332,7 +351,7 @@ test('fallback отвечает одним совпавшим предложен
 // Прогон Асстохана 2026-10-05: длинный пролог обрезан пределом длины, и хвост
 // «…когда архивист п» звучал ответом короля как целое предложение.
 test('fallback не отвечает оборванным хвостом длинного факта', async () => {
-  const state = prologueState()
+  const state = loreState()
   // Факт собеседника режется до 500 символов; 440 символов вступления ставят
   // границу посреди фразы о колоколе.
   state.worldMemory.facts[0].summary = `${'Трактир гудит после ярмарки, и никто не слышит соседа. '.repeat(8)}Удар колокола из погреба слышен всем, и все кружки в зале звенят ему в ответ.`
@@ -346,10 +365,28 @@ test('fallback не отвечает оборванным хвостом дли�
 // Саргата, но после обрезки до 500 знаков это предложение отбрасывалось как
 // оборванное, и король на вопрос о Саргате «не сообщал ничего нового».
 test('fallback находит совпавшее предложение и за пятисотым знаком длинного факта', async () => {
-  const state = prologueState()
+  const state = loreState()
   state.worldMemory.facts[0].summary = `${'Трактир гудит после ярмарки, и никто не слышит соседа. '.repeat(10)}Удар колокола из погреба слышен всем, и все кружки в зале звенят ему в ответ.`
   const result = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-long' })
   assert.equal(result.reply, 'Мира отвечает: «Удар колокола из погреба слышен всем, и все кружки в зале звенят ему в ответ.»')
+})
+
+// Браузерный плейтест 2026-10-07: пролог описывает короля со стороны, и без
+// модели он отвечал о себе прозой рассказчика: «Он просит остановить молодого
+// дракона Саргата, но отводит взгляд…». Факт о собеседнике в третьем лице — не
+// его реплика.
+test('fallback не произносит от лица NPC прозу, где он описан со стороны', async () => {
+  for (const [index, summary] of [
+    'Колокол в погребе бьёт сам. Она бледнеет, когда слышит колокол, и не смотрит гостям в глаза.',
+    'Колокол в погребе бьёт сам. Мира бледнеет, когда слышит колокол, и не смотрит гостям в глаза.',
+  ].entries()) {
+    const state = loreState()
+    state.worldMemory.facts[0].summary = summary
+    const result = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Почему ты бледнеешь при колоколе?', turnId: `self-prose-${index}` })
+    assert.equal(result.provider, 'deterministic-social-fallback')
+    assert.doesNotMatch(result.reply, /бледнеет/u, summary)
+    assert.equal(result.reply, 'Мира отвечает: «Колокол в погребе бьёт сам.»')
+  }
 })
 
 test('fallback подтверждает публичную зацепку о себе, если спросили именно о ней', async () => {

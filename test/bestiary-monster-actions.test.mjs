@@ -75,6 +75,22 @@ test('яд гигантского паука стабилизирует геро
   assert.deepEqual(replayEvents(state, result.events), after)
 })
 
+// Браузерный плейтест 2026-10-07: «Высвободиться» из паутины паука бросалось
+// против умолчания 10 — СЛ 12 из статблока терялась по дороге в профиль.
+test('паутина гигантского паука опутывает с СЛ освобождения 12 из статблока', () => {
+  const { state, monster } = duel('giant-spider')
+  const web = resolveCommand({ command_type: 'MakeAttack', command_id: 'spider-web', actor_id: monster.id, target_id: 'hero', action_id: 'web', server_authoritative: true }, state, { diceService: dice(Array(30).fill(19)), context })
+  const restrained = web.events.find(event => event.event_type === 'ConditionAdded' && event.payload.condition === 'restrained')
+  assert.ok(restrained, 'паутина опутала героя')
+  assert.equal(restrained.payload.escape_dc, 12)
+  const after = web.events.reduce(applyGameEvent, state)
+  const heroTurn = normalizeCampaignState({ ...after, mechanics: { ...after.mechanics, combat: { ...after.mechanics.combat, active_index: 1 } } })
+  const escape = resolveCommand({ command_type: 'UseCombatAction', command_id: 'hero-escape', actor_id: 'hero', action_id: 'break-free', server_authoritative: true }, heroTurn, { diceService: dice(Array(30).fill(10)), context: { serverAuthoritativeCombat: true } })
+  const check = escape.events.find(event => event.event_type === 'AbilityCheckResolved')
+  assert.equal(check.payload.difficulty, 12)
+  assert.equal(check.payload.success, false, '10 без модификатора не рвёт паутину СЛ 12')
+})
+
 test('крит удваивает независимый урон укуса, заговор мага растёт по уровню заклинателя', () => {
   const { state, monster } = duel('young-red-dragon')
   const bite = resolveCommand({ command_type: 'MakeAttack', command_id: 'critical-bite', actor_id: monster.id, target_id: 'hero', action_id: 'bite', server_authoritative: true }, state, { diceService: dice([20, 1, 1, 1, 1, 1, 1]), context })

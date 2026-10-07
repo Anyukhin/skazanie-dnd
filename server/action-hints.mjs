@@ -90,6 +90,9 @@ const VERB_ORDER = Object.freeze(['inspect', 'open', 'take', 'use', 'topple', 'i
  */
 const HINT_PRIORITY = Object.freeze({
   tavernRound: 0,
+  // Кошель и оружейная двора выдаются раз и только при дворе: уйди отряд, не
+  // прочитав строку, — второй возможности не будет.
+  court: 0,
   poiProp: 1,
   leisure: 2,
   // Пришедший ответ на письмо стоит рядом с досугом, а не в брони: это не
@@ -560,6 +563,30 @@ function beastReachRow(entry, actorId) {
   return row && typeof row === 'object' ? row : { out_of_reach: true }
 }
 
+/**
+ * Двор короля сценария: кошель и вещь из оружейной, пока герой их не взял.
+ * Обе выдаются только по фразе, и без этой строки отряд уходил из Штормберга,
+ * не узнав о них (браузерный плейтест 2026-10-07). Карточку собрал сервер
+ * (`scenarioCourtForViewer`); здесь она только пересказывается.
+ */
+function courtHints(room) {
+  const court = room?.scenario_court
+  if (!court) return []
+  const hints = []
+  if (court.purse_available === true) {
+    hints.push({ id: 'court:purse', priority: HINT_PRIORITY.court, text: 'Можно получить кошель короля — напишите «беру кошель короля»' })
+  }
+  const items = (Array.isArray(court.armory_items) ? court.armory_items : []).map((name) => text(name, 60)).filter(Boolean)
+  if (court.armory_available === true && items.length) {
+    hints.push({
+      id: 'court:armory',
+      priority: HINT_PRIORITY.court,
+      text: `Можно взять одну вещь из королевской оружейной: ${items.join(', ')} — напишите «беру ${items[0].toLocaleLowerCase('ru-RU')} из оружейной»`,
+    })
+  }
+  return hints
+}
+
 function objectiveHint(room) {
   // Промежуточная точка маршрута: цель «Продолжить путь из … к «…»» не
   // говорила, чем продолжать, и клик по ней ничего не делал. Подсказка
@@ -657,6 +684,7 @@ export function suggestedActionsFor(room, actorId = '') {
   // порядок решит идентификатор.
   const reserved = ordered([
     ...lootHints(room),
+    ...courtHints(room),
     ...tavern.urgent,
     ...npcHints(room),
     ...objectiveHint(room),

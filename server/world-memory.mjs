@@ -129,7 +129,9 @@ export function gmSecretFact(secret, { subjectId, salt, index, sourceCommandId =
   }
 }
 // «Осматриваюсь», «ищу что-нибудь», «изучаю место» — общий поиск без темы.
-const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|прислуш\p{L}*|смотр\p{L}*|высматр\p{L}*|наблюда\p{L}*|пригляд\p{L}*)(?![\p{L}\p{M}])/iu
+// «Иду по следам», «выслеживаю» — тоже поиск: следопыт с удачным броском
+// Выживания прежде не находил ничего (прогон Асстохана 2026-10-07).
+const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|прислуш\p{L}*|смотр\p{L}*|высматр\p{L}*|наблюда\p{L}*|пригляд\p{L}*|след\p{L}*|выслеж\p{L}*|высле\p{L}*)(?![\p{L}\p{M}])/iu
 
 const SEARCH_SKILLS = new Set(['perception', 'investigation', 'survival'])
 const SECRET_STOP_STEMS = new Set(['геро', 'чтоб', 'кото', 'этог', 'свой', 'свои', 'своё', 'этот', 'этой', 'есть', 'было', 'была', 'были', 'него', 'тоже', 'лишь', 'пока', 'кто-', 'когд', 'толь', 'сейч', 'здес', 'очен', 'всех', 'весь', 'вижу', 'смот', 'ищу-'])
@@ -194,8 +196,11 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
     .filter((entry) => entry.exact || entry.related)
   const topical = candidates.filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
+  // Общий поиск открывает тайну этого места сперва своим навыком, затем
+  // родственным: тайна лагеря ждала Анализа, и удачная Внимательность у
+  // обелиска не давала ничего (прогон Асстохана 2026-10-07).
   const general = !topical && !topicalOnly && GENERAL_SEARCH_PATTERN.test(String(actionText ?? ''))
-    ? candidates.find((entry) => entry.here && entry.exact) ?? null
+    ? candidates.find((entry) => entry.here && entry.exact) ?? candidates.find((entry) => entry.here && entry.related) ?? null
     : null
   const chosen = topical ?? general
   if (!chosen) return null

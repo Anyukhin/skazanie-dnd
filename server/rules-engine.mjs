@@ -8931,7 +8931,9 @@ export function spellComponentAvailabilityFor(state, actor, spell) {
     }
   }
   if (somatic && !freeHand && !warCaster && !materialInHand) {
-    return refuse('SPELL_SOMATIC_COMPONENT_BLOCKED', 'Для жестов заклинания нужна свободная рука.')
+    // Причина говорит, что сделать: жрица с булавой и щитом читала только
+    // «нужна свободная рука» и считала заклинания сломанными (прогон Асстохана).
+    return refuse('SPELL_SOMATIC_COMPONENT_BLOCKED', 'Для жестов заклинания нужна свободная рука: уберите оружие в инвентаре — в бою первое взаимодействие с предметом за ход бесплатно.')
   }
   return { available: true }
 }
@@ -13836,6 +13838,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             id: String(onHit.condition), duration: onHit.duration ?? null,
             ...(onHit.duration_minutes > 0 ? { expires_at_minutes: Math.ceil(Number(state.mechanics.world_time?.elapsed_minutes ?? 0) + onHit.duration_minutes) } : {}),
             ...(onHit.repeat_save_timing ? { repeat_save_timing: onHit.repeat_save_timing, save_ability: onHit.save_ability, save_dc: onHit.save_dc } : {}),
+            // СЛ освобождения из листа чудовища: без неё «Высвободиться»
+            // бралось против умолчания 10 (паутина паука — 12 по книге).
+            ...(safeInteger(onHit.escape_dc, 0) > 0 ? { escape_dc: safeInteger(onHit.escape_dc, 0) } : {}),
           }
         }
         if (chargeActive) {

@@ -656,6 +656,14 @@
   .server-column .action-hints { order: 2; margin: 0; }
   .server-column .messages { order: 3; flex: 1 1 0; min-height: 0; padding: 4px 2px 6px; }
   .server-column > .player-hud-stack { order: 4; }
+  /* Высоту колонки делят подсказки, решение отряда и лента. При 1080p подсказки
+     не сжимались (min-height: auto) и забирали ~300 px: лента рассказчика
+     схлопывалась до 10 px, а голосование — до полоски в 81 px с вариантами за
+     краем. Подсказки теперь сжимаются и прокручиваются; пока висит решение
+     отряда, они прячутся, а карточка решения держит свою высоту. */
+  .server-column .action-hints { flex: 0 1 auto; min-height: 0; max-height: 168px; overflow-y: auto; }
+  .server-column .chat-panel:has(.agent-interaction) .action-hints { display: none; }
+  .server-column .chat-panel:has(.agent-interaction) .chat-interaction-slot { flex: 0 0 auto; max-height: 60%; overflow-y: auto; }
 
   /* Подсказки — карточкой «Что можно сделать» с красной кромкой. */
   .server-column .action-hints { padding: 10px 12px 12px; border: 1px solid var(--line2); border-top: 3px solid var(--enemy); border-radius: 0; background: color-mix(in srgb, var(--raise) 60%, var(--rail-bg)); box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--raise) 60%, var(--rail-bg)), inset 0 0 0 4px var(--line); }
@@ -715,7 +723,7 @@
   .game-area .turn-rail-side .hud-toggle-button.on::after { content: ''; position: absolute; inset: 2px; border-radius: 50%; border: 2px solid var(--acc2); box-shadow: 0 0 8px color-mix(in srgb, var(--acc2) 60%, transparent); pointer-events: none; }
   .game-area .turn-rail-side .hud-turn-clock { align-self: stretch; }
 
-  .server-column > .scene-who-card { order: 4; flex: none; display: flex; flex-direction: column; gap: 6px; max-height: 230px; overflow-y: auto; padding: 10px 12px; border: 1px solid var(--line); background: color-mix(in srgb, var(--raise) 45%, var(--rail-bg)); }
+  .server-column > .scene-who-card { order: 4; flex: 0 1 auto; min-height: 96px; display: flex; flex-direction: column; gap: 6px; max-height: 230px; overflow-y: auto; padding: 10px 12px; border: 1px solid var(--line); background: color-mix(in srgb, var(--raise) 45%, var(--rail-bg)); }
   .scene-who-card > header { display: flex; align-items: baseline; gap: 8px; }
   .scene-who-card > header b { color: var(--acc2); font: 700 var(--fs-lg) var(--f-display); }
   .scene-who-card > header small { margin-left: auto; color: var(--muted); font: italic 400 var(--fs-xxs) var(--f-serif); }
