@@ -24,6 +24,18 @@ test('сервер выдаёт дракону профиль dragon, а зам�
   assert.equal(actorProfileFor({ kind: 'enemy', name: 'Неизвестная тень', role: 'дракон', masked: true }), 'warrior')
 })
 
+// Обзор карт 2026-10-08: король Арес «прославленный драконоборец» стоял в
+// галерее Штормберга фигурой красного дракона — шаблон ловил «дракон» внутри
+// слова. Дракон — только целым словом и не как добыча.
+test('драконоборец, охотник на драконов и драконорождённый — не дракон', () => {
+  for (const role of ['король Валедора и прославленный драконоборец', 'охотник на драконов', 'dragon slayer', 'драконорождённый паладин']) {
+    assert.notEqual(actorProfileFor({ kind: 'npc', name: 'Арес', role }), 'dragon', role)
+    assert.notEqual(models.resolveModelProfile({ id: 'npc', label: 'Арес', kind: 'neutral', archetype: role }, manifest).profile, 'dragon', role)
+  }
+  assert.equal(actorProfileFor({ kind: 'enemy', name: 'Тварь', role: 'виверна' }), 'dragon')
+  assert.equal(models.resolveModelProfile({ id: 'x', label: 'Красный дракон', kind: 'enemy', archetype: 'красный дракон' }, manifest).key, 'dragon')
+})
+
 test('каталог ведёт профиль dragon к модели дракона с правами CC0', () => {
   assert.ok(dragon, 'запись dragon в manifest')
   assert.equal(dragon.profile, 'dragon')
