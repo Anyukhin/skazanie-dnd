@@ -41,6 +41,32 @@ export const SPAWN_ROLES = Object.freeze(['party', 'enemy', 'neutral'])
 export const FLOOR_STYLES = Object.freeze(['planks-dark', 'parquet', 'flagstone', 'checker', 'dungeon', 'mosaic', 'cobble', 'straw', 'dock', 'gravel', 'cave', 'snow', 'river', 'shallows'])
 /** Вид кладки стен помещения (`zone.wall`); как и пол, только для отрисовки. */
 export const WALL_STYLES = Object.freeze(['brick', 'fachwerk', 'fortress', 'palisade', 'embankment'])
+/** Биомы окрестностей 3D-доски за краем карты (`src/board3d-surroundings.ts`). */
+export const SURROUNDINGS_BIOMES = Object.freeze(['forest', 'deadwood', 'meadow', 'mountain', 'rock', 'sea'])
+
+/**
+ * Окрестности карты — только представление: какой край мира виден за её
+ * границей. `biome` — общий, `sides` — по сторонам света (море к северу от
+ * замка на утёсе). Неизвестные значения отбрасываются; пустое — `null`.
+ * @param {unknown} value
+ * @returns {{ biome?: string, sides?: Record<string, string> } | null}
+ */
+export function normalizeMapSurroundings(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const raw = /** @type {Record<string, any>} */ (value)
+  /** @type {{ biome?: string, sides?: Record<string, string> }} */
+  const result = {}
+  if (SURROUNDINGS_BIOMES.includes(String(raw.biome))) result.biome = String(raw.biome)
+  const sides = raw.sides && typeof raw.sides === 'object' && !Array.isArray(raw.sides) ? raw.sides : {}
+  /** @type {Record<string, string>} */
+  const kept = {}
+  for (const side of ['n', 'e', 's', 'w']) if (SURROUNDINGS_BIOMES.includes(String(sides[side]))) kept[side] = String(sides[side])
+  if (Object.keys(kept).length) result.sides = kept
+  return Object.keys(result).length ? result : null
+}
+
+/** @param {any} raw */
+const surroundingsOf = (raw) => normalizeMapSurroundings(raw?.surroundings) ?? undefined
 
 /**
  * Насколько далеко от этажа входа может уводить переход
@@ -238,6 +264,7 @@ export class TacticalMapError extends Error {
  * @property {string} theme
  * @property {string} tilesetId
  * @property {{compass: boolean, scaleBar: boolean, roomLabels: Array<{zoneId: string, label: string}>}} overlays
+ * @property {{ biome?: string, sides?: Record<string, string> }} [surroundings] окрестности за краем карты — только представление 3D
  * @property {string} sizeClass ключ SIZE_CLASSES
  * @property {string[]} legacyShape какие необязательные поля несли исходные клетки
  */
@@ -1443,6 +1470,7 @@ export function serializeTacticalMap(map) {
     combatBounds: map.combatBounds ? { ...map.combatBounds } : null,
     theme: map.theme,
     tilesetId: map.tilesetId,
+    ...(map.surroundings ? { surroundings: structuredClone(map.surroundings) } : {}),
     overlays: {
       compass: map.overlays.compass,
       scaleBar: map.overlays.scaleBar,
@@ -1507,6 +1535,7 @@ export function deserializeTacticalMap(value) {
     combatBounds: null,
     theme: boundedText(raw.theme, 60),
     tilesetId: boundedText(raw.tilesetId, 60),
+    ...(surroundingsOf(raw) ? { surroundings: /** @type {{ biome?: string, sides?: Record<string, string> }} */ (surroundingsOf(raw)) } : {}),
     overlays: { compass: raw.overlays?.compass === true, scaleBar: raw.overlays?.scaleBar === true, roomLabels: [] },
     sizeClass: SIZE_CLASSES[/** @type {keyof typeof SIZE_CLASSES} */ (raw.sizeClass)] ? String(raw.sizeClass) : sizeClassFor(width, height),
     legacyShape: Array.isArray(raw.legacyShape)
@@ -2127,6 +2156,13 @@ export function orientTacticalMap(map, side) {
   })
   next.spawnPoints = map.spawnPoints.map((spawn) => ({ ...spawn, ...cell(spawn.x, spawn.y) }))
   next.overlays = { ...map.overlays, roomLabels: map.overlays.roomLabels.map((label) => ({ ...label })) }
+  // Окрестности поворачиваются вместе с картой: море остаётся за тем же краем.
+  if (map.surroundings) {
+    next.surroundings = {
+      ...(map.surroundings.biome ? { biome: map.surroundings.biome } : {}),
+      ...(map.surroundings.sides ? { sides: Object.fromEntries(Object.entries(map.surroundings.sides).map(([key, biome]) => [sides[key] ?? key, biome])) } : {}),
+    }
+  }
   next.legacyShape = [...map.legacyShape]
   return next
 }

@@ -1,0 +1,1030 @@
+// @ts-check
+/**
+ * Сценарий авторской кампании — сюжет, который движок исполняет без модели.
+ *
+ * Данные — `data/campaign-scenarios-v1.json`, сюжет для людей —
+ * `docs/astohan-scenario.md`. Сценарий состоит из двух частей:
+ *
+ * - **карточки мест** — заголовок, настроение, цель, приход и тайны сцены.
+ *   Переход сцены (`AdvanceScene`) накладывает карточку на аргументы перехода,
+ *   какой бы путь его ни породил: голосование, Режиссёр или карта мира.
+ *   Тайны получают стабильные id, поэтому находку можно узнать по факту;
+ * - **узлы сюжета** — пролог, глава, линии и финал. Их состояние не хранится
+ *   отдельно, а выводится из состояния кампании: посещённых мест, находок,
+ *   павших NPC и исхода боя с главным противником. Поэтому replay сходится
+ *   без новых типов событий, а сохранённые кампании без сценария не меняются.
+ *
+ * Модуль — лист графа импортов: он читает состояние, но не импортирует ни
+ * Rules Engine, ни политику Режиссёра.
+ */
+import { readFileSync } from 'node:fs'
+
+export const SCENARIO_ARC_VERSION = 'skazanie:scenario-arc-v1'
+export const SCENARIO_ARC_PRESET = 'scenario'
+const SCENARIO_CATALOG_URL = new URL('../data/campaign-scenarios-v1.json', import.meta.url)
+const SCENARIO_SCHEMA_VERSION = 1
+
+const BEAT_KINDS = new Set(['prologue', 'chapter', 'line', 'finale'])
+const SECRET_SKILLS = new Set(['investigation', 'perception', 'survival', 'insight', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+const ENCOUNTER_THEMES = new Set(['goblinoids', 'undead', 'beasts', 'raiders', 'warband', 'law', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness', 'generic'])
+const ENCOUNTER_DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'deadly'])
+const ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,79}$/u
+
+/** @param {unknown} value @param {number} [maximum] */
+const clean = (value, maximum = 240) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+/** @param {string} message @returns {never} */
+function invalid(message) {
+  throw new Error(`Сценарий кампании: ${message}`)
+}
+
+/**
+ * Условие завершения узла. Листья: `clue` — найдена тайна сценария, `left` —
+ * отряд побывал в месте и ушёл из него, `visited` — побывал, `npc_defeated` —
+ * NPC выбыл. Составные: `any`, `all`, `count` + `of`.
+ * @param {any} condition
+ * @param {string} where
+ * @param {Set<string>} clueIds
+ */
+function validateCondition(condition, where, clueIds) {
+  if (!condition || typeof condition !== 'object' || Array.isArray(condition)) invalid(`${where}: условие должно быть объектом`)
+  const keys = Object.keys(condition)
+  if (keys.includes('any') || keys.includes('all')) {
+    const list = condition.any ?? condition.all
+    if (!Array.isArray(list) || !list.length) invalid(`${where}: пустой список условий`)
+    list.forEach((entry, index) => validateCondition(entry, `${where}[${index}]`, clueIds))
+    return
+  }
+  if (keys.includes('count')) {
+    if (!Number.isSafeInteger(condition.count) || condition.count < 1 || !Array.isArray(condition.of) || condition.of.length < condition.count) {
+      invalid(`${where}: count должен быть не больше длины of`)
+    }
+    condition.of.forEach((/** @type {any} */ entry, /** @type {number} */ index) => validateCondition(entry, `${where}.of[${index}]`, clueIds))
+    return
+  }
+  if (keys.length !== 1) invalid(`${where}: лист условия — ровно одно поле`)
+  const [key] = keys
+  if (key === 'clue') {
+    if (!clueIds.has(condition.clue)) invalid(`${where}: неизвестная тайна ${condition.clue}`)
+    return
+  }
+  if (['left', 'visited', 'npc_defeated'].includes(key)) {
+    if (!ID_PATTERN.test(String(condition[key] ?? ''))) invalid(`${where}: ${key} — идентификатор`)
+    return
+  }
+  invalid(`${where}: неизвестное условие ${key}`)
+}
+
+const SAVE_ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
+const SOCIAL_SKILLS = new Set(['persuasion', 'intimidation', 'deception', 'insight'])
+/** Id предмета каталога сценария (`SCENARIO_ITEM_CATALOG`, `server/item-catalog.mjs`). */
+const SCENARIO_ITEM_ID = /^scenario_[a-z0-9_]+:[a-z0-9]+(?:-[a-z0-9]+)*$/u
+const DAMAGE_TYPES = new Set(['fire', 'cold', 'acid', 'lightning', 'poison', 'thunder', 'necrotic', 'radiant', 'force', 'psychic'])
+
+/**
+ * Проклятый рыцарь (`server/scenario-knight.mjs`): кто, где и окно ночи, в
+ * которое он появляется, — минуты суток по часам мира, окно может переходить
+ * через полночь.
+ * @param {any} knight
+ * @param {string} scenarioId
+ * @param {Set<string>} locationIds
+ */
+function validateKnight(knight, scenarioId, locationIds) {
+  const where = `${scenarioId}/knight`
+  if (!ID_PATTERN.test(String(knight.npc_id ?? '')) || !locationIds.has(knight.location_id)) invalid(`${where}: рыцарю нужны id и место-карточка`)
+  const { from_minute: from, to_minute: to } = knight.night ?? {}
+  if (![from, to].every((value) => Number.isSafeInteger(value) && value >= 0 && value < 1_440) || from === to) {
+    invalid(`${where}: окно ночи — две разные минуты суток 0–1439`)
+  }
+  for (const field of ['arrival_text', 'departure_text', 'ward_laugh_text', 'head_text']) {
+    if (clean(knight[field], 1_000).length < 40) invalid(`${where}: текст ${field}`)
+  }
+  if (!ID_PATTERN.test(String(knight.riddle_clue ?? ''))) invalid(`${where}: загадке нужна тайна-разгадка`)
+  if (!Number.isSafeInteger(knight.head_reach_feet) || knight.head_reach_feet < 5 || knight.head_reach_feet > 60) invalid(`${where}: досягаемость головы 5–60 футов`)
+  if (!Array.isArray(knight.ward_resist_except) || knight.ward_resist_except.some((/** @type {string} */ type) => !DAMAGE_TYPES.has(type))) {
+    invalid(`${where}: исключения сопротивления — виды урона`)
+  }
+  const dread = knight.dread
+  if (!SAVE_ABILITIES.has(dread?.ability) || !Number.isSafeInteger(dread?.dc) || dread.dc < 5 || dread.dc > 30
+    || !Number.isSafeInteger(dread?.radius_feet) || dread.radius_feet < 5 || dread.radius_feet > 120) {
+    invalid(`${where}: аура страха — спасбросок, СЛ 5–30 и радиус 5–120 футов`)
+  }
+  const release = knight.release
+  if (!Number.isSafeInteger(release?.dc) || release.dc < 5 || release.dc > 30 || !Array.isArray(release.skills) || !release.skills.length
+    || release.skills.some((/** @type {string} */ skill) => !['persuasion', 'religion', 'insight', 'intimidation', 'deception', 'history'].includes(skill))
+    || !SCENARIO_ITEM_ID.test(String(release.reward?.catalog_id ?? '')) || clean(release.success_text, 1_000).length < 40 || clean(release.failure_text, 1_000).length < 20) {
+    invalid(`${where}: мирному пути нужны СЛ, навыки, награда и тексты`)
+  }
+}
+
+/**
+ * Счётчик внимания главного противника (`server/scenario-attention.mjs`):
+ * пороги, места, где за отрядом следят, основы слов темы и незнакомец, который
+ * приходит на пороге `stranger_at`.
+ * @param {any} attention
+ * @param {string} scenarioId
+ * @param {Set<string>} locationIds
+ */
+function validateAttention(attention, scenarioId, locationIds) {
+  const where = `${scenarioId}/attention`
+  const { maximum, stranger_at: strangerAt, ready_at: readyAt } = attention
+  if (![maximum, strangerAt, readyAt].every((value) => Number.isSafeInteger(value) && value > 0)
+    || strangerAt >= readyAt || readyAt > maximum) invalid(`${where}: пороги 0 < stranger_at < ready_at ≤ maximum`)
+  const watched = Array.isArray(attention.watched_location_ids) ? attention.watched_location_ids : []
+  if (!watched.length || watched.some((/** @type {string} */ id) => !locationIds.has(id))) invalid(`${where}: места наблюдения должны быть карточками`)
+  const stems = Array.isArray(attention.topic_stems) ? attention.topic_stems : []
+  if (!stems.length || stems.some((/** @type {unknown} */ stem) => typeof stem !== 'string' || stem.length < 4 || stem !== stem.toLocaleLowerCase('ru'))) {
+    invalid(`${where}: основы темы — строчные, не короче четырёх букв`)
+  }
+  const finale = attention.finale
+  if (!finale || !Number.isSafeInteger(finale.unaware_below) || finale.unaware_below < 1 || finale.unaware_below > readyAt) {
+    invalid(`${where}: финалу нужен порог неведения не выше ready_at`)
+  }
+  if (!Array.isArray(finale.hidden_route) || finale.hidden_route.length !== 2 || finale.hidden_route.some((/** @type {string} */ id) => !locationIds.has(id))) {
+    invalid(`${where}: тайная дорога финала — пара мест сценария`)
+  }
+  if (!ENCOUNTER_THEMES.has(finale.ready_ambush?.theme) || !ENCOUNTER_DIFFICULTIES.has(finale.ready_ambush?.difficulty)) {
+    invalid(`${where}: засада готового дракона — тема и сложность сборщика`)
+  }
+  const stranger = attention.stranger
+  if (!stranger || !ID_PATTERN.test(String(stranger.npc_id ?? '')) || !clean(stranger.name, 120) || !clean(stranger.role, 80)
+    || !clean(stranger.summary, 400) || !clean(stranger.voice, 240)) invalid(`${where}: незнакомцу нужны id, имя, роль, облик и голос`)
+  const places = Array.isArray(stranger.location_ids) ? stranger.location_ids : []
+  if (!places.length || places.some((/** @type {string} */ id) => !locationIds.has(id))) invalid(`${where}: места незнакомца должны быть карточками`)
+  if (!Array.isArray(stranger.goals) || !stranger.goals.length) invalid(`${where}: цели незнакомца`)
+  for (const field of ['arrival_text', 'reveal_text', 'departure_text']) {
+    if (clean(stranger[field], 1_000).length < 40) invalid(`${where}: текст незнакомца ${field}`)
+  }
+  for (const informant of attention.informants ?? []) {
+    const id = `${where}/informants/${informant?.id}`
+    if (!ID_PATTERN.test(String(informant?.id ?? '')) || !clean(informant.name, 120) || !ID_PATTERN.test(String(informant.clue ?? ''))
+      || !locationIds.has(informant.location_id)) invalid(`${id}: id, имя, тайна и место`)
+    if (!Array.isArray(informant.name_stems) || !informant.name_stems.length
+      || informant.name_stems.some((/** @type {unknown} */ stem) => typeof stem !== 'string' || stem.length < 3 || stem !== stem.toLocaleLowerCase('ru'))) {
+      invalid(`${id}: основы имени — строчные, от трёх букв`)
+    }
+    if (!Number.isSafeInteger(informant.expose_delta) || informant.expose_delta < 0 || informant.expose_delta > 6
+      || !Number.isSafeInteger(informant.turn?.delta) || informant.turn.delta > 0 || informant.turn.delta < -6
+      || !SOCIAL_SKILLS.has(informant.turn?.skill) || !Number.isSafeInteger(informant.turn?.dc) || informant.turn.dc < 5 || informant.turn.dc > 30) {
+      invalid(`${id}: шаги внимания и проверка перевербовки`)
+    }
+    for (const field of ['expose_text', 'release_text', 'turn_text', 'turn_failure_text']) {
+      if (clean(informant[field], 1_000).length < 40) invalid(`${id}: текст ${field}`)
+    }
+  }
+  const breath = stranger.breath
+  if (!/^\d{1,2}d(4|6|8|10|12)$/u.test(String(breath?.expression ?? '')) || !SAVE_ABILITIES.has(breath?.ability)
+    || !Number.isSafeInteger(breath?.dc) || breath.dc < 5 || breath.dc > 30 || !DAMAGE_TYPES.has(breath?.damage_type)) {
+    invalid(`${where}: выдох — кости, спасбросок, СЛ 5–30 и вид урона`)
+  }
+}
+
+/**
+ * Структура сценария. Ссылки на места и NPC мира проверяет тест каталога —
+ * здесь только форма, чтобы модуль не зависел от каталога миров.
+ * @param {any} scenario
+ */
+function validateScenario(scenario) {
+  if (!scenario || typeof scenario !== 'object') invalid('запись должна быть объектом')
+  if (!ID_PATTERN.test(String(scenario.id ?? ''))) invalid('id сценария')
+  if (!Number.isSafeInteger(scenario.version) || scenario.version < 1) invalid(`${scenario.id}: версия`)
+  if (!ID_PATTERN.test(String(scenario.world_template_id ?? ''))) invalid(`${scenario.id}: world_template_id`)
+  const locations = Array.isArray(scenario.locations) ? scenario.locations : invalid(`${scenario.id}: locations`)
+  const locationIds = new Set()
+  const clueIds = new Set()
+  for (const location of locations) {
+    const id = String(location?.location_id ?? '')
+    if (!ID_PATTERN.test(id) || locationIds.has(id)) invalid(`${scenario.id}: место ${id}`)
+    locationIds.add(id)
+    for (const field of ['title', 'mood', 'arrival', 'objective']) {
+      if (!clean(location[field], 600)) invalid(`${scenario.id}/${id}: пустое поле ${field}`)
+    }
+    if (location.encounter) {
+      if (!ENCOUNTER_THEMES.has(location.encounter.theme) || !ENCOUNTER_DIFFICULTIES.has(location.encounter.difficulty)) {
+        invalid(`${scenario.id}/${id}: встреча вне словаря сборщика`)
+      }
+    }
+    for (const npc of Array.isArray(location.npcs) ? location.npcs : []) {
+      if (!ID_PATTERN.test(String(npc?.id ?? '')) || !clean(npc.name, 120) || !clean(npc.role, 120)
+        || clean(npc.summary, 600).length < 40 || !clean(npc.voice, 300) || !Array.isArray(npc.goals) || !npc.goals.length) {
+        invalid(`${scenario.id}/${id}: NPC сценария ${npc?.id} — id, имя, роль, облик, голос и цели`)
+      }
+    }
+    for (const secret of Array.isArray(location.secrets) ? location.secrets : []) {
+      const secretId = String(secret?.id ?? '')
+      if (!ID_PATTERN.test(secretId) || clueIds.has(secretId)) invalid(`${scenario.id}/${id}: тайна ${secretId}`)
+      clueIds.add(secretId)
+      if (clean(secret.clue, 600).length < 12 || !clean(secret.topic, 160)) invalid(`${scenario.id}/${secretId}: текст тайны`)
+      if (!Array.isArray(secret.skills) || !secret.skills.length || secret.skills.some((/** @type {string} */ skill) => !SECRET_SKILLS.has(skill))) {
+        invalid(`${scenario.id}/${secretId}: навыки тайны`)
+      }
+      if (secret.holders != null && (!Array.isArray(secret.holders) || secret.holders.some((/** @type {unknown} */ id) => !ID_PATTERN.test(String(id ?? ''))))) {
+        invalid(`${scenario.id}/${secretId}: хранители тайны — id NPC мира`)
+      }
+      if (secret.grants_catalog_id != null && !SCENARIO_ITEM_ID.test(String(secret.grants_catalog_id))) {
+        invalid(`${scenario.id}/${secretId}: находка выдаёт предмет каталога сценария`)
+      }
+    }
+  }
+  const beats = Array.isArray(scenario.beats) ? scenario.beats : invalid(`${scenario.id}: beats`)
+  const beatIds = new Set()
+  for (const beat of beats) {
+    const id = String(beat?.id ?? '')
+    if (!ID_PATTERN.test(id) || beatIds.has(id)) invalid(`${scenario.id}: узел ${id}`)
+    beatIds.add(id)
+    if (!BEAT_KINDS.has(beat.kind)) invalid(`${scenario.id}/${id}: вид узла`)
+    if (!clean(beat.title, 160)) invalid(`${scenario.id}/${id}: название`)
+    if (!Array.isArray(beat.location_ids) || !beat.location_ids.length
+      || beat.location_ids.some((/** @type {string} */ locationId) => !locationIds.has(locationId))) {
+      invalid(`${scenario.id}/${id}: места узла должны быть карточками сценария`)
+    }
+    if (beat.kind === 'finale') {
+      if (!ID_PATTERN.test(String(beat.boss?.npc_id ?? '')) || !locationIds.has(beat.boss?.location_id)
+        || !ENCOUNTER_DIFFICULTIES.has(beat.boss?.difficulty)) {
+        invalid(`${scenario.id}/${id}: финалу нужен главный противник с местом и сложностью`)
+      }
+      const threshold = beat.boss.morale?.threshold
+      if (beat.boss.morale != null && !(typeof threshold === 'number' && threshold > 0 && threshold < 1)) {
+        invalid(`${scenario.id}/${id}: порог морали главного противника — доля хитов 0–1`)
+      }
+      if (beat.treaty != null) {
+        const treaty = beat.treaty
+        validateCondition(treaty.truth, `${scenario.id}/${id}.treaty.truth`, clueIds)
+        if (!['persuasion', 'intimidation', 'deception', 'insight'].includes(treaty.skill) || !Number.isSafeInteger(treaty.dc) || treaty.dc < 5 || treaty.dc > 30
+          || !(typeof treaty.wounded_ratio === 'number' && treaty.wounded_ratio > 0 && treaty.wounded_ratio <= 1)
+          || clean(treaty.success_text, 1_000).length < 40 || clean(treaty.failure_text, 1_000).length < 20) {
+          invalid(`${scenario.id}/${id}: договору нужны правда, навык, СЛ, порог ранения и тексты`)
+        }
+      }
+    } else validateCondition(beat.complete_when, `${scenario.id}/${id}`, clueIds)
+  }
+  for (const reveal of Array.isArray(scenario.map_reveals) ? scenario.map_reveals : []) {
+    if (!ID_PATTERN.test(String(reveal?.id ?? ''))) invalid(`${scenario.id}: открытие карты ${reveal?.id}`)
+    validateCondition(reveal.when, `${scenario.id}/${reveal.id}`, clueIds)
+    const places = Array.isArray(reveal.locations) ? reveal.locations : []
+    const routes = Array.isArray(reveal.routes) ? reveal.routes : []
+    if (!places.length && !routes.length) invalid(`${scenario.id}/${reveal.id}: открывать нечего`)
+    for (const locationId of [...places, ...routes.flat()]) {
+      if (!locationIds.has(locationId)) invalid(`${scenario.id}/${reveal.id}: место ${locationId} без карточки`)
+    }
+    if (routes.some((/** @type {unknown} */ route) => !Array.isArray(route) || route.length !== 2)) invalid(`${scenario.id}/${reveal.id}: дорога — пара мест`)
+  }
+  if (scenario.attention != null) validateAttention(scenario.attention, scenario.id, locationIds)
+  if (scenario.knight != null) validateKnight(scenario.knight, scenario.id, locationIds)
+  if (scenario.progression != null) {
+    const progression = scenario.progression
+    const levels = [progression.start_level, progression.levels_per_line, progression.max_level]
+    if (!levels.every((value) => Number.isSafeInteger(value) && value >= 1 && value <= 20) || progression.start_level > progression.max_level) {
+      invalid(`${scenario.id}/progression: уровни — целые 1–20, старт не выше потолка`)
+    }
+    const purse = progression.purse
+    if (purse != null && (!locationIds.has(purse.location_id) || !/^\d{1,2}d(4|6|8|10|12|20)$/u.test(String(purse.dice ?? ''))
+      || !Number.isSafeInteger(purse.gold_per_point) || purse.gold_per_point < 1 || purse.gold_per_point > 1_000)) {
+      invalid(`${scenario.id}/progression.purse: место, кости и золото за очко`)
+    }
+    const armory = progression.armory
+    if (armory != null && (!locationIds.has(armory.location_id) || !Array.isArray(armory.catalog_ids)
+      || armory.catalog_ids.length < 2 || armory.catalog_ids.length > 12
+      || armory.catalog_ids.some((/** @type {unknown} */ id) => !ID_PATTERN.test(String(id ?? '').replace(/^[a-z0-9_]+:/u, ''))))) {
+      invalid(`${scenario.id}/progression.armory: место и от 2 до 12 вещей каталога`)
+    }
+  }
+  if (beats.filter((/** @type {any} */ beat) => beat.kind === 'finale').length !== 1) invalid(`${scenario.id}: финал должен быть ровно один`)
+  if (beats[0]?.kind !== 'prologue') invalid(`${scenario.id}: первый узел — пролог`)
+  const endings = Array.isArray(scenario.endings) ? scenario.endings : invalid(`${scenario.id}: endings`)
+  const outcomes = new Set()
+  for (const ending of endings) {
+    if (!ID_PATTERN.test(String(ending?.id ?? '')) || !clean(ending.title, 160) || clean(ending.epilogue, 4_000).length < 40) {
+      invalid(`${scenario.id}: развязка ${ending?.id}`)
+    }
+    for (const outcome of Array.isArray(ending.outcomes) ? ending.outcomes : invalid(`${scenario.id}/${ending.id}: outcomes`)) {
+      if (outcomes.has(outcome)) invalid(`${scenario.id}: исход ${outcome} у двух развязок`)
+      outcomes.add(outcome)
+    }
+  }
+  return scenario
+}
+
+/** @returns {any[]} */
+function loadScenarios() {
+  const raw = JSON.parse(readFileSync(SCENARIO_CATALOG_URL, 'utf8'))
+  if (raw?.schema_version !== SCENARIO_SCHEMA_VERSION || !Array.isArray(raw.scenarios)) invalid('неизвестная версия каталога')
+  const ids = new Set()
+  const worlds = new Set()
+  return raw.scenarios.map((/** @type {any} */ entry) => {
+    const scenario = deepFreeze(validateScenario(entry))
+    if (ids.has(scenario.id)) invalid(`повтор id ${scenario.id}`)
+    if (worlds.has(scenario.world_template_id)) invalid(`второй сценарий мира ${scenario.world_template_id}`)
+    ids.add(scenario.id)
+    worlds.add(scenario.world_template_id)
+    return scenario
+  })
+}
+
+/** @template T @param {T} value @returns {T} */
+function deepFreeze(value) {
+  if (value && typeof value === 'object') {
+    for (const entry of Object.values(value)) deepFreeze(entry)
+    Object.freeze(value)
+  }
+  return value
+}
+
+const SCENARIOS = Object.freeze(loadScenarios())
+
+/** Все сценарии каталога — для тестов и аудита. */
+export function listCampaignScenarios() {
+  return SCENARIOS
+}
+
+/** @param {string} worldTemplateId */
+export function scenarioForWorldTemplate(worldTemplateId) {
+  return SCENARIOS.find((scenario) => scenario.world_template_id === clean(worldTemplateId, 80)) ?? null
+}
+
+/**
+ * План арки по сценарию. Числа темпа те же, что у вечерней арки: Режиссёр
+ * получает те же ограничения шагов, а длину истории задают узлы, а не хеш.
+ * @param {any} scenario
+ */
+export function buildScenarioArcPlan(scenario) {
+  return Object.freeze({
+    version: SCENARIO_ARC_VERSION,
+    preset: SCENARIO_ARC_PRESET,
+    scenario_id: scenario.id,
+    scenario_version: scenario.version,
+    seed: scenario.id,
+    arc_number: 1,
+    target_scenes: scenario.beats.length,
+    chapter_clock_max: 2,
+    force_after_beats: 2,
+    max_director_beats: 5,
+    climax: 'resolution',
+  })
+}
+
+/**
+ * Сценарий кампании или `null`. Версия сценария записана в арке при создании
+ * кампании; другая версия каталога не подменяет историю, начатую по старой.
+ * @param {any} state
+ */
+export function campaignScenario(state = {}) {
+  const arc = state?.campaignConcept?.arc
+  if (!arc || arc.version !== SCENARIO_ARC_VERSION) return null
+  if (state?.campaignConcept?.campaign_mode === 'persistent') return null
+  const scenario = SCENARIOS.find((entry) => entry.id === arc.scenario_id) ?? null
+  return scenario && scenario.version === arc.scenario_version ? scenario : null
+}
+
+/** @param {any} scenario @param {string} clueId */
+export function scenarioClueFactId(scenario, clueId) {
+  return `fact:secret:scenario:${scenario.id}:${clueId}`
+}
+
+/** @param {any} scenario @param {string} locationId */
+function locationCard(scenario, locationId) {
+  return scenario.locations.find((/** @type {any} */ entry) => entry.location_id === locationId) ?? null
+}
+
+/** @param {any} state */
+function worldLocations(state) {
+  return Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : []
+}
+
+/** @param {unknown} value */
+const nameKey = (value) => clean(value, 180).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+
+/**
+ * Точка карты мира по id или имени — так же, как переход находит место.
+ * @param {any} state
+ * @param {{ locationId?: unknown, name?: unknown }} input
+ */
+function worldLocationFor(state, { locationId = '', name = '' } = {}) {
+  const id = clean(locationId, 120)
+  const locations = worldLocations(state)
+  return (id && locations.find((/** @type {any} */ entry) => clean(entry?.id, 120) === id))
+    || (nameKey(name) && locations.find((/** @type {any} */ entry) => nameKey(entry?.name) === nameKey(name)))
+    || null
+}
+
+/**
+ * Карточка места для аргументов перехода. Место определяется так же, как в
+ * переходе: по id, а без него — по имени точки карты мира.
+ * @param {any} state
+ * @param {any} sceneArgs
+ */
+export function scenarioSceneArgs(state, sceneArgs) {
+  const scenario = campaignScenario(state)
+  const args = sceneArgs && typeof sceneArgs === 'object' && !Array.isArray(sceneArgs) ? sceneArgs : {}
+  if (!scenario) return args
+  const location = worldLocationFor(state, { locationId: args.location_id ?? args.locationId, name: args.location })
+  const card = location ? locationCard(scenario, clean(location.id, 120)) : null
+  if (!card) return args
+  return {
+    ...args,
+    location: clean(location.name, 120) || args.location,
+    location_id: card.location_id,
+    title: card.title,
+    mood: card.mood,
+    arrival: card.arrival,
+    objective: card.objective,
+    hook: card.objective,
+  }
+}
+
+/**
+ * NPC сценария в карточке места — собеседники, которых нет в каталоге мира
+ * (комендант Гедрик, осведомители): переход сцены ставит их в сцену, а свои
+ * тайны они знают по `holders`.
+ * @param {any} state
+ * @param {string} locationId
+ */
+export function scenarioLocationNpcs(state, locationId) {
+  const scenario = campaignScenario(state)
+  const card = scenario ? locationCard(scenario, clean(locationId, 120)) : null
+  if (!card) return []
+  return (card.npcs ?? []).map((/** @type {any} */ npc) => ({
+    id: String(npc.id),
+    name: clean(npc.name, 120),
+    role: clean(npc.role, 120),
+    location_id: card.location_id,
+    public_summary: clean(npc.summary, 600),
+    voice: clean(npc.voice, 300),
+    ...(npc.speech_profile ? { speech_profile: { ...npc.speech_profile } } : {}),
+    ...(npc.social_dcs ? { social_dcs: { ...npc.social_dcs } } : {}),
+    goals: npc.goals.map((/** @type {unknown} */ goal) => clean(goal, 200)),
+    beliefs: (npc.beliefs ?? []).map((/** @type {unknown} */ belief) => clean(belief, 200)),
+    known_fact_ids: scenarioClueFactIdsKnownBy(scenario, String(npc.id)),
+    visibility: 'party',
+    available: true,
+    tags: (npc.tags ?? []).map((/** @type {unknown} */ tag) => clean(tag, 40)),
+    schedule: [],
+    inventory: [],
+  }))
+}
+
+/**
+ * Тайны карточки места со стабильными id. Их пишет переход сцены (`gm_only`);
+ * находка заменяет тайну фактом `discovery`, и по нему узел узнаёт улику.
+ * @param {any} state
+ * @param {string} locationId
+ * @returns {Array<{ fact_id: string, clue_id: string, clue: string, topic: string, skills: string[] }>}
+ */
+export function scenarioSecretsFor(state, locationId) {
+  const scenario = campaignScenario(state)
+  const card = scenario ? locationCard(scenario, clean(locationId, 120)) : null
+  if (!card) return []
+  return (card.secrets ?? []).map((/** @type {any} */ secret) => ({
+    fact_id: scenarioClueFactId(scenario, secret.id),
+    clue_id: secret.id,
+    clue: secret.clue,
+    topic: secret.topic,
+    skills: [...secret.skills],
+  }))
+}
+
+/**
+ * Найденные тайны: удачный поиск (`discovery`) или рассказ хранителя тайны в
+ * разговоре (`KnowledgeRevealed` → `worldMemory.knowledge_revealed`).
+ * @param {any} state
+ */
+function foundClueFactIds(state) {
+  const facts = Array.isArray(state?.worldMemory?.facts) ? state.worldMemory.facts : []
+  const ids = new Set(facts
+    .filter((/** @type {any} */ fact) => fact?.predicate === 'discovery' && clean(fact.supersedes_fact_id, 200))
+    .map((/** @type {any} */ fact) => clean(fact.supersedes_fact_id, 200)))
+  for (const entry of Array.isArray(state?.worldMemory?.knowledge_revealed) ? state.worldMemory.knowledge_revealed : []) {
+    const factId = clean(entry?.fact_id, 200)
+    if (factId) ids.add(factId)
+  }
+  return ids
+}
+
+/**
+ * Предмет, который отряд получает вместе с находкой тайны (`grants_catalog_id`):
+ * оберег Ломара лежит на его столе. `null` — находка предмета не даёт.
+ * @param {any} state
+ * @param {string} clueFactId id тайны сценария (`supersedes_fact_id` находки)
+ */
+export function scenarioClueRewardCatalogId(state, clueFactId) {
+  const scenario = campaignScenario(state)
+  if (!scenario) return null
+  for (const location of scenario.locations) {
+    for (const secret of location.secrets ?? []) {
+      if (secret.grants_catalog_id && scenarioClueFactId(scenario, secret.id) === clueFactId) return String(secret.grants_catalog_id)
+    }
+  }
+  return null
+}
+
+/**
+ * Тайны сценария, которые знает NPC (`holders` в карточке места): их id
+ * уходят в `known_fact_ids` профиля при создании кампании, и хранитель может
+ * рассказать о них в разговоре — тем же защищённым путём, что и любой
+ * закрытый факт. Сам факт появится, когда отряд придёт в его место.
+ * @param {any} scenario
+ * @param {string} npcId
+ * @returns {string[]}
+ */
+export function scenarioClueFactIdsKnownBy(scenario, npcId) {
+  if (!scenario) return []
+  return scenario.locations.flatMap((/** @type {any} */ location) => (location.secrets ?? [])
+    .filter((/** @type {any} */ secret) => Array.isArray(secret.holders) && secret.holders.includes(npcId))
+    .map((/** @type {any} */ secret) => scenarioClueFactId(scenario, secret.id)))
+}
+
+/** @param {any} state */
+function visitedLocationIds(state) {
+  const ids = new Set((Array.isArray(state?.adventure?.visitedLocationIds) ? state.adventure.visitedLocationIds : []).map((/** @type {unknown} */ id) => clean(id, 120)))
+  for (const location of worldLocations(state)) if (location?.visited === true) ids.add(clean(location.id, 120))
+  const current = currentLocationId(state)
+  if (current) ids.add(current)
+  ids.delete('')
+  return ids
+}
+
+/** @param {any} state */
+function leftLocationIds(state) {
+  const history = Array.isArray(state?.adventure?.history) ? state.adventure.history : []
+  const ids = new Set()
+  for (const entry of history) {
+    const byId = clean(entry?.location_id, 120)
+    if (byId) ids.add(byId)
+    else {
+      const byName = worldLocationFor(state, { name: entry?.location })
+      if (byName) ids.add(clean(byName.id, 120))
+    }
+  }
+  return ids
+}
+
+/**
+ * Место текущей сцены — id узла карты мира, даже если сцена знает его только
+ * по имени.
+ * @param {any} state
+ */
+export function scenarioLocationId(state) {
+  return currentLocationId(state)
+}
+
+/** @param {any} state */
+function currentLocationId(state) {
+  const scene = state?.scene ?? {}
+  return clean(scene.location_id ?? scene.locationId, 120)
+    || clean(worldLocationFor(state, { name: scene.location })?.id, 120)
+}
+
+/** @param {any} state @param {string} npcId */
+function npcDefeated(state, npcId) {
+  if (state?.npc_world?.vitals?.[npcId]?.alive === false) return true
+  const encounter = state?.mechanics?.encounter
+  return Boolean(encounter?.status === 'ended'
+    && encounter.outcome === 'enemies_defeated'
+    && Array.isArray(encounter.enemy_ids) && encounter.enemy_ids.map(String).includes(npcId))
+}
+
+/**
+ * @param {any} condition
+ * @param {{ scenario: any, found: Set<string>, visited: Set<string>, left: Set<string>, state: any }} facts
+ * @returns {boolean}
+ */
+function conditionMet(condition, facts) {
+  if (Array.isArray(condition?.any)) return condition.any.some((/** @type {any} */ entry) => conditionMet(entry, facts))
+  if (Array.isArray(condition?.all)) return condition.all.every((/** @type {any} */ entry) => conditionMet(entry, facts))
+  if (Number.isSafeInteger(condition?.count)) {
+    return condition.of.filter((/** @type {any} */ entry) => conditionMet(entry, facts)).length >= condition.count
+  }
+  if (condition?.clue) return facts.found.has(scenarioClueFactId(facts.scenario, condition.clue))
+  if (condition?.left) return facts.left.has(condition.left)
+  if (condition?.visited) return facts.visited.has(condition.visited)
+  if (condition?.npc_defeated) return npcDefeated(facts.state, condition.npc_defeated)
+  return false
+}
+
+/**
+ * Уровень героев по сюжету: старт плюс по уровню за каждую пройденную линию,
+ * не выше потолка (Асстохан: 7 → 10). `null` — у сценария нет вех уровня.
+ * @param {any} state
+ */
+export function scenarioMilestoneLevel(state) {
+  const scenario = campaignScenario(state)
+  const progression = scenario?.progression
+  const progress = scenarioProgress(state)
+  if (!progression || !progress) return null
+  return Math.min(progression.max_level, progression.start_level + progression.levels_per_line * progress.lines_completed)
+}
+
+/** Кошель короля сценария: где выдают и сколько. @param {any} state */
+export function scenarioPurseRules(state) {
+  const purse = campaignScenario(state)?.progression?.purse
+  return purse ? { location_id: String(purse.location_id), dice: String(purse.dice), gold_per_point: Number(purse.gold_per_point) } : null
+}
+
+/**
+ * Осведомители пепельной сети: кто, где и раскрыт ли он уже находкой своей
+ * тайны. Решение по каждому принимается один раз (`ResolveScenarioInformant`).
+ * @param {any} state
+ */
+export function scenarioInformantRules(state) {
+  const scenario = campaignScenario(state)
+  const informants = scenario?.attention?.informants
+  if (!Array.isArray(informants) || !informants.length) return []
+  const found = foundClueFactIds(state)
+  return informants.map((/** @type {any} */ informant) => ({
+    id: String(informant.id),
+    name: clean(informant.name, 120),
+    location_id: String(informant.location_id),
+    name_stems: informant.name_stems.map(String),
+    revealed: found.has(scenarioClueFactId(scenario, informant.clue)),
+    expose_delta: Number(informant.expose_delta),
+    turn: { skill: String(informant.turn.skill), dc: Number(informant.turn.dc), delta: Number(informant.turn.delta) },
+    expose_text: clean(informant.expose_text, 1_000),
+    release_text: clean(informant.release_text, 1_000),
+    turn_text: clean(informant.turn_text, 1_000),
+    turn_failure_text: clean(informant.turn_failure_text, 1_000),
+  }))
+}
+
+/** Королевская оружейная сценария: где выбирают и из чего. @param {any} state */
+export function scenarioArmoryRules(state) {
+  const armory = campaignScenario(state)?.progression?.armory
+  return armory ? { location_id: String(armory.location_id), catalog_ids: armory.catalog_ids.map(String) } : null
+}
+
+/** Узел финала сценария. @param {any} scenario */
+function finaleBeat(scenario) {
+  return scenario?.beats?.find((/** @type {any} */ beat) => beat.kind === 'finale') ?? null
+}
+
+/** Договор с главным противником уже заключён (реестр сценария). @param {any} state */
+function treatyConcluded(state) {
+  return state?.scenario_attention?.treaty?.concluded === true
+}
+
+/**
+ * Мораль главного противника сценария: порог доли хитов, на котором он
+ * проверяет мораль, и то, что сломленный он улетает, а не сдаётся. `null` —
+ * это не главный противник или у него нет особой морали.
+ * @param {any} state
+ * @param {string} actorId
+ * @returns {{ threshold: number, flies: true } | null}
+ */
+export function scenarioBossMorale(state, actorId) {
+  const boss = finaleBeat(campaignScenario(state))?.boss
+  if (!boss?.morale || String(actorId) !== boss.npc_id) return null
+  return { threshold: Number(boss.morale.threshold), flies: true }
+}
+
+/**
+ * Договор с главным противником: правда раскрыта (условие `truth`), навык и
+ * СЛ, порог ранения для переговоров посреди боя, тексты. `null` — у сценария
+ * договора нет.
+ * @param {any} state
+ */
+export function scenarioTreatyRules(state) {
+  const scenario = campaignScenario(state)
+  const finale = finaleBeat(scenario)
+  if (!scenario || !finale?.treaty) return null
+  return {
+    boss_npc_id: String(finale.boss.npc_id),
+    boss_location_id: String(finale.boss.location_id),
+    truth_revealed: conditionMet(finale.treaty.truth, conditionFacts(state, scenario)),
+    skill: String(finale.treaty.skill),
+    dc: Number(finale.treaty.dc),
+    wounded_ratio: Number(finale.treaty.wounded_ratio),
+    concluded: treatyConcluded(state),
+    success_text: clean(finale.treaty.success_text, 1_000),
+    failure_text: clean(finale.treaty.failure_text, 1_000),
+  }
+}
+
+/**
+ * Чем закончился бой с главным противником, если не победой: договор —
+ * `parley`, улетевший сломленным — `fled`. `null` — обычная причина.
+ * @param {any} state
+ * @returns {'parley' | 'fled' | null}
+ */
+export function scenarioEncounterEndReason(state) {
+  const boss = finaleBeat(campaignScenario(state))?.boss
+  const encounter = state?.mechanics?.encounter
+  if (!boss || !Array.isArray(encounter?.enemy_ids) || !encounter.enemy_ids.map(String).includes(boss.npc_id)) return null
+  if (treatyConcluded(state)) return 'parley'
+  const conditions = Array.isArray(state?.mechanics?.conditions?.[boss.npc_id]) ? state.mechanics.conditions[boss.npc_id] : []
+  return conditions.some((/** @type {any} */ entry) => String(entry?.id ?? entry) === 'fled') ? 'fled' : null
+}
+
+/**
+ * Встреча с главным противником финала — последняя записанная. Исход берётся
+ * только у завершённой встречи в месте финала с записанным
+ * `EncounterOutcomeRecorded`.
+ * @param {any} state
+ * @param {any} scenario
+ */
+function bossEncounterOutcome(state, scenario) {
+  // Договор, заключённый до боя, — тоже исход финала: боя не было вовсе.
+  if (treatyConcluded(state)) return 'parley'
+  const finale = scenario.beats.find((/** @type {any} */ beat) => beat.kind === 'finale')
+  const encounter = state?.mechanics?.encounter
+  if (!finale || !encounter?.id || encounter.status !== 'ended') return ''
+  if (!Array.isArray(encounter.enemy_ids) || !encounter.enemy_ids.map(String).includes(finale.boss.npc_id)) return ''
+  // Развязку решает только бой в логове: стычка с ним в другом месте —
+  // эпизод, а не финал кампании.
+  const encounterLocationId = clean(worldLocationFor(state, { name: encounter.location })?.id, 120) || currentLocationId(state)
+  if (encounterLocationId !== finale.boss.location_id) return ''
+  const recorded = (Array.isArray(state?.autonomy?.encounter_outcomes) ? state.autonomy.encounter_outcomes : [])
+    .some((/** @type {any} */ entry) => String(entry?.encounter_id) === String(encounter.id))
+  return recorded ? clean(encounter.outcome, 60) : ''
+}
+
+/** @param {any} state @param {any} scenario */
+function conditionFacts(state, scenario) {
+  return {
+    scenario,
+    state,
+    found: foundClueFactIds(state),
+    visited: visitedLocationIds(state),
+    left: leftLocationIds(state),
+  }
+}
+
+/**
+ * Карта мира с открытыми сюжетом местами и дорогами. Скрытое логово, тропа к
+ * Древу и пещера контрабандистов становятся известны, когда отряд дошёл до
+ * перевала, вошёл в лес или вышел на осведомителей. Открытие выводится из
+ * состояния при нормализации, поэтому replay его повторяет, а переход сцены
+ * записывает уже открытую карту в `SceneAdvanced`. Закрыть открытое условие
+ * не может: оно считается только в сторону «известно». Единственное
+ * исключение — завал тайного хода, когда дракон готов к отряду.
+ * @param {any} state
+ * @param {any} worldMap
+ */
+export function applyScenarioMapReveals(state, worldMap) {
+  const scenario = campaignScenario(state)
+  if (!scenario || !Array.isArray(scenario.map_reveals) || !worldMap || typeof worldMap !== 'object') return worldMap
+  const facts = conditionFacts({ ...state, worldMap }, scenario)
+  const places = new Set()
+  const roads = new Set()
+  const roadKey = (/** @type {unknown} */ from, /** @type {unknown} */ to) => [String(from ?? ''), String(to ?? '')].sort().join('\u0000')
+  for (const reveal of scenario.map_reveals) {
+    if (!conditionMet(reveal.when, facts)) continue
+    for (const locationId of reveal.locations ?? []) places.add(locationId)
+    for (const [from, to] of reveal.routes ?? []) roads.add(roadKey(from, to))
+  }
+  // Готовый к отряду дракон заваливает тайный ход в логово: дорога закрыта,
+  // даже если отряд её уже нашёл. Это тоже вывод из состояния — счёт внимания
+  // назад не идёт, поэтому завал не исчезает.
+  const hidden = scenario.attention?.finale?.hidden_route
+  const collapsed = Array.isArray(hidden) && scenarioAttentionReady(state, scenario) ? roadKey(hidden[0], hidden[1]) : ''
+  if (collapsed) roads.delete(collapsed)
+  if (!places.size && !roads.size && !collapsed) return worldMap
+  const locations = Array.isArray(worldMap.locations) ? worldMap.locations : []
+  const routes = Array.isArray(worldMap.routes) ? worldMap.routes : []
+  const needsChange = locations.some((/** @type {any} */ location) => places.has(location?.id) && location.known === false)
+    || routes.some((/** @type {any} */ route) => roads.has(roadKey(route?.from, route?.to)) && route.discovered === false)
+    || routes.some((/** @type {any} */ route) => Boolean(collapsed) && roadKey(route?.from, route?.to) === collapsed && route.discovered !== false)
+  if (!needsChange) return worldMap
+  return {
+    ...worldMap,
+    locations: locations.map((/** @type {any} */ location) => (places.has(location?.id) && location.known === false
+      ? { ...location, known: true }
+      : location)),
+    routes: routes.map((/** @type {any} */ route) => {
+      const key = roadKey(route?.from, route?.to)
+      if (collapsed && key === collapsed) return route.discovered === false ? route : { ...route, discovered: false }
+      return roads.has(key) && route.discovered === false ? { ...route, discovered: true } : route
+    }),
+  }
+}
+
+/**
+ * Готов ли главный противник к отряду: счёт внимания дошёл до `ready_at`.
+ * Реестр читается напрямую — модуль внимания импортирует этот, а не наоборот.
+ * @param {any} state
+ * @param {any} [scenario]
+ */
+export function scenarioAttentionReady(state, scenario = campaignScenario(state)) {
+  const attention = scenario?.attention
+  return Boolean(attention) && Number(state?.scenario_attention?.value) >= attention.ready_at
+}
+
+/**
+ * Откуда отряд пришёл в текущее место: последнее покинутое место летописи.
+ * @param {any} state
+ */
+export function scenarioPreviousLocationId(state) {
+  const history = Array.isArray(state?.adventure?.history) ? state.adventure.history : []
+  const last = history.at(-1)
+  return clean(last?.location_id, 120) || clean(worldLocationFor(state, { name: last?.location })?.id, 120)
+}
+
+/**
+ * @typedef {{ id: string, kind: string, title: string, summary: string, location_ids: string[], completed: boolean }} ScenarioBeatProgress
+ * @typedef {{ id: string, location_id: string, found: boolean }} ScenarioClueProgress
+ * @typedef {{
+ *   scenario_id: string,
+ *   scenario_version: number,
+ *   current_location_id: string,
+ *   at_finale_approach: boolean,
+ *   at_boss_location: boolean,
+ *   boss: { npc_id: string, location_id: string, difficulty: string },
+ *   boss_outcome: string,
+ *   ending: { id: string, title: string, outcome: string } | null,
+ *   beats: ScenarioBeatProgress[],
+ *   clues: ScenarioClueProgress[],
+ *   lines_completed: number,
+ *   lines_total: number,
+ * }} ScenarioProgress
+ */
+
+/**
+ * Где отряд в сюжете. Всё выводится из состояния — отдельного счётчика нет.
+ * @param {any} state
+ * @returns {Readonly<ScenarioProgress> | null}
+ */
+export function scenarioProgress(state = {}) {
+  const scenario = campaignScenario(state)
+  if (!scenario) return null
+  const facts = conditionFacts(state, scenario)
+  const finale = scenario.beats.find((/** @type {any} */ beat) => beat.kind === 'finale')
+  const bossOutcome = bossEncounterOutcome(state, scenario)
+  const ending = bossOutcome
+    ? scenario.endings.find((/** @type {any} */ entry) => entry.outcomes.includes(bossOutcome)) ?? null
+    : null
+  const beats = scenario.beats.map((/** @type {any} */ beat) => ({
+    id: beat.id,
+    kind: beat.kind,
+    title: beat.title,
+    summary: beat.summary ?? '',
+    location_ids: [...beat.location_ids],
+    completed: beat.kind === 'finale' ? Boolean(ending) : conditionMet(beat.complete_when, facts),
+  }))
+  const clues = scenario.locations.flatMap((/** @type {any} */ location) => (location.secrets ?? []).map((/** @type {any} */ secret) => ({
+    id: secret.id,
+    location_id: location.location_id,
+    found: facts.found.has(scenarioClueFactId(scenario, secret.id)),
+  })))
+  const here = currentLocationId(state)
+  return Object.freeze({
+    scenario_id: scenario.id,
+    scenario_version: scenario.version,
+    current_location_id: here,
+    at_finale_approach: finale.location_ids.includes(here) && here !== finale.boss.location_id,
+    at_boss_location: here === finale.boss.location_id,
+    boss: { npc_id: finale.boss.npc_id, location_id: finale.boss.location_id, difficulty: finale.boss.difficulty },
+    boss_outcome: bossOutcome,
+    ending: ending ? { id: ending.id, title: ending.title, outcome: bossOutcome } : null,
+    beats,
+    clues,
+    lines_completed: beats.filter((/** @type {any} */ beat) => beat.kind === 'line' && beat.completed).length,
+    lines_total: beats.filter((/** @type {any} */ beat) => beat.kind === 'line').length,
+  })
+}
+
+/**
+ * Фаза темпа по сюжету: пролог и первая глава — передышка, линии — развитие,
+ * подход к логову — нарастание, логово — кульминация.
+ * @param {any} state
+ */
+export function scenarioPhase(state = {}) {
+  const progress = scenarioProgress(state)
+  if (!progress) return null
+  if (progress.at_boss_location) return 'climax'
+  if (progress.at_finale_approach) return 'escalation'
+  const opening = progress.beats.filter((beat) => beat.kind === 'prologue' || beat.kind === 'chapter')
+  return opening.every((beat) => beat.completed) ? 'development' : 'breather'
+}
+
+/**
+ * Места, куда сюжет зовёт дальше, в порядке предпочтения. Сначала — места
+ * незавершённых узлов, где отряд ещё не был; затем — места, где остались
+ * ненайденные улики незавершённых узлов; финал — когда закрыто не меньше двух
+ * линий или открытых линий не осталось. Выбор ближайшего по дорогам — за
+ * политикой Режиссёра, у которой есть граф карты мира.
+ * @param {any} state
+ * @returns {string[]}
+ */
+export function scenarioDestinationIds(state = {}) {
+  const scenario = campaignScenario(state)
+  const progress = scenarioProgress(state)
+  if (!scenario || !progress || progress.ending) return []
+  const here = progress.current_location_id
+  const visited = visitedLocationIds(state)
+  const pending = progress.beats.filter((beat) => !beat.completed && beat.kind !== 'finale')
+  const finale = scenario.beats.find((/** @type {any} */ beat) => beat.kind === 'finale')
+  const unvisited = []
+  const revisit = []
+  for (const beat of pending) {
+    for (const locationId of beat.location_ids) {
+      if (locationId === here) continue
+      const hasOpenClue = progress.clues.some((clue) => clue.location_id === locationId && !clue.found)
+      if (!visited.has(locationId)) unvisited.push(locationId)
+      else if (hasOpenClue) revisit.push(locationId)
+    }
+  }
+  const opening = pending.filter((beat) => beat.kind !== 'line').flatMap((beat) => beat.location_ids)
+  // Финал зовёт, когда закрыты две линии или когда в открытых линиях не
+  // осталось мест, где отряд ещё не был: возвращаться за пропущенной уликой —
+  // выбор стола, а не Режиссёра. Прогон Асстохана 2026-10-06 без этого
+  // правила тринадцать сцен ходил между Митглайдом, лагерем, Редстоуновкой и
+  // башней и так и не дошёл до логова.
+  const lineUnvisited = pending.filter((beat) => beat.kind === 'line')
+    .flatMap((beat) => beat.location_ids)
+    .filter((id) => id !== here && !visited.has(id))
+  const finaleReady = progress.lines_completed >= Math.min(2, progress.lines_total) || !lineUnvisited.length
+  const finaleIds = here !== finale.boss.location_id ? [finale.boss.location_id] : []
+  // Пролог и первая глава не открыты — сначала они: финал до заставы — это
+  // не свобода, а пропущенная завязка.
+  if (opening.some((id) => id !== here)) {
+    return [...new Set([...unvisited.filter((id) => opening.includes(id)), ...unvisited])]
+  }
+  if (finaleReady) return [...new Set([...finaleIds, ...unvisited])]
+  return [...new Set(unvisited.length ? unvisited : [...revisit, ...finaleIds])]
+}
+
+/**
+ * Встреча, которую Режиссёр собирает в текущем месте: главный противник в
+ * логове, пока он жив и бой с ним не завершён, иначе — встреча карточки места.
+ * `null` — у места нет своей встречи.
+ * @param {any} state
+ * @returns {{ npc_id: string, difficulty: string } | { theme: string, difficulty: string } | null}
+ */
+export function scenarioEncounterFor(state = {}) {
+  const scenario = campaignScenario(state)
+  const progress = scenarioProgress(state)
+  if (!scenario || !progress) return null
+  if (progress.at_boss_location && !progress.boss_outcome
+    && state?.npc_world?.vitals?.[progress.boss.npc_id]?.alive !== false) {
+    return { npc_id: progress.boss.npc_id, difficulty: progress.boss.difficulty }
+  }
+  const card = locationCard(scenario, progress.current_location_id)
+  return card?.encounter ? { theme: card.encounter.theme, difficulty: card.encounter.difficulty } : null
+}
+
+/**
+ * Развязка кампании по сценарию: исход боя с главным противником. Текст
+ * эпилога — авторский; модель может его переписать, но не выбрать другой исход.
+ * @param {any} state
+ * @returns {{ id: string, title: string, outcome: string, epilogue: string } | null}
+ */
+export function scenarioEnding(state = {}) {
+  const scenario = campaignScenario(state)
+  const progress = scenarioProgress(state)
+  if (!scenario || !progress?.ending) return null
+  const ending = scenario.endings.find((/** @type {any} */ entry) => entry.id === progress.ending?.id)
+  return ending ? { id: ending.id, title: ending.title, outcome: progress.boss_outcome, epilogue: ending.epilogue } : null
+}
+
+/**
+ * Сюжет для Рассказчика: о чём кампания, где отряд в истории и что уже
+ * найдено — чтобы голос ведущего знал историю, а не только сцену. Состояние
+ * приходит уже спроецированным для отряда; тексты ненайденных тайн сюда не
+ * входят по построению — только названия узлов и найденные улики.
+ * @param {any} state
+ */
+export function scenarioNarratorBrief(state = {}) {
+  const scenario = campaignScenario(state)
+  const progress = scenarioProgress(state)
+  if (!scenario || !progress) return null
+  const card = locationCard(scenario, progress.current_location_id)
+  const current = progress.beats.find((beat) => !beat.completed && beat.location_ids.includes(progress.current_location_id))
+    ?? progress.beats.find((beat) => !beat.completed)
+    ?? null
+  const clueFactIds = new Set(scenario.locations.flatMap((/** @type {any} */ location) => (location.secrets ?? [])
+    .map((/** @type {any} */ secret) => scenarioClueFactId(scenario, secret.id))))
+  const found = (Array.isArray(state?.worldMemory?.facts) ? state.worldMemory.facts : [])
+    .filter((/** @type {any} */ fact) => fact?.predicate === 'discovery' && clueFactIds.has(clean(fact.supersedes_fact_id, 200))
+      && ['party', 'public'].includes(String(fact.visibility ?? 'party')))
+    .map((/** @type {any} */ fact) => clean(fact.summary, 240))
+    .filter(Boolean)
+  const names = new Map(worldLocations(state).map((/** @type {any} */ entry) => [clean(entry.id, 120), clean(entry.name, 120)]))
+  return {
+    campaign: clean(scenario.title, 120),
+    premise: clean(scenario.summary, 600),
+    phase: scenarioPhase(state),
+    ...(card ? { place: { title: clean(card.title, 120), mood: clean(card.mood, 240), objective: clean(card.objective, 240) } } : {}),
+    ...(current ? { current_beat: { title: clean(current.title, 160), summary: clean(current.summary, 240) } } : {}),
+    completed_beats: progress.beats.filter((beat) => beat.completed).map((beat) => clean(beat.title, 160)),
+    found_clues: found.slice(-5),
+    ahead: scenarioDestinationIds(state).map((id) => names.get(id) || id).slice(0, 2),
+  }
+}
+
+/**
+ * Что Режиссёр-модель знает о сюжете: узлы, найденные улики и куда звать.
+ * Тексты тайн сюда не входят — их видит только хранитель находки.
+ * @param {any} state
+ */
+export function scenarioDirectorBrief(state = {}) {
+  const scenario = campaignScenario(state)
+  const progress = scenarioProgress(state)
+  if (!scenario || !progress) return null
+  const names = new Map(worldLocations(state).map((/** @type {any} */ entry) => [clean(entry.id, 120), clean(entry.name, 120)]))
+  return {
+    scenario: scenario.title,
+    beats: progress.beats.map((beat) => ({ title: beat.title, kind: beat.kind, completed: beat.completed })),
+    clues_found: progress.clues.filter((clue) => clue.found).length,
+    clues_total: progress.clues.length,
+    next_destinations: scenarioDestinationIds(state).map((id) => names.get(id) || id).slice(0, 4),
+    at_boss_location: progress.at_boss_location,
+  }
+}

@@ -61,9 +61,9 @@ export const PREDICATES = Object.freeze({
   }),
   discovery: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: '«clue»',
-    producers: ['world-memory'], consumers: ['game-orchestrator', 'narrator', 'player-request-router', 'world-memory'],
+    producers: ['world-memory'], consumers: ['campaign-scenario', 'game-orchestrator', 'narrator', 'player-request-router', 'rules-engine', 'scenario-knight', 'world-memory'],
     visibility: 'party',
-    description_ru: 'Находка свободного действия: открытая заготовка ведущего, знающий собеседник или улика по теме активного поручения. Рассказчик обязан её назвать; для часов поручения — доказательство.',
+    description_ru: 'Находка свободного действия: открытая заготовка ведущего, знающий собеседник или улика по теме активного поручения. Рассказчик обязан её назвать; для часов поручения — доказательство; для сценария — найденная улика узла сюжета (по `supersedes_fact_id`).',
   }),
   quest_progress: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: 'что именно продвинуло дело',
@@ -98,15 +98,15 @@ export const PREDICATES = Object.freeze({
   }),
   opening_narration: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'подтверждённый пролог сцены',
-    producers: ['campaign-bootstrap'], consumers: ['action-adjudicator', 'player-request-router'],
+    producers: ['campaign-bootstrap'], consumers: ['action-adjudicator', 'npc-social-controller', 'player-request-router'],
     visibility: 'party',
-    description_ru: 'Абзацы пролога кампании; NPC стартовой локации знают их как свои факты, а судья свободных действий читает их как описание места.',
+    description_ru: 'Абзацы пролога кампании; судья свободных действий читает их как описание места, модель собеседника — как фон. Запасной ответ NPC без модели пролог вслух не произносит.',
   }),
   gm_secret: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'JSON { topic, skills, holder }',
     producers: ['world-memory'], consumers: ['world-memory'],
     visibility: 'gm_only',
-    description_ru: 'Заготовка ведущего: то, что уже правда в первой сцене (campaign_creator/v7 или авторский мир) или в новой области (map_architect/v7) и скрыто от героев. Факт строит `gmSecretFact`. Удачная проверка подходящего навыка заменяет её фактом отряда discovery; знающий NPC может выдать её в разговоре.',
+    description_ru: 'Заготовка ведущего: то, что уже правда в первой сцене (campaign_creator/v7 или авторский мир), в новой области (map_architect/v7) или в месте сценария (`campaign-scenario`, стабильный id) и скрыто от героев. Факт строит `gmSecretFact`. Удачная проверка подходящего навыка заменяет её фактом отряда discovery; знающий NPC может выдать её в разговоре.',
   }),
   band_camp: Object.freeze({
     record: 'fact', subject_kinds: ['npc'], object: 'id ватаги',

@@ -5,7 +5,11 @@ import test from 'node:test'
 
 import { assetById } from '../server/asset-registry.mjs'
 import { sceneInteractionCatalogEntry } from '../server/scene-interactions.mjs'
-import { buildSmallTacticalMap, buildSmallTacticalMaps, locationPresetFor } from '../tools/build-small-tactical-maps.mjs'
+import { asciiAuthoredLocationIds, buildSmallTacticalMap, buildSmallTacticalMaps, locationPresetFor } from '../tools/build-small-tactical-maps.mjs'
+
+// Места, нарисованные вручную (`data/authored-maps/`): до 100×100 клеток, со
+// своими закрытыми и запертыми дверями и любым числом помещений.
+const DRAWN = new Set(asciiAuthoredLocationIds())
 import { cellAt, deserializeTacticalMap, edgeList, edgeNeighbor, reachableCells, serializeTacticalMap, validateTacticalMap } from '../server/tactical-map.mjs'
 
 const CATALOG_FILE = new URL('../data/authored-location-maps-v1.json', import.meta.url)
@@ -72,15 +76,20 @@ test('каталог содержит ровно 56 compact native-grid карт
   const maps = decodedCatalog()
   assert.deepEqual(maps.map((map) => map.locationId), publicLocationIds().concat('astohan-stormberg').sort())
   for (const map of maps) {
-    assert.ok(map.width >= 18 && map.width <= 30, map.locationId + ': ширина вне compact grid')
-    assert.ok(map.height >= 16 && map.height <= 24, map.locationId + ': высота вне compact grid')
-    assert.equal(map.sizeClass, 'arena')
+    if (DRAWN.has(map.locationId)) {
+      assert.ok(map.width <= 100 && map.height <= 100, map.locationId + ': нарисованная карта больше 100×100')
+      assert.ok(['arena', 'area', 'region'].includes(map.sizeClass), map.locationId + ': класс размера ' + map.sizeClass)
+    } else {
+      assert.ok(map.width >= 18 && map.width <= 30, map.locationId + ': ширина вне compact grid')
+      assert.ok(map.height >= 16 && map.height <= 24, map.locationId + ': высота вне compact grid')
+      assert.equal(map.sizeClass, 'arena')
+    }
     assert.equal(map.generator.id, 'authored-tactical-scene')
     assert.equal(map.generator.version, '1')
     assert.equal(map.tilesetId, 'authored-tactical:' + map.locationId + ':v1')
     assert.match(map.tilesetId, MARKER)
     const interiorZones = map.zones.filter((zone) => zone.kind === 'interior').length
-    assert.ok(interiorZones <= (map.locationId === 'astohan-stormberg' ? 4 : 3), map.locationId + ': слишком много interior zones')
+    if (!DRAWN.has(map.locationId)) assert.ok(interiorZones <= (map.locationId === 'astohan-stormberg' ? 4 : 3), map.locationId + ': слишком много interior zones')
     assert.ok(map.props.length > 0, map.locationId + ': нет native props')
     assert.ok(map.doors.length > 0, map.locationId + ': нет native doors')
   }
@@ -163,7 +172,7 @@ test('каждая малая карта валидна, связна, имее�
       assert.ok(cellAt(map, neighbor.x, neighbor.y)?.passable, map.locationId + ': дверь ведёт в стену')
       const edge = edgeList(map).find((candidate) => candidate.x === door.x && candidate.y === door.y && candidate.dir === door.dir)
       assert.equal(edge?.kind, 'door', map.locationId + ': дверь не закреплена на door edge')
-      if (map.locationId !== 'astohan-stormberg') assert.equal(door.state, 'open', map.locationId + ': стартовая дверь должна быть открыта')
+      if (map.locationId !== 'astohan-stormberg' && !DRAWN.has(map.locationId)) assert.equal(door.state, 'open', map.locationId + ': стартовая дверь должна быть открыта')
     }
   }
 })

@@ -180,7 +180,7 @@ test('bootstrap размещает только четырёх героев пе
   assert.equal(projected.length, 4)
   assert.ok(projected.every((npc) => npc.can_start_combat === true), 'все четыре NPC первой сцены имеют готовый боевой профиль')
   assert.equal(npcVitalFor(state, 'astohan-ares').max_hp, 168)
-  assert.equal(npcVitalFor(state, 'astohan-sargat').max_hp, 189)
+  assert.equal(npcVitalFor(state, 'astohan-sargat').max_hp, 178)
   const atTower = {
     ...state,
     scene: { ...state.scene, location: 'Башня Ломара', location_id: 'astohan-lomar-tower' },
@@ -195,7 +195,11 @@ test('bootstrap размещает только четырёх героев пе
 })
 
 test('у каждого персонажа действуют собственные социальные СЛ', async () => {
-  const state = await campaign()
+  // Ночной гость (Каэлан) при создании кампании недоступен — он приходит в
+  // замок только в своё окно ночи. СЛ проверяются у всех, как если бы каждый
+  // был на месте.
+  const created = await campaign()
+  const state = { ...created, social: { ...created.social, npcs: created.social.npcs.map((npc) => ({ ...npc, available: true })) } }
   for (const npc of state.social.npcs) {
     const policy = buildNpcSocialCheckPolicy({
       state, npcId: npc.id, heroId: 'hero', message: `Убеждаю ${npc.name} помочь`, turnId: `turn-${npc.id}`,
@@ -249,7 +253,7 @@ test('все восемь боевых профилей понятны суще�
     assert.deepEqual(monsterSpellcastingIssues(actor), [], npc.name)
     if (mechanics.legendary) assert.ok(legendaryProfileFor(actor), npc.name)
     const plan = planNpcTurn(combatState(actor), actor.id)
-    assert.ok(plan.some((command) => ['MakeAttack', 'CastSpell'].includes(command.command_type)), `${npc.name}: ${JSON.stringify(plan)}`)
+    assert.ok(plan.some((command) => ['MakeAttack', 'CastSpell', 'UseMonsterAction'].includes(command.command_type)), `${npc.name}: ${JSON.stringify(plan)}`)
   }
 })
 
@@ -302,8 +306,9 @@ test('Режиссёр материализует присутствующего
   assert.equal(created.theme, 'generic')
   assert.equal(created.enemies[0].image, NPC_PORTRAIT_CHARACTER_ASSETS['astohan-sargat'])
   assert.equal(created.enemies[0].stat_block_id, 'astohan:sargat-v1')
-  assert.equal(created.enemies[0].hp, 189)
-  assert.equal(created.enemies[0].legendary.actions.length, 3)
+  assert.equal(created.enemies[0].hp, 178)
+  assert.equal(created.enemies[0].special_actions.find((action) => action.id === 'fire-breath').damage[0].expression, '16d6', 'дыхание по книге')
+  assert.deepEqual(created.enemies[0].legendary.actions.map((action) => action.id), ['tail-sweep', 'wing-buffet'], 'дыхание — особое действие с перезарядкой, а не легендарное')
 
   const active = result.events.reduce(applyGameEvent, state)
   assert.equal(active.mechanics.combat.active, true)
@@ -311,6 +316,18 @@ test('Режиссёр материализует присутствующего
   assert.equal(npcProfileAtWorldTime(active.social.npcs.find((npc) => npc.id === 'astohan-sargat'), active).available, false)
   assert.equal(previewD20Check(active, { actorId: 'astohan-sargat', kind: 'check', skill: 'perception', difficulty: 10 }).modifier, 9)
   assert.equal(previewD20Check(active, { actorId: 'astohan-sargat', kind: 'save', ability: 'con', difficulty: 10 }).modifier, 9)
+  // Заряженное дыхание — первый выбор дракона, когда отряд в конусе. Здесь
+  // герой застал его врасплох; ход после внезапности — без неё. У сцены
+  // теста нет карты, а линия дыхания считается по открытым клеткам: кладём
+  // открытый пол пещеры.
+  const alert = normalizeCampaignState({
+    ...active,
+    scene: { ...active.scene, cells: Array.from({ length: 12 * 8 }, (_, index) => ({ x: index % 12, y: Math.floor(index / 12), type: 'floor', revealed: true })) },
+    mechanics: { ...active.mechanics, conditions: { ...active.mechanics.conditions, 'astohan-sargat': [] } },
+  })
+  const opening = planNpcTurn(alert, 'astohan-sargat')
+  assert.deepEqual(opening.map((command) => [command.command_type, command.action_id ?? null]).find(([type]) => type === 'UseMonsterAction'),
+    ['UseMonsterAction', 'fire-breath'], JSON.stringify(opening.map((command) => command.command_type)))
   const perception = resolveCommand({
     command_type: 'MakeAbilityCheck', actor_id: 'astohan-sargat', skill: 'perception', difficulty: 10,
   }, active, { diceService: dice([10]) })
@@ -325,14 +342,14 @@ test('Режиссёр материализует присутствующего
   assert.deepEqual(playerEncounter.enemies[0].legendary, { uses: 3, used: 0 })
   assert.doesNotMatch(
     JSON.stringify(playerEncounter),
-    /astohan:sargat-v1|action_profiles|authored_features|authored_tactics|savingThrowModifiers|skillModifiers|origin|provenance/u,
+    /astohan:sargat-v1|action_profiles|special_actions|authored_features|authored_tactics|savingThrowModifiers|skillModifiers|origin|provenance/u,
   )
 
   const wounded = applyGameEvent(active, {
     event_type: 'DamageApplied', actor_id: 'hero', target_ids: ['astohan-sargat'],
-    payload: { hp_before: 189, hp_after: 150, applied_amount: 39, damage_type: 'slashing' },
+    payload: { hp_before: 178, hp_after: 139, applied_amount: 39, damage_type: 'slashing' },
   })
-  assert.deepEqual(wounded.npc_world.vitals['astohan-sargat'], { hp: 150, max_hp: 189, alive: true })
+  assert.deepEqual(wounded.npc_world.vitals['astohan-sargat'], { hp: 139, max_hp: 178, alive: true })
 
   const defeated = structuredClone(active)
   defeated.enemies[0].hp = 0

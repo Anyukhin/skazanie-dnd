@@ -4,6 +4,8 @@
 import starterPresentation from '../data/starter-item-presentation.json'
 
 export const ITEM_IMAGE_IDS: ReadonlySet<string> = new Set([
+  'item-scenario-astohan-kaelan-tear',
+  'item-scenario-astohan-lomar-ward',
   'item-srd-5-2-1-acid',
   'item-srd-5-2-1-adamantine-chain-mail',
   'item-srd-5-2-1-alchemists-fire',

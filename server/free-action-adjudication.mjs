@@ -50,7 +50,7 @@ export const FREE_ACTION_RESOLUTION_POLICY_VERSION = RESOLUTION_POLICY_VERSION
 const inEnum = (values, value, fallback) => (values.includes(String(value)) ? String(value) : fallback)
 
 const HAZARD_ALIASES = Object.freeze({
-  fire: Object.freeze(['fire', 'hazard-fire', 'огонь', 'огня', 'огнем', 'огнём', 'пламя', 'пламени', 'костер', 'костёр', 'костра', 'жаровня', 'жаровни', 'горящий']),
+  fire: Object.freeze(['fire', 'hazard-fire', 'lava', 'hazard-lava', 'magma', 'огонь', 'огня', 'огнем', 'огнём', 'пламя', 'пламени', 'костер', 'костёр', 'костра', 'жаровня', 'жаровни', 'горящий']),
   scalding: Object.freeze(['scalding', 'hazard-scalding', 'кипяток', 'кипятка', 'паром', 'паре', 'ошпар']),
   caustic: Object.freeze(['acid', 'caustic', 'hazard-acid', 'hazard-caustic', 'кислота', 'кислоты', 'кислотой', 'едкое', 'едкой', 'щелочь', 'щелочи']),
   fall: Object.freeze(['fall', 'hazard-fall', 'падение', 'падения', 'падаю', 'падать', 'обрыв', 'обрыва', 'пропасть', 'пропасти']),
@@ -58,8 +58,21 @@ const HAZARD_ALIASES = Object.freeze({
   shards: Object.freeze(['shards', 'hazard-shards', 'осколок', 'осколки', 'стекло', 'стекла', 'обломок', 'обломки', 'шип']),
 })
 
+/**
+ * Русские слова опасности, которые нельзя искать подстрокой: «лаву» сидит
+ * внутри «главу» и «славу». Лава и магма для правил — огонь.
+ */
+const HAZARD_WORD_PATTERNS = Object.freeze({
+  fire: /(?<![\p{L}\p{M}])(?:лав(?:а|ы|е|у|ой|ою|овый|ового|овому|овым|овом|овая|овой|овую|овое|овые|овых|овыми)|магм(?:а|ы|е|у|ой|ою))(?![\p{L}\p{M}])/iu,
+})
+
+/** Упоминает ли текст опасность `id`: подстрокой из каталога или словом. */
+function mentionsHazard(id, value) {
+  return (HAZARD_ALIASES[id] ?? []).some((alias) => value.includes(alias)) || Boolean(HAZARD_WORD_PATTERNS[id]?.test(value))
+}
+
 const HAZARD_CONTACT_VERBS = /(?:сажусь|садя|сесть|сяду|сижу|ложусь|ложа|наступа|трога|каса|прикаса|лезу|лезть|вхожу|войти|ступа|прыга|прыгнуть|броса|обжига|облокачива|наклоняюсь)/iu
-const UNKNOWN_HAZARD_WORDS = /(?:опасност|ловуш|метеор|лав[аы]|яд|токсич|скольз|пропаст|обрыв|обвал|шип|оскол|стекл)/iu
+const UNKNOWN_HAZARD_WORDS = /(?:опасност|ловуш|метеор|(?<![\p{L}\p{M}])лав[аы]|яд|токсич|скольз|пропаст|обрыв|обвал|шип|оскол|стекл)/iu
 const HAZARD_AVOIDANCE = /(?:перепрыг|перешаг|обход|обхожу|обойти|мимо|держусь +подальше|(?:прыга|прыгну|перепрыг)[^.!?]{0,40} +(?:через|мимо))/iu
 const HAZARD_NEAR_OR_NONE = /(?:рядом +с|возле|около|не +(?:каса|трога|наступ|вхож|пада|прыга|лез))/iu
 const WALL_COLLISION_ACTION = /(?<![\p{L}\p{M}])врезаюсь(?![\p{L}\p{M}])[^.!?]{0,64}(?<![\p{L}\p{M}])стен(?:а|ы|е|у|ой|ами|ах)(?![\p{L}\p{M}])/iu
@@ -73,12 +86,12 @@ const SELF_HAZARD_CONTACT_NEGATION = /(?<![\p{L}\p{M}])не\s+(?:сажусь|с
 export function canonicalEnvironmentHazardId(value = '') {
   const normalized = clean(value, 80).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
   if (ENVIRONMENT_HAZARD_IDS.includes(normalized)) return normalized
-  return ENVIRONMENT_HAZARD_IDS.find((id) => (HAZARD_ALIASES[id] ?? []).some((alias) => normalized.includes(alias))) ?? ''
+  return ENVIRONMENT_HAZARD_IDS.find((id) => mentionsHazard(id, normalized)) ?? ''
 }
 
 function hazardIdMentionedIn(text = '') {
   const value = clean(text, 1_000).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
-  return Object.entries(HAZARD_ALIASES).find(([, aliases]) => aliases.some((alias) => value.includes(alias)))?.[0] ?? ''
+  return Object.keys(HAZARD_ALIASES).find((id) => mentionsHazard(id, value)) ?? ''
 }
 
 function hazardIntentFor(text, reading = {}) {

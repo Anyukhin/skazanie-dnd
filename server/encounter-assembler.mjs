@@ -146,7 +146,7 @@ export const SRD_5_2_1_MONSTER_ALLOWLIST = deepFreeze({
       // Recharge 5–6 из стат-блока. Раньше стояло `uses: 1` — грубое
       // приближение «один раз за бой»: способность не возвращалась никогда,
       // хотя по редакции паук пускает её снова, едва выпадет 5 или 6.
-      { id: 'web', name: 'Паутина', kind: 'ranged', attack_modifier: 5, damage_amount: 0, damage_type: 'untyped', range_feet: 60, normal_range_feet: 30, on_hit: { condition: 'restrained', duration: 'until-next-turn' }, recharge: 5, tactical_priority: 8 },
+      { id: 'web', name: 'Паутина', kind: 'ranged', attack_modifier: 5, damage_amount: 0, damage_type: 'untyped', range_feet: 60, normal_range_feet: 30, on_hit: { condition: 'restrained', duration: 'until-next-turn', escape_dc: 12 }, recharge: 5, tactical_priority: 8 },
     ],
   },
   'srd_5_2_1:orc': {

@@ -97,7 +97,7 @@ export function sceneWorldMemoryEventId(commandId) {
  * модели здесь — заготовки ведущего (`secrets`): они проходят тот же
  * `normalizeGmSecrets`, что и стартовые, и пишутся только скрытыми фактами.
  */
-export function sceneWorldMemoryEvents(state, transition, { commandId = '', sourceEventId = '', secrets = [] } = {}) {
+export function sceneWorldMemoryEvents(state, transition, { commandId = '', sourceEventId = '', secrets = [], scenarioSecrets = [] } = {}) {
   const memory = ensureSceneWorldMemory(state.worldMemory, state)
   const clockMax = campaignArcPlan(state)?.chapter_clock_max ?? 4
   const previousScene = state.scene ?? {}
@@ -198,6 +198,20 @@ export function sceneWorldMemoryEvents(state, transition, { commandId = '', sour
       index,
       sourceCommandId: clean(commandId, 160),
     })
+    if (!memory.facts.some((existing) => existing.id === fact.id)) add('WorldFactRecorded', { fact }, 'gm_only')
+  }
+  // Тайны сценария (`server/campaign-scenario.mjs`): id стабилен, поэтому узел
+  // сюжета узнаёт находку, а возвращение в место не заводит тайну второй раз.
+  for (const secret of scenarioSecrets) {
+    const fact = {
+      ...gmSecretFact({ clue: secret.clue, topic: secret.topic, skills: secret.skills, holder: '' }, {
+        subjectId: nextLocation.id,
+        salt: secret.fact_id,
+        index: 0,
+        sourceCommandId: clean(commandId, 160),
+      }),
+      id: secret.fact_id,
+    }
     if (!memory.facts.some((existing) => existing.id === fact.id)) add('WorldFactRecorded', { fact }, 'gm_only')
   }
   return events

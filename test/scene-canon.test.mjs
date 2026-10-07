@@ -212,7 +212,7 @@ test('Рассказчик получает канон отдельным бло
   const narrator = new Narrator({ llmClient: llm, asyncFeedback: false })
   await narrator.render(briefWith({ scene: { location: 'Причал Аквилона' }, world_clock: worldClock({ weather: 'fog' }) }))
   const [request] = llm.requests
-  assert.match(request.messages[0].content, /PROMPT_ID: narrator\/v12/u)
+  assert.match(request.messages[0].content, /PROMPT_ID: narrator\/v13/u)
   assert.match(request.messages[0].content, /scene_canon/u)
   const payload = untrustedPayload(request.messages[1].content, 'scene_canon')
   assert.equal(payload.weather, 'Туман')

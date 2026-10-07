@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { generateSceneGeometry, levelKey, librarySceneFields, openingEntrySide, rememberSceneMap } from './adventure-director.mjs'
 import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioning.mjs'
 import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
-import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeMerchants } from './merchant-economy.mjs'
+import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeInventoryItem, normalizeMerchants } from './merchant-economy.mjs'
 import { STARTER_KIT_2024_POLICY, withStarterKit } from './starter-kit.mjs'
 import { MAX_CHARACTER_LEVEL, partyPresentationFor } from './character-lifecycle.mjs'
 import { ensureSceneWorldMemory } from './scene-memory.mjs'
@@ -14,6 +14,8 @@ import { createCampaignWorldMap } from './world-map.mjs'
 import { DEFAULT_PARTY_DECISION_POLICY } from './party-decision.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { buildCampaignArcPlan } from './campaign-loop-policy.mjs'
+import { buildScenarioArcPlan, scenarioClueFactIdsKnownBy, scenarioForWorldTemplate, scenarioSecretsFor } from './campaign-scenario.mjs'
+import { scenarioKnightStartingInventory, scenarioNightVisitorIds } from './scenario-knight.mjs'
 import { validateCampaignMode } from './campaign-stories.mjs'
 import { drawCampaignInspiration, inspirationPromptSeed } from './campaign-inspiration.mjs'
 import { LEGACY_DEFAULT_RULESET_ID, rulesetLock } from './ruleset-config.mjs'
@@ -22,6 +24,7 @@ import { normalizeWorldOfficesState } from './world-offices.mjs'
 import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.mjs'
 import { normalizeSceneMapDesign, worldLocationDesignContext } from './scene-map-design.mjs'
 import { campaignStartCanon } from './scene-canon.mjs'
+import { materializeCatalogItem } from './item-catalog.mjs'
 import { sceneMapRequirementsFor } from './scene-requirements.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v8.txt', import.meta.url)), 'utf8')
@@ -549,7 +552,11 @@ export class CampaignBootstrapper {
         generatedBy = 'ai-storyteller'
       } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
     }
-    const arc = selectedCampaignMode === 'adventure' ? buildCampaignArcPlan(seed) : null
+    // У авторского мира со сценарием арку задаёт сюжет (`campaign-scenario.mjs`),
+    // а не хеш: главы, финал и развязки — данные сценария.
+    const scenario = worldTemplate ? scenarioForWorldTemplate(worldTemplate.id) : null
+    const arc = selectedCampaignMode !== 'adventure' ? null
+      : scenario ? buildScenarioArcPlan(scenario) : buildCampaignArcPlan(seed)
     // Пролог — необязательное украшение: письмо-завязка, которое владелец
     // зачитает перед первым вечером. Отказ летописца кампанию не задерживает.
     const prologue = this.loreAuthor && !worldTemplate
@@ -662,6 +669,7 @@ export class CampaignBootstrapper {
     const starterFactionId = factionEntities[0].id
     const starterQuestId = `quest-${seed.slice(0, 12)}`
     if (selectedCampaignMode === 'persistent') campaignConcept.story_quest_id = starterQuestId
+    const nightVisitorIds = new Set(scenarioNightVisitorIds(scenario))
     const openingNpcs = opening.npcs.map((npc, index) => ({
       id: npc.id || `npc-${seed.slice(0, 12)}-${index + 1}`,
       name: npc.name,
@@ -677,7 +685,9 @@ export class CampaignBootstrapper {
       ...(npc.inventory?.length ? { inventory: structuredClone(npc.inventory) } : {}),
       known_fact_ids: [], visibility: npc.visibility || 'party',
       ...(npc.revealOnPresence === true ? { reveal_on_presence: true } : {}),
-      available: true,
+      // Ночной гость сценария (проклятый рыцарь) приходит только в своё окно
+      // ночи: до него профиль недоступен (`server/scenario-knight.mjs`).
+      available: !nightVisitorIds.has(String(npc.id ?? '')),
       tags: [...new Set([...(npc.tags ?? []), `faction:${factionIdByTemplateId.get(npc.factionId) ?? starterFactionId}`])],
     }))
     const authoredOfficeConfigurations = Array.isArray(opening.worldRules?.offices)
@@ -740,9 +750,19 @@ export class CampaignBootstrapper {
     for (const level of geometry.library?.levels ?? []) {
       rememberSceneMap(libraryMemory, levelKey(startingLocationId, level.index), legacyCellsFromTacticalMap(deserializeTacticalMap(level.map)), level.map)
     }
+    // Вещи, которые сценарий с начала кампании отдаёт в руки своим NPC:
+    // Слеза в латах проклятого рыцаря выпадет из его контейнера, если он
+    // падёт в бою, а не уйдёт с миром.
+    const scenarioInventories = Object.fromEntries(Object.entries(scenarioKnightStartingInventory(scenario)).map(([npcId, catalogIds]) => [
+      npcId,
+      catalogIds.map((catalogId, index) => ({
+        ...normalizeInventoryItem(materializeCatalogItem(catalogId, { quantity: 1, origin: 'gifted' }), { idFallback: `scenario-start:${npcId}:${index + 1}`, preserveUnknown: true }),
+        origin: 'gifted',
+      })),
+    ]))
     const emptyNpcWorld = {
       schema_version: 3,
-      placements: [], vitals: {}, stances: {}, inventories: {},
+      placements: [], vitals: {}, stances: {}, inventories: scenarioInventories,
       profiles: Object.fromEntries(opening.npcs.filter((npc) => npc.mechanics).map((npc, index) => [
         npc.id || `npc-${seed.slice(0, 12)}-${index + 1}`,
         structuredClone(npc.mechanics),
@@ -783,17 +803,34 @@ export class CampaignBootstrapper {
     // Секрет знает только названный хранитель: его он может выдать в
     // разговоре, остальные собеседники о нём не слышали.
     const secretFacts = openingSecretFacts(opening, openingLocationEntity, campaignCode)
+    // Тайны сценария стартового места пишутся сразу: переход сцены записывает
+    // их при входе, а в первое место отряд не входит — он в нём начинает.
+    // Без этого тайны Штормберга (страница журнала, признание Ареса) не
+    // существовали, пока отряд не уйдёт и не вернётся.
+    const scenarioStartSecrets = openingLocationEntity
+      ? scenarioSecretsFor({ campaignConcept }, startingLocationId).map((secret) => ({
+        ...gmSecretFact({ clue: secret.clue, topic: secret.topic, skills: secret.skills, holder: '' }, {
+          subjectId: openingLocationEntity.id, salt: secret.fact_id, index: 0, sourceCommandId: `bootstrap:${campaignCode}`,
+        }),
+        id: secret.fact_id,
+      }))
+      : []
     for (const [index, fact] of secretFacts.entries()) {
       const holder = clean(opening.secrets[index]?.holder, 120).toLocaleLowerCase('ru')
       const npc = holder ? openingNpcs.find((entry) => clean(entry.name, 120).toLocaleLowerCase('ru') === holder) : null
       if (npc) npc.known_fact_ids = [...(npc.known_fact_ids ?? []), fact.id]
+    }
+    // Хранители тайн сценария знают свою часть истории (`holders`).
+    for (const npc of openingNpcs) {
+      const known = scenarioClueFactIdsKnownBy(scenario, String(npc.id ?? ''))
+      if (known.length) npc.known_fact_ids = [...new Set([...(npc.known_fact_ids ?? []), ...known])]
     }
     // Короткое название отдельно от полного текста зацепки: зацепка уходит в
     // summary целиком, цель сцены — в objectives (плейтест 2026-10-04, SE).
     const starterTitle = starterQuestTitle(opening)
     const initialWorldMemory = {
       ...sceneMemory,
-      facts: [...(sceneMemory.facts ?? []), ...openingFacts, ...secretFacts],
+      facts: [...(sceneMemory.facts ?? []), ...openingFacts, ...secretFacts, ...scenarioStartSecrets],
       entities: [...(sceneMemory.entities ?? []), ...factionEntities],
       quests: [...(sceneMemory.quests ?? []), {
         id: starterQuestId,

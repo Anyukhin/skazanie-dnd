@@ -20,6 +20,7 @@ import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
 import { mapSignaturesFor } from './board3d-scene-signature'
 import { BOARD3D_QUALITY, board3DQuality, cueForQuality, type Board3DQuality } from './board3d-quality'
 import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, fitSunShadow } from './board3d-graphics'
+import { surroundingsBackdrop } from './board3d-surroundings'
 import type { TacticalMap } from './types'
 
 type Props = TacticalBoardProps & { onUnavailable: (message: string) => void }
@@ -27,6 +28,8 @@ type CameraState = { position: THREE.Vector3; target: THREE.Vector3; zoom: numbe
 const cameras = new Map<string, CameraState>()
 const FPS_STORAGE_KEY = 'skazanie-3d-fps'
 const QUALITY_STORAGE_KEY = 'skazanie-3d-quality'
+/** Медиана кадра дольше этого (меньше ~24 кадров) — повод снизить качество. */
+const AUTO_QUALITY_FRAME_MS = 42
 const ROOF_STORAGE_KEY = 'skazanie-3d-roofs'
 
 function roofModeValue(value: unknown): Board3DRoofMode {
@@ -171,6 +174,16 @@ export default function TacticalBoard3D(props: Props) {
   const [roofMode, setRoofMode] = useState<Board3DRoofMode>(() => {
     try { return roofModeValue(localStorage.getItem(ROOF_STORAGE_KEY)) } catch { return 'hidden' }
   })
+  // Автоснижение качества: только пока игрок сам его не выбирал. Большая
+  // нарисованная карта на «Обычном» тяжела для встроенной видеокарты
+  // (Митглайд 84×70: ~12 кадров на Iris Xe против ~56 на «Экономном»).
+  const autoQuality = useRef((() => { try { return localStorage.getItem(QUALITY_STORAGE_KEY) === null } catch { return false } })())
+  const [qualityNote, setQualityNote] = useState('')
+  const lowerQuality = useRef<(next: Board3DQuality) => void>(() => {})
+  lowerQuality.current = (next) => {
+    setQuality(next)
+    setQualityNote(`Качество снижено до «${BOARD3D_QUALITY[next].label}»: кадров мало. Можно вернуть в меню качества.`)
+  }
   const settings = useRef({ models, catalog, quality, roofMode })
   settings.current = { models, catalog, quality, roofMode }
   const [playing, setPlaying] = useState(false)
@@ -235,7 +248,8 @@ export default function TacticalBoard3D(props: Props) {
     renderer.domElement.setAttribute('aria-label', 'Поле боя 3D. Стрелки выбирают клетку, Enter подтверждает. Перетаскивание двигает камеру, правая кнопка поворачивает.')
     element.prepend(renderer.domElement)
     const scene = new THREE.Scene()
-    const backdrop = createBoardBackdropTexture()
+    let backdrop = createBoardBackdropTexture()
+    let backdropKey = ''
     scene.background = backdrop ?? new THREE.Color('#191914')
     const environment = createBoardEnvironment(renderer)
     if (environment) {
@@ -349,6 +363,34 @@ export default function TacticalBoard3D(props: Props) {
     }
     let pending: CombatAnimationCue[] = []
     let lastAnimateAt = 0
+    // Камера боя, как в BG3: плавно подъезжает к тому, кто действует, если он
+    // ушёл из середины экрана, и вздрагивает на крите, тяжёлом ударе и смерти.
+    // Ручное управление не отбирается: цель сбрасывается, как только игрок
+    // сам двигает камеру.
+    let cameraGoal: THREE.Vector3 | null = null
+    let shakeUntil = 0
+    let shakeStrength = 0
+    const SHAKE_MS = 280
+    const followCue = (cue: CombatAnimationCue) => {
+      const focusId = cue.kind === 'strike' || cue.kind === 'impact' || cue.kind === 'death'
+        ? ('targetId' in cue && cue.targetId ? cue.targetId : 'actorId' in cue ? cue.actorId : '')
+        : 'actorId' in cue ? cue.actorId : ''
+      const view = focusId ? actorViews.get(focusId) : null
+      if (!view) return
+      const point = new THREE.Vector3(view.root.position.x, controls.target.y, view.root.position.z)
+      const onScreen = point.clone().project(camera)
+      // В середине экрана камеру не трогаем: игрок и так видит действие.
+      if (Math.abs(onScreen.x) < .55 && Math.abs(onScreen.y) < .55) return
+      cameraGoal = point
+    }
+    const shakeFor = (cue: CombatAnimationCue, now: number) => {
+      const actor = 'targetId' in cue && cue.targetId ? (latest.current.animationActors ?? []).find((entry) => entry.id === cue.targetId) : null
+      const maxHp = Math.max(1, Number((actor as { maxHp?: number } | null)?.maxHp) || 0)
+      const amount = 'amount' in cue && typeof cue.amount === 'number' ? cue.amount : 0
+      const heavy = amount >= Math.max(12, maxHp * .25)
+      const strength = cue.kind === 'death' ? .06 : cue.kind === 'strike' && cue.hit && cue.critical ? .09 : (cue.kind === 'strike' || cue.kind === 'impact') && heavy ? .05 : 0
+      if (strength > 0) { shakeStrength = strength; shakeUntil = now + SHAKE_MS }
+    }
     let active: {
       cue: CombatAnimationCue
       started: number
@@ -792,6 +834,10 @@ export default function TacticalBoard3D(props: Props) {
         if (current.animationsEnabled !== false && cue.kind === 'strike' && model) applyStrikeAppearance(model, cue)
         const startPose = poseForCue(cue)
         if (current.animationsEnabled !== false && startPose) model?.setPose(startPose, 0)
+        if (current.animationsEnabled !== false && !cueReducedMotion) {
+          followCue(cue)
+          shakeFor(cue, now)
+        }
         lastAnimateAt = now
       }
       if (!active) return
@@ -860,6 +906,30 @@ export default function TacticalBoard3D(props: Props) {
         const impact = strikeImpactProgress(cue)
         actorViews.get(cue.targetId)?.model.setPose('hit', Math.min(1, (progress - impact) / (1 - impact)))
       }
+      // Промах читается уклонением, как в BG3: цель к моменту удара шагает вбок
+      // от линии атаки и чуть назад, а к концу такта возвращается на место.
+      // Сторона выбирается по id, поэтому у одной цели она одна и та же.
+      // Перехват щитом — не уклонение: там цель стоит и принимает удар.
+      if (!reduced && cue.kind === 'strike' && !cue.hit && attackOutcome(cue) !== 'blocked') {
+        const targetView = actorViews.get(cue.targetId)
+        const target = actorAt(cue.targetId), source = actorAt(cue.actorId)
+        const from = cue.from ?? source, to = cue.to ?? target
+        if (targetView && target && from && to) {
+          const sourceCenter = source ? actorPresentationCenter(current.map, source, from) : { x: from.x + .5, y: from.y + .5 }
+          const targetCenter = actorPresentationCenter(current.map, target, to)
+          const dx = targetCenter.x - sourceCenter.x, dy = targetCenter.y - sourceCenter.y
+          const length = Math.max(.001, Math.hypot(dx, dy))
+          const impact = strikeImpactProgress(cue)
+          const sway = Math.sin(THREE.MathUtils.clamp((progress - impact + .14) / .5, 0, 1) * Math.PI)
+          const side = [...cue.targetId].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 2 ? 1 : -1
+          const sideways = .22 * side * sway, backwards = .1 * sway
+          targetView.root.position.set(
+            targetCenter.x + (-dy / length) * sideways + (dx / length) * backwards,
+            actorGround(current.map, target, { ...target, ...to }),
+            targetCenter.y + (dx / length) * sideways + (dy / length) * backwards,
+          )
+        }
+      }
       active.effect?.update(progress)
       applyEffectLights(active.effect?.group)
       const board = boardScene(spell.canvas), context = spell.canvas.getContext('2d')
@@ -873,6 +943,18 @@ export default function TacticalBoard3D(props: Props) {
         : cue.kind === 'strike' ? progress < strikeImpactProgress(cue) ? '' : attackOutcome(cue) === 'blocked' ? 'Перехвачено' : !cue.hit ? 'Промах' : `${cue.critical ? 'Крит! ' : ''}${cue.amount == null ? '' : `−${cue.amount}`}`
           : cue.kind === 'channel' && cue.amount != null ? `+${cue.amount}` : cue.kind === 'condition' ? cue.label : ''
       floating.textContent = message
+      // Тон цифры по исходу, как в BG3: крит — крупно и золотом, лечение —
+      // зелёным, промах — серым, состояние — мельче. Крит «хлопает» в начале.
+      const critical = cue.kind === 'strike' && cue.hit && cue.critical === true
+      const tone = !message ? ''
+        : critical ? 'crit'
+          : message === 'Промах' || message === 'Перехвачено' ? 'miss'
+            : message.startsWith('+') ? 'heal'
+              : cue.kind === 'condition' ? 'condition'
+                : 'damage'
+      floating.dataset.tone = tone
+      const pop = tone === 'crit' ? 1 + .55 * Math.max(0, 1 - progress * 4) : tone === 'damage' ? 1 + .18 * Math.max(0, 1 - progress * 5) : 1
+      floating.style.transform = `translate(-50%, -100%) scale(${pop.toFixed(3)})`
       if (resultActor && current.map && revealedAt(current.map, resultActor.x, resultActor.y)) {
         // Цифра стоит над тем местом, где фигурка видна сейчас, а не над
         // клеткой из снимка, куда она ещё только придёт.
@@ -916,9 +998,26 @@ export default function TacticalBoard3D(props: Props) {
         }
         if (previousTime && now - previousTime < 250) frameSamples.push(now - previousTime)
         previousTime = now
+        if (cameraGoal) {
+          // Плавный подъезд: каждый кадр — доля оставшегося пути.
+          const step = new THREE.Vector3(cameraGoal.x - controls.target.x, 0, cameraGoal.z - controls.target.z)
+          if (step.lengthSq() < .0004) cameraGoal = null
+          else {
+            step.multiplyScalar(1 - Math.exp(-delta * 5))
+            controls.target.add(step)
+            camera.position.add(step)
+            labelsDirty = true
+          }
+        }
         controls.update()
         if (labelsDirty || active?.cue.kind === 'move' || active?.cue.kind === 'strike') drawLabels()
+        const shaking = shakeUntil > now
+        const shake = shaking
+          ? new THREE.Vector3(Math.sin(now * .09) , Math.sin(now * .13 + 1.3) * .6, Math.cos(now * .11)).multiplyScalar(shakeStrength * ((shakeUntil - now) / SHAKE_MS))
+          : null
+        if (shake) camera.position.add(shake)
         pipeline.render()
+        if (shake) camera.position.sub(shake)
         trackPointShadowDisposal()
         renderedFrames += 1
         renderer.domElement.dataset.frames = String(renderedFrames)
@@ -942,9 +1041,21 @@ export default function TacticalBoard3D(props: Props) {
           renderer.domElement.dataset.memoryTextures = String(renderer.info.memory.textures)
           renderer.domElement.dataset.queueLength = String(pending.length + (active ? 1 : 0))
           publishModelDiagnostics()
+          // Медиана интервала между кадрами непрерывной отрисовки (анимация,
+          // камера): простой без движения сюда не попадает и за тормоза не идёт.
+          if (autoQuality.current && frameSamples.length >= 30) {
+            const median = [...frameSamples].sort((a, b) => a - b)[Math.floor(frameSamples.length / 2)]
+            const current = settings.current.quality
+            const next: Board3DQuality | null = current === 'high' ? 'balanced' : current === 'balanced' ? 'low' : null
+            if (median > AUTO_QUALITY_FRAME_MS && next) {
+              lowerQuality.current(next)
+              frameSamples.length = 0
+              renderer.domElement.dataset.autoQuality = next
+            }
+          }
           measuredFrames = 0; measuredRenderMs = 0; measuredSince = now
         }
-        if (active || pending.length) invalidate()
+        if (active || pending.length || cameraGoal || shakeUntil > now) invalidate()
         // Движение следует частоте экрана без искусственной паузы между кадрами.
         // При reduced motion, выключенных анимациях и скрытой вкладке цикл спит.
         else if (fpsEnabled.current || (motionAllowed && BOARD3D_QUALITY[settings.current.quality].idle
@@ -1031,6 +1142,17 @@ export default function TacticalBoard3D(props: Props) {
         renderer.toneMappingExposure = ambience.exposure
         renderer.domElement.dataset.darkness = darkness.toFixed(2)
         renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
+        // Фон — в тон окрестностям места: лес, луг, горы или толща камня.
+        const [backdropCenter, backdropEdge] = surroundingsBackdrop(map)
+        if (backdropKey !== `${backdropCenter}${backdropEdge}`) {
+          const next = createBoardBackdropTexture(backdropCenter, backdropEdge)
+          if (next) {
+            backdrop?.dispose()
+            backdrop = next
+            scene.background = next
+            backdropKey = `${backdropCenter}${backdropEdge}`
+          }
+        }
         terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', onReady: invalidate })
         diagnostics.created += 1
         diagnostics.rebuilds += 1
@@ -1321,6 +1443,8 @@ export default function TacticalBoard3D(props: Props) {
     document.addEventListener('visibilitychange', visibility)
     const cameraChanged = () => { labelsDirty = true; invalidate() }
     controls.addEventListener('change', cameraChanged)
+    // Игрок взял камеру сам — подъезд к действию больше не тянет её обратно.
+    controls.addEventListener('start', () => { cameraGoal = null })
     runtime.current = { sync, refresh: invalidate, skip, reset,
       turn(angle) { camera.position.sub(controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), angle).add(controls.target); controls.update(); invalidate() },
       zoom(factor) { labelsDirty = true; camera.zoom = THREE.MathUtils.clamp(camera.zoom * factor, controls.minZoom, controls.maxZoom); camera.updateProjectionMatrix(); invalidate() },
@@ -1386,9 +1510,13 @@ export default function TacticalBoard3D(props: Props) {
       }}>FPS</button>
       <select className="board3d-quality" aria-label="Качество 3D" title="Качество 3D" value={quality} onChange={(event) => {
         const next = board3DQuality(event.target.value)
+        // Выбор игрока сильнее автоснижения: дальше качество не трогаем.
+        autoQuality.current = false
+        setQualityNote('')
         setQuality(next)
         try { localStorage.setItem(QUALITY_STORAGE_KEY, next) } catch { /* Профиль работает без сохранения. */ }
       }}>{Object.entries(BOARD3D_QUALITY).map(([key, profile]) => <option key={key} value={key}>{profile.label}</option>)}</select>
+      {qualityNote && <span className="board3d-quality-note" role="status">{qualityNote}</span>}
       <select className="board3d-roof-mode" aria-label="Крыша" title="Отображение крыши и сводов" value={roofMode} onChange={(event) => {
         const next = roofModeValue(event.target.value)
         setRoofMode(next)

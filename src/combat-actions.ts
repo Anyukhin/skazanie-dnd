@@ -8,7 +8,32 @@ type CatalogUsage = { maximum: number | 'proficiency' | `ability:${string}`; rec
 type CatalogAction = CombatAction & { classKey: string; subclass?: string | null; uses?: CatalogUsage | null }
 type CatalogClass = { classKey: string; label: string; subclassLevel: number; sourceUrl: string; subclasses: Array<{ id: string; name: string; sourceUrl: string }>; actions: CatalogAction[] }
 
-const generatedClasses = new Map((catalogPayload.classes as unknown as CatalogClass[]).map((entry) => [entry.classKey, entry]))
+/**
+ * Описания каталога dnd.su собраны автоматически и несут служебные хвосты
+ * латиницей: «лимит: proficiency», «состояние: incapacitated». Игрок читал их
+ * в мастере героя и на панели (плейтест 2026-10-07). Данные не трогаем —
+ * переводим при загрузке; тот же словарь стоит в `server/combat-actions.mjs`.
+ */
+const CATALOG_DESCRIPTION_TERMS: Array<[RegExp, string]> = [
+  [/лимит: proficiency/gu, 'лимит: бонус мастерства'],
+  [/лимит: ability/gu, 'лимит: модификатор характеристики'],
+  [/ · состояние: feature-movement/gu, ''],
+  [/состояние: charmed/gu, 'состояние: «Очарованный»'],
+  [/состояние: frightened/gu, 'состояние: «Испуганный»'],
+  [/состояние: incapacitated/gu, 'состояние: «Недееспособный»'],
+  [/состояние: poisoned/gu, 'состояние: «Отравленный»'],
+  [/состояние: restrained/gu, 'состояние: «Опутанный»'],
+  [/состояние: unconscious/gu, 'состояние: «Бессознательный»'],
+]
+
+function readableCatalogDescription(value: unknown): string {
+  return CATALOG_DESCRIPTION_TERMS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), String(value ?? ''))
+}
+
+const generatedClasses = new Map((catalogPayload.classes as unknown as CatalogClass[]).map((entry) => [entry.classKey, {
+  ...entry,
+  actions: entry.actions.map((action) => ({ ...action, description: readableCatalogDescription(action.description) })),
+}]))
 
 /**
  * Имена, снятые с dndsu, местами набраны капсом целиком. В подсказке запаса это

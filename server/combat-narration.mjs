@@ -201,6 +201,12 @@ const CONDITION_LABELS = Object.freeze({
   prone: 'сбита с ног', restrained: 'опутана', stunned: 'оглушена', unconscious: 'без сознания',
 })
 
+/** Названия состояний по книге — термином, без рода: «Кирем — состояние «Опутанный»». */
+const MONSTER_HIT_CONDITION_TERMS = Object.freeze({
+  blinded: 'Ослеплённый', frightened: 'Испуганный', grappled: 'Схваченный', paralyzed: 'Парализованный',
+  poisoned: 'Отравленный', prone: 'Лежащий ничком', restrained: 'Опутанный', stunned: 'Ошеломлённый',
+})
+
 const ATTACKER_CONDITION_LABELS = Object.freeze({
   blinded: 'ослеплён', frightened: 'испуган', grappled: 'схвачен', incapacitated: 'недееспособен',
   invisible: 'невидим', paralyzed: 'парализован', petrified: 'окаменел', poisoned: 'отравлен',
@@ -513,6 +519,12 @@ function tacticalNarrationLines(events, state) {
         : `${actor} использует ${reactionActionText(payload)}.`)
     } else if (event.event_type === 'CombatActionUsed' && payload.monster_action === true) {
       meaningful.push(`${actor} использует приём «${String(payload.name || 'особая атака')}».`)
+    } else if (event.event_type === 'CombatActionUsed' && payload.action_id === 'break-free' && typeof payload.success === 'boolean') {
+      // Исход проверки — то, ради чего тратилось действие: без него стол читал
+      // «использует «Высвободиться»» и не знал, держат ли путы (плейтест 2026-10-07).
+      meaningful.push(payload.success
+        ? `${actor} вырывается: путы больше не держат.`
+        : `${actor} рвётся из пут, но они держат.`)
     } else if (event.event_type === 'CombatActionUsed') {
       const label = String(payload.name ?? '').trim()
       if (label && /[А-ЯЁа-яё]/u.test(label)) meaningful.push(`${actor} использует «${label}».`)
@@ -530,6 +542,10 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target} исчезает с поля боя.`)
     } else if (event.event_type === 'EquipmentChanged') {
       meaningful.push(`${actor} экипирует ${payload.item_name || 'оружие'}${payload.turns_spent ? ', затрачивая действие' : ' перед атакой'}.`)
+    } else if (event.event_type === 'DamageApplied' && payload.immune === true && Number(payload.raw_amount) > 0 && payload.scenario_ward_text) {
+      // Проклятый рыцарь до возвращения головы: удар проходит сквозь пустоту,
+      // и он смеётся с подсказкой (`server/scenario-knight.mjs`).
+      meaningful.push(String(payload.scenario_ward_text))
     } else if (event.event_type === 'DamageApplied' && payload.immune === true && Number(payload.raw_amount) > 0) {
       meaningful.push(`${damageTypeLabel(payload.damage_type)} не действует на ${target}.`)
     } else if (event.event_type === 'ConditionImmunityResolved') {
@@ -632,6 +648,11 @@ function tacticalNarrationLines(events, state) {
       meaningful.push(`${target} возвращается к жизни с 1 ОЗ.`)
     } else if (event.event_type === 'HeroReplaced') {
       meaningful.push(`${payload.replacement_name || target} присоединяется к группе вместо погибшего героя.`)
+    } else if (event.event_type === 'ConditionAdded' && payload.action_id && MONSTER_HIT_CONDITION_TERMS[payload.condition]) {
+      // Удар чудовища с последствием: паутина опутывает, укус валит с ног. Без
+      // строки стол видел «атакует — попадание» без урона и не понимал, что
+      // герой уже не может двигаться (плейтест 2026-10-07).
+      meaningful.push(`${target} — состояние «${MONSTER_HIT_CONDITION_TERMS[payload.condition]}».`)
     } else if (event.event_type === 'ConditionAdded' && payload.condition === 'fled') {
       meaningful.push(`${target} отступает и покидает бой.`)
     } else if (event.event_type === 'ConditionAdded' && payload.condition === 'surrendered') {

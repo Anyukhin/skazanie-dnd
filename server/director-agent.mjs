@@ -13,7 +13,10 @@ import {
   confirmedQuestProgress,
   directorObjectiveAfterQuestAbandonment,
   nextWorldMapDestination,
+  scenarioEncounterIntent,
 } from './campaign-loop-policy.mjs'
+import { scenarioDirectorBrief } from './campaign-scenario.mjs'
+import { scenarioAttention } from './scenario-attention.mjs'
 import { npcMechanicsFor } from './npc-positioning.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { questStateForViewer } from './quest-consequences.mjs'
@@ -41,6 +44,22 @@ function selectionFields(metadata, prefix) {
     [`${prefix}_availability`]: metadata.availability,
     [`${prefix}_complete_within_scope`]: metadata.complete_within_scope,
     ...(metadata.truncation_reason ? { [`${prefix}_truncation_reason`]: metadata.truncation_reason } : {}),
+  }
+}
+
+
+/**
+ * Внимание главного противника для брифа: счёт, пороги и стадия незнакомца.
+ * Историю причин Режиссёру не шлём — ему нужен итог, а не протокол.
+ * @param {NonNullable<ReturnType<typeof scenarioAttention>>} attention
+ */
+function directorAttentionBrief(attention) {
+  return {
+    value: attention.value,
+    stranger_at: attention.stranger_at,
+    ready_at: attention.ready_at,
+    dragon_ready: attention.ready,
+    stranger: attention.stranger_stage,
   }
 }
 
@@ -166,7 +185,8 @@ export function fallbackDirectorIntent(state = {}, playerAction = '') {
     // В финальной главе арки бой, который отряд ищет сам, и есть кульминация:
     // развязку засчитывает только тяжёлая встреча. Средняя здесь означала бы,
     // что без модели кампания не заканчивается никогда.
-    return normalizeDirectorIntent({ type: 'request_encounter', theme: 'beasts', difficulty: arc?.is_final ? 'hard' : 'medium', reason: 'Игрок явно запросил столкновение; сервер проверит и соберёт встречу.' })
+    // По сценарию встречу выбирает место: в логове — главный противник.
+    return scenarioEncounterIntent(state, { type: 'request_encounter', theme: 'beasts', difficulty: arc?.is_final ? 'hard' : 'medium', reason: 'Игрок явно запросил столкновение; сервер проверит и соберёт встречу.' })
   }
   if (!state.mechanics?.combat?.active && affirmativePlayerAction(playerAction, 'transition')) {
     return normalizeDirectorIntent({ type: 'end_scene', destination: nextSceneDestination(state), reason: 'Игрок явно подтвердил переход после разрешённого столкновения.' })
@@ -257,6 +277,15 @@ function publicDirectorBrief(state = {}, playerAction = '', contractVersion = 'd
         remaining_beats: arc.remaining_beats,
         phase: arc.phase,
         climax_required: arc.climax,
+      } } : {}),
+      // Сюжет авторского сценария: узлы, сколько улик найдено и куда звать.
+      // Тексты тайн сюда не входят — Режиссёр ведёт темп, а не раскрывает.
+      // Внимание главного противника — сколько он знает об отряде и готов ли:
+      // Режиссёр соразмеряет с ним тон сцен и засаду финала. Число игроку не
+      // уходит (`scenario_attention` вырезан из проекции стола).
+      ...(scenarioDirectorBrief(visibleState) ? { story: {
+        ...scenarioDirectorBrief(visibleState),
+        ...(scenarioAttention(state) ? { attention: directorAttentionBrief(scenarioAttention(state)) } : {}),
       } } : {}),
       active_quests: activeQuests.map((quest) => ({
         id: clean(quest.id, 120), title: clean(quest.title, 160), objectives: (quest.objectives ?? []).map((item) => clean(item, 180)).slice(0, 8),

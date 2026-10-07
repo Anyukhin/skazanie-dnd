@@ -254,3 +254,24 @@ test('причина травмы выбирает канонический ти
     assert.equal(freeActionResolutionPolicy(reading).failure.damage_type, damageType, hazard)
   }
 })
+
+test('лава — огонь: прыжок в трещину с лавой обжигает, «глава» и «слава» лавой не считаются', () => {
+  const base = state({ withFire: false })
+  const map = base.scene.map
+  // Клетка рядом с героем — раскалённая трещина рисованной карты.
+  const index = 1
+  map.hazards = { ...(map.hazards ?? {}), [index]: 'lava-fire' }
+  const lava = normalizeCampaignState(base)
+  for (const text of ['Прыгаю в лаву', 'Наступаю на магму', 'Касаюсь лавы рукой']) {
+    const reading = bindFreeActionReadingToState(lava, 'hero', text, {
+      activity_kind: 'stunt', ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous',
+      risk: 'serious', consequence_type: 'injury',
+    })
+    const contact = resolveHazardContact(lava, 'hero', text, reading)
+    assert.equal(contact?.status, 'contact', text)
+    assert.equal(contact.hazard_id, 'fire', text)
+  }
+  for (const text of ['Сажусь во главу стола', 'Касаюсь славы предков']) {
+    assert.equal(resolveHazardContact(lava, 'hero', text, { risk: 'minor' }), null, text)
+  }
+})

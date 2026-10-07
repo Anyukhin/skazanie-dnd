@@ -998,6 +998,9 @@ function createAreaBurst(
     return marker
   })
   const center = cue.center ?? cells[Math.floor(cells.length / 2)]
+  const jet = cue.shape === 'cone' && cue.originMode === 'self'
+    ? createConeJet(cue, actors, map, style, detail, track, material, group)
+    : null
   // Кольцо повторяет серверную область. circle-grid-v2 — круг радиуса r клеток
   // с центром на пересечении сетки; старая сфера — чебышёвский квадрат 2r+1
   // клеток, то есть контур с полушириной r+0.5 вокруг центра клетки.
@@ -1044,7 +1047,8 @@ function createAreaBurst(
         ring.scale.setScalar(Math.max(.1, visibleExtent / Math.max(.1, extent)) * (.5 + impact * .5))
         ring.visible = progress > .12 && progress < .96
       }
-      group.visible = markers.some((marker) => marker.visible) || Boolean(ring?.visible)
+      jet?.update(progress)
+      group.visible = markers.some((marker) => marker.visible) || Boolean(ring?.visible) || Boolean(jet?.visible)
     },
     dispose() {
       group.removeFromParent()
@@ -1052,6 +1056,90 @@ function createAreaBurst(
       materials.forEach((entry) => entry.dispose())
     },
   }
+}
+
+/** Детерминированный «шум» частицы: тот же кадр выглядит одинаково при повторе. */
+const jetNoise = (index: number, salt: number) => {
+  const value = Math.sin(index * 127.1 + salt * 311.7) * 43758.5453
+  return value - Math.floor(value)
+}
+
+/**
+ * Язык дыхания или конусного заклинания: поток раскалённых частиц из пасти
+ * вдоль серверного конуса. Полуугол — 26,6°: у конуса D&D ширина на конце
+ * равна длине. Клетки области по-прежнему рисует общий слой маркеров, язык
+ * только показывает, откуда и куда ударило.
+ */
+function createConeJet(
+  cue: Extract<SpellAnimationCue, { kind: 'burst' }>,
+  actors: readonly SpellEffectActor[],
+  map: TacticalMap,
+  style: SpellStyle,
+  detail: SpellEffectDetail,
+  track: <T extends THREE.BufferGeometry>(geometry: T) => T,
+  material: <T extends THREE.Material>(value: T) => T,
+  group: THREE.Group,
+) {
+  const source = cue.origin ?? actorFor(actors, cue.actorId)
+  const target = cue.center
+  if (!source || !target || !visible(map, source)) return null
+  const lengthCells = Math.max(1, Math.min(24, (Number(cue.sizeFeet) || 15) / 5))
+  const from = new THREE.Vector3(source.x + .5, terrainHeightAt(map, source.x, source.y) + .75, source.y + .5)
+  const direction = new THREE.Vector3(target.x - source.x, 0, target.y - source.y)
+  if (direction.lengthSq() < .0001) return null
+  direction.normalize()
+  const side = new THREE.Vector3(-direction.z, 0, direction.x)
+  const halfAngle = Math.atan(.5)
+  const count = detail === 'full' ? 110 : detail === 'reduced' ? 60 : 20
+  const geometry = track(new THREE.IcosahedronGeometry(.2, 1))
+  // Горячая ось — светлый второй цвет палитры, тело — основной, края языка —
+  // тёмный основной: три материала на весь поток.
+  const core = material(new THREE.MeshBasicMaterial({ color: new THREE.Color(style.secondary).lerp(new THREE.Color('#fff4d0'), .25), transparent: true, opacity: .8, blending: THREE.AdditiveBlending, depthWrite: false }))
+  const body = material(new THREE.MeshBasicMaterial({ color: style.primary, transparent: true, opacity: .6, blending: THREE.AdditiveBlending, depthWrite: false }))
+  const edge = material(new THREE.MeshBasicMaterial({ color: new THREE.Color(style.primary).multiplyScalar(.5), transparent: true, opacity: .35, blending: THREE.AdditiveBlending, depthWrite: false }))
+  const particles = Array.from({ length: count }, (_, index) => {
+    const angle = (jetNoise(index, 2) * 2 - 1) * halfAngle
+    // Материал закреплён за частицей: ось языка горячее его краёв.
+    const offAxis = Math.abs(angle) / halfAngle
+    const mesh = new THREE.Mesh(geometry, offAxis < .3 ? core : offAxis < .75 ? body : edge)
+    mesh.visible = false
+    group.add(mesh)
+    return {
+      mesh,
+      spawn: jetNoise(index, 1) * .5,
+      angle,
+      reach: .8 + jetNoise(index, 3) * .25,
+      lift: jetNoise(index, 4),
+      spin: jetNoise(index, 5) * Math.PI * 2,
+    }
+  })
+  const LIFETIME = .42
+  const point = new THREE.Vector3()
+  const result = {
+    visible: false,
+    update(progress: number) {
+      let any = false
+      for (const particle of particles) {
+        const age = (progress - .06 - particle.spawn) / LIFETIME
+        const alive = age > 0 && age < 1
+        particle.mesh.visible = alive
+        if (!alive) continue
+        any = true
+        // Частица летит быстро и тормозит к концу языка, расходясь по углу.
+        const travel = (1 - (1 - age) * (1 - age)) * lengthCells * particle.reach
+        const spread = Math.sin(particle.angle * Math.min(1, .35 + age))
+        point.copy(direction).multiplyScalar(travel * Math.cos(particle.angle))
+          .addScaledVector(side, travel * spread)
+        particle.mesh.position.copy(from).add(point)
+        particle.mesh.position.y += Math.sin(age * Math.PI) * (.25 + particle.lift * .35) - age * .35
+        const swell = (.5 + age * 2.2) * (1 - age * age * .5)
+        particle.mesh.scale.setScalar(swell)
+        particle.mesh.rotation.set(particle.spin + age * 3, particle.spin * .5, 0)
+      }
+      result.visible = any
+    },
+  }
+  return result
 }
 
 function createAura(

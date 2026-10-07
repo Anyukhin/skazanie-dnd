@@ -167,7 +167,10 @@ export function freezeEncounterOutcomePlan(state = {}, requestedOutcome = null) 
   const storedOutcome = String(encounter.outcome ?? '').trim()
   const outcome = String(requestedOutcome ?? storedOutcome).trim()
   if (!outcome || storedOutcome !== outcome) reject('Исход не совпадает с завершённой встречей', 'ENCOUNTER_OUTCOME_MISMATCH')
-  if (outcome !== 'enemies_defeated') return frozenNoRewardPlan(state, encounter, encounterId, outcome)
+  // Обращённый в бегство противник — тоже разгром: по правилам опыт даётся и за
+  // него, а сломленный главный противник сценария бросает сокровища. Исход
+  // `fled` возникает только у него (`scenarioEncounterEndReason`).
+  if (outcome !== 'enemies_defeated' && outcome !== 'fled') return frozenNoRewardPlan(state, encounter, encounterId, outcome)
 
   const enemyIds = encounter.enemy_ids
   if (!Array.isArray(enemyIds)

@@ -150,3 +150,19 @@ test('поиск следов находит следы, а не соседни�
   })
   assert.equal(found[0]?.fact?.supersedes_fact_id, 'fact:secret:tracks')
 })
+
+// Прогон Асстохана 2026-10-07: тайна лагеря ждала Проницательности или
+// Анализа, и удачная Внимательность у обелиска, как и удачное «иду по
+// следам» с Выживанием, не давали ничего. Общий поиск открывает тайну этого
+// места и родственным навыком поиска.
+test('общий поиск родственным навыком открывает тайну места, если своей нет', async () => {
+  const state = await campaign()
+  const [scratch] = state.worldMemory.facts.filter((fact) => fact.predicate === 'gm_secret')
+  const onlyJournal = { ...state, worldMemory: { ...state.worldMemory, facts: state.worldMemory.facts.map((fact) => fact.id === scratch.id ? { ...fact, status: 'superseded' } : fact) } }
+  for (const [skill, actionText] of [['perception', 'Осматриваю обелиск и символы на нём'], ['survival', 'Иду по следам, которые мы нашли, и пытаюсь понять, куда они ведут']]) {
+    const found = freeActionDiscoveryCommands(onlyJournal, { checkEvent: check(skill, `check-${skill}`), skill, actionText })
+    assert.match(found[0]?.fact?.summary ?? '', /почерк/u, `${skill}: ${actionText}`)
+  }
+  // Навык вне поиска (Атлетика) по-прежнему ничего не открывает.
+  assert.deepEqual(freeActionDiscoveryCommands(onlyJournal, { checkEvent: check('athletics'), skill: 'athletics', actionText: 'Осматриваюсь' }), [])
+})

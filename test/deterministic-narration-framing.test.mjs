@@ -89,8 +89,25 @@ test('шаг Режиссёра «открыть разговор» звучит
   })
   const resolver = actorNameResolver({ social: { npcs: [{ id: 'npc-finn', name: 'Старый Финн' }] } })
   const { narration } = deterministicNarration(opened, resolver)
-  assert.match(narration, /Старый Финн рядом — самое время заговорить/u)
+  assert.match(narration, /Старый Финн неподалёку — можно заговорить/u)
   assert.doesNotMatch(narration, /SocialSceneOpened|npc-finn/u)
+})
+
+// Живой прогон Асстохана 2026-10-07: «Вея Тихая Река занимает пост в сцене.
+// Вея Тихая Река рядом — самое время заговорить». Появление и приглашение о
+// том же NPC — одна фраза, без языка движка.
+test('появление NPC и приглашение к разговору с ним звучат одной фразой', () => {
+  const opened = buildNarrationBrief({
+    visible_events: [
+      { event_type: 'NpcPlaced', actor_id: null, target_ids: ['npc-finn'], payload: { npc_id: 'npc-finn', npc_name: 'Старый Финн' }, visibility: 'party', source_rule_ids: [] },
+      { event_type: 'SocialSceneOpened', actor_id: null, target_ids: ['npc-finn'], payload: { npc_id: 'npc-finn' }, visibility: 'party', source_rule_ids: [] },
+    ],
+    visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [], narration_constraints: [],
+  })
+  const resolver = actorNameResolver({ social: { npcs: [{ id: 'npc-finn', name: 'Старый Финн' }] } })
+  const { narration } = deterministicNarration(opened, resolver)
+  assert.equal(narration.match(/Старый Финн/gu)?.length, 1, narration)
+  assert.doesNotMatch(narration, /занимает пост|в сцене/u)
 })
 
 test('событие без русской строки молчит, а не печатает игроку служебное имя', () => {

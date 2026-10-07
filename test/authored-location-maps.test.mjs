@@ -16,6 +16,9 @@ import {
 } from '../server/authored-location-maps.mjs'
 import { getWorldTemplate, listWorldTemplates } from '../server/world-template-catalog.mjs'
 import { cellAt, edgeBetween, serializeTacticalMap, deserializeTacticalMap, setCell, setDoor, validateTacticalMap } from '../server/tactical-map.mjs'
+import { asciiAuthoredLocationIds } from '../tools/build-small-tactical-maps.mjs'
+
+const DRAWN = new Set(asciiAuthoredLocationIds())
 
 const hero = (id) => ({
   id,
@@ -236,7 +239,9 @@ test('catalog contains exactly 56 native-grid maps and every published map valid
     assert.equal(map.seed, `authored-tactical:${id}:v1`)
     assert.match(map.tilesetId, new RegExp(`^authored-tactical:${id}:v1$`, 'u'))
     assert.equal(map.generator.id, 'authored-tactical-scene')
-    assert.ok(map.width <= 30 && map.height <= 24, `${id}: native map exceeds 30×24`)
+    // Нарисованные вручную места (`data/authored-maps/`) — до 100×100, остальные компактные.
+    const limit = DRAWN.has(id) ? [100, 100] : [30, 24]
+    assert.ok(map.width <= limit[0] && map.height <= limit[1], `${id}: native map exceeds ${limit.join('×')}`)
     assert.equal(validateTacticalMap(map).ok, true)
     assert.ok(map.spawnPoints.some((point) => point.role === 'party'))
     assert.ok(map.props.length > 0)

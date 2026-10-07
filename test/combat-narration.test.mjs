@@ -28,6 +28,20 @@ test('рассказчик боя удовлетворяет общему кон
   assert.equal(hasCombatNarrationEvent([]), false)
 })
 
+// Браузерный плейтест 2026-10-07: паутина паука «попадала» без урона, а
+// «Высвободиться» не говорило, вырвался ли герой.
+test('опутывание ударом чудовища и исход «Высвободиться» видны в хронике', () => {
+  const webbed = combatNarration([
+    { event_type: 'AttackResolved', actor_id: 'wolf', target_ids: ['hero'], payload: { target_id: 'hero', total: 14, armor_class: 12, hit: true, action_id: 'web' } },
+    { event_type: 'ConditionAdded', actor_id: 'wolf', target_ids: ['hero'], payload: { condition: 'restrained', action_id: 'web', escape_dc: 12 } },
+    { event_type: 'ConditionAdded', actor_id: 'wolf', target_ids: ['wolf'], payload: { condition: 'monster-action-used:web' } },
+  ], state)
+  assert.match(webbed, /Лира — состояние «Опутанный»/)
+  assert.doesNotMatch(webbed, /monster-action-used/)
+  assert.match(combatNarration([event('CombatActionUsed', { action_id: 'break-free', name: 'Высвободиться', action_type: 'action', success: true })], state), /Лира вырывается/)
+  assert.match(combatNarration([event('CombatActionUsed', { action_id: 'break-free', name: 'Высвободиться', action_type: 'action', success: false })], state), /Лира рвётся из пут, но они держат/)
+})
+
 test('урон и попадание по врагу не называют его чисел', () => {
   const text = combatNarration([
     event('AttackResolved', { target_id: 'wolf', total: 22, armor_class: 19, hit: true }, ['wolf']),

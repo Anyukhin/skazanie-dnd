@@ -1243,6 +1243,8 @@ export type TacticalMap = {
   theme: string
   tilesetId: string
   overlays: { compass: boolean; scaleBar: boolean; roomLabels: Array<{ zoneId: string; label: string }> }
+  /** Окрестности за краем карты (3D): биом общий и по сторонам света. */
+  surroundings?: { biome?: string; sides?: Partial<Record<'n' | 'e' | 's' | 'w', string>> }
   sizeClass: string
   /**
    * Клиентская производная, которой нет в серверном контракте: отпечаток
@@ -1496,6 +1498,8 @@ export type BattleEvent = {
     radiusFeet: number
     geometryVersion?: AreaGeometryVersion
     gridOrigin?: { x: number; y: number }
+    /** Форма областной атаки существа: конус дыхания, круг взмаха крыльев. */
+    shape?: 'sphere' | 'cone' | 'line'
   }
 }
 
@@ -1704,7 +1708,7 @@ export type AssetPreparationReport = {
 
 export type ActorAppearanceV1 = {
   version: 1
-  profile: 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast'
+  profile: 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast' | 'dragon'
   equipment: 'unknown' | 'unarmed' | 'sword' | 'sword-shield' | 'bow' | 'staff' | 'dagger'
 }
 

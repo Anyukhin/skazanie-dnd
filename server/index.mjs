@@ -118,6 +118,7 @@ import { officeChronicleEntry } from './world-offices.mjs'
 import { CampaignBootstrapper } from './campaign-bootstrap.mjs'
 import { listWorldTemplates } from './world-template-catalog.mjs'
 import { AutonomousCampaignOrchestrator, directorStepNarration } from './autonomous-orchestrator.mjs'
+import { scenarioStrangerNarration } from './scenario-attention.mjs'
 import { ActionAdjudicator } from './action-adjudicator.mjs'
 import { DirectorAgent } from './director-agent.mjs'
 import {
@@ -4900,7 +4901,9 @@ async function handleHttpRequest(req, res) {
       warnOnDeadlyEncounter(campaignId, events)
       if (body.run_combat === true && result.state.mechanics?.combat?.active) {
         const combat = await autonomousCampaign.runCombat(campaignId, { idempotencyPrefix: `${key}:combat` })
-        if (!combat.state.mechanics?.combat?.active) await autonomousCampaign.completeEncounter({ campaignId, idempotencyKey: `${key}:completion` })
+        // Исход берётся из закрытой встречи: бой с главным противником сценария
+        // может кончиться бегством или договором, а не победой.
+        if (!combat.state.mechanics?.combat?.active) await autonomousCampaign.completeEncounter({ campaignId, outcome: combat.state.mechanics?.encounter?.outcome || 'enemies_defeated', idempotencyKey: `${key}:completion` })
       }
       const authoritative = await autonomousCampaign.load(campaignId)
       persistAuthoritativeProjection(campaignId, authoritative.state, events)
@@ -4998,7 +5001,9 @@ async function handleHttpRequest(req, res) {
       // Раскрытие области и смена цели в запасном рассказчике фраз не имеют:
       // шаг сам говорит, что сделал (directorStepNarration), иначе игрок
       // слышал «Пока ничего не меняется» и с моделью, и без неё.
-      const directorNarration = tacticalNarrationOr(events, authoritative.state, (briefEvents) => directorStepNarration(result.intent?.type, briefEvents, authoritative.state) || deterministicNarration(
+      // Сцена незнакомца сценария говорит своим авторским текстом: тактический
+      // рассказчик увидел бы в ней только спасброски и урон, без превращения.
+      const directorNarration = scenarioStrangerNarration(events, authoritative.state) || tacticalNarrationOr(events, authoritative.state, (briefEvents) => directorStepNarration(result.intent?.type, briefEvents, authoritative.state) || deterministicNarration(
         { visible_events: briefEvents, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
         actorNameResolver(authoritative.state),
       ).narration)

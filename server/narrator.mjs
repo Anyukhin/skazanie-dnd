@@ -18,7 +18,7 @@ import { sceneCanonFromEnvironment, sensoryAnchorConflicts } from './scene-canon
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
 import { requirementMention } from './scene-requirements.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v12'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v13'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v2'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
@@ -40,7 +40,7 @@ export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
 export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
 export const NARRATOR_DEFAULT_TIMEOUT_MS = 12_000
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v12.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v13.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v2.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
@@ -691,6 +691,8 @@ function briefForNarratorPrompt(brief) {
     }))
     promptBrief.visible_state_changes = []
     delete promptBrief.known_environment.world_memory
+    // Короткий ответ — одна-две фразы об исходе: сюжетная справка ему ни к чему.
+    delete promptBrief.known_environment.scenario
     const { sensory_anchors: _sensoryAnchors, ...scene } = promptBrief.known_environment.scene ?? {}
     promptBrief.known_environment.scene = scene
     promptBrief.known_environment.story_context = {
@@ -731,20 +733,12 @@ function memoryFocusReminder(focus, variant = 0) {
       `В памяти остался прежний ответ — ${focus.label}: «${cue}»`,
     ][variant % 4]
   }
-  if (focus.kind === 'decision') {
-    return [
-      `Прежнее решение «${focus.label}» всё ещё важно: ${focus.cue}`,
-      `К решению «${focus.label}» ведёт нынешняя деталь.`,
-      `Сегодня отзывается выбор «${focus.label}».`,
-      `Текущий след связан с решением «${focus.label}».`,
-    ][variant % 4]
-  }
-  return [
-    `С прошлой сценой «${focus.label}» это связывает одна деталь: ${focus.cue}`,
-    `Нынешняя сцена прямо отсылает к эпизоду «${focus.label}».`,
-    `Связанный эпизод называется «${focus.label}»; его деталь снова важна.`,
-    `Из прошлого откликается сцена «${focus.label}» — нынешний факт связан с ней.`,
-  ][variant % 4]
+  // Прежние решения и эпизоды шаблон связать с нынешним шагом не умеет: в
+  // ленту уходило «Прежнее решение «Митглайд · перекрёсток дорог» всё ещё
+  // важно: Цель «…» завершена» после неудачного поиска следов в лагере
+  // (живой прогон Асстохана 2026-10-07, судья 1.7/5). Связь с прошлым — дело
+  // модели; запасной текст держит только обещания и прежние слова собеседника.
+  return ''
 }
 
 const escapePattern = (value) => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
@@ -1869,7 +1863,31 @@ function qualitativeEventSummary(event, resolveName) {
       // середине абзаца получалось «наступил вечер.. Ада поражает орка».
       return worldClockNarration(event).replace(/[.!?]+$/u, '')
     case 'SocialSceneOpened':
-      return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
+      return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} неподалёку — можно заговорить`
+    case 'NpcPlaced':
+      // «Занимает пост в сцене» — язык движка, а не стола.
+      return `${named(payload.npc_id || (event?.target_ids ?? [])[0], sceneText(payload.npc_name, 120) || 'Местный житель')} появляется неподалёку`
+    case 'ScenarioPurseGranted':
+      // Имя героя — в именительном: склонять его рассказчик без модели не умеет
+      // («вручает её Кирем Двухпалый», браузерный плейтест 2026-10-07).
+      // Без числа: цифры из запасного текста вычищаются, и оставалось «кошель
+      // короля — золотых». Сумму игрок видит в своём кошельке.
+      return `${named(payload.hero_id || (event?.target_ids ?? [])[0], 'Герой')} получает от казначея тяжёлый кошель короля, полный золота`
+    case 'ScenarioInformantResolved':
+    case 'ScenarioInformantTurnFailed':
+      // Судьба осведомителя — авторский текст сценария.
+      return sceneText(payload.text, 1_000).replace(/[.!?]+$/u, '')
+    case 'ScenarioArmoryItemChosen':
+      return `${named(payload.hero_id || (event?.target_ids ?? [])[0], 'Герой')} получает из королевской оружейной «${sceneText(payload.item_name, 120) || 'вещь'}» прямо со стойки оружейника`
+    case 'ScenarioTreatyConcluded':
+    case 'ScenarioTreatyRefused':
+    case 'ScenarioKnightHeadReturned':
+    case 'ScenarioKnightReleased':
+    case 'ScenarioKnightReleaseFailed':
+    case 'ScenarioKnightPresenceChanged':
+      // Приход и уход проклятого рыцаря — авторский текст сценария
+      // (`server/scenario-knight.mjs`); финальная точка снимается, как у неба.
+      return sceneText(payload.text, 600).replace(/[.!?]+$/u, '')
     default:
       return playerFacingSummary(eventSummary(event, (id) => {
         const resolved = resolveName(id)
@@ -1925,9 +1943,15 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const outcomeEvents = discovery
     ? allOutcomeEvents.filter(event => !['AbilityCheckResolved', 'DieRolled', 'RollResolved'].includes(event?.event_type))
     : allOutcomeEvents
-  const ordered = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
+  const sorted = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
     // Подтверждённая судьба NPC не должна исчезнуть за расходом ячейки и бросками.
     .sort((left, right) => Number(right.event_type === 'NpcDied') - Number(left.event_type === 'NpcDied'))
+  // Появление NPC и приглашение к разговору о нём же — одна новость: прежде
+  // звучало «Вея занимает пост в сцене. Вея рядом — самое время заговорить»
+  // (живой прогон Асстохана 2026-10-07).
+  const subjectNpc = (event) => String(event?.payload?.npc_id || (event?.target_ids ?? [])[0] || '')
+  const invited = new Set(sorted.filter((event) => event?.event_type === 'SocialSceneOpened').map(subjectNpc))
+  const ordered = sorted.filter((event) => !(event?.event_type === 'NpcPlaced' && invited.has(subjectNpc(event))))
   // В рассказ идут четыре фразы. Когда событий больше, служебные уступают
   // место значимым: раньше «оружие завершает ход, начинается ход ветерана»
   // съедали место, и падение героя без сознания не звучало вовсе.

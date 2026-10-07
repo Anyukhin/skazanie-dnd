@@ -217,3 +217,12 @@ test('предпросмотр хода в 3D: итог у цели и метк�
   assert.match(markup, /class="move-risk-mark"/u)
   assert.doesNotMatch(markup, /route-step-badge/u)
 })
+
+test('промах читается уклонением: цель шагает вбок от линии удара и возвращается, перехват щитом — нет', () => {
+  const source = readFileSync(sourcePath, 'utf8')
+  const dodge = source.slice(source.indexOf('Промах читается уклонением'), source.indexOf('Промах читается уклонением') + 1800)
+  assert.match(dodge, /cue\.kind === 'strike' && !cue\.hit && attackOutcome\(cue\) !== 'blocked'/u)
+  assert.match(dodge, /Math\.sin\(THREE\.MathUtils\.clamp\(\(progress - impact \+ \.14\) \/ \.5, 0, 1\) \* Math\.PI\)/u, 'шаг к удару и возврат к концу такта')
+  assert.match(dodge, /-dy \/ length\) \* sideways/u, 'вбок — поперёк линии атаки')
+  assert.match(dodge, /!reduced/u, 'уменьшенное движение уклонения не показывает')
+})

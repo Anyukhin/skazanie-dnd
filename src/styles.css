@@ -2320,6 +2320,14 @@ button.campaign-title:hover strong { color: color-mix(in srgb, var(--text) 25%, 
    клетки: половина высоты токена вниз плюс зазор. Ширина — ширина токена плюс
    те же 12px по краям, что у героя. Кликам не мешает. */
 .map-token-hp.enemy-health { left: 50%; right: auto; bottom: auto; top: calc(50% + clamp(34px, 5.9cqw, 48px) / 2 + 2px); z-index: 6; width: calc(clamp(31px, 5.4cqw, 44px) + 12px); transform: translateX(-50%); pointer-events: none; }
+/* Полоска раненого героя — тот же сосед фишки, что у врага; цвет — ступень. */
+.map-token-hp.hero-health { left: 50%; right: auto; bottom: auto; top: calc(50% + clamp(34px, 5.9cqw, 48px) / 2 + 2px); z-index: 6; width: calc(clamp(31px, 5.4cqw, 44px) + 12px); transform: translateX(-50%); pointer-events: none; }
+.map-token-hp.hero-health > i { background: color-mix(in srgb, var(--frame) 30%, var(--ally)); }
+.map-token-hp.hero-health.bloodied > i { background: color-mix(in srgb, var(--acc) 90%, var(--acc-ink)); }
+.map-token-hp.hero-health.critical > i, .map-token-hp.hero-health.downed > i { background: color-mix(in srgb, var(--text2) 30%, var(--hp)); }
+.map-token-hp.hero-health.downed { animation: hero-health-downed 1.2s ease-in-out infinite; }
+@keyframes hero-health-downed { 50% { box-shadow: 0 0 0 1px rgba(0,0,0,.8), 0 0 8px rgba(201,83,69,.7); } }
+@media (prefers-reduced-motion: reduce) { .map-token-hp.hero-health.downed { animation: none; } }
 .enemy-health-ring { position: absolute; z-index: 4; left: 50%; top: 50%; width: calc(clamp(31px, 5.4cqw, 44px) + 8px); height: calc(clamp(34px, 5.9cqw, 48px) + 8px); border: 2px solid color-mix(in srgb, var(--acc) 55.8%, var(--acc-ink) 6.2%); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 7px color-mix(in srgb, var(--acc) 19.8%, var(--acc-ink) 2.2%); }
 .enemy-health-ring[data-status="bloodied"] { border-color: rgba(191,104,62,.72); box-shadow: 0 0 8px rgba(191,104,62,.28); }
 .enemy-health-ring[data-status="critical"] { border-color: rgba(201,83,69,.88); box-shadow: 0 0 10px rgba(201,83,69,.36); }

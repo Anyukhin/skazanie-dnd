@@ -92,8 +92,13 @@ function retrievalMemory(state, { facts = [], claims = [] } = {}) {
 // при обрезке до 500 знаков последнее предложение пролога отбрасывалось как
 // оборванное, и король на вопрос о Саргате «не сообщал ничего нового», хотя
 // пролог кончается его просьбой остановить Саргата (прогон Асстохана, 2026-10-06).
-function npcFacts(state, profile, message = '', { summaryLimit = 500 } = {}) {
+function npcFacts(state, profile, message = '', { summaryLimit = 500, spokenAloud = false } = {}) {
+  // Пролог — проза рассказчика, а не знание собеседника. Модель читает его как
+  // фон, но запасной ответ произносит факт вслух дословно: перевозчик в
+  // Митглайде на любой вопрос говорил «Перед ним три донесения…» (прогон
+  // Асстохана 2026-10-07). Вслух пролог не звучит ни у кого.
   const speakable = npcSpeakableFactRecords(state, profile)
+    .filter((fact) => !spokenAloud || fact.predicate !== 'opening_narration')
   const allowedIds = new Set(speakable.map((fact) => String(fact.id)))
   const records = retrieveWorldMemory(retrievalMemory(state, { facts: speakable }), { isAdmin: true }, {
     query: clean(message, 1_000), limit: NPC_SOCIAL_MEMORY_LIMIT,
@@ -138,6 +143,16 @@ function wordNamesPart(word, namePart) {
   if (word === namePart) return true
   const stem = namePart.replace(NAME_ENDING_RE, '')
   return stem.length >= 4 && word.startsWith(stem) && word.length - stem.length <= 3
+}
+
+/**
+ * Предложение говорит о собеседнике в третьем лице: начинается с «он/она» или
+ * называет его любым словом имени. Такое предложение NPC о себе не произносит.
+ */
+function sentenceDescribesNpc(words, profile) {
+  if (/^(?:он|она)$/u.test(words[0] ?? '')) return true
+  const nameParts = plainWords(profile?.name, 200).filter((part) => part.length >= 3)
+  return nameParts.some((part) => words.some((word) => wordNamesPart(word, part)))
 }
 
 /** Текст называет собеседника, если в нём есть каждое слово его имени. */
@@ -433,6 +448,10 @@ function fallbackAnswer(profile, message, hooks, facts, alreadySaid) {
     if (sentences.length > 1 && !/[.!?…»"')]$/u.test(sentences.at(-1))) sentences.pop()
     for (const sentence of sentences) {
       const words = plainWords(sentence)
+      // Факт, где собеседник описан со стороны, — проза рассказчика, а не его
+      // реплика: король без модели произносил «Он просит остановить дракона,
+      // но отводит взгляд…» о самом себе (браузерный плейтест 2026-10-07).
+      if (candidate.kind === 'fact' && sentenceDescribesNpc(words, profile)) continue
       const score = stems.filter((stem) => words.some((word) => word.startsWith(stem))).length
       if (score < 1 || alreadySaid(sentence)) continue
       if (!best || score > best.score) best = { kind: candidate.kind, sentence, score }
@@ -462,7 +481,7 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
   // Запасной ответ подбирает факты по самому вопросу, без обращения и имени
   // собеседника: иначе «Обращаюсь к смотрительнице дамбы» находило пролог про
   // смотрителя дамбы на любой вопрос (плейтест 2026-10-04, QP-02).
-  const answerFacts = modelReply ? [] : npcFacts(state, profile, fallbackQuestionStems(profile, message).join(' '), { summaryLimit: 4_000 })
+  const answerFacts = modelReply ? [] : npcFacts(state, profile, fallbackQuestionStems(profile, message).join(' '), { summaryLimit: 4_000, spokenAloud: true })
   const answerHooks = modelReply ? [] : publicHooksNamingNpc(state, profile)
   const fallback = fallbackDisclosure(profile, answerFacts, claims, checkOutcome, memory, message, answerHooks)
   // Раскрытие фолбэка добавляется только тогда, когда прозвучала его реплика:

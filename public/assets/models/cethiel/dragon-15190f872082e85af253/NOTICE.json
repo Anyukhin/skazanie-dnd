@@ -1,0 +1,24 @@
+{
+  "schema": "skazanie-model-notice/v1",
+  "models": [
+    {
+      "file": "dragon.glb",
+      "sha256": "15190f872082e85af253437c767c083da4ea321a8cb914203d2325271cfa2eef",
+      "bytes": 712752,
+      "title": "Cethiel's Dragon 3D",
+      "author": "Drummyfish (3D), Cethiel (исходный рисунок)",
+      "source": "https://opengameart.org/content/cethiels-dragon-3d",
+      "source_file": "dragon_oga.zip",
+      "source_file_sha256": "f6a8c25dd3b2abdb1e7830b0b88f9083052c0750e710e6439eceb320783a57c1",
+      "license": "CC0-1.0",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "changes": "dragon.dae и четыре DAE-анимации (idle, walk, attack, die) собраны в один GLB через three.js ColladaLoader/GLTFExporter; клипы названы Idle, Walk, Bite_Attack, Death; фактура dragon.png перекрашена в тёмный кармин (Саргат), геометрия и риг без изменений.",
+      "clips": [
+        "Idle",
+        "Walk",
+        "Bite_Attack",
+        "Death"
+      ]
+    }
+  ]
+}

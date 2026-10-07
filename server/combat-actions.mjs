@@ -3,7 +3,26 @@ import { isOptionalFeatureSelected } from './character-progression.mjs'
 import { CLASS_RESOURCES_2024_POLICY_ID, DND_2014_RULESET_ID } from './ruleset-config.mjs'
 
 const catalogPayload = JSON.parse(readFileSync(new URL('../data/dndsu-class-actions-1-12.json', import.meta.url), 'utf8'))
-const GENERATED_CLASSES = new Map(catalogPayload.classes.map((entry) => [entry.classKey, Object.freeze(entry)]))
+// Служебные хвосты описаний dnd.su латиницей («лимит: proficiency»,
+// «состояние: incapacitated») переводятся при загрузке; тот же словарь —
+// в `src/combat-actions.ts` (плейтест 2026-10-07).
+const CATALOG_DESCRIPTION_TERMS = [
+  [/лимит: proficiency/gu, 'лимит: бонус мастерства'],
+  [/лимит: ability/gu, 'лимит: модификатор характеристики'],
+  [/ · состояние: feature-movement/gu, ''],
+  [/состояние: charmed/gu, 'состояние: «Очарованный»'],
+  [/состояние: frightened/gu, 'состояние: «Испуганный»'],
+  [/состояние: incapacitated/gu, 'состояние: «Недееспособный»'],
+  [/состояние: poisoned/gu, 'состояние: «Отравленный»'],
+  [/состояние: restrained/gu, 'состояние: «Опутанный»'],
+  [/состояние: unconscious/gu, 'состояние: «Бессознательный»'],
+]
+const readableCatalogDescription = (value) => CATALOG_DESCRIPTION_TERMS
+  .reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), String(value ?? ''))
+const GENERATED_CLASSES = new Map(catalogPayload.classes.map((entry) => [entry.classKey, Object.freeze({
+  ...entry,
+  actions: (entry.actions ?? []).map((action) => ({ ...action, description: readableCatalogDescription(action.description) })),
+})]))
 
 const clone = (value) => structuredClone(value)
 const roleText = (actor) => `${actor?.role ?? ''} ${actor?.class ?? ''} ${actor?.characterClass ?? ''}`.toLowerCase()

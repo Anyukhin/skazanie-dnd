@@ -139,3 +139,31 @@ test('лесная сцена получает существенное сокр
     environment.dispose()
   }
 })
+
+test('вырезанная листва и наклейки пола объединяются, обычная прозрачность — нет', () => {
+  // Большая нарисованная карта (Митглайд 84×70) несла ~400 отдельных
+  // наклеек и сотни кустов и цветов вне пачек: правило «никакой альфы»
+  // отсекало и вырезанную листву, которая рисуется в непрозрачном проходе.
+  const group = new THREE.Group()
+  const plane = new THREE.PlaneGeometry(1, 1)
+  const foliage = new THREE.MeshStandardMaterial({ alphaTest: .2 })
+  const stamp = new THREE.MeshStandardMaterial({ transparent: true, depthWrite: false })
+  const glass = new THREE.MeshStandardMaterial({ transparent: true, opacity: .5 })
+  const add = (material, name, x) => {
+    const mesh = new THREE.Mesh(plane, material)
+    mesh.name = name
+    mesh.position.x = x
+    group.add(mesh)
+    return mesh
+  }
+  for (let index = 0; index < 3; index += 1) add(foliage, 'bush', index)
+  for (let index = 0; index < 3; index += 1) add(stamp, 'floor-stamp', index)
+  for (let index = 0; index < 3; index += 1) add(glass, 'window-pane', index)
+  const result = batch.batchEnvironmentMeshes(group)
+  const batched = new Set(result.batches.map((entry) => entry.material))
+  assert.ok(batched.has(foliage), 'листва с alphaTest объединена')
+  assert.ok(batched.has(stamp), 'наклейки пола объединены')
+  assert.equal(batched.has(glass), false, 'полупрозрачное стекло не объединяется: порядок смешивания важен')
+  assert.equal(result.batchedDrawCalls, 2 + 3)
+  result.dispose()
+})

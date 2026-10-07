@@ -1,6 +1,6 @@
 # Ремесло Рассказчика
 
-Активный контракт художественного текста — `narrator/v12`
+Активный контракт художественного текста — `narrator/v13`
 (`server/prompt-descriptors.mjs`), план ответа — `narrator-response-plan/v2`
 (`narratorResponsePlan` в `server/narrator.mjs`). Рассказчик возвращает
 обычный текст, а не JSON. Предыдущие версии промпта лежат рядом в

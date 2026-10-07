@@ -143,14 +143,14 @@ test('Асстоханские равнины сохраняют авторск�
   assert.equal(template.world.startingLocation, 'Штормберг')
   assert.equal(template.world_map.backgroundImage, '/assets/maps/world/skazanie/dragon-scar-v1.webp')
   assert.deepEqual(
-    ['Штормберг', 'Редстоуновка', 'Миттлайд', 'Дикий лес', 'Проклятый лес', 'Башня Ломара', 'Замок Забытых Скал']
+    ['Штормберг', 'Редстоуновка', 'Митглайд', 'Дикий лес', 'Проклятый лес', 'Башня Ломара', 'Замок Забытых Скал']
       .map((name) => template.world_map.locations.some((location) => location.name === name)),
     [true, true, true, true, true, true, true],
   )
   assert.ok(location('Штормберг').x > location('Дикий лес').x && location('Штормберг').y < location('Дикий лес').y)
   assert.ok(location('Редстоуновка').x < location('Дикий лес').x && location('Редстоуновка').y > location('Дикий лес').y)
   assert.ok(location('Башня Ломара').x < location('Дикий лес').x)
-  assert.ok(location('Миттлайд').y > location('Озеро Двух Отражений').y)
+  assert.ok(location('Митглайд').y > location('Озеро Двух Отражений').y)
   assert.ok(location('Замок Забытых Скал').x > location('Озеро Двух Отражений').x)
   assert.ok(location('Проклятый лес').y > location('Редстоуновка').y)
   assert.ok(location('Жаровня Вулканиса').x < location('Дикий лес').x && location('Жаровня Вулканиса').y < location('Дикий лес').y)

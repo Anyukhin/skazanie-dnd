@@ -23,6 +23,7 @@ import {
   shortestTacticalPath,
   validateCommand,
 } from './rules-engine.mjs'
+import { scenarioEncounterEndReason } from './campaign-scenario.mjs'
 import {
   isHostileSummon,
   isPartySummon,
@@ -1147,7 +1148,7 @@ export function planLegendaryAction(rawState, bossId) {
     .map((hero) => ({ id: actorId(hero), at: actorPosition(state, actorId(hero)) }))
     .filter((hero) => hero.at)
     .map((hero) => ({ id: hero.id, distanceFeet: distanceFeetBetweenActors(state, bossId, hero.id, from, hero.at) }))
-  const chosen = chooseLegendaryAction({ actor: boss, remainingUses: remaining, targets })
+  const chosen = chooseLegendaryAction({ actor: boss, remainingUses: remaining, targets, coolingDown: conditions })
   if (!chosen) return null
   return {
     command_type: 'UseLegendaryAction',
@@ -1637,9 +1638,11 @@ export async function runNpcTurnScheduler({
     const enemies = livingEnemies(state)
     const dying = unstableDyingParty(state)
     if ((!party.length || !enemies.length) && !dying.length) {
+      // Бой с главным противником сценария, который улетел сломленным или
+      // заключил договор, — не победа: исход выбирает развязку кампании.
       const reason = enemies.length
         ? state.mechanics?.death?.campaign_status === 'party_defeated' ? 'party_defeated' : 'party_incapacitated'
-        : 'enemies_defeated'
+        : scenarioEncounterEndReason(state) ?? 'enemies_defeated'
       const key = schedulerKey(campaignId, state, currentId || party[0]?.id || enemies[0]?.id, `end-${reason}`)
       const actor = findActor(state, currentId) ?? party[0] ?? enemies[0]
       if (!actor) throw new RulesValidationError('Combat has no actor that can close it', 'INVALID_COMBAT_STATE')

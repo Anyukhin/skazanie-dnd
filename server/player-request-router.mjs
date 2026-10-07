@@ -20,9 +20,9 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v12', purpose: 'Финальное повествование из подтверждённых результатов' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v13', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v8', purpose: 'Динамическая архитектура новой локации и игровой карты' },
-  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v8', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
+  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v9', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })
 
 const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+(?:уже\s+|вообще\s+)?зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
@@ -529,7 +529,7 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
     return {
       type: 'vote',
       title: knownFrom ? `Покинуть «${from}»?` : 'Покинуть подземелье?',
-      description: 'Маршрут меняет судьбу всей группы, поэтому Режиссёр просит большинство героев принять решение вместе.',
+      description: 'Дорога ведёт весь отряд, поэтому решаете вместе: уходит отряд, если за это большинство.',
       options: [leaveOption, ...(abandonOption ? [abandonOption] : []), 'Остаться и исследовать дальше'],
       resolutionPrompt: 'Исполни решение большинства. Если отряд уходит, бесшовно открой следующую локацию.',
       ...(exit.destinationLocationId ? { destinationLocationId: exit.destinationLocationId } : {}),
@@ -563,7 +563,7 @@ export function proposeRoutedTravel(hint, state = {}, action = '') {
   if (card?.type !== 'vote') return null
   return {
     ...card,
-    description: 'Ведущий понял заявку как переход в другое место. Маршрут меняет судьбу всей группы, поэтому его подтверждают голосованием — даже за столом из одного героя.',
+    description: 'Похоже, отряд собрался в другое место. Дорога ведёт весь отряд, поэтому её подтверждают голосованием — даже за столом из одного героя.',
   }
 }
 

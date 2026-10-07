@@ -57,7 +57,7 @@ export type ActorKind = 'hero' | 'enemy' | 'summon' | 'neutral'
  * пока не вызывает; у модели без такого клипа поза совпадает с idle.
  */
 export type ActorPose = 'idle' | 'walk' | 'attack' | 'ranged-attack' | 'cast' | 'hit' | 'death' | 'spawn'
-export type ActorModelProfile = 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast'
+export type ActorModelProfile = 'warrior' | 'mage' | 'rogue' | 'goblin' | 'skeleton' | 'beast' | 'dragon'
 export type ActorEquipment = ActorAppearance['equipment']
 
 export type ActorModelInput = {
@@ -189,12 +189,12 @@ const DEFAULT_MAX_MANIFEST_BYTES = 256 * 1024
 const DEFAULT_MAX_GLB_BYTES = 16 * 1024 * 1024
 const MODEL_ROOT = '/assets/models/'
 const MODEL_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]*$/u
-const ACTOR_PROFILES: readonly ActorModelProfile[] = ['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast']
+const ACTOR_PROFILES: readonly ActorModelProfile[] = ['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast', 'dragon']
 const ACTOR_KINDS: readonly ActorKind[] = ['hero', 'enemy', 'summon', 'neutral']
 const ACTOR_EQUIPMENT: readonly ActorEquipment[] = ['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger']
 
 const profileLabels: Record<ActorModelProfile, string> = {
-  warrior: 'Воин', mage: 'Волшебник', rogue: 'Плут / следопыт', goblin: 'Гоблин', skeleton: 'Скелет', beast: 'Зверь',
+  warrior: 'Воин', mage: 'Волшебник', rogue: 'Плут / следопыт', goblin: 'Гоблин', skeleton: 'Скелет', beast: 'Зверь', dragon: 'Дракон',
 }
 
 /** Встроенный каталог позволяет начать бой при недоступном manifest.json. */
@@ -207,7 +207,7 @@ export const DEFAULT_ACTOR_MODEL_MANIFEST: ActorModelManifest = {
     actorIds: [],
     archetypes: [profile],
     url: null,
-    height: profile === 'goblin' || profile === 'beast' ? 1.18 : DEFAULT_HEIGHT,
+    height: profile === 'dragon' ? 2.4 : profile === 'goblin' || profile === 'beast' ? 1.18 : DEFAULT_HEIGHT,
     rights: { source: 'Процедурная модель проекта «Сказание»', license: 'original', attribution: 'Проект «Сказание»' },
   })),
 }
@@ -349,6 +349,7 @@ function profileFromText(value: string): ActorModelProfile | null {
   if (!token) return null
   if (/(goblin|гоблин|goblinoid|гоблиноид)/u.test(token)) return 'goblin'
   if (/(skeleton|скелет|undead|нежить|zombie|зомби)/u.test(token)) return 'skeleton'
+  if (/(dragon|дракон|wyrm|drake|виверн|wyvern)/u.test(token)) return 'dragon'
   if (/(beast|звер|wolf|волк|bear|медвед|boar|кабан|lion|лев|tiger|тигр|summon)/u.test(token)) return 'beast'
   if (/(mage|wizard|волшеб|маг|sorcer|чарод|warlock|колдун|cleric|жрец|druid|друид)/u.test(token)) return 'mage'
   if (/(rogue|плут|ranger|следопыт|scout|разведчик|thief|вор)/u.test(token)) return 'rogue'
@@ -582,7 +583,7 @@ type GlbRangedStyle = 'bow' | 'crossbow' | 'thrown'
 
 function glbAttackStyle(appearance: ActorAppearance | undefined): GlbAttackStyle {
   const key = mainHandModelKey(appearance)
-  if (appearance?.profile === 'beast') return 'natural'
+  if (appearance?.profile === 'beast' || appearance?.profile === 'dragon') return 'natural'
   if (appearance?.equipment === 'unarmed') return 'unarmed'
   if (['club', 'greatclub', 'light-hammer', 'mace', 'quarterstaff', 'flail', 'maul', 'warhammer'].includes(key)
     || appearance?.equipment === 'staff') return 'bludgeon'
@@ -655,7 +656,7 @@ function applyProceduralPose(rig: Rig, pose: ActorPose, progress: number, appear
   } else if (pose === 'attack') {
     const swing = Math.sin(attackPoseProgress(p) * Math.PI)
     const equipment = appearance?.equipment ?? 'unknown'
-    if (profile === 'beast' || appearance?.profile === 'beast') {
+    if (profile === 'beast' || profile === 'dragon' || appearance?.profile === 'beast' || appearance?.profile === 'dragon') {
       const frontLeft = rig.parts.get('leftArm')
       const frontRight = rig.parts.get('rightArm')
       if (frontLeft) frontLeft.rotation.x = -swing * .72
@@ -744,6 +745,7 @@ const PALETTES: Record<ActorModelProfile, Palette> = {
   goblin: { skin: '#66764e', cloth: '#76533c', clothDark: '#293a2b', metal: '#81766b', leather: '#4b3529', wood: '#573c2d', bone: '#c9b58e', accent: '#8b7152' },
   skeleton: { skin: '#c9bea1', cloth: '#2d2f36', clothDark: '#16181d', metal: '#666d73', leather: '#4a3629', wood: '#563c2e', bone: '#e1d3b0', accent: '#9c5960' },
   beast: { skin: '#766451', cloth: '#4f443a', clothDark: '#26221f', metal: '#7b766c', leather: '#4b3529', wood: '#533b2d', bone: '#c6b494', accent: '#9c7151' },
+  dragon: { skin: '#6e1c14', cloth: '#a5481c', clothDark: '#2a0d0a', metal: '#8a6d4a', leather: '#4b2018', wood: '#533b2d', bone: '#d8c39a', accent: '#e0902e' },
 }
 
 function addSword(parent: Object3D, surface: Material, guard: Material, name = 'sword') {
@@ -1198,7 +1200,8 @@ function clipPose(clip: AnimationClip): ActorPose | null {
   // общего idle-маркера, иначе wolf никогда не получает pose `hit`.
   if (name.includes('hit') || name.includes('hurt') || name.includes('damage') || name.includes('react')) return 'hit'
   if (name.includes('idle') || name.includes('stand') || name.includes('rest')) return 'idle'
-  if (name.includes('walk') || name.includes('run') || name.includes('move')) return 'walk'
+  // Полёт дракона Quaternius (`Fast_Flying`) — его единственное перемещение.
+  if (name.includes('walk') || name.includes('run') || name.includes('move') || name.includes('flying')) return 'walk'
   if (name.includes('cast') || name.includes('spell') || name.includes('magic')) return 'cast'
   // Bow/Archery/Arrow должны победить общий Attack matcher, но generic
   // Shoot нельзя считать луком: Pistol_Shoot и crossbow-клипы для этого
@@ -1206,7 +1209,9 @@ function clipPose(clip: AnimationClip): ActorPose | null {
   // маркера и сохраняем canonical ranged-attack.
   const firearm = name.includes('pistol') || name.includes('rifle') || name.includes('gun') || name.includes('crossbow')
   if (!firearm && (name.includes('bow') || name.includes('archery') || name.includes('arrow') || name.includes('ranged'))) return 'ranged-attack'
-  if (name.includes('attack') || name.includes('strike') || name.includes('slash')) return 'attack'
+  // `Headbutt`, `Bite`, `Claw` — естественные атаки чудовищ без клипа Attack.
+  if (name.includes('attack') || name.includes('strike') || name.includes('slash')
+    || name.includes('headbutt') || name.includes('bite') || name.includes('claw')) return 'attack'
   if (name.includes('death') || name.includes('die') || name.includes('dead')) return 'death'
   return null
 }
@@ -1434,11 +1439,23 @@ function decorateModel(root: Group, input: NormalizedActorModelInput, entry: Act
     const targetTime = progress == null ? undefined : MathUtils.clamp(progress, 0, 1) * action.getClip().duration
     if (targetTime != null && activeAction === action && action.paused && Math.abs(action.time - targetTime) < 1e-8) return
     if (activeAction !== action) {
-      activeAction?.stop()
+      const previous = activeAction
       // Смерть и появление проигрываются один раз и остаются в конечной позе.
       const once = (pose === 'death' || pose === 'spawn') && requestedAction === action
       action.clampWhenFinished = once
-      activeAction = action.reset().setLoop(once ? LoopOnce : LoopRepeat, once ? 1 : Infinity).play()
+      action.reset().setLoop(once ? LoopOnce : LoopRepeat, once ? 1 : Infinity)
+      // Возврат к свободной позе (стойка, ходьба) — плавно, за 0,18 с, а не
+      // рывком: замах перетекает в стойку, как в BG3. Такт боя, который
+      // прокручивается по прогрессу, начинается сразу — ему важна точность кадра.
+      if (previous && progress == null) {
+        previous.paused = false
+        action.setEffectiveWeight(1).play()
+        previous.crossFadeTo(action, .18, false)
+      } else {
+        previous?.stop()
+        action.play()
+      }
+      activeAction = action
     }
     if (progress != null) {
       action.paused = true
@@ -1574,7 +1591,7 @@ export function createProceduralActorModel(input: ActorModelInput, manifest: Act
   const normalized = normalizeActorInput(input)
   const entry = resolveModelProfile(normalized, manifest)
   const targetHeight = finitePositive(height, entry.height ?? DEFAULT_HEIGHT)
-  const built = entry.profile === 'beast' ? buildBeast(normalized) : buildHumanoid(normalized, entry.profile)
+  const built = entry.profile === 'beast' || entry.profile === 'dragon' ? buildBeast(normalized) : buildHumanoid(normalized, entry.profile)
   // Встроенная фигурка собрана лицом в −Z, а доска, GLB-модели и слой
   // экипировки считают перёд по +Z. Разворачивается только тело: корень
   // остаётся без поворота, и плащ одежды ложится на спину, а не на грудь.

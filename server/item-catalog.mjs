@@ -1839,6 +1839,107 @@ if (Object.keys(entriesById).length !== ENTRIES.length) {
 
 export const ITEM_CATALOG = deepFreeze(entriesById)
 
+/**
+ * Предметы авторских сценариев — не SRD, поэтому отдельный каталог: у них нет
+ * страницы источника и CC-BY-атрибуции, их не продают и не роняют в добыче.
+ * Награду выдаёт сам сценарий. Общий поиск `catalogItem` видит обе записи,
+ * поэтому сопротивление, заряды и применение работают тем же путём, что у
+ * предметов SRD. Сюжет и решения владельца — `docs/astohan-scenario.md`.
+ */
+const SCENARIO_ITEM_SOURCE = Object.freeze({
+  source_url: 'docs/astohan-scenario.md',
+  source_version: 'Асстоханские равнины, сценарий владельца',
+  license: 'project-own',
+  attribution: 'Авторский предмет сценария «Асстоханские равнины».',
+})
+const SCENARIO_ITEM_AVAILABILITY = Object.freeze({ shop: false, loot: false, magic_loot: false, crafting: false })
+
+const SCENARIO_ITEMS = [
+  {
+    catalog_id: 'scenario_astohan:kaelan-tear',
+    ...SCENARIO_ITEM_SOURCE,
+    display_name: 'Слеза Проклятого Рыцаря',
+    name: 'Слеза Проклятого Рыцаря',
+    manifest_section: 'scenario-item',
+    description: 'Кристаллизованная скорбь Каэлана, холодная на ощупь. Пока она надета, вы сопротивляетесь холоду. Раз в сутки действием: на себя — «Щит Вечной Стражи» (50 временных хитов); на дракона в бою — «Хрупкая Чешуя»: на минуту он теряет иммунитет к огню.',
+    category: 'wondrous',
+    type: 'other',
+    rarity: 'очень редкий',
+    price_cp: 0,
+    base_price_cp: 0,
+    weight: 0,
+    lifecycle: { equippable: true, equip_slot: 'neck-kaelan-tear', transferable: true, stackable: false },
+    equip: { slot: 'neck-kaelan-tear' },
+    use: {
+      kind: 'knight_tear',
+      charges_per_use: 1,
+      combat_action: 'action',
+      requires_equipped: true,
+      range_feet: 60,
+      target: 'creature',
+      shield_temporary_hp: 50,
+      scale_duration_rounds: 10,
+    },
+    activation: null,
+    attunement: { required: false },
+    charges: { current: 1, max: 1 },
+    // Один заряд и «1к6+1» на рассвете — всегда полная перезарядка: раз в сутки.
+    recharge: { schema_version: ITEM_RECHARGE_SCHEMA_VERSION, trigger: 'dawn', formula: '1d6+1' },
+    crafting: { implemented: false, hooks: [] },
+    passive_effects: [{
+      schema_version: 1,
+      effect_id: 'scenario_astohan:kaelan-tear:cold-resistance',
+      group: 'scenario_astohan:kaelan-tear',
+      requires_equipped: true,
+      requires_attunement: false,
+      damage_resistances: ['cold'],
+    }],
+    magic_item: { category: 'wondrous', rarity: 'very-rare', value_formula: 'Награда сценария' },
+    mechanics_status: 'verified',
+    limitation: 'Щит — 50 временных хитов владельцу (не складываются с другими временными хитами). «Хрупкая Чешуя» снимает только иммунитет к огню и только у главного противника сценария, на 10 раундов.',
+    availability: SCENARIO_ITEM_AVAILABILITY,
+    source_page: 1,
+    provenance: { ...SCENARIO_ITEM_SOURCE, source_page: 1 },
+  },
+  {
+    catalog_id: 'scenario_astohan:lomar-ward',
+    ...SCENARIO_ITEM_SOURCE,
+    display_name: 'Оберег Ломара',
+    name: 'Оберег Ломара',
+    manifest_section: 'scenario-item',
+    description: 'Медный круг с выжженными знаками, рассчитанный на драконий огонь. Сжечь его — действие: на минуту весь отряд получает сопротивление огню. Оберег одноразовый.',
+    category: 'wondrous',
+    type: 'consumable',
+    rarity: 'редкий',
+    price_cp: 0,
+    base_price_cp: 0,
+    weight: 0,
+    lifecycle: { equippable: false, transferable: true, stackable: false },
+    use: {
+      kind: 'party_fire_ward',
+      consumes: 1,
+      combat_action: 'action',
+      range_feet: 0,
+      target: 'self',
+      duration_rounds: 10,
+      damage_resistances: ['fire'],
+    },
+    activation: null,
+    attunement: { required: false },
+    charges: null,
+    recharge: null,
+    crafting: { implemented: false, hooks: [] },
+    magic_item: { category: 'wondrous', rarity: 'rare', value_formula: 'Награда сценария' },
+    mechanics_status: 'verified',
+    limitation: 'Сопротивление огню получают все герои отряда в сцене на 10 раундов (минуту); оберег сгорает.',
+    availability: SCENARIO_ITEM_AVAILABILITY,
+    source_page: 1,
+    provenance: { ...SCENARIO_ITEM_SOURCE, source_page: 1 },
+  },
+]
+
+export const SCENARIO_ITEM_CATALOG = deepFreeze(Object.fromEntries(SCENARIO_ITEMS.map((entry) => [entry.catalog_id, entry])))
+
 export const ITEM_SHOP_CATALOG_IDS = deepFreeze(
   Object.keys(ITEM_CATALOG).filter((catalogId) => (
     ITEM_CATALOG[catalogId].availability.shop
@@ -1872,7 +1973,8 @@ export const SRD_EQUIPMENT_CATALOG = deepFreeze(Object.fromEntries(
 ))
 
 export function catalogItem(catalogId) {
-  return ITEM_CATALOG[String(catalogId ?? '')] ?? null
+  const id = String(catalogId ?? '')
+  return ITEM_CATALOG[id] ?? SCENARIO_ITEM_CATALOG[id] ?? null
 }
 
 export function catalogIdsFor(channel) {

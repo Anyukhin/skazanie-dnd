@@ -204,7 +204,7 @@ export type AttackActorVisual = {
   appearance?: { profile?: string }
 }
 
-const NATURAL_ATTACK_ARCHETYPES = new Set(['beast', 'wolf', 'bear', 'boar', 'lion', 'tiger', 'hound', 'spider'])
+const NATURAL_ATTACK_ARCHETYPES = new Set(['beast', 'wolf', 'bear', 'boar', 'lion', 'tiger', 'hound', 'spider', 'dragon'])
 
 /** Природный удар определяется публичной моделью/архетипом, а не именем NPC. */
 export function attackVisualStyleForActor(
@@ -216,7 +216,7 @@ export function attackVisualStyleForActor(
   const profile = String(actor?.appearance?.profile ?? '').toLocaleLowerCase('en-US')
   const naturalArchetype = NATURAL_ATTACK_ARCHETYPES.has(archetype)
     || /(?:beast|wolf|bear|boar|lion|tiger|hound|spider|snake|rat)/u.test(archetype)
-  if (profile === 'beast' || naturalArchetype || ['wolf', 'beast'].includes(modelKey)) return 'natural'
+  if (profile === 'beast' || profile === 'dragon' || naturalArchetype || ['wolf', 'beast', 'dragon'].includes(modelKey)) return 'natural'
   return attackVisualStyle(cue)
 }
 
@@ -269,22 +269,28 @@ export function shouldDeferDefeat(
 }
 
 /** Не держим больше старых эффектов, чем игрок ещё способен связать с ходом. */
-export const COMBAT_ANIMATION_QUEUE_LIMIT = 12
-/** Весь подтверждённый пакет, включая движение, удар и состояние NPC, короче 2 с. */
-export const COMBAT_ANIMATION_BATCH_BUDGET_MS = 1_800
+export const COMBAT_ANIMATION_QUEUE_LIMIT = 20
+/**
+ * Весь подтверждённый пакет — движение, удар, попадание, состояние — держится
+ * в пределах 5 с. Раньше было 1,8 с, и ход врага пролетал так быстро, что
+ * замах, удар и падение сливались в одно движение; ориентир — BG3, где каждое
+ * действие читается отдельно. Механику темп не трогает: сервер уже всё решил.
+ */
+export const COMBAT_ANIMATION_BATCH_BUDGET_MS = 5_000
 
 const BASE_DURATIONS = {
-  moveMin: 240,
-  moveMax: 560,
-  strike: 480,
-  impact: 360,
-  death: 420,
-  condition: 360,
-  projectile: 520,
-  burst: 480,
-  beam: 560,
-  aura: 440,
-  channel: 480,
+  moveMin: 320,
+  moveMax: 2_000,
+  moveMsPerCell: 170,
+  strike: 720,
+  impact: 460,
+  death: 900,
+  condition: 420,
+  projectile: 640,
+  burst: 700,
+  beam: 720,
+  aura: 560,
+  channel: 620,
 } as const
 
 const CONDITION_LABELS: Record<string, string> = {
@@ -506,6 +512,42 @@ function attackCueFieldsFromBattleLog(event: BattleEvent): AttackCueFields {
 function motionFor(options: CombatAnimationOptions) {
   return (options.reducedMotion ?? systemPrefersReducedMotion()) ? 'reduced' as const : 'full' as const
 }
+
+function monsterAreaCueFromEvent(event: GameEvent): SpellAnimationCue | null {
+  if (event.event_type !== 'LegendaryActionUsed' && event.event_type !== 'CombatActionUsed') return null
+  const area = event.payload?.area as { shape?: unknown; from?: BoardPoint; to?: BoardPoint; size_feet?: unknown; damage_type?: unknown; target_ids?: unknown } | undefined
+  const actorId = String(event.actor_id ?? '')
+  const point = (value: unknown) => {
+    const candidate = value as { x?: unknown; y?: unknown } | null
+    return candidate && Number.isFinite(Number(candidate.x)) && Number.isFinite(Number(candidate.y)) ? { x: Number(candidate.x), y: Number(candidate.y) } : null
+  }
+  const from = point(area?.from)
+  const to = point(area?.to)
+  if (!actorId || !from || !to) return null
+  const shape = areaShape(area?.shape) ?? 'sphere'
+  const damageType = typeof area?.damage_type === 'string' && area.damage_type ? area.damage_type : undefined
+  const profile = spellVisualProfile(MONSTER_AREA_VISUAL_ID, { damageType })
+  return {
+    id: eventId(event, 'burst'),
+    kind: 'burst',
+    actorId,
+    targetIds: uniqueIds(area?.target_ids),
+    origin: from,
+    center: to,
+    shape,
+    originMode: shape === 'sphere' ? 'point' : 'self',
+    sizeFeet: Math.max(5, Number(area?.size_feet) || 5),
+    damageType,
+    spellId: MONSTER_AREA_VISUAL_ID,
+    school: profile.school,
+    durationMs: MONSTER_AREA_DURATION_MS,
+  }
+}
+
+/** Условный id эффекта для областей существ: палитру задаёт вид урона. */
+const MONSTER_AREA_VISUAL_ID = 'monster-area'
+/** Дыхание держится дольше заклинательной вспышки: это кульминация хода босса. */
+const MONSTER_AREA_DURATION_MS = 1200
 
 function burstDuration(spellId: string) {
   // У шара есть две читаемые фазы: полёт и расширение до границы области.
@@ -771,8 +813,9 @@ function conditionLabel(condition: string) {
     ?? condition.split('-').filter(Boolean).map((part) => part.charAt(0).toLocaleUpperCase('ru') + part.slice(1)).join(' ')
 }
 
+/** Шаг идёт со скоростью, а не за фиксированное время: длинный путь — дольше. */
 function moveDuration(pathLength: number) {
-  return Math.min(BASE_DURATIONS.moveMax, Math.max(BASE_DURATIONS.moveMin, pathLength * 70))
+  return Math.min(BASE_DURATIONS.moveMax, Math.max(BASE_DURATIONS.moveMin, pathLength * BASE_DURATIONS.moveMsPerCell))
 }
 
 type BattleLogVisualFields = {
@@ -922,6 +965,13 @@ export function combatAnimationCuesFromEvents(
     const payload = event.payload ?? {}
     const actorId = String(event.actor_id ?? '')
     const targetId = targetIdFor(event)
+    // Та же вспышка, что из хроники (`area-attack`), и с тем же id: живой
+    // пакет и журнал не проигрывают дыхание дважды.
+    const monsterArea = monsterAreaCueFromEvent(event)
+    if (monsterArea) {
+      cues.push(monsterArea)
+      continue
+    }
     if (event.event_type === 'CombatActionUsed') {
       const cue = enervationRepeatCueFromAction(event)
       if (cue) {
@@ -1310,6 +1360,28 @@ export function combatAnimationCuesFromBattleLog(
         to: event.to,
         path,
         durationMs: moveDuration(path.length),
+      })
+      continue
+    }
+    // Дыхание дракона и другие области существ: сервер пишет источник и
+    // направление, доска рисует ту же вспышку, что у заклинаний, цветом урона.
+    if (event.type === 'area-attack' && event.actorId && event.from && event.area) {
+      const shape = battleLogAreaShape(event) ?? 'sphere'
+      const profile = spellVisualProfile(MONSTER_AREA_VISUAL_ID, { damageType: event.damageType })
+      cues.push({
+        id: `${event.id}:burst`,
+        kind: 'burst',
+        actorId: event.actorId,
+        targetIds: uniqueIds(event.targetIds ?? []),
+        origin: event.from,
+        center: { x: event.area.x, y: event.area.y },
+        shape,
+        originMode: shape === 'sphere' ? 'point' : 'self',
+        sizeFeet: event.area.radiusFeet ?? 5,
+        damageType: event.damageType,
+        spellId: MONSTER_AREA_VISUAL_ID,
+        school: profile.school,
+        durationMs: MONSTER_AREA_DURATION_MS,
       })
       continue
     }

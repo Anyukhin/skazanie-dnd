@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-import { ITEM_CATALOG } from '../server/item-catalog.mjs'
+import { ITEM_CATALOG, SCENARIO_ITEM_CATALOG } from '../server/item-catalog.mjs'
 
 import {
   ITEM_TYPES,
@@ -40,7 +40,9 @@ test('манифест предметов покрывает каждый Item.t
   assert.deepEqual(declaredTypes, ITEM_TYPES, 'сборщик обязан знать весь union InventoryItem.type')
   assert.deepEqual(Object.keys(assets.typeIds), ITEM_TYPES, 'для каждого вида нужен типовой рисунок')
 
-  const expectedCatalogImages = Object.keys(ITEM_CATALOG)
+  // Предметы сценария живут в своём каталоге, но рисунок у каждого свой — как у SRD.
+  const FULL_CATALOG = { ...ITEM_CATALOG, ...SCENARIO_ITEM_CATALOG }
+  const expectedCatalogImages = Object.keys(FULL_CATALOG)
     .map((id) => `item-${normalizeItemIdentifier(id)}`)
     .sort()
   assert.deepEqual(
@@ -48,7 +50,7 @@ test('манифест предметов покрывает каждый Item.t
     expectedCatalogImages,
     'кждая запись полного каталога получает отдельный рисунок',
   )
-  for (const item of Object.values(ITEM_CATALOG)) {
+  for (const item of Object.values(FULL_CATALOG)) {
     assert.equal(
       resolveItemImagePath(item, assets),
       `/assets/items/item-${normalizeItemIdentifier(item.catalog_id)}.png`,

@@ -1,4 +1,8 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
+import { scenarioKnightActionFromText } from './scenario-knight.mjs'
+import { scenarioArmoryActionFromText, scenarioInformantActionFromText, scenarioPurseActionFromText, scenarioTreatyActionFromText } from './scenario-attention.mjs'
+import { scenarioArmoryRules, scenarioInformantRules } from './campaign-scenario.mjs'
+import { catalogItem } from './item-catalog.mjs'
 import { announcesMovement } from './party-exit-intent.mjs'
 
 const CORPSE_SEARCH_VERB = '(?<![\\p{L}\\p{M}])(?:обыск\\p{L}*|провер\\p{L}*|осматр\\p{L}*|ищ\\p{L}*)'
@@ -111,8 +115,31 @@ export function isSceneObservationRequest(value) {
 // «долго», `тон` — «стоном», а `rest` — любое английское слово с этой
 // подстрокой, и обычная фраза уезжала в отдых или в проверку Силы.
 const W = '(?<![\\p{L}\\p{M}])'
+/**
+ * Ожидание до часа суток: «ждём до полуночи», «дожидаемся рассвета». Цель —
+ * минута суток по часам мира (`server/weather.mjs`), подпись — родительный
+ * падеж для ответа «Отряд ждёт до полуночи».
+ */
+const WAIT_TARGETS = Object.freeze([
+  Object.freeze({ id: 'midnight', minute: 0, label: 'полуночи', pattern: /полуноч/iu }),
+  Object.freeze({ id: 'dawn', minute: 300, label: 'рассвета', pattern: /рассвет|утр[аео]|зар[иеюя]/iu }),
+  Object.freeze({ id: 'noon', minute: 720, label: 'полудня', pattern: /полудн|полден/iu }),
+  Object.freeze({ id: 'dusk', minute: 1_020, label: 'вечера', pattern: /закат|вечер|сумер/iu }),
+  Object.freeze({ id: 'night', minute: 1_320, label: 'ночи', pattern: /ноч[иь]|темнот|стемне/iu }),
+])
+const WAIT_PATTERN = /(?<![\p{L}\p{M}])(?:жд(?:ём|ем|у|ать|ёт|ут)|подожд\p{L}*|дожида\p{L}*|дождать\p{L}*|дождём\p{L}*|дождемся|выжида\p{L}*|пережида\p{L}*|переждать|караул\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,30}(?:полуноч|рассвет|утр[аео]|зар[иеюя]|полудн|полден|закат|вечер|сумер|ноч[иь]|темнот|стемне)/iu
+
+/** Цель ожидания в тексте игрока или `null`: «ждём до полуночи» → полночь. */
+export function waitTargetFromText(value) {
+  const text = normalizedText(value)
+  if (!WAIT_PATTERN.test(text)) return null
+  const target = WAIT_TARGETS.find((entry) => entry.pattern.test(text))
+  return target ? { id: target.id, minute: target.minute, label: target.label } : null
+}
+
 const INTENT_PATTERNS = [
   ['why', /^\s*\/why\b/i],
+  ['wait', WAIT_PATTERN],
   ['attack', new RegExp(`${W}(атак|удар|бью|стреля|выстрел|рублю|колю|attack|shoot|strike)`, 'iu')],
   ['saving_throw', new RegExp(`${W}(спасброс|saving\\s*throw|save)`, 'iu')],
   ['improvised_action', FREE_ACTION_PATTERNS[0][1]],
@@ -457,7 +484,29 @@ export class IntentParser {
     const patternIntent = rawPatternIntent === 'ability_check' && mainClause !== operativeText && checkPattern && !checkPattern.test(mainClause)
       ? 'improvised_action'
       : rawPatternIntent
-    const detectedIntent = spoken ? 'social'
+    // Действие с проклятым рыцарем сценария («ставлю голову перед рыцарем»,
+    // «молюсь об упокоении Каэлана») — своя серверная команда, а не реплика:
+    // иначе фраза с именем уходила бы в разговор, и голова оставалась у героя.
+    const knightAction = scenarioKnightActionFromText(operativeText)
+    // Договор с драконом финала — тоже своя команда сценария, а не реплика.
+    const treatyAction = knightAction ? null : scenarioTreatyActionFromText(operativeText, visibleState)
+    const purseAction = knightAction || treatyAction ? null : scenarioPurseActionFromText(operativeText)
+    // Вещь из королевской оружейной: названия берутся из каталога, чтобы
+    // «беру плащ защиты из оружейной» узнал именно плащ.
+    const armoryChoices = (scenarioArmoryRules(visibleState)?.catalog_ids ?? [])
+      .map((catalogId) => ({ catalog_id: catalogId, name: String(catalogItem(catalogId)?.name ?? '') }))
+      .filter((choice) => choice.name)
+    const armoryAction = knightAction || treatyAction || purseAction || !armoryChoices.length ? null : scenarioArmoryActionFromText(operativeText, armoryChoices)
+    // Решение по осведомителю пепельной сети — только по уже раскрытому: иначе
+    // «выдаю мельника» в начале линии ушло бы в отказ вместо разговора.
+    const informants = scenarioInformantRules(visibleState).filter((informant) => informant.revealed)
+    const informantAction = knightAction || treatyAction || purseAction || armoryAction || !informants.length ? null : scenarioInformantActionFromText(operativeText, informants)
+    const detectedIntent = knightAction ? 'scenario_knight'
+      : treatyAction ? 'scenario_treaty'
+      : purseAction ? 'scenario_purse'
+      : armoryAction ? 'scenario_armory'
+      : informantAction ? 'scenario_informant'
+      : spoken ? 'social'
       : freeActionKind === 'compound_maneuver' ? 'compound_maneuver'
       : freeActionKind === 'compound_ranged_attack' ? 'improvised_action'
       : freeActionKind === 'approach_attack' ? 'approach_attack'
@@ -504,6 +553,9 @@ export class IntentParser {
       requires_clarification: missing.length > 0,
       confidence: intent === 'improvised_action' ? 0.45 : missing.length ? 0.55 : 0.86,
       free_action_kind: freeActionKind,
+      ...(knightAction ? { scenario_knight: knightAction } : {}),
+      ...(armoryAction ? { scenario_armory: armoryAction } : {}),
+      ...(informantAction ? { scenario_informant: informantAction } : {}),
       ...( /нелеталь|не\s+убив|не\s+убива|без\s+убийств/iu.test(text) || /оглуш|нокаут/iu.test(operativeText) ? { knock_out: true } : {}),
       ...(ambiguousSocialTarget ? {
         target_candidates: socialTargets.map((actor) => ({

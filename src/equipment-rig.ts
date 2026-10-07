@@ -208,7 +208,7 @@ function allNodes(root: Group): CandidateNode[] {
 
 function detectFamily(root: Group, profile: EquipmentRigProfile, nodes: CandidateNode[]): EquipmentRigFamily {
   const names = new Set(nodes.filter(boneLike).map((node) => normalized(node.name)))
-  if (profile === 'beast' || profile === 'wolf') return 'unknown'
+  if (profile === 'beast' || profile === 'wolf' || profile === 'dragon') return 'unknown'
   if ([...names].some((name) => name.includes('rupperleg001') || name.includes('lupperleg001'))) return 'skeleton'
   if (names.has('handslotl') || names.has('handslotr')) return 'kaykit'
   if (names.has('body1') || names.has('fistl') || names.has('fistr')) return 'goblin'
@@ -606,7 +606,7 @@ export function createEquipmentRig(root: Group, options: { height: number; profi
   const getGrip = (side: EquipmentSide): Group | null => {
     if (grips[side]) return grips[side]
     const hand = gripTargetBySide[side]
-    if (!hand || profile === 'beast' || profile === 'wolf') return null
+    if (!hand || profile === 'beast' || profile === 'wolf' || profile === 'dragon') return null
     const existing = hand.children.find((child) => child.name === 'grip0' && child.userData.equipmentRigGrip === true)
     const grip = existing instanceof Group ? existing : new Group()
     grip.name = 'grip0'

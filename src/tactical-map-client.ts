@@ -589,6 +589,17 @@ export function decodeTacticalMap(value: unknown): TacticalMap | null {
         role: (SPAWN_ROLES.includes(record.role as TacticalSpawnRole) ? record.role : 'party') as TacticalSpawnRole,
       })
     }
+    // Окрестности за краем — только вид: биом общий и по сторонам света.
+    const surroundings = raw.surroundings as Record<string, unknown> | undefined
+    if (surroundings && typeof surroundings === 'object' && !Array.isArray(surroundings)) {
+      const biomes = new Set(['forest', 'deadwood', 'meadow', 'mountain', 'rock', 'sea'])
+      const rawSides = (surroundings.sides ?? {}) as Record<string, unknown>
+      const sides = Object.fromEntries(['n', 'e', 's', 'w'].filter((side) => biomes.has(String(rawSides[side]))).map((side) => [side, String(rawSides[side])]))
+      map.surroundings = {
+        ...(biomes.has(String(surroundings.biome)) ? { biome: String(surroundings.biome) } : {}),
+        ...(Object.keys(sides).length ? { sides } : {}),
+      }
+    }
     const overlays = (raw.overlays ?? {}) as Record<string, unknown>
     map.overlays = {
       compass: overlays.compass === true,

@@ -522,7 +522,7 @@ export function createEquipmentController(root: THREE.Group, options: EquipmentC
   }
 
   const apply = async (requested: PublicLoadout, signal: AbortSignal, id: number): Promise<void> => {
-    if (profile === 'beast' || profile === 'wolf' || rig.family === 'unknown') {
+    if (profile === 'beast' || profile === 'wolf' || profile === 'dragon' || rig.family === 'unknown') {
       if (id !== generation || disposed) return
       if (signal.aborted) throw signal.reason ?? new Error('Загрузка экипировки отменена')
       clearActive()

@@ -982,7 +982,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const dossierSocialNpc = dossierSceneNpc
     ? state.social?.npcs?.find((npc) => npc.id === dossierSceneNpc.id) ?? null
     : null
-  const dossierPublicTags = dossierSocialNpc?.tags?.filter((tag) => !/^faction:/iu.test(String(tag))) ?? []
+  // Теги NPC — служебные слаги данных (`king`, `post:gallery`, `boss`): игроку
+  // показываются только человекочитаемые, по-русски и без префикса `ключ:`.
+  const dossierPublicTags = dossierSocialNpc?.tags?.filter((tag) => /\p{Script=Cyrillic}/u.test(String(tag)) && !String(tag).includes(':')) ?? []
   const dossierMerchant = dossierSceneNpc
     ? merchantForSceneNpc(state, dossierSceneNpc.id)
     : null
@@ -1623,14 +1625,26 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   const visualTheme = fortressMap ? 'map-theme-fortress' : boardVisualTheme(sceneTheme)
   const mapArt = boardMapArtForMap(sceneTheme, boardMap)
 
+  const defaultHotbarSpellIds = spells.filter((spell) => !mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote).blocked && spell.prepared !== false && spell.actionType !== 'long_cast' && spellActionType(spell) !== 'reaction' && spell.kind !== 'utility').slice(0, 18).map((spell) => spell.id)
+  const defaultHotbarKey = defaultHotbarSpellIds.join('|')
+  const savedHotbarSpellIds = (): string[] => {
+    try { return JSON.parse(window.localStorage.getItem(`skazanie-hotbar-spells:${turnActorId}`) ?? '[]') } catch { return [] }
+  }
+  // Заклинания появляются у героя позже, чем его место: место создаётся пустым
+  // воином, а книга наполняется мастером героя, прокачкой и подготовкой. Эффект
+  // ниже живёт по `turnActorId`, и новый жрец с десятью заклинаниями видел
+  // пустую колоду, пока не перезагрузит страницу (плейтест 2026-10-07). Пока
+  // игрок ничего не закрепил сам, колода следует за книгой.
+  useEffect(() => {
+    if (savedHotbarSpellIds().length) return
+    setHotbarSpellIds(defaultHotbarSpellIds)
+  }, [defaultHotbarKey])
   useEffect(() => {
     const defaultItem = combatItems.find((item) => item.equipped) ?? combatItems[0]
     setSelectedItemId(defaultItem?.id ?? BASE_ATTACK_ID)
-    const storageKey = `skazanie-hotbar-spells:${turnActorId}`
-    let saved: string[] = []
-    try { saved = JSON.parse(window.localStorage.getItem(storageKey) ?? '[]') } catch { saved = [] }
+    const saved = savedHotbarSpellIds()
     const eligible = saved.filter((id) => spells.some((spell) => spell.id === id && spell.prepared !== false && spellActionType(spell) !== 'reaction'))
-    const defaults = spells.filter((spell) => !mechanicsSupportPresentation(spell.mechanicsSupport, spell.supportNote).blocked && spell.prepared !== false && spell.actionType !== 'long_cast' && spellActionType(spell) !== 'reaction' && spell.kind !== 'utility').slice(0, 18).map((spell) => spell.id)
+    const defaults = defaultHotbarSpellIds
     const nextHotbar = eligible.length ? eligible : defaults
     setHotbarSpellIds(nextHotbar)
     setSelectedSpellId(nextHotbar[0] ?? spells[0]?.id ?? '')
@@ -2705,6 +2719,16 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
             {enemyHighGround === 'lower' && <i className="disadvantage" title="Стрелок ниже цели минимум на 5 футов: помеха">↓</i>}
             {trajectoryBlockReason && <i className="blocked" title={trajectoryBlockReason}>×</i>}
           </span>
+        )}
+        {/* Хиты героя видны всему отряду, но на фишке — только в бою и только
+            у раненого: здоровый отряд полосками не загромождается (PR #7), а
+            кто истекает кровью, видно сразу, как в BG3. */}
+        {player && cell.revealed && actorIsAnchor && combatActive && player.maxHp > 0 && player.hp < player.maxHp && (
+          <TokenHealthBar
+            fill={Math.max(0, player.hp) / player.maxHp}
+            label={`${Math.max(0, player.hp)}/${player.maxHp}`}
+            className={`hero-health ${player.hp <= 0 ? 'downed' : player.hp / player.maxHp <= .25 ? 'critical' : player.hp / player.maxHp <= .5 ? 'bloodied' : 'scratched'}`}
+          />
         )}
         {actorHasFullArea && actorIsAnchor && <span className="actor-footprint-area" style={actorTokenStyle} aria-hidden="true" />}
         {enemy && cell.revealed && actorIsAnchor && (

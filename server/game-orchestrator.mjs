@@ -44,11 +44,22 @@ import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedC
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
 import { agentContextMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
+import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
 import { freeActionDiscoveryCommands, retrieveWorldMemory } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
+
+/**
+ * Сюжет авторского сценария для Рассказчика: о чём кампания, текущий узел,
+ * пройденное и найденные улики (`scenarioNarratorBrief`). Считается по
+ * состоянию, спроецированному для отряда, — ненайденного в нём нет.
+ */
+function narrationScenarioContext(state) {
+  const scenario = scenarioNarratorBrief(questStateForViewer(state, { isPartyMember: true }))
+  return scenario ? { scenario } : {}
+}
 
 // A JSON request cannot manufacture this identity. Only server-owned world
 // orchestration may attach it to derived AdvanceScene/merchant commands.
@@ -917,7 +928,7 @@ function mergeClarificationAction(original, answer) {
 
 const INDEPENDENT_ACTION_INTENTS = new Set([
   'attack', 'saving_throw', 'ability_check', 'healing', 'damage', 'cast_spell',
-  'start_combat', 'end_combat', 'end_turn', 'rest', 'social', 'explore',
+  'start_combat', 'end_combat', 'end_turn', 'rest', 'wait', 'scenario_knight', 'scenario_treaty', 'scenario_purse', 'scenario_armory', 'scenario_informant', 'social', 'explore',
   'approach_attack', 'compound_maneuver',
 ])
 
@@ -1642,6 +1653,7 @@ export class GameOrchestrator {
         scene_canon: sceneCanonFor(state, { playerId: viewer?.playerId ?? playerId, actorId: playerId }),
         world_memory: { facts: narrationWorldFacts(state, viewer, message, publicCommittedEvents) },
         story_context: storyContext,
+        ...narrationScenarioContext(state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
       },
       permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents, {
@@ -2594,7 +2606,7 @@ export class GameOrchestrator {
     const deterministicActionIntent = new Set([
       'improvised_action', 'compound_maneuver', 'approach_attack', 'attack', 'damage',
       'ability_check', 'saving_throw', 'healing', 'cast_spell', 'start_combat',
-      'end_combat', 'end_turn', 'rest',
+      'end_combat', 'end_turn', 'rest', 'wait', 'scenario_knight', 'scenario_treaty', 'scenario_purse', 'scenario_armory', 'scenario_informant',
     ])
     const explicitPickpocket = intent.intent === 'improvised_action'
       && /(?:обчищ|обчист|карман|кошел)/iu.test(message)
@@ -2996,6 +3008,7 @@ export class GameOrchestrator {
           facts: narrationWorldFacts(committed.state, viewer, message, publicCommittedEvents),
         },
         story_context: storyContext,
+        ...narrationScenarioContext(committed.state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, committed.state),
       },
       permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),

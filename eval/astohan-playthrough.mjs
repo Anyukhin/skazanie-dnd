@@ -59,7 +59,10 @@ const option = (name, fallback) => {
   return index >= 0 && argv[index + 1] ? argv[index + 1] : fallback
 }
 const LIVE = flag('live')
-const KEEP = flag('keep')
+// `--visit a,b` — дойти до мест по очереди и остановиться, оставив хранилище:
+// так карту места смотрят глазами в браузере (`docs/astohan-scenario.md`).
+const VISIT = option('visit', '').split(',').map((entry) => entry.trim()).filter(Boolean)
+const KEEP = flag('keep') || VISIT.length > 0
 // Судья тратит вызовы модели, поэтому включается только явно.
 const JUDGE = flag('judge')
 const PARTY = option('party', 'fighter,cleric,wizard,rogue').split(',').map((entry) => entry.trim()).filter(Boolean)
@@ -718,7 +721,7 @@ async function director(playerAction = 'Продолжить приключен�
   for (const entry of newMessages(seen, after)) {
     if (entry.speaker !== 'narrator' || !entry.text) continue
     narrations.push({ kind: 'director', action: playerAction, label: type, text: String(entry.text) })
-    for (const issue of narrationConsistency(String(entry.text), after)) recordConsistency(issue, `Режиссёр, ${type}`)
+    for (const issue of narrationConsistency(String(entry.text), await withFullSceneMap(after))) recordConsistency(issue, `Режиссёр, ${type}`)
     stats.consistencyChecked += 1
   }
   const fresh = newMessages(seen, after).map((entry) => short(entry.text ?? entry.content, 500)).filter(Boolean)
@@ -1151,6 +1154,28 @@ async function restIfHurt() {
   note(`- 💤 ${kind === 'long' ? 'долгий' : 'короткий'} отдых: ${after.players.map((player) => `${player.character} ${player.hp}/${player.maxHp}`).join(', ')}`)
 }
 
+/** Число переходов по дорогам глобальной карты между двумя местами (BFS). */
+function routeHops(map, from, to) {
+  if (from === to) return 0
+  const next = new Map()
+  for (const route of map?.routes ?? []) {
+    next.set(route.from, [...(next.get(route.from) ?? []), route.to])
+    next.set(route.to, [...(next.get(route.to) ?? []), route.from])
+  }
+  const seen = new Map([[from, 0]])
+  const queue = [from]
+  while (queue.length) {
+    const at = queue.shift()
+    for (const neighbour of next.get(at) ?? []) {
+      if (seen.has(neighbour)) continue
+      seen.set(neighbour, seen.get(at) + 1)
+      if (neighbour === to) return seen.get(neighbour)
+      queue.push(neighbour)
+    }
+  }
+  return Infinity
+}
+
 async function travelTo(locationId) {
   const state = await room()
   const map = state.worldMap
@@ -1164,6 +1189,14 @@ async function travelTo(locationId) {
   const after = await room()
   if (after.mechanics.combat?.active) await playCombat(`засада по дороге в «${target.name}»`)
   const arrived = await room()
+  // Дальнее место не соседнее: отряд идёт по дорогам с остановками, и каждое
+  // предложение пути — один переход. Остановка ближе к цели — это не провал.
+  const before = routeHops(map, current.id, target.id)
+  const now = routeHops(arrived.worldMap ?? map, arrived.worldMap?.currentLocationId, target.id)
+  if (arrived.worldMap?.currentLocationId !== target.id && now < before) {
+    note(`  по дороге в «${target.name}»: остановка «${arrived.scene?.location}», осталось переходов: ${now}`)
+    return false
+  }
   if (arrived.worldMap?.currentLocationId !== target.id) {
     finding('major', 'travel-failed', `после предложения пути отряд в «${arrived.worldMap?.currentLocationId}», а не в «${target.id}» (сцена «${arrived.scene?.location}»)`)
     return false
@@ -1188,10 +1221,25 @@ function recordConsistency(issue, where = '') {
   finding(issue.severity, `consistency-${issue.code.toLowerCase().replace(/_/gu, '-')}`, `${issue.message}${where ? ` — ${where}` : ''}`)
 }
 
+/**
+ * Сцена игрока с картой из полного вида ведущего. Проекция игрока прячет
+ * нераскрытые клетки вместе с предметами, и сверка «рассказчик назвал — на
+ * карте нет» срабатывала на костры лагеря, до которых отряд ещё не дошёл,
+ * хотя о них говорит открытое описание места (прогон 2026-10-07).
+ */
+async function withFullSceneMap(state) {
+  try {
+    const full = await room(accounts.admin)
+    return full?.scene?.map ? { ...state, scene: { ...state.scene, map: full.scene.map } } : state
+  } catch {
+    return state
+  }
+}
+
 /** Ответ рассказчика сверяется с тем, что сейчас на самом деле в сцене. */
 async function checkNarrationConsistency(action, text, check = null) {
   if (!text) return
-  const state = await room()
+  const state = await withFullSceneMap(await room())
   stats.consistencyChecked += 1
   for (const issue of narrationConsistency(String(text), state, { check })) recordConsistency(issue, `на «${short(action, 70)}»`)
   // Контекст в момент ответа — для судьи: без него он не знает, что на карте и чем кончился бросок.
@@ -1292,9 +1340,12 @@ async function restartAndCompare(reason) {
 }
 
 function runCutoverAudit() {
-  const audit = spawnSync(process.execPath, ['tools/audit-cutover.mjs', '--storage', storage], { cwd: ROOT, encoding: 'utf8', timeout: 180_000, env: { ...process.env, ROUTERAI_API_KEY: '' } })
+  const audit = spawnSync(process.execPath, ['tools/audit-cutover.mjs', '--storage', storage], { cwd: ROOT, encoding: 'utf8', timeout: 600_000, env: { ...process.env, ROUTERAI_API_KEY: '' } })
   const output = `${audit.stdout ?? ''}${audit.stderr ?? ''}`
-  if (audit.status !== 0) finding('critical', 'replay-audit', `audit-cutover вернул ${audit.status}: ${short(output, 400)}`)
+  // Статус null без вывода — аудит не успел за отведённое время (длинная
+  // кампания на занятой машине), а не расхождение replay: это разные находки.
+  if (audit.status === null) finding('major', 'replay-audit-timeout', `audit-cutover не успел за 10 мин (${audit.signal ?? audit.error?.code ?? 'timeout'})`)
+  else if (audit.status !== 0) finding('critical', 'replay-audit', `audit-cutover вернул ${audit.status}: ${short(output, 400)}`)
   return { status: audit.status, output: short(output, 2000) }
 }
 
@@ -1400,7 +1451,7 @@ async function openingScene() {
   if (quest && quest.status !== 'active') finding('major', 'quest-not-active', `после голосования задание в статусе ${quest.status}`)
   await say(guest, 'Изучаю донесение о сожжённой Пепельной заставе: кто открыл ворота и откуда начинаются следы когтей?', { label: 'донесение' })
   await say(owner, 'Присматриваюсь к Орену Фалю: правду ли он говорит о человеке в порту, который расспрашивал о последней охоте на Вулканиса?', { label: 'проницательность' })
-  await say(guest, 'Расспрашиваю Миру Венн об исчезнувшем сборщике налогов у Миттлайда.', { label: 'Мира Венн' })
+  await say(guest, 'Расспрашиваю Миру Венн об исчезнувшем сборщике налогов у Митглайда.', { label: 'Мира Венн' })
   await say(owner, 'Наблюдаю за королём Аресом, когда маршал произносит имя Вулканиса.', { label: 'Арес и Вулканис' })
   await say(guest, 'Что мы уже знаем о Пепельной заставе?', { label: 'вопрос', requestKind: 'question', expect: 'any' })
   await tradeAtMerchant()
@@ -1415,6 +1466,7 @@ async function playUntilFinale() {
   let lastScene = ''
   let exploreRound = 0
   let idleDirector = 0
+  let guardAttempts = 0
   for (let tick = 0; tick < 120 && timeLeft() > 60_000; tick += 1) {
     let state = await settleInteraction('loop')
     if (lifecycleStatus(state) !== 'active') return state
@@ -1426,6 +1478,18 @@ async function playUntilFinale() {
       await restIfHurt()
       continue
     }
+    // Стража у ворот: отряд в розыске. Живой стол выбирает из карточки, бот
+    // платит виру — иначе переход заблокирован (`GUARD_ENCOUNTER_BLOCKS_SCENE`).
+    if (state.law?.encounter) {
+      const payer = state.partyMemberIds?.[0] ?? state.players?.[0]?.id
+      guardAttempts += 1
+      if (guardAttempts > 3) { finding('blocker', 'guard-stalled', `стража в «${state.scene?.location}» не отпускает отряд: ни вира, ни сдача не приняты`); return state }
+      const resolution = guardAttempts === 1 ? 'fine' : 'surrender'
+      note(`  стража: ${state.law.encounter.officer_name ?? 'офицер'} — ${resolution === 'fine' ? 'платим виру' : 'сдаёмся'}`)
+      await command(payer, { command_type: 'ResolveGuardEncounter', actor_id: payer, resolution }, resolution === 'fine' ? 'вира страже' : 'сдаться страже', { expectFailure: true })
+      continue
+    }
+    guardAttempts = 0
     await trackScene(state)
     const key = sceneKey(state)
     if (key !== lastScene) { lastScene = key; exploreRound = 0; idleDirector = 0; stage(`Сцена ${state.adventure?.chapter}: ${state.scene?.location}`) }
@@ -1435,7 +1499,10 @@ async function playUntilFinale() {
       continue
     }
     const arc = state.autonomy?.pacing ?? {}
-    const finale = Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc?.target_scenes ?? 99)
+    // По сценарию финал — логово Саргата, а не номер главы.
+    const finale = state.campaignConcept?.arc?.scenario_id
+      ? state.scene?.location_id === 'astohan-vulkanis-brazier'
+      : Number(state.adventure?.chapter) >= Number(state.campaignConcept?.arc?.target_scenes ?? 99)
     const action = idleDirector >= 3 ? 'Перейти дальше' : finale || arc.phase === 'climax' ? 'Ищем бой с Саргатом и его слугами' : idleDirector === 1 ? 'Ищем бой с теми, кто разорил эти земли' : 'Продолжить приключение'
     const before = state.state_version
     const advanced = await director(action)
@@ -1781,6 +1848,21 @@ async function main() {
   if (!built.every(Boolean)) throw new Error('Герои не созданы — дальше прогон не имеет смысла')
 
   await openingScene()
+  if (VISIT.length) {
+    for (const target of VISIT) {
+      for (let hop = 0; hop < 6 && (await room()).worldMap?.currentLocationId !== target; hop += 1) {
+        await travelTo(target)
+        const here = await room()
+        if (here.mechanics.combat?.active) await playCombat(`по дороге в ${target}`)
+        await settleInteraction('visit')
+      }
+      await trackScene(await room())
+    }
+    note(`
+Хранилище оставлено: ${storage}
+Кампания ${CODE}, вход владельца — player1@astohan.test`)
+    return room()
+  }
   if (await travelTo('astohan-ash-watch')) await trackScene(await room())
   let final = await playUntilFinale()
 

@@ -6,6 +6,7 @@ import { actorPosition, findActor, isEnemyActor, isLivingActor, shortestTactical
 import { footprintDistanceFeet } from './actor-footprint.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 import { buildDataOnlyContext } from './security.mjs'
+import { scenarioBossMorale } from './campaign-scenario.mjs'
 
 const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/v1.txt', import.meta.url)), 'utf8')
 const DISPOSITIONS = new Set(['fight', 'flee', 'surrender'])
@@ -33,10 +34,18 @@ export function isMoraleMoment(state, enemyId) {
   if (hasCondition(state, enemyId, 'morale-tested') || [...FINAL_MORALE_CONDITIONS].some((condition) => hasCondition(state, enemyId, condition))) return false
   const hp = Math.max(0, Number(enemy.hp) || 0)
   const maxHp = Math.max(1, Number(enemy.maxHp ?? enemy.max_hp) || hp || 1)
-  return hp / maxHp <= 0.3
+  // Главный противник сценария проверяет мораль на своём пороге (Саргат — на
+  // трети хитов, `docs/astohan-scenario.md`, развязка «Изгнать»).
+  return hp / maxHp <= (scenarioBossMorale(state, enemyId)?.threshold ?? 0.3)
 }
 
 function localDisposition(state, enemy) {
+  // Сломленный главный противник сценария улетает, а не сдаётся в плен:
+  // без модели — та же детерминированная монетка, но из двух исходов.
+  if (scenarioBossMorale(state, actorId(enemy))) {
+    const coin = createHash('sha256').update(`${state.campaign_id ?? state.sessionCode ?? ''}:${actorId(enemy)}:${state.mechanics?.combat?.round ?? 0}:boss`).digest()[0]
+    return coin % 2 === 0 ? 'fight' : 'flee'
+  }
   const identity = `${actorName(enemy)} ${enemy.kind ?? ''} ${enemy.type ?? ''}`.toLocaleLowerCase('ru')
   if (/нежит|скелет|зомби|конструкт|голем|автомат/u.test(identity)) return 'fight'
   if (/звер|волк|паук|крыса|животн/u.test(identity)) return 'flee'
@@ -95,7 +104,10 @@ export class NpcMoraleAgent {
         temperature: 0.65,
         maxTokens: 300,
       })
-      return { ...normalizeDecision(result, fallback, actorId(enemy)), provider: this.llmClient.constructor?.name ?? 'llm' }
+      const decision = normalizeDecision(result, fallback, actorId(enemy))
+      // Модель не может сдать главного противника в плен: сломленный, он улетает.
+      if (decision.disposition === 'surrender' && scenarioBossMorale(state, actorId(enemy))) decision.disposition = 'flee'
+      return { ...decision, provider: this.llmClient.constructor?.name ?? 'llm' }
     } catch (error) {
       return { ...normalizeDecision({}, fallback, actorId(enemy)), provider: 'deterministic-morale-fallback', provider_error: String(error?.code ?? error?.name ?? 'LLM_PROVIDER_ERROR').slice(0, 80) }
     }
@@ -143,6 +155,11 @@ export function commandsForMoraleDecision(state, enemyId, decision, ordinaryComm
   if (!decision || !DISPOSITIONS.has(decision.disposition)) return ordinaryCommands
   if (decision.disposition === 'fight') {
     return [{ command_type: 'AddCondition', actor_id: actor, target_id: actor, condition: 'morale-tested' }, ...ordinaryCommands]
+  }
+  if (decision.disposition === 'flee' && scenarioBossMorale(state, actor)?.flies) {
+    // Дракон улетает за горы: пути по клеткам ему не нужно, и в тупике пещеры
+    // он не «сдаётся», как пеший противник без выхода.
+    return [{ command_type: 'AddCondition', actor_id: actor, target_id: actor, condition: 'fled' }]
   }
   if (decision.disposition === 'flee') {
     const destination = farthestReachableDestination(state, actor)

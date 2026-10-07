@@ -41,6 +41,7 @@ import {
   setEdge,
   validateTacticalMap,
   movementStepBlocked,
+  normalizeMapSurroundings,
 } from '../server/tactical-map.mjs'
 
 const ROOT = resolve(fileURLToPath(new URL('../', import.meta.url)))
@@ -287,6 +288,8 @@ export function buildAuthoredLocationMap(definition) {
       lightLevel: String(zone.lightLevel ?? 'bright'),
       floorDirection: String(zone.floorDirection ?? 'horizontal'),
       label: String(zone.label ?? zone.id),
+      // Вид кладки стен зоны (`WALL_STYLES`): частокол стана, крепостная стена.
+      ...(zone.wall ? { wall: String(zone.wall) } : {}),
     })
   }
   const zoneById = new Map(map.zones.map((zone) => [zone.id, zone]))
@@ -373,12 +376,18 @@ export function buildAuthoredLocationMap(definition) {
   for (const wall of (Array.isArray(source.walls) ? source.walls : [])) writeWall(wall)
   // Paint-order terrain creates walls wherever a floor meets a solid/absent
   // cell. Это сохраняет блокировку и линию взгляда без native wall sprite.
+  // `open_outer_edges` (нарисованные карты): уличная клетка у края карты стены
+  // не получает — за край и так не шагнуть, а забор вокруг леса или луга в 3D
+  // выглядит оградой там, где её нет.
+  const openOuterEdges = source.open_outer_edges === true
+  const exteriorAt = (/** @type {any} */ cell) => Boolean(cell?.passable) && zoneById.get(String(cell.zone))?.kind === 'exterior'
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const own = cellAt(map, x, y)
       for (const [dx, dy] of [[1, 0], [0, 1]]) {
         const next = cellAt(map, x + dx, y + dy)
         if (!own && !next) continue
+        if (openOuterEdges && ((!own && exteriorAt(next)) || (!next && exteriorAt(own)))) continue
         if (next && own && own.passable === next.passable) continue
         if (!next || !own || !own.passable || !next.passable) {
           if (!edgeBetween(map, x, y, x + dx, y + dy)) {
@@ -460,6 +469,8 @@ export function buildAuthoredLocationMap(definition) {
     addSpawnPoint(map, { id: String(spawn.id), x: position.x, y: position.y, role: ['party', 'enemy', 'neutral'].includes(String(spawn.role)) ? String(spawn.role) : 'party' })
   }
   map.overlays = { compass: false, scaleBar: false, roomLabels: [] }
+  const surroundings = normalizeMapSurroundings(source.surroundings)
+  if (surroundings) map.surroundings = surroundings
   const party = map.spawnPoints.find((spawn) => spawn.role === 'party')
   if (!party) throw new Error(`${locationId}: party spawn обязателен`)
   revealInitialArea(map, party, integer(source.reveal_distance, 8, 1, 30))

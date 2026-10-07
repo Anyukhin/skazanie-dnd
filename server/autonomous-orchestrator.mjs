@@ -30,6 +30,8 @@ import {
   pacingForDirectorIntent,
   planServerTravel,
 } from './campaign-loop-policy.mjs'
+import { scenarioEncounterEndReason, scenarioEnding } from './campaign-scenario.mjs'
+import { scenarioStrangerNpcId, scenarioStrangerStage } from './scenario-attention.mjs'
 import { partyDecisionOpenedEvent } from './party-decision.mjs'
 import { unknownDestinationReply } from './player-request-router.mjs'
 import { planNpcTurn } from './npc-turn-scheduler.mjs'
@@ -582,11 +584,20 @@ export class AutonomousCampaignOrchestrator {
   async completeCampaignIfReady(campaignId, idempotencyKey) {
     const loaded = await this.load(campaignId)
     if (!campaignCanAutoComplete(loaded.state)) return null
-    const fallback = buildDeterministicEpilogue(loaded.state)
+    // Развязку сценария выбрал исход боя; её авторский текст идёт первым, а
+    // рассказчику — фактом брифа: переписать слова он может, исход — нет.
+    const ending = scenarioEnding(loaded.state)
+    const fallback = ending
+      ? `${ending.epilogue} ${buildDeterministicEpilogue(loaded.state)}`.slice(0, 8_000)
+      : buildDeterministicEpilogue(loaded.state)
     let epilogue = fallback
     let provider = 'deterministic'
     if (this.narrator) {
-      const rendered = await this.narrator.render(buildEpilogueNarrationBrief(loaded.state), {
+      const brief = buildEpilogueNarrationBrief(loaded.state)
+      const rendered = await this.narrator.render(ending ? {
+        ...brief,
+        visible_events: [{ event_type: 'CampaignEndingReached', payload: { title: ending.title, outcome: ending.outcome, summary: ending.epilogue } }, ...(brief.visible_events ?? [])],
+      } : brief, {
         style: 'Связный русский эпилог в 3–5 предложениях: эмоциональная развязка без новых фактов и решений за героев.',
       })
       if (rendered.provider && !String(rendered.provider).startsWith('deterministic') && rendered.narration) {
@@ -740,7 +751,21 @@ export class AutonomousCampaignOrchestrator {
       if (cells.length) commands.push({ command_type: 'RevealArea', cells })
       else commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
     }
-    if (intent.type === 'open_social_scene') {
+    const strangerId = scenarioStrangerNpcId(loaded.state)
+    const strangerStage = intent.type === 'open_social_scene' && strangerId && intent.npc_id === strangerId
+      ? scenarioStrangerStage(loaded.state)
+      : null
+    if (strangerStage) {
+      // Незнакомец сценария: профиль, пост и выдох собирает Rules Engine одной
+      // командой — исполнитель только называет шаг.
+      commands.push({ command_type: 'StageScenarioStranger', stage: strangerStage })
+      commands.push({
+        command_type: 'UpdateObjective',
+        objective: strangerStage === 'arrive' ? 'Понять, чего хочет незнакомец в пепельном плаще' : nextHook(loaded.state),
+      })
+    } else if (intent.type === 'open_social_scene' && strangerId && intent.npc_id === strangerId) {
+      commands.push({ command_type: 'UpdateObjective', objective: nextHook(loaded.state) })
+    } else if (intent.type === 'open_social_scene') {
       let npc = availableNpc(loaded.state, intent.npc_id)
       if (!npc) {
         npc = assembleSocialNpc(loaded.state, {
@@ -1990,7 +2015,7 @@ export class AutonomousCampaignOrchestrator {
         commands = plan.commands
         heroRule = plan.rule
       } else if (!livingEnemies.length || !livingHeroes.length) {
-        commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : 'enemies_defeated' }]
+        commands = [{ command_type: 'EndCombat', actor_id: actorId || livingHeroes[0]?.id || livingEnemies[0]?.id, reason: livingEnemies.length ? 'party_defeated' : scenarioEncounterEndReason(state) ?? 'enemies_defeated' }]
       } else if (!isLivingActor(actor)) {
         commands = [{ command_type: 'EndTurn', actor_id: actorId }]
       } else if (isEnemyActor(state, actorId)) {
@@ -2196,7 +2221,7 @@ export class AutonomousCampaignOrchestrator {
     // оставались на 0 ОЗ навсегда, и следующая просьба о бое собирала встречу
     // на пустой отряд — `INVALID_PARTY` (прогон Асстохана, сид 2, 2026-10-05).
     // Теперь отряд так же приходит в себя через 1d4 часа и отдыхает.
-    if (plan.outcome === 'enemies_defeated' || plan.outcome === 'party_incapacitated') {
+    if (plan.outcome === 'enemies_defeated' || plan.outcome === 'fled' || plan.outcome === 'party_incapacitated') {
       let afterConsequences = await this.load(campaignId)
       if (plan.outcome === 'party_incapacitated') {
         // Победители, уложив отряд, уходят — тем же состоянием `fled`, что и
@@ -2258,7 +2283,7 @@ export class AutonomousCampaignOrchestrator {
 
     await this.propagateWitnesses(campaignId, {
       sourceEventId: outcomeCommit.events.find((entry) => entry.event_type === 'EncounterOutcomeRecorded')?.event_id,
-      outcome: plan.outcome === 'enemies_defeated' ? 'helpful' : 'harmful',
+      outcome: plan.outcome === 'enemies_defeated' || plan.outcome === 'fled' ? 'helpful' : 'harmful',
       severity: 'major',
       idempotencyKey: `${baseKey}:witnesses`,
     })

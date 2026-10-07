@@ -384,3 +384,11 @@ test('cache path не использует campaign/npc как сегменты 
 function resolveForTest(path) {
   return isAbsolute(path) ? path : join(process.cwd(), path)
 }
+
+test('собеседники сценария Асстохана получают подходящие ролевые портреты', async () => {
+  const { npcPortraitRole } = await import('../server/npc-portraits.mjs')
+  const profile = (role, tags = []) => ({ id: 'x', name: 'x', role, tags })
+  assert.equal(npcPortraitRole(profile('комендант лагеря Тихой Стражи', ['veteran', 'commander'])), 'guard')
+  assert.equal(npcPortraitRole(profile('мельник Редстоуновки', ['miller', 'informant'])), 'artisan')
+  assert.equal(npcPortraitRole(profile('перевозчик Митглайда', ['ferryman', 'informant'])), 'traveler')
+})

@@ -118,7 +118,7 @@
 .board3d-cell .active-turn .enemy-nameplate { color: #ffdc8b !important; }
 .board3d-cell .token-conditions { top: -14px; bottom: auto; }
 .board3d-cell .token-tactical-badges { top: calc(var(--cell) * -1.3); }
-.board3d-cell .enemy-health { top: calc(var(--cell) * -1.15); bottom: auto; }
+.board3d-cell .enemy-health, .board3d-cell .hero-health { top: calc(var(--cell) * -1.15); bottom: auto; }
 .board3d-cell .enemy-health-ring { width: 90%; height: 38%; inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 .board3d-cell .enemy-health-value { display: none; }
 .board3d-cell .neutral-token-menu,
@@ -201,10 +201,19 @@
 .board3d .combat-lab-piece > img { display: none; }
 .board3d .combat-lab-piece > b { position: absolute; left: 50%; top: 70%; color: #f7e5bf; font-size: 11px; text-shadow: 0 1px 2px #000; }
 .board3d .combat-lab-piece-health { top: -80%; }
-.board3d-floating-result { position: absolute; z-index: 7; pointer-events: none; transform: translate(-50%, -100%); color: #ffde9e; font: 700 23px/1.2 var(--f-serif); text-shadow: 0 2px 3px #000, 0 0 2px #000; white-space: nowrap; }
+.board3d-floating-result { position: absolute; z-index: 7; pointer-events: none; transform: translate(-50%, -100%); transform-origin: 50% 100%; color: #ffde9e; font: 700 23px/1.2 var(--f-serif); text-shadow: 0 2px 3px #000, 0 0 2px #000; white-space: nowrap; }
+.board3d-floating-result[data-tone="damage"] { color: #ff9b80; }
+.board3d-floating-result[data-tone="crit"] { color: #ffd34d; font-size: 34px; letter-spacing: .02em; text-shadow: 0 0 10px rgb(255 160 40 / 70%), 0 2px 3px #000, 0 0 2px #000; }
+.board3d-floating-result[data-tone="heal"] { color: #8ff0a4; }
+.board3d-floating-result[data-tone="miss"] { color: #c9c3b8; font-style: italic; font-size: 20px; }
+.board3d-floating-result[data-tone="condition"] { color: #d9c7ff; font-size: 18px; }
 .board3d-help { position: absolute; z-index: 6; bottom: 10px; right: 12px; width: max-content; max-width: calc(100% - 190px); padding: 4px 8px; margin: 0; pointer-events: none; background: #191913cf; color: #d5c8ae; border-radius: 3px; font-size: 11px; text-align: right; }
 .board3d-skip { position: absolute; z-index: 10; left: 50%; bottom: 42px; transform: translateX(-50%); border-color: #a58a5e; }
 .combat-lab-board-viewport { position: relative; }
+/* 3D-доска абсолютна и своей высоты не даёт: без опоры окно стенда схлопывается в 2px. */
+.combat-lab-page .combat-lab-board-viewport:has(> .board3d) { min-height: clamp(360px, 62vh, 680px); }
+/* Общее правило стенда растягивает каждый select на всю ширину — инструменты доски остаются компактными. */
+.combat-lab-page .board3d-tools :is(.board3d-quality, .board3d-roof-mode) { width: auto; max-width: 130px; padding: 4px 7px; border-radius: 3px; }
 .map-stage:has(.board-view-controls) .map-scale-plate { top: auto; bottom: 47px; left: auto; right: 12px; }
 .map-stage:has(.board3d) .map-scale-plate { bottom: 106px; }
 @container (max-width: 360px) {
@@ -217,4 +226,12 @@
   .board3d-models summary { padding: 4px 7px; }
   .board3d-help { font-size: 10px; bottom: 6px; }
   .board3d-cell :is(.token-label, .enemy-nameplate, .neutral-nameplate) { max-width: 95px; font-size: 10px !important; }
+}
+
+/* Сообщение об автоснижении качества 3D: рядом с меню качества, не перекрывает доску. */
+.board3d-quality-note {
+  max-width: 22rem;
+  font-size: .78rem;
+  line-height: 1.3;
+  color: var(--muted, #b9ab92);
 }

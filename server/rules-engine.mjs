@@ -252,6 +252,51 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
+import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import {
+  SCENARIO_COMMAND_TYPES,
+  SCENARIO_PURSE_COMMAND_TYPES,
+  SCENARIO_PURSE_EVENT,
+  SCENARIO_ARMORY_COMMAND_TYPES,
+  SCENARIO_ARMORY_EVENT,
+  SCENARIO_ARMORY_POLICY_ID,
+  SCENARIO_INFORMANT_COMMAND_TYPES,
+  SCENARIO_INFORMANT_CHOICES,
+  SCENARIO_INFORMANT_EVENT,
+  SCENARIO_INFORMANT_TURN_FAILED_EVENT,
+  SCENARIO_INFORMANT_POLICY_ID,
+  SCENARIO_TREATY_COMMAND_TYPES,
+  SCENARIO_TREATY_CONCLUDED_EVENT,
+  SCENARIO_TREATY_REFUSED_EVENT,
+  SCENARIO_STRANGER_EVENT,
+  SCENARIO_STRANGER_EVENT_SCHEMA_VERSION,
+  SCENARIO_STRANGER_STAGES,
+  applyScenarioAttentionEvent,
+  normalizeScenarioAttentionState,
+  scenarioFinaleTactics,
+  scenarioStrangerBreath,
+  scenarioStrangerProfile,
+  scenarioStrangerStage,
+} from './scenario-attention.mjs'
+import {
+  SCENARIO_KNIGHT_COMMAND_TYPES,
+  SCENARIO_KNIGHT_DREAD_SOURCE,
+  SCENARIO_KNIGHT_HEAD_EVENT,
+  SCENARIO_KNIGHT_PRESENCE_EVENT,
+  SCENARIO_KNIGHT_PRESENCE_EVENT_SCHEMA_VERSION,
+  SCENARIO_KNIGHT_RELEASED_EVENT,
+  SCENARIO_KNIGHT_RELEASE_FAILED_EVENT,
+  applyScenarioKnightEvent,
+  normalizeScenarioKnightState,
+  scenarioKnightDreadFor,
+  scenarioKnightPresencePlan,
+  scenarioKnightPresent,
+  scenarioKnightRiddleSolved,
+  scenarioKnightRules,
+  scenarioKnightState,
+  scenarioKnightWard,
+  scenarioNightIndex,
+} from './scenario-knight.mjs'
 import {
   NPC_SOCIAL_COMMAND_TYPES,
   NpcSocialValidationError,
@@ -404,6 +449,7 @@ import {
   LEGENDARY_ACTION_CONDITION_PREFIX,
   legendaryActionFor,
   legendaryActionMarker,
+  legendaryCooldownMarker,
   legendaryProfileFor,
   legendaryResistanceDecision,
   legendaryResistanceMarker,
@@ -456,6 +502,7 @@ import {
   characterImportEvent,
   classResourcePlan,
   deriveCharacterSheet,
+  experienceForLevel,
   levelUpEvent,
   proficiencyBonusForLevel,
   validateCharacterImportCommand,
@@ -583,7 +630,13 @@ const ATTACK_ACTION_KINDS = Object.freeze(['normal', 'extra', 'surge', 'haste'])
 // исчезал после restart и последующего проигрывания только хвоста журнала.
 // 15: версия, выбранная цель и активация следующего хода «Верного удара» 2014.
 // 16: версии областей 2014 сохраняют уровень фактически потраченной ячейки.
-export const GAME_STATE_PROJECTOR_VERSION = 17
+// 18: внимание главного противника `scenario_attention` выводится редьюсером из
+// журнала. Причина бампа та же, что у летописи и пленных: снимок семнадцатой
+// версии счёта не содержит, а хвост журнала после снимка посчитал бы только
+// расспросы, случившиеся после его границы.
+// 19: реестр проклятого рыцаря `scenario_knight` (голова, упокоение, ужас)
+// выводится редьюсером из журнала — та же причина бампа.
+export const GAME_STATE_PROJECTOR_VERSION = 19
 
 // 15: новые commits получают reducer_version и используют бессрочную
 // retention-политику. Старые commits без маркера replay-ятся через legacy
@@ -807,6 +860,21 @@ const COMMAND_RULES = Object.freeze({
   // Благословение жреца: броска нет (за него платят), монета есть, и состояние
   // на герое — тоже. Три оси, и все три настоящие.
   ReceiveNpcBlessing: [RULE_IDS.economyCoins, RULE_IDS.conditions],
+  // Незнакомец сценария: на втором шаге — выдох со спасброском на половину.
+  StageScenarioStranger: [RULE_IDS.savingThrow, RULE_IDS.damage],
+  // Проклятый рыцарь: голова перед ним — действие в бою; упокоение —
+  // проверка навыка против СЛ сценария.
+  ReturnKnightHead: [RULE_IDS.turns],
+  ReleaseCursedKnight: [RULE_IDS.abilityCheck],
+  // Договор с главным противником финала: проверка навыка против СЛ сценария.
+  NegotiateScenarioTreaty: [RULE_IDS.abilityCheck],
+  // Кошель короля: монета в кошельке героя — ось экономики.
+  ReceiveScenarioPurse: [RULE_IDS.economyCoins],
+  // Оружейная короля: подарок сценария, правило 5e тут не участвует.
+  ChooseScenarioArmoryItem: [],
+  // Осведомитель: перевербовка — проверка навыка; выдать и отпустить —
+  // решение сценария (провенанс — политика проекта).
+  ResolveScenarioInformant: [],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
@@ -846,6 +914,12 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...TAVERN_COMMAND_TYPES,
   ...COURIER_LETTER_COMMAND_TYPES,
   ...BLESSING_COMMAND_TYPES,
+  ...SCENARIO_COMMAND_TYPES,
+  ...SCENARIO_KNIGHT_COMMAND_TYPES,
+  ...SCENARIO_TREATY_COMMAND_TYPES,
+  ...SCENARIO_PURSE_COMMAND_TYPES,
+  ...SCENARIO_ARMORY_COMMAND_TYPES,
+  ...SCENARIO_INFORMANT_COMMAND_TYPES,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
@@ -2086,7 +2160,9 @@ export function normalizeCampaignState(input = {}) {
     visitedLocations: uniqueStrings(adventure.visitedLocations ?? (state.scene?.location ? [state.scene.location] : [])).slice(-50),
   }
   state.locationMaps = normalizeLocationMaps(state.locationMaps)
-  state.worldMap = ensureCampaignWorldMap(state)
+  // Сценарий открывает скрытые места по находкам (`applyScenarioMapReveals`):
+  // вывод из состояния, поэтому replay и перезапуск дают ту же карту.
+  state.worldMap = applyScenarioMapReveals(state, ensureCampaignWorldMap(state))
   // Состояние, сохранённое до перехода на слои, приходит и через replay, и
   // напрямую из room-JSON. Карта достраивается здесь, а производные клетки
   // пересобираются из неё — так у сцены остаётся ровно один источник истины.
@@ -2104,6 +2180,8 @@ export function normalizeCampaignState(input = {}) {
   state.offscreen_world = normalizeOffscreenWorldState(state.offscreen_world)
   state.courier_letters = normalizeCourierLetterState(state.courier_letters)
   state.captives = normalizeCaptivesState(state.captives)
+  state.scenario_attention = normalizeScenarioAttentionState(state.scenario_attention)
+  state.scenario_knight = normalizeScenarioKnightState(state.scenario_knight)
   // Контейнеры добычи живут в состоянии кампании, а не в сцене: невзятое
   // обязано пережить и уход со сцены, и подъём на другой этаж.
   state.loot_containers = normalizeLootContainersState(state.loot_containers)
@@ -3988,6 +4066,7 @@ function distanceBetweenActors(state, firstActorId, secondActorId) {
  *   immuneToAllDamage?: boolean,
  *   resistsDamageTypes?: readonly string[],
  *   immuneToDamageTypes?: readonly string[],
+ *   suppressesDamageImmunities?: readonly string[],
  *   armorClassBonus?: number,
  *   armorClassFloor?: number,
  *   saveAdvantageAbilities?: readonly string[],
@@ -4042,6 +4121,11 @@ const CONDITION_EFFECTS = Object.freeze({
   'protected-from-energy:acid': { resistsDamageTypes: ['acid'] },
   'protected-from-energy:cold': { resistsDamageTypes: ['cold'] },
   'protected-from-energy:fire': { resistsDamageTypes: ['fire'] },
+  // Предметы сценария «Асстоханские равнины» (`SCENARIO_ITEM_CATALOG`):
+  // оберег Ломара — сопротивление огню отряду на минуту; «Хрупкая Чешуя»
+  // Слезы Рыцаря — дракон на минуту теряет иммунитет к огню.
+  'lomar-ward': { resistsDamageTypes: ['fire'] },
+  'fragile-scale': { suppressesDamageImmunities: ['fire'] },
   'protected-from-energy:lightning': { resistsDamageTypes: ['lightning'] },
   'protected-from-energy:thunder': { resistsDamageTypes: ['thunder'] },
   // Кора не прибавляет к классу доспеха, а задаёт ему нижнюю границу: в тяжёлых
@@ -4314,6 +4398,56 @@ function normalizeCommand(input, state) {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
     delete command.npcId
   }
+  if (SCENARIO_PURSE_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса — только герой: кости и сумма — из данных сценария.
+    command.target_id = null
+    command.target_ids = []
+    delete command.amount
+  }
+  if (SCENARIO_ARMORY_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса — герой и выбранная вещь; саму вещь собирает сервер.
+    command.target_id = null
+    command.target_ids = []
+    command.catalog_id = String(command.catalog_id ?? '').slice(0, 120)
+    delete command.armory_item
+    // Подарок сценария, а не правило редакции: провенанс — политика проекта.
+    command.house_rule_id = SCENARIO_ARMORY_POLICY_ID
+  }
+  if (SCENARIO_INFORMANT_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса — герой, осведомитель и решение; СЛ и тексты — из сценария.
+    command.target_id = null
+    command.target_ids = []
+    command.informant_id = String(command.informant_id ?? '').slice(0, 80)
+    command.choice = String(command.choice ?? '').slice(0, 20)
+    delete command.difficulty
+    delete command.skill
+    command.house_rule_id = SCENARIO_INFORMANT_POLICY_ID
+  }
+  if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса — только герой: противник, навык и СЛ — из данных сценария.
+    command.target_id = null
+    command.target_ids = []
+    delete command.skill
+    delete command.difficulty
+  }
+  if (SCENARIO_KNIGHT_COMMAND_TYPES.has(command.command_type)) {
+    // Из запроса берутся только герой и, для упокоения, навык: цель — всегда
+    // рыцарь сценария, СЛ и награда — из данных сценария.
+    command.target_id = null
+    command.target_ids = []
+    command.skill = command.command_type === 'ReleaseCursedKnight' ? String(command.skill ?? '').toLowerCase().slice(0, 40) : ''
+    delete command.reward_item
+    delete command.reward_source_npc_id
+    delete command.difficulty
+  }
+  if (SCENARIO_COMMAND_TYPES.has(command.command_type)) {
+    // Сцену сценария ставит сервер: ни актора, ни цели из запроса — только шаг.
+    command.actor_id = null
+    command.target_id = null
+    command.target_ids = []
+    command.stage = SCENARIO_STRANGER_STAGES.includes(String(command.stage)) ? String(command.stage) : ''
+    delete command.npc
+  }
   if (CAPTIVE_COMMAND_TYPES.has(command.command_type)) {
     command.captive_id = String(command.captive_id ?? command.captiveId ?? '').slice(0, 120)
     delete command.captiveId
@@ -4476,7 +4610,7 @@ function needsActor(type) {
     'ProposeParley', 'SettleParley', 'ResolveGuardEncounter', 'LootContainer', 'AttackNpc',
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
-    'SendLetter', 'ReceiveNpcBlessing',
+    'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty', 'ReceiveScenarioPurse', 'ChooseScenarioArmoryItem', 'ResolveScenarioInformant',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -4652,10 +4786,21 @@ function targetFor(command) {
 }
 
 /** Предпросмотр штатного приёма статблока: форма и цели всегда считаются сервером. */
+/**
+ * Особое действие стат-блока исполняет только существо, чей блок принадлежит
+ * серверу: запись бестиария 2014 или авторский NPC мира, у которого
+ * `special_actions` прошли проверку при загрузке (`authored-npc`).
+ */
+function serverOwnedMonsterActor(actor, state) {
+  if (serverOwned2014StatBlockFor(actor, state)) return actor
+  const enemy = (Array.isArray(state?.enemies) ? state.enemies : []).find((candidate) => candidate === actor)
+  return enemy && actor?.origin?.kind === 'authored-npc' && actor?.provenance?.kind === 'server-owned-authored-npc-profile' ? actor : null
+}
+
 export function previewMonsterAction(rawState, id, actionId, toward) {
   const state = normalizeCampaignState(rawState)
   const actor = findActor(state, String(id))
-  if (!serverOwned2014StatBlockFor(actor, state) || !isLivingActor(actor)) {
+  if (!serverOwnedMonsterActor(actor, state) || !isLivingActor(actor)) {
     throw new RulesValidationError('Приём доступен только действующему существу из каталога 2014', 'MONSTER_ACTION_NOT_AVAILABLE')
   }
   const source = (Array.isArray(actor.special_actions) ? actor.special_actions : []).find(action => String(action.id) === String(actionId))
@@ -4948,6 +5093,9 @@ function validateLegendaryActionCommand(command, state, context = {}) {
   if (legendaryWindowSpent(conditions, windowKey)) {
     throw new RulesValidationError('Легендарное действие в этом ходу уже совершено', 'LEGENDARY_ACTION_WINDOW_SPENT')
   }
+  if (action.cooldownTurns > 0 && conditions.has(legendaryCooldownMarker(action.id))) {
+    throw new RulesValidationError('Это легендарное действие ещё не восстановилось', 'LEGENDARY_ACTION_COOLDOWN')
+  }
   const spent = legendaryUsesSpent(conditions)
   if (spent + action.cost > profile.uses) {
     throw new RulesValidationError('Запас легендарных действий исчерпан до начала следующего хода существа', 'LEGENDARY_ACTIONS_SPENT')
@@ -5092,7 +5240,7 @@ function assertTurn(command, state, context = {}) {
   // посреди боя они доступны только к сломленному моралью зверю, но доступны —
   // и подойти к нему с открытой ладонью посреди чужого хода нельзя. Вне боя
   // функция выходит первой же проверкой, и там уговор ничего не стоит.
-  if (!combat.active || !['UseMonsterAction', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'EquipItem', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateDoor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'LootContainer', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
+  if (!combat.active || !['UseMonsterAction', 'MakeAttack', 'MakeAreaAttack', 'ChangeWeapon', 'EquipItem', 'CastSpell', 'UseCombatAction', 'UseItem', 'ActivateItem', 'IdentifyEnemy', 'ProposeParley', 'CalmBeast', 'FeedBeast', 'MoveActor', 'OperateDoor', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateSceneObject', 'LootContainer', 'ReturnKnightHead', 'NegotiateScenarioTreaty', 'EndCombat', 'EndTurn'].includes(command.command_type)) return
   if (command.command_type === 'MakeAttack' && command.item_id) {
     const actor = findActor(state, command.actor_id)
     const profile = itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability })
@@ -5196,9 +5344,10 @@ function assertTurn(command, state, context = {}) {
       const label = resource === 'bonus_action' ? 'Бонусное действие' : resource === 'reaction' ? 'Реакция' : 'Действие'
       throw new RulesValidationError(`${label} на этом ходу уже потрачено`, resource === 'bonus_action' ? 'BONUS_ACTION_SPENT' : resource === 'reaction' ? 'REACTION_SPENT' : 'ACTION_SPENT')
     }
-  } else if (command.command_type === 'IdentifyEnemy') {
+  } else if (['IdentifyEnemy', 'ReturnKnightHead', 'NegotiateScenarioTreaty'].includes(command.command_type)) {
     // Опознание стоит действия так же, как импровизация: разглядывать врага
-    // бесплатно означало бы лишний ход каждому герою каждый раунд.
+    // бесплатно означало бы лишний ход каждому герою каждый раунд. Поставить
+    // голову перед проклятым рыцарем посреди схватки — тоже действие.
     const economy = combat.action_economy[command.actor_id]
     if (economy?.action === false) throw new RulesValidationError('Действие на этом ходу уже потрачено', 'ACTION_SPENT')
   } else if (command.command_type === 'LootContainer') {
@@ -5446,8 +5595,20 @@ function assembleEncounterFromState(state, command) {
     const defenders = authoredOfficeParticipants(state, authoredNpcId).filter((id) => id !== authoredNpcId
       && presentSceneNpcs(state).some((candidate) => candidate.id === id) && npcMechanicsFor(state, id)?.status !== 'ruling-only'
       && npcMechanicsFor(state, id) && npcPlacementFor(state, id)).map((id) => npcCombatActorFor(state, id))
-    const enemies = [enemy, ...defenders]
-    const xp = enemies.reduce((sum, entry) => sum + Math.max(0, Number(npcMechanicsFor(state, entry.id)?.xp) || 0), 0)
+    // Готовый к отряду главный противник сценария ждёт не один: сборщик
+    // добавляет засаду по теме и сложности сценария, в обход клеток самого
+    // противника и его стражи. Решает счёт внимания, а не Режиссёр.
+    const tactics = scenarioFinaleTactics(state, [authoredNpcId])
+    const ambush = tactics?.ambush
+      ? assembleEncounter((() => {
+        const taken = new Set([enemy, ...defenders].flatMap((entry) => footprintCellsFor(entry, { x: Number(entry.x), y: Number(entry.y) }).map(positionKey)))
+        const { party, cells } = encounterAssemblyInput(state, taken)
+        return { ruleset_id: state.ruleset_id, scene: { cells }, party, difficulty: tactics.ambush.difficulty, theme: tactics.ambush.theme, seed: `${fingerprint}:ambush` }
+      })())
+      : null
+    const enemies = [enemy, ...defenders, ...(ambush?.enemies ?? [])]
+    const xp = [enemy, ...defenders].reduce((sum, entry) => sum + Math.max(0, Number(npcMechanicsFor(state, entry.id)?.xp) || 0), 0)
+      + Math.max(0, Number(ambush?.xp_spent) || 0)
     return validateEncounterPlacements({
       proposal_id: `encounter-proposal-${fingerprint.slice(0, 24)}`,
       version: ENCOUNTER_PROPOSAL_VERSION,
@@ -5466,8 +5627,27 @@ function assembleEncounterFromState(state, command) {
       },
       enemies,
       source: { kind: 'server-owned-authored-npc-profile', profile_id: mechanics.profile_id },
+      ...(ambush ? { scenario_ambush: { theme: tactics.ambush.theme, difficulty: tactics.ambush.difficulty, reason: tactics.reason, enemy_ids: ambush.enemies.map((entry) => String(entry.id)) } } : {}),
     })
   }
+  const { party, cells } = encounterAssemblyInput(state)
+  return validateEncounterPlacements(assembleEncounter({
+    ruleset_id: state.ruleset_id,
+    scene: { cells },
+    party,
+    difficulty: command.difficulty,
+    theme: command.theme,
+    seed: command.seed,
+  }))
+}
+
+/**
+ * Отряд и клетки сцены для сборщика встречи: живые герои с позициями и клетки
+ * с отметкой занятости (существа, реквизит, `occupiedKeys`) и стенами.
+ * @param {any} state
+ * @param {Set<string>} [occupiedKeys] клетки, которые сборщик обязан обойти
+ */
+function encounterAssemblyInput(state, occupiedKeys = new Set()) {
   const memberIds = new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))
   const party = state.players.filter((actor) => memberIds.has(actorId(actor)) && isLivingActor(actor) && !isEmptyHeroSeat(actor)).map((actor) => {
     const position = actorPosition(state, actorId(actor))
@@ -5491,7 +5671,7 @@ function assembleEncounterFromState(state, command) {
   // минимальной дистанции. Лишняя пометка сдвинула бы расстановку, не изменив
   // допустимости ни одной клетки.
   const partyPositionIds = new Set(party.map((member) => member.id))
-  const creatureCells = new Set()
+  const creatureCells = new Set(occupiedKeys)
   for (const actor of listActors(state).filter((candidate) => isLivingActor(candidate) && !partyPositionIds.has(actorId(candidate)))) {
     for (const cell of actorFootprintCellsAt(state, actorId(actor))) creatureCells.add(positionKey(cell))
   }
@@ -5515,14 +5695,7 @@ function assembleEncounterFromState(state, command) {
     // встаёт поперёк перегородки, а враг — в доме за окном.
     ...(encounterBarrierSides(cell) ? { walls: encounterBarrierSides(cell) } : {}),
   }))
-  return validateEncounterPlacements(assembleEncounter({
-    ruleset_id: state.ruleset_id,
-    scene: { cells },
-    party,
-    difficulty: command.difficulty,
-    theme: command.theme,
-    seed: command.seed,
-  }))
+  return { party, cells }
 }
 
 /**
@@ -6013,6 +6186,157 @@ export function validateCommand(input, rawState, context = {}) {
       }
     }
   }
+  if (SCENARIO_PURSE_COMMAND_TYPES.has(command.command_type)) {
+    // Кошель короля (`docs/astohan-scenario.md`, пролог): раз на героя, в
+    // месте выдачи, вне боя.
+    const rules = scenarioPurseRules(state)
+    if (!rules) throw new RulesValidationError('В этой кампании кошеля от короля нет', 'SCENARIO_PURSE_ABSENT')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Кошель получает герой отряда', 'ACTOR_FORBIDDEN')
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя кошелей не раздают', 'SCENARIO_PURSE_DURING_COMBAT')
+    if (scenarioLocationId(state) !== rules.location_id) throw new RulesValidationError('Кошель выдают в королевской казне, при дворе', 'SCENARIO_PURSE_WRONG_PLACE')
+    if ((state.scenario_attention?.purse_paid ?? []).map(String).includes(String(command.actor_id))) {
+      throw new RulesValidationError('Этот герой уже получил кошель короля', 'SCENARIO_PURSE_ALREADY_PAID')
+    }
+    command.visibility = 'party'
+  }
+  if (SCENARIO_INFORMANT_COMMAND_TYPES.has(command.command_type)) {
+    // Осведомитель пепельной сети (`docs/astohan-scenario.md`, линия В и
+    // раздел 7): только раскрытый находкой своей тайны, на своём месте, вне
+    // боя, одно решение; перевербовать можно попытаться один раз.
+    const informant = scenarioInformantRules(state).find((entry) => entry.id === command.informant_id)
+    if (!informant) throw new RulesValidationError('Такого осведомителя в кампании нет', 'SCENARIO_INFORMANT_UNKNOWN')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Решает герой отряда', 'ACTOR_FORBIDDEN')
+    if (!isLivingActor(hero)) throw new RulesValidationError('Герой без сознания ничего не решает', 'ACTOR_DEFEATED')
+    if (!SCENARIO_INFORMANT_CHOICES.includes(command.choice)) throw new RulesValidationError('Осведомителя можно выдать страже, отпустить или перевербовать', 'SCENARIO_INFORMANT_CHOICE_INVALID')
+    if (!informant.revealed) throw new RulesValidationError(`Кто здесь доносит дракону, отряд ещё не знает: ${informant.name} не раскрыт`, 'SCENARIO_INFORMANT_HIDDEN')
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя не до осведомителей', 'SCENARIO_INFORMANT_DURING_COMBAT')
+    if (scenarioLocationId(state) !== informant.location_id) throw new RulesValidationError(`${informant.name} — не здесь`, 'SCENARIO_INFORMANT_WRONG_PLACE')
+    if (state.scenario_attention?.informants?.[informant.id]) throw new RulesValidationError(`Судьба осведомителя уже решена: ${informant.name}`, 'SCENARIO_INFORMANT_RESOLVED')
+    if (command.choice === 'turn' && (state.scenario_attention?.informant_turn_failed ?? []).includes(informant.id)) {
+      throw new RulesValidationError('Перевербовать его уже не вышло: остаётся выдать или отпустить', 'SCENARIO_INFORMANT_TURN_SPENT')
+    }
+    if (command.choice === 'turn') {
+      command.skill = informant.turn.skill
+      command.difficulty = informant.turn.dc
+    }
+    command.visibility = 'public'
+  }
+  if (SCENARIO_ARMORY_COMMAND_TYPES.has(command.command_type)) {
+    // Королевская оружейная (`docs/astohan-scenario.md`, пролог): одна вещь
+    // на героя из списка сценария, в месте выдачи, вне боя.
+    const rules = scenarioArmoryRules(state)
+    if (!rules) throw new RulesValidationError('В этой кампании королевской оружейной нет', 'SCENARIO_ARMORY_ABSENT')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Вещь из оружейной получает герой отряда', 'ACTOR_FORBIDDEN')
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя оружейная закрыта', 'SCENARIO_ARMORY_DURING_COMBAT')
+    if (scenarioLocationId(state) !== rules.location_id) throw new RulesValidationError('Королевская оружейная — при дворе, в Штормберге', 'SCENARIO_ARMORY_WRONG_PLACE')
+    if ((state.scenario_attention?.armory_taken ?? []).map(String).includes(String(command.actor_id))) {
+      throw new RulesValidationError('Этот герой уже выбрал вещь в оружейной', 'SCENARIO_ARMORY_ALREADY_TAKEN')
+    }
+    if (!rules.catalog_ids.includes(command.catalog_id)) {
+      const names = rules.catalog_ids.map((id) => catalogItem(id)?.name).filter(Boolean).join(', ')
+      throw new RulesValidationError(`Назовите вещь из оружейной: ${names}`, 'SCENARIO_ARMORY_ITEM_UNKNOWN')
+    }
+    command.armory_item = normalizeInventoryItem(
+      materializeCatalogItem(command.catalog_id, { quantity: 1, origin: 'gifted' }),
+      { idFallback: `armory:${command.command_id}`, preserveUnknown: true },
+    )
+    command.armory_item.origin = 'gifted'
+    command.visibility = 'party'
+  }
+  if (SCENARIO_TREATY_COMMAND_TYPES.has(command.command_type)) {
+    // Договор с главным противником финала (`docs/astohan-scenario.md`,
+    // развязка «Договор»): только когда правда о походе раскрыта, только в
+    // логове, одна попытка на героя; посреди боя — когда дракон ранен.
+    const rules = scenarioTreatyRules(state)
+    if (!rules) throw new RulesValidationError('В этой кампании договор с противником не предусмотрен', 'SCENARIO_TREATY_ABSENT')
+    if (rules.concluded) throw new RulesValidationError('Договор уже заключён', 'SCENARIO_TREATY_CONCLUDED')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Договаривается только герой отряда', 'ACTOR_FORBIDDEN')
+    if (!isLivingActor(hero)) throw new RulesValidationError('Герой без сознания не ведёт переговоров', 'ACTOR_DEFEATED')
+    if (scenarioLocationId(state) !== rules.boss_location_id) throw new RulesValidationError('Договориться можно только с самим драконом, в его логове', 'SCENARIO_TREATY_WRONG_PLACE')
+    if (!rules.truth_revealed) {
+      throw new RulesValidationError('Саргат не станет слушать, пока правда о походе на Вулканиса не раскрыта', 'SCENARIO_TREATY_TRUTH_MISSING')
+    }
+    if (state.npc_world?.vitals?.[rules.boss_npc_id]?.alive === false) throw new RulesValidationError('Договариваться больше не с кем', 'SCENARIO_TREATY_BOSS_GONE')
+    if ((state.scenario_attention?.treaty?.attempts ?? []).map(String).includes(String(command.actor_id))) {
+      throw new RulesValidationError('Этого героя дракон уже выслушал и не поверил', 'SCENARIO_TREATY_ATTEMPT_SPENT')
+    }
+    if (state.mechanics.combat.active) {
+      const boss = findActor(state, rules.boss_npc_id)
+      if (!boss || !isLivingActor(boss)) throw new RulesValidationError('Договариваться больше не с кем', 'SCENARIO_TREATY_BOSS_GONE')
+      const ratio = actorHp(boss) / Math.max(1, actorMaxHp(boss))
+      if (ratio > rules.wounded_ratio) {
+        throw new RulesValidationError('Пока дракон не ранен всерьёз, он не станет торговаться', 'SCENARIO_TREATY_BOSS_UNHURT')
+      }
+    }
+    command.skill = rules.skill
+    command.difficulty = rules.dc
+    command.visibility = 'public'
+  }
+  if (SCENARIO_KNIGHT_COMMAND_TYPES.has(command.command_type)) {
+    const rules = scenarioKnightRules(state)
+    const knight = scenarioKnightState(state)
+    if (!rules || !knight) throw new RulesValidationError('В этой кампании нет проклятого рыцаря', 'SCENARIO_KNIGHT_ABSENT')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Действует только герой отряда', 'ACTOR_FORBIDDEN')
+    if (!isLivingActor(hero)) throw new RulesValidationError('Герой без сознания ничего не делает', 'ACTOR_DEFEATED')
+    if (knight.released) throw new RulesValidationError('Рыцарь уже обрёл покой', 'SCENARIO_KNIGHT_RELEASED')
+    if (!scenarioKnightPresent(state)) throw new RulesValidationError('Рыцаря сейчас здесь нет: он приходит в полночь', 'SCENARIO_KNIGHT_NOT_PRESENT')
+    if (command.command_type === 'ReturnKnightHead') {
+      if (knight.head_returned) throw new RulesValidationError('Голова уже перед рыцарем', 'SCENARIO_KNIGHT_HEAD_RETURNED')
+      if (!scenarioKnightRiddleSolved(state)) {
+        throw new RulesValidationError('Где его голова, отряд ещё не знает: загадка замка не разгадана', 'SCENARIO_KNIGHT_RIDDLE_UNSOLVED')
+      }
+      const distance = knightDistanceFeet(state, command.actor_id, rules.npc_id)
+      if (distance == null || distance > rules.head_reach_feet) {
+        throw new RulesValidationError(`Голову ставят перед рыцарем: подойдите на ${rules.head_reach_feet} футов`, 'TARGET_OUT_OF_RANGE')
+      }
+    } else {
+      if (state.mechanics.combat.active) throw new RulesValidationError('Упокоить рыцаря можно только без боя', 'SCENARIO_KNIGHT_DURING_COMBAT')
+      if (!knight.head_returned) throw new RulesValidationError('Сначала верните рыцарю его голову', 'SCENARIO_KNIGHT_HEAD_MISSING')
+      if (!rules.release.skills.includes(command.skill)) command.skill = rules.release.skills[0]
+      if (knight.attempts.includes(`${command.actor_id}:${scenarioNightIndex(state)}`)) {
+        throw new RulesValidationError('Этой ночью рыцарь уже выслушал этого героя', 'SCENARIO_KNIGHT_ATTEMPT_SPENT')
+      }
+      command.difficulty = rules.release.dc
+      // Слеза лежит в латах рыцаря с начала кампании: он отдаёт её из рук, и
+      // вещь остаётся одной. Кампании, созданные до этого, своей Слезы у
+      // рыцаря не имеют — им она создаётся по каталогу, как прежде.
+      const carried = (state.npc_world?.inventories?.[rules.npc_id] ?? [])
+        .find((item) => String(item?.catalog_id ?? '') === rules.release.reward.catalog_id)
+      command.reward_item = normalizeInventoryItem(
+        carried ? clone(carried) : materializeCatalogItem(rules.release.reward.catalog_id, { quantity: 1, origin: 'gifted' }),
+        { idFallback: `knight-tear:${command.command_id}`, preserveUnknown: true },
+      )
+      command.reward_item.origin = 'gifted'
+      command.reward_source_npc_id = carried ? rules.npc_id : null
+    }
+    command.visibility = 'public'
+  }
+  if (SCENARIO_COMMAND_TYPES.has(command.command_type)) {
+    // Незнакомца приводит и раскрывает Режиссёр или ведущий, а не игрок: иначе
+    // отряд вызывал бы дракона кнопкой или пропускал бы его выдох. Шаг
+    // принимается, только когда его допускает сам сценарий — счётчик внимания,
+    // место и то, что отряд при незнакомце уже что-то сделал.
+    if (context?.isDirector !== true && context?.isAdmin !== true) {
+      throw new RulesValidationError('Сцену сценария ставит только Режиссёр', 'SCENARIO_STAGE_FORBIDDEN')
+    }
+    if (!command.stage) throw new RulesValidationError('Неизвестный шаг сцены незнакомца', 'SCENARIO_STAGE_INVALID')
+    if (scenarioStrangerStage(state) !== command.stage) {
+      throw new RulesValidationError('Этот шаг сцены незнакомца сейчас не к месту', 'SCENARIO_STAGE_NOT_DUE')
+    }
+    try {
+      const profile = scenarioStrangerProfile(state, { available: command.stage === 'arrive' })
+      command.npc = validateNpcSocialCommand({ command_type: 'UpsertNpcSocialProfile', npc: profile }, state, { isDirector: true }).npc
+    } catch (error) {
+      if (error instanceof NpcSocialValidationError) throw new RulesValidationError(error.message, error.code)
+      throw error
+    }
+    command.visibility = 'public'
+  }
   if (BLESSING_COMMAND_TYPES.has(command.command_type)) {
     // Благословение просят у живого человека в мирной сцене: посреди боя жрецу
     // не до треб, а бессознательному герою — не до молитвы.
@@ -6112,6 +6436,15 @@ export function validateCommand(input, rawState, context = {}) {
       if (!target || isDeadHero(state, command.target_id) || target.alive === false
         || (command.use_profile?.kind === 'cast_spell' && !isLivingActor(target))) {
         throw new RulesValidationError('Предмет можно использовать только на живую цель', 'ITEM_TARGET_DEAD')
+      }
+      if (command.use_profile?.kind === 'knight_tear' && String(command.target_id) !== String(command.actor_id)) {
+        // «Хрупкая Чешуя» — только против главного противника сценария и только
+        // в бою с ним; на себя Слеза поднимает щит.
+        const bossId = scenarioProgress(state)?.boss?.npc_id
+        if (!bossId || String(command.target_id) !== String(bossId)) {
+          throw new RulesValidationError('Слезу направляют на себя (щит) или на дракона (Хрупкая Чешуя)', 'INVALID_ITEM_TARGET')
+        }
+        if (!state.mechanics.combat.active) throw new RulesValidationError('«Хрупкая Чешуя» действует только в бою с драконом', 'COMBAT_NOT_ACTIVE')
       }
       if (command.use_profile?.kind === 'stabilize') {
         const tracker = state.mechanics.death.saving_throws[String(command.target_id)]
@@ -6257,7 +6590,9 @@ export function validateCommand(input, rawState, context = {}) {
     if (guardEncounterIsHere(state)) {
       throw new RulesValidationError('Стража стоит перед отрядом: пока ей не ответили, отряд никуда не уходит', 'GUARD_ENCOUNTER_BLOCKS_SCENE')
     }
-    command.scene_args = normalizeSceneAdvanceArgs(command.scene_args)
+    // Карточка места сценария ложится на любой переход — голосование, шаг
+    // Режиссёра, карту мира: источник сюжета один, и он серверный.
+    command.scene_args = scenarioSceneArgs(state, normalizeSceneAdvanceArgs(command.scene_args))
     command.scene_commerce = normalizeSceneCommerce(command.scene_commerce)
     command.party_decision = normalizePartyDecisionReference(command.party_decision, { required: context?.isDirector === true })
   }
@@ -7397,10 +7732,13 @@ function defenseFor(state, id) {
   const defense = state.mechanics.defenses[id] ?? {}
   const actor = findActor(state, id)
   const speciesResistances = statBlockDamageList(actor?.speciesBenefits?.mechanics?.damage_resistances)
+  // Состояние может временно снять иммунитет («Хрупкая Чешуя»): урон этого
+  // вида тогда проходит, а сопротивления и уязвимости остаются прежними.
+  const suppressed = new Set([...conditionIdsFor(state, id)].flatMap((condition) => CONDITION_EFFECTS[condition]?.suppressesDamageImmunities ?? []))
   return {
     resistances: [...uniqueStrings(defense.resistances), ...statBlockDamageList(actor?.damage_resistances), ...speciesResistances],
     vulnerabilities: [...uniqueStrings(defense.vulnerabilities), ...statBlockDamageList(actor?.damage_vulnerabilities)],
-    immunities: [...uniqueStrings(defense.immunities), ...statBlockDamageList(actor?.damage_immunities)],
+    immunities: [...uniqueStrings(defense.immunities), ...statBlockDamageList(actor?.damage_immunities)].filter((type) => !suppressed.has(type)),
   }
 }
 
@@ -7423,7 +7761,11 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
   // отсекает урон целиком, а не делит его пополам.
   const conditionImmunity = [...conditionIdsFor(state, targetId)].some((condition) => CONDITION_EFFECTS[condition]?.immuneToAllDamage === true
     || (CONDITION_EFFECTS[condition]?.immuneToDamageTypes ?? []).includes(damageType))
+  // Проклятый рыцарь сценария: до возвращения головы неуязвим ко всему, после —
+  // сопротивляется всему, кроме исключений сценария (`server/scenario-knight.mjs`).
+  const knightWard = scenarioKnightWard(state, targetId)
   const immune = defenses.immunities.includes(damageType) || conditionalImmune || conditionImmunity || isUntargetableSummon(actor)
+    || knightWard?.kind === 'immune'
   const ragingResistance = conditionIdsFor(state, targetId).has('raging') && ['bludgeoning', 'piercing', 'slashing'].includes(damageType)
   const uncannyResistance = conditionIdsFor(state, targetId).has('uncanny-dodge')
   const absorbingResistance = conditionIdsFor(state, targetId).has(`absorbing-element:${damageType}`)
@@ -7435,7 +7777,8 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     const effect = CONDITION_EFFECTS[condition]
     return effect?.resistsAllDamage === true || (effect?.resistsDamageTypes ?? []).includes(damageType)
   })
-  const resistant = source?.ignore_resistance !== true && (defenses.resistances.includes(damageType) || conditionalResistant || itemResistanceSources.length > 0 || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || Boolean(auraOfLife))
+  const knightResistance = knightWard?.kind === 'resist' && !knightWard.except.includes(damageType)
+  const resistant = source?.ignore_resistance !== true && (defenses.resistances.includes(damageType) || conditionalResistant || itemResistanceSources.length > 0 || ragingResistance || uncannyResistance || absorbingResistance || bladeWardResistance || conditionResistance || Boolean(auraOfLife) || knightResistance)
   const vulnerable = defenses.vulnerabilities.includes(damageType)
   let afterDefense = immune ? 0 : raw
   // Порядок по SRD 5.2.1: «сопротивление и уязвимость применяются **после** всех
@@ -7486,7 +7829,20 @@ function damagePayload(state, targetId, rawAmount, damageType = 'untyped', resis
     hp_after: hpAfter,
     ...(deathWardTriggered ? { death_ward_triggered: true } : {}),
     ...(relentlessEnduranceTriggered ? { relentless_endurance_triggered: true } : {}),
+    ...(knightWard ? { scenario_ward: knightWard.kind, ...(knightWard.kind === 'immune' ? { scenario_ward_text: knightWard.laugh } : {}) } : {}),
   }
+}
+
+/**
+ * Расстояние от героя до проклятого рыцаря в футах: в бою — между фишками,
+ * вне боя — до поста рыцаря на карте. `null` — кого-то из них нет на поле.
+ */
+function knightDistanceFeet(state, heroId, knightId) {
+  if (findActor(state, knightId)) return distanceBetweenActors(state, heroId, knightId)
+  const post = npcPlacementFor(state, knightId)
+  const at = actorPosition(state, heroId)
+  if (!post || !at) return null
+  return Math.max(Math.abs(Number(post.x) - Number(at.x)), Math.abs(Number(post.y) - Number(at.y))) * 5
 }
 
 /**
@@ -8575,7 +8931,9 @@ export function spellComponentAvailabilityFor(state, actor, spell) {
     }
   }
   if (somatic && !freeHand && !warCaster && !materialInHand) {
-    return refuse('SPELL_SOMATIC_COMPONENT_BLOCKED', 'Для жестов заклинания нужна свободная рука.')
+    // Причина говорит, что сделать: жрица с булавой и щитом читала только
+    // «нужна свободная рука» и считала заклинания сломанными (прогон Асстохана).
+    return refuse('SPELL_SOMATIC_COMPONENT_BLOCKED', 'Для жестов заклинания нужна свободная рука: уберите оружие в инвентаре — в бою первое взаимодействие с предметом за ход бесплатно.')
   }
   return { available: true }
 }
@@ -11673,6 +12031,7 @@ const COMBAT_ROUND_TIME_COMMANDS = new Set([
   'UseLegendaryAction', 'MoveActor', 'ChangeWeapon', 'UseItem', 'ActivateItem', 'EquipItem',
   'IdentifyEnemy', 'ResolveImprovisedAction', 'CalmBeast', 'FeedBeast', 'ScareWithBeast',
   'ProposeParley', 'BarricadeDoor', 'ClearDoorBarricade', 'OperateDoor', 'OperateSceneObject',
+  'ReturnKnightHead', 'NegotiateScenarioTreaty',
 ])
 
 function withCombatRoundTimeMarker(result, rawState, context) {
@@ -12218,6 +12577,34 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     return elapsedMinutes
   }
 
+  // Ночной гость сценария (проклятый рыцарь) приходит и уходит с часами мира и
+  // с приходом отряда: профиль становится доступным и встаёт на пост тем же
+  // путём, что и любой собеседник, заведённый посреди кампании. Вызывается
+  // после хода времени и после перехода сцены; посреди боя план пуст.
+  const appendScenarioKnightPresence = (sourceCommand) => {
+    const projected = projectEvents(events)
+    const plan = scenarioKnightPresencePlan(projected)
+    if (!plan) return
+    const systemCommand = { ...sourceCommand, actor_id: null }
+    let profileCommand
+    try {
+      profileCommand = validateNpcSocialCommand({ ...systemCommand, command_type: 'UpsertNpcSocialProfile', npc: plan.profile }, projected, { isDirector: true })
+    } catch (error) {
+      if (error instanceof NpcSocialValidationError) throw new RulesValidationError(error.message, error.code)
+      throw error
+    }
+    for (const socialEvent of npcSocialEvents(profileCommand, projected)) {
+      events.push(eventFrom({ ...systemCommand, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+    }
+    if (plan.present) events.push(...npcWorldEventsFrom(systemCommand, planSceneNpcPlacementEvents(projectEvents(events))))
+    if (plan.text) {
+      events.push(eventFrom({ ...systemCommand, visibility: 'public' }, SCENARIO_KNIGHT_PRESENCE_EVENT, {
+        schema_version: SCENARIO_KNIGHT_PRESENCE_EVENT_SCHEMA_VERSION,
+        npc_id: plan.npc_id, location_id: plan.location_id, present: plan.present, text: plan.text,
+      }, [plan.npc_id]))
+    }
+  }
+
   const appendWorldTimeConsequences = (sourceCommand, amount, unit, options = {}) => {
     const sourceState = projectEvents(events)
     const elapsedMinutes = appendTimeAdvance(sourceCommand, amount, unit, { ...options, sourceState })
@@ -12350,6 +12737,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     for (const draft of planCourierLetterTicks(sourceState, { elapsedMinutes })) {
       events.push(eventFrom({ ...sourceCommand, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids ?? []))
     }
+    appendScenarioKnightPresence(sourceCommand)
   }
 
   const damageTurnKey = (sourceState) => {
@@ -13450,6 +13838,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             id: String(onHit.condition), duration: onHit.duration ?? null,
             ...(onHit.duration_minutes > 0 ? { expires_at_minutes: Math.ceil(Number(state.mechanics.world_time?.elapsed_minutes ?? 0) + onHit.duration_minutes) } : {}),
             ...(onHit.repeat_save_timing ? { repeat_save_timing: onHit.repeat_save_timing, save_ability: onHit.save_ability, save_dc: onHit.save_dc } : {}),
+            // СЛ освобождения из листа чудовища: без неё «Высвободиться»
+            // бралось против умолчания 10 (паутина паука — 12 по книге).
+            ...(safeInteger(onHit.escape_dc, 0) > 0 ? { escape_dc: safeInteger(onHit.escape_dc, 0) } : {}),
           }
         }
         if (chargeActive) {
@@ -13936,9 +14327,19 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     case 'UseMonsterAction': {
       const preview = previewMonsterAction(state, command.actor_id, command.action_id, command.to)
-      const { action, affectedIds } = preview
+      const { action, affectedIds, origin, to } = preview
       events.push(eventFrom(commandWithRules(command, RULE_IDS.actions), 'CombatActionUsed', {
         action_id: action.id, name: action.name, action_type: 'action', monster_action: true,
+        // Область для хроники и доски: форма, откуда и куда, кого задело.
+        area: {
+          shape: action.shape,
+          from: origin,
+          to: action.shape === 'sphere' ? origin : to,
+          size_feet: action.length_feet,
+          damage_type: String(action.damage?.[0]?.type ?? ''),
+          save_ability: action.save.ability,
+          target_ids: affectedIds,
+        },
       }, affectedIds))
       const usageMarker = monsterActionSpentMarker(action, conditionIdsFor(state, command.actor_id))
       if (usageMarker) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
@@ -15525,6 +15926,22 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const action = legendaryActionFor(actor, command.legendary_action_id)
       const targetId = String(command.target_id ?? '')
       const target = findActor(state, targetId)
+      // Область спасброска: круг вокруг существа или конус к объявленной цели.
+      // Список задетых считается здесь, до событий, — его же видит клиент.
+      const centre = actorPosition(state, command.actor_id)
+      const toward = action.areaShape === 'cone' ? actorPosition(state, targetId) : centre
+      const caught = action.kind !== 'save' ? [] : action.radiusFeet > 0
+        ? listActors(state).filter((candidate) => {
+          const candidateId = actorId(candidate)
+          const at = actorPosition(state, candidateId)
+          if (!isLivingActor(candidate) || isEnemyActor(state, candidateId) === isEnemyActor(state, command.actor_id) || !at || !centre) return false
+          if (action.areaShape === 'cone') {
+            return Boolean(toward) && hasClearActorTrajectory(state, command.actor_id, candidateId, centre, at)
+              && actorInArea(state, candidateId, at, toward, action.radiusFeet, 'cone', command.actor_id, centre)
+          }
+          return footprintDistanceFeet(candidate, actor, at, centre) <= action.radiusFeet
+        })
+        : [target].filter(Boolean)
       for (let ordinal = declared.uses_before + 1; ordinal <= declared.uses_after; ordinal += 1) {
         events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
           condition: legendaryActionMarker(ordinal, declared.window_key),
@@ -15539,7 +15956,26 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         uses_before: declared.uses_before,
         uses_after: declared.uses_after,
         uses_max: declared.uses_max,
+        ...(action.kind === 'save' && action.radiusFeet > 0 && centre ? {
+          area: {
+            shape: action.areaShape,
+            from: centre,
+            to: toward ?? centre,
+            size_feet: action.radiusFeet,
+            damage_type: action.damageType,
+            // СЛ — число стат-блока, игроку не принадлежит: в области её нет.
+            save_ability: action.saveAbility,
+            target_ids: caught.map(actorId),
+          },
+        } : {}),
       }, [command.actor_id]))
+      if (action.cooldownTurns > 0) {
+        events.push(eventFrom(commandWithRules({ ...command, visibility: 'gm_only' }, RULE_IDS.conditions), 'ConditionAdded', {
+          condition: legendaryCooldownMarker(action.id),
+          duration: `source-turns:${action.cooldownTurns}`,
+          source_actor: command.actor_id,
+        }, [command.actor_id]))
+      }
       if (action.kind === 'attack') {
         const attackerAt = actorPosition(state, command.actor_id)
         const targetAt = actorPosition(state, targetId)
@@ -15578,19 +16014,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           events.push(...zeroHitPointDamageConsequences(damageState, command, targetId, payload, { critical }))
         }
       } else {
-        // Действие со спасброском бьёт по всем в радиусе, а не только по
+        // Действие со спасброском бьёт по всем в области, а не только по
         // объявленной цели: цель у команды одна, потому что по ней проверялась
-        // досягаемость, но взмах крыльев не выбирает, кого задеть.
-        const centre = actorPosition(state, command.actor_id)
+        // досягаемость и направление конуса, но дыхание не выбирает, кого задеть.
         const difficulty = action.saveDc ?? monsterSpellcastingFor(actor)?.saveDc ?? 10
-        const caught = action.radiusFeet > 0
-          ? listActors(state).filter((candidate) => {
-            const at = actorPosition(state, actorId(candidate))
-            return isLivingActor(candidate)
-              && isEnemyActor(state, actorId(candidate)) !== isEnemyActor(state, command.actor_id)
-              && at && centre && footprintDistanceFeet(candidate, actor, at, centre) <= action.radiusFeet
-          })
-          : [target].filter(Boolean)
         const damageRoll = action.damageExpression
           ? diceService.roll(action.damageExpression, `legendary_damage:${action.id}`, command.actor_id, command.visibility ?? 'public')
           : null
@@ -18704,7 +19131,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           shared_with: ownerId,
         })
       }
-      const surprised = surprisedParticipants(state, { party: [...partyIds, ...summonIds], enemies: enemyIds })
+      // Бой с главным противником сценария в логове: внезапность решает счёт
+      // внимания (`scenarioFinaleTactics`). Готовый дракон не застигнут никем,
+      // даже прокравшимся отрядом; не ждущий — застигнут вместе со стражей.
+      const finaleTactics = scenarioFinaleTactics(state, enemyIds)
+      const surprised = finaleTactics?.surprise === 'none' ? []
+        : finaleTactics?.surprise === 'enemies' ? enemyIds
+          : surprisedParticipants(state, { party: [...partyIds, ...summonIds], enemies: enemyIds })
       // Групповая инициатива включается только явно — командой или настройкой
       // кампании. Умолчание остаётся индивидуальным, как в редакции.
       const groupInitiative = command.group_initiative === true || state.campaign?.rules?.group_initiative === true
@@ -18723,7 +19156,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
         : null
       events.push({
-        ...eventFrom(command, 'CombatStarted', { round: 1, initiative, active_index: initiative.length ? 0 : -1, party_ids: partyIds, enemy_ids: enemyIds, combat_instance_id: combatInstanceId, ...(groupInitiative ? { group_initiative: true } : {}), ...(surprised.length ? { surprised } : {}), ...(openingAction ? { opening_action: openingAction } : {}) }, participantIds),
+        ...eventFrom(command, 'CombatStarted', { round: 1, initiative, active_index: initiative.length ? 0 : -1, party_ids: partyIds, enemy_ids: enemyIds, combat_instance_id: combatInstanceId, ...(groupInitiative ? { group_initiative: true } : {}), ...(surprised.length ? { surprised } : {}), ...(finaleTactics ? { scenario_finale: { readiness: finaleTactics.readiness, reason: finaleTactics.reason } } : {}), ...(openingAction ? { opening_action: openingAction } : {}) }, participantIds),
         event_id: combatStartedEventId,
       })
       events.push(...npcWorldEventsFrom(command, npcCombatStanceEventDrafts(state, {
@@ -18733,6 +19166,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       for (const surprisedId of surprised) {
         events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
           condition: 'surprised', duration: 'until-own-turn-end', passive_perception: passivePerception(findActor(state, surprisedId), state),
+          ...(finaleTactics?.surprise === 'enemies' ? { source: 'scenario-attention', reason: finaleTactics.reason } : {}),
         }, [surprisedId]))
       }
       if (initiative.length) events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), 'TurnStarted', { round: 1, active_index: 0, action_economy_version: ACTION_ECONOMY_EVENT_VERSION }, [initiative[0].actor_id]))
@@ -19011,6 +19445,35 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       })
       events.push(...areaStartEvents)
       startTurnState = projectEvents(events)
+      // Ужас проклятого рыцаря: герой в его радиусе бросает спасбросок в начале
+      // своего хода, пока голова не возвращена. Провал — испуг до конца хода,
+      // успех — до конца ночи этот герой рыцаря не боится.
+      const knightId = scenarioKnightState(startTurnState)?.npc_id
+      const knightActor = knightId ? findActor(startTurnState, knightId) : null
+      const dread = knightActor && isLivingActor(knightActor) && !isDeadHero(startTurnState, nextId) && actorHp(findActor(startTurnState, nextId)) > 0
+        ? scenarioKnightDreadFor(startTurnState, nextId, knightDistanceFeet(startTurnState, nextId, knightId))
+        : null
+      if (dread) {
+        const dreadActor = findActor(startTurnState, nextId)
+        const save = rollSavingThrow(startTurnState, nextId, {
+          ability: dread.ability,
+          modifier: abilityModifier(dreadActor?.abilities?.[dread.ability]),
+          purpose: `${SCENARIO_KNIGHT_DREAD_SOURCE}:${dread.ability}`,
+          avoid_or_end_condition: 'frightened',
+          visibility: command.visibility,
+        })
+        rolls.push(save)
+        const saved = savingThrowSucceeded(save, dread.dc)
+        events.push(eventFrom(commandWithRules({ ...command, actor_id: dread.source_id }, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+          ...save, ability: dread.ability, difficulty: dread.dc, saved, source: SCENARIO_KNIGHT_DREAD_SOURCE, night: dread.night,
+        }, [nextId]))
+        if (!saved) {
+          events.push(eventFrom(commandWithRules({ ...command, actor_id: dread.source_id }, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'frightened', duration: 'until-own-turn-end', source_actor: dread.source_id, source: SCENARIO_KNIGHT_DREAD_SOURCE,
+          }, [nextId]))
+        }
+        startTurnState = projectEvents(events)
+      }
       const startingActor = findActor(startTurnState, nextId)
       for (const condition of [...(startTurnState.mechanics.conditions[nextId] ?? []).filter((candidate) => candidate.recurring_damage && candidate.recurring_damage_timing !== 'turn-end')]) {
         let effectContinues = true
@@ -19413,6 +19876,204 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       })) {
         events.push(eventFrom({ ...command, visibility: draft.visibility }, draft.event_type, draft.payload, draft.target_ids))
       }
+      break
+    }
+    case 'ReceiveScenarioPurse': {
+      const rules = scenarioPurseRules(state)
+      const roll = diceService.roll(rules.dice, 'scenario-purse', command.actor_id, command.visibility ?? 'party')
+      rolls.push(roll)
+      events.push(eventFrom(command, 'DieRolled', roll, []))
+      const gold = Math.max(0, safeInteger(roll.total, 0)) * rules.gold_per_point
+      const hero = playerActor(state, command.actor_id)
+      const before = normalizeCurrency(hero?.currency)
+      const after = copperToCurrency(Math.min(MAX_CURRENCY_CP, currencyToCopper(before) + gold * 100))
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.economyCoins), SCENARIO_PURSE_EVENT, {
+        schema_version: 1, hero_id: command.actor_id, roll_total: roll.total, gold, currency_before: before, currency_after: after,
+      }, [command.actor_id]))
+      break
+    }
+    case 'ResolveScenarioInformant': {
+      const informant = scenarioInformantRules(state).find((entry) => entry.id === command.informant_id)
+      // Шаг внимания в событие не пишется: его считает свёртка по данным
+      // сценария, а счёт внимания игроку не принадлежит.
+      const resolved = (outcome, text) => events.push(eventFrom(command, SCENARIO_INFORMANT_EVENT, {
+        schema_version: 1, informant_id: informant.id, outcome, location_id: informant.location_id, text,
+      }, [command.actor_id]))
+      if (command.choice === 'turn') {
+        const check = resolveCommandInternal({
+          ...command,
+          command_type: 'MakeAbilityCheck',
+          command_id: `${command.command_id}:check`,
+          skill: informant.turn.skill,
+          difficulty: informant.turn.dc,
+          source_rule_ids: [...command.source_rule_ids, rulesetRuleId(RULE_IDS.abilityCheck, command.ruleset_id)],
+        }, state, { diceService, context })
+        events.push(...check.events)
+        rolls.push(...(check.rolls ?? []))
+        const success = check.events.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success === true
+        if (success) resolved('turn', informant.turn_text)
+        else events.push(eventFrom(command, SCENARIO_INFORMANT_TURN_FAILED_EVENT, {
+          schema_version: 1, informant_id: informant.id, text: informant.turn_failure_text,
+        }, [command.actor_id]))
+      } else if (command.choice === 'expose') {
+        resolved('expose', informant.expose_text)
+      } else {
+        resolved('release', informant.release_text)
+      }
+      break
+    }
+    case 'ChooseScenarioArmoryItem': {
+      events.push(itemGrantedEventFrom(command, { item: clone(command.armory_item) }, [command.actor_id]))
+      events.push(eventFrom(command, SCENARIO_ARMORY_EVENT, {
+        schema_version: 1, hero_id: command.actor_id, catalog_id: command.catalog_id, item_name: command.armory_item.name,
+      }, [command.actor_id]))
+      break
+    }
+    case 'NegotiateScenarioTreaty': {
+      const rules = scenarioTreatyRules(state)
+      const check = resolveCommandInternal({
+        ...command,
+        command_type: 'MakeAbilityCheck',
+        command_id: `${command.command_id}:check`,
+        skill: command.skill,
+        difficulty: command.difficulty,
+        source_rule_ids: [...command.source_rule_ids],
+      }, state, { diceService, context })
+      events.push(...check.events)
+      rolls.push(...(check.rolls ?? []))
+      const resolved = check.events.find((event) => event.event_type === 'AbilityCheckResolved')
+      if (resolved?.payload?.success !== true) {
+        events.push(eventFrom(command, SCENARIO_TREATY_REFUSED_EVENT, {
+          schema_version: 1, npc_id: rules.boss_npc_id, skill: command.skill, text: rules.failure_text,
+        }, [rules.boss_npc_id, command.actor_id]))
+        break
+      }
+      events.push(eventFrom(command, SCENARIO_TREATY_CONCLUDED_EVENT, {
+        schema_version: 1, npc_id: rules.boss_npc_id, skill: command.skill, text: rules.success_text,
+      }, [rules.boss_npc_id, command.actor_id]))
+      if (state.mechanics.combat.active) {
+        // Договор посреди боя: дракон и его слуги уходят, бой закрывается
+        // договором (`scenarioEncounterEndReason`).
+        for (const enemy of (state.enemies ?? []).filter((candidate) => isLivingActor(candidate))) {
+          events.push(eventFrom(commandWithRules({ ...command, actor_id: actorId(enemy) }, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'fled', source_actor: actorId(enemy), source: 'scenario-treaty',
+          }, [actorId(enemy)]))
+        }
+      } else {
+        // До боя: дракон уходит с равнин, собеседника в логове больше нет.
+        const stored = state.social.npcs.find((npc) => npc.id === rules.boss_npc_id)
+        if (stored && stored.available !== false) {
+          const profile = Object.fromEntries(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs',
+            'known_fact_ids', 'social_dcs', 'visibility', 'reveal_on_presence', 'tags', 'schedule', 'inventory']
+            .filter((field) => stored[field] !== undefined).map((field) => [field, clone(stored[field])]))
+          const hidden = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...profile, available: false } }, state, { isDirector: true })
+          for (const socialEvent of npcSocialEvents(hidden, state)) {
+            events.push(eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+          }
+        }
+      }
+      break
+    }
+    case 'ReturnKnightHead': {
+      const rules = scenarioKnightRules(state)
+      events.push(eventFrom(commandWithRules(command, RULE_IDS.turns), SCENARIO_KNIGHT_HEAD_EVENT, {
+        schema_version: 1, npc_id: rules.npc_id, action_spent: Boolean(state.mechanics.combat.active), text: rules.head_text,
+      }, [rules.npc_id]))
+      break
+    }
+    case 'ReleaseCursedKnight': {
+      // Проверка — та же, что у любой проверки навыка героя (Указание,
+      // удача народа, небо), а не урезанная копия: вложенный MakeAbilityCheck.
+      const rules = scenarioKnightRules(state)
+      const check = resolveCommandInternal({
+        ...command,
+        command_type: 'MakeAbilityCheck',
+        command_id: `${command.command_id}:check`,
+        skill: command.skill,
+        difficulty: rules.release.dc,
+        source_rule_ids: [...command.source_rule_ids],
+      }, state, { diceService, context })
+      events.push(...check.events)
+      rolls.push(...(check.rolls ?? []))
+      const resolved = check.events.find((event) => event.event_type === 'AbilityCheckResolved')
+      if (resolved?.payload?.success === true) {
+        events.push(eventFrom(command, SCENARIO_KNIGHT_RELEASED_EVENT, {
+          schema_version: 1, npc_id: rules.npc_id, skill: command.skill, text: rules.release.success_text,
+        }, [rules.npc_id, command.actor_id]))
+        events.push(itemGrantedEventFrom(command, {
+          item: clone(command.reward_item),
+          ...(command.reward_source_npc_id ? { source_npc_id: command.reward_source_npc_id } : {}),
+        }, [command.actor_id]))
+        // Рыцарь уходит: собеседника больше нет, в замок он не вернётся.
+        const stored = state.social.npcs.find((npc) => npc.id === rules.npc_id)
+        const profile = Object.fromEntries(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs',
+          'known_fact_ids', 'social_dcs', 'visibility', 'reveal_on_presence', 'tags', 'schedule', 'inventory']
+          .filter((field) => stored?.[field] !== undefined).map((field) => [field, clone(stored[field])]))
+        const hidden = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...profile, available: false } }, state, { isDirector: true })
+        for (const socialEvent of npcSocialEvents(hidden, state)) {
+          events.push(eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+        }
+      } else {
+        events.push(eventFrom(command, SCENARIO_KNIGHT_RELEASE_FAILED_EVENT, {
+          schema_version: 1, npc_id: rules.npc_id, skill: command.skill, night: scenarioNightIndex(state), text: rules.release.failure_text,
+        }, [rules.npc_id, command.actor_id]))
+      }
+      break
+    }
+    case 'StageScenarioStranger': {
+      const npcId = command.npc.id
+      const locationId = command.npc.location_id
+      const profileEvents = npcSocialEvents({ ...command, command_type: 'UpsertNpcSocialProfile' }, state)
+        .map((socialEvent) => eventFrom({ ...command, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+      if (command.stage === 'arrive') {
+        // Профиль в текущем месте и пост на поле — как у любого собеседника,
+        // заведённого посреди кампании.
+        events.push(...profileEvents)
+        events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(projectEvents(profileEvents))))
+        events.push(eventFrom(command, SCENARIO_STRANGER_EVENT, {
+          schema_version: SCENARIO_STRANGER_EVENT_SCHEMA_VERSION, stage: 'arrived', npc_id: npcId, location_id: locationId,
+        }, [npcId]))
+        break
+      }
+      // Превращение: один бросок урона на всех, спасбросок у каждого героя,
+      // половина при успехе — как у выдоха дракона. Затем он улетает: профиль
+      // остаётся в летописи разговоров, но собеседника больше нет.
+      const breath = scenarioStrangerBreath(state)
+      events.push(eventFrom(command, SCENARIO_STRANGER_EVENT, {
+        schema_version: SCENARIO_STRANGER_EVENT_SCHEMA_VERSION, stage: 'revealed', npc_id: npcId, location_id: locationId, breath,
+      }, [npcId]))
+      const damageRoll = diceService.roll(breath.expression, 'scenario_stranger_breath', null, 'public')
+      rolls.push(damageRoll)
+      events.push(eventFrom(command, 'DieRolled', damageRoll, []))
+      let sweepState = state
+      const heroes = uniqueStrings(state.partyMemberIds ?? [])
+        .map((heroId) => findActor(state, heroId))
+        .filter((hero) => hero && isLivingActor(hero))
+      for (const hero of heroes) {
+        const heroId = actorId(hero)
+        const save = rollSavingThrow(sweepState, heroId, {
+          ability: breath.ability,
+          modifier: abilityModifier(hero?.abilities?.[breath.ability]),
+          purpose: `scenario_stranger_save:${breath.ability}`,
+          visibility: 'public',
+        })
+        rolls.push(save)
+        const saved = savingThrowSucceeded(save, breath.dc)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
+          ...save, ability: breath.ability, difficulty: breath.dc, saved, source: 'scenario-stranger',
+        }, [heroId]))
+        const amount = saved ? Math.floor(damageRoll.total / 2) : damageRoll.total
+        if (amount <= 0) continue
+        const damageState = sweepState
+        const payload = resolveDamagePayload(damageState, heroId, amount, breath.damage_type)
+        const applied = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, saved, source: 'scenario-stranger' }, [heroId])
+        events.push(applied)
+        sweepState = applyGameEvent(sweepState, applied)
+        const consequences = zeroHitPointDamageConsequences(damageState, command, heroId, payload)
+        events.push(...consequences)
+        sweepState = consequences.reduce(applyGameEvent, sweepState)
+      }
+      events.push(...profileEvents)
       break
     }
     case 'PlaceNpc': {
@@ -20969,6 +21630,17 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(follow)
         transitionedState = applyGameEvent(transitionedState, follow)
       }
+      // Собеседники сценария, которых нет в каталоге мира (комендант Гедрик,
+      // осведомители), входят в сцену до расстановки — тогда им найдётся пост.
+      for (const npc of scenarioLocationNpcs(transitionedState, String(transitionedState.scene?.location_id ?? ''))) {
+        if ((transitionedState.social?.npcs ?? []).some((existing) => existing.id === npc.id)) continue
+        const upsert = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...npc, location: transitionedState.scene?.location } }, transitionedState, { isDirector: true })
+        for (const socialEvent of npcSocialEvents(upsert, transitionedState)) {
+          const event = eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids)
+          events.push(event)
+          transitionedState = applyGameEvent(transitionedState, event)
+        }
+      }
       events.push(...npcWorldEventsFrom(command, planSceneNpcPlacementEvents(transitionedState)))
       // Закон встречает отряд на входе. Триггер детерминированный и считается по
       // **уже применённому** переходу: край, поселение и ступень берутся из
@@ -20984,7 +21656,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           }, []))
         }
       }
-      for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, { commandId: command.command_id, sourceEventId: sceneEventId, secrets: command.scene_args?.secrets })) {
+      for (const memoryEvent of sceneWorldMemoryEvents(state, canonicalTransition, {
+        commandId: command.command_id,
+        sourceEventId: sceneEventId,
+        secrets: command.scene_args?.secrets,
+        scenarioSecrets: scenarioSecretsFor(state, String(canonicalTransition.scene?.location_id ?? '')),
+      })) {
         events.push(eventFrom({ ...command, visibility: memoryEvent.visibility }, memoryEvent.event_type, memoryEvent.payload, memoryEvent.target_ids))
       }
       const priorTitle = String(state.scene?.title || state.scene?.location || 'Предыдущая сцена').slice(0, 180)
@@ -21009,6 +21686,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           recorded_at_minutes: Math.max(0, safeInteger(state.mechanics?.world_time?.elapsed_minutes, 0)),
         },
       }, []))
+      appendScenarioKnightPresence(command)
       break
     }
     case 'AdvanceTime': {
@@ -21190,9 +21868,30 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     case 'RecordNarrativeSummary': {
       const worldEvent = worldMemoryEvent(command)
       events.push(eventFrom(command, worldEvent.event_type, worldEvent.payload, worldEvent.target_ids))
+      // Находка тайны сценария может принести предмет: оберег Ломара лежит на
+      // его столе. Он достаётся нашедшему герою, а без него — первому живому
+      // герою отряда; повторная находка той же тайны предмета не удваивает.
+      const found = command.command_type === 'RecordWorldFact' && command.fact?.predicate === 'discovery'
+        ? String(command.fact?.supersedes_fact_id ?? '') : ''
+      const rewardId = found ? scenarioClueRewardCatalogId(state, found) : null
+      const alreadyFound = rewardId && (state.worldMemory?.facts ?? []).some((fact) => fact?.predicate === 'discovery' && String(fact.supersedes_fact_id ?? '') === found)
+      if (rewardId && !alreadyFound) {
+        const partyIds = uniqueStrings(state.partyMemberIds ?? [])
+        const recipient = partyIds.includes(String(command.actor_id ?? '')) ? String(command.actor_id)
+          : partyIds.find((heroId) => isLivingActor(findActor(state, heroId))) ?? partyIds[0]
+        if (recipient) {
+          const item = normalizeInventoryItem(materializeCatalogItem(rewardId, { quantity: 1, origin: 'found' }), {
+            idFallback: `scenario-reward:${found}`, preserveUnknown: true,
+          })
+          events.push(itemGrantedEventFrom({ ...command, actor_id: recipient }, { item }, [recipient]))
+        }
+      }
       break
     }
-    case 'CompleteCampaign':
+    case 'CompleteCampaign': {
+      // Развязку сценария выбирает исход боя с главным противником, а не
+      // команда: поле выводится из состояния здесь же.
+      const ending = scenarioEnding(state)
       events.push(eventFrom(command, 'CampaignCompleted', {
         status: 'completed',
         reason: command.reason,
@@ -21200,8 +21899,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         occurred_at: command.occurred_at || null,
         epilogue: command.epilogue,
         completion_policy: 'campaign-arc-completion-v1',
+        ...(ending ? { ending: { id: ending.id, title: ending.title, outcome: ending.outcome } } : {}),
       }, []))
       break
+    }
     case 'AdvanceCampaignArc': {
       const closingArc = campaignArcPlan(state)
       const nextArc = buildCampaignArcPlan(closingArc.seed, closingArc.arc_number + 1)
@@ -21417,6 +22118,38 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           rider_damage_type: String(use.rider_damage_type ?? 'poison'),
           rider_source_name: String(item.name),
         }, [command.actor_id]))
+      }
+      if (use.kind === 'knight_tear') {
+        // Слеза Проклятого Рыцаря: на себя — «Щит Вечной Стражи» (временные
+        // хиты), на главного противника сценария — «Хрупкая Чешуя».
+        if (String(command.target_id) === String(command.actor_id)) {
+          const amount = Math.max(1, safeInteger(use.shield_temporary_hp, 50))
+          const before = Math.max(0, safeInteger(state.mechanics.temporary_hp[command.actor_id], 0))
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'TemporaryHitPointsGranted', {
+            offered: amount, temporary_hp_before: before, temporary_hp_after: Math.max(before, amount),
+            item_id: item.id, item_name: item.name, effect: 'knight-tear-shield',
+          }, [command.actor_id]))
+        } else {
+          const rounds = Math.max(1, safeInteger(use.scale_duration_rounds, 10))
+          const startedAt = worldTimeSeconds(state)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'fragile-scale', duration: `rounds:${rounds}`, source_actor: command.actor_id, source_item_id: item.id,
+            timing_version: 2, started_at_seconds: startedAt, expires_at_seconds: startedAt + rounds * 6,
+          }, [command.target_id]))
+        }
+      }
+      if (use.kind === 'party_fire_ward') {
+        // Оберег Ломара: сопротивление огню каждому живому герою отряда.
+        const rounds = Math.max(1, safeInteger(use.duration_rounds, 10))
+        const startedAt = worldTimeSeconds(state)
+        for (const heroId of uniqueStrings(state.partyMemberIds ?? [])) {
+          const hero = findActor(state, heroId)
+          if (!hero || !isLivingActor(hero)) continue
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'lomar-ward', duration: `rounds:${rounds}`, source_actor: command.actor_id, source_item_id: item.id,
+            timing_version: 2, started_at_seconds: startedAt, expires_at_seconds: startedAt + rounds * 6,
+          }, [heroId]))
+        }
       }
       if (use.kind === 'antitoxin') {
         const durationMinutes = Math.max(1, safeInteger(use.duration_minutes, 60))
@@ -21772,6 +22505,26 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
     }
     const story = campaignStoryCompletionDraft(state, resolvedEvents)
     if (story) resolvedEvents.push(eventFrom({ ...command, visibility: story.visibility }, story.event_type, story.payload, story.target_ids))
+    // Уровни за линии сценария (Асстохан: 7 → 10). Линия закрылась этой
+    // командой — каждый герой отряда получает опыт ровно до порога уровня по
+    // сюжету; кто уже выше благодаря боям, ничего не теряет и не получает.
+    // Повысить уровень герой решает сам — обычной командой LevelUp.
+    const levelBefore = scenarioMilestoneLevel(state)
+    if (levelBefore != null) {
+      const levelAfter = scenarioMilestoneLevel(projectEvents(resolvedEvents))
+      if (levelAfter != null && levelAfter > levelBefore) {
+        const projected = projectEvents(resolvedEvents)
+        for (const heroId of uniqueStrings(projected.partyMemberIds ?? [])) {
+          const hero = playerActor(projected, heroId)
+          if (!hero) continue
+          const needed = experienceForLevel(levelAfter) - Math.max(0, safeInteger(hero.experience, 0))
+          if (needed <= 0) continue
+          resolvedEvents.push(eventFrom({ ...command, actor_id: null, visibility: 'party' }, 'ExperienceAwarded', {
+            total_xp: needed, recipients: [heroId], reason: 'scenario-line', target_level: levelAfter,
+          }, [heroId]))
+        }
+      }
+    }
   }
   return { command, events: resolvedEvents, rolls }
 }
@@ -22353,6 +23106,35 @@ function attackEndpointsFor(value) {
   return { from: { x: fromX, y: fromY }, to: { x: toX, y: toY } }
 }
 
+/**
+ * Строка хроники «областная атака» существа — дыхание, взмах крыльев — из
+ * поля `area` события. У событий, записанных до появления поля, его нет:
+ * они остаются прежней строкой, и replay старого журнала не меняется.
+ */
+function battleLogAreaFromPayload(state, event, payload) {
+  const area = payload?.area
+  const point = (value) => value && Number.isSafeInteger(Number(value.x)) && Number.isSafeInteger(Number(value.y))
+    ? { x: Number(value.x), y: Number(value.y) }
+    : null
+  const from = point(area?.from)
+  const to = point(area?.to)
+  if (!from || !to) return null
+  const shape = ['sphere', 'cone', 'line'].includes(String(area.shape)) ? String(area.shape) : 'sphere'
+  return {
+    sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round),
+    round: state.mechanics.combat.round,
+    type: 'area-attack',
+    actorId: event.actor_id,
+    actorKind: combatActorKind(state, event.actor_id),
+    itemName: String(payload.name ?? payload.action_id ?? ''),
+    from,
+    area: { ...to, radiusFeet: Math.max(5, safeInteger(area.size_feet, 5)), shape },
+    targetIds: (Array.isArray(area.target_ids) ? area.target_ids : []).map(String),
+    ...(area.damage_type ? { damageType: String(area.damage_type) } : {}),
+    ...(area.save_ability ? { ability: String(area.save_ability) } : {}),
+  }
+}
+
 function appendBattleLog(state, event, entry) {
   const id = eventJournalId(state, event)
   if (state.battleLog.some((item) => String(item.id) === id)) return
@@ -22582,6 +23364,13 @@ function applyGameEventCurrent(rawState, event) {
           ? payload.epilogue_fact_keys.map((key) => String(key).slice(0, 240)).filter(Boolean).slice(0, 64)
           : state.mechanics.campaign_lifecycle.epilogue_fact_keys,
         changed_by: payload.changed_by ?? event.actor_id ?? null,
+        ...(payload.ending && typeof payload.ending === 'object' ? {
+          ending: {
+            id: String(payload.ending.id ?? '').slice(0, 80),
+            title: String(payload.ending.title ?? '').slice(0, 160),
+            outcome: String(payload.ending.outcome ?? '').slice(0, 60),
+          },
+        } : {}),
       }
       break
     case 'CampaignStoryCompleted': {
@@ -23992,6 +24781,13 @@ function applyGameEventCurrent(rawState, event) {
         priceProvenance: payload.price_provenance ?? 'custom', policyId: payload.policy_id ?? ECONOMY_POLICY_ID,
       })
       break
+    case 'LegendaryActionUsed': {
+      // Механику несут соседние события (спасброски, урон, маркеры);
+      // здесь — только строка хроники с областью для доски.
+      const legendaryArea = battleLogAreaFromPayload(state, event, payload)
+      if (legendaryArea) appendBattleLog(state, event, legendaryArea)
+      break
+    }
     case 'CombatActionUsed': {
       if (state.mechanics.combat.active && event.actor_id) {
         const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
@@ -24112,6 +24908,11 @@ function applyGameEventCurrent(rawState, event) {
             : Math.max(0, safeInteger(findActor(state, event.actor_id)?.speed, 30) + safeInteger(updated.movement_bonus, 0))
           state.mechanics.combat.action_economy[event.actor_id] = { ...updated, movement_spent: spent, movement: spent < total }
         }
+      }
+      const actionArea = payload.monster_action ? battleLogAreaFromPayload(state, event, payload) : null
+      if (actionArea) {
+        appendBattleLog(state, event, actionArea)
+        break
       }
       appendBattleLog(state, event, {
         sceneTurn: safeInteger(state.scene?.turn, state.mechanics.combat.round), round: state.mechanics.combat.round,
@@ -24421,6 +25222,17 @@ function applyGameEventCurrent(rawState, event) {
         state.mechanics.conditions[beastActorId] = (state.mechanics.conditions[beastActorId] ?? [])
           .filter((condition) => !['fled', 'surrendered', 'morale-tested'].includes(String(condition?.id ?? condition)))
         appendBattleLog(state, event, { type: 'beast-tamed', actorId: beastActorId, reason: String(payload.diet ?? 'predator') })
+      }
+      break
+    }
+    case 'ScenarioPurseGranted': {
+      // Кошель короля: монета в кошельке героя; «раз на героя» — в реестре
+      // сценария, который сворачивается ниже.
+      const recipient = String(payload.hero_id ?? event.actor_id ?? '')
+      if (recipient && payload.currency_after) {
+        state.players = state.players.map((player) => actorId(player) === recipient
+          ? { ...player, currency: clone(payload.currency_after) }
+          : player)
       }
       break
     }
@@ -24941,6 +25753,11 @@ function applyGameEventCurrent(rawState, event) {
       }))
       if (payload.action_spent === true) spendCombatEconomy(state, event.actor_id, 'action')
       break
+    case 'ScenarioKnightHeadReturned':
+      // Голова перед рыцарем посреди схватки стоит действия героя; сама
+      // загадка — в реестре `scenario_knight`, который сворачивается ниже.
+      if (payload.action_spent === true) spendCombatEconomy(state, event.actor_id, 'action')
+      break
     case 'SceneObjectCheckResolved':
       break
     case 'SceneObjectInspected':
@@ -25070,6 +25887,8 @@ function applyGameEventCurrent(rawState, event) {
     case 'ItemGranted':
       replaceActor(state, target, (actor) => ({ ...actor, inventory: [...(Array.isArray(actor.inventory) ? actor.inventory : []), clone(payload.item)] }))
       if (Number(event.event_schema_version) >= 2) refreshPlayerDerivedState(state, [target])
+      // Вещь из рук NPC (Слеза упокоенного рыцаря) уходит из его инвентаря.
+      if (payload.source_npc_id) state.npc_world = applyNpcWorldEvent(state.npc_world, event)
       break
     case 'SpellSelectionsUpdated':
       replaceActor(state, target, (actor) => ({
@@ -25351,6 +26170,10 @@ function applyGameEventCurrent(rawState, event) {
   // всю дугу без отдельного снимка.
   state.courier_letters = applyCourierLetterEvent(state.courier_letters, event)
   state.captives = applyCaptiveEvent(state.captives, event, state)
+  // Внимание главного противника сценария — такой же вывод из журнала: место
+  // берётся из сцены, в которой случилось событие, поэтому replay сходится.
+  state.scenario_attention = applyScenarioAttentionEvent(state.scenario_attention, event, state)
+  state.scenario_knight = applyScenarioKnightEvent(state.scenario_knight, event, state)
   // Реестр зверей — такой же вывод из журнала: подход заводит запись, а ступени,
   // укусы и переезды спутника только меняют её, поэтому replay восстанавливает
   // всю лестницу без отдельного снимка.

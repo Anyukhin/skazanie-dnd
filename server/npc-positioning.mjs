@@ -1083,6 +1083,19 @@ export function applyNpcWorldEvent(input, event, options = {}) {
       propagation_depth: payload.propagation_depth,
     })
   }
+  // Вещь, которую NPC отдаёт из своих рук (упокоенный рыцарь — Слезу),
+  // уходит из его инвентаря тем же событием, что кладёт её герою.
+  if (event?.event_type === 'ItemGranted' && text(payload.source_npc_id, 120)) {
+    const ownerId = text(payload.source_npc_id, 120)
+    // Вещь узнаётся по любому из двух ключей: в руках NPC у неё может быть
+    // только `id`, а выданная герою уже несёт и `item_instance_id`.
+    const keys = new Set([payload.item?.item_instance_id, payload.item?.id].map((value) => text(value, 160)).filter(Boolean))
+    const inventory = Object.hasOwn(world.inventories, ownerId) ? world.inventories[ownerId] : []
+    const index = inventory.findIndex((item) => [item?.item_instance_id, item?.id].some((value) => keys.has(text(value, 160))))
+    if (index >= 0) {
+      world.inventories = { ...world.inventories, [ownerId]: inventory.filter((_, position) => position !== index) }
+    }
+  }
   if (event?.event_type === 'ItemTransferred' && payload.recipient_kind === 'npc') {
     const recipientId = text(payload.to_actor_id, 120)
     const incoming = safeNpcInventory([{

@@ -34,7 +34,8 @@ test('публичный пролог становится знанием пар
   // Вулканиса (`opening.secrets`, хранитель «Король Арес»).
   const aresSecrets = state.worldMemory.facts.filter((fact) => fact.predicate === 'gm_secret' && /Арес отводит взгляд/u.test(fact.summary))
   assert.equal(aresSecrets.length, 1)
-  assert.deepEqual(ares.known_fact_ids, [...facts.map((fact) => fact.id), ...aresSecrets.map((fact) => fact.id)])
+  // Сверх стартовых знаний Арес хранит свою тайну сценария — признание о походе.
+  assert.deepEqual(ares.known_fact_ids, [...facts.map((fact) => fact.id), ...aresSecrets.map((fact) => fact.id), 'fact:secret:scenario:astohan-dragon-hunt:ares-confession'])
 
   let request = null
   await new NpcSocialController({

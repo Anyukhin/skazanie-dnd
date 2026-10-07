@@ -228,6 +228,9 @@ function mapOnHit(raw, secondaryDamage = null) {
   // поверх обычного удара. Исходное правило остаётся в полном статблоке.
   const complexGrapple = source.max_grappled_targets || source.while_grappled || source.cannot_constrict_another_target
   if (SUPPORTED_ON_HIT_CONDITIONS.has(condition) && !source.instead_of_damage && !complexGrapple) result.condition = condition
+  // СЛ освобождения из статблока («Высвободиться»): паутина паука — Сила 12.
+  const escapeDc = Number(source.escape?.dc ?? source.escape_dc)
+  if (result.condition && Number.isFinite(escapeDc) && escapeDc > 0) result.escape_dc = escapeDc
   const minutes = Number(source.duration_minutes ?? (failure.duration === '1_minute' ? 1 : 0))
   const hours = Number(source.duration_hours ?? 0)
   if (minutes > 0 || hours > 0) {
