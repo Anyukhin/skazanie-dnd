@@ -565,7 +565,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
     ['narrator/v13', 'narrator/v13'],
     ['director/v4_story', 'director/v4_story'],
     ['director/v4_chaos', 'director/v4_chaos'],
-    ['action_adjudicator/v8', 'action_adjudicator/v8'],
+    ['action_adjudicator/v9', 'action_adjudicator/v9'],
     ['campaign_creator/v8', 'campaign_creator/v8'],
     ['map_architect/v8', 'map_architect/v8'],
     ['recap/v1', 'recap/v1'],

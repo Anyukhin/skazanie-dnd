@@ -733,20 +733,12 @@ function memoryFocusReminder(focus, variant = 0) {
       `В памяти остался прежний ответ — ${focus.label}: «${cue}»`,
     ][variant % 4]
   }
-  if (focus.kind === 'decision') {
-    return [
-      `Прежнее решение «${focus.label}» всё ещё важно: ${focus.cue}`,
-      `К решению «${focus.label}» ведёт нынешняя деталь.`,
-      `Сегодня отзывается выбор «${focus.label}».`,
-      `Текущий след связан с решением «${focus.label}».`,
-    ][variant % 4]
-  }
-  return [
-    `С прошлой сценой «${focus.label}» это связывает одна деталь: ${focus.cue}`,
-    `Нынешняя сцена прямо отсылает к эпизоду «${focus.label}».`,
-    `Связанный эпизод называется «${focus.label}»; его деталь снова важна.`,
-    `Из прошлого откликается сцена «${focus.label}» — нынешний факт связан с ней.`,
-  ][variant % 4]
+  // Прежние решения и эпизоды шаблон связать с нынешним шагом не умеет: в
+  // ленту уходило «Прежнее решение «Митглайд · перекрёсток дорог» всё ещё
+  // важно: Цель «…» завершена» после неудачного поиска следов в лагере
+  // (живой прогон Асстохана 2026-10-07, судья 1.7/5). Связь с прошлым — дело
+  // модели; запасной текст держит только обещания и прежние слова собеседника.
+  return ''
 }
 
 const escapePattern = (value) => String(value ?? '').replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
@@ -1871,7 +1863,10 @@ function qualitativeEventSummary(event, resolveName) {
       // середине абзаца получалось «наступил вечер.. Ада поражает орка».
       return worldClockNarration(event).replace(/[.!?]+$/u, '')
     case 'SocialSceneOpened':
-      return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} рядом — самое время заговорить`
+      return `${named(payload.npc_id || (event?.target_ids ?? [])[0], 'Собеседник')} неподалёку — можно заговорить`
+    case 'NpcPlaced':
+      // «Занимает пост в сцене» — язык движка, а не стола.
+      return `${named(payload.npc_id || (event?.target_ids ?? [])[0], sceneText(payload.npc_name, 120) || 'Местный житель')} появляется неподалёку`
     case 'ScenarioPurseGranted':
       // Имя героя — в именительном: склонять его рассказчик без модели не умеет
       // («вручает её Кирем Двухпалый», браузерный плейтест 2026-10-07).
@@ -1948,9 +1943,15 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   const outcomeEvents = discovery
     ? allOutcomeEvents.filter(event => !['AbilityCheckResolved', 'DieRolled', 'RollResolved'].includes(event?.event_type))
     : allOutcomeEvents
-  const ordered = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
+  const sorted = [...(outcomeEvents.length ? outcomeEvents : brief.visible_events)]
     // Подтверждённая судьба NPC не должна исчезнуть за расходом ячейки и бросками.
     .sort((left, right) => Number(right.event_type === 'NpcDied') - Number(left.event_type === 'NpcDied'))
+  // Появление NPC и приглашение к разговору о нём же — одна новость: прежде
+  // звучало «Вея занимает пост в сцене. Вея рядом — самое время заговорить»
+  // (живой прогон Асстохана 2026-10-07).
+  const subjectNpc = (event) => String(event?.payload?.npc_id || (event?.target_ids ?? [])[0] || '')
+  const invited = new Set(sorted.filter((event) => event?.event_type === 'SocialSceneOpened').map(subjectNpc))
+  const ordered = sorted.filter((event) => !(event?.event_type === 'NpcPlaced' && invited.has(subjectNpc(event))))
   // В рассказ идут четыре фразы. Когда событий больше, служебные уступают
   // место значимым: раньше «оружие завершает ход, начинается ход ветерана»
   // съедали место, и падение героя без сознания не звучало вовсе.

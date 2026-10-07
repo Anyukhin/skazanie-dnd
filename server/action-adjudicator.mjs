@@ -42,10 +42,10 @@ import { agentContextMetadata, boundedSelectionMetadata } from './agent-context.
  * ошибке, таймауте или отсутствии ключа предложение молча заменяется
  * детерминированным прочтением, и игра продолжается.
  */
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v8.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v9.txt', import.meta.url)), 'utf8')
 
 /** Версия контракта: она же попадает в метаданные контекста и трассу. */
-export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v8'
+export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v9'
 
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const list = (value) => Array.isArray(value) ? value : []

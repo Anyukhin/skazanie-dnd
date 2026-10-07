@@ -721,7 +721,7 @@ async function director(playerAction = 'Продолжить приключен�
   for (const entry of newMessages(seen, after)) {
     if (entry.speaker !== 'narrator' || !entry.text) continue
     narrations.push({ kind: 'director', action: playerAction, label: type, text: String(entry.text) })
-    for (const issue of narrationConsistency(String(entry.text), after)) recordConsistency(issue, `Режиссёр, ${type}`)
+    for (const issue of narrationConsistency(String(entry.text), await withFullSceneMap(after))) recordConsistency(issue, `Режиссёр, ${type}`)
     stats.consistencyChecked += 1
   }
   const fresh = newMessages(seen, after).map((entry) => short(entry.text ?? entry.content, 500)).filter(Boolean)
@@ -1221,10 +1221,25 @@ function recordConsistency(issue, where = '') {
   finding(issue.severity, `consistency-${issue.code.toLowerCase().replace(/_/gu, '-')}`, `${issue.message}${where ? ` — ${where}` : ''}`)
 }
 
+/**
+ * Сцена игрока с картой из полного вида ведущего. Проекция игрока прячет
+ * нераскрытые клетки вместе с предметами, и сверка «рассказчик назвал — на
+ * карте нет» срабатывала на костры лагеря, до которых отряд ещё не дошёл,
+ * хотя о них говорит открытое описание места (прогон 2026-10-07).
+ */
+async function withFullSceneMap(state) {
+  try {
+    const full = await room(accounts.admin)
+    return full?.scene?.map ? { ...state, scene: { ...state.scene, map: full.scene.map } } : state
+  } catch {
+    return state
+  }
+}
+
 /** Ответ рассказчика сверяется с тем, что сейчас на самом деле в сцене. */
 async function checkNarrationConsistency(action, text, check = null) {
   if (!text) return
-  const state = await room()
+  const state = await withFullSceneMap(await room())
   stats.consistencyChecked += 1
   for (const issue of narrationConsistency(String(text), state, { check })) recordConsistency(issue, `на «${short(action, 70)}»`)
   // Контекст в момент ответа — для судьи: без него он не знает, что на карте и чем кончился бросок.
