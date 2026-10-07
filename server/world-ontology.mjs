@@ -98,9 +98,9 @@ export const PREDICATES = Object.freeze({
   }),
   opening_narration: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'подтверждённый пролог сцены',
-    producers: ['campaign-bootstrap'], consumers: ['action-adjudicator', 'player-request-router'],
+    producers: ['campaign-bootstrap'], consumers: ['action-adjudicator', 'npc-social-controller', 'player-request-router'],
     visibility: 'party',
-    description_ru: 'Абзацы пролога кампании; NPC стартовой локации знают их как свои факты, а судья свободных действий читает их как описание места.',
+    description_ru: 'Абзацы пролога кампании; судья свободных действий читает их как описание места, модель собеседника — как фон. Запасной ответ NPC без модели пролог вслух не произносит.',
   }),
   gm_secret: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'JSON { topic, skills, holder }',
