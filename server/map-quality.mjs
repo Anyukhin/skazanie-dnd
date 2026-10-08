@@ -335,6 +335,7 @@ export function auditTacticalMap(map) {
   const loops = Math.max(0, links.size - parent.size + components)
   const richness = richnessReport(map)
   const play = playabilityReport(map, blockingAt)
+  const ground = terrainReport(map, blockingAt)
   problems.push(...richness.problems, ...play.problems)
   return {
     problems,
@@ -342,6 +343,7 @@ export function auditTacticalMap(map) {
     stats: {
       ...richness.stats,
       ...play.stats,
+      ...ground.stats,
       cells: passable,
       buildings: buildings.components.length,
       multi_room: multiRoomBuildings,
@@ -529,6 +531,115 @@ export function playabilityReport(map, blockingAt) {
     problems,
     warnings,
     stats: { spawn_room: spawnRoom, cover_pct: Math.round(coverShare * 100), hall_cover_pct: Math.round(barestHall * 100), sightline_ft: sightline * 5 },
+  }
+}
+
+/** Наибольший перепад между соседними клетками, который проходят шагом, в футах. */
+export const STEP_WITHOUT_CLIMB_FEET = 5
+
+/**
+ * Местность под ногами (`docs/maps-dnd-standards-plan.md`, задачи 1, 2, 7):
+ *
+ * - `difficult_pct` — доля свободных клеток с `moveCost > 1`: подлесок,
+ *   грязь, щебень, низкая мебель;
+ * - `elevation_levels` — сколько разных высот у свободных клеток; рельеф
+ *   террасами держит 2–4, а не двадцать ступеней по футу;
+ * - `smallest_plateau` — самая маленькая площадка одной ненулевой высоты
+ *   (связная по сторонам, предметы не в счёт), 0 — площадок нет;
+ * - `climb_cells` — клетки, досягаемые от входа только через перепад больше
+ *   `STEP_WITHOUT_CLIMB_FEET`: механики лазания в правилах нет, и такая
+ *   площадка — обещание, которое движок не держит;
+ * - `cover_side_pct` — доля свободных клеток под небом, у которых сбоку
+ *   мешающий шагу предмет или стена: за этим можно встать. Скала и вода не
+ *   в счёт — у кромки участка укрытие есть всегда, а бой идёт посреди поля.
+ *
+ * @param {TacticalMap} map
+ * @param {Map<string, string>} blockingAt клетки под мешающими предметами
+ * @returns {{ stats: Record<string, number> }}
+ */
+export function terrainReport(map, blockingAt) {
+  const zoneKind = new Map(map.zones.map((zone) => [zone.id, zone.kind]))
+  const free = (/** @type {number} */ x, /** @type {number} */ y) => {
+    const cell = cellAt(map, x, y)
+    return Boolean(cell?.passable) && cell?.surface !== 'water' && !blockingAt.has(`${x},${y}`)
+  }
+  const wall = (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ nx, /** @type {number} */ ny) => {
+    const edge = edgeBetween(map, x, y, nx, ny)
+    return Boolean(edge && edge.kind !== 'door' && edge.blocksMove)
+  }
+  let cells = 0
+  let difficult = 0
+  let open = 0
+  let covered = 0
+  /** @type {Set<number>} */
+  const levels = new Set()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    if (!free(x, y)) continue
+    const cell = /** @type {NonNullable<ReturnType<typeof cellAt>>} */ (cellAt(map, x, y))
+    cells += 1
+    if (cell.moveCost > 1) difficult += 1
+    levels.add(cell.elevation)
+    if (zoneKind.get(cell.zone) === 'interior') continue
+    open += 1
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => blockingAt.has(`${x + dx},${y + dy}`) || wall(x, y, x + dx, y + dy))) covered += 1
+  }
+  // Площадки: связные по сторонам клетки одной ненулевой высоты.
+  let smallestPlateau = 0
+  /** @type {Set<string>} */
+  const seen = new Set()
+  const ground = (/** @type {number} */ x, /** @type {number} */ y) => {
+    const cell = cellAt(map, x, y)
+    return cell?.passable && cell.surface !== 'water' ? cell : null
+  }
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const start = ground(x, y)
+    if (!start || !start.elevation || seen.has(`${x},${y}`)) continue
+    const queue = [{ x, y }]
+    seen.add(`${x},${y}`)
+    for (let index = 0; index < queue.length; index += 1) {
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const next = { x: queue[index].x + dx, y: queue[index].y + dy }
+        const key = `${next.x},${next.y}`
+        if (seen.has(key) || ground(next.x, next.y)?.elevation !== start.elevation) continue
+        seen.add(key)
+        queue.push(next)
+      }
+    }
+    smallestPlateau = smallestPlateau ? Math.min(smallestPlateau, queue.length) : queue.length
+  }
+  // Досягаемость шагом: тот же поиск от входа, но перепад не больше шага.
+  let climb = 0
+  const party = map.spawnPoints.find((point) => point.role === 'party')
+  if (party && free(party.x, party.y)) {
+    const blockedCells = new Set(blockingAt.keys())
+    const reached = reachableCells(map, party.x, party.y, { blockedCells })
+    const stepped = new Set([`${party.x},${party.y}`])
+    const queue = [{ x: party.x, y: party.y }]
+    for (let index = 0; index < queue.length; index += 1) {
+      const point = queue[index]
+      const own = cellAt(map, point.x, point.y)?.elevation ?? 0
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const next = { x: point.x + dx, y: point.y + dy }
+        const key = `${next.x},${next.y}`
+        if (stepped.has(key) || !reached.has(key) || wall(point.x, point.y, next.x, next.y)) continue
+        if (Math.abs((cellAt(map, next.x, next.y)?.elevation ?? 0) - own) > STEP_WITHOUT_CLIMB_FEET) continue
+        stepped.add(key)
+        queue.push(next)
+      }
+    }
+    for (const key of reached) {
+      const [x, y] = key.split(',').map(Number)
+      if (free(x, y) && !stepped.has(key)) climb += 1
+    }
+  }
+  return {
+    stats: {
+      difficult_pct: cells ? Math.round(difficult / cells * 100) : 0,
+      elevation_levels: levels.size,
+      smallest_plateau: smallestPlateau,
+      climb_cells: climb,
+      cover_side_pct: open ? Math.round(covered / open * 100) : 0,
+    },
   }
 }
 
@@ -777,6 +888,8 @@ export const MAP_PREVIEW_PRESETS = Object.freeze([
   { id: 'cave', input: { location: 'Пещера контрабандистов', theme: 'пещера' } },
   { id: 'forest', input: { location: 'Поляна в Чернолесье', theme: 'лес' } },
   { id: 'road', input: { location: 'Тракт у старого моста', theme: 'дорога' } },
+  { id: 'ruins', input: { location: 'Развалины старой заставы', theme: 'руины у дороги' } },
+  { id: 'swamp', input: { location: 'Гнилая топь', theme: 'лес', map: { design: { climate: 'wetland' } } } },
   { id: 'village', input: { location: 'Деревня Кленовка', theme: 'деревня', settlementType: 'village' } },
   { id: 'town', input: { location: 'Город Вельдбург', theme: 'город', settlementType: 'town' } },
   { id: 'harbor', input: { location: 'Портовый квартал', theme: 'гавань у пристани', settlementType: 'town' } },
