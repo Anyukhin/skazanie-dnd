@@ -18,14 +18,24 @@
  *     (обвал, колонна кладки); стены вокруг сборщик ставит сам;
  *   - `"hazardId"` у символа — опасность клетки (`lava-fire` — лава: огонь для
  *     механики, свечение в 3D);
+ *   - `"moveCost": 2` у символа — трудная местность (бурелом, подлесок, грязь);
+ *   - `"elevation"` у символа — высота площадки в футах: целое со знаком,
+ *     кратное 5. Без поля клетка лежит на уровне земли;
  *   - `D` — закрытая дверь, `O` — открытая, `B` — выломанная, `L` — запертая,
  *     `W` — окно. Знак стоит в клетке-пороге: клетка достаётся помещению
  *     (зоне `interior`), а дверь или окно — ребру к соседней зоне;
  *   - `@` — вход отряда, `E` — точка врагов, `N` — жители; клетка берёт зону
- *     соседей.
+ *     и высоту соседей.
  *
  * Между клетками разных зон, если хотя бы одна из них — помещение, сборщик
  * ставит стену. Между уличными зонами стены нет.
+ *
+ * Высота. Соседние проходимые клетки с разницей до 5 футов — ступень или
+ * склон: по ним ходят без лазания. Разница больше — обрыв: сборщик ставит на
+ * ребро кромку (`ledge`), которая не пускает шагом, но не закрывает ни обзора,
+ * ни выстрела, и даёт половинное укрытие тому, кто за ней. Лазания движок пока
+ * не знает, поэтому на каждую площадку рисуется подъём ступенями по 5 футов.
+ * Дверь и окно над обрывом — ошибка рисунка.
  *
  *   node tools/build-ascii-location-maps.mjs data/authored-maps/astohan-forgotten-cliffs.json
  *   node tools/build-ascii-location-maps.mjs --all          # все файлы каталога
@@ -48,6 +58,10 @@ const DOOR_MARKS = Object.freeze({ D: 'closed', O: 'open', B: 'broken', L: 'lock
 const SPAWN_MARKS = Object.freeze({ '@': 'party', E: 'enemy', N: 'neutral' })
 const MARKS = new Set([...Object.keys(DOOR_MARKS), 'W', ...Object.keys(SPAWN_MARKS)])
 const SIDES = Object.freeze([[1, 0], [-1, 0], [0, 1], [0, -1]])
+/** Наибольшая разница высот соседних клеток, которую проходят шагом, в футах. */
+export const STEP_FEET = 5
+/** Высота клетки хранится в Int8 (футы): берутся кратные 5 в этих пределах. */
+const ELEVATION_LIMIT = 125
 
 /** @param {string} message @returns {never} */
 function fail(message) {
@@ -74,12 +88,20 @@ export function asciiMapToLayout(source) {
     if (symbol.length !== 1 || MARKS.has(symbol)) fail(`${id}: символ легенды «${symbol}» занят или длиннее одного знака`)
     if (entry.zone && !zoneById.has(entry.zone)) fail(`${id}: символ «${symbol}» ссылается на неизвестную зону ${entry.zone}`)
     if (!entry.zone && !entry.void) fail(`${id}: символу «${symbol}» нужна zone или void`)
+    if (entry.elevation !== undefined
+      && (!Number.isSafeInteger(entry.elevation) || entry.elevation % STEP_FEET !== 0 || Math.abs(entry.elevation) > ELEVATION_LIMIT)) {
+      fail(`${id}: высота символа «${symbol}» — целые футы, кратные ${STEP_FEET}, от -${ELEVATION_LIMIT} до ${ELEVATION_LIMIT}`)
+    }
   }
+  /** @param {string} symbol */
+  const symbolElevation = (symbol) => Number(legend[symbol]?.elevation ?? 0)
   const symbolAt = (x, y) => (x >= 0 && y >= 0 && x < width && y < height ? rows[y][x] : ' ')
   const isFloorSymbol = (symbol) => Boolean(legend[symbol]?.zone) || MARKS.has(symbol)
 
   /** Зона клетки-знака: по соседям; у двери и окна — помещение. */
   const markZone = new Map()
+  /** Высота клетки-знака — того же соседа, чью зону она берёт. */
+  const markElevation = new Map()
   /** @type {Array<{ x: number, y: number, to: { x: number, y: number }, kind: string, state?: string }>} */
   const openings = []
   const plainZone = (x, y) => {
@@ -97,6 +119,7 @@ export function asciiMapToLayout(source) {
       if (!neighbours.length) fail(`${id}: знак «${symbol}» в (${x},${y}) без соседнего пола`)
       if (SPAWN_MARKS[symbol]) {
         markZone.set(`${x},${y}`, neighbours[0].zone)
+        markElevation.set(`${x},${y}`, symbolElevation(symbolAt(neighbours[0].x, neighbours[0].y)))
         continue
       }
       // Порог: напротив друг друга — две разные зоны. Клетка — помещению.
@@ -109,12 +132,17 @@ export function asciiMapToLayout(source) {
       const interior = (zone) => zoneById.get(zone)?.kind !== 'exterior'
       const [own, other] = interior(a.zone) && !interior(b.zone) ? [a, b] : interior(b.zone) && !interior(a.zone) ? [b, a] : [a, b]
       markZone.set(`${x},${y}`, own.zone)
+      markElevation.set(`${x},${y}`, symbolElevation(symbolAt(own.x, own.y)))
+      if (Math.abs(symbolElevation(symbolAt(own.x, own.y)) - symbolElevation(symbolAt(other.x, other.y))) > STEP_FEET) {
+        fail(`${id}: знак «${symbol}» в (${x},${y}) стоит над обрывом — высоты по сторонам расходятся больше чем на ${STEP_FEET} фт`)
+      }
       openings.push(symbol === 'W'
         ? { x, y, to: { x: other.x, y: other.y }, kind: 'window' }
         : { x, y, to: { x: other.x, y: other.y }, kind: 'door', state: DOOR_MARKS[symbol] })
     }
   }
   const zoneAt = (x, y) => markZone.get(`${x},${y}`) ?? plainZone(x, y)
+  const elevationAt = (x, y) => markElevation.get(`${x},${y}`) ?? symbolElevation(symbolAt(x, y))
 
   const terrain = [{ rect: [0, 0, width, height], present: false }]
   for (let y = 0; y < height; y += 1) {
@@ -133,11 +161,13 @@ export function asciiMapToLayout(source) {
         ...(entry?.surface ? { surface: entry.surface } : {}),
         ...(Number.isSafeInteger(entry?.moveCost) ? { moveCost: entry.moveCost } : {}),
         ...(typeof entry?.hazardId === 'string' && entry.hazardId ? { hazardId: entry.hazardId } : {}),
+        ...(elevationAt(x, y) ? { elevation: elevationAt(x, y) } : {}),
       })
     }
   }
 
-  // Стены между помещением и соседней зоной; проёмы пропускаются.
+  // Стены между помещением и соседней зоной (проёмы пропускаются), кромки
+  // обрывов между площадками без стены.
   const opened = new Set(openings.map((opening) => [`${opening.x},${opening.y}`, `${opening.to.x},${opening.to.y}`].sort().join('|')))
   const walls = []
   for (let y = 0; y < height; y += 1) {
@@ -149,10 +179,16 @@ export function asciiMapToLayout(source) {
         if (!isFloorSymbol(symbolAt(nx, ny)) || legend[symbolAt(nx, ny)]?.solid) continue
         const left = zoneAt(x, y)
         const right = zoneAt(nx, ny)
-        if (left === right) continue
-        const indoor = zoneById.get(left)?.kind !== 'exterior' || zoneById.get(right)?.kind !== 'exterior'
-        if (!indoor) continue
+        const indoor = left !== right
+          && (zoneById.get(left)?.kind !== 'exterior' || zoneById.get(right)?.kind !== 'exterior')
         const key = [`${x},${y}`, `${nx},${ny}`].sort().join('|')
+        if (!indoor) {
+          // Обрыв между площадками: кромка вместо стены, проём здесь невозможен.
+          if (Math.abs(elevationAt(x, y) - elevationAt(nx, ny)) > STEP_FEET) {
+            walls.push({ from: [x, y], to: [nx, ny], kind: 'ledge', blocksMove: true, blocksSight: false, cover: 'half' })
+          }
+          continue
+        }
         const window = openings.find((opening) => opening.kind === 'window'
           && [`${opening.x},${opening.y}`, `${opening.to.x},${opening.to.y}`].sort().join('|') === key)
         if (window) walls.push({ from: [x, y], to: [nx, ny], kind: 'window', blocksMove: true, blocksSight: false, cover: 'half' })
