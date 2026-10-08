@@ -596,6 +596,38 @@ export const TERRAIN_COVER = Object.freeze({
 
 export const COVER_BONUS = Object.freeze({ none: 0, half: 2, 'three-quarters': 5 })
 
+/**
+ * Укрытие от предметов тактической карты. Предмет сам знает, сколько он
+ * закрывает (`cover` из реестра ассетов: дуб и валун — три четверти, бревно и
+ * ящик — половина), и какие клетки занимает (`footprint`). Старые клетки несут
+ * в `feature` только id предмета (`tree_oak`, `boulder`), которого нет в
+ * `TERRAIN_COVER`, а предмет больше клетки в них не доезжал вовсе: деревья и
+ * валуны сгенерированного леса в бою не прикрывали (обзор карт 2026-10-08).
+ * @type {WeakMap<object, Map<string, {level: 'half'|'three-quarters', assetId: string}>>}
+ */
+const propCoverCache = new WeakMap()
+
+function propCoverByCell(state) {
+  const map = sceneTacticalMap(state)
+  if (!map) return new Map()
+  const cached = propCoverCache.get(map)
+  if (cached) return cached
+  /** @type {Map<string, {level: 'half'|'three-quarters', assetId: string}>} */
+  const byCell = new Map()
+  for (const prop of map.props ?? []) {
+    const level = prop?.cover === 'three_quarters' || prop?.cover === 'three-quarters' ? 'three-quarters'
+      : prop?.cover === 'half' ? 'half' : null
+    if (!level) continue
+    for (const cell of prop.footprint ?? []) {
+      const key = positionKey(cell)
+      if (byCell.get(key)?.level === 'three-quarters') continue
+      byCell.set(key, { level, assetId: String(prop.assetId ?? '') })
+    }
+  }
+  propCoverCache.set(map, byCell)
+  return byCell
+}
+
 /** Высота площадки под клеткой в футах; отсутствие поля означает уровень земли. */
 export function elevationAt(state, position) {
   if (!position) return 0
@@ -646,10 +678,19 @@ export function coverBetween(state, attackerId, targetId, from, to) {
         })
         .map(actorId)
       const cells = tacticalCellMap(state)
+      const props = propCoverByCell(state)
+      // Укрытие клетки — от старой «фичи» или от предмета карты; берётся лучшее.
       const scenery = line
-        .map((point) => cells.get(positionKey(point)))
-        .filter((cell) => cell && TERRAIN_COVER[String(cell.feature ?? '')])
-      const bestScenery = scenery.some((cell) => TERRAIN_COVER[String(cell.feature)] === 'three-quarters')
+        .map((point) => {
+          const cell = cells.get(positionKey(point))
+          const feature = String(cell?.feature ?? '')
+          const fromFeature = TERRAIN_COVER[feature] ? { level: TERRAIN_COVER[feature], name: feature } : null
+          const prop = props.get(positionKey(point))
+          const fromProp = prop ? { level: prop.level, name: prop.assetId || feature } : null
+          return fromFeature?.level === 'three-quarters' ? fromFeature : fromProp ?? fromFeature
+        })
+        .filter(Boolean)
+      const bestScenery = scenery.some((entry) => entry.level === 'three-quarters')
         ? 'three-quarters'
         : scenery.length ? 'half' : 'none'
       const level = bestScenery === 'three-quarters' ? 'three-quarters' : blockers.length || bestScenery === 'half' ? 'half' : 'none'
@@ -657,7 +698,7 @@ export function coverBetween(state, attackerId, targetId, from, to) {
         level,
         armorClassBonus: COVER_BONUS[level],
         blockers,
-        scenery: [...new Set(scenery.map((cell) => String(cell.feature)))],
+        scenery: [...new Set(scenery.map((entry) => entry.name))],
       }
     })
   const best = candidates.sort((left, right) => left.armorClassBonus - right.armorClassBonus)[0]
