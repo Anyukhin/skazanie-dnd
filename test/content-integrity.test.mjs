@@ -117,7 +117,9 @@ test('content integrity gate verifies hashes, references, counts and the complet
   //   собственных рисунков стартовых вещей вместо картинок заклинаний.
   // + 2 рисунка предметов сценария (Слеза Рыцаря, оберег Ломара).
   // + модель дракона Cethiel/Drummyfish (Саргат) и её NOTICE.
-  assert.equal(report.integrity.assets, 2164 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
+  // + 5 зверей Quaternius Easy Enemies (крыса, паук, оса, лягушка, змея),
+  //   их NOTICE и LICENSE.
+  assert.equal(report.integrity.assets, 2171 + declaredEnvironmentReleaseFiles() + declaredEquipmentReleaseFiles() + declaredGraphicsStyleFiles())
   assert.equal(report.integrity.coverage.find((entry) => entry.id === 'feats').coverage, 'missing')
 })
 

@@ -15,7 +15,7 @@ import { combatAudioSpatialFromScreen } from './combat-audio'
 import type { Board3DRoofMode } from './board3d-roofs'
 import { boardCameraFitZoom, shouldInitialFitBoardCamera } from './board3d-camera'
 import { createTerrainSurfaceGeometry, terrainHeightAt, visibleTerrainHeightRange } from './board3d-terrain'
-import { createActorModel, createProceduralActorModel, getModelAssetDiagnostics, loadActorModelManifest, availableActorModels, resolveModelProfile, DEFAULT_ACTOR_MODEL_MANIFEST, type ActorModel, type ActorModelManifest, type ActorPose } from './actor-models'
+import { createActorModel, createProceduralActorModel, figureHeightFor, getModelAssetDiagnostics, loadActorModelManifest, availableActorModels, resolveModelProfile, DEFAULT_ACTOR_MODEL_MANIFEST, type ActorModel, type ActorModelManifest, type ActorPose } from './actor-models'
 import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
 import { mapSignaturesFor } from './board3d-scene-signature'
 import { BOARD3D_QUALITY, board3DQuality, cueForQuality, type Board3DQuality } from './board3d-quality'
@@ -151,9 +151,11 @@ function actorGround(map: TacticalMap | null | undefined, actor: BoardAnimationA
 }
 
 function actorHeight(map: TacticalMap, actor: BoardAnimationActor, catalog: ActorModelManifest): number {
-  // Площадь — правило, рост — представление: существо 4×4 не обязано быть
-  // вчетверо выше человека. Модель сохраняет пропорции своего профиля.
-  return (resolveModelProfile(actor, catalog).height ?? 1.25) * (1 + .4 * (actorPresentationSize(map, actor) - 1))
+  // Площадь — правило, рост — представление: рост идёт по категории размера
+  // D&D (`figureHeightFor`), модель сохраняет пропорции своего профиля.
+  const entry = resolveModelProfile(actor, catalog)
+  const stature = actor.appearance?.version === 2 ? actor.appearance.stature : undefined
+  return figureHeightFor(entry.height ?? 1.25, entry.profile, actorPresentationSize(map, actor), stature)
 }
 
 /** Только представление. Обработчики клеток и целей принадлежат общему DungeonMap. */
@@ -308,7 +310,10 @@ export default function TacticalBoard3D(props: Props) {
         light.distance = next.distance
       })
     }
-    type ActorView = { root: THREE.Group; model: ActorModel; key: string; defeated: boolean; ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>; abort: AbortController }
+    type ActorView = { root: THREE.Group; model: ActorModel; key: string; defeated: boolean; height: number; ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>; abort: AbortController }
+    // Тающая крона над фигурками (`board3d-see-through`).
+    const crownTarget = new THREE.Vector3()
+    const crownTargets: Array<{ x: number; y: number; z: number }> = []
     const actorViews = new Map<string, ActorView>()
     let terrain: ReturnType<typeof createBoard3DScene> | null = null
     let terrainSignature = ''
@@ -1016,6 +1021,16 @@ export default function TacticalBoard3D(props: Props) {
           ? new THREE.Vector3(Math.sin(now * .09) , Math.sin(now * .13 + 1.3) * .6, Math.cos(now * .11)).multiplyScalar(shakeStrength * ((shakeUntil - now) / SHAKE_MS))
           : null
         if (shake) camera.position.add(shake)
+        if (terrain) {
+          // Середина каждой стоящей фигурки — цель окна в кронах на этот кадр.
+          crownTargets.length = 0
+          for (const view of actorViews.values()) {
+            if (view.defeated || !view.root.visible) continue
+            view.root.getWorldPosition(crownTarget)
+            crownTargets.push({ x: crownTarget.x, y: crownTarget.y + view.height * .55, z: crownTarget.z })
+          }
+          terrain.setSeeThroughTargets(crownTargets)
+        }
         pipeline.render()
         if (shake) camera.position.sub(shake)
         trackPointShadowDisposal()
@@ -1179,7 +1194,8 @@ export default function TacticalBoard3D(props: Props) {
       for (const actor of visibleActors) {
         const modelKey = settings.current.models[actor.id] ?? actor.modelKey
         const side = actorPresentationSize(map, actor)
-        const key = `${modelKey}:${actor.appearance?.version ?? ''}:${actor.appearance?.profile ?? ''}:${actor.archetype}:${actor.kind}:${actor.label}:${actor.color}:${side}`
+        const stature = actor.appearance?.version === 2 ? actor.appearance.stature ?? '' : ''
+        const key = `${modelKey}:${actor.appearance?.version ?? ''}:${actor.appearance?.profile ?? ''}:${stature}:${actor.archetype}:${actor.kind}:${actor.label}:${actor.color}:${side}`
         let view = actorViews.get(actor.id)
         if (view && view.key !== key) {
           disposeActorView(actor.id, view); view = undefined
@@ -1196,7 +1212,7 @@ export default function TacticalBoard3D(props: Props) {
           const ring = new THREE.Mesh(new THREE.RingGeometry(.405 * side - .035, .405 * side, 40), new THREE.MeshBasicMaterial({ color: actor.color ?? '#e2bb72', transparent: true, opacity: .85, side: THREE.DoubleSide }))
           ring.rotation.x = -Math.PI / 2; ring.position.y = .045
           root.add(ring); scene.add(root)
-          view = { root, model, ring, key, defeated: Boolean(actor.defeated), abort: new AbortController() }; actorViews.set(actor.id, view)
+          view = { root, model, ring, key, defeated: Boolean(actor.defeated), height, abort: new AbortController() }; actorViews.set(actor.id, view)
           diagnostics.created += 1
           const entry = resolveModelProfile(input, settings.current.catalog)
           if (entry.url) {

@@ -3,8 +3,9 @@ import * as THREE from 'three'
 import { propDrawingFor, propVisualLayout, resolvePropAssetId, stampFit, PROP_DECAL_ALPHA, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import { detailPropAlias } from './detail-props'
 import type { TacticalProp } from './types'
-import { propModelFit, propModelFor } from './prop-model-catalog'
+import { propModelFit, propModelFloorFit, propModelFor, propModelTreeStretch } from './prop-model-catalog'
 import type { PropModelAssets } from './prop-model-assets'
+import type { SeeThrough } from './board3d-see-through'
 
 type Layout = ReturnType<typeof propVisualLayout>
 
@@ -65,7 +66,7 @@ const MODEL_KINDS: Readonly<Record<string, string>> = Object.freeze({
 const LIGHT_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
   fireplace: 0.34, hearth: 0.43, campfire: 0.43, brazier: 0.43,
   'wall-torch': 0.86, 'wall-lantern': 0.66, 'stand-light': 0.84,
-  chandelier: 0.48, candle: 0.46, 'lamp-post': 0.91,
+  chandelier: 0.48, candle: 0.26, 'lamp-post': 0.91,
 })
 
 /** Верх висящей настенной вещи, в клетках: чуть ниже кромки стены доски (0,95). */
@@ -197,10 +198,16 @@ function buildSeat(resources: Resources, parent: THREE.Group, layout: Layout, t:
   const { width, depth } = dimensions(layout)
   const wood = material(resources, 'wood', t.wood), dark = material(resources, 'wood-dark', t.woodDark)
   const seatW = Math.min(1.7, Math.max(0.28, width * 0.78)), seatD = Math.min(0.72, Math.max(0.25, depth * 0.76))
-  const y = shape === 'stool' ? 0.5 : 0.43
+  // Стул и табурет генератор ставит уменьшенными (`scaleRange` 0.33–0.5),
+  // чтобы они не занимали клетку целиком, а рост падал вместе с шириной: стул
+  // выходил в 1,8 фт при столе в 3 фт. Их высота задана в клетках после
+  // масштаба предмета — сиденье около 1,6 фт, спинка около 3,2 фт.
+  const lift = 1 / Math.max(0.25, layout.scale)
+  const y = shape === 'stool' ? 0.42 * lift : shape === 'chair' ? 0.36 * lift : 0.43
+  const backH = shape === 'throne' ? 0.74 : shape === 'chair' ? 0.36 * lift : 0.48
   if (shape === 'stool') round(resources, parent, 'stool-seat', wood, seatW, 0.13, [0, y, 0])
   else cube(resources, parent, `${shape}-seat`, wood, [seatW, 0.12, seatD], [0, y, 0])
-  if (shape !== 'stool') cube(resources, parent, `${shape}-back`, dark, [seatW, shape === 'throne' ? 0.74 : 0.48, 0.1], [0, shape === 'throne' ? 0.79 : 0.65, -seatD * 0.43])
+  if (shape !== 'stool') cube(resources, parent, `${shape}-back`, dark, [seatW, backH, 0.1], [0, shape === 'throne' ? 0.79 : y - 0.02 + backH / 2, -seatD * 0.43])
   const legW = shape === 'bench' || shape === 'prayer' ? 0.08 : 0.07
   for (const x of [-seatW * 0.35, seatW * 0.35]) {
     cube(resources, parent, `${shape}-leg`, dark, [legW, y, legW], [x, y / 2, 0])
@@ -339,7 +346,8 @@ function buildFire(resources: Resources, parent: THREE.Group, t: Tones, kind: 'f
 
 function buildLight(resources: Resources, parent: THREE.Group, t: Tones, kind: 'wall-torch' | 'wall-lantern' | 'stand-light' | 'chandelier' | 'candle') {
   const metal = material(resources, 'metal', t.metal, { metalness: 0.38, roughness: 0.5 }), glow = material(resources, 'glow', t.woodLight, { emissive: t.ember, emissiveIntensity: 0.75, transparent: true, opacity: 0.92 })
-  if (kind === 'candle') { round(resources, parent, 'candle-wax', material(resources, 'wax', t.woodLight), 0.1, 0.35, [0, 0.18, 0]); cone(resources, parent, 'candle-flame', glow, 0.11, 0.2, [0, 0.46, 0], false); return }
+  // Свеча в подсвечнике, около фута с пламенем: прежняя была выше колена.
+  if (kind === 'candle') { round(resources, parent, 'candle-holder', metal, 0.16, 0.03, [0, 0.015, 0]); round(resources, parent, 'candle-wax', material(resources, 'wax', t.woodLight), 0.08, 0.18, [0, 0.12, 0]); cone(resources, parent, 'candle-flame', glow, 0.07, 0.1, [0, 0.26, 0], false); return }
   if (kind === 'wall-torch' || kind === 'wall-lantern') {
     cube(resources, parent, 'wall-mount', metal, [0.1, 0.1, 0.1], [0, 0.45, 0.1])
     if (kind === 'wall-torch') { cube(resources, parent, 'torch-bracket', metal, [0.07, 0.3, 0.07], [0, 0.6, 0]); cone(resources, parent, 'torch-flame', glow, 0.18, 0.32, [0, 0.86, 0], false) }
@@ -421,7 +429,8 @@ function buildSettlement(resources: Resources, parent: THREE.Group, layout: Layo
   else if (kind === 'well') { ring(resources, parent, 'well-stone-ring', stone, 0.9, 0.18, [0, 0.24, 0]); round(resources, parent, 'well-inner', material(resources, 'water', t.water), 0.58, 0.03, [0, 0.34, 0], false); for (const x of [-0.42, 0.42]) round(resources, parent, 'well-post', wood, 0.1, 0.78, [x, 0.61, 0]); cube(resources, parent, 'well-roof', wood, [1.02, 0.09, 0.55], [0, 1.02, 0]) }
   else if (kind === 'lamp-post') { round(resources, parent, 'lamp-post', dark, 0.1, 0.85, [0, 0.43, 0]); ring(resources, parent, 'lamp-cap', material(resources, 'metal', t.metal), 0.26, 0.05, [0, 0.82, 0]); sphere(resources, parent, 'lamp-glow', material(resources, 'glow', t.woodLight, { emissive: t.ember, emissiveIntensity: 0.7 }), [0.16, 0.2, 0.16], [0, 0.91, 0], false) }
   else if (kind === 'haystack') { const hay = material(resources, 'hay', t.woodLight); cone(resources, parent, 'haystack', hay, Math.min(1.25, width * 0.8), 0.96, [0, 0.48, 0]); ring(resources, parent, 'haystack-band', dark, Math.min(1.05, width * 0.68), 0.04, [0, 0.48, 0]) }
-  else if (kind === 'market-stall') { cube(resources, parent, 'stall-counter', wood, [width * 0.72, 0.32, depth * 0.52], [0, 0.32, 0.05]); for (const x of [-width * 0.34, width * 0.34]) round(resources, parent, 'stall-post', dark, 0.07, 1.15, [x, 0.58, -depth * 0.28]); cube(resources, parent, 'stall-canopy', cloth, [width * 0.82, 0.08, depth * 0.68], [0, 1.12, 0]) }
+  // Навес прилавка — выше головы покупателя, около 7,5 фт.
+  else if (kind === 'market-stall') { cube(resources, parent, 'stall-counter', wood, [width * 0.72, 0.32, depth * 0.52], [0, 0.32, 0.05]); for (const x of [-width * 0.34, width * 0.34]) round(resources, parent, 'stall-post', dark, 0.07, 1.66, [x, 0.83, -depth * 0.28]); cube(resources, parent, 'stall-canopy', cloth, [width * 0.82, 0.08, depth * 0.68], [0, 1.66, 0]) }
   else { for (const x of [-width * 0.42, width * 0.42]) round(resources, parent, 'fence-post', dark, 0.08, 0.72, [x, 0.36, 0]); for (const y of [0.28, 0.52]) cube(resources, parent, 'fence-rail', dark, [width * 0.88, 0.07, 0.07], [0, y, 0]) }
 }
 
@@ -572,8 +581,11 @@ function modelKindOf(canonical: string): string | null {
   return MODEL_KINDS[canonical] ?? (alias ? MODEL_KINDS[alias] : undefined) ?? null
 }
 
+/** Деревья выше человека: их крона получает окно над фигурками (`board3d-see-through`). */
+const CANOPY_ASSETS: ReadonlySet<string> = new Set(['tree_oak', 'tree_birch', 'tree_pine', 'tree_spruce', 'tree_dead'])
+
 /** Общий процедурный каталог окружения. Видимость и свет принадлежат вызывающему коду. */
-export function createEnvironmentModels(palette: BoardPalette, assets?: PropModelAssets | null): { create: (prop: TacticalProp) => THREE.Group; dispose: () => void } {
+export function createEnvironmentModels(palette: BoardPalette, assets?: PropModelAssets | null, options: { seeThrough?: SeeThrough | null } = {}): { create: (prop: TacticalProp) => THREE.Group; dispose: () => void } {
   const owned = resources()
   const t = tones(palette)
   let disposed = false
@@ -609,8 +621,11 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         // Футпринт ограничивает ширину и глубину, предел вида — высоту. Для
         // нового manifest берём зафиксированный bbox после yaw; старые записи
         // сохраняют fallback по реально загруженной геометрии.
-        const fit = propModelFit(canonical, entry, layout.width, layout.depth, PROP_FOOTPRINT_FILL, [size.x, size.y, size.z])
+        const footprintFit = propModelFit(canonical, entry, layout.width, layout.depth, PROP_FOOTPRINT_FILL, [size.x, size.y, size.z])
           ?? Math.min(layout.width / Math.max(.01, size.x), layout.depth / Math.max(.01, size.z)) * PROP_FOOTPRINT_FILL
+        // Уменьшенный генератором стул не теряет рост: высота держится, пока
+        // модель помещается в свои клетки (`PROP_MODEL_MIN_HEIGHTS`).
+        const fit = propModelFloorFit(canonical, footprintFit, [size.x, size.y, size.z], layout.scale, layout.width, layout.depth)
         if (group.userData.surfaceHeight !== undefined) {
           const top = model.getObjectByName('surface-top')
           group.userData.surfaceHeight = ((top ? top.getWorldPosition(new THREE.Vector3()).y : box.max.y) - box.min.y) * fit
@@ -619,6 +634,8 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         model.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2)
         fitted.add(model)
         fitted.scale.setScalar(fit)
+        // Дерево в 3D тянется вверх до своего роста; ширина кроны прежняя.
+        fitted.scale.y *= propModelTreeStretch(canonical, size.y * fit * layout.scale)
         // Модель ставится на пол. Настенную вещь, собранную висящей (в GLB она
         // над нулём: полочка, щит, стойка с крюками), поднимаем так, чтобы верх
         // пришёлся на WALL_MOUNT_TOP: иначе щит лежал у стены на полу.
@@ -637,6 +654,13 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
       else buildModel(owned, group, layout, t, kind)
       applyContainerState(group, kind, prop.state)
       if (prop.state === 'toppled' || prop.state === 'burned' || prop.state === 'broken') applyState(owned, group, layout, t, prop.state)
+      if (options.seeThrough && CANOPY_ASSETS.has(canonical) && prop.state !== 'toppled') {
+        const seeThrough = options.seeThrough
+        group.traverse((object) => {
+          const mesh = object as THREE.Mesh
+          if (mesh.isMesh && !Array.isArray(mesh.material)) mesh.material = seeThrough.patch(mesh.material)
+        })
+      }
       return group
     },
     dispose() {
