@@ -118,7 +118,7 @@ export const SCENE_THEMES = Object.freeze([
     // притворе, а тринадцать статуй — где придётся.
     propPlans: [
       // Притвор: купель со святой водой у входа и колокол.
-      { density: 8, colonnade: false, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, kneeling_cushions: 0, ...TEMPLE_DECOR_CAPS, ...TEMPLE_INTERIOR_CAPS } },
+      { density: 8, colonnade: false, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, ...TEMPLE_DECOR_CAPS, kneeling_cushions: 0, ...TEMPLE_INTERIOR_CAPS } },
       // Неф — шаблон `nave`: скамьи рядами, кафедра, дорожка к алтарной.
       { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 2, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_DECOR_CAPS, ...TEMPLE_INTERIOR_CAPS } },
       // Алтарная — шаблон `altar`: алтарь, курильница, подушки и свечи вокруг.
@@ -2113,7 +2113,7 @@ export function buildThemedScene({
       // раз. Стойка, очаг и лестница стоят.
       if (!placed.length && vignettesNamedBy('tavern', sceneText).length) {
         const retry = () => placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 0, text: sceneText, hugWalls: true })
-        const inHall = (prop) => {
+        const inHall = (/** @type {{ x: number, y: number, footprint?: Array<{x: number, y: number}> }} */ prop) => {
           const cell = prop.footprint?.[0] ?? { x: Math.floor(prop.x), y: Math.floor(prop.y) }
           return cellAt(built.map, cell.x, cell.y)?.zone === tavernHall.id
         }
