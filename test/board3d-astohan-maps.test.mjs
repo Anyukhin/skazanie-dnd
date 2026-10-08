@@ -106,6 +106,36 @@ for (const id of ['astohan-vulkanis-brazier', 'astohan-obsidian-pass']) {
   })
 }
 
+// Высота клетки авторской карты (`elevation` легенды) рисуется так же, как у
+// сгенерированной: пол площадки поднят на футы/5 клетки, у обрыва — стенки
+// скалы, предмет стоит на своей площадке.
+for (const [id, propId, feet] of [
+  ['astohan-vulkanis-brazier', 'sargath-kin-statue', 15],
+  ['astohan-forgotten-cliffs', 'throne', 15],
+  ['astohan-obsidian-pass', 'cattle-bones', 15],
+]) {
+  test(`3D: ${id} показывает перепад высот, предметы стоят на площадках`, () => {
+    const map = revealedClientMap(ASTOHAN.find((raw) => raw.locationId === id))
+    let highest = 0
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) highest = Math.max(highest, mapClient.cellAt(map, x, y)?.elevation ?? 0)
+    assert.equal(highest, feet, `${id}: самая высокая площадка`)
+    const scene = scene3d.createBoard3DScene(map)
+    try {
+      const sides = scene.group.getObjectByName('terrain-sides')
+      assert.ok(sides, `${id}: у перепада нет стенок скалы`)
+      sides.geometry.computeBoundingBox()
+      assert.ok(sides.geometry.boundingBox.max.y >= feet / 5 - 0.01, `${id}: стенки ниже площадки`)
+      const prop = scene.group.getObjectByName(`prop:${id}:${propId}`)
+      assert.ok(prop, `${id}: нет ${propId}`)
+      const lift = new prop.position.constructor()
+      prop.getWorldPosition(lift)
+      assert.ok(lift.y >= feet / 5 - 0.01, `${id}: ${propId} стоит на ${lift.y}, а не на площадке`)
+    } finally {
+      scene.dispose()
+    }
+  })
+}
+
 for (const raw of ASTOHAN) {
   test(`3D: ${raw.locationId} собирается, предметы и двери на месте, геометрия в бюджете`, () => {
     const map = revealedClientMap(raw)
