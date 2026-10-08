@@ -59,6 +59,12 @@ const DWELLING_FURNITURE_OFF = Object.freeze({
   stairs_up: 0, stairs_down: 0, trapdoor: 0, lantern_wall: 0, bookshelf: 0, shelf_wall: 0,
 })
 const TEMPLE_INTERIOR_CAPS = DWELLING_FURNITURE_OFF
+/**
+ * Декор храма на одно помещение: мозаика одна, хоругвей две. Без потолка
+ * притвор, неф и алтарная набирали по семь одинаковых мозаичных кругов и до
+ * девяти хоругвей (обзор карт 2026-10-08).
+ */
+const TEMPLE_DECOR_CAPS = Object.freeze({ mosaic: 1, temple_banner: 2, statue_plinth: 1, kneeling_cushions: 2 })
 /** Подземелью мебель нужна по делу: стол стражи, нары, бочки — не кровать и не люстра. */
 const DUNGEON_INTERIOR_CAPS = Object.freeze({
   bed: 0, bar_counter: 0, bar_shelf: 0, table_round: 0, table_royal: 0, royal_throne: 0, chandelier: 0, candelabra: 0, rug: 0, cupboard: 0, wardrobe: 0,
@@ -112,12 +118,12 @@ export const SCENE_THEMES = Object.freeze([
     // притворе, а тринадцать статуй — где придётся.
     propPlans: [
       // Притвор: купель со святой водой у входа и колокол.
-      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, kneeling_cushions: 0, ...TEMPLE_INTERIOR_CAPS } },
+      { density: 8, colonnade: false, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, kneeling_cushions: 0, ...TEMPLE_DECOR_CAPS, ...TEMPLE_INTERIOR_CAPS } },
       // Неф — шаблон `nave`: скамьи рядами, кафедра, дорожка к алтарной.
-      { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 4, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_INTERIOR_CAPS } },
+      { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 2, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_DECOR_CAPS, ...TEMPLE_INTERIOR_CAPS } },
       // Алтарная — шаблон `altar`: алтарь, курильница, подушки и свечи вокруг.
-      { density: 14, purpose: 'altar', require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3 } },
-      { density: 18, colonnade: false, theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1 } },
+      { density: 14, colonnade: false, purpose: 'altar', require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3, ...TEMPLE_DECOR_CAPS } },
+      { density: 18, colonnade: 'never', theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1, ...TEMPLE_DECOR_CAPS } },
     ],
   },
   {
@@ -2213,12 +2219,16 @@ export function buildThemedScene({
       return cells
     }
     labelled.forEach((zone, index) => {
-      const asked = plans.length && plans[index % plans.length]?.colonnade
+      const asked = plans.length > 0 && plans[index % plans.length]?.colonnade === true
       // Отказ кладовой мягкий: тайник склепа размером в полкарты без опор —
       // голое тёмное поле, и он получает колоннаду, как зал.
       const size = zoneSize(zone.id)
       const declined = plans[index % plans.length]?.colonnade === false && size < SPACIOUS_HALL_CELLS * 2.5
-      const spacious = zone.label !== 'Камеры' && !declined && size >= SPACIOUS_HALL_CELLS
+      // Жёсткий отказ: ризница храма колонн не получает никогда. Притвор и
+      // алтарная отказываются мягко: опоры стояли сеткой во всех помещениях
+      // (обзор карт 2026-10-08), но огромному залу они нужны как укрытие.
+      const never = plans[index % plans.length]?.colonnade === 'never'
+      const spacious = zone.label !== 'Камеры' && !declined && !never && size >= SPACIOUS_HALL_CELLS
       if (asked || spacious) placeColonnade(built.map, { zoneId: zone.id, assetId: 'pillar' })
     })
     // Глубина подземелья (`server/scene-dressing.mjs`): в склепе —
