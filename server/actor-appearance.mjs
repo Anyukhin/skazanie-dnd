@@ -9,6 +9,11 @@ const PROFILES = Object.freeze(['warrior', 'mage', 'rogue', 'goblin', 'skeleton'
 const STATURES = Object.freeze(['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'])
 /** Маленькие расы героя (PHB 2014): полурослик и гном. Дварф — «дварф», не «гном». */
 const SMALL_SPECIES = /полурослик|гном|halfling|gnome/u
+/**
+ * Звери с собственными фигурками (крыса, паук, оса, лягушка, змея). Только
+ * целым словом: «Крысолов» — человек, «Осада» — не оса.
+ */
+const BEAST_WORDS = /(?<!\p{L})(?:rat|spider|wasp|frog|toad|snake|viper|крыс[аы]?|паук[и]?|паучиха|ос[аы]|шершень|лягушк[аи]|жаб[аы]|зме[йяи]|гадюк[аи]|питон|удав)(?!\p{L})/iu
 const EQUIPMENT = Object.freeze(['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger'])
 const HIDDEN_VISIBILITIES = new Set(['gm_only', 'npc_private'])
 const PUBLIC_VISIBILITIES = new Set(['public', 'party'])
@@ -205,7 +210,9 @@ export function actorProfileFor(actor = {}) {
   if (/goblin|гоблин/iu.test(identity)) return 'goblin'
   if (/skeleton|скелет|undead|нежить|зомби/iu.test(identity)) return 'skeleton'
   if (/dragon|дракон|wyrm|drake|виверн|wyvern/iu.test(identity)) return 'dragon'
-  if (/beast|звер|wolf|волк|bear|медвед|boar|кабан/iu.test(identity)) return 'beast'
+  if (/beast|звер|wolf|волк|bear|медвед|boar|кабан/iu.test(identity) || BEAST_WORDS.test(identity)) return 'beast'
+  // Зверь по стат-блоку (`creature_type`) — тоже публичная строка карточки врага.
+  if (kind !== 'hero' && text(actor.creature_type, 40) === 'beast') return 'beast'
   if (/wizard|mage|sorcer|warlock|cleric|druid|волшеб|маг|чарод|колдун|жрец|друид/iu.test(identity)) return 'mage'
   if (/rogue|ranger|scout|плут|следопыт|разведчик/iu.test(identity)) return 'rogue'
   return kind === 'summon' ? 'beast' : 'warrior'
