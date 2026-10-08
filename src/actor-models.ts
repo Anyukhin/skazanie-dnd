@@ -344,12 +344,22 @@ export function normalizeActorInput(input: ActorModelInput): NormalizedActorMode
   }
 }
 
+// Дракон — только целым словом и не как добыча: «драконоборец» в роли короля
+// Ареса давал ему фигуру красного дракона (обзор карт 2026-10-08). Тот же
+// разбор — `namesDragon` в `server/actor-appearance.mjs`.
+const DRAGON_WORD = /(?<!\p{L})(?:dragons?|wyrm(?:ling)?s?|drakes?|wyverns?|дракон(?:а|у|ом|е|ы|ов|ам|ами|ах|ица|ицы)?|виверн\p{L}*)(?!\p{L})/iu
+const DRAGON_AS_PREY = /(?:dragon[\s-]*(?:slayer|hunter)s?|(?:охотни\p{L}*|убийц\p{L}*|истребител\p{L}*|победител\p{L}*)[\s-]+(?:на[\s-]+)?дракон\p{L}*)/giu
+
+function namesDragon(value: string): boolean {
+  return DRAGON_WORD.test(value.replace(DRAGON_AS_PREY, ' '))
+}
+
 function profileFromText(value: string): ActorModelProfile | null {
   const token = slug(value)
   if (!token) return null
   if (/(goblin|гоблин|goblinoid|гоблиноид)/u.test(token)) return 'goblin'
   if (/(skeleton|скелет|undead|нежить|zombie|зомби)/u.test(token)) return 'skeleton'
-  if (/(dragon|дракон|wyrm|drake|виверн|wyvern)/u.test(token)) return 'dragon'
+  if (namesDragon(token)) return 'dragon'
   if (/(beast|звер|wolf|волк|bear|медвед|boar|кабан|lion|лев|tiger|тигр|summon)/u.test(token)) return 'beast'
   if (/(mage|wizard|волшеб|маг|sorcer|чарод|warlock|колдун|cleric|жрец|druid|друид)/u.test(token)) return 'mage'
   if (/(rogue|плут|ranger|следопыт|scout|разведчик|thief|вор)/u.test(token)) return 'rogue'
