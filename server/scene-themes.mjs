@@ -11,7 +11,7 @@ import { deepestRoom, raiseDais } from './scene-features.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
-import { markLowFurniture, placeRuinsField, placeVignettes, roughenGround } from './scene-dressing.mjs'
+import { markLowFurniture, placeRuinsField, placeVignettes, roughenGround, vignettesNamedBy } from './scene-dressing.mjs'
 import {
   SIZE_CLASSES,
   addProp,
@@ -2104,7 +2104,29 @@ export function buildThemedScene({
     // Общий зал трактира помнит вчерашний вечер (`server/scene-dressing.mjs`):
     // трактир узнаётся по стойке в зале, а не по подписи — её носят и другие.
     const tavernHall = built.map.props.some((prop) => prop.assetId === 'bar_counter') ? built.map.zones.find((zone) => zone.id === 'hall') : null
-    if (tavernHall && placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 0, text: sceneText }).length) ensurePropAccess(built.map)
+    if (tavernHall) {
+      let placed = placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 0, text: sceneText })
+      // Драка — это и есть опрокинутая мебель. Зал по размеру трактира
+      // обставлен целиком, и блоку сценки негде встать (обзор карт
+      // 2026-10-08): названная словами сценка встаёт и у стены замкнутого
+      // зала, а если и там тесно — на место стола или стула, по одному за
+      // раз. Стойка, очаг и лестница стоят.
+      if (!placed.length && vignettesNamedBy('tavern', sceneText).length) {
+        const retry = () => placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 0, text: sceneText, hugWalls: true })
+        const inHall = (prop) => {
+          const cell = prop.footprint?.[0] ?? { x: Math.floor(prop.x), y: Math.floor(prop.y) }
+          return cellAt(built.map, cell.x, cell.y)?.zone === tavernHall.id
+        }
+        placed = retry()
+        const seats = built.map.props.filter((prop) => /^(table_|chair|stool|bench)/u.test(prop.assetId) && inHall(prop)).map((prop) => prop.id)
+        for (const seatId of seats) {
+          if (placed.length) break
+          built.map.props = built.map.props.filter((prop) => prop.id !== seatId)
+          placed = retry()
+        }
+      }
+      if (placed.length) ensurePropAccess(built.map)
+    }
     return { map: built.map, theme: definition.id, warnings: built.warnings }
   }
 
