@@ -24,7 +24,7 @@ import {
   Vector3,
 } from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import type { ActorAppearance, PublicLoadout } from './types'
+import type { ActorAppearance, ActorStature, PublicLoadout } from './types'
 import { normalizePublicLoadout } from '../server/equipment-visuals.mjs'
 import { createEquipmentController, type EquipmentControllerStatus } from './equipment-models'
 import {
@@ -245,9 +245,40 @@ function isEquipment(value: unknown): value is ActorEquipment {
 function normalizeAppearance(value: unknown): ActorAppearance | undefined {
   if (!objectLike(value) || (value.version !== 1 && value.version !== 2) || !isProfile(value.profile)) return undefined
   const equipment = isEquipment(value.equipment) ? value.equipment : 'unknown'
+  const stature = isStature(value.stature) ? value.stature : undefined
   return value.version === 2
-    ? { version: 2, profile: value.profile, equipment, loadout: normalizePublicLoadout(value.loadout) }
+    ? { version: 2, profile: value.profile, equipment, loadout: normalizePublicLoadout(value.loadout), ...(stature ? { stature } : {}) }
     : { version: 1, profile: value.profile, equipment }
+}
+
+/**
+ * Рост фигурки относительно человека по категории размера D&D. Книга даёт
+ * крошечному существу до 2 фт, маленькому 2–4, большому 8–16, огромному
+ * 16–32, громадному от 32: доска сжимает верх шкалы, чтобы великан не
+ * закрывал поле, но порядок и заметная разница сохраняются.
+ */
+const STATURE_HEIGHT: Readonly<Record<ActorStature, number>> = Object.freeze({
+  tiny: .32, small: .65, medium: 1, large: 1.7, huge: 2.4, gargantuan: 3.2,
+})
+const STATURE_BY_SIDE: Readonly<Record<number, ActorStature>> = Object.freeze({ 2: 'large', 3: 'huge', 4: 'gargantuan' })
+/** Какой размер изображает высота профиля в манифесте: гоблин мал, дракон велик. */
+const PROFILE_STATURE: Readonly<Partial<Record<ActorModelProfile, ActorStature>>> = Object.freeze({ goblin: 'small', dragon: 'large' })
+
+function isStature(value: unknown): value is ActorStature {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(STATURE_HEIGHT, value)
+}
+
+/**
+ * Высота фигурки в клетках. Площадь больше клетки задаёт размер сама (2×2 —
+ * большое существо); на одной клетке размер берётся из серверного
+ * `appearance.stature` — так полурослик ниже человека, а крыса ниже волка.
+ * Высота профиля в манифесте — рост его собственного размера.
+ */
+export function figureHeightFor(profileHeight: number, profile: ActorModelProfile, side: number, stature?: ActorStature): number {
+  const native = PROFILE_STATURE[profile] ?? 'medium'
+  const bySide = STATURE_BY_SIDE[Math.round(side)]
+  const own = bySide ?? (stature === 'tiny' || stature === 'small' || stature === 'medium' ? stature : native)
+  return own === native ? profileHeight : profileHeight * STATURE_HEIGHT[own] / STATURE_HEIGHT[native]
 }
 
 /**

@@ -1719,7 +1719,11 @@ export type ActorAppearanceV2 = {
   equipment: ActorAppearanceV1['equipment']
   /** Серверная map только видимых надетых слотов; missing означает «не надето». */
   loadout: PublicLoadout
+  /** Категория размера D&D для роста фигурки; отсутствие — средний или неизвестный. */
+  stature?: ActorStature
 }
+
+export type ActorStature = 'tiny' | 'small' | 'medium' | 'large' | 'huge' | 'gargantuan'
 
 export type ActorAppearance = ActorAppearanceV1 | ActorAppearanceV2
 

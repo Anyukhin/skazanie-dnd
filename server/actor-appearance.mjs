@@ -5,6 +5,10 @@ import {
 } from './equipment-visuals.mjs'
 
 const PROFILES = Object.freeze(['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast', 'dragon'])
+/** Категории размера D&D: по ним 3D-доска выбирает рост фигурки. */
+const STATURES = Object.freeze(['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'])
+/** Маленькие расы героя (PHB 2014): полурослик и гном. Дварф — «дварф», не «гном». */
+const SMALL_SPECIES = /полурослик|гном|halfling|gnome/u
 const EQUIPMENT = Object.freeze(['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger'])
 const HIDDEN_VISIBILITIES = new Set(['gm_only', 'npc_private'])
 const PUBLIC_VISIBILITIES = new Set(['public', 'party'])
@@ -19,6 +23,7 @@ export const ACTOR_APPEARANCE_SCHEMA_VERSION = EQUIPMENT_VISUAL_SCHEMA_VERSION
 export const ACTOR_APPEARANCE_LEGACY_SCHEMA_VERSION = 1
 export const ACTOR_APPEARANCE_PROFILES = PROFILES
 export const ACTOR_APPEARANCE_EQUIPMENT = EQUIPMENT
+export const ACTOR_APPEARANCE_STATURES = STATURES
 
 function text(value, maximum = 240) {
   return String(value ?? '').normalize('NFKC').trim().slice(0, maximum).toLocaleLowerCase('ru-RU')
@@ -207,9 +212,26 @@ export function actorProfileFor(actor = {}) {
 }
 
 /**
+ * Категория размера существа для роста фигурки. Размер виден за столом всем,
+ * как и сама фигурка, поэтому берётся и у замаскированного врага. У врага —
+ * поле `size` стат-блока, у героя — раса. `null` — неизвестно: доска берёт
+ * рост по площади, как прежде.
+ *
+ * @param {unknown} kind
+ * @param {{size?: unknown, species?: unknown}} [actor]
+ * @returns {'tiny'|'small'|'medium'|'large'|'huge'|'gargantuan'|null}
+ */
+export function actorStatureFor(kind, actor = {}) {
+  const size = text(actor?.size, 20)
+  if (STATURES.includes(size)) return /** @type {any} */ (size)
+  if (text(kind, 30) === 'hero' && SMALL_SPECIES.test(text(actor?.species, 120))) return 'small'
+  return null
+}
+
+/**
  * @param {unknown} kind
  * @param {unknown} actor
- * @returns {{version: 2, profile: string, equipment: string, loadout: Record<string, object|null>}}
+ * @returns {{version: 2, profile: string, equipment: string, loadout: Record<string, object|null>, stature?: string}}
  */
 export function actorAppearanceFor(kind, actor = {}) {
   const source = actor && typeof actor === 'object' && !Array.isArray(actor) ? actor : {}
@@ -232,5 +254,7 @@ export function actorAppearanceFor(kind, actor = {}) {
   })
   const equipment = appearanceKind === 'hero' ? equipmentForPublicItems(source.inventory) : 'unknown'
   const loadout = appearanceKind === 'hero' ? publicLoadoutForItems(source.inventory) : {}
-  return { version: ACTOR_APPEARANCE_SCHEMA_VERSION, profile, equipment, loadout }
+  // Средний рост — по умолчанию, в проекции его нет: прежние записи не меняются.
+  const stature = actorStatureFor(appearanceKind, source)
+  return { version: ACTOR_APPEARANCE_SCHEMA_VERSION, profile, equipment, loadout, ...(stature && stature !== 'medium' ? { stature } : {}) }
 }
