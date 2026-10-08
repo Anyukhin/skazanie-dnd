@@ -161,6 +161,13 @@ export const OUTDOOR_SCENE_THEMES = Object.freeze(new Set(['forest', 'road', 'se
  */
 export const INDOOR_SCENE_KINDS = Object.freeze(new Set(['dungeon']))
 
+/**
+ * Темы под землёй. Неба над отрядом здесь нет совсем: шапка не пишет «Ясно» в
+ * склепе, пещере и логове (обзор карт 2026-10-08), а говорит «под землёй».
+ * В доме с окнами погода за стеклом уместна и остаётся.
+ */
+export const UNDERGROUND_SCENE_THEMES = Object.freeze(new Set(['crypt', 'cave', 'dungeon']))
+
 /** Типы событий мировых часов. */
 export const TIME_OF_DAY_CHANGED_EVENT = 'TimeOfDayChanged'
 export const WEATHER_CHANGED_EVENT = 'WeatherChanged'
@@ -510,6 +517,7 @@ export function worldClockFor(state = {}, elapsedMinutesOrActorId, actorIdValue 
   const phase = timeOfDayOf(elapsedMinutes)
   const weather = weatherOf(state, elapsedMinutes)
   const indoors = isIndoors(state, resolvedWeatherActorId(state, actorId))
+  const underground = indoors && UNDERGROUND_SCENE_THEMES.has(sceneThemeIdOf(state?.scene ?? {}))
   const phaseLabel = dayPhaseLabel(phase)
   const weatherLabel = weatherConditionLabel(weather)
   return {
@@ -521,11 +529,12 @@ export function worldClockFor(state = {}, elapsedMinutesOrActorId, actorIdValue 
     phase_label: phaseLabel,
     weather,
     weather_label: weatherLabel,
-    weather_summary: weatherConditionSummary(weather),
+    weather_summary: underground ? 'Под землёй неба не видно.' : weatherConditionSummary(weather),
     biome: currentBiomeOf(state),
     region_name: text(currentRegionOf(state)?.name, 120),
     indoors,
-    indicator: `${phaseLabel} · ${weatherLabel}`,
+    underground,
+    indicator: underground ? `${phaseLabel} · под землёй` : `${phaseLabel} · ${weatherLabel}`,
     effects: weatherEffectsUnder({ indoors, phase, weather }).map((effect) => effect.label),
   }
 }
@@ -556,6 +565,7 @@ export function worldClockForAgents(state = {}, actorIdValue = null) {
     weather_label: clock.weather_label,
     weather_summary: clock.weather_summary,
     indoors: clock.indoors,
+    underground: clock.underground,
     effects: clock.effects,
   }
 }

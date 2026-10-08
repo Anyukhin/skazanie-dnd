@@ -9,6 +9,7 @@ import {
   Lock, LockKeyhole, LockOpen, LogOut, ShieldCheck, RefreshCw,
   Bot, PawPrint, Skull, WandSparkles, Globe2, Volume2, VolumeX, Bell, BellOff, ShieldAlert,
   Sun, Cloudy, CloudRain, CloudFog, CloudLightning, Map as MapIcon,
+  Mountain,
 } from 'lucide-react'
 import type { Account, AgentInteraction, AiHealth, BattleEvent, CampaignAiSettings, CampaignAiSettingsResponse, CampaignSummary, CharacterCreationCatalog, CombatAction, CombatMechanics, CombatReactionWindow, CombatSpell, CombatVisualBatch, EncounterProposal, Enemy, GameState, MapCell, MapFeedback, Merchant, PendingCheck, Player, ReputationTier, SceneObjectIntent, SummonedCreature, TacticalProp, WeatherConditionId, WeatherProjection } from './types'
 import { fetchWithTimeout, getAiHealth, getCharacterCreationCatalog } from './ai-client'
@@ -343,7 +344,7 @@ const WEATHER_ICONS: Record<WeatherConditionId, typeof Sun> = {
 
 function SceneWeather({ weather }: { weather?: WeatherProjection }) {
   if (!weather?.indicator) return null
-  const Icon = WEATHER_ICONS[weather.weather] ?? Cloudy
+  const Icon = weather.underground ? Mountain : WEATHER_ICONS[weather.weather] ?? Cloudy
   // Подсказка объясняет не «что на небе» — это и так написано, — а чем оно
   // сейчас мешает или помогает. Под крышей строка честно говорит, что не мешает
   // ничем: игрок не должен гадать, действует ли дождь в трактире.
