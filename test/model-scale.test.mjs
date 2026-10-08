@@ -11,7 +11,7 @@ import { compileClientModules } from './kit/client-ts.mjs'
  * стул на карте выходил 1,8 фт при столе в 3 фт, свеча — выше колена.
  */
 
-const { modules: [models, props, render, catalog] } = await compileClientModules(['src/actor-models.ts', 'src/board3d-props.ts', 'src/board-render.ts', 'src/prop-model-catalog.ts'])
+const { modules: [models, props, render, catalog, seeThrough] } = await compileClientModules(['src/actor-models.ts', 'src/board3d-props.ts', 'src/board-render.ts', 'src/prop-model-catalog.ts', 'src/board3d-see-through.ts'])
 const HUMAN = 1.3
 
 test('рост фигурки идёт по категории размера: маленький ниже человека, огромный заметно выше большого', () => {
@@ -94,4 +94,54 @@ test('GLB стула при масштабе генератора держит �
   assert.ok(wide[0] * wideFit * .46 <= 1 + 1e-9)
   // Виду без предела вписывание не меняется.
   assert.equal(catalog.propModelFloorFit('table_long', .5, [2, .8, 1], .95, 2, 1), .5)
+})
+
+test('деревья в 3D вытягиваются до 16–20 фт, остальное не тянется', () => {
+  // Дуб после вписывания 2,6 клетки (≈11,5 фт) — тянется до 4,1 клетки (18 фт).
+  assert.ok(Math.abs(2.6 * catalog.propModelTreeStretch('tree_oak', 2.6) - 4.1) < 1e-9)
+  // Растяжение ограничено: слишком низкая модель не превращается в жердь.
+  assert.equal(catalog.propModelTreeStretch('tree_spruce', 1), 2.1)
+  // Уже высокое дерево не укорачивается, у прочих видов растяжения нет.
+  assert.equal(catalog.propModelTreeStretch('tree_pine', 5), 1)
+  assert.equal(catalog.propModelTreeStretch('lamp_post', 1), 1)
+  assert.ok(catalog.PROP_MODEL_TREE_HEIGHTS.tree_pine > catalog.PROP_MODEL_MAX_HEIGHTS.lamp_post, 'сосна выше фонаря')
+})
+
+test('тающая крона: материал кроны копируется один раз, шейдер прореживает листву между фигуркой и камерой', () => {
+  const crowns = seeThrough.createSeeThrough()
+  const leaves = new THREE.MeshStandardMaterial({ name: 'leaves' })
+  const patched = crowns.patch(leaves)
+  assert.notEqual(patched, leaves, 'исходный материал не меняется — им пользуются кусты и трава')
+  assert.equal(crowns.patch(leaves), patched, 'одна копия на материал — объединение инстансов не ломается')
+  const shader = {
+    uniforms: {},
+    vertexShader: ['void main() {', '#include <project_vertex>', '}'].join('\n'),
+    fragmentShader: ['void main() {', '#include <clipping_planes_fragment>', '}'].join('\n'),
+  }
+  patched.onBeforeCompile(shader, null)
+  assert.match(shader.vertexShader, /instanceMatrix \* seeThroughWorld/u, 'объединённые инстансы считают своё место')
+  assert.match(shader.fragmentShader, /discard/u)
+  assert.match(shader.fragmentShader, /seeThroughBayer/u)
+  assert.ok('seeThroughTargets' in shader.uniforms && 'seeThroughCount' in shader.uniforms)
+  crowns.setTargets(Array.from({ length: 40 }, (_, index) => ({ x: index, y: 1, z: 0 })))
+  assert.equal(crowns.targetCount, seeThrough.SEE_THROUGH_MAX_TARGETS, 'лишние фигурки отбрасываются')
+  assert.equal(shader.uniforms.seeThroughTargets.value[3].w, seeThrough.SEE_THROUGH_RADIUS)
+  crowns.setTargets([])
+  assert.equal(crowns.targetCount, 0)
+  crowns.dispose()
+})
+
+test('крона дерева получает тающий материал, куст — нет', () => {
+  const crowns = seeThrough.createSeeThrough()
+  const library = props.createEnvironmentModels(render.DEFAULT_BOARD_PALETTE, null, { seeThrough: crowns })
+  const materialsOf = (assetId) => {
+    const group = library.create({ id: `p-${assetId}`, assetId, x: 5, y: 5, rotation: 0, scale: 1, footprint: [{ x: 4, y: 4 }, { x: 5, y: 4 }, { x: 4, y: 5 }, { x: 5, y: 5 }], zOrder: 0 })
+    const names = []
+    group.traverse((object) => { if (object.isMesh) names.push(object.material.name) })
+    return names
+  }
+  assert.ok(materialsOf('tree_oak').every((name) => name.endsWith(':see-through')))
+  assert.ok(materialsOf('bush').every((name) => !name.endsWith(':see-through')))
+  library.dispose()
+  crowns.dispose()
 })

@@ -24,6 +24,7 @@ import { createEnvironmentModels } from './board3d-props'
 import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
+import { createSeeThrough, type SeeThrough } from './board3d-see-through'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, structuralRoofRolesForMap, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
@@ -725,8 +726,8 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
   }
 }
 
-function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0) {
-  const library = createEnvironmentModels(palette, assets)
+function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0, seeThrough: SeeThrough | null = null) {
+  const library = createEnvironmentModels(palette, assets, { seeThrough })
   const propsGroup = new THREE.Group()
   propsGroup.name = 'props'
   const lightGroup = new THREE.Group()
@@ -1072,7 +1073,9 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     group.add(edgeLayer)
   }
   const darkness = Math.max(0, Math.min(1, options.darkness ?? 0))
-  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness)
+  // Окно в кронах над фигурками: общие uniform-ы на все деревья сцены.
+  const seeThrough = createSeeThrough()
+  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, seeThrough)
   let propAssets: PropModelAssets | null = null
   const propAbort = new AbortController()
   // Пакет стиля нужен и полу, и предметам: один запрос на оба.
@@ -1093,7 +1096,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     }).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
-      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness)
+      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness, seeThrough)
       if (surroundings) {
         const next: SurroundingsModels = { ...surroundingsModels }
         for (const [role, assetIds] of Object.entries(SURROUNDINGS_MODEL_ASSETS) as Array<[keyof typeof SURROUNDINGS_MODEL_ASSETS, readonly string[]]>) {
@@ -1295,6 +1298,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     waterPlants?.dispose()
     landscapeKit?.release()
     landscapeKit = null
+    seeThrough.dispose()
     group.clear()
     for (const materialValue of resources.materials) materialValue.dispose()
     for (const geometry of resources.geometries) geometry.dispose()
@@ -1316,6 +1320,8 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       surroundings?.animate(seconds)
     },
     getPropPickTargets: () => disposed ? [] : props.pickTargets,
+    /** Тающая крона: середины фигурок в мире на этот кадр. */
+    setSeeThroughTargets: (points: ReadonlyArray<{ x: number; y: number; z: number; radius?: number }>) => seeThrough.setTargets(points),
     setRoofMode: (mode: Board3DRoofMode) => roofs.setMode(mode),
     getRoofMode: () => roofs.getMode(),
     dispose,

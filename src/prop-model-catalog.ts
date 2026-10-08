@@ -79,6 +79,25 @@ export function propModelFloorFit(assetId: string, fit: number, size: [number, n
   return Math.max(fit, Math.min(minimum / (size[1] * applied), roomy))
 }
 
+/**
+ * Рост деревьев в 3D, клетки. В масштабе фигурки (человек 1,3 клетки = 5,75
+ * фт): дуб 18 фт, берёза 16, сосна и ель 20, сухое дерево 14. Предел высоты
+ * и след сжимали модель до 9–13 фт — ниже фонаря; в 3D дерево вытягивается
+ * вверх до этого роста, ширина кроны и рисунок в 2D не меняются. Фигурки
+ * видны сквозь крону (`board3d-see-through`).
+ */
+export const PROP_MODEL_TREE_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
+  tree_oak: 4.1, tree_birch: 3.6, tree_pine: 4.5, tree_spruce: 4.5, tree_dead: 3.2,
+})
+const MAX_TREE_STRETCH = 2.1
+
+/** Во сколько раз вытянуть дерево вверх в 3D; `heightCells` — рост после вписывания и масштаба. */
+export function propModelTreeStretch(assetId: string, heightCells: number): number {
+  const target = Object.prototype.hasOwnProperty.call(PROP_MODEL_TREE_HEIGHTS, assetId) ? PROP_MODEL_TREE_HEIGHTS[assetId] : 0
+  if (!target || !(heightCells > 0)) return 1
+  return Math.min(MAX_TREE_STRETCH, Math.max(1, target / heightCells))
+}
+
 const MAX_HEIGHT_LIMIT = 8
 const MAX_SIZE_LIMIT = 10_000
 

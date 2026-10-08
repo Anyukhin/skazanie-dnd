@@ -171,7 +171,9 @@ for (const { source, map } of maps) {
     const fit = entry && size ? catalogModule.propModelFit(canonical, entry, layout.width, layout.depth, render.PROP_FOOTPRINT_FILL, size) : null
     const raised = fit === null || !size ? null : catalogModule.propModelFloorFit(canonical, fit, size, layout.scale, layout.width, layout.depth)
     const modelKey = raised !== null ? entry.key : 'procedural'
-    const cells = raised !== null && size ? size[1] * raised * layout.scale : proceduralHeight(prop)
+    // Дерево в 3D вытягивается вверх до своего роста (`propModelTreeStretch`).
+    const glbCells = raised !== null && size ? size[1] * raised * layout.scale : null
+    const cells = glbCells !== null ? glbCells * catalogModule.propModelTreeStretch(canonical, glbCells) : proceduralHeight(prop)
     if (cells === null || cells < .01) { record.missing += 1; continue }
     record.heights.push(cells)
     record.scales.push(layout.scale)

@@ -3,8 +3,9 @@ import * as THREE from 'three'
 import { propDrawingFor, propVisualLayout, resolvePropAssetId, stampFit, PROP_DECAL_ALPHA, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import { detailPropAlias } from './detail-props'
 import type { TacticalProp } from './types'
-import { propModelFit, propModelFloorFit, propModelFor } from './prop-model-catalog'
+import { propModelFit, propModelFloorFit, propModelFor, propModelTreeStretch } from './prop-model-catalog'
 import type { PropModelAssets } from './prop-model-assets'
+import type { SeeThrough } from './board3d-see-through'
 
 type Layout = ReturnType<typeof propVisualLayout>
 
@@ -580,8 +581,11 @@ function modelKindOf(canonical: string): string | null {
   return MODEL_KINDS[canonical] ?? (alias ? MODEL_KINDS[alias] : undefined) ?? null
 }
 
+/** Деревья выше человека: их крона получает окно над фигурками (`board3d-see-through`). */
+const CANOPY_ASSETS: ReadonlySet<string> = new Set(['tree_oak', 'tree_birch', 'tree_pine', 'tree_spruce', 'tree_dead'])
+
 /** Общий процедурный каталог окружения. Видимость и свет принадлежат вызывающему коду. */
-export function createEnvironmentModels(palette: BoardPalette, assets?: PropModelAssets | null): { create: (prop: TacticalProp) => THREE.Group; dispose: () => void } {
+export function createEnvironmentModels(palette: BoardPalette, assets?: PropModelAssets | null, options: { seeThrough?: SeeThrough | null } = {}): { create: (prop: TacticalProp) => THREE.Group; dispose: () => void } {
   const owned = resources()
   const t = tones(palette)
   let disposed = false
@@ -630,6 +634,8 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         model.position.set(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2)
         fitted.add(model)
         fitted.scale.setScalar(fit)
+        // Дерево в 3D тянется вверх до своего роста; ширина кроны прежняя.
+        fitted.scale.y *= propModelTreeStretch(canonical, size.y * fit * layout.scale)
         // Модель ставится на пол. Настенную вещь, собранную висящей (в GLB она
         // над нулём: полочка, щит, стойка с крюками), поднимаем так, чтобы верх
         // пришёлся на WALL_MOUNT_TOP: иначе щит лежал у стены на полу.
@@ -648,6 +654,13 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
       else buildModel(owned, group, layout, t, kind)
       applyContainerState(group, kind, prop.state)
       if (prop.state === 'toppled' || prop.state === 'burned' || prop.state === 'broken') applyState(owned, group, layout, t, prop.state)
+      if (options.seeThrough && CANOPY_ASSETS.has(canonical) && prop.state !== 'toppled') {
+        const seeThrough = options.seeThrough
+        group.traverse((object) => {
+          const mesh = object as THREE.Mesh
+          if (mesh.isMesh && !Array.isArray(mesh.material)) mesh.material = seeThrough.patch(mesh.material)
+        })
+      }
       return group
     },
     dispose() {
