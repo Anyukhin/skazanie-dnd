@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildSettlementScene, SETTLEMENT_GENERATOR } from '../server/settlement-generator.mjs'
+import { generateSceneGeometry } from '../server/adventure-director.mjs'
+import { buildSettlementScene, MARKET_STALLS_MAX, SETTLEMENT_GENERATOR } from '../server/settlement-generator.mjs'
 import { auditTacticalMap } from '../server/map-quality.mjs'
 import { cellAt, edgeNeighbor, reachableCells, serializeTacticalMap, validateTacticalMap } from '../server/tactical-map.mjs'
 
@@ -166,4 +167,50 @@ test('у каждой двери поселения есть дорога: до�
     if (built.map.zones.some((zone) => zone.id === 'path')) paths += 1
   }
   assert.ok(paths > 0, 'хоть у одного поселения есть дома в глубине с тропой')
+})
+
+/** Клетки предметов, мешающих шагу. */
+function blockingCells(map) {
+  return new Set(map.props.filter((prop) => prop.blocksMove && !prop.mount).flatMap((prop) => prop.footprint.map((cell) => `${cell.x},${cell.y}`)))
+}
+
+test('рынок — ряды лотков с проходами, телеги и ящики, двери домов на дорогах', () => {
+  // Обзор 2026-10-08: на «Суконной площади» стояло три навеса.
+  assert.equal(SETTLEMENT_GENERATOR.version, '6', 'торговые ряды — новая версия генератора')
+  for (const scale of ['village', 'town', 'city']) for (const seed of ['a', 'b', 'c', 'd']) {
+    const label = `${scale}/${seed}`
+    const { map } = buildSettlementScene({ seed: `market-${scale}-${seed}`, width: 48, height: 44, theme, design: { topology: 'market', scale } })
+    const stalls = map.props.filter((prop) => prop.assetId === 'market_stall')
+    assert.ok(stalls.length >= 6 && stalls.length <= MARKET_STALLS_MAX, `${label}: лотков ${stalls.length}`)
+    assert.ok(stalls.every((prop) => prop.footprint.every((cell) => cellAt(map, cell.x, cell.y)?.zone === 'square')), `${label}: лоток не на площади`)
+    // Рядами: не меньше двух рядов, и лотки не сливаются в прилавок — между
+    // соседними хотя бы клетка прохода.
+    assert.ok(new Set(stalls.map((prop) => Math.min(...prop.footprint.map((cell) => cell.y)))).size >= 2, `${label}: лотки в один ряд`)
+    for (const [index, left] of stalls.entries()) for (const right of stalls.slice(index + 1)) {
+      const touching = left.footprint.some((a) => right.footprint.some((b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= 1))
+      assert.equal(touching, false, `${label}: лотки ${left.id} и ${right.id} вплотную`)
+    }
+    assert.ok(map.props.some((prop) => /^market-(?:cart|goods)-/u.test(prop.id)), `${label}: на рынке ни телеги, ни ящика`)
+    // Проходы между рядами свободны, к каждой двери ведёт дорога, площадь досягаема.
+    const blocked = blockingCells(map)
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      if (cellAt(map, x, y)?.zone === 'path') assert.equal(blocked.has(`${x},${y}`), false, `${label}: проход занят в ${x},${y}`)
+    }
+    assert.deepEqual(auditTacticalMap(map).problems, [], label)
+  }
+})
+
+test('рыночная сцена целиком: на площади 6–12 лотков, проходы и двери чисты', () => {
+  for (const [label, input] of [
+    ['деревня', { location: 'Торжок', theme: 'деревня рынок', settlementType: 'village', map: { design: { topology: 'market' } } }],
+    ['город', { location: 'Суконная площадь', theme: 'город рынок', settlementType: 'town', map: { design: { topology: 'market' } } }],
+  ]) {
+    for (const seed of ['s1', 's2', 's3']) {
+      const { map } = generateSceneGeometry({ ...input, seed: `market-scene:${label}:${seed}`, useLibrary: false })
+      const onSquare = map.props.filter((prop) => prop.assetId === 'market_stall' && cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === 'square')
+      assert.ok(onSquare.length >= 6 && onSquare.length <= 12, `${label}/${seed}: на площади ${onSquare.length} лотков`)
+      const problems = auditTacticalMap(map).problems
+      assert.deepEqual(problems.filter((problem) => ['PATH_BLOCKED', 'DOOR_OFF_ROAD', 'DOORWAY_BLOCKED', 'UNREACHABLE_FLOOR'].includes(problem.code)), [], `${label}/${seed}`)
+    }
+  }
 })
