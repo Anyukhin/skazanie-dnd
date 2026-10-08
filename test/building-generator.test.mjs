@@ -1,19 +1,25 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
+import { generateSceneGeometry } from '../server/adventure-director.mjs'
 import {
   ARES_FORTRESS_GENERATOR,
   ARES_FORTRESS_SIZE,
+  BUILDING_GENERATOR,
+  FURNISHED_QUARTER_CELLS,
   REFERENCE_SIZE,
   buildAresFortressScene,
   buildBuildingScene,
+  furnishedCells,
   generateAresFortressScene,
   generateBuildingScene,
   planRooms,
   reachabilityIssues,
+  roomQuarters,
   safeRoom,
   tacticalFitnessWarnings,
 } from '../server/building-generator.mjs'
+import { MAP_PREVIEW_PRESETS } from '../server/map-quality.mjs'
 import {
   cellAt,
   edgeList,
@@ -462,5 +468,130 @@ test('коридорная планировка: зал по фасаду, ко�
       assert.ok(sides.includes('corridor') && sides.includes(room.id), `${use}/${room.id}: дверь ведёт в ${sides}`)
     }
     assert.deepEqual(reachabilityIssues(map), [], `${use}: недоступные помещения`)
+  }
+})
+
+// --- пропорции по назначению здания (план карт, задача 4) --------------------
+
+/**
+ * Целевые площади комнат по назначению здания, фт². Клетка — 5×5 фт, площадь
+ * — пол комнаты после тонких стен, вместе с отданной ей кладкой. Общий зал
+ * таверны — порядка 30×40 фт и не больше ≈1600 фт², кухня — около 20×20,
+ * кладовая не больше кухни; горница дома и торговый зал лавки меньше
+ * трактирного зала, парадный зал усадьбы — вровень с ним. Номерные комнаты
+ * (`guest-2`, `bedroom-3`) меряются по своему виду, коридор — проход и не
+ * меряется.
+ */
+const ROOM_AREA_FT2 = Object.freeze({
+  tavern: { hall: [800, 1600], kitchen: [400, 1000], store: [300, 1000], guest: [300, 900] },
+  shop: { hall: [500, 1300], store: [300, 700], workshop: [300, 700] },
+  dwelling: { hall: [600, 1600], kitchen: [300, 1250], bedroom: [300, 1250], store: [200, 700] },
+  manor: { hall: [900, 1800], salon: [400, 1100], kitchen: [400, 1250], store: [300, 1000], study: [300, 900], bedroom: [300, 900] },
+})
+
+/** Назначение здания эталонной сцены `MAP_PREVIEW_PRESETS`. */
+const PRESET_USE = Object.freeze({ tavern: 'tavern', shop: 'shop', house: 'dwelling', manor: 'manor' })
+
+/** Площадь помещений карты, фт²: проходимые клетки интерьерных зон, кроме кладки и коридора. */
+function roomAreas(map) {
+  const interior = new Set(map.zones.filter((zone) => zone.kind === 'interior' && zone.id !== 'walls' && zone.id !== 'corridor').map((zone) => zone.id))
+  const areas = {}
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (cell?.passable && interior.has(cell.zone)) areas[cell.zone] = (areas[cell.zone] ?? 0) + 25
+  }
+  return areas
+}
+
+/** Проверка пропорций одного здания: диапазоны, зал крупнее всех, кладовая не больше кухни. */
+function assertProportions(map, use, label) {
+  assert.ok(map.width >= 16 && map.height >= 16, `${label}: карта ${map.width}×${map.height} меньше 16×16`)
+  const areas = roomAreas(map)
+  assert.ok(areas.hall, `${label}: нет главного помещения`)
+  for (const [zoneId, area] of Object.entries(areas)) {
+    const range = ROOM_AREA_FT2[use][zoneId.replace(/-\d+$/u, '')]
+    assert.ok(range, `${label}: у комнаты ${zoneId} нет целевой площади`)
+    assert.ok(area >= range[0] && area <= range[1], `${label}: ${zoneId} ${area} фт² вне ${range[0]}–${range[1]} ${JSON.stringify(areas)}`)
+    if (zoneId !== 'hall') assert.ok(area <= areas.hall, `${label}: ${zoneId} больше зала ${JSON.stringify(areas)}`)
+  }
+  if (areas.kitchen && areas.store) assert.ok(areas.store <= areas.kitchen, `${label}: кладовая больше кухни ${JSON.stringify(areas)}`)
+}
+
+test('эталонные здания: комнаты в площадях своего назначения, зал — самый большой', () => {
+  assert.equal(BUILDING_GENERATOR.version, '7', 'пропорции по назначению — новая версия генератора')
+  for (const preset of MAP_PREVIEW_PRESETS.filter((entry) => PRESET_USE[entry.id])) {
+    for (const size of [{ width: 16, height: 14 }, { width: 26, height: 26 }, { width: 36, height: 30 }, { width: 40, height: 32 }]) {
+      for (const seed of ['s1', 's2', 's3']) {
+        const { map } = generateSceneGeometry({ ...preset.input, map: size, seed: `${preset.id}:${seed}`, useLibrary: false })
+        assertProportions(map, PRESET_USE[preset.id], `${preset.id}/${size.width}×${size.height}/${seed}`)
+      }
+    }
+  }
+})
+
+test('пропорции держатся на любом сиде и участке: схемы крыла, длинного зала, двора и коридора', () => {
+  for (const use of Object.keys(ROOM_AREA_FT2)) {
+    for (const size of [{ width: 22, height: 20 }, { width: 44, height: 40 }]) {
+      for (let index = 0; index < 12; index += 1) {
+        const built = buildBuildingScene({ seed: `proportions-${use}-${index}`, ...size, design: { building_use: use } })
+        assert.equal(built.fallback, 'none', `${use}/${index}: откат ${built.fallback}`)
+        assertProportions(built.map, use, `${use}/${size.width}×${size.height}/${index}`)
+      }
+    }
+    const corridor = buildBuildingScene({ seed: `proportions-${use}-corridor`, width: 44, height: 40, design: { building_use: use, scheme: 'corridor', shape: 'rect' } })
+    assertProportions(corridor.map, use, `${use}/коридор`)
+  }
+})
+
+test('корпус своего размера: большой участок даёт больше двора, а не больше зал', () => {
+  for (const seed of ['plot-a', 'plot-b', 'plot-c']) {
+    const design = { building_use: 'tavern' }
+    const small = buildBuildingScene({ seed, width: 26, height: 26, design }).map
+    const large = buildBuildingScene({ seed, width: 44, height: 40, design }).map
+    assert.deepEqual(roomAreas(large), roomAreas(small), `${seed}: комнаты зависят от размера участка`)
+    const yard = (map) => roomAreasOfExterior(map, 'yard')
+    assert.ok(yard(large) > yard(small) * 2, `${seed}: двор не вырос с участком`)
+  }
+})
+
+/** Площадь наружной зоны в клетках. */
+function roomAreasOfExterior(map, zoneId) {
+  let cells = 0
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.zone === zoneId) cells += 1
+  return cells
+}
+
+test('участок вокруг дома — хозяйство по назначению: коновязь у трактира, огород у дома', () => {
+  const assetsIn = (map, zoneId) => new Set(map.props.filter((prop) => cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === zoneId).map((prop) => prop.assetId))
+  for (const seed of ['yard-a', 'yard-b', 'yard-c']) {
+    const tavern = buildBuildingScene({ seed, width: 36, height: 30, design: { building_use: 'tavern', climate: 'temperate' } }).map
+    assert.ok(assetsIn(tavern, 'yard').has('hitching_post'), `${seed}: у трактира нет коновязи`)
+    const house = buildBuildingScene({ seed, width: 36, height: 30, design: { building_use: 'dwelling', climate: 'temperate' } }).map
+    assert.ok(assetsIn(house, 'yard').has('garden_bed'), `${seed}: у дома нет огорода`)
+  }
+})
+
+test('общий зал обставлен целиком: ни одна четверть зала не стоит голым полом', () => {
+  // Обзор 2026-10-08: нижняя половина общего зала таверны была пустой.
+  // Четверть — по середине габарита зала; мебель — стоящий предмет, не
+  // светильник на стене.
+  /** @param {import('../server/tactical-map.mjs').TacticalMap} map @param {string} label */
+  const assertFurnished = (map, label) => {
+    const furnished = furnishedCells(map)
+    for (const [index, quarter] of roomQuarters(map, 'hall').entries()) {
+      if (quarter.length < FURNISHED_QUARTER_CELLS) continue
+      assert.ok(quarter.some((cell) => furnished.has(`${cell.x},${cell.y}`)), `${label}: четверть зала №${index} (${quarter.length} клеток) пустая`)
+    }
+  }
+  for (const preset of MAP_PREVIEW_PRESETS.filter((entry) => PRESET_USE[entry.id])) {
+    for (const size of [{ width: 16, height: 14 }, { width: 26, height: 26 }, { width: 40, height: 32 }]) {
+      for (const seed of ['s1', 's2', 's3']) {
+        const { map } = generateSceneGeometry({ ...preset.input, map: size, seed: `${preset.id}:${seed}`, useLibrary: false })
+        assertFurnished(map, `${preset.id}/${size.width}×${size.height}/${seed}`)
+      }
+    }
+  }
+  for (let index = 0; index < 20; index += 1) {
+    assertFurnished(buildBuildingScene({ seed: `furnished-${index}`, width: 36, height: 30, design: { building_use: 'tavern' } }).map, `таверна/${index}`)
   }
 })

@@ -36,9 +36,11 @@ function spotsFor(map, { near }) {
   const stairs = map.props.find((prop) => prop.transition)
   const anchor = { x: Math.floor(stairs.x), y: Math.floor(stairs.y) }
   const cells = []
+  // Герой не стоит на столе: клетки под мебелью, мешающей шагу, не берутся.
+  const furniture = new Set(map.props.filter((prop) => prop.blocksMove && !prop.mount).flatMap((prop) => prop.footprint.map((cell) => `${cell.x},${cell.y}`)))
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
     const cell = cellAt(map, x, y)
-    if (cell?.passable && cell.zone === 'hall' && !(x === anchor.x && y === anchor.y)) cells.push({ x, y, d: Math.max(Math.abs(x - anchor.x), Math.abs(y - anchor.y)) })
+    if (cell?.passable && cell.zone === 'hall' && !(x === anchor.x && y === anchor.y) && !furniture.has(`${x},${y}`)) cells.push({ x, y, d: Math.max(Math.abs(x - anchor.x), Math.abs(y - anchor.y)) })
   }
   // Дальний угол — правый: в левом герой зажат мебелью и соседом, и пути
   // нет по-честному.

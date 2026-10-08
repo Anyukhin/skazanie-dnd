@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 
+import { assetById } from './asset-registry.mjs'
 import {
+  addProp,
   addSpawnPoint,
   addZone,
   cellAt,
@@ -21,7 +23,8 @@ import { applyRoomFloors, buildingWallStyleFor } from './room-floors.mjs'
  * проекция, движение, реквизит и сохранение не получают второго формата.
  */
 // v5 (2026-10-03): дверь дома в глубине — по тропе до улицы, и тропа проложена.
-export const SETTLEMENT_GENERATOR = Object.freeze({ id: 'settlement-layout', version: '5' })
+// v6 (2026-10-08): рыночная площадь шире, на ней ряды лотков с проходами.
+export const SETTLEMENT_GENERATOR = Object.freeze({ id: 'settlement-layout', version: '6' })
 
 const TOPOLOGIES = new Set(['organic', 'linear', 'crossroads', 'market', 'courtyard', 'harbor', 'river', 'terraced', 'gate'])
 const CLIMATES = new Set(['temperate', 'arid', 'cold', 'wetland'])
@@ -881,6 +884,165 @@ function carveVillageSquare(map, material) {
   }
 }
 
+/** Наименьшая рыночная площадь деревни: ширина вдоль улицы и глубина. */
+const MARKET_SQUARE = Object.freeze({ width: 16, height: 11 })
+
+/** Лотков на площади не больше: ещё два-три добавит обстановка площади. */
+export const MARKET_STALLS_MAX = 9
+
+/**
+ * Предмет каталога на карте: одна или несколько клеток, свойства из реестра.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} assetId
+ * @param {string} id
+ * @param {Array<{x: number, y: number}>} footprint
+ */
+function addMarketProp(map, assetId, id, footprint) {
+  const asset = assetById(assetId)
+  if (!asset) return
+  const xs = footprint.map((cell) => cell.x)
+  const ys = footprint.map((cell) => cell.y)
+  const span = asset.scaleRange.max - asset.scaleRange.min
+  addProp(map, {
+    id, assetId, rotation: 0,
+    x: (Math.min(...xs) + Math.max(...xs) + 1) / 2, y: (Math.min(...ys) + Math.max(...ys) + 1) / 2,
+    scale: Number((asset.scaleRange.min + span / 2).toFixed(3)), footprint, zOrder: 0,
+    blocksMove: asset.blocksMove, blocksSight: asset.blocksSight, cover: asset.cover,
+    destructible: asset.destructible, hp: asset.hp, interactive: asset.interactive,
+  })
+}
+
+/**
+ * Торговые ряды на рыночной площади: лотки 2×2 рядами вдоль улицы, между
+ * лотками ряда — проход в клетку, между рядами — проход в две. Проходы
+ * размечаются зоной `path`: на них расстановка ничего не ставит, а проверка
+ * карты ловит предмет поперёк прохода (`PATH_BLOCKED`). Свободными
+ * остаются и край площади в клетку — тротуар перед домами, — и улицы, что
+ * входят на площадь: по ним отряд идёт насквозь. Подход к двери дома
+ * (клетка перед порогом и следующая за ней) лотком не занимается. В конце
+ * ряда, где лоток уже не встаёт, — телега или ящики с бочкой.
+ *
+ * Обзор 2026-10-08: на «Суконной площади» стояло три навеса.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {string} seed
+ * @param {string} material
+ * @returns {{stalls: number, goods: number}}
+ */
+function layMarketRows(map, seed, material) {
+  /** @type {Array<{x: number, y: number}>} */
+  const square = []
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.zone === 'square') square.push({ x, y })
+  if (!square.length) return { stalls: 0, goods: 0 }
+  const minX = Math.min(...square.map((cell) => cell.x))
+  const maxX = Math.max(...square.map((cell) => cell.x))
+  const minY = Math.min(...square.map((cell) => cell.y))
+  const maxY = Math.max(...square.map((cell) => cell.y))
+  const road = (/** @type {number} */ x, /** @type {number} */ y) => ['street', 'path'].includes(cellAt(map, x, y)?.zone ?? '')
+  // Улицы, что входят на площадь, идут насквозь: их ряды и столбцы свободны.
+  const throughRows = new Set()
+  const throughColumns = new Set()
+  for (let y = minY; y <= maxY; y += 1) if (road(minX - 1, y) || road(maxX + 1, y)) throughRows.add(y)
+  for (let x = minX; x <= maxX; x += 1) if (road(x, minY - 1) || road(x, maxY + 1)) throughColumns.add(x)
+  // Подход к двери: клетка за порогом и следующая за ней.
+  /** @type {Set<string>} */
+  const approaches = new Set()
+  for (const door of map.doors) {
+    const next = edgeNeighbor(door)
+    const step = { x: next.x - door.x, y: next.y - door.y }
+    for (const point of [{ x: door.x, y: door.y }, next, { x: door.x - step.x, y: door.y - step.y }, { x: next.x + step.x, y: next.y + step.y }]) {
+      approaches.add(key(point.x, point.y))
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) approaches.add(key(point.x + dx, point.y + dy))
+    }
+  }
+  const taken = new Set(map.props.flatMap((prop) => (prop.footprint ?? []).map((cell) => key(cell.x, cell.y))))
+  const free = (/** @type {number} */ x, /** @type {number} */ y) => {
+    const cell = cellAt(map, x, y)
+    return cell?.zone === 'square' && cell.passable && x > minX && x < maxX && y > minY && y < maxY
+      && !throughRows.has(y) && !throughColumns.has(x) && !approaches.has(key(x, y)) && !taken.has(key(x, y))
+  }
+  // Кварталы рядов — полосы между сквозными улицами по горизонтали.
+  /** @type {Array<{from: number, to: number}>} */
+  const bands = []
+  for (let y = minY + 1; y < maxY; y += 1) {
+    if (throughRows.has(y)) continue
+    const last = bands[bands.length - 1]
+    if (last && last.to === y - 1) last.to = y
+    else bands.push({ from: y, to: y })
+  }
+  const random = randomFor(`settlement-market:${seed}`)
+  const goodsKinds = ['crate', 'barrel', 'sack']
+  let stalls = 0
+  let goods = 0
+  let carts = 0
+  /** @type {Array<{x: number, y: number}>} */
+  const aisles = []
+  for (const band of bands) {
+    // Ряды в полосе: лоток в две клетки, проход в две; ряд прижат к улице,
+    // если полоса уже двух рядов.
+    for (let rowY = band.from; rowY + 1 <= band.to && stalls < MARKET_STALLS_MAX; rowY += 4) {
+      let x = minX + 1
+      /** @param {string} assetId @param {Array<{x: number, y: number}>} footprint */
+      const put = (assetId, footprint) => {
+        addMarketProp(map, assetId, `market-${assetId === 'cart' ? 'cart' : 'goods'}-${goods + 1}`, footprint)
+        for (const cell of footprint) taken.add(key(cell.x, cell.y))
+        goods += 1
+      }
+      // Первый ряд площади начинается с подводы: телега и ящик с товаром.
+      if (!carts && free(x, rowY) && free(x + 1, rowY) && free(x, rowY + 1)) {
+        put('cart', [{ x, y: rowY }, { x: x + 1, y: rowY }])
+        put(goodsKinds[Math.floor(random() * goodsKinds.length)], [{ x, y: rowY + 1 }])
+        carts += 1
+        x += 3
+      }
+      let afterStall = false
+      while (x < maxX) {
+        const footprint = [{ x, y: rowY }, { x: x + 1, y: rowY }, { x, y: rowY + 1 }, { x: x + 1, y: rowY + 1 }]
+        if (stalls < MARKET_STALLS_MAX && footprint.every((cell) => free(cell.x, cell.y))) {
+          addMarketProp(map, 'market_stall', `market-stall-${stalls + 1}`, footprint)
+          for (const cell of footprint) taken.add(key(cell.x, cell.y))
+          stalls += 1
+          afterStall = true
+          x += 3
+          continue
+        }
+        // Ряд упёрся в улицу или край: в проходе за последним лотком — товар
+        // лавочника, ящик или мешок над бочкой.
+        if (afterStall && free(x - 1, rowY) && free(x - 1, rowY + 1)) {
+          put(goodsKinds[Math.floor(random() * goodsKinds.length)], [{ x: x - 1, y: rowY }])
+          put('barrel', [{ x: x - 1, y: rowY + 1 }])
+        }
+        afterStall = false
+        x += 1
+      }
+      // Проход за рядом — две клетки, если за ним в полосе есть следующий ряд.
+      if (rowY + 5 <= band.to) {
+        for (let aisleX = minX + 1; aisleX < maxX; aisleX += 1) {
+          for (const aisleY of [rowY + 2, rowY + 3]) if (free(aisleX, aisleY)) aisles.push({ x: aisleX, y: aisleY })
+        }
+      }
+    }
+  }
+  // Ни телеги, ни ящика не встало (ряды упёрлись в улицы и в подходы к
+  // дверям): товар — у первого лотка, где рядом свободно и не проход.
+  if (!goods) {
+    const aisleKeys = new Set(aisles.map((cell) => key(cell.x, cell.y)))
+    const stallCells = new Set(map.props.filter((prop) => prop.assetId === 'market_stall').flatMap((prop) => prop.footprint.map((cell) => key(cell.x, cell.y))))
+    const spot = square.find((cell) => free(cell.x, cell.y) && !aisleKeys.has(key(cell.x, cell.y))
+      && [[1, 0], [-1, 0]].some(([dx, dy]) => stallCells.has(key(cell.x + dx, cell.y + dy))))
+    if (spot) {
+      addMarketProp(map, goodsKinds[Math.floor(random() * goodsKinds.length)], 'market-goods-1', [spot])
+      goods += 1
+    }
+  }
+  if (aisles.length) {
+    if (!map.zones.some((zone) => zone.id === 'path')) addZone(map, { id: 'path', kind: 'exterior', material, lightLevel: 'bright', floorDirection: 'horizontal' })
+    for (const cell of aisles) setCell(map, cell.x, cell.y, { zone: 'path', material })
+  }
+  return { stalls, goods }
+}
+
 /** Наименьший размер карты поселения по масштабу. */
 const SETTLEMENT_MIN_SIZE = Object.freeze({ village: { width: 44, height: 38 }, town: { width: 48, height: 44 }, city: { width: 56, height: 52 } })
 
@@ -960,9 +1122,11 @@ function townSpecs(map, design, random, materialsForMap) {
       }
     }
   }
-  // Площадь на перекрёстке главной и поперечной.
-  const squareW = design.scale === 'city' ? 12 : 10
-  const squareH = design.scale === 'city' ? 10 : 8
+  // Площадь на перекрёстке главной и поперечной. Рыночная — шире, под ряды
+  // лотков с проходами между ними (`layMarketRows`).
+  const market = design.topology === 'market'
+  const squareW = (design.scale === 'city' ? 12 : 10) + (market ? 6 : 0)
+  const squareH = (design.scale === 'city' ? 10 : 8) + (market ? 4 : 0)
   for (let y = centerY - Math.floor(squareH / 2); y < centerY - Math.floor(squareH / 2) + squareH; y += 1) {
     for (let x = centerX - Math.floor(squareW / 2); x < centerX - Math.floor(squareW / 2) + squareW; x += 1) paintSquare(map, x, y, street)
   }
@@ -1092,14 +1256,18 @@ function buildingSpecs(map, design, random) {
     return planInRegions(map, random, requested, regions, { density: design.density })
   }
   if (design.topology === 'market') {
-    const squareSize = 8 + Math.floor(random() * 4)
-    const squareX = centerX - Math.floor(squareSize / 2)
-    const squareY = centerY - Math.floor(squareSize / 2)
-    for (let y = squareY; y < squareY + squareSize; y += 1) for (let x = squareX; x < squareX + squareSize; x += 1) paintSquare(map, x, y, 'earth')
+    // Рыночная площадь — под ряды лотков с проходами (`layMarketRows`):
+    // 16–18 клеток вдоль улицы и 11–12 поперёк. Прежняя площадь 8–11 клеток
+    // с улицей посередине вмещала три навеса.
+    const squareW = MARKET_SQUARE.width + Math.floor(random() * 3)
+    const squareH = MARKET_SQUARE.height + Math.floor(random() * 2)
+    const squareX = centerX - Math.floor(squareW / 2)
+    const squareY = centerY - Math.floor(squareH / 2)
+    for (let y = squareY; y < squareY + squareH; y += 1) for (let x = squareX; x < squareX + squareW; x += 1) paintSquare(map, x, y, 'earth')
     addRegion(2, 2, outerWidth, Math.max(6, squareY - 3))
-    addRegion(2, squareY + squareSize + 2, outerWidth, Math.max(6, height - (squareY + squareSize + 4)))
-    addRegion(2, squareY + 1, Math.max(6, squareX - 3), Math.max(6, squareSize - 1))
-    addRegion(squareX + squareSize + 2, squareY + 1, Math.max(6, width - (squareX + squareSize + 4)), Math.max(6, squareSize - 1))
+    addRegion(2, squareY + squareH + 2, outerWidth, Math.max(6, height - (squareY + squareH + 4)))
+    addRegion(2, squareY + 1, Math.max(6, squareX - 3), Math.max(6, squareH - 1))
+    addRegion(squareX + squareW + 2, squareY + 1, Math.max(6, width - (squareX + squareW + 4)), Math.max(6, squareH - 1))
     return planInRegions(map, random, Math.min(requested, 9), regions, { density: design.density })
   }
   if (design.topology === 'courtyard') {
@@ -1309,6 +1477,9 @@ function buildSettlementOnce({ seed = 'settlement', width = 30, height = 30, loc
   ensureBuildingReachability(map, spawn)
   // Стены домов — на рёбрах клеток (`server/thin-walls.mjs`).
   thinWalls(map)
+  // Торговые ряды — после тонких стен: двери уже на своих местах, и подход к
+  // ним лотком не занимается.
+  if (chosen.topology === 'market') layMarketRows(map, String(seed), materialsForMap.street)
   // Пол каждой комнаты — по её назначению: кухня трактира каменная, амбар
   // земляной, зал усадьбы в паркете. Назначение дома знает `buildingUses`.
   for (const [zoneId, use] of Object.entries(buildingUses)) {
