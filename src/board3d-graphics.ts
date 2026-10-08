@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { isFoliageMaterial } from './board3d-cutout'
 
 /**
  * Освещение и постобработка доски. Только представление: модуль не читает
@@ -69,16 +70,85 @@ export function boardDarkness(map: { width: number; height: number; zones: Reado
   return cells ? Math.min(1, total / cells) : 0
 }
 
+/**
+ * Холодный тон подземелья (ориентир — TaleSpire): тени и заливка уходят в
+ * сине-бирюзовый, огни остаются тёплыми, и тёплые пятна читаются на холодном
+ * фоне. Действует только в сумрачных и тёмных помещениях и подземельях
+ * (`dungeonCoolness`), открытая местность и светлая таверна не меняются.
+ * `moon` — цвет остатка солнца (лунный ключ), `moonBoost` и `fillBoost` —
+ * насколько лунный ключ и заливка сильнее прежних: камень остаётся читаемым,
+ * но в холодном свете. `warmth` — тёплый сдвиг цветокоррекции (у дневной
+ * доски `BOARD3D_GRADE.warmth`), `backdrop` — фон.
+ */
+export const BOARD3D_DUNGEON_TONE = {
+  moon: '#8ea6dc', sky: '#4d6aa6', ground: '#151b27', moonBoost: .6, fillBoost: .8, warmth: -.03,
+  backdrop: ['#141d24', '#05080a'] as [string, string],
+} as const
+
+/**
+ * Доля холодного тона: 0 до сумрака 0,6 (светлое помещение, открытая
+ * местность), 1 — с 0,85 (сумрачный склеп, тёмная пещера).
+ */
+export function dungeonCoolness(darkness: number): number {
+  return THREE.MathUtils.smoothstep(Math.max(0, Math.min(1, darkness)), .6, .85)
+}
+
 /** Свет сцены при данном сумраке: солнце и заливка гаснут, огни берут своё. */
 export function lightingForDarkness(darkness: number) {
   const d = Math.max(0, Math.min(1, darkness))
+  const cool = dungeonCoolness(d)
+  const tone = BOARD3D_DUNGEON_TONE
   return {
-    sun: BOARD3D_LIGHTING.sun.intensity * (1 - .94 * d),
-    hemisphere: BOARD3D_LIGHTING.hemisphere.intensity * (1 - .8 * d),
-    hemisphereSky: new THREE.Color(BOARD3D_LIGHTING.hemisphere.sky).lerp(new THREE.Color('#7f8fae'), d).getStyle(),
+    sun: BOARD3D_LIGHTING.sun.intensity * (1 - .94 * d) * (1 + tone.moonBoost * cool),
+    sunColor: new THREE.Color(BOARD3D_LIGHTING.sun.color).lerp(new THREE.Color(tone.moon), cool).getStyle(),
+    hemisphere: BOARD3D_LIGHTING.hemisphere.intensity * (1 - .8 * d) * (1 + tone.fillBoost * cool),
+    hemisphereSky: new THREE.Color(BOARD3D_LIGHTING.hemisphere.sky).lerp(new THREE.Color('#7f8fae'), d).lerp(new THREE.Color(tone.sky), cool).getStyle(),
+    hemisphereGround: new THREE.Color(BOARD3D_LIGHTING.hemisphere.ground).lerp(new THREE.Color(tone.ground), cool).getStyle(),
     environment: BOARD3D_LIGHTING.environmentIntensity * (1 - .75 * d),
     exposure: BOARD3D_LIGHTING.exposure * (1 + .12 * d),
+    warmth: BOARD3D_GRADE.warmth + (tone.warmth - BOARD3D_GRADE.warmth) * cool,
+    cool,
   }
+}
+
+/** Фон доски в подземелье остывает вместе со светом. */
+export function dungeonBackdrop(colors: readonly [string, string], cool: number): [string, string] {
+  const amount = Math.max(0, Math.min(1, cool))
+  return [0, 1].map((index) => new THREE.Color(colors[index]).lerp(new THREE.Color(BOARD3D_DUNGEON_TONE.backdrop[index]), amount).getHexString()).map((hex) => `#${hex}`) as [string, string]
+}
+
+/**
+ * Огонь предмета: жаровня, факел, свеча. Затухание мягче обратного квадрата:
+ * при `decay` 2 пол под низким огнём выгорал в белый диск, а в двух клетках
+ * уже темнело. С 1.5 яркость в двух-трёх клетках прежняя (множитель `scale`),
+ * центр пятна вдвое спокойнее, и фактура пола под огнём видна. Сила следует
+ * силе источника из реестра света (`LIGHT_SOURCE_ASSETS`): свеча светит
+ * слабее жаровни, а не так же.
+ */
+export const BOARD3D_FIRE_LIGHT = { decay: 1.5, scale: .63, referenceStrength: 130, minShare: .45, maxShare: 1.15 } as const
+
+export function fireLightFor(profile: { radius: number; strength: number }, darkness: number) {
+  const d = Math.max(0, Math.min(1, darkness))
+  const share = Math.max(BOARD3D_FIRE_LIGHT.minShare, Math.min(BOARD3D_FIRE_LIGHT.maxShare, profile.strength / BOARD3D_FIRE_LIGHT.referenceStrength))
+  return {
+    // В сумраке огни сильнее и шире: они — главный свет подземелья.
+    intensity: (1.35 + 16 * d) * BOARD3D_FIRE_LIGHT.scale * share,
+    distance: Math.min(8, profile.radius) * (1 + .7 * d),
+    decay: BOARD3D_FIRE_LIGHT.decay,
+  }
+}
+
+/**
+ * Дыхание огня (ориентир — факелы TaleSpire): множитель яркости 0,84–1,16 из
+ * трёх несоизмеримых частот. `seed` разводит фазы соседних огней, чтобы они не
+ * мигали хором. Чистая функция времени — без случайности и состояния.
+ */
+export const BOARD3D_FIRE_FLICKER = { amplitude: .16 } as const
+
+export function fireFlicker(seconds: number, seed: number): number {
+  const phase = seed * 2.399963
+  const wave = .5 * Math.sin(seconds * 7.3 + phase) + .3 * Math.sin(seconds * 13.1 + 1.7 * phase) + .2 * Math.sin(seconds * 23.7 + 2.9 * phase)
+  return 1 + BOARD3D_FIRE_FLICKER.amplitude * wave
 }
 
 /**
@@ -228,6 +298,9 @@ export function fitSunShadow(sun: THREE.DirectionalLight, bounds: BoardBounds): 
  * GTAO по умолчанию учитывает все сетки. Полупрозрачные слои без записи
  * глубины — подсветка клеток, кольца под фигурками, вспышки заклинаний —
  * не являются поверхностями и не должны отбрасывать «грязь» на соседей.
+ * Листва с просветами (`isFoliageMaterial`) тоже скрыта: проход нормалей
+ * рисует её карточки сплошными прямоугольниками, и крона затеняла сама себя.
+ * Стволы, мебель и стены затенение сохраняют.
  */
 class BoardGTAOPass extends GTAOPass {
   private hiddenOverlays: THREE.Object3D[] = []
@@ -247,7 +320,7 @@ class BoardGTAOPass extends GTAOPass {
       const mesh = object as THREE.Mesh
       if (!mesh.isMesh) return
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-      if (materials.every((material) => material.transparent && !material.depthWrite)) this.hiddenOverlays.push(mesh)
+      if (materials.every((material) => (material.transparent && !material.depthWrite) || isFoliageMaterial(material))) this.hiddenOverlays.push(mesh)
     })
     for (const object of this.hiddenOverlays) object.visible = false
     try {
@@ -273,6 +346,8 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
   let settings: Board3DPostProcessing = { ambientOcclusion: false, bloom: false }
   let width = 1, height = 1
   let clipBox: THREE.Box3 | null = null
+  let gradePass: ShaderPass | null = null
+  let warmth: number = BOARD3D_GRADE.warmth
 
   const disposeComposer = () => {
     if (!composer) return
@@ -282,6 +357,7 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
     composer = null
     gtao = null
     bloom = null
+    gradePass = null
     tiltPasses = []
   }
 
@@ -329,7 +405,9 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
       for (const pass of tiltPasses) composer.addPass(pass)
       updateTiltShift()
     }
-    composer.addPass(new ShaderPass(GradeShader))
+    gradePass = new ShaderPass(GradeShader)
+    gradePass.uniforms.warmth.value = warmth
+    composer.addPass(gradePass)
   }
 
   return {
@@ -355,6 +433,11 @@ export function createBoardRenderPipeline(renderer: THREE.WebGLRenderer, scene: 
       gtao?.setSceneClipBox(clipBox)
     },
     get active() { return Boolean(composer) },
+    /** Тёплый сдвиг цветокоррекции: в подземелье тень холодная (`lightingForDarkness`). */
+    setWarmth(value: number) {
+      warmth = Number.isFinite(value) ? value : BOARD3D_GRADE.warmth
+      if (gradePass) gradePass.uniforms.warmth.value = warmth
+    },
     render() {
       renderer.info.reset()
       if (composer) composer.render()

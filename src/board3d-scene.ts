@@ -24,6 +24,7 @@ import { createEnvironmentModels } from './board3d-props'
 import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
+import { fireFlicker, fireLightFor } from './board3d-graphics'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, structuralRoofRolesForMap, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
@@ -34,7 +35,7 @@ import { landscapeModelsOf } from './landscape-model-assets'
 import { propModelFor } from './prop-model-catalog'
 import { loadGraphicsStylePack, peekGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
 import { buildStyledEdges, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, packHasWallLooks, structuralEdgeRolesForMap, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
-import { buildStyledFloors } from './board3d-floor-tiles'
+import { buildStyledFloors, buildStyledTerrainSides } from './board3d-floor-tiles'
 import { structuralLoadProps, structuralTemplate, type StructuralRole } from './board3d-structural'
 
 /** Высота срезанной стены в мировых единицах клетки. */
@@ -620,11 +621,11 @@ function terrainSideColor(map: TacticalMap, x: number, z: number, y: number, top
   return out.set(top ? light : dark).multiplyScalar(band)
 }
 
-function addTerrainSides(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette) {
+function addTerrainSides(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette): THREE.Mesh | null {
   const geometry = createTerrainSideGeometry(map)
   if (!geometry.getAttribute('position')?.count) {
     geometry.dispose()
-    return
+    return null
   }
   const position = geometry.getAttribute('position') as THREE.BufferAttribute
   const colors = new Float32Array(position.count * 3)
@@ -645,6 +646,7 @@ function addTerrainSides(resources: OwnedResources, map: TacticalMap, parent: TH
   sides.castShadow = true
   sides.receiveShadow = true
   parent.add(sides)
+  return sides
 }
 
 function createGroundCanvasTexture(resources: OwnedResources, map: TacticalMap, palette: BoardPalette) {
@@ -760,8 +762,11 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     // В сумраке огней больше и они сильнее: они — главный свет подземелья.
     if (!lighting || !sourceId || lights.length >= 4 + Math.round(4 * darkness)) continue
     const profile = LIGHT_SOURCE_ASSETS[sourceId]
-    const light = new THREE.PointLight(palette.lightWarm, 1.35 + 16 * darkness, Math.min(8, profile.radius) * (1 + .7 * darkness), 2)
+    const fire = fireLightFor(profile, darkness)
+    const light = new THREE.PointLight(palette.lightWarm, fire.intensity, fire.distance, fire.decay)
     light.name = 'fire-light'
+    // Огонь дышит вокруг этой яркости (`fireFlicker`, кадр сцены).
+    light.userData.baseIntensity = fire.intensity
     light.position.copy(model.position)
     // Огонь чуть выше чаши: иначе сама чаша отбрасывает на пол ломаное кольцо тени.
     light.position.y += (Number(model.userData.lightHeight) || .55) * model.scale.y + .22
@@ -796,6 +801,7 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
   return {
     group: propsGroup,
     pickTargets,
+    lights,
     dispose() {
       pickTargets.length = 0
       propsGroup.removeFromParent()
@@ -955,7 +961,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   ground.receiveShadow = true
   ground.castShadow = false
   groundGroup.add(ground)
-  addTerrainSides(resources, map, groundGroup, palette)
+  const terrainSides = addTerrainSides(resources, map, groundGroup, palette)
   const fogGeometry = createFogCapGeometry(map)
   if (fogGeometry) {
     ownGeometry(resources, fogGeometry)
@@ -1185,6 +1191,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   // Пол стиля: плитки по покрытиям поверх прежнего пола и прозрачный слой
   // с сеткой, опасными клетками и туманом над ними.
   let styledFloors: ReturnType<typeof buildStyledFloors> | null = null
+  let styledSides: ReturnType<typeof buildStyledTerrainSides> | null = null
   let loadedTerrain: TerrainTiles | null = null
   let groundOverlay: THREE.Mesh | null = null
   const paintGroundOverlay = () => {
@@ -1239,8 +1246,20 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     options.onReady?.()
   }).catch((error: unknown) => console.warn('Стены стиля не собрались, остаются прежние', error))
   void stylePack.then((pack) => {
-    if (!pack || disposed || authoritativeArtLoaded || typeof document === 'undefined') return
+    if (!pack || disposed || typeof document === 'undefined') return
     const loader = new THREE.TextureLoader()
+    // Боковины уступов и края доски — фактурой пакета; прежние, однотонные,
+    // остаются без пакета и на «Экономном». Готовая карта с архитектурой
+    // правит только верх клеток, боковины ей не мешают.
+    if (terrainSides && landscapeDetail !== 'minimal') {
+      const sides = buildStyledTerrainSides(map, pack, { loadTexture: (url) => loader.load(url, () => { if (!disposed) options.onReady?.() }) })
+      if (sides.keys.length) {
+        styledSides = sides
+        terrainSides.visible = false
+        groundGroup.add(sides.group)
+      } else sides.dispose()
+    }
+    if (authoritativeArtLoaded) return
     const built = buildStyledFloors(map, pack, {
       parallax: options.floorParallax !== false,
       loadTexture: (url) => loader.load(url, () => { if (!disposed) options.onReady?.() }),
@@ -1284,6 +1303,8 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     propAssets?.dispose()
     styledFloors?.dispose()
     styledFloors = null
+    styledSides?.dispose()
+    styledSides = null
     roofs.dispose()
     landscapeAbort.abort()
     rocks.dispose()
@@ -1306,14 +1327,16 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
 
   return {
     group,
-    /** Вода рябит, лава течёт, море за краем катит волны; на «Экономном» всё стоит. */
-    get animated() { return Boolean(waterMaterial || lavaMaterial || surroundings?.animated) && landscapeDetail !== 'minimal' },
+    /** Вода рябит, лава течёт, море за краем катит волны, огонь дышит; на «Экономном» всё стоит. */
+    get animated() { return Boolean(waterMaterial || lavaMaterial || surroundings?.animated || props.lights.length) && landscapeDetail !== 'minimal' },
     animate(nowMs: number) {
       if (landscapeDetail === 'minimal') return
       const seconds = nowMs / 1000
       if (waterMaterial) waterMaterial.userData.time.value = seconds
       if (lavaMaterial) lavaMaterial.userData.time.value = seconds
       surroundings?.animate(seconds)
+      // Огни дышат каждый в своей фазе; на «Экономном» стоят, как вода.
+      props.lights.forEach((light, index) => { light.intensity = Number(light.userData.baseIntensity) * fireFlicker(seconds, index + 1) })
     },
     getPropPickTargets: () => disposed ? [] : props.pickTargets,
     setRoofMode: (mode: Board3DRoofMode) => roofs.setMode(mode),

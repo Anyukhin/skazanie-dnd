@@ -19,7 +19,7 @@ import { createActorModel, createProceduralActorModel, getModelAssetDiagnostics,
 import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
 import { mapSignaturesFor } from './board3d-scene-signature'
 import { BOARD3D_QUALITY, board3DQuality, cueForQuality, type Board3DQuality } from './board3d-quality'
-import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, fitSunShadow } from './board3d-graphics'
+import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, dungeonBackdrop, fitSunShadow } from './board3d-graphics'
 import { surroundingsBackdrop } from './board3d-surroundings'
 import type { TacticalMap } from './types'
 
@@ -1136,14 +1136,20 @@ export default function TacticalBoard3D(props: Props) {
         const darkness = current.lighting === false ? 0 : boardDarkness(map, (x, y) => cellAt(map, x, y))
         const ambience = lightingForDarkness(darkness)
         sun.intensity = ambience.sun
+        // В подземелье остаток солнца — холодный лунный ключ, заливка
+        // сине-бирюзовая, а огни тёплые: пятна огня читаются на холодной тени.
+        sun.color.set(ambience.sunColor)
         hemisphere.intensity = ambience.hemisphere
         hemisphere.color.set(ambience.hemisphereSky)
+        hemisphere.groundColor.set(ambience.hemisphereGround)
         scene.environmentIntensity = ambience.environment
         renderer.toneMappingExposure = ambience.exposure
+        pipeline.setWarmth(ambience.warmth)
+        renderer.domElement.dataset.coolness = ambience.cool.toFixed(2)
         renderer.domElement.dataset.darkness = darkness.toFixed(2)
         renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
         // Фон — в тон окрестностям места: лес, луг, горы или толща камня.
-        const [backdropCenter, backdropEdge] = surroundingsBackdrop(map)
+        const [backdropCenter, backdropEdge] = dungeonBackdrop(surroundingsBackdrop(map), ambience.cool)
         if (backdropKey !== `${backdropCenter}${backdropEdge}`) {
           const next = createBoardBackdropTexture(backdropCenter, backdropEdge)
           if (next) {

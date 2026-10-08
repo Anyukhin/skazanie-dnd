@@ -8,6 +8,7 @@
  * оттенок детали задают цвета вершин. Так сотня моделей делит десяток текстур.
  */
 import * as THREE from 'three'
+import { bleedCutoutTexture } from './board3d-cutout'
 
 export const GRAPHICS_STYLE = 'stylized'
 
@@ -233,12 +234,15 @@ export function createStyleMaterialBinder(
   const textures = new Map<string, THREE.Texture>()
   const pending: Promise<void>[] = []
   const materials = new Map<string, THREE.MeshStandardMaterial>()
-  const texture = (url: string, color: boolean) => {
+  const texture = (url: string, color: boolean, cutout = false) => {
     let map = textures.get(url)
     if (!map) {
       let done = () => {}
       pending.push(new Promise<void>((resolve) => { done = resolve }))
-      map = loadTexture(url, () => done())
+      // Листва: пустые пиксели получают цвет листа до первой отрисовки
+      // (`bleedCutoutTexture`), иначе дальние кроны чернеют в мипмапах.
+      const loaded: THREE.Texture = loadTexture(url, () => { if (cutout) bleedCutoutTexture(loaded); done() })
+      map = loaded
       // UV моделей glTF: начало в верхнем левом углу картинки.
       map.flipY = false
       map.wrapS = map.wrapT = THREE.RepeatWrapping
@@ -257,9 +261,11 @@ export function createStyleMaterialBinder(
       const orm = spec.orm ? texture(spec.orm, false) : null
       result = new THREE.MeshStandardMaterial({
         name: `skz:${key}`, vertexColors,
-        map: texture(spec.color, true), normalMap: spec.normal ? texture(spec.normal, false) : null,
+        map: texture(spec.color, true, (spec.alphaTest ?? 0) > 0), normalMap: spec.normal ? texture(spec.normal, false) : null,
         roughnessMap: orm, metalnessMap: orm, aoMap: orm, aoMapIntensity: .8,
         roughness: spec.roughness, metalness: orm ? spec.metalness : 0, alphaTest: spec.alphaTest ?? 0,
+        // Край выреза сглаживается MSAA, как у листвы моделей (`prepareCutoutMaterials`).
+        alphaToCoverage: (spec.alphaTest ?? 0) > 0,
         side: spec.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
       })
       materials.set(id, result)
