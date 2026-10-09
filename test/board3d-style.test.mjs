@@ -172,7 +172,9 @@ test('вариант модели выбирается по id предмета:
   assert.equal(style.stylePropFor(pack, 'barrel', 'barrel-1')?.key, style.stylePropFor(pack, 'barrel', 'barrel-1')?.key)
   const variants = new Set(Array.from({ length: 24 }, (_, index) => style.stylePropFor(pack, 'barrel', `barrel-${index}`)?.key))
   assert.ok(variants.size > 1)
-  assert.equal(style.stylePropFor(pack, 'chair', 'chair-1'), null, 'стул Quaternius остаётся моделью выпуска')
+  assert.equal(style.stylePropFor(pack, 'sack', 'sack-1'), null, 'мешок Quaternius остаётся моделью выпуска')
+  // Стул получил варианты KayKit, а модель Quaternius осталась среди них ссылкой на выпуск.
+  assert.ok(pack.props.chair.some((entry) => entry.key === 'ref-quaternius-chair-1'))
   assert.equal(style.stylePropFor(null, 'barrel', 'barrel-1'), null)
 })
 
