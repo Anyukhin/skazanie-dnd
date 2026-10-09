@@ -19,7 +19,7 @@ import { createActorModel, createProceduralActorModel, figureHeightFor, getModel
 import { LEGACY_CATALOG_REVISION } from './prop-model-catalog'
 import { mapSignaturesFor } from './board3d-scene-signature'
 import { BOARD3D_QUALITY, board3DQuality, cueForQuality, type Board3DQuality } from './board3d-quality'
-import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, fitSunShadow } from './board3d-graphics'
+import { BOARD3D_LIGHTING, boardDarkness, lightingForDarkness, boardEffectLights, createBoardBackdropTexture, createBoardEnvironment, createBoardRenderPipeline, dungeonBackdrop, fitSunShadow } from './board3d-graphics'
 import { surroundingsBackdrop } from './board3d-surroundings'
 import type { TacticalMap } from './types'
 
@@ -1124,7 +1124,7 @@ export default function TacticalBoard3D(props: Props) {
         resize()
       }
       renderer.shadowMap.enabled = current.lighting !== false && profile.shadows
-      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}`
+      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}:${profile.floorRelief}:${profile.grassStyle}`
       const signatures = mapSignaturesFor(map)
       const referenceSame = lastMap === map
       const contentChanged = Boolean(terrainSignature && terrainSignature !== signatures.staticKey)
@@ -1151,14 +1151,20 @@ export default function TacticalBoard3D(props: Props) {
         const darkness = current.lighting === false ? 0 : boardDarkness(map, (x, y) => cellAt(map, x, y))
         const ambience = lightingForDarkness(darkness)
         sun.intensity = ambience.sun
+        // В подземелье остаток солнца — холодный лунный ключ, заливка
+        // сине-бирюзовая, а огни тёплые: пятна огня читаются на холодной тени.
+        sun.color.set(ambience.sunColor)
         hemisphere.intensity = ambience.hemisphere
         hemisphere.color.set(ambience.hemisphereSky)
+        hemisphere.groundColor.set(ambience.hemisphereGround)
         scene.environmentIntensity = ambience.environment
         renderer.toneMappingExposure = ambience.exposure
+        pipeline.setWarmth(ambience.warmth)
+        renderer.domElement.dataset.coolness = ambience.cool.toFixed(2)
         renderer.domElement.dataset.darkness = darkness.toFixed(2)
         renderer.domElement.dataset.sunIntensity = sun.intensity.toFixed(2)
         // Фон — в тон окрестностям места: лес, луг, горы или толща камня.
-        const [backdropCenter, backdropEdge] = surroundingsBackdrop(map)
+        const [backdropCenter, backdropEdge] = dungeonBackdrop(surroundingsBackdrop(map), ambience.cool)
         if (backdropKey !== `${backdropCenter}${backdropEdge}`) {
           const next = createBoardBackdropTexture(backdropCenter, backdropEdge)
           if (next) {
@@ -1168,7 +1174,7 @@ export default function TacticalBoard3D(props: Props) {
             backdropKey = `${backdropCenter}${backdropEdge}`
           }
         }
-        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', onReady: invalidate })
+        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', floorRelief: profile.floorRelief, grassStyle: profile.grassStyle, onReady: invalidate })
         diagnostics.created += 1
         diagnostics.rebuilds += 1
         diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'

@@ -24,18 +24,21 @@ import { createEnvironmentModels } from './board3d-props'
 import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
+import { BOARD3D_FIRE_LIGHT, fireFlicker, fireLightFor } from './board3d-graphics'
+import { createFireGlow, flameAnchor, type FireGlowDetail, type FirePoint } from './board3d-fire'
 import { createSeeThrough, type SeeThrough } from './board3d-see-through'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, structuralRoofRolesForMap, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createLavaMaterial, createLavaSurfaceGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, lavaGlowPoints, landscapeWantsModels, structuralBridgeRolesForMap, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
-import { SURROUNDINGS_MODEL_ASSETS, createSurroundings, surroundingsModelFromTemplate, type SurroundingsModel, type SurroundingsModels } from './board3d-surroundings'
+import { SURROUNDINGS_MODEL_ASSETS, createSurroundings, surroundingsGroundFloor, surroundingsModelFromTemplate, type SurroundingsModel, type SurroundingsModels } from './board3d-surroundings'
 import { landscapeModelsOf } from './landscape-model-assets'
 import { propModelFor } from './prop-model-catalog'
 import { loadGraphicsStylePack, peekGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
 import { buildStyledEdges, doorState, edgeCenter, edgeFloorHeight, edgeSideCell, edgeVisible, packHasWallLooks, structuralEdgeRolesForMap, wallEdgeEndpoints, wallEndpointKey, type StyledEdges } from './board3d-walls'
-import { buildStyledFloors } from './board3d-floor-tiles'
+import { buildStyledFloors, buildStyledTerrainSides, floorKeyForCell } from './board3d-floor-tiles'
+import type { FloorReliefLevel } from './board3d-floor-relief'
 import { structuralLoadProps, structuralTemplate, type StructuralRole } from './board3d-structural'
 
 /** Высота срезанной стены в мировых единицах клетки. */
@@ -76,8 +79,14 @@ export type Board3DOptions = {
   graphicsStyle?: boolean
   /** Рельеф плиток параллаксом; на «Экономном» выключен. */
   floorParallax?: boolean
+  /** Объёмный пол: смещение вершин по карте высот (`board3d-floor-relief`); null — плоский. */
+  floorRelief?: FloorReliefLevel | null
+  /** Трава газона: `tufts` — пучки пятнами, `carpet` — мелкие пучки по всей клетке. */
+  grassStyle?: Board3DGrassStyle
   onReady?: () => void
 }
+
+export type Board3DGrassStyle = 'tufts' | 'carpet'
 
 export type Board3DPropPickTarget = {
   propId: string
@@ -579,8 +588,25 @@ function addEdgeScene(resources: OwnedResources, map: TacticalMap, parent: THREE
  * вершин несёт затенение шва и дна; без canvas-фактуры (SSR, тесты) он
  * дополнительно окрашивается цветом клетки, как прежний плоский пол.
  */
-function createGroundGeometry(resources: OwnedResources, map: TacticalMap, palette: BoardPalette, withCellColors: boolean) {
-  const geometry = ownGeometry(resources, createTileGroundGeometry(map))
+/**
+ * Слой поверх пола (сетка, туман, подложка-рисунок) читает фактуру по мировым
+ * X/Z, а не по UV сетки: так тот же материал ложится и на плоский пол, и на
+ * объёмную плитку пакета, у которой UV — в повторах фактуры. Формула та же,
+ * что у UV плоского пола (`createTileGroundGeometry` без `uvCells`).
+ */
+function useBoardMapUv(target: THREE.Material, map: TacticalMap) {
+  const width = Math.max(1, map.width), height = Math.max(1, map.height)
+  target.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace('#include <uv_vertex>', `#include <uv_vertex>
+#ifdef USE_MAP
+  vMapUv = (mapTransform * vec3(position.x / ${width.toFixed(1)}, 1.0 - position.z / ${height.toFixed(1)}, 1.0)).xy;
+#endif`)
+  }
+  target.customProgramCacheKey = () => `board3d-board-uv:${width}x${height}`
+}
+
+function createGroundGeometry(resources: OwnedResources, map: TacticalMap, palette: BoardPalette, withCellColors: boolean, include?: (x: number, y: number, cell: TacticalCell) => boolean) {
+  const geometry = ownGeometry(resources, createTileGroundGeometry(map, { include }))
   if (withCellColors) {
     const position = geometry.getAttribute('position') as THREE.BufferAttribute
     const color = geometry.getAttribute('color') as THREE.BufferAttribute
@@ -621,11 +647,11 @@ function terrainSideColor(map: TacticalMap, x: number, z: number, y: number, top
   return out.set(top ? light : dark).multiplyScalar(band)
 }
 
-function addTerrainSides(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette) {
+function addTerrainSides(resources: OwnedResources, map: TacticalMap, parent: THREE.Group, palette: BoardPalette): THREE.Mesh | null {
   const geometry = createTerrainSideGeometry(map)
   if (!geometry.getAttribute('position')?.count) {
     geometry.dispose()
-    return
+    return null
   }
   const position = geometry.getAttribute('position') as THREE.BufferAttribute
   const colors = new Float32Array(position.count * 3)
@@ -646,6 +672,7 @@ function addTerrainSides(resources: OwnedResources, map: TacticalMap, parent: TH
   sides.castShadow = true
   sides.receiveShadow = true
   parent.add(sides)
+  return sides
 }
 
 function createGroundCanvasTexture(resources: OwnedResources, map: TacticalMap, palette: BoardPalette) {
@@ -726,13 +753,17 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
   }
 }
 
-function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0, seeThrough: SeeThrough | null = null) {
+/** Огонь за стеклом: у фонаря и люстры виден ореол, но не язык пламени и не искры. */
+const ENCLOSED_FIRES: ReadonlySet<string> = new Set(['lamp_post', 'lantern_wall', 'chandelier'])
+
+function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0, seeThrough: SeeThrough | null = null, detail: FireGlowDetail = 'reduced') {
   const library = createEnvironmentModels(palette, assets, { seeThrough })
   const propsGroup = new THREE.Group()
   propsGroup.name = 'props'
   const lightGroup = new THREE.Group()
   lightGroup.name = 'local-lights'
   const lights: THREE.PointLight[] = []
+  const firePoints: FirePoint[] = []
   const visibleProps = visiblePropsOnBoard(map)
   const models = new Map(visibleProps.map((prop) => [prop.id, library.create(prop)]))
   const propsById = new Map(visibleProps.map((prop) => [prop.id, prop]))
@@ -758,13 +789,22 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     // Плоское (клевер, цветы, ковёр, кувшинки) тени не отбрасывает: она не видна,
     // а проход теней на большой карте рисовал бы сотни таких предметов зря.
     if (propDrawingFor(prop.assetId).flat) model.traverse((object) => { if ((object as THREE.Mesh).isMesh) object.castShadow = false })
+    // Видимое пламя — у каждого горящего источника, даже сверх числа огней
+    // сцены; опрокинутая и разбитая утварь не горит.
+    const anchor = lighting && sourceId && prop.state !== 'toppled' && prop.state !== 'broken' ? flameAnchor(model) : null
+    if (anchor && sourceId) firePoints.push({ ...anchor, share: LIGHT_SOURCE_ASSETS[sourceId].strength / BOARD3D_FIRE_LIGHT.referenceStrength, enclosed: ENCLOSED_FIRES.has(sourceId) })
     // В сумраке огней больше и они сильнее: они — главный свет подземелья.
     if (!lighting || !sourceId || lights.length >= 4 + Math.round(4 * darkness)) continue
     const profile = LIGHT_SOURCE_ASSETS[sourceId]
-    const light = new THREE.PointLight(palette.lightWarm, 1.35 + 16 * darkness, Math.min(8, profile.radius) * (1 + .7 * darkness), 2)
+    const fire = fireLightFor(profile, darkness)
+    const light = new THREE.PointLight(palette.lightWarm, fire.intensity, fire.distance, fire.decay)
     light.name = 'fire-light'
+    // Огонь дышит вокруг этой яркости (`fireFlicker`, кадр сцены).
+    light.userData.baseIntensity = fire.intensity
     light.position.copy(model.position)
     // Огонь чуть выше чаши: иначе сама чаша отбрасывает на пол ломаное кольцо тени.
+    // Точку света не переносим к видимому огню (`flameAnchor`): у настенного
+    // факела она оказалась бы над срезом стены и выжгла кладку.
     light.position.y += (Number(model.userData.lightHeight) || .55) * model.scale.y + .22
     light.castShadow = pointLightShadows && lights.length < 4
     // Край светового пятна мягкий: грубая кубическая карта давала ломаные тени.
@@ -794,13 +834,18 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
   propsGroup.userData.batchedDrawCalls = batches.batchedDrawCalls
   if (propsGroup.children.length) parent.add(propsGroup)
   if (lightGroup.children.length) parent.add(lightGroup)
+  const fire = firePoints.length ? createFireGlow(firePoints, detail, darkness) : null
+  if (fire) parent.add(fire.group)
   return {
     group: propsGroup,
     pickTargets,
+    lights,
+    fire,
     dispose() {
       pickTargets.length = 0
       propsGroup.removeFromParent()
       lightGroup.removeFromParent()
+      fire?.dispose()
       batches.dispose()
       library.dispose()
       for (const light of lights) {
@@ -956,7 +1001,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   ground.receiveShadow = true
   ground.castShadow = false
   groundGroup.add(ground)
-  addTerrainSides(resources, map, groundGroup, palette)
+  const terrainSides = addTerrainSides(resources, map, groundGroup, palette)
   const fogGeometry = createFogCapGeometry(map)
   if (fogGeometry) {
     ownGeometry(resources, fogGeometry)
@@ -1025,7 +1070,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   let structuralAssets: PropModelAssets | null = null
   let rocks = createRockClusters(map, landscapeDetail, BOARD3D_WALL_HEIGHT, null, { skipMasonry: packHasWallLooks(initialPack) })
   if (rocks.group.children.length) group.add(rocks.group)
-  const grass = createGrassTufts(map, visiblePropsOnBoard(map), landscapeDetail)
+  const grass = createGrassTufts(map, visiblePropsOnBoard(map), landscapeDetail, options.grassStyle ?? 'tufts')
   if (grass) group.add(grass.group)
   let bridges = createBridgeRails(map, null, structuralAssets)
   if (bridges) group.add(bridges.group)
@@ -1075,7 +1120,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   const darkness = Math.max(0, Math.min(1, options.darkness ?? 0))
   // Окно в кронах над фигурками: общие uniform-ы на все деревья сцены.
   const seeThrough = createSeeThrough()
-  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, seeThrough)
+  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, seeThrough, landscapeDetail)
   let propAssets: PropModelAssets | null = null
   const propAbort = new AbortController()
   // Пакет стиля нужен и полу, и предметам: один запрос на оба.
@@ -1096,7 +1141,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     }).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
-      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness, seeThrough)
+      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness, seeThrough, landscapeDetail)
       if (surroundings) {
         const next: SurroundingsModels = { ...surroundingsModels }
         for (const [role, assetIds] of Object.entries(SURROUNDINGS_MODEL_ASSETS) as Array<[keyof typeof SURROUNDINGS_MODEL_ASSETS, readonly string[]]>) {
@@ -1152,6 +1197,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   const artOverlayMaterial = artMode === 'backdrop'
     ? material(resources, '#ffffff', { transparent: true, opacity: options.artOverlayOpacity ?? 0.34, depthWrite: false }) as THREE.MeshStandardMaterial
     : null
+  let artOverlay: THREE.Mesh | null = null
   if (artUrl) {
     loadArtTexture(resources, artUrl, (texture) => {
       if (disposed) {
@@ -1168,6 +1214,8 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
         overlay.receiveShadow = false
         overlay.castShadow = false
         groundGroup.add(overlay)
+        artOverlay = overlay
+        syncReliefOverlays()
       } else {
         authoritativeArtLoaded = true
         // Готовая карта с архитектурой главнее пола стиля.
@@ -1188,6 +1236,48 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   // Пол стиля: плитки по покрытиям поверх прежнего пола и прозрачный слой
   // с сеткой, опасными клетками и туманом над ними.
   let styledFloors: ReturnType<typeof buildStyledFloors> | null = null
+  let styledSides: ReturnType<typeof buildStyledTerrainSides> | null = null
+  const reliefKeys = new Set<string>()
+  /**
+   * Объёмный пол опускает швы и впадины ниже плоского слоя сетки и подложки:
+   * плоский слой проступал бы в них клетками. Плоские слои такие клетки
+   * обходят, а слой сетки — с туманом, опасными клетками и бороздами —
+   * ложится копией на саму объёмную сетку каждого покрытия. Подложку-рисунок
+   * пол пакета закрывал и прежде — копии у неё нет.
+   */
+  let overlayFlat: THREE.BufferGeometry | null = null
+  const overlayCopies = new Map<string, THREE.Mesh>()
+  function syncReliefOverlays() {
+    if (disposed) return
+    const cut = [...reliefKeys]
+    const layers = [groundOverlay, artOverlay].filter((layer): layer is THREE.Mesh => Boolean(layer))
+    if (!cut.length || !layers.length) return
+    if (!overlayFlat || overlayFlat.userData.keys !== cut.join(',')) {
+      overlayFlat?.dispose()
+      overlayFlat = createTileGroundGeometry(map, { include: (_x, _y, cell) => !cut.includes(floorKeyForCell(map, cell) ?? '') })
+      overlayFlat.userData.keys = cut.join(',')
+    }
+    for (const layer of layers) {
+      layer.geometry = overlayFlat
+      if (layer !== groundOverlay) continue
+      for (const key of cut) {
+        const floor = styledFloors?.group.getObjectByName(`styled-floor:${key}`) as THREE.Mesh | undefined
+        if (!floor) continue
+        const id = `${layer.name}:${key}`
+        let copy = overlayCopies.get(id)
+        if (!copy) {
+          copy = new THREE.Mesh(floor.geometry, layer.material)
+          copy.name = `${layer.name}:relief`
+          copy.renderOrder = layer.renderOrder
+          copy.receiveShadow = layer.receiveShadow
+          copy.castShadow = false
+          overlayCopies.set(id, copy)
+          groundGroup.add(copy)
+        }
+        copy.geometry = floor.geometry
+      }
+    }
+  }
   let loadedTerrain: TerrainTiles | null = null
   let groundOverlay: THREE.Mesh | null = null
   const paintGroundOverlay = () => {
@@ -1196,12 +1286,14 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     if (!texture) return
     if (!groundOverlay) {
       const overlayMaterial = material(resources, '#ffffff', { transparent: true, depthWrite: false, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -8 }) as THREE.MeshStandardMaterial
+      useBoardMapUv(overlayMaterial, map)
       groundOverlay = new THREE.Mesh(groundGeometry, overlayMaterial)
       groundOverlay.name = 'ground-overlay'
       groundOverlay.renderOrder = 1
       groundOverlay.receiveShadow = true
       groundOverlay.castShadow = false
       groundGroup.add(groundOverlay)
+      syncReliefOverlays()
     }
     const overlayMaterial = groundOverlay.material as THREE.MeshStandardMaterial
     if (overlayMaterial.map && overlayMaterial.map !== texture) {
@@ -1216,6 +1308,9 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     styledFloors?.dispose()
     styledFloors = null
     groundOverlay?.removeFromParent()
+    for (const copy of overlayCopies.values()) copy.removeFromParent()
+    overlayCopies.clear()
+    if (artOverlay) artOverlay.geometry = groundGeometry
   }
   // Первая доска сессии: пакет пришёл после сборки — прежние стены и кладка
   // уступают место стенам стиля.
@@ -1242,11 +1337,52 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     options.onReady?.()
   }).catch((error: unknown) => console.warn('Стены стиля не собрались, остаются прежние', error))
   void stylePack.then((pack) => {
-    if (!pack || disposed || authoritativeArtLoaded || typeof document === 'undefined') return
+    if (!pack || disposed || typeof document === 'undefined') return
     const loader = new THREE.TextureLoader()
+    // Боковины уступов и края доски — фактурой пакета; прежние, однотонные,
+    // остаются без пакета и на «Экономном». Готовая карта с архитектурой
+    // правит только верх клеток, боковины ей не мешают.
+    if (terrainSides && landscapeDetail !== 'minimal') {
+      const sides = buildStyledTerrainSides(map, pack, { loadTexture: (url) => loader.load(url, () => { if (!disposed) options.onReady?.() }) })
+      if (sides.keys.length) {
+        styledSides = sides
+        terrainSides.visible = false
+        groundGroup.add(sides.group)
+      } else sides.dispose()
+    }
+    // Земля за краем карты — рисунком того же пакета; окрестности
+    // пересобираются, когда фактура пришла, а не раньше: пустая фактура
+    // затемнила бы низину.
+    const groundFloor = surroundingsEnabled && landscapeDetail !== 'minimal' ? surroundingsGroundFloor(map) : null
+    const groundSpec = groundFloor ? pack.floors[groundFloor] : null
+    if (groundSpec) {
+      const groundDetail = ownTexture(resources, loader.load(groundSpec.color, (texture) => {
+        if (disposed) return
+        surroundingsModels = { ...surroundingsModels, groundDetail: { texture, cells: groundSpec.cells } }
+        rebuildSurroundings()
+        options.onReady?.()
+      }))
+      groundDetail.wrapS = groundDetail.wrapT = THREE.RepeatWrapping
+      groundDetail.colorSpace = THREE.SRGBColorSpace
+      groundDetail.anisotropy = 8
+    }
+    if (authoritativeArtLoaded) return
     const built = buildStyledFloors(map, pack, {
       parallax: options.floorParallax !== false,
-      loadTexture: (url) => loader.load(url, () => { if (!disposed) options.onReady?.() }),
+      loadTexture: (url, onLoad) => loader.load(url, (texture) => { onLoad?.(texture); if (!disposed) options.onReady?.() }),
+      relief: landscapeDetail === 'minimal' ? null : options.floorRelief ?? null,
+      onRelief: (key, geometry) => {
+        // Объёмный пол опускает швы ниже прежнего пола: под ним прежний пол
+        // вырезается, иначе его рисунок проступал бы в швах. Слой сетки и
+        // тумана остаётся на всей карте.
+        reliefKeys.add(key)
+        const previous = ground.geometry
+        ground.geometry = createGroundGeometry(resources, map, palette, !groundTexture, (_x, _y, cell) => !reliefKeys.has(floorKeyForCell(map, cell) ?? ''))
+        // Общая сетка слоя сетки и тумана остаётся; прежний вырез — освобождается.
+        if (previous !== groundGeometry) { resources.geometries.delete(previous); previous.dispose() }
+        syncReliefOverlays()
+        if (!disposed) options.onReady?.()
+      },
     })
     if (!built.keys.length) { built.dispose(); return }
     styledFloors = built
@@ -1287,6 +1423,11 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     propAssets?.dispose()
     styledFloors?.dispose()
     styledFloors = null
+    styledSides?.dispose()
+    styledSides = null
+    overlayFlat?.dispose()
+    overlayFlat = null
+    overlayCopies.clear()
     roofs.dispose()
     landscapeAbort.abort()
     rocks.dispose()
@@ -1310,14 +1451,17 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
 
   return {
     group,
-    /** Вода рябит, лава течёт, море за краем катит волны; на «Экономном» всё стоит. */
-    get animated() { return Boolean(waterMaterial || lavaMaterial || surroundings?.animated) && landscapeDetail !== 'minimal' },
+    /** Вода рябит, лава течёт, море за краем катит волны, огонь дышит; на «Экономном» всё стоит. */
+    get animated() { return Boolean(waterMaterial || lavaMaterial || surroundings?.animated || props.lights.length || props.fire) && landscapeDetail !== 'minimal' },
     animate(nowMs: number) {
       if (landscapeDetail === 'minimal') return
       const seconds = nowMs / 1000
       if (waterMaterial) waterMaterial.userData.time.value = seconds
       if (lavaMaterial) lavaMaterial.userData.time.value = seconds
       surroundings?.animate(seconds)
+      // Огни дышат каждый в своей фазе; на «Экономном» стоят, как вода.
+      props.lights.forEach((light, index) => { light.intensity = Number(light.userData.baseIntensity) * fireFlicker(seconds, index + 1) })
+      props.fire?.animate(seconds)
     },
     getPropPickTargets: () => disposed ? [] : props.pickTargets,
     /** Тающая крона: середины фигурок в мире на этот кадр. */

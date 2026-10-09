@@ -68,6 +68,15 @@ test('профили качества: обычное считает AO на п�
   assert.equal(low.shadows, false)
 })
 
+test('профили качества: объёмный пол и трава ковром — выбор владельца, «Экономное» без них', () => {
+  const { high, balanced, low } = quality.BOARD3D_QUALITY
+  assert.deepEqual([high.floorRelief, balanced.floorRelief, low.floorRelief], ['strong', 'strong', null])
+  assert.deepEqual([high.grassStyle, balanced.grassStyle, low.grassStyle], ['carpet', 'carpet', 'tufts'])
+  const source = readFileSync(new URL('../src/TacticalBoard3D.tsx', import.meta.url), 'utf8')
+  assert.ok(source.includes('floorRelief: profile.floorRelief, grassStyle: profile.grassStyle'), 'доска берёт пол и траву из профиля')
+  assert.ok(source.includes('${profile.floorRelief}:${profile.grassStyle}'), 'смена профиля пересобирает пол')
+})
+
 function mapForUi(width = 20, height = 20) {
   const map = createTacticalMap({ width, height, locationId: 'board3d-ui', seed: 'board3d-ui' })
   for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {

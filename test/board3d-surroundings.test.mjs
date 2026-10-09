@@ -102,3 +102,11 @@ test('поле окрестностей: проверка, сериализац�
   const north = orientTacticalMap(round, 'north')
   assert.notDeepEqual(north.surroundings?.sides, { n: 'sea' }, 'поворот уводит море к другой стороне')
 })
+
+test('земля за краем берёт рисунок пакета: газон у леса и луга, грунт у гор и камня, у помещения — ничего', () => {
+  assert.equal(surroundings.surroundingsGroundFloor(mapWith()), 'grass')
+  assert.equal(surroundings.surroundingsGroundFloor(mapWith({ theme: 'building', extra: { surroundings: { biome: 'meadow' } } })), 'grass')
+  assert.equal(surroundings.surroundingsGroundFloor(mapWith({ theme: 'cave', material: 'stone' })), 'earth')
+  assert.equal(surroundings.surroundingsGroundFloor(mapWith({ theme: 'road', material: 'stone' })), 'earth')
+  assert.equal(surroundings.surroundingsGroundFloor(mapWith({ kind: 'interior', material: 'wood', theme: 'building' })), null)
+})

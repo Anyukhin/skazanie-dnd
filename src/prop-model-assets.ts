@@ -7,6 +7,7 @@ import {
 } from './model-assets'
 import { loadPropModelCatalog, propModelFor, type PropModelCatalog } from './prop-model-catalog'
 import { createStyleMaterialBinder, type GraphicsStylePack } from './board3d-style'
+import { prepareCutoutMaterials } from './board3d-cutout'
 import { PROP_ATLAS_MANIFEST, resolvePropAssetId, withStyleProps, type PropFrame } from './board-render'
 import { DETAIL_ASSET_ROOT, DETAIL_PROP_ATLAS_MANIFEST, isDetailFloorStamp } from './detail-props'
 import type { TacticalProp } from './types'
@@ -264,6 +265,9 @@ export async function loadPropModelAssets(props: readonly TacticalProp[], signal
         if (signal.aborted) { disposePropModelAssets(new Map([[entry.key, root]])); break }
         bakeSkinnedMeshes(root)
         bindStyleMaterials?.bind(root)
+        // Листва GLB: фактуры уже загружены парсером. Общие материалы пакета
+        // стиля готовятся при загрузке своих фактур (`createStyleMaterialBinder`).
+        prepareCutoutMaterials(root)
         root.rotation.y = entry.yaw * Math.PI / 180
         root.updateMatrixWorld(true)
         const bounds = new THREE.Box3().setFromObject(root)

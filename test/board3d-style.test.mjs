@@ -17,6 +17,7 @@ const build = await compileClientModules([
 ])
 const [style, floors, walls, mapClient] = build.modules
 const landscape = await build.load('src/board3d-landscape.ts')
+const landscapeTerrain = await build.load('src/board3d-terrain.ts')
 const THREE = await import('three')
 
 const STYLE_ROOT = join(root, 'public', 'assets', 'styles', 'stylized')
@@ -265,6 +266,61 @@ test('пол стиля — по сетке на покрытие из паке�
   const flat = floors.buildStyledFloors(map, pack, { parallax: false, loadTexture: () => new THREE.Texture() })
   assert.ok(flat.group.children.every((mesh) => mesh.material.customProgramCacheKey() !== 'board3d-floor-parallax-v1'))
   flat.dispose()
+})
+
+test('листва пакета: материал с вырезом по альфе сглаживает край, остальные — нет', () => {
+  const pack = style.validateGraphicsStylePack(manifest())
+  const cutoutKey = Object.keys(pack.materials).find((key) => pack.materials[key].alphaTest > 0)
+  assert.ok(cutoutKey, 'в пакете есть листва с альфа-тестом')
+  const binder = style.createStyleMaterialBinder(pack, (url, done) => { queueMicrotask(done); return new THREE.Texture() })
+  const group = new THREE.Group()
+  group.add(new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshStandardMaterial({ name: `skz:${cutoutKey}` })))
+  group.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ name: 'skz:wood' })))
+  assert.equal(binder.bind(group), 2)
+  assert.equal(group.children[0].material.alphaToCoverage, true)
+  assert.equal(group.children[1].material.alphaToCoverage, false)
+})
+
+function terraceMap() {
+  const map = createTacticalMap({ width: 4, height: 3, seed: 'style-sides', fill: { passable: true, revealed: true, material: 'grass', elevation: 0 } })
+  setCell(map, 1, 1, { elevation: 5 })
+  setCell(map, 2, 1, { elevation: 5, material: 'stone' })
+  setCell(map, 3, 2, { revealed: false })
+  return mapClient.decodeTacticalMap(JSON.parse(JSON.stringify(serializeTacticalMap(map))))
+}
+
+test('боковины уступов и края доски — фактурой пакета: грунт под газоном, камень под камнем, UV по миру', () => {
+  const map = terraceMap()
+  const pack = style.validateGraphicsStylePack(manifest())
+  const loaded = []
+  const built = floors.buildStyledTerrainSides(map, pack, { loadTexture: (url) => { loaded.push(url); return new THREE.Texture() } })
+  assert.deepEqual(built.keys, ['earth', 'stone'])
+  assert.deepEqual(built.group.children.map((mesh) => mesh.name), ['styled-terrain-sides:earth', 'styled-terrain-sides:stone'])
+  assert.deepEqual(loaded, ['earth', 'stone'].flatMap((key) => [pack.floors[key].color, pack.floors[key].normal]))
+  const total = built.group.children.reduce((sum, mesh) => sum + mesh.geometry.attributes.position.count, 0)
+  const plain = landscapeTerrain.createTerrainSideGeometry(map)
+  assert.equal(total, plain.attributes.position.count, 'та же геометрия, что у прежних боковин')
+  for (const mesh of built.group.children) {
+    assert.equal(mesh.castShadow, true)
+    assert.equal(mesh.material.vertexColors, true)
+    assert.equal(mesh.material.map.colorSpace, THREE.SRGBColorSpace)
+    const cells = pack.floors[mesh.name.split(':')[1]].cells
+    const { position, uv, normal } = mesh.geometry.attributes
+    for (let index = 0; index < position.count; index += 1) {
+      assert.ok(Math.abs(normal.getY(index)) < 1e-6, 'боковина вертикальна')
+      const along = Math.abs(normal.getX(index)) > .5 ? position.getZ(index) : position.getX(index)
+      assert.ok(Math.abs(uv.getX(index) - along / cells) < 1e-6, 'рисунок идёт вдоль грани без шва')
+      assert.ok(Math.abs(uv.getY(index) - position.getY(index) / cells) < 1e-6)
+    }
+  }
+  let disposed = 0
+  for (const mesh of built.group.children) mesh.geometry.addEventListener('dispose', () => { disposed += 1 })
+  built.dispose()
+  assert.equal(disposed, 2)
+  delete pack.floors.stone
+  const partial = floors.buildStyledTerrainSides(map, pack, { loadTexture: () => new THREE.Texture() })
+  assert.deepEqual(partial.keys, ['earth'], 'покрытие без пакета остаётся на прежних боковинах')
+  partial.dispose()
 })
 
 // --------------------------------------------------------------- стены

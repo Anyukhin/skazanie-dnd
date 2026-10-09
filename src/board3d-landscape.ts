@@ -165,16 +165,119 @@ type Side = 'n' | 'e' | 's' | 'w'
  * клетки стыкуются вплотную, без фаски, шва и случайного подъёма, и рисунок
  * идёт сплошным ковром; кромка со швом остаётся только к мощёной плитке.
  * `neutralShade` убирает зелёный сдвиг газона: у пола стиля цвет даёт фактура.
+ *
+ * `relief` — объёмный пол (`board3d-floor-relief`): верх клетки делится на
+ * `subdivisions` × `subdivisions` и опускается до `depth` там, где карта
+ * высот темнее. У жёсткой кромки — фаски плитки, края покрытия, перепада
+ * высот — смещение плавно гаснет до нуля, поэтому верх стыкуется с фаской и с
+ * соседним покрытием без щелей; ровный ковёр одного покрытия смещается
+ * непрерывно через клетки. Нормали верха считаются по той же функции высоты,
+ * а не по треугольникам клетки, — у соседних клеток они совпадают на стыке.
  */
+export type TileGroundRelief = {
+  subdivisions: number
+  depth: number
+  /** Высота 0..1 по UV в повторах фактуры (те же UV, что у пола). */
+  height: (u: number, v: number) => number
+  /** Покрытие клетки: стык разных покрытий — жёсткая кромка. */
+  surfaceKey: (cell: TacticalCell) => string | null
+}
+
+/** Ширина спада смещения от жёсткой кромки, в клетках. */
+export const TILE_RELIEF_FALLOFF = .16
+
 export function createTileGroundGeometry(map: TacticalMap, options: {
   include?: (x: number, y: number, cell: TacticalCell) => boolean
   uvCells?: number
   seamless?: (cell: TacticalCell) => boolean
   neutralShade?: boolean
+  relief?: TileGroundRelief | null
 } = {}): THREE.BufferGeometry {
   const positions: number[] = [], uvs: number[] = [], colors: number[] = [], indices: number[] = []
   const width = Math.max(1, map.width), height = Math.max(1, map.height)
   let vertex = 0
+  const relief = options.relief && options.uvCells && options.relief.depth > 0 ? options.relief : null
+  const reliefNormals: number[] = []
+  /**
+   * Клетка смыкается с соседями без фаски и шва: естественный ковёр, а с
+   * рельефом — любое покрытие пакета. Объёмная плитка не должна гаснуть к краю
+   * каждой клетки: иначе каждая клетка — поднос с бортиком, и по полу идёт
+   * тёмная сетка. Швы рисует сама карта высот, сетку клеток — слой сетки.
+   */
+  const joins = (cell: TacticalCell | null | undefined): cell is TacticalCell => Boolean(
+    cell?.revealed && cell.surface !== 'water' && (options.seamless?.(cell) || (relief && relief.surfaceKey(cell))),
+  )
+  const smoothCell = (x: number, y: number) => {
+    const cell = cellAt(map, x, y)
+    return joins(cell) ? cell : null
+  }
+  /** Жёсткая кромка между клеткой и её соседом: везде, кроме стыка одного ровного покрытия. */
+  const isHardEdge = (x: number, y: number, dx: number, dy: number) => {
+    const a = smoothCell(x, y), b = smoothCell(x + dx, y + dy)
+    if (!a || !b || !relief) return true
+    if (terrainHeightAt(map, x, y) !== terrainHeightAt(map, x + dx, y + dy)) return true
+    const key = relief.surfaceKey(a)
+    return !key || key !== relief.surfaceKey(b)
+  }
+  // Кромки считаются один раз: северная и западная сторона каждой клетки и
+  // полосы за краем карты. Смещение вершины спрашивает их десятки раз.
+  const stride = map.width + 4
+  const hardNorth = new Uint8Array(relief ? stride * (map.height + 4) : 0)
+  const hardWest = new Uint8Array(hardNorth.length)
+  if (relief) for (let y = -2; y < map.height + 2; y += 1) for (let x = -2; x < map.width + 2; x += 1) {
+    hardNorth[(y + 2) * stride + x + 2] = isHardEdge(x, y, 0, -1) ? 1 : 0
+    hardWest[(y + 2) * stride + x + 2] = isHardEdge(x, y, -1, 0) ? 1 : 0
+  }
+  const hardEdge = (x: number, y: number, dx: number, _dy: number) => {
+    if (x < -2 || y < -2 || x >= map.width + 2 || y >= map.height + 2) return true
+    return (dx ? hardWest : hardNorth)[(y + 2) * stride + x + 2] === 1
+  }
+  /**
+   * Смещение верха в мировой точке: одно на всю карту, поэтому стыки клеток
+   * совпадают. Рельеф только опускает швы и впадины вниз от верха — у всех
+   * покрытий: плоские наклейки пола (грядки, ковры, лужи) и ноги фигур стоят
+   * на прежней высоте и не тонут в буграх.
+   */
+  const reliefOffset = (px: number, pz: number) => -reliefDrop(px, pz)
+  // Узлы общей решётки с шагом 1/steps: соседние клетки делят узлы стыка, и
+  // смещение каждого узла считается один раз — нормаль берёт соседние узлы.
+  // Без решётки (отступ у фаски) — прямой расчёт.
+  const latticeSteps = relief ? Math.max(1, Math.round(relief.subdivisions)) : 1
+  const latticeWidth = map.width * latticeSteps + 1
+  const lattice = relief ? new Float32Array(latticeWidth * (map.height * latticeSteps + 1)).fill(Number.NaN) : null
+  const latticeOffset = (i: number, j: number) => {
+    if (!lattice || i < 0 || j < 0 || i >= latticeWidth || j > map.height * latticeSteps) return reliefOffset(i / latticeSteps, j / latticeSteps)
+    const at = j * latticeWidth + i
+    if (Number.isNaN(lattice[at])) lattice[at] = reliefOffset(i / latticeSteps, j / latticeSteps)
+    return lattice[at]
+  }
+  /** Вес смещения: ноль у жёсткой кромки и до неё на ширину фаски, единица — дальше спада. */
+  // Клетка, у которой в окрестности 3×3 нет ни одной жёсткой кромки: вес в ней — 1.
+  const quiet = new Uint8Array(relief ? (map.width + 4) * (map.height + 4) : 0)
+  if (relief) for (let cz = -1; cz < map.height + 1; cz += 1) for (let cx = -1; cx < map.width + 1; cx += 1) {
+    let calm = true
+    for (let y = cz - 1; y <= cz + 2 && calm; y += 1) for (let x = cx - 1; x <= cx + 2 && calm; x += 1) {
+      if (hardEdge(x, y, 0, -1) || hardEdge(x, y, -1, 0)) calm = false
+    }
+    quiet[(cz + 2) * stride + cx + 2] = calm ? 1 : 0
+  }
+  const reliefWeight = (px: number, pz: number) => {
+    const cx = Math.floor(px), cz = Math.floor(pz)
+    if (cx >= -1 && cz >= -1 && cx <= map.width && cz <= map.height && quiet[(cz + 2) * stride + cx + 2]) return 1
+    let nearest = Infinity
+    for (let y = cz - 1; y <= cz + 1; y += 1) for (let x = cx - 1; x <= cx + 1; x += 1) {
+      // Каждая сторона клетки — отрезок; расстояние до ближайшей жёсткой.
+      if (hardEdge(x, y, 0, -1)) nearest = Math.min(nearest, Math.hypot(Math.max(x - px, 0, px - x - 1), pz - y))
+      if (hardEdge(x, y, -1, 0)) nearest = Math.min(nearest, Math.hypot(px - x, Math.max(y - pz, 0, pz - y - 1)))
+    }
+    return THREE.MathUtils.smoothstep(nearest, TILE_BEVEL, TILE_BEVEL + TILE_RELIEF_FALLOFF)
+  }
+  const reliefDrop = (px: number, pz: number) => {
+    if (!relief) return 0
+    const weight = reliefWeight(px, pz)
+    if (weight <= 0) return 0
+    return (1 - relief.height(px / options.uvCells!, pz / options.uvCells!)) * relief.depth * weight
+  }
   const push = (x: number, y: number, z: number, shade: [number, number, number]) => {
     positions.push(x, y, z)
     if (options.uvCells) uvs.push(x / options.uvCells, z / options.uvCells)
@@ -189,8 +292,10 @@ export function createTileGroundGeometry(map: TacticalMap, options: {
     if (options.include && !options.include(x, y, cell)) continue
     const level = terrainHeightAt(map, x, y)
     const water = cell.surface === 'water'
-    const smooth = !water && Boolean(options.seamless?.(cell))
-    const tint = smooth ? 1 : 1 - cellNoise(x, y, 7) * .08
+    const smooth = !water && joins(cell)
+    // Естественный ковёр не разнится по клеткам: он лежит сплошным рисунком.
+    const natural = !water && Boolean(options.seamless?.(cell))
+    const tint = natural ? 1 : 1 - cellNoise(x, y, 7) * .08
     // Ровный ковёр лежит над самым высоким случайным подъёмом подложки: иначе
     // приподнятые плитки старого пола проступали сквозь него квадратами.
     const top = water ? level - WATER_BED_DEPTH : smooth ? level + TILE_JITTER + .002 : level + tileLift(x, y)
@@ -206,17 +311,45 @@ export function createTileGroundGeometry(map: TacticalMap, options: {
     const offsets: Record<Side, [number, number]> = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] }
     const smoothNeighbor = (side: Side) => {
       const next = cellAt(map, x + offsets[side][0], y + offsets[side][1])
-      return Boolean(next?.revealed && next.surface !== 'water' && options.seamless?.(next) && terrainHeightAt(map, next.x, next.y) === level)
+      return Boolean(joins(next) && terrainHeightAt(map, next.x, next.y) === level)
     }
     const inset = (side: Side) => water ? (neighborWater[side] ? 0 : WATER_BANK_INSET) : smooth ? 0 : TILE_BEVEL
     const edgeHeight = (side: Side) => water && neighborWater[side] ? top : smooth && smoothNeighbor(side) ? top : border
     const inN = inset('n'), inE = inset('e'), inS = inset('s'), inW = inset('w')
-    // Верх: свои четыре вершины, нормаль строго вверх.
-    const t0 = push(x + inW, top, y + inN, topShade)
-    const t1 = push(x + inW, top, y + 1 - inS, topShade)
-    const t2 = push(x + 1 - inE, top, y + 1 - inS, topShade)
-    const t3 = push(x + 1 - inE, top, y + inN, topShade)
-    quad(t0, t1, t2, t3)
+    if (relief && !water) {
+      // Верх сеткой: вершины опущены по карте высот, нормаль — по той же функции.
+      const steps = Math.max(1, Math.round(relief.subdivisions))
+      const x0 = x + inW, x1 = x + 1 - inE, z0 = y + inN, z1 = y + 1 - inS
+      const first = vertex
+      const epsilon = 1 / steps
+      const onLattice = !inW && !inE && !inN && !inS
+      for (let i = 0; i <= steps; i += 1) for (let j = 0; j <= steps; j += 1) {
+        const px = x0 + (x1 - x0) * i / steps, pz = z0 + (z1 - z0) * j / steps
+        let offset: number, slopeX: number, slopeZ: number
+        if (onLattice) {
+          const li = x * steps + i, lj = y * steps + j
+          offset = latticeOffset(li, lj)
+          slopeX = (latticeOffset(li + 1, lj) - latticeOffset(li - 1, lj)) * steps / 2
+          slopeZ = (latticeOffset(li, lj + 1) - latticeOffset(li, lj - 1)) * steps / 2
+        } else {
+          offset = reliefOffset(px, pz)
+          slopeX = (reliefOffset(px + epsilon, pz) - reliefOffset(px - epsilon, pz)) / (2 * epsilon)
+          slopeZ = (reliefOffset(px, pz + epsilon) - reliefOffset(px, pz - epsilon)) / (2 * epsilon)
+        }
+        const index = push(px, top + offset, pz, topShade)
+        const length = Math.hypot(slopeX, 1, slopeZ)
+        reliefNormals.push(index, -slopeX / length, 1 / length, -slopeZ / length)
+      }
+      const at = (i: number, j: number) => first + i * (steps + 1) + j
+      for (let i = 0; i < steps; i += 1) for (let j = 0; j < steps; j += 1) quad(at(i, j), at(i, j + 1), at(i + 1, j + 1), at(i + 1, j))
+    } else {
+      // Верх: свои четыре вершины, нормаль строго вверх.
+      const t0 = push(x + inW, top, y + inN, topShade)
+      const t1 = push(x + inW, top, y + 1 - inS, topShade)
+      const t2 = push(x + 1 - inE, top, y + 1 - inS, topShade)
+      const t3 = push(x + 1 - inE, top, y + inN, topShade)
+      quad(t0, t1, t2, t3)
+    }
     // Кольцо фаски: внутренняя кромка совпадает с верхом, внешняя — с краем клетки.
     const cornerHeight = (a: Side, b: Side) => Math.max(edgeHeight(a), edgeHeight(b))
     const i0 = push(x + inW, top, y + inN, edgeShade)
@@ -239,6 +372,11 @@ export function createTileGroundGeometry(map: TacticalMap, options: {
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
   geometry.setIndex(vertex > 65535 ? new THREE.Uint32BufferAttribute(indices, 1) : new THREE.Uint16BufferAttribute(indices, 1))
   geometry.computeVertexNormals()
+  if (reliefNormals.length) {
+    const normal = geometry.getAttribute('normal') as THREE.BufferAttribute
+    for (let at = 0; at < reliefNormals.length; at += 4) normal.setXYZ(reliefNormals[at], reliefNormals[at + 1], reliefNormals[at + 2], reliefNormals[at + 3])
+    normal.needsUpdate = true
+  }
   geometry.computeBoundingBox()
   geometry.computeBoundingSphere()
   return geometry
@@ -867,8 +1005,14 @@ const FLOWER_COLORS = ['#f4f1e4', '#f2d24b', '#c9a6e8', '#f0a4b4'].map((value) =
  * пятна гуще и реже по низкочастотному шуму, а у края газона — у дороги,
  * стены, мостовой или предмета — трава всегда гуще и прячет прямую кромку
  * клетки. Изредка в траве цветы. На «Экономном» травы нет вовсе.
+ *
+ * `carpet` — густой ковёр: вместо пятен — мелкие пучки ровной сеткой с
+ * разбросом по всей клетке газона (4×4 на «Высоком», 3×3 на «Обычном»),
+ * кромка и цветы — как прежде.
  */
-export function createGrassTufts(map: TacticalMap, props: readonly TacticalProp[], detail: LandscapeDetail): LandscapeInstances | null {
+export type GrassTuftStyle = 'tufts' | 'carpet'
+
+export function createGrassTufts(map: TacticalMap, props: readonly TacticalProp[], detail: LandscapeDetail, style: GrassTuftStyle = 'tufts'): LandscapeInstances | null {
   if (detail === 'minimal') return null
   const occupied = new Set<string>()
   for (const prop of props) {
@@ -896,12 +1040,22 @@ export function createGrassTufts(map: TacticalMap, props: readonly TacticalProp[
   }
   for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
     if (!lawn(x, y) || occupied.has(`${x},${y}`)) continue
-    // Пятна: плавный шум на сетке в три клетки.
-    const patch = smoothNoise(x / 3.2, y / 3.2, 23)
-    const base = Math.floor((patch * 4 + cellNoise(x, y, 21)) * density)
-    for (let index = 0; index < base; index += 1) {
-      const n = (salt: number) => cellNoise(x, y, salt + index * 17)
-      place(x, y, x + .1 + n(1) * .8, y + .1 + n(2) * .8, .75 + n(4) * .55, index * 17)
+    if (style === 'carpet') {
+      // Ковёр: сетка с разбросом внутри своей ячейки — клетка покрыта целиком.
+      const side = detail === 'full' ? 4 : 3
+      for (let row = 0; row < side; row += 1) for (let column = 0; column < side; column += 1) {
+        const index = row * side + column
+        const n = (salt: number) => cellNoise(x, y, 300 + salt + index * 13)
+        place(x, y, x + (column + .15 + n(1) * .7) / side, y + (row + .15 + n(2) * .7) / side, .5 + n(4) * .3, 300 + index * 13)
+      }
+    } else {
+      // Пятна: плавный шум на сетке в три клетки.
+      const patch = smoothNoise(x / 3.2, y / 3.2, 23)
+      const base = Math.floor((patch * 4 + cellNoise(x, y, 21)) * density)
+      for (let index = 0; index < base; index += 1) {
+        const n = (salt: number) => cellNoise(x, y, salt + index * 17)
+        place(x, y, x + .1 + n(1) * .8, y + .1 + n(2) * .8, .75 + n(4) * .55, index * 17)
+      }
     }
     // Кромка газона: у каждой стороны, где кончается трава, — пучки вдоль края.
     const sides = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const
