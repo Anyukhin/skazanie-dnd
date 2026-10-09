@@ -634,7 +634,7 @@ async function kitPart(path, plan, imageOverrides = {}) {
   return scene
 }
 
-// ------------------------------------------------------- наборы Kenney 2.0
+// ------------------------------------------------- наборы Kenney 2.0 и KayKit
 
 /**
  * Класс рисованного материала по цвету общей палитры Kenney 2.0 (sRGB):
@@ -648,12 +648,12 @@ async function kitPart(path, plan, imageOverrides = {}) {
  * красит фактурой камня в цвет земли.
  *
  * @param {THREE.Color} color
- * @param {{ lavender?: string, orange?: string, mint?: string, blue?: string }} [tones]
+ * @param {{ lavender?: string, orange?: string, mint?: string, blue?: string, grey?: string }} [tones]
  */
 function kenneyClass(color, tones = {}) {
   const hsl = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
   // Белое у Kenney — светлые грани камня (верх валуна, обод), а не побелка.
-  if (hsl.s < .2) return hsl.l < .38 ? 'metal' : 'stone'
+  if (hsl.s < .2) return hsl.l < .38 ? 'metal' : tones.grey ?? 'stone'
   if (hsl.s < .4 && hsl.h > .55 && hsl.h < .72) return tones.lavender ?? 'stone'
   // Почти белое голубоватое — светлые грани того же камня, а не штукатурка.
   if (hsl.l > .86) return hsl.h > .5 && hsl.h < .72 ? tones.lavender ?? 'stone' : 'plaster'
@@ -672,9 +672,12 @@ const KENNEY_CLASS_COLORS = {
   wood: { h: .07, s: .42, l: .38, reference: .66 },
   stone: { h: .09, s: .07, l: .5, reference: .7 },
   dirt: { h: .08, s: .24, l: .23, reference: .55 },
-  metal: { h: .6, s: .05, l: .3, reference: .45 },
+  // Железо не светлее закопчённого: светлые грани палитры не выходят серебром.
+  metal: { h: .6, s: .05, l: .3, reference: .45, max: .42 },
   plaster: { h: .09, s: .18, l: .8, reference: .92 },
   straw: { h: .12, s: .5, l: .6, reference: .7 },
+  sand: { h: .085, s: .34, l: .62, reference: .7 },
+  canvas: { h: .09, s: .3, l: .42, reference: .66 },
 }
 
 /**
@@ -688,25 +691,64 @@ const KENNEY_CLASS_COLORS = {
  * @param {THREE.Color} color цвет палитры, меняется на месте
  * @param {string} kind
  */
-function kenneyTint(color, kind) {
-  const target = KENNEY_CLASS_COLORS[kind]
+function kenneyTint(color, kind, colors = KENNEY_CLASS_COLORS) {
+  const target = colors[kind]
   if (!target) return color
   const { l } = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
-  const lightness = Math.min(.9, Math.max(.12, target.l * l / target.reference))
+  const lightness = Math.min(target.max ?? .9, Math.max(.12, target.l * l / target.reference))
   return color.setHSL(target.h, target.s, lightness, THREE.SRGBColorSpace)
 }
 
-const kenneyCache = new Map()
 /**
- * Модель Kenney 2.0 красится одной палитрой `colormap.png`: цвет квадрата под
- * UV треугольника переносится в цвета его вершин, треугольники одного класса
- * собираются в свой меш (`wood`, `stone`, `metal`, `cloth`, `plaster`…) — по
- * этому имени `restyle` выбирает рисованный материал, а цвет вершин
- * (`kenneyTint`) задаёт светлоту фактуры или цвет ткани.
+ * Класс рисованного материала по цвету атласа KayKit (sRGB): атлас — столбцы
+ * вертикальных градиентов, цвет у KayKit природный. Серое и серо-голубое —
+ * камень (тёмное — металл), красно-коричневое — дерево, зелень — листва и
+ * зелень овощей, насыщенное оранжевое, жёлтое и красное — еда и краска со
+ * своим цветом. Тона `grey`, `brown`, `green`, `bright` деталь рецепта может
+ * прочесть иначе (`tones`): оранжевая столешница — дерево, рулон — ткань.
+ *
+ * @param {THREE.Color} color
+ * @param {{ grey?: string, brown?: string, green?: string, bright?: string }} [tones]
  */
-async function kenneyPart(path, plan, tones) {
-  if (!kenneyCache.has(path)) kenneyCache.set(path, loader.loadAsync(`/source/${path.split('/').map(encodeURIComponent).join('/')}.glb`))
-  const gltf = await kenneyCache.get(path)
+function kaykitClass(color, tones = {}) {
+  const hsl = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
+  if (hsl.s < .12 || (hsl.s < .3 && hsl.h > .5 && hsl.h < .75)) return hsl.l < .28 ? 'metal' : tones.grey ?? 'stone'
+  if (hsl.l > .9) return 'plaster'
+  if (hsl.h >= .015 && hsl.h < .12 && hsl.s < .62) return tones.brown ?? 'wood'
+  if (hsl.h > .2 && hsl.h < .5) return tones.green ?? 'leaves'
+  return tones.bright ?? 'food'
+}
+
+/** Те же цвета классов, что у Kenney, при светлоте середины градиента KayKit. */
+const KAYKIT_CLASS_COLORS = {
+  wood: { ...KENNEY_CLASS_COLORS.wood, reference: .48 },
+  stone: { ...KENNEY_CLASS_COLORS.stone, reference: .62 },
+  dirt: { ...KENNEY_CLASS_COLORS.dirt, reference: .48 },
+  metal: { ...KENNEY_CLASS_COLORS.metal, reference: .3 },
+  plaster: { ...KENNEY_CLASS_COLORS.plaster, reference: .92 },
+  straw: { ...KENNEY_CLASS_COLORS.straw, reference: .62 },
+}
+
+/** Палитра набора: правило классов, цвета классов и формат файлов модели. */
+const PALETTES = {
+  kenney: { classify: kenneyClass, colors: KENNEY_CLASS_COLORS, extension: 'glb' },
+  kaykit: { classify: kaykitClass, colors: KAYKIT_CLASS_COLORS, extension: 'gltf' },
+}
+
+const paletteCache = new Map()
+/**
+ * Модель Kenney 2.0 (палитра `colormap.png`) или KayKit (атлас градиентов)
+ * красится одной текстурой: цвет под UV треугольника переносится в цвета его
+ * вершин, треугольники одного класса собираются в свой меш (`wood`, `stone`,
+ * `metal`, `cloth`, `plaster`…) — по этому имени `restyle` выбирает
+ * рисованный материал, а цвет вершин (`kenneyTint`) задаёт светлоту фактуры
+ * или цвет ткани, еды и листвы.
+ */
+async function palettePart(path, plan, tones, paletteId) {
+  const palette = PALETTES[paletteId]
+  const url = `/source/${path.split('/').map(encodeURIComponent).join('/')}.${palette.extension}`
+  if (!paletteCache.has(url)) paletteCache.set(url, loader.loadAsync(url))
+  const gltf = await paletteCache.get(url)
   const scene = gltf.scene.clone(true)
   scene.updateMatrixWorld(true)
   const meshes = []
@@ -730,8 +772,8 @@ async function kenneyPart(path, plan, tones) {
         const at = (y * pixels.width + x) * 4
         color.setRGB(pixels.data[at] / 255, pixels.data[at + 1] / 255, pixels.data[at + 2] / 255, THREE.SRGBColorSpace)
       } else color.copy(material.color)
-      const kind = kenneyClass(color, tones)
-      kenneyTint(color, kind)
+      const kind = palette.classify(color, tones)
+      kenneyTint(color, kind, palette.colors)
       let bucket = buckets.get(kind)
       if (!bucket) buckets.set(kind, bucket = { position: [], normal: [], color: [] })
       for (let k = 0; k < 3; k++) {
@@ -790,8 +832,9 @@ async function buildRecipe(recipe, plan) {
   for (const part of recipe.parts) {
     const object = part.kit ? await kitPart(part.kit, plan, part.imageOverrides)
       : part.restyle ? await restylePart(part.restyle, plan)
-        : part.kenney ? await kenneyPart(part.kenney, plan, part.tones)
-          : await detailPart(part.detail, plan)
+        : part.kenney ? await palettePart(part.kenney, plan, part.tones, 'kenney')
+          : part.kaykit ? await palettePart(part.kaykit, plan, part.tones, 'kaykit')
+            : await detailPart(part.detail, plan)
     const holder = new THREE.Group()
     holder.add(object)
     if (part.center) {
