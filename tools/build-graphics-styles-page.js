@@ -637,28 +637,74 @@ async function kitPart(path, plan, imageOverrides = {}) {
 // ------------------------------------------------------- наборы Kenney 2.0
 
 /**
- * Класс рисованного материала по цвету палитры Kenney (sRGB): коричневое —
- * дерево, серое — камень, тёмное серое и голубовато-стальное — металл, яркое —
- * ткань и краска, почти белое — штукатурка.
+ * Класс рисованного материала по цвету общей палитры Kenney 2.0 (sRGB):
+ * серое и белое — камень, тёмное серое — металл, кремовое — штукатурка,
+ * остальное по тону. Тон с классом по умолчанию: `lavender` (сиреневый) — камень,
+ * `orange` (оранжевый и персиковый) — дерево, `mint` и `blue` — ткань и краска,
+ * как и красное. Наборы читают тон по-разному: у ворот замка сиреневое — сталь
+ * решётки, у кладбища мятное — кованое железо, у фонтана синее — вода, у стога
+ * оранжевое — солома, у могильного холма — земля. Это решает `tones` детали
+ * рецепта; класс `water` перекраска оставляет плоским цветом палитры, `dirt`
+ * красит фактурой камня в цвет земли.
+ *
+ * @param {THREE.Color} color
+ * @param {{ lavender?: string, orange?: string, mint?: string, blue?: string }} [tones]
  */
-function kenneyClass(color) {
+function kenneyClass(color, tones = {}) {
   const hsl = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
-  if (hsl.s < .2) return hsl.l < .38 ? 'metal' : hsl.l > .9 ? 'plaster' : 'stone'
-  if (hsl.s < .4 && hsl.h > .55 && hsl.h < .72) return 'metal'
-  if (hsl.l > .86) return 'plaster'
-  if (hsl.h < .13 || hsl.h > .97) return hsl.s <= .62 || hsl.l > .7 ? 'wood' : 'cloth'
+  // Белое у Kenney — светлые грани камня (верх валуна, обод), а не побелка.
+  if (hsl.s < .2) return hsl.l < .38 ? 'metal' : 'stone'
+  if (hsl.s < .4 && hsl.h > .55 && hsl.h < .72) return tones.lavender ?? 'stone'
+  // Почти белое голубоватое — светлые грани того же камня, а не штукатурка.
+  if (hsl.l > .86) return hsl.h > .5 && hsl.h < .72 ? tones.lavender ?? 'stone' : 'plaster'
+  if (hsl.h > .3 && hsl.h < .5) return tones.mint ?? 'cloth'
+  if (hsl.h >= .5 && hsl.h < .72) return tones.blue ?? 'cloth'
+  if (hsl.h >= .025 && hsl.h < .13 && hsl.s < .99) return tones.orange ?? 'wood'
   return 'cloth'
+}
+
+/**
+ * Цвет класса (sRGB, тон, насыщенность, светлота) и светлота палитры Kenney,
+ * которой он соответствует: основное оранжевое дерево палитры становится
+ * коричневым, сиреневый камень — тёплым серым, мятное железо — тёмным.
+ */
+const KENNEY_CLASS_COLORS = {
+  wood: { h: .07, s: .42, l: .38, reference: .66 },
+  stone: { h: .09, s: .07, l: .5, reference: .7 },
+  dirt: { h: .08, s: .24, l: .23, reference: .55 },
+  metal: { h: .6, s: .05, l: .3, reference: .45 },
+  plaster: { h: .09, s: .18, l: .8, reference: .92 },
+  straw: { h: .12, s: .5, l: .6, reference: .7 },
+}
+
+/**
+ * Оттенок вершины для рисованной фактуры. Фактуры нейтральны, цвет детали
+ * даёт оттенок, поэтому дерево, камень, металл и солома получают свой цвет
+ * класса, а от палитры Kenney остаётся только светлота: тёмная доска темнее
+ * светлой. Иначе оранжевое дерево палитры выходит розовым, сиреневый камень —
+ * лиловым. Ткань, краска и вода сохраняют цвет палитры — это зелёное и
+ * красное знамя, навес прилавка, вода фонтана.
+ *
+ * @param {THREE.Color} color цвет палитры, меняется на месте
+ * @param {string} kind
+ */
+function kenneyTint(color, kind) {
+  const target = KENNEY_CLASS_COLORS[kind]
+  if (!target) return color
+  const { l } = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
+  const lightness = Math.min(.9, Math.max(.12, target.l * l / target.reference))
+  return color.setHSL(target.h, target.s, lightness, THREE.SRGBColorSpace)
 }
 
 const kenneyCache = new Map()
 /**
  * Модель Kenney 2.0 красится одной палитрой `colormap.png`: цвет квадрата под
  * UV треугольника переносится в цвета его вершин, треугольники одного класса
- * собираются в свой меш (`wood`, `stone`, `metal`, `cloth`, `plaster`) — по
+ * собираются в свой меш (`wood`, `stone`, `metal`, `cloth`, `plaster`…) — по
  * этому имени `restyle` выбирает рисованный материал, а цвет вершин
- * возвращает оттенок палитры поверх нейтральной фактуры.
+ * (`kenneyTint`) задаёт светлоту фактуры или цвет ткани.
  */
-async function kenneyPart(path, plan) {
+async function kenneyPart(path, plan, tones) {
   if (!kenneyCache.has(path)) kenneyCache.set(path, loader.loadAsync(`/source/${path.split('/').map(encodeURIComponent).join('/')}.glb`))
   const gltf = await kenneyCache.get(path)
   const scene = gltf.scene.clone(true)
@@ -684,7 +730,8 @@ async function kenneyPart(path, plan) {
         const at = (y * pixels.width + x) * 4
         color.setRGB(pixels.data[at] / 255, pixels.data[at + 1] / 255, pixels.data[at + 2] / 255, THREE.SRGBColorSpace)
       } else color.copy(material.color)
-      const kind = kenneyClass(color)
+      const kind = kenneyClass(color, tones)
+      kenneyTint(color, kind)
       let bucket = buckets.get(kind)
       if (!bucket) buckets.set(kind, bucket = { position: [], normal: [], color: [] })
       for (let k = 0; k < 3; k++) {
@@ -743,7 +790,7 @@ async function buildRecipe(recipe, plan) {
   for (const part of recipe.parts) {
     const object = part.kit ? await kitPart(part.kit, plan, part.imageOverrides)
       : part.restyle ? await restylePart(part.restyle, plan)
-        : part.kenney ? await kenneyPart(part.kenney, plan)
+        : part.kenney ? await kenneyPart(part.kenney, plan, part.tones)
           : await detailPart(part.detail, plan)
     const holder = new THREE.Group()
     holder.add(object)

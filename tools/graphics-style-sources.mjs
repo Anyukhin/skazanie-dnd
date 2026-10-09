@@ -46,8 +46,11 @@
  * `native` — не ставить деталь на землю: она уже на месте в координатах набора.
  * `kenney` — модель набора Kenney 2.0 из `tmp/asset-src` (путь без `.glb`): цвет
  *   её палитры переносится в цвета вершин, треугольники делятся по классу
- *   материала, дальше — та же перекраска, что у `restyle`.
- * @typedef {{ kit?: string, restyle?: string, detail?: string, kenney?: string, at?: [number, number, number], yaw?: number, scale?: number | [number, number, number], on?: number, tilt?: [number, number, number], native?: boolean, center?: boolean, imageOverrides?: Record<string, string> }} PartSource
+ *   материала, дальше — та же перекраска, что у `restyle`. `tones` меняет класс
+ *   тона палитры (`lavender`, `orange`, `mint`, `blue`): мятное кладбищенское —
+ *   железо, синее фонтана — вода.
+ * @typedef {{ lavender?: string, orange?: string, mint?: string, blue?: string }} KenneyTones
+ * @typedef {{ kit?: string, restyle?: string, detail?: string, kenney?: string, tones?: KenneyTones, at?: [number, number, number], yaw?: number, scale?: number | [number, number, number], on?: number, tilt?: [number, number, number], native?: boolean, center?: boolean, imageOverrides?: Record<string, string> }} PartSource
  */
 
 /**
@@ -70,22 +73,48 @@ const detail = (/** @type {string} */ id) => ({ name: `detail_${id}`, parts: [{ 
 const nature = (/** @type {string[]} */ files) => files.map((file) => ref(`quaternius-nature/${file}`))
 
 /**
- * Наборы Kenney 2.0 (CC0), скачаны 2026-10-09 (`tmp/asset-src/SOURCES.md`).
- * Берутся отдельные вещи — телеги, прилавки, знамёна, фонтан, баллиста; стены,
- * крыши, дороги и сегменты пещер — строительные детали, доска строит их сама.
+ * Наборы Kenney 2.0 (CC0): городок, замок и пещера скачаны 2026-10-09,
+ * кладбище — архив `kenney_graveyard-kit_5.0.zip`, который уже даёт выпуску
+ * окружения могилы и урны, распакован в `kenney-graveyard-kit`
+ * (`tmp/asset-src/SOURCES.md`). Берутся отдельные вещи — телеги, прилавки,
+ * знамёна, фонтаны, надгробия, баллиста; стены, крыши, дороги и сегменты
+ * пещер — строительные детали, доска строит их сама.
  */
 const KENNEY_KITS = Object.freeze({
   town: 'dl-kenney-fantasy-town-kit/unpacked/Models/GLB format',
   castle: 'dl-kenney-castle-kit/unpacked/Models/GLB format',
   cave: 'dl-kenney-modular-cave-kit/unpacked/Models/GLB format',
+  graveyard: 'kenney-graveyard-kit/Models/GLB format',
 })
 /**
  * У моделей Kenney длинная сторона вдоль Z, а длинные виды (телега, скамья,
  * ограда, бревно) занимают 2×1 клетки по X: `yaw: 90` кладёт модель вдоль следа,
  * иначе вписывание сжимает её вдвое.
- * @param {keyof typeof KENNEY_KITS} kit @param {string} file @param {number} [yaw]
+ * @param {keyof typeof KENNEY_KITS} kit @param {string} file @param {number} [yaw] @param {KenneyTones} [tones]
  */
-const kenney = (kit, file, yaw = 0) => ({ name: `kenney_${kit}_${file.replace(/-/gu, '_')}`, parts: [{ kenney: `${KENNEY_KITS[kit]}/${file}` }], ...(yaw ? { yaw } : {}) })
+const kenney = (kit, file, yaw = 0, tones = undefined) => ({
+  name: `kenney_${kit}_${file.replace(/-/gu, '_')}`,
+  parts: [{ kenney: `${KENNEY_KITS[kit]}/${file}`, ...(tones ? { tones } : {}) }],
+  ...(yaw ? { yaw } : {}),
+})
+/** Мятное у кладбища Kenney — кованое железо оград, фонарей и решёток. */
+const GRAVEYARD_TONES = Object.freeze({ mint: 'metal' })
+/** @param {string} file @param {number} [yaw] @param {KenneyTones} [tones] */
+const graveyard = (file, yaw = 0, tones = {}) => kenney('graveyard', file, yaw, { ...GRAVEYARD_TONES, ...tones })
+/**
+ * Могила кладбища Kenney: земляной холм и надгробие в изголовье, как могилы выпуска
+ * окружения (`GRAVEYARD_SELECTION` в `tools/environment-packs.mjs`); `yaw: 90`
+ * кладёт её вдоль следа 2×1.
+ * @param {string} mound @param {string} stone @param {number} head
+ */
+const graveyardGrave = (mound, stone, head) => ({
+  name: `kenney_graveyard_${mound.replace(/-/gu, '_')}_${stone.replace(/-/gu, '_')}`,
+  yaw: 90,
+  parts: [
+    { kenney: `${KENNEY_KITS.graveyard}/${mound}`, tones: { ...GRAVEYARD_TONES, orange: 'dirt' } },
+    { kenney: `${KENNEY_KITS.graveyard}/${stone}`, tones: GRAVEYARD_TONES, center: true, at: /** @type {[number, number, number]} */ ([0, 0, head]) },
+  ],
+})
 
 /** Модели набора детализации, у которых есть авторский рецепт. */
 const DETAIL_RECIPES = [
@@ -403,7 +432,8 @@ const PROPS = {
   market_stall: [ref('quaternius/stall_empty.glb'), kenney('town', 'stall-green'), kenney('town', 'stall-red')],
   bench: [ref('quaternius/bench.glb'), kenney('town', 'stall-bench', 90)],
   stool: [ref('quaternius/stool.glb'), kenney('town', 'stall-stool')],
-  portcullis_gate: [kenney('castle', 'metal-gate'), kenney('cave', 'gate-metal-bars')],
+  // Сиреневое у решёток — сталь, а не камень.
+  portcullis_gate: [kenney('castle', 'metal-gate', 0, { lavender: 'metal' }), kenney('cave', 'gate-metal-bars', 0, { lavender: 'metal' })],
 }
 for (const id of DETAIL_RECIPES) PROPS[id] = [detail(id)]
 
@@ -504,6 +534,30 @@ PROPS.boulder = [...PROPS.boulder, kenney('town', 'rock-large'), kenney('castle'
 PROPS.rock_small = [...PROPS.rock_small, kenney('town', 'rock-small'), kenney('castle', 'rocks-small')]
 PROPS.fallen_log = [...PROPS.fallen_log, kenney('castle', 'tree-log', 90)]
 PROPS.ballista = [...PROPS.ballista, kenney('castle', 'siege-ballista')]
+// Кладбище Kenney 5.0 и фонтаны городка: варианты склепа, храма, двора и площади.
+// Клиент принимает не больше восьми вариантов вида (`validateGraphicsStylePack`).
+PROPS.grave = [...PROPS.grave,
+  graveyardGrave('grave', 'gravestone-round', -.66), graveyardGrave('grave', 'gravestone-cross', -.7),
+  graveyardGrave('grave-border', 'gravestone-decorative', -.74), graveyardGrave('grave-border', 'gravestone-broken', -.76),
+  graveyardGrave('grave', 'gravestone-wide', -.68), graveyardGrave('grave-border', 'gravestone-roof', -.74),
+  graveyardGrave('grave', 'gravestone-cross-large', -.7),
+]
+PROPS.sarcophagus = [...PROPS.sarcophagus, graveyard('crypt', 90)]
+PROPS.urn = [...PROPS.urn, graveyard('urn-round'), graveyard('urn-square')]
+PROPS.altar = [...PROPS.altar, graveyard('altar-stone'), graveyard('altar-wood')]
+// Оранжевые пояса колонны — резьба того же камня, а не деревянные обручи.
+PROPS.pillar = [...PROPS.pillar, graveyard('column-large', 0, { orange: 'stone' })]
+PROPS.bench = [...PROPS.bench, graveyard('bench')]
+PROPS.tree_stump = [...PROPS.tree_stump, graveyard('trunk')]
+PROPS.rock_cluster = [...PROPS.rock_cluster, graveyard('rocks-tall')]
+PROPS.fence_gate = [...PROPS.fence_gate, graveyard('fence-gate')]
+// Два тюка рядом: один тюк на следе 2×1 вышел бы ростом с человека.
+PROPS.hay_bales = [...PROPS.hay_bales, { name: 'kenney_graveyard_hay_bales', parts: [
+  { kenney: `${KENNEY_KITS.graveyard}/hay-bale`, tones: { orange: 'straw' }, center: true, at: [-.33, 0, 0], yaw: 4 },
+  { kenney: `${KENNEY_KITS.graveyard}/hay-bale-bundled`, tones: { orange: 'straw' }, center: true, at: [.33, 0, .03], yaw: -6 },
+] }]
+PROPS.fountain = [...PROPS.fountain, kenney('town', 'fountain-round-detail', 0, { blue: 'water' }), kenney('town', 'fountain-square-detail', 0, { blue: 'water' })]
+PROPS.water_wheel = [...PROPS.water_wheel, kenney('town', 'watermill')]
 // Ящики рыбаков — из тех же ящиков набора, что и в лавках: штабель на трёх.
 PROPS.fishing_crates = [{ name: 'fishing_crates', maxHeight: .75, parts: [
   { kit: `${FPMK}Crate_Wooden`, at: [-.32, 0, .18], yaw: 6 },
@@ -515,7 +569,7 @@ PROPS.fishing_crates = [{ name: 'fishing_crates', maxHeight: .75, parts: [
 export const GRAPHICS_STYLE_SOURCES = Object.freeze({
   stylized: {
     label: 'Рисованный',
-    license: 'CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit; Kenney: Fantasy Town Kit 2.0, Castle Kit 2.0, Modular Cave Kit) и собственные текстуры и модели проекта (data/asset-rights.json)',
+    license: 'CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit; Kenney: Fantasy Town Kit 2.0, Castle Kit 2.0, Modular Cave Kit, Graveyard Kit 5.0) и собственные текстуры и модели проекта (data/asset-rights.json)',
     sources: [
       'https://quaternius.com/packs/fantasypropsmegakit.html',
       'https://quaternius.com/packs/medievalvillagemegakit.html',
@@ -523,6 +577,7 @@ export const GRAPHICS_STYLE_SOURCES = Object.freeze({
       'https://kenney.nl/assets/fantasy-town-kit',
       'https://kenney.nl/assets/castle-kit',
       'https://kenney.nl/assets/modular-cave-kit',
+      'https://kenney.nl/assets/graveyard-kit',
       'public/assets/maps/terrain/terrain-tiles.json',
       `public/assets/models/environment/releases/${STYLE_RELEASE}/`,
       'public/assets/maps/detail-v1/manifest.json',
