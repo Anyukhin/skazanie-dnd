@@ -260,6 +260,40 @@ node tools/register-asset-rights.mjs models/manifest.json
 (сборка из архивов совпадает с опубликованным выпуском; пропускается без
 архивов в `tmp/`).
 
+## Звери Easy Enemies — 9 октября 2026
+
+Пять зверей Quaternius «Animated Easy Enemies» (январь 2019, CC0 по странице
+пака на itch.io; файла лицензии в архиве нет — это записано в `NOTICE.json` и
+`LICENSE.txt` выпуска). Пак выпущен только в FBX: `tools/import-easy-enemies.mjs`
+переводит его в GLB средствами three.js (`FBXLoader` → `GLTFExporter`),
+меняет материалы Phong на PBR того же цвета и убирает префикс арматуры из
+имён клипов. Выпуск — `public/assets/models/quaternius/creatures-<хеш>/`.
+
+| Ключ | Профиль · рост | Подбирается по словам имени | Клипы |
+| --- | --- | --- | --- |
+| `rat` | beast · 0.5 | крыса, крысы, крыс, rat | Idle, Walk, Run, Attack, Death |
+| `spider` | beast · 0.45 | паук, пауки, паучиха, spider | Idle, Walk, Attack, Death |
+| `wasp` | beast · 0.6 | оса, осы, шершень, wasp | Flying, Attack, Death |
+| `frog` | beast · 0.45 | лягушка, жаба, frog, toad | Idle, Attack, Death |
+| `snake` | beast · 0.7 | змея, змей, гадюка, питон, удав, snake, viper | Idle, Walk, Attack (смерти в паке нет) |
+
+Рост — для среднего размера; крошечная крыса и большой паук 2×2 получают свой
+через `appearance.stature` и площадь (`figureHeightFor`). Сервер относит врага
+к профилю `beast` по целому слову имени (`BEAST_WORDS` в
+`server/actor-appearance.mjs`: «Крысолов» и «Осада» — не звери) или по типу
+существа `beast` из стат-блока; замаскированное имя не раскрывается. Внутри
+профиля фигурку выбирает слово показанного имени (`refineWithinProfile`); волк
+остаётся первой записью и общим зверем — медведь и кабан рисуются им.
+Членистоногие без своей модели (скорпион, многоножка, жук) рисуются пауком:
+их слова есть и в `BEAST_WORDS`, и в архетипах записи `spider`.
+
+```bash
+node tools/import-easy-enemies.mjs --publish   # из tmp/asset-src/dl-quaternius-animated-easy-enemies
+node tools/register-asset-rights.mjs models/quaternius/creatures-<хеш>/<файл> ... models/manifest.json
+```
+
+Проверка — `test/creature-models.test.mjs`.
+
 ## API клиента
 
 ```ts

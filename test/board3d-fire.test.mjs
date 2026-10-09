@@ -81,3 +81,28 @@ test('ореол выдвигается к ортокамере: место на
   assert.ok(offset.normalize().dot(toCamera) > .999, 'сдвиг — строго к камере')
   glow.dispose()
 })
+
+test('огонь за стеклом: у фонаря только ореол, без языка и искр', () => {
+  const glow = fire.createFireGlow([{ x: 1, y: 1.4, z: 1, share: .86, enclosed: true }, { x: 4, y: .6, z: 4, share: 1 }], 'full', .5)
+  assert.equal(glow.group.children.filter((child) => child.name === 'fire-core').length, 1, 'язык только у открытого огня')
+  assert.equal(glow.group.children.filter((child) => child.name === 'fire-halo').length, 2)
+  assert.equal(glow.group.getObjectByName('fire-embers').geometry.getAttribute('position').count, fire.BOARD3D_FIRE_GLOW.embers.full)
+  glow.dispose()
+})
+
+test('место огня: светящаяся деталь модели, иначе верх модели', () => {
+  const group = new THREE.Group()
+  const pole = new THREE.Mesh(new THREE.BoxGeometry(.1, 2, .1), new THREE.MeshStandardMaterial())
+  pole.position.set(3, 1, 5)
+  group.add(pole)
+  const top = fire.flameAnchor(group)
+  assert.ok(Math.abs(top.x - 3) < 1e-6 && Math.abs(top.z - 5) < 1e-6)
+  assert.ok(top.y > 1.8 && top.y <= 2, 'без светящейся детали — у верха модели, а не на середине столба')
+  const ember = new THREE.Mesh(new THREE.BoxGeometry(.4, .2, .4), new THREE.MeshStandardMaterial({ emissive: '#ff6020', emissiveIntensity: 1 }))
+  ember.position.set(3.2, .5, 5)
+  group.add(ember)
+  const lit = fire.flameAnchor(group)
+  assert.ok(Math.abs(lit.x - 3.2) < 1e-6, 'огонь — над светящейся деталью')
+  assert.ok(lit.y > .4 && lit.y < .6)
+  assert.equal(fire.flameAnchor(new THREE.Group()), null)
+})

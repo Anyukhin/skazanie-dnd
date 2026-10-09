@@ -707,6 +707,116 @@
         "notes": "Нейтральная female Peasant-основа для gear layer; provenance и SHA-256: equipment-bases-40520897dfea4af085180fc82b0083baa/NOTICE.json. Не участвует в автоматическом выборе archetype."
       },
       "auto": false
+    },
+    {
+      "key": "rat",
+      "name_ru": "Крыса",
+      "profile": "beast",
+      "actorIds": [],
+      "archetypes": [
+        "rat",
+        "крыса",
+        "крысы",
+        "крыс"
+      ],
+      "url": "/assets/models/quaternius/creatures-f8d551f588fb7c5ee928/rat.glb",
+      "height": 0.5,
+      "rights": {
+        "source": "https://quaternius.itch.io/animated-easy-enemies",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Крыса: Animated Easy Enemies (январь 2019), FBX переведён в GLB tools/import-easy-enemies.mjs. Исходники, хеши и лицензия: /assets/models/quaternius/creatures-f8d551f588fb7c5ee928/NOTICE.json."
+      }
+    },
+    {
+      "key": "spider",
+      "name_ru": "Паук",
+      "profile": "beast",
+      "actorIds": [],
+      "archetypes": [
+        "spider",
+        "паук",
+        "пауки",
+        "паучиха",
+        "scorpion",
+        "скорпион",
+        "centipede",
+        "сороконожка",
+        "многоножка",
+        "beetle",
+        "жук"
+      ],
+      "url": "/assets/models/quaternius/creatures-f8d551f588fb7c5ee928/spider.glb",
+      "height": 0.45,
+      "rights": {
+        "source": "https://quaternius.itch.io/animated-easy-enemies",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Паук: Animated Easy Enemies (январь 2019), FBX переведён в GLB tools/import-easy-enemies.mjs. Исходники, хеши и лицензия: /assets/models/quaternius/creatures-f8d551f588fb7c5ee928/NOTICE.json."
+      }
+    },
+    {
+      "key": "wasp",
+      "name_ru": "Оса",
+      "profile": "beast",
+      "actorIds": [],
+      "archetypes": [
+        "wasp",
+        "оса",
+        "осы",
+        "шершень"
+      ],
+      "url": "/assets/models/quaternius/creatures-f8d551f588fb7c5ee928/wasp.glb",
+      "height": 0.6,
+      "rights": {
+        "source": "https://quaternius.itch.io/animated-easy-enemies",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Оса: Animated Easy Enemies (январь 2019), FBX переведён в GLB tools/import-easy-enemies.mjs. Исходники, хеши и лицензия: /assets/models/quaternius/creatures-f8d551f588fb7c5ee928/NOTICE.json."
+      }
+    },
+    {
+      "key": "frog",
+      "name_ru": "Лягушка",
+      "profile": "beast",
+      "actorIds": [],
+      "archetypes": [
+        "frog",
+        "toad",
+        "лягушка",
+        "жаба"
+      ],
+      "url": "/assets/models/quaternius/creatures-f8d551f588fb7c5ee928/frog.glb",
+      "height": 0.45,
+      "rights": {
+        "source": "https://quaternius.itch.io/animated-easy-enemies",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Лягушка: Animated Easy Enemies (январь 2019), FBX переведён в GLB tools/import-easy-enemies.mjs. Исходники, хеши и лицензия: /assets/models/quaternius/creatures-f8d551f588fb7c5ee928/NOTICE.json."
+      }
+    },
+    {
+      "key": "snake",
+      "name_ru": "Змея",
+      "profile": "beast",
+      "actorIds": [],
+      "archetypes": [
+        "snake",
+        "viper",
+        "змея",
+        "змей",
+        "гадюка",
+        "питон",
+        "удав"
+      ],
+      "url": "/assets/models/quaternius/creatures-f8d551f588fb7c5ee928/snake.glb",
+      "height": 0.7,
+      "rights": {
+        "source": "https://quaternius.itch.io/animated-easy-enemies",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius",
+        "notes": "Змея: Animated Easy Enemies (январь 2019), FBX переведён в GLB tools/import-easy-enemies.mjs. Исходники, хеши и лицензия: /assets/models/quaternius/creatures-f8d551f588fb7c5ee928/NOTICE.json."
+      }
     }
   ]
 }

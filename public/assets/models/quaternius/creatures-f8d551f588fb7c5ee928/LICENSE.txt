@@ -1,0 +1,5 @@
+Quaternius — Animated Easy Enemies (January 2019)
+Source: https://quaternius.itch.io/animated-easy-enemies
+License: Creative Commons Zero (CC0 1.0), as stated on the pack page: "FBX, OBJ and Blend formats and CC0 license (страница пака на itch.io, 2026-10-09; файла лицензии в архиве нет)".
+https://creativecommons.org/publicdomain/zero/1.0/
+Converted from FBX to GLB by the Skazanie project (materials re-created as PBR with the same colours, clip prefixes removed).

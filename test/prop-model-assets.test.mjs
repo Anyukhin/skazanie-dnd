@@ -518,8 +518,13 @@ test('высота GLB ограничена пределом вида, а не �
     model.updateMatrixWorld(true)
     const bounds = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
     const limit = catalogModule.PROP_MODEL_MAX_HEIGHTS[assetId]
-    assert.ok(Math.abs(bounds.y - limit) < 1e-6, `${assetId}: тонкая модель упирается в предел ${limit}, а высота ${bounds.y.toFixed(2)}`)
-    assert.ok(Math.abs(bounds.x / bounds.y - size[0] / size[1]) < 1e-6, `${assetId}: пропорции модели сохранены`)
+    // Дерево в 3D тянется вверх до своего роста (`PROP_MODEL_TREE_HEIGHTS`),
+    // ширина остаётся той, что дал предел.
+    const tree = catalogModule.PROP_MODEL_TREE_HEIGHTS[assetId]
+    const expected = tree ? Math.min(limit * 2.1, Math.max(limit, tree)) : limit
+    assert.ok(Math.abs(bounds.y - expected) < 1e-6, `${assetId}: тонкая модель упирается в предел ${expected}, а высота ${bounds.y.toFixed(2)}`)
+    assert.ok(Math.abs(bounds.x - limit * size[0] / size[1]) < 1e-6, `${assetId}: ширина задана пределом высоты`)
+    if (!tree) assert.ok(Math.abs(bounds.x / bounds.y - size[0] / size[1]) < 1e-6, `${assetId}: пропорции модели сохранены`)
   }
   assert.ok(catalogModule.PROP_MODEL_MAX_HEIGHTS.broom >= .85 && catalogModule.PROP_MODEL_MAX_HEIGHTS.broom <= .95, 'метла по грудь герою 1.25–1.4')
   assert.ok(catalogModule.PROP_MODEL_MAX_HEIGHTS.bottle < .73, 'бутылка ниже столешницы')
@@ -598,7 +603,9 @@ test('реальные тонкие GLB библиотеки не выраста
     const placed = environment.create(prop({ id: `real-${key}`, assetId, x: 4.5, y: 4.5, footprint: [{ x: 4, y: 4 }] }))
     placed.updateMatrixWorld(true)
     const height = new THREE.Box3().setFromObject(placed).getSize(new THREE.Vector3()).y
-    assert.ok(height <= catalogModule.PROP_MODEL_MAX_HEIGHTS[assetId] + 1e-3, `${key}: ${height.toFixed(2)} клетки`)
+    // Дерево в 3D вытягивается до своего роста — но не выше него.
+    const ceiling = Math.max(catalogModule.PROP_MODEL_MAX_HEIGHTS[assetId], catalogModule.PROP_MODEL_TREE_HEIGHTS[assetId] ?? 0)
+    assert.ok(height <= ceiling + 1e-3, `${key}: ${height.toFixed(2)} клетки`)
     environment.dispose()
     assetsModule.disposePropModelAssets(new Map([[key, template]]))
   }

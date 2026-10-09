@@ -53,6 +53,8 @@ node tools/build-ascii-location-maps.mjs --all --check  # нарисованны
                       # (data/authored-maps/), без --check — запись в каталог
 pnpm maps:preview     # карта текстом без кампании: --location, --theme, --seed;
                       # --preset all --audit — после правки генераторов карт
+pnpm models:scale     # рост предметов и фигурок в футах против нормы D&D по корпусу
+                      # карт; после правки каталога моделей, пределов высоты или роста
 pnpm props:atlas      # атлас предметов: --sheets assets-src/prop-stamps, затем pnpm props:rights
 pnpm terrain:tiles    # фактуры пола и стен из assets-src/floor-wall-stamps, затем pnpm terrain:rights
 pnpm talespire:assets # таблица ассетов TaleSpire (--dir или TALESPIRE_DIR)

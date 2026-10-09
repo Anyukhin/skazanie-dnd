@@ -1,0 +1,139 @@
+{
+  "source": {
+    "pack": "Quaternius — Animated Easy Enemies (Jan 2019)",
+    "url": "https://quaternius.itch.io/animated-easy-enemies",
+    "archive": "dl-quaternius-animated-easy-enemies (tmp/asset-src)",
+    "license": "CC0-1.0",
+    "licenseStatement": "FBX, OBJ and Blend formats and CC0 license (страница пака на itch.io, 2026-10-09; файла лицензии в архиве нет)"
+  },
+  "tool": "tools/import-easy-enemies.mjs",
+  "outputs": [
+    {
+      "key": "rat",
+      "file": "rat.glb",
+      "bytes": 1029236,
+      "sha256": "be73e296ccb3273f4b14cad0019dcf534f7c78a4189714b2f0679eb6165df9b3",
+      "clips": [
+        "Rat_Run",
+        "Rat_Attack",
+        "Rat_Idle",
+        "Rat_Death",
+        "Rat_Jump",
+        "Rat_Walk"
+      ],
+      "size": [
+        1.51,
+        2.244,
+        6.808
+      ],
+      "provenance": {
+        "pack": "Quaternius — Animated Easy Enemies (Jan 2019)",
+        "url": "https://quaternius.itch.io/animated-easy-enemies",
+        "sourceFile": "Rat.fbx",
+        "sourceSha256": "e903809d017f2878043eb89cc98f2b18b7033a7f97e94a3da5a834b70d1bda6d",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius"
+      }
+    },
+    {
+      "key": "spider",
+      "file": "spider.glb",
+      "bytes": 881408,
+      "sha256": "ba567cbef4471886983f0c9bc54d8cf8606d59228a869a6d42fe4f717fe44f3a",
+      "clips": [
+        "Spider_Walk",
+        "Spider_Idle",
+        "Spider_Attack",
+        "Spider_Death",
+        "Spider_Jump"
+      ],
+      "size": [
+        5.934,
+        1.931,
+        5.031
+      ],
+      "provenance": {
+        "pack": "Quaternius — Animated Easy Enemies (Jan 2019)",
+        "url": "https://quaternius.itch.io/animated-easy-enemies",
+        "sourceFile": "Spider.fbx",
+        "sourceSha256": "4337f167f59ad5cf590e38c76176210f96a2c7eab62f743110f783694ee0d2c0",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius"
+      }
+    },
+    {
+      "key": "wasp",
+      "file": "wasp.glb",
+      "bytes": 826160,
+      "sha256": "42610743c042237020b8e2eb31cf59e60dbae42b011d8a8bdb2485215bd5fb24",
+      "clips": [
+        "Wasp_Flying",
+        "Wasp_Death",
+        "Wasp_Attack"
+      ],
+      "size": [
+        3.707,
+        2.766,
+        1.803
+      ],
+      "provenance": {
+        "pack": "Quaternius — Animated Easy Enemies (Jan 2019)",
+        "url": "https://quaternius.itch.io/animated-easy-enemies",
+        "sourceFile": "Wasp.fbx",
+        "sourceSha256": "ba312b82400745237d5cb638cc265214f87a7b2cf05eb03190ced7118d95847a",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius"
+      }
+    },
+    {
+      "key": "frog",
+      "file": "frog.glb",
+      "bytes": 1011724,
+      "sha256": "73f37002d8a679e35fb6df9fe08272df14d6444d626a56ba437b2591177e1827",
+      "clips": [
+        "Frog_Attack",
+        "Frog_Jump",
+        "Frog_Idle",
+        "Frog_Death"
+      ],
+      "size": [
+        3.507,
+        1.433,
+        3.185
+      ],
+      "provenance": {
+        "pack": "Quaternius — Animated Easy Enemies (Jan 2019)",
+        "url": "https://quaternius.itch.io/animated-easy-enemies",
+        "sourceFile": "Frog.fbx",
+        "sourceSha256": "76a40fb7400d43386e9a62c4af85e0a212d61a07aea4b34ccd6ad6d6943205f0",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius"
+      }
+    },
+    {
+      "key": "snake",
+      "file": "snake.glb",
+      "bytes": 413484,
+      "sha256": "d77be86973f41ab907f4ea8ec84450f387c679ebce11e702edbd4a506e5482b8",
+      "clips": [
+        "Snake_Attack",
+        "Snake_Idle",
+        "Snake_Jump",
+        "Snake_Walk"
+      ],
+      "size": [
+        1.054,
+        3.151,
+        2.807
+      ],
+      "provenance": {
+        "pack": "Quaternius — Animated Easy Enemies (Jan 2019)",
+        "url": "https://quaternius.itch.io/animated-easy-enemies",
+        "sourceFile": "Snake_angry.fbx",
+        "sourceSha256": "2a5d91cd08a1f6940b4ebb9123e6c307e4ee48d4131f82c9d128f9027aad3a3b",
+        "license": "CC0-1.0",
+        "attribution": "Quaternius"
+      }
+    }
+  ]
+}

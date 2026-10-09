@@ -47,7 +47,8 @@
     "terrain:tiles": "node tools/build-terrain-tiles.mjs",
     "terrain:rights": "node tools/register-asset-rights.mjs --all-under maps/terrain",
     "talespire:assets": "node tools/build-talespire-asset-table.mjs",
-    "maps:preview": "node tools/map-preview.mjs"
+    "maps:preview": "node tools/map-preview.mjs",
+    "models:scale": "node tools/model-scale-audit.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.3",

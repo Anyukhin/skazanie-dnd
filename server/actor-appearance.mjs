@@ -5,6 +5,16 @@ import {
 } from './equipment-visuals.mjs'
 
 const PROFILES = Object.freeze(['warrior', 'mage', 'rogue', 'goblin', 'skeleton', 'beast', 'dragon'])
+/** Категории размера D&D: по ним 3D-доска выбирает рост фигурки. */
+const STATURES = Object.freeze(['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'])
+/** Маленькие расы героя (PHB 2014): полурослик и гном. Дварф — «дварф», не «гном». */
+const SMALL_SPECIES = /полурослик|гном|halfling|gnome/u
+/**
+ * Звери с собственными фигурками (крыса, паук, оса, лягушка, змея) и
+ * членистоногие, которых рисует паук. Только целым словом: «Крысолов» —
+ * человек, «Осада» — не оса, «Жуков» — не жук.
+ */
+const BEAST_WORDS = /(?<!\p{L})(?:rat|spider|wasp|frog|toad|snake|viper|scorpion|centipede|beetle|крыс[аы]?|паук[и]?|паучиха|ос[аы]|шершень|лягушк[аи]|жаб[аы]|зме[йяи]|гадюк[аи]|питон|удав|скорпион[ы]?|сороконожк[аи]|многоножк[аи]|жук[и]?)(?!\p{L})/iu
 const EQUIPMENT = Object.freeze(['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger'])
 const HIDDEN_VISIBILITIES = new Set(['gm_only', 'npc_private'])
 const PUBLIC_VISIBILITIES = new Set(['public', 'party'])
@@ -19,6 +29,7 @@ export const ACTOR_APPEARANCE_SCHEMA_VERSION = EQUIPMENT_VISUAL_SCHEMA_VERSION
 export const ACTOR_APPEARANCE_LEGACY_SCHEMA_VERSION = 1
 export const ACTOR_APPEARANCE_PROFILES = PROFILES
 export const ACTOR_APPEARANCE_EQUIPMENT = EQUIPMENT
+export const ACTOR_APPEARANCE_STATURES = STATURES
 
 function text(value, maximum = 240) {
   return String(value ?? '').normalize('NFKC').trim().slice(0, maximum).toLocaleLowerCase('ru-RU')
@@ -200,16 +211,35 @@ export function actorProfileFor(actor = {}) {
   if (/goblin|гоблин/iu.test(identity)) return 'goblin'
   if (/skeleton|скелет|undead|нежить|зомби/iu.test(identity)) return 'skeleton'
   if (/dragon|дракон|wyrm|drake|виверн|wyvern/iu.test(identity)) return 'dragon'
-  if (/beast|звер|wolf|волк|bear|медвед|boar|кабан/iu.test(identity)) return 'beast'
+  if (/beast|звер|wolf|волк|bear|медвед|boar|кабан/iu.test(identity) || BEAST_WORDS.test(identity)) return 'beast'
+  // Зверь по стат-блоку (`creature_type`) — тоже публичная строка карточки врага.
+  if (kind !== 'hero' && text(actor.creature_type, 40) === 'beast') return 'beast'
   if (/wizard|mage|sorcer|warlock|cleric|druid|волшеб|маг|чарод|колдун|жрец|друид/iu.test(identity)) return 'mage'
   if (/rogue|ranger|scout|плут|следопыт|разведчик/iu.test(identity)) return 'rogue'
   return kind === 'summon' ? 'beast' : 'warrior'
 }
 
 /**
+ * Категория размера существа для роста фигурки. Размер виден за столом всем,
+ * как и сама фигурка, поэтому берётся и у замаскированного врага. У врага —
+ * поле `size` стат-блока, у героя — раса. `null` — неизвестно: доска берёт
+ * рост по площади, как прежде.
+ *
+ * @param {unknown} kind
+ * @param {{size?: unknown, species?: unknown}} [actor]
+ * @returns {'tiny'|'small'|'medium'|'large'|'huge'|'gargantuan'|null}
+ */
+export function actorStatureFor(kind, actor = {}) {
+  const size = text(actor?.size, 20)
+  if (STATURES.includes(size)) return /** @type {any} */ (size)
+  if (text(kind, 30) === 'hero' && SMALL_SPECIES.test(text(actor?.species, 120))) return 'small'
+  return null
+}
+
+/**
  * @param {unknown} kind
  * @param {unknown} actor
- * @returns {{version: 2, profile: string, equipment: string, loadout: Record<string, object|null>}}
+ * @returns {{version: 2, profile: string, equipment: string, loadout: Record<string, object|null>, stature?: string}}
  */
 export function actorAppearanceFor(kind, actor = {}) {
   const source = actor && typeof actor === 'object' && !Array.isArray(actor) ? actor : {}
@@ -232,5 +262,7 @@ export function actorAppearanceFor(kind, actor = {}) {
   })
   const equipment = appearanceKind === 'hero' ? equipmentForPublicItems(source.inventory) : 'unknown'
   const loadout = appearanceKind === 'hero' ? publicLoadoutForItems(source.inventory) : {}
-  return { version: ACTOR_APPEARANCE_SCHEMA_VERSION, profile, equipment, loadout }
+  // Средний рост — по умолчанию, в проекции его нет: прежние записи не меняются.
+  const stature = actorStatureFor(appearanceKind, source)
+  return { version: ACTOR_APPEARANCE_SCHEMA_VERSION, profile, equipment, loadout, ...(stature && stature !== 'medium' ? { stature } : {}) }
 }

@@ -1746,6 +1746,21 @@
       "observation_method": "web_page_or_search_result",
       "original_page_sha256": null,
       "note_ru": "Проверен статблок MM14 на dnd.su. HTML, иллюстрации, комментарии и полный текст страницы не включены."
+    },
+    {
+      "id": "dndsu:monster:giant-rat",
+      "title": "Гигантская крыса / Giant Rat",
+      "url": "https://dnd.su/bestiary/336-giant-rat/",
+      "edition_family": "5e_2014",
+      "book_code": "MM14",
+      "revision_id": "observation:2026-10-09:dndsu:monster:giant-rat",
+      "accessed_at": "2026-10-09",
+      "rights_status": "review_required",
+      "bundled": false,
+      "role": "mechanical_facts_and_short_summary",
+      "observation_method": "web_archive_snapshot",
+      "original_page_sha256": null,
+      "note_ru": "dnd.su напрямую недоступен; числа сверены по копиям Web Archive (2025-04-21). HTML, иллюстрации и полные тексты не включены."
     }
   ]
 }

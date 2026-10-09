@@ -25,7 +25,8 @@ import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
 import { BOARD3D_FIRE_LIGHT, fireFlicker, fireLightFor } from './board3d-graphics'
-import { createFireGlow, type FireGlowDetail, type FirePoint } from './board3d-fire'
+import { createFireGlow, flameAnchor, type FireGlowDetail, type FirePoint } from './board3d-fire'
+import { createSeeThrough, type SeeThrough } from './board3d-see-through'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, structuralRoofRolesForMap, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
@@ -728,8 +729,11 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
   }
 }
 
-function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0, detail: FireGlowDetail = 'reduced') {
-  const library = createEnvironmentModels(palette, assets)
+/** Огонь за стеклом: у фонаря и люстры виден ореол, но не язык пламени и не искры. */
+const ENCLOSED_FIRES: ReadonlySet<string> = new Set(['lamp_post', 'lantern_wall', 'chandelier'])
+
+function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0, seeThrough: SeeThrough | null = null, detail: FireGlowDetail = 'reduced') {
+  const library = createEnvironmentModels(palette, assets, { seeThrough })
   const propsGroup = new THREE.Group()
   propsGroup.name = 'props'
   const lightGroup = new THREE.Group()
@@ -763,10 +767,8 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     if (propDrawingFor(prop.assetId).flat) model.traverse((object) => { if ((object as THREE.Mesh).isMesh) object.castShadow = false })
     // Видимое пламя — у каждого горящего источника, даже сверх числа огней
     // сцены; опрокинутая и разбитая утварь не горит.
-    if (lighting && sourceId && prop.state !== 'toppled' && prop.state !== 'broken') {
-      const top = (Number(model.userData.lightHeight) || .55) * model.scale.y
-      firePoints.push({ x: model.position.x, y: model.position.y + top, z: model.position.z, share: LIGHT_SOURCE_ASSETS[sourceId].strength / BOARD3D_FIRE_LIGHT.referenceStrength })
-    }
+    const anchor = lighting && sourceId && prop.state !== 'toppled' && prop.state !== 'broken' ? flameAnchor(model) : null
+    if (anchor && sourceId) firePoints.push({ ...anchor, share: LIGHT_SOURCE_ASSETS[sourceId].strength / BOARD3D_FIRE_LIGHT.referenceStrength, enclosed: ENCLOSED_FIRES.has(sourceId) })
     // В сумраке огней больше и они сильнее: они — главный свет подземелья.
     if (!lighting || !sourceId || lights.length >= 4 + Math.round(4 * darkness)) continue
     const profile = LIGHT_SOURCE_ASSETS[sourceId]
@@ -777,6 +779,8 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     light.userData.baseIntensity = fire.intensity
     light.position.copy(model.position)
     // Огонь чуть выше чаши: иначе сама чаша отбрасывает на пол ломаное кольцо тени.
+    // Точку света не переносим к видимому огню (`flameAnchor`): у настенного
+    // факела она оказалась бы над срезом стены и выжгла кладку.
     light.position.y += (Number(model.userData.lightHeight) || .55) * model.scale.y + .22
     light.castShadow = pointLightShadows && lights.length < 4
     // Край светового пятна мягкий: грубая кубическая карта давала ломаные тени.
@@ -1090,7 +1094,9 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     group.add(edgeLayer)
   }
   const darkness = Math.max(0, Math.min(1, options.darkness ?? 0))
-  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, landscapeDetail)
+  // Окно в кронах над фигурками: общие uniform-ы на все деревья сцены.
+  const seeThrough = createSeeThrough()
+  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, seeThrough, landscapeDetail)
   let propAssets: PropModelAssets | null = null
   const propAbort = new AbortController()
   // Пакет стиля нужен и полу, и предметам: один запрос на оба.
@@ -1111,7 +1117,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     }).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
-      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness, landscapeDetail)
+      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness, seeThrough, landscapeDetail)
       if (surroundings) {
         const next: SurroundingsModels = { ...surroundingsModels }
         for (const [role, assetIds] of Object.entries(SURROUNDINGS_MODEL_ASSETS) as Array<[keyof typeof SURROUNDINGS_MODEL_ASSETS, readonly string[]]>) {
@@ -1344,6 +1350,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     waterPlants?.dispose()
     landscapeKit?.release()
     landscapeKit = null
+    seeThrough.dispose()
     group.clear()
     for (const materialValue of resources.materials) materialValue.dispose()
     for (const geometry of resources.geometries) geometry.dispose()
@@ -1368,6 +1375,8 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       props.fire?.animate(seconds)
     },
     getPropPickTargets: () => disposed ? [] : props.pickTargets,
+    /** Тающая крона: середины фигурок в мире на этот кадр. */
+    setSeeThroughTargets: (points: ReadonlyArray<{ x: number; y: number; z: number; radius?: number }>) => seeThrough.setTargets(points),
     setRoofMode: (mode: Board3DRoofMode) => roofs.setMode(mode),
     getRoofMode: () => roofs.getMode(),
     dispose,

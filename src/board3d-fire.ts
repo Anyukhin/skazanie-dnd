@@ -21,6 +21,39 @@ export type FirePoint = {
   z: number
   /** Сила источника относительно жаровни (`BOARD3D_FIRE_LIGHT.referenceStrength`). */
   share: number
+  /** Огонь за стеклом (фонарь, люстра): только ореол, без языка и искр. */
+  enclosed?: boolean
+}
+
+/**
+ * Где у модели огонь: светящаяся деталь (язык, угли, свеча), иначе — верх
+ * модели. Прежняя оценка «0,8 высоты» ставила огонь на середину высокого
+ * фонарного столба. Координаты мировые; `null` — у модели нет геометрии.
+ */
+export function flameAnchor(model: THREE.Object3D): { x: number; y: number; z: number } | null {
+  model.updateMatrixWorld(true)
+  const glowing = new THREE.Box3(), part = new THREE.Box3()
+  model.traverse((object) => {
+    const mesh = object as THREE.Mesh
+    if (!mesh.isMesh || !mesh.geometry) return
+    const lit = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).some((material) => {
+      const emissive = (material as THREE.MeshStandardMaterial).emissive
+      const strength = (material as THREE.MeshStandardMaterial).emissiveIntensity ?? 1
+      return Boolean(emissive) && (emissive.r + emissive.g + emissive.b) * strength > .05
+    })
+    if (!lit) return
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox()
+    glowing.union(part.copy(mesh.geometry.boundingBox!).applyMatrix4(mesh.matrixWorld))
+  })
+  if (!glowing.isEmpty()) {
+    const center = glowing.getCenter(new THREE.Vector3())
+    // Низ языка — над углями, на трети высоты светящейся детали.
+    return { x: center.x, y: glowing.min.y + .35 * (glowing.max.y - glowing.min.y), z: center.z }
+  }
+  const box = new THREE.Box3().setFromObject(model)
+  if (box.isEmpty()) return null
+  const center = box.getCenter(new THREE.Vector3())
+  return { x: center.x, y: box.max.y - .06 * (box.max.y - box.min.y), z: center.z }
 }
 
 export type FireGlowDetail = 'full' | 'reduced' | 'minimal'
@@ -107,7 +140,7 @@ export function emberAt(seconds: number, seed: number, index: number): { dx: num
 
 const lerp = (range: readonly [number, number], t: number) => range[0] + (range[1] - range[0]) * Math.max(0, Math.min(1, t))
 
-type Flame = { point: FirePoint; seed: number; halo: THREE.Sprite; core: THREE.Sprite; haloScale: number; haloOpacity: number; coreScale: THREE.Vector2 }
+type Flame = { point: FirePoint; seed: number; halo: THREE.Sprite; core: THREE.Sprite | null; haloScale: number; haloOpacity: number; coreScale: THREE.Vector2 }
 
 /**
  * Огни карты. `darkness` — сумрак сцены (`boardDarkness`): днём ореол
@@ -124,10 +157,10 @@ export function createFireGlow(points: readonly FirePoint[], detail: FireGlowDet
   const toCamera = new THREE.Vector3()
   const flames: Flame[] = points.map((point, index) => {
     const share = Math.max(.3, Math.min(1.2, point.share))
-    const haloOpacity = lerp(BOARD3D_FIRE_GLOW.haloOpacity, dark) * (.6 + .4 * share)
+    // Фонарь без языка пламени светится всем стеклом: ореол ярче.
+    const haloOpacity = lerp(BOARD3D_FIRE_GLOW.haloOpacity, dark) * (.6 + .4 * share) * (point.enclosed ? 1.6 : 1)
     const haloMaterial = new THREE.SpriteMaterial({ map: glowTexture, color: WARM_HALO.clone().multiplyScalar(1.6), transparent: true, opacity: haloOpacity, depthWrite: false, blending: THREE.AdditiveBlending })
-    const coreMaterial = new THREE.SpriteMaterial({ map: flameTexture, color: WARM_CORE.clone().multiplyScalar(BOARD3D_FIRE_GLOW.coreBrightness), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
-    owned.push(haloMaterial, coreMaterial)
+    owned.push(haloMaterial)
     const halo = new THREE.Sprite(haloMaterial)
     halo.name = 'fire-halo'
     const haloScale = lerp(BOARD3D_FIRE_GLOW.haloSize, (share - .45) / .55)
@@ -139,21 +172,29 @@ export function createFireGlow(points: readonly FirePoint[], detail: FireGlowDet
       camera.getWorldDirection(toCamera).multiplyScalar(-BOARD3D_FIRE_GLOW.haloLift)
       halo.matrixWorld.setPosition(point.x + toCamera.x, point.y + toCamera.y, point.z + toCamera.z)
     }
-    const core = new THREE.Sprite(coreMaterial)
-    core.name = 'fire-core'
-    // Низ языка — у пламени источника.
-    core.center.set(.5, .08)
+    group.add(halo)
     const coreScale = new THREE.Vector2(...BOARD3D_FIRE_GLOW.coreSize).multiplyScalar(.55 + .45 * share)
-    core.scale.set(coreScale.x, coreScale.y, 1)
-    core.position.set(point.x, point.y - coreScale.y * .2, point.z)
-    group.add(halo, core)
+    let core: THREE.Sprite | null = null
+    if (!point.enclosed) {
+      const coreMaterial = new THREE.SpriteMaterial({ map: flameTexture, color: WARM_CORE.clone().multiplyScalar(BOARD3D_FIRE_GLOW.coreBrightness), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+      owned.push(coreMaterial)
+      core = new THREE.Sprite(coreMaterial)
+      core.name = 'fire-core'
+      // Низ языка — у пламени источника.
+      core.center.set(.5, .08)
+      core.scale.set(coreScale.x, coreScale.y, 1)
+      core.position.set(point.x, point.y - coreScale.y * .2, point.z)
+      group.add(core)
+    }
     return { point, seed: index + 1, halo, core, haloScale, haloOpacity, coreScale }
   })
 
   const perFire = BOARD3D_FIRE_GLOW.embers[detail]
+  // Искры летят только от открытого огня: фонарь их не даёт.
+  const sparking = flames.filter((flame) => !flame.point.enclosed)
   let embers: THREE.Points | null = null
-  if (perFire > 0 && flames.length) {
-    const count = perFire * flames.length
+  if (perFire > 0 && sparking.length) {
+    const count = perFire * sparking.length
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3))
     geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(count * 3), 3))
@@ -171,12 +212,12 @@ export function createFireGlow(points: readonly FirePoint[], detail: FireGlowDet
       const breath = fireFlicker(seconds, flame.seed)
       flame.halo.scale.setScalar(flame.haloScale * (.92 + .08 * breath))
       ;(flame.halo.material as THREE.SpriteMaterial).opacity = flame.haloOpacity * breath
-      flame.core.scale.set(flame.coreScale.x * (.94 + .06 * breath), flame.coreScale.y * (.82 + .18 * breath), 1)
+      flame.core?.scale.set(flame.coreScale.x * (.94 + .06 * breath), flame.coreScale.y * (.82 + .18 * breath), 1)
     }
     if (!embers) return
     const position = embers.geometry.getAttribute('position') as THREE.BufferAttribute
     const color = embers.geometry.getAttribute('color') as THREE.BufferAttribute
-    flames.forEach((flame, fire) => {
+    sparking.forEach((flame, fire) => {
       for (let index = 0; index < perFire; index += 1) {
         const ember = emberAt(seconds, flame.seed, index)
         const at = fire * perFire + index
