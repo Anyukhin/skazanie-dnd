@@ -27,11 +27,18 @@ export type PropModelEntry = {
 export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
   // Посуда и мелочь — стоят на столах и полках.
   mug: .3, plate: .1, bowl_stew: .3, bottle: .42, jug: .42, bread_loaf: .25, cheese_wheel: .25,
-  candle: .4, dice_cup: .3, coin_pile: .2, cutting_board: .12, pot: .4, lute: .6,
+  candle: .4, dice_cup: .3, coin_pile: .1, cutting_board: .06, pot: .4, lute: .6,
   // Бытовые предметы на полу.
-  broom: .9, sack: .6, basket: .5, bucket: .45, offering_bowl: .5, urn: .6, bone_pile: .4,
+  broom: .9, sack: .6, basket: .4, bucket: .3, offering_bowl: .5, urn: .6, bone_pile: .4,
   firewood_stack: .5, woodpile: .6, cauldron: .6, keg: .6, crate: .6, chest: .6, barrel: .75,
   barrel_stack: 1.05, crate_stack: 1,
+  // Замер `tools/model-scale-audit.mjs` (2026-10-09): эти модели без предела
+  // выходили выше человека — кафедра 10,5 фт, вешалка 11, книжный шкаф 13,
+  // окованный ларец 3,7 фт, бочка для воды 4,8 фт.
+  strongbox: .36, rain_barrel: .8, water_barrel: .8, anvil: .75, butcher_block: .7,
+  prep_table: .75, offering_table: .8, map_table: .8,
+  bookcase_tall: 1.7, display_shelf: 1.6, coat_rack: 1.35, standing_mirror: 1.45, tool_rack: 1.35,
+  book_lectern: 1, temple_lectern: 1, training_dummy: 1.35,
   // Мебель.
   table_round: .8, table_long: .8, table_royal: .85, table_small: .75, bar_counter: .9,
   bench: .6, prayer_bench: .6, stool: .55, chair: 1, royal_throne: 1.3, night_table: .6,
@@ -51,6 +58,45 @@ export const PROP_MODEL_MAX_HEIGHTS: Readonly<Record<string, number>> = Object.f
   bush: .8, shrub: .6, grass_tuft: .3, flowers: .35, fern: .4, mushroom_cluster: .35,
   rock_small: .3, boulder: 1, stalagmite: 1.2, rubble_heap: .5, fallen_log: .5,
 })
+
+/**
+ * Наименьшая высота вида в клетках уже после `prop.scale`, только для 3D.
+ * Генератор ставит стул и табурет уменьшенными (`scaleRange` 0.33–0.5), чтобы
+ * в 2D они не занимали клетку целиком, а в 3D рост падал вместе с шириной:
+ * стул выходил ниже колена человека (замер `tools/model-scale-audit.mjs`).
+ */
+export const PROP_MODEL_MIN_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({ chair: .68, stool: .4 })
+
+/**
+ * Поднимает вписывание GLB до наименьшей высоты вида, не выпуская модель за
+ * клетки следа. `fit` — результат `propModelFit`, `scale` — `prop.scale`.
+ */
+export function propModelFloorFit(assetId: string, fit: number, size: [number, number, number], scale: number, width: number, depth: number): number {
+  const minimum = Object.prototype.hasOwnProperty.call(PROP_MODEL_MIN_HEIGHTS, assetId) ? PROP_MODEL_MIN_HEIGHTS[assetId] : 0
+  const applied = scale > 0 ? scale : 1
+  if (!minimum || !(size[1] > 0) || size[1] * fit * applied >= minimum) return fit
+  const roomy = Math.min(width / Math.max(size[0], .0001), depth / Math.max(size[2], .0001)) / applied
+  return Math.max(fit, Math.min(minimum / (size[1] * applied), roomy))
+}
+
+/**
+ * Рост деревьев в 3D, клетки. В масштабе фигурки (человек 1,3 клетки = 5,75
+ * фт): дуб 18 фт, берёза 16, сосна и ель 20, сухое дерево 14. Предел высоты
+ * и след сжимали модель до 9–13 фт — ниже фонаря; в 3D дерево вытягивается
+ * вверх до этого роста, ширина кроны и рисунок в 2D не меняются. Фигурки
+ * видны сквозь крону (`board3d-see-through`).
+ */
+export const PROP_MODEL_TREE_HEIGHTS: Readonly<Record<string, number>> = Object.freeze({
+  tree_oak: 4.1, tree_birch: 3.6, tree_pine: 4.5, tree_spruce: 4.5, tree_dead: 3.2,
+})
+const MAX_TREE_STRETCH = 2.1
+
+/** Во сколько раз вытянуть дерево вверх в 3D; `heightCells` — рост после вписывания и масштаба. */
+export function propModelTreeStretch(assetId: string, heightCells: number): number {
+  const target = Object.prototype.hasOwnProperty.call(PROP_MODEL_TREE_HEIGHTS, assetId) ? PROP_MODEL_TREE_HEIGHTS[assetId] : 0
+  if (!target || !(heightCells > 0)) return 1
+  return Math.min(MAX_TREE_STRETCH, Math.max(1, target / heightCells))
+}
 
 const MAX_HEIGHT_LIMIT = 8
 const MAX_SIZE_LIMIT = 10_000

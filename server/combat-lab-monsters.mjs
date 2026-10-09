@@ -23,6 +23,8 @@ export const DND_2014_MONSTER_IMAGES = Object.freeze({
   'dnd_5e_2014:monster:ogre': '/assets/enemies/ogre.png',
   'dnd_5e_2014:monster:troll': '/assets/enemies/dnd-2014/troll.png',
   'dnd_5e_2014:monster:wolf': '/assets/enemies/wolf.png',
+  // Тот же зверь, что в бестиарии SRD 5.2.1: портрет общий.
+  'dnd_5e_2014:monster:giant-rat': '/assets/enemies/giant-rat.png',
   'dnd_5e_2014:monster:dire-wolf': '/assets/enemies/dire-wolf.png',
   'dnd_5e_2014:monster:giant-spider': '/assets/enemies/giant-spider.png',
   'dnd_5e_2014:monster:mimic': '/assets/enemies/dnd-2014/mimic.png',

@@ -634,6 +634,171 @@ async function kitPart(path, plan, imageOverrides = {}) {
   return scene
 }
 
+// ------------------------------------------------- наборы Kenney 2.0 и KayKit
+
+/**
+ * Класс рисованного материала по цвету общей палитры Kenney 2.0 (sRGB):
+ * серое и белое — камень, тёмное серое — металл, кремовое — штукатурка,
+ * остальное по тону. Тон с классом по умолчанию: `lavender` (сиреневый) — камень,
+ * `orange` (оранжевый и персиковый) — дерево, `mint` и `blue` — ткань и краска,
+ * как и красное. Наборы читают тон по-разному: у ворот замка сиреневое — сталь
+ * решётки, у кладбища мятное — кованое железо, у фонтана синее — вода, у стога
+ * оранжевое — солома, у могильного холма — земля. Это решает `tones` детали
+ * рецепта; класс `water` перекраска оставляет плоским цветом палитры, `dirt`
+ * красит фактурой камня в цвет земли.
+ *
+ * @param {THREE.Color} color
+ * @param {{ lavender?: string, orange?: string, mint?: string, blue?: string, grey?: string }} [tones]
+ */
+function kenneyClass(color, tones = {}) {
+  const hsl = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
+  // Белое у Kenney — светлые грани камня (верх валуна, обод), а не побелка.
+  if (hsl.s < .2) return hsl.l < .38 ? 'metal' : tones.grey ?? 'stone'
+  if (hsl.s < .4 && hsl.h > .55 && hsl.h < .72) return tones.lavender ?? 'stone'
+  // Почти белое голубоватое — светлые грани того же камня, а не штукатурка.
+  if (hsl.l > .86) return hsl.h > .5 && hsl.h < .72 ? tones.lavender ?? 'stone' : 'plaster'
+  if (hsl.h > .3 && hsl.h < .5) return tones.mint ?? 'cloth'
+  if (hsl.h >= .5 && hsl.h < .72) return tones.blue ?? 'cloth'
+  if (hsl.h >= .025 && hsl.h < .13 && hsl.s < .99) return tones.orange ?? 'wood'
+  return 'cloth'
+}
+
+/**
+ * Цвет класса (sRGB, тон, насыщенность, светлота) и светлота палитры Kenney,
+ * которой он соответствует: основное оранжевое дерево палитры становится
+ * коричневым, сиреневый камень — тёплым серым, мятное железо — тёмным.
+ */
+const KENNEY_CLASS_COLORS = {
+  wood: { h: .07, s: .42, l: .38, reference: .66 },
+  stone: { h: .09, s: .07, l: .5, reference: .7 },
+  dirt: { h: .08, s: .24, l: .23, reference: .55 },
+  // Железо не светлее закопчённого: светлые грани палитры не выходят серебром.
+  metal: { h: .6, s: .05, l: .3, reference: .45, max: .42 },
+  plaster: { h: .09, s: .18, l: .8, reference: .92 },
+  straw: { h: .12, s: .5, l: .6, reference: .7 },
+  sand: { h: .085, s: .34, l: .62, reference: .7 },
+  canvas: { h: .09, s: .3, l: .42, reference: .66 },
+}
+
+/**
+ * Оттенок вершины для рисованной фактуры. Фактуры нейтральны, цвет детали
+ * даёт оттенок, поэтому дерево, камень, металл и солома получают свой цвет
+ * класса, а от палитры Kenney остаётся только светлота: тёмная доска темнее
+ * светлой. Иначе оранжевое дерево палитры выходит розовым, сиреневый камень —
+ * лиловым. Ткань, краска и вода сохраняют цвет палитры — это зелёное и
+ * красное знамя, навес прилавка, вода фонтана.
+ *
+ * @param {THREE.Color} color цвет палитры, меняется на месте
+ * @param {string} kind
+ */
+function kenneyTint(color, kind, colors = KENNEY_CLASS_COLORS) {
+  const target = colors[kind]
+  if (!target) return color
+  const { l } = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
+  const lightness = Math.min(target.max ?? .9, Math.max(.12, target.l * l / target.reference))
+  return color.setHSL(target.h, target.s, lightness, THREE.SRGBColorSpace)
+}
+
+/**
+ * Класс рисованного материала по цвету атласа KayKit (sRGB): атлас — столбцы
+ * вертикальных градиентов, цвет у KayKit природный. Серое и серо-голубое —
+ * камень (тёмное — металл), красно-коричневое — дерево, зелень — листва и
+ * зелень овощей, насыщенное оранжевое, жёлтое и красное — еда и краска со
+ * своим цветом. Тона `grey`, `brown`, `green`, `bright` деталь рецепта может
+ * прочесть иначе (`tones`): оранжевая столешница — дерево, рулон — ткань.
+ *
+ * @param {THREE.Color} color
+ * @param {{ grey?: string, brown?: string, green?: string, bright?: string }} [tones]
+ */
+function kaykitClass(color, tones = {}) {
+  const hsl = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
+  if (hsl.s < .12 || (hsl.s < .3 && hsl.h > .5 && hsl.h < .75)) return hsl.l < .28 ? 'metal' : tones.grey ?? 'stone'
+  if (hsl.l > .9) return 'plaster'
+  if (hsl.h >= .015 && hsl.h < .12 && hsl.s < .62) return tones.brown ?? 'wood'
+  if (hsl.h > .2 && hsl.h < .5) return tones.green ?? 'leaves'
+  return tones.bright ?? 'food'
+}
+
+/** Те же цвета классов, что у Kenney, при светлоте середины градиента KayKit. */
+const KAYKIT_CLASS_COLORS = {
+  wood: { ...KENNEY_CLASS_COLORS.wood, reference: .48 },
+  stone: { ...KENNEY_CLASS_COLORS.stone, reference: .62 },
+  dirt: { ...KENNEY_CLASS_COLORS.dirt, reference: .48 },
+  metal: { ...KENNEY_CLASS_COLORS.metal, reference: .3 },
+  plaster: { ...KENNEY_CLASS_COLORS.plaster, reference: .92 },
+  straw: { ...KENNEY_CLASS_COLORS.straw, reference: .62 },
+}
+
+/** Палитра набора: правило классов, цвета классов и формат файлов модели. */
+const PALETTES = {
+  kenney: { classify: kenneyClass, colors: KENNEY_CLASS_COLORS, extension: 'glb' },
+  kaykit: { classify: kaykitClass, colors: KAYKIT_CLASS_COLORS, extension: 'gltf' },
+}
+
+const paletteCache = new Map()
+/**
+ * Модель Kenney 2.0 (палитра `colormap.png`) или KayKit (атлас градиентов)
+ * красится одной текстурой: цвет под UV треугольника переносится в цвета его
+ * вершин, треугольники одного класса собираются в свой меш (`wood`, `stone`,
+ * `metal`, `cloth`, `plaster`…) — по этому имени `restyle` выбирает
+ * рисованный материал, а цвет вершин (`kenneyTint`) задаёт светлоту фактуры
+ * или цвет ткани, еды и листвы.
+ */
+async function palettePart(path, plan, tones, paletteId) {
+  const palette = PALETTES[paletteId]
+  const url = `/source/${path.split('/').map(encodeURIComponent).join('/')}.${palette.extension}`
+  if (!paletteCache.has(url)) paletteCache.set(url, loader.loadAsync(url))
+  const gltf = await paletteCache.get(url)
+  const scene = gltf.scene.clone(true)
+  scene.updateMatrixWorld(true)
+  const meshes = []
+  scene.traverse((object) => { if (object.isMesh) meshes.push(object) })
+  const buckets = new Map()
+  const color = new THREE.Color()
+  for (const mesh of meshes) {
+    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
+    const image = material.map?.image
+    const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()
+    geometry.applyMatrix4(mesh.matrixWorld)
+    if (!geometry.attributes.normal) geometry.computeVertexNormals()
+    const { position, normal, uv } = geometry.attributes
+    const pixels = image && uv ? canvasOf(image, image.width, image.height).getContext('2d').getImageData(0, 0, image.width, image.height) : null
+    for (let i = 0; i + 2 < position.count; i += 3) {
+      if (pixels) {
+        // Середина треугольника: на краю квадрата палитры соседний цвет не подмешивается.
+        const u = (uv.getX(i) + uv.getX(i + 1) + uv.getX(i + 2)) / 3, v = (uv.getY(i) + uv.getY(i + 1) + uv.getY(i + 2)) / 3
+        const x = Math.min(pixels.width - 1, Math.floor((u - Math.floor(u)) * pixels.width))
+        const y = Math.min(pixels.height - 1, Math.floor((v - Math.floor(v)) * pixels.height))
+        const at = (y * pixels.width + x) * 4
+        color.setRGB(pixels.data[at] / 255, pixels.data[at + 1] / 255, pixels.data[at + 2] / 255, THREE.SRGBColorSpace)
+      } else color.copy(material.color)
+      const kind = palette.classify(color, tones)
+      kenneyTint(color, kind, palette.colors)
+      let bucket = buckets.get(kind)
+      if (!bucket) buckets.set(kind, bucket = { position: [], normal: [], color: [] })
+      for (let k = 0; k < 3; k++) {
+        bucket.position.push(position.getX(i + k), position.getY(i + k), position.getZ(i + k))
+        bucket.normal.push(normal.getX(i + k), normal.getY(i + k), normal.getZ(i + k))
+        bucket.color.push(color.r, color.g, color.b)
+      }
+    }
+    geometry.dispose()
+  }
+  const root = new THREE.Group()
+  for (const [kind, bucket] of [...buckets].sort(([a], [b]) => a.localeCompare(b))) {
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(bucket.position, 3))
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(bucket.normal, 3))
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(bucket.color, 3))
+    const part = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ name: kind, vertexColors: true }))
+    part.name = kind
+    root.add(part)
+  }
+  const restyled = restyle(root, plan)
+  root.traverse((object) => { if (object.isMesh) { object.geometry.dispose(); object.material.dispose() } })
+  return restyled
+}
+
 async function restylePart(path, plan) {
   const [release, ...rest] = path.split('/')
   const id = release === 'old' ? 'bd5c4563074b6e4ef576769c' : plan.release
@@ -665,7 +830,11 @@ async function buildRecipe(recipe, plan) {
   const root = new THREE.Group()
   const placed = []
   for (const part of recipe.parts) {
-    const object = part.kit ? await kitPart(part.kit, plan, part.imageOverrides) : part.restyle ? await restylePart(part.restyle, plan) : await detailPart(part.detail, plan)
+    const object = part.kit ? await kitPart(part.kit, plan, part.imageOverrides)
+      : part.restyle ? await restylePart(part.restyle, plan)
+        : part.kenney ? await palettePart(part.kenney, plan, part.tones, 'kenney')
+          : part.kaykit ? await palettePart(part.kaykit, plan, part.tones, 'kaykit')
+            : await detailPart(part.detail, plan)
     const holder = new THREE.Group()
     holder.add(object)
     if (part.center) {

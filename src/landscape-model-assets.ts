@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { loadSharedModelBuffer, recordModelAssetParse, registerCspSafeEmbeddedTextureLoader } from './model-assets'
+import { prepareCutoutMaterials } from './board3d-cutout'
 
 /**
  * Модели местности 3D-доски: камни гряд и толщи скалы, кувшинки и тростник у
@@ -192,7 +193,9 @@ async function loadKit(): Promise<LandscapeKit | null> {
     if (!pending) {
       pending = loadSharedModelBuffer(url, { timeoutMs: 15_000, maxBytes: MAX_GLB_BYTES })
         .then((buffer) => { recordModelAssetParse(); return loader.parseAsync(buffer, URL_ROOT) })
-        .then((gltf) => gltf.scene as THREE.Object3D)
+        // Кувшинки и тростник вырезаны по альфе: заливка пустых пикселей и
+        // сглаженный край, как у листвы предметов.
+        .then((gltf) => { prepareCutoutMaterials(gltf.scene); return gltf.scene as THREE.Object3D })
         .catch(() => null)
       scenes.set(url, pending)
     }

@@ -305,6 +305,44 @@ export type SurroundingsModels = {
   conifers?: readonly SurroundingsModel[]
   dead?: readonly SurroundingsModel[]
   bushes?: readonly SurroundingsModel[]
+  /**
+   * Загруженная фактура покрытия пакета стиля (`surroundingsGroundFloor`) и
+   * её повтор в клетках: земля за краем получает тот же рисунок, что пол
+   * карты, а не ровную заливку. Фактурой владеет сцена.
+   */
+  groundDetail?: { texture: THREE.Texture; cells: number }
+}
+
+/** Покрытие пакета стиля, чей рисунок ложится на землю окрестностей; null — окрестностей нет. */
+export function surroundingsGroundFloor(map: TacticalMap): 'grass' | 'earth' | null {
+  const biome = surroundingsBiome(map)
+  if (biome === 'indoor') return null
+  return biome === 'forest' || biome === 'meadow' ? 'grass' : 'earth'
+}
+
+/**
+ * Рисунок покрытия поверх цвета земли: берётся только яркость фактуры,
+ * делённая на её среднюю (последний мип), поэтому цвет низины — от биома и
+ * соседних клеток, как прежде, а травинки и камешки — от пакета. UV — мировые.
+ */
+function applyGroundDetail(material: THREE.MeshStandardMaterial, detail: NonNullable<SurroundingsModels['groundDetail']>) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.groundDetail = { value: detail.texture }
+    shader.uniforms.groundDetailScale = { value: 1 / Math.max(.5, detail.cells) }
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'varying vec2 vGroundWorld;\nvoid main() {')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGroundWorld = (modelMatrix * vec4(transformed, 1.0)).xz;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform sampler2D groundDetail;\nuniform float groundDetailScale;\nvarying vec2 vGroundWorld;\nvoid main() {')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+{
+  vec2 detailUv = vGroundWorld * groundDetailScale;
+  float detailLuma = dot(texture2D(groundDetail, detailUv).rgb, vec3(.2126, .7152, .0722));
+  float detailMean = dot(textureLod(groundDetail, detailUv, 12.0).rgb, vec3(.2126, .7152, .0722));
+  diffuseColor.rgb *= clamp(mix(1.0, detailLuma / max(.02, detailMean), .85), .55, 1.45);
+}`)
+  }
+  material.customProgramCacheKey = () => 'board3d-surroundings-detail-v1'
 }
 
 /** Виды предметов, чьи модели окрестности берут из выпуска и стиль-пака. */
@@ -373,7 +411,7 @@ function instanceItems(group: THREE.Group, name: string, items: readonly Item[])
 }
 
 /** Процедурные заменители, пока модели не загружены (и в тестах без браузера). */
-function fallbackModels(): { models: Required<SurroundingsModels>; owned: Array<{ dispose: () => void }> } {
+function fallbackModels(): { models: Required<Omit<SurroundingsModels, 'groundDetail'>>; owned: Array<{ dispose: () => void }> } {
   const material = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: .95, metalness: 0, flatShading: true })
   // Оттенок камня (`rockTint`) рассчитан на светлую фактуру моделей набора; у
   // заменителя фактуры нет, и белая база давала белые глыбы, пока набор не
@@ -609,6 +647,7 @@ export function createSurroundings(map: TacticalMap, detail: 'full' | 'reduced' 
     transparent: Boolean(texture),
     alphaTest: .02,
   })
+  if (texture && models.groundDetail) applyGroundDetail(groundMaterial, models.groundDetail)
   const groundGeometry = new THREE.PlaneGeometry(grid.width, grid.height).rotateX(-Math.PI / 2)
   const ground = new THREE.Mesh(groundGeometry, groundMaterial)
   ground.name = 'surroundings-ground'
