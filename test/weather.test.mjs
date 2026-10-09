@@ -298,6 +298,24 @@ test('крыша опознаётся у состояния из живого к
   }
 })
 
+// Обзор карт 2026-10-08: в склепе, пещере и логове шапка писала «Утро · Ясно».
+// Под землёй неба нет — шапка говорит «под землёй», а дом с окнами погоду за
+// стеклом сохраняет.
+test('под землёй шапка не называет небо, а в доме погода остаётся', () => {
+  const minutes = minutesWithWeather('rain')
+  for (const theme of ['crypt', 'cave']) {
+    const clock = worldClockFor(generatedScene(theme, minutes))
+    assert.equal(clock.underground, true, theme)
+    assert.match(clock.indicator, /под землёй$/u, theme)
+    assert.doesNotMatch(`${clock.indicator} ${clock.weather_summary}`, /Дождь|дожд/u, theme)
+  }
+  const house = worldClockFor(generatedScene('building', minutes))
+  assert.equal(house.indoors, true)
+  assert.equal(house.underground, false)
+  assert.match(house.indicator, /Дождь/u)
+  assert.equal(worldClockFor(field({ minutes })).underground, false)
+})
+
 // ---------------------------------------------------------------------------
 // Влияние: числа, а не подписи
 // ---------------------------------------------------------------------------

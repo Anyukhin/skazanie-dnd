@@ -212,17 +212,20 @@ function reservedCells(map, spawnRadius) {
 /**
  * Клетки под предметами и у рёбер-стен: виньетка не встаёт ни на предмет, ни
  * вплотную к стене (иначе встаёт поперёк прохода в пролом), а второй остов
- * развалин — на первый.
+ * развалин — на первый. `hugWalls` снимает запрет у стен — для замкнутого
+ * помещения, где пролома нет, а кольцо у стен съедает почти весь пол.
  * @param {TacticalMap} map
+ * @param {{ hugWalls?: boolean }} [options]
  * @returns {Set<string>}
  */
-function occupiedCells(map) {
+function occupiedCells(map, { hugWalls = false } = {}) {
   /** @type {Set<string>} */
   const occupied = new Set()
   for (const prop of map.props) {
     const footprint = prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
     for (const point of footprint) occupied.add(cellKey(point.x, point.y))
   }
+  if (hugWalls) return occupied
   for (const edge of edgeList(map)) {
     if (edge.kind === 'door') continue
     const next = edgeNeighbor(edge)
@@ -299,13 +302,14 @@ export function vignettesNamedBy(set, text) {
  * настроение, прибытие) встаёт всегда, сколько бы его ни было; свободные
  * места до `limit` занимают только тихие приметы. Ставятся до обычной
  * расстановки, поэтому её случайный добор обходит их стороной. Возвращает
- * идентификаторы поставленных.
+ * идентификаторы поставленных. `hugWalls` разрешает вставать у стен (см.
+ * `occupiedCells`).
  *
  * @param {TacticalMap} map
- * @param {{ seed: string|number, set: keyof typeof VIGNETTES, zones?: string[]|null, limit?: number, text?: string }} options
+ * @param {{ seed: string|number, set: keyof typeof VIGNETTES, zones?: string[]|null, limit?: number, text?: string, hugWalls?: boolean }} options
  * @returns {string[]}
  */
-export function placeVignettes(map, { seed, set, zones = null, limit = 1, text = '' }) {
+export function placeVignettes(map, { seed, set, zones = null, limit = 1, text = '', hugWalls = false }) {
   const recipes = VIGNETTES[set] ?? []
   if (!recipes.length) return []
   const random = randomFor(`vignettes:${set}:${seed}`)
@@ -315,7 +319,7 @@ export function placeVignettes(map, { seed, set, zones = null, limit = 1, text =
   const budget = Math.max(limit, wanted.length)
   if (budget <= 0) return []
   const reserved = reservedCells(map, 3)
-  const occupied = occupiedCells(map)
+  const occupied = occupiedCells(map, { hugWalls })
   const allowed = zones ? new Set(zones) : null
   /** @type {Array<{x: number, y: number}>} */
   const ground = []

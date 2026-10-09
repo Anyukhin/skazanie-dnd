@@ -34,8 +34,9 @@ export const SCENE_PROGRAM_LAYOUT_VERSION = 'scene-program-layout/v1'
 export const PLATFORM_ELEVATION_FEET = 2
 
 /**
- * Наибольший шаг между соседними клетками без лазания — тот же предел, что у
- * рельефа открытой местности (`OPEN_TERRAIN_MAX_STEP_FEET` в `scene-themes.mjs`).
+ * Наибольший перепад под постом программы сцены. Строже уступа рельефа
+ * открытой местности (`OPEN_TERRAIN_MAX_STEP_FEET` в `scene-themes.mjs`, 5 фт
+ * с волны 2026-10-08): пост ставится на почти ровную землю.
  */
 const OPEN_STEP_FEET = 3
 

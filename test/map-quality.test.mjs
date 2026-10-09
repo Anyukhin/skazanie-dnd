@@ -23,7 +23,7 @@ for (const preset of MAP_PREVIEW_PRESETS) {
   test(`эталонная сцена «${preset.id}» проходит проверку качества в трёх размерах на ${SEEDS.length} сидах`, () => {
     for (const size of SIZES) {
       for (const seed of SEEDS) {
-        const { map } = generateSceneGeometry({ ...preset.input, map: size, seed: `${preset.id}:${seed}`, useLibrary: false })
+        const { map } = generateSceneGeometry({ ...preset.input, map: { ...(preset.input.map ?? {}), ...size }, seed: `${preset.id}:${seed}`, useLibrary: false })
         const report = auditTacticalMap(map)
         const label = `${preset.id}/${size.width}×${size.height}/${seed}`
         assert.deepEqual(report.problems, [], `${label}: ${JSON.stringify(report.problems.slice(0, 5))}`)
@@ -33,6 +33,120 @@ for (const preset of MAP_PREVIEW_PRESETS) {
     }
   })
 }
+
+/**
+ * Природа под стандарты боевой карты D&D (`docs/maps-dnd-standards-plan.md`,
+ * задачи 1, 2, 6, 7): трудная местность пятнами, рельеф террасами, за чем
+ * встать посреди поля. Доли — в процентах свободных клеток.
+ */
+const NATURE_TARGETS = Object.freeze({
+  forest: { difficult: [10, 20], cover: 25 },
+  swamp: { difficult: [10, 20], cover: 20 },
+  road: { difficult: [5, 12], cover: 20 },
+  ruins: { difficult: [5, 12], cover: 20 },
+})
+
+for (const [id, target] of Object.entries(NATURE_TARGETS)) {
+  test(`природная сцена «${id}»: трудная местность ${target.difficult.join('–')}%, 2–4 уровня высоты, укрытие сбоку у ${target.cover}% клеток`, () => {
+    const preset = MAP_PREVIEW_PRESETS.find((entry) => entry.id === id)
+    assert.ok(preset, `нет эталонной сцены ${id}`)
+    for (const size of SIZES) {
+      for (const seed of SEEDS) {
+        const { map } = generateSceneGeometry({ ...preset.input, map: { ...(preset.input.map ?? {}), ...size }, seed: `${preset.id}:${seed}`, useLibrary: false })
+        const { stats } = auditTacticalMap(map)
+        const label = `${id}/${size.width}×${size.height}/${seed}`
+        assert.equal(map.generator.version, '4', label)
+        // Доли — для поля, о котором есть что сказать: на крохотном тракте у
+        // моста почти всё — дорога, река и место отряда у входа.
+        if (stats.cells >= 150) {
+          assert.ok(stats.difficult_pct >= target.difficult[0] && stats.difficult_pct <= target.difficult[1], `${label}: трудной местности ${stats.difficult_pct}%`)
+          assert.ok(stats.cover_side_pct >= target.cover, `${label}: укрытие сбоку у ${stats.cover_side_pct}%`)
+        }
+        assert.ok(stats.elevation_levels >= 1 && stats.elevation_levels <= 4, `${label}: уровней высоты ${stats.elevation_levels}`)
+        assert.ok(stats.smallest_plateau === 0 || stats.smallest_plateau >= 6, `${label}: площадка в ${stats.smallest_plateau} кл.`)
+        // Каждая площадка досягаема шагом хотя бы с одной стороны.
+        assert.equal(stats.climb_cells, 0, `${label}: ${stats.climb_cells} клеток только лазанием`)
+        // Дорога и вход остаются ровными: ни трудной местности, ни укрытий на них.
+        const entrance = map.spawnPoints.find((point) => point.role === 'party')
+        for (let dy = -2; dy <= 2; dy += 1) for (let dx = -2; dx <= 2; dx += 1) {
+          assert.ok((cellAt(map, entrance.x + dx, entrance.y + dy)?.moveCost ?? 1) === 1, `${label}: трудная клетка у входа ${entrance.x + dx},${entrance.y + dy}`)
+        }
+        for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+          const cell = cellAt(map, x, y)
+          if (cell?.zone === 'crossing') assert.equal(cell.moveCost, 1, `${label}: трудный мост ${x},${y}`)
+        }
+      }
+    }
+  })
+}
+
+test('рельеф природы — террасы: высоты кратны пяти футам, бывают возвышенности, перепад соседей — шаг', () => {
+  let raised = 0
+  for (const id of ['forest', 'road']) {
+    const preset = MAP_PREVIEW_PRESETS.find((entry) => entry.id === id)
+    for (const seed of SEEDS) {
+      const { map } = generateSceneGeometry({ ...preset.input, map: { width: 26, height: 26 }, seed: `terrace:${seed}`, useLibrary: false })
+      const { stats } = auditTacticalMap(map)
+      if (stats.elevation_levels >= 2) raised += 1
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+        const cell = cellAt(map, x, y)
+        if (!cell?.passable || cell.surface === 'water') continue
+        assert.equal(cell.elevation % 5, 0, `${id}/${seed}: высота ${cell.elevation} фт в ${x},${y}`)
+        for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+          const next = cellAt(map, x + dx, y + dy)
+          if (next?.passable && next.surface !== 'water') assert.ok(Math.abs(next.elevation - cell.elevation) <= 5, `${id}/${seed}: обрыв ${x},${y} → ${x + dx},${y + dy}`)
+        }
+      }
+    }
+  }
+  assert.ok(raised >= 6, `возвышенность только на ${raised} картах из 8`)
+})
+
+/**
+ * Группы стен развалин: грани, чьи клетки соседствуют (и по диагонали),
+ * — один фрагмент.
+ */
+function wallFragments(map) {
+  const walls = edgeList(map).filter((edge) => edge.kind === 'wall').map((edge) => ({ a: { x: edge.x, y: edge.y }, b: edgeNeighbor(edge) }))
+  const near = (left, right) => [left.a, left.b].some((p) => [right.a, right.b].some((q) => Math.max(Math.abs(p.x - q.x), Math.abs(p.y - q.y)) <= 1))
+  const groups = []
+  const seen = new Set()
+  for (let start = 0; start < walls.length; start += 1) {
+    if (seen.has(start)) continue
+    const group = [start]
+    seen.add(start)
+    for (let cursor = 0; cursor < group.length; cursor += 1) {
+      for (let other = 0; other < walls.length; other += 1) {
+        if (seen.has(other) || !near(walls[group[cursor]], walls[other])) continue
+        seen.add(other)
+        group.push(other)
+      }
+    }
+    const cells = group.flatMap((index) => [walls[index].a, walls[index].b])
+    groups.push({ x: cells.reduce((sum, cell) => sum + cell.x, 0) / cells.length, y: cells.reduce((sum, cell) => sum + cell.y, 0) / cells.length })
+  }
+  return groups
+}
+
+test('руины у дороги — фрагменты стен в разных частях карты, обломки и остатки ворот', () => {
+  const preset = MAP_PREVIEW_PRESETS.find((entry) => entry.id === 'ruins')
+  for (const size of SIZES.slice(1)) {
+    for (const seed of SEEDS) {
+      const { map } = generateSceneGeometry({ ...preset.input, map: size, seed: `ruins:${seed}`, useLibrary: false })
+      const label = `${size.width}×${size.height}/${seed}`
+      const fragments = wallFragments(map)
+      assert.ok(fragments.length >= 3, `${label}: фрагментов стен ${fragments.length}`)
+      // Разные части карты: фрагменты не жмутся в одну треть по обеим осям.
+      const spreadX = Math.max(...fragments.map((entry) => entry.x)) - Math.min(...fragments.map((entry) => entry.x))
+      const spreadY = Math.max(...fragments.map((entry) => entry.y)) - Math.min(...fragments.map((entry) => entry.y))
+      assert.ok(spreadX >= map.width / 3 || spreadY >= map.height / 3, `${label}: фрагменты в одном углу`)
+      let rubble = 0
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (cellAt(map, x, y)?.surface === 'rubble') rubble += 1
+      assert.ok(rubble >= 6, `${label}: обломков ${rubble}`)
+      assert.equal(map.props.filter((prop) => prop.id.startsWith('ruins-gate-pillar-')).length, 2, `${label}: нет остатков ворот`)
+    }
+  }
+})
 
 /** Здание вида «назначение» на нескольких сидах. */
 function buildings(location, theme) {

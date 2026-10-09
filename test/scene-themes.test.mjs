@@ -405,19 +405,30 @@ test('контур опушки и изгиб дороги зависят от s
 
 test('климат открытой местности меняет грунт, поверхность и растительность', () => {
   for (const [climate, material, surface, tree] of [
-    ['arid', 'sand', 'none', 'tree_dead'], ['cold', 'ice', 'ice', 'tree_pine'], ['wetland', 'earth', 'mud', 'tree_dead'],
+    ['arid', 'sand', 'none', 'tree_dead'], ['cold', 'ice', 'ice', 'tree_pine'], ['wetland', 'earth', null, 'tree_dead'],
   ]) {
     const map = buildThemedScene({ themeId: 'forest', seed: 'climate-check', width: 30, height: 24, design: { climate } }).map
     assert.equal(cellAt(map, 15, 12).material, material)
-    assert.equal(cellAt(map, 15, 12).surface, surface)
+    if (surface) assert.equal(cellAt(map, 15, 12).surface, surface)
     assert.ok(map.props.some((prop) => prop.assetId === tree), `${climate}: нет ${tree}`)
   }
+  // Болото — грязь и мелководье пятнами, а не сплошная вязкая карта (v4).
+  const swamp = buildThemedScene({ themeId: 'forest', seed: 'climate-check', width: 30, height: 24, design: { climate: 'wetland' } }).map
+  let passable = 0
+  let mud = 0
+  for (let y = 0; y < swamp.height; y += 1) for (let x = 0; x < swamp.width; x += 1) {
+    const cell = cellAt(swamp, x, y)
+    if (!cell?.passable || cell.surface === 'water') continue
+    passable += 1
+    if (cell.surface === 'mud') mud += 1
+  }
+  assert.ok(mud > 0 && mud / passable <= 0.25, `грязи ${mud} из ${passable}`)
 })
 
-test('открытая местность v3: каменная кромка, связность от входа, вход и дорога свободны', () => {
+test('открытая местность v4: каменная кромка, связность от входа, вход и дорога свободны', () => {
   for (const [themeId, seed] of [['forest', 'v3-forest'], ['road', 'v3-road'], ['forest', 'v3-pond-1'], ['forest', 'v3-pond-2']]) {
     const { map } = buildThemedScene({ themeId, location: themeId === 'forest' ? 'Лес' : 'Тракт', seed, width: 28, height: 24 })
-    assert.equal(map.generator.version, '3')
+    assert.equal(map.generator.version, '4')
     const entrance = map.spawnPoints.find((point) => point.id === 'party-entrance')
     assert.equal(cellAt(map, entrance.x, entrance.y)?.passable, true, 'вход проходим')
     // Все проходимые клетки достижимы от входа: скалы и вода не отрезают поляну.
@@ -443,23 +454,27 @@ test('открытая местность v3: каменная кромка, с�
   }
 })
 
-test('рельеф открытой местности: холмы в футах, шаг между проходимыми соседями не больше 3 футов', () => {
+test('рельеф открытой местности v4: террасы по 5 футов, шаг между проходимыми соседями — один уровень', () => {
   let highGround = 0
   for (const seed of ['relief-1', 'relief-2', 'relief-3', 'relief-4']) {
     const { map } = buildThemedScene({ themeId: 'forest', location: 'Лес', seed, width: 30, height: 24 })
     const entrance = map.spawnPoints.find((point) => point.id === 'party-entrance')
     assert.equal(cellAt(map, entrance.x, entrance.y).elevation, 0, 'вход ровный')
     let peak = 0
+    const levels = new Set()
     for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
       const cell = cellAt(map, x, y)
       if (!cell?.passable) continue
       peak = Math.max(peak, cell.elevation)
+      levels.add(cell.elevation)
+      assert.equal(cell.elevation % 5, 0, `высота ${cell.elevation} в ${x},${y} — не терраса`)
       for (const [dx, dy] of [[1, 0], [0, 1]]) {
         const next = cellAt(map, x + dx, y + dy)
-        if (next?.passable) assert.ok(Math.abs(cell.elevation - next.elevation) <= 3, `перепад ${x},${y} → ${x + dx},${y + dy}`)
+        if (next?.passable) assert.ok(Math.abs(cell.elevation - next.elevation) <= 5, `перепад ${x},${y} → ${x + dx},${y + dy}`)
       }
       if (cell.surface === 'water') assert.ok(cell.elevation <= 0)
     }
+    assert.ok(levels.size <= 4, `уровней ${levels.size}`)
     if (peak >= 5) highGround += 1
   }
   assert.ok(highGround >= 3, 'холмы обычно дают возвышенность от 5 футов')

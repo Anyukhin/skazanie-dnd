@@ -29,9 +29,20 @@ import {
  * разбиения смежны по построению, поэтому зоны раскладываются по листьям в
  * порядке волн из стадии 1: связанные зоны попадают рядом, и связь становится
  * проёмом в общей стене, а не коридором через полкарты.
+ *
+ * Склеп устроен иначе (версия 2): камеры 225–625 фт², вырубленные в скале, и
+ * ходы в клетку шириной между ними (`planChambers`). Разбиение отдавало склепу
+ * всю карту: «фамильный склеп» выходил залом 180×150 футов с рядами колонн.
  */
 
-export const GRAPH_LAYOUT = Object.freeze({ id: 'graph-layout', version: '1' })
+export const GRAPH_LAYOUT = Object.freeze({ id: 'graph-layout', version: '2' })
+
+/**
+ * Соль случайности разбиения залами. Версия 2 изменила только склеп; храм и
+ * подземелье с тем же сидом обязаны выйти прежними, поэтому их поток
+ * случайности по-прежнему от версии 1.
+ */
+const SPLIT_RANDOM_SALT = `${GRAPH_LAYOUT.id}:1`
 
 /**
  * @param {string|number} seed
@@ -206,6 +217,399 @@ function exactLeafAssignment(graph, order, leaves) {
 }
 
 /**
+ * @typedef {object} ChamberMouth
+ * @property {number} x клетка стены камеры, через которую в неё входит ход
+ * @property {number} y
+ * @property {boolean} door стоит ли в этом устье дверь связи
+ */
+
+/**
+ * @typedef {object} ChamberPassage
+ * @property {import('./scene-graph.mjs').SceneLink} link
+ * @property {Array<{x: number, y: number}>} cells клетки хода от устья до устья
+ * @property {ChamberMouth[]} mouths
+ */
+
+/**
+ * Стороны камеры, откуда выходит ход. Открытое устье (без двери) — только на
+ * северной и западной стене. Тонкие стены (`server/thin-walls.mjs`) отдают
+ * проём без двери камере обходом сверху вниз и слева направо: клетка хода
+ * южнее или восточнее такого проёма шла следом за ним, и ход по цепочке
+ * становился полом камеры. Устье с дверью цепочку останавливает на любой
+ * стене.
+ */
+const CHAMBER_SIDES = Object.freeze([
+  { id: 'n', dx: 0, dy: -1, open: true },
+  { id: 'w', dx: -1, dy: 0, open: true },
+  { id: 's', dx: 0, dy: 1, open: false },
+  { id: 'e', dx: 1, dy: 0, open: false },
+])
+
+/**
+ * Размеры камеры вместе с кладкой, в клетках. Тонкие стены отдают кладку
+ * камере, поэтому на доске камера ровно такого размера: 15–30 футов по
+ * стороне и 225–625 фт² по площади. Галерея вытянута — ниши с урнами вдоль
+ * длинных стен — и шире прочих: в ней встаёт место обряда (4×3 клетки,
+ * `server/scene-dressing.mjs`), а вход для него занят точкой появления
+ * отряда. Тайник теснее. Устья — только на сторонах от четырёх клеток
+ * (`mouthsOf`), поэтому у каждой камеры такая сторона есть.
+ *
+ * @param {import('./scene-graph.mjs').SceneZone} zone
+ * @param {string} goalZoneId
+ * @returns {Array<[number, number]>}
+ */
+function chamberSizes(zone, goalZoneId) {
+  if (/галере/iu.test(zone.label ?? '')) return [[6, 4], [4, 6]]
+  if (zone.id === goalZoneId) return [[5, 3], [3, 5]]
+  return [[5, 4], [4, 5]]
+}
+
+/**
+ * Сколько клеток породы оставить между камерами. Одна клетка — стена,
+ * которую потом прорубает петля (`addShortcutLoops` в
+ * `server/scene-themes.mjs`); лаз в три клетки отходит камере, и камера
+ * больше двадцати клеток (500 фт²) вышла бы за 625 фт². Такие камеры
+ * держатся через две клетки — лаз до них не дотягивается.
+ *
+ * @param {LeafRect} a
+ * @param {LeafRect} b
+ */
+function minimumGap(a, b) {
+  const area = (/** @type {LeafRect} */ rect) => (rect.maxX - rect.minX + 1) * (rect.maxY - rect.minY + 1)
+  return area(a) > 20 || area(b) > 20 ? 2 : 1
+}
+
+/**
+ * Склеп: камеры, вырубленные в скале, и ходы в клетку между ними. Камера —
+ * прямоугольник с кладкой по краю (как лист разбиения); ход — клетки без
+ * зоны. Порода остаётся сплошной.
+ *
+ * Ход держится не ближе трёх клеток к чужой камере по прямой, а из своей
+ * выходит прямо на две клетки: иначе тонкие стены отдали бы камере породу
+ * между нею и ходом, и ход слился бы с полом камеры.
+ *
+ * @param {import('./scene-graph.mjs').SceneGraph} graph
+ * @param {number} width
+ * @param {number} height
+ * @param {() => number} random
+ * @returns {{rooms: Map<string, LeafRect>, passages: ChamberPassage[]}|null}
+ */
+export function planChambers(graph, width, height, random) {
+  const order = progressionWaves(graph).flatMap((wave) => wave.zones)
+  for (const zone of graph.zones) if (!order.includes(zone.id)) order.push(zone.id)
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const plan = tryPlanChambers(graph, order, width, height, random)
+    if (plan) return plan
+  }
+  return null
+}
+
+/**
+ * Одна попытка раскладки камер; `null`, если какая-то камера не встала.
+ *
+ * @param {import('./scene-graph.mjs').SceneGraph} graph
+ * @param {string[]} order
+ * @param {number} width
+ * @param {number} height
+ * @param {() => number} random
+ * @returns {{rooms: Map<string, LeafRect>, passages: ChamberPassage[]}|null}
+ */
+function tryPlanChambers(graph, order, width, height, random) {
+  const at = (/** @type {number} */ x, /** @type {number} */ y) => y * width + x
+  const inside = (/** @type {number} */ x, /** @type {number} */ y) => x >= 1 && y >= 1 && x <= width - 2 && y <= height - 2
+  // 1 — клетка хода, 2 — её сосед: второй ход рядом не идёт, ходы не сливаются.
+  let taken = new Uint8Array(width * height)
+  /** @type {Map<string, LeafRect>} */
+  const rooms = new Map()
+  /** @type {ChamberPassage[]} */
+  const passages = []
+  /** Клетка в двух шагах по прямой от камеры (или в ней самой). */
+  const nearRect = (/** @type {LeafRect} */ rect, /** @type {number} */ x, /** @type {number} */ y) => (
+    (x >= rect.minX && x <= rect.maxX && y >= rect.minY - 2 && y <= rect.maxY + 2)
+    || (y >= rect.minY && y <= rect.maxY && x >= rect.minX - 2 && x <= rect.maxX + 2)
+  )
+  const free = (/** @type {number} */ x, /** @type {number} */ y) => inside(x, y) && !taken[at(x, y)]
+    && [...rooms.values()].every((rect) => !nearRect(rect, x, y))
+  const gap = (/** @type {LeafRect} */ a, /** @type {LeafRect} */ b) => Math.max(
+    b.minX - a.maxX - 1, a.minX - b.maxX - 1, b.minY - a.maxY - 1, a.minY - b.maxY - 1,
+  )
+  const farthest = Math.max(3, Math.min(9, Math.round(Math.min(width, height) / 4)))
+
+  /**
+   * Устья камеры на разрешённых сторонах: клетка кладки (не угол), две клетки
+   * хода прямо наружу и третья — уже свободная порода. Открытое устье
+   * (`openOnly`) — только там, где ему не нужна дверь (`CHAMBER_SIDES`).
+   * @param {LeafRect} rect
+   * @param {boolean} openOnly
+   */
+  const mouthsOf = (rect, openOnly) => {
+    /** @type {Array<{x: number, y: number, dx: number, dy: number, open: boolean}>} */
+    const found = []
+    for (const side of CHAMBER_SIDES) {
+      if (openOnly && !side.open) continue
+      const along = side.dx === 0
+      // Угол кладки тонкие стены отдают камере по двум соседям-стенам, а
+      // проём соседом-стеной не считается: у устья рядом с углом угол
+      // остаётся породой — косяк у проёма. На стороне в три клетки устье
+      // соседствует с обоими углами, и камера теряла всю стену — там его нет.
+      const from = along ? rect.minX + 1 : rect.minY + 1
+      const to = along ? rect.maxX - 1 : rect.maxY - 1
+      if (to - from < 1) continue
+      for (let step = from; step <= to; step += 1) {
+        const x = along ? step : (side.dx < 0 ? rect.minX : rect.maxX)
+        const y = along ? (side.dy < 0 ? rect.minY : rect.maxY) : step
+        const line = [1, 2].map((distance) => ({ x: x + side.dx * distance, y: y + side.dy * distance }))
+        const others = [...rooms.values()].filter((other) => other !== rect)
+        const clear = line.every((cell) => inside(cell.x, cell.y) && !taken[at(cell.x, cell.y)]
+          && others.every((other) => !nearRect(other, cell.x, cell.y)))
+        if (clear && free(x + side.dx * 3, y + side.dy * 3)) found.push({ x, y, dx: side.dx, dy: side.dy, open: side.open })
+      }
+    }
+    return found
+  }
+
+  /**
+   * Ход между двумя размещёнными камерами: поиск в ширину по свободной
+   * породе от третьих клеток устьев одной камеры до третьих клеток другой.
+   * @param {LeafRect} fromRect
+   * @param {LeafRect} toRect
+   * @param {import('./scene-graph.mjs').SceneLink} link
+   * @returns {ChamberPassage|null}
+   */
+  const route = (fromRect, toRect, link) => {
+    // Дверь связи — в устье дальней камеры; если там устье не встаёт, — в
+    // устье ближней. Открытой связи двери не нужно, и оба устья открытые.
+    const options = link.kind === 'open'
+      ? [{ door: '', fromOpen: true, toOpen: true }]
+      : [{ door: 'to', fromOpen: true, toOpen: false }, { door: 'from', fromOpen: false, toOpen: true }]
+    for (const option of options) {
+      const sources = shuffle(mouthsOf(fromRect, option.fromOpen), random)
+      const targets = mouthsOf(toRect, option.toOpen)
+      if (!sources.length || !targets.length) continue
+      /** @type {Map<number, typeof targets[number]>} */
+      const targetAt = new Map(targets.map((mouth) => [at(mouth.x + mouth.dx * 3, mouth.y + mouth.dy * 3), mouth]))
+      /** @type {Map<number, number>} */
+      const parent = new Map()
+      /** @type {Map<number, typeof sources[number]>} */
+      const sourceAt = new Map()
+      /** @type {number[]} */
+      const queue = []
+      for (const mouth of sources) {
+        const start = at(mouth.x + mouth.dx * 3, mouth.y + mouth.dy * 3)
+        if (parent.has(start)) continue
+        parent.set(start, -1)
+        sourceAt.set(start, mouth)
+        queue.push(start)
+      }
+      const directions = shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]], random)
+      let reached = -1
+      for (let head = 0; head < queue.length && reached < 0; head += 1) {
+        const current = queue[head]
+        if (targetAt.has(current)) { reached = current; break }
+        const x = current % width
+        const y = Math.floor(current / width)
+        for (const [dx, dy] of directions) {
+          const next = at(x + dx, y + dy)
+          if (parent.has(next) || !free(x + dx, y + dy)) continue
+          parent.set(next, current)
+          queue.push(next)
+        }
+      }
+      if (reached < 0) continue
+      /** @type {number[]} */
+      const middle = []
+      for (let cursor = reached; cursor >= 0; cursor = parent.get(cursor) ?? -1) middle.unshift(cursor)
+      const source = /** @type {typeof sources[number]} */ (sourceAt.get(middle[0]))
+      const target = /** @type {typeof targets[number]} */ (targetAt.get(reached))
+      const cells = [
+        ...[1, 2].map((distance) => ({ x: source.x + source.dx * distance, y: source.y + source.dy * distance })),
+        ...middle.map((cell) => ({ x: cell % width, y: Math.floor(cell / width) })),
+        ...[2, 1].map((distance) => ({ x: target.x + target.dx * distance, y: target.y + target.dy * distance })),
+      ]
+      return {
+        link,
+        cells,
+        mouths: [
+          { x: source.x, y: source.y, door: option.door === 'from' },
+          { x: target.x, y: target.y, door: option.door === 'to' },
+        ],
+      }
+    }
+    return null
+  }
+
+  /**
+   * Камера вплотную к соседней: между ними одна клетка породы и общий отрезок
+   * стены. Такую стену потом прорубает петля (`addShortcutLoops` в
+   * `server/scene-themes.mjs`) — лаз в три клетки вместо обхода ходом.
+   * @param {LeafRect} rect
+   */
+  const snug = (rect) => [...rooms.values()].some((other) => {
+    if (gap(rect, other) !== 1 || minimumGap(rect, other) > 1) return false
+    const rows = Math.min(rect.maxY, other.maxY) - Math.max(rect.minY, other.minY) - 1
+    const columns = Math.min(rect.maxX, other.maxX) - Math.max(rect.minX, other.minX) - 1
+    return rows >= 1 || columns >= 1
+  })
+  /** Клетки хода заняты, их соседи закрыты для следующего хода. @param {ChamberPassage} passage */
+  const occupy = (passage) => {
+    for (const cell of passage.cells) {
+      taken[at(cell.x, cell.y)] = 1
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (inside(cell.x + dx, cell.y + dy) && !taken[at(cell.x + dx, cell.y + dy)]) taken[at(cell.x + dx, cell.y + dy)] = 2
+      }
+    }
+  }
+  for (const zoneId of order) {
+    const zone = graph.zones.find((entry) => entry.id === zoneId)
+    if (!zone) return null
+    const links = graph.links.filter((link) => (link.from === zoneId && rooms.has(link.to)) || (link.to === zoneId && rooms.has(link.from)))
+    const anchor = links.length ? rooms.get(links[0].from === zoneId ? links[0].to : links[0].from) : null
+    const target = 1 + Math.floor(random() * farthest)
+    // Половина камер ложится вплотную к уже стоящей: склеп получает петли.
+    const preferSnug = random() < 0.5
+    /** @type {Array<{rect: LeafRect, score: number}>} */
+    const candidates = []
+    for (const [w, h] of chamberSizes(zone, graph.goalZoneId)) {
+      for (let y = 1; y + h - 1 <= height - 2; y += 1) {
+        for (let x = 1; x + w - 1 <= width - 2; x += 1) {
+          const rect = { minX: x, minY: y, maxX: x + w - 1, maxY: y + h - 1 }
+          if ([...rooms.values()].some((other) => gap(rect, other) < minimumGap(rect, other))) continue
+          if (anchor && gap(rect, anchor) > farthest) continue
+          if (touchesPassage(rect, taken, width, height)) continue
+          const closeness = anchor ? Math.abs(gap(rect, anchor) - target) : 0
+          candidates.push({ rect, score: closeness + random() * 2 - (preferSnug && snug(rect) ? 6 : 0) })
+        }
+      }
+    }
+    candidates.sort((left, right) => left.score - right.score)
+    let placed = false
+    for (const { rect } of candidates.slice(0, 80)) {
+      const saved = taken.slice()
+      rooms.set(zoneId, rect)
+      /** @type {ChamberPassage[]} */
+      const routed = []
+      for (const link of links) {
+        const other = /** @type {LeafRect} */ (rooms.get(link.from === zoneId ? link.to : link.from))
+        const passage = link.from === zoneId ? route(rect, other, link) : route(other, rect, link)
+        if (!passage) break
+        routed.push(passage)
+        occupy(passage)
+      }
+      if (routed.length === links.length) {
+        passages.push(...routed)
+        placed = true
+        break
+      }
+      rooms.delete(zoneId)
+      taken = saved
+    }
+    if (!placed) return null
+  }
+
+  // Обходной ход от входа к дальней камере, не связанной со входом напрямую:
+  // в склепе появляется петля (Жакейс), отряд выбирает путь, а бой не идёт
+  // одной ниткой. За запертую связь обход ведёт той же запертой дверью на тот
+  // же ключ — иначе замок терял бы смысл. Не проложился — склеп без обхода.
+  for (const bypass of bypassLinks(graph)) {
+    const passage = route(/** @type {LeafRect} */ (rooms.get(bypass.from)), /** @type {LeafRect} */ (rooms.get(bypass.to)), bypass)
+    if (!passage) continue
+    passages.push(passage)
+    occupy(passage)
+    break
+  }
+  return { rooms, passages }
+}
+
+/**
+ * Возможные связи обходного хода — от входа к зоне, со входом не связанной,
+ * лучшие первыми. Зона, достижимая без замков, получает обычную дверь; зона
+ * за единственной запертой связью — запертую дверь на ключ этой связи;
+ * остальные не годятся.
+ *
+ * Лучше та зона, до которой больше дверей: открытый проём сливает две камеры
+ * в одно помещение, и обход к соседу по проёму — лишь вторая дверь между
+ * теми же двумя помещениями, а не петля.
+ *
+ * @param {import('./scene-graph.mjs').SceneGraph} graph
+ * @returns {import('./scene-graph.mjs').SceneLink[]}
+ */
+function bypassLinks(graph) {
+  const entrance = graph.entranceZoneId
+  // Сколько дверей от входа до зоны (открытая связь — ноль) и нужен ли замок.
+  /** @type {Map<string, {doors: number, locked: boolean}>} */
+  const reach = new Map([[entrance, { doors: 0, locked: false }]])
+  for (let grown = true; grown;) {
+    grown = false
+    for (const link of graph.links) {
+      for (const [a, b] of [[link.from, link.to], [link.to, link.from]]) {
+        const from = reach.get(a)
+        if (!from) continue
+        const next = { doors: from.doors + (link.kind === 'open' ? 0 : 1), locked: from.locked || link.kind === 'locked' }
+        const known = reach.get(b)
+        // Лучше путь без замка, при равенстве — с меньшим числом дверей.
+        if (known && (known.locked < next.locked || (known.locked === next.locked && known.doors <= next.doors))) continue
+        reach.set(b, next)
+        grown = true
+      }
+    }
+  }
+  /** @type {Array<{link: import('./scene-graph.mjs').SceneLink, doors: number}>} */
+  const found = []
+  for (const zone of graph.zones) {
+    const way = reach.get(zone.id)
+    if (!way || zone.id === entrance || way.doors < 1) continue
+    if (graph.links.some((link) => (link.from === entrance && link.to === zone.id) || (link.to === entrance && link.from === zone.id))) continue
+    const base = { id: `bypass-${zone.id}`, from: entrance, to: zone.id, bidirectional: true }
+    if (!way.locked) {
+      found.push({ link: { ...base, kind: 'door', keyId: null }, doors: way.doors })
+      continue
+    }
+    // Цель за единственной запертой связью: обход — та же дверь на тот же ключ.
+    const touching = graph.links.filter((link) => link.from === zone.id || link.to === zone.id)
+    const lock = touching.length === 1 && touching[0].kind === 'locked' && touching[0].to === zone.id ? touching[0] : null
+    if (lock?.keyId) found.push({ link: { ...base, kind: 'locked', keyId: lock.keyId }, doors: way.doors })
+  }
+  return found
+    .sort((left, right) => right.doors - left.doors || Number(left.link.kind === 'locked') - Number(right.link.kind === 'locked') || left.link.id.localeCompare(right.link.id))
+    .map((entry) => entry.link)
+}
+
+/**
+ * Лежит ли клетка хода ближе трёх клеток по прямой к будущей камере.
+ *
+ * @param {LeafRect} rect
+ * @param {Uint8Array} taken
+ * @param {number} width
+ * @param {number} height
+ */
+function touchesPassage(rect, taken, width, height) {
+  for (let y = Math.max(0, rect.minY - 2); y <= Math.min(height - 1, rect.maxY + 2); y += 1) {
+    for (let x = Math.max(0, rect.minX - 2); x <= Math.min(width - 1, rect.maxX + 2); x += 1) {
+      const straight = (x >= rect.minX && x <= rect.maxX) || (y >= rect.minY && y <= rect.maxY)
+      if (straight && taken[y * width + x] === 1) return true
+    }
+  }
+  return false
+}
+
+/**
+ * Перемешивание Фишера — Йетса на детерминированном генераторе.
+ *
+ * @template T
+ * @param {T[]} items
+ * @param {() => number} random
+ * @returns {T[]}
+ */
+function shuffle(items, random) {
+  const result = [...items]
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(random() * (index + 1))
+    ;[result[index], result[swap]] = [result[swap], result[index]]
+  }
+  return result
+}
+
+/**
  * @typedef {object} GraphLayoutResult
  * @property {import('./tactical-map.mjs').TacticalMap} map
  * @property {Map<string, LeafRect>} rooms
@@ -235,7 +639,7 @@ export function layoutSceneGraph(graph, {
 } = {}) {
   const safeWidth = Math.max(12, Math.min(SIZE_CLASSES.area.maxWidth, Math.round(width)))
   const safeHeight = Math.max(12, Math.min(SIZE_CLASSES.area.maxHeight, Math.round(height)))
-  const random = randomFor(`${GRAPH_LAYOUT.id}:${GRAPH_LAYOUT.version}:${seed}`)
+  const random = randomFor(`${SPLIT_RANDOM_SALT}:${seed}`)
   /** @type {string[]} */
   const warnings = []
 
@@ -268,11 +672,23 @@ export function layoutSceneGraph(graph, {
     }
   }
 
-  const leaves = splitArea({ minX: 0, minY: 0, maxX: safeWidth - 1, maxY: safeHeight - 1 }, graph.zones.length, random)
-  if (leaves.length < graph.zones.length) {
-    warnings.push(`карта вмещает ${leaves.length} помещений, а зон ${graph.zones.length}`)
+  // Склеп — камеры в скале и ходы между ними. Если камеры не уместились
+  // (карту заказали слишком тесной), склеп строится прежним разбиением:
+  // лучше просторный склеп, чем склеп без помещения.
+  const planned = theme === 'crypt'
+    ? planChambers(graph, safeWidth, safeHeight, randomFor(`${GRAPH_LAYOUT.id}:${GRAPH_LAYOUT.version}:${seed}`))
+    : null
+  /** @type {Map<string, LeafRect>} */
+  let rooms
+  if (planned) {
+    rooms = planned.rooms
+  } else {
+    const leaves = splitArea({ minX: 0, minY: 0, maxX: safeWidth - 1, maxY: safeHeight - 1 }, graph.zones.length, random)
+    if (leaves.length < graph.zones.length) {
+      warnings.push(`карта вмещает ${leaves.length} помещений, а зон ${graph.zones.length}`)
+    }
+    rooms = assignZonesToLeaves(graph, leaves)
   }
-  const rooms = assignZonesToLeaves(graph, leaves)
 
   for (const [zoneId, rect] of rooms) {
     const zone = graph.zones.find((entry) => entry.id === zoneId)
@@ -285,6 +701,13 @@ export function layoutSceneGraph(graph, {
           variant: floorVariantAt(seed, x, y),
         })
       }
+    }
+  }
+  // Ходы склепа — клетки без зоны: обстановка их не занимает, а стены по
+  // бокам — те же рёбра в породу, что и у камер.
+  for (const passage of planned?.passages ?? []) {
+    for (const cell of passage.cells) {
+      setCell(map, cell.x, cell.y, { passable: true, material, zone: '', variant: floorVariantAt(seed, cell.x, cell.y) })
     }
   }
 
@@ -303,7 +726,15 @@ export function layoutSceneGraph(graph, {
 
   // Связи графа становятся проёмами. Без этого проверенная стадией 1
   // достижимость не доживает до геометрии.
-  for (const link of graph.links) {
+  for (const passage of planned?.passages ?? []) {
+    // У хода два устья; дверь связи — на одном из них, второе — открытый проём.
+    for (const mouth of passage.mouths) {
+      carveDoorway(map, mouth.x, mouth.y, mouth.door ? passage.link : { ...passage.link, kind: 'open' }, material)
+    }
+  }
+  // Связь без хода — проём в общей стене смежных помещений.
+  const routed = new Set((planned?.passages ?? []).map((passage) => passage.link.id))
+  for (const link of graph.links.filter((entry) => !routed.has(entry.id))) {
     const a = rooms.get(link.from)
     const b = rooms.get(link.to)
     if (!a || !b) { warnings.push(`связь ${link.id}: одна из зон не размещена`); continue }

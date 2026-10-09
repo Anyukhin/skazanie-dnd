@@ -191,6 +191,20 @@ function looksMaskedIdentity(actor) {
   return !name || /^(?:\?+|unknown|неизвестн|неопознан|безымянн|скрыт|маскир|masked|тайн(?:ый|ое|ая)|враг|существо|creature|enemy)(?:\s|$)/iu.test(name)
 }
 
+// Дракон — только целым словом и не как добыча: король Арес «прославленный
+// драконоборец» стоял в галерее Штормберга красным драконом (обзор карт
+// 2026-10-08). Тот же разбор — в `src/actor-models.ts`.
+const DRAGON_WORD = /(?<!\p{L})(?:dragons?|wyrm(?:ling)?s?|drakes?|wyverns?|дракон(?:а|у|ом|е|ы|ов|ам|ами|ах|ица|ицы)?|виверн\p{L}*)(?!\p{L})/iu
+const DRAGON_AS_PREY = /(?:dragon[\s-]*(?:slayer|hunter)s?|(?:охотни\p{L}*|убийц\p{L}*|истребител\p{L}*|победител\p{L}*)[\s-]+(?:на[\s-]+)?дракон\p{L}*)/giu
+
+/**
+ * Текст называет самого дракона, а не того, кто на драконов охотится.
+ * @param {unknown} value
+ */
+export function namesDragon(value) {
+  return DRAGON_WORD.test(String(value ?? '').replace(DRAGON_AS_PREY, ' '))
+}
+
 /**
  * Выводит грубый профиль из публичных полей личности/класса. `creature_type`
  * читается только после проверки маски: замаскированное имя по нему не
@@ -210,7 +224,7 @@ export function actorProfileFor(actor = {}) {
   if (kind !== 'hero' && text(actor.creature_type, 40) === 'dragon') return 'dragon'
   if (/goblin|гоблин/iu.test(identity)) return 'goblin'
   if (/skeleton|скелет|undead|нежить|зомби/iu.test(identity)) return 'skeleton'
-  if (/dragon|дракон|wyrm|drake|виверн|wyvern/iu.test(identity)) return 'dragon'
+  if (namesDragon(identity)) return 'dragon'
   if (/beast|звер|wolf|волк|bear|медвед|boar|кабан/iu.test(identity) || BEAST_WORDS.test(identity)) return 'beast'
   // Зверь по стат-блоку (`creature_type`) — тоже публичная строка карточки врага.
   if (kind !== 'hero' && text(actor.creature_type, 40) === 'beast') return 'beast'

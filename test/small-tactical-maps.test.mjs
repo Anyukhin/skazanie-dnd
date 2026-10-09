@@ -128,7 +128,9 @@ test('каждая малая карта валидна, связна, имее�
       if (cell?.passable) {
         passable += 1
         assert.ok(reached.has(pos(x, y)), map.locationId + ': клетка ' + pos(x, y) + ' недостижима')
-        assert.equal(cell.moveCost, 1, map.locationId + ': обычный пол не должен случайно получать moveCost=2')
+        // Нарисованная карта задаёт бурелом и грязь легендой (`moveCost`),
+        // сборщик малых карт трудной местности не ставит.
+        if (!DRAWN.has(map.locationId)) assert.equal(cell.moveCost, 1, map.locationId + ': обычный пол не должен случайно получать moveCost=2')
         if (cell.revealed) {
           revealedPassable += 1
           assert.ok(Math.abs(x - party.x) + Math.abs(y - party.y) <= 8, map.locationId + ': стартовое раскрытие вышло за радиус 8')

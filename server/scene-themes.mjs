@@ -11,7 +11,7 @@ import { deepestRoom, raiseDais } from './scene-features.mjs'
 import { addSceneLink, addSceneZone, createSceneGraph } from './scene-graph.mjs'
 import { assetById } from './asset-registry.mjs'
 import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
-import { markLowFurniture, placeRuinsField, placeVignettes, roughenGround } from './scene-dressing.mjs'
+import { markLowFurniture, placeRuinsField, placeVignettes, roughenGround, vignettesNamedBy } from './scene-dressing.mjs'
 import {
   SIZE_CLASSES,
   addProp,
@@ -23,6 +23,7 @@ import {
   edgeList,
   edgeNeighbor,
   floorVariantAt,
+  reachableCells,
   setCell,
   setDoor,
   setEdge,
@@ -58,6 +59,12 @@ const DWELLING_FURNITURE_OFF = Object.freeze({
   stairs_up: 0, stairs_down: 0, trapdoor: 0, lantern_wall: 0, bookshelf: 0, shelf_wall: 0,
 })
 const TEMPLE_INTERIOR_CAPS = DWELLING_FURNITURE_OFF
+/**
+ * Декор храма на одно помещение: мозаика одна, хоругвей две. Без потолка
+ * притвор, неф и алтарная набирали по семь одинаковых мозаичных кругов и до
+ * девяти хоругвей (обзор карт 2026-10-08).
+ */
+const TEMPLE_DECOR_CAPS = Object.freeze({ mosaic: 1, temple_banner: 2, statue_plinth: 1, kneeling_cushions: 2 })
 /** Подземелью мебель нужна по делу: стол стражи, нары, бочки — не кровать и не люстра. */
 const DUNGEON_INTERIOR_CAPS = Object.freeze({
   bed: 0, bar_counter: 0, bar_shelf: 0, table_round: 0, table_royal: 0, royal_throne: 0, chandelier: 0, candelabra: 0, rug: 0, cupboard: 0, wardrobe: 0,
@@ -111,12 +118,12 @@ export const SCENE_THEMES = Object.freeze([
     // притворе, а тринадцать статуй — где придётся.
     propPlans: [
       // Притвор: купель со святой водой у входа и колокол.
-      { density: 8, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, kneeling_cushions: 0, ...TEMPLE_INTERIOR_CAPS } },
+      { density: 8, colonnade: false, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, ...TEMPLE_DECOR_CAPS, kneeling_cushions: 0, ...TEMPLE_INTERIOR_CAPS } },
       // Неф — шаблон `nave`: скамьи рядами, кафедра, дорожка к алтарной.
-      { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 4, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_INTERIOR_CAPS } },
+      { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 2, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_DECOR_CAPS, ...TEMPLE_INTERIOR_CAPS } },
       // Алтарная — шаблон `altar`: алтарь, курильница, подушки и свечи вокруг.
-      { density: 14, purpose: 'altar', require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3 } },
-      { density: 18, colonnade: false, theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1 } },
+      { density: 14, colonnade: false, purpose: 'altar', require: ['altar', 'reliquary', 'brazier', 'statue'], prefer: ['offering_bowl', 'temple_banner', 'mosaic', 'statue', 'reliquary'], caps: { altar: 1, reliquary: 2, statue: 2, pillar: 2, prayer_bench: 2, brazier: 2, offering_bowl: 3, ...TEMPLE_DECOR_CAPS } },
+      { density: 18, colonnade: 'never', theme: 'interior', purpose: 'store', require: ['chest', 'wardrobe', 'shelf_wall'], prefer: ['chest', 'shelf_wall', 'candle', 'table_small', 'bookshelf'], caps: { bed: 0, bunk_bed: 0, barrel_stack: 0, crate_stack: 1, ...TEMPLE_DECOR_CAPS } },
     ],
   },
   {
@@ -317,6 +324,22 @@ function randomFor(seed) {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0
     return state / 0x100000000
   }
+}
+
+/**
+ * Перемешивание по сиду: порядок кандидатов не зависит от обхода карты.
+ * @template T
+ * @param {T[]} items
+ * @param {() => number} random
+ * @returns {T[]}
+ */
+function shuffled(items, random) {
+  const copy = [...items]
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const other = Math.floor(random() * (index + 1))
+    ;[copy[index], copy[other]] = [copy[other], copy[index]]
+  }
+  return copy
 }
 
 /**
@@ -1093,17 +1116,33 @@ export function dressWaterEdges(map, seed) {
   return placed
 }
 
-/** Наибольший перепад между проходимыми соседями, в футах: шаг без лазания. */
-export const OPEN_TERRAIN_MAX_STEP_FEET = 3
+/** Шаг уровня рельефа открытой местности, в футах: площадки на 0, 5, 10 и изредка 15 футах. */
+export const OPEN_TERRAIN_LEVEL_FEET = 5
 
 /**
- * Рельеф открытой местности: два-три холма с пологими склонами. Высоты — в
- * футах, как у правил: вершина 10–15 футов даёт возвышенность (от 5 футов),
- * а соседние проходимые клетки различаются не больше чем на
- * `OPEN_TERRAIN_MAX_STEP_FEET`, поэтому ни один шаг не требует лазания —
- * механики лазания и падения в правилах нет. Вход ровный, дорога сглажена,
- * вода лежит ниже берегов. Скалы кромки поднимаются над соседями: это только
- * вид, клетки непроходимы.
+ * Наибольший перепад между проходимыми соседями, в футах: один уровень. Такой
+ * уступ проходят шагом (2D рисует его горизонталью); от десяти футов — уже
+ * обрыв с бергштрихами, а механики лазания в правилах нет, поэтому обрывов
+ * между проходимыми клетками генератор не делает.
+ */
+export const OPEN_TERRAIN_MAX_STEP_FEET = OPEN_TERRAIN_LEVEL_FEET
+
+/** Наименьшая площадка одного уровня, клеток: меньше — ступенька, а не плато. */
+export const OPEN_TERRAIN_MIN_PLATEAU = 6
+
+/**
+ * Рельеф открытой местности: один-три холма террасами. Высоты — в футах, как у
+ * правил, и только целыми уровнями `OPEN_TERRAIN_LEVEL_FEET`: вершина на 10
+ * футах (изредка одна на 15, на болоте — бугор в 5), вокруг неё пояс на 5
+ * футах — склон в одну-две клетки. Прежде холм сглаживался ступенями по
+ * 1–3 фута, и поляна выходила лестницей из двадцати пяти уровней.
+ *
+ * Соседние проходимые клетки (и по диагонали) различаются не больше чем на
+ * уровень, поэтому любая площадка досягаема шагом, а площадка меньше
+ * `OPEN_TERRAIN_MIN_PLATEAU` клеток опускается к соседям. Вход ровный, дорога
+ * поднимается не выше первого уровня, мост лежит на земле, вода — ниже
+ * берегов. Скалы кромки поднимаются над соседями: это только вид, клетки
+ * непроходимы.
  *
  * @param {Record<string, any>} theme
  * @param {string|number} seed
@@ -1112,72 +1151,136 @@ export const OPEN_TERRAIN_MAX_STEP_FEET = 3
  */
 export function applyOpenTerrainRelief(theme, seed, terrainCells, { width, height, entranceY, onRoadAt }) {
   const random = randomFor(`open-relief:${theme.id}:${seed}`)
+  const span = Math.min(width, height)
+  const count = (width * height >= 900 ? 2 : 1) + Math.floor(random() * 2)
+  // Высшая ступень: обычно 10 футов, на болоте бугор в 5, и изредка одна
+  // вершина на 15 футов — четвёртый уровень карты.
+  const ceiling = theme.wetland ? 1 : 2
+  const tall = !theme.wetland && random() < 0.25
   const hills = []
-  const count = 2 + Math.floor(random() * 2)
   for (let index = 0; index < count; index += 1) {
     hills.push({
-      x: Math.floor(width * (0.25 + random() * 0.6)),
-      y: Math.floor(height * (0.15 + random() * 0.7)),
-      radius: 3.5 + random() * 3.5,
-      peak: 10 + Math.floor(random() * 6),
+      x: width * (0.3 + random() * 0.55),
+      y: height * (0.15 + random() * 0.7),
+      rx: Math.max(3, span * (0.16 + random() * 0.12)),
+      ry: Math.max(3, span * (0.16 + random() * 0.12)),
+      phase: random() * Math.PI * 2,
+      peak: index === 0 && tall ? ceiling + 1 : index > 0 && random() < 0.3 ? 1 : ceiling,
     })
   }
-  /** @type {Map<string, number>} */
-  const level = new Map()
-  for (const cell of terrainCells.values()) {
-    let feet = 0
-    for (const hill of hills) {
-      const distance = Math.hypot(cell.x - hill.x, cell.y - hill.y) / hill.radius
-      // Плато с округлым краем: вершина ровная, склон — косинус.
-      if (distance < 1.6) feet = Math.max(feet, hill.peak * (distance < 0.55 ? 1 : 0.5 + 0.5 * Math.cos((distance - 0.55) / 1.05 * Math.PI)))
-    }
-    if (cell.patch.surface === 'water') feet = -2
-    if (onRoadAt(cell.x, cell.y)) feet *= 0.45
-    if (cell.x <= 5 && Math.abs(cell.y - entranceY) <= 2) feet = 0
-    level.set(`${cell.x},${cell.y}`, Math.round(feet))
-  }
-  // Склоны без уступов: проходимые соседи сводятся к перепаду не больше шага.
-  // Понижаются только высокие клетки, поэтому вход и вода остаются на месте.
   /** @param {{patch: Record<string, any>}} cell */
   const passable = (cell) => cell.patch.passable !== false && cell.patch.surface !== 'water'
-  for (let pass = 0; pass < 40; pass += 1) {
-    let changed = false
-    for (const cell of terrainCells.values()) {
-      if (!passable(cell) && cell.patch.surface !== 'water') continue
-      const own = level.get(`${cell.x},${cell.y}`) ?? 0
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const neighbor = terrainCells.get(`${cell.x + dx},${cell.y + dy}`)
-        if (!neighbor || !passable(neighbor) && neighbor.patch.surface !== 'water') continue
-        const other = level.get(`${neighbor.x},${neighbor.y}`) ?? 0
-        if (own - other > OPEN_TERRAIN_MAX_STEP_FEET) {
-          level.set(`${cell.x},${cell.y}`, other + OPEN_TERRAIN_MAX_STEP_FEET)
-          changed = true
-          break
+  /** @param {{patch: Record<string, any>}} cell */
+  const ground = (cell) => passable(cell) || cell.patch.surface === 'water'
+  /** Уровень клетки: 0, 1, 2, 3. @type {Map<string, number>} */
+  const level = new Map()
+  for (const cell of terrainCells.values()) {
+    let tier = 0
+    for (const hill of hills) {
+      // Неровный контур террасы: радиус колышется по углу.
+      const angle = Math.atan2(cell.y - hill.y, cell.x - hill.x)
+      const distance = Math.hypot((cell.x - hill.x) / hill.rx, (cell.y - hill.y) / hill.ry) * (1 + Math.sin(angle * 3 + hill.phase) * 0.12)
+      tier = Math.max(tier, Math.round(hill.peak * clamp((1.25 - distance) / 0.85, 0, 1)))
+    }
+    if (cell.patch.surface === 'water' || cell.patch.zone === 'crossing') tier = 0
+    if (onRoadAt(cell.x, cell.y)) tier = Math.min(tier, 1)
+    if (cell.x <= 5 && Math.abs(cell.y - entranceY) <= 2) tier = 0
+    level.set(`${cell.x},${cell.y}`, tier)
+  }
+  // Склон, а не обрыв: соседи различаются не больше чем на уровень.
+  // Понижаются только высокие клетки, поэтому вход, мост и вода на месте.
+  const settle = () => {
+    for (let pass = 0; pass < 80; pass += 1) {
+      let changed = false
+      for (const cell of terrainCells.values()) {
+        if (!ground(cell)) continue
+        const key = `${cell.x},${cell.y}`
+        for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+          const neighbor = terrainCells.get(`${cell.x + dx},${cell.y + dy}`)
+          if (!neighbor || !ground(neighbor)) continue
+          const other = level.get(`${neighbor.x},${neighbor.y}`) ?? 0
+          if ((level.get(key) ?? 0) > other + 1) {
+            level.set(key, other + 1)
+            changed = true
+          }
         }
       }
+      if (!changed) break
     }
-    if (!changed) break
+  }
+  settle()
+  // Площадка меньше шести клеток — не плато, а кочка: она опускается на
+  // уровень, и склон пересчитывается заново.
+  for (let pass = 0; pass < 12; pass += 1) {
+    /** @type {Set<string>} */
+    const seen = new Set()
+    let lowered = false
+    for (const start of terrainCells.values()) {
+      const key = `${start.x},${start.y}`
+      const tier = level.get(key) ?? 0
+      if (!passable(start) || tier <= 0 || seen.has(key)) continue
+      const patch = [start]
+      seen.add(key)
+      for (let index = 0; index < patch.length; index += 1) {
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const next = terrainCells.get(`${patch[index].x + dx},${patch[index].y + dy}`)
+          const nextKey = next ? `${next.x},${next.y}` : ''
+          if (!next || seen.has(nextKey) || !passable(next) || level.get(nextKey) !== tier) continue
+          seen.add(nextKey)
+          patch.push(next)
+        }
+      }
+      if (patch.length >= OPEN_TERRAIN_MIN_PLATEAU) continue
+      for (const cell of patch) level.set(`${cell.x},${cell.y}`, tier - 1)
+      lowered = true
+    }
+    if (!lowered) break
+    settle()
+  }
+  /** @type {Map<string, number>} */
+  const feet = new Map()
+  for (const cell of terrainCells.values()) {
+    const key = `${cell.x},${cell.y}`
+    feet.set(key, cell.patch.surface === 'water' ? -2 : (level.get(key) ?? 0) * OPEN_TERRAIN_LEVEL_FEET)
   }
   // Скала кромки — выше самого высокого проходимого соседа: край читается
-  // утёсом, а не бордюром.
+  // утёсом, а не бордюром. Соседи-скалы не в счёт: прежде высота копилась
+  // вдоль гряды, и дальний угол кромки вырастал втрое выше холма.
   for (const cell of terrainCells.values()) {
-    if (passable(cell) || cell.patch.surface === 'water') continue
-    let top = level.get(`${cell.x},${cell.y}`) ?? 0
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) top = Math.max(top, level.get(`${cell.x + dx},${cell.y + dy}`) ?? 0)
-    level.set(`${cell.x},${cell.y}`, top + 1 + Math.floor(random() * 2))
+    if (ground(cell)) continue
+    let top = -1
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const neighbor = terrainCells.get(`${cell.x + dx},${cell.y + dy}`)
+      if (neighbor && ground(neighbor)) top = Math.max(top, feet.get(`${neighbor.x},${neighbor.y}`) ?? 0)
+    }
+    // Внешний ряд гряды держит высоту холма под собой.
+    if (top < 0) top = feet.get(`${cell.x},${cell.y}`) ?? 0
+    feet.set(`${cell.x},${cell.y}`, top + 1 + Math.floor(random() * 2))
   }
   for (const cell of terrainCells.values()) {
-    const feet = level.get(`${cell.x},${cell.y}`) ?? 0
-    if (feet) cell.patch = { ...cell.patch, elevation: feet }
+    const value = feet.get(`${cell.x},${cell.y}`) ?? 0
+    cell.patch = { ...cell.patch, elevation: value }
   }
 }
 
 /**
  * Версия генератора открытой местности. 3 — петляющая река с каменистыми
- * берегами, скалистая кромка участка, пруд в лесу и холмы (высоты в футах). Сохранённые карты не
+ * берегами, скалистая кромка участка, пруд в лесу и холмы (высоты в футах).
+ * 4 — рельеф террасами в 2–4 уровня по 5 футов, трудная местность пятнами
+ * по теме (подлесок, бурелом, грязь, мелководье, обломки), укрытия посреди
+ * поля и руины фрагментами стен с остатками ворот. Сохранённые карты не
  * перегенерируются: их версия остаётся прежней.
  */
-export const OPEN_TERRAIN_GENERATOR_VERSION = '3'
+export const OPEN_TERRAIN_GENERATOR_VERSION = '4'
+
+/**
+ * Что знает раскладка открытой местности и не хранит карта: клетки дороги и
+ * вход отряда. На болоте дорога и обочина — одна земля, по материалу её не
+ * отличить, а трудной местности и укрытиям на дороге не место.
+ *
+ * @type {WeakMap<import('./tactical-map.mjs').TacticalMap, {road: Set<string>, entranceY: number}>}
+ */
+const OPEN_LAYOUT = new WeakMap()
 
 /**
  * Открытая местность: помещений нет, есть проходимая площадка с опушкой по
@@ -1342,8 +1445,6 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
       queue.push(next)
     }
   }
-  // Кладбище — ровный погост: надгробия на ступенях холма выглядят съехавшими.
-  if (!theme.flat) applyOpenTerrainRelief(theme, seed, terrainCells, { width: safeWidth, height: safeHeight, entranceY, onRoadAt })
   // Скалы и вода не должны отрезать часть поляны от входа: недостижимые
   // проходимые клетки становятся камнем, а не ловушкой для отряда.
   const walkable = new Set([`1,${entranceY}`])
@@ -1359,13 +1460,575 @@ export function layoutOpenTerrain(theme, { seed = 'open', width = 26, height = 2
   }
   for (const point of queue) {
     const cell = terrainCells.get(`${point.x},${point.y}`)
-    if (!cell) continue
-    if (cell.patch.passable && !walkable.has(`${point.x},${point.y}`)) toRock(cell)
-    setCell(map, cell.x, cell.y, cell.patch)
+    if (cell?.patch.passable && !walkable.has(`${point.x},${point.y}`)) toRock(cell)
   }
+  // Рельеф — по уже окончательной проходимости: камень на месте отрезанного
+  // закутка не дробит плато. Кладбище — ровный погост: надгробия на
+  // ступенях холма выглядят съехавшими.
+  /** @type {Map<string, {x: number, y: number, patch: Record<string, any>}>} */
+  const kept = new Map(queue.flatMap((point) => {
+    const cell = terrainCells.get(`${point.x},${point.y}`)
+    return cell ? [[`${cell.x},${cell.y}`, cell]] : []
+  }))
+  if (!theme.flat) applyOpenTerrainRelief(theme, seed, kept, { width: safeWidth, height: safeHeight, entranceY, onRoadAt })
+  /** @type {Set<string>} */
+  const road = new Set()
+  for (const cell of kept.values()) {
+    setCell(map, cell.x, cell.y, cell.patch)
+    if (cell.patch.passable && onRoadAt(cell.x, cell.y)) road.add(`${cell.x},${cell.y}`)
+  }
+  OPEN_LAYOUT.set(map, { road, entranceY })
   map.spawnPoints.push({ id: 'party-entrance', x: 1, y: entranceY, role: 'party' })
   map.overlays = { compass: true, scaleBar: true, roomLabels: [{ zoneId: 'field', label: theme.label }] }
   return map
+}
+
+/** @param {number} x @param {number} y */
+const cellKey = (x, y) => `${x},${y}`
+
+/**
+ * Голая земля поля: без воды, грязи и щебня. Наст зимней карты — тоже земля:
+ * лёд там покрывает всё поле, и без этого на снегу не вставало бы ничего.
+ * @param {{surface: string}} cell
+ */
+const bareGround = (cell) => cell.surface === 'none' || cell.surface === 'ice'
+
+/**
+ * Радиус пуассоновского диска природной россыпи — тот же, что держит
+ * расстановка (`prop-placement.mjs`): укрытие поля не встаёт вплотную к пню
+ * или кусту, а расстановка потом обходит его так же, как свои деревья.
+ * @type {Readonly<Record<string, number>>}
+ */
+const SCATTER_RADIUS = Object.freeze({
+  tree_oak: 2.3, tree_pine: 2.3, tree_birch: 1.8, tree_dead: 1.8,
+  bush: 1.2, shrub: 1.2, rock_small: 1.2, boulder: 1.5, tree_stump: 1.2,
+})
+
+/**
+ * Клетки под предметами: все (с наклейками — по их точке) и только мешающие шагу.
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ */
+function propCells(map) {
+  /** @type {Set<string>} */
+  const any = new Set()
+  /** @type {Set<string>} */
+  const blocking = new Set()
+  for (const prop of map.props) {
+    if (prop.mount) continue
+    for (const point of prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]) {
+      any.add(cellKey(point.x, point.y))
+      if (prop.blocksMove) blocking.add(cellKey(point.x, point.y))
+    }
+  }
+  return { any, blocking }
+}
+
+/**
+ * Стоит ли на ребре между соседями стена (не дверь).
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {number} x @param {number} y @param {number} nx @param {number} ny
+ */
+function wallBetween(map, x, y, nx, ny) {
+  const edge = edgeBetween(map, x, y, nx, ny)
+  return Boolean(edge && edge.kind !== 'door' && edge.blocksMove)
+}
+
+/**
+ * Клетка у входа отряда: там он встаёт, и ни укрытий, ни трудной местности
+ * там не бывает.
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {number} x @param {number} y @param {number} [margin]
+ */
+function nearPartyEntrance(map, x, y, margin = 0) {
+  const party = map.spawnPoints.find((point) => point.role === 'party')
+  const entranceY = OPEN_LAYOUT.get(map)?.entranceY ?? party?.y ?? 0
+  if (x <= 5 + margin && Math.abs(y - entranceY) <= 2 + margin) return true
+  return Boolean(party && Math.max(Math.abs(x - party.x), Math.abs(y - party.y)) <= 3 + margin)
+}
+
+/**
+ * Укрытия посреди поля: толстый ствол, валун, поваленное дерево — то, за чем
+ * встают. Каждое следующее встаёт там, где до ближайшего укрытия дальше всего,
+ * пока доля клеток с укрытием сбоку не дойдёт до `target`. Вокруг предмета —
+ * свободное кольцо в клетку: укрытие не перегораживает проход и не запирает
+ * клетки. Не на дороге, не у входа, не у воды и не поперёк склона.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{ seed: string|number, assets: string[], target: number }} options
+ * @returns {number} сколько поставлено
+ */
+function placeNatureCover(map, { seed, assets, target }) {
+  const random = randomFor(`nature-cover:${seed}`)
+  const road = OPEN_LAYOUT.get(map)?.road ?? new Set()
+  const limit = Math.max(3, Math.round(map.width * map.height / 45))
+  /** @type {Map<string, number>} */
+  const counts = new Map()
+  let placed = 0
+  /** Клетки, где предмет запер бы часть поля. @type {Set<string>} */
+  const rejected = new Set()
+  const party = map.spawnPoints.find((point) => point.role === 'party')
+  const { width, height } = map
+  const inside = (/** @type {number} */ x, /** @type {number} */ y) => x >= 0 && y >= 0 && x < width && y < height
+  // Стены за время расстановки не меняются: клетки у стены — один раз.
+  const wallSide = new Uint8Array(width * height)
+  for (const edge of edgeList(map)) {
+    if (edge.kind === 'door' || !edge.blocksMove) continue
+    for (const point of [edge, edgeNeighbor(edge)]) if (inside(point.x, point.y)) wallSide[point.y * width + point.x] = 1
+  }
+  const distance = new Int16Array(width * height)
+  const queue = new Int32Array(width * height)
+  for (let round = 0; round < limit * 3 && placed < limit; round += 1) {
+    const { any, blocking } = propCells(map)
+    const blocked = new Uint8Array(width * height)
+    for (const key of blocking) {
+      const [x, y] = key.split(',').map(Number)
+      if (inside(x, y)) blocked[y * width + x] = 1
+    }
+    // Доля свободных клеток с укрытием сбоку — мерка `cover_side_pct`
+    // проверки карты: мешающий шагу предмет или стена; скала кромки не в счёт.
+    let open = 0
+    let covered = 0
+    for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (!cell?.passable || cell.surface === 'water' || blocked[y * width + x]) continue
+      open += 1
+      if (wallSide[y * width + x] || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => inside(x + dx, y + dy) && blocked[(y + dy) * width + x + dx])) covered += 1
+    }
+    if (!open || covered / open >= target) break
+    // Расстояние до ближайшего укрытия (Чебышёв): волна от предметов и стен.
+    distance.fill(-1)
+    let tail = 0
+    for (let index = 0; index < width * height; index += 1) {
+      if (!blocked[index] && !wallSide[index]) continue
+      distance[index] = 0
+      queue[tail] = index
+      tail += 1
+    }
+    for (let head = 0; head < tail; head += 1) {
+      const index = queue[head]
+      const px = index % width
+      const py = (index - px) / width
+      for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) {
+        const x = px + dx
+        const y = py + dy
+        if (!inside(x, y) || distance[y * width + x] >= 0) continue
+        distance[y * width + x] = distance[index] + 1
+        queue[tail] = y * width + x
+        tail += 1
+      }
+    }
+    /** @param {number} x @param {number} y @param {number} w @param {number} h */
+    const fits = (x, y, w, h) => {
+      const level = cellAt(map, x, y)?.elevation
+      for (let cy = y - 1; cy <= y + h; cy += 1) for (let cx = x - 1; cx <= x + w; cx += 1) {
+        const cell = cellAt(map, cx, cy)
+        const inside = cx >= x && cx < x + w && cy >= y && cy < y + h
+        // Кольцо вокруг может упираться в скалу и воду, но не в другой
+        // предмет и не в мост; запертое потом снимает проверка досягаемости.
+        if (!inside) {
+          if (cell?.passable && (blocking.has(cellKey(cx, cy)) || cell.zone === 'crossing')) return false
+          continue
+        }
+        if (!cell?.passable || cell.surface === 'water' || cell.zone !== 'field' || rejected.has(cellKey(cx, cy))) return false
+        if (cx <= 0 || cy <= 0 || cx >= map.width - 1 || cy >= map.height - 1) return false
+        if (road.has(cellKey(cx, cy)) || any.has(cellKey(cx, cy)) || cell.elevation !== level || nearPartyEntrance(map, cx, cy, 1)) return false
+        if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => wallBetween(map, cx, cy, cx + dx, cy + dy))) return false
+      }
+      return true
+    }
+    const scatter = map.props.filter((prop) => SCATTER_RADIUS[prop.assetId])
+      .map((prop) => ({ x: Math.floor(prop.x), y: Math.floor(prop.y), radius: SCATTER_RADIUS[prop.assetId] }))
+    // Реже всего стоявшее — первым: поле не зарастает одними валунами.
+    const order = [...assets].sort((left, right) => (counts.get(left) ?? 0) - (counts.get(right) ?? 0) || assets.indexOf(left) - assets.indexOf(right))
+    /** @typedef {{x: number, y: number, w: number, h: number, assetId: string, rotation: number, score: number}} CoverSpot */
+    /** @type {CoverSpot|null} */
+    let found = null
+    for (const assetId of order) {
+      const asset = assetById(assetId)
+      if (!asset) continue
+      const width = Math.max(1, asset.baseFootprint.w)
+      const height = Math.max(1, asset.baseFootprint.h)
+      const turns = width === height ? [0] : [0, 90]
+      for (const rotation of turns) {
+        const w = rotation ? height : width
+        const h = rotation ? width : height
+        for (let y = 1; y + h < map.height; y += 1) for (let x = 1; x + w < map.width; x += 1) {
+          // Сначала дешёвая мерка — даль от укрытия: место заведомо хуже
+          // найденного проверять незачем.
+          let nearest = Number.POSITIVE_INFINITY
+          for (let cy = y; cy < y + h; cy += 1) for (let cx = x; cx < x + w; cx += 1) {
+            const far = distance[cy * width + cx]
+            nearest = Math.min(nearest, far < 0 ? 99 : far)
+          }
+          if (nearest < 2 || found && Math.min(nearest, 12) + 0.9 <= found.score) continue
+          if (!fits(x, y, w, h)) continue
+          const cx = Math.floor(x + w / 2)
+          const cy = Math.floor(y + h / 2)
+          const own = SCATTER_RADIUS[assetId] ?? 0
+          if (scatter.some((other) => Math.hypot(other.x - cx, other.y - cy) < Math.max(own, other.radius))) continue
+          const score = Math.min(nearest, 12) + random() * 0.9
+          if (!found || score > found.score) found = { x, y, w, h, assetId, rotation, score }
+        }
+      }
+      if (found) break
+    }
+    // Сужение типа в цикле TypeScript теряет: результат поиска — явно.
+    const best = /** @type {CoverSpot|null} */ (found)
+    // Свободного поля дальше двух клеток от укрытия не осталось.
+    if (!best || best.score < 2) break
+    const asset = /** @type {NonNullable<ReturnType<typeof assetById>>} */ (assetById(best.assetId))
+    /** @type {Array<{x: number, y: number}>} */
+    const footprint = []
+    for (let cy = best.y; cy < best.y + best.h; cy += 1) for (let cx = best.x; cx < best.x + best.w; cx += 1) footprint.push({ x: cx, y: cy })
+    // Кольцо вокруг целиком свободно — запереть предмет ничего не может;
+    // упирается в скалу или воду — досягаемость проверяется до и после.
+    let tight = false
+    for (let cy = best.y - 1; cy <= best.y + best.h; cy += 1) for (let cx = best.x - 1; cx <= best.x + best.w; cx += 1) {
+      const cell = cellAt(map, cx, cy)
+      if (!cell?.passable || cell.surface === 'water' || inside(cx, cy) && wallSide[cy * width + cx]) tight = true
+    }
+    const before = party && tight ? reachableCells(map, party.x, party.y, { blockedCells: blocking }).size : 0
+    const id = `nature-cover-${placed + 1}`
+    addProp(map, {
+      id, assetId: asset.id, x: best.x + best.w / 2, y: best.y + best.h / 2,
+      rotation: best.rotation, scale: clamp(0.95 + random() * 0.2, asset.scaleRange?.min ?? 0.8, asset.scaleRange?.max ?? 1.3),
+      footprint, zOrder: 0, blocksMove: asset.blocksMove, blocksSight: asset.blocksSight, cover: asset.cover,
+      destructible: asset.destructible, hp: asset.hp, interactive: asset.interactive,
+    })
+    // Клетки под самим предметом выпадают из досягаемых; любая другая потеря — откат.
+    if (party && tight && reachableCells(map, party.x, party.y, { blockedCells: propCells(map).blocking }).size < before - footprint.length) {
+      map.props = map.props.filter((prop) => prop.id !== id)
+      for (const point of footprint) rejected.add(cellKey(point.x, point.y))
+      continue
+    }
+    placed += 1
+    counts.set(best.assetId, (counts.get(best.assetId) ?? 0) + 1)
+  }
+  return placed
+}
+
+/**
+ * Развалины у дороги: фрагменты стен — прямой обрывок или угол — в разных
+ * частях карты, каждый с проломом, обломки вокруг как трудная местность
+ * (`rubble`, шаг вдвое) и, если через карту идёт дорога, остатки ворот: два
+ * столба по сторонам дороги и обрывки стены от них. Прежде развалины были
+ * одним основанием у края карты, а остальное поле — пустыми террасами.
+ *
+ * Стены — рёбра клеток, как у построек. Вокруг фрагмента свободное кольцо в
+ * клетку, и каждый фрагмент проверяется досягаемостью: если что-то стало
+ * недоступно от входа, он снимается.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{ seed: string|number, wanted?: number }} options
+ * @returns {number} сколько поставлено фрагментов, считая ворота
+ */
+function placeRuinFragments(map, { seed, wanted = 4 }) {
+  const random = randomFor(`ruin-fragments:${seed}`)
+  const road = OPEN_LAYOUT.get(map)?.road ?? new Set()
+  const party = map.spawnPoints.find((point) => point.role === 'party')
+  const wall = { kind: 'wall', blocksMove: true, blocksSight: true, cover: 'three_quarters' }
+  const reachCount = () => {
+    if (!party) return 0
+    return reachableCells(map, party.x, party.y, { blockedCells: propCells(map).blocking }).size
+  }
+  let reach = reachCount()
+  /** @param {string} assetId @param {{x: number, y: number}} point @param {string} id */
+  const place = (assetId, point, id) => {
+    const asset = assetById(assetId)
+    if (!asset) return
+    const flat = !asset.baseFootprint.w
+    addProp(map, {
+      id, assetId, x: point.x + 0.5, y: point.y + 0.5, rotation: Math.floor(random() * 4) * 90, scale: 1,
+      footprint: flat ? [] : [point], zOrder: 0, blocksMove: asset.blocksMove, blocksSight: asset.blocksSight,
+      cover: asset.cover, destructible: asset.destructible, hp: asset.hp, interactive: asset.interactive,
+    })
+  }
+  /**
+   * Обломки у фрагмента: несколько клеток щебня рядом со стенами и в проломе.
+   * @param {Array<{x: number, y: number}>} near @param {number} index
+   */
+  const scatterRubble = (near, index) => {
+    const { any } = propCells(map)
+    const candidates = shuffled(near.filter((point) => {
+      const cell = cellAt(map, point.x, point.y)
+      return cell?.passable && bareGround(cell) && cell.zone === 'field' && !road.has(cellKey(point.x, point.y)) && !nearPartyEntrance(map, point.x, point.y)
+    }), random)
+    const chosen = candidates.slice(0, 3 + Math.floor(random() * 3))
+    for (const point of chosen) setCell(map, point.x, point.y, { surface: 'rubble', moveCost: 2 })
+    const free = chosen.filter((point) => !any.has(cellKey(point.x, point.y)))
+    if (free[0]) place('rubble_heap', free[0], `ruins-${index}-rubble_heap-1`)
+    if (free[1]) place('scree', free[1], `ruins-${index}-scree-1`)
+  }
+  /**
+   * Грани стены по линии сетки: горизонтальной (`y` — линия между рядами
+   * `y - 1` и `y`) или вертикальной, от вершины на `length` граней в сторону `step`.
+   * @param {'h'|'v'} axis @param {number} vx @param {number} vy @param {number} step @param {number} length
+   */
+  const line = (axis, vx, vy, step, length) => Array.from({ length }, (_, index) => {
+    const along = step > 0 ? index : -1 - index
+    return axis === 'h'
+      ? { x: vx + along, y: vy - 1, nx: vx + along, ny: vy }
+      : { x: vx - 1, y: vy + along, nx: vx, ny: vy + along }
+  })
+  let built = 0
+  // Карта делится на шесть частей; фрагменты встают в разных, часть со входом — последней.
+  const columns = 3
+  const rows = 2
+  /** @type {Array<{x0: number, x1: number, y0: number, y1: number}>} */
+  const sectors = []
+  for (let row = 0; row < rows; row += 1) for (let column = 0; column < columns; column += 1) {
+    sectors.push({
+      x0: Math.floor(column * map.width / columns), x1: Math.floor((column + 1) * map.width / columns) - 1,
+      y0: Math.floor(row * map.height / rows), y1: Math.floor((row + 1) * map.height / rows) - 1,
+    })
+  }
+  const holdsEntrance = (/** @type {{x0: number, x1: number, y0: number, y1: number}} */ sector) => Boolean(party && party.x >= sector.x0 && party.x <= sector.x1 && party.y >= sector.y0 && party.y <= sector.y1)
+  const order = [...shuffled(sectors.filter((sector) => !holdsEntrance(sector)), random), ...sectors.filter(holdsEntrance)]
+  for (const sector of order) {
+    if (built >= wanted) break
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const corner = random() < 0.55
+      const vx = sector.x0 + Math.floor(random() * Math.max(1, sector.x1 - sector.x0 + 1))
+      const vy = sector.y0 + Math.floor(random() * Math.max(1, sector.y1 - sector.y0 + 1))
+      // Стена тянется к середине карты: от края ей некуда расти.
+      const sx = vx < map.width / 2 ? 1 : -1
+      const sy = vy < map.height / 2 ? 1 : -1
+      // На тесной карте фрагменты короче: иначе им негде встать.
+      const extra = map.width * map.height < 300 ? -1 : map.width * map.height < 500 ? 0 : 1
+      /** @type {Array<Array<{x: number, y: number, nx: number, ny: number}>>} */
+      const lines = corner
+        ? [line('h', vx, vy, sx, 3 + extra + Math.floor(random() * 3)), line('v', vx, vy, sy, 3 + extra + Math.floor(random() * 3))]
+        : [random() < 0.5 ? line('h', vx, vy, sx, 4 + extra + Math.floor(random() * 4)) : line('v', vx, vy, sy, 4 + extra + Math.floor(random() * 4))]
+      const edges = lines.flat()
+      const touched = edges.flatMap((edge) => [{ x: edge.x, y: edge.y }, { x: edge.nx, y: edge.ny }])
+      const minX = Math.min(...touched.map((point) => point.x)) - 1
+      const maxX = Math.max(...touched.map((point) => point.x)) + 1
+      const minY = Math.min(...touched.map((point) => point.y)) - 1
+      const maxY = Math.max(...touched.map((point) => point.y)) + 1
+      if (minX < 0 || minY < 0 || maxX > map.width - 1 || maxY > map.height - 1) continue
+      const { any } = propCells(map)
+      const own = new Set(touched.map((point) => cellKey(point.x, point.y)))
+      let fits = true
+      for (let y = minY; y <= maxY && fits; y += 1) for (let x = minX; x <= maxX && fits; x += 1) {
+        const cell = cellAt(map, x, y)
+        // Клетки у самой стены — свободная сухая земля поля; кольцо вокруг
+        // может упираться в скалу или дорогу, но не в предмет и не в вход.
+        if (own.has(cellKey(x, y))) {
+          if (!cell?.passable || !bareGround(cell) || cell.zone !== 'field' || road.has(cellKey(x, y))) fits = false
+        }
+        if (cell?.passable && (any.has(cellKey(x, y)) || nearPartyEntrance(map, x, y, 1))) fits = false
+        if ([[1, 0], [0, 1]].some(([dx, dy]) => edgeBetween(map, x, y, x + dx, y + dy))) fits = false
+      }
+      // Стена идёт по террасе или вдоль уступа, но не поперёк него: обе
+      // стороны каждой грани на одной высоте.
+      if (!fits || edges.some((edge) => cellAt(map, edge.x, edge.y)?.elevation !== cellAt(map, edge.nx, edge.ny)?.elevation)) continue
+      // Пролом в две грани на каждой линии от четырёх граней; угол держится,
+      // остальная кладка местами выкрошена.
+      const standing = lines.map((edgesOfLine) => edgesOfLine.map((_, index) => index === 0 || random() < 0.85))
+      lines.forEach((edgesOfLine, index) => {
+        if (edgesOfLine.length < 4) return
+        const start = 1 + Math.floor(random() * (edgesOfLine.length - 2))
+        standing[index][start] = false
+        if (start + 1 < edgesOfLine.length) standing[index][start + 1] = false
+      })
+      const raised = lines.flatMap((edgesOfLine, index) => edgesOfLine.filter((_, step) => standing[index][step]))
+      for (const edge of raised) setEdge(map, edge.x, edge.y, edge.nx, edge.ny, wall)
+      const now = reachCount()
+      if (now < reach) {
+        for (const edge of raised) setEdge(map, edge.x, edge.y, edge.nx, edge.ny, { kind: 'none' })
+        continue
+      }
+      reach = now
+      built += 1
+      /** @type {Array<{x: number, y: number}>} */
+      const near = []
+      for (let y = minY; y <= maxY; y += 1) for (let x = minX; x <= maxX; x += 1) near.push({ x, y })
+      scatterRubble(near, built)
+      break
+    }
+  }
+  // Остатки ворот — поперёк дороги: два столба по её краям и обрывки стены от них.
+  if (road.size) {
+    const roadRows = (/** @type {number} */ x) => {
+      const ys = []
+      for (let y = 0; y < map.height; y += 1) if (road.has(cellKey(x, y))) ys.push(y)
+      return ys.length === 3 && ys[2] - ys[0] === 2 ? ys : null
+    }
+    const columnsToTry = []
+    for (let x = Math.max(8, Math.ceil(map.width * 0.3)); x <= Math.floor(map.width * 0.75); x += 1) columnsToTry.push(x)
+    for (const x of shuffled(columnsToTry, random)) {
+      const ys = roadRows(x)
+      // Ворота — на прямом отрезке: дорога в соседних столбцах в тех же рядах.
+      if (!ys || ![x - 1, x + 1].every((column) => roadRows(column)?.[0] === ys[0])) continue
+      const stub = 2 + Math.floor(random() * 2)
+      const top = ys[0] - 1
+      const bottom = ys[2] + 1
+      const posts = [{ x, y: top }, { x, y: bottom }]
+      const wings = [
+        ...Array.from({ length: stub }, (_, step) => ({ x, y: top - 1 - step, nx: x + 1, ny: top - 1 - step })),
+        ...Array.from({ length: stub }, (_, step) => ({ x, y: bottom + 1 + step, nx: x + 1, ny: bottom + 1 + step })),
+      ]
+      const { any } = propCells(map)
+      const clear = (/** @type {number} */ cx, /** @type {number} */ cy) => {
+        const cell = cellAt(map, cx, cy)
+        return Boolean(cell?.passable && bareGround(cell) && cell.zone === 'field' && !road.has(cellKey(cx, cy)) && !any.has(cellKey(cx, cy)))
+      }
+      if (!posts.every((point) => clear(point.x, point.y))) continue
+      if (!wings.every((edge) => clear(edge.x, edge.y) && clear(edge.nx, edge.ny) && !edgeBetween(map, edge.x, edge.y, edge.nx, edge.ny))) continue
+      posts.forEach((point, index) => place('pillar', point, `ruins-gate-pillar-${index + 1}`))
+      for (const edge of wings) setEdge(map, edge.x, edge.y, edge.nx, edge.ny, wall)
+      // Клетки под столбами выпадают из досягаемых сами; остальное — нет.
+      const now = reachCount()
+      if (now < reach - posts.length) {
+        map.props = map.props.filter((prop) => !prop.id.startsWith('ruins-gate-'))
+        for (const edge of wings) setEdge(map, edge.x, edge.y, edge.nx, edge.ny, { kind: 'none' })
+        continue
+      }
+      reach = now
+      built += 1
+      scatterRubble(wings.flatMap((edge) => [{ x: edge.x - 1, y: edge.y }, { x: edge.nx + 1, y: edge.ny }, { x: edge.x, y: edge.y }, { x: edge.nx, y: edge.ny }]), built)
+      break
+    }
+  }
+  return built
+}
+
+/**
+ * Трудная местность открытой карты по виду: покрытие клетки, наклейки,
+ * которыми её видно в 3D, и предметы, которые через неё не мешают пройти.
+ * @type {Readonly<Record<string, {surface?: string, decals: string[], props?: string[]}>>}
+ */
+const OPEN_ROUGH = Object.freeze({
+  // Подлесок: папоротник, листва, сухой кустарник.
+  undergrowth: { decals: ['fern', 'leaf_litter', 'forest_plant'], props: ['dead_bramble'] },
+  // Бурелом: валежник поперёк хода.
+  windfall: { decals: ['leaf_litter', 'forest_plant'], props: ['fallen_log'] },
+  // Грязь — на болоте и в колеях у тракта.
+  mud: { surface: 'mud', decals: ['mud_patch'] },
+  // Мелководье: стоячая вода по щиколотку, кувшинки и камыш.
+  shallows: { surface: 'mud', decals: ['lily_pad_cluster', 'reeds'] },
+  rubble: { surface: 'rubble', decals: ['scree', 'pebbles'] },
+  snow: { decals: ['snowdrift'] },
+  sand: { decals: ['sand_dune'] },
+})
+
+/**
+ * Трудная местность пятнами по теме: шаг по такой клетке стоит вдвое
+ * (`moveCost` 2, правило движка), 2D штрихует её, 3D показывает наклейками и
+ * покрытием. Пятна растут до доли `share` от свободных клеток карты, считая
+ * уже трудные (щебень развалин). Не на дороге и мосту, не у входа отряда и не
+ * в проходе шириной в клетку: узкое место остаётся лёгким, а пятно обходится —
+ * но обход стоит хода.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{ seed: string|number, kinds: string[], share: number, sizes: [number, number] }} options
+ * @returns {number} сколько клеток стало трудными
+ */
+function roughenOpenTerrain(map, { seed, kinds, share, sizes }) {
+  const random = randomFor(`open-rough:${seed}`)
+  const road = OPEN_LAYOUT.get(map)?.road ?? new Set()
+  const { blocking } = propCells(map)
+  let free = 0
+  let rough = 0
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (!cell?.passable || cell.surface === 'water' || blocking.has(cellKey(x, y))) continue
+    free += 1
+    if (cell.moveCost > 1) rough += 1
+  }
+  const target = Math.round(free * share)
+  /** @param {number} x @param {number} y */
+  const closed = (x, y, /** @type {number} */ nx, /** @type {number} */ ny) => {
+    const cell = cellAt(map, nx, ny)
+    return !cell?.passable || cell.surface === 'water' || blocking.has(cellKey(nx, ny)) || wallBetween(map, x, y, nx, ny)
+  }
+  /** @param {number} x @param {number} y */
+  const eligible = (x, y) => {
+    const cell = cellAt(map, x, y)
+    if (!cell?.passable || !bareGround(cell) || cell.moveCost > 1 || cell.zone !== 'field') return false
+    if (x <= 0 || y <= 0 || x >= map.width - 1 || y >= map.height - 1) return false
+    if (blocking.has(cellKey(x, y)) || road.has(cellKey(x, y)) || nearPartyEntrance(map, x, y)) return false
+    // Проход в клетку шириной: закрыто с обеих сторон по одной из осей.
+    return !(closed(x, y, x - 1, y) && closed(x, y, x + 1, y)) && !(closed(x, y, x, y - 1) && closed(x, y, x, y + 1))
+  }
+  /** @type {Array<{x: number, y: number}>} */
+  const ground = []
+  for (let y = 1; y < map.height - 1; y += 1) for (let x = 1; x < map.width - 1; x += 1) if (eligible(x, y)) ground.push({ x, y })
+  /** @type {Array<{x: number, y: number}>} */
+  const centers = []
+  /** @type {Map<string, number>} */
+  const decalCounts = new Map()
+  for (const prop of map.props) decalCounts.set(prop.assetId, (decalCounts.get(prop.assetId) ?? 0) + 1)
+  let changed = 0
+  let patchIndex = 0
+  // Второй проход — теснее и мельче: на маленькой карте пятнам иначе негде встать.
+  for (const [spacing, smallest] of [[5, 3], [3, 2]]) for (const center of shuffled(ground, random)) {
+    if (rough + changed >= target) break
+    if (!eligible(center.x, center.y)) continue
+    if (centers.some((other) => Math.abs(other.x - center.x) + Math.abs(other.y - center.y) < spacing)) continue
+    const kind = OPEN_ROUGH[kinds[patchIndex % kinds.length]]
+    const size = Math.min(target - rough - changed, sizes[0] + Math.floor(random() * (sizes[1] - sizes[0] + 1)))
+    // Пятно растёт от центра в случайную сторону: неровный край, а не круг.
+    const cells = [center]
+    const taken = new Set([cellKey(center.x, center.y)])
+    for (let guard = 0; cells.length < size && guard < size * 8; guard += 1) {
+      const from = cells[Math.floor(random() * cells.length)]
+      const [dx, dy] = [[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(random() * 4)]
+      const next = { x: from.x + dx, y: from.y + dy }
+      if (taken.has(cellKey(next.x, next.y)) || !eligible(next.x, next.y)) continue
+      taken.add(cellKey(next.x, next.y))
+      cells.push(next)
+    }
+    if (cells.length < Math.min(smallest, size)) continue
+    centers.push(center)
+    patchIndex += 1
+    for (const point of cells) setCell(map, point.x, point.y, { moveCost: 2, ...(kind.surface ? { surface: kind.surface } : {}) })
+    changed += cells.length
+    // Чем пятно трудно — видно и без штриховки: наклейки поодаль друг от
+    // друга (три одинаковых вплотную проверка карты считает кучей).
+    const { any } = propCells(map)
+    /** @param {{x: number, y: number}} a @param {{x: number, y: number}} b */
+    const touching = (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) <= 1
+    /** @param {string} assetId @param {{x: number, y: number}} point */
+    const sameNear = (assetId, point) => map.props.some((prop) => prop.assetId === assetId && touching({ x: Math.floor(prop.x), y: Math.floor(prop.y) }, point))
+    /** @type {Array<{x: number, y: number}>} */
+    const chosen = []
+    for (const point of shuffled(cells, random)) {
+      if (chosen.length >= Math.min(3, Math.ceil(cells.length / 3))) break
+      if (any.has(cellKey(point.x, point.y)) || chosen.some((other) => touching(other, point))) continue
+      const assetId = [...kind.decals].sort((left, right) => (decalCounts.get(left) ?? 0) - (decalCounts.get(right) ?? 0))[0]
+      const asset = assetById(assetId)
+      // Одна наклейка — не больше пятой части предметов карты: пустыня из
+      // одних барханов проверка карты считает однообразием.
+      if (!asset || sameNear(assetId, point) || (decalCounts.get(assetId) ?? 0) >= Math.max(4, map.props.length * 0.2)) continue
+      chosen.push(point)
+      decalCounts.set(assetId, (decalCounts.get(assetId) ?? 0) + 1)
+      addProp(map, {
+        id: `open-rough-${patchIndex}-${chosen.length}`, assetId, x: point.x + 0.5, y: point.y + 0.5,
+        rotation: Math.floor(random() * 4) * 90, scale: 0.9 + random() * 0.25, footprint: [], zOrder: 0,
+        blocksMove: false, blocksSight: false, cover: 'none', destructible: false, hp: 0, interactive: false,
+      })
+    }
+    // Через половину пятен — сухой куст или ствол валежника: укрытие, через
+    // которое проходят, но с трудом.
+    const propId = kind.props?.[0]
+    const propAsset = propId ? assetById(propId) : null
+    if (!propAsset || random() < 0.5) continue
+    const width = Math.max(1, propAsset.baseFootprint.w)
+    const fresh = propCells(map).any
+    for (const point of shuffled(cells, random)) {
+      const footprint = width > 1 ? [point, { x: point.x + 1, y: point.y }] : [point]
+      if (!footprint.every((cell) => taken.has(cellKey(cell.x, cell.y)) && !fresh.has(cellKey(cell.x, cell.y)))) continue
+      if (sameNear(propAsset.id, point)) continue
+      addProp(map, {
+        id: `open-rough-${patchIndex}-${propAsset.id}`, assetId: propAsset.id, x: point.x + width / 2, y: point.y + 0.5,
+        rotation: 0, scale: 1, footprint, zOrder: 0, blocksMove: propAsset.blocksMove, blocksSight: propAsset.blocksSight,
+        cover: propAsset.cover, destructible: propAsset.destructible, hp: propAsset.hp, interactive: propAsset.interactive,
+      })
+      break
+    }
+  }
+  return changed
 }
 
 /**
@@ -1441,7 +2104,29 @@ export function buildThemedScene({
     // Общий зал трактира помнит вчерашний вечер (`server/scene-dressing.mjs`):
     // трактир узнаётся по стойке в зале, а не по подписи — её носят и другие.
     const tavernHall = built.map.props.some((prop) => prop.assetId === 'bar_counter') ? built.map.zones.find((zone) => zone.id === 'hall') : null
-    if (tavernHall && placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 0, text: sceneText }).length) ensurePropAccess(built.map)
+    if (tavernHall) {
+      let placed = placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 0, text: sceneText })
+      // Драка — это и есть опрокинутая мебель. Зал по размеру трактира
+      // обставлен целиком, и блоку сценки негде встать (обзор карт
+      // 2026-10-08): названная словами сценка встаёт и у стены замкнутого
+      // зала, а если и там тесно — на место стола или стула, по одному за
+      // раз. Стойка, очаг и лестница стоят.
+      if (!placed.length && vignettesNamedBy('tavern', sceneText).length) {
+        const retry = () => placeVignettes(built.map, { seed, set: 'tavern', zones: [tavernHall.id], limit: 0, text: sceneText, hugWalls: true })
+        const inHall = (/** @type {{ x: number, y: number, footprint?: Array<{x: number, y: number}> }} */ prop) => {
+          const cell = prop.footprint?.[0] ?? { x: Math.floor(prop.x), y: Math.floor(prop.y) }
+          return cellAt(built.map, cell.x, cell.y)?.zone === tavernHall.id
+        }
+        placed = retry()
+        const seats = built.map.props.filter((prop) => /^(table_|chair|stool|bench)/u.test(prop.assetId) && inHall(prop)).map((prop) => prop.id)
+        for (const seatId of seats) {
+          if (placed.length) break
+          built.map.props = built.map.props.filter((prop) => prop.id !== seatId)
+          placed = retry()
+        }
+      }
+      if (placed.length) ensurePropAccess(built.map)
+    }
     return { map: built.map, theme: definition.id, warnings: built.warnings }
   }
 
@@ -1556,12 +2241,16 @@ export function buildThemedScene({
       return cells
     }
     labelled.forEach((zone, index) => {
-      const asked = plans.length && plans[index % plans.length]?.colonnade
+      const asked = plans.length > 0 && plans[index % plans.length]?.colonnade === true
       // Отказ кладовой мягкий: тайник склепа размером в полкарты без опор —
       // голое тёмное поле, и он получает колоннаду, как зал.
       const size = zoneSize(zone.id)
       const declined = plans[index % plans.length]?.colonnade === false && size < SPACIOUS_HALL_CELLS * 2.5
-      const spacious = zone.label !== 'Камеры' && !declined && size >= SPACIOUS_HALL_CELLS
+      // Жёсткий отказ: ризница храма колонн не получает никогда. Притвор и
+      // алтарная отказываются мягко: опоры стояли сеткой во всех помещениях
+      // (обзор карт 2026-10-08), но огромному залу они нужны как укрытие.
+      const never = plans[index % plans.length]?.colonnade === 'never'
+      const spacious = zone.label !== 'Камеры' && !declined && !never && size >= SPACIOUS_HALL_CELLS
       if (asked || spacious) placeColonnade(built.map, { zoneId: zone.id, assetId: 'pillar' })
     })
     // Глубина подземелья (`server/scene-dressing.mjs`): в склепе —
@@ -1784,7 +2473,10 @@ export function buildThemedScene({
     road: definition.road || design.topology === 'river' || bridgeScene || chasmScene,
     bridgeMaterial: ['stone', 'marble', 'metal'].includes(design.architecture) ? design.architecture : 'wood',
     material: arid ? 'sand' : cold ? 'ice' : wetland ? 'earth' : definition.material,
-    surface: cold ? 'ice' : wetland ? 'mud' : 'none',
+    // Болото — не сплошная грязь: прежде весь грунт был вязким, и трудной
+    // местностью была вся карта. Грязь и мелководье теперь пятнами.
+    surface: cold ? 'ice' : 'none',
+    wetland,
     label: definition.id === 'forest'
       ? arid && pondScene ? 'Оазис' : arid ? 'Сухое редколесье' : cold ? 'Заснеженный лес' : wetland ? 'Заболоченная чаща' : definition.label
       : definition.label,
@@ -1799,21 +2491,39 @@ export function buildThemedScene({
   }
   const map = layoutOpenTerrain(terrain, { seed, width, height, locationId })
   if (definition.graves) placeGraveRows(map, seed)
-  // Глубина открытой местности (`server/scene-dressing.mjs`): остов
-  // постройки — укрытие посреди поля, подлесок пятнами — трудная местность,
-  // и сюжетная виньетка. Всё до расстановки: её добор обходит их стороной.
+  // Глубина открытой местности: развалины, сюжетная виньетка
+  // (`server/scene-dressing.mjs`) и укрытия посреди поля — до расстановки,
+  // её добор обходит их стороной; трудная местность пятнами — в самом конце.
   // Развалины встают в любой дикой местности и любом климате: всегда, если о
   // них сказано, и примерно на двух картах из пяти без слов; на большой карте
   // их бывает до трёх.
   const temperate = !arid && !cold && !wetland
-  const wooded = definition.id === 'forest' || definition.id === 'road'
-  if (!campScene) placeRuinsField(map, { seed, asked: ruinsAsked, chance: 0.4 })
-  // Кладбище зарастает так же, как лес: бурьян между рядами могил.
-  if ((wooded || definition.graves) && temperate) roughenGround(map, { seed, kind: 'undergrowth', zones: ['field'], patches: definition.id === 'forest' ? 3 : 2 })
-  // Глубокий снег и сыпучий песок — тоже трудная местность (5e): заносы
-  // зимой, наносы в пустыне. На болоте весь грунт и так вязкий.
-  if (cold || arid) roughenGround(map, { seed, kind: cold ? 'snow' : 'sand', zones: ['field'], patches: 2 })
+  // Названные развалины — фрагменты стен по всей карте и остатки ворот на
+  // дороге; без слов — изредка один остов, как прежде.
+  const ruinFragments = ruinsAsked && !campScene && !definition.graves ? placeRuinFragments(map, { seed }) : 0
+  if (!campScene && !ruinFragments) placeRuinsField(map, { seed, asked: ruinsAsked, chance: 0.4 })
+  if (definition.graves) {
+    // Кладбище зарастает так же, как лес: бурьян между рядами могил;
+    // зимой — заносы, в пустыне — наносы.
+    if (temperate) roughenGround(map, { seed, kind: 'undergrowth', zones: ['field'], patches: 2 })
+    if (cold || arid) roughenGround(map, { seed, kind: cold ? 'snow' : 'sand', zones: ['field'], patches: 2 })
+  }
   if (!campScene) placeVignettes(map, { seed, set: 'wild', zones: ['field'], limit: 1, text: sceneText })
+  if (!definition.graves) {
+    // Укрытия посреди поля — после виньетки и до расстановки: обе их
+    // обходят, а пуассоновский диск держит расстояние до пней и кустов.
+    const woods = definition.id === 'forest'
+    placeNatureCover(map, {
+      seed,
+      // Чащу и так держат деревья расстановки: лесу хватает редких стволов,
+      // валунов и бурелома посреди поляны, тракту нужно больше.
+      target: woods ? 0.18 : 0.26,
+      assets: arid ? ['desert_boulders', 'boulder', 'rock_cluster']
+        : cold ? ['snowy_boulder', 'tree_spruce', 'rotten_log', 'boulder']
+          : wetland ? ['rotten_log', 'tree_dead', 'mossy_rock']
+            : woods ? ['tree_oak', 'boulder', 'rotten_log', 'tree_spruce', 'rock_cluster'] : ['boulder', 'rotten_log', 'rock_cluster', 'tree_oak', 'mossy_rock'],
+    })
+  }
   // Дикая местность — не склад реквизита: костёр один (в лагере — два),
   // телега и колесо — от силы по одному, колодца и прилавков в лесу нет.
   // Виньетка уже поставила костёр или телегу — общий предел их учитывает:
@@ -1839,5 +2549,17 @@ export function buildThemedScene({
   })
   dressWaterEdges(map, seed)
   ensurePropAccess(map)
+  // Трудная местность — последней, по свободным клеткам: доля считается так
+  // же, как её мерит проверка карты. Лес и болото — 10–20%, тракт и
+  // развалины — 5–12% (`docs/maps-dnd-standards-plan.md`, задача 1).
+  if (!definition.graves) {
+    const thick = definition.id === 'forest' || wetland
+    roughenOpenTerrain(map, {
+      seed,
+      share: thick ? 0.15 : 0.085,
+      sizes: thick ? [5, 12] : [3, 8],
+      kinds: cold ? ['snow'] : arid ? ['sand'] : wetland ? ['mud', 'shallows'] : definition.id === 'forest' ? ['undergrowth', 'undergrowth', 'windfall'] : ['undergrowth', 'mud'],
+    })
+  }
   return { map, theme: definition.id, warnings: [] }
 }
