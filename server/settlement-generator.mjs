@@ -24,7 +24,7 @@ import { applyRoomFloors, buildingWallStyleFor } from './room-floors.mjs'
  */
 // v5 (2026-10-03): дверь дома в глубине — по тропе до улицы, и тропа проложена.
 // v6 (2026-10-08): рыночная площадь шире, на ней ряды лотков с проходами.
-export const SETTLEMENT_GENERATOR = Object.freeze({ id: 'settlement-layout', version: '6' })
+export const SETTLEMENT_GENERATOR = Object.freeze({ id: 'settlement-layout', version: '7' })
 
 const TOPOLOGIES = new Set(['organic', 'linear', 'crossroads', 'market', 'courtyard', 'harbor', 'river', 'terraced', 'gate'])
 const CLIMATES = new Set(['temperate', 'arid', 'cold', 'wetland'])

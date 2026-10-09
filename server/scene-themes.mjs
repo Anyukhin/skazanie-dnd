@@ -117,8 +117,10 @@ export const SCENE_THEMES = Object.freeze([
     // получали один список «алтарь, колонна, статуя, жаровня»: алтарь стоял в
     // притворе, а тринадцать статуй — где придётся.
     propPlans: [
-      // Притвор: купель со святой водой у входа и колокол.
-      { density: 8, colonnade: false, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, ...TEMPLE_DECOR_CAPS, kneeling_cushions: 0, ...TEMPLE_INTERIOR_CAPS } },
+      // Притвор: купель со святой водой у входа и колокол. Плотность — как у
+      // алтарной: в ужатом храме притвор в 50–85 клеток с восемью предметами
+      // на сотню клеток стоял голым (обзор генератора 2026-10-10).
+      { density: 14, colonnade: false, extraThemes: ['interior'], require: ['statue', 'brazier', 'font_basin'], prefer: ['mosaic', 'temple_banner', 'offering_bowl', 'candelabra', 'rug', 'bell_frame', 'statue_plinth'], caps: { altar: 0, statue: 2, pillar: 2, prayer_bench: 0, reliquary: 0, candelabra: 2, rug: 1, brazier: 2, offering_bowl: 2, font_basin: 1, bell_frame: 1, idol: 0, holy_pool: 0, ...TEMPLE_DECOR_CAPS, kneeling_cushions: 0, ...TEMPLE_INTERIOR_CAPS } },
       // Неф — шаблон `nave`: скамьи рядами, кафедра, дорожка к алтарной.
       { density: 10, colonnade: true, purpose: 'nave', extraThemes: ['interior'], require: ['prayer_bench', 'prayer_bench', 'brazier'], prefer: ['prayer_bench', 'temple_banner', 'mosaic', 'brazier', 'chandelier', 'candelabra'], caps: { altar: 0, statue: 1, pillar: 0, reliquary: 0, brazier: 2, chandelier: 2, candelabra: 2, offering_bowl: 2, idol: 0, holy_pool: 0, ...TEMPLE_DECOR_CAPS, ...TEMPLE_INTERIOR_CAPS } },
       // Алтарная — шаблон `altar`: алтарь, курильница, подушки и свечи вокруг.
@@ -2209,6 +2211,10 @@ export function buildThemedScene({
     }
     // Стены залов — на рёбрах клеток; край карты остаётся скалой.
     thinWalls(built.map)
+    // Корпус храма стоит посреди породы (`compactArea`), а тонкие стены
+    // рёбер к породе не ставят: без них у храма не было наружного контура, и
+    // 3D не давало ему крыши.
+    if (definition.id === 'temple') outlineImpassableCells(built.map)
     // Камеры тюрьмы — ряд клеток вдоль коридора, а не пустой зал. Их стены
     // сразу тонкие, поэтому деление идёт после `thinWalls`.
     if (definition.id === 'dungeon') {

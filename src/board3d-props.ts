@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { propDrawingFor, propVisualLayout, resolvePropAssetId, stampFit, PROP_DECAL_ALPHA, PROP_FOOTPRINT_FILL, type BoardPalette } from './board-render'
 import { detailPropAlias } from './detail-props'
 import type { TacticalProp } from './types'
-import { propModelFit, propModelFloorFit, propModelFor, propModelTreeStretch } from './prop-model-catalog'
+import { frontFacingEntry, propModelFit, propModelFloorFit, propModelFor, propModelTreeStretch } from './prop-model-catalog'
 import type { PropModelAssets } from './prop-model-assets'
 import type { SeeThrough } from './board3d-see-through'
 
@@ -349,7 +349,8 @@ function buildLight(resources: Resources, parent: THREE.Group, t: Tones, kind: '
   // Свеча в подсвечнике, около фута с пламенем: прежняя была выше колена.
   if (kind === 'candle') { round(resources, parent, 'candle-holder', metal, 0.16, 0.03, [0, 0.015, 0]); round(resources, parent, 'candle-wax', material(resources, 'wax', t.woodLight), 0.08, 0.18, [0, 0.12, 0]); cone(resources, parent, 'candle-flame', glow, 0.07, 0.1, [0, 0.26, 0], false); return }
   if (kind === 'wall-torch' || kind === 'wall-lantern') {
-    cube(resources, parent, 'wall-mount', metal, [0.1, 0.1, 0.1], [0, 0.45, 0.1])
+    // Крепление — со стороны стены, за спиной предмета: лицо смотрит в +Z.
+    cube(resources, parent, 'wall-mount', metal, [0.1, 0.1, 0.1], [0, 0.45, -0.1])
     if (kind === 'wall-torch') { cube(resources, parent, 'torch-bracket', metal, [0.07, 0.3, 0.07], [0, 0.6, 0]); cone(resources, parent, 'torch-flame', glow, 0.18, 0.32, [0, 0.86, 0], false) }
     else { cube(resources, parent, 'lantern-frame', metal, [0.24, 0.3, 0.2], [0, 0.66, 0]); sphere(resources, parent, 'lantern-glow', glow, [0.13, 0.18, 0.13], [0, 0.66, 0], false) }
   } else if (kind === 'stand-light') { round(resources, parent, 'light-stand', metal, 0.08, 0.7, [0, 0.35, 0]); ring(resources, parent, 'light-bowl', metal, 0.3, 0.05, [0, 0.7, 0]); cone(resources, parent, 'light-flame', glow, 0.12, 0.24, [0, 0.84, 0], false) }
@@ -621,7 +622,7 @@ export function createEnvironmentModels(palette: BoardPalette, assets?: PropMode
         // Футпринт ограничивает ширину и глубину, предел вида — высоту. Для
         // нового manifest берём зафиксированный bbox после yaw; старые записи
         // сохраняют fallback по реально загруженной геометрии.
-        const footprintFit = propModelFit(canonical, entry, layout.width, layout.depth, PROP_FOOTPRINT_FILL, [size.x, size.y, size.z])
+        const footprintFit = propModelFit(canonical, entry && frontFacingEntry(entry), layout.width, layout.depth, PROP_FOOTPRINT_FILL, [size.x, size.y, size.z])
           ?? Math.min(layout.width / Math.max(.01, size.x), layout.depth / Math.max(.01, size.z)) * PROP_FOOTPRINT_FILL
         // Уменьшенный генератором стул не теряет рост: высота держится, пока
         // модель помещается в свои клетки (`PROP_MODEL_MIN_HEIGHTS`).
