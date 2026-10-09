@@ -737,7 +737,14 @@
         "spider",
         "паук",
         "пауки",
-        "паучиха"
+        "паучиха",
+        "scorpion",
+        "скорпион",
+        "centipede",
+        "сороконожка",
+        "многоножка",
+        "beetle",
+        "жук"
       ],
       "url": "/assets/models/quaternius/creatures-f8d551f588fb7c5ee928/spider.glb",
       "height": 0.45,

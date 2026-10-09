@@ -2,17 +2,17 @@
   "ruleset_id": "dnd_5e_2014",
   "counts": {
     "rules": 91,
-    "monsters": 83,
+    "monsters": 84,
     "magic_items": 32,
     "glossary_terms": 91,
     "ontology_edges": 81,
-    "sources": 115
+    "sources": 116
   },
   "complete_website_export": false,
   "mechanics_execution": "not_implemented_by_this_package",
   "supported_source_scope": [
     "PHB14 selected core mechanics",
-    "MM14: по 10 статблоков CR 0–6 и 13 ранее добавленных записей",
+    "MM14: по 10 статблоков CR 0–6 и 13 ранее добавленных записей; звери под 3D-модели: гигантская крыса (2026-10-09)",
     "DMG14 selected 32 item records including enhancement variants",
     "SRD51 explicitly tagged complementary facts"
   ],

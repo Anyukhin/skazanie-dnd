@@ -20,7 +20,7 @@ test('сервер узнаёт зверя по слову имени и по т
   for (const name of ['Гигантская крыса 1', 'Рой крыс', 'Гигантский паук', 'Гигантская оса 2', 'Гигантская жаба', 'Ядовитая змея', 'Giant Spider']) {
     assert.equal(actorProfileFor({ kind: 'enemy', name }), 'beast', name)
   }
-  for (const name of ['Крысолов', 'Осада', 'Паукообразный жрец']) {
+  for (const name of ['Крысолов', 'Осада', 'Паукообразный жрец', 'Сотник Жуков']) {
     assert.notEqual(actorProfileFor({ kind: 'enemy', name }), 'beast', name)
   }
   assert.equal(actorProfileFor({ kind: 'enemy', name: 'Тень в кустах', creature_type: 'beast' }), 'beast')
@@ -40,6 +40,10 @@ test('фигурка зверя выбирается по имени врага,
   assert.equal(pick('Гигантская ядовитая змея'), 'snake')
   assert.equal(pick('Волк 3'), 'wolf')
   assert.equal(pick('Бурый медведь'), 'wolf', 'своей модели медведя нет')
+  // Членистоногие без своей модели рисуются пауком, а не волком.
+  assert.equal(pick('Скорпион'), 'spider')
+  assert.equal(pick('Гигантский огненный жук'), 'spider')
+  assert.equal(pick('Гигантская многоножка 1'), 'spider')
 })
 
 test('модели зверей лежат в каталоге, их хеши совпадают с NOTICE, рост — по категории размера', () => {
@@ -59,4 +63,24 @@ test('модели зверей лежат в каталоге, их хеши с
   assert.ok(models.figureHeightFor(rat.height, 'beast', 1, 'tiny') < models.figureHeightFor(rat.height, 'beast', 1, 'small'))
   const spider = entries.find((entry) => entry.key === 'spider')
   assert.ok(models.figureHeightFor(spider.height, 'beast', 2) > spider.height)
+})
+
+test('гигантская крыса каталога 2014 приходит во встречи мелочи, склепа и пещеры и рисуется крысой', async () => {
+  const { assembleEncounter } = await import('../server/encounter-assembler.mjs')
+  const field = Array.from({ length: 10 }, (_, y) => Array.from({ length: 14 }, (_, x) => ({ x, y, type: 'floor', revealed: true }))).flat()
+  const party = [1, 2, 3, 4].map((index) => ({ id: `hero-${index}`, level: 1, x: index - 1, y: 0 }))
+  for (const theme of ['vermin', 'crypt', 'cave']) {
+    let rats = []
+    for (let seed = 1; seed <= 12 && !rats.length; seed += 1) {
+      const proposal = assembleEncounter({ scene: { cells: field }, party, difficulty: 'easy', theme, seed: `rats:${theme}:${seed}`, ruleset_id: 'dnd_5e_2014' })
+      rats = proposal.enemies.filter((enemy) => enemy.stat_block_id === 'dnd_5e_2014:monster:giant-rat' || /Гигантская крыса/u.test(enemy.name))
+    }
+    assert.ok(rats.length, `${theme}: гигантская крыса не пришла ни в одну из 12 встреч`)
+    const rat = rats[0]
+    assert.equal(rat.size, 'small')
+    assert.equal(rat.image, '/assets/enemies/giant-rat.png')
+    const appearance = actorAppearanceFor('enemy', rat)
+    assert.deepEqual([appearance.profile, appearance.stature], ['beast', 'small'])
+    assert.equal(models.resolveModelProfile({ id: rat.id, label: rat.name, kind: 'enemy', appearance }, manifest).key, 'rat')
+  }
 })

@@ -15692,6 +15692,143 @@
       "runtime_activation_allowed": false,
       "description_language": "ru",
       "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
+    },
+    {
+      "id": "dnd_5e_2014:monster:giant-rat",
+      "ruleset_id": "dnd_5e_2014",
+      "version": "2014.content.1.1.0",
+      "kind": "monster",
+      "name_ru": "Гигантская крыса",
+      "name_en": "Giant Rat",
+      "book_code": "MM14",
+      "source_ref": "dndsu:monster:giant-rat",
+      "source_url": "https://dnd.su/bestiary/336-giant-rat/",
+      "size": "small",
+      "creature_type": "beast",
+      "subtypes": [],
+      "alignment": "unaligned",
+      "armor_class": {
+        "value": 12,
+        "details_ru": null
+      },
+      "hit_points": {
+        "average": 7,
+        "formula": "2d6"
+      },
+      "speed_ft": {
+        "walk": 30
+      },
+      "abilities": {
+        "str": 7,
+        "dex": 15,
+        "con": 11,
+        "int": 2,
+        "wis": 10,
+        "cha": 4
+      },
+      "saving_throws": {},
+      "skills": {},
+      "senses": {
+        "darkvision_ft": 60,
+        "passive_perception": 10
+      },
+      "languages": {
+        "spoken": [],
+        "understood_only": [],
+        "notes_ru": null
+      },
+      "challenge_rating": "1/8",
+      "xp": 25,
+      "proficiency_bonus": 2,
+      "damage_resistances": [],
+      "damage_immunities": [],
+      "damage_vulnerabilities": [],
+      "condition_immunities": [],
+      "traits": [
+        {
+          "id": "keen-smell",
+          "name_ru": "Тонкий нюх",
+          "summary_ru": "Преимущество на проверки Восприятия, основанные на обонянии.",
+          "mechanics": {
+            "check": "wis:perception",
+            "advantage_senses": [
+              "smell"
+            ]
+          },
+          "mechanics_status": "requires_handler"
+        },
+        {
+          "id": "pack-tactics",
+          "name_ru": "Тактика стаи",
+          "summary_ru": "Преимущество на бросок атаки, если рядом с целью находится дееспособный союзник.",
+          "mechanics": {
+            "ally_distance_ft": 5,
+            "ally_must_not_be_incapacitated": true,
+            "grants": "attack_advantage"
+          },
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "actions": [
+        {
+          "id": "bite",
+          "name_ru": "Укус",
+          "kind": "weapon_attack",
+          "attack_modifier": 4,
+          "target": "one_target",
+          "modes": [
+            "melee"
+          ],
+          "reach_ft": 5,
+          "range_ft": null,
+          "damage": [
+            {
+              "expression": "1d4+2",
+              "average": 4,
+              "type": "piercing"
+            }
+          ],
+          "mechanics_status": "requires_handler"
+        }
+      ],
+      "bonus_actions": [],
+      "reactions": [],
+      "legendary_actions": [],
+      "lair_actions": [],
+      "spellcasting": null,
+      "habitats": [
+        "swamp",
+        "urban",
+        "forest",
+        "underdark"
+      ],
+      "lore": {
+        "summary_ru": "Крыса размером с собаку: подвалы, стоки, болота и подземья. Нападает стаей и берёт числом.",
+        "full_text_included": false,
+        "source_url": "https://dnd.su/bestiary/336-giant-rat/",
+        "origin": "original_short_summary",
+        "scope": "short_species_or_role_summary_not_individual_biography",
+        "history_status": "short_summary_only"
+      },
+      "optional_variants_included": false,
+      "excluded_optional_sections": [
+        "Больные гигантские крысы: вариант с болезнью от укуса (спасбросок Телосложения Сл 10) не добавлен."
+      ],
+      "field_notes": [],
+      "data_status": "reviewed_transcription",
+      "mechanics_status": "data_only",
+      "runtime_activation_allowed": false,
+      "ability_modifiers": {
+        "str": -2,
+        "dex": 2,
+        "con": 0,
+        "int": -4,
+        "wis": 0,
+        "cha": -3
+      },
+      "initiative_bonus": 2,
+      "description_language": "ru",
+      "habitat_usage": "descriptive_encounter_tags_not_spawn_restrictions"
     }
   ]
 }
