@@ -24,13 +24,14 @@ import { createEnvironmentModels } from './board3d-props'
 import { loadPropModelAssets, type PropModelAssets } from './prop-model-assets'
 import { LIGHT_SOURCE_ASSETS, lightSourceAssetId } from './board-lighting'
 import { batchEnvironmentMeshes } from './board3d-batching'
-import { fireFlicker, fireLightFor } from './board3d-graphics'
+import { BOARD3D_FIRE_LIGHT, fireFlicker, fireLightFor } from './board3d-graphics'
+import { createFireGlow, type FireGlowDetail, type FirePoint } from './board3d-fire'
 import { createTerrainSideGeometry, createTerrainSurfaceGeometry, propTerrainHeight, terrainHeightAt } from './board3d-terrain'
 import { createBoard3DRoofs, structuralRoofRolesForMap, type Board3DRoofMode } from './board3d-roofs'
 import { createMasonryDressing, masonryStyleFor, MASONRY_COLORS, type MasonryRun } from './board3d-masonry'
 import { createBridgeRails, createFogCapGeometry, createGrassTufts, createRockClusters, createTileGroundGeometry, createLavaMaterial, createLavaSurfaceGeometry, createWaterMaterial, createWaterPlants, createWaterSurfaceGeometry, isRockCell, lavaGlowPoints, landscapeWantsModels, structuralBridgeRolesForMap, type LandscapeDetail, type LandscapeInstances } from './board3d-landscape'
 import { acquireLandscapeKit, type LandscapeKitHandle } from './landscape-model-assets'
-import { SURROUNDINGS_MODEL_ASSETS, createSurroundings, surroundingsModelFromTemplate, type SurroundingsModel, type SurroundingsModels } from './board3d-surroundings'
+import { SURROUNDINGS_MODEL_ASSETS, createSurroundings, surroundingsGroundFloor, surroundingsModelFromTemplate, type SurroundingsModel, type SurroundingsModels } from './board3d-surroundings'
 import { landscapeModelsOf } from './landscape-model-assets'
 import { propModelFor } from './prop-model-catalog'
 import { loadGraphicsStylePack, peekGraphicsStylePack, type GraphicsStylePack } from './board3d-style'
@@ -727,13 +728,14 @@ function paintTerrainCanvas(resources: OwnedResources, map: TacticalMap, palette
   }
 }
 
-function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0) {
+function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, pointLightShadows: boolean, palette: BoardPalette, assets?: PropModelAssets | null, darkness = 0, detail: FireGlowDetail = 'reduced') {
   const library = createEnvironmentModels(palette, assets)
   const propsGroup = new THREE.Group()
   propsGroup.name = 'props'
   const lightGroup = new THREE.Group()
   lightGroup.name = 'local-lights'
   const lights: THREE.PointLight[] = []
+  const firePoints: FirePoint[] = []
   const visibleProps = visiblePropsOnBoard(map)
   const models = new Map(visibleProps.map((prop) => [prop.id, library.create(prop)]))
   const propsById = new Map(visibleProps.map((prop) => [prop.id, prop]))
@@ -759,6 +761,12 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
     // Плоское (клевер, цветы, ковёр, кувшинки) тени не отбрасывает: она не видна,
     // а проход теней на большой карте рисовал бы сотни таких предметов зря.
     if (propDrawingFor(prop.assetId).flat) model.traverse((object) => { if ((object as THREE.Mesh).isMesh) object.castShadow = false })
+    // Видимое пламя — у каждого горящего источника, даже сверх числа огней
+    // сцены; опрокинутая и разбитая утварь не горит.
+    if (lighting && sourceId && prop.state !== 'toppled' && prop.state !== 'broken') {
+      const top = (Number(model.userData.lightHeight) || .55) * model.scale.y
+      firePoints.push({ x: model.position.x, y: model.position.y + top, z: model.position.z, share: LIGHT_SOURCE_ASSETS[sourceId].strength / BOARD3D_FIRE_LIGHT.referenceStrength })
+    }
     // В сумраке огней больше и они сильнее: они — главный свет подземелья.
     if (!lighting || !sourceId || lights.length >= 4 + Math.round(4 * darkness)) continue
     const profile = LIGHT_SOURCE_ASSETS[sourceId]
@@ -798,14 +806,18 @@ function addProps(map: TacticalMap, parent: THREE.Group, lighting: boolean, poin
   propsGroup.userData.batchedDrawCalls = batches.batchedDrawCalls
   if (propsGroup.children.length) parent.add(propsGroup)
   if (lightGroup.children.length) parent.add(lightGroup)
+  const fire = firePoints.length ? createFireGlow(firePoints, detail, darkness) : null
+  if (fire) parent.add(fire.group)
   return {
     group: propsGroup,
     pickTargets,
     lights,
+    fire,
     dispose() {
       pickTargets.length = 0
       propsGroup.removeFromParent()
       lightGroup.removeFromParent()
+      fire?.dispose()
       batches.dispose()
       library.dispose()
       for (const light of lights) {
@@ -1078,7 +1090,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     group.add(edgeLayer)
   }
   const darkness = Math.max(0, Math.min(1, options.darkness ?? 0))
-  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness)
+  let props = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, null, darkness, landscapeDetail)
   let propAssets: PropModelAssets | null = null
   const propAbort = new AbortController()
   // Пакет стиля нужен и полу, и предметам: один запрос на оба.
@@ -1099,7 +1111,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
     }).then((assets) => {
       if (!assets) return
       if (disposed) { assets.dispose(); return }
-      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness)
+      const replacement = addProps(map, group, options.lighting !== false, options.pointLightShadows !== false, palette, assets, darkness, landscapeDetail)
       if (surroundings) {
         const next: SurroundingsModels = { ...surroundingsModels }
         for (const [role, assetIds] of Object.entries(SURROUNDINGS_MODEL_ASSETS) as Array<[keyof typeof SURROUNDINGS_MODEL_ASSETS, readonly string[]]>) {
@@ -1259,6 +1271,22 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
         groundGroup.add(sides.group)
       } else sides.dispose()
     }
+    // Земля за краем карты — рисунком того же пакета; окрестности
+    // пересобираются, когда фактура пришла, а не раньше: пустая фактура
+    // затемнила бы низину.
+    const groundFloor = surroundingsEnabled && landscapeDetail !== 'minimal' ? surroundingsGroundFloor(map) : null
+    const groundSpec = groundFloor ? pack.floors[groundFloor] : null
+    if (groundSpec) {
+      const groundDetail = ownTexture(resources, loader.load(groundSpec.color, (texture) => {
+        if (disposed) return
+        surroundingsModels = { ...surroundingsModels, groundDetail: { texture, cells: groundSpec.cells } }
+        rebuildSurroundings()
+        options.onReady?.()
+      }))
+      groundDetail.wrapS = groundDetail.wrapT = THREE.RepeatWrapping
+      groundDetail.colorSpace = THREE.SRGBColorSpace
+      groundDetail.anisotropy = 8
+    }
     if (authoritativeArtLoaded) return
     const built = buildStyledFloors(map, pack, {
       parallax: options.floorParallax !== false,
@@ -1328,7 +1356,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
   return {
     group,
     /** Вода рябит, лава течёт, море за краем катит волны, огонь дышит; на «Экономном» всё стоит. */
-    get animated() { return Boolean(waterMaterial || lavaMaterial || surroundings?.animated || props.lights.length) && landscapeDetail !== 'minimal' },
+    get animated() { return Boolean(waterMaterial || lavaMaterial || surroundings?.animated || props.lights.length || props.fire) && landscapeDetail !== 'minimal' },
     animate(nowMs: number) {
       if (landscapeDetail === 'minimal') return
       const seconds = nowMs / 1000
@@ -1337,6 +1365,7 @@ export function createBoard3DScene(map: TacticalMap, options: Board3DOptions = {
       surroundings?.animate(seconds)
       // Огни дышат каждый в своей фазе; на «Экономном» стоят, как вода.
       props.lights.forEach((light, index) => { light.intensity = Number(light.userData.baseIntensity) * fireFlicker(seconds, index + 1) })
+      props.fire?.animate(seconds)
     },
     getPropPickTargets: () => disposed ? [] : props.pickTargets,
     setRoofMode: (mode: Board3DRoofMode) => roofs.setMode(mode),

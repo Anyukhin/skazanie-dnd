@@ -317,6 +317,9 @@ class BoardGTAOPass extends GTAOPass {
 
   override render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget, readBuffer: THREE.WebGLRenderTarget, deltaTime: number, maskActive: boolean): void {
     this.scene.traverseVisible((object) => {
+      // Спрайт (ореол огня) — картинка, а не поверхность: в проходе нормалей он
+      // был бы сплошным квадратом и затенял пол вокруг огня.
+      if ((object as THREE.Sprite).isSprite) { this.hiddenOverlays.push(object); return }
       const mesh = object as THREE.Mesh
       if (!mesh.isMesh) return
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
