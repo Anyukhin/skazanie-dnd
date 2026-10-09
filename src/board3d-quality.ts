@@ -7,12 +7,14 @@ export type Board3DQuality = 'high' | 'balanced' | 'low'
  * `ambientOcclusion` — мягкое затенение в углах; `ambientOcclusionScale` — доля
  * разрешения для него: «Обычное» считает его вчетверо дешевле, на половине сторон;
  * `bloom` — свечение огня и заклинаний на половинном разрешении;
- * `tiltShift` — малая глубина резкости диорамы, резкая полоса по центру кадра.
+ * `tiltShift` — малая глубина резкости диорамы, резкая полоса по центру кадра;
+ * `floorRelief` — объёмный пол пакета (`board3d-floor-relief`), выбор владельца
+ * 2026-10-10 — сильный рельеф; `grassStyle` — трава газона, выбран густой ковёр.
  */
 export const BOARD3D_QUALITY = {
-  high: { label: 'Высокое', maxDpr: 2, shadows: true, shadowSize: 4096, pointLightShadows: true, idle: true, detail: 'full', ambientOcclusion: true, ambientOcclusionScale: 1, bloom: true, tiltShift: true },
-  balanced: { label: 'Обычное', maxDpr: 1.5, shadows: true, shadowSize: 2048, pointLightShadows: false, idle: true, detail: 'reduced', ambientOcclusion: true, ambientOcclusionScale: .5, bloom: true, tiltShift: true },
-  low: { label: 'Экономное', maxDpr: 1, shadows: false, shadowSize: 512, pointLightShadows: false, idle: false, detail: 'minimal', ambientOcclusion: false, ambientOcclusionScale: .5, bloom: false, tiltShift: false },
+  high: { label: 'Высокое', maxDpr: 2, shadows: true, shadowSize: 4096, pointLightShadows: true, idle: true, detail: 'full', ambientOcclusion: true, ambientOcclusionScale: 1, bloom: true, tiltShift: true, floorRelief: 'strong', grassStyle: 'carpet' },
+  balanced: { label: 'Обычное', maxDpr: 1.5, shadows: true, shadowSize: 2048, pointLightShadows: false, idle: true, detail: 'reduced', ambientOcclusion: true, ambientOcclusionScale: .5, bloom: true, tiltShift: true, floorRelief: 'strong', grassStyle: 'carpet' },
+  low: { label: 'Экономное', maxDpr: 1, shadows: false, shadowSize: 512, pointLightShadows: false, idle: false, detail: 'minimal', ambientOcclusion: false, ambientOcclusionScale: .5, bloom: false, tiltShift: false, floorRelief: null, grassStyle: 'tufts' },
 } as const
 
 export function board3DQuality(value: unknown): Board3DQuality {

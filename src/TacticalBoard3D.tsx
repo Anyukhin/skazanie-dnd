@@ -1124,7 +1124,7 @@ export default function TacticalBoard3D(props: Props) {
         resize()
       }
       renderer.shadowMap.enabled = current.lighting !== false && profile.shadows
-      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}`
+      const style = `${current.lighting}:${current.artUrl}:${current.artMode}:${current.themeKey}:${profile.pointLightShadows}:${pipeline.active}:${profile.detail}:${profile.floorRelief}:${profile.grassStyle}`
       const signatures = mapSignaturesFor(map)
       const referenceSame = lastMap === map
       const contentChanged = Boolean(terrainSignature && terrainSignature !== signatures.staticKey)
@@ -1174,7 +1174,7 @@ export default function TacticalBoard3D(props: Props) {
             backdropKey = `${backdropCenter}${backdropEdge}`
           }
         }
-        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', onReady: invalidate })
+        terrain = createBoard3DScene(map, { palette, lighting: current.lighting, pointLightShadows: profile.pointLightShadows, roofMode: settings.current.roofMode, artUrl: current.artUrl, artMode: current.artMode, artOverlayOpacity: pipeline.active ? BOARD3D_LIGHTING.linearArtOverlayOpacity : undefined, landscapeDetail: profile.detail, darkness, floorParallax: profile.detail !== 'minimal', floorRelief: profile.floorRelief, grassStyle: profile.grassStyle, onReady: invalidate })
         diagnostics.created += 1
         diagnostics.rebuilds += 1
         diagnostics.rebuildReason = !terrainSignature ? 'initial' : mapChanged ? 'content-changed' : 'style-changed'

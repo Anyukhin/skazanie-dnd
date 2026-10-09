@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { zoneOfCell } from './board-render'
-import { createTileGroundGeometry } from './board3d-landscape'
+import { createTileGroundGeometry, type TileGroundRelief } from './board3d-landscape'
 import { createTerrainSideGeometry, terrainHeightAt } from './board3d-terrain'
+import { BOARD3D_FLOOR_RELIEF, heightSamplerFromTexture, reliefSubdivisions, type FloorReliefLevel } from './board3d-floor-relief'
 import type { GraphicsStylePack, StyleFloor } from './board3d-style'
 import { cellAt } from './tactical-map-client'
 import type { TacticalCell, TacticalMap } from './types'
@@ -111,11 +112,12 @@ export function createStyledFloorMaterial(floor: StyleFloor, textures: FloorText
   return material
 }
 
-export type StyledFloorTextureLoader = (url: string) => THREE.Texture
+/** `onLoad` — картинка пришла; по карте высот пол достраивает рельеф. */
+export type StyledFloorTextureLoader = (url: string, onLoad?: (texture: THREE.Texture) => void) => THREE.Texture
 
 /** Текстуры через ImageLoader: картинки того же источника, CSP их пропускает. */
-export function loadFloorTextures(floor: StyleFloor, load: StyledFloorTextureLoader): FloorTextures {
-  const textures = { color: load(floor.color), normal: load(floor.normal), orm: load(floor.orm), height: load(floor.height) }
+export function loadFloorTextures(floor: StyleFloor, load: StyledFloorTextureLoader, onHeight?: (texture: THREE.Texture) => void): FloorTextures {
+  const textures = { color: load(floor.color), normal: load(floor.normal), orm: load(floor.orm), height: load(floor.height, onHeight) }
   for (const texture of Object.values(textures)) {
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping
     texture.anisotropy = 8
@@ -212,8 +214,12 @@ export function buildStyledTerrainSides(map: TacticalMap, pack: GraphicsStylePac
 /**
  * Сетки пола стиля по покрытиям. Возвращает группу и освобождение ресурсов;
  * клетки без покрытия в пакете остаются на прежнем полу.
+ *
+ * `relief` — объёмный пол (`board3d-floor-relief`): когда приходит карта
+ * высот покрытия, его сетка пересобирается с опущенными швами и впадинами, и
+ * вызывается `onRelief`. До того пол плоский, как прежде.
  */
-export function buildStyledFloors(map: TacticalMap, pack: GraphicsStylePack, { parallax, loadTexture }: { parallax: boolean; loadTexture: StyledFloorTextureLoader }) {
+export function buildStyledFloors(map: TacticalMap, pack: GraphicsStylePack, { parallax, loadTexture, relief = null, onRelief }: { parallax: boolean; loadTexture: StyledFloorTextureLoader; relief?: FloorReliefLevel | null; onRelief?: (key: string, geometry: THREE.BufferGeometry) => void }) {
   const group = new THREE.Group()
   group.name = 'styled-floors'
   const keys = new Set<string>()
@@ -221,24 +227,48 @@ export function buildStyledFloors(map: TacticalMap, pack: GraphicsStylePack, { p
     const key = floorKeyForCell(map, cellAt(map, x, y))
     if (key && pack.floors[key]) keys.add(key)
   }
-  const owned: { dispose(): void }[] = []
+  const owned = new Set<{ dispose(): void }>()
+  let disposed = false
+  const level = relief ? BOARD3D_FLOOR_RELIEF[relief] : null
   for (const key of [...keys].sort()) {
     const floor = pack.floors[key]
-    const geometry = createTileGroundGeometry(map, {
-      include: (_x, _y, cell) => floorKeyForCell(map, cell) === key,
-      uvCells: floor.cells,
-      seamless: (cell) => NATURAL_FLOORS.has(floorKeyForCell(map, cell) ?? ''),
-      neutralShade: true,
-    })
-    geometry.setAttribute('uv1', geometry.attributes.uv)
-    const textures = loadFloorTextures(floor, loadTexture)
+    const build = (reliefOptions: TileGroundRelief | null = null) => {
+      const geometry = createTileGroundGeometry(map, {
+        include: (_x, _y, cell) => floorKeyForCell(map, cell) === key,
+        uvCells: floor.cells,
+        seamless: (cell) => NATURAL_FLOORS.has(floorKeyForCell(map, cell) ?? ''),
+        neutralShade: true,
+        relief: reliefOptions,
+      })
+      geometry.setAttribute('uv1', geometry.attributes.uv)
+      return geometry
+    }
+    const geometry = build()
+    let mesh: THREE.Mesh | null = null
+    const applyRelief = (heightTexture: THREE.Texture) => {
+      if (disposed || !mesh || !level) return
+      let cells = 0
+      for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) if (floorKeyForCell(map, cellAt(map, x, y)) === key) cells += 1
+      const subdivisions = reliefSubdivisions(cells, level.subdivisions)
+      const height = heightSamplerFromTexture(heightTexture, floor.cells * subdivisions)
+      if (!height) return
+      const next = build({ subdivisions, depth: floor.relief * level.depthScale, height, surfaceKey: (cell) => floorKeyForCell(map, cell) })
+      const previous = mesh.geometry
+      mesh.geometry = next
+      owned.delete(previous)
+      previous.dispose()
+      owned.add(next)
+      onRelief?.(key, next)
+    }
+    const textures = loadFloorTextures(floor, loadTexture, level ? applyRelief : undefined)
     const material = createStyledFloorMaterial(floor, textures, { parallax })
-    const mesh = new THREE.Mesh(geometry, material)
+    mesh = new THREE.Mesh(geometry, material)
     mesh.name = `styled-floor:${key}`
     mesh.receiveShadow = true
-    mesh.castShadow = false
+    // Объёмный пол бросает тень сам на себя: камни затеняют швы.
+    mesh.castShadow = Boolean(level)
     group.add(mesh)
-    owned.push(geometry, material, ...Object.values(textures))
+    for (const item of [geometry, material, ...Object.values(textures)]) owned.add(item)
   }
-  return { group, keys: [...keys].sort(), dispose() { for (const item of owned) item.dispose() } }
+  return { group, keys: [...keys].sort(), dispose() { disposed = true; for (const item of owned) item.dispose(); owned.clear() } }
 }
