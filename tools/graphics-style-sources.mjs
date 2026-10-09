@@ -44,7 +44,10 @@
  * `at` — смещение в метрах, `yaw` — поворот в градусах, `on` — поставить на
  * верх детали с этим номером.
  * `native` — не ставить деталь на землю: она уже на месте в координатах набора.
- * @typedef {{ kit?: string, restyle?: string, detail?: string, at?: [number, number, number], yaw?: number, scale?: number | [number, number, number], on?: number, tilt?: [number, number, number], native?: boolean, center?: boolean, imageOverrides?: Record<string, string> }} PartSource
+ * `kenney` — модель набора Kenney 2.0 из `tmp/asset-src` (путь без `.glb`): цвет
+ *   её палитры переносится в цвета вершин, треугольники делятся по классу
+ *   материала, дальше — та же перекраска, что у `restyle`.
+ * @typedef {{ kit?: string, restyle?: string, detail?: string, kenney?: string, at?: [number, number, number], yaw?: number, scale?: number | [number, number, number], on?: number, tilt?: [number, number, number], native?: boolean, center?: boolean, imageOverrides?: Record<string, string> }} PartSource
  */
 
 /**
@@ -65,6 +68,24 @@ const ref = (/** @type {string} */ path, yaw = 0) => ({ ref: path, yaw })
 const restyled = (/** @type {string} */ name, /** @type {string} */ restyle) => ({ name, parts: [{ restyle }] })
 const detail = (/** @type {string} */ id) => ({ name: `detail_${id}`, parts: [{ detail: id }] })
 const nature = (/** @type {string[]} */ files) => files.map((file) => ref(`quaternius-nature/${file}`))
+
+/**
+ * Наборы Kenney 2.0 (CC0), скачаны 2026-10-09 (`tmp/asset-src/SOURCES.md`).
+ * Берутся отдельные вещи — телеги, прилавки, знамёна, фонтан, баллиста; стены,
+ * крыши, дороги и сегменты пещер — строительные детали, доска строит их сама.
+ */
+const KENNEY_KITS = Object.freeze({
+  town: 'dl-kenney-fantasy-town-kit/unpacked/Models/GLB format',
+  castle: 'dl-kenney-castle-kit/unpacked/Models/GLB format',
+  cave: 'dl-kenney-modular-cave-kit/unpacked/Models/GLB format',
+})
+/**
+ * У моделей Kenney длинная сторона вдоль Z, а длинные виды (телега, скамья,
+ * ограда, бревно) занимают 2×1 клетки по X: `yaw: 90` кладёт модель вдоль следа,
+ * иначе вписывание сжимает её вдвое.
+ * @param {keyof typeof KENNEY_KITS} kit @param {string} file @param {number} [yaw]
+ */
+const kenney = (kit, file, yaw = 0) => ({ name: `kenney_${kit}_${file.replace(/-/gu, '_')}`, parts: [{ kenney: `${KENNEY_KITS[kit]}/${file}` }], ...(yaw ? { yaw } : {}) })
 
 /** Модели набора детализации, у которых есть авторский рецепт. */
 const DETAIL_RECIPES = [
@@ -375,6 +396,14 @@ const PROPS = {
     restyled('kenney_statue_obelisk', 'release/kenney/statue_obelisk'),
     restyled('kenney_statue_column', 'release/kenney/statue_column'),
   ],
+
+  // --- Kenney Fantasy Town Kit 2.0 и Castle Kit 2.0: ещё варианты тех же видов.
+  // Вид без своей модели стиля сохраняет прежнюю модель выпуска (`ref`), иначе
+  // пакет стиля заменил бы её, а не добавил вариант.
+  market_stall: [ref('quaternius/stall_empty.glb'), kenney('town', 'stall-green'), kenney('town', 'stall-red')],
+  bench: [ref('quaternius/bench.glb'), kenney('town', 'stall-bench', 90)],
+  stool: [ref('quaternius/stool.glb'), kenney('town', 'stall-stool')],
+  portcullis_gate: [kenney('castle', 'metal-gate'), kenney('cave', 'gate-metal-bars')],
 }
 for (const id of DETAIL_RECIPES) PROPS[id] = [detail(id)]
 
@@ -463,6 +492,18 @@ const FRONTIER_HEIGHTS = {
   prison_cage: 1.2, dungeon_rack: .7, iron_maiden: 1.4, manacle_post: .85,
 }
 for (const [id, maxHeight] of Object.entries(FRONTIER_HEIGHTS)) PROPS[id] = [{ ...detail(id), maxHeight }]
+
+// Kenney 2.0 — после всех переназначений списков выше (`PROPS.cart`, `PROPS.banner`).
+PROPS.cart = [...PROPS.cart, kenney('town', 'cart', 90), kenney('town', 'cart-high', 90)]
+PROPS.wagon_wheel = [...PROPS.wagon_wheel, kenney('town', 'wheel')]
+PROPS.banner = [...PROPS.banner, kenney('town', 'banner-green'), kenney('town', 'banner-red'), kenney('castle', 'flag-banner-long')]
+PROPS.lamp_post = [...PROPS.lamp_post, kenney('town', 'lantern')]
+PROPS.village_fence = [...PROPS.village_fence, kenney('town', 'fence', 90), kenney('town', 'fence-broken', 90)]
+PROPS.pillar = [...PROPS.pillar, kenney('town', 'pillar-stone')]
+PROPS.boulder = [...PROPS.boulder, kenney('town', 'rock-large'), kenney('castle', 'rocks-large')]
+PROPS.rock_small = [...PROPS.rock_small, kenney('town', 'rock-small'), kenney('castle', 'rocks-small')]
+PROPS.fallen_log = [...PROPS.fallen_log, kenney('castle', 'tree-log', 90)]
+PROPS.ballista = [...PROPS.ballista, kenney('castle', 'siege-ballista')]
 // Ящики рыбаков — из тех же ящиков набора, что и в лавках: штабель на трёх.
 PROPS.fishing_crates = [{ name: 'fishing_crates', maxHeight: .75, parts: [
   { kit: `${FPMK}Crate_Wooden`, at: [-.32, 0, .18], yaw: 6 },
@@ -474,11 +515,14 @@ PROPS.fishing_crates = [{ name: 'fishing_crates', maxHeight: .75, parts: [
 export const GRAPHICS_STYLE_SOURCES = Object.freeze({
   stylized: {
     label: 'Рисованный',
-    license: 'CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit) и собственные текстуры и модели проекта (data/asset-rights.json)',
+    license: 'CC0 (Quaternius: Fantasy Props, Medieval Village и Stylized Nature MegaKit; Kenney: Fantasy Town Kit 2.0, Castle Kit 2.0, Modular Cave Kit) и собственные текстуры и модели проекта (data/asset-rights.json)',
     sources: [
       'https://quaternius.com/packs/fantasypropsmegakit.html',
       'https://quaternius.com/packs/medievalvillagemegakit.html',
       'https://quaternius.itch.io/stylized-nature-megakit',
+      'https://kenney.nl/assets/fantasy-town-kit',
+      'https://kenney.nl/assets/castle-kit',
+      'https://kenney.nl/assets/modular-cave-kit',
       'public/assets/maps/terrain/terrain-tiles.json',
       `public/assets/models/environment/releases/${STYLE_RELEASE}/`,
       'public/assets/maps/detail-v1/manifest.json',

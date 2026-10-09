@@ -634,6 +634,82 @@ async function kitPart(path, plan, imageOverrides = {}) {
   return scene
 }
 
+// ------------------------------------------------------- наборы Kenney 2.0
+
+/**
+ * Класс рисованного материала по цвету палитры Kenney (sRGB): коричневое —
+ * дерево, серое — камень, тёмное серое и голубовато-стальное — металл, яркое —
+ * ткань и краска, почти белое — штукатурка.
+ */
+function kenneyClass(color) {
+  const hsl = color.getHSL({ h: 0, s: 0, l: 0 }, THREE.SRGBColorSpace)
+  if (hsl.s < .2) return hsl.l < .38 ? 'metal' : hsl.l > .9 ? 'plaster' : 'stone'
+  if (hsl.s < .4 && hsl.h > .55 && hsl.h < .72) return 'metal'
+  if (hsl.l > .86) return 'plaster'
+  if (hsl.h < .13 || hsl.h > .97) return hsl.s <= .62 || hsl.l > .7 ? 'wood' : 'cloth'
+  return 'cloth'
+}
+
+const kenneyCache = new Map()
+/**
+ * Модель Kenney 2.0 красится одной палитрой `colormap.png`: цвет квадрата под
+ * UV треугольника переносится в цвета его вершин, треугольники одного класса
+ * собираются в свой меш (`wood`, `stone`, `metal`, `cloth`, `plaster`) — по
+ * этому имени `restyle` выбирает рисованный материал, а цвет вершин
+ * возвращает оттенок палитры поверх нейтральной фактуры.
+ */
+async function kenneyPart(path, plan) {
+  if (!kenneyCache.has(path)) kenneyCache.set(path, loader.loadAsync(`/source/${path.split('/').map(encodeURIComponent).join('/')}.glb`))
+  const gltf = await kenneyCache.get(path)
+  const scene = gltf.scene.clone(true)
+  scene.updateMatrixWorld(true)
+  const meshes = []
+  scene.traverse((object) => { if (object.isMesh) meshes.push(object) })
+  const buckets = new Map()
+  const color = new THREE.Color()
+  for (const mesh of meshes) {
+    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
+    const image = material.map?.image
+    const geometry = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()
+    geometry.applyMatrix4(mesh.matrixWorld)
+    if (!geometry.attributes.normal) geometry.computeVertexNormals()
+    const { position, normal, uv } = geometry.attributes
+    const pixels = image && uv ? canvasOf(image, image.width, image.height).getContext('2d').getImageData(0, 0, image.width, image.height) : null
+    for (let i = 0; i + 2 < position.count; i += 3) {
+      if (pixels) {
+        // Середина треугольника: на краю квадрата палитры соседний цвет не подмешивается.
+        const u = (uv.getX(i) + uv.getX(i + 1) + uv.getX(i + 2)) / 3, v = (uv.getY(i) + uv.getY(i + 1) + uv.getY(i + 2)) / 3
+        const x = Math.min(pixels.width - 1, Math.floor((u - Math.floor(u)) * pixels.width))
+        const y = Math.min(pixels.height - 1, Math.floor((v - Math.floor(v)) * pixels.height))
+        const at = (y * pixels.width + x) * 4
+        color.setRGB(pixels.data[at] / 255, pixels.data[at + 1] / 255, pixels.data[at + 2] / 255, THREE.SRGBColorSpace)
+      } else color.copy(material.color)
+      const kind = kenneyClass(color)
+      let bucket = buckets.get(kind)
+      if (!bucket) buckets.set(kind, bucket = { position: [], normal: [], color: [] })
+      for (let k = 0; k < 3; k++) {
+        bucket.position.push(position.getX(i + k), position.getY(i + k), position.getZ(i + k))
+        bucket.normal.push(normal.getX(i + k), normal.getY(i + k), normal.getZ(i + k))
+        bucket.color.push(color.r, color.g, color.b)
+      }
+    }
+    geometry.dispose()
+  }
+  const root = new THREE.Group()
+  for (const [kind, bucket] of [...buckets].sort(([a], [b]) => a.localeCompare(b))) {
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(bucket.position, 3))
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(bucket.normal, 3))
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(bucket.color, 3))
+    const part = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ name: kind, vertexColors: true }))
+    part.name = kind
+    root.add(part)
+  }
+  const restyled = restyle(root, plan)
+  root.traverse((object) => { if (object.isMesh) { object.geometry.dispose(); object.material.dispose() } })
+  return restyled
+}
+
 async function restylePart(path, plan) {
   const [release, ...rest] = path.split('/')
   const id = release === 'old' ? 'bd5c4563074b6e4ef576769c' : plan.release
@@ -665,7 +741,10 @@ async function buildRecipe(recipe, plan) {
   const root = new THREE.Group()
   const placed = []
   for (const part of recipe.parts) {
-    const object = part.kit ? await kitPart(part.kit, plan, part.imageOverrides) : part.restyle ? await restylePart(part.restyle, plan) : await detailPart(part.detail, plan)
+    const object = part.kit ? await kitPart(part.kit, plan, part.imageOverrides)
+      : part.restyle ? await restylePart(part.restyle, plan)
+        : part.kenney ? await kenneyPart(part.kenney, plan)
+          : await detailPart(part.detail, plan)
     const holder = new THREE.Group()
     holder.add(object)
     if (part.center) {
