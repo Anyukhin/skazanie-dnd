@@ -10,10 +10,11 @@ const STATURES = Object.freeze(['tiny', 'small', 'medium', 'large', 'huge', 'gar
 /** Маленькие расы героя (PHB 2014): полурослик и гном. Дварф — «дварф», не «гном». */
 const SMALL_SPECIES = /полурослик|гном|halfling|gnome/u
 /**
- * Звери с собственными фигурками (крыса, паук, оса, лягушка, змея). Только
- * целым словом: «Крысолов» — человек, «Осада» — не оса.
+ * Звери с собственными фигурками (крыса, паук, оса, лягушка, змея) и
+ * членистоногие, которых рисует паук. Только целым словом: «Крысолов» —
+ * человек, «Осада» — не оса, «Жуков» — не жук.
  */
-const BEAST_WORDS = /(?<!\p{L})(?:rat|spider|wasp|frog|toad|snake|viper|крыс[аы]?|паук[и]?|паучиха|ос[аы]|шершень|лягушк[аи]|жаб[аы]|зме[йяи]|гадюк[аи]|питон|удав)(?!\p{L})/iu
+const BEAST_WORDS = /(?<!\p{L})(?:rat|spider|wasp|frog|toad|snake|viper|scorpion|centipede|beetle|крыс[аы]?|паук[и]?|паучиха|ос[аы]|шершень|лягушк[аи]|жаб[аы]|зме[йяи]|гадюк[аи]|питон|удав|скорпион[ы]?|сороконожк[аи]|многоножк[аи]|жук[и]?)(?!\p{L})/iu
 const EQUIPMENT = Object.freeze(['unknown', 'unarmed', 'sword', 'sword-shield', 'bow', 'staff', 'dagger'])
 const HIDDEN_VISIBILITIES = new Set(['gm_only', 'npc_private'])
 const PUBLIC_VISIBILITIES = new Set(['public', 'party'])

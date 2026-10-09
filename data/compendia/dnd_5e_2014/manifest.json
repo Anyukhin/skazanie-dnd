@@ -21,11 +21,11 @@
   },
   "counts": {
     "rules": 91,
-    "monsters": 83,
+    "monsters": 84,
     "magic_items": 32,
     "glossary_terms": 91,
     "ontology_edges": 81,
-    "sources": 115
+    "sources": 116
   },
   "source_policy": {
     "primary": "dnd.su / 5e14.dnd.su, 2014 selected core",
@@ -50,16 +50,16 @@
   },
   "files": {
     "coverage.json": {
-      "sha256": "5a2429867c3a5847832289577527fc3cd3e1a244b418efbfaa3356e46f2b190a",
-      "bytes": 3109
+      "sha256": "4f4a5e8f973188df2065ccf8587519f693e79f5629aed18a1c7f7aaf2aa7e736",
+      "bytes": 13657
     },
     "magic-items.json": {
       "sha256": "87b0de7510c2c431e74158c8ace2f5e72786590bbb2b68ce4e86505b5f179d0f",
       "bytes": 64013
     },
     "monsters.json": {
-      "sha256": "825a4cf01d0eb8b0fd8793a585f55c2c0c34236af8da4e884c1411f1482e7209",
-      "bytes": 162380
+      "sha256": "cb46f073736ee1e2d59f16634634bd4f1cc17e915f91178e33104bfe383d2516",
+      "bytes": 479303
     },
     "rule_packs/dnd_5e_2014/coverage.yaml": {
       "sha256": "50e224e03b6f8363ea7de27f30bff2046286ab0720fd5b77b339d55c703afe6f",
@@ -98,8 +98,8 @@
       "bytes": 2761
     },
     "sources.json": {
-      "sha256": "f1af57a1b2ac40f07da6df3ba4f119232f3a7c8e7cfdeeff437f77fe2f61981c",
-      "bytes": 50147
+      "sha256": "d3e79c24799f24fb306d2b1b08e4cd39f764b69f150e27d3d09a0d8f7b697880",
+      "bytes": 87098
     }
   },
   "updated_at": "2026-09-08"

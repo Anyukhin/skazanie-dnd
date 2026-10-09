@@ -284,6 +284,8 @@ node tools/register-asset-rights.mjs models/manifest.json
 существа `beast` из стат-блока; замаскированное имя не раскрывается. Внутри
 профиля фигурку выбирает слово показанного имени (`refineWithinProfile`); волк
 остаётся первой записью и общим зверем — медведь и кабан рисуются им.
+Членистоногие без своей модели (скорпион, многоножка, жук) рисуются пауком:
+их слова есть и в `BEAST_WORDS`, и в архетипах записи `spider`.
 
 ```bash
 node tools/import-easy-enemies.mjs --publish   # из tmp/asset-src/dl-quaternius-animated-easy-enemies

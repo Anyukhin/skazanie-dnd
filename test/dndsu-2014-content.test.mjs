@@ -27,8 +27,8 @@ test('справочное расширение загружается наст�
 
 // Golden cases protect these recorded 2014 values, not every possible D&D rule.
 test('catalog counts and unactivated state', () => {
-  assert.equal(content.monsters.length,83); assert.equal(content.magicItems.length,32)
-  assert.equal(content.rules.length,91); assert.equal(content.sources.sources.length,115)
+  assert.equal(content.monsters.length,84); assert.equal(content.magicItems.length,32)
+  assert.equal(content.rules.length,91); assert.equal(content.sources.sources.length,116)
   for (let cr=0;cr<=6;cr++) assert.equal(content.monsters.filter(monster=>monster.challenge_rating===String(cr)).length,10)
   assert.equal(content.manifest.runtime_activation_allowed,false)
   assert.equal(content.summary.mechanics_execution,'not_integrated')
@@ -145,7 +145,7 @@ test('encounter tables cover levels 1–20 without multiplying awarded XP', () =
   assert.deepEqual(rule('encounters:party-size').mechanics.multiplier_scale,[0.5,1,1.5,2,2.5,3,4,5])
 })
 test('retrieval includes complete mechanics, not only short flavor text', () => {
-  const chunks=toRetrievalChunks(content); assert.equal(chunks.length,206)
+  const chunks=toRetrievalChunks(content); assert.equal(chunks.length,207)
   const r=rule('combat:grapple'); assert.ok(r.text_ru.includes('str:athletics'))
   assert.deepEqual(mechanicalTokens(r.text_ru),mechanicalTokens(r.text_en))
   assert.ok(chunks.find(c=>c.id===r.id).text.includes('free_hands_required'))
