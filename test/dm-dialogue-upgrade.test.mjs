@@ -200,3 +200,31 @@ test('ожидание с наблюдением — два шага: время
   assert.doesNotMatch(response.narration, /Вышло: смотрим|выйдет ли/u, 'вопрос миру не пересказывается как итог')
   assert.match(response.narration, /не сводит глаз|всматривается/u)
 })
+
+test('фоновая запись памяти во время разбора не отбрасывает ход, а смена сцены — отбрасывает', async () => {
+  // Плейтест 2026-10-10: зацепки из предысторий плелись рядом со вторым шагом
+  // плана, и ход получал «Обстановка изменилась… Отправьте его ещё раз».
+  const reading = { goal_summary: 'Простучать бочки', approach_summary: 'Простукиваю бочки', ability: 'wis', skill: 'perception', plausibility: 'trivial', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator' }
+  const sideEffect = { event: null, store: null, campaignId: '' }
+  const reader = {
+    llmClient: { completeJson: async () => ({}) },
+    read: async () => {
+      const current = await sideEffect.store.load(sideEffect.campaignId)
+      await sideEffect.store.commit({ campaignId: sideEffect.campaignId, expectedStateVersion: current.state_version, idempotencyKey: `background-${current.state_version}`, events: [sideEffect.event] })
+      return reading
+    },
+  }
+  const { send, eventStore, state } = await fixture({ reader })
+  Object.assign(sideEffect, { store: eventStore, campaignId: state.sessionCode })
+  sideEffect.event = { event_type: 'WorldFactRecorded', visibility: 'gm_only', payload: { fact: {
+    id: 'fact:background-hook', subject_id: 'entity:hero', predicate: 'gm_secret', object: '{"topic":"сестра"}',
+    summary: 'Фоновая зацепка', visibility: 'gm_only', status: 'active', recorded_at_minutes: 0,
+  } } }
+  const accepted = await send('Простукиваю бочки у стены')
+  assert.doesNotMatch(String(accepted.narration), /Обстановка изменилась/u)
+  assert.ok(accepted.mechanics.some(event => event.event_type === 'ActionDeclared'))
+
+  sideEffect.event = { event_type: 'ObjectiveUpdated', visibility: 'party', payload: { objective: 'Новая цель от другого игрока' } }
+  const stale = await send('Простукиваю бочки у двери')
+  assert.match(String(stale.narration), /Обстановка изменилась/u, 'перемена сцены по-прежнему требует свежего разбора')
+})

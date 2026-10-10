@@ -424,6 +424,22 @@ function passageDoorCommands(actorId, plan, rulingId) {
   ]
 }
 
+/**
+ * События, которые пишут память мира в фоне и не трогают сцену, героя и
+ * экономику хода. Расстановка NPC (`NpcPlaced`) сюда не входит: она меняет поле.
+ */
+const BACKGROUND_MEMORY_EVENT_TYPES = new Set([
+  'WorldFactRecorded', 'WorldEntityUpserted', 'WorldRelationshipRecorded',
+  'NarrativeThreadUpserted', 'NarrativeThreadClockAdvanced', 'NarrativeSummaryRecorded',
+  'NpcSocialProfileUpserted',
+])
+
+async function onlyBackgroundMemoryChanged(eventStore, campaignId, fromVersion, toVersion) {
+  if (typeof eventStore?.getEvents !== 'function') return false
+  const events = await eventStore.getEvents(campaignId, { afterVersion: Number(fromVersion), upToVersion: Number(toVersion) })
+  return events.length > 0 && events.every((event) => BACKGROUND_MEMORY_EVENT_TYPES.has(String(event?.event_type ?? '')))
+}
+
 export class AutonomousCampaignOrchestrator {
   constructor({
     loreAuthor = null, eventStore, rulesEngine, narrator = null, actionAdjudicator = null, rollRegistry = null, now = () => Date.now() } = {}) {
@@ -1313,7 +1329,14 @@ export class AutonomousCampaignOrchestrator {
     // команды без конфликта версии.
     const adjudicationMayAwait = !storedReading && !harmlessReading && Boolean(this.actionAdjudicator?.llmClient?.completeJson)
     const afterAdjudication = adjudicationMayAwait ? await this.load(campaignId) : loaded
-    if (adjudicationMayAwait && Number(afterAdjudication.state_version) !== Number(loaded.state_version)) {
+    // Фоновая запись памяти — зацепки из предысторий, нити, профиль собеседника
+    // — сцену, героя и цену хода не меняет. Прежде любая такая запись во время
+    // разбора отбрасывала ход: «Обстановка изменилась… Отправьте его ещё раз»
+    // (плейтест 2026-10-10, плетение зацепок шло рядом со вторым шагом плана).
+    const versionMoved = adjudicationMayAwait && Number(afterAdjudication.state_version) !== Number(loaded.state_version)
+    if (versionMoved && await onlyBackgroundMemoryChanged(this.eventStore, campaignId, loaded.state_version, afterAdjudication.state_version)) {
+      actionStateVersion = afterAdjudication.state_version
+    } else if (versionMoved) {
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification',
