@@ -16,6 +16,7 @@ import {
   scenarioEncounterIntent,
 } from './campaign-loop-policy.mjs'
 import { scenarioDirectorBrief } from './campaign-scenario.mjs'
+import { partyMotivesForDirector } from './hero-hooks.mjs'
 import { scenarioAttention } from './scenario-attention.mjs'
 import { npcMechanicsFor } from './npc-positioning.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
@@ -303,6 +304,12 @@ function publicDirectorBrief(state = {}, playerAction = '', contractVersion = 'd
       })),
       ...selectionFields(boundedSelectionMetadata({ scope: 'party_visible_available_npcs_in_current_location', candidateCount: availableNpcCandidates.length, limit: 12 }), 'available_npcs'),
       encounter: visibleState.mechanics?.encounter ? { status: clean(visibleState.mechanics.encounter.status, 40), outcome: clean(visibleState.mechanics.encounter.outcome, 80) } : null,
+      // Личные мотивы героев (плейтест 2026-10-10: предыстории не доходили до
+      // Режиссёра): цель героя и сколько его зацепок ещё не раскрыто. Счёт
+      // берётся из полного состояния, но текстов скрытых зацепок здесь нет.
+      party_motives: partyMotivesForDirector(state).map((entry) => ({
+        hero: entry.hero, motive: entry.motive, unrevealed_hook_leads: entry.unrevealed_hook_leads,
+      })),
       narrative_memory: directorNarrativeMemory(publicState, playerAction, { isPartyMember: true }),
     },
     RECENT_EVENTS: currentChapterHistory(visibleState).slice(-12).map((intent) => ({ type: clean(intent.type, 40), reason: clean(intent.reason, 180) })),

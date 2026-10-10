@@ -13,6 +13,7 @@ import {
   CAMPAIGN_CREATION_JSON_SCHEMA,
   DIRECTOR_INTENT_JSON_SCHEMA,
   DIRECTOR_SCENE_RESOLUTIONS,
+  HERO_HOOKS_JSON_SCHEMA,
   NPC_PROMISE_DIRECTIONS,
   NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
   NPC_SOCIAL_STANCES,
@@ -20,7 +21,7 @@ import {
 import { STRUCTURED_OUTPUT_MODELS, supportsJsonSchema } from '../server/model-style-profiles.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
 
-const ALL_SCHEMAS = [DIRECTOR_INTENT_JSON_SCHEMA, NPC_SOCIAL_RESPONSE_JSON_SCHEMA, CAMPAIGN_CREATION_JSON_SCHEMA]
+const ALL_SCHEMAS = [DIRECTOR_INTENT_JSON_SCHEMA, NPC_SOCIAL_RESPONSE_JSON_SCHEMA, CAMPAIGN_CREATION_JSON_SCHEMA, HERO_HOOKS_JSON_SCHEMA]
 
 /** Минимальная проверка значения по подмножеству JSON Schema, которое используют схемы ролей. */
 function conforms(schema, value) {

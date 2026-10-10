@@ -154,9 +154,10 @@ export function parseGmSecretObject(value) {
       topic: text(parsed?.topic, 200),
       skills: Array.isArray(parsed?.skills) ? parsed.skills.map((entry) => text(entry, 40).replace(/_/gu, '-')).filter(Boolean) : [],
       holder: text(parsed?.holder, 120),
+      hero_id: text(parsed?.hero_id, 120),
     }
   } catch {
-    return { topic: '', skills: [], holder: '' }
+    return { topic: '', skills: [], holder: '', hero_id: '' }
   }
 }
 
@@ -191,14 +192,16 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
         related: SEARCH_SKILLS.has(normalizedSkill) && entry.meta.skills.some((skill) => SEARCH_SKILLS.has(skill)),
         score: [...spoken].filter((stem) => topic.has(stem)).length,
         here: hereIds.has(String(entry.fact.subject_id)),
+        personal: Boolean(entry.meta.hero_id),
       }
     })
     .filter((entry) => entry.exact || entry.related)
   // Одна общая основа слова — ещё не тема: «ищу метку на корме» и секрет о
   // «царапинах на борту» сходились по «борт», и вместо ответа на вопрос герой
   // получал чужую находку (плейтест 2026-10-10). Тема — две общие основы или
-  // одна, но о тайне этого же места.
-  const topical = candidates.filter((entry) => entry.score >= 2 || (entry.score >= 1 && entry.here))
+  // одна, но о тайне этого же места или о личной нити героя: «ищу след
+  // сестры» — это вопрос о его предыстории, где бы ни лежала зацепка.
+  const topical = candidates.filter((entry) => entry.score >= 2 || (entry.score >= 1 && (entry.here || entry.personal)))
     .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
   // Общий поиск открывает тайну этого места сперва своим навыком, затем
   // родственным: тайна лагеря ждала Анализа, и удачная Внимательность у

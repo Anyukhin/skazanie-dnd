@@ -14,6 +14,7 @@ import {
   scenarioProgress,
 } from './campaign-scenario.mjs'
 import { scenarioStrangerNpcId, scenarioStrangerStage } from './scenario-attention.mjs'
+import { npcWitnessedFactIds } from './npc-social.mjs'
 
 export { QUEST_ABANDONMENT_NEXT_OBJECTIVE, questProgressEvidenceFor }
 
@@ -923,9 +924,13 @@ export function assembleSocialNpc(state = {}, {
   const name = NPC_NAMES[entropy % NPC_NAMES.length]
   const role = NPC_ROLES[(entropy >>> 8) % NPC_ROLES.length]
   const generatedId = `npc-${createHash('sha256').update(`${campaignId}:${location}:${name}`).digest('hex').slice(0, 16)}`
-  const knownFactIds = (state.worldMemory?.facts ?? [])
-    .filter((fact) => fact.status === 'active' && ['public', 'party'].includes(fact.visibility))
-    .map((fact) => clean(fact.id, 120))
+  // Новый житель места знает публичное и то, что отряд нашёл у него на глазах,
+  // а не все находки отряда (плейтест 2026-10-10: собеседник, заведённый
+  // Режиссёром, пересказывал чужие находки). Граница общая с разговором —
+  // `npcWitnessedFactIds` в `server/npc-social.mjs`.
+  const knownFactIds = npcWitnessedFactIds(state, {
+    id: 'assembled-npc', name, location, location_id: clean(state.scene?.location_id ?? state.scene?.locationId, 120),
+  })
     .filter(Boolean)
     .slice(0, 20)
   const faction = (state.worldMemory?.entities ?? []).find((entity) => entity.kind === 'faction')

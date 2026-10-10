@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { ensureNpcSocialState, npcProfileAtWorldTime, relationshipTier, npcBehaviorPolicy } from './npc-social.mjs'
-import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
+import {
+  ensureNpcSocialState, implicitSecretHolderIds, npcBehaviorPolicy, npcKnownFactIds, npcProfileAtWorldTime, npcSecretMeta, relationshipTier,
+} from './npc-social.mjs'
+import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent, heroCardForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { NPC_SOCIAL_RESPONSE_JSON_SCHEMA } from './llm-json-schemas.mjs'
 import { promptForModelRole } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
@@ -11,13 +13,21 @@ import { tavernTableMood } from './tavern-life.mjs'
 import { publicWorldMapFor } from './viewer-projection.mjs'
 import { retrieveWorldMemory } from './world-memory.mjs'
 
-export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v7'
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v7.txt', import.meta.url)), 'utf8')
+export const NPC_SOCIAL_PROMPT_VERSION = 'npc_controller/social-v8'
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/npc_controller/social_v8.txt', import.meta.url)), 'utf8')
 const STANCES = new Set(['friendly', 'neutral', 'guarded', 'hostile'])
 const DIRECTIONS = new Set(['npc_to_party', 'party_to_npc'])
 export const NPC_SOCIAL_MEMORY_LIMIT = 8
 /** Публичных зацепок о собеседнике в брифе не больше этого числа. */
 export const NPC_PUBLIC_HOOK_LIMIT = 4
+/** Зацепок «кто ещё знает, где искать» в брифе не больше этого числа. */
+export const NPC_LEAD_LIMIT = 3
+/** Сколько последних реплик NPC (любому герою) сверяется с новой на повтор. */
+export const NPC_REPEAT_WINDOW = 12
+/** Сколько своих последних реплик NPC видит в брифе как `already_said`. */
+export const NPC_ALREADY_SAID_LIMIT = 6
+/** Подряд одинаковых слов, после которых предложение считается повтором. */
+const REPEAT_WORD_RUN = 6
 
 const NPC_SOCIAL_RESPONSE_FIELDS = new Set([
   'npc_id', 'reply', 'stance', 'disclosed_fact_ids', 'disclosed_claim_ids',
@@ -65,9 +75,15 @@ function stableId(namespace, ...parts) {
   return `${namespace}:${digest}`
 }
 
+/**
+ * Факты, которые NPC знает и может произнести. До 2026-10-10 сюда шли все
+ * факты отряда, и любой собеседник пересказывал чужие находки (плейтест
+ * «Серый Причал»: хозяин таверны дословно повторил находку на пирсе). Граница
+ * знания — `npcKnownFactIds` (`server/npc-social.mjs`): своё, публичное,
+ * увиденное самим NPC и заготовки, где он хранитель.
+ */
 function npcSpeakableFactRecords(state, profile) {
-  const allowedIds = new Set(profile.known_fact_ids ?? [])
-  for (const fact of state.worldMemory?.facts ?? []) if (['public', 'party'].includes(fact.visibility)) allowedIds.add(String(fact.id))
+  const allowedIds = npcKnownFactIds(state, profile)
   return (state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active' && allowedIds.has(String(fact.id)))
 }
 
@@ -204,17 +220,69 @@ function publicHooksNamingNpc(state, profile) {
   return hooks
 }
 
-function privateKnowledgeUsed(state, profile, facts, claims, disclosedFactIds = [], disclosedClaimIds = []) {
+/**
+ * Ответ раскрыл скрытое: в нём названа тайна или слух, которые знает только
+ * этот NPC. Раньше реплика становилась личной, если скрытый факт просто был
+ * среди кандидатов брифа, даже не прозвучав, — и второй герой не видел ни её,
+ * ни того, что NPC это уже говорил, и слышал ту же фразу заново (плейтест
+ * 2026-10-10). Теперь решает то, что действительно сказано.
+ */
+function privateKnowledgeDisclosed(state, profile, disclosedFactIds = [], disclosedClaimIds = []) {
   const privateFactIds = new Set(npcSpeakableFactRecords(state, profile)
     .filter((fact) => !['public', 'party'].includes(fact.visibility))
     .map((fact) => String(fact.id)))
   const privateClaimIds = new Set(npcSpeakableClaimRecords(state, profile)
     .filter((claim) => !['public', 'party'].includes(claim.visibility))
     .map((claim) => String(claim.id)))
-  return facts.some((fact) => privateFactIds.has(String(fact.id)))
-    || claims.some((claim) => privateClaimIds.has(String(claim.id)))
-    || disclosedFactIds.some((factId) => privateFactIds.has(String(factId)))
+  return disclosedFactIds.some((factId) => privateFactIds.has(String(factId)))
     || disclosedClaimIds.some((claimId) => privateClaimIds.has(String(claimId)))
+}
+
+/** Общие слова, по которым отзвук скрытого не узнаётся. */
+const ECHO_STOP_WORDS = new Set([
+  'этот', 'этого', 'этом', 'этой', 'эти', 'чтобы', 'когда', 'только', 'здесь', 'знаю', 'знает', 'может', 'тебе',
+  'тебя', 'меня', 'тоже', 'потом', 'сейчас', 'теперь', 'тогда', 'очень', 'никто', 'ничего', 'было', 'была', 'были',
+  'есть', 'буду', 'будет', 'если', 'хотя', 'даже', 'опять', 'снова', 'уже', 'ещё', 'еще', 'всех', 'весь', 'всего',
+  'который', 'которая', 'которые', 'своей', 'свой', 'своих', 'нужно', 'надо', 'просто', 'сказал', 'сказала',
+])
+
+/** Основы значимых слов (от четырёх букв, без падежного окончания) для сверки отзвука. */
+function echoStems(value) {
+  return new Set(plainWords(value, 4_000)
+    .filter((word) => word.length >= 4 && !ECHO_STOP_WORDS.has(word) && !FALLBACK_QUESTION_STOP_WORDS.has(word))
+    .map(wordStem))
+}
+
+/**
+ * Основа слова без падежного окончания: «Чайкой» и «Чайка» → «чайк»,
+ * «баркаса» → «баркас». Короче четырёх букв основа не бывает — тогда слово
+ * целиком.
+ */
+function wordStem(word) {
+  const stem = word.replace(QUESTION_ENDING_RE, '')
+  return stem.length >= 4 ? stem : word
+}
+
+/** Сколько основ запроса нашлось в теме: равные основы или одна продолжает другую. */
+function stemOverlap(query, topic) {
+  let score = 0
+  for (const stem of query) {
+    if (topic.has(stem) || [...topic].some((other) => (stem.length >= 5 && other.startsWith(stem)) || (other.length >= 5 && stem.startsWith(other)))) score += 1
+  }
+  return score
+}
+
+/**
+ * Реплика повторяет личное: два и больше значимых слова из скрытого материала
+ * (тайна, слух, личная беседа с этим героем), которых нет в открытом контексте
+ * разговора. Это страховка на случай, когда модель пересказала тайну, не
+ * отметив её id; основную границу держит `disclosed_fact_ids`.
+ */
+function replyEchoesPrivateMaterial(reply, privateTexts, baselineText) {
+  const replyStems = echoStems(reply)
+  if (!replyStems.size) return false
+  const baseline = echoStems(baselineText)
+  return privateTexts.some((text) => [...echoStems(text)].filter((stem) => replyStems.has(stem) && !baseline.has(stem)).length >= 2)
 }
 
 function heroName(state, heroId) {
@@ -246,15 +314,260 @@ function relevantNpcMemory(social, profile, playerId, message) {
     : { kind: 'conversation', id: entry.id, hero_id: entry.hero_id, player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })
 }
 
-function privateNpcContextUsed(social, profile, playerId) {
-  return social.conversations.some((entry) => entry.npc_id === profile.id
-    && entry.hero_id === playerId && entry.visibility === 'specific_player')
-    || (profile.dossier ?? []).some((entry) => entry.visibility === 'specific_player'
-      && String(entry.hero_id) === String(playerId))
+/**
+ * Скрытый материал, который мог попасть в реплику: тайны собеседника из брифа,
+ * его слухи, личные беседы и досье с этим героем.
+ */
+function privateMaterialTexts(state, social, profile, playerId, facts) {
+  const texts = facts.filter((fact) => fact.guarded).map((fact) => fact.summary)
+  for (const claim of npcSpeakableClaimRecords(state, profile)) {
+    if (!['public', 'party'].includes(claim.visibility)) texts.push(clean(claim.summary || claim.claim, 1_000))
+  }
+  for (const entry of social.conversations) {
+    if (entry.npc_id === profile.id && String(entry.hero_id) === String(playerId) && entry.visibility === 'specific_player') {
+      texts.push(`${clean(entry.player_message, 1_000)} ${clean(entry.npc_reply, 1_000)}`)
+    }
+  }
+  for (const entry of profile.dossier ?? []) {
+    if (entry.visibility === 'specific_player' && String(entry.hero_id) === String(playerId)) texts.push(clean(entry.summary, 1_000))
+  }
+  return texts.filter(Boolean)
 }
 
-function briefFor(state, profile, playerId, message, checkOutcome = null) {
+/** Открытый контекст разговора: совпадение с ним тайной не считается. */
+function openConversationText(state, social, profile, playerId, message, facts, hooks) {
+  return [
+    message, profile.name, profile.role, profile.public_summary, profile.voice,
+    state.scene?.title, state.scene?.location, state.scene?.objective,
+    ...facts.filter((fact) => !fact.guarded).map((fact) => fact.summary),
+    ...hooks.map((hook) => hook.text),
+    ...social.conversations
+      .filter((entry) => entry.npc_id === profile.id && entry.visibility === 'party')
+      .slice(-NPC_REPEAT_WINDOW)
+      .map((entry) => `${entry.player_message} ${entry.npc_reply}`),
+    JSON.stringify(heroCardForAgent(state, playerId) ?? {}),
+  ].map((value) => clean(value, 2_000)).join(' ')
+}
+
+// ── Антиповтор ──────────────────────────────────────────────────────────────
+//
+// Плейтест 2026-10-10: рыбачка трижды сказала одну и ту же фразу. Правило в
+// промпте («не повторяй…») модель нарушала, а сервер реплику с прежними не
+// сравнивал. Теперь предложения новой реплики сверяются с последними репликами
+// этого NPC любому герою: шесть одинаковых слов подряд или почти тот же набор
+// слов — повтор, и он вырезается.
+
+/** «Да. Баркас Борса.» → ['Да.', 'Баркас Борса.'] */
+function replySentences(text) {
+  return clean(text, 2_000).split(/(?<=[.!?…])\s+/u).map((part) => part.trim()).filter(Boolean)
+}
+
+function wordRuns(words, size = REPEAT_WORD_RUN) {
+  const runs = new Set()
+  for (let index = 0; index + size <= words.length; index += 1) runs.add(words.slice(index, index + size).join(' '))
+  return runs
+}
+
+function earlierReplyIndex(replies) {
+  const runs = new Set()
+  const sentences = []
+  for (const reply of replies) {
+    for (const run of wordRuns(plainWords(reply, 2_000))) runs.add(run)
+    for (const sentence of replySentences(reply)) sentences.push(new Set(plainWords(sentence)))
+  }
+  return { runs, sentences }
+}
+
+/**
+ * Предложение повторяет сказанное раньше: шесть слов подряд совпали с прежней
+ * репликой, или его слова почти целиком (от 80 %) лежат в одном прежнем
+ * предложении сопоставимой длины. Короткие «Да.» и «Ну что ж.» не сверяются.
+ */
+function sentenceRepeats(sentence, index) {
+  const words = plainWords(sentence)
+  if (words.length >= REPEAT_WORD_RUN && [...wordRuns(words)].some((run) => index.runs.has(run))) return true
+  if (words.length < 3) return false
+  const own = new Set(words)
+  return index.sentences.some((earlier) => {
+    if (earlier.size < 3) return false
+    let shared = 0
+    for (const word of own) if (earlier.has(word)) shared += 1
+    return shared / own.size >= 0.8 && shared / earlier.size >= 0.5
+  })
+}
+
+/**
+ * Новая часть реплики: предложения-повторы вырезаны. Пустая строка — нового не
+ * осталось (меньше двух слов).
+ *
+ * @returns {{ text: string, dropped: number }}
+ */
+export function freshReplyText(reply, earlierReplies = []) {
+  const sentences = replySentences(reply)
+  if (!earlierReplies.length) return { text: sentences.join(' '), dropped: 0 }
+  const index = earlierReplyIndex(earlierReplies)
+  const kept = sentences.filter((sentence) => !sentenceRepeats(sentence, index))
+  const text = kept.join(' ')
+  const dropped = sentences.length - kept.length
+  // Короткий ответ без повторов — это ответ («Слушаю.»); пустым считается
+  // только остаток после вырезанных повторов.
+  return { text: !dropped || plainWords(text).length >= 2 ? text : '', dropped }
+}
+
+/**
+ * Последние реплики NPC, с которыми сверяется новая. Сверка идёт со всеми
+ * героями — и с общими, и с личными беседами: иначе второй герой слышал фразу,
+ * сказанную первому наедине, слово в слово. Исключение одно: если эта реплика
+ * раскрывает герою тайну, личные беседы с другими героями не мешают её сказать.
+ */
+function npcEarlierReplies(social, profile, playerId, { includeOtherPrivate = true } = {}) {
+  return social.conversations
+    .filter((entry) => entry.npc_id === profile.id)
+    .filter((entry) => includeOtherPrivate || conversationVisibleTo(entry, playerId))
+    .slice(-NPC_REPEAT_WINDOW)
+    .map((entry) => clean(entry.npc_reply, 2_000))
+    .filter(Boolean)
+}
+
+/** Свои последние реплики, которые видит этот герой: бриф не несёт чужих личных бесед. */
+function alreadySaidForBrief(social, profile, playerId) {
+  return social.conversations
+    .filter((entry) => entry.npc_id === profile.id && conversationVisibleTo(entry, playerId))
+    .slice(-NPC_ALREADY_SAID_LIMIT)
+    .map((entry) => clean(entry.npc_reply, 300))
+    .filter(Boolean)
+}
+
+// ── Зацепки вместо тупика ───────────────────────────────────────────────────
+//
+// Плейтест 2026-10-10: NPC раз за разом отказывались назвать владельца
+// баркаса, и отказ никуда не вёл. Живой ведущий держит правило трёх улик: если
+// этот человек не знает или не скажет — он укажет, кто знает, где искать или
+// чего хочет взамен. Сервер собирает такие зацепки из того, на что безопасно
+// указать: имя и место хранителя нераскрытой заготовки по теме разговора,
+// место заготовки без хранителя и публичные зацепки карты. Текст самой тайны в
+// бриф не идёт никогда — только её тема (`about`).
+
+const LEAD_STOP_WORDS = new Set(['знаешь', 'знаете', 'скажи', 'скажите', 'расскажи', 'расскажите', 'кто-нибудь', 'что-нибудь'])
+
+function leadStems(value, profile = null) {
+  const nameParts = plainWords(profile?.name, 200)
+  return new Set(plainWords(clean(value, 2_000).replace(ADDRESS_PREFIX_RE, ''))
+    .filter((word) => word.length >= 4 && !FALLBACK_QUESTION_STOP_WORDS.has(word) && !LEAD_STOP_WORDS.has(word))
+    .filter((word) => !nameParts.some((part) => wordNamesPart(word, part)))
+    .map(wordStem))
+}
+
+function revealedFactIds(state) {
+  const memory = state.worldMemory ?? {}
+  return new Set([...(memory.knowledge_ledger ?? []), ...(memory.knowledge_revealed ?? [])]
+    .map((entry) => String(entry?.fact_id ?? '')).filter(Boolean))
+}
+
+/**
+ * Зацепки для разговора: кто ещё знает (`person`), где искать (`place`), что
+ * говорят открыто (`hook`) и `self` — ответ знает сам собеседник, это его тайна
+ * и его цена. `match`: `question` — по словам героя, `objective` — по цели
+ * сцены, `nearby` — не по вопросу, но рядом (на случай, если ответить нечего).
+ *
+ * @returns {Array<{ kind: 'person'|'place'|'hook'|'self', match: 'question'|'objective'|'nearby', name?: string, role?: string, where?: string, about?: string, text?: string }>}
+ */
+export function conversationLeads(state = {}, profile = {}, message = '', social = ensureNpcSocialState(state.social, state)) {
+  const asked = leadStems(message, profile)
+  const objective = leadStems(state.scene?.objective, profile)
+  const sceneKey = clean(state.scene?.location, 180).toLocaleLowerCase('ru')
+  const locations = new Map((state.worldMemory?.entities ?? [])
+    .filter((entity) => entity?.kind === 'location' && entity.id)
+    .map((entity) => [String(entity.id), clean(entity.name, 180)]))
+  const revealed = revealedFactIds(state)
+  const implicit = implicitSecretHolderIds(state, social)
+  const npcByName = new Map(social.npcs.map((npc) => [clean(npc.name, 160).toLocaleLowerCase('ru'), npc]))
+  const knownBy = new Map()
+  for (const npc of social.npcs) for (const factId of npc.known_fact_ids ?? []) if (!knownBy.has(factId)) knownBy.set(factId, npc)
+  const candidates = []
+  for (const fact of state.worldMemory?.facts ?? []) {
+    if (fact?.predicate !== 'gm_secret' || fact.status !== 'active' || revealed.has(String(fact.id))) continue
+    const meta = npcSecretMeta(fact)
+    const topic = leadStems(`${meta.topic} ${fact.summary ?? ''}`)
+    const questionScore = stemOverlap(asked, topic)
+    const objectiveScore = stemOverlap(objective, topic)
+    const where = locations.get(String(fact.subject_id ?? '')) ?? ''
+    const nearby = Boolean(where) && where.toLocaleLowerCase('ru') === sceneKey
+    if (!questionScore && !objectiveScore && !nearby) continue
+    const holder = (meta.holder && npcByName.get(meta.holder.toLocaleLowerCase('ru')))
+      || knownBy.get(String(fact.id))
+      || social.npcs.find((npc) => npc.id === implicit.get(String(fact.id)))
+      || null
+    const match = questionScore ? 'question' : objectiveScore ? 'objective' : 'nearby'
+    const score = questionScore * 4 + objectiveScore * 2 + (nearby ? 1 : 0)
+    const about = clean(meta.topic, 100)
+    if (holder?.id === profile.id) {
+      candidates.push({ score: score + 1, lead: { kind: 'self', match, ...(about ? { about } : {}) } })
+    } else if (holder && holder.visibility !== 'gm_only') {
+      const current = npcProfileAtWorldTime(holder, state)
+      const holderPlace = clean(current.location || holder.location, 180)
+      candidates.push({ score, lead: {
+        kind: 'person', match, name: clean(holder.name, 120),
+        ...(clean(holder.role, 120) ? { role: clean(holder.role, 120) } : {}),
+        ...(holderPlace ? { where: holderPlace } : {}),
+        ...(about ? { about } : {}),
+      } })
+    } else if (where) {
+      candidates.push({ score, lead: { kind: 'place', match, where, ...(about ? { about } : {}) } })
+    }
+  }
+  const worldMap = state.worldMap && typeof state.worldMap === 'object' && !Array.isArray(state.worldMap)
+    ? publicWorldMapFor(state.worldMap)
+    : null
+  const takeHook = (place, value) => {
+    const text = clean(value, 240)
+    if (!text || textNamesNpc(text, profile)) return
+    const score = stemOverlap(asked, leadStems(text))
+    if (score) candidates.push({ score: score * 3, lead: { kind: 'hook', match: 'question', where: clean(place, 240), text } })
+  }
+  for (const location of worldMap?.locations ?? []) {
+    for (const hook of location.storyHooks ?? []) takeHook(location.name, hook)
+    for (const district of location.cityOverview?.districts ?? []) for (const hook of district.storyHooks ?? []) takeHook(`${location.name} · ${district.name}`, hook)
+    for (const place of location.cityOverview?.places ?? []) for (const hook of place.storyHooks ?? []) takeHook(`${location.name} · ${place.name}`, hook)
+  }
+  const seen = new Set()
+  return candidates
+    .sort((left, right) => right.score - left.score)
+    .map((entry) => entry.lead)
+    .filter((lead) => {
+      const key = `${lead.kind}:${lead.name ?? lead.text ?? lead.where ?? ''}`.toLocaleLowerCase('ru')
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, NPC_LEAD_LIMIT)
+}
+
+/** Зацепка одной фразой для запасного ответа: только имя, роль и место. */
+function leadLine(lead) {
+  if (lead?.kind === 'person') {
+    return `Об этом больше знает ${lead.name}${lead.role ? `, ${lead.role}` : ''}${lead.where ? ` — ищите там: ${lead.where}` : ''}.`
+  }
+  if (lead?.kind === 'place') return `Если где и искать, то там: ${lead.where}.`
+  if (lead?.kind === 'hook') return `Слышали, что говорят? ${lead.text}`
+  return ''
+}
+
+/** Реплика-признание, когда всё новое в ответе оказалось повтором. */
+function repeatAcknowledgement(leads = []) {
+  const lead = leads.find((entry) => entry.kind !== 'self')
+  const self = leads.find((entry) => entry.kind === 'self')
+  if (lead) return `Всё, что знаю, вы уже слышали. ${leadLine(lead)}`
+  if (self) return 'Всё, что можно сказать задаром, вы уже слышали. Остальное — не бесплатно.'
+  return 'Всё, что знаю, вы уже слышали.'
+}
+
+function briefFor(state, profile, playerId, message, checkOutcome = null, { leads = [], repeatRetry = false } = {}) {
   const social = ensureNpcSocialState(state.social, state)
+  const alreadySaid = alreadySaidForBrief(social, profile, playerId)
+  const alreadySaidCandidates = social.conversations
+    .filter((entry) => entry.npc_id === profile.id && conversationVisibleTo(entry, playerId)).length
+  const heroCard = heroCardForAgent(state, playerId)
   const currentConversation = social.conversations
     .filter((entry) => entry.npc_id === profile.id
       && entry.hero_id === playerId
@@ -304,6 +617,10 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
       score: social.relationships[profile.id]?.[playerId] ?? 0,
       tier: relationshipTier(social.relationships[profile.id]?.[playerId] ?? 0),
     },
+    // Кто перед собеседником: имя, класс, предыстория и привязанности героя
+    // (лист героя виден отряду). Живой NPC слышит личное за вопросом — сестру,
+    // пропавшую в море, или прежнюю службу у маяка (плейтест 2026-10-10).
+    ...(heroCard ? { speaking_hero: heroCard } : {}),
     // Застолье собеседник видит: перед ним человек с кружкой, и разговор от
     // этого другой. Данными, а не числом в СЛ — проверку это не подменяет, её
     // считает Rules Engine той же прибавкой, что показал ручной бросок.
@@ -326,8 +643,16 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
     speakable_claims: speakableClaims,
     // Что о собеседнике открыто сказано на карте (плейтест 2026-10-04, QP-01):
     // он это знает. Солгать или уклониться модель может, изобразить незнание —
-    // нет (social_v7).
+    // нет (social_v8).
     public_hooks_naming_npc: publicHooks.slice(0, NPC_PUBLIC_HOOK_LIMIT),
+    // Куда вести героя, если сам не знаешь или не скажешь (social_v8): имена,
+    // роли и места, без текста тайн.
+    leads: leads.slice(0, NPC_LEAD_LIMIT),
+    // Свои последние реплики, которые этот герой мог слышать: не повторять.
+    already_said: alreadySaid,
+    ...(repeatRetry ? { repeat_retry: true } : {}),
+    ...selectionFields(boundedSelectionMetadata({ scope: 'server_safe_leads_for_conversation_topic', candidateCount: leads.length, limit: NPC_LEAD_LIMIT }), 'leads'),
+    ...selectionFields(boundedSelectionMetadata({ scope: 'npc_replies_visible_to_active_hero', candidateCount: alreadySaidCandidates, limit: NPC_ALREADY_SAID_LIMIT }), 'already_said'),
     ...selectionFields(conversationSelection, 'recent_conversation'),
     ...selectionFields(partyConversationSelection, 'recent_party_conversation'),
     ...selectionFields(memorySelection, 'relevant_memory'),
@@ -360,32 +685,70 @@ function briefFor(state, profile, playerId, message, checkOutcome = null) {
  * он с вопросом или нет. Теперь несовпавший вопрос получает честное «ничего
  * нового», а сказанное этому герою раньше не повторяется.
  *
- * @returns {{ reply: string, claimIds: string[] }}
+ * Тупика нет (плейтест 2026-10-10, social_v8): где ответить нечего или
+ * собеседника не убедили, реплика ведёт дальше — к тому, кто знает, или к
+ * месту, где искать (`leads`). Если тайну по вопросу знает сам собеседник, он
+ * это даёт понять и называет цену, а удачная проверка убеждения её открывает.
+ * «Уже сказанное» сверяется с репликами этого NPC всем героям.
+ *
+ * @returns {{ reply: string, claimIds: string[], factIds: string[] }}
  */
-function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory = [], message = '', hooks = []) {
-  // Исход проверки — механика, а не разговор: раскрывать по нему нечего.
+function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory = [], message = '', hooks = [], { earlierReplies = [], leads = [] } = {}) {
+  const repeatIndex = earlierReplyIndex(earlierReplies)
+  const alreadySaid = (text) => earlierReplies.some((reply) => reply.includes(text)) || sentenceRepeats(text, repeatIndex)
+  const usableLead = leads.find((lead) => lead.kind !== 'self' && !alreadySaid(leadLine(lead)))
+  const ownSecretAsked = leads.some((lead) => lead.kind === 'self' && lead.match === 'question')
+  const withLead = (line) => usableLead ? `${line} ${leadLine(usableLead)}` : line
+  // Исход проверки — механика, а не разговор: раскрывать по нему нечего, кроме
+  // собственной тайны собеседника, которую удачная проверка и добывает.
   // Фразы русские: до 2026-10-04 этот путь отвечал игроку по-английски
   // («is not convinced»), стоило проверке пройти без модели (PR #136).
-  if (checkOutcome?.skill === 'insight') return { reply: checkOutcome.success ? `${profile.name} отвечает уклончиво, и за словами угадывается что-то недосказанное.` : `${profile.name} отвечает ровно — по лицу ничего не прочесть.`, claimIds: [] }
-  if (checkOutcome) return { reply: checkOutcome.success ? `${profile.name} отвечает: «Ладно. Говори, я слушаю».` : `${profile.name} отвечает: «Нет. Меня это не убеждает».`, claimIds: [] }
+  if (checkOutcome?.skill === 'insight') return { reply: checkOutcome.success ? `${profile.name} отвечает уклончиво, и за словами угадывается что-то недосказанное.` : `${profile.name} отвечает ровно — по лицу ничего не прочесть.`, claimIds: [], factIds: [] }
+  if (checkOutcome?.success) {
+    const secret = ownSecretAsked ? fallbackSecretAnswer(profile, message, facts, alreadySaid) : null
+    if (secret) return { reply: `${profile.name} сдаётся: «${secret.sentence}»`, claimIds: [], factIds: [secret.id] }
+    return { reply: `${profile.name} отвечает: «${withLead('Ладно. Говори, я слушаю.')}»`, claimIds: [], factIds: [] }
+  }
+  if (checkOutcome) return { reply: `${profile.name} отвечает: «${withLead('Нет. Меня это не убеждает.')}»`, claimIds: [], factIds: [] }
   const request = clean(message, 1_000).toLocaleLowerCase('ru')
   if (/(?:пообещ|обещани|помоги|проведи|передай|открой)/iu.test(request)) {
-    return { reply: 'Нового обещания пока нет; уточним конкретную помощь.', claimIds: [] }
+    return { reply: 'Нового обещания пока нет; уточним конкретную помощь.', claimIds: [], factIds: [] }
   }
   if (/(?:напомни|вспомни|сигнал|договор|обещал|что мы)/iu.test(request)) {
     const remembered = memory.find((entry) => entry.kind === 'conversation' && entry.npc_reply)
-    if (remembered) return { reply: `${profile.name} напоминает: «${clean(remembered.npc_reply, 500)}»`, claimIds: [] }
+    if (remembered) return { reply: `${profile.name} напоминает: «${clean(remembered.npc_reply, 500)}»`, claimIds: [], factIds: [] }
   }
-  const said = memory.filter((entry) => entry.kind === 'conversation').map((entry) => clean(entry.npc_reply, 2_000))
-  const alreadySaid = (text) => said.some((reply) => reply.includes(text))
   const answer = fallbackAnswer(profile, message, hooks, facts, alreadySaid)
-  if (answer?.kind === 'hook') return { reply: `${profile.name} подтверждает: «${answer.sentence}»`, claimIds: [] }
-  if (answer) return { reply: `${profile.name} отвечает: «${answer.sentence}»`, claimIds: [] }
+  if (answer?.kind === 'hook') return { reply: `${profile.name} подтверждает: «${answer.sentence}»`, claimIds: [], factIds: [] }
+  if (answer) return { reply: `${profile.name} отвечает: «${answer.sentence}»`, claimIds: [], factIds: [] }
   const rumor = claims.find((claim) => claim.kind === 'rumor' && !alreadySaid(claim.summary))
-  if (rumor) return { reply: `${profile.name} понижает голос: «${rumor.summary}»`, claimIds: [rumor.id] }
+  if (rumor) return { reply: `${profile.name} понижает голос: «${rumor.summary}»`, claimIds: [rumor.id], factIds: [] }
   const belief = claims.find((claim) => !alreadySaid(claim.summary))
-  if (belief) return { reply: `${profile.name} отвечает: «${belief.summary}»`, claimIds: [belief.id] }
-  return { reply: `${profile.name} выслушивает героя, но не сообщает ничего нового.`, claimIds: [] }
+  if (belief) return { reply: `${profile.name} отвечает: «${belief.summary}»`, claimIds: [belief.id], factIds: [] }
+  if (ownSecretAsked) return { reply: `${profile.name} отвечает уклончиво: «Может, что-то и знаю. Но просто так такое не рассказывают.»`, claimIds: [], factIds: [] }
+  if (usableLead) return { reply: `${profile.name} не сообщает ничего нового, но подсказывает: «${leadLine(usableLead)}»`, claimIds: [], factIds: [] }
+  return { reply: `${profile.name} выслушивает героя, но не сообщает ничего нового.`, claimIds: [], factIds: [] }
+}
+
+/**
+ * Собственная тайна собеседника по вопросу героя — одним предложением.
+ * Звучит только после удачной проверки убеждения, обмана или запугивания.
+ *
+ * @returns {{ id: string, sentence: string } | null}
+ */
+function fallbackSecretAnswer(profile, message, facts, alreadySaid) {
+  const stems = fallbackQuestionStems(profile, message)
+  if (!stems.length) return null
+  let best = null
+  for (const fact of facts.filter((entry) => entry.guarded)) {
+    for (const sentence of clean(fact.summary, 1_000).split(/(?<=[.!?…])\s+/u).map((part) => clean(part, 320)).filter(Boolean)) {
+      const words = plainWords(sentence)
+      if (sentenceDescribesNpc(words, profile) || alreadySaid(sentence)) continue
+      const score = stems.filter((stem) => words.some((word) => word.startsWith(stem))).length
+      if (score >= 1 && (!best || score > best.score)) best = { id: fact.id, sentence, score }
+    }
+  }
+  return best ? { id: best.id, sentence: best.sentence } : null
 }
 
 /**
@@ -468,14 +831,12 @@ function promiseWithinBoundary(promise, profile) {
   return true
 }
 
-function normalizedResult(raw, profile, state, playerId, message, turnId, checkOutcome = null) {
+function normalizedResult(raw, profile, state, playerId, message, turnId, checkOutcome = null, { leads = [] } = {}) {
   const social = ensureNpcSocialState(state.social, state)
   const facts = npcFacts(state, profile, message)
   const memory = relevantNpcMemory(social, profile, playerId, message)
   const claims = npcClaims(state, profile, message)
   const allowedFactIds = new Set(npcSpeakableFactRecords(state, profile).map((fact) => String(fact.id)))
-  const disclosedFactIds = [...new Set((Array.isArray(raw?.disclosed_fact_ids) ? raw.disclosed_fact_ids : [])
-    .map(String).filter((factId) => allowedFactIds.has(factId)))].slice(0, 20)
   const allowedClaimIds = new Set(npcSpeakableClaimRecords(state, profile).map((claim) => String(claim.id)))
   const modelReply = typeof raw?.reply === 'string' ? clean(raw.reply, 1_000) : ''
   // Запасной ответ подбирает факты по самому вопросу, без обращения и имени
@@ -483,18 +844,32 @@ function normalizedResult(raw, profile, state, playerId, message, turnId, checkO
   // смотрителя дамбы на любой вопрос (плейтест 2026-10-04, QP-02).
   const answerFacts = modelReply ? [] : npcFacts(state, profile, fallbackQuestionStems(profile, message).join(' '), { summaryLimit: 4_000, spokenAloud: true })
   const answerHooks = modelReply ? [] : publicHooksNamingNpc(state, profile)
-  const fallback = fallbackDisclosure(profile, answerFacts, claims, checkOutcome, memory, message, answerHooks)
+  const fallback = modelReply
+    ? { reply: '', claimIds: [], factIds: [] }
+    : fallbackDisclosure(profile, answerFacts, claims, checkOutcome, memory, message, answerHooks, {
+      earlierReplies: npcEarlierReplies(social, profile, playerId), leads,
+    })
   // Раскрытие фолбэка добавляется только тогда, когда прозвучала его реплика:
   // иначе провенанс обещал бы то, чего NPC не говорил.
+  const disclosedFactIds = [...new Set([
+    ...(Array.isArray(raw?.disclosed_fact_ids) ? raw.disclosed_fact_ids : []).map(String),
+    ...fallback.factIds,
+  ].filter((factId) => allowedFactIds.has(factId)))].slice(0, 20)
   const disclosedClaimIds = [...new Set([
     ...(Array.isArray(raw?.disclosed_claim_ids) ? raw.disclosed_claim_ids : []).map(String),
-    ...(modelReply ? [] : fallback.claimIds),
+    ...fallback.claimIds,
   ].filter((claimId) => allowedClaimIds.has(claimId)))].slice(0, 20)
-  const responseVisibility = privateNpcContextUsed(social, profile, playerId)
-    || privateKnowledgeUsed(state, profile, facts, claims, disclosedFactIds, disclosedClaimIds)
+  const reply = modelReply || fallback.reply
+  // Личной реплика становится по тому, что в ней прозвучало: раскрытая тайна
+  // или слух собеседника, либо явный отзвук личной беседы с этим героем.
+  const responseVisibility = privateKnowledgeDisclosed(state, profile, disclosedFactIds, disclosedClaimIds)
+    || replyEchoesPrivateMaterial(
+      reply,
+      privateMaterialTexts(state, social, profile, playerId, [...facts, ...answerFacts]),
+      openConversationText(state, social, profile, playerId, message, facts, publicHooksNamingNpc(state, profile)),
+    )
     ? 'specific_player'
     : 'party'
-  const reply = modelReply || fallback.reply
   const stance = STANCES.has(raw?.stance) ? raw.stance : 'neutral'
   let relationshipDelta = Math.max(-2, Math.min(2, Number.isSafeInteger(Number(raw?.relationship_delta)) ? Number(raw.relationship_delta) : 0))
   let promise = null
@@ -555,35 +930,67 @@ export class NpcSocialController {
     if (!profile || profile.available === false) return null
     const contextMetadata = agentContextMetadata(state, { role: 'npc_social', actorId: playerId, targetId: profile.id, contractVersion: NPC_SOCIAL_PROMPT_VERSION })
     const facts = npcFacts(state, profile, message)
+    const heroId = String(playerId)
+    const leads = conversationLeads(state, profile, message, social)
     if (!this.llmClient) return {
-      ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome),
+      ...normalizedResult({}, profile, state, heroId, message, turnId, checkOutcome, { leads }),
       context_metadata: contextMetadata,
       provider: 'deterministic-social-fallback',
       prompt_version: NPC_SOCIAL_PROMPT_VERSION,
     }
+    const complete = (options = {}) => this.llmClient.completeJson({
+      messages: [
+        { role: 'system', content: promptForModelRole(prompt, this.llmClient, 'npc') },
+        { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, heroId, message, checkOutcome, { leads, ...options }) }) },
+      ],
+      temperature: 0.7,
+      maxTokens: 700,
+      // Творческая роль: профиль рассуждений лидера кампании её касается.
+      role: 'npc',
+      // Форма ответа на стороне провайдера; structurallyValidSocialResponse всё равно проверяет.
+      jsonSchema: NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
+    }, { timeoutMs: 20_000 })
     try {
-      const result = await this.llmClient.completeJson({
-        messages: [
-          { role: 'system', content: promptForModelRole(prompt, this.llmClient, 'npc') },
-          { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, String(playerId), message, checkOutcome) }) },
-        ],
-        temperature: 0.7,
-        maxTokens: 700,
-        // Творческая роль: профиль рассуждений лидера кампании её касается.
-        role: 'npc',
-        // Форма ответа на стороне провайдера; structurallyValidSocialResponse всё равно проверяет.
-        jsonSchema: NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
-      }, { timeoutMs: 20_000 })
+      let result = await complete()
       if (!structurallyValidSocialResponse(result)) throw new Error('NPC_SOCIAL_RESPONSE_INVALID_SHAPE')
+      // Антиповтор: предложения, которые NPC уже говорил любому герою,
+      // вырезаются. Ничего нового не осталось — одна повторная попытка с явным
+      // списком сказанного, а если и она повторяет — короткое признание и
+      // зацепка, а не та же фраза в третий раз.
+      const earlierFor = (candidate) => npcEarlierReplies(social, profile, heroId, {
+        includeOtherPrivate: !privateKnowledgeDisclosed(state, profile, candidate?.disclosed_fact_ids ?? [], candidate?.disclosed_claim_ids ?? []),
+      })
+      let repetition = null
+      const fresh = freshReplyText(result.reply, earlierFor(result))
+      if (!fresh.text) {
+        let retried = null
+        try {
+          retried = await complete({ repeatRetry: true })
+        } catch {
+          retried = null
+        }
+        const retriedFresh = retried && structurallyValidSocialResponse(retried) ? freshReplyText(retried.reply, earlierFor(retried)) : { text: '', dropped: 0 }
+        if (retriedFresh.text) {
+          result = { ...retried, reply: retriedFresh.text }
+          repetition = 'regenerated'
+        } else {
+          result = { ...result, reply: repeatAcknowledgement(leads), disclosed_fact_ids: [], disclosed_claim_ids: [], promise: null }
+          repetition = 'acknowledged'
+        }
+      } else if (fresh.dropped) {
+        result = { ...result, reply: fresh.text }
+        repetition = 'trimmed'
+      }
       return {
-        ...normalizedResult(result, profile, state, String(playerId), message, turnId, checkOutcome),
+        ...normalizedResult(result, profile, state, heroId, message, turnId, checkOutcome, { leads }),
         context_metadata: contextMetadata,
         provider: this.llmClient.constructor?.name ?? 'llm',
         prompt_version: NPC_SOCIAL_PROMPT_VERSION,
+        ...(repetition ? { repetition } : {}),
       }
     } catch (error) {
       return {
-        ...normalizedResult({}, profile, state, String(playerId), message, turnId, checkOutcome),
+        ...normalizedResult({}, profile, state, heroId, message, turnId, checkOutcome, { leads }),
         context_metadata: contextMetadata,
         provider: 'deterministic-social-fallback',
         prompt_version: NPC_SOCIAL_PROMPT_VERSION,

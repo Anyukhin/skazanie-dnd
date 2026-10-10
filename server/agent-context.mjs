@@ -205,6 +205,54 @@ function positiveInteger(value) {
   return Number.isSafeInteger(number) && number > 0 ? number : null
 }
 
+/** Заглушки незаполненного листа героя: в карточку они не идут. */
+const HERO_CARD_PLACEHOLDERS = new Set(['не выбран', 'не выбрано', 'не определено', 'ожидает игрока', 'герой ещё не создан'])
+
+/**
+ * Текст карточки, обрезанный по концу предложения, а не на полуслове:
+ * «…ушла в море на баркасе „Чайка“.» лучше, чем «…ушла в море на бар».
+ */
+function heroCardText(value, maximum) {
+  const text = clean(value, 8_000)
+  if (!text || HERO_CARD_PLACEHOLDERS.has(text.toLocaleLowerCase('ru'))) return ''
+  if (text.length <= maximum) return text
+  const cut = text.slice(0, maximum)
+  const sentenceEnd = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '), cut.lastIndexOf('… '))
+  return sentenceEnd >= maximum / 2 ? cut.slice(0, sentenceEnd + 1) : `${cut.replace(/\s+\S*$/u, '')}…`
+}
+
+/**
+ * Карточка героя для агента, который с ним говорит или о нём рассказывает:
+ * имя, класс, предыстория (до 300 знаков) и привязанности. Предыстория и
+ * привязанности героя видны отряду (лист героя), поэтому карточка не несёт
+ * скрытого. Имена полей намеренно без «secret»/«unrevealed»: бриф рассказчика
+ * вырезает такие ключи (`server/security.mjs`, `NARRATOR_PRIVATE_KEYS`).
+ *
+ * Плейтест 2026-10-10: сестра волшебника пропала в море, бывшего стражника
+ * капитан учил не замечать ночных лодок у маяка — и ни один NPC этого не знал.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} heroId
+ * @returns {{ id: string, name: string, class?: string, species?: string, background?: string, backstory?: string, bonds?: string, ideals?: string } | null}
+ */
+export function heroCardForAgent(state = {}, heroId = '') {
+  const expected = String(heroId ?? '')
+  const hero = (Array.isArray(state.players) ? state.players : []).find((player) => String(player?.id ?? '') === expected)
+  if (!hero) return null
+  const role = heroCardText(String(hero.role ?? '').split('·')[0], 80)
+  const card = {
+    id: clean(hero.id, 120),
+    name: heroCardText(hero.character || hero.name, 120),
+    class: role || heroCardText(hero.characterClass, 60),
+    species: heroCardText(hero.species, 80),
+    background: heroCardText(hero.background, 120),
+    backstory: heroCardText(hero.backstory, 300),
+    bonds: heroCardText(hero.bonds, 200),
+    ideals: heroCardText(hero.ideals, 160),
+  }
+  return /** @type {any} */ (Object.fromEntries(Object.entries(card).filter(([, value]) => value)))
+}
+
 /** Public, bounded campaign contract shared by every creative agent. */
 export function campaignConceptForAgent(state = {}, viewer = { isPartyMember: true }) {
   const visibleState = questStateForViewer(state, viewer)
