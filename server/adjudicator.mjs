@@ -64,8 +64,13 @@ export function difficultyClassFor(category) {
   return DIFFICULTY_CLASSES[DIFFICULTY_CATEGORIES.includes(category) ? category : 'medium']
 }
 
-/** Цель ожидания прошла меньше четырёх часов назад — значит, уже наступила. */
-const WAIT_ALREADY_AFTER_MINUTES = 20 * 60
+/**
+ * Сколько длится наступивший час: ночь держится до рассвета, вечер — до ночи,
+ * остальное — четыре часа. Прежде окно было одно на всё, и «ждём темноты» в
+ * 02:04 перематывало часы на 22:00 следующих суток (замер 11, 2026-10-10).
+ */
+const WAIT_TARGET_SPAN_MINUTES = Object.freeze({ night: 7 * 60, dusk: 5 * 60 })
+const WAIT_DEFAULT_SPAN_MINUTES = 4 * 60
 /** Сколько выжидает отряд, когда ждать нужного часа уже не нужно. */
 const WAIT_ALREADY_MINUTES = 30
 
@@ -319,7 +324,7 @@ export class Adjudicator {
         // Цель уже наступила, и недавно: «ждём темноты» в 23:48 никто за столом
         // не понимает как «до 22:00 следующих суток» — часы в шапке «шли назад»
         // (плейтест 2026-10-10). Отряд выжидает полчаса, и план идёт дальше.
-        const already = !until || until > WAIT_ALREADY_AFTER_MINUTES
+        const already = !until || 24 * 60 - until <= (WAIT_TARGET_SPAN_MINUTES[/** @type {keyof typeof WAIT_TARGET_SPAN_MINUTES} */ (target.id)] ?? WAIT_DEFAULT_SPAN_MINUTES)
         const minutes = already ? WAIT_ALREADY_MINUTES : until
         return {
           ...base,

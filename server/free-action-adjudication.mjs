@@ -1783,7 +1783,7 @@ function closedDoorEntry(state, actorId, map, outside) {
   options.sort((left, right) => left.steps - right.steps || left.door_id.localeCompare(right.door_id))
   const best = options[0]
   if (!best) return null
-  return { status: 'ready', door_id: best.door_id, open_door: true, approach: best.approach, destination: { to: best.inside, path: [best.inside] } }
+  return { status: 'ready', door_id: best.door_id, open_door: true, approach: best.approach, ...(best.steps === 0 ? { at_door: true } : {}), destination: { to: best.inside, path: [best.inside] } }
 }
 
 function passageDestinationMatchesScene(state, action) {

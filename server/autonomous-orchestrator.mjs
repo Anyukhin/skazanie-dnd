@@ -419,8 +419,10 @@ function parseJsonFact(fact) {
  */
 function passageDoorCommands(actorId, plan, rulingId) {
   if (plan?.open_door !== true || !plan.door_id) return []
+  // Герой уже у двери — шага к ней нет: движок отклонял путь «до клетки, где
+  // герой и так стоит» (PATH_BLOCKED), и удачный вход срывался (замер 12).
   return [
-    { command_type: 'MoveActor', actor_id: actorId, to: plan.approach, server_authoritative: true, ruling_id: rulingId },
+    ...(plan.at_door ? [] : [{ command_type: 'MoveActor', actor_id: actorId, to: plan.approach, server_authoritative: true, ruling_id: rulingId }]),
     { command_type: 'OperateDoor', actor_id: actorId, door_id: plan.door_id, intent: 'open' },
   ]
 }
@@ -1637,7 +1639,10 @@ export class AutonomousCampaignOrchestrator {
     if (corpseSearch) {
       return {
         context_metadata: actionContextMetadata,
-        kind: 'clarification',
+        // Названное содержимое тела — ответ ведущего, а не вопрос: карточка
+        // уточнения ждала «Да», и тот же список звучал в летописи дважды
+        // (замер 12, 2026-10-10).
+        kind: Array.isArray(corpseSearch.loot_items) && corpseSearch.loot_items.length ? 'loot_inspection' : 'clarification',
         narration: corpseSearch.narration,
         turn_consumed: false,
         admin_commands: 0,

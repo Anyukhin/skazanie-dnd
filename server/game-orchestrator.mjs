@@ -1926,7 +1926,7 @@ export class GameOrchestrator {
         ? verifiedFallback
         : groundedVerification?.valid && groundedNarration
           ? groundedNarration
-          : freeAction.kind === 'clarification'
+          : ['clarification', 'loot_inspection'].includes(String(freeAction.kind))
           ? candidateNarration || deterministicNarration || 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
           // Исход уже записан событиями: если ни один текст не прошёл guard,
           // честнее короткое «вышло / не вышло», чем просьба уточнить уже

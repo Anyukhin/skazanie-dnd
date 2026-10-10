@@ -538,7 +538,9 @@ test('обыск тела вплотную называет добычу кон�
   const result = await orchestrator.handle(actionInput('Осматриваю и обыскиваю тело гоблина', 'free-search-container', initialState))
   const after = await eventStore.load('FREE-ACTION')
 
-  assert.equal(result.free_action_outcome, 'clarification')
+  // Названное содержимое — ответ, а не вопрос: без карточки уточнения (замер 12).
+  assert.equal(result.free_action_outcome, 'loot_inspection')
+  assert.equal(result.clarification ?? null, null)
   assert.ok(result.narration.includes('Кинжал'), result.narration)
   assert.match(result.narration, /панель добычи/u)
   assert.deepEqual(result.mechanics, [])
@@ -1077,4 +1079,18 @@ test('движок отклонил проход уже после броска 
   assert.equal(refused, 1, 'движок отклонил проход один раз')
   assert.ok(String(result.narration ?? '').trim(), 'ведущий отвечает')
   assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 0, y: 1 })
+})
+
+test('герой уже стоит у закрытой двери: удачный вход открывает её и проходит, без PATH_BLOCKED', async () => {
+  // Замер 12 (2026-10-10): «толкает дверь плечом и заходит» — успех, а движок
+  // отклонил шаг «до клетки, где герой и так стоит»: PATH_BLOCKED, и ведущий
+  // ответил «прохода туда отсюда нет».
+  const initial = passageCampaign('closed')
+  initial.mechanics.positions.hero = { x: 1, y: 1 }
+  const { orchestrator, eventStore } = await setup(initial)
+  const result = await orchestrator.handle(actionInput('Я протискиваусь внутрь монастыря', 'free-passage-at-door', initial))
+  assert.equal(result.free_action_outcome, 'check_success')
+  assert.equal(result.passage_refused ?? null, null)
+  assert.ok(result.mechanics.some((event) => event.event_type === 'DoorStateChanged'))
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
 })

@@ -325,3 +325,25 @@ test('«ждём темноты», когда уже ночь, — полчас�
   assert.equal(plan.proposed_commands[0].amount, 30)
   assert.equal(plan.wait.already, true)
 })
+
+test('«ждём темноты» после полуночи — тоже уже темно; днём — ждут до вечера', async () => {
+  // Замер 11 (2026-10-10): в 02:04 «ждём темноты» уводило часы на 22:00
+  // следующих суток — ночь после полуночи не считалась наступившей.
+  const run = await campaign()
+  const elapsed = run.state.mechanics.world_time.elapsed_minutes
+  const at = (clock) => {
+    const state = structuredClone(run.state)
+    state.mechanics.world_time.elapsed_minutes = elapsed + minutesUntilClock(elapsed, clock)
+    return state
+  }
+  const planAt = async (state) => new Adjudicator().createPlan({
+    intent: await new IntentParser().parse({ message: 'Ждём темноты в укрытии', playerId: hero.id, visibleState: state }),
+    state, retrievedRules: { results: [], confidence: 1 },
+  })
+  const afterMidnight = await planAt(at(2 * 60 + 4))
+  assert.equal(afterMidnight.wait.already, true)
+  assert.equal(afterMidnight.proposed_commands[0].amount, 30)
+  const afternoon = await planAt(at(15 * 60))
+  assert.equal(afternoon.wait.already ?? false, false)
+  assert.equal(afternoon.proposed_commands[0].amount, 7 * 60, 'с 15:00 до 22:00')
+})

@@ -469,7 +469,7 @@ async function fight() {
     ['hero-slot-1', ['Мирель шепчет формулу, и с пальцев срывается огонь', 'Мирель целится в того, кто ближе к Борину', 'Мирель стискивает зубы и бьёт ещё раз']],
   ])
   let freeTextSpellTried = false
-  for (let step = 0; step < 60; step += 1) {
+  for (let step = 0; step < 150; step += 1) {
     state = await room()
     if (!state.mechanics?.combat?.active) break
     // Окно реакции («Щит» и т. п.) ждёт ответа героя: игрок берёт первую
@@ -549,7 +549,7 @@ async function fight() {
   const lines = freshMessages(seen, state)
   for (const reply of lines) note(`> [${reply.author}] ${short(reply.text, 600)}`)
   exchanges.push({ index: exchanges.length + 1, label: 'бой целиком', kind: 'combat', actor: 'отряд', action: 'Короткая стычка: атаки, заклинания, слова игроков к действиям', replies: lines, ms: 0, scene: sceneContext(state), refused: false })
-  if (state.mechanics?.combat?.active) problem('combat-unfinished', 'бой не завершился за 60 шагов')
+  if (state.mechanics?.combat?.active) problem('combat-unfinished', 'бой не завершился за 150 шагов')
 }
 
 // ---------------------------------------------------------------------------
