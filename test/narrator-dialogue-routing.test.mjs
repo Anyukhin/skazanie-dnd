@@ -283,6 +283,13 @@ test('ответ о знании цитирует фразу собеседни�
   const known = answerKnownLore('Что мы знаем о баркасе?', state, { viewer: { playerId: 'hero' } })
   assert.match(known.narration, /Марен: «Баркас "Чайка" видели у северной отмели в ночь грозы»/u)
   assert.doesNotMatch(known.narration, /сети гниют/u)
-  assert.doesNotMatch(known.narration, /спросить можно Марен/u)
-  assert.match(known.narration, /Своими глазами вы этого не видели — спросить можно Борс/u)
+  assert.doesNotMatch(known.narration, /знать может Марен/u)
+  assert.match(known.narration, /Своими глазами вы этого не видели — знать может Борс \(рыбак\)/u)
+
+  // Тот же факт, записанный памятью мира, второй раз не звучит; без цитаты — звучит.
+  const remembered = { ...state, worldMemory: { entities: [{ id: 'loc', name: 'Старый маяк', kind: 'location', visibility: 'party' }], facts: [{ id: 'f1', subject_id: 'loc', predicate: 'npc_said', object: 'boat', summary: 'Марен говорит, что баркас «Чайка» видели у северной отмели в ночь грозы.', visibility: 'party', status: 'active', recorded_at_minutes: 0 }] } }
+  const once = answerKnownLore('Что мы знаем о баркасе?', remembered, { viewer: { playerId: 'hero', isPartyMember: true } }).narration
+  assert.equal((once.match(/северной отмели/gu) ?? []).length, 1)
+  const factOnly = answerKnownLore('Что мы знаем о баркасе?', { ...remembered, social: { ...state.social, conversations: [] } }, { viewer: { playerId: 'hero', isPartyMember: true } }).narration
+  assert.match(factOnly, /Марен говорит, что баркас/u)
 })

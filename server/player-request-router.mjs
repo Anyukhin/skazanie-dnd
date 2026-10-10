@@ -698,7 +698,16 @@ export function answerKnownLore(action, state = {}, options = {}) {
   const quoted = new Set(heardPicked.map((entry) => entry.item.who))
   // Память мира уже отобрана по словам вопроса (`retrieveKnownWorldMemory`):
   // её порядок — порядок уместности.
-  const knownLines = knownRanked.filter((entry) => !topical || entry.score > 0).slice(0, 2).map((entry) => entry.item)
+  // Один факт не звучит дважды: запись памяти, пересказывающая уже названную
+  // находку или слова собеседника, отбрасывается (плейтест 2026-10-10: «Мара
+  // внесла в книгу…» прозвучало находкой, цитатой и фактом подряд).
+  const said = [...foundLines, ...heardPicked.map((entry) => entry.item.line)].map((line) => questionStems(line))
+  const repeats = (line) => {
+    const stems = questionStems(line)
+    return stems.size > 0 && said.some((other) => [...stems].filter((stem) => other.has(stem)).length / stems.size >= 0.5)
+  }
+  const knownLines = knownRanked.filter((entry) => !topical || entry.score > 0).map((entry) => entry.item)
+    .filter((line) => !repeats(line)).slice(0, 2)
   const history = (Array.isArray(adventure.history) ? adventure.history.slice(-1) : [])
     .map((chapter) => asSentence(chapter?.outcome, 240)).filter(Boolean)
   // Того, кого только что процитировали, второй раз не советуют спросить.
@@ -708,8 +717,10 @@ export function answerKnownLore(action, state = {}, options = {}) {
   // Слова собеседника — уже ответ, хоть и не проверенный: «прямого ответа нет»
   // рядом с цитатой спорило бы с ней.
   const leadHead = heardLines.length ? 'Своими глазами вы этого не видели' : 'Прямого ответа пока нет'
+  // Имя без склонения: «спросить можно Мартен Рыжий» резало слух. «Знать
+  // может» держит именительный падеж.
   const lead = informed.length
-    ? `${leadHead} — спросить можно ${informed.map((npc) => `${visibleText(npc.name, 80)} (${visibleText(npc.role, 80).toLocaleLowerCase('ru')})`).join(' или ')}.`
+    ? `${leadHead} — знать ${informed.length > 1 ? 'могут' : 'может'} ${informed.map((npc) => `${visibleText(npc.name, 80)} (${visibleText(npc.role, 80).toLocaleLowerCase('ru')})`).join(' или ')}.`
     : `${leadHead} — стоит осмотреться или поискать того, кто видел.`
   const hook = asSentence(adventure.currentHook, 400)
   const parts = [
