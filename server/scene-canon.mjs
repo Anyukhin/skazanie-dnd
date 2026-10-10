@@ -1,4 +1,4 @@
-import { worldClockForAgents, weatherConditionLabel, weatherConditionSummary, dayPhaseLabel, DAY_PHASES, weatherOnDay, campaignDayOf, BIOME_WEATHER_WEIGHTS } from './weather.mjs'
+import { worldClockForAgents, weatherConditionLabel, weatherConditionSummary, dayPhaseLabel, DAY_PHASES, weatherOnDay, campaignDayOf, BIOME_WEATHER_WEIGHTS, CAMPAIGN_START_MINUTE_OF_DAY, WEATHER_CONDITION_IDS, clockLabelOf, timeOfDayOf } from './weather.mjs'
 import { worldLocationById } from './world-map.mjs'
 import { presentSceneNpcs } from './npc-positioning.mjs'
 import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
@@ -266,20 +266,143 @@ export function sceneCanonFromEnvironment(environment = {}) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Заказ владельца: час и небо первой сцены
+// ---------------------------------------------------------------------------
+
+/**
+ * Час первой сцены по заказанному времени суток — минута суток мировых часов.
+ * Все пять стоят в первых погодных сутках кампании (день 1) и дальше 45 минут
+ * от границ фаз (`PHASE_BOUNDARY_TOLERANCE_MINUTES`): иначе проверка канона
+ * прощала бы соседнюю фазу, а день сменился бы прямо в прологе. Рассвета
+ * отдельно нет: до 08:00 первого дня часы не доходят, утро и есть утро.
+ */
+const OPENING_PHASE_CLOCK = Object.freeze({ morning: 480, day: 780, evening: 1_140, night: 1_380, midnight: 1_440 })
+
+/**
+ * Слова времени суток во вводных владельца. Формы перечислены явно: «дневник»
+ * не день, «ночлег» не ночь, а «утра» без предлога — да.
+ * @type {ReadonlyArray<[string, RegExp]>}
+ */
+const OPENING_PHASE_WORDS = Object.freeze([
+  ['midnight', /(?<!\p{L})(?:полноч\p{L}*|полуноч\p{L}*)(?!\p{L})/gu],
+  ['night', /(?<!\p{L})(?:ночь|ночью|ночи|ночн(?:ой|ая|ое|ые|ую|ым|ом|ых|ого|ыми))(?!\p{L})/gu],
+  ['evening', /(?<!\p{L})(?:вечер|вечером|вечера|вечерн(?:ий|яя|ее|ие|юю|ей|его|им|ем|их)|закат(?:е|а|ом)?|сумерк(?:и|ах|ами)|смеркал\p{L}*|смеркается|вечереет)(?!\p{L})/gu],
+  ['day', /(?<!\p{L})(?:полдень|полдня|полудн\p{L}*|днём|днем|дневн(?:ой|ая|ое|ые|ую|ым|ом|ых|ого)|(?:ясный|солнечный|жаркий|знойный|пасмурный|серый|душный|погожий|хмурый)\s+день|(?:средь|среди)\s+бела\s+дня|разгар\s+дня)(?!\p{L})/gu],
+  ['morning', /(?<!\p{L})(?:утро|утром|утра|утренн\p{L}*|рассвет\p{L}*|заря|заре|зарёй|зарей|светает|рассвело)(?!\p{L})/gu],
+])
+
+/**
+ * Слова погоды. Снега среди погод сервера нет (`server/weather.mjs`), поэтому
+ * снег и метель неба не закрепляют: «дождь» вместо заказанного снега был бы
+ * хуже, чем небо по климату края.
+ * @type {ReadonlyArray<[string, RegExp]>}
+ */
+const OPENING_WEATHER_WORDS = Object.freeze([
+  ['storm', /(?<!\p{L})(?:гроз(?:а|ы|у|е|ой|ою)|грозов\p{L}*|гром(?:а|ом)?|громыха\p{L}*|молни(?:я|и|ю|ей|ями)|шторм\p{L}*|бур(?:я|и|ю|ей))(?!\p{L})/gu],
+  ['rain', /(?<!\p{L})(?:дожд(?:ь|я|ю|ём|ем|е|и|ей|лив\p{L}*)|лив(?:ень|ня|нем|нём|ни)|морос(?:ь|и|ит|ью)|ненаст\p{L}*|слякот\p{L}*)(?!\p{L})/gu],
+  ['fog', /(?<!\p{L})(?:туман(?:а|у|ом|е|ы)?|мгл(?:а|ы|е|у|ой))(?!\p{L})/gu],
+  ['overcast', /(?<!\p{L})(?:пасмурн\p{L}*|тучи|туч|тучами|облачн\p{L}*|(?:небо\s+затянуто|затянут\p{L}*\s+неб\p{L}*)|хмур(?:ое|ым|ом)\s+неб\p{L}*)(?!\p{L})/gu],
+  ['clear', /(?<!\p{L})(?:ясн(?:ое|ым|ом)\s+неб\p{L}*|ясн(?:ый|ая|ое|ую)\s+(?:день|ночь|утро|вечер|погод\p{L}*)|безоблачн\p{L}*|солнечн(?:ый|ое|ая)\s+(?:день|утро|погод\p{L}*)|(?:звёздн|звездн)(?:ая|ой|ую)\s+ночь|(?:звёздн|звездн)(?:ое|ым)\s+неб\p{L}*|солнце\s+(?:светит|сияет|палит))(?!\p{L})/gu],
+  // «Ясно.» отдельной фразой — погода; «ясно, что…» — нет.
+  ['clear', /(?<=^|[.,;:—–-]\s{0,3})ясно(?=\s*(?:[.;!]|,(?!\s*(?:что|как|где|кто|зачем|почему|откуда|куда|когда|чего|чем))|$))/gu],
+])
+
+/**
+ * Слово перед упоминанием, которое переносит его в другое время или снимает:
+ * «не ночь», «после грозы», «до рассвета», «к вечеру», «с утра», «прошлой
+ * ночью», «в ту ночь», «каждую ночь». Между ними допускается одно
+ * прилагательное — «после долгой ночи», — но не существительное: «подходят к
+ * таверне ночью» — это ночь. У неба «с» не сдвигает: «ночь с грозой» — гроза.
+ */
+const OPENING_ADJECTIVE = String.raw`(?:\s+\p{L}+(?:ой|ей|ую|юю|ая|яя|ое|ее|ые|ие|ых|их|ого|его|ому|ему|ым|им))?`
+const OPENING_SHIFT_PREFIX = new RegExp(String.raw`(?:^|[^\p{L}])(?:не|ни|нет|без|после|до|перед|к|ко|с|со|через|накануне|той|ту|прошл\p{L}*|вчерашн\p{L}*|позавчерашн\p{L}*|минувш\p{L}*|кажд\p{L}*)${OPENING_ADJECTIVE}\s*$`, 'u')
+const OPENING_WEATHER_SHIFT_PREFIX = new RegExp(String.raw`(?:^|[^\p{L}])(?:не|ни|нет|без|после|до|перед|той|ту|прошл\p{L}*|вчерашн\p{L}*|позавчерашн\p{L}*|минувш\p{L}*|кажд\p{L}*)${OPENING_ADJECTIVE}\s*$`, 'u')
+
+/** Фраза о прошлом, будущем, слухах и снах — не о том, что сейчас вокруг героев. */
+const OPENING_SHIFTED_SENTENCE = /(?<!\p{L})(?:вчера|позавчера|накануне|назад|давно|давным-давно|когда-то|некогда|прежде|раньше|помн\p{L}*|вспомина\p{L}*|легенд\p{L}*|слух\p{L}*|говорят|снится|сон|сне|снах|завтра|послезавтра|будущ\p{L}*|скоро|вскоре|если)(?!\p{L})/u
+
+/** Кавычки — имена и реплики: таверна «Ночной якорь» ночи не заказывает. */
+function withoutQuotes(value) {
+  return String(value ?? '')
+    .replace(/«[^»]{0,200}»/gu, ' ')
+    .replace(/“[^”]{0,200}”/gu, ' ')
+    .replace(/„[^“”]{0,200}[“”]/gu, ' ')
+    .replace(/"[^"]{0,200}"/gu, ' ')
+}
+
+/** Первое по тексту слово из словаря, не снятое отрицанием и не о другом времени. */
+function firstRequested(value, words, { weather = false } = {}) {
+  const sentences = sentencesOf(withoutQuotes(text(value, 2_000)).toLocaleLowerCase('ru'))
+  for (const sentence of sentences) {
+    if (OPENING_SHIFTED_SENTENCE.test(sentence)) continue
+    let best = null
+    for (const [id, pattern] of words) {
+      pattern.lastIndex = 0
+      for (const match of sentence.matchAll(pattern)) {
+        const at = match.index ?? 0
+        const before = sentence.slice(Math.max(0, at - 32), at)
+        const after = sentence.slice(at + match[0].length, at + match[0].length + 40)
+        if ((weather ? OPENING_WEATHER_SHIFT_PREFIX : OPENING_SHIFT_PREFIX).test(before)) continue
+        if (weather && (ENDING_SUFFIX.test(after) || NEGATED_SUFFIX.test(after) || MIND_CONTEXT.test(after.slice(0, 12)))) continue
+        if (!best || at < best.at) best = { id, at }
+        break
+      }
+    }
+    if (best) return best.id
+  }
+  return ''
+}
+
+/**
+ * Что владелец заказал словами вводных: время суток и небо первой сцены.
+ * Исходная ситуация — сильный источник, суть мира — слабый: она спрашивается
+ * только о том, о чём исходная ситуация молчит. Пустая строка — не заказано.
+ *
+ * Чистая функция и узкий словарь: пропустить заказ дешевле, чем начать
+ * кампанию ночью из-за «таверны у ночного рынка».
+ *
+ * @param {{ openingSituation?: string, premise?: string }} [world]
+ * @returns {{ phase: string, weather: string }}
+ */
+export function requestedOpeningCanon({ openingSituation = '', premise = '' } = {}) {
+  const phase = firstRequested(openingSituation, OPENING_PHASE_WORDS) || firstRequested(premise, OPENING_PHASE_WORDS)
+  const weather = firstRequested(openingSituation, OPENING_WEATHER_WORDS, { weather: true })
+    || firstRequested(premise, OPENING_WEATHER_WORDS, { weather: true })
+  return { phase, weather }
+}
+
 /**
  * Стартовые часы кампании и небо первого дня — для автора кампании. Погода
  * зависит от климата края, а край стартовой локации автор выбирает сам,
  * поэтому сервер отдаёт таблицу «биом → небо первого утра» из той же функции,
  * которой небо потом посчитают часы (`weatherOnDay`).
+ *
+ * Заказ владельца (`requestedOpeningCanon`) сдвигает час и закрепляет небо
+ * первых суток: `elapsed_minutes` — с какой минуты кампании начнутся часы,
+ * `weather_pin` — запись для `mechanics.weather_pins`. Без заказа — прежние
+ * 08:00 и небо по климату; авторские миры заказ не передают.
+ *
+ * @param {string} [seed]
+ * @param {{ phase?: string, weather?: string }|null} [request]
  */
-export function campaignStartCanon(seed = '') {
-  const time = { day: 1, clock: '08:00', phase: 'morning', phase_label: dayPhaseLabel('morning') }
-  const day = campaignDayOf(0)
+export function campaignStartCanon(seed = '', request = null) {
+  const clockMinute = OPENING_PHASE_CLOCK[/** @type {keyof typeof OPENING_PHASE_CLOCK} */ (String(request?.phase ?? ''))] ?? OPENING_PHASE_CLOCK.morning
+  const elapsed = clockMinute - CAMPAIGN_START_MINUTE_OF_DAY
+  const phase = timeOfDayOf(elapsed)
+  const day = campaignDayOf(elapsed)
+  const time = { day: day + 1, clock: clockLabelOf(elapsed), phase, phase_label: dayPhaseLabel(phase) }
+  const pinned = WEATHER_CONDITION_IDS.includes(String(request?.weather ?? '')) ? String(request?.weather) : ''
   const weatherByBiome = Object.fromEntries(Object.keys(BIOME_WEATHER_WEIGHTS).map((biome) => {
-    const id = weatherOnDay({ seed: text(seed, 120), day, biome })
+    const id = pinned || weatherOnDay({ seed: text(seed, 120), day, biome })
     return [biome, { id, label: weatherConditionLabel(id), summary: weatherConditionSummary(id) }]
   }))
-  return { time, weather_by_biome: weatherByBiome }
+  return {
+    time,
+    weather_by_biome: weatherByBiome,
+    elapsed_minutes: elapsed,
+    ...(pinned ? { weather_pin: { day, weather: pinned } } : {}),
+  }
 }
 
 // ---------------------------------------------------------------------------

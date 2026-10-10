@@ -247,6 +247,10 @@ test('вид точки карты мира дорисовывает тему, �
   // «Башня» в названии — постройка; карта мира дорисовывает только молчащее имя.
   assert.equal(resolveSceneTheme({ location: 'Норский провал', worldKind: 'dungeon' }).id, 'cave')
   assert.equal(resolveSceneTheme({ location: 'Норская башня', worldKind: 'dungeon' }).id, 'building')
+  // Маяк — та же башня, даже когда заявка просит берег с мостом (живой замер
+  // 2026-10-10); деревня Маяково — не маяк.
+  assert.equal(resolveSceneTheme({ location: 'Старый маяк', theme: 'берег реки', worldKind: 'landmark', request: { layout: 'winding', pattern: 'bridge' } }).id, 'building')
+  assert.equal(resolveSceneTheme({ location: 'Маяково', worldKind: 'village' }).id, 'settlement')
   assert.equal(resolveSceneTheme({ location: 'Кальская твердыня', worldKind: 'fortress' }).id, 'building')
   // Живая кампания 2026-10-02: подземная сцена в замке барона встречала отряд
   // погребальной залой склепа. Под замком — темница.

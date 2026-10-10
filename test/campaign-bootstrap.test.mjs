@@ -7,6 +7,7 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FakeLLM } from '../server/llm-client.mjs'
 import { normalizeCampaignState, resolveCommand, shortestTacticalPath } from '../server/rules-engine.mjs'
 import { UNTRUSTED_DATA_END, UNTRUSTED_DATA_START } from '../server/security.mjs'
+import { cellAt, deserializeTacticalMap } from '../server/tactical-map.mjs'
 
 // Сообщение автору кампании собирается через buildDataOnlyContext: полезная
 // нагрузка лежит внутри блока UNTRUSTED_DATA и извлекается по его маркерам.
@@ -419,6 +420,38 @@ test('стартовая задача получает короткое назв
   const generatedQuest = starterQuest(generated)
   assert.equal(generatedQuest.title, 'Позывной пропавшего корабля')
   assert.equal(generatedQuest.summary, 'Найти источник позывного')
+})
+
+test('вводные «сидят в таверне»: отряд стартует за её столами, точка входа карты остаётся у дороги', async () => {
+  // Живой замер 2026-10-10: пролог посадил героев в таверну «Ржавый якорь»,
+  // а фишки стояли у края улицы.
+  const party = ['a', 'b', 'c', 'd'].map((id, index) => ({ ...hero, id: `hero-${id}`, character: `Герой ${index + 1}` }))
+  const world = {
+    startingLocation: 'Серый Причал',
+    premise: 'Туманный порт Серый Причал живёт контрабандой и рыбой.',
+    openingSituation: 'Ночь, гроза. Герои сидят в портовой таверне «Ржавый якорь», когда в гавань без огней заходит рыбацкий баркас.',
+  }
+  const tavernLabel = /таверн|трактир|постоял|питейн|гостев|корчм|харчевн|общий зал/iu
+  const placement = (created) => {
+    const state = normalizeCampaignState(created)
+    const map = deserializeTacticalMap(structuredClone(state.scene.map))
+    const zones = new Map(map.zones.map((zone) => [zone.id, zone]))
+    const zoneAt = (x, y) => zones.get(cellAt(map, x, y)?.zone ?? '')
+    const spawn = map.spawnPoints.find((point) => point.role === 'party')
+    return { state, map, spawn, spawnZone: zoneAt(spawn.x, spawn.y), heroZones: state.players.map((player) => zoneAt(player.x, player.y)) }
+  }
+  for (const code of ['TAVERN-1', 'TAVERN-2']) {
+    const { state, map, spawn, spawnZone, heroZones } = placement(await new CampaignBootstrapper().create({ code, world, players: party }))
+    assert.equal(map.theme, 'settlement')
+    assert.equal(spawn.id, 'party-entrance', 'точка входа поселения не переезжает')
+    assert.equal(spawnZone?.kind, 'exterior', 'точка входа — на улице, у дороги')
+    assert.ok(heroZones.every((zone) => zone?.kind === 'interior' && tavernLabel.test(zone.label)), heroZones.map((zone) => zone?.label).join(', '))
+    assert.equal(new Set(heroZones.map((zone) => zone.id)).size, 1, 'весь отряд — в одном зале')
+    assert.equal(new Set(state.players.map((player) => `${player.x},${player.y}`)).size, party.length)
+  }
+  // Без помещения во вводных — прежний старт у точки входа.
+  const outside = placement(await new CampaignBootstrapper().create({ code: 'TAVERN-OUT', world: { ...world, openingSituation: 'Ночь, гроза. Герои идут в таверну, но у ворот их окликает стражник.' }, players: party }))
+  assert.ok(outside.heroZones.every((zone) => zone?.kind !== 'interior'), outside.heroZones.map((zone) => zone?.label).join(', '))
 })
 
 test('недопустимый режим отклоняется до вызова рассказчика', async () => {
