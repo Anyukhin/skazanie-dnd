@@ -392,3 +392,14 @@ test('заклинание со словами в кавычках — закл�
   assert.equal(speechAddressee('Читаю «Безмолвный образ»: иллюзия Илы, слежу за Марой', state, 'm'), null)
   assert.deepEqual(speechAddressee('Иду в «Ржавый якорь» и говорю Маре: «Скажите честно, вы её знали?»', state, 'm'), { kind: 'npc', id: 'mara' })
 })
+
+test('заклинание словами вне боя — творческое применение, а не «Действие ещё не выполнено»', async () => {
+  // Замер 18 (2026-10-11): «Мирель сотворяет «Безмолвный образ»… и следит за
+  // лицом Корвена» становилось одной декларацией без исхода.
+  const reading = { goal_summary: 'Понять, узнаёт ли Корвен сестру', approach_summary: 'Иллюзия Илы', ability: 'wis', skill: 'insight', plausibility: 'plausible', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator', success_detail: 'Корвен бледнеет — лицо ему знакомо.' }
+  const reader = { llmClient: { completeJson: async () => ({}) }, read: async () => reading }
+  const { send } = await fixture({ reader })
+  const result = await send('Ада сотворяет заклинание и создаёт иллюзию пропавшей сестры, следя за лицом стражника.', { idempotencyKey: 'spell-free' })
+  assert.doesNotMatch(String(result.narration), /Действие ещё не выполнено/u)
+  assert.ok(result.mechanics.some((event) => ['AbilityCheckResolved', 'RulingRecorded'].includes(event.event_type)), result.mechanics.map((event) => event.event_type).join(','))
+})

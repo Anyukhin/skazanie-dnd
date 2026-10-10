@@ -2923,6 +2923,15 @@ export class GameOrchestrator {
         requires_clarification: false,
       }
     }
+    // Заклинание словами вне боя, которое движку нечем исполнить (команду
+    // строит только боевой путь с `spell_id`), — творческое применение: его
+    // судит судья свободных действий, как «Читаю «Безмолвный образ»: иллюзия…».
+    // Прежде такая заявка становилась одной декларацией — «Действие ещё не
+    // выполнено» (замер 18, 2026-10-11).
+    if (!input.commands && originalState.mechanics?.combat?.active !== true
+      && intent.intent === 'cast_spell' && !intent.spell_id) {
+      intent = { ...intent, intent: 'improvised_action', missing_information: [], requires_clarification: false }
+    }
     // Прямая речь, обращённая к человеку рядом, — разговор с ним; спутнику —
     // отыгрыш (`speechAddressee`). Вне боя: там у слов своя цена хода.
     if (!input.commands && !explicitNpcId && originalState.mechanics?.combat?.active !== true
