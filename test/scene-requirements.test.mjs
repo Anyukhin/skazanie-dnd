@@ -7,6 +7,9 @@ import { normalizeCampaignState } from '../server/rules-engine.mjs'
 import {
   SCENE_REQUIREMENTS_VERSION,
   SCENE_REQUIREMENT_KINDS,
+  SCENE_STRUCTURE_KINDS,
+  missingStructureFor,
+  textAgainstMap,
   normalizeSceneRequirements,
   normalizeScenePosts,
   requirementAssets,
@@ -126,4 +129,30 @@ test('программа сцены: центр, посты жителей и п
   assert.deepEqual(normalizeScenePosts({ version: 'scene-requirements/v1', items: [{ id: 'well', count: 1 }] }), [], 'старая сцена — без постов')
   // Кузнец без описания — по роли; странник поста не получает.
   assert.deepEqual(sceneMapRequirementsFor('Площадь с колодцем.', { npcs: [{ name: 'Тор', role: 'кузнец', summary: '' }] }).posts, [{ npc: 'Тор', id: 'forge' }])
+})
+
+test('строка прибытия теряет фразы о постройках, которых нет на карте, и только их', () => {
+  const road = { theme: 'road', zones: [{ kind: 'exterior', label: 'Дорога' }, { kind: 'exterior', label: 'Река' }, { kind: 'exterior', label: 'Мост' }], doors: 0, props: [], water: true }
+  const tower = { theme: 'building', zones: [{ kind: 'exterior', label: 'Участок' }, { kind: 'interior', label: 'Парадный зал' }], doors: 3, props: [], water: false }
+  const arrival = 'Над обрывом высится башня маяка. Тяжёлая дверь приоткрыта. Через реку перекинут мост. Вдали белеет ещё один маяк.'
+  // Карта-дорога (баг живого замера): маяка и двери нет — фразы о них уходят.
+  assert.deepEqual(textAgainstMap(arrival, road, { location: 'Старый маяк' }), {
+    text: 'Через реку перекинут мост. Вдали белеет ещё один маяк.', dropped: ['lighthouse', 'door'],
+  })
+  // Карта-башня: маяк по имени места и дверь на месте, моста и реки нет.
+  assert.deepEqual(textAgainstMap(arrival, tower, { location: 'Старый маяк' }), {
+    text: 'Над обрывом высится башня маяка. Тяжёлая дверь приоткрыта. Вдали белеет ещё один маяк.', dropped: ['bridge'],
+  })
+  // Имя места и названия в кавычках постройки не обещают; отрицание — тоже.
+  assert.equal(textAgainstMap('Путь приводит героев в «Старую башню». Моста здесь нет.', road, { location: 'Старый маяк' }).text, 'Путь приводит героев в «Старую башню». Моста здесь нет.')
+  assert.equal(textAgainstMap('Перед героями открывается Старый маяк.', road, { location: 'Старый маяк' }).dropped.length, 0)
+  // Строка пути: мост и река — дорога, об уходе — не о новой карте.
+  assert.equal(textAgainstMap('Отряд переходит мост и покидает таверну.', tower, { location: 'Старый маяк', journey: true }).dropped.length, 0)
+  assert.deepEqual(textAgainstMap('Герои входят в таверну на берегу.', tower, { location: 'Старый маяк', journey: true }).dropped, ['tavern'])
+  // Имя называет постройку, а помещений нет — недостающее; на карте-башне — нет.
+  assert.equal(missingStructureFor('Старый маяк', road), 'lighthouse')
+  assert.equal(missingStructureFor('Старый маяк', tower), '')
+  assert.equal(missingStructureFor('Северная пристань', road), '')
+  assert.equal(requirementLabel('lighthouse'), 'маяк')
+  assert.ok(SCENE_STRUCTURE_KINDS.every((kind) => !SCENE_REQUIREMENT_KINDS.some((item) => item.id === kind.id)), 'постройки не входят в словарь предметов: очки библиотеки карт не меняются')
 })

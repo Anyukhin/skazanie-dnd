@@ -9,7 +9,7 @@ import { REFERENCE_SIZE } from './building-generator.mjs'
 import { applyRoomFloors } from './room-floors.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { sceneMapDesignFor, worldLocationDesignContext } from './scene-map-design.mjs'
-import { normalizeSceneRequirements, sceneMapRequirementsFor } from './scene-requirements.mjs'
+import { SCENE_REQUIREMENTS_VERSION, missingStructureFor, normalizeSceneRequirements, sceneMapRequirementsFor, textAgainstMap } from './scene-requirements.mjs'
 import { applyScenePlan, programFocusOutdoors } from './scene-program-layout.mjs'
 import { SETTLEMENT_MIN_SIZE, programReport } from './map-quality.mjs'
 import {
@@ -407,6 +407,37 @@ export function entranceOnSide(map, side) {
     }
   }
   return best ? { x: best.x, y: best.y } : null
+}
+
+/**
+ * Что карта знает о постройках и местности — для сверки слов перехода
+ * (`textAgainstMap`, `server/scene-requirements.mjs`). Принимает и живую, и
+ * сохранённую карту; битая карта даёт пустые факты, и сверка тогда молчит
+ * только о воде — зоны и двери читаются и у сохранённой формы.
+ *
+ * @param {Record<string, any>|null} rawMap
+ * @returns {import('./scene-requirements.mjs').StructureMapFacts}
+ */
+function sceneStructureFacts(rawMap) {
+  if (!rawMap || typeof rawMap !== 'object') return {}
+  const facts = {
+    theme: text(rawMap.theme, 60),
+    zones: (Array.isArray(rawMap.zones) ? rawMap.zones : []).map((zone) => ({ kind: text(zone?.kind, 20), label: text(zone?.label, 80) })),
+    doors: Array.isArray(rawMap.doors) ? rawMap.doors.length : 0,
+    props: (Array.isArray(rawMap.props) ? rawMap.props : []).map((prop) => text(prop?.assetId, 80)).filter(Boolean),
+    water: false,
+  }
+  try {
+    const live = rawMap.layers?.present instanceof Uint8Array ? rawMap : deserializeTacticalMap(clone(rawMap))
+    for (let y = 0; y < live.height && !facts.water; y += 1) {
+      for (let x = 0; x < live.width; x += 1) {
+        if (cellAt(live, x, y)?.surface === 'water') { facts.water = true; break }
+      }
+    }
+  } catch {
+    // Старая карта без слоёв: воду не узнать, остальное уже прочитано.
+  }
+  return facts
 }
 
 /** Сколько раз генератор пробует карту, прежде чем взять лучшую из неудачных. */
@@ -902,6 +933,19 @@ export function createSceneTransition(input = {}, state = {}) {
   const partySpawn = returnEntrance ?? (Array.isArray(tacticalMap.spawnPoints)
     ? tacticalMap.spawnPoints.find((point) => point?.role === 'party')
     : null)
+  // Слова перехода сверяются с построенной картой: фраза о маяке, двери или
+  // мосте, которых на карте нет, в событие не попадает (живой замер
+  // 2026-10-10 — «башня на скале» над картой-дорогой). Имя места, которое
+  // называет постройку, а помещений на карте нет, — обещание, которое карта
+  // не держит: оно уходит в `missing`, и Рассказчик о нём молчит.
+  const structureFacts = sceneStructureFacts(tacticalMap)
+  const checkedArrival = textAgainstMap(arrival, structureFacts, { location })
+  const checkedTransition = textAgainstMap(transition, structureFacts, { location, journey: true })
+  const arrivalText = checkedArrival.text || `Отряд прибывает в локацию «${location}».`
+  const transitionText = checkedTransition.text || `Путь из «${text(previousScene.location || previousScene.title, 100, 'прежнего места')}» приводит героев в «${location}».`
+  const missingStructure = rememberedMap ? '' : missingStructureFor(location, structureFacts)
+  const missing = [...new Set([...(generated?.missing ?? []), ...(missingStructure ? [missingStructure] : [])])]
+  const program = mapRequirements ?? (missingStructure ? { version: SCENE_REQUIREMENTS_VERSION, items: [] } : null)
   const scene = {
     title,
     location,
@@ -921,7 +965,7 @@ export function createSceneTransition(input = {}, state = {}) {
     // Библиотечная карта приносит свои этажи: заявка архитектора на этажи
     // уступает фактической постройке, иначе подписи разошлись бы с картой.
     ...(library ? librarySceneFields(library) : {}),
-    ...(mapRequirements ? { map_requirements: { ...mapRequirements, ...(generated?.missing?.length ? { missing: generated.missing } : {}) } } : {}),
+    ...(program ? { map_requirements: { ...program, ...(missing.length ? { missing } : {}) } } : {}),
     cells,
     map: serializedMap,
   }
@@ -933,7 +977,7 @@ export function createSceneTransition(input = {}, state = {}) {
       chapter,
       history,
       currentHook: hook,
-      lastTransition: transition,
+      lastTransition: transitionText,
       unresolvedThreads: [...new Set(unresolvedThreads.filter(Boolean))].slice(-20),
       visitedLocations: [...new Set([...(Array.isArray(previousAdventure.visitedLocations) ? previousAdventure.visitedLocations : []), location])].slice(-50),
       visitedLocationIds: [...new Set([
@@ -941,8 +985,8 @@ export function createSceneTransition(input = {}, state = {}) {
         worldMap.currentLocationId,
       ].filter(Boolean))].slice(-50),
     },
-    transition,
-    arrival,
+    transition: transitionText,
+    arrival: arrivalText,
     ...(library?.levels.length ? { library_levels: library.levels } : {}),
     // Старый переход без заявки сохраняет совместимую точку (1,4). Для
     // заявленной карты вход выводится из её размеров, чтобы широкий берег или

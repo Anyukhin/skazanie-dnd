@@ -148,7 +148,7 @@ export function interpretResolvedPartyDecision(action, state = {}) {
 
 function themeFor(destination, action) {
   const destinationValue = String(destination ?? '').toLocaleLowerCase('ru')
-  const hasExplicitDestinationKind = /крепост|замок|цитадел|дом|хижин|комнат|кабинет|зал|камор|спальн|таверн|город|деревн|порт|рынок|улиц|лес|чащ|болот|роща|мост|тракт|дорог|путь|перевал|руин|развал|храм|пещер|подзем|склеп|архив|шахт|арен|круг|кольц|башн/u.test(destinationValue)
+  const hasExplicitDestinationKind = /крепост|замок|цитадел|дом|хижин|комнат|кабинет|зал|камор|спальн|таверн|город|деревн|порт|рынок|улиц|лес|чащ|болот|роща|мост|тракт|дорог|путь|перевал|руин|развал|храм|пещер|подзем|склеп|архив|шахт|арен|круг|кольц|башн|маяк/u.test(destinationValue)
   // The explicit destination must win over the source location mentioned in
   // a resolved vote (for example, "leave the city and go to the forest").
   const value = hasExplicitDestinationKind
@@ -156,6 +156,9 @@ function themeFor(destination, action) {
     : `${destinationValue} ${String(action ?? '').toLocaleLowerCase('ru')}`
   if (/крепост|замок|цитадел/u.test(value)) return { theme: 'крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 36, height: 28, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
   if (/дом|хижин|комнат|кабинет|небольш.*зал|камор|спальн|таверн/u.test(value)) return { theme: /таверн/u.test(value) ? 'уютная таверна' : 'жилой дом', layout: 'rooms', scale: 'room', pattern: 'small-room', material: 'wood', width: 9, height: 7, openness: 0.82, water: 0, featureCount: 9, danger: 'низкая' }
+  // Маяк — башня с дверью и залом, а не порт и не мост: слово стоит раньше
+  // «порта» и «моста», которые его окружают в названии («Маяк у порта»).
+  if (/(?<!\p{L})маяк(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})/u.test(value)) return themeForStructureName(value)
   if (/город|деревн|порт|рынок|таверн|улиц/u.test(value)) return { theme: /порт|гаван|пристан/u.test(value) ? 'портовые улицы' : 'городские улицы', layout: 'streets', scale: 'site', pattern: 'village', material: 'stone', width: 32, height: 24, openness: 0.68, water: /порт|канал|гаван|пристан/u.test(value) ? 0.22 : 0.02, featureCount: 8, danger: 'низкая' }
   if (/лес|чащ|болот|роща/u.test(value)) return { theme: 'дикая местность', layout: 'winding', scale: 'site', pattern: 'natural', material: 'grass', width: 26, height: 18, openness: 0.62, water: /болот/u.test(value) ? 0.22 : 0.06, featureCount: 10, danger: 'средняя' }
   if (/мост/u.test(value)) return { theme: 'мост и подступы', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'wood', width: 28, height: 16, openness: 0.7, water: 0.2, featureCount: 5, danger: 'средняя' }
@@ -207,14 +210,44 @@ function themeForWorldKind(kind) {
  * @param {{name?: string, kind?: string, summary?: string, history?: string, biome?: string}|null} destination
  * @returns {ReturnType<typeof themeFor>|null}
  */
+/**
+ * Постройка, которую называет само имя места: «Старый маяк», «Чёрная башня»,
+ * «Храм Луны». Имя сильнее описания окрестностей: живой замер 2026-10-10 —
+ * «Старый маяк» со сводкой «башня на скале над гаванью» строился по слову
+ * «гавань» берегом реки с мостом, и войти в маяк было некуда.
+ *
+ * @param {string} name
+ * @returns {ReturnType<typeof themeFor>|null}
+ */
+function themeForStructureName(name) {
+  const value = String(name ?? '').toLocaleLowerCase('ru')
+  if (/(?<!\p{L})(?:маяк(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})|башн)/u.test(value)) {
+    return { theme: /маяк/u.test(value) ? 'башня маяка' : 'каменная башня', layout: 'rooms', scale: 'site', pattern: 'great-hall', material: 'stone', width: 24, height: 24, openness: 0.6, water: 0.02, featureCount: 7, danger: 'средняя' }
+  }
+  if (/крепост|(?<!\p{L})зам(?:ок|ка|ке|ку|ком)(?!\p{L})|цитадел|твердын/u.test(value)) {
+    return { theme: 'каменная крепость', layout: 'rooms', scale: 'stronghold', pattern: 'keep', material: 'stone', width: 36, height: 28, openness: 0.62, water: 0.02, featureCount: 10, danger: 'высокая' }
+  }
+  if (/храм|святилищ|монастыр|собор|часовн/u.test(value)) {
+    return { theme: 'храм', layout: 'rooms', scale: 'site', pattern: 'great-hall', material: 'stone', width: 26, height: 20, openness: 0.6, water: 0.02, featureCount: 8, danger: 'средняя' }
+  }
+  return null
+}
+
 function themeForWorldDescription(destination) {
   if (!destination) return null
+  const byName = themeForStructureName(destination.name ?? '')
+  if (byName) return byName
   const value = `${destination.name ?? ''} ${destination.summary ?? ''} ${destination.history ?? ''} ${destination.biome ?? ''}`.toLocaleLowerCase('ru')
   if (/озер|водо[её]м|пруд|залив/iu.test(value)) {
     return { theme: 'озеро и отмели', layout: 'open', scale: 'site', pattern: 'natural', material: 'grass', width: 32, height: 24, openness: 0.55, water: 0.72, featureCount: 8, danger: 'средняя' }
   }
-  if (/река|слияни[ея]\s+рек|берег|отмел|переправ|пристан|гаван|побереж/iu.test(value)) {
+  // Река с переправой — только там, где названа река. Гавань, пристань и
+  // побережье — край моря: берег с водой, а не два берега с мостом.
+  if (/(?<!\p{L})рек(?:а|и|е|у|ой)(?!\p{L})|речн|слияни[ея]\s+рек|переправ/iu.test(value)) {
     return { theme: 'берег реки', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'earth', width: 32, height: 22, openness: 0.62, water: 0.42, featureCount: 7, danger: 'средняя' }
+  }
+  if (/берег|отмел|пристан|гаван|побереж|причал|бухт/iu.test(value)) {
+    return { theme: 'морской берег', layout: 'open', scale: 'site', pattern: 'natural', material: 'sand', width: 32, height: 22, openness: 0.6, water: 0.4, featureCount: 7, danger: 'средняя' }
   }
   if (/горн|кряж|пик|скал|перевал|ущел/iu.test(value) || destination.biome === 'mountains') {
     return { theme: 'горный рубеж', layout: 'winding', scale: 'site', pattern: 'bridge', material: 'earth', width: 28, height: 22, openness: 0.55, water: 0.02, featureCount: 7, danger: 'высокая' }
@@ -658,31 +691,37 @@ function sameWordInflected(left, right) {
  */
 function inflectedLocationMatch(locations, phrase) {
   const spoken = distinctiveWords(phrase)
-  if (!spoken.length) return null
   const spokenKinds = genericWords(phrase)
+  if (!spoken.length && !spokenKinds.length) return null
   let best = null
   let bestSize = 0
   let tie = false
   for (const entry of locations) {
-    const stems = distinctiveWords(entry?.name)
-    if (!stems.length || spoken.length > stems.length + 2) continue
-    if (!stems.every((stem) => spoken.some((word) => sameWordInflected(word, stem)))) continue
+    // Имя из одних родовых слов («Маяк», «Башня») сверяется ими же, но
+    // уступает любому совпадению по собственному имени: «к Старому маяку»
+    // — это «Старый маяк», а не просто «Маяк».
+    const ownStems = distinctiveWords(entry?.name)
+    const stems = ownStems.length ? ownStems : genericWords(entry?.name)
+    const pool = ownStems.length ? spoken : spokenKinds
+    if (!stems.length || pool.length > stems.length + 2) continue
+    if (!stems.every((stem) => pool.some((word) => sameWordInflected(word, stem)))) continue
     // Названный род места обязан совпасть: «большой город Норвин» — не
     // «Склеп Норвин», хотя собственное имя у них общее.
     const kinds = genericWords(entry?.name)
     if (spokenKinds.length && kinds.length
       && !kinds.some((kind) => spokenKinds.some((word) => sameWordInflected(word, kind)))) continue
-    if (stems.length > bestSize) {
+    const size = ownStems.length || 0.5
+    if (size > bestSize) {
       best = entry
-      bestSize = stems.length
+      bestSize = size
       tie = false
-    } else if (stems.length === bestSize) tie = true
+    } else if (size === bestSize) tie = true
   }
   return tie ? null : best
 }
 
 function genericDestinationHint(value) {
-  return /^(?:подземель|локац|мест|город|деревн|сел|пос[её]л|лес|чащ|рощ|болот|пустош|пустын|порт|гаван|пристан|зам|крепост|цитадел|форт|застав|лагер|храм|святилищ|монастыр|пещер|руин|архив|склеп|катакомб|шахт|башн|таверн|трактир|корчм|усадьб|поместь|особняк|здани|район|улиц|площад|рынок|тракт|дорог|перевал|ущель|долин|остров|берег|станци|пол)[а-яё]*$/iu.test(locationKey(value))
+  return /^(?:подземель|локац|мест|город|деревн|сел|пос[её]л|лес|чащ|рощ|болот|пустош|пустын|порт|гаван|пристан|зам|крепост|цитадел|форт|застав|лагер|храм|святилищ|монастыр|пещер|руин|архив|склеп|катакомб|шахт|башн|маяк(?=(?:а|у|ом|е|и|ов|ам|ами|ах)?$)|таверн|трактир|корчм|усадьб|поместь|особняк|здани|район|улиц|площад|рынок|тракт|дорог|перевал|ущель|долин|остров|берег|станци|пол)[а-яё]*$/iu.test(locationKey(value))
 }
 
 /**

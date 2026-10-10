@@ -28,7 +28,9 @@ function directionWord(dx, dy) {
  */
 function sceneLandmarks(scene, map, position) {
   const items = normalizeSceneRequirements(scene.map_requirements)
-  if (!items.length) return null
+  // Программа без предметов, но с недостроенной постройкой («Старый маяк»
+  // без помещений, `missingStructureFor`) тоже говорит Рассказчику, о чём молчать.
+  if (!items.length && !(Array.isArray(scene.map_requirements?.missing) && scene.map_requirements.missing.length)) return null
   const origin = position ?? map.spawnPoints?.find((point) => point.role === 'party') ?? { x: map.width / 2, y: map.height / 2 }
   const landmarks = []
   const absent = []

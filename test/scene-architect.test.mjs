@@ -667,3 +667,100 @@ test('цель новой сцены — название в кавычках и
   assert.match(objective, /(?:[.!?…»]|[а-яё])$/iu)
   assert.doesNotMatch(objective, /\s\p{L}{1,3}$/u, `обрыв на полуслове: ${objective}`)
 })
+
+// ---------------------------------------------------------------------------
+// Маяк — здание, а прибытие сверяется с картой (живой замер 2026-10-10)
+// ---------------------------------------------------------------------------
+
+function harbourState(lighthouse = { name: 'Старый маяк', summary: 'Заброшенная башня на скале над гаванью; огонь в ней снова загорается по ночам.' }) {
+  return {
+    sessionCode: 'LIGHTHOUSE', campaign: 'Серый Причал',
+    campaignConcept: { premise: 'Туманный порт Серый Причал. На скале над гаванью — заброшенный маяк.' },
+    worldMap: {
+      seed: 'lighthouse-seed', currentLocationId: 'port',
+      regions: [{ id: 'coast', name: 'Побережье', biome: 'coast', x: 500, y: 300, radius: 300 }],
+      locations: [
+        { id: 'port', name: 'Серый Причал', kind: 'port', x: 500, y: 300, regionId: 'coast', known: true, visited: true, summary: 'Туманный порт.' },
+        { id: 'lighthouse', kind: 'landmark', x: 640, y: 220, regionId: 'coast', known: true, visited: false, ...lighthouse },
+      ],
+      routes: [{ id: 'route-lighthouse', from: 'port', to: 'lighthouse', kind: 'road', distance: 1, danger: 'средняя', discovered: true }],
+    },
+    scene: { title: 'Ржавый якорь', location: 'Серый Причал', location_id: 'port', objective: 'Узнать, откуда пришёл баркас', turn: 3, cells: [] },
+    adventure: { chapter: 1, currentHook: 'Пустой баркас', visitedLocations: ['Серый Причал'], history: [] },
+  }
+}
+
+const lighthouseModel = {
+  model: 'fake',
+  async completeJson() {
+    return {
+      location: 'Старый маяк', title: 'Маяк над гаванью', theme: 'берег реки',
+      transition: 'Отряд покидает таверну и по скользкой тропе поднимается к маяку.',
+      arrival: 'Над обрывом высится башня маяка. Тяжёлая дверь приоткрыта. Через реку перекинут старый мост. Вдали у причала качаются лодки.',
+      map: { layout: 'winding', pattern: 'bridge', width: 30, height: 22, design: { topology: 'river' } },
+    }
+  },
+}
+
+test('«Старый маяк» над гаванью — башня с дверью и помещениями, а не берег реки с мостом', async () => {
+  const state = harbourState()
+  for (const llmClient of [null, lighthouseModel]) {
+    const plan = await new SceneArchitectAgent({ llmClient }).plan({
+      action: 'Идём к старому маяку', decision: 'Идём к старому маяку',
+      destinationHint: 'Старый маяк', destinationLocationId: 'lighthouse', state,
+    })
+    const label = plan.trace.mode
+    assert.equal(plan.sceneArgs.location, 'Старый маяк', label)
+    assert.notEqual(plan.sceneArgs.map.pattern, 'bridge', label)
+    assert.notEqual(plan.sceneArgs.map.design?.topology, 'river', label)
+    assert.doesNotMatch(plan.sceneArgs.theme, /рек|мост/u, label)
+    const transition = createSceneTransition(plan.sceneArgs, state)
+    const map = transition.scene.map
+    assert.equal(map.theme, 'building', label)
+    assert.ok(map.zones.some((zone) => zone.kind === 'interior' && zone.label), `${label}: у маяка есть помещения`)
+    assert.ok(map.doors.length >= 1, `${label}: у маяка есть дверь`)
+    assert.ok(!map.zones.some((zone) => /^(?:Река|Мост|Дорога)$/u.test(zone.label)), `${label}: ${map.zones.map((zone) => zone.label).join(', ')}`)
+  }
+  // Гавань без постройки в имени — край моря, а не два берега с мостом.
+  const pier = await new SceneArchitectAgent().plan({
+    action: 'Идём к пристани', decision: 'Идём к пристани', destinationHint: 'Северная пристань', destinationLocationId: 'lighthouse',
+    state: harbourState({ name: 'Северная пристань', summary: 'Старые причалы над гаванью.' }),
+  })
+  assert.notEqual(pier.sceneArgs.map.pattern, 'bridge')
+  assert.notEqual(pier.sceneArgs.theme, 'берег реки')
+})
+
+test('прибытие не обещает моста и реки, которых карта маяка не построила', async () => {
+  const state = harbourState()
+  const plan = await new SceneArchitectAgent({ llmClient: lighthouseModel }).plan({
+    action: 'Идём к старому маяку', decision: 'Идём к старому маяку',
+    destinationHint: 'Старый маяк', destinationLocationId: 'lighthouse', state,
+  })
+  const transition = createSceneTransition(plan.sceneArgs, state)
+  assert.ok(!transition.scene.map.zones.some((zone) => /мост/iu.test(zone.label)), 'на карте маяка моста нет')
+  assert.doesNotMatch(transition.arrival, /мост/u, transition.arrival)
+  assert.match(transition.arrival, /башня маяка/u, 'маяк на карте есть — фраза о нём остаётся')
+  assert.match(transition.arrival, /дверь/u, 'дверь на карте есть — фраза о ней остаётся')
+  assert.match(transition.arrival, /Вдали у причала/u, 'то, что видно вдали, карте не противоречит')
+  assert.match(transition.transition, /покидает таверну/u, 'строка пути об оставленном месте не сверяется с новой картой')
+})
+
+test('место, чьё имя называет постройку, без помещений на карте записывается в недостающее', () => {
+  const state = harbourState()
+  const transition = createSceneTransition({
+    title: 'Маяк', location: 'Старый маяк', location_id: 'lighthouse', theme: 'дорога к маяку',
+    arrival: 'Перед отрядом поднимается башня маяка. Ветер гонит по дороге песок.',
+    map: { theme_id: 'road', layout: 'winding', pattern: 'natural', width: 20, height: 16 },
+  }, state)
+  assert.ok(!transition.scene.map.zones.some((zone) => zone.kind === 'interior' && zone.label), transition.scene.map.zones.map((zone) => zone.label).join(', '))
+  assert.ok(transition.scene.map_requirements?.missing?.includes('lighthouse'), JSON.stringify(transition.scene.map_requirements))
+  assert.doesNotMatch(transition.arrival, /башня/u, transition.arrival)
+  assert.match(transition.arrival, /Ветер гонит/u)
+})
+
+test('место с одним родовым словом в имени находится по склонённому слову', async () => {
+  const state = harbourState({ name: 'Маяк', summary: 'Башня на скале.' })
+  const plan = await new SceneArchitectAgent().plan({ action: 'Идём к маяку', decision: 'Идём к маяку', destinationHint: 'маяку', state })
+  assert.equal(plan.sceneArgs.location, 'Маяк')
+  assert.equal(plan.sceneArgs.location_id, 'lighthouse')
+})

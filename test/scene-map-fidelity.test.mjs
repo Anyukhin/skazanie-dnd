@@ -86,4 +86,8 @@ test('этап 7 плана карт: Рассказчик получает як
   assert.deepEqual(context.landmarks_absent, [{ kind: 'shelter', label: 'навес' }], 'навеса на карте нет вовсе')
   const plain = sceneContextForAgent({ ...state, scene: { ...state.scene, map_requirements: undefined } }, 'hero')
   assert.equal(plain.landmarks, undefined, 'сцена без программы — без поля')
+  // «Старый маяк» без единого помещения (`missingStructureFor`): программа без
+  // предметов, но о маяке Рассказчик молчит.
+  const structure = sceneContextForAgent({ ...state, scene: { ...state.scene, map_requirements: { version: 'scene-requirements/v3', items: [], missing: ['lighthouse'] } } }, 'hero')
+  assert.deepEqual(structure.landmarks_absent, [{ kind: 'lighthouse', label: 'маяк' }])
 })

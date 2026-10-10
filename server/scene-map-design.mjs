@@ -69,6 +69,7 @@ export function sceneMapDesignFor({
 } = {}) {
   const explicit = normalizeSceneMapDesign(request.design)
   const local = clean(`${location} ${theme} ${description} ${biome}`)
+  const lighthouse = /(?<![\p{L}\p{M}])маяк(?:а|у|ом|е|и|ов|ам|ами|ах)?(?![\p{L}\p{M}])/u.test(clean(`${location} ${theme}`))
   const world = clean(worldDescription, 2400)
   const kind = clean(worldKind || settlementType, 40)
   const cityKind = ['city', 'capital', 'port', 'town'].includes(kind)
@@ -99,7 +100,7 @@ export function sceneMapDesignFor({
           : /ледян[а-яё]* (?:дом|дворец|город)|изо? льда/u.test(local) ? 'ice'
             : /каменн|кирпич|белокамен/u.test(local) ? 'stone'
               : explicit.architecture
-  if (!architecture) architecture = climate === 'arid' ? 'sand' : urban || kind === 'fortress' ? 'stone' : 'wood'
+  if (!architecture) architecture = climate === 'arid' ? 'sand' : urban || kind === 'fortress' || lighthouse ? 'stone' : 'wood'
   const density = /редк[а-яё]* (?:дом|застрой)|разбросан|маленьк[а-яё]* деревн|хутор/u.test(local) ? 'sparse'
     : /тесн|густ[а-яё]* застрой|плотн[а-яё]* застрой|многолюд|столиц/u.test(local) ? 'dense'
       // Деревня по умолчанию — обычная застройка: «редкая» давала четыре-пять
@@ -107,7 +108,10 @@ export function sceneMapDesignFor({
       : explicit.density || (rural ? (climate === 'arid' ? 'sparse' : 'mixed') : urban ? 'dense' : 'mixed')
   const buildingUse = /кузн|кузниц/u.test(local) ? 'smithy'
     : /казарм|караульн|гарнизон|сторожев[а-яё]* башн|дозорн[а-яё]* башн/u.test(local) ? 'barracks'
-      : /башн/u.test(local) ? 'manor'
+      // Маяк — башня смотрителя: круглый корпус с дверью и залом. Только по
+      // названию места: порт, в описании которого виден маяк, остаётся портом
+      // с таверной, а не усадьбой.
+      : /башн/u.test(local) || lighthouse ? 'manor'
       : /мельниц/u.test(local) ? 'mill'
         : /таверн|трактир|постоял|корчм|гостиниц/u.test(local) ? 'tavern'
     : /лавк|магазин|мастерск|склад|торгов[а-яё]* ряд|рыночн[а-яё]* набережн/u.test(local) ? 'shop'
@@ -115,7 +119,7 @@ export function sceneMapDesignFor({
         : explicit.building_use || 'dwelling'
   // Форма корпуса — по словам места: башня и ротонда круглые, «Г-образный»
   // и «крестообразный» говорят сами за себя. Без слов форму выберет генератор.
-  const shape = /кругл[а-яё]* (?:башн|зал|дом|здани)|ротонд|башн[яиюе]/u.test(local) ? 'round'
+  const shape = /кругл[а-яё]* (?:башн|зал|дом|здани)|ротонд|башн[яиюе]/u.test(local) || lighthouse ? 'round'
     : /г-образн|углом|буквой г/u.test(local) ? 'L'
     : /крестообразн|крестом/u.test(local) ? 'cross'
       : explicit.shape
