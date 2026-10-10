@@ -85,7 +85,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { freeActionDiscoveryCommands } from './world-memory.mjs'
+import { freeActionDiscoveryCommands, freeActionSurfaceCommands } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -1801,7 +1801,7 @@ export class AutonomousCampaignOrchestrator {
       const discovery = !loaded.state.mechanics?.combat?.active && rulingEvent
         ? freeActionDiscoveryCommands(commit.state ?? loaded.state, {
           checkEvent: rulingEvent, skill: reading.skill, actionText: text, goalSummary: reading.goal_summary,
-          successDetail: reading.success_detail ?? '',
+          successDetail: reading.success_detail ?? '', surfaceDetail: reading.surface_detail ?? '',
         })
         : []
       let discoveryCommit = null
@@ -2010,6 +2010,11 @@ export class AutonomousCampaignOrchestrator {
         goalSummary: reading.goal_summary,
         skillLabel: SKILL_LABELS_RU[String(reading.skill ?? '').replace(/_/gu, '-')] ?? '',
         successDetail: reading.success_detail ?? '',
+        surfaceDetail: reading.surface_detail ?? '',
+      }))
+    } else if (!inCombat) {
+      followUp.push(...freeActionSurfaceCommands(checkCommit.state ?? loaded.state, {
+        checkEvent, skill: reading.skill, surfaceDetail: reading.surface_detail ?? '',
       }))
     }
     let consequenceCommit = null

@@ -243,3 +243,18 @@ test('вопрос о столкновении со стеной использ�
   assert.match(result.narration, /стеной|дробящий урон/u)
   assert.match(result.narration, /только вопрос/u)
 })
+
+test('арбитр v10 отдаёт видимую деталь осмотра, а механику в ней отбрасывает', async () => {
+  const answer = (surface) => ({
+    route: 'check', goal_summary: 'Осмотреть баркас', approach_summary: 'Осматриваю палубу', obstacle: 'темнота',
+    activity_kind: 'routine', duration_class: 'brief', ability: 'wis', skill: 'perception', plausibility: 'plausible',
+    risk: 'none', required_means: [], action_cost: 'action', effect: 'none', effect_target: '', hazard: '', prop_id: '',
+    target_id: '', item_id: '', proficiency: 'proficient', consequence_type: 'time', success_detail: '', surface_detail: surface,
+  })
+  const read = async (surface) => new ActionAdjudicator({ llmClient: { completeJson: async () => answer(surface) } })
+    .read(scene(), 'hero', 'Осматриваю палубу баркаса', interpretFreeAction('Осматриваю палубу баркаса'))
+  const seen = await read('Сеть на корме сложена аккуратно, будто её укладывали на берегу.')
+  assert.equal(seen.surface_detail, 'Сеть на корме сложена аккуратно, будто её укладывали на берегу.')
+  const leaked = await read('Проверка провалена, СЛ 15 — видно только доски.')
+  assert.equal(leaked.surface_detail, undefined)
+})

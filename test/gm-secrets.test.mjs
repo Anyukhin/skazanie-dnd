@@ -6,6 +6,7 @@ import { FakeLLM } from '../server/llm-client.mjs'
 import {
   applyWorldMemoryEvent,
   freeActionDiscoveryCommands,
+  freeActionSurfaceCommands,
   normalizeWorldMemory,
   validateWorldMemoryCommand,
   worldMemoryEvent,
@@ -197,4 +198,23 @@ test('тема заготовки сильнее детали: вопрос о �
   })
   assert.equal(commands.length, 1)
   assert.match(commands[0].fact.summary, /царапина от ножа/u)
+})
+
+test('проваленный осмотр показывает видимую деталь места, а пустая удача — её же вместо пустоты', async () => {
+  // Плейтест 2026-10-10: «Осмотреть баркас не удалось: ничего нового» — без
+  // единой детали. Что видно и без броска, называет арбитр (`surface_detail`).
+  const state = await campaign()
+  const surface = 'Сеть на корме сложена аккуратно, будто её укладывали на берегу, а не в море.'
+  const failed = { event_id: 'failed-look', event_type: 'AbilityCheckResolved', payload: { success: false, skill: 'perception' } }
+  const [seen] = freeActionSurfaceCommands(state, { checkEvent: failed, skill: 'perception', surfaceDetail: surface })
+  assert.equal(seen?.fact?.summary, surface)
+  assert.equal(seen.fact.object, 'surface')
+  assert.equal(seen.fact.visibility, 'party')
+  assert.ok(!JSON.stringify(seen).includes('царапина'), 'тайна сцены не раскрывается')
+  assert.deepEqual(freeActionSurfaceCommands(state, { checkEvent: failed, skill: 'athletics', surfaceDetail: surface }), [], 'только поиск')
+
+  const emptyLuck = freeActionDiscoveryCommands({ ...state, worldMemory: { ...state.worldMemory, facts: [] } }, {
+    checkEvent: check('perception', 'lucky-look'), skill: 'perception', actionText: 'Смотрю на воду', surfaceDetail: surface,
+  })
+  assert.deepEqual(emptyLuck.map((command) => command.fact.summary), [surface])
 })

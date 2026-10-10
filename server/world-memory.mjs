@@ -268,7 +268,7 @@ function presentNpcLead(state = {}, spokenText = '') {
  * @param {Record<string, any>} state
  * @param {{ sourceEventId?: string, successDetail?: string }} input
  */
-function successDetailCommand(state = {}, { sourceEventId = '', successDetail = '' } = {}) {
+function successDetailCommand(state = {}, { sourceEventId = '', successDetail = '', kind = 'detail' } = {}) {
   const summary = text(successDetail, 300)
   if (!summary || !sourceEventId) return null
   const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
@@ -281,10 +281,10 @@ function successDetailCommand(state = {}, { sourceEventId = '', successDetail = 
   return {
     command_type: 'RecordWorldFact',
     fact: {
-      id: `fact-detail-${createHash('sha256').update(`${sourceEventId}\u0000${summary}`).digest('hex').slice(0, 24)}`,
+      id: `fact-${kind}-${createHash('sha256').update(`${sourceEventId}\u0000${summary}`).digest('hex').slice(0, 24)}`,
       subject_id: String(here.id),
       predicate: 'discovery',
-      object: 'detail',
+      object: kind,
       summary,
       visibility: 'party',
       source_event_ids: [sourceEventId],
@@ -314,7 +314,28 @@ function npcLeadSummary(lead) {
  * @param {{ checkEvent?: Record<string, any>|null, skill?: string, actionText?: string, goalSummary?: string, skillLabel?: string }} input
  * @returns {Array<Record<string, any>>}
  */
-export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, skill = '', actionText = '', goalSummary = '', skillLabel = '', successDetail = '' } = {}) {
+/**
+ * Что видно и без броска (`surface_detail` арбитра): на проваленном осмотре
+ * ведущий всё равно показывает место — «не нашёл ничего нового» без единой
+ * детали звучало глухо (плейтест 2026-10-10). Тайн деталь не раскрывает.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ checkEvent?: any, skill?: string, surfaceDetail?: string }} input
+ */
+export function freeActionSurfaceCommands(state = {}, { checkEvent = null, skill = '', surfaceDetail = '' } = {}) {
+  const sourceEventId = String(checkEvent?.event_id ?? '')
+  if (!sourceEventId || !DISCOVERY_SKILLS.has(String(skill ?? '').replace(/_/gu, '-'))) return []
+  const command = successDetailCommand(state, { sourceEventId, successDetail: surfaceDetail, kind: 'surface' })
+  return command ? [command] : []
+}
+
+export function freeActionDiscoveryCommands(state = {}, input = {}) {
+  const found = discoveryCommandsFor(state, input)
+  // Удача без находки — всё равно сцена: видимая деталь места вместо пустоты.
+  return found.length ? found : freeActionSurfaceCommands(state, input)
+}
+
+function discoveryCommandsFor(state = {}, { checkEvent = null, skill = '', actionText = '', goalSummary = '', skillLabel = '', successDetail = '' } = {}) {
   const sourceEventId = String(checkEvent?.event_id ?? '')
   // Успех без броска — решение судьи с outcome success: «изучаю повестку»
   // без риска живой ведущий не превращает в кубик, а просто говорит, что
