@@ -662,6 +662,49 @@ function lenientJson(text) {
   return null
 }
 
+/**
+ * Какие черновики рассказчика отбраковал верификатор и почему — по трассам
+ * ходов во временном хранилище. Живой текст, заменённый запасным, — главный
+ * незаметный снаружи источник сухих ответов (замер 2026-10-10).
+ */
+function narratorDiagnostics() {
+  const root = join(storage, 'turn-traces')
+  const files = []
+  const walk = (dir) => {
+    let entries = []
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const entry of entries) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.name.endsWith('.json')) files.push(full)
+    }
+  }
+  walk(root)
+  const rejected = []
+  const codes = {}
+  let turns = 0
+  for (const file of files) {
+    let trace = null
+    try { trace = JSON.parse(readFileSync(file, 'utf8')) } catch { continue }
+    const result = trace?.narration_result
+    if (!result) continue
+    turns += 1
+    const verification = result.verification ?? {}
+    const repaired = Array.isArray(verification.repaired_from) ? verification.repaired_from : []
+    const provider = String(result.provider ?? '')
+    if (!repaired.length && !/^deterministic/u.test(provider)) continue
+    for (const violation of repaired) codes[violation?.code ?? '?'] = (codes[violation?.code ?? '?'] ?? 0) + 1
+    rejected.push({
+      message: short(trace?.intent?.raw_message ?? trace?.player_message ?? '', 160),
+      provider,
+      reason: verification.origin?.reason ?? null,
+      violations: repaired.map((violation) => ({ code: violation?.code, match: short(violation?.match ?? '', 120) })),
+      narration: short(result.narration ?? '', 240),
+    })
+  }
+  return { turns, rejected, codes }
+}
+
 // ---------------------------------------------------------------------------
 // Отчёт
 
@@ -767,6 +810,11 @@ if (JUDGE && exchanges.length) {
   verdicts = await judgeExchanges(client)
   console.log('Общий судья…')
   try { holistic = await judgeHolistic(client) } catch (error) { problems.push({ kind: 'holistic-judge', message: String(error?.code ?? error?.message ?? error).slice(0, 200) }) }
+}
+const diagnostics = narratorDiagnostics()
+writeFileSync(join(OUT, 'narrator-diagnostics.json'), JSON.stringify(diagnostics, null, 2))
+if (diagnostics.rejected.length) {
+  console.log(`Отбракованных черновиков рассказчика: ${diagnostics.rejected.length} из ${diagnostics.turns}; причины: ${Object.entries(diagnostics.codes).map(([code, count]) => `${code}×${count}`).join(', ')}`)
 }
 const summary = writeReport(verdicts, holistic, usage)
 console.log(`\nИтог: ходов ${summary.exchanges}, служебных фраз ${summary.service_hits}, повторов ${summary.repeats.length}${summary.exchange_judge ? `, по ходам ${summary.exchange_judge.average}` : ''}${holistic?.overall != null ? `, как живой ведущий ${holistic.overall}/10` : ''}`)
