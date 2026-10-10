@@ -2851,6 +2851,10 @@ export class GameOrchestrator {
         visible_state_changes: [],
         check: { ...check, sides: 20, skill: preview.skill },
         turn_consumed: false,
+        // Бросок привязан к `message`, а после уточнения это уже не текст
+        // ответа («Да»), а согласованный шаг. Клиент шлёт кость с этим
+        // текстом; без него `/api/narrate` отвечал ROLL_CONTEXT_MISMATCH.
+        ...(pendingClarification ? { resolved_action: message } : {}),
       }
     }
     if (planCheckCommand && verifiedRoll) {
