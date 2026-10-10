@@ -223,13 +223,28 @@ function knownPlaceName(phrase, knownPlaces) {
   if (!phrase || !knownPlaces.length) return ''
   const spoken = nameWords(phrase)
   if (!spoken.distinctive.length) return ''
-  return knownPlaces.find((name) => {
+  // Из подходящих — самое полное: «Маяк Серого Причала» содержит и «Серый
+  // Причал», и прежде первое по списку уводило отряд в город вместо маяка
+  // (плейтест 2026-10-10).
+  const matches = knownPlaces.filter((name) => {
     const place = nameWords(name)
     if (!place.distinctive.length || spoken.distinctive.length > place.distinctive.length + 2) return false
     if (!place.distinctive.every((stem) => spoken.distinctive.some((word) => sameWordInflected(word, stem)))) return false
     return !spoken.generic.length || !place.generic.length
       || place.generic.some((kind) => spoken.generic.some((word) => sameWordInflected(word, kind)))
-  }) ?? ''
+  })
+  // Точность: слово места, названное во фразе, — плюс, не названное — минус
+  // вдвое. «Идём в Серый Причал» остаётся в городе, «к Маяку Серого Причала» —
+  // уходит на маяк.
+  const said = [...spoken.distinctive, ...spoken.generic]
+  const weight = (name) => {
+    const place = nameWords(name)
+    const words = [...place.distinctive, ...place.generic]
+    const named = words.filter((stem) => said.some((word) => sameWordInflected(word, stem))).length
+    return named - 2 * (words.length - named)
+  }
+  return matches.map((name, index) => ({ name, index, score: weight(name) }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.name ?? ''
 }
 
 /**

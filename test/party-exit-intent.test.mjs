@@ -435,3 +435,13 @@ test('строка голосования «Уходим из «…» и идё�
   assert.equal(partyDestinationLabel(vote, request.destination).place, 'Старый маяк на скале')
   assert.equal(detectPartyExitRequest('Выходим из деревни и идём на север к руинам', {})?.destination, 'руинам', 'сторона света — путь, а не место')
 })
+
+test('из известных мест выбирается самое точное: маяк города — не сам город', () => {
+  // Плейтест 2026-10-10: «идём к «Маяк Серого Причала» на скале» вело в «Серый
+  // Причал» — первое по списку место, чьи слова все есть во фразе.
+  const known = { knownPlaces: ['Серый Причал', 'Маяк Серого Причала'] }
+  const lighthouse = 'Мы с Борином идём к «Маяк Серого Причала» на скале.'
+  assert.equal(partyDestinationLabel(lighthouse, detectPartyExitRequest(lighthouse, known).destination, known).place, 'Маяк Серого Причала')
+  const town = 'Идём в Серый Причал'
+  assert.equal(partyDestinationLabel(town, detectPartyExitRequest(town, known).destination, known).place, 'Серый Причал')
+})
