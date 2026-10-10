@@ -218,3 +218,19 @@ test('проваленный осмотр показывает видимую д
   })
   assert.deepEqual(emptyLuck.map((command) => command.fact.summary), [surface])
 })
+
+test('общий осмотр не открывает чужого свидетельства и не срабатывает на «прислушиваюсь»', async () => {
+  // Плейтест 2026-10-10: «прислушиваюсь у двери маяка» и «смотрю на вершину
+  // маяка» открывали тайну места не о том, а наблюдение — «Йорен Келл видел,
+  // как…»: показания, которые даёт человек, а не место.
+  const state = await campaign()
+  const location = state.worldMemory.entities.find((entity) => entity.name === state.scene.location)
+  const testimony = { id: 'fact:secret:witness', subject_id: location.id, predicate: 'gm_secret', status: 'active', visibility: 'gm_only',
+    object: JSON.stringify({ topic: 'канат стражник', skills: ['perception', 'insight'], holder: 'Йорен Келл' }),
+    summary: 'Йорен Келл видел, как стражник с баронским жетоном помог незнакомцам перерезать канат.', recorded_at_minutes: 0 }
+  const onlyTestimony = { ...state, worldMemory: { ...state.worldMemory, facts: [...state.worldMemory.facts.map((fact) => fact.predicate === 'gm_secret' ? { ...fact, status: 'superseded' } : fact), testimony] } }
+  const looked = freeActionDiscoveryCommands(onlyTestimony, { checkEvent: check('perception', 'look-around'), skill: 'perception', actionText: 'Осматриваюсь у причала' })
+  assert.ok(!looked.some((command) => /Йорен/u.test(command.fact?.summary ?? '')), 'свидетельство не находится осмотром')
+  const listened = freeActionDiscoveryCommands(state, { checkEvent: check('perception', 'listen'), skill: 'perception', actionText: 'Прислушиваюсь у двери, есть ли кто-то внутри' })
+  assert.ok(!listened.some((command) => /царапина|почерк/u.test(command.fact?.summary ?? '')), 'прислушаться — не обыск')
+})

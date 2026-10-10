@@ -131,9 +131,22 @@ export function gmSecretFact(secret, { subjectId, salt, index, sourceCommandId =
 // «Осматриваюсь», «ищу что-нибудь», «изучаю место» — общий поиск без темы.
 // «Иду по следам», «выслеживаю» — тоже поиск: следопыт с удачным броском
 // Выживания прежде не находил ничего (прогон Асстохана 2026-10-07).
-const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|прислуш\p{L}*|смотр\p{L}*|высматр\p{L}*|наблюда\p{L}*|пригляд\p{L}*|след\p{L}*|выслеж\p{L}*|высле\p{L}*)(?![\p{L}\p{M}])/iu
+// Прислушаться у двери или следить за огнём маяка — не обыск: такая удача
+// открывала тайну места не о том («прислушиваюсь, есть ли кто внутри» давало
+// маршрут баркаса трёхмесячной давности, плейтест 2026-10-10). Им остаётся
+// видимая деталь (`surface_detail`) и тайна по теме самой заявки.
+const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|смотр\p{L}*\s+по\s+сторонам|пригляд\p{L}*|след\p{L}*|выслеж\p{L}*|высле\p{L}*)(?![\p{L}\p{M}])/iu
 
 const SEARCH_SKILLS = new Set(['perception', 'investigation', 'survival'])
+
+const TESTIMONY_VERB = /(?<![\p{L}\p{M}])(?:видел\p{L}*|слышал\p{L}*|знает|знал\p{L}*|помнит|помнил\p{L}*|заметил\p{L}*|рассказ\p{L}*|клянётся|клянется)(?![\p{L}\p{M}])/iu
+
+function testimonyOfHolder(entry) {
+  const holder = String(entry?.meta?.holder ?? '').trim().split(/\s+/u)[0] ?? ''
+  if (holder.length < 3) return false
+  const summary = String(entry?.fact?.summary ?? '')
+  return summary.toLocaleLowerCase('ru').includes(holder.toLocaleLowerCase('ru')) && TESTIMONY_VERB.test(summary)
+}
 const SECRET_STOP_STEMS = new Set(['геро', 'чтоб', 'кото', 'этог', 'свой', 'свои', 'своё', 'этот', 'этой', 'есть', 'было', 'была', 'были', 'него', 'тоже', 'лишь', 'пока', 'кто-', 'когд', 'толь', 'сейч', 'здес', 'очен', 'всех', 'весь', 'вижу', 'смот', 'ищу-'])
 
 /**
@@ -206,8 +219,13 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
   // Общий поиск открывает тайну этого места сперва своим навыком, затем
   // родственным: тайна лагеря ждала Анализа, и удачная Внимательность у
   // обелиска не давала ничего (прогон Асстохана 2026-10-07).
+  // Свидетельство хранителя — «Йорен Келл видел, как…» — знает человек, а не
+  // место: его открывает разговор или поиск по теме, а не общий осмотр. Улика
+  // с хранителем, оставившая след («её почерк на последних строках другой»),
+  // по-прежнему находится руками.
+  const searchable = candidates.filter((entry) => !testimonyOfHolder(entry))
   const general = !topical && !topicalOnly && GENERAL_SEARCH_PATTERN.test(String(actionText ?? ''))
-    ? candidates.find((entry) => entry.here && entry.exact) ?? candidates.find((entry) => entry.here && entry.related) ?? null
+    ? searchable.find((entry) => entry.here && entry.exact) ?? searchable.find((entry) => entry.here && entry.related) ?? null
     : null
   const chosen = topical ?? general
   if (!chosen) return null
