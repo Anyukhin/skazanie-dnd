@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { CRITICAL_NARRATION_TIMEOUT_MS, CriticalNarrationCoordinator, criticalMomentFor } from '../server/creative-director.mjs'
+import { CRITICAL_NARRATION_TIMEOUT_MS, CriticalNarrationCoordinator, criticalMomentFor, heroFlourishFor } from '../server/creative-director.mjs'
 
 const state = {
   scene: { title: 'Зал', location: 'Крепость', mood: 'Гулкий камень', objective: 'Выстоять' },
@@ -79,4 +79,25 @@ test('без живого текста модели критический мо�
   assert.equal((await director.renderCriticalMoment({ events, state })).narration, result.narration, 'тот же момент — та же строка')
   const live = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Гоблин падает в мокрую траву.', provider: 'RouterAI' }) } })
   assert.equal((await live.renderCriticalMoment({ events, state })).narration, 'Гоблин падает в мокрую траву.')
+})
+
+test('слова игрока к ходу в бою зовут рассказчика одной репликой о поступке; без слов — нет', async () => {
+  // Замеры 2026-10-10: «Борин рычит «За Илу!» и рубит с плеча» ложилось
+  // отдельной репликой, а следом — сухая строка боя; судья: «не учтены слова
+  // игрока, бой — лента бросков».
+  const state = { players: [{ id: 'borin', character: 'Борин' }], enemies: [{ id: 'gob', name: 'Гоблин 1' }], mechanics: { combat: { active: true } } }
+  const events = [{ event_id: 'hit-1', event_type: 'AttackResolved', actor_id: 'borin', target_ids: ['gob'], payload: { hit: true } }]
+  assert.equal(heroFlourishFor(events, state, { playerNote: '', actorId: 'borin' }), null, 'без слов — строка боя')
+  assert.equal(heroFlourishFor(events, { ...state, mechanics: { combat: { active: false } } }, { playerNote: 'За Илу!', actorId: 'borin' }), null, 'вне боя — свой путь')
+  assert.equal(heroFlourishFor(events, state, { playerNote: 'За Илу!', actorId: 'mirel' }), null, 'слова — к своему поступку')
+  assert.equal(heroFlourishFor(events, state, { playerNote: 'Борин рычит «За Илу!» и рубит с плеча', actorId: 'borin' })?.kind, 'hero_flourish')
+
+  const briefs = []
+  const live = new CriticalNarrationCoordinator({ narrator: { render: async (brief) => { briefs.push(brief); return { narration: '«За Илу!» — клинок Борина обрушивается на гоблина.', provider: 'RouterAI' } } } })
+  const told = await live.renderCriticalMoment({ events, state, playerNote: 'Борин рычит «За Илу!» и рубит с плеча', actorId: 'borin' })
+  assert.equal(told.trigger.kind, 'hero_flourish')
+  assert.match(told.narration, /За Илу/u)
+  assert.equal(briefs[0].known_environment.player_intent.action, 'Борин рычит «За Илу!» и рубит с плеча')
+  const silent = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Борин атакует Гоблина 1.', provider: 'deterministic-fallback' }) } })
+  assert.equal((await silent.renderCriticalMoment({ events, state, playerNote: 'За Илу!', actorId: 'borin' })).narration, '', 'без живого текста — без дубля строки боя')
 })

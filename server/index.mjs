@@ -56,7 +56,7 @@ import { sceneSummaryFor } from './scene-summary.mjs'
 import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from './campaign-recap.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream, CampaignStreamOutbox, campaignStreamFrameKey } from './narration-stream.mjs'
-import { CriticalNarrationCoordinator, criticalMomentFor } from './creative-director.mjs'
+import { CriticalNarrationCoordinator, criticalMomentFor, heroFlourishFor } from './creative-director.mjs'
 import { LoreVoice } from './lore-voice.mjs'
 import { combatJournalVoice, tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
 import { NpcMoraleAgent } from './npc-controller.mjs'
@@ -5718,7 +5718,12 @@ async function handleHttpRequest(req, res) {
       // Ход, который вызовет реплику рассказчика (падение или гибель героя,
       // поверженный враг, бегство, сдача), узнаётся по тем же событиям, что и
       // сама реплика, — до того как её ждать.
-      const criticalTrigger = committedState ? criticalMomentFor(result.mechanics ?? [], committedState) : null
+      // Слова игрока к ходу в бою тоже зовут рассказчика — одной-двумя фразами
+      // о поступке (`heroFlourishFor`); без слов ход идёт строкой боя.
+      const playerNote = committedState ? playerNoteFrom(body) : ''
+      const criticalTrigger = committedState
+        ? criticalMomentFor(result.mechanics ?? [], committedState) ?? heroFlourishFor(result.mechanics ?? [], committedState, { playerNote, actorId: actor })
+        : null
       const tactical = committedState
         ? tacticalNarrationParts(result.mechanics, committedState, { npcTurns: result.npc_turns })
         : { main: '', sky: '' }
@@ -5729,7 +5734,6 @@ async function handleHttpRequest(req, res) {
       // Слова игрока к действию — его собственная реплика летописи перед
       // строкой хода, как в `/api/narrate`. В строку результата они не
       // вклеиваются: промах не должен читаться попаданием.
-      const playerNote = committedState ? playerNoteFrom(body) : ''
       const noteEntry = playerNote ? {
         id: playerMessageId(`${idempotencyKey}:note`),
         text: playerNote,
@@ -5771,6 +5775,8 @@ async function handleHttpRequest(req, res) {
             state: committedState,
             viewer: { playerId: actor, partyIds: campaignHeroIds(user, commandMatch[1]), isPartyMember: true, role: user.role },
             recentNarrations: recentNarratorTexts(getRoom(commandMatch[1]).state),
+            playerNote,
+            actorId: actor,
           })
           narratorText = [creativeMoment?.narration, tactical.sky].filter(Boolean).join(' ')
           // Летопись пишется отдельным шагом и всегда — как в `/api/narrate`:

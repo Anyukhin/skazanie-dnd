@@ -81,6 +81,22 @@ export function criticalMomentLine(trigger, events = []) {
   return lines[index].replace('{name}', name)
 }
 
+/** Поступки героя, к которым игрок может приложить слова: удар, выстрел, заклинание, манёвр. */
+const HERO_DEED_EVENTS = new Set(['AttackResolved', 'SpellCast', 'SpellSavingThrowResolved', 'DamageApplied', 'CombatActionUsed', 'ShoveResolved', 'GrappleResolved'])
+
+/**
+ * Слова игрока к своему ходу в бою («Борин рычит «За Илу!» и рубит с плеча»)
+ * — повод для одной-двух фраз ведущего о самом поступке. Без слов бой идёт
+ * прежним темпом, строкой боя: модель не встаёт в каждый ход (AGENTS.md §6).
+ */
+export function heroFlourishFor(events = [], state = {}, { playerNote = '', actorId = '' } = {}) {
+  const note = String(playerNote ?? '').trim()
+  const hero = String(actorId ?? '')
+  if (!note || !hero || !state?.mechanics?.combat?.active) return null
+  if (!(events ?? []).some((event) => String(event?.actor_id ?? '') === hero && HERO_DEED_EVENTS.has(String(event?.event_type ?? '')))) return null
+  return { kind: 'hero_flourish', actor_id: hero, target_id: hero, target_name: actorName(state, hero), note: note.slice(0, 400) }
+}
+
 function publicEnvironment(state, trigger) {
   const scene = state.scene ?? {}
   return {
@@ -115,8 +131,8 @@ export class CriticalNarrationCoordinator {
    * проверка повторов у рассказчика не видела ничего, и одна и та же
    * фраза-заполнитель звучала дважды за бой (плейтест 2026-10-10).
    */
-  async renderCriticalMoment({ events = [], state = {}, viewer = {}, recentNarrations = [] } = {}) {
-    const trigger = criticalMomentFor(events, state)
+  async renderCriticalMoment({ events = [], state = {}, viewer = {}, recentNarrations = [], playerNote = '', actorId = '' } = {}) {
+    const trigger = criticalMomentFor(events, state) ?? heroFlourishFor(events, state, { playerNote, actorId })
     if (!trigger) return null
     const brief = buildNarrationBrief({
       visible_events: events,
@@ -128,7 +144,12 @@ export class CriticalNarrationCoordinator {
         source_rule_ids: event.source_rule_ids ?? [],
         visibility: event.visibility ?? 'public',
       })),
-      known_environment: publicEnvironment(state, trigger),
+      known_environment: {
+        ...publicEnvironment(state, trigger),
+        // Слова игрока — его заявка к этому ходу: рассказчик вплетает их, а не
+        // повторяет; эхо срезается так же, как у свободного действия.
+        ...(trigger.note ? { player_intent: { action: trigger.note } } : {}),
+      },
       permitted_npc_reactions: trigger.kind === 'enemy_fled' || trigger.kind === 'enemy_surrendered'
         ? [{ actor_id: trigger.target_id, reaction: trigger.kind }]
         : [],
@@ -143,10 +164,16 @@ export class CriticalNarrationCoordinator {
         ? 'Один выразительный абзац о падении героя без сознания. Герой ещё не объявлен мёртвым: не описывай смерть, предсмертные слова, похороны или окончательный исход. Не добавляй новых бросков, урона, наград или решений правил.'
         : trigger.kind === 'hero_died'
           ? 'Один выразительный абзац об окончательной смерти героя. Можно дать короткое прощание, но не воскрешай героя и не продолжай историю за него. Не добавляй новых бросков, урона, наград или решений правил.'
-          : 'Один выразительный абзац о переломном моменте. Не добавляй новых бросков, урона, наград или решений правил.',
+          : trigger.kind === 'hero_flourish'
+            ? 'Одна-две фразы о поступке героя: как прозвучали его слова (коротко, можно цитатой) и как выглядел удар или заклинание по событиям. Исход — попадание, промах, урон — только из событий; не добавляй бросков, урона, наград и решений правил.'
+            : 'Один выразительный абзац о переломном моменте. Не добавляй новых бросков, урона, наград или решений правил.',
     })
     // Живой текст не пришёл — короткая реплика о моменте, а не повтор строки боя.
-    const fallback = /^deterministic/u.test(String(narration?.provider ?? '')) ? criticalMomentLine(trigger, events) : ''
+    // У слов героя запасной реплики нет: строка боя и его собственная реплика
+    // уже в летописи.
+    const deterministic = /^deterministic/u.test(String(narration?.provider ?? ''))
+    if (deterministic && trigger.kind === 'hero_flourish') return { ...narration, narration: '', trigger }
+    const fallback = deterministic ? criticalMomentLine(trigger, events) : ''
     return { ...narration, ...(fallback ? { narration: fallback } : {}), trigger }
   }
 }

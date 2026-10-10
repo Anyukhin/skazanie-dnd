@@ -191,11 +191,14 @@ async function room(account = accounts[0]) {
 }
 const heroOf = (state, actorId) => state.players.find((player) => player.id === actorId)
 let commandSeq = 0
-async function command(actorId, commandValue, label = commandValue.command_type, account = accountFor(actorId)) {
+// Слова героя к команде доски — отдельным полем `player_note`, как шлёт клиент
+// после потока D: внутри `message` они до летописи не доходили, и судья писал
+// «не учтены слова игрока» (замеры 2026-10-10).
+async function command(actorId, commandValue, label = commandValue.command_type, account = accountFor(actorId), note = '') {
   const key = `gm-${commandValue.command_type}-${++commandSeq}`
   return request(`/api/campaigns/${CODE}/commands`, {
     method: 'POST', account, key,
-    body: { idempotency_key: key, message: label, command: { actor_id: actorId, ...commandValue } },
+    body: { idempotency_key: key, message: label, ...(note ? { player_note: note } : {}), command: { actor_id: actorId, ...commandValue } },
   })
 }
 
@@ -478,7 +481,7 @@ async function fight() {
       if (state.tacticalTurn?.actionUsed) { await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход'); continue }
     }
     if (actorId === 'hero-slot-1') {
-      await command(actorId, { command_type: 'CastSpell', spell_id: 'fire-bolt', target_id: target.id }, `Огненный снаряд. ${line}`)
+      await command(actorId, { command_type: 'CastSpell', spell_id: 'fire-bolt', target_id: target.id }, 'Огненный снаряд', accountFor(actorId), line)
     } else {
       const distance = Math.max(Math.abs(target.x - hero.x), Math.abs(target.y - hero.y))
       if (distance > 1) {
@@ -486,7 +489,7 @@ async function fight() {
         for (const cell of near) { const moved = await command(actorId, { command_type: 'MoveActor', to: cell }, 'Подойти'); if (moved.status === 200) break }
       }
       const weapon = (hero.inventory ?? []).find((item) => item.equipped && /меч|топор|молот/iu.test(String(item.name)))
-      await command(actorId, { command_type: 'MakeAttack', target_id: target.id, ...(weapon ? { item_id: weapon.id } : {}) }, `Атаковать выбранную цель. ${line}`)
+      await command(actorId, { command_type: 'MakeAttack', target_id: target.id, ...(weapon ? { item_id: weapon.id } : {}) }, 'Атаковать выбранную цель', accountFor(actorId), line)
     }
     const after = await room()
     if (after.mechanics?.combat?.active && after.tacticalTurn?.actorId === actorId) await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход')
