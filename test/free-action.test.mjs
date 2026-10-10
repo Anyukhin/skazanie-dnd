@@ -1120,3 +1120,16 @@ test('вне боя герой сам подходит к телу и назыв
   const at = (await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero
   assert.ok(Math.max(Math.abs(at.x - 5), Math.abs(at.y - 1)) <= 1, JSON.stringify(at))
 })
+
+test('вход с репликой в кавычках и «входит первым» без «внутрь» — тот же вход', async () => {
+  // Замер 16 (2026-10-11), живые игроки: «толкает дверь маяка плечом и входит
+  // первым. «За мной»» — проверка прохода отбрасывала любую заявку с
+  // кавычками, и удачный бросок кончался «прохода туда отсюда нет».
+  const initial = passageCampaign('closed')
+  const { orchestrator, eventStore } = await setup(initial)
+  const result = await orchestrator.handle(actionInput('Ада толкает дверь монастыря плечом и входит первым. «За мной, не отставать».', 'free-passage-speech', initial))
+  assert.equal(result.free_action_outcome, 'check_success', result.narration)
+  assert.ok(result.mechanics.some((event) => event.event_type === 'DoorStateChanged'))
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
+  assert.equal(freeActionPassagePlan(passageCampaign('open'), 'hero', 'Говорю: «Я протискиваюсь внутрь монастыря»').status, 'not_applicable', 'сама речь о входе — не вход')
+})

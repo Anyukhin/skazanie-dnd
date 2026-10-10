@@ -1015,8 +1015,14 @@ function speechToPartyOrAir(message, state, playerId, explicitNpcId = '') {
  */
 export function speechAddressee(message, state, playerId) {
   const text = String(message ?? '')
-  const quote = /[«"“]([^«»"“”]{2,800})[»"”]/u.exec(text)
-  if (!quote) return null
+  // Сотворение заклинания со словами — заклинание, а не разговор: название в
+  // кавычках («Безмолвный образ») принималось за реплику (замер 16).
+  if (SPELLCASTING_PATTERN.test(text)) return null
+  // Реплика — кавычка со знаком препинания, иначе последняя: название места в
+  // кавычках («Ржавый якорь») не должно заслонять слова героя после него.
+  const quotes = [...text.matchAll(/[«"“]([^«»"“”]{1,800})[»"”]/gu)]
+  if (!quotes.length) return null
+  const quote = quotes.find((match) => /[.!?…,:;—]/u.test(match[1])) ?? quotes.at(-1)
   const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
   const people = [
     ...(state?.social?.npcs ?? []).filter((npc) => npc?.available !== false
@@ -1041,6 +1047,8 @@ export function speechAddressee(message, state, playerId) {
   const last = named.at(-1)
   return last ? { kind: last.kind, id: last.id } : null
 }
+
+const SPELLCASTING_PATTERN = /(?<![\p{L}\p{M}])(?:заклинани\p{L}*|сотвор\p{L}*|колду\p{L}*|чару\p{L}*|читаю\s+«|творю\s+«)/iu
 
 /** Передача вещи с репликой остаётся передачей: «отдаю Лине верёвку: «Держи»». */
 const SPEECH_HANDOVER_PATTERN = /(?<![\p{L}\p{M}])(?:переда|отда|вруча|протягива)\p{L}*/iu

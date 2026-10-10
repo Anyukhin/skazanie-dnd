@@ -1429,6 +1429,11 @@ function resolveLootContainerSearch(state, hero, text, reading) {
     if (all) return all
   }
   const chosen = nearestLootContainer(state, hero, pool)
+  // Два тела под ногами поровну — ведущий описывает оба, а не переспрашивает
+  // «что именно обыскивает герой» (замер 16: «обыскивает кобольдов» дважды
+  // получило уточнение).
+  const together = chosen ? null : lootContainersAnswer(state, hero, pool)
+  if (together) return together
   if (!chosen) {
     return {
       status: 'clarification',
@@ -1708,6 +1713,8 @@ export function freeActionGoalIsPassage(goal = '') {
 // «Заходит внутрь», «захожу в маяк» — тот же вход: без этих форм толчок двери
 // плечом и шаг внутрь отвечал «сцена не изменилась» (плейтест 2026-10-10).
 const INWARD_PASSAGE_PATTERN = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|входит|входим|входят|захож\p{L}*|заход(?:ит|им|ят)|зайд\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,100}(?:внутр\p{L}*|(?<![\p{L}\p{M}])(?:в|во)\s+(?:монастыр\p{L}*|здани\p{L}*|храм\p{L}*|башн\p{L}*|крепост\p{L}*|замк\p{L}*|дом\p{L}*|маяк\p{L}*))(?![\p{L}\p{M}])/iu
+// «Толкает дверь маяка плечом и входит первым» — вход и без слова «внутрь».
+const DOOR_PUSH_ENTRY_PATTERN = /(?<![\p{L}\p{M}])двер\p{L}*[^.!?]{0,80}(?<![\p{L}\p{M}])(?:входит|входим|входят|вхожу|захожу|заходит|заходим|заходят|войду|войдёт|войдем|войдём)(?![\p{L}\p{M}])/iu
 const PASSAGE_MAX_STEPS = 6
 const BUILDING_DESTINATION_STEMS = Object.freeze(['монастыр', 'здани', 'храм', 'башн', 'крепост', 'замк', 'дом', 'маяк'])
 const PASSAGE_ALTERNATE_ROUTE_PATTERN = /(?:через|сквозь)\s+(?:окн\p{L}*|щел\p{L}*|стен\p{L}*|пролом\p{L}*|про[её]м\p{L}*|люк\p{L}*|реш[её]тк\p{L}*|ворот\p{L}*)/iu
@@ -1763,9 +1770,14 @@ function pathCrossesInwardDoor(map, outside, from, path) {
   return ''
 }
 
-function inwardPassageAction(value) {
+function inwardPassageAction(raw) {
+  // Слова героя в кавычках — не сам вход, но и не запрет на него: «толкает
+  // дверь плечом и входит первым. «За мной»» прежде отбрасывалось целиком, и
+  // удачный бросок кончался «прохода туда отсюда нет» (замер 16, 2026-10-11).
+  // Вопрос и кавычки без хода остаются вне прохода, как прежде.
+  const value = String(raw ?? '').replace(/[«"“„][^«»"“”„]*[»"”]/gu, ' ')
   if (/[«»"“”„?]/u.test(value)) return false
-  if (!INWARD_PASSAGE_PATTERN.test(value)) return false
+  if (!INWARD_PASSAGE_PATTERN.test(value) && !DOOR_PUSH_ENTRY_PATTERN.test(value)) return false
   if (/(?:можно\s+ли|могу\s+ли|если|что\s+если)/iu.test(value)) return false
   const verb = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|входит|входим|входят|захож\p{L}*|заход(?:ит|им|ят)|зайд\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])/iu
   return !/(?<![\p{L}\p{M}])не\s+/iu.test(value.slice(0, Math.max(0, value.search(verb))))

@@ -1027,12 +1027,14 @@ test('два тела: под ногами — то, о котором речь;
   assert.equal(named.loot_container_id, far.id)
   assert.match(named.narration, /подойдите вплотную/u)
 
-  // Оба тела под ногами — выбирает игрок, а не алфавит.
+  // Оба тела под ногами поровну — ведущий называет оба, а не выбирает по
+  // алфавиту и не переспрашивает (замер 16); что взять, игрок решит в панели.
   const crowded = campaign({ combat: false, enemies: [bandit('foe-1', { x: 2, y: 1 }), bandit('foe-2', { x: 2, y: 3 })] })
   const tie = kill(kill(crowded, 'foe-1').state, 'foe-2')
   const ambiguous = searchAloud(tie.state, 'hero', 'Обыскиваю тело')
   assert.equal(ambiguous.loot_container_id, undefined)
-  assert.match(ambiguous.narration, /Уточните/u)
+  assert.doesNotMatch(ambiguous.narration, /Уточните/u)
+  assert.equal(ambiguous.loot_container_ids?.length, 2)
   assert.ok(ambiguous.narration.includes('Разбойник 1') && ambiguous.narration.includes('Разбойник 2'))
 })
 

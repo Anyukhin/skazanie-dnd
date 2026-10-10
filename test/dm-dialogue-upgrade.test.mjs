@@ -382,3 +382,13 @@ test('прямая речь живого игрока: человеку рядо
   assert.deepEqual(speechAddressee('Борин подходит к Мирель и кивает: «Не уйдёшь одна».', state, 'borin'), { kind: 'hero', id: 'mirel' })
   assert.equal(speechAddressee('Мирель кричит «Пожар!» на весь двор', state, 'mirel'), null)
 })
+
+test('заклинание со словами в кавычках — заклинание, а не разговор', async () => {
+  // Замер 16: «сотворяет «Безмолвный образ»… «Прошу простить…»» уходило в
+  // разговор с NPC, и иллюзия так и не появлялась.
+  const { speechAddressee } = await import('../server/game-orchestrator.mjs')
+  const state = { scene: { location: 'Т' }, players: [{ id: 'm', character: 'Мирель' }], social: { npcs: [{ id: 'mara', name: 'Мара Вейл', location: 'Т' }] } }
+  assert.equal(speechAddressee('Мирель сотворяет «Безмолвный образ» и следит за Марой Вейл. «Прошу простить»', state, 'm'), null)
+  assert.equal(speechAddressee('Читаю «Безмолвный образ»: иллюзия Илы, слежу за Марой', state, 'm'), null)
+  assert.deepEqual(speechAddressee('Иду в «Ржавый якорь» и говорю Маре: «Скажите честно, вы её знали?»', state, 'm'), { kind: 'npc', id: 'mara' })
+})
