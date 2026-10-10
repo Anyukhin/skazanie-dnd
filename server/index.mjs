@@ -195,6 +195,7 @@ import { CombatLabError, CombatLabRuns } from './combat-lab.mjs'
 import { createCombatLabRoutes } from './routes/combat-lab-routes.mjs'
 import { createMapImportRoutes } from './routes/map-import-routes.mjs'
 import { MapLibrary, setActiveMapLibrary } from './map-library.mjs'
+import { HeroHookWeaver } from './hero-hooks.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const dist = join(root, 'dist')
@@ -2758,6 +2759,63 @@ onRoomSaved((campaignId, room) => {
     broadcastCampaignRoom(campaignId, room)
     combatTurnCoordinator.nudge(campaignId)
     nudgeWorldClocks(campaignId)
+  })
+})
+
+// ── Зацепки из предысторий героев (`server/hero-hooks.mjs`) ─────────────────
+//
+// Стадия `hero-hooks` координатора после коммита: когда у героя собран лист,
+// а зацепок из его предыстории в мире ещё нет, модель предлагает их, сервер
+// проверяет и пишет командами памяти мира через общий исполнитель (ключ
+// `hero-hooks:<hero_id>`). Вход — сохранение комнаты, как у мировых часов:
+// так плетение догоняет и героев, собранных до этой правки. Без ключа модели
+// список ждущих пуст и ничего не происходит; ошибка модели или коммита запрос
+// игрока не задевает — стадия упадёт в лог и повторится позже.
+const heroHookWeaver = new HeroHookWeaver({ llmClient: apiKey ? llmClient : null })
+const heroHookJobs = new Set()
+
+async function weaveHeroHooksFor({ campaignId }) {
+  const loaded = await eventStore.load(campaignId)
+  const state = normalizeCampaignState(loaded.state)
+  const woven = await heroHookWeaver.weave({ state, campaignId })
+  const committedHeroIds = []
+  for (const plan of woven.plans) {
+    const committed = await authoritativeExecutor.executeCommands({
+      campaignId,
+      idempotencyKey: plan.idempotency_key,
+      commands: plan.commands,
+      context: { isDirector: true },
+    })
+    committedHeroIds.push(plan.hero_id)
+    if (!committed.replayed) persistAuthoritativeProjection(campaignId, committed.state, committed.events ?? [])
+  }
+  // Кому не сплелось, а попытки ещё есть — стадия не засчитывается и
+  // повторится при сохранении комнаты после паузы (`HERO_HOOK_RETRY_MS`).
+  const retryable = woven.hero_ids.filter((heroId) => !committedHeroIds.includes(heroId) && heroHookWeaver.attemptsLeft(campaignId, heroId))
+  if (retryable.length) throw new Error(`HERO_HOOKS_NOT_WOVEN: ${woven.error ?? 'empty'}`)
+  return { hero_ids: woven.hero_ids, committed_hero_ids: committedHeroIds, provider: woven.provider }
+}
+
+Object.assign(postCommitCoordinator.deps, {
+  heroesNeedingHooks: (state, campaignId) => heroHookWeaver.pendingHeroIds(state, campaignId),
+  weaveHeroHooks: (context) => weaveHeroHooksFor(context),
+})
+
+onRoomSaved((campaignId, room) => {
+  const normalized = String(campaignId || '').toUpperCase()
+  if (!heroHookWeaver.llmClient || !normalized || !room?.state || heroHookJobs.has(normalized)) return
+  if (!heroHookWeaver.pendingHeroIds(room.state, normalized).length) return
+  heroHookJobs.add(normalized)
+  queueMicrotask(() => {
+    void postCommitCoordinator.run({
+      campaignId: normalized,
+      state: room.state,
+      events: [],
+      commitKey: `hero-hooks:${normalized}`,
+      stages: ['hero-hooks'],
+    })
+      .catch((error) => console.error(`[Сказание] Зацепки героев ${normalized} не вплетены:`, error?.message || error))
+      .finally(() => heroHookJobs.delete(normalized))
   })
 })
 

@@ -14,6 +14,7 @@ import { truceHolds } from './parley.mjs'
  *   → quest consequences
  *   → combat continuation
  *   → encounter completion
+ *   → hero hooks
  *   → world/director trigger
  *   → visible projection
  *   → narration
@@ -111,6 +112,22 @@ export const STAGES = Object.freeze([
       return encounterId ? `encounter-completion:${encounterId}:transition` : null
     },
     run: (context) => context.deps.completeEncounter?.(context),
+  }),
+  Object.freeze({
+    name: 'hero-hooks',
+    keyKind: 'once',
+    // Зацепки из предысторий (`server/hero-hooks.mjs`): плетутся, когда у героя
+    // собран лист, а зацепок ещё нет. Кто ждёт плетения, решает зависимость
+    // (`heroesNeedingHooks`): без модели список пуст, и стадия не начинается.
+    // Ключ — набор ждущих героев; durable-идемпотентность — ключ коммита
+    // `hero-hooks:<hero_id>` в Event Store. Вне боя: плетение не спешит.
+    applies: (context) => !context.state?.mechanics?.combat?.active
+      && (context.deps.heroesNeedingHooks?.(context.state, context.campaignId) ?? []).length > 0,
+    key: (context) => {
+      const heroIds = [...(context.deps.heroesNeedingHooks?.(context.state, context.campaignId) ?? [])].map(String).sort()
+      return heroIds.length ? `hero-hooks:${heroIds.join(',')}` : null
+    },
+    run: (context) => context.deps.weaveHeroHooks?.(context),
   }),
   Object.freeze({
     name: 'director-trigger',

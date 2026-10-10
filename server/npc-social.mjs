@@ -576,6 +576,186 @@ export function npcProfileForViewerAt(profile, viewer = {}) {
   }
 }
 
+// ── Граница знания NPC ──────────────────────────────────────────────────────
+//
+// Плейтест 2026-10-10 («Серый Причал»): хозяин таверны за стойкой дословно
+// пересказал находку отряда на пирсе. Причина — каждый факт отряда (`party`)
+// считался известным каждому NPC: удачный поиск пишется фактом `discovery`, и
+// запасной ответ зачитывал его вслух. Теперь NPC знает только:
+// - своё — id из `known_fact_ids` (так стартовые NPC получают пролог и тайны);
+// - публичное (`public`) — то, что знает весь мир;
+// - факты отряда, которые он видел сам: факт привязан к месту (подлежащее —
+//   сущность-локация), NPC стоял там в минуту записи, и отряд был там же;
+//   факт без места считается не увиденным;
+// - заготовки ведущего (`gm_secret`), где он назван хранителем, а у заготовки
+//   места без хранителя — одного жителя этого места, выбранного сервером
+//   (`implicitSecretHolderIds`): иначе после первой сцены тайну новой области
+//   не мог выдать в разговоре никто.
+
+/** Тайны авторского сценария раздаёт сам сценарий (`holders`), сервер их не переназначает. */
+const SCENARIO_SECRET_PREFIX = 'fact:secret:scenario:'
+
+const placeKey = (value) => clean(value, 180).toLocaleLowerCase('ru').replaceAll('ё', 'е')
+
+function knowledgeStems(value) {
+  return new Set((clean(value, 2_000).toLocaleLowerCase('ru').replaceAll('ё', 'е').match(/\p{L}{5,}/gu) ?? [])
+    .map((word) => word.slice(0, 5)))
+}
+
+/** Детерминированный разрыв ничьей без криптографии: FNV-1a. */
+function stableOrder(value) {
+  let hash = 0x811c9dc5
+  for (const char of String(value)) {
+    hash ^= char.codePointAt(0) ?? 0
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash
+}
+
+/**
+ * Поля заготовки ведущего из JSON `object`: тема, хранитель и герой, к
+ * предыстории которого она привязана (`server/hero-hooks.mjs`).
+ *
+ * @returns {{ topic: string, holder: string, hero_id: string }}
+ */
+export function npcSecretMeta(fact = {}) {
+  try {
+    const parsed = JSON.parse(String(fact?.object ?? ''))
+    return { topic: clean(parsed?.topic, 200), holder: clean(parsed?.holder, 120), hero_id: clean(parsed?.hero_id, 120) }
+  } catch {
+    return { topic: '', holder: '', hero_id: '' }
+  }
+}
+
+function locationEntitiesById(state = {}) {
+  return new Map((state.worldMemory?.entities ?? [])
+    .filter((entity) => entity?.kind === 'location' && entity.id && entity.name)
+    .map((entity) => [String(entity.id), entity]))
+}
+
+/**
+ * Где стоял отряд, когда записан каждый факт. Память фактов идёт в порядке
+ * событий: старт — место пролога, каждое прибытие (`party_arrived`) переносит
+ * отряд. Пустая строка — место неизвестно (кампания без пролога и переходов).
+ */
+function partyPlaceByFact(state = {}, locations = locationEntitiesById(state)) {
+  const places = new Map()
+  let current = ''
+  for (const fact of state.worldMemory?.facts ?? []) {
+    const subject = locations.get(String(fact?.subject_id ?? ''))
+    if (fact?.predicate === 'party_arrived' && subject) current = placeKey(subject.name)
+    else if (!current && fact?.predicate === 'opening_narration' && subject) current = placeKey(subject.name)
+    places.set(String(fact?.id ?? ''), current)
+  }
+  return places
+}
+
+function npcWitnessedFact(profile, fact, locations, partyPlaces) {
+  const subject = locations.get(String(fact?.subject_id ?? ''))
+  if (!subject) return false
+  const place = placeKey(subject.name)
+  const partyPlace = partyPlaces.get(String(fact?.id ?? '')) ?? ''
+  if (partyPlace && partyPlace !== place) return false
+  const minutes = Number(fact?.recorded_at_minutes)
+  const then = npcProfileAtWorldTime(profile, Number.isSafeInteger(minutes) ? Math.max(0, minutes) : 0)
+  if (then.location_id && then.location_id === String(subject.id)) return true
+  return Boolean(then.location) && placeKey(then.location) === place
+}
+
+/**
+ * Хранитель заготовки места, у которой автор хранителя не назвал: житель этого
+ * места, чья роль ближе всего к теме тайны; ничья решается стабильным хешем.
+ * Вывод из состояния, а не событие: replay его не хранит и не расходится.
+ *
+ * @returns {Map<string, string>} id факта → id NPC
+ */
+export function implicitSecretHolderIds(state = {}, social = ensureNpcSocialState(state.social, state)) {
+  const locations = locationEntitiesById(state)
+  const explicitlyKnown = new Set(social.npcs.flatMap((npc) => npc.known_fact_ids ?? []))
+  const holders = new Map()
+  for (const fact of state.worldMemory?.facts ?? []) {
+    if (fact?.predicate !== 'gm_secret' || fact.status === 'superseded') continue
+    const factId = String(fact.id ?? '')
+    if (!factId || factId.startsWith(SCENARIO_SECRET_PREFIX) || explicitlyKnown.has(factId)) continue
+    if (npcSecretMeta(fact).holder) continue
+    const subject = locations.get(String(fact.subject_id ?? ''))
+    if (!subject) continue
+    const place = placeKey(subject.name)
+    const topic = knowledgeStems(`${npcSecretMeta(fact).topic} ${fact.summary ?? ''}`)
+    const best = social.npcs
+      .filter((npc) => npc.visibility !== 'gm_only' && npc.available !== false
+        && ((npc.location_id && npc.location_id === String(subject.id)) || (npc.location && placeKey(npc.location) === place)))
+      .map((npc) => ({
+        npc,
+        score: [...knowledgeStems(`${npc.role} ${npc.public_summary}`)].filter((stem) => topic.has(stem)).length,
+        order: stableOrder(`${factId}\u0000${npc.id}`),
+      }))
+      .sort((left, right) => right.score - left.score || left.order - right.order)[0]
+    if (best) holders.set(factId, best.npc.id)
+  }
+  return holders
+}
+
+/**
+ * Что NPC может знать и произнести. Статус факта (`active`) проверяет
+ * вызывающий: здесь граница знания, а не актуальность.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ id?: string, name?: string, location?: string, location_id?: string, known_fact_ids?: string[], schedule?: any[] }} profile
+ *   профиль NPC; для ещё не заведённого NPC — черновик с местом и именем
+ * @returns {Set<string>}
+ */
+export function npcKnownFactIds(state = {}, profile = {}) {
+  const social = ensureNpcSocialState(state.social, state)
+  const npcId = clean(profile?.id, 120)
+  const persisted = (npcId && social.npcs.find((npc) => npc.id === npcId)) || safeProfile(profile)
+  const known = new Set([...(persisted.known_fact_ids ?? []), ...strings(profile?.known_fact_ids, 120, Number.MAX_SAFE_INTEGER)])
+  const locations = locationEntitiesById(state)
+  const partyPlaces = partyPlaceByFact(state, locations)
+  const implicit = implicitSecretHolderIds(state, social)
+  const nameKey = placeKey(persisted.name)
+  // Сущность памяти мира, которая и есть этот NPC: факты о нём самом — его.
+  const selfEntityIds = new Set((state.worldMemory?.entities ?? [])
+    .filter((entity) => entity?.kind === 'npc' && (String(entity.id) === persisted.id || (nameKey && placeKey(entity.name) === nameKey)))
+    .map((entity) => String(entity.id)))
+  if (persisted.id) selfEntityIds.add(persisted.id)
+  for (const fact of state.worldMemory?.facts ?? []) {
+    const factId = String(fact?.id ?? '')
+    if (!factId || known.has(factId)) continue
+    if (fact.visibility === 'public') known.add(factId)
+    else if (fact.visibility === 'party') {
+      // Находка, которая заменила известную NPC тайну, — та же правда: хранитель
+      // не забывает её оттого, что отряд докопался сам. Факт о самом NPC — его
+      // собственная история, кроме находки отряда о нём: что отряд его
+      // подозревает, NPC сам не видел.
+      if ((fact.supersedes_fact_id && known.has(String(fact.supersedes_fact_id)))
+        || (selfEntityIds.has(String(fact.subject_id ?? '')) && fact.predicate !== 'discovery')
+        || npcWitnessedFact(persisted, fact, locations, partyPlaces)) known.add(factId)
+    } else if (fact.predicate === 'gm_secret') {
+      const holder = npcSecretMeta(fact).holder
+      if ((holder && nameKey && placeKey(holder) === nameKey) || (npcId && implicit.get(factId) === npcId)) known.add(factId)
+    }
+  }
+  return known
+}
+
+/**
+ * Публичные и увиденные NPC факты отряда — то, что новый житель места знает,
+ * едва появившись (`assembleSocialNpc`). Тайны сюда не входят.
+ *
+ * @returns {string[]}
+ */
+export function npcWitnessedFactIds(state = {}, profile = {}) {
+  const locations = locationEntitiesById(state)
+  const partyPlaces = partyPlaceByFact(state, locations)
+  const draft = safeProfile(profile)
+  return (state.worldMemory?.facts ?? [])
+    .filter((fact) => fact?.status !== 'superseded' && fact?.id)
+    .filter((fact) => fact.visibility === 'public'
+      || (fact.visibility === 'party' && npcWitnessedFact(draft, fact, locations, partyPlaces)))
+    .map((fact) => clean(fact.id, 120))
+}
+
 function strictScheduleInput(value) {
   if (value == null) return []
   if (!Array.isArray(value) || value.length > 64) {
@@ -701,7 +881,10 @@ function normalizeConversationInput(input, state, command, context = {}) {
   if (canonicalCheck && canonicalCheck.npc_id !== npcId) throw new NpcSocialValidationError('The social check belongs to another NPC', 'NPC_SOCIAL_CHECK_MISMATCH')
 
   const stance = STANCES.has(value.stance) ? value.stance : 'neutral'
-  const known = new Set(npc.known_fact_ids)
+  // Раскрыть можно то, что NPC знает (`npcKnownFactIds`: своё, увиденное,
+  // заготовки, где он хранитель), и, как прежде, любой факт, уже известный
+  // отряду: его повтор ничего скрытого не открывает.
+  const known = npcKnownFactIds(state, npc)
   for (const fact of state.worldMemory?.facts ?? []) if (['public', 'party'].includes(fact.visibility)) known.add(String(fact.id))
   const disclosed = strictIdListInput(value.disclosed_fact_ids, 20, 'conversation.disclosed_fact_ids')
   const activeFacts = new Set((state.worldMemory?.facts ?? []).filter((fact) => fact.status === 'active').map((fact) => String(fact.id)))
@@ -1093,7 +1276,7 @@ export function npcConversationNarration(events = [], state = {}) {
     narration: checkSummary + conversation.npc_reply,
     ...(npcName ? { journal_author: npcName } : {}),
     provider: 'NpcSocialController',
-    prompt_version: 'npc_controller/social-v7',
+    prompt_version: 'npc_controller/social-v8',
     verification: { valid: true, violations: [] },
   }
 }

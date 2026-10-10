@@ -561,7 +561,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
   // bounded-intent контракт, что и прежний v1.
   const prompts = [
     ['npc_controller/v1', 'npc_controller/v1'],
-    ['npc_controller/social_v7', 'npc_controller/social-v7'],
+    ['npc_controller/social_v8', 'npc_controller/social-v8'],
     ['narrator/v13', 'narrator/v13'],
     ['director/v4_story', 'director/v4_story'],
     ['director/v4_chaos', 'director/v4_chaos'],
@@ -569,6 +569,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
     ['campaign_creator/v8', 'campaign_creator/v8'],
     ['map_architect/v8', 'map_architect/v8'],
     ['recap/v1', 'recap/v1'],
+    ['hero_hooks/v1', 'hero_hooks/v1'],
   ]
   for (const [fileId, promptId] of prompts) {
     const prompt = await readFile(new URL(`../prompts/${fileId}.txt`, import.meta.url), 'utf8')
@@ -594,9 +595,10 @@ test('контрактным списком покрыта каждая роль
       loaded.set(`${match[1]}/${match[2]}`, file)
     }
   }
-  // Девять загружаемых промптов на восемь ролей: у Режиссёра свой файл на
-  // каждый режим импровизации.
-  assert.equal(loaded.size, 9, `ожидались ровно девять загружаемых промптов, найдено ${loaded.size}`)
+  // Десять загружаемых промптов на девять ролей: у Режиссёра свой файл на
+  // каждый режим импровизации. Десятый — зацепки из предысторий героев
+  // (`hero_hooks/v1`, 2026-10-10).
+  assert.equal(loaded.size, 10, `ожидались ровно десять загружаемых промптов, найдено ${loaded.size}`)
 
   const knownGaps = new Set([])
   // Список ролей больше не дублируется здесь: он дважды расходился с кодом при

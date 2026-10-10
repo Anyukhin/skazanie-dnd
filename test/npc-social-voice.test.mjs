@@ -62,7 +62,7 @@ test('бриф NPC-диалога несёт сцену, цели NPC и пам�
   assert.ok(result)
   assert.equal(requests.length, 1)
 
-  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v7/)
+  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v8/)
   assert.equal(result.prompt_version, NPC_SOCIAL_PROMPT_VERSION)
   const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
 
@@ -128,7 +128,15 @@ test('бриф NPC не раскрывает specific_player разговор д
   assert.ok(brief.recent_conversation.some((entry) => entry.player_message === 'МОЙ СКРЫТЫЙ ВОПРОС'))
   assert.ok(brief.recent_party_conversation.some((entry) => entry.player_message === 'Что слышно у ворот?'))
   assert.doesNotMatch(JSON.stringify(brief), /ЧУЖОЙ СКРЫТЫЙ ВОПРОС|ЧУЖОЙ СКРЫТЫЙ ОТВЕТ/u)
-  assert.equal(result.conversation.visibility, 'specific_player', 'ответ, использующий личную историю героя, не становится общепартийным')
+  // Плейтест 2026-10-10: личной реплика становится по тому, что в ней
+  // прозвучало, а не потому, что личная беседа вообще была. «Слушаю.» ничего
+  // личного не несёт и видна отряду.
+  assert.equal(result.conversation.visibility, 'party', 'реплика без личного не прячется от отряда')
+
+  const echoing = await new NpcSocialController({
+    llmClient: { completeJson: async () => ({ reply: 'Помню наш скрытый ответ, мой друг.', stance: 'neutral' }) },
+  }).respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Что ты помнишь?', turnId: 'voice-private-echo' })
+  assert.equal(echoing.conversation.visibility, 'specific_player', 'ответ, повторяющий личную беседу героя, не становится общепартийным')
 })
 
 test('два NPC одной сцены получают разные server-owned речевые профили', async () => {
