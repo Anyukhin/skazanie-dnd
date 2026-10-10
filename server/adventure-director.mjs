@@ -501,8 +501,15 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
   }
   if (matched) {
     const exteriorCue = /снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей)/iu
+    // Пришли по дороге (`entrySide` — сторона прежнего места на карте мира) —
+    // значит, стоят снаружи, у входа: «добирается до маяка» ставило отряд в
+    // парадный зал, и «толкаю дверь, вхожу» получало «Борин и так уже внутри»
+    // (плейтест 2026-10-10). Сцена, где отряд уже в помещении («в зале», «за
+    // столом»), начинается внутри, как прежде.
+    const interiorCue = /(?<![\p{L}\p{M}])(?:внутри|в зале|в залу|за стол\p{L}*|у стойк\p{L}*|у очага|в помещени\p{L}*|входит|входят|заходит|заходят)(?![\p{L}\p{M}])/iu
     const startsOutside = exteriorCue.test(`${location} ${theme}`)
       || /(?:отряд|герои|путники|вы)[^.!?]{0,50}(?:снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей))/iu.test(description)
+      || (Boolean(entrySide) && !interiorCue.test(description))
     const check = mapCheckFor(matched, plan)
     /** @type {{ built: ReturnType<typeof buildThemedScene>, report: ReturnType<typeof programReport> }|null} */
     let best = null

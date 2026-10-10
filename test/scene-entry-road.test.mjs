@@ -104,3 +104,24 @@ test('при возвращении с другой стороны знаком�
   assert.ok(back.entrance.x >= map.width - 2, `вход у восточного края: ${back.entrance.x},${back.entrance.y} на ${map.width}×${map.height}`)
   assert.equal(cellAt(map, back.entrance.x, back.entrance.y)?.passable, true)
 })
+
+test('к постройке по дороге отряд приходит снаружи, у входа, а не в парадный зал', () => {
+  // Плейтест 2026-10-10: «добирается до маяка на скале» ставило отряд в зал, и
+  // «толкаю дверь маяка, вхожу» получало «Борин и так уже внутри».
+  const world = {
+    seed: 'lighthouse-entry', currentLocationId: 'port',
+    locations: [
+      { id: 'port', name: 'Серый Причал', kind: 'village', x: 400, y: 300, known: true, visited: true },
+      { id: 'lighthouse', name: 'Заброшенный маяк', kind: 'landmark', x: 700, y: 300, known: true },
+    ],
+  }
+  const state = { sessionCode: 'LH-ENTRY', worldMap: structuredClone(world), scene: { title: 'Серый Причал', location: 'Серый Причал', location_id: 'port', turn: 1 }, adventure: { chapter: 1, history: [], visitedLocations: ['Серый Причал'] } }
+  const transition = createSceneTransition({
+    title: 'Огонь над гаванью', location: 'Заброшенный маяк', location_id: 'lighthouse', theme: 'маяк', objective: 'Осмотреть маяк',
+    arrival: 'Отряд добирается до маяка на скале.', objective_status: 'unresolved',
+  }, state)
+  const map = deserializeTacticalMap(transition.scene.map)
+  const party = map.spawnPoints.find((point) => point.role === 'party')
+  const zone = map.zones.find((entry) => entry.id === cellAt(map, party.x, party.y)?.zone)
+  assert.notEqual(zone?.kind, 'interior', `отряд стоит в «${zone?.label ?? zone?.id}»`)
+})
