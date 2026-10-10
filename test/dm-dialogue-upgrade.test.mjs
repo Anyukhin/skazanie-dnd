@@ -228,3 +228,26 @@ test('фоновая запись памяти во время разбора н
   const stale = await send('Простукиваю бочки у двери')
   assert.match(String(stale.narration), /Обстановка изменилась/u, 'перемена сцены по-прежнему требует свежего разбора')
 })
+
+test('реплика своему спутнику — сцена для рассказчика, а не «стоит расспросить здешних»', async () => {
+  // Плейтест 2026-10-10: «…говорит Борину: «Ила любила это море. Я не уйду,
+  // пока не узнаю правду»» получало «Мирель старается, но нового это не
+  // приносит. Может, кто-то из здешних знает больше».
+  const { NpcSocialController } = await import('../server/npc-social-controller.mjs')
+  const room = roomWithDoor()
+  room.players.push({ id: 'ally', character: 'Борин', x: 2, y: 1, hp: 12, maxHp: 12, armor: 16, speed: 30, abilities: { str: 16 }, inventory: [] })
+  const briefs = []
+  const narrator = { render: async (brief) => { briefs.push(brief); return { narration: 'Вода у причала тёмная и тихая; ветер уносит слова к маяку.', provider: 'test-llm' } } }
+  const base = await fixture({ state: { ...room, partyMemberIds: ['hero', 'ally'] }, narrator })
+  base.game.npcSocialController = new NpcSocialController()
+  const speech = 'Ада отходит к краю причала и негромко говорит Борину: «Ила любила это море. Я не уйду отсюда, пока не узнаю правду».'
+  const spoken = await base.send(speech)
+  assert.doesNotMatch(String(spoken.narration), /стоит расспросить|нового это не приносит|Назовите собеседника/u)
+  assert.equal(briefs.length, 1, 'на реплику отвечает рассказчик')
+  assert.match(spoken.narration, /ветер уносит слова/u)
+
+  const offline = await fixture({ state: { ...roomWithDoor(), players: room.players, partyMemberIds: ['hero', 'ally'] } })
+  offline.game.npcSocialController = new NpcSocialController()
+  const quiet = await offline.send(speech)
+  assert.match(String(quiet.narration), /«Ила любила это море/u, 'без модели ведущий повторяет сказанное')
+})

@@ -72,6 +72,7 @@ import {
   interpretFreeAction,
   harmlessFreeActionReading,
   mundaneActionOutcome,
+  roleplaySpeechReading,
   assertFreeActionConfirmation,
   previousFailedAttempt,
   resolveCorpseSearch,
@@ -1319,6 +1320,7 @@ export class AutonomousCampaignOrchestrator {
       : null
     if (verifiedRoll) assertFreeActionConfirmation(verifiedRoll.context, text, loaded.state_version)
     const harmlessReading = harmlessFreeActionReading(loaded.state, actorId, text)
+      ?? (intent?.roleplay_speech === true ? roleplaySpeechReading(loaded.state, text) : null)
     const proposedReading = storedReading ?? harmlessReading
       ?? (this.actionAdjudicator
         ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)

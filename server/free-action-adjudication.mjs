@@ -417,6 +417,23 @@ export function harmlessFreeActionReading(state, actorId, text) {
   }, text)
 }
 
+/**
+ * Реплика своему отряду или в пустоту — отыгрыш без механики: ни броска, ни
+ * цены хода, ни «Чего герой хочет добиться» (плейтест 2026-10-10). Отвечает
+ * рассказчик сценой. В бою — `null`: там у слов может быть цена хода.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} text
+ */
+export function roleplaySpeechReading(state, text) {
+  if (state?.mechanics?.combat?.active) return null
+  return normalizeFreeActionReading({
+    goal_summary: clean(text, 200), approach_summary: clean(text, 200),
+    plausibility: 'trivial', risk: 'none', effect: 'none', action_cost: 'free',
+    ability: 'cha', skill: 'performance', required_means: [], source: 'deterministic-trivial',
+  }, text)
+}
+
 export function interpretFreeAction(text = '') {
   const value = clean(text, 1_000)
   const match = APPROACH_PATTERNS.find((pattern) => pattern.test.test(value)) ?? null

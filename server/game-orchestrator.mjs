@@ -1192,8 +1192,15 @@ function freeActionCopyNote({ freeAction, message, events }) {
  * задумку и уже записанные события, поэтому не может закрыть дверь, нанести
  * урон или объявить навык, которого нет в commit.
  */
-function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false }) {
-  if (!unconfirmedPassage && unconfirmedFreeActionDisclosure({ freeAction, message, events })) {
+function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false, roleplaySpeech = false }) {
+  // Слова своему отряду — это и есть сцена: «узнаю правду» в реплике не
+  // просьба о сведениях, и «стоит расспросить здешних» звучало глухотой
+  // (плейтест 2026-10-10). Без модели ведущий хотя бы повторяет сказанное.
+  if (roleplaySpeech && ['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) {
+    const quote = [...String(message ?? '').matchAll(/«([^«»]{3,400})»/gu)].map((match) => match[1].trim()).join(' ')
+    if (quote) return `«${quote.replace(/[.!?…]+$/u, '')}», — негромко звучит над сценой.`
+  }
+  if (!roleplaySpeech && !unconfirmedPassage && unconfirmedFreeActionDisclosure({ freeAction, message, events })) {
     return [freeActionUnchangedSceneNarration({ freeAction, message, events, state }), ...freeActionEffectText(events, state), freeActionTimeText(events)]
       .filter(Boolean).join(' ')
   }
@@ -1788,10 +1795,15 @@ export class GameOrchestrator {
     // Заявка-перемещение без события перемещения получает серверный ответ со
     // штатным путём, а не пересказ модели: модели велено показать, «как герой
     // делает заявленное», и она описала бы вход, которого не было (MAP2-02).
-    const unconfirmedPassage = unconfirmedFreeActionPassage({ freeAction, message, events: publicCommittedEvents, state })
+    // Реплика своему отряду — сцена, а не заявка на проход: «отходит к краю
+    // причала и говорит Борину…» не должно уходить в ответ «прохода нет».
+    const roleplaySpeech = intent?.roleplay_speech === true
+    const unconfirmedPassage = !roleplaySpeech && unconfirmedFreeActionPassage({ freeAction, message, events: publicCommittedEvents, state })
     const narrateCommittedImprovisation = !freeAction.duplicate
       && !unconfirmedPassage
-      && freeAction.reading?.source !== 'deterministic-trivial'
+      // Безобидный жест без модели не стоит вызова рассказчика, а реплика
+      // своему отряду — стоит: на неё отвечает сцена.
+      && (freeAction.reading?.source !== 'deterministic-trivial' || roleplaySpeech)
       && ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
       && committedEvents.length > 0
       && typeof this.narrator?.render === 'function'
@@ -1823,6 +1835,7 @@ export class GameOrchestrator {
       events: publicCommittedEvents,
       state: narrationState,
       unconfirmedPassage,
+      roleplaySpeech,
     })
     const deterministicProvider = /^deterministic(?:-|$)/u.test(renderedProvider)
     const preferredNarration = deterministicProvider || unconfirmedPassage
@@ -1848,7 +1861,7 @@ export class GameOrchestrator {
     // Текст модели не прошёл guard — сначала свой запасной текст и честный
     // ответ «сцена прежняя», и только потом голое «вышло / не вышло».
     const fallbackNarrations = ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
-      ? [deterministicNarration, freeActionUnchangedSceneNarration({ freeAction, message, events: publicCommittedEvents, state: narrationState })]
+      ? [deterministicNarration, ...(roleplaySpeech ? [] : [freeActionUnchangedSceneNarration({ freeAction, message, events: publicCommittedEvents, state: narrationState })])]
       : []
     const verifiedFallback = fallbackNarrations
       .find((text) => text && text !== preferredNarration && verifyNarration(text, brief, { knownRuleIds: [] }).valid) ?? ''
@@ -2789,7 +2802,7 @@ export class GameOrchestrator {
         // «говорит Борину: «Я не уйду, пока не узнаю правду»» получало
         // служебное «Назовите собеседника» (плейтест 2026-10-10). Такую реплику
         // разбирает арбитр свободного действия как сцену без броска.
-        intent = { ...intent, intent: 'improvised_action', targets: [], missing_information: [], requires_clarification: false }
+        intent = { ...intent, intent: 'improvised_action', roleplay_speech: true, targets: [], missing_information: [], requires_clarification: false }
       } else if (!npcId) {
         intent.requires_clarification = true
         intent.missing_information = ['npc_id']

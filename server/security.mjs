@@ -561,6 +561,22 @@ function playerIntentFromBrief(brief) {
   return intent && typeof intent === 'object' && !Array.isArray(intent) ? intent : {}
 }
 
+/**
+ * Текст рассказа без дословного повтора слов самого игрока в кавычках.
+ * «Ила любила это море. Я не уйду, пока не узнаю правду», — это реплика
+ * героя из заявки, а не новое знание или перемещение от рассказчика
+ * (плейтест 2026-10-10: такой повтор падал как UNCONFIRMED_DISCLOSURE).
+ */
+function withoutEchoedPlayerSpeech(text, brief) {
+  const normalize = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  const said = normalize(playerIntentFromBrief(brief).action)
+  if (!said) return text
+  return text.replace(/«([^«»]{3,600})»/gu, (quote, inner) => {
+    const words = normalize(inner)
+    return words && said.includes(words) ? ' ' : quote
+  })
+}
+
 function hasDirectMovementConstraint(brief) {
   const intent = playerIntentFromBrief(brief)
   const constraints = Array.isArray(intent.constraints) ? intent.constraints : []
@@ -673,11 +689,12 @@ export function verifyNarration(narration, brief, {
   const result = brief?.known_environment?.structured_result ?? brief?.structured_result
   const hasFreeActionContext = Object.keys(playerIntentFromBrief(brief)).length > 0
     || Boolean(result && typeof result === 'object')
-  const movementAssertion = positiveAssertion(MOVEMENT_ASSERTION_PATTERN, text)
-  const socialAssertion = positiveAssertion(SOCIAL_ASSERTION_PATTERN, text)
-    || namedNpcSpeechAssertion(text, brief)
-  const disclosureAssertion = positiveAssertion(DISCLOSURE_ASSERTION_PATTERN, text)
-    || (namedNpcSpeechAssertion(text, brief) && /(?<![а-яё])что(?![а-яё])/iu.test(text))
+  const claimText = withoutEchoedPlayerSpeech(text, brief)
+  const movementAssertion = positiveAssertion(MOVEMENT_ASSERTION_PATTERN, claimText)
+  const socialAssertion = positiveAssertion(SOCIAL_ASSERTION_PATTERN, claimText)
+    || namedNpcSpeechAssertion(claimText, brief)
+  const disclosureAssertion = positiveAssertion(DISCLOSURE_ASSERTION_PATTERN, claimText)
+    || (namedNpcSpeechAssertion(claimText, brief) && /(?<![а-яё])что(?![а-яё])/iu.test(claimText))
   if (hasDirectMovementConstraint(brief) && movementAssertion && !evidence.hasMovement) {
     addViolation(violations, 'PLAYER_CONSTRAINT_VIOLATION', 'Narrator нарушил прямое ограничение игрока на перемещение')
   }
