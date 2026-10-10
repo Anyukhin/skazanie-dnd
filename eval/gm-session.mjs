@@ -611,8 +611,46 @@ async function judgeHolistic(client) {
   const heroes = HEROES.map((hero) => `${hero.name}: ${hero.document.backstory}`).join('\n')
   const body = exchanges.map((exchange) => `### ${exchange.index}. ${exchange.label} (${exchange.scene.location}, ${exchange.scene.time})\nИгрок (${exchange.actor}): ${exchange.action}\n${exchange.replies.map((reply) => `[${reply.author}] ${reply.text}`).join('\n') || '(ответа нет)'}`).join('\n\n')
   const content = `Мир, заказанный игроками: ${WORLD.premise}\nПервая сцена, заказанная игроками: ${WORLD.openingSituation}\nГерои:\n${heroes}\n\nПролог ведущего:\n${prologue}\n\nЗапись партии:\n${body}`
-  const result = await client.complete({ messages: [{ role: 'system', content: HOLISTIC_RUBRIC }, { role: 'user', content }] }, { json: true, model: HOLISTIC_MODEL, maxTokens: 3000, timeoutMs: 180_000 })
-  return { model: HOLISTIC_MODEL, ...(result.json ?? {}), usage: result.usage ?? null }
+  // Строгий JSON-режим у длинного разбора падал LLM_JSON_INVALID: судья
+  // оборачивал ответ в markdown или дописывал пояснение. Здесь ответ читается
+  // терпимо — первый объект в тексте — и при неудаче просится ещё раз.
+  let lastError = null
+  const usage = []
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const result = await client.complete({ messages: [{ role: 'system', content: HOLISTIC_RUBRIC }, { role: 'user', content: attempt ? `${content}\n\nОтветь одним JSON-объектом без markdown и пояснений.` : content }] }, { model: HOLISTIC_MODEL, maxTokens: 3000, timeoutMs: 180_000 })
+      if (result.usage) usage.push(result.usage)
+      const json = lenientJson(String(result.content ?? ''))
+      if (json && Number.isFinite(Number(json.overall))) return { model: HOLISTIC_MODEL, ...json, usage, attempts: attempt + 1 }
+      lastError = new Error('нет JSON с overall')
+    } catch (error) {
+      lastError = error
+    }
+  }
+  return { model: HOLISTIC_MODEL, error: String(lastError?.code ?? lastError?.message ?? lastError).slice(0, 160), usage }
+}
+
+/** Первый JSON-объект в тексте: без markdown-обёртки и хвостовых пояснений. */
+function lenientJson(text) {
+  const source = text.replace(/^\s*```(?:json)?\s*/u, '').replace(/\s*```\s*$/u, '')
+  const start = source.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inString = false
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index]
+    if (inString) {
+      if (char === '\\') index += 1
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') inString = true
+    else if (char === '{') depth += 1
+    else if (char === '}' && --depth === 0) {
+      try { return JSON.parse(source.slice(start, index + 1)) } catch { return null }
+    }
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------

@@ -428,3 +428,17 @@ test('NarrationBrief оркестратора несёт story_context и про
   assert.deepEqual(renderOptions.recentNarrations, ['Недавний рассказ о печати у заставы.'])
   assert.doesNotMatch(JSON.stringify(brief), /СКРЫТЫЙ ЗАМЫСЕЛ|ТАЙНАЯ НИТЬ|СКРЫТОЕ РЕЗЮМЕ|ТАЙНЫЙ НАБЛЮДАТЕЛЬ/u)
 })
+
+test('story context даёт ведущему предысторию, узы и идеалы только героя этого игрока', () => {
+  // Плейтест 2026-10-10: сестра Мирель за весь вечер не прозвучала — у
+  // рассказчика не было предыстории героя вовсе.
+  const state = campaign()
+  state.players[0].backstory = 'Ищет брата, ушедшего с караваном на север.'
+  state.players[0].bonds = 'Брат Тим'
+  state.players[1].backstory = 'Сдал банду, в которой вырос.'
+  const context = narrationStoryContext(state, { playerId: 'hero', partyIds: ['hero', 'rogue'], isPartyMember: true })
+  assert.equal(context.heroes[0].backstory, 'Ищет брата, ушедшего с караваном на север.')
+  assert.equal(context.heroes[0].bonds, 'Брат Тим')
+  assert.equal(context.heroes[1].backstory, undefined, 'чужая предыстория не уходит рассказчику этого игрока')
+  assert.doesNotMatch(JSON.stringify(context), /Сдал банду/u)
+})

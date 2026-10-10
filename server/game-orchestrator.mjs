@@ -42,7 +42,7 @@ import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
-import { agentContextMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
+import { agentContextMetadata, campaignConceptForAgent, heroCardForAgent, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
 import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
@@ -222,12 +222,20 @@ export function narrationStoryContext(state, viewer = {}, events = []) {
       const role = memoryText(actor?.role || actor?.characterClass, 120)
         .replace(/\s*[·—-]?\s*(?:ур(?:овень)?\.?|level)\s*\d+.*$/iu, '')
         .trim()
+      // Предыстория, узы и идеалы — только героя этого игрока, той же
+      // карточкой, что видит собеседник-NPC: ведущему есть на что опереться,
+      // когда сцена касается личной истории (плейтест 2026-10-10: сестра
+      // Мирель за весь вечер не прозвучала ни разу).
+      const card = isViewer ? heroCardForAgent(state, id) : null
       return {
         id,
         name: memoryText(actor?.character || actor?.name, 120),
         is_viewer: isViewer,
         ...(isViewer && role ? { class_name: role } : {}),
         ...(isViewer && actor?.background ? { background: memoryText(actor.background, 160) } : {}),
+        ...(card?.backstory ? { backstory: card.backstory } : {}),
+        ...(card?.bonds ? { bonds: card.bonds } : {}),
+        ...(card?.ideals ? { ideals: card.ideals } : {}),
       }
     })
     .filter((hero) => hero.id && hero.name)
