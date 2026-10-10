@@ -553,6 +553,70 @@ async function fight() {
 }
 
 // ---------------------------------------------------------------------------
+// Живые игроки: реплику на ход пишет модель по цели хода, видя, что только что
+// сказали ведущий и NPC. Прежде сценарий был выучен заранее, игроки не шли по
+// зацепкам ведущего, и судья записывал несвязность стола на счёт ведущего
+// (замеры 10–14). Цель хода держит те же категории (разговор, обыск,
+// заклинание, отыгрыш, переход, дверь), чтобы замер проверял те же пути.
+// `--scripted` возвращает прежние фразы; без модели они же — запасные.
+
+const SCRIPTED = flag('scripted')
+const PLAYER_RULES = `Ты играешь за героя в настольной D&D за живым столом. Ведущий — другой человек; ты только игрок.
+Напиши одну реплику игрока на этот ход: что делает и говорит твой герой сейчас. Одна–две фразы, от третьего лица («Мирель …»), прямая речь — в кавычках «…».
+- Держись характера и предыстории героя.
+- Опирайся на то, что только что сказали ведущий и персонажи: если назвали имя, место, вещь или улику — подхвати их.
+- Не выдумывай фактов о мире, которых не было в ответах ведущего, и не описывай результат — только попытку.
+- Без механики: не пиши про броски, проверки, хиты и числа.
+- Обращайся к персонажам только из списка «рядом».
+- Цель хода обязательна: выполни её.
+Верни JSON {"action": "реплика"}.`
+
+let playerClient = null
+async function playerModel() {
+  if (!LIVE || SCRIPTED) return null
+  if (playerClient) return playerClient
+  await import('dotenv/config')
+  const { RouterAIClient } = await import('../server/llm-client.mjs')
+  const { reasoningProfileFor } = await import('../server/model-style-profiles.mjs')
+  const model = process.env.DND_AI_MODEL || 'openai/gpt-6-luna'
+  playerClient = new RouterAIClient({ model, maxTokens: 300, timeoutMs: 30_000, reasoning: reasoningProfileFor(model) })
+  return playerClient
+}
+
+const playerUsage = { calls: 0, fallbacks: 0 }
+
+/** Последние ходы стола глазами игрока: заявки и ответы ведущего. */
+function tableSoFar(limit = 4) {
+  return exchanges.slice(-limit).map((entry) => {
+    const replies = entry.replies.filter((reply) => !/Система боя/u.test(reply.author)).map((reply) => `[${reply.author}] ${short(reply.text, 500)}`).join('\n')
+    return `${entry.actor}: ${short(entry.action, 300)}\n${replies || '(ответа нет)'}`
+  }).join('\n\n')
+}
+
+async function playerLine(actorId, goal, fallback) {
+  const client = await playerModel()
+  if (!client) return fallback
+  const state = await room()
+  const hero = HEROES.find((entry) => heroOf(state, actorId)?.character === entry.name) ?? HEROES[0]
+  const here = (state.scene_npcs ?? []).filter((npc) => npc.location_id === state.scene?.location_id && npc.alive !== false)
+  const content = [
+    `Твой герой: ${hero.name} (${hero.document.role}). Характер: ${hero.document.traits}. Узы: ${hero.document.bonds}. Предыстория: ${hero.document.backstory}`,
+    `Другой герой отряда: ${HEROES.filter((entry) => entry !== hero).map((entry) => entry.name).join(', ')}.`,
+    `Где вы: ${state.scene?.location ?? ''}. Рядом: ${here.map((npc) => `${npc.name} — ${npc.role}`).join('; ') || 'никого'}.`,
+    `Что было за столом:\n${tableSoFar() || '(начало игры)'}`,
+    `Цель хода: ${goal}`,
+  ].join('\n\n')
+  playerUsage.calls += 1
+  try {
+    const result = await client.complete({ messages: [{ role: 'system', content: PLAYER_RULES }, { role: 'user', content }], temperature: 0.7 })
+    const action = String(lenientJson(String(result.content ?? ''))?.action ?? '').replace(/\s+/gu, ' ').trim()
+    if (action.length >= 12 && action.length <= 500 && !/(?:брос|провер|хит|СЛ\s*\d)/iu.test(action)) return action
+  } catch { /* запасная фраза ниже */ }
+  playerUsage.fallbacks += 1
+  return fallback
+}
+
+// ---------------------------------------------------------------------------
 // Сценарий партии
 
 async function play() {
@@ -563,30 +627,46 @@ async function play() {
   const npc2 = here[1]?.name ?? here[0]?.name ?? 'хозяин таверны'
   note(`\nСцена: «${state.scene?.title}», ${state.scene?.location}; рядом: ${here.map((npc) => `${npc.name} — ${npc.role}`).join('; ') || 'никого'}`)
 
-  await say(mirel, `${npc1}, чей это баркас? Кто на нём уходил в море? — Мирель помолчала. — Три месяца назад здесь пропала девушка по имени Ила, моя сестра. Вы её знали?`, { label: 'личная зацепка', kind: 'social' })
-  await say(mirel, 'Я выхожу к причалу, подхожу к баркасу и методично осматриваю его: метку владельца на борту, сеть, парус, палубу — ищу следы борьбы, кровь или что-то странное.', { label: 'обыск баркаса', kind: 'explore' })
-  await say(borin, 'Борин присаживается у борта баркаса и хмыкает, вспоминая службу в страже. Потом идёт к бочкам на причале и простукивает их — нет ли тайника.', { label: 'два шага подряд', kind: 'explore' })
-  await say(mirel, `${npc2}, вы сказали, что знаете этот баркас. Чей он? Я кладу на стойку серебряную монету — за честный ответ.`, { label: 'подкуп', kind: 'social' })
-  await say(borin, `Борин тихо говорит ${npc1}: «Я служил в страже, пока капитан не велел мне не замечать ночные лодки у маяка. Кто ходил на этом баркасе? Никто не узнает, что это ты сказала».`, { label: 'своё прошлое', kind: 'social' })
+  await say(mirel, await playerLine(mirel, `Спроси ${npc1} о баркасе — чей он и кто на нём ушёл в море, — и о своей пропавшей сестре Иле.`,
+    `${npc1}, чей это баркас? Кто на нём уходил в море? — Мирель помолчала. — Три месяца назад здесь пропала девушка по имени Ила, моя сестра. Вы её знали?`), { label: 'личная зацепка', kind: 'social' })
+  await say(mirel, await playerLine(mirel, 'Выйди к причалу и обыщи баркас: метку владельца, сеть, палубу — ищи следы того, что случилось с командой. Можно опереться на то, что сказали.',
+    'Я выхожу к причалу, подхожу к баркасу и методично осматриваю его: метку владельца на борту, сеть, парус, палубу — ищу следы борьбы, кровь или что-то странное.'), { label: 'обыск баркаса', kind: 'explore' })
+  await say(borin, await playerLine(borin, 'Вспомни вслух свою службу в страже глядя на баркас, а потом поищи тайник на причале — в бочках, ящиках или под настилом.',
+    'Борин присаживается у борта баркаса и хмыкает, вспоминая службу в страже. Потом идёт к бочкам на причале и простукивает их — нет ли тайника.'), { label: 'два шага подряд', kind: 'explore' })
+  await say(mirel, await playerLine(mirel, `Поговори с ${npc2}: иди по самой полезной зацепке, которую вам дали, и предложи серебряную монету за честный ответ.`,
+    `${npc2}, вы сказали, что знаете этот баркас. Чей он? Я кладу на стойку серебряную монету — за честный ответ.`), { label: 'подкуп', kind: 'social' })
+  await say(borin, await playerLine(borin, `Тихо доверь ${npc1} правду о своей службе — капитан велел тебе не замечать ночные лодки у маяка — и попроси рассказать, кто ходил на этом баркасе; пообещай молчать.`,
+    `Борин тихо говорит ${npc1}: «Я служил в страже, пока капитан не велел мне не замечать ночные лодки у маяка. Кто ходил на этом баркасе? Никто не узнает, что это ты сказала».`), { label: 'своё прошлое', kind: 'social' })
   await say(mirel, 'Что мы уже знаем о хозяине баркаса и пропавшей команде?', { label: 'вопрос ведущему', requestKind: 'question', kind: 'question' })
-  await say(mirel, `Читаю «Безмолвный образ»: на мостках появляется иллюзия Илы — мокрой, в рыбацкой куртке. Слежу за тем, как на неё посмотрит ${npc1}.`, { label: 'творческое заклинание', kind: 'creative' })
-  await say(mirel, 'Мирель отходит к краю причала, смотрит на тёмную воду и негромко говорит Борину: «Ила любила это море. Я не уйду отсюда, пока не узнаю правду».', { label: 'отыгрыш без механики', kind: 'roleplay' })
-  await say(borin, `Борин достаёт флягу, делает глоток и предлагает ${npc2} выпить за тех, кто не вернулся с моря, — а заодно спрашивает, кто в порту в последнее время сорит деньгами.`, { label: 'выпивка и слухи', kind: 'social' })
+  await say(mirel, await playerLine(mirel, `Сотвори заклинание «Безмолвный образ»: иллюзию сестры Илы, и следи, как на неё отреагирует ${npc1} (или тот, кого ты подозреваешь из тех, кто рядом). Название заклинания назови.`,
+    `Читаю «Безмолвный образ»: на мостках появляется иллюзия Илы — мокрой, в рыбацкой куртке. Слежу за тем, как на неё посмотрит ${npc1}.`), { label: 'творческое заклинание', kind: 'creative' })
+  await say(mirel, await playerLine(mirel, 'Отойди к краю причала и негромко скажи Борину что-то личное о сестре и о том, что ты не уйдёшь без правды.',
+    'Мирель отходит к краю причала, смотрит на тёмную воду и негромко говорит Борину: «Ила любила это море. Я не уйду отсюда, пока не узнаю правду».'), { label: 'отыгрыш без механики', kind: 'roleplay' })
+  // Второй игрок отвечает на реплику Мирели — за живым столом её слова не
+  // повисают; прежде судья упрекал ведущего, что «Борин не отвечает».
+  await say(borin, await playerLine(borin, 'Ответь Мирели как её спутник, коротко и в своём характере: поддержи её и скажи, что вы найдёте правду вместе.',
+    'Борин кладёт тяжёлую ладонь Мирели на плечо: «Найдём. Я эти причалы знаю — тут ничего не тонет бесследно».'), { label: 'ответ спутника', kind: 'roleplay' })
+  await say(borin, await playerLine(borin, `Предложи ${npc2} выпить за тех, кто не вернулся с моря, и между делом спроси, кто в порту в последнее время сорит деньгами.`,
+    `Борин достаёт флягу, делает глоток и предлагает ${npc2} выпить за тех, кто не вернулся с моря, — а заодно спрашивает, кто в порту в последнее время сорит деньгами.`), { label: 'выпивка и слухи', kind: 'social' })
 
   const world = (await room()).worldMap
   const lighthouse = (world?.locations ?? []).find((entry) => /маяк/iu.test(String(entry.name)))
-  await say(mirel, lighthouse
+  const toLighthouse = lighthouse
     ? `Хватит разговоров. Мы с Борином идём к ${lighthouse.name.toLocaleLowerCase('ru').startsWith('старый') ? 'старому маяку' : `«${lighthouse.name}»`} на скале.`
-    : 'Хватит разговоров. Мы с Борином идём по берегу к старому маяку на скале.', { label: 'переход к маяку', kind: 'travel' })
+    : 'Хватит разговоров. Мы с Борином идём по берегу к старому маяку на скале.'
+  await say(mirel, await playerLine(mirel, `Реши, что пора идти к маяку${lighthouse ? ` («${lighthouse.name}»)` : ' на скале'}, — объясни одной фразой почему, по тому, что узнали, — и скажи, что вы с Борином идём туда. Название места назови.`, toLighthouse), { label: 'переход к маяку', kind: 'travel' })
   state = await room()
   note(`\nСцена: «${state.scene?.title}», ${state.scene?.location}; зоны карты: ${(state.scene?.map?.zones ?? []).map((zone) => zone.label ?? zone.kind).join(', ')}`)
   // Сначала выжидают снаружи, потом идут к двери. Прежде отряд «ждал темноты»
   // в час ночи и «в укрытии у маяка» сразу после того, как Борин вошёл
   // внутрь, — судья записывал несвязность игроков на счёт ведущего (замеры
   // 10–11). Оценки с замера 12 по ходам 11–13 не сравнимы с прежними.
-  await say(mirel, 'Прячемся за камнями у тропы и какое-то время смотрим на вершину маяка — загорится ли огонь?', { label: 'ночное ожидание', kind: 'roleplay' })
-  await say(mirel, 'Подхожу к двери маяка и прислушиваюсь, есть ли кто-то внутри.', { label: 'у двери', kind: 'explore' })
-  await say(borin, 'Борин толкает дверь маяка плечом и заходит внутрь первым, держа меч наготове.', { label: 'войти внутрь', kind: 'explore' })
+  await say(mirel, await playerLine(mirel, 'Спрячьтесь у тропы и понаблюдайте за вершиной маяка — загорится ли там огонь. Пока не подходите к двери.',
+    'Прячемся за камнями у тропы и какое-то время смотрим на вершину маяка — загорится ли огонь?'), { label: 'ночное ожидание', kind: 'roleplay' })
+  await say(mirel, await playerLine(mirel, 'Подойди к двери маяка и прислушайся, есть ли кто-то внутри.',
+    'Подхожу к двери маяка и прислушиваюсь, есть ли кто-то внутри.'), { label: 'у двери', kind: 'explore' })
+  await say(borin, await playerLine(borin, 'Толкни дверь маяка плечом и войди внутрь первым, с оружием наготове.',
+    'Борин толкает дверь маяка плечом и заходит внутрь первым, держа меч наготове.'), { label: 'войти внутрь', kind: 'explore' })
   await fight()
   await say(mirel, 'продолжим', { label: 'после боя', kind: 'continue' })
   // Обыскивает тот, кто на ногах: лежащая без сознания Мирель получала отказ,
@@ -594,7 +674,8 @@ async function play() {
   state = await room()
   const standing = [mirel, borin].find((id) => Number(heroOf(state, id)?.hp) > 0) ?? mirel
   const searcher = heroOf(state, standing)?.character ?? 'Мирель'
-  await say(standing, `${searcher} обыскивает поверженных: нет ли при них знака культа или чего-то, что связывает их с пропавшими рыбаками?`, { label: 'обыск врагов', kind: 'explore' })
+  await say(standing, await playerLine(standing, 'Обыщи тела поверженных врагов: ищи знак культа или что-то, что связывает их с пропавшими рыбаками.',
+    `${searcher} обыскивает поверженных: нет ли при них знака культа или чего-то, что связывает их с пропавшими рыбаками?`), { label: 'обыск врагов', kind: 'explore' })
 }
 
 // ---------------------------------------------------------------------------
@@ -838,6 +919,8 @@ function writeReport(verdicts, holistic, usage) {
       service_text_share_pct: Math.round(100 * judged.filter((entry) => entry.service_text === true).length / judged.length),
     } : null,
     holistic, usage,
+    // Реплики игроков пишет модель (`playerLine`); запасная фраза — при сбое.
+    players: { scripted: SCRIPTED || !LIVE, ...playerUsage },
   }
   writeFileSync(join(OUT, 'report.json'), JSON.stringify({ summary, exchanges, verdicts, prologue }, null, 2))
   const lines = [
