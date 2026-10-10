@@ -122,7 +122,7 @@ test('хроника называет отброшенным цель, а не �
   const state = fixture()
   const result = shove(state, 'push')
   const text = combatNarration(result.events, after(state, result))
-  assert.match(text, /Противник отброшен на 5 фт/u)
+  assert.match(text, /Противник отлетает на 5 фт/u)
   assert.doesNotMatch(text, /Боец перемещается/u)
 })
 
@@ -133,5 +133,5 @@ test('хроника идёт по порядку: сначала толчок, 
   const types = result.events.map((event) => event.event_type)
   assert.ok(types.indexOf('CombatActionUsed') < types.indexOf('ActorMoved'))
   const text = combatNarration(result.events, after(state, result))
-  assert.ok(text.indexOf('использует «Толчок»') < text.indexOf('отброшен'), text)
+  assert.ok(text.indexOf('использует «Толчок»') < text.indexOf('отлетает'), text)
 })

@@ -56,8 +56,8 @@ import { sceneSummaryFor } from './scene-summary.mjs'
 import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from './campaign-recap.mjs'
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream, CampaignStreamOutbox, campaignStreamFrameKey } from './narration-stream.mjs'
-import { CriticalNarrationCoordinator } from './creative-director.mjs'
-import { tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
+import { CriticalNarrationCoordinator, criticalMomentFor } from './creative-director.mjs'
+import { combatJournalVoice, tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
 import { NpcMoraleAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
@@ -439,12 +439,12 @@ const combatTurnCoordinator = new CombatTurnCoordinator({
     const heroes = new Set(partyHeroIds(state).map(String))
     return actorIds.every((actorId) => heroes.has(String(actorId)) && !assigned.has(String(actorId)))
   },
-  onCommitted: ({ campaignId, state, events }) => {
+  onCommitted: ({ campaignId, state, events, turns = [] }) => {
     // Ходы врагов после пропуска по часам и сам пропуск идут мимо маршрута
     // команды, и в хронику не попадали: живой прогон 2026-10-02 — разбойник
     // снял герою 9 ОЗ, а в ленте не было ни строки. Запись детерминирована по
     // первому событию, повторная проекция её не удваивает.
-    const { main, sky } = tacticalNarrationParts(events, state)
+    const { main, sky } = tacticalNarrationParts(events, state, { npcTurns: turns })
     const text = [main, sky].filter(Boolean).join(' ')
     const anchor = events.find((event) => event?.event_id)?.event_id ?? events[0]?.command_id ?? state?.state_version
     persistAuthoritativeProjection(campaignId, state, events, text && anchor != null ? {
@@ -2043,6 +2043,34 @@ function playerMessageId(idempotencyKey) {
   return `player-${createHash('sha256').update(String(idempotencyKey)).digest('hex').slice(0, 20)}`
 }
 
+/**
+ * Слова игрока к структурной команде («Борин рычит «За стражу Причала!» и бьёт
+ * огра под колено»). Та же обработка, что у реплики `/api/narrate` — обрезка
+ * и предел длины, — плюс управляющие символы; служебная команда (`/why`) не
+ * реплика истории.
+ */
+function playerNoteFrom(body) {
+  const note = String(body?.player_note ?? '').replace(/[\u0000-\u001f\u007f]+/gu, ' ').trim().slice(0, 2_000)
+  return note && !note.startsWith('/') ? note : ''
+}
+
+/** Подпись реплики игрока: его герой, а за призванное существо — хозяин. */
+function playerNoteAuthor(state, commandActor, actorId) {
+  const heroes = Array.isArray(state?.players) ? state.players : []
+  const controllerId = String(commandActor?.controllerId ?? commandActor?.controller_id ?? commandActor?.ownerId ?? commandActor?.owner_id ?? '')
+  const hero = heroes.find((candidate) => String(candidate?.id ?? '') === String(actorId ?? ''))
+    ?? (controllerId ? heroes.find((candidate) => String(candidate?.id ?? '') === controllerId) : null)
+  return String(hero?.character ?? hero?.name ?? commandActor?.name ?? 'Герой').slice(0, 80)
+}
+
+/** Последние реплики рассказчика из летописи — для проверки повторов. */
+function recentNarratorTexts(state, limit = 6) {
+  return (Array.isArray(state?.messages) ? state.messages : [])
+    .filter((message) => message?.speaker === 'narrator' && String(message?.text ?? '').trim())
+    .slice(-limit)
+    .map((message) => String(message.text))
+}
+
 function journalRoll(roll) {
   // Бросок хранится вместе с репликой: иначе после перезагрузки в летописи
   // оставался только текст, а карточка «d20: 11 + 0 → провал» исчезала.
@@ -3288,6 +3316,23 @@ async function settleCombatContinuation(campaignId, { advanceNpc = true } = {}) 
   return run.results?.['combat-continuation'] ?? { turns: [], events: [] }
 }
 
+/**
+ * Записи летописи, которые приносит проекция хода: выведенные из событий
+ * карточки (ход мира, почта, зверь, решение отряда, сюжет, контора) и
+ * переданная маршрутом реплика. Один список и для полной проекции, и для
+ * устаревшей — тогда пишется только летопись.
+ */
+function journalCandidatesFor(events, journalMessage) {
+  const eventsForChronicle = Array.isArray(events) ? events : []
+  // Ступени приручения попадают в летопись тем же путём и по той же причине:
+  // подход к зверю приходит и с доски, и второй фазой ручного броска, а
+  // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
+  // поэтому повторная проекция того же события её не удваивает.
+  return [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questDecisionChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), ...eventsForChronicle.map((event) => officeChronicleEntry(event)), journalMessage]
+    .flat()
+    .filter((candidate) => candidate?.id && String(candidate.text ?? '').trim())
+}
+
 function persistAuthoritativeProjection(campaignId, engineState, events = [], journalMessage = null, { forceProjectorRefresh = false, awaitProjection = false } = {}) {
   const proposedStateVersion = Number(engineState?.state_version ?? -1)
   if (!Number.isSafeInteger(proposedStateVersion)) return null
@@ -3301,7 +3346,16 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     const room = getRoom(campaignId)
     if (!room.state) return null
     const currentStateVersion = Number(room.state.state_version ?? 0)
-    if (proposedStateVersion < currentStateVersion) return room
+    if (proposedStateVersion < currentStateVersion) {
+      // Комнату уже обогнала более свежая проекция, и состояние отсюда не
+      // пишется. Но летопись этого хода — не состояние: раньше она пропадала
+      // вместе с проекцией. Плейтест 2026-10-10 — пока маршрут ждал реплику
+      // рассказчика, координатор сыграл ход огра, и строка атаки по
+      // возможности вместе с репликой о падении героя исчезли из хроники.
+      // Записи ключуются идентификатором, повтор их не удваивает.
+      const appended = appendRoomJournal(campaignId, journalCandidatesFor(events, journalMessage))
+      return appended ?? getRoom(campaignId)
+    }
     if (!forceProjectorRefresh && proposedStateVersion === currentStateVersion && !journalMessage) {
       // Аудит PR #131, SEC-02: равная версия ещё не значит равное содержимое.
       // Раньше этот быстрый путь подтверждал проекцию без сверки и без hash:
@@ -3341,12 +3395,7 @@ function persistAuthoritativeProjection(campaignId, engineState, events = [], jo
     // привал, и сутки под замком, и Режиссёр. Идентификатор записи
     // детерминирован (`chronicle:<письмо>:<вид>`), поэтому повторная проекция
     // того же события её не удваивает.
-    const eventsForChronicle = Array.isArray(events) ? events : []
-    // Ступени приручения попадают в летопись тем же путём и по той же причине:
-    // подход к зверю приходит и с доски, и второй фазой ручного броска, а
-    // идентификатор карточки детерминирован (`chronicle:<зверь>:<ступень>`),
-    // поэтому повторная проекция того же события её не удваивает.
-    for (const candidate of [...eventsForChronicle.map(offscreenChronicleEntry), ...eventsForChronicle.map(courierLetterChronicleEntry), ...eventsForChronicle.map(beastChronicleEntry), ...eventsForChronicle.map(questDecisionChronicleEntry), ...eventsForChronicle.map(campaignStoryChronicleEntry), ...eventsForChronicle.map((event) => officeChronicleEntry(event)), journalMessage].flat()) {
+    for (const candidate of journalCandidatesFor(events, journalMessage)) {
       if (!candidate?.id || !String(candidate.text ?? '').trim()) continue
       if (messages.some((message) => String(message.id) === String(candidate.id))) continue
       messages.push(journalEntry(candidate))
@@ -5289,7 +5338,7 @@ async function handleHttpRequest(req, res) {
         : []
       const mechanics = [...(result.mechanics ?? []), ...subsequentEvents]
         .filter((event, index, all) => all.findIndex((candidate) => String(candidate.event_id ?? `${candidate.state_version_after}:${candidate.event_type}`) === String(event.event_id ?? `${event.state_version_after}:${event.event_type}`)) === index)
-      const narration = tacticalNarrationOr(mechanics, latest.state, result.narration)
+      const narration = tacticalNarrationOr(mechanics, latest.state, result.narration, { npcTurns: scheduler.turns })
       result = { ...result, state_version: latest.state_version, authoritative_state: latest.state, mechanics, npc_turns: scheduler.turns, narration }
       const narrationMessageId = narration ? combatMessageId(idempotencyKey) : null
       const projected = persistAuthoritativeProjection(campaignId, latest.state, mechanics, narrationMessageId ? { id: narrationMessageId, text: narration, turnConsumed: false } : null)
@@ -5401,6 +5450,8 @@ async function handleHttpRequest(req, res) {
     let lootRequestContainerId = ''
     // Аудит PR #131, SEC-04: резерв броска до исхода хода.
     let rollReservation = null
+    // Удержание автохода боя, пока ход идёт к летописи (см. ниже).
+    let releaseCombatHold = null
     try {
       const room = getRoom(commandMatch[1])
       if (!room.state) return json(res, 404, { error: 'Кампания не найдена' })
@@ -5609,6 +5660,14 @@ async function handleHttpRequest(req, res) {
       } else if (body.roll) {
         throw commandPolicyError('Принимается только серверный roll_id', 'UNVERIFIED_ROLL')
       }
+      // Пока ход в бою идёт к летописи — строка хода, затем критическая реплика
+      // рассказчика, — координатор не начинает следующий автоход. Плейтест
+      // 2026-10-10: атака по возможности свалила героя, а реплика о падении
+      // пришла уже после хода огра. Удержание снимается в `finally` и не
+      // длиннее предела координатора.
+      if (authoritativeBefore?.mechanics?.combat?.active || [...types].some((type) => PLAYER_COMBAT_COMMANDS.has(type))) {
+        releaseCombatHold = combatTurnCoordinator.hold(commandMatch[1])
+      }
       let result = await gameOrchestrator.handle({ state: room.state, campaignId: commandMatch[1], playerId: actor, message: String(body.message || 'Структурированная команда'), commands, requestCommands, idempotencyKey, user, allowedActorIds: campaignHeroIds(user, commandMatch[1]), manualRoll, verifiedRoll })
       // Ход исполнен: бросок остаётся потреблённым, как и прежде.
       if (rollReservation) {
@@ -5652,56 +5711,95 @@ async function handleHttpRequest(req, res) {
           npc_turns: scheduler.turns,
         }
       }
-      const creativeMoment = result.authoritative_state
-        ? await creativeDirector.renderCriticalMoment({
-          events: result.mechanics,
-          state: result.authoritative_state,
-          viewer: { playerId: actor, partyIds: campaignHeroIds(user, commandMatch[1]), isPartyMember: true, role: user.role },
-        })
-        : null
-      // Рассказчик критического момента вытесняет боевой лог, но не небо: смена
-      // времени суток дописывается к любому из двух текстов.
-      const tactical = result.authoritative_state
-        ? tacticalNarrationParts(result.mechanics, result.authoritative_state)
+      const committedState = result.authoritative_state
+      // Ход, который вызовет реплику рассказчика (падение или гибель героя,
+      // поверженный враг, бегство, сдача), узнаётся по тем же событиям, что и
+      // сама реплика, — до того как её ждать.
+      const criticalTrigger = committedState ? criticalMomentFor(result.mechanics ?? [], committedState) : null
+      const tactical = committedState
+        ? tacticalNarrationParts(result.mechanics, committedState, { npcTurns: result.npc_turns })
         : { main: '', sky: '' }
-      const narration = [creativeMoment?.narration || tactical.main, tactical.sky].filter(Boolean).join(' ')
-      const narrationMessageId = narration
-        ? combatMessageId(idempotencyKey)
-        : merchantCommands.length && result.narration ? merchantMessageId(idempotencyKey) : null
-      const journalNarration = narration || (merchantCommands.length ? String(result.narration || '') : '')
+      // «Система боя» — только строка боя; осмотр бочки вне боя, кости в
+      // таверне, молитва говорят голосом рассказчика (плейтест 2026-10-10).
+      const voice = combatJournalVoice(result.mechanics, committedState)
+      const narrationKeyId = combatMessageId(idempotencyKey)
+      // Слова игрока к действию — его собственная реплика летописи перед
+      // строкой хода, как в `/api/narrate`. В строку результата они не
+      // вклеиваются: промах не должен читаться попаданием.
+      const playerNote = committedState ? playerNoteFrom(body) : ''
+      const noteEntry = playerNote ? {
+        id: playerMessageId(`${idempotencyKey}:note`),
+        text: playerNote,
+        speaker: 'player',
+        author: playerNoteAuthor(committedState, commandActor, actor),
+      } : null
+      const tacticalText = [tactical.main, tactical.sky].filter(Boolean).join(' ')
+      const merchantText = merchantCommands.length ? String(result.narration || '') : ''
+      // Строка хода ложится в летопись сразу после commit, до ожидания
+      // рассказчика: раньше она ждала его до 8 с и пропадала, если комнату за
+      // это время обгоняла проекция хода врага. Критический момент не стирает
+      // боевой лог: строка с бросками и уроном стоит перед текстом рассказчика
+      // (плейтест 2026-10-03), а небо дописывается к рассказчику.
+      const turnEntry = criticalTrigger
+        ? (tactical.main ? { id: combatMessageId(`${idempotencyKey}:log`), text: tactical.main, turnConsumed: false, ...voice } : null)
+        : tacticalText
+          ? { id: narrationKeyId, text: tacticalText, turnConsumed: types.has('EndTurn'), ...voice }
+          : merchantText ? { id: merchantMessageId(idempotencyKey), text: merchantText, turnConsumed: types.has('EndTurn'), ...voice } : null
+      const firstEntries = [noteEntry, turnEntry].filter(Boolean)
+      const projected = committedState
+        ? persistAuthoritativeProjection(commandMatch[1], committedState, result.mechanics, firstEntries.length ? firstEntries : null, { awaitProjection: true })
+        : null
+      if (projected?.projectionAck) await projected.projectionAck
+      let journaled = null
+      let creativeMoment = null
+      let narratorText = ''
+      if (criticalTrigger) {
+        // Повтор того же ключа отдаёт уже записанную реплику, а не зовёт
+        // рассказчика второй раз: и не платим дважды, и текст ответа совпадает
+        // с летописью.
+        const stored = (getRoom(commandMatch[1]).state?.messages ?? [])
+          .find((message) => String(message.id) === narrationKeyId && message.speaker === 'narrator')
+        if (stored?.text) {
+          creativeMoment = { trigger: criticalTrigger, provider: 'journal-replay' }
+          narratorText = String(stored.text)
+        } else {
+          creativeMoment = await creativeDirector.renderCriticalMoment({
+            events: result.mechanics,
+            state: committedState,
+            viewer: { playerId: actor, partyIds: campaignHeroIds(user, commandMatch[1]), isPartyMember: true, role: user.role },
+            recentNarrations: recentNarratorTexts(getRoom(commandMatch[1]).state),
+          })
+          narratorText = [creativeMoment?.narration, tactical.sky].filter(Boolean).join(' ')
+          // Летопись пишется отдельным шагом и всегда — как в `/api/narrate`:
+          // состояние комнаты за время ожидания могло уйти вперёд.
+          if (narratorText) {
+            journaled = appendRoomJournal(commandMatch[1], [{
+              id: narrationKeyId, text: narratorText, turnConsumed: types.has('EndTurn'), speaker: 'narrator', author: 'Рассказчик',
+            }])
+          }
+        }
+      }
+      // Реплика уже в летописи: координатор может играть следующий ход.
+      releaseCombatHold?.()
+      releaseCombatHold = null
+      const narratorSpoke = Boolean(criticalTrigger && narratorText)
+      const narration = narratorSpoke ? narratorText : String(turnEntry?.text ?? '')
       if (narration) result = {
         ...result,
         narration,
-        narration_message_id: narrationMessageId,
-        narration_speaker: creativeMoment ? 'narrator' : 'system',
-        narration_author: creativeMoment ? 'Рассказчик' : 'Система боя',
+        narration_message_id: narratorSpoke ? narrationKeyId : turnEntry?.id,
+        narration_speaker: narratorSpoke ? 'narrator' : voice.speaker,
+        narration_author: narratorSpoke ? 'Рассказчик' : voice.author,
         creative_trigger: creativeMoment?.trigger ?? null,
         creative_provider: creativeMoment?.provider ?? null,
       }
-      else if (journalNarration) result = { ...result, narration_message_id: narrationMessageId }
-      // Критический момент не стирает боевой лог из хроники: строка с бросками и
-      // уроном ложится перед текстом рассказчика. Иначе свой удар, сваливший
-      // врага, игрок видел без единого числа, а удары врага — с числами
-      // (плейтест 2026-10-03).
-      const combatLog = creativeMoment && tactical.main
-        ? { id: combatMessageId(`${idempotencyKey}:log`), text: tactical.main, turnConsumed: false, speaker: 'system', author: 'Система боя' }
-        : null
-      const projected = result.authoritative_state
-        ? persistAuthoritativeProjection(commandMatch[1], result.authoritative_state, result.mechanics, journalNarration ? [combatLog, {
-          id: narrationMessageId,
-          text: journalNarration,
-          turnConsumed: types.has('EndTurn'),
-          speaker: creativeMoment ? 'narrator' : 'system',
-          author: creativeMoment ? 'Рассказчик' : 'Система боя',
-        }].filter(Boolean) : null, { awaitProjection: true })
-        : null
-      if (projected?.projectionAck) await projected.projectionAck
-      const responseState = projected?.state ?? result.authoritative_state
+      const latestRoom = journaled ?? (criticalTrigger ? getRoom(commandMatch[1]) : null) ?? projected
+      const responseState = latestRoom?.state ?? committedState
       const merchantCommand = commands.find((command) => PLAYER_MERCHANT_COMMANDS.has(commandType(command)))
       const merchantView = merchantCommand && responseState
         ? merchantViewFor(responseState, merchantCommand.merchant_id, merchantCommand.actor_id)
         : undefined
-      const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: projected?.version ?? room.version }
+      const responsePayload = { ...result, authoritative_state: responseState, ...(merchantView ? { merchant_view: merchantView } : {}), room_version: latestRoom?.version ?? room.version }
       return json(res, 200, turnResultForViewer(responsePayload, user, actor))
     } catch (error) {
       await finishFailedRollReservation(rollReservation, error)
@@ -5735,6 +5833,9 @@ async function handleHttpRequest(req, res) {
           state_version: Number(staleRoomState?.state_version ?? 0),
         } : {}),
       })
+    } finally {
+      // Ошибка, карточка проверки или ранний ответ не оставляют бой придержанным.
+      releaseCombatHold?.()
     }
   }
 

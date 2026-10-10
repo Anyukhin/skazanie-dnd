@@ -136,7 +136,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 `map-quality`, `weather`, `offscreen-world`, `loot-containers`, `tavern-life`,
 `courier-letters`, `talespire-slab`, `talespire-import`, `map-library`,
 `thin-walls`, `room-floors`, `detail-props`, `scene-features`, `scene-dressing`,
-`reaction-preferences`, `campaign-scenario`, `scenario-attention`, `scenario-knight` (все — `server/*.mjs`).
+`reaction-preferences`, `campaign-scenario`, `scenario-attention`, `scenario-knight`, `combat-phrases` (все — `server/*.mjs`).
 
 **Маршрутизация ввода:** `server/player-request-router.mjs` объявляет
 `PLAYER_REQUEST_ROLES`. `prompt_id` там — метаданные, а не привязка: его не
@@ -218,6 +218,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | NPC знает только своё, публичное и увиденное им самим; повтор своей реплики вырезается сервером; отказ ведёт к зацепке, а не в тупик | `test/npc-knowledge-leads.test.mjs` |
 | Зацепки из предыстории плетутся один раз на героя путём заготовок ведущего, replay сходится, Режиссёр видит мотивы без текста зацепок | `test/hero-hooks.test.mjs` |
+| Летопись хода не пропадает на устаревшей проекции: слова игрока, строка хода и критическая реплика рассказчика идут по порядку до автохода врага и переживают перезапуск | `test/combat-journal-order-api.test.mjs` |
 | Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
 | Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |
 | В поселении у каждой двери дома есть дорога, на тропе ничего не стоит; отряд входит со стороны, откуда пришёл, а центр сцены стоит на площади | `test/settlement-generator.test.mjs` (`DOOR_OFF_ROAD`, `PATH_BLOCKED`), `test/scene-entry-road.test.mjs` |
