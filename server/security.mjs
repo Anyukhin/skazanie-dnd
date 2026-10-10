@@ -710,7 +710,10 @@ export function verifyNarration(narration, brief, {
   if (positiveOutcomeAssertion(DOOR_OPENING_ASSERTION_PATTERN, text) && !evidence.hasDoorOpening) {
     addViolation(violations, 'WORLD_CHANGE_NOT_IN_BRIEF', 'Рассказчик открыл дверь или сдвинул засов без подтверждённого события')
   }
-  if (hasFreeActionContext && socialAssertion && !hasSocialAuthority && !hasPermittedSocialReaction(brief) && !confirmedFactMentionsSpeech) {
+  // Слова героя своему отряду подтверждает сама заявка: «Мирель тихо говорит
+  // Борину…» — это и есть поступок. Реплика NPC по-прежнему требует события.
+  const heroSpeechOnly = playerIntentFromBrief(brief).roleplay_speech === true && !namedNpcSpeechAssertion(claimText, brief)
+  if (hasFreeActionContext && socialAssertion && !heroSpeechOnly && !hasSocialAuthority && !hasPermittedSocialReaction(brief) && !confirmedFactMentionsSpeech) {
     addViolation(violations, 'UNCONFIRMED_SOCIAL_ACTION', 'Narrator объявил разговор или реплику NPC без подтверждённого события')
   }
   if (hasFreeActionContext && disclosureAssertion && !evidence.hasDisclosure) {

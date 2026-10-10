@@ -254,3 +254,28 @@ test('этап 7 плана карт: Рассказчик не описывае
   assert.equal(verifyNarratorCraft('Под общим навесом шепчутся жители.', noProgram, base).violations.some((violation) => violation.code === 'ABSENT_LANDMARK_MENTIONED'), false,
     'без программы сцены прежнее поведение')
 })
+
+test('реплика своему спутнику: тот же глагол с другой приставкой и слова героя не отбраковывают живой текст', async () => {
+  // Плейтест 2026-10-10: игрок «отходит к краю причала и говорит Борину…», а
+  // текст «Мирель подходит к краю…» падал как HERO_AGENCY_NOT_IN_BRIEF и
+  // «тихо говорит Борину» — как UNCONFIRMED_SOCIAL_ACTION; игрок получал
+  // запасной повтор своей реплики.
+  const roleplay = buildNarrationBrief({
+    visible_events: [
+      { event_type: 'ActionDeclared', actor_id: 'hero', payload: { action: 'отходит к краю причала и говорит Борину' }, visibility: 'party' },
+      { event_type: 'RulingRecorded', actor_id: 'hero', payload: { ruling: { outcome: 'success', question: 'Мирель говорит Борину' } }, visibility: 'party' },
+    ],
+    visible_state_changes: [],
+    known_environment: {
+      location: 'Причал',
+      player_intent: { action: 'Мирель отходит к краю причала и негромко говорит Борину: «Ила любила это море».', goal: 'Поделиться с Борином', outcome: 'auto_success', roleplay_speech: true },
+      story_context: { heroes: [{ id: 'hero', name: 'Мирель', is_viewer: true }, { id: 'ally', name: 'Борин', is_viewer: false }] },
+    },
+    permitted_npc_reactions: [],
+  })
+  const text = 'Мирель подходит к самому краю причала; внизу тёмная вода лижет сваи. Она тихо говорит Борину, что Ила любила это море, и ветер уносит слова к маяку.'
+  const llm = new FakeLLM([{ content: JSON.stringify({ narration: text, suggestions: [] }) }])
+  const result = await new Narrator({ llmClient: llm }).render(roleplay, { knownRuleIds: [] })
+  assert.equal(result.provider === 'deterministic-fallback', false, JSON.stringify(result.verification?.repaired_from ?? result.verification))
+  assert.match(result.narration, /тёмная вода/u)
+})

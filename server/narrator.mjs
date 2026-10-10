@@ -875,11 +875,23 @@ function confirmedHeroDeedGesture(sentence, brief) {
   const checked = events.some((event) => ['AbilityCheckResolved'].includes(event?.event_type)) || succeeded
   const action = String((brief?.known_environment?.player_intent ?? brief?.player_intent ?? {})?.action ?? '')
   if (!checked || !action) return false
-  const declared = new Set(action.toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/[^\p{L}]+/u)
-    .filter((word) => word.length >= 5).map((word) => word.slice(0, 5)))
+  const words = action.toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/[^\p{L}]+/u).filter((word) => word.length >= 5)
+  const declared = new Set(words.map((word) => word.slice(0, 5)))
+  // Тот же глагол с другой приставкой — тот же поступок: игрок «отходит к
+  // краю причала», рассказчик «подходит к краю» (плейтест 2026-10-10).
+  const declaredRoots = new Set(words.map(verbRoot))
   const agency = new RegExp(`(?:${HERO_AGENCY_VERBS})`, 'iu').exec(sentence)?.[0] ?? ''
-  const stem = agency.toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/\s+/u).pop()?.slice(0, 5) ?? ''
-  return stem.length === 5 && declared.has(stem) && !/(?:бер[её]т|клад[её]т|доста[её]т|переда[её]т)/iu.test(agency)
+  const spoken = agency.toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/\s+/u).pop() ?? ''
+  const stem = spoken.slice(0, 5)
+  return stem.length === 5 && (declared.has(stem) || declaredRoots.has(verbRoot(spoken)))
+    && !/(?:бер[её]т|клад[её]т|доста[её]т|переда[её]т)/iu.test(agency)
+}
+
+/** Корень глагола без приставки, первые четыре буквы: «подходит», «отходит» → «ходи». */
+function verbRoot(word) {
+  const value = String(word ?? '')
+  const prefix = /^(?:пере|разо|раз|рас|под|подо|над|при|про|от|ото|об|обо|вы|за|на|до|по|из|ис|вз|вс|со|во|с|у|в)(?=\p{L}{4,})/u.exec(value)?.[0] ?? ''
+  return value.slice(prefix.length, prefix.length + 4)
 }
 
 function firstNameOf(value) {

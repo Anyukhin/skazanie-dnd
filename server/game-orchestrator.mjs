@@ -1761,6 +1761,7 @@ export class GameOrchestrator {
           goal: String(freeAction.reading?.goal_summary ?? message).slice(0, 500),
           approach: String(freeAction.reading?.approach_summary ?? '').slice(0, 500),
           outcome: freeAction.kind,
+          ...(intent?.roleplay_speech === true ? { roleplay_speech: true } : {}),
         },
         structured_result: { outcome: freeAction.kind, event_types: publicCommittedEvents.map(event => event.event_type) },
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже
