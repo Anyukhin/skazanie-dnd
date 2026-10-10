@@ -1112,7 +1112,9 @@ function freeActionPassageNarration({ freeAction, events, state }) {
 
 // Цель — узнать или договориться: итог такой заявки — показания или реплика,
 // а их подтверждает только событие факта или разговора.
-const FREE_ACTION_KNOWLEDGE_GOAL = /(?<![\p{L}])(?:узна|вызна|разузна|выясн|выспрос|расспрос|спроси|выведа|понять|поясни|объясни|услыш|подслуш|поговор|разговор|договор|убедить(?!ся)|уговор)/iu
+// «Найти метку», «отыскать тайник» — тоже знание: без события находки «Вышло:
+// найти метку» обещало то, чего commit не содержит (плейтест 2026-10-10).
+const FREE_ACTION_KNOWLEDGE_GOAL = /(?<![\p{L}])(?:узна|вызна|разузна|выясн|выспрос|расспрос|спроси|выведа|понять|поясни|объясни|услыш|подслуш|поговор|разговор|договор|убедить(?!ся)|уговор|найти|найд|отыска|отыщ|обнаруж)/iu
 const FREE_ACTION_DISCLOSURE_EVENT = /^(?:WorldFact(?:Recorded|Revealed)|KnowledgeRevealed|Clue\w*|NpcSocial\w*|NpcConversation\w*)$/u
 
 function unconfirmedFreeActionDisclosure({ freeAction, message, events }) {
@@ -1133,13 +1135,15 @@ function freeActionUnchangedSceneNarration({ freeAction, message, events, state 
   const goal = String(freeAction?.reading?.goal_summary || message || '')
   const failed = freeAction?.kind === 'check_failure'
   const route = FREE_ACTION_KNOWLEDGE_GOAL.test(goal)
-    ? 'Чтобы узнать новое, обратитесь к собеседнику по имени — так начинается разговор — или осмотрите место: у этого есть проверка и итог.'
+    ? 'Может, кто-то из здешних знает больше — стоит расспросить.'
     : freeActionGoalIsPassage(goal)
-      ? 'Путь дальше — на карте: дверь и проход — шагами по клеткам, лестница — через её меню, а в другое место отряд переходит через «Решение группы».'
-      : 'Если нужен другой итог, опишите, чего именно герой добивается.'
-  return failed
-    ? `${name}: не вышло, сцена прежняя. ${route}`
-    : `${name}: попытка засчитана, но сцена от неё не изменилась — нового пока ничего. ${route}`
+      ? 'Пройти можно только настоящим проходом — дверью, проёмом или лестницей рядом.'
+      : ''
+  // Голос ведущего, а не протокол: «попытка засчитана, сцена прежняя» и
+  // подсказки по интерфейсу читались как сбой (плейтест 2026-10-10).
+  return (failed
+    ? `${name} пробует, но не выходит. ${route}`
+    : `${name} старается, но нового это не приносит. ${route}`).trim()
 }
 
 /**
@@ -1195,9 +1199,14 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
         ? `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
         : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
+  // Находка и есть ответ ведущего: «Вышло: найти метку. <другая находка>»
+  // объявляло удачу цели, которой commit не подтверждал, и звучало протоколом.
+  const discovered = !failed && events.some((event) => event?.event_type === 'WorldFactRecorded'
+    && event?.payload?.fact?.predicate === 'discovery')
+  if (discovered && effects.length) parts.splice(0, parts.length)
   parts.push(...effects)
   const time = freeActionTimeText(events)
-  if (time) parts.push(time)
+  if (time && !discovered) parts.push(time)
   return parts.join(' ')
 }
 

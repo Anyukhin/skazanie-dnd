@@ -249,7 +249,15 @@ async function say(actorId, action, { label = '', requestKind, kind = 'action' }
   const steps = []
   const started = Date.now()
   let followUps = 0
-  for (let hop = 0; hop < 4; hop += 1) {
+  // «Продолжим» клиент отправляет Режиссёру (`isAdventureContinuation`,
+  // `src/director-continuation.mjs`), а не в /api/narrate.
+  if (/^(?:продолжим|продолжаем)(?:\s+(?:приключение|историю))?$/iu.test(action.trim())) {
+    const key = `gm-advance-${++narrateSeq}`
+    const result = await request(`/api/campaigns/${CODE}/autonomy/advance`, { method: 'POST', account, key, body: { idempotency_key: key, player_action: action, actor_id: actorId } })
+    if (result.status !== 200) note(`> ⚠ продолжение: ${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error ?? result.text, 200)}`)
+    followUps = 99
+  }
+  for (let hop = 0; hop < 4 && followUps < 99; hop += 1) {
     const result = await request('/api/narrate', { method: 'POST', account, body, key: body.idempotency_key })
     if (result.status !== 200) {
       steps.push({ refused: `${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error ?? result.text, 200)}` })

@@ -18,7 +18,7 @@ import { sceneCanonFromEnvironment, sensoryAnchorConflicts } from './scene-canon
 import { ABILITY_LABELS_RU, SKILL_LABELS_RU } from './free-action-adjudication.mjs'
 import { requirementMention } from './scene-requirements.mjs'
 
-export const NARRATOR_PROMPT_VERSION = 'narrator/v13'
+export const NARRATOR_PROMPT_VERSION = 'narrator/v14'
 export const NARRATOR_FEW_SHOT_VERSION = 'narrator-few-shot/v2'
 export const NARRATOR_RECENT_TEXT_LIMIT = 3
 /**
@@ -40,7 +40,7 @@ export const NARRATOR_ARC_RECAP_MEMORY_LIMIT = 128
 export const NARRATOR_STREAM_MAX_BYTES = 12 * 1024
 export const NARRATOR_DEFAULT_TIMEOUT_MS = 12_000
 const NARRATOR_ARC_RECAP_OVERRIDE = Symbol('narrator-arc-recap-override')
-const promptPath = fileURLToPath(new URL('../prompts/narrator/v13.txt', import.meta.url))
+const promptPath = fileURLToPath(new URL('../prompts/narrator/v14.txt', import.meta.url))
 const narratorPrompt = readFileSync(promptPath, 'utf8')
 const fewShotPath = fileURLToPath(new URL('../prompts/narrator/few-shot-v2.json', import.meta.url))
 const fewShotDocument = JSON.parse(readFileSync(fewShotPath, 'utf8'))
@@ -231,7 +231,11 @@ export function narratorResponsePlan(brief) {
   const observation = !injured && events.some(event => event?.event_type === 'AbilityCheckResolved'
     && ['perception', 'investigation'].includes(String(event?.payload?.skill ?? '')))
   const livelyOutcome = (freeOutcome === 'success' && !injured) || observation
-  const thinResult = !livelyOutcome && events.length > 0 && events.every(event => DECLARATION_EVENTS.has(event?.event_type)
+  // Неудача свободного действия — тоже сцена: живой ведущий показывает, что
+  // герой увидел и как сорвалось, а не отвечает «не вышло» одной сухой фразой
+  // (плейтест 2026-10-10: «Проверка «Восприятие» не удалась.»).
+  const failedFreeAction = freeOutcome === 'failure' && !injured
+  const thinResult = !livelyOutcome && !failedFreeAction && events.length > 0 && events.every(event => DECLARATION_EVENTS.has(event?.event_type)
     || ['AbilityCheckResolved', 'DieRolled', 'RollResolved', 'DamageApplied', 'HealingApplied', 'TimeAdvanced'].includes(event?.event_type)
     || (['DoorLockpicked', 'DoorForced'].includes(event?.event_type) && event?.payload?.success !== true)
     || (event?.event_type === 'DoorStateChanged' && event?.payload?.state !== 'open')) && !hasReactions
@@ -259,7 +263,7 @@ export function narratorResponsePlan(brief) {
     include_scene_detail: !thinResult,
     include_memory: !thinResult && !freeOutcome,
     max_questions: 0,
-    soft_sentence_limit: thinResult ? 1 : moment === 'transition' ? 4 : livelyOutcome ? 3 : 2,
+    soft_sentence_limit: thinResult ? 1 : moment === 'transition' ? 4 : livelyOutcome ? 4 : 3,
     stop_after: speechAct,
     delivery: thinResult ? 'after_validation' : 'sentence_buffered',
   }
@@ -500,7 +504,7 @@ function canonAnchorKey(canon) {
   return [canon.time?.phase, canon.time?.clock, canon.weather?.id, canon.indoors].map((value) => String(value ?? '')).join('|')
 }
 
-export function sensoryAnchorsFor(brief) {
+export function sensoryAnchorsFor(brief, { rotation = 0 } = {}) {
   const scene = brief?.known_environment?.scene ?? {}
   const canon = sceneCanonFromEnvironment(brief?.known_environment ?? {})
   const overrides = canonSensoryOverrides(canon)
@@ -514,7 +518,8 @@ export function sensoryAnchorsFor(brief) {
   const sceneKey = sceneText(scene.id || scene.location || scene.title, 240)
   if (!sceneKey) return Object.freeze({})
   // Без канона ключ прежний: те же сцены дают те же якоря, что и до канона.
-  const key = canon ? `${sceneKey}\0${canonAnchorKey(canon)}` : sceneKey
+  const turn = Math.max(0, Math.floor(Number(rotation) || 0))
+  const key = `${canon ? `${sceneKey}\0${canonAnchorKey(canon)}` : sceneKey}\0${turn}`
   const cached = sensoryAnchorCache.get(key)
   if (cached) return cached
   const palette = SENSORY_PALETTES[sensoryPaletteFor(scene)]
@@ -522,7 +527,9 @@ export function sensoryAnchorsFor(brief) {
   const pick = (slot, shift) => {
     if (overrides[slot]) return overrides[slot]
     const options = palette[slot].filter((anchor) => canonCompatible(anchor, canon))
-    return options.length ? options[(seed >>> shift) % options.length] : ''
+    // Поворот по номеру реплики: одна и та же сцена не звучит одним и тем же
+    // «тихим скрипом» из ответа в ответ (плейтест 2026-10-10).
+    return options.length ? options[((seed >>> shift) + turn) % options.length] : ''
   }
   const anchors = Object.freeze(Object.fromEntries([
     ['smell', pick('smell', 0)],
@@ -1418,12 +1425,6 @@ function confirmedHeroDamageAction(sentence, brief, story) {
   return false
 }
 
-function sensoryAnchorIsPresent(narration, sensoryAnchors) {
-  return Object.values(sensoryAnchors ?? {})
-    .filter(Boolean)
-    .some((anchor) => sharedRootCount(narration, anchor) >= 2)
-}
-
 /**
  * Асинхронный по месту вызова verdict качества. Он ничего не переписывает в
  * текущем абзаце: результат хранится в памяти Narrator, попадает в eval и
@@ -1469,13 +1470,6 @@ export function verifyNarratorFeedback(narration, brief, {
       'RECENT_NARRATION_REPETITION',
       `Пересечение 3-грамм с недавним текстом превышает ${Math.round(NARRATOR_RECENT_3GRAM_OVERLAP_MAX * 100)}%`,
       repetition.shared,
-    )
-  }
-  if (responsePlan.include_scene_detail && Object.values(sensoryAnchors ?? {}).filter(Boolean).length >= 3
-    && !sensoryAnchorIsPresent(text, sensoryAnchors)) {
-    add(
-      'SENSORY_ANCHOR_OMITTED',
-      'Повествование не переиспользовало ни один закреплённый сенсорный признак локации',
     )
   }
   const toneAlignment = toneAlignmentVerdict(text, directives.tone)
@@ -2230,7 +2224,7 @@ export class Narrator {
     })
     brief = withArcRecapOverride(brief, arcRecap)
     const responsePlan = narratorResponsePlan(brief)
-    const sensoryAnchors = responsePlan.include_scene_detail ? sensoryAnchorsFor(brief) : {}
+    const sensoryAnchors = responsePlan.include_scene_detail ? sensoryAnchorsFor(brief, { rotation: recent.length }) : {}
     const sceneCanon = sceneCanonFromEnvironment(brief.known_environment ?? {})
     const contentDirectives = narratorContentDirectives(brief)
     const npcDossiers = responsePlan.include_memory ? npcDossiersForNarrator(brief) : []
@@ -2295,6 +2289,7 @@ export class Narrator {
               ...(npcDossiers.length ? { npc_dossiers: npcDossiers } : {}),
               ...(arcRecap ? { previous_arc_recap: arcRecap } : {}),
               ...(avoidCliches.length ? { avoid_repeated_phrases: avoidCliches } : {}),
+              ...(recent.length ? { recent_narrations: recent.slice(-3).map((entry) => sceneText(entry, 500)) } : {}),
               ...(weatherRecentlyMentioned(recent) ? { skip_weather: true } : {}),
               ...(priorFeedback.length ? { previous_narration_feedback: priorFeedback } : {}),
             }),

@@ -930,8 +930,10 @@ test('цель-знание без подтверждённых показани
   const offline = await setup(campaign(), { narrator: new Narrator(), reading })
   const plain = await offline.orchestrator.handle(actionInput(text, 'free-knowledge-offline', campaign()))
   assert.equal(plain.free_action_outcome, 'check_success')
-  assert.match(plain.narration, /^Ада: попытка засчитана, но сцена от неё не изменилась/u)
-  assert.match(plain.narration, /обратитесь к собеседнику по имени/u)
+  // Голос ведущего, а не протокол «попытка засчитана, сцена прежняя».
+  assert.match(plain.narration, /^Ада старается, но нового это не приносит/u)
+  assert.match(plain.narration, /стоит расспросить/u)
+  assert.doesNotMatch(plain.narration, /засчитана|сцена прежняя/u)
   assert.equal(plain.verification.valid, true)
 
   // Черновик модели с репликой стражника без подтверждённого разговора.
@@ -941,7 +943,7 @@ test('цель-знание без подтверждённых показани
   assert.equal(result.free_action_outcome, 'check_success')
   assert.doesNotMatch(result.narration, /^(?:Не )?[Вв]ышло.?$/u)
   assert.doesNotMatch(result.narration, /дракон/u)
-  assert.match(result.narration, /^Ада: попытка засчитана/u)
+  assert.match(result.narration, /^Ада старается/u)
   assert.equal(result.verification.valid, true)
 })
 

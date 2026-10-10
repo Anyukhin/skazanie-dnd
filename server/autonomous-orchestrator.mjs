@@ -1757,6 +1757,7 @@ export class AutonomousCampaignOrchestrator {
       const discovery = !loaded.state.mechanics?.combat?.active && rulingEvent
         ? freeActionDiscoveryCommands(commit.state ?? loaded.state, {
           checkEvent: rulingEvent, skill: reading.skill, actionText: text, goalSummary: reading.goal_summary,
+          successDetail: reading.success_detail ?? '',
         })
         : []
       let discoveryCommit = null
@@ -1964,6 +1965,7 @@ export class AutonomousCampaignOrchestrator {
         actionText: text,
         goalSummary: reading.goal_summary,
         skillLabel: SKILL_LABELS_RU[String(reading.skill ?? '').replace(/_/gu, '-')] ?? '',
+        successDetail: reading.success_detail ?? '',
       }))
     }
     let consequenceCommit = null

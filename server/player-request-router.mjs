@@ -20,7 +20,7 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v13', purpose: 'Финальное повествование из подтверждённых результатов' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v14', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v8', purpose: 'Динамическая архитектура новой локации и игровой карты' },
   action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v10', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })
@@ -125,15 +125,17 @@ export function answerTableQuestion(action, state = {}, { actorId = '', worldClo
   // Имя в именительном падеже: склонять чужие имена сервер не умеет, а «у
   // Клара Вельм» режет слух сильнее, чем перечисление.
   const askWho = informed.length
-    ? ` Знать могут здесь: ${informed.slice(0, 2).map((npc) => `${visibleText(npc.name, 80)} — ${visibleText(npc.role, 80).toLocaleLowerCase('ru')}`).join('; ')}.`
-    : ' Можно осмотреться или расспросить местных.'
+    ? ` Можно посмотреть самим или спросить: ${informed.slice(0, 2).map((npc) => `${visibleText(npc.name, 80)} — ${visibleText(npc.role, 80).toLocaleLowerCase('ru')}`).join('; ')}.`
+    : ' Можно посмотреть самим или поискать того, кто видел.'
   if (presence && subject) {
     const mentioned = npcs.find((npc) => RU_WORD_STEM(subject) && visibleText(`${npc.role} ${npc.name}`, 200).toLocaleLowerCase('ru').replace(/ё/gu, 'е').includes(RU_WORD_STEM(subject)))
     if (mentioned) return reply(`Да: ${visibleText(mentioned.name, 80)} — ${visibleText(mentioned.role, 120).toLocaleLowerCase('ru')}.`, 'visible-scene')
     return reply(`Пока на глаза не попадается.${askWho}`, 'visible-scene')
   }
   if (/\?\s*$/u.test(text) || /^(?:а\s+)?(?:сколько|где|когда|куда|откуда|какой|какая|какое|какие|кто|что|почему|зачем)(?![\p{L}\p{M}])/iu.test(text)) {
-    return reply(`Этого вы пока не знаете.${askWho}`, 'unknown-to-party')
+    // Не «этого вы не знаете, знать могут…» по кругу: ведущий честно говорит,
+    // что ответа ещё не звучало, и называет, где его взять (плейтест 2026-10-10).
+    return reply(`Этого пока никто не сказал и вы сами не видели.${askWho}`, 'unknown-to-party')
   }
   return null
 }
@@ -590,6 +592,20 @@ function heroBackstoryAnswer(action, state = {}, actorId = '') {
   }
 }
 
+/**
+ * Основы слов вопроса для сверки с находками: «хозяин» и «хозяина»,
+ * «баркас» и «баркаса» сходятся по первым пяти буквам.
+ *
+ * @param {unknown} value
+ * @returns {Set<string>}
+ */
+function questionStems(value) {
+  const stop = new Set(['что', 'чего', 'кто', 'как', 'где', 'мы', 'уже', 'знаем', 'знает', 'знаю', 'об', 'обо', 'про', 'этом', 'этот', 'наш', 'нашим', 'было', 'есть'])
+  return new Set((String(value ?? '').normalize('NFKC').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/[\p{L}-]{4,}/gu) ?? [])
+    .filter((word) => !stop.has(word))
+    .map((word) => word.slice(0, 5)))
+}
+
 export function answerKnownLore(action, state = {}, options = {}) {
   const visibleScene = answerVisibleScene(action, state)
   if (visibleScene) return visibleScene
@@ -635,35 +651,63 @@ export function answerKnownLore(action, state = {}, options = {}) {
       action_kind: 'free',
     }
   }
-  // Сначала то, что отряд нашёл сам, затем остальное известное — коротко:
-  // ведущий напоминает суть, а не зачитывает пролог целиком.
-  const found = []
-  const known = []
-  // «Что мы уже знаем?» не называет темы: находки отряда перечисляются все,
-  // даже если поиск по словам вопроса ничего не нашёл.
+  // Ведущий отвечает на вопрос, а не зачитывает всё подряд: сначала находки и
+  // слова собеседников по теме вопроса, затем — если прямого ответа нет — кто
+  // может знать. Плейтест 2026-10-10: «Что мы знаем о хозяине баркаса?» получало
+  // «Ещё известно: <пролог>. Цель: …» — сухой пересказ без ответа.
+  const asked = questionStems(action)
+  const relevance = (value) => asked.size ? [...questionStems(value)].filter((stem) => asked.has(stem)).length : 0
   const discoveries = (visibleMemory?.facts ?? [])
     .filter((fact) => fact?.status !== 'superseded' && ['party', 'public'].includes(String(fact?.visibility)))
     .filter((fact) => fact.predicate === 'discovery')
-  for (const fact of [...discoveries, ...worldFacts]) {
-    const line = asSentence(fact.fact?.summary || fact.summary || fact.object || fact.predicate, 400)
-    if (!line) continue
-    if ((fact.fact?.predicate ?? fact.predicate) === 'discovery') found.push(line)
-    else if ((fact.fact?.predicate ?? fact.predicate) !== 'opening_narration') known.push(line)
-  }
-  const goal = asSentence(scene.objective || questObjective, 240)
-  const history = (Array.isArray(adventure.history) ? adventure.history.slice(-2) : [])
+    .map((fact) => asSentence(fact.summary || fact.object, 400))
+    .filter(Boolean)
+  const knownFacts = worldFacts
+    .filter((fact) => !['discovery', 'opening_narration'].includes(String(fact.fact?.predicate ?? fact.predicate)))
+    .map((fact) => asSentence(fact.fact?.summary || fact.summary || fact.object, 400))
+    .filter(Boolean)
+  const npcNames = new Map((state.social?.npcs ?? []).map((npc) => [String(npc?.id), visibleText(npc?.name, 80)]))
+  const heard = (state.social?.conversations ?? [])
+    .filter((entry) => entry?.visibility === 'party' || entry?.hero_id === (options.viewer?.playerId ?? options.actorId))
+    .map((entry) => ({ who: npcNames.get(String(entry.npc_id)) ?? '', line: visibleText(entry.npc_reply, 240) }))
+    .filter((entry) => entry.who && entry.line)
+  const ranked = (items, score) => items
+    .map((item, index) => ({ item, index, score: score(item) }))
+    .sort((left, right) => right.score - left.score || right.index - left.index)
+  const foundRanked = ranked([...new Set(discoveries)], relevance)
+  const heardRanked = ranked(heard, (entry) => relevance(entry.line))
+  const knownRanked = ranked([...new Set(knownFacts)], relevance)
+  const topical = asked.size > 0
+  const foundLines = (topical && foundRanked.some((entry) => entry.score > 0)
+    ? foundRanked.filter((entry) => entry.score > 0) : foundRanked).slice(0, 3).map((entry) => entry.item)
+  const heardLines = heardRanked.filter((entry) => !topical || entry.score > 0).slice(0, 2)
+    .map((entry) => `${entry.item.who}: «${entry.item.line.replace(/[«»]/gu, '"').replace(/[.!?…]+$/u, '')}».`)
+  // Память мира уже отобрана по словам вопроса (`retrieveKnownWorldMemory`):
+  // её порядок — порядок уместности.
+  const knownLines = knownRanked.filter((entry) => !topical || entry.score > 0).slice(0, 2).map((entry) => entry.item)
+  const history = (Array.isArray(adventure.history) ? adventure.history.slice(-1) : [])
     .map((chapter) => asSentence(chapter?.outcome, 240)).filter(Boolean)
+  const informed = presentSceneNpcs(state).filter((npc) => visibleText(npc.role, 120)).slice(0, 2)
+  const lead = informed.length
+    ? `Прямого ответа пока нет — спросить можно ${informed.map((npc) => `${visibleText(npc.name, 80)} (${visibleText(npc.role, 80).toLocaleLowerCase('ru')})`).join(' или ')}.`
+    : 'Прямого ответа пока нет — стоит осмотреться или поискать того, кто видел.'
+  const answered = foundLines.length || heardLines.length || knownLines.length
   const hook = asSentence(adventure.currentHook, 400)
-  if (hook) known.unshift(hook)
   const parts = [
-    found.length ? `Вы выяснили: ${[...new Set(found)].slice(0, 4).join(' ')}` : '',
-    known.length ? `Ещё известно: ${[...new Set(known)].slice(0, 2).join(' ')}` : '',
-    history.length ? `Прежде: ${history.join(' ')}` : '',
-    goal ? `Цель: ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}` : '',
+    foundLines.length ? `Из того, что вы нашли: ${foundLines.join(' ')}` : '',
+    heardLines.length ? `Вам говорили — ${heardLines.join(' ')}` : '',
+    knownLines.length ? knownLines.join(' ') : '',
+    !answered && hook ? `Известно немногое: ${hook}` : '',
+    !answered && history.length ? `Прежде: ${history.join(' ')}` : '',
+    topical && !foundRanked.some((entry) => entry.score > 0)
+      ? answered || hook ? lead : `Пока ничего подтверждённого об этом не известно. ${lead}`
+      : '',
   ].filter(Boolean)
-  const narration = found.length || known.length || history.length
+  const narration = parts.length
     ? parts.join(' ')
-    : `Пока ничего подтверждённого об этом не известно — только то, что вы видели сами.${goal ?` Цель: ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}` : ''} Осмотритесь или расспросите местных.`
+    : hook
+      ? `Известно немногое: ${hook} ${lead}`
+      : `Пока ничего подтверждённого об этом не известно. ${lead}`
   return {
     narration,
     effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },

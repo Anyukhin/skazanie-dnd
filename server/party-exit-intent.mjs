@@ -419,14 +419,31 @@ export function detectPartyExitRequest(action, options = {}) {
       ...(destinationLocationId ? { destinationLocationId } : {}),
     }
   }
-  const leftPlace = LEAVE_OBJECT.exec(text)?.[1] ?? ''
-  const leaves = LEAVE_TARGET.test(text)
-    || heading.isPlace
-    || (LEAVE_VERB.test(text) && EXIT_SCOPE.test(text))
-    || BARE_LEAVE.test(text)
+  // Прямая речь героя и отрицание — не заявка на уход: «говорит Борину: «Я не
+  // уйду отсюда, пока не узнаю правду»» открывало голосование «Покинуть
+  // таверну?» (плейтест 2026-10-10).
+  const acted = withoutDirectSpeech(text).replace(new RegExp(NEGATED_MOVEMENT.source, 'giu'), ' ')
+  const actedHeading = acted === text ? heading : destinationIn(acted, context)
+  const leftPlace = LEAVE_OBJECT.exec(acted)?.[1] ?? ''
+  const leaves = LEAVE_TARGET.test(acted)
+    || actedHeading.isPlace
+    || (LEAVE_VERB.test(acted) && EXIT_SCOPE.test(acted))
+    || BARE_LEAVE.test(acted)
     || namesKnownPlace(leftPlace, context.knownPlaces)
   if (!leaves) return null
-  return { destination: heading.destination, source: 'text' }
+  return { destination: actedHeading.destination, source: 'text' }
+}
+
+/**
+ * Текст заявки без прямой речи: реплика после двоеточия или тире в кавычках
+ * и длинная кавычка-фраза — это слова героя, а не его движение. Короткие
+ * кавычки остаются: так в заявке пишут названия мест («Ржавый якорь»).
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function withoutDirectSpeech(text) {
+  return String(text ?? '').replace(/[:—–]\s*«[^«»]*[.!?,][^«»]*»/gu, ' ')
 }
 
 /**

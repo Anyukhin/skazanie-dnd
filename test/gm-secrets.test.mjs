@@ -166,3 +166,35 @@ test('общий поиск родственным навыком открыва
   // Навык вне поиска (Атлетика) по-прежнему ничего не открывает.
   assert.deepEqual(freeActionDiscoveryCommands(onlyJournal, { checkEvent: check('athletics'), skill: 'athletics', actionText: 'Осматриваюсь' }), [])
 })
+
+test('удачный поиск отвечает на заданный вопрос, а не открывает соседнюю тайну по одному общему слову', async () => {
+  // Плейтест 2026-10-10: «ищу метку владельца на корме» сходилось с чужим
+  // секретом по одной основе и открывало его вместо ответа; метку так и не
+  // назвали. Деталь, названная арбитром до броска, становится находкой.
+  const state = await campaign()
+  const detail = 'На корме выжжена чайка с перебитым крылом — так метят лодки семьи Ворониных.'
+  const commands = freeActionDiscoveryCommands(state, {
+    checkEvent: check('investigation', 'detail-check'), skill: 'investigation',
+    actionText: 'Осматриваю корму баркаса и ищу метку владельца', successDetail: detail,
+  })
+  const summaries = commands.map((command) => command.fact.summary)
+  assert.ok(summaries.includes(detail), 'ответ на вопрос записан находкой')
+  const recorded = commit(state, commands)
+  assert.ok(worldMemoryForViewer(recorded.worldMemory, { isPartyMember: true }).facts.some((fact) => fact.summary === detail))
+  // Повтор того же хода не записывает деталь второй раз.
+  const again = freeActionDiscoveryCommands(recorded, {
+    checkEvent: check('investigation', 'detail-check-2'), skill: 'investigation',
+    actionText: 'Осматриваю корму баркаса и ищу метку владельца', successDetail: detail,
+  })
+  assert.ok(!again.some((command) => command.fact.summary === detail))
+})
+
+test('тема заготовки сильнее детали: вопрос о футляре открывает тайну футляра', async () => {
+  const state = await campaign()
+  const commands = freeActionDiscoveryCommands(state, {
+    checkEvent: check('investigation', 'case-check'), skill: 'investigation',
+    actionText: 'Осматриваю футляр с картой и его замок', successDetail: 'На футляре клеймо мастерской.',
+  })
+  assert.equal(commands.length, 1)
+  assert.match(commands[0].fact.summary, /царапина от ножа/u)
+})

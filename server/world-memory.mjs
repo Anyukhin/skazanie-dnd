@@ -194,7 +194,11 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
       }
     })
     .filter((entry) => entry.exact || entry.related)
-  const topical = candidates.filter((entry) => entry.score > 0)
+  // Одна общая основа слова — ещё не тема: «ищу метку на корме» и секрет о
+  // «царапинах на борту» сходились по «борт», и вместо ответа на вопрос герой
+  // получал чужую находку (плейтест 2026-10-10). Тема — две общие основы или
+  // одна, но о тайне этого же места.
+  const topical = candidates.filter((entry) => entry.score >= 2 || (entry.score >= 1 && entry.here))
     .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
   // Общий поиск открывает тайну этого места сперва своим навыком, затем
   // родственным: тайна лагеря ждала Анализа, и удачная Внимательность у
@@ -253,6 +257,38 @@ function presentNpcLead(state = {}, spokenText = '') {
   return leads[0] ?? null
 }
 
+/**
+ * Мелкая деталь, о которой спросил игрок, — находка о текущем месте. Текст
+ * назвал арбитр до броска (`success_detail`), сервер проверил форму; тайн
+ * сцены она не раскрывает, а повтор хода не записывает её дважды.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ sourceEventId?: string, successDetail?: string }} input
+ */
+function successDetailCommand(state = {}, { sourceEventId = '', successDetail = '' } = {}) {
+  const summary = text(successDetail, 300)
+  if (!summary || !sourceEventId) return null
+  const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
+  const here = (state.worldMemory?.entities ?? [])
+    .find((entity) => location && text(entity?.name, 160).toLocaleLowerCase('ru') === location)
+  if (!here?.id) return null
+  const known = (state.worldMemory?.facts ?? []).some((fact) => fact?.predicate === 'discovery'
+    && text(fact.summary, 1_000).toLocaleLowerCase('ru') === summary.toLocaleLowerCase('ru'))
+  if (known) return null
+  return {
+    command_type: 'RecordWorldFact',
+    fact: {
+      id: `fact-detail-${createHash('sha256').update(`${sourceEventId}\u0000${summary}`).digest('hex').slice(0, 24)}`,
+      subject_id: String(here.id),
+      predicate: 'discovery',
+      object: 'detail',
+      summary,
+      visibility: 'party',
+      source_event_ids: [sourceEventId],
+    },
+  }
+}
+
 function npcLeadSummary(lead) {
   const role = text(lead.npc.role, 160)
   const goal = lead.goal.replace(/[.!?…]+$/u, '')
@@ -275,7 +311,7 @@ function npcLeadSummary(lead) {
  * @param {{ checkEvent?: Record<string, any>|null, skill?: string, actionText?: string, goalSummary?: string, skillLabel?: string }} input
  * @returns {Array<Record<string, any>>}
  */
-export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, skill = '', actionText = '', goalSummary = '', skillLabel = '' } = {}) {
+export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, skill = '', actionText = '', goalSummary = '', skillLabel = '', successDetail = '' } = {}) {
   const sourceEventId = String(checkEvent?.event_id ?? '')
   // Успех без броска — решение судьи с outcome success: «изучаю повестку»
   // без риска живой ведущий не превращает в кубик, а просто говорит, что
@@ -285,8 +321,16 @@ export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, ski
   if (!DISCOVERY_SKILLS.has(String(skill ?? '').replace(/_/gu, '-'))) return []
   // Секрет мастера важнее безликой «зацепки»: удачный поиск открывает то, что
   // в мире действительно спрятано, и рассказчик называет найденное словами.
-  const secret = secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}`, topicalOnly: unrolled })
-  if (secret) return [secret]
+  const topicalSecret = secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}`, topicalOnly: true })
+  if (topicalSecret) return [topicalSecret]
+  // Игрок спросил о конкретной мелочи («какая метка на корме?»), а заготовки на
+  // эту тему нет: ответ на его вопрос, названный арбитром до броска, становится
+  // находкой отряда. Живой ведущий отвечает на заданный вопрос, а не открывает
+  // вместо него соседнюю тайну. Общий поиск при этом всё ещё может найти тайну
+  // места — тогда игрок получает и ответ, и улику.
+  const detail = successDetailCommand(state, { sourceEventId, successDetail })
+  const secret = unrolled ? null : secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}` })
+  if (detail || secret) return [detail, secret].filter(Boolean)
   if (unrolled) return []
   const lead = presentNpcLead(state, `${actionText} ${goalSummary}`)
   const spoken = topicStems(`${actionText} ${goalSummary}`)
