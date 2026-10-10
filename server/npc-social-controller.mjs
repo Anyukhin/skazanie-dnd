@@ -484,6 +484,13 @@ export function conversationLeads(state = {}, profile = {}, message = '', social
   const npcByName = new Map(social.npcs.map((npc) => [clean(npc.name, 160).toLocaleLowerCase('ru'), npc]))
   const knownBy = new Map()
   for (const npc of social.npcs) for (const factId of npc.known_fact_ids ?? []) if (!knownBy.has(factId)) knownBy.set(factId, npc)
+  // Кого отряд уже расспрашивал: отсылка к нему как к новому знатоку ходила
+  // по кругу — «спроси Ивена» у Мары, «спроси Мару» у Ивена (плейтест
+  // 2026-10-10). Такой знаток уходит вниз списка и помечается: собеседник
+  // скажет, что тот знает больше, чем сказал, а не пошлёт к нему заново.
+  const askedBefore = new Set((social.conversations ?? [])
+    .filter((entry) => entry?.visibility === 'party' || entry?.hero_id)
+    .map((entry) => String(entry?.npc_id ?? '')).filter(Boolean))
   const candidates = []
   for (const fact of state.worldMemory?.facts ?? []) {
     if (fact?.predicate !== 'gm_secret' || fact.status !== 'active' || revealed.has(String(fact.id))) continue
@@ -506,11 +513,13 @@ export function conversationLeads(state = {}, profile = {}, message = '', social
     } else if (holder && holder.visibility !== 'gm_only') {
       const current = npcProfileAtWorldTime(holder, state)
       const holderPlace = clean(current.location || holder.location, 180)
-      candidates.push({ score, lead: {
+      const asked = askedBefore.has(String(holder.id))
+      candidates.push({ score: asked ? score - 6 : score, lead: {
         kind: 'person', match, name: clean(holder.name, 120),
         ...(clean(holder.role, 120) ? { role: clean(holder.role, 120) } : {}),
         ...(holderPlace ? { where: holderPlace } : {}),
         ...(about ? { about } : {}),
+        ...(asked ? { asked_before: true } : {}),
       } })
     } else if (where) {
       candidates.push({ score, lead: { kind: 'place', match, where, ...(about ? { about } : {}) } })
