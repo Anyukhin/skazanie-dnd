@@ -1094,3 +1094,29 @@ test('герой уже стоит у закрытой двери: удачны�
   assert.ok(result.mechanics.some((event) => event.event_type === 'DoorStateChanged'))
   assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
 })
+
+test('вне боя герой сам подходит к телу и называет добычу, а не «подойдите вплотную»', async () => {
+  // Замер 13 (2026-10-11): «отсюда не дотянуться (ещё 15 фт) — подойдите
+  // вплотную» звучало дважды и оставляло обыск тупиком.
+  const map = createTacticalMap({ width: 7, height: 3, locationId: 'yard', seed: 'loot-approach', sizeClass: 'arena' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Двор' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 7; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'yard' })
+  const dagger = createItemInstance({
+    instanceId: 'inst-dagger-far', catalogId: 'srd_5_2_1:dagger',
+    owner: { kind: 'container', actor_id: 'loot:corpse:far' }, origin: { kind: 'enemy_loadout' }, quantity: 1, lootable: true,
+  })
+  const initialState = campaign({
+    scene: { title: 'Двор', location: 'Двор', location_id: 'yard', objective: 'Осмотреть двор', cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    players: [hero('hero', 'Ада'), hero('other', 'Бор')],
+    enemies: [{ id: 'goblin', name: 'Гоблин', hp: 0, maxHp: 7, armor: 12, alive: false, x: 5, y: 1 }],
+    mechanics: { combat: { active: false }, positions: { hero: { x: 0, y: 1 }, other: { x: 0, y: 0 } } },
+    loot_containers: { containers: [{ id: 'loot:corpse:far', kind: 'corpse', source_enemy_id: 'goblin', name: 'Тело: Гоблин', location_id: 'yard', x: 5, y: 1, status: 'available', items: [dagger] }] },
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const result = await orchestrator.handle(actionInput('Обыскиваю тело гоблина', 'free-search-far', initialState))
+  assert.equal(result.free_action_outcome, 'loot_inspection', result.narration)
+  assert.ok(result.narration.includes('Кинжал'), result.narration)
+  assert.doesNotMatch(result.narration, /подойдите|не дотянуться/u)
+  const at = (await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero
+  assert.ok(Math.max(Math.abs(at.x - 5), Math.abs(at.y - 1)) <= 1, JSON.stringify(at))
+})

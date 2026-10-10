@@ -325,7 +325,9 @@ test('провал проверки рассказывается через це
   assert.equal(missed.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success, false)
   const brief = briefs.at(-1)
   assert.equal(brief?.known_environment?.player_intent?.outcome_detail, failure)
-  assert.match(narratorResponsePlan(brief).must_answer, /outcome_detail/u)
+  // Без имён полей: «outcome_detail» уходил в текст модели (замер 13).
+  assert.match(narratorResponsePlan(brief).must_answer, /деталь исхода/u)
+  assert.doesNotMatch(narratorResponsePlan(brief).must_answer, /outcome_detail/u)
 })
 
 test('реакция NPC из подтверждённой детали исхода разрешена рассказчику', async () => {

@@ -1009,6 +1009,35 @@ function approachCellsAround(map, cells, occupied) {
 }
 
 /**
+ * Куда встать, чтобы обыскать тело вне боя: ближайшая свободная раскрытая
+ * клетка рядом с контейнером добычи и путь к ней. Живой ведущий не говорит
+ * «отсюда не дотянуться — подойдите вплотную»: герой подходит и смотрит
+ * (замер 13, 2026-10-11). `null` — подойти нельзя или контейнера нет на карте.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} actorId
+ * @param {{ x?: number, y?: number }} container
+ * @returns {{ x: number, y: number } | null}
+ */
+export function lootApproachDestination(state = {}, actorId = '', container = {}) {
+  const at = { x: Number(container?.x), y: Number(container?.y) }
+  if (!Number.isFinite(at.x) || !Number.isFinite(at.y) || !state?.scene?.map) return null
+  let map
+  try { map = deserializeTacticalMap(state.scene.map) } catch { return null }
+  const occupied = new Set([
+    ...(state.players ?? []).filter((actor) => String(actor?.id) !== String(actorId)).map((actor) => actorPosition(state, actor.id)),
+    ...presentSceneNpcs(state).map((npc) => npcPlacementFor(state, npc.id) ?? null),
+  ].filter((cell) => Number.isFinite(cell?.x) && Number.isFinite(cell?.y)).map(positionKey))
+  const from = actorPosition(state, actorId)
+  if (!from) return null
+  const route = approachCellsAround(map, [at], occupied)
+    .map((to) => ({ to, path: shortestTacticalPath(state, actorId, to) }))
+    .filter((entry) => Array.isArray(entry.path) && entry.path.length > 0 && entry.path.every((step) => cellAt(map, step.x, step.y)?.revealed === true))
+    .sort((left, right) => left.path.length - right.path.length || left.to.y - right.to.y || left.to.x - right.to.x)[0]
+  return route?.to ?? null
+}
+
+/**
  * Куда встать, чтобы оказаться рядом с названным: человек, вещь на карте или
  * место (зона карты). Только раскрытые клетки и только по существующему пути —
  * подход не открывает тумана и не проходит сквозь стены.

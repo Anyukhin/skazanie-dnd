@@ -1102,16 +1102,11 @@ function freeActionTimeText(events = []) {
 }
 
 function freeActionEffectText(events = [], state = {}) {
-  const labels = new Map([
-    ['SceneObjectOperated', 'объект сцены обработан по правилам'],
-    ['SceneObjectStateChanged', 'состояние объекта сцены изменилось'],
-    ['ConditionApplied', 'на цели подтверждено состояние'],
-    ['ConditionRemoved', 'с цели снято состояние'],
-    ['ItemTransferred', 'предмет передан по правилам'],
-    ['CombatActionUsed', 'действие героя израсходовано'],
-    ['WorldFactRecorded', 'изменение записано в память мира'],
-    ['WorldFactRevealed', 'отряду открыт подтверждённый факт'],
-  ])
+  // Служебных ярлыков («изменение записано в память мира», «объект сцены
+  // обработан по правилам») в голосе ведущего больше нет: судья цитировал их
+  // как поломку погружения (замер 13, 2026-10-11). Событие без собственных
+  // слов просто не добавляет фразы; журнал и карта показывают его сами.
+  const labels = new Map()
   return [...new Set(events.map((event) => {
     if (event?.event_type === 'DamageApplied') {
       return `${damageTypeLabel(event.payload?.damage_type)}: ${combatNarration([event], state)}`

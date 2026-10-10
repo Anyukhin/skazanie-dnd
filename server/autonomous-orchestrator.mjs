@@ -76,6 +76,7 @@ import {
   assertFreeActionConfirmation,
   previousFailedAttempt,
   resolveCorpseSearch,
+  lootApproachDestination,
   resolveInventoryTransfer,
   resolveExplorationCommand,
   resolvePickpocket,
@@ -1635,7 +1636,23 @@ export class AutonomousCampaignOrchestrator {
         duplicate: Boolean(commit.duplicate),
       }
     }
-    const corpseSearch = resolveCorpseSearch(loaded.state, actorId, text, reading)
+    let corpseSearch = resolveCorpseSearch(loaded.state, actorId, text, reading)
+    let corpseApproach = null
+    // Вне боя герой сам подходит к телу и смотрит — без «подойдите вплотную».
+    if (corpseSearch?.loot_container_id && !corpseSearch.loot_items?.length && corpseSearch.distance_feet != null
+      && !loaded.state.mechanics?.combat?.active) {
+      const container = (loaded.state.loot_containers?.containers ?? []).find((entry) => String(entry?.id) === String(corpseSearch.loot_container_id))
+      const to = container ? lootApproachDestination(loaded.state, actorId, container) : null
+      if (to) {
+        try {
+          corpseApproach = await run([{ command_type: 'MoveActor', actor_id: actorId, to, server_authoritative: true }])
+          corpseSearch = resolveCorpseSearch(corpseApproach.state ?? loaded.state, actorId, text, reading) ?? corpseSearch
+        } catch (error) {
+          if (!(error instanceof RulesValidationError)) throw error
+          corpseApproach = null
+        }
+      }
+    }
     if (corpseSearch) {
       return {
         context_metadata: actionContextMetadata,
@@ -1646,12 +1663,12 @@ export class AutonomousCampaignOrchestrator {
         narration: corpseSearch.narration,
         turn_consumed: false,
         admin_commands: 0,
-        state: loaded.state,
-        state_version: loaded.state_version,
-        events: [],
-        commands: [],
+        state: corpseApproach?.state ?? loaded.state,
+        state_version: corpseApproach?.state_version ?? loaded.state_version,
+        events: corpseApproach?.events ?? [],
+        commands: corpseApproach?.commands ?? [],
         rolls: [],
-        duplicate: false,
+        duplicate: Boolean(corpseApproach?.duplicate),
       }
     }
     const inventoryTransfer = resolveInventoryTransfer(loaded.state, actorId, text, reading)

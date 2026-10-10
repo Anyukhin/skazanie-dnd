@@ -293,13 +293,13 @@ export function narratorResponsePlan(brief) {
     must_answer: declarationOnly
       ? 'Кратко пояснить, что намерение ещё не стало выполненным действием.'
       : thoroughSearch === 'found' && discovered
-        ? 'Не пересказывая заявку: с ходу не нашлось, но долгий поиск не торопясь (player_intent.outcome_detail) принёс находку — назови её вещественно по событию WorldFactRecorded (predicate discovery) и покажи, что ушло около получаса. Сверх находки сведений не добавлять.'
+        ? 'Не пересказывая заявку: с ходу не нашлось, но долгий поиск не торопясь принёс находку — назови её вещественно по записанной находке и покажи, что ушло около получаса. Сверх находки сведений не добавлять.'
       : thoroughSearch === 'nothing'
-        ? 'Не пересказывая заявку: герой обыскал всё не торопясь, около получаса, и убедился, что спрятанного здесь нет (player_intent.outcome_detail); одна живая деталь места. Скрытого не выдумывать.'
+        ? 'Не пересказывая заявку: герой обыскал всё не торопясь, около получаса, и убедился, что спрятанного здесь нет; одна живая деталь места. Скрытого не выдумывать.'
       : outcomeDetail && checkOutcome === 'failure'
-        ? `Не пересказывая заявку, показать, почему не достигнута цель проверки и чем это обернулось, — через player_intent.outcome_detail, своими словами и не теряя её смысла${discovered ? '; назвать и деталь места из события WorldFactRecorded' : ''}. То, что герой делает наверняка (player_intent.approach: заклинание, шаг, слова), состоялось. Сверх этого скрытого не выдумывать.`
+        ? `Не пересказывая заявку, показать, почему не достигнута цель проверки и чем это обернулось, — через деталь исхода (что герой видит при этом исходе), своими словами и не теряя её смысла${discovered ? '; назвать и записанную деталь места' : ''}. То, что герой делает наверняка (заклинание, шаг, слова), состоялось. Сверх этого скрытого не выдумывать.`
       : outcomeDetail && checkOutcome === 'success' && !discovered
-        ? 'Не пересказывая заявку, показать, как именно вышло, — через player_intent.outcome_detail, своими словами и не теряя её смысла; добавить, как откликается место или люди рядом (только permitted_npc_reactions). Новых находок, сведений и согласия NPC не добавлять.'
+        ? 'Не пересказывая заявку, показать, как именно вышло, — через деталь исхода (что герой видит при этом исходе), своими словами и не теряя её смысла; добавить, как откликается место или люди рядом (только разрешённые реакции). Новых находок, сведений и согласия NPC не добавлять.'
       // Провал с записанной деталью места — всё ещё провал: деталь — то, что
       // видно и без броска, а не находка, ради которой бросали.
       : freeOutcome === 'failure'
@@ -938,6 +938,24 @@ const DEED_FORBIDDEN_PATTERN = /(?<![а-яё])(?:бер[её]т|клад[её]т
  * Герой только что успешно сделал заявленное свободное действие, и фраза
  * описывает его тело в этом действии, а не новый поступок.
  */
+/**
+ * Предложение пересказывает деталь исхода, которую сервер положил в бриф
+ * (`player_intent.outcome_detail`): «Борин не торопясь перебирает всё…» —
+ * подтверждённый поступок, а не выдумка рассказчика. Прежде проверка героя
+ * отбраковывала и живой текст, и серверный запасной, и звучало «Борин
+ * пробует, но не выходит» (замер 13, 2026-10-11).
+ */
+export function confirmedOutcomeDetailSentence(sentence, brief) {
+  const detail = String((brief?.known_environment?.player_intent ?? brief?.player_intent ?? {})?.outcome_detail ?? '')
+  if (!detail) return false
+  const stems = (value) => new Set((String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}{4,}/gu) ?? []).map((word) => word.slice(0, 5)))
+  const said = stems(sentence)
+  if (!said.size) return false
+  const known = stems(detail)
+  const shared = [...said].filter((stem) => known.has(stem)).length
+  return shared >= 3 || shared / said.size >= 0.6
+}
+
 function confirmedHeroDeedGesture(sentence, brief) {
   const events = brief?.visible_events ?? []
   const succeeded = events.some((event) => freeActionRulingOutcome(event) === 'success')
@@ -1370,7 +1388,8 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
     for (const sentence of currentText.split(/[.!?]/u)) {
       if (heroAgency.test(sentence) && !confirmedHeroDoorAction(sentence, brief, story.heroes)
         && !confirmedHeroDamageAction(sentence, brief, story)
-        && !confirmedHeroDeedGesture(sentence, brief)) {
+        && !confirmedHeroDeedGesture(sentence, brief)
+        && !confirmedOutcomeDetailSentence(sentence, brief)) {
         add('HERO_AGENCY_NOT_IN_BRIEF', 'Рассказчик приписал герою новое действие, мысль или решение', heroAgency.exec(sentence)?.[0])
       }
     }

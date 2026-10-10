@@ -683,9 +683,14 @@ export function verifyNarration(narration, brief, {
   // Найденная улика сама может говорить о вещи, уходе или разговоре («оттуда
   // недавно забрали предмет», «список прибывающих»): пересказ подтверждённого
   // факта — не новая передача вещи, не перемещение и не новая реплика.
-  const confirmedFactTexts = (brief?.visible_events ?? [])
-    .filter((event) => event?.event_type === 'WorldFactRecorded')
-    .map((event) => String(event?.payload?.fact?.summary ?? ''))
+  // Деталь исхода, которую положил сервер, — такой же подтверждённый текст,
+  // как записанная находка: «Борин не торопясь перебирает всё» не выдумка.
+  const confirmedFactTexts = [
+    ...(brief?.visible_events ?? [])
+      .filter((event) => event?.event_type === 'WorldFactRecorded')
+      .map((event) => String(event?.payload?.fact?.summary ?? '')),
+    String(playerIntentFromBrief(brief).outcome_detail ?? ''),
+  ].filter(Boolean)
   const confirmedFactMentionsItem = confirmedFactTexts.some((summary) => ITEM_TRANSFER_PATTERN.test(summary))
   const confirmedFactMentionsMovement = confirmedFactTexts.some((summary) => MOVEMENT_ASSERTION_PATTERN.test(summary))
   const confirmedFactMentionsSpeech = confirmedFactTexts.some((summary) => SOCIAL_ASSERTION_PATTERN.test(summary))

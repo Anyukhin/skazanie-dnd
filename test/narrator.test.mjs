@@ -316,3 +316,15 @@ test('ответ ведущего не повторяет заявку: эхо �
   const success = { known_environment: { player_intent: { action: 'Читаю «Безмолвный образ»' } }, visible_events: [{ event_type: 'RulingRecorded', payload: { ruling: { outcome: 'success' } } }] }
   assert.match(narratorResponsePlan(success).must_answer, /^Не пересказывая заявку/u)
 })
+
+test('пересказ серверной детали исхода — не выдуманный поступок героя', async () => {
+  // Замер 13 (2026-10-11): «Борин не торопясь перебирает всё…» — серверная
+  // деталь тщательного поиска — отбраковывалась как действие героя не из
+  // заявки, и звучало «Борин пробует, но не выходит».
+  const { confirmedOutcomeDetailSentence } = await import('../server/narrator.mjs')
+  const brief = { known_environment: { player_intent: { action: 'Борин простукивает бочки', outcome_detail: 'Борин не торопясь перебирает всё по одному — уходит около получаса — и убеждается: ничего спрятанного здесь нет.' } } }
+  assert.equal(confirmedOutcomeDetailSentence('Борин не торопясь перебирает бочки одну за другой — уходит около получаса', brief), true)
+  assert.equal(confirmedOutcomeDetailSentence('Борин решает уйти к маяку и обнажает меч', brief), false)
+  assert.equal(confirmedOutcomeDetailSentence('Борин перебирает бочки', { known_environment: { player_intent: {} } }), false)
+})
+
