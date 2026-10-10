@@ -281,6 +281,9 @@ export function narratorResponsePlan(brief) {
   // чем стоило, на успехе — как именно вышло. С ней ведущий не отвечает
   // «дверь не поддаётся» без причины (замер 9, 2026-10-10).
   const outcomeDetail = String((brief?.known_environment?.player_intent ?? brief?.player_intent)?.outcome_detail ?? '').trim()
+  // Тщательный поиск (DMG 2014, гл. 8): провал броска стоил времени, но
+  // спрятанное найдено — или честно установлено, что его нет.
+  const thoroughSearch = String((brief?.known_environment?.player_intent ?? brief?.player_intent)?.thorough_search ?? '')
   const checkSuccess = events.find(event => event?.event_type === 'AbilityCheckResolved')?.payload?.success
   const checkOutcome = freeOutcome ?? (checkSuccess === true ? 'success' : checkSuccess === false ? 'failure' : null)
   return {
@@ -289,6 +292,10 @@ export function narratorResponsePlan(brief) {
     speech_act: speechAct,
     must_answer: declarationOnly
       ? 'Кратко пояснить, что намерение ещё не стало выполненным действием.'
+      : thoroughSearch === 'found' && discovered
+        ? 'Не пересказывая заявку: с ходу не нашлось, но долгий поиск не торопясь (player_intent.outcome_detail) принёс находку — назови её вещественно по событию WorldFactRecorded (predicate discovery) и покажи, что ушло около получаса. Сверх находки сведений не добавлять.'
+      : thoroughSearch === 'nothing'
+        ? 'Не пересказывая заявку: герой обыскал всё не торопясь, около получаса, и убедился, что спрятанного здесь нет (player_intent.outcome_detail); одна живая деталь места. Скрытого не выдумывать.'
       : outcomeDetail && checkOutcome === 'failure'
         ? `Не пересказывая заявку, показать, почему не достигнута цель проверки и чем это обернулось, — через player_intent.outcome_detail, своими словами и не теряя её смысла${discovered ? '; назвать и деталь места из события WorldFactRecorded' : ''}. То, что герой делает наверняка (player_intent.approach: заклинание, шаг, слова), состоялось. Сверх этого скрытого не выдумывать.`
       : outcomeDetail && checkOutcome === 'success' && !discovered

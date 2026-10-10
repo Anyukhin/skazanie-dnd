@@ -48,7 +48,7 @@ import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
-import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, retrieveWorldMemory } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, THOROUGH_SEARCH_HINT, freeActionDiscoveryCommands, freeActionSurfaceCommands, offersThoroughSearch, retrieveWorldMemory, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
 
 /**
@@ -1794,6 +1794,7 @@ export class GameOrchestrator {
           outcome: freeAction.kind,
           ...(intent?.roleplay_speech === true ? { roleplay_speech: true } : {}),
           ...(freeAction.outcome_detail ? { outcome_detail: String(freeAction.outcome_detail).slice(0, 300) } : {}),
+          ...(freeAction.thorough_search ? { thorough_search: String(freeAction.thorough_search) } : {}),
         },
         structured_result: { outcome: freeAction.kind, event_types: publicCommittedEvents.map(event => event.event_type) },
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже
@@ -3252,6 +3253,7 @@ export class GameOrchestrator {
           // и судья ловил «ждут темноты в глубокую ночь» (замеры 2026-10-10).
           ...(plan.wait ? { wait: { until: String(plan.wait.label ?? ''), already: plan.wait.already === true } } : {}),
           ...(committed.outcome_detail ? { outcome_detail: String(committed.outcome_detail).slice(0, 300) } : {}),
+          ...(committed.thorough_search ? { thorough_search: String(committed.thorough_search) } : {}),
         },
         campaign_premise: campaignConceptForAgent(committed.state),
         // Небо и час — данные, а не право сочинять: тот же расчёт, что у
@@ -3393,10 +3395,19 @@ export class GameOrchestrator {
     // Деталь исхода для рассказчика — то, что герой видит при этом исходе:
     // на провале — причина и цена, на успехе вне поиска — как именно вышло.
     // Находку поиска сервер пишет фактом ниже; здесь её нет.
+    // Провал методичного поиска вне спешки решает время, а не находку
+    // (`thoroughSearchOutcome`, DMG 2014, гл. 8); после обычного провала
+    // ведущий предлагает искать не торопясь.
+    const thorough = succeeded ? null : thoroughSearchOutcome(committed.state, { checkEvent, skill, actionText: message })
+    const retryHint = !succeeded && !thorough && offersThoroughSearch(committed.state, { checkEvent, skill, actionText: message })
+    const heroName = String((committed.state?.players ?? []).find((player) => String(player?.id) === String(checkCommand.actor_id))?.character || 'Герой')
     const outcomeDetail = succeeded
       ? (DISCOVERY_SKILLS.has(skill) ? '' : String(details.success_detail ?? ''))
-      : String(details.failure_detail ?? '')
+      : thorough
+        ? thoroughSearchDetail(thorough, heroName)
+        : [String(details.failure_detail ?? ''), retryHint ? THOROUGH_SEARCH_HINT : ''].filter(Boolean).join(' ')
     if (outcomeDetail) committed = { ...committed, outcome_detail: outcomeDetail }
+    if (thorough) committed = { ...committed, thorough_search: thorough.found ? 'found' : 'nothing' }
     if (!DISCOVERY_SKILLS.has(skill)) return committed
     for (let attempt = 0; !discoveryCommit && attempt < 3; attempt += 1) {
       const found = succeeded
@@ -3404,7 +3415,13 @@ export class GameOrchestrator {
           checkEvent, skill, actionText: message, skillLabel: SKILL_LABELS_RU[skill] ?? '',
           successDetail: details.success_detail ?? '', surfaceDetail: details.surface_detail ?? '',
         })
-        : freeActionSurfaceCommands(baseState, { checkEvent, skill, surfaceDetail: details.surface_detail ?? '' })
+        : [
+          ...freeActionSurfaceCommands(baseState, { checkEvent, skill, surfaceDetail: details.surface_detail ?? '' }),
+          ...(thorough ? [
+            ...(thoroughSearchOutcome(baseState, { checkEvent, skill, actionText: message })?.commands ?? []),
+            { command_type: 'AdvanceTime', amount: thorough.minutes, unit: 'minute' },
+          ] : []),
+        ]
       const commands = found.map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${discoveryKey}:${index + 1}` }))
       if (!commands.length) return committed
       try {

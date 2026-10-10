@@ -144,3 +144,21 @@ test('гибель героя: рассказчик видит только са
   assert.equal(briefs[0].known_environment.fallen_hero?.name, 'Мирель')
   assert.match(briefs[0].known_environment.fallen_hero?.backstory ?? '', /Илу/u)
 })
+
+test('начало схватки — абзац ведущего без номеров в именах; без модели — прежняя строка', async () => {
+  // Замер 10: «Из укрытий выскакивают Волк 1 и Разбойник 1. Бой начинается» —
+  // судья читал это как стат-блок.
+  const briefs = []
+  const director = new CriticalNarrationCoordinator({ narrator: { render: async (brief, options) => {
+    briefs.push({ brief, options })
+    return { narration: 'Из-за мокрых валунов выходит разбойник с арбалетом, а за ним, припав к земле, — тощий волк.', provider: 'fake-agent', verification: { valid: true }, suggestions: [] }
+  } } })
+  const events = [{ event_type: 'EncounterCreated', payload: { encounter: { theme: 'ambush', enemies: [{ name: 'Волк 1' }, { name: 'Разбойник 1' }] } } }]
+  const opening = await director.renderEncounterOpening({ events, state })
+  assert.match(opening.narration, /разбойник с арбалетом/u)
+  assert.deepEqual(briefs[0].brief.known_environment.encounter_foes, ['Волк', 'Разбойник'])
+  assert.match(briefs[0].options.style, /без номеров/u)
+  const quiet = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Засада!', provider: 'deterministic-mechanics' }) } })
+  assert.equal(await quiet.renderEncounterOpening({ events, state }), null)
+  assert.equal(await director.renderEncounterOpening({ events: [], state }), null)
+})

@@ -175,6 +175,27 @@ export function parseGmSecretObject(value) {
 }
 
 /**
+ * Заготовка, которую отряд уже услышал: NPC назвал её id в разговоре
+ * (`knowledge_ledger`) или пересказал её почти теми же словами. Такая тайна
+ * больше не «находится» поиском: удачная Проницательность заново открыла
+ * меловую метку, о которой грузчица сказала в первой же реплике, и судья
+ * записал это в повтор вместо реакции (замер 10, 2026-10-10).
+ */
+function secretAlreadyTold(state, fact) {
+  const id = String(fact?.id ?? '')
+  const memory = state.worldMemory ?? {}
+  if ([...(memory.knowledge_ledger ?? []), ...(memory.knowledge_revealed ?? [])]
+    .some((entry) => id && String(entry?.fact_id ?? '') === id)) return true
+  const content = secretStems(fact?.summary)
+  if (content.size < 5) return false
+  return (state.social?.conversations ?? []).some((entry) => {
+    const said = secretStems(entry?.npc_reply)
+    const shared = [...content].filter((stem) => said.has(stem)).length
+    return shared >= 6 || shared / content.size >= 0.5
+  })
+}
+
+/**
  * Какой секрет открывает удачная проверка. Сначала — тот, о чём герой
  * спрашивал словами (тема или текст секрета совпали со словами заявки) и чей
  * навык подходит. Если тема не совпала, но герой просто ищет («осматриваюсь»),
@@ -194,6 +215,7 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
   const candidates = (memory.facts ?? [])
     .filter((fact) => fact && GM_SECRET_PREDICATES.has(fact.predicate))
     .filter((fact) => fact.status === 'active')
+    .filter((fact) => !secretAlreadyTold(state, fact))
     .map((fact) => ({ fact, meta: parseGmSecretObject(fact.object) }))
     .map((entry) => {
       const topic = secretStems(`${entry.meta.topic} ${entry.fact.summary}`)
@@ -354,6 +376,65 @@ export function freeActionSurfaceCommands(state = {}, { checkEvent = null, skill
   return command ? [command] : []
 }
 
+/**
+ * Тщательный поиск — правило «Многократные проверки» (DMG 2014, гл. 8):
+ * когда спешить некуда, персонаж, потративший вдесятеро больше обычного
+ * времени, справляется с задачей без броска. Заявка «методично осматриваю»,
+ * «обыскиваю каждую доску» — это и есть такой выбор: провал броска решает
+ * лишь время, а не то, найдётся ли спрятанное. Обычный осмотр — минуты, поэтому
+ * тщательный стоит полчаса. Нет тайны — герой честно убеждается, что здесь
+ * ничего не спрятано.
+ */
+export const THOROUGH_SEARCH_MINUTES = 30
+const THOROUGH_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:методичн\p{L}*|тщательн\p{L}*|не\s+(?:торопясь|спеша)|кажд(?:ую|ый|ое|ой)\s+(?:доск|щел|угол|угл|камен|камн|бочк|ящик|половиц|пядь|дюйм)\p{L}*|дюйм\s+за\s+дюймом|пядь\s+за\s+пядью|шаг\s+за\s+шагом|сантиметр\s+за\s+сантиметром|перебира\p{L}*\s+вс[её])(?![\p{L}\p{M}])/iu
+
+/** Заявка просит обыскать не торопясь. @param {unknown} value */
+export function isThoroughSearch(value) {
+  return THOROUGH_SEARCH_PATTERN.test(String(value ?? ''))
+}
+
+/**
+ * Что даёт проваленный тщательный поиск вне спешки: тайну по заявке или места
+ * (как у удачного поиска) и цену — полчаса. `null` — правило неприменимо:
+ * не поиск, не тщательно или есть враги.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ checkEvent?: any, skill?: string, actionText?: string }} input
+ * @returns {{ commands: Array<Record<string, any>>, found: boolean, minutes: number }|null}
+ */
+export function thoroughSearchOutcome(state = {}, { checkEvent = null, skill = '', actionText = '' } = {}) {
+  const sourceEventId = String(checkEvent?.event_id ?? '')
+  const normalizedSkill = String(skill ?? '').replace(/_/gu, '-')
+  if (!sourceEventId || checkEvent?.payload?.success === true || !SEARCH_SKILLS.has(normalizedSkill)) return null
+  if (!isThoroughSearch(actionText) || state?.mechanics?.combat?.active === true) return null
+  const hostile = (state.enemies ?? []).some((enemy) => enemy?.alive !== false && Number(enemy?.hp ?? 1) > 0 && enemy?.hidden !== true)
+  if (hostile) return null
+  const secret = secretRevealCommand(state, { sourceEventId, skill: normalizedSkill, actionText })
+  return { commands: secret ? [secret] : [], found: Boolean(secret), minutes: THOROUGH_SEARCH_MINUTES }
+}
+
+/**
+ * Слова ведущего об исходе тщательного поиска и подсказка после обычного
+ * провала. Подсказка звучит после любого проваленного осмотра вне спешки —
+ * есть там тайна или нет, — чтобы предложение не выдавало, что что-то спрятано.
+ */
+export function thoroughSearchDetail(outcome, heroName = 'Герой') {
+  const name = String(heroName || 'Герой').slice(0, 80)
+  return outcome?.found
+    ? `С ходу ничего не попалось, но ${name} обыскивает всё не торопясь — уходит около получаса — и находит то, что ускользало.`
+    : `${name} обыскивает всё не торопясь — уходит около получаса — и убеждается: ничего спрятанного здесь нет.`
+}
+
+export const THOROUGH_SEARCH_HINT = 'Если не торопиться и перебрать всё по одному — уйдёт около получаса.'
+
+/** Провал осмотра, после которого ведущий предлагает тщательный поиск. */
+export function offersThoroughSearch(state = {}, { checkEvent = null, skill = '', actionText = '' } = {}) {
+  if (!checkEvent || checkEvent?.payload?.success === true || state?.mechanics?.combat?.active === true) return false
+  if (!SEARCH_SKILLS.has(String(skill ?? '').replace(/_/gu, '-')) || isThoroughSearch(actionText)) return false
+  if (!GENERAL_SEARCH_PATTERN.test(String(actionText ?? '')) && !/простук|тайник|ощупыва|обшарива/iu.test(String(actionText ?? ''))) return false
+  return !(state.enemies ?? []).some((enemy) => enemy?.alive !== false && Number(enemy?.hp ?? 1) > 0 && enemy?.hidden !== true)
+}
+
 export function freeActionDiscoveryCommands(state = {}, input = {}) {
   const found = discoveryCommandsFor(state, input)
   // Удача без находки — всё равно сцена: видимая деталь места вместо пустоты.
@@ -368,6 +449,14 @@ function discoveryCommandsFor(state = {}, { checkEvent = null, skill = '', actio
   const unrolled = checkEvent?.event_type === 'RulingRecorded' && checkEvent?.payload?.ruling?.outcome === 'success'
   if (!sourceEventId || (checkEvent?.payload?.success !== true && !unrolled)) return []
   if (!DISCOVERY_SKILLS.has(String(skill ?? '').replace(/_/gu, '-'))) return []
+  // Проницательность читает человека: удача — это его реакция, которую назвал
+  // судья (`success_detail`), а не тайна места по совпавшим словам. Прежде
+  // слежка за грузчицей открывала заготовку о меле, и ведущий писал «больше о
+  // её реакции ничего не ясно» (замер 10, 2026-10-10).
+  if (String(skill ?? '').replace(/_/gu, '-') === 'insight') {
+    const reaction = successDetailCommand(state, { sourceEventId, successDetail })
+    if (reaction) return [reaction]
+  }
   // Секрет мастера важнее безликой «зацепки»: удачный поиск открывает то, что
   // в мире действительно спрятано, и рассказчик называет найденное словами.
   const topicalSecret = secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}`, topicalOnly: true })

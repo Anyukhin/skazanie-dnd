@@ -58,7 +58,7 @@ import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream, CampaignStreamOutbox, campaignStreamFrameKey } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator, criticalMomentFor, heroFlourishFor } from './creative-director.mjs'
 import { LoreVoice } from './lore-voice.mjs'
-import { combatJournalVoice, tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
+import { combatJournalVoice, encounterIntro, tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
 import { NpcMoraleAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
@@ -5355,7 +5355,28 @@ async function handleHttpRequest(req, res) {
         : []
       const mechanics = [...(result.mechanics ?? []), ...subsequentEvents]
         .filter((event, index, all) => all.findIndex((candidate) => String(candidate.event_id ?? `${candidate.state_version_after}:${candidate.event_type}`) === String(event.event_id ?? `${event.state_version_after}:${event.event_type}`)) === index)
-      const narration = tacticalNarrationOr(mechanics, latest.state, result.narration, { npcTurns: scheduler.turns })
+      const combatNarrationText = tacticalNarrationOr(mechanics, latest.state, result.narration, { npcTurns: scheduler.turns })
+      // Начало схватки словами ведущего (`renderEncounterOpening`) вместо
+      // строки «Из укрытий выскакивают Волк 1 и Разбойник 1»; ходы врагов
+      // остаются строкой боя. Повтор ключа отдаёт записанный текст, а не зовёт
+      // модель снова.
+      const openingId = combatMessageId(idempotencyKey)
+      const storedOpening = (getRoom(campaignId).state?.messages ?? []).find((message) => String(message.id) === openingId)
+      const createdEvent = mechanics.find((event) => event.event_type === 'EncounterCreated')
+      let narration = storedOpening?.text ? String(storedOpening.text) : combatNarrationText
+      if (!storedOpening?.text && createdEvent) {
+        const opening = await creativeDirector.renderEncounterOpening({
+          events: mechanics,
+          state: latest.state,
+          viewer: { playerId: actorId, partyIds: campaignHeroIds(admin, campaignId), isPartyMember: true, role: admin.role },
+          recentNarrations: recentNarratorTexts(getRoom(campaignId).state),
+        }).catch(() => null)
+        if (opening?.narration) {
+          const intro = encounterIntro(createdEvent, latest.state)
+          const rest = intro && combatNarrationText.includes(intro) ? combatNarrationText.replace(intro, '').trim() : combatNarrationText
+          narration = [String(opening.narration).trim(), rest].filter(Boolean).join(' ')
+        }
+      }
       result = { ...result, state_version: latest.state_version, authoritative_state: latest.state, mechanics, npc_turns: scheduler.turns, narration }
       const narrationMessageId = narration ? combatMessageId(idempotencyKey) : null
       const projected = persistAuthoritativeProjection(campaignId, latest.state, mechanics, narrationMessageId ? { id: narrationMessageId, text: narration, turnConsumed: false } : null)

@@ -324,7 +324,8 @@ test('провал проверки рассказывается через це
   const missed = await send('Осматриваю корму и ищу метку владельца', { idempotencyKey: 'look-failure-detail' })
   assert.equal(missed.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success, false)
   const brief = briefs.at(-1)
-  assert.equal(brief?.known_environment?.player_intent?.outcome_detail, failure)
+  assert.ok(String(brief?.known_environment?.player_intent?.outcome_detail).startsWith(failure))
+  assert.match(brief.known_environment.player_intent.outcome_detail, /не торопиться/u, 'ведущий предлагает искать не торопясь')
   assert.match(narratorResponsePlan(brief).must_answer, /outcome_detail/u)
 })
 
@@ -341,4 +342,25 @@ test('реакция NPC из подтверждённой детали исхо
   assert.match(mara.description, /стискивает край стойки/u)
   assert.equal(orren.description, permits[1].description, 'другого NPC деталь не касается')
   assert.deepEqual(withDetailReactions(permits, ['', '']), permits)
+})
+
+test('методичный осмотр с проваленным броском находит спрятанное за полчаса', async () => {
+  // DMG 2014, гл. 8, «Многократные проверки»: когда спешить некуда,
+  // вдесятеро больше времени — успех. Провал броска решает только время.
+  const briefs = []
+  const narrator = { render: async (brief) => { briefs.push(brief); return { narration: 'Полчаса под дождём — и под скамьёй находится обрывок журнала.', provider: 'test-llm' } } }
+  const clue = 'Под кормовой скамьёй спрятан обрывок судового журнала с записью о ночной разгрузке.'
+  const memory = { worldMemory: {
+    entities: [{ id: 'loc:guard', kind: 'location', name: 'Караульная', summary: '', aliases: [], visibility: 'party', tags: [] }],
+    facts: [{ id: 'fact:secret:log', subject_id: 'loc:guard', predicate: 'gm_secret', object: JSON.stringify({ topic: 'журнал корма скамья', skills: ['perception', 'investigation'], holder: '' }),
+      summary: clue, visibility: 'gm_only', source_event_ids: [], status: 'active', recorded_at_minutes: 0 }],
+  } }
+  const { send } = await fixture({ narrator, state: memory, rolls: [2, 2, 2] })
+  const result = await send('Методично осматриваю корму и скамьи, доску за доской', { idempotencyKey: 'thorough-1' })
+  assert.equal(result.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success, false)
+  const facts = result.mechanics.filter((event) => event.event_type === 'WorldFactRecorded').map((event) => event.payload.fact.summary)
+  assert.ok(facts.includes(clue), `спрятанное найдено: ${JSON.stringify(facts)}`)
+  const minutes = result.mechanics.filter((event) => event.event_type === 'TimeAdvanced').reduce((sum, event) => sum + Number(event.payload?.minutes ?? event.payload?.amount ?? 0), 0)
+  assert.ok(minutes >= 30, `ушло полчаса: ${minutes}`)
+  assert.equal(briefs.at(-1)?.known_environment?.player_intent?.thorough_search, 'found')
 })

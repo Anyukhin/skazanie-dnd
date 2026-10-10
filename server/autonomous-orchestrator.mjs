@@ -85,7 +85,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, THOROUGH_SEARCH_HINT, freeActionDiscoveryCommands, freeActionSurfaceCommands, offersThoroughSearch, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -1999,6 +1999,12 @@ export class AutonomousCampaignOrchestrator {
     const checkEvent = (checkCommit.events ?? []).find((entry) => entry.event_type === 'AbilityCheckResolved')
     const succeeded = checkEvent?.payload?.success === true
     const consequence = outcomePolicy.failure
+    // Провал методичного поиска вне спешки решает время, а не находку
+    // (`thoroughSearchOutcome`, DMG 2014, гл. 8).
+    const thorough = !succeeded && !inCombat
+      ? thoroughSearchOutcome(checkCommit.state ?? loaded.state, { checkEvent, skill: reading.skill, actionText: text })
+      : null
+    const failureMinutes = thorough ? Math.max(Number(consequence.minutes) || 0, thorough.minutes) : consequence.minutes
     const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure', world_change: succeeded && Boolean(passageDestination) }
     // Внутри раунда время не идёт и цель отряда не переписывается: ход занимает
     // секунды, а «следующая цель» посреди боя ломала бы сцену.
@@ -2019,8 +2025,8 @@ export class AutonomousCampaignOrchestrator {
         expression: consequence.damage_expression, damage_type: consequence.damage_type,
         source: `free-action:${reading.activity_kind}`, ruling_id: ruling.id,
       }] : []),
-      ...(inCombat || (succeeded ? outcomePolicy.success_minutes : consequence.minutes) <= 0 ? [] : [
-        { command_type: 'AdvanceTime', amount: succeeded ? outcomePolicy.success_minutes : consequence.minutes, unit: 'minute' },
+      ...(inCombat || (succeeded ? outcomePolicy.success_minutes : failureMinutes) <= 0 ? [] : [
+        { command_type: 'AdvanceTime', amount: succeeded ? outcomePolicy.success_minutes : failureMinutes, unit: 'minute' },
       ]),
     ]
     if (!succeeded && !inCombat && consequence.advances_quest_clock) {
@@ -2044,7 +2050,7 @@ export class AutonomousCampaignOrchestrator {
     } else if (!inCombat) {
       followUp.push(...freeActionSurfaceCommands(checkCommit.state ?? loaded.state, {
         checkEvent, skill: reading.skill, surfaceDetail: reading.surface_detail ?? '',
-      }))
+      }), ...(thorough?.commands ?? []))
     }
     let consequenceCommit = null
     let passageRefused = false
@@ -2081,13 +2087,19 @@ export class AutonomousCampaignOrchestrator {
     // 2026-10-10). Находку поиска записывает сервер фактом — здесь её нет.
     // Успех прохода, который движок потом отклонил, деталью не обещается.
     const discoverySkill = DISCOVERY_SKILLS.has(String(reading.skill ?? '').replace(/_/gu, '-'))
+    const heroName = String(findActor(loaded.state, actorId)?.character || 'Герой')
+    const retryHint = !succeeded && !thorough
+      && offersThoroughSearch(checkCommit.state ?? loaded.state, { checkEvent, skill: reading.skill, actionText: text })
     const outcomeDetail = inCombat ? '' : succeeded
       ? (passageRefused || discoverySkill ? '' : String(reading.success_detail ?? ''))
-      : String(reading.failure_detail ?? '')
+      : thorough
+        ? thoroughSearchDetail(thorough, heroName)
+        : [String(reading.failure_detail ?? ''), retryHint ? THOROUGH_SEARCH_HINT : ''].filter(Boolean).join(' ')
     return {
       context_metadata: actionContextMetadata,
       kind: succeeded ? 'check_success' : 'check_failure',
       ...(outcomeDetail ? { outcome_detail: outcomeDetail } : {}),
+      ...(thorough ? { thorough_search: thorough.found ? 'found' : 'nothing' } : {}),
       ...(passageRefused ? { passage_refused: passageRefusedCode } : {}),
       ruling: outcomeRuling,
       reading,

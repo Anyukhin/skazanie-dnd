@@ -181,6 +181,37 @@ export class CriticalNarrationCoordinator {
     return { ...narration, trigger }
   }
 
+  /**
+   * Начало схватки — абзац ведущего: кто выходит, откуда и как выглядит. Прежде
+   * игрок читал «Из укрытий выскакивают Волк 1 и Разбойник 1. Бой начинается»,
+   * и судья называл это «стат-блоком» и «служебным объявлением» (замер 10,
+   * 2026-10-10). Один вызов модели на встречу, как у перелома боя; без живого
+   * текста остаётся прежняя строка.
+   */
+  async renderEncounterOpening({ events = [], state = {}, viewer = {}, recentNarrations = [] } = {}) {
+    const created = (events ?? []).find((event) => event?.event_type === 'EncounterCreated')
+    const encounter = created?.payload?.encounter
+    if (!encounter) return null
+    const trigger = { kind: 'encounter_opening', actor_id: '', target_id: '', target_name: '' }
+    const enemies = (Array.isArray(encounter.enemies) ? encounter.enemies : [])
+      .map((enemy) => String(enemy?.name ?? '').replace(/\s+\d+$/u, '').trim()).filter(Boolean).slice(0, 12)
+    const brief = buildNarrationBrief({
+      visible_events: [{ ...created, payload: { encounter: { theme: String(encounter.theme ?? ''), enemies: enemies.map((name) => ({ name })) } } }],
+      visible_state_changes: [],
+      known_environment: { ...publicEnvironment(state, trigger), encounter_foes: enemies },
+      permitted_npc_reactions: [],
+      viewer,
+    })
+    const narration = await this.narrator.render(brief, {
+      knownRuleIds: [],
+      timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
+      recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
+      style: 'Два-три предложения о начале схватки: кто выходит из укрытия и откуда, как выглядят и чего хотят — по сцене и составу из encounter_foes; имена без номеров («двое разбойников и волк»). Без чисел, ходов, очереди и правил; не добавляй бросков, урона, находок и решений правил.',
+    })
+    if (/^deterministic/u.test(String(narration?.provider ?? '')) || !String(narration?.narration ?? '').trim()) return null
+    return { ...narration, trigger }
+  }
+
   async renderCriticalMoment({ events: allEvents = [], state = {}, viewer = {}, recentNarrations = [], playerNote = '', actorId = '' } = {}) {
     const trigger = criticalMomentFor(allEvents, state) ?? heroFlourishFor(allEvents, state, { playerNote, actorId })
     if (!trigger) return null
