@@ -419,7 +419,7 @@ export function exitContextFromState(state = {}) {
  * @param {unknown} action
  * @param {{ knownPlaces?: unknown, presentNames?: unknown }} [options] названия
  *   известных точек карты и имена присутствующих — см. `exitContextFromState`
- * @returns {{destination: string, source: 'world-map'|'text', destinationLocationId?: string}|null}
+ * @returns {{destination: string, source: 'world-map'|'text'|'speech', destinationLocationId?: string}|null}
  */
 export function detectPartyExitRequest(action, options = {}) {
   const text = compact(action, 2_000)
@@ -448,9 +448,53 @@ export function detectPartyExitRequest(action, options = {}) {
     || (LEAVE_VERB.test(acted) && EXIT_SCOPE.test(acted))
     || BARE_LEAVE.test(acted)
     || namesKnownPlace(leftPlace, context.knownPlaces)
-  if (!leaves) return null
-  return { destination: actedHeading.destination, source: 'text' }
+  if (!leaves) return speechTravelProposal(text, context)
+  return { destination: withoutStrayQuote(actedHeading.destination), source: 'text' }
 }
+
+/**
+ * Закрывающая кавычка без открывающей — хвост речи, а не часть названия.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+function withoutStrayQuote(value) {
+  const text = String(value ?? '')
+  const opened = (text.match(/«/gu) ?? []).length
+  const closed = (text.match(/»/gu) ?? []).length
+  return closed > opened ? text.replace(/»+s*$/u, '').trim() : text
+}
+
+/**
+ * Уход, предложенный в прямой речи спутнику: «Пора искать ответы у Старого
+ * Маяка; пойдём туда вместе». Речь обычно не уход — «Я не уйду отсюда» не
+ * открывает голосования, — но зов «пойдём / идём / отправляемся» с названным
+ * местом — это и есть заявка отряда (замер 15, 2026-10-11: живой игрок так и
+ * сказал, а отряд остался в таверне). «Туда» указывает на известное место,
+ * названное в той же реплике.
+ *
+ * @param {string} text
+ * @param {{ knownPlaces: string[], presentNames: string[] }} context
+ * @returns {{ destination: string, source: 'speech' } | null}
+ */
+function speechTravelProposal(text, context) {
+  for (const match of String(text ?? '').matchAll(/[«"“]([^«»"“”]{4,400})[»"”]/gu)) {
+    const speech = compact(match[1], 400)
+    if (!SPEECH_TRAVEL_CALL.test(speech) || NEGATED_MOVEMENT.test(speech)) continue
+    const heading = destinationIn(speech, context)
+    if (heading.isPlace && heading.destination) return { destination: withoutStrayQuote(heading.destination), source: 'speech' }
+    if (/(?<![\p{L}\p{M}])туда(?![\p{L}\p{M}])/iu.test(speech)) {
+      // Место ищется по именам с заглавной после предлога: «у Старого Маяка».
+      for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(?:у|к|ко|в|во|на|до|около|возле|от)\s+((?:[А-ЯЁ][\p{L}-]*\s*){1,3})/gu)) {
+        const named = knownPlaceName(compact(candidate[1], 120), context.knownPlaces)
+        if (named) return { destination: named, source: 'speech' }
+      }
+    }
+  }
+  return null
+}
+
+const SPEECH_TRAVEL_CALL = /(?<![\p{L}\p{M}])(?:пойд[её]м|ид[её]м|пошли|отправ(?:имся|ляемся)|двинемся|двинули|выдвигаемся|поехали|поедем)(?![\p{L}\p{M}])/iu
 
 /**
  * Текст заявки без прямой речи: реплика после двоеточия или тире в кавычках

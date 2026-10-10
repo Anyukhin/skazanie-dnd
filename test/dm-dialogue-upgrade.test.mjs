@@ -365,3 +365,20 @@ test('методичный осмотр с проваленным броском
   assert.ok(minutes >= 30, `ушло полчаса: ${minutes}`)
   assert.equal(briefs.at(-1)?.known_environment?.player_intent?.thorough_search, 'found')
 })
+
+test('прямая речь живого игрока: человеку рядом — разговор, спутнику — отыгрыш без броска', async () => {
+  // Замер 15 (2026-10-11), живые игроки: «Мирель раскрывает тетрадь… «Ивар,
+  // прошу вас: …»» и «обращается к Грому: «…»» уходили в проверку Убеждения,
+  // а ответ Борина Мирели — в бросок «слова не успокоили её».
+  const { speechAddressee } = await import('../server/game-orchestrator.mjs')
+  const state = {
+    scene: { location: 'Таверна' },
+    players: [{ id: 'mirel', character: 'Мирель' }, { id: 'borin', character: 'Борин' }],
+    social: { npcs: [{ id: 'ivar', name: 'Ивар', location: 'Таверна' }, { id: 'grom', name: 'Гром', location: 'Таверна' }, { id: 'lina', name: 'Лина', location: 'Таверна' }] },
+  }
+  assert.deepEqual(speechAddressee('Мирель раскрывает тетрадь и выводит имя Илы. «Ивар, прошу вас: чей баркас?»', state, 'mirel'), { kind: 'npc', id: 'ivar' })
+  assert.deepEqual(speechAddressee('Мирель встаёт и обращается к Грому: «Подскажите дорогу к причалу»', state, 'mirel'), { kind: 'npc', id: 'grom' })
+  assert.deepEqual(speechAddressee('Мирель подходит к Лине и кладёт рядом монету. «Скажите честно»', state, 'mirel'), { kind: 'npc', id: 'lina' })
+  assert.deepEqual(speechAddressee('Борин подходит к Мирель и кивает: «Не уйдёшь одна».', state, 'borin'), { kind: 'hero', id: 'mirel' })
+  assert.equal(speechAddressee('Мирель кричит «Пожар!» на весь двор', state, 'mirel'), null)
+})

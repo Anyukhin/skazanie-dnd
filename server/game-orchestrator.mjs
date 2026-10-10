@@ -999,6 +999,52 @@ function speechToPartyOrAir(message, state, playerId, explicitNpcId = '') {
   return namesHero || presentNpcs.length === 0
 }
 
+/**
+ * Кому обращена прямая речь заявки. Живые игроки пишут не «Ивар, чей баркас?»,
+ * а «Мирель раскрывает тетрадь… «Ивар, прошу вас: …»», «обращается к Грому:
+ * «…»», «подходит к Лине, кладёт монету. «Скажите честно…»». Такая заявка —
+ * разговор с этим человеком, а не проверка Убеждения; реплика спутнику —
+ * отыгрыш без броска (замер 15, 2026-10-11: «Гром остаётся при своём, не
+ * желая указывать дорогу к причалу», «слова не успокоили её»). Сначала —
+ * обращение в начале кавычки, затем последний названный перед ней.
+ *
+ * @param {string} message
+ * @param {Record<string, any>} state
+ * @param {string} playerId
+ * @returns {{ kind: 'npc'|'hero', id: string } | null}
+ */
+export function speechAddressee(message, state, playerId) {
+  const text = String(message ?? '')
+  const quote = /[«"“]([^«»"“”]{2,800})[»"”]/u.exec(text)
+  if (!quote) return null
+  const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const people = [
+    ...(state?.social?.npcs ?? []).filter((npc) => npc?.available !== false
+      && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
+      .map((npc) => ({ kind: /** @type {'npc'} */ ('npc'), id: String(npc.id), name: String(npc.name ?? '') })),
+    ...(state?.players ?? []).filter((hero) => String(hero?.id) !== String(playerId))
+      .map((hero) => ({ kind: /** @type {'hero'} */ ('hero'), id: String(hero.id), name: String(hero.character || hero.name || '') })),
+  ]
+  const normal = (word) => String(word ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  const personFor = (word) => people.find((person) => {
+    const first = normal(person.name.split(/\s+/u)[0])
+    if (first.length < 3) return false
+    const stem = first.slice(0, Math.max(3, first.length - 1))
+    const spoken = normal(word)
+    return spoken.startsWith(stem) && spoken.length <= first.length + 3
+  }) ?? null
+  const vocative = /^\s*([А-ЯЁ][\p{L}-]+)\s*[,!]/u.exec(quote[1])?.[1]
+  const called = vocative ? personFor(vocative) : null
+  if (called) return { kind: called.kind, id: called.id }
+  const before = text.slice(0, quote.index)
+  const named = [...before.matchAll(/(?<![\p{L}\p{M}])[А-ЯЁ][\p{L}-]+/gu)].map((match) => personFor(match[0])).filter(Boolean)
+  const last = named.at(-1)
+  return last ? { kind: last.kind, id: last.id } : null
+}
+
+/** Передача вещи с репликой остаётся передачей: «отдаю Лине верёвку: «Держи»». */
+const SPEECH_HANDOVER_PATTERN = /(?<![\p{L}\p{M}])(?:переда|отда|вруча|протягива)\p{L}*/iu
+
 /** Сколько шагов одной заявки ведущий исполняет подряд без вопроса. */
 const PLAN_STEP_LIMIT = 4
 
@@ -2859,6 +2905,18 @@ export class GameOrchestrator {
         targets: [explicitNpcId],
         missing_information: [],
         requires_clarification: false,
+      }
+    }
+    // Прямая речь, обращённая к человеку рядом, — разговор с ним; спутнику —
+    // отыгрыш (`speechAddressee`). Вне боя: там у слов своя цена хода.
+    if (!input.commands && !explicitNpcId && originalState.mechanics?.combat?.active !== true
+      && ['improvised_action', 'explore', 'unknown', 'social'].includes(String(intent.intent))) {
+      const addressee = speechAddressee(message, visibleState, playerId)
+      const socialIds = new Set((visibleState.social?.npcs ?? []).map((npc) => String(npc.id)))
+      if (addressee?.kind === 'npc' && socialIds.has(addressee.id) && !SPEECH_HANDOVER_PATTERN.test(message)) {
+        intent = { ...intent, intent: 'social', targets: [addressee.id], missing_information: [], requires_clarification: false }
+      } else if (addressee?.kind === 'hero') {
+        intent = { ...intent, intent: 'improvised_action', roleplay_speech: true, targets: [], missing_information: [], requires_clarification: false }
       }
     }
     let socialRequest = null

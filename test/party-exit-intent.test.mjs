@@ -445,3 +445,14 @@ test('из известных мест выбирается самое точн�
   const town = 'Идём в Серый Причал'
   assert.equal(partyDestinationLabel(town, detectPartyExitRequest(town, known).destination, known).place, 'Серый Причал')
 })
+
+test('уход, предложенный спутнику в прямой речи, — заявка отряда; отказ и «туда, где тише» — нет', async () => {
+  // Замер 15 (2026-10-11): «обращается к Борину: «…пора искать ответы у
+  // Старого Маяка; пойдём туда вместе»» — отряд оставался в таверне.
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const options = { knownPlaces: ['Старый Маяк', 'Серый Причал'] }
+  assert.deepEqual(detectPartyExitRequest('Мирель обращается к Борину: «Ивар молчит — пора искать ответы у Старого Маяка; пойдём туда вместе».', options), { destination: 'Старый Маяк', source: 'speech' })
+  assert.equal(detectPartyExitRequest('Мирель говорит Борину: «Я не уйду отсюда, пока не узнаю правду».', options), null)
+  assert.equal(detectPartyExitRequest('Мирель шепчет: «Пойдём туда, где тише».', options), null)
+  assert.equal(detectPartyExitRequest('Мирель говорит Борину: «Не пойдём туда — Старый Маяк подождёт».', options), null)
+})
