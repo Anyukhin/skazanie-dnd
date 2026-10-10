@@ -277,6 +277,9 @@ test('ответ о знании цитирует фразу собеседни�
       conversations: [{
         npc_id: 'npc:maren', hero_id: 'hero', visibility: 'party',
         npc_reply: 'Дождь третий день, сети гниют, крыша течёт, а жалованья нет с весны, и никто в городе об этом не думает. Баркас «Чайка» видели у северной отмели в ночь грозы.',
+      }, {
+        id: 'conversation:bors-1', npc_id: 'npc:bors', hero_id: 'hero', visibility: 'party',
+        player_message: 'Как улов?', npc_reply: 'Сети пустые третью неделю.',
       }],
     },
   }
@@ -285,6 +288,9 @@ test('ответ о знании цитирует фразу собеседни�
   assert.doesNotMatch(known.narration, /сети гниют/u)
   assert.doesNotMatch(known.narration, /знать может Марен/u)
   assert.match(known.narration, /Своими глазами вы этого не видели — знать может Борс \(рыбак\)/u)
+  // Незнакомца, с которым отряд не говорил и о ком не слышал, не советуют.
+  const stranger = { ...state, social: { ...state.social, conversations: state.social.conversations.filter((entry) => entry.npc_id !== 'npc:bors') } }
+  assert.doesNotMatch(answerKnownLore('Что мы знаем о баркасе?', stranger, { viewer: { playerId: 'hero' } }).narration, /Борс/u)
 
   // Тот же факт, записанный памятью мира, второй раз не звучит; без цитаты — звучит.
   const remembered = { ...state, worldMemory: { entities: [{ id: 'loc', name: 'Старый маяк', kind: 'location', visibility: 'party' }], facts: [{ id: 'f1', subject_id: 'loc', predicate: 'npc_said', object: 'boat', summary: 'Марен говорит, что баркас «Чайка» видели у северной отмели в ночь грозы.', visibility: 'party', status: 'active', recorded_at_minutes: 0 }] } }

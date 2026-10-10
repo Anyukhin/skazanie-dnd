@@ -45,6 +45,7 @@ export const PROMPT_DESCRIPTORS = Object.freeze([
   Object.freeze({ role: 'scene_architect', promptId: 'map_architect/v8', module: 'scene-architect.mjs', loads: true }),
   Object.freeze({ role: 'recap', promptId: 'recap/v1', module: 'campaign-recap.mjs', loads: true }),
   Object.freeze({ role: 'hero_hooks', promptId: 'hero_hooks/v1', module: 'hero-hooks.mjs', loads: true }),
+  Object.freeze({ role: 'lore_keeper', promptId: 'lore_keeper/v1', module: 'lore-voice.mjs', loads: true }),
 ])
 
 /**

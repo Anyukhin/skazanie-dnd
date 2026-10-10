@@ -711,8 +711,16 @@ export function answerKnownLore(action, state = {}, options = {}) {
   const history = (Array.isArray(adventure.history) ? adventure.history.slice(-1) : [])
     .map((chapter) => asSentence(chapter?.outcome, 240)).filter(Boolean)
   // Того, кого только что процитировали, второй раз не советуют спросить.
+  // Совет — только к тому, кого отряд уже знает: с кем говорил или кого назвал
+  // рассказ. «Знать может Мартен Рыжий» о ни разу не встреченном торговце
+  // судья читал как имя из ниоткуда (замеры 2026-10-10).
+  const talkedTo = new Set((state.social?.conversations ?? []).map((entry) => String(entry?.npc_id ?? '')))
+  const toldOf = (visibleMemory?.facts ?? []).filter((fact) => ['party', 'public'].includes(String(fact?.visibility)))
+    .map((fact) => String(fact.summary ?? '')).join(' ').toLocaleLowerCase('ru')
+  const introduced = (npc) => talkedTo.has(String(npc.id ?? ''))
+    || (visibleText(npc.name, 80).split(/\s+/u)[0].length >= 3 && toldOf.includes(visibleText(npc.name, 80).split(/\s+/u)[0].toLocaleLowerCase('ru')))
   const informed = presentSceneNpcs(state).filter((npc) => visibleText(npc.role, 120))
-    .filter((npc) => !quoted.has(visibleText(npc.name, 80))).slice(0, 2)
+    .filter((npc) => !quoted.has(visibleText(npc.name, 80)) && introduced(npc)).slice(0, 2)
   const answered = foundLines.length || heardLines.length || knownLines.length
   // Слова собеседника — уже ответ, хоть и не проверенный: «прямого ответа нет»
   // рядом с цитатой спорило бы с ней.
@@ -746,6 +754,16 @@ export function answerKnownLore(action, state = {}, options = {}) {
     model: 'campaign-memory',
     turn_consumed: false,
     action_kind: 'free',
+    // Тот же отобранный материал — для голоса хранителя (`server/lore-voice.mjs`):
+    // модель пересказывает только его, а без неё звучит ответ выше.
+    lore_material: {
+      found: foundLines,
+      heard: heardPicked.map((entry) => ({ who: entry.item.who, line: entry.item.line })),
+      known: knownLines,
+      lead: informed.map((npc) => ({ name: visibleText(npc.name, 80), role: visibleText(npc.role, 80) })),
+      hook: !answered ? hook : '',
+      unknown: Boolean(topical && !foundRanked.some((entry) => entry.score > 0) && !heardLines.length),
+    },
   }
 }
 

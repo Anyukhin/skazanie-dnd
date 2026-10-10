@@ -57,6 +57,7 @@ import { CampaignRecapService, DEFAULT_RECAP_GAP_HOURS, RecapCacheStore } from '
 import { Narrator, deterministicNarration } from './narrator.mjs'
 import { CampaignNarrationStream, CampaignStreamOutbox, campaignStreamFrameKey } from './narration-stream.mjs'
 import { CriticalNarrationCoordinator, criticalMomentFor } from './creative-director.mjs'
+import { LoreVoice } from './lore-voice.mjs'
 import { combatJournalVoice, tacticalNarrationOr, tacticalNarrationParts } from './combat-narration.mjs'
 import { NpcMoraleAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
@@ -2960,6 +2961,8 @@ const gameOrchestrator = new GameOrchestrator({
   // Свободные действия судит тот же арбитр, что и автономный цикл: иначе у
   // одного вопроса появилось бы два разных ответа.
   unknownActionHandler: autonomousCampaign,
+  // Ответ «что мы знаем» голосом ведущего; без ключа — серверный ответ.
+  loreVoice: new LoreVoice({ llmClient: apiKey ? llmClient : null }),
   rollRegistry,
 })
 

@@ -123,6 +123,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v8.txt` | исходная ситуация, заготовки (`secrets`), якоря первой карты |
 | `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v10.txt` | прочтение свободного действия, маршрут (`check`/`travel`/`talk`/`clarify`) и деталь успеха (`success_detail`) |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» |
+| `server/lore-voice.mjs` | `prompts/lore_keeper/v1.txt` | ответ «что мы знаем» голосом ведущего: пересказ материала, отобранного `answerKnownLore`, без новых имён и фактов |
 | `server/hero-hooks.mjs` | `prompts/hero_hooks/v1.txt` | зацепки из предысторий героев: скрытые `gm_secret` с `hero_id`, личная нить; стадия `hero-hooks` после коммита |
 
 Других загрузок промптов нет. Остальные файлы в `prompts/` — прежние версии тех
@@ -143,7 +144,9 @@ pnpm backup           # зашифрованная копия storage в ./backu
 читает ни один модуль, он стоит только у ролей, исполняемых моделью (строка или
 список вариантов). `worldkeeper` (детерминированный `answerKnownLore`) и
 `game_master` (Rules Engine) — без `prompt_id`. Сторож —
-`test/player-request-router.test.mjs`.
+`test/player-request-router.test.mjs`. Материал хранителя отбирает
+`answerKnownLore`; голосом ведущего его пересказывает `lore-voice`
+(`lore_keeper/v1`), а не прошедший проверку пересказ уступает серверному ответу.
 
 **Сценарий авторской кампании:** `campaign-scenario` читает
 `data/campaign-scenarios-v1.json` (сюжет для людей — `docs/astohan-scenario.md`).

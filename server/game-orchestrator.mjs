@@ -1290,6 +1290,7 @@ export class GameOrchestrator {
     narrator = new Narrator(),
     npcSocialController = null,
     unknownActionHandler = null,
+    loreVoice = null,
     rollRegistry = null,
     clarificationRegistry = null,
     idFactory = randomUUID,
@@ -1297,6 +1298,8 @@ export class GameOrchestrator {
   } = {}) {
     if (!rulesEngine) throw new TypeError('GameOrchestrator требует RulesEngine')
     if (!eventStore) throw new TypeError('GameOrchestrator требует EventStore')
+    /** Голос хранителя знаний (`server/lore-voice.mjs`): без него звучит серверный ответ. */
+    this.loreVoice = loreVoice
     /**
      * Последние нарации кампании — тёплый буфер в памяти процесса.
      *
@@ -2013,13 +2016,31 @@ export class GameOrchestrator {
   }
 
   /**
+   * Ответ «что мы знаем» голосом ведущего: материал отобрал сервер, модель его
+   * только пересказывает, а не прошедший проверку пересказ уступает прежнему
+   * серверному ответу. Сам материал наружу не уходит.
+   */
+  async voiceLore(lore, { message, state, playerId }) {
+    if (!lore) return lore
+    const { lore_material: material, ...answer } = lore
+    if (!material || !this.loreVoice) return answer
+    const hero = (state?.players ?? []).find((player) => String(player?.id) === String(playerId))
+    const voiced = await this.loreVoice.retell({
+      question: message, material,
+      location: String(state?.scene?.location ?? ''),
+      hero: String(hero?.character ?? hero?.name ?? ''),
+    })
+    return voiced ? { ...answer, narration: voiced.narration, prompt_version: voiced.prompt_version, lore_voiced: true } : answer
+  }
+
+  /**
    * Ответы игроку, которые не объявляют действие. Они остаются в чате, но не
    * попадают в Rules Engine: вопрос и обсуждение не могут случайно потратить
    * слот, продвинуть часы или создать проверку даже посреди боя.
    */
   async nonActionResponse({ campaignId, playerId, requestKind, message, pendingClarification, questionCheckId = '', questionProposalId = '', state, turnId, mode, viewer, idempotencyKey = null, started = null }) {
     let lore = requestKind === 'question'
-      ? answerKnownLore(message, state, { viewer })
+      ? await this.voiceLore(answerKnownLore(message, state, { viewer }), { message, state, playerId })
       : null
     let pending = pendingClarification
       ? {
@@ -2365,7 +2386,7 @@ export class GameOrchestrator {
     const loreAnswer = requestKind !== 'action' || input.commands || explicitNpcId
       || (originalState.mechanics?.combat?.active === true && mentionsParley(message))
       ? null
-      : answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer })
+      : await this.voiceLore(answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer }), { message, state: worldkeeperState, playerId })
     if (loreAnswer) {
       const loreIntent = {
         actor_id: playerId, intent: 'known_lore_query', approach: 'deterministic',

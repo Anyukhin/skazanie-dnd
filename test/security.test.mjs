@@ -570,6 +570,7 @@ test('loaded role prompts are explicitly versioned and treat retrieved/user text
     ['map_architect/v8', 'map_architect/v8'],
     ['recap/v1', 'recap/v1'],
     ['hero_hooks/v1', 'hero_hooks/v1'],
+    ['lore_keeper/v1', 'lore_keeper/v1'],
   ]
   for (const [fileId, promptId] of prompts) {
     const prompt = await readFile(new URL(`../prompts/${fileId}.txt`, import.meta.url), 'utf8')
@@ -595,10 +596,11 @@ test('контрактным списком покрыта каждая роль
       loaded.set(`${match[1]}/${match[2]}`, file)
     }
   }
-  // Десять загружаемых промптов на девять ролей: у Режиссёра свой файл на
-  // каждый режим импровизации. Десятый — зацепки из предысторий героев
-  // (`hero_hooks/v1`, 2026-10-10).
-  assert.equal(loaded.size, 10, `ожидались ровно десять загружаемых промптов, найдено ${loaded.size}`)
+  // Одиннадцать загружаемых промптов на десять ролей: у Режиссёра свой файл
+  // на каждый режим импровизации. Десятый — зацепки из предысторий героев
+  // (`hero_hooks/v1`), одиннадцатый — голос хранителя знаний
+  // (`lore_keeper/v1`), оба 2026-10-10.
+  assert.equal(loaded.size, 11, `ожидались ровно одиннадцать загружаемых промптов, найдено ${loaded.size}`)
 
   const knownGaps = new Set([])
   // Список ролей больше не дублируется здесь: он дважды расходился с кодом при
