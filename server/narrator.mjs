@@ -217,8 +217,37 @@ function isDeclarationEvent(event) {
   return DECLARATION_EVENTS.has(event?.event_type) && !freeActionRulingOutcome(event)
 }
 
+/**
+ * Предложения-эхо — почти целиком слова заявки игрока («Мирель подходит к
+ * краю причала и говорит Борину: …») — срезаются, если после них остаётся
+ * ответ ведущего. Модель повторяла заявку даже вопреки контракту, и судья
+ * ставил таким ответам 2–3 (замеры 2026-10-10). Весь текст из эха не трогаем:
+ * пустой ответ хуже повтора.
+ *
+ * @param {string} narration
+ * @param {any} brief
+ */
+export function withoutEchoOfPlayer(narration, brief) {
+  const action = String((brief?.known_environment?.player_intent ?? brief?.player_intent)?.action ?? '')
+  if (!action || !narration) return narration
+  const stem = (word) => word.toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, 5)
+  const said = new Set((action.match(/\p{L}{4,}/gu) ?? []).map(stem))
+  const sentences = String(narration).match(/[^.!?…]+[.!?…»"]*\s*/gu) ?? [narration]
+  const echo = (sentence) => {
+    const words = (sentence.replace(/«[^«»]*»/gu, ' ').match(/\p{L}{4,}/gu) ?? []).map(stem)
+    const quoted = /«[^«»]{8,}»/u.test(sentence) && action.includes(sentence.match(/«([^«»]{8,})»/u)?.[1] ?? '\u0000')
+    if (!words.length) return quoted
+    const shared = words.filter((word) => said.has(word)).length / words.length
+    return shared >= 0.7 || (quoted && shared >= 0.5)
+  }
+  const kept = sentences.filter((sentence) => !echo(sentence))
+  if (!kept.length || kept.length === sentences.length) return narration
+  return kept.join('').trim()
+}
+
 export function narratorResponsePlan(brief) {
   const events = Array.isArray(brief?.visible_events) ? brief.visible_events : []
+  const roleplay = (brief?.known_environment?.player_intent ?? brief?.player_intent)?.roleplay_speech === true
   const hasReactions = (brief?.permitted_npc_reactions ?? []).length > 0
   const declarationOnly = events.length > 0 && events.every(isDeclarationEvent) && !hasReactions
   const freeOutcome = events.map(freeActionRulingOutcome).find(Boolean) ?? null
@@ -258,12 +287,17 @@ export function narratorResponsePlan(brief) {
         // Безмолвный образ и слежу за её реакцией» — иллюзия появилась, не
         // разгадана реакция. Прежде звучало «Иллюзия Илы не появилась».
         ? discovered
-          ? 'Показать, что не достигнута цель проверки из player_intent.goal, но назвать деталь места из события WorldFactRecorded — это то, что герой всё же видит или слышит. То, что герой делает наверняка (player_intent.approach: заклинание, шаг, слова), состоялось. Скрытого и причину неудачи не выдумывать.'
-          : 'Показать, что не достигнута цель проверки из player_intent.goal, и одну живую деталь того, что герой при этом видит, слышит или чувствует. То, что герой делает наверняка (player_intent.approach: заклинание, шаг, слова), состоялось. Скрытого и причину неудачи не выдумывать.'
+          ? 'Не пересказывая заявку, показать, что не достигнута цель проверки из player_intent.goal, и назвать деталь места из события WorldFactRecorded — это то, что герой всё же видит или слышит. То, что герой делает наверняка (player_intent.approach: заклинание, шаг, слова), состоялось. Скрытого и причину неудачи не выдумывать.'
+          : 'Не пересказывая заявку, показать, что не достигнута цель проверки из player_intent.goal, и одну живую деталь того, что герой при этом видит, слышит или чувствует. То, что герой делает наверняка (player_intent.approach: заклинание, шаг, слова), состоялось. Скрытого и причину неудачи не выдумывать.'
+      // Ответ ведущего, а не пересказ заявки: «Ты читаешь заклинание… Ты
+      // следишь, как…» повторял игроку его же слова (замеры 2026-10-10, судья
+      // по ходам 2–3). Заявку игрок уже сказал — ведущий говорит, что вышло.
+      : roleplay
+        ? 'Слова героя уже прозвучали — не повторяй и не пересказывай их. Покажи, как место откликается: звук, свет, движение воды или ветра, взгляд кого-то из permitted_npc_reactions. За других героев отряда не отвечай и решений за них не принимай.'
       : discovered
-        ? 'Показать, как герой делает заявленное в player_intent, и прямо назвать находку из события WorldFactRecorded (predicate discovery) — её смысл, своими словами; сверх неё находок, сведений и согласия NPC не добавлять.'
+        ? 'Не пересказывая заявку, сразу назвать то, что герой нашёл или узнал, — находку из события WorldFactRecorded (predicate discovery), своими словами и вещественно; добавить, как откликается место или люди рядом (только permitted_npc_reactions). Сверх находки сведений и согласия NPC не добавлять.'
       : freeOutcome === 'success'
-        ? 'Показать, как герой делает заявленное в player_intent, и как это выглядит со стороны; новых находок, сведений и согласия NPC не добавлять.'
+        ? 'Не пересказывая заявку, показать, что из неё вышло: видимый результат и как откликается место или люди рядом (только permitted_npc_reactions). Новых находок, сведений и согласия NPC не добавлять.'
           : events.length || hasReactions
             ? 'Сначала передать исход текущего шага по видимым событиям и разрешённым реакциям.'
             : 'Кратко описать уже известную обстановку без нового события.',
@@ -2382,6 +2416,7 @@ export class Narrator {
           provider: 'deterministic-provider-fallback',
         })
       }
+      narration = withoutEchoOfPlayer(narration, brief)
       const safetyVerification = verifyNarratorCraft(
         narration,
         brief,

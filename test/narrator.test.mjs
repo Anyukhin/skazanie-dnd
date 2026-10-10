@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { FakeLLM } from '../server/llm-client.mjs'
-import { Narrator, deterministicNarration } from '../server/narrator.mjs'
+import { Narrator, deterministicNarration, narratorResponsePlan, withoutEchoOfPlayer } from '../server/narrator.mjs'
 import { buildNarrationBrief } from '../server/security.mjs'
 import {
   NARRATOR_GENERATION_PARAMETERS,
@@ -304,4 +304,15 @@ test('заглавное слово в начале фразы не делает
   assert.equal(verifyNarration(paraphrase, speech, { knownRuleIds: [] }).violations.some((entry) => entry.code === 'UNCONFIRMED_DISCLOSURE'), false)
   const invented = 'Мирель говорит Борину, что слышала показания рыбаков о ночных лодках.'
   assert.equal(verifyNarration(invented, speech, { knownRuleIds: [] }).violations.some((entry) => entry.code === 'UNCONFIRMED_DISCLOSURE'), true, 'новое знание по-прежнему ловится')
+})
+
+test('ответ ведущего не повторяет заявку: эхо срезается, а план просит отклик мира', () => {
+  // Замеры 2026-10-10: «Ты читаешь заклинание… Ты следишь, как…» и «Мирель
+  // подходит к краю причала и говорит Борину: «…»» — судья ставил 2–3.
+  const roleplay = { known_environment: { player_intent: { action: 'Мирель отходит к краю причала и негромко говорит Борину: «Ила любила это море».', roleplay_speech: true } }, visible_events: [{ event_type: 'RulingRecorded', payload: { ruling: { outcome: 'success' } } }] }
+  assert.equal(withoutEchoOfPlayer('Мирель подходит к краю причала и негромко говорит Борину: «Ила любила это море». Волна глухо бьёт в сваи.', roleplay), 'Волна глухо бьёт в сваи.')
+  assert.equal(withoutEchoOfPlayer('Мирель подходит к краю причала.', roleplay), 'Мирель подходит к краю причала.', 'текст целиком из эха не обнуляется')
+  assert.match(narratorResponsePlan(roleplay).must_answer, /не повторяй/u)
+  const success = { known_environment: { player_intent: { action: 'Читаю «Безмолвный образ»' } }, visible_events: [{ event_type: 'RulingRecorded', payload: { ruling: { outcome: 'success' } } }] }
+  assert.match(narratorResponsePlan(success).must_answer, /^Не пересказывая заявку/u)
 })
