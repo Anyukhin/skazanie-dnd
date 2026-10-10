@@ -377,13 +377,57 @@ export function freeActionSurfaceCommands(state = {}, { checkEvent = null, skill
 }
 
 /**
+ * Что удачная Проницательность читает в человеке, когда судья не назвал
+ * реакцию: правду о том, знает ли он больше, чем говорит. Ответ выводится из
+ * заготовок ведущего, хранитель которых — этот человек: знает по теме заявки
+ * или о личной нити героя — «это знакомо»; хранит другое — «что-то скрывает»;
+ * ничего — «не притворяется». Прежде успех оборачивался «по лицу не понять»
+ * (замеры 10–11, 2026-10-10), а это ответ провала, не удачи. Сама тайна не
+ * раскрывается: Проницательность читает человека, а не его память.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ actionText?: string, actorId?: string }} input
+ */
+export function insightRead(state = {}, { actionText = '', actorId = '' } = {}) {
+  const said = String(actionText ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  const here = String(state.scene?.location_id ?? '')
+  const npc = (state.scene_npcs ?? [])
+    .filter((entry) => entry?.alive !== false && (!here || !entry?.location_id || String(entry.location_id) === here))
+    .find((entry) => {
+      const first = text(entry?.name, 120).split(/\s+/u)[0]?.toLocaleLowerCase('ru').replace(/ё/gu, 'е') ?? ''
+      // Имя склоняется: «Иара» — «Иару», «Иарой»; сверяется основа слова.
+      const stem = first.slice(0, Math.max(3, first.length - 1))
+      return first.length >= 3 && (said.match(/\p{L}+/gu) ?? []).some((word) => word.startsWith(stem))
+    })
+  if (!npc) return ''
+  const name = text(npc.name, 120)
+  const first = name.split(/\s+/u)[0].toLocaleLowerCase('ru')
+  // Имя самого человека в его же тайне — не тема разговора.
+  const own = secretStems(name)
+  const spoken = new Set([...secretStems(actionText)].filter((stem) => !own.has(stem)))
+  const held = (state.worldMemory?.facts ?? [])
+    .filter((fact) => fact && GM_SECRET_PREDICATES.has(fact.predicate))
+    .filter((fact) => fact.status === 'active' && !secretAlreadyTold(state, fact))
+    .map((fact) => ({ fact, meta: parseGmSecretObject(fact.object) }))
+    .filter((entry) => {
+      const holder = entry.meta.holder.toLocaleLowerCase('ru')
+      return holder && (holder === name.toLocaleLowerCase('ru') || holder.split(/\s+/u)[0] === first)
+    })
+  if (!held.length) return `${name} смотрит без тени узнавания — и, похоже, не притворяется: скрывать тут нечего.`
+  const topical = held.some((entry) => (actorId && entry.meta.hero_id === actorId)
+    || [...spoken].some((stem) => secretStems(`${entry.meta.topic} ${entry.fact.summary}`).has(stem)))
+  return topical
+    ? `${name} выдаёт себя: взгляд на миг застывает и тут же уходит в сторону — это знакомо. ${name} знает об этом больше, чем говорит.`
+    : `${name} держится ровно и узнавания не выдаёт, но настороженность не уходит: что-то ${name} скрывает — только, похоже, не это.`
+}
+
+/**
  * Тщательный поиск — правило «Многократные проверки» (DMG 2014, гл. 8):
  * когда спешить некуда, персонаж, потративший вдесятеро больше обычного
- * времени, справляется с задачей без броска. Заявка «методично осматриваю»,
- * «обыскиваю каждую доску» — это и есть такой выбор: провал броска решает
- * лишь время, а не то, найдётся ли спрятанное. Обычный осмотр — минуты, поэтому
- * тщательный стоит полчаса. Нет тайны — герой честно убеждается, что здесь
- * ничего не спрятано.
+ * времени, справляется с задачей без броска. Вне боя и без врагов рядом обыск
+ * и есть такой выбор: провал броска решает лишь время, а не то, найдётся ли
+ * спрятанное. Обычный осмотр — минуты, поэтому тщательный стоит полчаса. Нет
+ * тайны — герой честно убеждается, что здесь ничего не спрятано.
  */
 export const THOROUGH_SEARCH_MINUTES = 30
 const THOROUGH_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:методичн\p{L}*|тщательн\p{L}*|не\s+(?:торопясь|спеша)|кажд(?:ую|ый|ое|ой)\s+(?:доск|щел|угол|угл|камен|камн|бочк|ящик|половиц|пядь|дюйм)\p{L}*|дюйм\s+за\s+дюймом|пядь\s+за\s+пядью|шаг\s+за\s+шагом|сантиметр\s+за\s+сантиметром|перебира\p{L}*\s+вс[её])(?![\p{L}\p{M}])/iu
@@ -391,6 +435,17 @@ const THOROUGH_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:методичн\p{L}*|тщ
 /** Заявка просит обыскать не торопясь. @param {unknown} value */
 export function isThoroughSearch(value) {
   return THOROUGH_SEARCH_PATTERN.test(String(value ?? ''))
+}
+
+/**
+ * Заявка ищет спрятанное — осмотр, обыск, простукивание. Вне спешки такой
+ * поиск — тщательный и без слов «методично»: живой ведущий не отвечает на
+ * проваленный осмотр «ушло бы полчаса», а говорит, что вышло за эти полчаса
+ * (замер 11: подсказку судья прочёл отпиской). Прислушаться у двери — не обыск.
+ */
+function searchesForHidden(value) {
+  const said = String(value ?? '')
+  return isThoroughSearch(said) || GENERAL_SEARCH_PATTERN.test(said) || /(?<![\p{L}\p{M}])(?:простук|тайник|ощупыва|обшари)/iu.test(said)
 }
 
 /**
@@ -406,33 +461,19 @@ export function thoroughSearchOutcome(state = {}, { checkEvent = null, skill = '
   const sourceEventId = String(checkEvent?.event_id ?? '')
   const normalizedSkill = String(skill ?? '').replace(/_/gu, '-')
   if (!sourceEventId || checkEvent?.payload?.success === true || !SEARCH_SKILLS.has(normalizedSkill)) return null
-  if (!isThoroughSearch(actionText) || state?.mechanics?.combat?.active === true) return null
+  if (!searchesForHidden(actionText) || state?.mechanics?.combat?.active === true) return null
   const hostile = (state.enemies ?? []).some((enemy) => enemy?.alive !== false && Number(enemy?.hp ?? 1) > 0 && enemy?.hidden !== true)
   if (hostile) return null
   const secret = secretRevealCommand(state, { sourceEventId, skill: normalizedSkill, actionText })
   return { commands: secret ? [secret] : [], found: Boolean(secret), minutes: THOROUGH_SEARCH_MINUTES }
 }
 
-/**
- * Слова ведущего об исходе тщательного поиска и подсказка после обычного
- * провала. Подсказка звучит после любого проваленного осмотра вне спешки —
- * есть там тайна или нет, — чтобы предложение не выдавало, что что-то спрятано.
- */
+/** Слова ведущего об исходе тщательного поиска: нашлось или честно пусто. */
 export function thoroughSearchDetail(outcome, heroName = 'Герой') {
   const name = String(heroName || 'Герой').slice(0, 80)
   return outcome?.found
-    ? `С ходу ничего не попалось, но ${name} обыскивает всё не торопясь — уходит около получаса — и находит то, что ускользало.`
-    : `${name} обыскивает всё не торопясь — уходит около получаса — и убеждается: ничего спрятанного здесь нет.`
-}
-
-export const THOROUGH_SEARCH_HINT = 'Если не торопиться и перебрать всё по одному — уйдёт около получаса.'
-
-/** Провал осмотра, после которого ведущий предлагает тщательный поиск. */
-export function offersThoroughSearch(state = {}, { checkEvent = null, skill = '', actionText = '' } = {}) {
-  if (!checkEvent || checkEvent?.payload?.success === true || state?.mechanics?.combat?.active === true) return false
-  if (!SEARCH_SKILLS.has(String(skill ?? '').replace(/_/gu, '-')) || isThoroughSearch(actionText)) return false
-  if (!GENERAL_SEARCH_PATTERN.test(String(actionText ?? '')) && !/простук|тайник|ощупыва|обшарива/iu.test(String(actionText ?? ''))) return false
-  return !(state.enemies ?? []).some((enemy) => enemy?.alive !== false && Number(enemy?.hp ?? 1) > 0 && enemy?.hidden !== true)
+    ? `С ходу ничего не попалось, но ${name} не торопится и перебирает всё по одному — уходит около получаса — и находит то, что ускользало.`
+    : `${name} не торопясь перебирает всё по одному — уходит около получаса — и убеждается: ничего спрятанного здесь нет.`
 }
 
 export function freeActionDiscoveryCommands(state = {}, input = {}) {
@@ -455,6 +496,7 @@ function discoveryCommandsFor(state = {}, { checkEvent = null, skill = '', actio
   // её реакции ничего не ясно» (замер 10, 2026-10-10).
   if (String(skill ?? '').replace(/_/gu, '-') === 'insight') {
     const reaction = successDetailCommand(state, { sourceEventId, successDetail })
+      ?? successDetailCommand(state, { sourceEventId, successDetail: insightRead(state, { actionText, actorId: String(checkEvent?.actor_id ?? '') }) })
     if (reaction) return [reaction]
   }
   // Секрет мастера важнее безликой «зацепки»: удачный поиск открывает то, что

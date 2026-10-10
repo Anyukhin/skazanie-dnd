@@ -1289,3 +1289,15 @@ test('уговор «разойтись миром» добычи не оста�
   const settled = commit(state, { command_type: 'SettleParley', actor_id: 'hero', outcome: 'withdraw' })
   assert.equal(lootContainerList(settled.state).length, 0, 'ушедшие с миром уносят своё')
 })
+
+test('«обыскивает поверженных» — тела, а не общий осмотр; оба под ногами — оба в ответе', () => {
+  // Замер 11 (2026-10-10): заявка без слова «тело» уходила в общий осмотр
+  // места, и вместо карманов врагов находилась верёвка «у основания фонаря».
+  const crowded = campaign({ combat: false, enemies: [bandit('foe-1', { x: 2, y: 1 }), bandit('foe-2', { x: 2, y: 3 })] })
+  const both = kill(kill(crowded, 'foe-1').state, 'foe-2')
+  const answer = searchAloud(both.state, 'hero', 'Борин обыскивает поверженных: нет ли при них знака культа?')
+  assert.ok(answer, 'заявка распознана как обыск тел')
+  assert.ok(answer.narration.includes('Разбойник 1') && answer.narration.includes('Разбойник 2'), answer.narration)
+  assert.doesNotMatch(answer.narration, /Уточните|выдумывать|сервер/u)
+  assert.match(answer.narration, /панель добычи/u)
+})

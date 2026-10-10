@@ -11,7 +11,6 @@ import { ENVIRONMENT_HAZARD_IDS, ENVIRONMENT_HAZARDS } from './improvised-effect
 import { hazardPropCells, sceneHazardTagsFor } from './scene-hazards.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
 import {
-  LOOT_CONTAINER_REACH_FEET,
   lootContainerList,
   lootContainerReachFor,
   lootContainersInScene,
@@ -344,6 +343,10 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(убежда|уговар|догова|прош\w+\s+помощ)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(обман|вру|соврать|притвор)/iu, ability: 'cha', skill: 'deception', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(крич|зову|окликa|подзыва)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'окружающие' },
+  // Поиск тайника руками: «простукивает бочки — нет ли тайника». Без модели
+  // такая заявка уходила в «Чего Борин хочет добиться…», и вопрос попадал в
+  // летопись голосом рассказчика (замер 10, 2026-10-10).
+  { test: /(?<![\p{L}\p{M}])(?:простук\p{L}*|ощупыва\p{L}*|обшари\p{L}*|тайник\p{L}*|тайничок\p{L}*)/iu, ability: 'int', skill: 'investigation', plausibility: 'plausible', risk: 'none', obstacle: 'тайник' },
   { test: /(осматр|разгляд|изуча|ищу\s+след|обыск)/iu, ability: 'wis', skill: 'perception', plausibility: 'trivial', risk: 'none', obstacle: 'обстановка' },
   // Наблюдение за чем-то, что может случиться: «смотрим на маяк — загорится
   // ли огонь?», «следим за дверью». Это вопрос миру, и без модели ответ даёт
@@ -1218,7 +1221,13 @@ export function resolvePickpocket(state = {}, actorId = '', text = '', reading =
   }
 }
 
-const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман)|(?:труп|тел[оаеу]|останки|карман)[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu
+// «Обыскивает поверженных», «осматриваю убитых» — тоже тела: прежде такая
+// заявка уходила в общий осмотр места и вместо карманов врагов находила
+// верёвку «у основания фонаря» (замер 11, 2026-10-10).
+const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман|(?<![\p{L}\p{M}])(?:поверженн|павш|убит|мертвец|мёртв|мертв))|(?:труп|тел[оаеу]|останки|карман|(?<![\p{L}\p{M}])(?:поверженн|павш|убит|мертвец|мёртв|мертв))[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu
+
+/** Заявка обыскивает всех сразу: «поверженных», «тела», «всех убитых». */
+const PLURAL_LOOT_SEARCH = /(?<![\p{L}\p{M}])(?:поверженн(?:ых|ые)|павш(?:их|ие)|убит(?:ых|ые)|мертвец(?:ов|ы)|мёртв(?:ых|ые)|мертв(?:ых|ые)|тела(?![\p{L}\p{M}])|трупы|трупов|всех)(?![\p{L}\p{M}])/iu
 
 /**
  * Как фраза называет вид контейнера. Таблица работает в одну сторону: названный
@@ -1228,7 +1237,7 @@ const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*
 const LOOT_KIND_WORDS = Object.freeze({
   // «Тело» кончается здесь и не продолжается: без границы слова `тел[оаеу]\p{L}*`
   // считал телом всякую телегу.
-  corpse: /(?:труп\p{L}*|тел[оаеу](?![\p{L}\p{M}])|телами|останк\p{L}*|павш\p{L}*|мертвец\p{L}*|убит\p{L}*)/iu,
+  corpse: /(?:труп\p{L}*|тел[оаеу](?![\p{L}\p{M}])|телами|останк\p{L}*|павш\p{L}*|мертвец\p{L}*|убит\p{L}*|поверженн\p{L}*|мёртв\p{L}*|мертв\p{L}*)/iu,
   captive: /(?:пленн\p{L}*|сдавш\p{L}*|связанн\p{L}*)/iu,
   abandoned: /(?:брошенн\p{L}*|оставленн\p{L}*|откуп\p{L}*)/iu,
   cache: /(?:схрон\p{L}*|тайник\p{L}*|заначк\p{L}*)/iu,
@@ -1328,8 +1337,8 @@ function lootContainerAnswer(state, hero, container) {
   if (!withinReach) {
     return {
       ...common,
-      narration: `${container.name}: отсюда не дотянуться${distanceFeet == null ? '' : ` — идти ещё ${distanceFeet} фт`}.`
-        + ` Обыскивают в пределах ${LOOT_CONTAINER_REACH_FEET} футов: подойдите вплотную, и я скажу, что там.`,
+      narration: `${container.name}: отсюда не дотянуться${distanceFeet == null ? '' : ` (ещё ${distanceFeet} фт)`}`
+        + ' — подойдите вплотную, и станет видно, что там.',
     }
   }
   const { items, summary } = spokenLootContents(container)
@@ -1337,11 +1346,31 @@ function lootContainerAnswer(state, hero, container) {
   // (`validateLootContainerCommand`): смотреть бесплатно всегда, а вот забрать
   // посреди боя стоит действия — и узнать об этом игрок обязан до, а не после.
   const combat = state?.mechanics?.combat?.active === true
+  // Голос ведущего, а не устав: «набор выдаёт сервер, и выдумывать находку я
+  // не стану» звучало служебно (замер 11).
   return {
     ...common,
-    narration: `${container.name}: ${summary}. Забрать нужное можно через панель добычи — набор выдаёт сервер,`
-      + ` и выдумывать находку я не стану.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
+    narration: `${container.name}: ${summary}. Забрать нужное можно через панель добычи.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
     loot_items: items,
+    loot_action_cost: combat ? 'action' : null,
+  }
+}
+
+/**
+ * Обыск всех тел сразу: содержимое каждого, до которого герой дотянулся, одной
+ * репликой. Взятия нет — как и у одного тела, набор выдаёт панель.
+ */
+function lootContainersAnswer(state, hero, containers) {
+  const reached = containers.filter((container) => container.status === 'available' && lootContainerReachFor(state, hero, container).reachable)
+  if (reached.length < 2) return null
+  const combat = state?.mechanics?.combat?.active === true
+  const lines = reached.slice(0, 4).map((container) => `${container.name}: ${spokenLootContents(container).summary}`)
+  return {
+    status: 'clarification',
+    server_owned_contents: true,
+    loot_container_ids: reached.map((container) => container.id),
+    loot_items: reached.flatMap((container) => spokenLootContents(container).items),
+    narration: `${lines.join('. ')}. Забрать нужное можно через панель добычи.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
     loot_action_cost: combat ? 'action' : null,
   }
 }
@@ -1366,6 +1395,10 @@ function resolveLootContainerSearch(state, hero, text, reading) {
   // тогда, когда другого фраза не назвала.
   const available = candidates.filter((container) => container.status === 'available')
   const pool = available.length ? available : candidates
+  if (PLURAL_LOOT_SEARCH.test(String(text ?? ''))) {
+    const all = lootContainersAnswer(state, hero, pool)
+    if (all) return all
+  }
   const chosen = nearestLootContainer(state, hero, pool)
   if (!chosen) {
     return {

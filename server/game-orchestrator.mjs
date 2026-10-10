@@ -48,7 +48,7 @@ import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
-import { DISCOVERY_SKILLS, THOROUGH_SEARCH_HINT, freeActionDiscoveryCommands, freeActionSurfaceCommands, offersThoroughSearch, retrieveWorldMemory, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, retrieveWorldMemory, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
 
 /**
@@ -416,6 +416,21 @@ export function withDetailReactions(permits = [], details = []) {
     const named = texts.filter((text) => (text.match(/\p{L}{3,}/gu) ?? []).some((word) => stem(word) === stem(first) && /^\p{Lu}/u.test(word)))
     return named.length ? { ...permit, description: [permit.description, ...named].filter(Boolean).join(' ') } : permit
   })
+}
+
+/**
+ * Участники видимых событий хода по именам — для запасного рассказа. Без них
+ * отбракованный рассказ о заклинании словами в бою звучал «Мирель поражает
+ * Цель. Цель получает урон» (замер 11, 2026-10-10). Только те, кто уже
+ * назван в событиях игрока, — ничего сверх видимого.
+ */
+function narrationParticipants(state = {}, events = []) {
+  const ids = new Set((events ?? []).flatMap((event) => [event?.actor_id, ...(event?.target_ids ?? [])]).filter(Boolean).map(String))
+  const pick = (list) => (Array.isArray(list) ? list : [])
+    .filter((actor) => ids.has(String(actor?.id ?? '')))
+    .map((actor) => ({ id: String(actor.id), name: memoryText(actor.character || actor.name, 120) }))
+    .filter((actor) => actor.name)
+  return { heroes: pick(state.players), enemies: pick(state.enemies) }
 }
 
 function discoveryDetailTexts(events = []) {
@@ -1258,7 +1273,13 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
   const watchQuestion = !unconfirmedPassage && /\?|(?<![\p{L}\p{M}])ли(?![\p{L}\p{M}])/u.test(`${message ?? ''} ${rawGoal}`)
     && /(?<![\p{L}\p{M}])(?:смотр|наблюда|след|слеж|вгляд|высматр|всматр|прислуш|жд|караул)\p{L}*/iu.test(rawGoal)
   const watcher = freeActionHeroName(events, state)
-  const parts = [watchQuestion
+  // Деталь исхода от судьи — то, что герой видит при этом исходе, — лучше
+  // голого «Не вышло: войти в маяк» (замер 11, 2026-10-10): запасной текст
+  // звучит, когда рассказ модели отбракован, и ему тоже есть что сказать.
+  const outcomeDetail = String(freeAction?.outcome_detail ?? '').trim()
+  const parts = [outcomeDetail && !unconfirmedPassage
+    ? outcomeDetail
+    : watchQuestion
     ? (failed ? `${watcher} всматривается, но толком ничего не разглядеть.` : `${watcher} не сводит глаз, но ничего заметного за это время не происходит.`)
     : unconfirmedPassage && !failed
     ? freeActionPassageNarration({ freeAction, events, state })
@@ -3256,6 +3277,7 @@ export class GameOrchestrator {
           ...(committed.thorough_search ? { thorough_search: String(committed.thorough_search) } : {}),
         },
         campaign_premise: campaignConceptForAgent(committed.state),
+        participants: narrationParticipants(committed.state, publicCommittedEvents),
         // Небо и час — данные, а не право сочинять: тот же расчёт, что у
         // индикатора в шапке сцены, чтобы текст и картинка не разошлись.
         world_clock: worldClockForAgents(committed.state, playerId),
@@ -3395,17 +3417,15 @@ export class GameOrchestrator {
     // Деталь исхода для рассказчика — то, что герой видит при этом исходе:
     // на провале — причина и цена, на успехе вне поиска — как именно вышло.
     // Находку поиска сервер пишет фактом ниже; здесь её нет.
-    // Провал методичного поиска вне спешки решает время, а не находку
-    // (`thoroughSearchOutcome`, DMG 2014, гл. 8); после обычного провала
-    // ведущий предлагает искать не торопясь.
+    // Провал поиска вне спешки решает время, а не находку
+    // (`thoroughSearchOutcome`, DMG 2014, гл. 8).
     const thorough = succeeded ? null : thoroughSearchOutcome(committed.state, { checkEvent, skill, actionText: message })
-    const retryHint = !succeeded && !thorough && offersThoroughSearch(committed.state, { checkEvent, skill, actionText: message })
     const heroName = String((committed.state?.players ?? []).find((player) => String(player?.id) === String(checkCommand.actor_id))?.character || 'Герой')
     const outcomeDetail = succeeded
       ? (DISCOVERY_SKILLS.has(skill) ? '' : String(details.success_detail ?? ''))
       : thorough
         ? thoroughSearchDetail(thorough, heroName)
-        : [String(details.failure_detail ?? ''), retryHint ? THOROUGH_SEARCH_HINT : ''].filter(Boolean).join(' ')
+        : String(details.failure_detail ?? '')
     if (outcomeDetail) committed = { ...committed, outcome_detail: outcomeDetail }
     if (thorough) committed = { ...committed, thorough_search: thorough.found ? 'found' : 'nothing' }
     if (!DISCOVERY_SKILLS.has(skill)) return committed

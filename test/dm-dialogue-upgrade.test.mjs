@@ -321,11 +321,10 @@ test('провал проверки рассказывается через це
   const briefs = []
   const narrator = { render: async (brief) => { briefs.push(brief); return { narration: 'Ветер воет так, что корма молчит; метку в темноте не разобрать.', provider: 'test-llm' } } }
   const { send } = await fixture({ reader, narrator, rolls: [2, 2, 2] })
-  const missed = await send('Осматриваю корму и ищу метку владельца', { idempotencyKey: 'look-failure-detail' })
+  const missed = await send('Прислушиваюсь у кормы, есть ли кто в трюме', { idempotencyKey: 'look-failure-detail' })
   assert.equal(missed.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success, false)
   const brief = briefs.at(-1)
-  assert.ok(String(brief?.known_environment?.player_intent?.outcome_detail).startsWith(failure))
-  assert.match(brief.known_environment.player_intent.outcome_detail, /не торопиться/u, 'ведущий предлагает искать не торопясь')
+  assert.equal(brief?.known_environment?.player_intent?.outcome_detail, failure)
   assert.match(narratorResponsePlan(brief).must_answer, /outcome_detail/u)
 })
 

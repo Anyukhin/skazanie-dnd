@@ -69,3 +69,29 @@ test('через оркестратор: заклинание словами в 
   assert.ok(types.includes('DamageApplied') && (types.includes('SpellSavingThrowResolved') || types.includes('AttackResolved')), `движок должен разрешить заклинание: ${types.join(', ')}`)
   assert.equal(result.free_action_outcome ?? null, null, 'это не импровизация')
 })
+
+test('рассказчик заклинания словами знает цель по имени — запасной текст не говорит «Цель»', async () => {
+  // Замер 11 (2026-10-10): отбракованный рассказ давал «Мирель поражает Цель.
+  // Цель получает урон» — в брифе не было участников событий.
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { DiceService, SequenceDiceRng } = await import('../server/dice-service.mjs')
+  const { FileEventStore } = await import('../server/event-store.mjs')
+  const { RulesEngine, applyGameEvent, normalizeCampaignState } = await import('../server/rules-engine.mjs')
+  const { GameOrchestrator } = await import('../server/game-orchestrator.mjs')
+  const { basicFixture } = await import('./basic-spell-fixture.mjs')
+  const state = basicFixture({ characterClass: 'wizard', combat: true })
+  const eventStore = new FileEventStore({ rootDir: join(mkdtempSync(join(tmpdir(), 'skazanie-spell-words-')), 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  await eventStore.initializeCampaign({ campaign_id: state.sessionCode, initial_state: state })
+  const briefs = []
+  const narrator = { render: async (brief) => { briefs.push(brief); return { narration: 'Брызги шипят на доспехе.', provider: 'test-llm' } } }
+  const game = new GameOrchestrator({ eventStore, narrator, rulesEngine: new RulesEngine({ diceService: new DiceService({ rng: new SequenceDiceRng([3, 4, 5, 6]) }) }) })
+  const result = await game.handle({ state: (await eventStore.load(state.sessionCode)).state, playerId: 'caster', message: 'Отступаю на шаг и швыряю в Цель Ядовитые брызги', idempotencyKey: 'spell-words-names' })
+  const target = result.mechanics.find((event) => event.event_type === 'SpellCast')?.target_ids?.[0]
+  const brief = briefs.at(-1)
+  assert.ok(target && brief, 'заклинание сотворено и рассказчик вызван')
+  const enemies = brief.known_environment.participants?.enemies ?? []
+  assert.ok(enemies.some((enemy) => enemy.id === target && enemy.name), JSON.stringify(enemies))
+  assert.ok((brief.known_environment.participants?.heroes ?? []).some((hero) => hero.id === 'caster'))
+})

@@ -85,7 +85,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { DISCOVERY_SKILLS, THOROUGH_SEARCH_HINT, freeActionDiscoveryCommands, freeActionSurfaceCommands, offersThoroughSearch, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -2088,13 +2088,11 @@ export class AutonomousCampaignOrchestrator {
     // Успех прохода, который движок потом отклонил, деталью не обещается.
     const discoverySkill = DISCOVERY_SKILLS.has(String(reading.skill ?? '').replace(/_/gu, '-'))
     const heroName = String(findActor(loaded.state, actorId)?.character || 'Герой')
-    const retryHint = !succeeded && !thorough
-      && offersThoroughSearch(checkCommit.state ?? loaded.state, { checkEvent, skill: reading.skill, actionText: text })
     const outcomeDetail = inCombat ? '' : succeeded
       ? (passageRefused || discoverySkill ? '' : String(reading.success_detail ?? ''))
       : thorough
         ? thoroughSearchDetail(thorough, heroName)
-        : [String(reading.failure_detail ?? ''), retryHint ? THOROUGH_SEARCH_HINT : ''].filter(Boolean).join(' ')
+        : String(reading.failure_detail ?? '')
     return {
       context_metadata: actionContextMetadata,
       kind: succeeded ? 'check_success' : 'check_failure',

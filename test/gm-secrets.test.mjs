@@ -261,7 +261,7 @@ test('тщательный поиск вне спешки: провал брос
   // Замер 10 (2026-10-10): «стена отказов» — три проваленных осмотра подряд
   // и ни одной улики, хотя заготовки лежали рядом. Правило «Многократные
   // проверки» (DMG 2014, гл. 8): вдесятеро больше времени — успех без броска.
-  const { thoroughSearchOutcome, isThoroughSearch, offersThoroughSearch, THOROUGH_SEARCH_MINUTES } = await import('../server/world-memory.mjs')
+  const { thoroughSearchOutcome, isThoroughSearch, THOROUGH_SEARCH_MINUTES } = await import('../server/world-memory.mjs')
   const state = await campaign()
   const failed = { event_id: 'check-thorough', event_type: 'AbilityCheckResolved', payload: { success: false, skill: 'investigation' } }
   assert.equal(isThoroughSearch('Методично осматриваю футляр, каждую щель'), true)
@@ -270,8 +270,8 @@ test('тщательный поиск вне спешки: провал брос
   assert.equal(found?.found, true)
   assert.equal(found.minutes, THOROUGH_SEARCH_MINUTES)
   assert.match(found.commands[0].fact.summary, /царапина от ножа/u)
-  assert.equal(thoroughSearchOutcome(state, { checkEvent: failed, skill: 'investigation', actionText: 'Осматриваю футляр' }), null, 'без «тщательно» правило не применяется')
-  assert.equal(offersThoroughSearch(state, { checkEvent: failed, skill: 'investigation', actionText: 'Осматриваю футляр' }), true, 'ведущий предлагает искать не торопясь')
+  assert.equal(thoroughSearchOutcome(state, { checkEvent: failed, skill: 'investigation', actionText: 'Осматриваю футляр' })?.found, true, 'обыск вне спешки — тщательный и без слова «методично» (замер 11)')
+  assert.equal(thoroughSearchOutcome(state, { checkEvent: failed, skill: 'perception', actionText: 'Прислушиваюсь у двери' }), null, 'прислушаться — не обыск')
   const fighting = { ...state, mechanics: { ...state.mechanics, combat: { ...(state.mechanics?.combat ?? {}), active: true } } }
   assert.equal(thoroughSearchOutcome(fighting, { checkEvent: failed, skill: 'investigation', actionText: 'Методично осматриваю футляр' }), null, 'в бою спешка — правило не действует')
   const success = { ...failed, payload: { success: true, skill: 'investigation' } }
@@ -300,4 +300,22 @@ test('удачная Проницательность — реакция тог�
     actionText: 'Слежу за лицом Клары, когда спрашиваю про журнал и отметки', successDetail: reaction,
   })
   assert.deepEqual(found.map((command) => command.fact?.summary), [reaction])
+})
+
+test('удачная Проницательность без реакции от судьи читает правду о человеке', async () => {
+  // Замеры 10–11: «по её взгляду не понять, узнала ли» — ответ провала на
+  // удачу. Правда выводится из заготовок, хранитель которых — этот человек;
+  // сама тайна не раскрывается.
+  const { insightRead } = await import('../server/world-memory.mjs')
+  const state = await campaign()
+  const here = state.scene?.location_id
+  const withKlara = { ...state, scene_npcs: [{ id: 'klara', name: 'Клара Вельм', location_id: here, alive: true }, { id: 'tom', name: 'Том Рыбак', location_id: here, alive: true }] }
+  const knows = insightRead(withKlara, { actionText: 'Спрашиваю Клару про журнал и слежу за её лицом' })
+  assert.match(knows, /Клара Вельм знает об этом больше, чем говорит/u)
+  assert.doesNotMatch(knows, /почерк/u, 'тайна не раскрывается')
+  assert.match(insightRead(withKlara, { actionText: 'Слежу за лицом Клары, когда говорю о погоде на реке' }), /скрывает — только, похоже, не это/u)
+  assert.match(insightRead(withKlara, { actionText: 'Слежу за Томом, когда спрашиваю про журнал' }), /не притворяется/u)
+  assert.equal(insightRead(withKlara, { actionText: 'Слежу за лицом незнакомца' }), '')
+  const found = freeActionDiscoveryCommands(withKlara, { checkEvent: check('insight', 'check-read'), skill: 'insight', actionText: 'Спрашиваю Клару про журнал и слежу за её лицом' })
+  assert.deepEqual(found.map((command) => command.fact?.summary), [knows])
 })
