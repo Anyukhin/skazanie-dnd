@@ -232,7 +232,10 @@ export function withoutEchoOfPlayer(narration, brief) {
   if (!action || !narration) return narration
   const stem = (word) => word.toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, 5)
   const said = new Set((action.match(/\p{L}{4,}/gu) ?? []).map(stem))
-  const sentences = String(narration).match(/[^.!?…]+[.!?…»"]*\s*/gu) ?? [narration]
+  // Цитата — часть своей фразы: «За Илу!» — рычит Борин, но… Прежде фраза
+  // резалась на «!» внутри кавычек, цитата уходила как эхо, и в летописи
+  // оставалось «— рычит Борин, но…» (замер 9, 2026-10-10).
+  const sentences = String(narration).match(/(?:«[^«»]*»|[^.!?…])+(?:[.!?…]+[»"]*|$)\s*/gu) ?? [narration]
   const echo = (sentence) => {
     const words = (sentence.replace(/«[^«»]*»/gu, ' ').match(/\p{L}{4,}/gu) ?? []).map(stem)
     const quoted = /«[^«»]{8,}»/u.test(sentence) && action.includes(sentence.match(/«([^«»]{8,})»/u)?.[1] ?? '\u0000')
@@ -274,12 +277,22 @@ export function narratorResponsePlan(brief) {
   // формулировка для успеха запрещала «новые находки» без исключения, и
   // модель отвечала «новой зацепки нет» поверх подтверждённой улики.
   const discovered = events.some(event => event?.event_type === 'WorldFactRecorded' && event?.payload?.fact?.predicate === 'discovery')
+  // Деталь исхода, названная судьёй до броска: на провале — почему сорвалось и
+  // чем стоило, на успехе — как именно вышло. С ней ведущий не отвечает
+  // «дверь не поддаётся» без причины (замер 9, 2026-10-10).
+  const outcomeDetail = String((brief?.known_environment?.player_intent ?? brief?.player_intent)?.outcome_detail ?? '').trim()
+  const checkSuccess = events.find(event => event?.event_type === 'AbilityCheckResolved')?.payload?.success
+  const checkOutcome = freeOutcome ?? (checkSuccess === true ? 'success' : checkSuccess === false ? 'failure' : null)
   return {
     version: 'narrator-response-plan/v2',
     mode: 'world_narration',
     speech_act: speechAct,
     must_answer: declarationOnly
       ? 'Кратко пояснить, что намерение ещё не стало выполненным действием.'
+      : outcomeDetail && checkOutcome === 'failure'
+        ? `Не пересказывая заявку, показать, почему не достигнута цель проверки и чем это обернулось, — через player_intent.outcome_detail, своими словами и не теряя её смысла${discovered ? '; назвать и деталь места из события WorldFactRecorded' : ''}. То, что герой делает наверняка (player_intent.approach: заклинание, шаг, слова), состоялось. Сверх этого скрытого не выдумывать.`
+      : outcomeDetail && checkOutcome === 'success' && !discovered
+        ? 'Не пересказывая заявку, показать, как именно вышло, — через player_intent.outcome_detail, своими словами и не теряя её смысла; добавить, как откликается место или люди рядом (только permitted_npc_reactions). Новых находок, сведений и согласия NPC не добавлять.'
       // Провал с записанной деталью места — всё ещё провал: деталь — то, что
       // видно и без броска, а не находка, ради которой бросали.
       : freeOutcome === 'failure'
@@ -293,7 +306,7 @@ export function narratorResponsePlan(brief) {
       // следишь, как…» повторял игроку его же слова (замеры 2026-10-10, судья
       // по ходам 2–3). Заявку игрок уже сказал — ведущий говорит, что вышло.
       : roleplay
-        ? 'Слова героя уже прозвучали — не повторяй и не пересказывай их. Покажи, как место откликается: звук, свет, движение воды или ветра, взгляд кого-то из permitted_npc_reactions. За других героев отряда не отвечай и решений за них не принимай.'
+        ? 'Слова героя уже прозвучали и услышаны — не повторяй, не пересказывай и не глуши их («слова тонут в грохоте»). Ответь на них как ведущий: чем откликается место — звук, свет, движение воды или ветра, — и взгляд кого-то из permitted_npc_reactions; если сказанное касается предыстории героя, дай ей отозваться деталью места. За других героев отряда не отвечай и решений за них не принимай.'
       : discovered
         ? 'Не пересказывая заявку, сразу назвать находку из события WorldFactRecorded (predicate discovery) — то, что герой нашёл или узнал, своими словами и вещественно; добавить, как откликается место или люди рядом (только permitted_npc_reactions). Сверх находки сведений и согласия NPC не добавлять.'
       : freeOutcome === 'success'
@@ -470,11 +483,21 @@ const SENSORY_PALETTES = Object.freeze({
     light: ['тусклый отблеск на кладке', 'резкая граница света и тьмы', 'дрожащая тень в проёме'],
     touch: ['крошка раствора под пальцами', 'холод ржавой решётки', 'влажный камень стены'],
   }),
+  // Побережье: маяк, причал, гавань. Прежде такие места падали в общую
+  // палитру, и рассказчик из ответа в ответ вставлял «тихий скрип где-то
+  // рядом» и «отблеск на ближайшей поверхности» — судья называл это шаблоном
+  // (замер 9, 2026-10-10).
+  coast: Object.freeze({
+    smell: ['солёный запах водорослей', 'запах смолы и мокрых канатов', 'горечь гнилой рыбы у воды'],
+    sound: ['удары волн о камни внизу', 'крики чаек сквозь ветер', 'глухой стук лодки о сваи'],
+    light: ['отблески на мокром камне', 'белая пена в темноте у скал', 'серый свет над водой'],
+    touch: ['солёные брызги на лице', 'скользкий от водорослей камень', 'мокрая верёвка под ладонью'],
+  }),
   generic: Object.freeze({
     smell: ['запах влажного камня', 'сухая пыль старого дерева', 'прохладный воздух с горечью дыма'],
-    sound: ['тихий скрип где-то рядом', 'ровный шум ветра снаружи', 'короткое эхо шагов'],
-    light: ['мягкий боковой свет', 'длинные неподвижные тени', 'тусклый отблеск на ближайшей поверхности'],
-    touch: ['прохлада ближайшей стены', 'шероховатая поверхность под ладонью', 'сухой сквозняк у пола'],
+    sound: ['ровный шум ветра снаружи', 'короткое эхо шагов', 'далёкий неразборчивый звук'],
+    light: ['мягкий боковой свет', 'длинные неподвижные тени', 'неровная граница света и тени'],
+    touch: ['холод камня под пальцами', 'шероховатое дерево под ладонью', 'сухой сквозняк у пола'],
   }),
 })
 
@@ -492,6 +515,7 @@ function stableTextHash(value) {
 function sensoryPaletteFor(scene) {
   const source = [scene?.title, scene?.location, scene?.theme, scene?.material].filter(Boolean).join(' ')
   if (/трактир|таверн|постоял|inn|tavern/iu.test(source)) return 'tavern'
+  if (/маяк|причал|гаван|пристан|побереж|(?<![а-яё])берег|(?<![а-яё])порт(?![а-яё]*(?:рет|ье|н|ал|фел|ик))|lighthouse|harbou?r|dock|coast|pier/iu.test(source)) return 'coast'
   if (/лес|роща|чащ|дерев|хво|forest|wood/iu.test(source)) return 'forest'
   if (/пещер|грот|каверн|cave|cavern/iu.test(source)) return 'cavern'
   if (/храм|святилищ|часовн|temple|shrine/iu.test(source)) return 'temple'

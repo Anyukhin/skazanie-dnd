@@ -65,6 +65,9 @@ const FREE_ACTION_RESPONSE_FIELDS = new Set([
   // v10: что видно и без броска — деталь места при любом исходе осмотра. На
   // провале и на успехе без находки она становится записанной деталью сцены.
   'surface_detail',
+  // v10: что герой видит и чем платит, когда попытка сорвалась. Рассказчик
+  // получает её вместо «не вышло» без причины; мира она не меняет.
+  'failure_detail',
 ])
 
 /**
@@ -161,7 +164,7 @@ function structurallyValidFreeActionResponse(value) {
   // Маршрут проверяется так же строго, как остальные перечисления: выдуманное
   // значение — не повод угадывать, а признак сломанного ответа.
   if (Object.hasOwn(value, 'route') && !validStringField(value.route, new Set(FREE_ACTION_ROUTES))) return false
-  for (const key of ['destination', 'npc_hint', 'success_detail', 'surface_detail']) {
+  for (const key of ['destination', 'npc_hint', 'success_detail', 'surface_detail', 'failure_detail']) {
     if (Object.hasOwn(value, key) && (typeof value[key] !== 'string' || value[key].length > 300)) return false
   }
   return true
@@ -528,12 +531,14 @@ export class ActionAdjudicator {
       const route = routeFromResponse(result, brief.participants)
       const successDetail = cleanSuccessDetail(result.success_detail)
       const surfaceDetail = cleanSuccessDetail(result.surface_detail)
+      const failureDetail = cleanSuccessDetail(result.failure_detail)
       return {
         ...bindFreeActionReadingToState(state, actorId, text, reading),
         context_metadata: contextMetadata,
         ...(route.route !== 'check' ? route : {}),
         ...(successDetail ? { success_detail: successDetail } : {}),
         ...(surfaceDetail && surfaceDetail !== successDetail ? { surface_detail: surfaceDetail } : {}),
+        ...(failureDetail && failureDetail !== surfaceDetail ? { failure_detail: failureDetail } : {}),
       }
     } catch (error) {
       const bound = bindFreeActionReadingToState(state, actorId, text, {

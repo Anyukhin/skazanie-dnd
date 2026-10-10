@@ -312,9 +312,16 @@ async function say(actorId, action, { label = '', requestKind, kind = 'action' }
     }
     break
   }
-  await settleInteraction()
+  const votes = await settleInteraction()
   const after = await room(account)
   const replies = freshMessages(seen, after)
+  // Ответ отряда на вопрос ведущего — строкой голосования сразу после вопроса.
+  // Прежде судья видел «Все идут?» без ответа и следом переход: «вопрос
+  // повисает в воздухе» (замер 9). Голосование — интерфейс стола, как 🎲.
+  for (const vote of votes) {
+    const asked = replies.findIndex((reply) => vote.description && reply.text.includes(vote.description))
+    replies.splice(asked + 1, 0, { author: '🗳 голосование отряда', speaker: 'system', text: `«${vote.title}» — все за «${vote.label}»` })
+  }
   for (const reply of replies) note(`> [${reply.author}] ${short(reply.text, 1600)}`)
   const exchange = {
     index: exchanges.length + 1, label, kind, actor: hero?.character ?? actorId, action,
@@ -326,17 +333,19 @@ async function say(actorId, action, { label = '', requestKind, kind = 'action' }
 
 /** Голосования и решения группы: все голосуют за первый «идём» вариант. */
 async function settleInteraction() {
+  const votes = []
   for (let guard = 0; guard < 6; guard += 1) {
     const state = await room()
     const interaction = state.agentInteraction
-    if (!interaction) return
+    if (!interaction) return votes
     if (interaction.status === 'open') {
       const options = interaction.options ?? []
       const preferred = options.find((entry) => /^(accept|continue|go|yes)$/u.test(String(entry.id)))
         ?? options.find((entry) => /принять|продолж|идём|в путь|да\b|отправ|уходим из/iu.test(String(entry.label)) && !/бросаем/iu.test(String(entry.label)))
         ?? options[0]
-      if (!preferred) return
+      if (!preferred) return votes
       note(`- 🗳 «${short(interaction.title ?? interaction.question ?? interaction.id, 120)}» → «${preferred.label}»`)
+      votes.push({ title: short(interaction.title ?? interaction.question ?? interaction.id, 120), label: String(preferred.label ?? ''), description: String(interaction.description ?? '').trim() })
       for (const account of accounts) {
         const key = `gm-vote-${randomUUID()}`
         await request(`/api/campaigns/${CODE}/party-decisions/${encodeURIComponent(interaction.id)}/votes`, { method: 'POST', account, key, body: { actor_id: account.heroId, option_id: preferred.id, idempotency_key: key } })
@@ -345,17 +354,18 @@ async function settleInteraction() {
     }
     if (interaction.status === 'resolved') {
       const winner = (interaction.options ?? []).find((entry) => entry.id === interaction.resolvedOptionId)
-      if (!winner || interaction.resolutionConsumed || interaction.consumed) return
+      if (!winner || interaction.resolutionConsumed || interaction.consumed) return votes
       // Клиент после решения шлёт продолжение кнопкой «Продолжить историю».
       const key = `gm-say-${++narrateSeq}`
       const result = await request('/api/narrate', { method: 'POST', account: accounts[0], key, body: { action: `[РЕШЕНИЕ ГРУППЫ] ${winner.label}`, campaign_id: CODE, actor_id: accounts[0].heroId, idempotency_key: key } })
-      if (result.status !== 200) return
+      if (result.status !== 200) return votes
       const fresh = await room()
-      if (fresh.agentInteraction?.id === interaction.id && fresh.agentInteraction.status === 'resolved') return
+      if (fresh.agentInteraction?.id === interaction.id && fresh.agentInteraction.status === 'resolved') return votes
       continue
     }
-    return
+    return votes
   }
+  return votes
 }
 
 // ---------------------------------------------------------------------------
@@ -447,6 +457,13 @@ async function fight() {
   })
   if (assembled.status !== 200) { problem('encounter', `${assembled.status} ${assembled.body?.code ?? ''}: ${short(assembled.body?.error, 200)}`); return }
   note('\n### ⚔ Бой')
+  // Засада — свой ход в записи, до первой заявки героя. Прежде её реплики
+  // попадали в общий блок «бой целиком» после заклинания Мирели, и судья
+  // читал атаку как «вписанную в бой задним числом» (замеры 8 и 9).
+  state = await room()
+  const ambush = freshMessages(seen, state)
+  for (const reply of ambush) note(`> [${reply.author}] ${short(reply.text, 600)}`)
+  exchanges.push({ index: exchanges.length + 1, label: 'засада', kind: 'combat', actor: 'ведущий', action: '(ведущий начинает стычку)', replies: ambush, ms: 0, scene: sceneContext(state), refused: false })
   const flavor = new Map([
     ['hero-slot-2', ['Борин рычит «За Илу и за стражу Причала!» и рубит с плеча', 'Борин прикрывает Мирель щитом и бьёт в ответ', 'Борин хрипло смеётся и наваливается всем весом']],
     ['hero-slot-1', ['Мирель шепчет формулу, и с пальцев срывается огонь', 'Мирель целится в того, кто ближе к Борину', 'Мирель стискивает зубы и бьёт ещё раз']],
@@ -470,6 +487,27 @@ async function fight() {
     const foes = (state.enemies ?? []).filter((enemy) => enemy.alive !== false && enemy.healthStatus !== 'defeated')
     if (!foes.length) break
     if (Number(hero?.hp) <= 0) { await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход'); continue }
+    // Товарищ при смерти: живой игрок сначала поднимает его, а не машет мечом
+    // дальше — судья упрекал ведущего, что Мирель умерла, «пока Борин бегает
+    // кругами» (замер 9). Стабилизация — серверное действие с проверкой Медицины.
+    const dying = (state.players ?? []).find((ally) => ally.id !== actorId && String(ally.id).startsWith('hero-slot-')
+      && Number(ally.hp) <= 0 && state.mechanics?.death?.heroes?.[ally.id]?.status !== 'dead'
+      && state.mechanics?.death?.saving_throws?.[ally.id]?.stable !== true)
+    if (dying && actorId === 'hero-slot-2') {
+      const gap = Math.max(Math.abs(dying.x - hero.x), Math.abs(dying.y - hero.y))
+      if (gap > 1) {
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+          const step = await command(actorId, { command_type: 'MoveActor', to: { x: dying.x + dx, y: dying.y + dy } }, 'К раненой')
+          if (step.status === 200) break
+        }
+      }
+      const helped = await command(actorId, { command_type: 'UseCombatAction', action_id: 'stabilize', target_id: dying.id }, 'Стабилизировать', accountFor(actorId), 'Борин падает на колено рядом с Мирелью и зажимает рану: «Держись, слышишь? Не смей!»')
+      if (helped.status === 200) {
+        const after = await room()
+        if (after.mechanics?.combat?.active && after.tacticalTurn?.actorId === actorId) await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход')
+        continue
+      }
+    }
     const round = Number(state.tacticalTurn?.round ?? 0)
     const line = flavor.get(actorId)?.[round % 3] ?? ''
     const target = foes.map((enemy) => ({ enemy, distance: Math.max(Math.abs(enemy.x - hero.x), Math.abs(enemy.y - hero.y)) })).sort((a, b) => a.distance - b.distance)[0].enemy
@@ -547,7 +585,12 @@ async function play() {
   await say(mirel, 'Ждём темноты в укрытии и смотрим на вершину маяка — загорится ли огонь?', { label: 'ночное ожидание', kind: 'roleplay' })
   await fight()
   await say(mirel, 'продолжим', { label: 'после боя', kind: 'continue' })
-  await say(mirel, 'Мирель обыскивает поверженных: нет ли при них знака культа или чего-то, что связывает их с пропавшими рыбаками?', { label: 'обыск врагов', kind: 'explore' })
+  // Обыскивает тот, кто на ногах: лежащая без сознания Мирель получала отказ,
+  // и судья видел «последний запрос остался без ответа» (замер 9).
+  state = await room()
+  const standing = [mirel, borin].find((id) => Number(heroOf(state, id)?.hp) > 0) ?? mirel
+  const searcher = heroOf(state, standing)?.character ?? 'Мирель'
+  await say(standing, `${searcher} обыскивает поверженных: нет ли при них знака культа или чего-то, что связывает их с пропавшими рыбаками?`, { label: 'обыск врагов', kind: 'explore' })
 }
 
 // ---------------------------------------------------------------------------
@@ -880,6 +923,15 @@ if (REJUDGE) {
 let fatal = null
 try { await main() } catch (error) { fatal = error; problems.push({ kind: 'run-aborted', message: short(error?.stack ?? error, 600) }) }
 await stopServer()
+// Журнал сервера рядом с отчётом — предупреждения движка (отказ прохода,
+// неудачная запись улики) объясняют странный ход без повторной партии.
+// Похожее на ключ вычищается: журнал не должен уносить секреты.
+const secret = String(process.env.ROUTERAI_API_KEY
+  || /^ROUTERAI_API_KEY=(\S+)/mu.exec((() => { try { return readFileSync(join(ROOT, '.env'), 'utf8') } catch { return '' } })())?.[1]
+  || '').replace(/^["']|["']$/gu, '')
+writeFileSync(join(OUT, 'server.log'), logs
+  .split(secret.length >= 8 ? secret : '\u0000never\u0000').join('[ключ]')
+  .replace(/\b(?:sk|rk|key)[-_][A-Za-z0-9_-]{12,}\b/gu, '[ключ]'))
 const usage = LIVE ? await usageReport() : null
 let verdicts = null
 let holistic = null

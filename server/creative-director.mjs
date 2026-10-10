@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { buildNarrationBrief } from './security.mjs'
-import { campaignConceptForAgent } from './agent-context.mjs'
+import { campaignConceptForAgent, heroCardForAgent } from './agent-context.mjs'
 
 /**
  * Потолок ожидания для необязательного текста критического момента.
@@ -97,9 +97,29 @@ export function heroFlourishFor(events = [], state = {}, { playerNote = '', acto
   return { kind: 'hero_flourish', actor_id: hero, target_id: hero, target_name: actorName(state, hero), note: note.slice(0, 400) }
 }
 
+/**
+ * События самого момента падения героя: удар, урон, спасброски, гибель. Смена
+ * хода и шаги других в тот же ответ не входят — рассказчик писал «Мирель
+ * погибает, и её ход заканчивается; ход переходит к Борину» (замер 9,
+ * 2026-10-10), и гибель героя звучала как строка очереди.
+ */
+const HERO_MOMENT_EVENTS = new Set(['AttackResolved', 'SpellCast', 'SpellSavingThrowResolved', 'DamageApplied', 'HitPointsReducedToZero', 'DeathSavingThrowResolved', 'HeroDied', 'ConditionAdded'])
+
+function heroMomentEvents(events, trigger) {
+  const hero = String(trigger?.target_id ?? '')
+  return (events ?? []).filter((event) => HERO_MOMENT_EVENTS.has(String(event?.event_type ?? ''))
+    && (String(event?.actor_id ?? '') === hero || (event?.target_ids ?? []).map(String).includes(hero)))
+}
+
 function publicEnvironment(state, trigger) {
   const scene = state.scene ?? {}
+  // Карточка павшего героя: его предыстория и узы — то, о чём эта смерть или
+  // это падение (сестра, долг, клятва), а не просто «герой выбыл».
+  const fallenCard = ['hero_fallen', 'hero_died'].includes(String(trigger?.kind ?? ''))
+    ? heroCardForAgent(state, trigger.target_id)
+    : null
   return {
+    ...(fallenCard ? { fallen_hero: fallenCard } : {}),
     campaign_premise: campaignConceptForAgent(state),
     scene: {
       title: String(scene.title ?? ''),
@@ -161,9 +181,12 @@ export class CriticalNarrationCoordinator {
     return { ...narration, trigger }
   }
 
-  async renderCriticalMoment({ events = [], state = {}, viewer = {}, recentNarrations = [], playerNote = '', actorId = '' } = {}) {
-    const trigger = criticalMomentFor(events, state) ?? heroFlourishFor(events, state, { playerNote, actorId })
+  async renderCriticalMoment({ events: allEvents = [], state = {}, viewer = {}, recentNarrations = [], playerNote = '', actorId = '' } = {}) {
+    const trigger = criticalMomentFor(allEvents, state) ?? heroFlourishFor(allEvents, state, { playerNote, actorId })
     if (!trigger) return null
+    const heroMoment = ['hero_fallen', 'hero_died'].includes(trigger.kind)
+    const focused = heroMoment ? heroMomentEvents(allEvents, trigger) : []
+    const events = focused.length ? focused : allEvents
     const brief = buildNarrationBrief({
       visible_events: events,
       visible_state_changes: events.map((event) => ({
@@ -191,11 +214,13 @@ export class CriticalNarrationCoordinator {
       timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
       recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
       style: trigger.kind === 'hero_fallen'
-        ? 'Один выразительный абзац о падении героя без сознания. Герой ещё не объявлен мёртвым: не описывай смерть, предсмертные слова, похороны или окончательный исход. Не добавляй новых бросков, урона, наград или решений правил.'
+        ? 'Один выразительный абзац о падении героя без сознания: удар, как он падает, что видно вокруг, — и ясно, что жизнь ещё теплится и товарищи могут успеть. Герой ещё не объявлен мёртвым: не описывай смерть, предсмертные слова, похороны или окончательный исход. Не пиши о ходах, очереди и правилах. Не добавляй новых бросков, урона, наград или решений правил.'
         : trigger.kind === 'hero_died'
-          ? 'Один выразительный абзац об окончательной смерти героя. Можно дать короткое прощание, но не воскрешай героя и не продолжай историю за него. Не добавляй новых бросков, урона, наград или решений правил.'
+          ? 'Один выразительный абзац об окончательной смерти героя — главный момент вечера. Покажи последний миг: взгляд, движение, то, что осталось несказанным, по fallen_hero (его узы и предыстория — то, ради чего он пришёл), и как замирает поле боя. Не пиши о ходах, очереди и правилах, не говори за живых героев. Не воскрешай героя и не продолжай историю за него. Не добавляй новых бросков, урона, наград или решений правил.'
           : trigger.kind === 'hero_flourish'
-            ? 'Одна-две фразы о поступке героя: как прозвучали его слова (коротко, можно цитатой) и как выглядел удар или заклинание по событиям. Исход — попадание, промах, урон — только из событий; не добавляй бросков, урона, наград и решений правил.'
+            // Замер 9: «Борин прикрывает Мирель щитом, но удар проходит мимо» —
+            // пересказ заявки игрока, которая уже стоит в летописи.
+            ? 'Одна-две фразы о поступке героя. Заявка игрока уже в летописи — не пересказывай её; покажи то, чего в ней нет: как это выглядело со стороны, как ответил противник, что изменилось на поле. Боевой клич можно коротко подхватить цитатой. Без погоды и фоновых звуков. Исход — попадание, промах, урон — только из событий; не добавляй бросков, урона, наград и решений правил.'
             : 'Один выразительный абзац о переломном моменте. Не добавляй новых бросков, урона, наград или решений правил.',
     })
     // Живой текст не пришёл — короткая реплика о моменте, а не повтор строки боя.
@@ -203,7 +228,7 @@ export class CriticalNarrationCoordinator {
     // уже в летописи.
     const deterministic = /^deterministic/u.test(String(narration?.provider ?? ''))
     if (deterministic && trigger.kind === 'hero_flourish') return { ...narration, narration: '', trigger }
-    const fallback = deterministic ? criticalMomentLine(trigger, events) : ''
+    const fallback = deterministic ? criticalMomentLine(trigger, allEvents) : ''
     return { ...narration, ...(fallback ? { narration: fallback } : {}), trigger }
   }
 }

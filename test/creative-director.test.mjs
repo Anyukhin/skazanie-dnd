@@ -113,3 +113,34 @@ test('после победы — сцена после схватки; без �
   assert.equal(await silent.renderAftermath({ events: victory, state }), null)
   assert.equal(await live.renderAftermath({ events: [{ event_type: 'EncounterOutcomeRecorded', payload: { outcome: 'party_incapacitated' } }], state }), null)
 })
+
+test('гибель героя: рассказчик видит только сам момент и карточку героя, без смены хода', async () => {
+  // Замер 9 (2026-10-10): «Мирель погибает, и её ход заканчивается; ход
+  // переходит к Борину» — в бриф шли события очереди, и гибель звучала как
+  // строка очереди. Теперь — удар, спасброски, гибель и предыстория героя.
+  const briefs = []
+  const director = new CriticalNarrationCoordinator({ narrator: { render: async (brief) => {
+    briefs.push(brief)
+    return { narration: 'Мирель затихает на мокрых камнях.', provider: 'fake-agent', verification: { valid: true }, suggestions: [] }
+  } } })
+  const state = {
+    scene: { title: 'Скала', location: 'Маяк' },
+    players: [
+      { id: 'hero-1', character: 'Мирель', backstory: 'Ищет пропавшую сестру Илу.' },
+      { id: 'hero-2', character: 'Борин' },
+    ],
+    enemies: [{ id: 'gob', name: 'Гоблин' }],
+  }
+  const events = [
+    { event_type: 'DeathSavingThrowResolved', actor_id: 'hero-1', target_ids: ['hero-1'], payload: { result: 'died' } },
+    { event_type: 'HeroDied', actor_id: 'hero-1', target_ids: ['hero-1'], payload: {} },
+    { event_type: 'TurnEnded', actor_id: 'hero-1', target_ids: [], payload: {} },
+    { event_type: 'TurnStarted', actor_id: 'hero-2', target_ids: [], payload: { round: 4 } },
+  ]
+  const died = await director.renderCriticalMoment({ events, state })
+  assert.equal(died.trigger.kind, 'hero_died')
+  const types = briefs[0].visible_events.map((event) => event.event_type)
+  assert.deepEqual(types, ['DeathSavingThrowResolved', 'HeroDied'])
+  assert.equal(briefs[0].known_environment.fallen_hero?.name, 'Мирель')
+  assert.match(briefs[0].known_environment.fallen_hero?.backstory ?? '', /Илу/u)
+})

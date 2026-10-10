@@ -396,6 +396,34 @@ export function narrationNpcReactions(presentNpcs = [], events = [], { heroDeed 
   })
 }
 
+/**
+ * Реакция NPC, которую назвала подтверждённая деталь исхода («Мара бледнеет —
+ * лицо ей знакомо») или записанная находка, разрешена рассказчику тем же
+ * allowlist: описание реакции дополняется текстом детали. Без этого удачная
+ * Проницательность оборачивалась «по её реакции неясно» — проверка рассказчика
+ * отбрасывала любую реакцию вне словаря (замер 9, 2026-10-10).
+ *
+ * @param {Array<Record<string, any>>} permits
+ * @param {string[]} details
+ */
+export function withDetailReactions(permits = [], details = []) {
+  const texts = details.map((detail) => memoryText(detail, 300)).filter(Boolean)
+  if (!texts.length) return permits
+  const stem = (word) => word.toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, 4)
+  return permits.map((permit) => {
+    const first = memoryText(permit?.name, 120).split(/\s+/u)[0] ?? ''
+    if (first.length < 3) return permit
+    const named = texts.filter((text) => (text.match(/\p{L}{3,}/gu) ?? []).some((word) => stem(word) === stem(first) && /^\p{Lu}/u.test(word)))
+    return named.length ? { ...permit, description: [permit.description, ...named].filter(Boolean).join(' ') } : permit
+  })
+}
+
+function discoveryDetailTexts(events = []) {
+  return (events ?? [])
+    .filter((event) => event?.event_type === 'WorldFactRecorded' && event?.payload?.fact?.predicate === 'discovery')
+    .map((event) => String(event.payload.fact.summary ?? ''))
+}
+
 function narrationSocialConsequences(events, state) {
   const promises = new Map((state.social?.promises ?? []).map((promise) => [String(promise.id), promise]))
   return (events ?? [])
@@ -1765,6 +1793,7 @@ export class GameOrchestrator {
           approach: String(freeAction.reading?.approach_summary ?? '').slice(0, 500),
           outcome: freeAction.kind,
           ...(intent?.roleplay_speech === true ? { roleplay_speech: true } : {}),
+          ...(freeAction.outcome_detail ? { outcome_detail: String(freeAction.outcome_detail).slice(0, 300) } : {}),
         },
         structured_result: { outcome: freeAction.kind, event_types: publicCommittedEvents.map(event => event.event_type) },
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже
@@ -1776,7 +1805,7 @@ export class GameOrchestrator {
         ...narrationScenarioContext(state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
       },
-      permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents, {
+      permitted_npc_reactions: withDetailReactions(narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents, {
         heroDeed: ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
           && !state.mechanics?.combat?.active
           // Удавшуюся скрытность никто не заметил — реагировать не на что.
@@ -1785,7 +1814,7 @@ export class GameOrchestrator {
           && ['check_success', 'check_failure'].includes(String(freeAction.kind))
           ? { npcId: freeAction.reading.target_id, success: freeAction.kind === 'check_success' }
           : null,
-      }),
+      }), [String(freeAction.outcome_detail ?? ''), ...discoveryDetailTexts(publicCommittedEvents)]),
       narration_constraints: constraints,
       viewer,
     })
@@ -3222,6 +3251,7 @@ export class GameOrchestrator {
           // полчаса. Без этой пометки рассказчик рассказывал «наступление ночи»,
           // и судья ловил «ждут темноты в глубокую ночь» (замеры 2026-10-10).
           ...(plan.wait ? { wait: { until: String(plan.wait.label ?? ''), already: plan.wait.already === true } } : {}),
+          ...(committed.outcome_detail ? { outcome_detail: String(committed.outcome_detail).slice(0, 300) } : {}),
         },
         campaign_premise: campaignConceptForAgent(committed.state),
         // Небо и час — данные, а не право сочинять: тот же расчёт, что у
@@ -3235,7 +3265,10 @@ export class GameOrchestrator {
         ...narrationScenarioContext(committed.state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, committed.state),
       },
-      permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),
+      permitted_npc_reactions: withDetailReactions(
+        narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),
+        [String(committed.outcome_detail ?? ''), ...discoveryDetailTexts(publicCommittedEvents)],
+      ),
       viewer,
     })
     const resolvedRuleIds = [...new Set([...(plan.rule_ids ?? []), ...committedEvents.flatMap((event) => event.source_rule_ids ?? [])])]
@@ -3357,6 +3390,14 @@ export class GameOrchestrator {
     // (замер 2026-10-10: ни одной записанной детали за партию). Повтор хода
     // судью не зовёт: улика уже записана под своим ключом.
     const details = discoveryCommit ? {} : await this.checkDetailsFor(committed.state, checkCommand.actor_id, message, skill)
+    // Деталь исхода для рассказчика — то, что герой видит при этом исходе:
+    // на провале — причина и цена, на успехе вне поиска — как именно вышло.
+    // Находку поиска сервер пишет фактом ниже; здесь её нет.
+    const outcomeDetail = succeeded
+      ? (DISCOVERY_SKILLS.has(skill) ? '' : String(details.success_detail ?? ''))
+      : String(details.failure_detail ?? '')
+    if (outcomeDetail) committed = { ...committed, outcome_detail: outcomeDetail }
+    if (!DISCOVERY_SKILLS.has(skill)) return committed
     for (let attempt = 0; !discoveryCommit && attempt < 3; attempt += 1) {
       const found = succeeded
         ? freeActionDiscoveryCommands(baseState, {
@@ -3401,10 +3442,14 @@ export class GameOrchestrator {
    */
   async checkDetailsFor(state, actorId, message, skill) {
     const adjudicator = this.unknownActionHandler?.actionAdjudicator
-    if (!DISCOVERY_SKILLS.has(skill) || typeof adjudicator?.read !== 'function' || !adjudicator.llmClient?.completeJson) return {}
+    if (!skill || typeof adjudicator?.read !== 'function' || !adjudicator.llmClient?.completeJson) return {}
     try {
       const reading = await adjudicator.read(state, String(actorId ?? ''), String(message ?? ''), interpretFreeAction(message))
-      return { success_detail: String(reading?.success_detail ?? ''), surface_detail: String(reading?.surface_detail ?? '') }
+      return {
+        success_detail: String(reading?.success_detail ?? ''),
+        surface_detail: String(reading?.surface_detail ?? ''),
+        failure_detail: String(reading?.failure_detail ?? ''),
+      }
     } catch {
       return {}
     }

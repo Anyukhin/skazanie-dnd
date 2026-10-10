@@ -85,7 +85,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { freeActionDiscoveryCommands, freeActionSurfaceCommands } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -448,6 +448,30 @@ async function onlyBackgroundMemoryChanged(eventStore, campaignId, fromVersion, 
   if (typeof eventStore?.getEvents !== 'function') return false
   const events = await eventStore.getEvents(campaignId, { afterVersion: Number(fromVersion), upToVersion: Number(toVersion) })
   return events.length > 0 && events.every((event) => BACKGROUND_MEMORY_EVENT_TYPES.has(String(event?.event_type ?? '')))
+}
+
+/** Состояние, которое не даёт действовать, — словом ведущего, а не кодом. */
+const INCAPACITATING_CONDITION_NAMES = Object.freeze({
+  paralyzed: 'паралич', stunned: 'оглушение', petrified: 'окаменение', incapacitated: 'бессилие',
+})
+
+/**
+ * Отказ действию героя, который лежит без сознания или скован: ведущий
+ * говорит, что с героем и что может отряд. Прежде игрок читал
+ * «Недееспособный герой не может совершать действие (unconscious)», и судья
+ * записал это в «технические ошибки» (замер 2026-10-10).
+ *
+ * @param {Record<string, any>} actor
+ * @param {string|null} condition
+ * @returns {string}
+ */
+export function incapacitatedActionRefusal(actor, condition) {
+  const name = String(actor?.character || actor?.name || 'Герой').slice(0, 80)
+  if (!condition || condition === 'unconscious') {
+    return `${name} без сознания и сейчас ничего не сделает сам. Поднять героя может отряд: перевязать раны (Мудрость (Медицина), СЛ 10), дать зелье или исцелить чарами.`
+  }
+  const reason = INCAPACITATING_CONDITION_NAMES[/** @type {keyof typeof INCAPACITATING_CONDITION_NAMES} */ (condition)] ?? 'бессилие'
+  return `${name} сейчас не может действовать — ${reason}; пока это не пройдёт, ход за отрядом.`
 }
 
 export class AutonomousCampaignOrchestrator {
@@ -1080,11 +1104,7 @@ export class AutonomousCampaignOrchestrator {
     if (!isLivingActor(actor) || incapacitating) {
       return {
         kind: 'rejected',
-        narration: !actor
-          ? 'Герой для действия не найден.'
-          : incapacitating
-            ? `Недееспособный герой не может совершать действие (${incapacitating}).`
-            : 'Герой без хитов не может совершать действие.',
+        narration: !actor ? 'Герой для действия не найден.' : incapacitatedActionRefusal(actor, incapacitating),
         turn_consumed: false,
         rejected: true,
         admin_commands: 0,
@@ -2028,6 +2048,7 @@ export class AutonomousCampaignOrchestrator {
     }
     let consequenceCommit = null
     let passageRefused = false
+    let passageRefusedCode = ''
     for (let attemptIndex = 0; attemptIndex < 3; attemptIndex += 1) {
       try {
         consequenceCommit = await this.runCommands(campaignId, `${idempotencyKey}:consequence`, followUp)
@@ -2040,6 +2061,8 @@ export class AutonomousCampaignOrchestrator {
         const movement = new Set(['MoveActor', 'OperateDoor'])
         if (error instanceof RulesValidationError && !passageRefused && followUp.some((command) => movement.has(command.command_type))) {
           passageRefused = true
+          passageRefusedCode = String(error.code ?? 'RULES_VALIDATION_FAILED').slice(0, 80)
+          console.warn('[Сказание] Проход после удачной проверки отклонён движком:', passageRefusedCode, String(error.message ?? '').slice(0, 160))
           for (let index = followUp.length - 1; index >= 0; index -= 1) if (movement.has(followUp[index].command_type)) followUp.splice(index, 1)
           continue
         }
@@ -2051,9 +2074,21 @@ export class AutonomousCampaignOrchestrator {
       .reduce((sum, event) => sum + (Number(event.payload?.applied_amount) || 0), 0)
     const failureText = consequence.damage_expression
       ? `Неудачное движение. Герой получает ${injuryAmount} ${damageTypeLabelRu(consequence.damage_type)} урона.` : consequence.summary
+    // Что герой видит при этом исходе — словами судьи, названными до броска:
+    // на провале — почему сорвалось и чем стоило, на успехе вне поиска — как
+    // именно вышло. Прежде ведущий отвечал «дверь не поддаётся» без причины и
+    // «по её реакции неясно» после удачной Проницательности (замер 9,
+    // 2026-10-10). Находку поиска записывает сервер фактом — здесь её нет.
+    // Успех прохода, который движок потом отклонил, деталью не обещается.
+    const discoverySkill = DISCOVERY_SKILLS.has(String(reading.skill ?? '').replace(/_/gu, '-'))
+    const outcomeDetail = inCombat ? '' : succeeded
+      ? (passageRefused || discoverySkill ? '' : String(reading.success_detail ?? ''))
+      : String(reading.failure_detail ?? '')
     return {
       context_metadata: actionContextMetadata,
       kind: succeeded ? 'check_success' : 'check_failure',
+      ...(outcomeDetail ? { outcome_detail: outcomeDetail } : {}),
+      ...(passageRefused ? { passage_refused: passageRefusedCode } : {}),
       ruling: outcomeRuling,
       reading,
       stakes,

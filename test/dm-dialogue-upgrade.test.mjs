@@ -307,3 +307,38 @@ test('хранитель зацепки, вставший на поле во в�
   const accepted = await send('Простукиваю бочки у стены')
   assert.doesNotMatch(String(accepted.narration), /Обстановка изменилась/u)
 })
+
+test('провал проверки рассказывается через цену и причину от судьи, а не «не вышло»', async () => {
+  // Замер 9 (2026-10-10): «Дверь не поддаётся, и Борин остаётся снаружи» —
+  // без причины и цены. Судья называет до броска, что герой увидит при
+  // провале (`failure_detail`), и рассказчик получает это как деталь исхода.
+  const { narratorResponsePlan } = await import('../server/narrator.mjs')
+  const failure = 'Ветер воет в щелях так, что все звуки с кормы тонут в нём.'
+  const reader = {
+    llmClient: { completeJson: async () => ({}) },
+    read: async () => ({ goal_summary: 'Осмотреть корму', approach_summary: 'Осматриваю', ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator', success_detail: 'Знак артели на корме.', failure_detail: failure }),
+  }
+  const briefs = []
+  const narrator = { render: async (brief) => { briefs.push(brief); return { narration: 'Ветер воет так, что корма молчит; метку в темноте не разобрать.', provider: 'test-llm' } } }
+  const { send } = await fixture({ reader, narrator, rolls: [2, 2, 2] })
+  const missed = await send('Осматриваю корму и ищу метку владельца', { idempotencyKey: 'look-failure-detail' })
+  assert.equal(missed.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success, false)
+  const brief = briefs.at(-1)
+  assert.equal(brief?.known_environment?.player_intent?.outcome_detail, failure)
+  assert.match(narratorResponsePlan(brief).must_answer, /outcome_detail/u)
+})
+
+test('реакция NPC из подтверждённой детали исхода разрешена рассказчику', async () => {
+  // Замер 9: после удачной Проницательности ведущий писал «по её реакции
+  // неясно» — любая реакция вне словаря отбрасывалась проверкой.
+  const { withDetailReactions } = await import('../server/game-orchestrator.mjs')
+  const permits = [
+    { npc_id: 'mara', name: 'Мара Вейл', reaction: 'reacts_to_act', description: 'отзывается на поступок героя по своему нраву' },
+    { npc_id: 'orren', name: 'Оррен Кель', reaction: 'reacts_to_act', description: 'отзывается на поступок героя по своему нраву' },
+  ]
+  const detail = 'Мара бледнеет и стискивает край стойки — лицо на мостках ей знакомо.'
+  const [mara, orren] = withDetailReactions(permits, [detail, ''])
+  assert.match(mara.description, /стискивает край стойки/u)
+  assert.equal(orren.description, permits[1].description, 'другого NPC деталь не касается')
+  assert.deepEqual(withDetailReactions(permits, ['', '']), permits)
+})
