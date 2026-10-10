@@ -273,7 +273,12 @@ async function say(actorId, action, { label = '', requestKind, kind = 'action' }
       const rolled = await request('/api/roll', { method: 'POST', account, body: { checkId: check.check_id, playerId: actorId, campaignId: CODE } })
       if (rolled.status !== 200) { problem('roll-refused', `${rolled.status} ${rolled.body?.code ?? ''}`); break }
       note(`> 🎲 ${rolled.body.value} + ${rolled.body.modifier} = **${rolled.body.total}** против ${rolled.body.difficulty ?? '?'} → ${rolled.body.success ? 'успех' : 'провал'}`)
-      body = { ...baseBody, action: body.action, idempotency_key: `gm-say-${++narrateSeq}`, roll: { roll_id: rolled.body.roll_id }, ...(answer.clarification?.id ? { clarification_id: answer.clarification.id } : {}) }
+      // Как клиент (`useGameSession`): кость едет с согласованным текстом шага
+      // (`resolved_action`) и уточнением, к которому привязана проверка. Прежде
+      // стенд слал полный текст плана, и шаг с проверкой падал в
+      // ROLL_CONTEXT_MISMATCH — ход оставался без ответа.
+      const clarificationId = check.clarification_id ?? answer.clarification?.id
+      body = { ...baseBody, action: answer.resolved_action ?? body.action, idempotency_key: `gm-say-${++narrateSeq}`, roll: { roll_id: rolled.body.roll_id }, ...(clarificationId ? { clarification_id: clarificationId } : {}) }
       const resolved = await request('/api/narrate', { method: 'POST', account, body, key: body.idempotency_key })
       if (resolved.status !== 200) {
         note(`> ⚠ продолжение броска: ${resolved.status} ${resolved.body?.code ?? ''}`)

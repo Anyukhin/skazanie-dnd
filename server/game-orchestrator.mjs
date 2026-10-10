@@ -2217,7 +2217,10 @@ export class GameOrchestrator {
       const pending = this.clarificationRegistry.resolve(clarificationId, { campaignId, actorId: playerId })
       if (result.mechanics?.length && !result.check && !result.action_proposal) this.clarificationRegistry.complete(clarificationId, { campaignId, actorId: playerId })
       const steps = pending.original_intent?.action_steps ?? []
-      if (!steps.length || mergeClarificationAction(pending, message) !== steps[0]) return result
+      // Вторая фаза броска шага приходит с текстом самого шага
+      // (`resolved_action`), а не с «Да»: это тот же шаг плана.
+      const stepText = steps.length && message === steps[0] ? message : mergeClarificationAction(pending, message)
+      if (!steps.length || stepText !== steps[0]) return result
       if (result.check) return { ...result, check: { ...result.check, clarification_id: clarificationId } }
       if (!result.mechanics?.length || result.clarification || result.action_proposal || steps.length < 2) return result
       const depth = Number(input.planStep ?? 0)
@@ -3040,6 +3043,10 @@ export class GameOrchestrator {
         visible_state_changes: [],
         check: { ...check, sides: 20, skill: preview.skill },
         turn_consumed: false,
+        // Бросок привязан к `message`, а после уточнения это уже не текст
+        // ответа («Да»), а согласованный шаг. Клиент шлёт кость с этим
+        // текстом; без него `/api/narrate` отвечал ROLL_CONTEXT_MISMATCH.
+        ...(pendingClarification ? { resolved_action: message } : {}),
       }
     }
     if (planCheckCommand && verifiedRoll) {
