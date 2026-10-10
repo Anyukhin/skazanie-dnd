@@ -885,21 +885,15 @@ async function runMvpScenario(t) {
   assert.ok(continued.body.state.players.some((entry) => entry.inventory.some((item) => String(item.id).startsWith('loot-'))))
   const completedTravel = continuedState.autonomy.travel_history.at(-1)
   assert.ok(completedTravel?.duration_minutes > 0)
-  // Если бой закончился с героем на 0 ОЗ, отряд сначала ждёт его пробуждения
-  // (1d4 часа, не больше четырёх), и только потом отдыхает восемь часов.
-  const downtimeMinutes = continued.body.state.autonomy.downtime_history.at(-1)?.duration_minutes
-  assert.ok([480, 720].includes(downtimeMinutes), `неожиданная длительность отдыха: ${downtimeMinutes}`)
+  // После победы привала без заявки нет (решение владельца 2026-10-10):
+  // время после боя — только дорога.
+  const downtimeMinutes = continued.body.state.autonomy.downtime_history.at(-1)?.duration_minutes ?? 0
+  assert.equal(downtimeMinutes, 0, `после победы не должно быть автопривала: ${downtimeMinutes}`)
   const worldSecondsAfterTravel = Number(continuedState.mechanics.world_time.elapsed_minutes) * 60
     + Number(continuedState.mechanics.world_time.second_remainder ?? 0)
   const expectedWorldSeconds = worldSecondsBeforeDowntime + (downtimeMinutes + completedTravel.duration_minutes) * 60
   assert.ok(Math.abs(worldSecondsAfterTravel - expectedWorldSeconds) < .001,
     `игровое время: ${worldSecondsAfterTravel} с вместо ${expectedWorldSeconds} с с учётом завершённого боя`)
-  assert.ok(
-    continuedState.players
-      .filter((entry) => continuedState.mechanics.death?.heroes?.[entry.id]?.status !== 'dead')
-      .every((entry) => entry.hp === entry.maxHp),
-    'post-combat long rest must restore every surviving hero',
-  )
   assert.equal(continuedState.adventure.chapter, 2)
 
   const levelCandidate = continuedState.players.find((entry) => entry.id === 'mvp-hero-1')
