@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { buildNarrationBrief } from './security.mjs'
 import { campaignConceptForAgent } from './agent-context.mjs'
 
@@ -52,6 +54,31 @@ export function criticalMomentFor(events = [], state = {}) {
     return { kind, actor_id: String(event.actor_id ?? ''), target_id: targetId, target_name: actorName(state, targetId) }
   }
   return null
+}
+
+/**
+ * Реплика ведущего о самом моменте, когда живой текст модели не пришёл.
+ * Прежде запасной рассказчик пересказывал строку боя — «Борин поражает
+ * Гоблина. Гоблин получает урон», — и хроника читалась дважды (плейтест
+ * 2026-10-10). Формы — настоящее время без рода; смерть называет только
+ * подтверждённое событие гибели героя. Вариант — по хешу события: повтор и
+ * replay дают ту же строку.
+ */
+const CRITICAL_MOMENT_LINES = Object.freeze({
+  enemy_defeated: ['{name} валится с ног — этот противник своё отвоевал.', '{name} оседает наземь и больше не встаёт в строй.', 'Ещё один враг повержен: {name} затихает.'],
+  hero_fallen: ['{name} оседает на землю без сознания — жизнь ещё теплится.', '{name} падает без чувств; товарищам стоит поспешить.', '{name} рушится на землю и не шевелится — но ещё дышит.'],
+  hero_died: ['{name} больше не поднимется. Бой идёт дальше — уже без героя.'],
+  enemy_fled: ['{name} бросает бой и пускается наутёк.', '{name} не выдерживает и бежит.'],
+  enemy_surrendered: ['{name} бросает оружие и просит пощады.', '{name} опускает оружие: с него хватит.'],
+})
+
+export function criticalMomentLine(trigger, events = []) {
+  const lines = CRITICAL_MOMENT_LINES[String(trigger?.kind ?? '')]
+  const name = String(trigger?.target_name ?? '').trim()
+  if (!lines?.length || !name) return ''
+  const seed = `${trigger.kind}\u0000${trigger.target_id}\u0000${(events ?? []).map((event) => event?.event_id ?? '').join('|')}`
+  const index = parseInt(createHash('sha256').update(seed).digest('hex').slice(0, 8), 16) % lines.length
+  return lines[index].replace('{name}', name)
 }
 
 function publicEnvironment(state, trigger) {
@@ -118,6 +145,8 @@ export class CriticalNarrationCoordinator {
           ? 'Один выразительный абзац об окончательной смерти героя. Можно дать короткое прощание, но не воскрешай героя и не продолжай историю за него. Не добавляй новых бросков, урона, наград или решений правил.'
           : 'Один выразительный абзац о переломном моменте. Не добавляй новых бросков, урона, наград или решений правил.',
     })
-    return { ...narration, trigger }
+    // Живой текст не пришёл — короткая реплика о моменте, а не повтор строки боя.
+    const fallback = /^deterministic/u.test(String(narration?.provider ?? '')) ? criticalMomentLine(trigger, events) : ''
+    return { ...narration, ...(fallback ? { narration: fallback } : {}), trigger }
   }
 }

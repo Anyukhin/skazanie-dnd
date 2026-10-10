@@ -66,3 +66,17 @@ test('критическая реплика получает недавние р
   await director.renderCriticalMoment({ events, state })
   assert.deepEqual(seen[1], [], 'без истории — пустой список, а не undefined')
 })
+
+test('без живого текста модели критический момент получает реплику о самом моменте, а не повтор строки боя', async () => {
+  // Плейтест 2026-10-10: запасной рассказчик писал «Борин поражает Гоблина.
+  // Гоблин получает урон» сразу под той же строкой боя.
+  const director = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Борин поражает Гоблина. Гоблин получает урон.', provider: 'deterministic-fallback' }) } })
+  const state = { players: [{ id: 'borin', character: 'Борин' }], enemies: [{ id: 'gob', name: 'Гоблин 1' }] }
+  const events = [{ event_id: 'down-1', event_type: 'HitPointsReducedToZero', actor_id: 'borin', target_ids: ['gob'], payload: {} }]
+  const result = await director.renderCriticalMoment({ events, state })
+  assert.doesNotMatch(result.narration, /получает урон|поражает/u)
+  assert.match(result.narration, /Гоблин 1/u)
+  assert.equal((await director.renderCriticalMoment({ events, state })).narration, result.narration, 'тот же момент — та же строка')
+  const live = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Гоблин падает в мокрую траву.', provider: 'RouterAI' }) } })
+  assert.equal((await live.renderCriticalMoment({ events, state })).narration, 'Гоблин падает в мокрую траву.')
+})
