@@ -3,6 +3,7 @@ import { RULE_IDS, RulesValidationError, abilityModifier, defaultAttackItemIdFor
 import { LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { waitTargetFromText } from './intent-parser.mjs'
 import { minutesUntilClock } from './weather.mjs'
+import { combatSpellFor } from './combat-spells.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
 export const DIFFICULTY_CATEGORIES = Object.freeze(Object.keys(DIFFICULTY_CLASSES))
@@ -151,6 +152,34 @@ export class Adjudicator {
         } catch (error) {
           if (!(error instanceof RulesValidationError)) throw error
           return { ...base, clarification_required: true, clarification_message: `${error.message}. Попытка ничего не расходует.` }
+        }
+      }
+      case 'cast_spell': {
+        // Заклинание, названное словами в бою (`intent-parser`, namedKnownSpell):
+        // та же команда, что у панели. Дальность, ход, ячейку и цель проверит движок.
+        const spellId = String(intent.spell_id ?? '')
+        if (!spellId) break
+        const spell = combatSpellFor(actor, spellId, { rulesetId: state?.ruleset_id })
+        if (!spell) {
+          return { ...base, clarification_required: true, clarification_message: 'Этого заклинания сейчас нет под рукой — оно не подготовлено. Можно выбрать другое на панели.' }
+        }
+        if (spell.target === 'point') {
+          return { ...base, clarification_required: true, clarification_message: `«${spell.name}» бьёт по площади — укажите место на карте, и заклинание сорвётся с пальцев.` }
+        }
+        const targetId = intent.targets?.[0]
+        if (!targetId && ['enemy', 'creature'].includes(String(spell.target))) {
+          return { ...base, clarification_required: true, clarification_message: `«${spell.name}» — в кого именно? Назовите цель или выберите её на карте.` }
+        }
+        return {
+          ...base,
+          rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]),
+          proposed_commands: [{
+            command_type: 'CastSpell', actor_id: intent.actor_id, spell_id: spellId,
+            ...(targetId ? { target_id: targetId } : {}),
+            ...(intent.knock_out ? { knock_out: true } : {}),
+            source_rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]),
+          }],
+          confidence: 0.82,
         }
       }
       case 'attack': {

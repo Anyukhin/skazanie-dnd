@@ -1,4 +1,5 @@
 import { affirmativeActionText, classifyNpcSocialCheck } from './npc-social-check.mjs'
+import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { scenarioKnightActionFromText } from './scenario-knight.mjs'
 import { scenarioArmoryActionFromText, scenarioInformantActionFromText, scenarioPurseActionFromText, scenarioTreatyActionFromText } from './scenario-attention.mjs'
 import { scenarioArmoryRules, scenarioInformantRules } from './campaign-scenario.mjs'
@@ -533,6 +534,31 @@ export class IntentParser {
       && !EXPLICIT_CHECK_PATTERN.test(text)
       ? 'improvised_action'
       : detectedIntent
+    // Заклинание, названное словами в бою: «швыряю в хобгоблина Огненный
+    // снаряд» — это сотворение известного героем заклинания, а не импровизация
+    // с «опасностью» (плейтест 2026-10-10). Вне боя заклинание по-прежнему
+    // разбирает арбитр: там это поступок в сцене.
+    const namedSpell = visibleState?.mechanics?.combat?.active ? namedKnownSpell(operativeText, visibleState, playerId) : null
+    if (namedSpell && !['scenario_knight', 'scenario_treaty', 'scenario_purse', 'scenario_armory', 'scenario_informant'].includes(intent)) {
+      const enemies = mentionedActors(text, visibleState)
+        .filter((actor) => (visibleState?.enemies ?? []).some((enemy) => String(enemy?.id) === String(actor?.id)))
+        .map((actor) => String(actor.id))
+      return {
+        actor_id: String(playerId ?? ''),
+        intent: 'cast_spell',
+        approach: 'spell',
+        targets: enemies,
+        mentioned_entities: enemies,
+        numeric_value: null,
+        raw_message: text,
+        missing_information: [],
+        requires_clarification: false,
+        confidence: 0.86,
+        free_action_kind: null,
+        spell_id: namedSpell.id,
+        ...( /нелеталь|не\s+убив|не\s+убива|без\s+убийств/iu.test(text) || /оглуш|нокаут/iu.test(operativeText) ? { knock_out: true } : {}),
+      }
+    }
     const socialTargets = intent === 'social'
       ? addressedActors.length ? addressedActors : watchedActors.length ? watchedActors : resolvePresentSocialActors(text, visibleState)
       : []
@@ -571,6 +597,30 @@ export class IntentParser {
       } : {}),
     }
   }
+}
+
+/**
+ * Известное герою заклинание, названное в тексте по-русски: «Огненный
+ * снаряд», «огненным снарядом», «Волшебную стрелу». Совпадение — все слова
+ * имени по первым пяти буквам; при нескольких — самое длинное имя.
+ *
+ * @param {string} text
+ * @param {Record<string, any>} state
+ * @param {string} playerId
+ * @returns {{ id: string, name: string } | null}
+ */
+export function namedKnownSpell(text, state, playerId) {
+  const hero = (state?.players ?? []).find((player) => String(player?.id) === String(playerId))
+  if (!hero) return null
+  const stems = new Set((String(text ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}{3,}/gu) ?? []).map((word) => word.slice(0, 5)))
+  const ids = [...new Set([...(hero.knownSpellIds ?? []), ...(hero.preparedSpellIds ?? [])].map(String))]
+  const matches = ids.map((id) => {
+    const name = String(canonicalCombatSpellFor(id, { rulesetId: state?.ruleset_id })?.name ?? '')
+    const words = (name.toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}{3,}/gu) ?? []).map((word) => word.slice(0, 5))
+    return { id, name, words }
+  }).filter((entry) => entry.words.length && entry.words.every((stem) => stems.has(stem)))
+    .sort((left, right) => right.words.length - left.words.length || left.id.localeCompare(right.id))
+  return matches[0] ? { id: matches[0].id, name: matches[0].name } : null
 }
 
 export function buildRuleQueries(intent, state) {

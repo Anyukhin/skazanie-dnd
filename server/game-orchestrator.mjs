@@ -926,6 +926,28 @@ function mergeClarificationAction(original, answer) {
   return `${first}. Уточнение игрока: ${second}`.slice(0, 2_000)
 }
 
+/**
+ * Реплика, обращённая к другому герою отряда, — или вовсе без собеседника-NPC
+ * в сцене. Такая речь не требует NPC: это отыгрыш.
+ *
+ * @param {string} message
+ * @param {Record<string, any>} state
+ * @param {string} playerId
+ * @param {string} explicitNpcId
+ */
+function speechToPartyOrAir(message, state, playerId, explicitNpcId = '') {
+  if (explicitNpcId) return false
+  const stem = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, 4)
+  const words = new Set((String(message ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}{3,}/gu) ?? []).map(stem))
+  const heroes = (state?.players ?? []).filter((player) => String(player?.id) !== String(playerId))
+  const namesHero = heroes.some((hero) => [hero?.character, hero?.name]
+    .some((name) => (String(name ?? '').match(/\p{L}{3,}/gu) ?? []).some((word) => words.has(stem(word)))))
+  const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const presentNpcs = (state?.social?.npcs ?? []).filter((npc) => npc?.available !== false
+    && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
+  return namesHero || presentNpcs.length === 0
+}
+
 /** Сколько шагов одной заявки ведущий исполняет подряд без вопроса. */
 const PLAN_STEP_LIMIT = 4
 
@@ -1104,10 +1126,8 @@ function freeActionHeroName(events, state) {
 
 function freeActionPassageNarration({ freeAction, events, state }) {
   const name = freeActionHeroName(events, state)
-  const opener = freeAction?.kind === 'check_success' ? 'Проверка удалась' : 'Попытка удалась'
-  return `${opener}, но сама сцена от этого не изменилась: ${name} пока на прежнем месте. `
-    + 'Путь дальше — на карте: дверь и проход — шагами по клеткам, лестница — через её меню, '
-    + 'а в другое место отряд переходит через «Решение группы».'
+  // Голос ведущего, а не инструкция по интерфейсу (плейтест 2026-10-10).
+  return `${name} остаётся где стоял: прохода туда отсюда нет — нужна дверь, проём или лестница рядом.`
 }
 
 // Цель — узнать или договориться: итог такой заявки — показания или реплика,
@@ -1196,7 +1216,12 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
       : goal
         // «Вышло», а не «Получилось»: guard передачи вещей читает «получил…
         // монетку» как полученный предмет и выбрасывал весь текст.
-        ? `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
+        // Цель уже сказана от лица героя («Борин присаживается у находки…») —
+        // это и есть сцена: «Вышло: Борин присаживается» звучало протоколом
+        // (плейтест 2026-10-10). «Вышло:» остаётся только у цели-глагола.
+        ? !failed && rawGoal.startsWith(`${freeActionHeroName(events, state)} `)
+          ? `${rawGoal}.`
+          : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
         : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
   // Находка и есть ответ ведущего: «Вышло: найти метку. <другая находка>»
@@ -2743,6 +2768,12 @@ export class GameOrchestrator {
       if (intent.requires_clarification) {
         // Резолвер уже нашёл неоднозначность и сохранил кандидатов для полезного уточнения.
         socialRequest = null
+      } else if (!npcId && speechToPartyOrAir(message, visibleState, playerId, explicitNpcId)) {
+        // Слова герою отряда или в пустоту — отыгрыш, а не разговор с NPC:
+        // «говорит Борину: «Я не уйду, пока не узнаю правду»» получало
+        // служебное «Назовите собеседника» (плейтест 2026-10-10). Такую реплику
+        // разбирает арбитр свободного действия как сцену без броска.
+        intent = { ...intent, intent: 'improvised_action', targets: [], missing_information: [], requires_clarification: false }
       } else if (!npcId) {
         intent.requires_clarification = true
         intent.missing_information = ['npc_id']
