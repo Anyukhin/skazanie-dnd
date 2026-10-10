@@ -816,7 +816,8 @@ test('заявка «войти внутрь» без подтверждённо
 
   assert.equal(result.free_action_outcome, 'clarification')
   assert.deepEqual(result.mechanics, [])
-  assert.match(result.narration, /названного здания|место/u)
+  assert.match(result.narration, /Такого здания здесь не видно/u)
+  assert.doesNotMatch(result.narration, /не меняя его словами/u)
   assert.equal(renderCalls, 0, 'заблокированный вход не вызывает Narrator')
 })
 

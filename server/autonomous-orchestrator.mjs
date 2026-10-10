@@ -1149,15 +1149,19 @@ export class AutonomousCampaignOrchestrator {
       ? [{ command_type: 'MoveActor', actor_id: actorId, to: approachPlan.destination.to, server_authoritative: true }]
       : []
     if (['blocked', 'already_inside', 'ambiguous'].includes(passagePlan.status)) {
+      // Голос ведущего, а не протокол: прежде здесь звучало «Уточните место, не
+      // меняя его словами», а у развилки входов — их служебные id (плейтест
+      // 2026-10-10).
+      const heroName = String((loaded.state.players ?? []).find((player) => String(player?.id) === String(actorId))?.character || 'Герой')
       const narration = passagePlan.status === 'ambiguous'
-        ? `Поблизости несколько одинаково близких входов (${(passagePlan.door_ids ?? []).join(', ')}). Выберите дверь на карте.`
+        ? `Входов рядом несколько, и все одинаково близко — в какой идёт ${heroName}? Укажите дверь на карте.`
         : passagePlan.status === 'already_inside'
-          ? 'Герой уже находится внутри этой сцены.'
+          ? `${heroName} и так уже внутри.`
           : passagePlan.reason === 'destination_mismatch'
-            ? 'В текущей сцене нет названного здания. Уточните место, не меняя его словами.'
+            ? 'Такого здания здесь не видно. Укажите на карте дверь, в которую идёте, или назовите то, что видно отсюда.'
             : passagePlan.reason === 'alternate_route'
-              ? 'Этот способ требует отдельного окна, пролома или щели. Выберите подтверждённый проход на карте.'
-              : 'Откройте дверь на карте и повторите действие.'
+              ? 'Так не пролезть: нужен лаз — окно, пролом или щель. Укажите его на карте.'
+              : 'Дверь закрыта — откройте её на карте, и можно входить.'
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification', narration, turn_consumed: false, admin_commands: 0,
