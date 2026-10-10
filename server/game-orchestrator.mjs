@@ -3215,7 +3215,14 @@ export class GameOrchestrator {
       known_environment: {
         context_metadata: agentContextMetadata(committed.state, { role: 'narrator', actorId: playerId, contractVersion: NARRATOR_PROMPT_VERSION }),
         scene: sceneContextForAgent(committed.state, playerId),
-        player_intent: { action: message, constraints: message.match(/(?:не\s+|без\s+)[^,.;!?]+/giu)?.slice(0, 6) ?? [] },
+        player_intent: {
+          action: message,
+          constraints: message.match(/(?:не\s+|без\s+)[^,.;!?]+/giu)?.slice(0, 6) ?? [],
+          // «Ждём темноты» глубокой ночью: ждать нечего, отряд выжидает
+          // полчаса. Без этой пометки рассказчик рассказывал «наступление ночи»,
+          // и судья ловил «ждут темноты в глубокую ночь» (замеры 2026-10-10).
+          ...(plan.wait ? { wait: { until: String(plan.wait.label ?? ''), already: plan.wait.already === true } } : {}),
+        },
         campaign_premise: campaignConceptForAgent(committed.state),
         // Небо и час — данные, а не право сочинять: тот же расчёт, что у
         // индикатора в шапке сцены, чтобы текст и картинка не разошлись.

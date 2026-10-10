@@ -193,6 +193,19 @@ const COVER_SCENERY_LABELS = Object.freeze({
   pillar: 'колонну', rock: 'камень', statue: 'статую', table: 'стол', tree: 'дерево', well: 'колодец',
 })
 
+/**
+ * Подпись укрытия по имени предмета карты: `tree_oak` — «дерево», `table_long`
+ * — «стол». Незнакомое имя — просто «укрытие»: служебные id в строке боя
+ * («сквозь tree_oak», замер 2026-10-10) читались как сбой.
+ */
+function coverSceneryLabel(feature) {
+  const id = String(feature ?? '')
+  if (COVER_SCENERY_LABELS[/** @type {keyof typeof COVER_SCENERY_LABELS} */ (id)]) return COVER_SCENERY_LABELS[/** @type {keyof typeof COVER_SCENERY_LABELS} */ (id)]
+  const base = id.toLowerCase().split(/[_\-\s]+/u).find((part) => COVER_SCENERY_LABELS[/** @type {keyof typeof COVER_SCENERY_LABELS} */ (part)])
+  if (base) return COVER_SCENERY_LABELS[/** @type {keyof typeof COVER_SCENERY_LABELS} */ (base)]
+  return /[а-яё]/iu.test(id) ? id : 'укрытие'
+}
+
 const CONDITION_LABELS = Object.freeze({
   blinded: 'ослеплена', frightened: 'испугана', grappled: 'схвачена', incapacitated: 'недееспособна',
   invisible: 'невидима', paralyzed: 'парализована', petrified: 'окаменела', poisoned: 'отравлена',
@@ -735,7 +748,7 @@ function tacticalNarrationLines(events, state, options = {}) {
         + (payload.high_ground === 'higher' ? ' с возвышенности' : payload.high_ground === 'lower' ? ' снизу вверх' : '')
         + (payload.cover ? ` сквозь ${[
           ...(payload.cover_blockers ?? []).map((id) => tacticalActorName(state, id)),
-          ...(payload.cover_scenery ?? []).map((feature) => COVER_SCENERY_LABELS[feature] ?? feature),
+          ...(payload.cover_scenery ?? []).map(coverSceneryLabel),
         ].join(', ') || 'помеху'} (${payload.cover === 'three-quarters' ? 'три четверти укрытия' : 'половинное укрытие'}, +${Number(payload.cover_bonus) || 2} к КД)` : '')
       // «Щит», поднятый реакцией на этот удар, в `armor_class` ещё не входит:
       // движок сравнил бросок с прежним КД и снял попадание. Без поправки

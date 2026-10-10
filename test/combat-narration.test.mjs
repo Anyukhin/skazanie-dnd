@@ -542,3 +542,13 @@ test('реакция и закрытие её окна — одна строка
     assert.equal((text.match(/Щит/gu) ?? []).length, 1, text)
   }
 })
+
+test('укрытие в строке боя — словом, а не служебным именем предмета', () => {
+  // Замер 2026-10-10: «посылает выстрел сквозь tree_oak (три четверти укрытия)».
+  const state = { players: [{ id: 'mirel', character: 'Мирель' }], enemies: [{ id: 'bandit', name: 'Разбойник 1' }] }
+  const shot = (scenery) => combatNarration([{ event_id: `shot-${scenery}`, event_type: 'AttackResolved', actor_id: 'bandit', target_ids: ['mirel'], payload: { hit: false, total: 7, armor_class: 16, cover: 'three-quarters', cover_bonus: 5, cover_scenery: [scenery] } }], state)
+  assert.match(shot('tree_oak'), /сквозь дерево/u)
+  assert.match(shot('table_long'), /сквозь стол/u)
+  assert.match(shot('mystery_prop_42'), /сквозь укрытие/u)
+  assert.doesNotMatch(shot('tree_oak'), /tree_oak/u)
+})
