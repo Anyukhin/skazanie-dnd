@@ -577,6 +577,13 @@ function withoutEchoedPlayerSpeech(text, brief) {
   })
 }
 
+/** Текст без слов, чьи основы (пять букв) есть в заявке игрока. */
+function withoutPlayerWords(text, brief) {
+  const stem = (word) => word.toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, 5)
+  const said = new Set((String(playerIntentFromBrief(brief).action ?? '').match(/\p{L}{4,}/gu) ?? []).map(stem))
+  return text.replace(/\p{L}{4,}/gu, (word) => said.has(stem(word)) ? ' ' : word)
+}
+
 function hasDirectMovementConstraint(brief) {
   const intent = playerIntentFromBrief(brief)
   const constraints = Array.isArray(intent.constraints) ? intent.constraints : []
@@ -693,7 +700,11 @@ export function verifyNarration(narration, brief, {
   const movementAssertion = positiveAssertion(MOVEMENT_ASSERTION_PATTERN, claimText)
   const socialAssertion = positiveAssertion(SOCIAL_ASSERTION_PATTERN, claimText)
     || namedNpcSpeechAssertion(claimText, brief)
-  const disclosureAssertion = positiveAssertion(DISCLOSURE_ASSERTION_PATTERN, claimText)
+  // У реплики своему отряду пересказ слов героя — «не уйдёт, пока не узнает
+  // правду» — не новое знание: слова, которые сказал сам игрок, из этой
+  // проверки выпадают.
+  const disclosureText = playerIntentFromBrief(brief).roleplay_speech === true ? withoutPlayerWords(claimText, brief) : claimText
+  const disclosureAssertion = positiveAssertion(DISCLOSURE_ASSERTION_PATTERN, disclosureText)
     || (namedNpcSpeechAssertion(claimText, brief) && /(?<![а-яё])что(?![а-яё])/iu.test(claimText))
   if (hasDirectMovementConstraint(brief) && movementAssertion && !evidence.hasMovement) {
     addViolation(violations, 'PLAYER_CONSTRAINT_VIOLATION', 'Narrator нарушил прямое ограничение игрока на перемещение')

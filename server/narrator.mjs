@@ -1375,7 +1375,11 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
     'gu',
   )
   for (const match of currentText.matchAll(unconfirmedNamedReaction)) {
-    if (!knownActors.has(normalizedActorName(match[1]))) {
+    // Заглавное слово в начале фразы — не часть имени: «Пока Мирель следит»
+    // читалось как реакция незнакомца «Пока Мирель» (замер 2026-10-10).
+    const words = match[1].split(/\s+/u)
+    const known = words.some((_, index) => knownActors.has(normalizedActorName(words.slice(index).join(' '))))
+    if (!known) {
       add('NPC_REACTION_NOT_PERMITTED', 'Повествование добавило реакцию неподтверждённого персонажа', match[0])
       break
     }

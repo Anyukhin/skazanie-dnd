@@ -279,3 +279,29 @@ test('реплика своему спутнику: тот же глагол с 
   assert.equal(result.provider === 'deterministic-fallback', false, JSON.stringify(result.verification?.repaired_from ?? result.verification))
   assert.match(result.narration, /тёмная вода/u)
 })
+
+test('заглавное слово в начале фразы не делает героя незнакомцем, а пересказ слов героя — новым знанием', async () => {
+  // Замер 2026-10-10: «Пока Мирель следит…» падало как реакция незнакомца
+  // «Пока Мирель», а «не уйдёт, пока не узнает правду» — как раскрытие тайны.
+  const { verifyNarration } = await import('../server/security.mjs')
+  const watching = buildNarrationBrief({
+    visible_events: [{ event_type: 'RulingRecorded', actor_id: 'hero', payload: { ruling: { outcome: 'success', question: 'Мирель следит за маяком' } }, visibility: 'party' }],
+    visible_state_changes: [],
+    known_environment: { location: 'Маяк', story_context: { heroes: [{ id: 'hero', name: 'Мирель', is_viewer: true }] } },
+    permitted_npc_reactions: [],
+  })
+  const llm = new FakeLLM([{ content: JSON.stringify({ narration: 'Пока Мирель следит за вершиной маяка, ветер треплет мокрые флаги на шпиле.', suggestions: [] }) }])
+  const watched = await new Narrator({ llmClient: llm }).render(watching, { knownRuleIds: [] })
+  assert.notEqual(watched.provider, 'deterministic-fallback', JSON.stringify(watched.verification?.repaired_from ?? []))
+
+  const speech = buildNarrationBrief({
+    visible_events: [{ event_type: 'RulingRecorded', actor_id: 'hero', payload: { ruling: { outcome: 'success', question: 'Мирель говорит Борину' } }, visibility: 'party' }],
+    visible_state_changes: [],
+    known_environment: { location: 'Причал', player_intent: { action: 'Мирель негромко говорит Борину: «Я не уйду отсюда, пока не узнаю правду».', outcome: 'auto_success', roleplay_speech: true } },
+    permitted_npc_reactions: [],
+  })
+  const paraphrase = 'Мирель тихо говорит Борину, что не уйдёт, пока не узнает правду; волна шлёпает о сваи.'
+  assert.equal(verifyNarration(paraphrase, speech, { knownRuleIds: [] }).violations.some((entry) => entry.code === 'UNCONFIRMED_DISCLOSURE'), false)
+  const invented = 'Мирель говорит Борину, что слышала показания рыбаков о ночных лодках.'
+  assert.equal(verifyNarration(invented, speech, { knownRuleIds: [] }).violations.some((entry) => entry.code === 'UNCONFIRMED_DISCLOSURE'), true, 'новое знание по-прежнему ловится')
+})
