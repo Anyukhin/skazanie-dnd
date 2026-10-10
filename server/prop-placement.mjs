@@ -333,6 +333,11 @@ const COMPANIONS = Object.freeze({
   tree_oak: [['bush', 1]],
 })
 
+/** Мебель со спинкой: стоит только у стены, лицом в комнату. */
+const BACKED_FURNITURE = new Set(['bar_shelf', 'bookshelf', 'bookcase_tall', 'wardrobe', 'cupboard', 'pantry_shelf', 'display_shelf', 'shelf_wall',
+  'fireplace', 'kitchen_stove', 'bread_oven', 'forge', 'tool_rack', 'scroll_rack', 'potion_cabinet', 'dresser', 'armor_stand',
+  'magic_mirror', 'standing_mirror', 'washbasin', 'iron_maiden', 'wall_chains', 'crypt_niche', 'reliquary'])
+
 /** Сиденья. Встают гарнитуром у своей поверхности, а не сами по себе. */
 const SEATS = new Set(['chair', 'stool', 'bench'])
 /** У чего сидят. Прилавок и разделочный стол — работа стоя, без сидений. */
@@ -689,6 +694,10 @@ function wallSidesAt(map, x, y) {
     const edge = edgeBetween(map, x, y, x + side.dx, y + side.dy)
     if (edge && (edge.kind === 'wall' || edge.kind === 'rail')) return true
     const neighbor = cellAt(map, x + side.dx, y + side.dy)
+    // Точка появления на время расстановки закрыта (`reserveDesignSpawn` в
+    // генераторе зданий), но это пол, а не стена: к ней прислонялись камин,
+    // полка и настенный фонарь посреди зала (обзор генератора 2026-10-10).
+    if (neighbor && !neighbor.passable && map.spawnPoints.some((point) => point.x === neighbor.x && point.y === neighbor.y)) return false
     return !neighbor || !neighbor.passable
   })
 }
@@ -801,8 +810,13 @@ function scoreCellForAsset(map, asset, cell, placed, context = {}, random = () =
   // окном стоит, как и в жизни.
   if (asset.blocksSight && windowBeside(map, cell.x, cell.y)) return Number.NEGATIVE_INFINITY
 
-  if (asset.anchor === 'wall') score += walls * 6
-  else if (asset.anchor === 'corner') score += walls >= 2 ? 14 : walls * 2
+  if (asset.anchor === 'wall') {
+    // Мебель со спинкой и настенная вещь без стены рядом стояли посреди
+    // комнаты задом к пустоте и с поворотом наугад: обязательной полке за
+    // стойкой хватало и низкой оценки (обзор генератора 2026-10-10).
+    if (!walls && (BACKED_FURNITURE.has(asset.id) || WALL_MOUNTS.has(asset.id))) return Number.NEGATIVE_INFINITY
+    score += walls * 6
+  } else if (asset.anchor === 'corner') score += walls >= 2 ? 14 : walls * 2
   else score -= walls * 1.5
 
   // Одинаковое вплотную — штамп, а не обстановка: три урны в ряд, пять
@@ -1633,12 +1647,22 @@ export function placeProps(map, { seed, zones, maxProps = 250 } = /** @type {any
         // Сначала ставим поверхности, которые тянут companions (столы,
         // очаги), затем малые required: так стул получает якорь, а сундук
         // успевает занять единственную свободную клетку до штабелей.
-        const leftHasCompanions = (COMPANIONS[left.id]?.length ?? 0) > 0
-        const rightHasCompanions = (COMPANIONS[right.id]?.length ?? 0) > 0
-        if (leftHasCompanions !== rightHasCompanions) return leftHasCompanions ? -1 : 1
+        // Полка за стойкой встаёт сразу за крупным у стены (стойка, очаг) и
+        // до столов: полка без стены теперь не ставится вовсе, а столы
+        // разбирали стены зала, и в каждом третьем трактире полке не
+        // оставалось места (обзор генератора 2026-10-10).
+        const rank = (/** @type {import('./asset-registry.mjs').AssetEntry} */ asset) => {
+          const companions = (COMPANIONS[asset.id]?.length ?? 0) > 0
+          if (companions && asset.anchor === 'wall') return 0
+          if (asset.id === 'bar_shelf') return 1
+          return companions ? 2 : 3
+        }
+        const leftRank = rank(left)
+        const rightRank = rank(right)
+        if (leftRank !== rightRank) return leftRank - rightRank
         const leftArea = left.baseFootprint.w * left.baseFootprint.h
         const rightArea = right.baseFootprint.w * right.baseFootprint.h
-        return leftHasCompanions ? rightArea - leftArea : leftArea - rightArea
+        return leftRank < 3 ? rightArea - leftArea : leftArea - rightArea
       }
       return (right.baseFootprint.w * right.baseFootprint.h) - (left.baseFootprint.w * left.baseFootprint.h)
     })

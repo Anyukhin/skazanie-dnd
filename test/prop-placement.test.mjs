@@ -468,3 +468,23 @@ test('поворот карты под сторону входа сохраня�
     }
   }
 })
+
+test('мебель со спинкой стоит у стены, а не у закрытой на время расстановки точки появления', () => {
+  // Обзор 2026-10-10: точка появления отряда в зале на время расстановки
+  // непроходима, и камин, полка за стойкой и фонарь прислонялись к ней
+  // посреди зала; при нехватке стен полка вставала в пустоте.
+  const backed = new Set(['bar_shelf', 'bookshelf', 'wardrobe', 'cupboard', 'pantry_shelf', 'shelf_wall', 'fireplace', 'lantern_wall', 'torch_wall'])
+  for (const seed of ['spawn-a', 'spawn-b', 'spawn-c', 'spawn-d', 'spawn-e', 'spawn-f']) {
+    const map = generateBuildingScene({ seed, width: 30, height: 26, design: { building_use: 'tavern' }, entry: 'interior' })
+    for (const prop of map.props.filter((entry) => backed.has(entry.assetId))) {
+      const cells = prop.footprint.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
+      const againstWall = cells.some((cell) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+        const edge = edgeBetween(map, cell.x, cell.y, cell.x + dx, cell.y + dy)
+        if (edge && ['wall', 'rail', 'window', 'door'].includes(edge.kind)) return true
+        const neighbor = cellAt(map, cell.x + dx, cell.y + dy)
+        return !neighbor || !neighbor.passable
+      }))
+      assert.ok(againstWall, `${seed}: ${prop.assetId} на ${cells[0].x},${cells[0].y} стоит не у стены`)
+    }
+  }
+})
