@@ -101,3 +101,15 @@ test('слова игрока к ходу в бою зовут рассказч�
   const silent = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Борин атакует Гоблина 1.', provider: 'deterministic-fallback' }) } })
   assert.equal((await silent.renderCriticalMoment({ events, state, playerNote: 'За Илу!', actorId: 'borin' })).narration, '', 'без живого текста — без дубля строки боя')
 })
+
+test('после победы — сцена после схватки; без живого текста и после поражения — ничего', async () => {
+  const state = { players: [{ id: 'borin', character: 'Борин' }], enemies: [{ id: 'gob', name: 'Гоблин 1' }], scene: { location: 'Маяк', objective: 'Найти, кто зажигает огонь' }, mechanics: { combat: { active: false } } }
+  const victory = [{ event_id: 'out-1', event_type: 'EncounterOutcomeRecorded', payload: { outcome: 'enemies_defeated', plan: { secret: 'не для рассказчика' } } }]
+  const briefs = []
+  const live = new CriticalNarrationCoordinator({ narrator: { render: async (brief) => { briefs.push(brief); return { narration: 'Тишина возвращается к маяку; дождь смывает кровь с камней.', provider: 'RouterAI' } } } })
+  assert.match((await live.renderAftermath({ events: victory, state })).narration, /Тишина/u)
+  assert.doesNotMatch(JSON.stringify(briefs[0].visible_events), /не для рассказчика/u, 'план награды в бриф не идёт')
+  const silent = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Встреча завершилась.', provider: 'deterministic-fallback' }) } })
+  assert.equal(await silent.renderAftermath({ events: victory, state }), null)
+  assert.equal(await live.renderAftermath({ events: [{ event_type: 'EncounterOutcomeRecorded', payload: { outcome: 'party_incapacitated' } }], state }), null)
+})

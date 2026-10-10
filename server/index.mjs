@@ -5117,6 +5117,20 @@ async function handleHttpRequest(req, res) {
         { visible_events: briefEvents, visible_state_changes: [], known_environment: {}, permitted_npc_reactions: [] },
         actorNameResolver(authoritative.state),
       ).narration)
+      // Победу «продолжим» закрывает сцена после схватки, а уже за ней — строка
+      // дележа добычи (`renderAftermath`). Без живого текста — только строка.
+      const aftermath = await creativeDirector.renderAftermath({
+        events,
+        state: authoritative.state,
+        viewer: { playerId: ownedViewerActorId(authoritative.state, user, campaignId), partyIds: campaignHeroIds(user, campaignId), isPartyMember: true, role: user.role },
+        recentNarrations: recentNarratorTexts(getRoom(campaignId).state),
+      }).catch(() => null)
+      if (aftermath?.narration) {
+        appendRoomJournal(campaignId, [{
+          id: `aftermath-${createHash('sha256').update(String(key)).digest('hex').slice(0, 20)}`,
+          text: aftermath.narration, speaker: 'narrator', author: 'Рассказчик', turnConsumed: false,
+        }])
+      }
       persistAuthoritativeProjection(campaignId, authoritative.state, events, directorNarration ? {
         id: `director-${createHash('sha256').update(String(key)).digest('hex').slice(0, 20)}`,
         text: directorNarration,

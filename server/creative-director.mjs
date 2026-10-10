@@ -131,6 +131,36 @@ export class CriticalNarrationCoordinator {
    * проверка повторов у рассказчика не видела ничего, и одна и та же
    * фраза-заполнитель звучала дважды за бой (плейтест 2026-10-10).
    */
+  /**
+   * Сцена после победы: «продолжим» закрывал встречу одной строкой дележа
+   * добычи, и судья читал это как «сухую сводку вместо продолжения сцены»
+   * (замеры 2026-10-10). Две-три фразы — тишина после схватки, что видно у тел
+   * и вокруг, куда зовёт цель сцены. Исход, добыча и награда — только из
+   * событий; без живого текста модели — ничего, строка дележа говорит сама.
+   */
+  async renderAftermath({ events = [], state = {}, viewer = {}, recentNarrations = [] } = {}) {
+    const outcome = (events ?? []).find((event) => event?.event_type === 'EncounterOutcomeRecorded')?.payload?.outcome
+    if (!['enemies_defeated', 'fled'].includes(String(outcome ?? ''))) return null
+    const trigger = { kind: 'encounter_aftermath', actor_id: '', target_id: '', target_name: '' }
+    const visible = (events ?? []).filter((event) => ['EncounterOutcomeRecorded', 'EncounterRewardsDistributed', 'LootContainerCreated', 'WorldFactRecorded'].includes(String(event?.event_type ?? '')))
+      .map((event) => event.event_type === 'EncounterOutcomeRecorded' ? { ...event, payload: { outcome: event.payload?.outcome } } : event)
+    const brief = buildNarrationBrief({
+      visible_events: visible,
+      visible_state_changes: [],
+      known_environment: publicEnvironment(state, trigger),
+      permitted_npc_reactions: [],
+      viewer,
+    })
+    const narration = await this.narrator.render(brief, {
+      knownRuleIds: [],
+      timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
+      recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
+      style: 'Две-три фразы после схватки: тишина, дыхание, что видно у тел и вокруг, и куда тянет цель сцены. Исход и добыча — только из событий, без чисел; не добавляй находок, бросков и решений правил.',
+    })
+    if (/^deterministic/u.test(String(narration?.provider ?? '')) || !String(narration?.narration ?? '').trim()) return null
+    return { ...narration, trigger }
+  }
+
   async renderCriticalMoment({ events = [], state = {}, viewer = {}, recentNarrations = [], playerNote = '', actorId = '' } = {}) {
     const trigger = criticalMomentFor(events, state) ?? heroFlourishFor(events, state, { playerNote, actorId })
     if (!trigger) return null
