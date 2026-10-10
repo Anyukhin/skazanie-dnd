@@ -456,6 +456,35 @@ function mapCheckFor(theme, _plan) {
   return { minSize: settlement ? SETTLEMENT_MIN_SIZE : null, openScene: settlement }
 }
 
+/**
+ * Маяк строится башней-усадьбой (`scene-map-design`), и комнаты носили
+ * подписи усадьбы: «Парадный зал, Кухня, Салон» у маяка на скале читались
+ * рассказчиком и игроками как особняк (замер 2026-10-10). Подписи — по
+ * назначению маяка; геометрия, двери и программа сцены не меняются.
+ */
+const LIGHTHOUSE_ROOM_LABELS = Object.freeze({
+  'Парадный зал': 'Нижний ярус маяка',
+  'Кухня': 'Каморка смотрителя',
+  'Салон': 'Лестница к фонарю',
+  'Кладовая': 'Кладовая масла',
+  'Участок': 'Скала у маяка',
+})
+
+/** @param {any} map @param {string} location */
+function relabelLighthouseRooms(map, location) {
+  if (!/(?<![\p{L}\p{M}])маяк\p{L}*/iu.test(String(location ?? ''))) return
+  for (const zone of map?.zones ?? []) {
+    const label = LIGHTHOUSE_ROOM_LABELS[/** @type {keyof typeof LIGHTHOUSE_ROOM_LABELS} */ (String(zone?.label ?? ''))]
+    if (label) zone.label = label
+  }
+  if (map?.overlays?.roomLabels) {
+    map.overlays.roomLabels = map.overlays.roomLabels.map((/** @type {any} */ entry) => {
+      const label = LIGHTHOUSE_ROOM_LABELS[/** @type {keyof typeof LIGHTHOUSE_ROOM_LABELS} */ (String(entry?.label ?? ''))]
+      return label ? { ...entry, label } : entry
+    })
+  }
+}
+
 function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [], requirements = [], program = null, entrySide = '' }) {
   // Программа сцены (`scene.map_requirements`); старый вызов с одним списком
   // читается как программа без центра и постов.
@@ -548,6 +577,7 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
       if (!report.problems.length) break
     }
     const { built, report } = /** @type {NonNullable<typeof best>} */ (best)
+    relabelLighthouseRooms(built.map, location)
     // Вход по дороге: улица и поле строят вход отряда у западного края, а
     // отряд пришёл с той стороны, где на карте мира лежит прежнее место.
     // Карта поворачивается целиком — та же карта, иначе лежащая. Здание и

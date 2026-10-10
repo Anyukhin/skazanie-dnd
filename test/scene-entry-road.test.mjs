@@ -124,4 +124,7 @@ test('к постройке по дороге отряд приходит сна
   const party = map.spawnPoints.find((point) => point.role === 'party')
   const zone = map.zones.find((entry) => entry.id === cellAt(map, party.x, party.y)?.zone)
   assert.notEqual(zone?.kind, 'interior', `отряд стоит в «${zone?.label ?? zone?.id}»`)
+  const labels = map.zones.map((entry) => entry.label).filter(Boolean)
+  assert.ok(labels.includes('Нижний ярус маяка'), labels.join(', '))
+  assert.ok(!labels.includes('Парадный зал') && !labels.includes('Салон'), 'у маяка не комнаты усадьбы')
 })
