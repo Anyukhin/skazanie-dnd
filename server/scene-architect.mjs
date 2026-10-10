@@ -366,6 +366,9 @@ function knownWorldDestinationById(state, locationId) {
 }
 
 /** Кратчайший по числу открытых сегментов путь до известной точки. */
+const BUILDING_PLACE_NAME = /(?<![\p{L}])(?:таверн|трактир|постоял|харчевн|корчм|кабак|гостиниц|лавк|храм|часовн)\p{L}*/iu
+const SETTLEMENT_KINDS = new Set(['capital', 'city', 'town', 'village', 'port'])
+
 function knownWorldRouteTo(state, target) {
   const map = state?.worldMap
   if (!map || !Array.isArray(map.locations) || !Array.isArray(map.routes) || !target?.id) return []
@@ -397,6 +400,16 @@ function knownWorldRouteTo(state, target) {
     if (!parent) return []
     ids.unshift(parent)
     currentId = parent
+  }
+  // Заведение внутри поселения — таверна, где начали герои, — отдельная
+  // точка карты рядом с городом. Путь «таверна → город → маяк» прежде вёл
+  // отряд первой сценой в сам город (замер 2026-10-10: «идём к маяку» — и
+  // «улицы Серого Причала»). Выйти из таверны значит оказаться в городе:
+  // первым шагом считается то, что за ним.
+  if (ids.length > 2) {
+    const start = byId.get(ids[0])
+    const next = byId.get(ids[1])
+    if (BUILDING_PLACE_NAME.test(String(start?.name ?? '')) && SETTLEMENT_KINDS.has(String(next?.kind ?? ''))) ids.shift()
   }
   return ids.map((id) => {
     const entry = byId.get(id)

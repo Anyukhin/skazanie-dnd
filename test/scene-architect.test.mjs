@@ -764,3 +764,28 @@ test('место с одним родовым словом в имени нах�
   assert.equal(plan.sceneArgs.location, 'Маяк')
   assert.equal(plan.sceneArgs.location_id, 'lighthouse')
 })
+
+test('из таверны внутри города к маяку — сразу к маяку, а не сперва «на улицы» того же города', async () => {
+  // Замер 2026-10-10: старт «в портовой таверне» стал отдельной точкой карты
+  // рядом с городом, и «идём к маяку» первой сценой вело на улицы Серого Причала.
+  const state = {
+    sessionCode: 'TAVERN-START',
+    worldMap: {
+      seed: 'tavern', name: 'Берег', width: 1000, height: 640, currentLocationId: 'tavern',
+      regions: [{ id: 'r', name: 'Побережье', x: 500, y: 320, radius: 300, biome: 'побережье' }],
+      locations: [
+        { id: 'port', name: 'Серый Причал', kind: 'port', x: 400, y: 300, regionId: 'r', summary: '', known: true, visited: true },
+        { id: 'tavern', name: 'Таверна «Ржавый Якорь»', kind: 'landmark', x: 420, y: 310, regionId: 'r', summary: '', known: true, visited: true },
+        { id: 'lighthouse', name: 'Старый Маяк', kind: 'landmark', x: 600, y: 200, regionId: 'r', summary: '', known: true, visited: false },
+      ],
+      routes: [
+        { id: 'r-1', from: 'port', to: 'tavern', kind: 'road', distance: 1, danger: 'низкая', discovered: true },
+        { id: 'r-2', from: 'port', to: 'lighthouse', kind: 'trail', distance: 1, danger: 'средняя', discovered: true },
+      ],
+    },
+    scene: { title: 'Таверна', location: 'Таверна «Ржавый Якорь»', location_id: 'tavern', objective: 'Узнать про баркас', turn: 3, cells: [] },
+    adventure: { chapter: 1, currentHook: 'Пустой баркас', visitedLocations: ['Таверна «Ржавый Якорь»'], history: [] },
+  }
+  const planned = await new SceneArchitectAgent().plan({ state, action: 'Идём к маяку', decision: 'Уходим и идём в «Старый Маяк»', destinationHint: 'Старый Маяк', destinationLocationId: 'lighthouse' })
+  assert.equal(planned.sceneArgs.location, 'Старый Маяк')
+})
