@@ -36,12 +36,12 @@ function campaign(overrides = {}) {
   })
 }
 
-function passageCampaign(doorState = 'open') {
+function passageCampaign(doorState = 'open', { darkInside = false } = {}) {
   const map = createTacticalMap({ width: 5, height: 3, locationId: 'passage-fixture', seed: 'passage-fixture', sizeClass: 'arena' })
   addZone(map, { id: 'outside', kind: 'exterior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Снаружи' })
   addZone(map, { id: 'inside', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Монастырь' })
   for (let y = 0; y < 3; y += 1) for (let x = 0; x < 5; x += 1) {
-    setCell(map, x, y, { passable: y === 1, revealed: true, zone: x < 2 ? 'outside' : 'inside' })
+    setCell(map, x, y, { passable: y === 1, revealed: !darkInside || x < 2, zone: x < 2 ? 'outside' : 'inside' })
   }
   setDoor(map, { id: 'passage-door', x: 1, y: 1, dir: 'e', state: doorState })
   return campaign({
@@ -867,6 +867,17 @@ test('успешное «протиснуться внутрь» через за
   assert.ok(types.indexOf('DoorStateChanged') < types.lastIndexOf('ActorMoved'))
   const state = (await eventStore.load('FREE-ACTION')).state
   assert.deepEqual(state.mechanics.positions.hero, { x: 2, y: 1 })
+})
+
+test('вход через закрытую дверь, за которой ещё не раскрыто помещение', async () => {
+  // Замер 2026-10-10: у маяка помещение за дверью было в тумане, и «толкаю
+  // дверь плечом, вхожу» получало «Дверь закрыта — откройте её на карте».
+  const initial = passageCampaign('closed', { darkInside: true })
+  const { orchestrator, eventStore } = await setup(initial)
+  const result = await orchestrator.handle(actionInput('Я протискиваусь внутрь монастыря', 'free-passage-dark', initial))
+  assert.notEqual(result.free_action_outcome, 'clarification', result.narration)
+  assert.ok(result.mechanics.some((event) => event.event_type === 'DoorStateChanged'))
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
 })
 
 test('запертая дверь не открывается словами входа', async () => {

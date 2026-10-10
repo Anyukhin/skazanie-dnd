@@ -1726,10 +1726,13 @@ function closedDoorEntry(state, actorId, map, outside) {
     const first = { x: Number(door.x), y: Number(door.y) }
     const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
     const sides = [first, second].map((position) => ({ position, cell: cellAt(map, position.x, position.y) }))
-    if (sides.some(({ cell }) => !cell?.passable || cell.revealed !== true)) continue
+    if (sides.some(({ cell }) => !cell?.passable)) continue
     const out = sides.find(({ position }) => outside.has(positionKey(position)))
     const inside = sides.find(({ position }) => !outside.has(positionKey(position)))
-    if (!out || !inside) continue
+    // За закрытой дверью ещё темно: помещение раскрывается, когда дверь
+    // открыта. Раскрытой должна быть сторона, где стоит герой, — прежде вход
+    // в маяк с улицы отбрасывался как «откройте дверь на карте» (замер 2026-10-10).
+    if (!out || !inside || out.cell?.revealed !== true) continue
     const atDoor = from && from.x === out.position.x && from.y === out.position.y
     const path = atDoor ? [] : shortestTacticalPath(state, actorId, out.position)
     if (!atDoor && (!Array.isArray(path) || !path.length || path.length > DOOR_ENTRY_MAX_STEPS)) continue
