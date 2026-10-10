@@ -64,6 +64,11 @@ export function difficultyClassFor(category) {
   return DIFFICULTY_CLASSES[DIFFICULTY_CATEGORIES.includes(category) ? category : 'medium']
 }
 
+/** Цель ожидания прошла меньше четырёх часов назад — значит, уже наступила. */
+const WAIT_ALREADY_AFTER_MINUTES = 20 * 60
+/** Сколько выжидает отряд, когда ждать нужного часа уже не нужно. */
+const WAIT_ALREADY_MINUTES = 30
+
 export class Adjudicator {
   async createPlan({ intent, state, retrievedRules }) {
     const ruleIdsFor = (fallbacks = []) => retrievedIds(retrievedRules, fallbacks, state?.ruleset_id)
@@ -310,12 +315,16 @@ export class Adjudicator {
         if (state.mechanics?.combat?.active) {
           return { ...base, clarification_required: true, clarification_message: 'Посреди боя ждать некогда. Попытка ничего не расходует.' }
         }
-        const minutes = minutesUntilClock(state.mechanics?.world_time?.elapsed_minutes ?? 0, target.minute)
-        if (!minutes) return { ...base, clarification_required: true, clarification_message: `Ждать не нужно: уже время ${target.label}.` }
+        const until = minutesUntilClock(state.mechanics?.world_time?.elapsed_minutes ?? 0, target.minute)
+        // Цель уже наступила, и недавно: «ждём темноты» в 23:48 никто за столом
+        // не понимает как «до 22:00 следующих суток» — часы в шапке «шли назад»
+        // (плейтест 2026-10-10). Отряд выжидает полчаса, и план идёт дальше.
+        const already = !until || until > WAIT_ALREADY_AFTER_MINUTES
+        const minutes = already ? WAIT_ALREADY_MINUTES : until
         return {
           ...base,
           rule_ids: ruleIdsFor([RULE_IDS.resource]),
-          wait: { target: target.id, label: target.label, minutes },
+          wait: { target: target.id, label: target.label, minutes, ...(already ? { already: true } : {}) },
           proposed_commands: [
             { command_type: 'AdvanceTime', amount: minutes, unit: 'minute', source_rule_ids: ruleIdsFor([RULE_IDS.resource]) },
           ],

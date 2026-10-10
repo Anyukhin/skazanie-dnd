@@ -311,3 +311,17 @@ test('Слеза лежит в латах рыцаря: павший в бою �
   const replayed = replayEvents(run.initial, run.events)
   assert.deepEqual(replayed.npc_world.inventories[KAELAN] ?? [], [])
 })
+
+test('«ждём темноты», когда уже ночь, — полчаса выжидания, а не сутки до следующих 22:00', async () => {
+  // Плейтест 2026-10-10: в 23:48 «ждём темноты» перематывало часы на 22:00
+  // следующих суток, и в шапке время «шло назад».
+  const run = await campaign()
+  const elapsed = run.state.mechanics.world_time.elapsed_minutes
+  const lateNight = structuredClone(run.state)
+  lateNight.mechanics.world_time.elapsed_minutes = elapsed + minutesUntilClock(elapsed, 23 * 60 + 48)
+  const intent = await new IntentParser().parse({ message: 'Ждём темноты в укрытии', playerId: hero.id, visibleState: lateNight })
+  const plan = await new Adjudicator().createPlan({ intent, state: lateNight, retrievedRules: { results: [], confidence: 1 } })
+  assert.equal(plan.clarification_required ?? false, false)
+  assert.equal(plan.proposed_commands[0].amount, 30)
+  assert.equal(plan.wait.already, true)
+})
