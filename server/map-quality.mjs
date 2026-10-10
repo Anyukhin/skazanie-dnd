@@ -159,6 +159,16 @@ export function auditTacticalMap(map) {
         else blockingAt.set(key, prop.assetId)
       }
     }
+    // Предмет в несколько клеток не стоит сквозь стену и не стоит одной
+    // частью в доме, другой на улице: модель рисуется по центру футпринта,
+    // и стена проходила через очаг или печь.
+    if (!prop.transition && !prop.mount && footprint.length > 1) {
+      const own = new Set(footprint.map((point) => `${point.x},${point.y}`))
+      const crossed = footprint.some((point) => [[1, 0], [0, 1]].some(([dx, dy]) => own.has(`${point.x + dx},${point.y + dy}`)
+        && ['wall', 'window', 'door'].includes(edgeBetween(map, point.x, point.y, point.x + dx, point.y + dy)?.kind ?? '')))
+      const kinds = new Set(footprint.map((point) => kindAt(point.x, point.y)).filter(Boolean))
+      if (crossed || kinds.size > 1) add('PROP_CROSSES_WALL', `${prop.assetId}@${footprint[0].x},${footprint[0].y}`)
+    }
   }
 
   // --- рёбра: двери и окна --------------------------------------------------

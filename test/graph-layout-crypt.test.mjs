@@ -43,7 +43,8 @@ test('склеп — камеры 225–625 фт² в скале, ходы в к
       const map = crypt({ width, height }, seed)
       const label = `${width}×${height}/${seed}`
       assert.equal(map.generator.id, GRAPH_LAYOUT.id)
-      assert.equal(map.generator.version, '2', `${label}: склеп собран прежней версией`)
+      // Версия 3 ужала храм и подземелье; раскрой склепа — прежний (соль версии 2).
+      assert.equal(map.generator.version, '3', `${label}: склеп собран текущей версией`)
       // Решение владельца: карта не меньше 16×16 клеток, лишнее — порода.
       assert.ok(map.width >= 16 && map.height >= 16, `${label}: карта ${map.width}×${map.height}`)
       const zones = cellsByZone(map)

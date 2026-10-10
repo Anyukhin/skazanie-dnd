@@ -176,7 +176,7 @@ function blockingCells(map) {
 
 test('рынок — ряды лотков с проходами, телеги и ящики, двери домов на дорогах', () => {
   // Обзор 2026-10-08: на «Суконной площади» стояло три навеса.
-  assert.equal(SETTLEMENT_GENERATOR.version, '6', 'торговые ряды — новая версия генератора')
+  assert.equal(SETTLEMENT_GENERATOR.version, '7', 'мебель не сквозь стену и гарнитуры — новая версия генератора')
   for (const scale of ['village', 'town', 'city']) for (const seed of ['a', 'b', 'c', 'd']) {
     const label = `${scale}/${seed}`
     const { map } = buildSettlementScene({ seed: `market-${scale}-${seed}`, width: 48, height: 44, theme, design: { topology: 'market', scale } })
