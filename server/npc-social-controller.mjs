@@ -513,6 +513,9 @@ export function conversationLeads(state = {}, profile = {}, message = '', social
     } else if (holder && holder.visibility !== 'gm_only') {
       const current = npcProfileAtWorldTime(holder, state)
       const holderPlace = clean(current.location || holder.location, 180)
+      // Уже расспрошенный знаток — не новая отсылка: круг «спроси его — спроси
+      // её» не исчезал от понижения в списке. Такой человек остаётся в брифе
+      // только меткой `asked_before` и только последним.
       const asked = askedBefore.has(String(holder.id))
       candidates.push({ score: asked ? score - 6 : score, lead: {
         kind: 'person', match, name: clean(holder.name, 120),
@@ -540,7 +543,8 @@ export function conversationLeads(state = {}, profile = {}, message = '', social
     for (const place of location.cityOverview?.places ?? []) for (const hook of place.storyHooks ?? []) takeHook(`${location.name} · ${place.name}`, hook)
   }
   const seen = new Set()
-  return candidates
+  const fresh = candidates.filter((entry) => !entry.lead?.asked_before)
+  return (fresh.length ? fresh : candidates)
     .sort((left, right) => right.score - left.score)
     .map((entry) => entry.lead)
     .filter((lead) => {

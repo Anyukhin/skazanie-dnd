@@ -381,6 +381,10 @@ function discoveryCommandsFor(state = {}, { checkEvent = null, skill = '', actio
   const secret = unrolled ? null : secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}` })
   if (detail || secret) return [detail, secret].filter(Boolean)
   if (unrolled) return []
+  // Проницательность читает человека напротив: «X явно знает больше» о другом
+  // жителе на месте реакции того, за кем следили, звучало мимо (замер
+  // 2026-10-10: слежка за Эдой — «Тавен явно знает больше»).
+  if (String(skill ?? '').replace(/_/gu, '-') === 'insight') return []
   const lead = presentNpcLead(state, `${actionText} ${goalSummary}`)
   const spoken = topicStems(`${actionText} ${goalSummary}`)
   const entities = new Set((state.worldMemory?.entities ?? []).map((entity) => String(entity?.id ?? '')))

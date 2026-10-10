@@ -272,3 +272,18 @@ test('знаток, которого отряд уже расспрашивал,
   const bors = brief.leads.find((lead) => lead.name === 'Борс')
   assert.equal(bors?.asked_before, true)
 })
+
+test('при другой зацепке уже расспрошенный знаток из отсылок выпадает совсем', async () => {
+  const state = greyPier()
+  state.social.conversations.push({ id: 'conversation:bors-2', npc_id: 'npc:bors', hero_id: 'wizard', visibility: 'party', player_message: 'Чей это баркас «Чайка»?', npc_reply: 'Не знаю.', stance: 'neutral' })
+  state.worldMemory.facts.push({
+    id: 'fact:secret:pier-rope', subject_id: 'loc:pier', predicate: 'gm_secret',
+    object: JSON.stringify({ topic: 'баркас «Чайка» канат', skills: ['investigation'], holder: '' }),
+    summary: 'Канат «Чайки» обрезан ножом у самого кнехта.', visibility: 'gm_only', status: 'active', source_event_ids: [], recorded_at_minutes: 0,
+  })
+  const llm = scriptedLlm([replyWith('Не моё это дело.')])
+  await new NpcSocialController({ llmClient: llm }).respond({ state, playerId: 'wizard', npcId: 'npc:helga', message: 'Кто правил «Чайкой» той ночью?', turnId: 'helga-owner-third' })
+  const brief = untrustedPayload(llm.calls[0].input.messages[1].content, 'npc_social_brief')
+  assert.ok(brief.leads.length > 0)
+  assert.equal(brief.leads.some((lead) => lead.name === 'Борс'), false, JSON.stringify(brief.leads))
+})

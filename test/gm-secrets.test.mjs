@@ -249,3 +249,10 @@ test('свидетельство по теме открывается, толь�
   const askingHolder = freeActionDiscoveryCommands(only, { checkEvent: check('insight', 'read-oren'), skill: 'insight', actionText: 'Смотрю, как Орен отводит глаза, когда речь о зарубке на баркасе' })
   assert.ok(askingHolder.some((command) => /Орен/u.test(command.fact?.summary ?? '')))
 })
+
+test('удачная Проницательность без детали не подсовывает «X явно знает больше» о другом жителе', async () => {
+  const state = await campaign()
+  const quiet = { ...state, worldMemory: { ...state.worldMemory, facts: state.worldMemory.facts.filter((fact) => fact.predicate !== 'gm_secret') } }
+  const read = freeActionDiscoveryCommands(quiet, { checkEvent: check('insight', 'read-face'), skill: 'insight', actionText: 'Слежу, как Клара смотрит на журнал' })
+  assert.ok(!read.some((command) => /явно знает об этом больше/u.test(command.fact?.summary ?? '')))
+})
