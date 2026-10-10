@@ -533,3 +533,15 @@ test('надёжный винительный для имён бестиария
   const text = combatNarration([withId('nom:1', 'AttackResolved', 'ogre', ['mirel'], { target_id: 'mirel', total: 9, armor_class: 13, hit: false, attack_kind: 'melee' })], battle)
   assert.match(text, /цель — Мирель: 9 против КД 13 — промах\./u, text)
 })
+
+test('реакция и закрытие её окна — одна строка в любом порядке событий', () => {
+  // Замер 2026-10-10: «Мирель отвечает реакцией «Щит». Мирель отвечает
+  // реакцией «Щит».» — у «Щита» реакция идёт раньше закрытия окна.
+  const state = { players: [{ id: 'mirel', character: 'Мирель' }], enemies: [{ id: 'gob', name: 'Гоблин 1' }] }
+  const used = { event_id: 'use-1', event_type: 'CombatActionUsed', actor_id: 'mirel', payload: { action_type: 'reaction', action_id: 'cast:shield', name: 'Щит', reaction_window_id: 'w1' } }
+  const closed = { event_id: 'close-1', event_type: 'ReactionWindowClosed', actor_id: 'mirel', payload: { accepted: true, action_id: 'cast:shield', name: 'Щит', reaction_window_id: 'w1' } }
+  for (const events of [[closed, used], [used, closed]]) {
+    const text = combatNarration(events, state)
+    assert.equal((text.match(/Щит/gu) ?? []).length, 1, text)
+  }
+})

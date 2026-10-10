@@ -213,11 +213,17 @@ function problem(kind, message) {
 
 /** Сообщения хроники после известного набора id, кроме реплик игроков. */
 const messageIds = (state) => new Set((state?.messages ?? []).map((entry) => String(entry.id)))
+// Реплики, уже показанные в отчёте ходом: блок «бой целиком» собирает
+// летопись с начала боя и прежде печатал реплику заклинания второй раз — судья
+// читал это как дубль ведущего (замер 2026-10-10).
+const reportedMessageIds = new Set()
+
 function freshMessages(before, state) {
-  return (state?.messages ?? [])
-    .filter((entry) => !before.has(String(entry.id)) && entry.speaker !== 'player' && entry.role !== 'player')
-    .map((entry) => ({ author: String(entry.author ?? entry.speaker ?? ''), speaker: String(entry.speaker ?? ''), text: String(entry.text ?? '') }))
-    .filter((entry) => entry.text.trim())
+  const fresh = (state?.messages ?? [])
+    .filter((entry) => !before.has(String(entry.id)) && !reportedMessageIds.has(String(entry.id)) && entry.speaker !== 'player' && entry.role !== 'player')
+    .filter((entry) => String(entry.text ?? '').trim())
+  for (const entry of fresh) reportedMessageIds.add(String(entry.id))
+  return fresh.map((entry) => ({ author: String(entry.author ?? entry.speaker ?? ''), speaker: String(entry.speaker ?? ''), text: String(entry.text ?? '') }))
 }
 
 function sceneContext(state) {

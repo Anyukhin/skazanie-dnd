@@ -594,7 +594,9 @@ function tacticalNarrationLines(events, state, options = {}) {
   // Подтверждение окна реакции и сама реакция — тоже одна новость.
   list.forEach((event, index) => {
     if (event?.event_type !== 'ReactionWindowClosed' || event?.payload?.accepted !== true || event?.payload?.reaction_preference) return
-    const used = list.some((candidate, at) => at > index
+    // Порядок бывает любым: у «Щита» движок пишет реакцию раньше закрытия окна,
+    // и в строке боя стояло «отвечает реакцией «Щит»» дважды (замер 2026-10-10).
+    const used = list.some((candidate, at) => at !== index
       && candidate?.event_type === 'CombatActionUsed'
       && (candidate?.payload?.action_type === 'reaction' || candidate?.payload?.reaction_window_id)
       && String(candidate?.actor_id ?? '') === String(event?.actor_id ?? ''))
