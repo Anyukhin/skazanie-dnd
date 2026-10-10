@@ -55,7 +55,7 @@ if (LIVE) {
     process.exit(2)
   }
 }
-mkdirSync(OUT, { recursive: true })
+if (!option('rejudge', '')) mkdirSync(OUT, { recursive: true })
 const storage = mkdtempSync(join(tmpdir(), 'skazanie-gm-'))
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
 const short = (value, limit = 240) => {
@@ -595,7 +595,12 @@ function repeatedSentences() {
 // ---------------------------------------------------------------------------
 // Судьи
 
-const EXCHANGE_RUBRIC = `Ты опытный ведущий D&D и оцениваешь ответ другого ведущего за столом. Представь, что это живой человек: игроки сказали реплику, ведущий ответил. Оцени по шкале 1–10 (10 — так ответил бы лучший живой ведущий, 5 — терпимо, 1 — ломает игру).
+// С замера 10 (2026-10-10) судьи знают устройство стола: журнал бросков и
+// карточки — интерфейс, а не речь ведущего. Прежде «[Система боя] … 16 против
+// КД 11» шло в оценку как слова ведущего; оценки до и после не сравнимы.
+const TABLE_FORMAT_NOTE = "Как устроен стол: игра идёт на виртуальном столе. Строки [Система боя], 🎲 (бросок) и 🗳 (голосование отряда) — журнал бросков и элементы интерфейса стола, как чат бросков в Roll20, а не речь ведущего; числа в них видны игрокам и так. Голос ведущего — реплики [Рассказчик], [Ведущий · ответ] и персонажей. Оценивай ведущего по его голосу; бой оценивай по тому, как ведущий ведёт его словами поверх журнала, а не по самому журналу."
+
+const EXCHANGE_RUBRIC = `${TABLE_FORMAT_NOTE}\nТы опытный ведущий D&D и оцениваешь ответ другого ведущего за столом. Представь, что это живой человек: игроки сказали реплику, ведущий ответил. Оцени по шкале 1–10 (10 — так ответил бы лучший живой ведущий, 5 — терпимо, 1 — ломает игру).
 - responsiveness: ответил ли ведущий именно на то, что сделал и сказал игрок, принял ли его идею («да, и…» / «нет, но…»), без канцелярских уточнений и служебных фраз.
 - voice: живой голос ведущего или персонажа, образность, ритм; без канцелярита, шаблонов и пересказа заявки игрока.
 - progress: даёт ли ответ что-то новое — конкретную деталь, зацепку, следствие, ясный следующий шаг; не тупик и не отсылка по кругу.
@@ -604,7 +609,7 @@ const EXCHANGE_RUBRIC = `Ты опытный ведущий D&D и оценив�
 - backstory: если уместно — использует ли личную историю героя (имена, мотивы); null, если неуместно.
 Верни JSON: {"responsiveness":n,"voice":n,"progress":n,"consistency":n,"npc":n|null,"backstory":n|null,"service_text":true|false,"comment":"одна фраза: главное замечание"}.`
 
-const HOLISTIC_RUBRIC = `Ты опытный ведущий D&D и разбираешь запись партии, которую провёл ИИ-ведущий. Оцени его как живого человека за столом: хотелось бы с ним играть дальше? Шкала 1–10 (10 — лучший живой ведущий; 7 — хороший ведущий, с которым приятно играть; 5 — терпимо, но погружение рвётся; 3 — играть мучительно).
+const HOLISTIC_RUBRIC = `${TABLE_FORMAT_NOTE}\nТы опытный ведущий D&D и разбираешь запись партии, которую провёл ИИ-ведущий. Оцени его как живого человека за столом: хотелось бы с ним играть дальше? Шкала 1–10 (10 — лучший живой ведущий; 7 — хороший ведущий, с которым приятно играть; 5 — терпимо, но погружение рвётся; 3 — играть мучительно).
 Оцени отдельно:
 - language: язык и атмосфера описаний;
 - responsiveness: отклик на идеи и действия игроков, принятие импровизации, отсутствие служебных фраз и канцелярских уточнений;
@@ -847,6 +852,29 @@ async function main() {
   note(`Кампания «${state.campaign}», ${state.scene?.location}; время ${sceneContext(state).time}`)
   console.log('Играю партию…')
   await play()
+}
+
+// Пересудка записанной партии новыми рубриками, без новой игры:
+//   node eval/gm-session.mjs --rejudge tmp/gm-session/m9-1
+// Пишет <партия>/rejudge.json — так сравниваются рубрики на одном и том же
+// тексте, отдельно от правок кода.
+const REJUDGE = option('rejudge', '')
+if (REJUDGE) {
+  const source = JSON.parse(readFileSync(resolve(ROOT, REJUDGE, 'report.json'), 'utf8'))
+  exchanges.push(...(source.exchanges ?? []))
+  prologue = String(source.prologue ?? '')
+  await import('dotenv/config')
+  const { RouterAIClient } = await import('../server/llm-client.mjs')
+  const client = new RouterAIClient({ model: process.env.DND_AI_MODEL || 'openai/gpt-6-luna', maxTokens: 900, timeoutMs: 45_000 })
+  const rejudged = await judgeExchanges(client)
+  const scores = rejudged.map((verdict) => verdict.average).filter((value) => Number.isFinite(value))
+  const average = scores.length ? Math.round(10 * scores.reduce((sum, value) => sum + value, 0) / scores.length) / 10 : null
+  let overall = null
+  try { overall = await judgeHolistic(client) } catch (error) { overall = { error: String(error?.code ?? error?.message ?? error).slice(0, 200) } }
+  writeFileSync(resolve(ROOT, REJUDGE, 'rejudge.json'), JSON.stringify({ rubric: 'table-format-note', average, holistic: overall, verdicts: rejudged }, null, 2))
+  console.log(`Пересудка ${REJUDGE}: по ходам ${average}, как живой ведущий ${overall?.overall ?? '—'}/10`)
+  rmSync(storage, { recursive: true, force: true })
+  process.exit(0)
 }
 
 let fatal = null
