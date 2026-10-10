@@ -486,7 +486,20 @@ async function fight() {
       const distance = Math.max(Math.abs(target.x - hero.x), Math.abs(target.y - hero.y))
       if (distance > 1) {
         const near = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]].map(([dx, dy]) => ({ x: target.x + dx, y: target.y + dy }))
-        for (const cell of near) { const moved = await command(actorId, { command_type: 'MoveActor', to: cell }, 'Подойти'); if (moved.status === 200) break }
+        let moved = false
+        for (const cell of near) { const step = await command(actorId, { command_type: 'MoveActor', to: cell }, 'Подойти'); if (step.status === 200) { moved = true; break } }
+        // Стрелок дальше одного хода: прежде бот стоял на месте, и Борин
+        // раунд за раундом «ничего не делал» (замер 2026-10-10). Теперь он
+        // идёт навстречу на сколько хватит скорости.
+        const reach = Math.max(1, Math.floor(Number(hero?.speed ?? 30) / 5))
+        for (let cells = Math.min(reach, distance - 1); !moved && cells >= 1; cells -= 1) {
+          const to = {
+            x: hero.x + Math.sign(target.x - hero.x) * Math.min(cells, Math.abs(target.x - hero.x)),
+            y: hero.y + Math.sign(target.y - hero.y) * Math.min(cells, Math.abs(target.y - hero.y)),
+          }
+          const step = await command(actorId, { command_type: 'MoveActor', to }, 'Сблизиться')
+          if (step.status === 200) moved = true
+        }
       }
       const weapon = (hero.inventory ?? []).find((item) => item.equipped && /меч|топор|молот/iu.test(String(item.name)))
       await command(actorId, { command_type: 'MakeAttack', target_id: target.id, ...(weapon ? { item_id: weapon.id } : {}) }, 'Атаковать выбранную цель', accountFor(actorId), line)

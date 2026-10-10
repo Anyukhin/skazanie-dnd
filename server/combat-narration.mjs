@@ -755,7 +755,11 @@ function tacticalNarrationLines(events, state, options = {}) {
           : `, ${Number(damagePayload.applied_amount)} урона; ОЗ ${Number(damagePayload.hp_before) || 0} → ${Number(damagePayload.hp_after) || 0}`
         : ''
       const actorId = String(event.actor_id ?? '')
-      const lead = tacticalActorIsEnemy(state, actorId) && !tacticLeadUsed.has(actorId) ? tacticLead(tactics.get(actorId)) : ''
+      // Вступление по тактике — изредка, а не в каждом ходе: «Почуяв слабину»
+      // в каждой строке читалось шаблоном (замер 2026-10-10). Выбор — хешем
+      // события: повтор и replay дают ту же строку.
+      const tacticText = tacticalActorIsEnemy(state, actorId) && !tacticLeadUsed.has(actorId) ? tacticLead(tactics.get(actorId)) : ''
+      const lead = tacticText ? book.pick('tactic-lead', [tacticText, '', ''], event) : ''
       if (tacticalActorIsEnemy(state, actorId)) tacticLeadUsed.add(actorId)
       meaningful.push(attackPhrase(book, {
         actor,
