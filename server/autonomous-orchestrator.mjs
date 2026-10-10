@@ -1173,7 +1173,7 @@ export class AutonomousCampaignOrchestrator {
       const narration = passagePlan.status === 'ambiguous'
         ? `Входов рядом несколько, и все одинаково близко — в какой идёт ${heroName}? Укажите дверь на карте.`
         : passagePlan.status === 'already_inside'
-          ? `${heroName} и так уже внутри.`
+          ? `${heroName} уже под крышей${loaded.state.scene?.location ? ` — внутри «${String(loaded.state.scene.location).slice(0, 80)}»` : ''}: дверь позади, можно осмотреться.`
           : passagePlan.reason === 'destination_mismatch'
             ? 'Такого здания здесь не видно. Укажите на карте дверь, в которую идёте, или назовите то, что видно отсюда.'
             : passagePlan.reason === 'alternate_route'
