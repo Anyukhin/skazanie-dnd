@@ -9,6 +9,9 @@ import { campaignStateForViewer } from './viewer-projection.mjs'
 import { ENVIRONMENT_HAZARD_IDS, ENVIRONMENT_HAZARDS } from './improvised-effects.mjs'
 import { hazardPropCells, sceneHazardTagsFor } from './scene-hazards.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
+import { canonicalCombatSpellFor, combatSpellsFor } from './combat-spells.mjs'
+import { featureChoiceGroupsFor, normalizedSelectedFeatureIds } from './character-progression.mjs'
+import { combatActionsFor } from './combat-actions.mjs'
 import {
   LOOT_CONTAINER_REACH_FEET,
   lootContainerList,
@@ -1258,17 +1261,57 @@ export function resolveCorpseSearch(state = {}, actorId = '', text = '', reading
   }
 }
 
+/**
+ * Ключ сравнения средства. Лист героя хранит `fire-bolt`, а модель называет
+ * средство так, как его видит игрок: «заклинание «Огненный снаряд»». Ключ
+ * снимает регистр, ё, кавычки и знаки; обёртку вида средства разбирает
+ * `meansKeys`.
+ */
+const meansKey = (value) => clean(value, 160).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+
+// Вид средства перед именем: «заклинание «…»», «умение …», «боевой стиль «…»».
+const MEANS_KIND_PREFIX = /^(?:заклинани[еяю]|заговора?|чары|умени[еяю]|способност[ьи]|(?:классов\S*\s+)?особенност[ьи]|черт[аыу]|боев\S*\s+стил[ьяю]|прием|навык|предмет|вещь|инструмент|spell|cantrip|feature|item)\s+/u
+
+function meansKeys(value) {
+  const keys = new Set([meansKey(value)])
+  for (const [, inner] of String(value).matchAll(/[«"“„]([^«»"“”„]+)[»"”“]/gu)) keys.add(meansKey(inner))
+  for (const key of [...keys]) keys.add(key.replace(MEANS_KIND_PREFIX, ''))
+  keys.delete('')
+  return keys
+}
+
+/**
+ * Всё, чем герой может действовать: вещи инвентаря, заклинания, выбранные
+ * особенности и классовые действия — и по идентификатору, и по имени из
+ * каталога. Заклинания берутся так же, как их показывает панель действий
+ * (`combatSpellsFor` в редакции кампании), плюс прежние сырые списки листа.
+ */
 function actorMeans(state = {}, actorId = '') {
   const actor = (state.players ?? []).find((entry) => String(entry?.id) === String(actorId)) ?? null
-  const inventory = Array.isArray(actor?.inventory) ? actor.inventory : []
-  const ids = new Set()
-  for (const item of inventory) {
-    for (const value of [item?.id, item?.catalog_id, item?.name]) if (value) ids.add(clean(value, 160).toLocaleLowerCase('ru'))
-  }
+  const keys = new Set()
+  if (!actor) return keys
+  const add = (value) => { if (value) keys.add(meansKey(value)) }
+  const list = (value) => (Array.isArray(value) ? value : [])
+  for (const item of list(actor.inventory)) for (const value of [item?.id, item?.catalog_id, item?.name]) add(value)
   for (const key of ['knownSpellIds', 'preparedSpellIds', 'selectedFeatureIds', 'classSkillProficiencies']) {
-    for (const value of actor?.[key] ?? []) if (value) ids.add(clean(value, 160).toLocaleLowerCase('ru'))
+    for (const value of list(actor[key])) add(value)
   }
-  return ids
+  const rulesetId = state.ruleset_id
+  const spells = [
+    ...combatSpellsFor(actor, { rulesetId }).filter((spell) => spell.prepared !== false),
+    ...[...list(actor.knownSpellIds), ...list(actor.preparedSpellIds)].map((id) => canonicalCombatSpellFor(id, { rulesetId })),
+  ]
+  for (const spell of spells) if (spell) for (const value of [spell.id, spell.name, spell.englishName]) add(value)
+  const selected = new Set(normalizedSelectedFeatureIds(actor))
+  for (const group of featureChoiceGroupsFor(actor)) {
+    const chosen = group.options.filter((option) => selected.has(option.id))
+    if (chosen.length) add(group.name)
+    for (const option of chosen) add(option.name)
+  }
+  for (const action of combatActionsFor(actor)) if (action.category !== 'common') { add(action.id); add(action.name) }
+  keys.delete('')
+  return keys
 }
 
 /**
@@ -1279,9 +1322,7 @@ export function verifyMeans(state = {}, actorId = '', requiredMeans = []) {
   const available = actorMeans(state, actorId)
   const required = [...new Set((Array.isArray(requiredMeans) ? requiredMeans : [])
     .map((value) => clean(value, 160)).filter(Boolean))]
-  const canonical = value => String(value).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
-  const normalized = new Set([...available].map(canonical))
-  const missing = required.filter(value => !normalized.has(canonical(value)))
+  const missing = required.filter((value) => ![...meansKeys(value)].some((key) => available.has(key)))
   return { satisfied: missing.length === 0, required, missing }
 }
 
