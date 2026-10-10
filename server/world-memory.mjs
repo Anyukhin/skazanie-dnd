@@ -214,7 +214,14 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
   // получал чужую находку (плейтест 2026-10-10). Тема — две общие основы или
   // одна, но о тайне этого же места или о личной нити героя: «ищу след
   // сестры» — это вопрос о его предыстории, где бы ни лежала зацепка.
-  const topical = candidates.filter((entry) => entry.score >= 2 || (entry.score >= 1 && (entry.here || entry.personal)))
+  // Свидетельство хранителя по теме открывается, только если герой обращается
+  // к самому хранителю: следил за реакцией Эды — не узнал, что видел Орен.
+  const asksHolder = (entry) => {
+    const holder = String(entry.meta.holder ?? '').trim().split(/\s+/u)[0] ?? ''
+    return holder.length >= 3 && String(actionText ?? '').toLocaleLowerCase('ru').includes(holder.toLocaleLowerCase('ru').slice(0, Math.max(3, holder.length - 1)))
+  }
+  const topical = candidates.filter((entry) => !testimonyOfHolder(entry) || asksHolder(entry))
+    .filter((entry) => entry.score >= 2 || (entry.score >= 1 && (entry.here || entry.personal)))
     .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
   // Общий поиск открывает тайну этого места сперва своим навыком, затем
   // родственным: тайна лагеря ждала Анализа, и удачная Внимательность у

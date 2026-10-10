@@ -234,3 +234,18 @@ test('общий осмотр не открывает чужого свидет�
   const listened = freeActionDiscoveryCommands(state, { checkEvent: check('perception', 'listen'), skill: 'perception', actionText: 'Прислушиваюсь у двери, есть ли кто-то внутри' })
   assert.ok(!listened.some((command) => /царапина|почерк/u.test(command.fact?.summary ?? '')), 'прислушаться — не обыск')
 })
+
+test('свидетельство по теме открывается, только когда герой обращается к его хранителю', async () => {
+  // Замер 2026-10-10: Мирель следила за реакцией Эды на иллюзию, а удача
+  // открыла «Орен признаётся: видел такую же зарубку» — показания другого.
+  const state = await campaign()
+  const location = state.worldMemory.entities.find((entity) => entity.name === state.scene.location)
+  const testimony = { id: 'fact:secret:witness-topic', subject_id: location.id, predicate: 'gm_secret', status: 'active', visibility: 'gm_only',
+    object: JSON.stringify({ topic: 'зарубка баркас', skills: ['insight', 'perception'], holder: 'Орен Вейл' }),
+    summary: 'Орен Вейл видел такую же зарубку на другом баркасе, но молчал.', recorded_at_minutes: 0 }
+  const only = { ...state, worldMemory: { ...state.worldMemory, facts: [...state.worldMemory.facts.map((fact) => fact.predicate === 'gm_secret' ? { ...fact, status: 'superseded' } : fact), testimony] } }
+  const watching = freeActionDiscoveryCommands(only, { checkEvent: check('insight', 'watch-eda'), skill: 'insight', actionText: 'Слежу, как Эда смотрит на зарубку на баркасе' })
+  assert.ok(!watching.some((command) => /Орен/u.test(command.fact?.summary ?? '')))
+  const askingHolder = freeActionDiscoveryCommands(only, { checkEvent: check('insight', 'read-oren'), skill: 'insight', actionText: 'Смотрю, как Орен отводит глаза, когда речь о зарубке на баркасе' })
+  assert.ok(askingHolder.some((command) => /Орен/u.test(command.fact?.summary ?? '')))
+})
