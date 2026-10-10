@@ -468,6 +468,71 @@ export function thoroughSearchOutcome(state = {}, { checkEvent = null, skill = '
   return { commands: secret ? [secret] : [], found: Boolean(secret), minutes: THOROUGH_SEARCH_MINUTES }
 }
 
+/**
+ * Культ, названный в замысле кампании: «культ «Утопленной Матери»» —
+ * «Утопленной Матери». Пустая строка, если культа в замысле нет: тогда и
+ * знака на телах нет — выдумывать имя секты сервер не станет.
+ *
+ * @param {Record<string, any>} state
+ */
+export function cultNameFrom(state = {}) {
+  const concept = state.campaignConcept ?? state.campaign_concept ?? {}
+  const source = [concept.premise, concept.worldSummary, concept.world_summary, concept.hook].map((value) => text(value, 1_200)).join(' ')
+  const quoted = /(?<![\p{L}])культ\p{L}*\s+«([^«»]{2,60})»/iu.exec(source)?.[1]
+  if (quoted) return text(quoted, 60)
+  return text(/(?<![\p{L}])культ\p{L}*\s+((?:[А-ЯЁ][\p{L}-]+\s*){1,3})/u.exec(source)?.[1], 60)
+}
+
+/** Бестиарий MM14: кто носит знак культа. */
+const CULT_STAT_BLOCK_SLUGS = new Set(['cultist', 'cult-fanatic', 'acolyte'])
+const CULT_TOKENS = Object.freeze([
+  'амулет из пробитой ракушки на просмолённом шнурке',
+  'медный жетон, стёртый пальцами до блеска',
+  'вытатуированная на запястье волна',
+  'лоскут, нашитый на подкладку изнанкой наружу',
+])
+
+/**
+ * Улика на теле культиста: знак культа из замысла кампании. Засада у маяка
+ * культа прежде не давала при обыске ничего, кроме оружия, и судья раз за
+ * разом писал «обыск врагов — ни знака культа, ни связи с пропавшими»
+ * (замеры 10–18, 2026-10-11). Одна улика на встречу: остальные тела — просто
+ * добыча. Вещь выбирается по id контейнера — повтор хода даёт тот же знак.
+ *
+ * @param {Record<string, any>} state
+ * @param {Record<string, any>} container — контейнер добычи (`loot-containers`)
+ * @returns {Record<string, any> | null} команда RecordWorldFact
+ */
+export function corpseClueCommand(state = {}, container = {}) {
+  if (String(container?.kind ?? '') !== 'corpse') return null
+  const cult = cultNameFrom(state)
+  if (!cult) return null
+  const sources = new Set([container.source_enemy_id, ...(container.source_enemy_ids ?? [])].filter(Boolean).map(String))
+  const enemy = (state.enemies ?? []).find((entry) => sources.has(String(entry?.id ?? ''))
+    && CULT_STAT_BLOCK_SLUGS.has(String(entry?.stat_block_id ?? '').split(':').at(-1)))
+  if (!enemy) return null
+  const encounterKey = text(container.encounter_id, 160) || text(container.id, 160)
+  const id = `fact-cult-sign-${createHash('sha256').update(encounterKey).digest('hex').slice(0, 24)}`
+  if ((state.worldMemory?.facts ?? []).some((fact) => fact?.id === id)) return null
+  const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
+  const here = (state.worldMemory?.entities ?? []).find((entity) => location && text(entity?.name, 160).toLocaleLowerCase('ru') === location)
+  if (!here?.id) return null
+  const token = CULT_TOKENS[parseInt(createHash('sha256').update(text(container.id, 160)).digest('hex').slice(0, 8), 16) % CULT_TOKENS.length]
+  const name = text(enemy.name, 80).replace(/\s+\d+$/u, '')
+  return {
+    command_type: 'RecordWorldFact',
+    fact: {
+      id,
+      subject_id: String(here.id),
+      predicate: 'discovery',
+      object: 'clue',
+      summary: `При теле — ${token}: знак культа «${cult}». ${name} был из них.`,
+      visibility: 'party',
+      source_event_ids: [],
+    },
+  }
+}
+
 /** Слова ведущего об исходе тщательного поиска: нашлось или честно пусто. */
 export function thoroughSearchDetail(outcome, heroName = 'Герой') {
   const name = String(heroName || 'Герой').slice(0, 80)

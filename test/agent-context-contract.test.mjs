@@ -86,3 +86,15 @@ test('прочтение свободного действия отклоняе�
   assert.equal(result.context_metadata.state_version, 0)
   assert.equal(commits, 0)
 })
+
+test('контекст сцены несёт, что карта мира обещает об этом месте', async () => {
+  // Замеры 11–18 (2026-10-11): «маяк, чей свет вновь замечают по ночам», а
+  // на «загорится ли огонь?» ведущий отвечал «в темноте не видно».
+  const { sceneContextForAgent } = await import('../server/agent-context.mjs')
+  const state = {
+    scene: { title: 'Свет над скалой', location: 'Заброшенный маяк' },
+    worldMap: { currentLocationId: 'lh', locations: [{ id: 'lh', name: 'Заброшенный маяк', summary: 'Маяк на скале, чей свет вновь замечают по ночам.', known: true }] },
+  }
+  assert.equal(sceneContextForAgent(state).place_summary, 'Маяк на скале, чей свет вновь замечают по ночам.')
+  assert.equal(sceneContextForAgent({ scene: state.scene }).place_summary, undefined)
+})

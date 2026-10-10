@@ -1133,3 +1133,34 @@ test('вход с репликой в кавычках и «входит пер�
   assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
   assert.equal(freeActionPassagePlan(passageCampaign('open'), 'hero', 'Говорю: «Я протискиваюсь внутрь монастыря»').status, 'not_applicable', 'сама речь о входе — не вход')
 })
+
+test('обыск тела культиста: при добыче — знак культа из замысла кампании, один раз на встречу', async () => {
+  // Замеры 10–18 (2026-10-11): «обыск врагов — ни знака культа, ни связи с
+  // пропавшими», хотя засада была у маяка культа.
+  const map = createTacticalMap({ width: 5, height: 3, locationId: 'cliff', seed: 'cult-clue', sizeClass: 'arena' })
+  addZone(map, { id: 'cliff', kind: 'exterior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Скала' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 5; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'cliff' })
+  const dagger = createItemInstance({
+    instanceId: 'inst-cult-dagger', catalogId: 'srd_5_2_1:dagger',
+    owner: { kind: 'container', actor_id: 'loot:corpse:cultist' }, origin: { kind: 'enemy_loadout' }, quantity: 1, lootable: true,
+  })
+  const initialState = campaign({
+    campaignConcept: { premise: 'В порту тайно действует культ «Утопленной Матери», приносящий людей в жертву морю.' },
+    scene: { title: 'Скала у маяка', location: 'Маяк', location_id: 'cliff', objective: 'Узнать, кто зажигает огонь', cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    players: [hero('hero', 'Ада'), hero('other', 'Бор')],
+    enemies: [{ id: 'cultist-1', name: 'Культист 1', hp: 0, maxHp: 9, armor: 12, alive: false, x: 1, y: 1, stat_block_id: 'dnd_5e_2014:monster:cultist' }],
+    mechanics: { combat: { active: false }, positions: { hero: { x: 0, y: 1 }, other: { x: 0, y: 0 } } },
+    worldMemory: { entities: [{ id: 'loc:lighthouse', kind: 'location', name: 'Маяк', summary: '', aliases: [], visibility: 'party', tags: [] }], facts: [] },
+    loot_containers: { containers: [{ id: 'loot:corpse:cultist', kind: 'corpse', source_enemy_id: 'cultist-1', encounter_id: 'enc-cult', name: 'Тело: Культист 1', location_id: 'cliff', x: 1, y: 1, status: 'available', items: [dagger] }] },
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const result = await orchestrator.handle(actionInput('Обыскиваю тело культиста', 'free-search-cult', initialState))
+  assert.equal(result.free_action_outcome, 'loot_inspection', result.narration)
+  assert.match(result.narration, /знак культа «Утопленной Матери»/u)
+  const facts = (await eventStore.load('FREE-ACTION')).state.worldMemory.facts.filter((fact) => fact.predicate === 'discovery')
+  assert.equal(facts.length, 1)
+  assert.equal(facts[0].visibility, 'party')
+  const again = await orchestrator.handle(actionInput('Ещё раз осматриваю тело культиста', 'free-search-cult-2', (await eventStore.load('FREE-ACTION')).state))
+  assert.doesNotMatch(again.narration, /знак культа/u, 'улика одна на встречу')
+  assert.equal((await eventStore.load('FREE-ACTION')).state.worldMemory.facts.filter((fact) => fact.predicate === 'discovery').length, 1)
+})

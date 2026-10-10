@@ -145,7 +145,15 @@ function unavailableSpatialContext() {
 /** Видимая обстановка у действующего лица, без скрытых комнат и бинарных слоёв карты. */
 export function sceneContextForAgent(state = {}, actorId = '') {
   const scene = state.scene ?? {}
-  const context = Object.fromEntries(['title', 'location', 'mood', 'objective', 'theme', 'scene_kind', 'layout'].map((key) => [key, clean(scene[key], key === 'layout' ? 400 : 300)]).filter(([key, value]) => key !== 'layout' || value))
+  const baseContext = Object.fromEntries(['title', 'location', 'mood', 'objective', 'theme', 'scene_kind', 'layout'].map((key) => [key, clean(scene[key], key === 'layout' ? 400 : 300)]).filter(([key, value]) => key !== 'layout' || value))
+  // Что карта мира обещает об этом месте: «заброшенный маяк, чей свет вновь
+  // замечают по ночам». Без этого ведущий на «загорится ли огонь?» отвечал то
+  // «горит», то «в темноте не видно» (замеры 11–18, 2026-10-11).
+  const place = (Array.isArray(state.worldMap?.locations) ? state.worldMap.locations : [])
+    .find((entry) => entry?.known !== false && (String(entry?.id ?? '') === String(state.worldMap?.currentLocationId ?? '')
+      || clean(entry?.name, 160).toLocaleLowerCase('ru') === clean(scene.location, 160).toLocaleLowerCase('ru')))
+  const placeSummary = clean(place?.summary, 300)
+  const context = placeSummary ? { ...baseContext, place_summary: placeSummary } : baseContext
   const metadata = agentContextMetadata(state, { role: 'scene_context', actorId, contractVersion: 'scene-context/v2' })
   if (!scene.map || typeof scene.map !== 'object') return { ...context, context_metadata: metadata, spatial_context: unavailableSpatialContext() }
   let map

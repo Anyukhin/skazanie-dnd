@@ -287,3 +287,30 @@ test('при другой зацепке уже расспрошенный зн�
   assert.ok(brief.leads.length > 0)
   assert.equal(brief.leads.some((lead) => lead.name === 'Борс'), false, JSON.stringify(brief.leads))
 })
+
+test('отсылка к уже расспрошенному NPC вырезается, если в реплике есть что-то ещё', async () => {
+  // Замеры 15–17 (2026-10-11): Мара → «спроси Тавена», Тавен → «спроси Мару».
+  const { withoutCircularReferral } = await import('../server/npc-social-controller.mjs')
+  const social = { npcs: [{ id: 'mara', name: 'Мара Вейл' }, { id: 'taven', name: 'Тавен' }], conversations: [{ npc_id: 'taven' }, { npc_id: 'mara' }] }
+  assert.equal(withoutCircularReferral('Баркас пришёл с юга, без огней. Спроси Тавена, он видел больше.', social, { id: 'mara' }), 'Баркас пришёл с юга, без огней.')
+  assert.equal(withoutCircularReferral('Спроси Тавена.', social, { id: 'mara' }), 'Спроси Тавена.', 'пустой ответ хуже отсылки')
+  assert.equal(withoutCircularReferral('Тавен знает больше, чем говорит. Баркас пришёл с юга.', social, { id: 'mara' }), 'Тавен знает больше, чем говорит. Баркас пришёл с юга.', 'не отсылка — остаётся')
+  const fresh = { npcs: social.npcs, conversations: [{ npc_id: 'mara' }] }
+  assert.equal(withoutCircularReferral('Баркас пришёл с юга. Спроси Тавена.', fresh, { id: 'mara' }), 'Баркас пришёл с юга. Спроси Тавена.', 'к новому знатоку отсылать можно')
+})
+
+test('собеседник видит, что при нём сказали другие здесь, но не чужие разговоры наедине', async () => {
+  // Замеры 14–17: NPC противоречили друг другу в ключевых фактах.
+  const { othersSaidNearby } = await import('../server/npc-social-controller.mjs')
+  const state = { scene: { location: 'Таверна' } }
+  const social = {
+    npcs: [{ id: 'mara', name: 'Мара', location: 'Таверна' }, { id: 'orn', name: 'Орн', location: 'Таверна' }, { id: 'far', name: 'Дальний', location: 'Маяк' }],
+    conversations: [
+      { npc_id: 'orn', npc_reply: 'Это лодка Илы, я её знаю.', visibility: 'party' },
+      { npc_id: 'orn', npc_reply: 'Тебе одной скажу: я боюсь.', visibility: 'specific_player' },
+      { npc_id: 'far', npc_reply: 'С маяка видно всё.', visibility: 'party' },
+      { npc_id: 'mara', npc_reply: 'Своё я уже сказала.', visibility: 'party' },
+    ],
+  }
+  assert.deepEqual(othersSaidNearby(state, social, { id: 'mara' }), [{ npc: 'Орн', npc_reply: 'Это лодка Илы, я её знаю.' }])
+})

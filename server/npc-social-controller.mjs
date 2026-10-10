@@ -396,6 +396,54 @@ function sentenceRepeats(sentence, index) {
   })
 }
 
+const REFERRAL_VERB = /(?<![\p{L}\p{M}])(?:спрос\p{L}*|спраш\p{L}*|расспрос\p{L}*|поговор\p{L}*|обратись|обратитесь|узна(?:й|йте)\s+у|загляни|загляните|иди(?:те)?\s+к|ступай(?:те)?\s+к)(?![\p{L}\p{M}])/iu
+
+/**
+ * Отсылка «спроси N», когда отряд уже говорил с N, — круг: Мара шлёт к Тавену,
+ * Тавен — к Маре, Мара снова к Тавену (замеры 15–17, 2026-10-11). Такое
+ * предложение вырезается, если после него в реплике остаётся что сказать;
+ * «знает больше, чем сказал» по-прежнему можно — это не отсылка.
+ *
+ * @param {string} reply
+ * @param {Record<string, any>} social — `ensureNpcSocialState`
+ * @param {Record<string, any>} profile — кто говорит
+ * @returns {string}
+ */
+/**
+ * Последние общие реплики других NPC этого же места — то, что собеседник
+ * слышал сам. Личные беседы наедине сюда не входят.
+ *
+ * @returns {Array<{ npc: string, npc_reply: string }>}
+ */
+export function othersSaidNearby(state = {}, social = {}, profile = {}) {
+  const here = clean(state.scene?.location, 180).toLocaleLowerCase('ru')
+  const byId = new Map((social.npcs ?? []).map((npc) => [String(npc?.id ?? ''), npc]))
+  return (social.conversations ?? [])
+    .filter((entry) => entry?.visibility !== 'specific_player' && String(entry?.npc_id ?? '') !== String(profile?.id ?? ''))
+    .map((entry) => ({ npc: byId.get(String(entry?.npc_id ?? '')), reply: clean(entry?.npc_reply, 400) }))
+    .filter(({ npc, reply }) => npc && reply && (!here || !npc.location || clean(npc.location, 180).toLocaleLowerCase('ru') === here))
+    .slice(-4)
+    .map(({ npc, reply }) => ({ npc: clean(npc.name, 120), npc_reply: reply }))
+}
+
+export function withoutCircularReferral(reply, social = {}, profile = {}) {
+  const asked = new Set((social.conversations ?? []).map((entry) => String(entry?.npc_id ?? '')).filter(Boolean))
+  const names = (social.npcs ?? [])
+    .filter((npc) => asked.has(String(npc?.id)) && String(npc?.id) !== String(profile?.id ?? ''))
+    .map((npc) => clean(npc.name, 120).split(/\s+/u)[0]?.toLocaleLowerCase('ru').replace(/ё/gu, 'е') ?? '')
+    .filter((name) => name.length >= 3)
+  if (!names.length) return reply
+  const sentences = replySentences(reply)
+  const circular = (sentence) => {
+    if (!REFERRAL_VERB.test(sentence)) return false
+    const words = (sentence.toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}+/gu) ?? [])
+    return names.some((name) => words.some((word) => word.startsWith(name.slice(0, Math.max(3, name.length - 1))) && word.length <= name.length + 3))
+  }
+  const kept = sentences.filter((sentence) => !circular(sentence))
+  if (kept.length === sentences.length || plainWords(kept.join(' ')).length < 4) return reply
+  return kept.join(' ')
+}
+
 /**
  * Новая часть реплики: предложения-повторы вырезаны. Пустая строка — нового не
  * осталось (меньше двух слов).
@@ -663,6 +711,10 @@ function briefFor(state, profile, playerId, message, checkOutcome = null, { lead
     leads: leads.slice(0, NPC_LEAD_LIMIT),
     // Свои последние реплики, которые этот герой мог слышать: не повторять.
     already_said: alreadySaid,
+    // Что при собеседнике сказали другие здесь же: не противоречить им без
+    // причины. Мара «не помнит Илу», а Терен тут же — «это лодка Илы», и судья
+    // записывал разнобой на счёт ведущего (замеры 14–17, 2026-10-11).
+    others_said: othersSaidNearby(state, social, profile),
     ...(repeatRetry ? { repeat_retry: true } : {}),
     ...selectionFields(boundedSelectionMetadata({ scope: 'server_safe_leads_for_conversation_topic', candidateCount: leads.length, limit: NPC_LEAD_LIMIT }), 'leads'),
     ...selectionFields(boundedSelectionMetadata({ scope: 'npc_replies_visible_to_active_hero', candidateCount: alreadySaidCandidates, limit: NPC_ALREADY_SAID_LIMIT }), 'already_said'),
@@ -993,6 +1045,11 @@ export class NpcSocialController {
       } else if (fresh.dropped) {
         result = { ...result, reply: fresh.text }
         repetition = 'trimmed'
+      }
+      const unlooped = withoutCircularReferral(result.reply, social, profile)
+      if (unlooped !== result.reply) {
+        result = { ...result, reply: unlooped }
+        repetition = repetition ?? 'referral-trimmed'
       }
       return {
         ...normalizedResult(result, profile, state, heroId, message, turnId, checkOutcome, { leads }),

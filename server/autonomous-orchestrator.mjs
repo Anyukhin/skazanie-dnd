@@ -86,7 +86,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -1653,20 +1653,37 @@ export class AutonomousCampaignOrchestrator {
         }
       }
     }
+    // Знак культа на теле культиста — улика сюжета, а не только добыча.
+    let corpseClue = null
+    if (corpseSearch?.loot_items?.length) {
+      const now = corpseApproach?.state ?? loaded.state
+      const ids = new Set([corpseSearch.loot_container_id, ...(corpseSearch.loot_container_ids ?? [])].filter(Boolean).map(String))
+      const clue = (now.loot_containers?.containers ?? []).filter((entry) => ids.has(String(entry?.id)))
+        .map((entry) => corpseClueCommand(now, entry)).find(Boolean)
+      if (clue) {
+        try {
+          corpseClue = await this.runCommands(campaignId, `${idempotencyKey}:clue`, [clue])
+        } catch (error) {
+          if (!(error instanceof RulesValidationError) && error?.code !== 'STATE_VERSION_CONFLICT') throw error
+        }
+      }
+    }
     if (corpseSearch) {
+      const clueText = (corpseClue?.events ?? []).filter((event) => event.event_type === 'WorldFactRecorded')
+        .map((event) => String(event.payload?.fact?.summary ?? '')).filter(Boolean).join(' ')
       return {
         context_metadata: actionContextMetadata,
         // Названное содержимое тела — ответ ведущего, а не вопрос: карточка
         // уточнения ждала «Да», и тот же список звучал в летописи дважды
         // (замер 12, 2026-10-10).
         kind: Array.isArray(corpseSearch.loot_items) && corpseSearch.loot_items.length ? 'loot_inspection' : 'clarification',
-        narration: corpseSearch.narration,
+        narration: clueText ? `${corpseSearch.narration} ${clueText}` : corpseSearch.narration,
         turn_consumed: false,
         admin_commands: 0,
-        state: corpseApproach?.state ?? loaded.state,
-        state_version: corpseApproach?.state_version ?? loaded.state_version,
-        events: corpseApproach?.events ?? [],
-        commands: corpseApproach?.commands ?? [],
+        state: corpseClue?.state ?? corpseApproach?.state ?? loaded.state,
+        state_version: corpseClue?.state_version ?? corpseApproach?.state_version ?? loaded.state_version,
+        events: [...(corpseApproach?.events ?? []), ...(corpseClue?.events ?? [])],
+        commands: [...(corpseApproach?.commands ?? []), ...(corpseClue?.commands ?? [])],
         rolls: [],
         duplicate: Boolean(corpseApproach?.duplicate),
       }
