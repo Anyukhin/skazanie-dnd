@@ -237,7 +237,7 @@ function knownPlaceName(phrase, knownPlaces) {
   // вдвое. «Идём в Серый Причал» остаётся в городе, «к Маяку Серого Причала» —
   // уходит на маяк.
   const said = [...spoken.distinctive, ...spoken.generic]
-  const weight = (name) => {
+  const weight = (/** @type {string} */ name) => {
     const place = nameWords(name)
     const words = [...place.distinctive, ...place.generic]
     const named = words.filter((stem) => said.some((word) => sameWordInflected(word, stem))).length
