@@ -174,7 +174,9 @@ export class Adjudicator {
           ...base,
           rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]),
           proposed_commands: [{
-            command_type: 'CastSpell', actor_id: intent.actor_id, spell_id: spellId,
+            // Как у панели (`/commands`): без флага движок только объявляет
+            // сотворение, а бросок атаки, спасбросок и урон не разрешает.
+            command_type: 'CastSpell', actor_id: intent.actor_id, spell_id: spellId, server_authoritative: true,
             ...(targetId ? { target_id: targetId } : {}),
             ...(intent.knock_out ? { knock_out: true } : {}),
             source_rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]),
