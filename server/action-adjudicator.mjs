@@ -488,7 +488,9 @@ export class ActionAdjudicator {
           { role: 'user', content: buildDataOnlyContext({ free_action_brief: brief }) },
         ],
         temperature: 0.2,
-        maxTokens: 700,
+        // Два поля-детали (v10) удлинили ответ: при 700 строгий JSON мог обрезаться,
+        // и заявка падала в запасное «Чего герой хочет добиться».
+        maxTokens: 1000,
       }, { timeoutMs: this.timeoutMs })
       if (!structurallyValidFreeActionResponse(result)) throw new Error('ACTION_ADJUDICATOR_RESPONSE_INVALID_SHAPE')
       const participantIds = new Set(brief.participants.map((entry) => entry.id))

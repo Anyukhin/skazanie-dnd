@@ -707,7 +707,33 @@ function narratorDiagnostics() {
       narration: short(result.narration ?? '', 240),
     })
   }
-  return { turns, rejected, codes }
+  // Детали, которые арбитр назвал, а сервер записал: ответ на вопрос игрока
+  // (`detail`) и то, что видно и без броска (`surface`). Если их нет вовсе,
+  // модель не заполняет поля или ответ арбитра не проходит форму.
+  const details = { detail: [], surface: [] }
+  const eventsRoot = join(storage, 'engine', 'campaigns')
+  const eventFiles = []
+  const walkEvents = (dir) => {
+    let entries = []
+    try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const entry of entries) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) walkEvents(full)
+      else if (entry.name.endsWith('.json')) eventFiles.push(full)
+    }
+  }
+  walkEvents(eventsRoot)
+  for (const file of eventFiles) {
+    let commit = null
+    try { commit = JSON.parse(readFileSync(file, 'utf8')) } catch { continue }
+    for (const event of commit?.events ?? []) {
+      const fact = event?.payload?.fact
+      if (event?.event_type === 'WorldFactRecorded' && ['detail', 'surface'].includes(fact?.object)) details[fact.object].push(short(fact.summary ?? '', 160))
+    }
+  }
+  details.detail = [...new Set(details.detail)]
+  details.surface = [...new Set(details.surface)]
+  return { turns, rejected, codes, details }
 }
 
 // ---------------------------------------------------------------------------
@@ -810,7 +836,7 @@ let holistic = null
 if (JUDGE && exchanges.length) {
   await import('dotenv/config')
   const { RouterAIClient } = await import('../server/llm-client.mjs')
-  const client = new RouterAIClient({ model: process.env.DND_AI_MODEL || 'openai/gpt-6-luna', maxTokens: 500, timeoutMs: 45_000 })
+  const client = new RouterAIClient({ model: process.env.DND_AI_MODEL || 'openai/gpt-6-luna', maxTokens: 900, timeoutMs: 45_000 })
   console.log('Судья по ходам…')
   verdicts = await judgeExchanges(client)
   console.log('Общий судья…')
@@ -818,6 +844,7 @@ if (JUDGE && exchanges.length) {
 }
 const diagnostics = narratorDiagnostics()
 writeFileSync(join(OUT, 'narrator-diagnostics.json'), JSON.stringify(diagnostics, null, 2))
+console.log(`Деталей арбитра записано: по вопросу ${diagnostics.details.detail.length}, видимых ${diagnostics.details.surface.length}`)
 if (diagnostics.rejected.length) {
   console.log(`Отбракованных черновиков рассказчика: ${diagnostics.rejected.length} из ${diagnostics.turns}; причины: ${Object.entries(diagnostics.codes).map(([code, count]) => `${code}×${count}`).join(', ')}`)
 }
