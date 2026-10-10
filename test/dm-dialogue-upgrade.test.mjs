@@ -100,26 +100,32 @@ test('тёплая память рассказчика включает толь
   assert.ok(game.recentNarrationsFor(state.sessionCode).includes(response.narration))
 })
 
-test('последовательный план исполняется по одному подтверждённому шагу и переживает вопрос между шагами', async () => {
+test('последовательный план исполняется шаг за шагом без вопроса «выполнить первый шаг?» и повторяется идемпотентно', async () => {
+  // Плейтест 2026-10-10: каждый сложный ход получал служебное «В заявке 2
+  // последовательных шага… Выполнить первый шаг?». Живой ведущий исполняет
+  // сказанное по порядку и останавливается только на броске или неудаче.
   const { send, eventStore, state } = await fixture()
-  const planned = await send('Сначала подбрасываю монету и ловлю её другой рукой; затем сматываю верёвку')
-  assert.equal(planned.action_kind, 'clarification')
-  assert.deepEqual(planned.mechanics, [])
-  const first = await send('Да', { clarificationId: planned.clarification.id, requestKind: 'action', idempotencyKey: 'sequence-first' })
-  assert.equal(first.free_action_outcome, 'auto_success')
-  assert.match(first.clarification.action, /сматываю верёвку/u)
-  assert.equal(first.mechanics.filter(event => event.event_type === 'ActionDeclared').length, 1)
-  const repeated = await send('Да', { clarificationId: planned.clarification.id, requestKind: 'action', idempotencyKey: 'sequence-first' })
-  assert.equal(repeated.idempotent_replay, true)
-  assert.equal(repeated.clarification.id, first.clarification.id)
-  const version = (await eventStore.load(state.sessionCode)).state_version
-  const discussion = await send('Почему без проверки?', { requestKind: 'question', clarificationId: first.clarification.id })
-  assert.deepEqual(discussion.mechanics, [])
-  assert.equal((await eventStore.load(state.sessionCode)).state_version, version)
-  const second = await send('Да', { clarificationId: first.clarification.id, requestKind: 'action' })
-  assert.equal(second.free_action_outcome, 'auto_success')
-  assert.equal(second.clarification ?? null, null)
-  assert.equal(second.authoritative_state.scene.objective, state.scene.objective)
+  const versionBefore = (await eventStore.load(state.sessionCode)).state_version
+  const planned = await send('Сначала подбрасываю монету и ловлю её другой рукой; затем сматываю верёвку', { idempotencyKey: 'sequence' })
+  assert.doesNotMatch(String(planned.narration), /последовательн|Выполнить первый шаг/u)
+  assert.equal(planned.free_action_outcome, 'auto_success')
+  assert.equal(planned.clarification ?? null, null)
+  assert.equal(planned.mechanics.filter(event => event.event_type === 'ActionDeclared').length, 2)
+  assert.equal(planned.authoritative_state.scene.objective, state.scene.objective)
+  const after = (await eventStore.load(state.sessionCode)).state_version
+  assert.ok(after > versionBefore)
+  const repeated = await send('Сначала подбрасываю монету и ловлю её другой рукой; затем сматываю верёвку', { idempotencyKey: 'sequence' })
+  assert.equal(repeated.mechanics.filter(event => event.event_type === 'ActionDeclared').length, 2)
+  assert.equal((await eventStore.load(state.sessionCode)).state_version, after, 'повтор того же запроса не исполняет шаги заново')
+})
+
+test('союз перед «потом» не остаётся хвостом первого шага', async () => {
+  const { actionSequence } = await import('../server/intent-parser.mjs')
+  assert.deepEqual(actionSequence('Подхожу к двери маяка, прислушиваюсь, а потом поднимаюсь по лестнице'), [
+    'Подхожу к двери маяка, прислушиваюсь',
+    'поднимаюсь по лестнице',
+  ])
+  assert.deepEqual(actionSequence('Осматриваю следы и потом иду к бочкам'), ['Осматриваю следы', 'иду к бочкам'])
 })
 
 function roomWithDoor() {

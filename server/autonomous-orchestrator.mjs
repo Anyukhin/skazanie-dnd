@@ -66,6 +66,7 @@ import {
   FREE_ACTION_RESOLUTION_POLICY_VERSION,
   freeActionResolutionPolicy,
   freeActionPassagePlan,
+  freeActionApproachPlan,
   freeActionSuccessPromise,
   hasRecognizedFreeActionApproach,
   interpretFreeAction,
@@ -1123,6 +1124,15 @@ export class AutonomousCampaignOrchestrator {
     const passagePlan = previousCommit?.events?.length
       ? { status: 'not_applicable' }
       : freeActionPassagePlan(loaded.state, actorId, text)
+    // «Подхожу к баркасу и осматриваю его»: сначала шаги по карте, потом сама
+    // попытка. Подход едет в том же коммите, что и решение, — рассказ и фишка
+    // не расходятся (плейтест 2026-10-10). Вне боя: в бою движение — часть хода.
+    const approachPlan = !previousCommit?.events?.length && passagePlan.status === 'not_applicable' && !loaded.state.mechanics?.combat?.active
+      ? freeActionApproachPlan(loaded.state, actorId, text)
+      : { status: 'not_applicable' }
+    const approachMove = approachPlan.status === 'ready' && approachPlan.remainder
+      ? [{ command_type: 'MoveActor', actor_id: actorId, to: approachPlan.destination.to, server_authoritative: true }]
+      : []
     if (['blocked', 'already_inside', 'ambiguous'].includes(passagePlan.status)) {
       const narration = passagePlan.status === 'ambiguous'
         ? `Поблизости несколько одинаково близких входов (${(passagePlan.door_ids ?? []).join(', ')}). Выберите дверь на карте.`
@@ -1731,6 +1741,7 @@ export class AutonomousCampaignOrchestrator {
       const successRuling = { ...ruling, outcome: 'success', world_change: Boolean(passageDestination) }
       const commit = await run([
         declaration,
+        ...approachMove,
         { command_type: 'RecordRuling', ruling: successRuling, ruling_id: ruling.id },
         ...(passageDestination ? [{
           command_type: 'MoveActor', actor_id: actorId, to: passageDestination.to,
@@ -1890,6 +1901,7 @@ export class AutonomousCampaignOrchestrator {
     // Проверка: бросок делает движок своим Dice Service, число СЛ выбрал сервер.
     const checkCommit = await run([
       declaration,
+      ...approachMove,
       // Провенанс обязателен для любого механического решения: импровизация
       // опирается на то же самое судейское решение, что записывается ниже.
       ...(inCombat ? [{

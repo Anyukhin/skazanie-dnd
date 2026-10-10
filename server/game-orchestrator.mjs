@@ -37,7 +37,7 @@ import {
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
-import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionApproachPlan, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
@@ -924,6 +924,65 @@ function mergeClarificationAction(original, answer) {
   if (!first) return second
   if (!second) return first
   return `${first}. Уточнение игрока: ${second}`.slice(0, 2_000)
+}
+
+/** Сколько шагов одной заявки ведущий исполняет подряд без вопроса. */
+const PLAN_STEP_LIMIT = 4
+
+/**
+ * Вход внутреннего запроса — следующего шага плана или переадресации к NPC.
+ * Бросок, подтверждения и поток прошлого запроса ему не принадлежат: шаг
+ * получает свой ключ, своё уточнение и свой ход, а текст отдаётся клиенту
+ * целиком, вместе с первым шагом.
+ *
+ * @param {Record<string, any>} input
+ */
+function planStepInput(input) {
+  return {
+    ...input,
+    action: undefined,
+    message: undefined,
+    clarification_id: undefined,
+    clarificationId: undefined,
+    idempotency_key: undefined,
+    verifiedRoll: null,
+    confirmedProposalId: null,
+    confirmed_proposal_id: undefined,
+    supersedesCheckId: undefined,
+    supersedes_check_id: undefined,
+    supersedesProposalId: undefined,
+    supersedes_proposal_id: undefined,
+    questionCheckId: undefined,
+    question_check_id: undefined,
+    questionProposalId: undefined,
+    question_proposal_id: undefined,
+    turnId: undefined,
+    turn_id: undefined,
+    onNarrationStart: undefined,
+    onNarrationProgress: undefined,
+  }
+}
+
+/**
+ * Два шага одной заявки — один ответ ведущего: текст подряд, события подряд,
+ * карточка броска и уточнение — от последнего шага.
+ *
+ * @param {Record<string, any>} first
+ * @param {Record<string, any>} next
+ */
+function mergePlanStepResults(first, next) {
+  const narration = [first?.narration, next?.narration]
+    .map((text) => String(text ?? '').trim())
+    .filter((text, index, all) => text && all.indexOf(text) === index)
+    .join('\n\n')
+  return {
+    ...next,
+    narration,
+    mechanics: [...(first?.mechanics ?? []), ...(next?.mechanics ?? [])],
+    visible_state_changes: [...(first?.visible_state_changes ?? []), ...(next?.visible_state_changes ?? [])],
+    turn_consumed: Boolean(first?.turn_consumed || next?.turn_consumed),
+    plan_turn_ids: [...(first?.plan_turn_ids ?? [first?.turn_id]), ...(next?.plan_turn_ids ?? [next?.turn_id])].filter(Boolean),
+  }
 }
 
 const INDEPENDENT_ACTION_INTENTS = new Set([
@@ -1829,6 +1888,11 @@ export class GameOrchestrator {
       free_action_outcome: freeAction.kind,
       ...(freeAction.rejected ? { rejected: true } : {}),
       ...(resolvedAction ? { resolved_action: resolvedAction } : {}),
+      // Маршрут «разговор» с узнанным собеседником переадресуется ему же
+      // (`handle`), а не возвращается игроку просьбой переформулировать.
+      ...(freeAction.route_hint?.route === 'talk' && freeAction.route_hint.npc_hint
+        ? { route_hint: { route: 'talk', npc_hint: String(freeAction.route_hint.npc_hint) } }
+        : {}),
     }
     if (['clarification', 'counter_offer'].includes(String(freeAction.kind))) {
         response.clarification = this.clarificationRegistry.create({
@@ -2071,6 +2135,20 @@ export class GameOrchestrator {
     const coalesces = !input.commands && message !== '/why' && input.why !== true && Boolean(campaignId && idempotencyKey)
     const run = async () => {
       const result = await this._handle(input)
+      // Арбитр узнал в заявке разговор с присутствующим персонажем (route talk):
+      // отвечает сам персонаж, а не ведущий просьбой «скажите прямо, от лица
+      // героя». Плейтест 2026-10-10: «Борин предлагает Кривому выпить и
+      // спрашивает…» получал служебное «назовите собеседника».
+      const talkNpcId = String(result?.route_hint?.route === 'talk' ? result.route_hint.npc_hint ?? '' : '')
+      if (talkNpcId && this.npcSocialController && !npcId && input.routeRedirect !== true && requestKind === 'action' && !input.commands) {
+        return this.handle({
+          ...planStepInput(input),
+          message,
+          npcId: talkNpcId,
+          idempotencyKey: `${idempotencyKey}:talk`,
+          routeRedirect: true,
+        })
+      }
       if (!clarificationId || requestKind !== 'action') return result
       const pending = this.clarificationRegistry.resolve(clarificationId, { campaignId, actorId: playerId })
       if (result.mechanics?.length && !result.check && !result.action_proposal) this.clarificationRegistry.complete(clarificationId, { campaignId, actorId: playerId })
@@ -2078,17 +2156,37 @@ export class GameOrchestrator {
       if (!steps.length || mergeClarificationAction(pending, message) !== steps[0]) return result
       if (result.check) return { ...result, check: { ...result.check, clarification_id: clarificationId } }
       if (!result.mechanics?.length || result.clarification || result.action_proposal || steps.length < 2) return result
-      if (result.idempotent_replay && (await this.eventStore.load(campaignId)).state_version > result.state_version) return result
+      const depth = Number(input.planStep ?? 0)
+      const nextKey = `${idempotencyKey}:step-${depth + 2}`
+      // Повтор запроса воспроизводит шаги, которые уже были исполнены, но не
+      // исполняет новых поверх изменившегося мира.
+      const nextReplay = await this.eventStore.getByIdempotencyKey?.(campaignId, nextKey)
+      if (result.idempotent_replay && !nextReplay?.events?.length
+        && (await this.eventStore.load(campaignId)).state_version > result.state_version) return result
       const failed = result.mechanics.some(event => event.event_type === 'AbilityCheckResolved' && event.payload?.success === false)
+      // Неудача шага обрывает план: рассказчик уже показал, что не вышло, и
+      // живой ведущий не переспрашивает «как изменить план» — игрок решит сам.
+      if (failed) return result
       const rest = steps.slice(1)
-      return { ...result, clarification: this.clarificationRegistry.create({
-        campaignId, actorId: playerId, stateVersion: result.state_version,
+      const next = this.clarificationRegistry.create({
+        campaignId, actorId: playerId, stateVersion: nextReplay?.events?.[0]?.state_version_before ?? result.state_version,
         action: rest.join('; затем '),
-        question: failed
-          ? 'Первый шаг не удался. Остальные шаги не выполнены. Как вы хотите изменить план?'
-          : `Первый шаг завершён. Далее: «${rest[0]}». Продолжить или изменить план?`,
-        intent: failed ? { pending_step: 'reconsider' } : { action_steps: rest },
-      }) }
+        question: `Дальше по плану: «${rest[0]}».`,
+        intent: { action_steps: rest },
+      })
+      // Следующий шаг исполняется сразу, как сказал игрок: ведущий не спрашивает
+      // «продолжить?» после каждого шага. Ключ шага выводится из ключа запроса,
+      // поэтому повтор того же запроса повторяет и шаги, а не исполняет их заново.
+      if (depth >= PLAN_STEP_LIMIT) return { ...result, clarification: next }
+      const continued = await this.handle({
+        ...planStepInput(input),
+        state: result.authoritative_state ?? input.state,
+        message: 'Да',
+        clarificationId: next.id,
+        idempotencyKey: nextKey,
+        planStep: depth + 1,
+      })
+      return mergePlanStepResults(result, continued)
     }
     if (!coalesces) return run()
 
@@ -2278,17 +2376,25 @@ export class GameOrchestrator {
       return missing.length ? `${step}. Ограничение игрока: ${missing.join('; ')}` : step
     })
     if (!input.commands && !explicitNpcId && steps.length && (standaloneAction || !pendingClarification?.original_intent?.action_steps?.length)) {
-      const question = `В заявке ${steps.length} последовательных шага. Сначала: «${steps[0]}». Выполнить первый шаг? Остальные обсудим после его результата.`
-      return {
-        narration: question, effects: emptyEffects(), mechanics: [], visible_state_changes: [],
-        provider: 'deterministic-dialogue', model: 'server-policy', turn_id: turnId,
-        engine_mode: mode, state_version: authoritativeState.state_version,
-        turn_consumed: false, action_kind: 'clarification', request_kind: 'action',
-        clarification: this.clarificationRegistry.create({ campaignId, actorId: playerId,
-          stateVersion: authoritativeState.state_version, action: message, question,
-          intent: { action_steps: steps, constraints },
-        }),
-      }
+      // Живой ведущий не спрашивает «выполнить первый шаг?»: игрок уже сказал,
+      // что делает. Шаги исполняются по порядку тем же путём, что и ответ на
+      // уточнение, и останавливаются на броске, неудаче или вопросе мира
+      // (плейтест 2026-10-10: «В заявке 2 последовательных шага…» в каждом
+      // сложном ходе). Ключ первого шага выводится из ключа запроса.
+      const firstStepKey = `${idempotencyKey}:step-1`
+      const firstStepReplay = await this.eventStore.getByIdempotencyKey?.(campaignId, firstStepKey)
+      const plan = this.clarificationRegistry.create({ campaignId, actorId: playerId,
+        stateVersion: firstStepReplay?.events?.[0]?.state_version_before ?? authoritativeState.state_version, action: message,
+        question: `Сначала: «${steps[0]}».`,
+        intent: { action_steps: steps, constraints },
+      })
+      return this.handle({
+        ...planStepInput(input),
+        message: 'Да',
+        clarificationId: plan.id,
+        idempotencyKey: firstStepKey,
+        planStep: 0,
+      })
     }
     if (supersedesProposalId) {
       this.clarificationRegistry.revokeProposal(supersedesProposalId, { campaignId, actorId: playerId })
@@ -2675,6 +2781,19 @@ export class GameOrchestrator {
         : await this.adjudicator.createPlan({ intent, state: ['approach_attack', 'compound_maneuver'].includes(intent.intent)
           ? duplicate ? (await this.eventStore.load(campaignId, { atVersion: duplicate.events[0].state_version_before })).state : authoritativeState
           : originalState, retrievedRules })
+    // «Подхожу к баркасу и методично осматриваю его»: распознанная проверка
+    // начинается с шагов по карте — фишка идёт туда же, куда рассказ
+    // (плейтест 2026-10-10). Только вне боя: в бою движение — часть хода.
+    if (!input.commands && !duplicate && intent.intent === 'ability_check' && !authoritativeState.mechanics?.combat?.active
+      && (plan.proposed_commands ?? []).some((command) => command.command_type === 'MakeAbilityCheck')) {
+      const approach = freeActionApproachPlan(authoritativeState, playerId, message)
+      if (approach.status === 'ready' && approach.remainder) {
+        plan = { ...plan, proposed_commands: [
+          { command_type: 'MoveActor', actor_id: playerId, to: approach.destination.to, server_authoritative: true },
+          ...(plan.proposed_commands ?? []),
+        ] }
+      }
+    }
     plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command,
       ...(intent.knock_out && ['MakeAttack', 'CastSpell'].includes(command.command_type) ? { knock_out: true } : {}),
       campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }

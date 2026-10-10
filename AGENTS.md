@@ -121,7 +121,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | `server/narrator.mjs` | `prompts/narrator/v13.txt` | текст после commit; якоря карты (`landmarks`, `landmarks_absent`); сюжет сценария (`scenario`) |
 | `server/scene-architect.mjs` | `prompts/map_architect/v8.txt` | новые области, заготовки (`secrets`), якоря (`map.design.landmarks`) |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v8.txt` | исходная ситуация, заготовки (`secrets`), якоря первой карты |
-| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v9.txt` | прочтение свободного действия и маршрут (`check`/`travel`/`talk`/`clarify`) |
+| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v10.txt` | прочтение свободного действия, маршрут (`check`/`travel`/`talk`/`clarify`) и деталь успеха (`success_detail`) |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» |
 
 Других загрузок промптов нет. Остальные файлы в `prompts/` — прежние версии тех

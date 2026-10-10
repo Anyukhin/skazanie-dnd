@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 
 import { DIFFICULTY_CLASSES } from './adjudicator.mjs'
+import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { actorPosition, findActor, shortestTacticalPath, skillProficiencyForActor } from './rules-engine.mjs'
 import { cellAt, deserializeTacticalMap, doorsReachableFrom, edgeBetween } from './tactical-map.mjs'
 import { npcPlacementFor, presentSceneNpcs } from './npc-positioning.mjs'
@@ -901,6 +902,170 @@ function resolveLevelTransitionPhrase(state, actorId, value, map, actorAt) {
 }
 
 /** Свободная фраза выбирает только существующую команду; путь и замок считает движок. */
+// ---------------------------------------------------------------------------
+// Подход к тому, что названо словами: к человеку, к вещи на карте, к месту.
+//
+// Плейтест 2026-10-10: «Мирель выходит к мосткам», «подхожу к баркасу и
+// осматриваю его», «Борин идёт к бочкам» — рассказ уводил героя к причалу, а
+// фишка стояла на краю карты, и «иду к бочкам» получало «К кому именно
+// подойти?». Живой ведущий просто передвигает фигурку.
+
+const APPROACH_VERB = /(?<![\p{L}\p{M}])(?:подхож\p{L}*|подход(?:ит|им|ят)|подойд\p{L}*|подош[её]л\p{L}*|приближа\p{L}*|приблиз\p{L}*|иду|ид[её]т|ид[её]м|идут|направля\p{L}*|выхож\p{L}*|выход(?:ит|им|ят)|выйд\p{L}*|вышл\p{L}*|выш[её]л|отхож\p{L}*|отход(?:ит|им|ят)|отойд\p{L}*|возвраща\p{L}*|пробира\p{L}*|бреду|бред[её]т|спуска\p{L}*|шагаю|шага(?:ет|ем|ют))(?![\p{L}\p{M}])/giu
+const APPROACH_TARGET = /(?:^|\s)(?:к|ко)\s+([^,.;:!?«»"()]{2,60})/iu
+const APPROACH_REMAINDER = /(?:,|\s+и\s+|\s+чтобы\s+|\s+—\s+)/u
+
+/** Предметы, к которым подходят словами: основа слова → вид пропса на карте. */
+const APPROACH_PROP_TARGETS = Object.freeze([
+  { stems: ['баркас', 'лодк', 'шлюпк', 'ялик', 'челн'], asset: /(?:rowboat|boat|skiff|canoe)/u },
+  { stems: ['бочк', 'бочонк', 'бочек'], asset: /(?:barrel|keg)/u },
+  { stems: ['ящик'], asset: /crate/u },
+  { stems: ['сундук', 'ларц', 'ларец'], asset: /chest/u },
+  { stems: ['стойк', 'прилавк', 'стойке'], asset: /(?:bar_counter|shop_counter|counter)/u },
+  { stems: ['очаг', 'камин'], asset: /(?:fireplace|hearth|campfire)/u },
+  { stems: ['костр', 'костёр', 'костер'], asset: /campfire/u },
+  { stems: ['колодц', 'колодец'], asset: /well/u },
+  { stems: ['фонтан'], asset: /fountain/u },
+  { stems: ['доске объявлен', 'доска объявлен', 'объявлен'], asset: /notice_board/u },
+  { stems: ['сетям', 'сетей', 'сети', 'снаст'], asset: /(?:fishing_nets|cargo_net)/u },
+  { stems: ['тумб', 'кнехт', 'швартов'], asset: /mooring/u },
+  { stems: ['лотк', 'лоток', 'прилавок'], asset: /market_stall/u },
+  { stems: ['алтар'], asset: /altar/u },
+  { stems: ['стату', 'изваян'], asset: /statue/u },
+  { stems: ['телег', 'повозк'], asset: /cart/u },
+  { stems: ['столб', 'фонар'], asset: /(?:lamp_post|signpost)/u },
+  { stems: ['стол'], asset: /(?:table|desk)/u },
+  { stems: ['скамь', 'лавк'], asset: /bench/u },
+  { stems: ['кроват', 'постел', 'койк'], asset: /(?:bed|bunk)/u },
+  { stems: ['дров', 'поленниц'], asset: /(?:woodpile|firewood)/u },
+])
+
+function approachWords(phrase) {
+  return clean(phrase, 120).toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/\s+/u).filter(Boolean)
+}
+
+/**
+ * Разбор фразы подхода: глагол движения, «к …» и то, что идёт после.
+ * Берётся последнее «к …»: «выхожу к причалу, подхожу к баркасу» ведёт к баркасу.
+ *
+ * @param {string} text
+ * @returns {{ phrase: string, remainder: string } | null}
+ */
+export function approachRequestFrom(text = '') {
+  const value = clean(text, 1_000)
+  let found = null
+  for (const verb of value.matchAll(APPROACH_VERB)) {
+    const after = value.slice(verb.index + verb[0].length, verb.index + verb[0].length + 90)
+    const target = APPROACH_TARGET.exec(after)
+    if (!target) continue
+    const raw = target[1]
+    const cut = raw.search(APPROACH_REMAINDER)
+    const phrase = (cut >= 0 ? raw.slice(0, cut) : raw).trim().split(/\s+/u).slice(0, 4).join(' ')
+    if (!phrase || /^(?:себе|нему|ней|ним|вам|нам|тебе|делу|концу)$/iu.test(phrase)) continue
+    const end = verb.index + verb[0].length + target.index + target[0].length - (cut >= 0 ? raw.length - cut : 0)
+    found = { phrase, remainder: value.slice(end).replace(/^[\s,;—-]*(?:и\s+)?/u, '').trim() }
+  }
+  return found
+}
+
+function approachCellsAround(map, cells, occupied) {
+  const own = new Set(cells.map(positionKey))
+  const result = []
+  for (const cell of cells) {
+    for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
+      if (!dx && !dy) continue
+      const to = { x: cell.x + dx, y: cell.y + dy }
+      const key = positionKey(to)
+      if (own.has(key) || occupied.has(key)) continue
+      const at = cellAt(map, to.x, to.y)
+      if (!at?.passable || at.revealed !== true) continue
+      result.push(to)
+    }
+  }
+  return [...new Map(result.map((entry) => [positionKey(entry), entry])).values()]
+}
+
+/**
+ * Куда встать, чтобы оказаться рядом с названным: человек, вещь на карте или
+ * место (зона карты). Только раскрытые клетки и только по существующему пути —
+ * подход не открывает тумана и не проходит сквозь стены.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} actorId
+ * @param {string} text
+ * @returns {{ status: 'not_applicable' } | { status: 'unresolved', phrase: string } | { status: 'already_there', phrase: string, label: string }
+ *   | { status: 'ready', phrase: string, label: string, kind: 'actor'|'prop'|'zone', remainder: string, destination: { to: {x:number,y:number}, path: Array<{x:number,y:number}> } }}
+ */
+export function freeActionApproachPlan(state = {}, actorId = '', text = '') {
+  const request = approachRequestFrom(text)
+  if (!request) return { status: 'not_applicable' }
+  if (/не\s+(?:покида|выход|двига|подход)|без\s+перемещ/iu.test(clean(text, 1_000))) return { status: 'not_applicable' }
+  const from = actorPosition(state, actorId)
+  if (!from || !state?.scene?.map) return { status: 'unresolved', phrase: request.phrase }
+  let map
+  try { map = deserializeTacticalMap(state.scene.map) } catch { return { status: 'unresolved', phrase: request.phrase } }
+  const words = approachWords(request.phrase)
+  const occupied = new Set([
+    ...(state.players ?? []).filter((actor) => String(actor?.id) !== String(actorId)).map((actor) => actorPosition(state, actor.id)),
+    ...presentSceneNpcs(state).map((npc) => npcPlacementFor(state, npc.id) ?? null),
+  ].filter((at) => Number.isFinite(at?.x) && Number.isFinite(at?.y)).map(positionKey))
+  const ready = (kind, label, targetCells, cells) => {
+    if (targetCells.some((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)) <= 1)) {
+      return { status: 'already_there', phrase: request.phrase, label }
+    }
+    const routes = cells
+      .sort((left, right) => Math.max(Math.abs(left.x - from.x), Math.abs(left.y - from.y)) - Math.max(Math.abs(right.x - from.x), Math.abs(right.y - from.y))
+        || left.y - right.y || left.x - right.x)
+      .slice(0, 8)
+      .map((to) => ({ to, path: shortestTacticalPath(state, actorId, to) }))
+      .filter((route) => Array.isArray(route.path) && route.path.length > 0
+        && route.path.every((step) => cellAt(map, step.x, step.y)?.revealed === true))
+      .sort((left, right) => left.path.length - right.path.length || left.to.y - right.to.y || left.to.x - right.to.x)
+    return routes.length
+      ? { status: 'ready', kind, label, phrase: request.phrase, remainder: request.remainder, destination: routes[0] }
+      : { status: 'unresolved', phrase: request.phrase }
+  }
+  // Человек: герой отряда или NPC этой сцены.
+  const people = namedActors(partyActors(state, actorId), request.phrase)
+  if (people.length === 1) {
+    const target = people[0]
+    const at = npcPlacementFor(state, target.id) ?? actorPosition(state, target.id)
+    if (Number.isFinite(at?.x) && Number.isFinite(at?.y)) {
+      const label = clean(target.character ?? target.name, 80)
+      return ready('actor', label, [at], approachCellsAround(map, [at], occupied))
+    }
+  }
+  // Вещь на карте: ближайшая из подходящих по виду и уже раскрытых.
+  const propTarget = APPROACH_PROP_TARGETS.find((entry) => entry.stems.some((stem) => words.some((word) => word.startsWith(stem))))
+  if (propTarget) {
+    const props = (Array.isArray(state.scene.map.props) ? state.scene.map.props : [])
+      .filter((prop) => propTarget.asset.test(clean(prop?.assetId ?? prop?.id, 120).toLowerCase()))
+      .filter((prop) => !['gm_only', 'npc_private'].includes(String(prop?.visibility ?? '').toLowerCase()) && prop?.revealed !== false)
+      .map((prop) => ({ prop, cells: hazardPropCells(prop).filter((cell) => cellAt(map, cell.x, cell.y)?.revealed === true) }))
+      .filter((entry) => entry.cells.length)
+      .map((entry) => ({ ...entry, distance: Math.min(...entry.cells.map((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)))) }))
+      .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id)))
+    for (const entry of props.slice(0, 3)) {
+      const plan = ready('prop', request.phrase, entry.cells, approachCellsAround(map, entry.cells, occupied))
+      if (plan.status !== 'unresolved') return plan
+    }
+  }
+  // Место: зона карты, чьё название начинается так же, как слово игрока.
+  const zone = (map.zones ?? []).find((candidate) => {
+    const label = approachWords(candidate?.label ?? candidate?.name ?? '')
+    return label.length && words.some((word) => word.length >= 4 && label.some((part) => part.length >= 4 && part.slice(0, 5) === word.slice(0, 5)))
+  })
+  if (zone) {
+    const cells = []
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (String(cell?.zone ?? '') === String(zone.id) && cell.passable && cell.revealed === true && !occupied.has(positionKey({ x, y }))) cells.push({ x, y })
+    }
+    if (cells.some((cell) => cell.x === from.x && cell.y === from.y)) return { status: 'already_there', phrase: request.phrase, label: clean(zone.label ?? zone.name, 80) }
+    if (cells.length) return ready('zone', clean(zone.label ?? zone.name, 80), [], cells)
+  }
+  return { status: 'unresolved', phrase: request.phrase }
+}
+
 export function resolveExplorationCommand(state, actorId, text) {
   const value = clean(text, 2_000)
   const actorAt = actorPosition(state, actorId)
@@ -942,10 +1107,23 @@ export function resolveExplorationCommand(state, actorId, text) {
   }
   const stairs = resolveLevelTransitionPhrase(state, actorId, value, map, actorAt)
   if (stairs) return stairs
-  if (!/^(?:я\s+)?(?:подхожу|приближаюсь|иду)\s+к\s+/iu.test(value) || /(?:затем|потом|и\s+(?:прошу|спрашиваю|атакую|открываю))/iu.test(value)) return null
+  const approach = approachRequestFrom(value)
+  if (!approach || approach.remainder || /(?:затем|потом|и\s+(?:прошу|спрашиваю|атакую|открываю))/iu.test(value)) return null
   if (/не\s+(?:покида|выход|двига)|без\s+перемещ/iu.test(value)) return { status: 'clarification', narration: 'Подход означает перемещение, а вы просите оставаться на месте или под укрытием. Можно обратиться к собеседнику с места; либо уточните, какое перемещение допустимо.' }
-  const candidates = namedActors(partyActors(state, actorId), value)
-  if (candidates.length !== 1) return { status: 'clarification', narration: 'К кому именно подойти? Назовите одного видимого собеседника или выберите клетку на карте.' }
+  const candidates = namedActors(partyActors(state, actorId), approach.phrase)
+  if (candidates.length !== 1) {
+    // Не человек — может быть, вещь или место на карте. Не нашлось и их —
+    // фразу читает арбитр, а не служебное «к кому именно подойти?».
+    const plan = freeActionApproachPlan(state, actorId, value)
+    const hero = clean(findActor(state, actorId)?.character ?? findActor(state, actorId)?.name, 80) || 'Герой'
+    if (plan.status === 'already_there') return { status: 'clarification', narration: `${hero} уже стоит рядом — можно действовать.` }
+    if (plan.status !== 'ready') return null
+    return {
+      status: 'command',
+      command: { command_type: 'MoveActor', actor_id: String(actorId), to: plan.destination.to, server_authoritative: true },
+      narration: `${hero} подходит к ${plan.phrase}.`,
+    }
+  }
   const target = candidates[0]
   const placement = npcPlacementFor(state, target.id)
   const at = placement ?? actorPosition(state, target.id)
@@ -1268,7 +1446,31 @@ function actorMeans(state = {}, actorId = '') {
   for (const key of ['knownSpellIds', 'preparedSpellIds', 'selectedFeatureIds', 'classSkillProficiencies']) {
     for (const value of actor?.[key] ?? []) if (value) ids.add(clean(value, 160).toLocaleLowerCase('ru'))
   }
+  // Модель называет заклинание так, как его назвал игрок, — по-русски
+  // («заклинание «Огненный снаряд»»), а лист хранит id (`fire-bolt`). Без
+  // русского имени известный заговор считался «отсутствующим средством»
+  // (плейтест 2026-10-10: «Мирель таким не располагает» при заговоре на панели).
+  for (const spellId of [...(actor?.knownSpellIds ?? []), ...(actor?.preparedSpellIds ?? [])]) {
+    const name = canonicalCombatSpellFor(spellId, { rulesetId: state?.ruleset_id })?.name
+    if (name) ids.add(clean(name, 160).toLocaleLowerCase('ru'))
+  }
   return ids
+}
+
+/**
+ * Ключ сравнения средства: регистр, «ё», кавычки и родовое слово впереди
+ * («заклинание», «заговор», «умение») не делают средство другим.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+function meansKey(value) {
+  return clean(value, 160).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+    .replace(/[«»"“”„'`]/gu, ' ')
+    .replace(/^(?:заклинани[еяю]|заговор[а]?|чары|магию|магия|умени[еяю]|способност[ьи]|черт[аыу]|предмет[а]?)\s+/u, '')
+    .replace(/[.,;:!?]+$/u, '')
+    .replace(/\s+/gu, ' ')
+    .trim()
 }
 
 /**
@@ -1279,9 +1481,8 @@ export function verifyMeans(state = {}, actorId = '', requiredMeans = []) {
   const available = actorMeans(state, actorId)
   const required = [...new Set((Array.isArray(requiredMeans) ? requiredMeans : [])
     .map((value) => clean(value, 160)).filter(Boolean))]
-  const canonical = value => String(value).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
-  const normalized = new Set([...available].map(canonical))
-  const missing = required.filter(value => !normalized.has(canonical(value)))
+  const normalized = new Set([...available].map(meansKey).filter(Boolean))
+  const missing = required.filter(value => !normalized.has(meansKey(value)))
   return { satisfied: missing.length === 0, required, missing }
 }
 

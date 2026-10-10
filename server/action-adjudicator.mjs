@@ -24,6 +24,7 @@ import {
 import { ENVIRONMENT_HAZARD_IDS, IMPROVISED_EFFECT_IDS, scenePropIntentFor } from './improvised-effects.mjs'
 import { hazardPropCells, igniteDefinitionFor, sceneHazardVerbsFor, toppleDefinitionFor } from './scene-hazards.mjs'
 import { sceneInteractionCatalogEntry } from './scene-interactions.mjs'
+import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 import { campaignStateForViewer } from './viewer-projection.mjs'
@@ -42,10 +43,10 @@ import { agentContextMetadata, boundedSelectionMetadata } from './agent-context.
  * ошибке, таймауте или отсутствии ключа предложение молча заменяется
  * детерминированным прочтением, и игра продолжается.
  */
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v9.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v10.txt', import.meta.url)), 'utf8')
 
 /** Версия контракта: она же попадает в метаданные контекста и трассу. */
-export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v9'
+export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v10'
 
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const list = (value) => Array.isArray(value) ? value : []
@@ -58,6 +59,9 @@ const FREE_ACTION_RESPONSE_FIELDS = new Set([
   // v7: маршрут заявки. Поле необязательно — его отсутствие значит `check`,
   // так что ответ в форме v6 остаётся допустимым и судится как раньше.
   'route', 'destination', 'npc_hint',
+  // v10: что герой узнаёт при успехе, если игрок спросил о конкретной детали.
+  // Сервер записывает её находкой только когда готовой заготовки на эту тему нет.
+  'success_detail',
 ])
 
 /**
@@ -104,6 +108,21 @@ function routeFromResponse(result, participants) {
   }
 }
 
+/**
+ * Деталь успеха из ответа модели: одна фраза без разметки и чисел механики.
+ * Пустая строка — детали нет, и сервер ничего не записывает.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function cleanSuccessDetail(value) {
+  const text = clean(value, 300).replace(/[\u0000-\u001f\u007f]/gu, '').replace(/[{}<>[\]]/gu, '').trim()
+  if (text.length < 12 || text.length > 220) return ''
+  // Числа механики и исход броска — дело сервера, не детали мира.
+  if (/(?<![\p{L}\p{N}])(?:СЛ|КД|d20|к20)(?![\p{L}\p{N}])|(?:хит|урон|бросок|проверк|успех|провал)/iu.test(text)) return ''
+  return /[.!?…»]$/u.test(text) ? text : `${text}.`
+}
+
 const ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
 const ACTION_COSTS = new Set(['action', 'bonus_action', 'free'])
 
@@ -139,7 +158,7 @@ function structurallyValidFreeActionResponse(value) {
   // Маршрут проверяется так же строго, как остальные перечисления: выдуманное
   // значение — не повод угадывать, а признак сломанного ответа.
   if (Object.hasOwn(value, 'route') && !validStringField(value.route, new Set(FREE_ACTION_ROUTES))) return false
-  for (const key of ['destination', 'npc_hint']) {
+  for (const key of ['destination', 'npc_hint', 'success_detail']) {
     if (Object.hasOwn(value, key) && (typeof value[key] !== 'string' || value[key].length > 300)) return false
   }
   return true
@@ -164,6 +183,11 @@ function heroBrief(state, actorId) {
     ].map((entry) => clean(entry, 60)).slice(0, 20),
     prepared_spells: list(hero.preparedSpellIds).map((entry) => clean(entry, 60)).slice(0, 20),
     known_spells: list(hero.knownSpellIds).map((entry) => clean(entry, 60)).slice(0, 20),
+    // Игрок называет заклинание по-русски; без имён модель считала известный
+    // заговор «средством, которого нет» (плейтест 2026-10-10).
+    spell_names: [...new Set([...list(hero.knownSpellIds), ...list(hero.preparedSpellIds)])]
+      .map((id) => clean(canonicalCombatSpellFor(id, { rulesetId: state?.ruleset_id })?.name, 80))
+      .filter(Boolean).slice(0, 24),
     features: list(hero.selectedFeatureIds).map((entry) => clean(entry, 60)).slice(0, 20),
     inventory: inventory.slice(0, 30).map((item) => ({
       id: clean(item?.id, 120), name: clean(item?.name, 80), equipped: item?.equipped === true,
@@ -497,10 +521,12 @@ export class ActionAdjudicator {
       // проверки и о маршруте не знает. Для `check` поля не добавляются вовсе —
       // прочтение остаётся тем же, что у v6.
       const route = routeFromResponse(result, brief.participants)
+      const successDetail = cleanSuccessDetail(result.success_detail)
       return {
         ...bindFreeActionReadingToState(state, actorId, text, reading),
         context_metadata: contextMetadata,
         ...(route.route !== 'check' ? route : {}),
+        ...(successDetail ? { success_detail: successDetail } : {}),
       }
     } catch (error) {
       const bound = bindFreeActionReadingToState(state, actorId, text, {

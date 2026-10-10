@@ -13,6 +13,7 @@ import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import { interpretFreeAction } from '../server/free-action-adjudication.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
+import { NpcSocialController } from '../server/npc-social-controller.mjs'
 import { IntentParser, inferRequestKind } from '../server/intent-parser.mjs'
 import { classifyPartyDecision, detectPartyExitRequest, exitContextFromState, travelDestinationIsPlace } from '../server/party-exit-intent.mjs'
 import { proposeRoutedTravel } from '../server/player-request-router.mjs'
@@ -256,6 +257,26 @@ test('маршрут talk и clarify переспрашивают без про�
   assert.equal(unclear.free_action_outcome, 'clarification')
   assert.equal(unclear.check, undefined)
   assert.deepEqual(unclear.mechanics, [])
+})
+
+test('маршрут talk с контроллером разговора отдаёт слово самому собеседнику', async () => {
+  // Плейтест 2026-10-10: «Борин предлагает Кривому выпить и спрашивает…»
+  // получал служебное «Это разговор — скажите прямо». Живой ведущий отвечает
+  // голосом того, к кому обратились.
+  const { orchestrator, eventStore, handle } = await orchestratorWith(async () => ({ ...reading, route: 'talk', npc_hint: 'npc:marta' }))
+  const calls = []
+  const fallback = new NpcSocialController()
+  orchestrator.npcSocialController = { respond: async (input) => { calls.push(input); return fallback.respond(input) } }
+  const before = (await eventStore.load('ROUTING')).state_version
+  const spoken = await handle('Угощаю хозяйку элем и выведываю, кто тут чужой', 'route-talk-npc-1')
+  assert.equal(calls.length, 1, 'собеседник получил реплику')
+  assert.equal(String(calls[0].npc?.id ?? calls[0].npcId ?? calls[0].npc_id ?? 'npc:marta'), 'npc:marta')
+  assert.doesNotMatch(String(spoken.narration), /скажите прямо|назовите, к кому/u)
+  assert.equal(spoken.check, undefined)
+  // Повтор того же запроса не зовёт собеседника второй раз.
+  await handle('Угощаю хозяйку элем и выведываю, кто тут чужой', 'route-talk-npc-1')
+  assert.equal(calls.length, 1)
+  assert.ok((await eventStore.load('ROUTING')).state_version >= before)
 })
 
 test('без модели уход к неизвестному месту получает честный ответ, а не «не понял способ действия»', async () => {

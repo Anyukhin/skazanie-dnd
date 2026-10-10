@@ -221,6 +221,17 @@ test('заявленное средство сверяется с листом �
   assert.deepEqual(missing.missing, ['Крылья'])
 })
 
+test('известное заклинание узнаётся по русскому имени, как его называет игрок', () => {
+  // Плейтест 2026-10-10: «швыряю Огненный снаряд» → «Мирель таким не
+  // располагает», хотя заговор стоял на панели. Модель пишет средство так, как
+  // его назвал игрок, а лист хранит id.
+  const state = { players: [{ id: 'hero', inventory: [], knownSpellIds: ['fire-bolt'] }] }
+  for (const named of ['заклинание «Огненный снаряд»', 'Огненный снаряд', 'заговор «огненный снаряд»']) {
+    assert.equal(verifyMeans(state, 'hero', [named]).satisfied, true, named)
+  }
+  assert.deepEqual(verifyMeans(state, 'hero', ['заклинание «Огненный шар»']).missing, ['заклинание «Огненный шар»'])
+})
+
 test('старые согласованные проверки сохраняют прежнюю таблицу последствий', () => {
   for (const risk of ['none', 'minor', 'serious', 'deadly']) {
     const consequence = failForwardFor(risk)
