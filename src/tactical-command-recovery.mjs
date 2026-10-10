@@ -2,6 +2,8 @@ const PENDING_SCHEMA_VERSION = 1
 const MAX_CAMPAIGN_ID_LENGTH = 120
 const MAX_REQUEST_ID_LENGTH = 200
 const MAX_MESSAGE_LENGTH = 2_000
+// Слова игрока к действию: тот же предел, что у реплики `/api/narrate`.
+const MAX_PLAYER_NOTE_LENGTH = 2_000
 const MAX_STORAGE_VALUE_LENGTH = 64 * 1024
 
 function text(value, max) {
@@ -32,6 +34,11 @@ export function tacticalCommandRequest(pending) {
         command: clone(pending?.command ?? {}),
         idempotency_key: requestId,
         message: text(pending?.message, MAX_MESSAGE_LENGTH),
+        // Слова игрока едут отдельным полем, а не приклеенными к `message`:
+        // сервер пишет их репликой героя перед строкой хода и не смешивает с
+        // результатом. Запись, сохранённая до появления поля, его не несёт —
+        // её повтор уходит ровно тем телом, каким уходил.
+        ...(text(pending?.playerNote, MAX_PLAYER_NOTE_LENGTH) ? { player_note: text(pending.playerNote, MAX_PLAYER_NOTE_LENGTH) } : {}),
         ...(pending?.manualRoll === true ? { manual_roll: true } : {}),
         ...(pending?.rollId ? { roll: { roll_id: text(pending.rollId, MAX_REQUEST_ID_LENGTH) } } : {}),
       }
@@ -86,6 +93,7 @@ function validPending(value) {
     message,
     manualRoll: value.manualRoll === true,
     ...(typeof value.rollId === 'string' && text(value.rollId, MAX_REQUEST_ID_LENGTH) ? { rollId: text(value.rollId, MAX_REQUEST_ID_LENGTH) } : {}),
+    ...(typeof value.playerNote === 'string' && text(value.playerNote, MAX_PLAYER_NOTE_LENGTH) ? { playerNote: text(value.playerNote, MAX_PLAYER_NOTE_LENGTH) } : {}),
   }
 }
 

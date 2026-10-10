@@ -51,3 +51,18 @@ test('hero fall is not narrated as death, while committed HeroDied is final', as
   assert.equal(died.trigger.kind, 'hero_died')
   assert.match(styles[1], /окончательной смерти/u)
 })
+
+test('критическая реплика получает недавние реплики рассказчика для проверки повторов', async () => {
+  // Плейтест 2026-10-10: одна и та же фраза-заполнитель прозвучала дважды за
+  // бой — проверка повторов рассказчика не видела ни одной прежней реплики.
+  const seen = []
+  const director = new CriticalNarrationCoordinator({ narrator: { render: async (_brief, options) => {
+    seen.push(options.recentNarrations)
+    return { narration: 'Страж оседает.', provider: 'fake-agent', verification: { valid: true }, suggestions: [] }
+  } } })
+  const events = [{ event_type: 'HitPointsReducedToZero', actor_id: 'hero', target_ids: ['guard'], payload: {}, visibility: 'public' }]
+  await director.renderCriticalMoment({ events, state, recentNarrations: ['Тишина звенит в ушах.', '', null] })
+  assert.deepEqual(seen[0], ['Тишина звенит в ушах.'])
+  await director.renderCriticalMoment({ events, state })
+  assert.deepEqual(seen[1], [], 'без истории — пустой список, а не undefined')
+})

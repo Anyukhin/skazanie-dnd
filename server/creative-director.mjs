@@ -83,7 +83,12 @@ export class CriticalNarrationCoordinator {
     this.narrator = narrator
   }
 
-  async renderCriticalMoment({ events = [], state = {}, viewer = {} } = {}) {
+  /**
+   * `recentNarrations` — последние реплики рассказчика в этой кампании. Без них
+   * проверка повторов у рассказчика не видела ничего, и одна и та же
+   * фраза-заполнитель звучала дважды за бой (плейтест 2026-10-10).
+   */
+  async renderCriticalMoment({ events = [], state = {}, viewer = {}, recentNarrations = [] } = {}) {
     const trigger = criticalMomentFor(events, state)
     if (!trigger) return null
     const brief = buildNarrationBrief({
@@ -106,6 +111,7 @@ export class CriticalNarrationCoordinator {
     const narration = await this.narrator.render(brief, {
       knownRuleIds,
       timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
+      recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
       style: trigger.kind === 'hero_fallen'
         ? 'Один выразительный абзац о падении героя без сознания. Герой ещё не объявлен мёртвым: не описывай смерть, предсмертные слова, похороны или окончательный исход. Не добавляй новых бросков, урона, наград или решений правил.'
         : trigger.kind === 'hero_died'

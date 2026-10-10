@@ -6,6 +6,8 @@ export type TacticalCommandRecovery = {
   message: string
   manualRoll?: boolean
   rollId?: string
+  /** Слова игрока к действию; уходят полем `player_note`, а не внутри `message`. */
+  playerNote?: string
 }
 
 export type TacticalCommandRequest = {
