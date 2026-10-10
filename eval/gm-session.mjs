@@ -426,7 +426,10 @@ async function fight() {
   const seen = messageIds(state)
   const assembled = await request(`/api/campaigns/${CODE}/encounters/assemble`, {
     method: 'POST', account: owner, key: `gm-enc-${randomUUID()}`,
-    body: { expected_state_version: state.state_version ?? 0, difficulty: 'medium', theme: 'raiders', seed: 'gm-session-raiders' },
+    // Короткая стычка, как в сценарии: «средняя» ватага на двух героев третьего
+    // уровня тянулась два десятка раундов, и судья оценивал скуку стенда, а не
+    // ведущего (замер 2026-10-10). Засада — разбойники и мелочь, ближе к культу.
+    body: { expected_state_version: state.state_version ?? 0, difficulty: 'easy', theme: 'ambush', seed: 'gm-session-ambush' },
   })
   if (assembled.status !== 200) { problem('encounter', `${assembled.status} ${assembled.body?.code ?? ''}: ${short(assembled.body?.error, 200)}`); return }
   note('\n### ⚔ Бой')
@@ -497,7 +500,7 @@ async function play() {
 
   await say(mirel, `${npc1}, чей это баркас? Кто на нём уходил в море? — Мирель помолчала. — Три месяца назад здесь пропала девушка по имени Ила, моя сестра. Вы её знали?`, { label: 'личная зацепка', kind: 'social' })
   await say(mirel, 'Я выхожу к причалу, подхожу к баркасу и методично осматриваю его: метку владельца на борту, сеть, парус, палубу — ищу следы борьбы, кровь или что-то странное.', { label: 'обыск баркаса', kind: 'explore' })
-  await say(borin, 'Борин присаживается рядом с находкой и хмыкает, вспоминая службу в страже. Потом идёт к бочкам на причале и простукивает их — нет ли тайника.', { label: 'два шага подряд', kind: 'explore' })
+  await say(borin, 'Борин присаживается у борта баркаса и хмыкает, вспоминая службу в страже. Потом идёт к бочкам на причале и простукивает их — нет ли тайника.', { label: 'два шага подряд', kind: 'explore' })
   await say(mirel, `${npc2}, вы сказали, что знаете этот баркас. Чей он? Я кладу на стойку серебряную монету — за честный ответ.`, { label: 'подкуп', kind: 'social' })
   await say(borin, `Борин тихо говорит ${npc1}: «Я служил в страже, пока капитан не велел мне не замечать ночные лодки у маяка. Кто ходил на этом баркасе? Никто не узнает, что это ты сказала».`, { label: 'своё прошлое', kind: 'social' })
   await say(mirel, 'Что мы уже знаем о хозяине баркаса и пропавшей команде?', { label: 'вопрос ведущему', requestKind: 'question', kind: 'question' })
@@ -595,8 +598,14 @@ async function judgeExchanges(client) {
       .map((entry) => `Игрок (${entry.actor}): ${short(entry.action, 300)}\nВедущий: ${short(entry.replies.map((reply) => `[${reply.author}] ${reply.text}`).join(' '), 700)}`).join('\n\n')
     const content = `Мир: ${WORLD.premise}\nГерои:\n${heroes}\nСцена сейчас: ${exchange.scene.location}, ${exchange.scene.time}; рядом: ${exchange.scene.npcs.join(', ') || 'никого'}.\n\nПредыдущие ходы:\n${previous || '—'}\n\nРеплика игрока (${exchange.actor}): ${exchange.action}\n\nОтвет ведущего (всё, что игрок увидел):\n${exchange.replies.map((reply) => `[${reply.author}] ${reply.text}`).join('\n')}`
     try {
-      const result = await client.complete({ messages: [{ role: 'system', content: EXCHANGE_RUBRIC }, { role: 'user', content }] }, { json: true })
-      const json = result.json ?? {}
+      // Тот же терпимый разбор, что у общего судьи: строгий JSON-режим ронял
+      // каждый пятый ход в LLM_JSON_INVALID.
+      let json = null
+      for (let attempt = 0; attempt < 2 && !json; attempt += 1) {
+        const result = await client.complete({ messages: [{ role: 'system', content: EXCHANGE_RUBRIC }, { role: 'user', content: attempt ? `${content}\n\nОтветь одним JSON-объектом без markdown.` : content }] })
+        json = lenientJson(String(result.content ?? ''))
+      }
+      if (!json) throw new Error('LLM_JSON_INVALID')
       const keys = ['responsiveness', 'voice', 'progress', 'consistency', 'npc', 'backstory']
       const scores = keys.map((key) => Number(json[key])).filter((value) => value >= 1 && value <= 10)
       verdicts.push({ index: exchange.index, label: exchange.label, ...json, average: scores.length ? Math.round(10 * scores.reduce((a, b) => a + b, 0) / scores.length) / 10 : null })
