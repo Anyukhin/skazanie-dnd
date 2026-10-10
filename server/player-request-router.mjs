@@ -533,7 +533,7 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
       title: knownFrom ? `Покинуть «${from}»?` : 'Покинуть подземелье?',
       // Голос ведущего, а не правило голосования: карточка сама объясняет, как
       // решать, а в хронике звучит приглашение в путь (плейтест 2026-10-10).
-      description: phrase ? `Дорога зовёт ${phrase}. Идёте все вместе — решайте, в путь ли.` : 'Пора уходить? Отряд идёт вместе — решайте, в путь ли.',
+      description: phrase ? `Путь ${phrase}. Все идут?` : 'Пора уходить. Все идут?',
       options: [leaveOption, ...(abandonOption ? [abandonOption] : []), 'Остаться и исследовать дальше'],
       resolutionPrompt: 'Исполни решение большинства. Если отряд уходит, бесшовно открой следующую локацию.',
       ...(exit.destinationLocationId ? { destinationLocationId: exit.destinationLocationId } : {}),
@@ -567,7 +567,7 @@ export function proposeRoutedTravel(hint, state = {}, action = '') {
   if (card?.type !== 'vote') return null
   return {
     ...card,
-    description: destination ? `Похоже, пора в путь — в «${destination}». Идёте все вместе — решайте, в путь ли.` : 'Похоже, пора уходить. Идёте все вместе — решайте, в путь ли.',
+    description: destination ? `Похоже, пора в путь — в «${destination}». Все идут?` : 'Похоже, пора уходить. Все идут?',
   }
 }
 
