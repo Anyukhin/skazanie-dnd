@@ -325,7 +325,7 @@ const victory = { event_type: 'EncounterEnded', payload: { reason: 'enemies_defe
 
 test('победа заранее называет отдых, который начнётся с продолжением истории — MC-03', () => {
   assert.match(combatNarration([victory], party),
-    /противники повержены\. Дальше — привал: когда отряд продолжит историю \(«продолжим»\), он сначала отдохнёт 8 часов и восстановит силы\./u)
+    /противники повержены\. Можно перевести дух: дальше отряд встанет на привал и отдохнёт 8 часов — силы вернутся\./u)
   // Выживший на нуле сначала приходит в себя: политика добавляет 4 часа.
   const wounded = { ...party, players: [party.players[0], { ...party.players[1], hp: 0 }] }
   assert.match(combatNarration([victory], wounded), /отдохнёт 12 часов/u)

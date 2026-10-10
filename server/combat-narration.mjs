@@ -628,7 +628,10 @@ function tacticalNarrationLines(events, state, options = {}) {
       // «Продолжим» иначе молча проматывал 8 часов (плейтест 2026-10-04, MC-03).
       const restMinutes = postVictoryRestMinutes(state, payload.outcome ?? payload.reason)
       const restAhead = restMinutes
-        ? ` Дальше — привал: когда отряд продолжит историю («продолжим»), он сначала отдохнёт ${hoursLabelRu(restMinutes / 60)} и восстановит силы.`
+        // Голосом ведущего, без названия команды: «когда отряд продолжит
+        // историю («продолжим»)» читалось как подсказка интерфейса (плейтест
+        // 2026-10-10). Сколько продлится привал, игрок по-прежнему знает заранее.
+        ? ` Можно перевести дух: дальше отряд встанет на привал и отдохнёт ${hoursLabelRu(restMinutes / 60)} — силы вернутся.`
         : ''
       meaningful.push(`${encounterEndPhrase(book, { endText: encounterEndText(payload.reason ?? payload.outcome) }, event)}${restAhead}`)
     } else if (event.event_type === 'EncounterRewardsDistributed') {
