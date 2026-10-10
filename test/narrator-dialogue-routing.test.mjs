@@ -262,3 +262,27 @@ test('ответ Хранителя говорит простым языком �
   const unknown = answerKnownLore('Что я знаю про архивариуса?', {})
   assert.match(unknown.narration, /Пока ничего подтверждённого об этом не известно/u)
 })
+
+test('ответ о знании цитирует фразу собеседника по теме и не советует спросить его же', () => {
+  // Плейтест 2026-10-10: цитата обрывалась на 240-м знаке, а нужное стояло в
+  // конце реплики; следом шло «спросить можно Марен» — у той, кого только что
+  // процитировали.
+  const state = {
+    scene: { location: 'Старый маяк' },
+    social: {
+      npcs: [
+        { id: 'npc:maren', name: 'Марен', role: 'Смотритель маяка', location: 'Старый маяк', visibility: 'party' },
+        { id: 'npc:bors', name: 'Борс', role: 'Рыбак', location: 'Старый маяк', visibility: 'party' },
+      ],
+      conversations: [{
+        npc_id: 'npc:maren', hero_id: 'hero', visibility: 'party',
+        npc_reply: 'Дождь третий день, сети гниют, крыша течёт, а жалованья нет с весны, и никто в городе об этом не думает. Баркас «Чайка» видели у северной отмели в ночь грозы.',
+      }],
+    },
+  }
+  const known = answerKnownLore('Что мы знаем о баркасе?', state, { viewer: { playerId: 'hero' } })
+  assert.match(known.narration, /Марен: «Баркас "Чайка" видели у северной отмели в ночь грозы»/u)
+  assert.doesNotMatch(known.narration, /сети гниют/u)
+  assert.doesNotMatch(known.narration, /спросить можно Марен/u)
+  assert.match(known.narration, /Своими глазами вы этого не видели — спросить можно Борс/u)
+})

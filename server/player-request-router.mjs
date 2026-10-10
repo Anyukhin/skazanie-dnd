@@ -671,8 +671,18 @@ export function answerKnownLore(action, state = {}, options = {}) {
   const npcNames = new Map((state.social?.npcs ?? []).map((npc) => [String(npc?.id), visibleText(npc?.name, 80)]))
   const heard = (state.social?.conversations ?? [])
     .filter((entry) => entry?.visibility === 'party' || entry?.hero_id === (options.viewer?.playerId ?? options.actorId))
-    .map((entry) => ({ who: npcNames.get(String(entry.npc_id)) ?? '', line: visibleText(entry.npc_reply, 240) }))
+    .map((entry) => ({ who: npcNames.get(String(entry.npc_id)) ?? '', line: heardSentence(entry.npc_reply) }))
     .filter((entry) => entry.who && entry.line)
+  // Из ответа собеседника — фраза по теме вопроса, а не первые 240 знаков:
+  // прежде цитата обрывалась на полуслове, а нужное стояло в конце реплики.
+  function heardSentence(reply) {
+    const sentences = (visibleText(reply, 1_200).match(/[^.!?…]+[.!?…]*/gu) ?? []).map((sentence) => sentence.trim()).filter(Boolean)
+    if (!sentences.length) return ''
+    const best = sentences.map((sentence, index) => ({ sentence, index, score: relevance(sentence) }))
+      .sort((left, right) => right.score - left.score || left.index - right.index)[0]
+    const next = sentences[best.index + 1]
+    return visibleText(next && best.sentence.length + next.length <= 220 ? `${best.sentence} ${next}` : best.sentence, 240)
+  }
   const ranked = (items, score) => items
     .map((item, index) => ({ item, index, score: score(item) }))
     .sort((left, right) => right.score - left.score || right.index - left.index)
@@ -682,18 +692,25 @@ export function answerKnownLore(action, state = {}, options = {}) {
   const topical = asked.size > 0
   const foundLines = (topical && foundRanked.some((entry) => entry.score > 0)
     ? foundRanked.filter((entry) => entry.score > 0) : foundRanked).slice(0, 3).map((entry) => entry.item)
-  const heardLines = heardRanked.filter((entry) => !topical || entry.score > 0).slice(0, 2)
+  const heardPicked = heardRanked.filter((entry) => !topical || entry.score > 0).slice(0, 2)
+  const heardLines = heardPicked
     .map((entry) => `${entry.item.who}: «${entry.item.line.replace(/[«»]/gu, '"').replace(/[.!?…]+$/u, '')}».`)
+  const quoted = new Set(heardPicked.map((entry) => entry.item.who))
   // Память мира уже отобрана по словам вопроса (`retrieveKnownWorldMemory`):
   // её порядок — порядок уместности.
   const knownLines = knownRanked.filter((entry) => !topical || entry.score > 0).slice(0, 2).map((entry) => entry.item)
   const history = (Array.isArray(adventure.history) ? adventure.history.slice(-1) : [])
     .map((chapter) => asSentence(chapter?.outcome, 240)).filter(Boolean)
-  const informed = presentSceneNpcs(state).filter((npc) => visibleText(npc.role, 120)).slice(0, 2)
-  const lead = informed.length
-    ? `Прямого ответа пока нет — спросить можно ${informed.map((npc) => `${visibleText(npc.name, 80)} (${visibleText(npc.role, 80).toLocaleLowerCase('ru')})`).join(' или ')}.`
-    : 'Прямого ответа пока нет — стоит осмотреться или поискать того, кто видел.'
+  // Того, кого только что процитировали, второй раз не советуют спросить.
+  const informed = presentSceneNpcs(state).filter((npc) => visibleText(npc.role, 120))
+    .filter((npc) => !quoted.has(visibleText(npc.name, 80))).slice(0, 2)
   const answered = foundLines.length || heardLines.length || knownLines.length
+  // Слова собеседника — уже ответ, хоть и не проверенный: «прямого ответа нет»
+  // рядом с цитатой спорило бы с ней.
+  const leadHead = heardLines.length ? 'Своими глазами вы этого не видели' : 'Прямого ответа пока нет'
+  const lead = informed.length
+    ? `${leadHead} — спросить можно ${informed.map((npc) => `${visibleText(npc.name, 80)} (${visibleText(npc.role, 80).toLocaleLowerCase('ru')})`).join(' или ')}.`
+    : `${leadHead} — стоит осмотреться или поискать того, кто видел.`
   const hook = asSentence(adventure.currentHook, 400)
   const parts = [
     foundLines.length ? `Из того, что вы нашли: ${foundLines.join(' ')}` : '',
