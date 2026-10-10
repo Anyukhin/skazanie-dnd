@@ -622,6 +622,15 @@ function sceneCanonForPrompt(canon) {
   }
 }
 
+/**
+ * События, которых рассказчик не произносит: деление часов задания видно в
+ * журнале, а ведущий за столом не говорит «срок по трём целям поджал на шаг»
+ * (плейтест 2026-10-10). Верификатор и журнал по-прежнему видят их в brief.
+ */
+const UNNARRATED_EVENT_TYPES = new Set(['QuestClockAdvanced'])
+const narratableEvents = (brief) => (Array.isArray(brief?.visible_events) ? brief.visible_events : [])
+  .filter((event) => !UNNARRATED_EVENT_TYPES.has(String(event?.event_type ?? '')))
+
 function briefForNarratorPrompt(brief) {
   const focus = narratorMemoryFocus(brief)
   const { scene_canon: _sceneCanon, ...environment } = brief.known_environment ?? {}
@@ -638,6 +647,7 @@ function briefForNarratorPrompt(brief) {
   }
   const promptBrief = {
     ...brief,
+    visible_events: narratableEvents(brief),
     known_environment: {
       ...environment,
       story_context: {
@@ -689,7 +699,7 @@ function briefForNarratorPrompt(brief) {
     // Короткому рассказу достаточно качественного исхода из серверных сводок.
     // Числа остаются в исходном brief для verifier и в механическом журнале.
     const outcomeFields = ['ability', 'skill', 'success', 'saved', 'hit', 'state', 'damage_type', 'immune', 'resistant', 'vulnerable']
-    promptBrief.visible_events = brief.visible_events.map(event => ({
+    promptBrief.visible_events = narratableEvents(brief).map(event => ({
       event_type: event.event_type,
       actor_id: event.actor_id,
       target_ids: event.target_ids,
@@ -1815,7 +1825,9 @@ function qualitativeEventSummary(event, resolveName) {
     case 'NpcRelationshipAdjusted':
       return `Отношение NPC меняется с ${sceneText(payload.tier_before || 'нейтрального', 32)} на ${sceneText(payload.tier_after || 'новое', 32)}`
     case 'QuestClockAdvanced':
-      return `Развитие квеста ${sceneText(payload.quest_id || 'отряда', 72)} продвинулось`
+      // Деление часов — механика журнала, а не реплика ведущего; id задания в
+      // рассказ тем более не попадает.
+      return ''
     case 'ActionDeclared':
       // Заявка сама по себе ничего не завершает, но и не отменяет исход,
       // который приходит рядом решением судьи (RulingRecorded с outcome).
@@ -2279,7 +2291,7 @@ export class Narrator {
               narration_brief: briefForNarratorPrompt(brief),
               response_plan: responsePlan,
               ...(sceneCanon ? { scene_canon: sceneCanonForPrompt(sceneCanon) } : {}),
-              confirmed_event_summaries: (brief.visible_events ?? []).map(event => ({
+              confirmed_event_summaries: narratableEvents(brief).map(event => ({
                 event_type: event.event_type,
                 text: withoutVisibleNumbers(qualitativeEventSummary(event, briefNameResolver(brief))),
               })),

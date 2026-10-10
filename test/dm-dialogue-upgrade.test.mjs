@@ -185,3 +185,18 @@ test('баррикада из своей верёвки подтверждает
   assert.equal(cleared.authoritative_state.scene.map.doors[0].barricade, null)
   assert.equal(cleared.authoritative_state.scene.map.doors[0].state, 'closed')
 })
+
+test('ожидание с наблюдением — два шага: время проходит, а что высмотрели, решает судья действий', async () => {
+  // Плейтест 2026-10-10: «Ждём темноты и смотрим на вершину маяка — загорится
+  // ли огонь?» давало один AdvanceTime и рассказ о сроках заданий вместо ответа.
+  const { actionSequence } = await import('../server/intent-parser.mjs')
+  assert.deepEqual(actionSequence('Ждём темноты в укрытии и смотрим на вершину маяка — загорится ли огонь?'),
+    ['Ждём темноты в укрытии', 'смотрим на вершину маяка — загорится ли огонь?'])
+  assert.deepEqual(actionSequence('Смотрим на маяк и ждём'), [], 'без цели ожидания фраза не делится')
+  const { send } = await fixture()
+  const response = await send('Ждём темноты в укрытии и смотрим на дверь — выйдет ли кто-нибудь?', { idempotencyKey: 'wait-watch' })
+  assert.ok(response.mechanics.some(event => event.event_type === 'TimeAdvanced'), 'время прошло')
+  assert.ok(response.mechanics.some(event => event.event_type === 'ActionDeclared'), 'наблюдение разобрано как поступок')
+  assert.doesNotMatch(response.narration, /Вышло: смотрим|выйдет ли/u, 'вопрос миру не пересказывается как итог')
+  assert.match(response.narration, /не сводит глаз|всматривается/u)
+})

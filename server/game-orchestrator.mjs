@@ -1209,7 +1209,15 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
     ? `${rawGoal.charAt(0).toLocaleLowerCase('ru')}${rawGoal.slice(1)}`
     : rawGoal
   const failed = kind === 'check_failure'
-  const parts = [unconfirmedPassage && !failed
+  // Наблюдение с вопросом миру — «смотрим на дверь — выйдет ли кто-нибудь?» —
+  // нельзя пересказать как итог «Вышло: …выйдет ли кто-нибудь». Без события
+  // находки честный ответ ведущего — ничего заметного не произошло.
+  const watchQuestion = !unconfirmedPassage && /\?|(?<![\p{L}\p{M}])ли(?![\p{L}\p{M}])/u.test(`${message ?? ''} ${rawGoal}`)
+    && /(?<![\p{L}\p{M}])(?:смотр|наблюда|след|слеж|вгляд|высматр|всматр|прислуш|жд|караул)\p{L}*/iu.test(rawGoal)
+  const watcher = freeActionHeroName(events, state)
+  const parts = [watchQuestion
+    ? (failed ? `${watcher} всматривается, но толком ничего не разглядеть.` : `${watcher} не сводит глаз, но ничего заметного за это время не происходит.`)
+    : unconfirmedPassage && !failed
     ? freeActionPassageNarration({ freeAction, events, state })
     : freeAction?.reading?.activity_kind === 'stunt'
       ? (failed ? 'Трюк сорвался.' : 'Трюк удался.')

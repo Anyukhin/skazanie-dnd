@@ -193,6 +193,13 @@ export function actionSequence(value) {
     .map(part => part.replace(/^сначала\s+/iu, '').trim())
     .flatMap(part => /^(?:подхожу|иду|приближаюсь)\s+к\s+/iu.test(part)
       ? part.split(/\s+и\s+(?=(?:спрашиваю|прошу|расспрашиваю|открываю|закрываю|передаю|сверяю)\s)/iu) : [part])
+    // Ожидание с наблюдением — тоже два шага: время проходит, а что увидели
+    // за эти часы, решает судья действий. Прежде вопрос «загорится ли огонь?»
+    // тонул в одном AdvanceTime (плейтест 2026-10-10).
+    .flatMap(part => {
+      const [wait, ...watch] = part.split(/\s+и\s+(?=(?:смотр|наблюда|следи|следим|высматрива|глядим|гляжу|вглядыва|прислушива)\p{L}*\s)/iu)
+      return watch.length === 1 && WAIT_PATTERN.test(wait) ? [wait, watch[0]] : [part]
+    })
     .filter(Boolean)
   return parts.length > 1 && parts.length <= 6 ? parts : []
 }

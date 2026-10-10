@@ -345,6 +345,10 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(обман|вру|соврать|притвор)/iu, ability: 'cha', skill: 'deception', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(крич|зову|окликa|подзыва)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'окружающие' },
   { test: /(осматр|разгляд|изуча|ищу\s+след|обыск)/iu, ability: 'wis', skill: 'perception', plausibility: 'trivial', risk: 'none', obstacle: 'обстановка' },
+  // Наблюдение за чем-то, что может случиться: «смотрим на маяк — загорится
+  // ли огонь?», «следим за дверью». Это вопрос миру, и без модели ответ даёт
+  // Восприятие, а не «Чего герой хочет добиться» (плейтест 2026-10-10).
+  { test: /(?<![\p{L}\p{M}])(?:наблюда\p{L}*|след(?:им|ит|ю|ят)\s+за|слежу\s+за|смотр\p{L}*\s+(?:на|в|за)\s|вгляд\p{L}*|высматр\p{L}*|караул\p{L}*)/iu, ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none', obstacle: 'то, что происходит вокруг' },
   { test: /(вспомина|припомин|знаю\s+ли|что\s+известно)/iu, ability: 'int', skill: 'history', plausibility: 'trivial', risk: 'none', obstacle: 'память' },
   { test: /(залез|взбира|караб|подтягива)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'высота' },
   { test: /(?<![\p{L}\p{M}])(?:вс|с|за|пере|под|вы|при|от)?прыг|(?<![\p{L}\p{M}])(?:прыж|соскоч|перескоч)/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'serious', obstacle: 'разрыв' },
