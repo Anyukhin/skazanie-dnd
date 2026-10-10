@@ -365,3 +365,21 @@ test('просьба к ведущему объяснить мир — вопр�
     assert.equal(inferRequestKind(text), 'action', text)
   }
 })
+
+test('обращение по прозвищу в кавычках узнаёт собеседника', async () => {
+  // Плейтест 2026-10-10: «Силас «Кривой», вы сказали, что знаете этот баркас»
+  // не узнавалось и уходило в «Чего Мирель хочет добиться?».
+  const parser = new IntentParser()
+  const visibleState = {
+    scene: { location: 'Таверна' },
+    social: { npcs: [
+      { id: 'silas', name: 'Силас «Кривой»', role: 'контрабандист', location: 'Таверна', available: true },
+      { id: 'graham', name: 'Грэм', role: 'трактирщик', location: 'Таверна', available: true },
+    ] },
+  }
+  for (const message of ['Силас «Кривой», вы сказали, что знаете этот баркас. Чей он?', 'Кривой, чей это баркас?']) {
+    const parsed = await parser.parse({ message, playerId: 'hero', visibleState })
+    assert.equal(parsed.intent, 'social', message)
+    assert.deepEqual(parsed.targets, ['silas'], message)
+  }
+})

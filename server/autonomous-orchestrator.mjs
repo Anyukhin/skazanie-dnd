@@ -409,6 +409,21 @@ function parseJsonFact(fact) {
   try { return JSON.parse(String(fact?.object ?? '')) } catch { return null }
 }
 
+/**
+ * Вход через закрытую дверь: подойти, открыть, затем общий шаг внутрь.
+ *
+ * @param {string} actorId
+ * @param {Record<string, any>} plan
+ * @param {string} rulingId
+ */
+function passageDoorCommands(actorId, plan, rulingId) {
+  if (plan?.open_door !== true || !plan.door_id) return []
+  return [
+    { command_type: 'MoveActor', actor_id: actorId, to: plan.approach, server_authoritative: true, ruling_id: rulingId },
+    { command_type: 'OperateDoor', actor_id: actorId, door_id: plan.door_id, intent: 'open' },
+  ]
+}
+
 export class AutonomousCampaignOrchestrator {
   constructor({
     loreAuthor = null, eventStore, rulesEngine, narrator = null, actionAdjudicator = null, rollRegistry = null, now = () => Date.now() } = {}) {
@@ -1743,7 +1758,7 @@ export class AutonomousCampaignOrchestrator {
         declaration,
         ...approachMove,
         { command_type: 'RecordRuling', ruling: successRuling, ruling_id: ruling.id },
-        ...(passageDestination ? [{
+        ...(passageDestination ? [...passageDoorCommands(actorId, passagePlan, ruling.id), {
           command_type: 'MoveActor', actor_id: actorId, to: passageDestination.to,
           server_authoritative: true, ruling_id: ruling.id,
         }] : []),
@@ -1936,7 +1951,7 @@ export class AutonomousCampaignOrchestrator {
       : null
     const followUp = [
       { command_type: 'RecordRuling', ruling: outcomeRuling, ruling_id: ruling.id },
-      ...(succeeded && passageDestination ? [{
+      ...(succeeded && passageDestination ? [...passageDoorCommands(actorId, passagePlan, ruling.id), {
         command_type: 'MoveActor', actor_id: actorId, to: passageDestination.to,
         server_authoritative: true, ruling_id: ruling.id,
       }] : []),

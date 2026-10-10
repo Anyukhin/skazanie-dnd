@@ -1622,7 +1622,9 @@ export function freeActionGoalIsPassage(goal = '') {
 // только через уже существующее server-owned ребро двери из внешней зоны во
 // внутреннюю, по раскрытому короткому пути. Иначе проверка не получает права
 // телепортировать героя через стену или туман.
-const INWARD_PASSAGE_PATTERN = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,100}(?:внутр\p{L}*|(?<![\p{L}\p{M}])(?:в|во)\s+(?:монастыр\p{L}*|здани\p{L}*|храм\p{L}*|башн\p{L}*|крепост\p{L}*|замк\p{L}*|дом\p{L}*|маяк\p{L}*))(?![\p{L}\p{M}])/iu
+// «Заходит внутрь», «захожу в маяк» — тот же вход: без этих форм толчок двери
+// плечом и шаг внутрь отвечал «сцена не изменилась» (плейтест 2026-10-10).
+const INWARD_PASSAGE_PATTERN = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|входит|входим|входят|захож\p{L}*|заход(?:ит|им|ят)|зайд\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,100}(?:внутр\p{L}*|(?<![\p{L}\p{M}])(?:в|во)\s+(?:монастыр\p{L}*|здани\p{L}*|храм\p{L}*|башн\p{L}*|крепост\p{L}*|замк\p{L}*|дом\p{L}*|маяк\p{L}*))(?![\p{L}\p{M}])/iu
 const PASSAGE_MAX_STEPS = 6
 const BUILDING_DESTINATION_STEMS = Object.freeze(['монастыр', 'здани', 'храм', 'башн', 'крепост', 'замк', 'дом', 'маяк'])
 const PASSAGE_ALTERNATE_ROUTE_PATTERN = /(?:через|сквозь)\s+(?:окн\p{L}*|щел\p{L}*|стен\p{L}*|пролом\p{L}*|про[её]м\p{L}*|люк\p{L}*|реш[её]тк\p{L}*|ворот\p{L}*)/iu
@@ -1682,8 +1684,41 @@ function inwardPassageAction(value) {
   if (/[«»"“”„?]/u.test(value)) return false
   if (!INWARD_PASSAGE_PATTERN.test(value)) return false
   if (/(?:можно\s+ли|могу\s+ли|если|что\s+если)/iu.test(value)) return false
-  const verb = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])/iu
+  const verb = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|входит|входим|входят|захож\p{L}*|заход(?:ит|им|ят)|зайд\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])/iu
   return !/(?<![\p{L}\p{M}])не\s+/iu.test(value.slice(0, Math.max(0, value.search(verb))))
+}
+
+const DOOR_ENTRY_MAX_STEPS = 40
+
+/**
+ * Вход через закрытую дверь: клетка снаружи у двери, сама дверь и клетка
+ * внутри. Только раскрытые клетки и только незапертая дверь без баррикады;
+ * каждую из трёх команд движок ещё раз проверит сам.
+ *
+ * @returns {{ status: 'ready', door_id: string, open_door: true, approach: {x:number,y:number}, destination: { to: {x:number,y:number}, path: Array<{x:number,y:number}> } } | null}
+ */
+function closedDoorEntry(state, actorId, map, outside) {
+  const from = actorPosition(state, actorId)
+  const options = []
+  for (const door of map.doors ?? []) {
+    if (String(door.state ?? 'closed') !== 'closed' || door.locked === true || door.barricade) continue
+    const first = { x: Number(door.x), y: Number(door.y) }
+    const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
+    const sides = [first, second].map((position) => ({ position, cell: cellAt(map, position.x, position.y) }))
+    if (sides.some(({ cell }) => !cell?.passable || cell.revealed !== true)) continue
+    const out = sides.find(({ position }) => outside.has(positionKey(position)))
+    const inside = sides.find(({ position }) => !outside.has(positionKey(position)))
+    if (!out || !inside) continue
+    const atDoor = from && from.x === out.position.x && from.y === out.position.y
+    const path = atDoor ? [] : shortestTacticalPath(state, actorId, out.position)
+    if (!atDoor && (!Array.isArray(path) || !path.length || path.length > DOOR_ENTRY_MAX_STEPS)) continue
+    if (path.some((step) => cellAt(map, step.x, step.y)?.revealed !== true)) continue
+    options.push({ door_id: String(door.id), approach: out.position, inside: inside.position, steps: path.length })
+  }
+  options.sort((left, right) => left.steps - right.steps || left.door_id.localeCompare(right.door_id))
+  const best = options[0]
+  if (!best) return null
+  return { status: 'ready', door_id: best.door_id, open_door: true, approach: best.approach, destination: { to: best.inside, path: [best.inside] } }
 }
 
 function passageDestinationMatchesScene(state, action) {
@@ -1748,7 +1783,14 @@ export function freeActionPassagePlan(state = {}, actorId = '', text = '') {
   }
   candidates.sort((left, right) => left.path.length - right.path.length
     || left.to.y - right.to.y || left.to.x - right.to.x || left.door_id.localeCompare(right.door_id))
-  if (!candidates.length) return { status: 'blocked', reason: 'no_open_path' }
+  if (!candidates.length) {
+    // Открытого прохода нет, но есть закрытая (не запертая) дверь внутрь:
+    // живой ведущий не отвечает «откройте дверь на карте» — герой подходит,
+    // открывает её и входит одним шагом заявки. Замок и баррикада по-прежнему
+    // решаются своими путями.
+    const closed = closedDoorEntry(state, actorId, map, outside)
+    return closed ?? { status: 'blocked', reason: 'no_open_path' }
+  }
   const shortest = candidates[0].path.length
   const tied = candidates.filter((candidate) => candidate.path.length === shortest)
   if (tied.length > 1) return { status: 'ambiguous', door_ids: tied.map((candidate) => candidate.door_id) }

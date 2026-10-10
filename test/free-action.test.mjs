@@ -852,15 +852,27 @@ test('успешное «протиснуться внутрь» двигает 
   assert.deepEqual((await eventStore.replay('FREE-ACTION')).state, (await eventStore.load('FREE-ACTION')).state)
 })
 
-test('успешное «протиснуться внутрь» не телепортирует через закрытую дверь', async () => {
+test('успешное «протиснуться внутрь» через закрытую дверь открывает её и входит, а не телепортирует', async () => {
+  // Плейтест 2026-10-10: «толкает дверь маяка и заходит внутрь» отвечало «сцена
+  // не изменилась». Живой ведущий открывает незапертую дверь и ведёт героя внутрь
+  // — шагами по карте и событием двери, без прыжка сквозь стену.
   const initial = passageCampaign('closed')
-  const { orchestrator, eventStore, narratorCalls } = await setup(initial)
+  const { orchestrator, eventStore } = await setup(initial)
   const text = 'Я протискиваусь внутрь монастыря'
   const result = await orchestrator.handle(actionInput(text, 'free-passage-closed', initial))
+  assert.equal(result.free_action_outcome, 'check_success')
+  const types = result.mechanics.map((event) => event.event_type)
+  assert.ok(types.includes('DoorStateChanged'), types.join(','))
+  assert.ok(types.indexOf('DoorStateChanged') < types.lastIndexOf('ActorMoved'))
+  const state = (await eventStore.load('FREE-ACTION')).state
+  assert.deepEqual(state.mechanics.positions.hero, { x: 2, y: 1 })
+})
+
+test('запертая дверь не открывается словами входа', async () => {
+  const initial = passageCampaign('locked')
+  const { orchestrator, eventStore } = await setup(initial)
+  const result = await orchestrator.handle(actionInput('Я протискиваусь внутрь монастыря', 'free-passage-locked', initial))
   assert.equal(result.free_action_outcome, 'clarification')
-  assert.deepEqual(result.mechanics, [])
-  assert.match(result.narration, /открыт|карт/u)
-  assert.equal(narratorCalls(), 0)
   assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 0, y: 1 })
 })
 
@@ -897,8 +909,12 @@ test('крыльцо с interior-меткой считается внешним 
   assert.equal(open.status, 'ready')
   assert.equal(open.door_id, 'porch-door')
   assert.deepEqual(open.destination.to, { x: 3, y: 1 })
+  // Закрытая незапертая дверь — не тупик: подойти, открыть, войти.
   const closed = freeActionPassagePlan(porchPassageCampaign('closed'), 'hero', 'Я протискиваюсь внутрь монастыря')
-  assert.deepEqual(closed, { status: 'blocked', reason: 'no_open_path' })
+  assert.equal(closed.status, 'ready')
+  assert.equal(closed.open_door, true)
+  assert.equal(closed.door_id, 'porch-door')
+  assert.deepEqual(closed.destination.to, { x: 3, y: 1 })
 })
 
 test('произнесённый или вопросительный passage-текст не авторизует перемещение', () => {

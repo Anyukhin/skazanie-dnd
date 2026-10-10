@@ -394,7 +394,10 @@ function honorificAddressedActors(address, visibleState) {
 }
 
 function directlyAddressedActors(message, visibleState) {
-  const address = /^([\p{L}\p{M} -]{2,80})[:,]\s*\S/iu.exec(message)?.[1]
+  // Прозвище в кавычках — часть обращения: «Силас «Кривой», вы сказали…»
+  // прежде не узнавалось вовсе, и реплика уходила в «Чего Мирель хочет
+  // добиться?» (плейтест 2026-10-10).
+  const address = /^([\p{L}\p{M} «»"“”-]{2,80})[:,]\s*\S/iu.exec(message)?.[1]?.replace(/[«»"“”]/gu, ' ').replace(/\s+/gu, ' ').trim()
   if (!address) return []
   const honorific = honorificAddressedActors(address, visibleState)
   if (honorific.length) return honorific
