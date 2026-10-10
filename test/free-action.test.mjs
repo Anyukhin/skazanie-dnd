@@ -16,7 +16,7 @@ import { createItemInstance } from '../server/item-instances.mjs'
 import { Narrator } from '../server/narrator.mjs'
 import { buildNarrationBrief, verifyNarration } from '../server/security.mjs'
 import { RollRegistry } from '../server/roll-registry.mjs'
-import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { RulesEngine, applyGameEvent, normalizeCampaignState, RulesValidationError } from '../server/rules-engine.mjs'
 import { addProp, addZone, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell, setDoor } from '../server/tactical-map.mjs'
 
 function hero(id, character = id) {
@@ -1056,4 +1056,25 @@ test('нераспознанное действие без модели: уто�
   assert.match(flavor.narration, /броска не нужно/u)
   assert.equal(mundaneActionOutcome('я поднимаю весь замок одной рукой', { heroName: 'Торвальд' }).kind, 'impossible')
   assert.equal(mundaneActionOutcome('Поднимаю шишку с пола', { inCombat: true }), null, 'в бою действие стоит часть хода — прежнее уточнение')
+})
+
+test('движок отклонил проход уже после броска — ход доигран без перемещения и с ответом', async () => {
+  // Замер 2026-10-10: «Борин толкает дверь маяка и входит» после удачной
+  // Атлетики падало 400 PATH_BLOCKED без единого слова ведущего.
+  const initial = passageCampaign('closed')
+  const { orchestrator, eventStore } = await setup(initial)
+  const handler = orchestrator.unknownActionHandler
+  const runCommands = handler.runCommands.bind(handler)
+  let refused = 0
+  handler.runCommands = async (campaignId, key, commands, ...rest) => {
+    if (String(key).endsWith(':consequence') && commands.some((command) => command.command_type === 'MoveActor')) {
+      refused += 1
+      throw new RulesValidationError('Путь перекрыт', 'PATH_BLOCKED')
+    }
+    return runCommands(campaignId, key, commands, ...rest)
+  }
+  const result = await orchestrator.handle(actionInput('Я протискиваусь внутрь монастыря', 'free-passage-refused', initial))
+  assert.equal(refused, 1, 'движок отклонил проход один раз')
+  assert.ok(String(result.narration ?? '').trim(), 'ведущий отвечает')
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 0, y: 1 })
 })

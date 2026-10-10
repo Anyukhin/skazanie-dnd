@@ -1720,6 +1720,13 @@ const DOOR_ENTRY_MAX_STEPS = 40
  */
 function closedDoorEntry(state, actorId, map, outside) {
   const from = actorPosition(state, actorId)
+  // Клетка у двери, где уже стоит другой (Мирель прислушивалась у двери), —
+  // не подход: движок отклонял шаг как PATH_BLOCKED уже после броска.
+  const occupied = new Set([...(state?.players ?? []), ...(state?.enemies ?? []), ...(state?.scene_npcs ?? [])]
+    .filter((actor) => actor?.id && String(actor.id) !== String(actorId) && actor.alive !== false)
+    .map((actor) => actorPosition(state, String(actor.id)))
+    .filter(Boolean)
+    .map((position) => positionKey(position)))
   const options = []
   for (const door of map.doors ?? []) {
     if (String(door.state ?? 'closed') !== 'closed' || door.locked === true || door.barricade) continue
@@ -1733,6 +1740,7 @@ function closedDoorEntry(state, actorId, map, outside) {
     // открыта. Раскрытой должна быть сторона, где стоит герой, — прежде вход
     // в маяк с улицы отбрасывался как «откройте дверь на карте» (замер 2026-10-10).
     if (!out || !inside || out.cell?.revealed !== true) continue
+    if (occupied.has(positionKey(out.position)) || occupied.has(positionKey(inside.position))) continue
     const atDoor = from && from.x === out.position.x && from.y === out.position.y
     const path = atDoor ? [] : shortestTacticalPath(state, actorId, out.position)
     if (!atDoor && (!Array.isArray(path) || !path.length || path.length > DOOR_ENTRY_MAX_STEPS)) continue

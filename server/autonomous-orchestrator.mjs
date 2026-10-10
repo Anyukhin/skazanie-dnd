@@ -2027,11 +2027,22 @@ export class AutonomousCampaignOrchestrator {
       }))
     }
     let consequenceCommit = null
+    let passageRefused = false
     for (let attemptIndex = 0; attemptIndex < 3; attemptIndex += 1) {
       try {
         consequenceCommit = await this.runCommands(campaignId, `${idempotencyKey}:consequence`, followUp)
         break
       } catch (error) {
+        // Бросок уже сделан: если движок отклонил сам проход (путь занят,
+        // дверь перекрыта), ход доигрывается без перемещения, и ведущий
+        // говорит, что пройти не вышло, — а не голая ошибка 400 после броска
+        // (замер 2026-10-10, PATH_BLOCKED у двери маяка).
+        const movement = new Set(['MoveActor', 'OperateDoor'])
+        if (error instanceof RulesValidationError && !passageRefused && followUp.some((command) => movement.has(command.command_type))) {
+          passageRefused = true
+          for (let index = followUp.length - 1; index >= 0; index -= 1) if (movement.has(followUp[index].command_type)) followUp.splice(index, 1)
+          continue
+        }
         if (error?.code !== 'STATE_VERSION_CONFLICT' || attemptIndex === 2) throw error
       }
     }
