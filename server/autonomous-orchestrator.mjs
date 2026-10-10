@@ -427,12 +427,13 @@ function passageDoorCommands(actorId, plan, rulingId) {
 
 /**
  * События, которые пишут память мира в фоне и не трогают сцену, героя и
- * экономику хода. Расстановка NPC (`NpcPlaced`) сюда не входит: она меняет поле.
+ * экономику хода. Расстановка хранителя зацепки (`NpcPlaced`) — тоже: новый
+ * человек на поле не меняет цель, средства и цену уже разобранного хода.
  */
 const BACKGROUND_MEMORY_EVENT_TYPES = new Set([
   'WorldFactRecorded', 'WorldEntityUpserted', 'WorldRelationshipRecorded',
   'NarrativeThreadUpserted', 'NarrativeThreadClockAdvanced', 'NarrativeSummaryRecorded',
-  'NpcSocialProfileUpserted',
+  'NpcSocialProfileUpserted', 'NpcPlaced',
 ])
 
 async function onlyBackgroundMemoryChanged(eventStore, campaignId, fromVersion, toVersion) {

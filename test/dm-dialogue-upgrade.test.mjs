@@ -286,3 +286,24 @@ test('проваленная прямая проверка навыка пока
   const facts = missed.mechanics.filter((event) => event.event_type === 'WorldFactRecorded').map((event) => event.payload.fact)
   assert.deepEqual(facts.map((fact) => [fact.object, fact.summary]), [['surface', surface]], 'на провале — только видимая деталь, без ответа на вопрос')
 })
+
+test('хранитель зацепки, вставший на поле во время разбора, ход не отбрасывает', async () => {
+  // Замер 2026-10-10: плетение зацепок ставило хранителя на поле (`NpcPlaced`)
+  // рядом со вторым шагом плана — и ход получал «Обстановка изменилась…».
+  const reading = { goal_summary: 'Простучать бочки', approach_summary: 'Простукиваю бочки', ability: 'wis', skill: 'perception', plausibility: 'trivial', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator' }
+  const side = { store: null, campaignId: '' }
+  const reader = {
+    llmClient: { completeJson: async () => ({}) },
+    read: async () => {
+      const current = await side.store.load(side.campaignId)
+      await side.store.commit({ campaignId: side.campaignId, expectedStateVersion: current.state_version, idempotencyKey: `placed-${current.state_version}`, events: [
+        { event_type: 'NpcPlaced', visibility: 'party', payload: { npc_id: 'mira', location_id: 'room', x: 4, y: 1 }, target_ids: ['mira'] },
+      ] })
+      return reading
+    },
+  }
+  const { send, eventStore, state } = await fixture({ reader, state: roomWithDoor() })
+  Object.assign(side, { store: eventStore, campaignId: state.sessionCode })
+  const accepted = await send('Простукиваю бочки у стены')
+  assert.doesNotMatch(String(accepted.narration), /Обстановка изменилась/u)
+})
