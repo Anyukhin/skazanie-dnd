@@ -12,7 +12,7 @@ import { ActionAdjudicator } from '../server/action-adjudicator.mjs'
 import { IntentParser, inferRequestKind } from '../server/intent-parser.mjs'
 import { createTacticalMap, setCell, setDoor, serializeTacticalMap, legacyCellsFromTacticalMap } from '../server/tactical-map.mjs'
 
-async function fixture({ reader = new ActionAdjudicator(), narrator, state: extra = {} } = {}) {
+async function fixture({ reader = new ActionAdjudicator(), narrator, state: extra = {}, rolls = [18, 18, 18] } = {}) {
   const state = normalizeCampaignState({
     sessionCode: 'DM-UPGRADE', activePlayerId: 'hero', partyMemberIds: ['hero'],
     scene: { title: 'Караульная', location: 'Караульная', objective: 'Найти пропавшего курьера', cells: [] },
@@ -23,7 +23,7 @@ async function fixture({ reader = new ActionAdjudicator(), narrator, state: extr
   })
   const eventStore = new FileEventStore({ rootDir: join(mkdtempSync(join(tmpdir(), 'skazanie-dm-upgrade-')), 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState })
   await eventStore.initializeCampaign({ campaign_id: state.sessionCode, initial_state: state })
-  const rulesEngine = new RulesEngine({ diceService: new DiceService({ rng: new SequenceDiceRng([18, 18, 18]) }) })
+  const rulesEngine = new RulesEngine({ diceService: new DiceService({ rng: new SequenceDiceRng(rolls) }) })
   const unknownActionHandler = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, actionAdjudicator: reader })
   const game = new GameOrchestrator({ eventStore, rulesEngine, unknownActionHandler, ...(narrator ? { narrator } : {}) })
   let next = 0
@@ -250,4 +250,39 @@ test('реплика своему спутнику — сцена для рас�
   offline.game.npcSocialController = new NpcSocialController()
   const quiet = await offline.send(speech)
   assert.match(String(quiet.narration), /«Ила любила это море/u, 'без модели ведущий повторяет сказанное')
+})
+
+test('прямая проверка навыка получает деталь места от судьи действий при любом исходе', async () => {
+  // Замер 2026-10-10: «осматриваю баркас» шло прямой проверкой мимо судьи
+  // действий, и за партию не записалось ни одной детали — провал оставался
+  // пустым «ничего не заметила».
+  const surface = 'Сеть на корме сложена аккуратно, будто её укладывали на берегу.'
+  const answer = 'На корме выжжена чайка с перебитым крылом — знак артели Ворониных.'
+  let reads = 0
+  const reader = {
+    llmClient: { completeJson: async () => ({}) },
+    read: async () => { reads += 1; return { goal_summary: 'Осмотреть корму', approach_summary: 'Осматриваю', ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator', success_detail: answer, surface_detail: surface } },
+  }
+  const memory = { worldMemory: { entities: [{ id: 'loc:guard', kind: 'location', name: 'Караульная', summary: '', aliases: [], visibility: 'party', tags: [] }], facts: [] } }
+  const lucky = await fixture({ reader, state: memory })
+  const found = await lucky.send('Осматриваю корму и ищу метку владельца', { idempotencyKey: 'look-lucky' })
+  const facts = found.mechanics.filter((event) => event.event_type === 'WorldFactRecorded').map((event) => event.payload.fact.summary)
+  assert.ok(facts.includes(answer), `удача — ответ на вопрос: ${JSON.stringify(facts)}`)
+  assert.equal(reads, 1)
+  await lucky.send('Осматриваю корму и ищу метку владельца', { idempotencyKey: 'look-lucky' })
+  assert.equal(reads, 1, 'повтор хода не зовёт судью второй раз')
+})
+
+test('проваленная прямая проверка навыка показывает видимую деталь, а не пустое «ничего не заметила»', async () => {
+  const surface = 'Сеть на корме сложена аккуратно, будто её укладывали на берегу.'
+  const reader = {
+    llmClient: { completeJson: async () => ({}) },
+    read: async () => ({ goal_summary: 'Осмотреть корму', approach_summary: 'Осматриваю', ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator', success_detail: 'Знак артели Ворониных на корме.', surface_detail: surface }),
+  }
+  const memory = { worldMemory: { entities: [{ id: 'loc:guard', kind: 'location', name: 'Караульная', summary: '', aliases: [], visibility: 'party', tags: [] }], facts: [] } }
+  const unlucky = await fixture({ reader, state: memory, rolls: [2, 2, 2] })
+  const missed = await unlucky.send('Осматриваю корму и ищу метку владельца', { idempotencyKey: 'look-unlucky' })
+  assert.equal(missed.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')?.payload?.success, false)
+  const facts = missed.mechanics.filter((event) => event.event_type === 'WorldFactRecorded').map((event) => event.payload.fact)
+  assert.deepEqual(facts.map((fact) => [fact.object, fact.summary]), [['surface', surface]], 'на провале — только видимая деталь, без ответа на вопрос')
 })

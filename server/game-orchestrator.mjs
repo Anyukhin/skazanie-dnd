@@ -37,7 +37,7 @@ import {
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
-import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionApproachPlan, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionApproachPlan, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, interpretFreeAction, minutesLabelRu } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
@@ -48,7 +48,7 @@ import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
-import { freeActionDiscoveryCommands, retrieveWorldMemory } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, retrieveWorldMemory } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
 
 /**
@@ -3316,16 +3316,27 @@ export class GameOrchestrator {
   async commitCheckDiscovery({ campaignId, idempotencyKey, committed, message, rulesContext, checkCommand }) {
     if (!checkCommand || committed?.state?.mechanics?.combat?.active === true) return committed
     const checkEvent = (committed.events ?? []).find((event) => event.event_type === 'AbilityCheckResolved')
-    if (checkEvent?.payload?.success !== true) return committed
+    if (!checkEvent) return committed
+    const succeeded = checkEvent.payload?.success === true
+    const skill = String(checkEvent.payload?.skill ?? checkCommand.skill ?? '').replace(/_/gu, '-')
     const discoveryKey = `${idempotencyKey}:discovery`
     let discoveryCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, discoveryKey) ?? null
     let baseState = committed.state
     let baseVersion = committed.state_version
+    // Деталь места — то, что видно при любом исходе, и ответ на вопрос игрока
+    // при успехе — называет судья действий: «осматриваю баркас» идёт мимо него
+    // прямой проверкой навыка, и провал оставался пустым «ничего не заметила»
+    // (замер 2026-10-10: ни одной записанной детали за партию). Повтор хода
+    // судью не зовёт: улика уже записана под своим ключом.
+    const details = discoveryCommit ? {} : await this.checkDetailsFor(committed.state, checkCommand.actor_id, message, skill)
     for (let attempt = 0; !discoveryCommit && attempt < 3; attempt += 1) {
-      const skill = String(checkEvent.payload.skill ?? checkCommand.skill ?? '').replace(/_/gu, '-')
-      const commands = freeActionDiscoveryCommands(baseState, {
-        checkEvent, skill, actionText: message, skillLabel: SKILL_LABELS_RU[skill] ?? '',
-      }).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${discoveryKey}:${index + 1}` }))
+      const found = succeeded
+        ? freeActionDiscoveryCommands(baseState, {
+          checkEvent, skill, actionText: message, skillLabel: SKILL_LABELS_RU[skill] ?? '',
+          successDetail: details.success_detail ?? '', surfaceDetail: details.surface_detail ?? '',
+        })
+        : freeActionSurfaceCommands(baseState, { checkEvent, skill, surfaceDetail: details.surface_detail ?? '' })
+      const commands = found.map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${discoveryKey}:${index + 1}` }))
       if (!commands.length) return committed
       try {
         const resolved = this.rulesEngine.resolvePlan({ proposed_commands: commands }, baseState, { ...rulesContext, isDirector: true })
@@ -3349,6 +3360,25 @@ export class GameOrchestrator {
       state: discoveryCommit.state,
       state_version: discoveryCommit.state_version,
       events: [...(committed.events ?? []), ...(discoveryCommit.events ?? [])],
+    }
+  }
+
+  /**
+   * Детали осмотра для прямой проверки навыка: вне боя, для навыков поиска и
+   * только с моделью. Механики судья здесь не решает — проверка уже брошена;
+   * берутся лишь `success_detail` и `surface_detail`, их форму сервер уже
+   * проверил. Отказ модели — пустые детали, ход прежний.
+   *
+   * @returns {Promise<{ success_detail?: string, surface_detail?: string }>}
+   */
+  async checkDetailsFor(state, actorId, message, skill) {
+    const adjudicator = this.unknownActionHandler?.actionAdjudicator
+    if (!DISCOVERY_SKILLS.has(skill) || typeof adjudicator?.read !== 'function' || !adjudicator.llmClient?.completeJson) return {}
+    try {
+      const reading = await adjudicator.read(state, String(actorId ?? ''), String(message ?? ''), interpretFreeAction(message))
+      return { success_detail: String(reading?.success_detail ?? ''), surface_detail: String(reading?.surface_detail ?? '') }
+    } catch {
+      return {}
     }
   }
 

@@ -48,7 +48,7 @@ export function questProgressEvidenceFor(state = {}, questId = '', { includeCons
  * Навыки, успех которых может что-то открыть. Атлетика или Скрытность — способ
  * сделать, а не узнать; их успех уликой не становится.
  */
-const DISCOVERY_SKILLS = new Set(['perception', 'investigation', 'insight', 'survival', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+export const DISCOVERY_SKILLS = new Set(['perception', 'investigation', 'insight', 'survival', 'history', 'arcana', 'religion', 'nature', 'medicine'])
 
 /** Слова, совпадение по которым ещё не говорит, что действие про это дело. */
 const GENERIC_TOPIC_STEMS = new Set([
