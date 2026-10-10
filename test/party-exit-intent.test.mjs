@@ -5,7 +5,7 @@ import test from 'node:test'
 import {
   WORLD_MAP_TRAVEL_MARKER, abandonableQuest, classifyPartyDecision, detectPartyExitRequest, isRouteContinuation,
   objectiveCallsTo, objectiveNamesDestination, objectiveRemainder, onwardRouteObjective, onwardRouteTarget,
-  pendingOnwardTarget, unrecognizedDestination,
+  partyDestinationLabel, pendingOnwardTarget, unrecognizedDestination,
 } from '../server/party-exit-intent.mjs'
 import {
   PARTY_OPTION_LIMIT, partyOptionLabel, proposeAgentInteraction, proposeRoutedTravel, resolvePartyDecision,
@@ -424,4 +424,14 @@ test('движение к месту, которого нет ни на карт
   assert.equal(unknownDestinationReply('Отправляюсь к старой арке', withPlan), '')
   // Без известных соседей ответ это признаёт, а не перечисляет пустоту.
   assert.match(unknownDestinationReply('Отправляюсь к старой арке', { scene: veldburg.scene }), /Знакомых направлений отсюда на карте мира пока нет\./u)
+})
+
+test('строка голосования «Уходим из «…» и идём к …» называет место назначения, а не последний предлог', () => {
+  // Плейтест 2026-10-10: «Уходим из «Серый Причал» и идём к старому маяку на
+  // скале» превращалось в локацию «Скале» — карта особняка вместо маяка.
+  const vote = 'Уходим из «Серый Причал» и идём к старому маяку на скале'
+  const request = detectPartyExitRequest(vote, {})
+  assert.equal(request?.destination, 'старому маяку на скале')
+  assert.equal(partyDestinationLabel(vote, request.destination).place, 'Старый маяк на скале')
+  assert.equal(detectPartyExitRequest('Выходим из деревни и идём на север к руинам', {})?.destination, 'руинам', 'сторона света — путь, а не место')
 })
