@@ -323,17 +323,14 @@ const party = {
 }
 const victory = { event_type: 'EncounterEnded', payload: { reason: 'enemies_defeated', outcome: 'enemies_defeated' } }
 
-test('победа заранее называет отдых, который начнётся с продолжением истории — MC-03', () => {
-  assert.match(combatNarration([victory], party),
-    /противники повержены\. Можно перевести дух: дальше отряд встанет на привал и отдохнёт 8 часов — силы вернутся\./u)
-  // Выживший на нуле сначала приходит в себя: политика добавляет 4 часа.
+test('победа не обещает привала: отдых — только по заявке игроков', () => {
+  // MC-03 (2026-10-04) объявлял восьмичасовой привал в строке победы; с
+  // 2026-10-10 автоотдыха после победы нет (решение владельца), и строке
+  // нечего обещать.
+  assert.match(combatNarration([victory], party), /противники повержены\./u)
+  assert.doesNotMatch(combatNarration([victory], party), /отдохн|привал/u)
   const wounded = { ...party, players: [party.players[0], { ...party.players[1], hp: 0 }] }
-  assert.match(combatNarration([victory], wounded), /отдохнёт 12 часов/u)
-  // Нет отдыха — нет обещания: поражение, погибший отряд, герой вне отряда.
-  assert.doesNotMatch(combatNarration([{ event_type: 'EncounterEnded', payload: { reason: 'party_defeated', outcome: 'party_defeated' } }], party), /отдохн/u)
-  const fallen = { ...party, mechanics: { death: { heroes: { hero: { status: 'dead' }, ally: { status: 'dead' } } } } }
-  assert.doesNotMatch(combatNarration([victory], fallen), /отдохн/u)
-  assert.doesNotMatch(combatNarration([victory], { ...party, partyMemberIds: [] }), /отдохн/u)
+  assert.doesNotMatch(combatNarration([victory], wounded), /отдохн|привал/u)
 })
 
 test('отдых после победы — одна строка за отряд с длительностью — MC-03', () => {

@@ -436,6 +436,14 @@ const BACKGROUND_MEMORY_EVENT_TYPES = new Set([
   'NpcSocialProfileUpserted', 'NpcPlaced',
 ])
 
+/** Живые герои отряда есть, но все на нуле: заявить отдых некому. */
+function nobodyStanding(state = {}) {
+  const partyIds = new Set((state.partyMemberIds ?? []).map(String))
+  const alive = (state.players ?? []).filter((hero) => partyIds.has(String(hero.id))
+    && state.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead')
+  return alive.length > 0 && alive.every((hero) => Number(hero.hp) <= 0)
+}
+
 async function onlyBackgroundMemoryChanged(eventStore, campaignId, fromVersion, toVersion) {
   if (typeof eventStore?.getEvents !== 'function') return false
   const events = await eventStore.getEvents(campaignId, { afterVersion: Number(fromVersion), upToVersion: Number(toVersion) })
@@ -2285,7 +2293,16 @@ export class AutonomousCampaignOrchestrator {
     // оставались на 0 ОЗ навсегда, и следующая просьба о бое собирала встречу
     // на пустой отряд — `INVALID_PARTY` (прогон Асстохана, сид 2, 2026-10-05).
     // Теперь отряд так же приходит в себя через 1d4 часа и отдыхает.
-    if (plan.outcome === 'enemies_defeated' || plan.outcome === 'fled' || plan.outcome === 'party_incapacitated') {
+    //
+    // После победы и бегства врагов отдыха без заявки нет (решение владельца
+    // 2026-10-10): восемь часов привала после каждой стычки обрывали сцену —
+    // «продолжим» у маяка переносил отряд в утро. Отряд отдыхает, когда сам
+    // скажет; стабильный герой приходит в себя по своему таймеру 1d4 часа.
+    // Исключение — победа, после которой на ногах не осталось никого: заявить
+    // отдых некому, и отряд лежал бы без сознания вечно. Тогда время идёт
+    // ровно до пробуждения, без привала.
+    const victory = plan.outcome === 'enemies_defeated' || plan.outcome === 'fled'
+    if (plan.outcome === 'party_incapacitated' || (victory && nobodyStanding((await this.load(campaignId)).state))) {
       let afterConsequences = await this.load(campaignId)
       if (plan.outcome === 'party_incapacitated') {
         // Победители, уложив отряд, уходят — тем же состоянием `fled`, что и
@@ -2319,7 +2336,7 @@ export class AutonomousCampaignOrchestrator {
         afterConsequences = await this.load(campaignId)
       }
       const restingHeroes = survivors(afterConsequences.state).filter((hero) => Number(hero.hp) > 0)
-      if (restingHeroes.length) {
+      if (restingHeroes.length && plan.outcome === 'party_incapacitated') {
         const downtime = completedDowntime(afterConsequences.state, {
           kind: 'long_rest',
           durationMinutes: 480 + stableRecoveryMinutes,

@@ -84,6 +84,8 @@ export function encounterEndText(reason) {
  * отдых и, если кто-то из выживших лежит на нуле, время прийти в себя до него.
  */
 const POST_VICTORY_REST_MINUTES = 480
+/** Привал после победы — только по заявке игроков (решение владельца 2026-10-10). */
+const POST_VICTORY_REST_DISABLED = true
 const POST_VICTORY_STABLE_RECOVERY_MINUTES = 240
 
 /** Причины `DowntimeResolved`, которые пишет политика `post_encounter_recovery`. */
@@ -102,7 +104,9 @@ const POST_VICTORY_DOWNTIME_REASONS = new Set(['post_encounter_recovery', 'post_
  * продолжительный отдых».
  */
 function postVictoryRestMinutes(state, outcome) {
-  if (String(outcome ?? '') !== 'enemies_defeated') return 0
+  // После победы привала без заявки больше нет (решение владельца
+  // 2026-10-10) — строке победы нечего обещать.
+  if (POST_VICTORY_REST_DISABLED || String(outcome ?? '') !== 'enemies_defeated') return 0
   const partyIds = new Set((state?.partyMemberIds ?? []).map(String))
   const survivors = (state?.players ?? []).filter((hero) => partyIds.has(String(hero?.id ?? ''))
     && state?.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead')
