@@ -368,6 +368,7 @@ function knownWorldDestinationById(state, locationId) {
 /** Кратчайший по числу открытых сегментов путь до известной точки. */
 const BUILDING_PLACE_NAME = /(?<![\p{L}])(?:таверн|трактир|постоял|харчевн|корчм|кабак|гостиниц|лавк|храм|часовн)\p{L}*/iu
 const SETTLEMENT_KINDS = new Set(['capital', 'city', 'town', 'village', 'port'])
+const BUILDING_SCENE_THEMES = new Set(['tavern', 'inn', 'building', 'temple', 'shop'])
 
 function knownWorldRouteTo(state, target) {
   const map = state?.worldMap
@@ -409,7 +410,13 @@ function knownWorldRouteTo(state, target) {
   if (ids.length > 2) {
     const start = byId.get(ids[0])
     const next = byId.get(ids[1])
-    if (BUILDING_PLACE_NAME.test(String(start?.name ?? '')) && SETTLEMENT_KINDS.has(String(next?.kind ?? ''))) ids.shift()
+    // Заведение узнаётся и без слова «таверна» в имени: «Ржавый якорь» —
+    // по теме и названию текущей сцены (замер 17: отряд ушёл «в путь к
+    // Серому Причалу» вместо маяка).
+    const building = BUILDING_PLACE_NAME.test(String(start?.name ?? ''))
+      || BUILDING_PLACE_NAME.test(String(state?.scene?.title ?? ''))
+      || BUILDING_SCENE_THEMES.has(String(state?.scene?.theme ?? state?.scene?.map?.theme ?? ''))
+    if (building && SETTLEMENT_KINDS.has(String(next?.kind ?? ''))) ids.shift()
   }
   return ids.map((id) => {
     const entry = byId.get(id)

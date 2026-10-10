@@ -328,3 +328,15 @@ test('пересказ серверной детали исхода — не в�
   assert.equal(confirmedOutcomeDetailSentence('Борин перебирает бочки', { known_environment: { player_intent: {} } }), false)
 })
 
+
+test('своё заклинание героя вне боя — сработало, даже если проверка цели провалена', async () => {
+  // Замеры 16–17 (2026-10-11): «На мостках ничего не появилось» после
+  // проваленной Проницательности — провал касается реакции, не иллюзии.
+  const { narratorResponsePlan } = await import('../server/narrator.mjs')
+  const brief = {
+    visible_events: [{ event_type: 'AbilityCheckResolved', payload: { success: false, skill: 'insight' } }],
+    known_environment: { player_intent: { action: 'Читаю «Безмолвный образ»: иллюзия Илы', spell_cast: { name: 'Безмолвный образ' } } },
+  }
+  assert.match(narratorResponsePlan(brief).must_answer, /«Безмолвный образ» сработало/u)
+  assert.doesNotMatch(narratorResponsePlan({ ...brief, known_environment: { player_intent: { action: 'Слежу за Марой' } } }).must_answer, /сработало/u)
+})

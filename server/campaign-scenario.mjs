@@ -26,7 +26,7 @@ const SCENARIO_SCHEMA_VERSION = 1
 
 const BEAT_KINDS = new Set(['prologue', 'chapter', 'line', 'finale'])
 const SECRET_SKILLS = new Set(['investigation', 'perception', 'survival', 'insight', 'history', 'arcana', 'religion', 'nature', 'medicine'])
-const ENCOUNTER_THEMES = new Set(['goblinoids', 'undead', 'beasts', 'raiders', 'warband', 'law', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness', 'generic'])
+const ENCOUNTER_THEMES = new Set(['goblinoids', 'undead', 'beasts', 'raiders', 'warband', 'law', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness', 'cult', 'generic'])
 const ENCOUNTER_DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'deadly'])
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,79}$/u
 

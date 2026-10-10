@@ -11,7 +11,7 @@ import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
 import { combatNarrator, combatNarration, damageTypeLabel } from './combat-narration.mjs'
 import './encounter-narration.mjs'
-import { IntentParser, actionSequence, buildRuleQueries, inferRequestKind, normalizeRequestKind } from './intent-parser.mjs'
+import { IntentParser, actionSequence, buildRuleQueries, inferRequestKind, namedKnownSpell, normalizeRequestKind } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
@@ -1865,6 +1865,14 @@ export class GameOrchestrator {
           ...(intent?.roleplay_speech === true ? { roleplay_speech: true } : {}),
           ...(freeAction.outcome_detail ? { outcome_detail: String(freeAction.outcome_detail).slice(0, 300) } : {}),
           ...(freeAction.thorough_search ? { thorough_search: String(freeAction.thorough_search) } : {}),
+          // Своё заклинание героя вне боя срабатывает: проверка судит цель —
+          // реакцию, обман, — а не само заклинание. Прежде рассказчик писал «на
+          // мостках ничего не появилось» после проваленной Проницательности
+          // (замеры 16–17, 2026-10-11).
+          ...(() => {
+            const spell = state.mechanics?.combat?.active ? null : namedKnownSpell(message, state, playerId)
+            return spell ? { spell_cast: { name: String(spell.name).slice(0, 120) } } : {}
+          })(),
         },
         structured_result: { outcome: freeAction.kind, event_types: publicCommittedEvents.map(event => event.event_type) },
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже

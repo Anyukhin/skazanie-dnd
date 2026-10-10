@@ -766,6 +766,12 @@ const THEMES = deepFreeze({
   cave: ['srd_5_2_1:kobold', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-rat', 'srd_5_2_1:bugbear', 'srd_5_2_1:ghoul', 'srd_5_2_1:ogre', 'srd_5_2_1:owlbear', 'srd_5_2_1:giant-centipede', 'srd_5_2_1:violet-fungus', 'srd_5_2_1:minotaur-skeleton', 'srd_5_2_1:brown-bear', 'srd_5_2_1:ettin', 'srd_5_2_1:awakened-tree', 'srd_5_2_1:ogre-zombie', 'srd_5_2_1:earth-elemental', 'srd_5_2_1:hill-giant', 'srd_5_2_1:xorn', 'srd_5_2_1:animated-armor', 'srd_5_2_1:ochre-jelly', 'srd_5_2_1:barbed-devil', 'srd_5_2_1:giant-scorpion'],
   // Дикая местность: звери открытых пространств.
   wilderness: ['srd_5_2_1:wolf', 'srd_5_2_1:dire-wolf', 'srd_5_2_1:owlbear', 'srd_5_2_1:gnoll-warrior', 'srd_5_2_1:giant-spider', 'srd_5_2_1:giant-wolf-spider', 'srd_5_2_1:scout', 'srd_5_2_1:ankylosaurus', 'srd_5_2_1:lion', 'srd_5_2_1:brown-bear', 'srd_5_2_1:giant-boar', 'srd_5_2_1:tiger', 'srd_5_2_1:awakened-tree', 'srd_5_2_1:giant-elk', 'srd_5_2_1:hippopotamus', 'srd_5_2_1:hill-giant', 'srd_5_2_1:giant-scorpion', 'srd_5_2_1:wyvern', 'srd_5_2_1:manticore'],
+  // Культ: люди с чужой верой и своим ножом. В SRD 5.2.1 культистов нет —
+  // там это разбойники, шпион и главари; бестиарий MM14 добавляет культиста,
+  // фанатика и прислужника (`classicMonstersForTheme`). Прежде засада у маяка
+  // культа собиралась из волков и гоблинов, и судья читал её «из ниоткуда»
+  // (замеры 10–16, 2026-10-11).
+  cult: ['srd_5_2_1:bandit', 'srd_5_2_1:spy', 'srd_5_2_1:bandit-captain', 'srd_5_2_1:tough-boss'],
   generic: Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST),
 })
 
@@ -1325,6 +1331,7 @@ function classicMonstersForTheme(theme) {
   const aliases = { 'goblin-minion': 'goblin', 'goblin-warrior': 'goblin', 'gnoll-warrior': 'gnoll', 'warrior-veteran': 'veteran' }
   const slugs = new Set((THEMES[theme] ?? []).map(id => { const slug = id.split(':').at(-1); return aliases[slug] ?? slug }))
   if (theme === 'law') { slugs.add('guard'); slugs.add('veteran') }
+  if (theme === 'cult') { slugs.add('cultist'); slugs.add('cult-fanatic'); slugs.add('acolyte') }
   return classicContent.monsters.filter(record => {
     if (theme === 'generic' || slugs.has(record.id.split(':').at(-1))) return true
     if (theme === 'undead' || theme === 'crypt') return record.creature_type === 'undead'

@@ -284,9 +284,11 @@ export function narratorResponsePlan(brief) {
   // Тщательный поиск (DMG 2014, гл. 8): провал броска стоил времени, но
   // спрятанное найдено — или честно установлено, что его нет.
   const thoroughSearch = String((brief?.known_environment?.player_intent ?? brief?.player_intent)?.thorough_search ?? '')
+  const spellCast = String((brief?.known_environment?.player_intent ?? brief?.player_intent)?.spell_cast?.name ?? '').trim()
+  const spellNote = spellCast ? ` Заклинание «${spellCast}» сработало: его действие видно — не пиши, что ничего не появилось или оно не подействовало.` : ''
   const checkSuccess = events.find(event => event?.event_type === 'AbilityCheckResolved')?.payload?.success
   const checkOutcome = freeOutcome ?? (checkSuccess === true ? 'success' : checkSuccess === false ? 'failure' : null)
-  return {
+  const plan = {
     version: 'narrator-response-plan/v2',
     mode: 'world_narration',
     speech_act: speechAct,
@@ -328,6 +330,7 @@ export function narratorResponsePlan(brief) {
     stop_after: speechAct,
     delivery: thinResult ? 'after_validation' : 'sentence_buffered',
   }
+  return spellNote ? { ...plan, must_answer: `${plan.must_answer}${spellNote}`, include_scene_detail: true, soft_sentence_limit: Math.max(plan.soft_sentence_limit, 3) } : plan
 }
 
 export function selectNarratorFewShotExamples(brief, {

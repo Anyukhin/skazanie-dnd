@@ -453,7 +453,9 @@ async function fight() {
     // Короткая стычка, как в сценарии: «средняя» ватага на двух героев третьего
     // уровня тянулась два десятка раундов, и судья оценивал скуку стенда, а не
     // ведущего (замер 2026-10-10). Засада — разбойники и мелочь, ближе к культу.
-    body: { expected_state_version: state.state_version ?? 0, difficulty: 'easy', theme: 'ambush', seed: 'gm-session-ambush' },
+    // Тема — культ: ведущий собирает встречу под сюжет (культ у маяка), а не
+    // случайных зверей; с замера 18 (2026-10-11).
+    body: { expected_state_version: state.state_version ?? 0, difficulty: 'easy', theme: 'cult', seed: 'gm-session-ambush' },
   })
   if (assembled.status !== 200) { problem('encounter', `${assembled.status} ${assembled.body?.code ?? ''}: ${short(assembled.body?.error, 200)}`); return }
   note('\n### ⚔ Бой')

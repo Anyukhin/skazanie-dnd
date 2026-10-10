@@ -789,3 +789,28 @@ test('из таверны внутри города к маяку — сразу
   const planned = await new SceneArchitectAgent().plan({ state, action: 'Идём к маяку', decision: 'Уходим и идём в «Старый Маяк»', destinationHint: 'Старый Маяк', destinationLocationId: 'lighthouse' })
   assert.equal(planned.sceneArgs.location, 'Старый Маяк')
 })
+
+test('заведение без слова «таверна» в имени — тоже внутри города: «Ржавый якорь» → сразу к маяку', async () => {
+  // Замер 17 (2026-10-11): точка карты называлась просто «Ржавый якорь», и
+  // «идём к Заброшенному маяку» вело отряд к воротам Серого Причала.
+  const state = {
+    sessionCode: 'TAVERN-PLAIN',
+    worldMap: {
+      seed: 'tavern', name: 'Берег', width: 1000, height: 640, currentLocationId: 'tavern',
+      regions: [{ id: 'r', name: 'Побережье', x: 500, y: 320, radius: 300, biome: 'побережье' }],
+      locations: [
+        { id: 'port', name: 'Серый Причал', kind: 'port', x: 400, y: 300, regionId: 'r', summary: '', known: true, visited: true },
+        { id: 'tavern', name: 'Ржавый якорь', kind: 'landmark', x: 420, y: 310, regionId: 'r', summary: '', known: true, visited: true },
+        { id: 'lighthouse', name: 'Заброшенный маяк', kind: 'landmark', x: 600, y: 200, regionId: 'r', summary: '', known: true, visited: false },
+      ],
+      routes: [
+        { id: 'r-1', from: 'port', to: 'tavern', kind: 'road', distance: 1, danger: 'низкая', discovered: true },
+        { id: 'r-2', from: 'port', to: 'lighthouse', kind: 'trail', distance: 1, danger: 'средняя', discovered: true },
+      ],
+    },
+    scene: { title: 'Прибытие в «Ржавый якорь»', location: 'Ржавый якорь', location_id: 'tavern', theme: 'tavern', objective: 'Узнать про баркас', turn: 3, cells: [] },
+    adventure: { chapter: 1, currentHook: 'Пустой баркас', visitedLocations: ['Ржавый якорь'], history: [] },
+  }
+  const planned = await new SceneArchitectAgent().plan({ state, action: 'Идём к маяку', decision: 'Уходим и идём в «Заброшенный маяк»', destinationHint: 'Заброшенный маяк', destinationLocationId: 'lighthouse' })
+  assert.equal(planned.sceneArgs.location, 'Заброшенный маяк')
+})
