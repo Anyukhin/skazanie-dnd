@@ -115,14 +115,29 @@ function postVictoryRestMinutes(state, outcome) {
     + (survivors.some((hero) => Number(hero?.hp) === 0) ? POST_VICTORY_STABLE_RECOVERY_MINUTES : 0)
 }
 
-/** «1 зм 5 см», «7 мм» — монеты награды словами стола. */
+/** 1 медяк, 2 медяка, 5 медяков. */
+function coinWordRu(count, [one, few, many]) {
+  const tens = count % 100
+  const units = count % 10
+  const word = tens >= 11 && tens <= 14 ? many : units === 1 ? one : units >= 2 && units <= 4 ? few : many
+  return `${count} ${word}`
+}
+
+/**
+ * «2 золотых и 9 медяков» — монеты награды словами стола. Сокращения «1 см
+ * 6 мм» судья читал как служебный текст (замер 19, 2026-10-11).
+ */
 function coinsLabelRu(value) {
   let copper = Math.max(0, Math.trunc(Number(value) || 0))
   const gold = Math.floor(copper / 100)
   copper -= gold * 100
   const silver = Math.floor(copper / 10)
   copper -= silver * 10
-  return [gold ? `${gold} зм` : '', silver ? `${silver} см` : '', copper ? `${copper} мм` : ''].filter(Boolean).join(' ')
+  return joinRu([
+    gold ? coinWordRu(gold, ['золотой', 'золотых', 'золотых']) : '',
+    silver ? coinWordRu(silver, ['серебряк', 'серебряка', 'серебряков']) : '',
+    copper ? coinWordRu(copper, ['медяк', 'медяка', 'медяков']) : '',
+  ].filter(Boolean))
 }
 
 /** «Короткий лук», «Кинжал» (2 шт.) — одноимённые экземпляры склеиваются. */

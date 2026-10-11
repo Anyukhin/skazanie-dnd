@@ -623,7 +623,7 @@ function repeatAcknowledgement(leads = []) {
   return 'Всё, что знаю, вы уже слышали.'
 }
 
-function briefFor(state, profile, playerId, message, checkOutcome = null, { leads = [], repeatRetry = false } = {}) {
+function briefFor(state, profile, playerId, message, checkOutcome = null, { leads = [], repeatRetry = false, justSeen = '' } = {}) {
   const social = ensureNpcSocialState(state.social, state)
   const alreadySaid = alreadySaidForBrief(social, profile, playerId)
   const alreadySaidCandidates = social.conversations
@@ -715,6 +715,11 @@ function briefFor(state, profile, playerId, message, checkOutcome = null, { lead
     // причины. Мара «не помнит Илу», а Терен тут же — «это лодка Илы», и судья
     // записывал разнобой на счёт ведущего (замеры 14–17, 2026-10-11).
     others_said: othersSaidNearby(state, social, profile),
+    // Что герой сделал у собеседника на глазах прямо перед словами — тем же
+    // ходом: «творит «Безмолвный образ» с чертами Илы… «Узнаёте её?»». Без
+    // этого Иара просила «покажи или назови её», хотя образ стоял перед ней
+    // (замер 19, 2026-10-11).
+    ...(clean(justSeen, 600) ? { just_seen: clean(justSeen, 600) } : {}),
     ...(repeatRetry ? { repeat_retry: true } : {}),
     ...selectionFields(boundedSelectionMetadata({ scope: 'server_safe_leads_for_conversation_topic', candidateCount: leads.length, limit: NPC_LEAD_LIMIT }), 'leads'),
     ...selectionFields(boundedSelectionMetadata({ scope: 'npc_replies_visible_to_active_hero', candidateCount: alreadySaidCandidates, limit: NPC_ALREADY_SAID_LIMIT }), 'already_said'),
@@ -988,7 +993,7 @@ export class NpcSocialController {
     this.llmClient = llmClient
   }
 
-  async respond({ state = {}, playerId = '', npcId = '', message = '', turnId = '', checkOutcome = null } = {}) {
+  async respond({ state = {}, playerId = '', npcId = '', message = '', turnId = '', checkOutcome = null, justSeen = '' } = {}) {
     const social = ensureNpcSocialState(state.social, state)
     const persistedProfile = social.npcs.find((npc) => npc.id === String(npcId))
     const profile = persistedProfile ? npcProfileAtWorldTime(persistedProfile, state) : null
@@ -1006,7 +1011,7 @@ export class NpcSocialController {
     const complete = (options = {}) => this.llmClient.completeJson({
       messages: [
         { role: 'system', content: promptForModelRole(prompt, this.llmClient, 'npc') },
-        { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, heroId, message, checkOutcome, { leads, ...options }) }) },
+        { role: 'user', content: buildDataOnlyContext({ npc_social_brief: briefFor(state, profile, heroId, message, checkOutcome, { leads, justSeen, ...options }) }) },
       ],
       temperature: 0.7,
       maxTokens: 700,

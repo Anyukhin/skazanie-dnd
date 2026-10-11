@@ -949,6 +949,15 @@ test('запасной рассказчик не меняет «Вышло: …�
   assert.equal(shouted.free_action_outcome, 'check_success')
   assert.match(shouted.narration, /^Вышло: крикнуть «Пожар!» на весь двор\./u)
 
+  // Замер 19 (2026-10-11): шаг плана без имени — «идёт к бочкам и простукивает
+  // их — нет ли тайника» — звучал «Вышло: идёт к бочкам…».
+  const step = await setup(campaign(), {
+    narrator: new Narrator(),
+    reading: passageReading({ goal_summary: 'идёт к бочкам у ворот и простукивает их — нет ли тайника', approach_summary: 'простукивает', ability: 'cha', skill: 'performance' }),
+  })
+  const stepped = await step.orchestrator.handle(actionInput('идёт к бочкам у ворот и простукивает их — нет ли тайника', 'free-step', campaign()))
+  assert.equal(stepped.free_action_outcome, 'check_success')
+  assert.match(stepped.narration, /^Ада идёт к бочкам у ворот и простукивает их\./u, stepped.narration)
 })
 
 test('цель-знание без подтверждённых показаний получает честный ответ, а не голое «Вышло.»', async () => {

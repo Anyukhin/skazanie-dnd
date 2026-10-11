@@ -456,3 +456,15 @@ test('уход, предложенный спутнику в прямой реч
   assert.equal(detectPartyExitRequest('Мирель шепчет: «Пойдём туда, где тише».', options), null)
   assert.equal(detectPartyExitRequest('Мирель говорит Борину: «Не пойдём туда — Старый Маяк подождёт».', options), null)
 })
+
+test('голое слово места в косвенном падеже — имя в именительном', async () => {
+  // Замер 19 (2026-10-11): «пойдём к маяку на скале» создало место «Маяку на
+  // скале» и главу «Глава 2 · Маяку на скале».
+  const { nominativePlacePhrase } = await import('../server/party-exit-intent.mjs')
+  assert.equal(nominativePlacePhrase('маяку на скале'), 'маяк на скале')
+  assert.equal(nominativePlacePhrase('Таверне'), 'Таверна')
+  assert.equal(nominativePlacePhrase('пещеру у реки'), 'пещера у реки')
+  assert.equal(nominativePlacePhrase('Мыс Сломанного Зуба'), 'Мыс Сломанного Зуба', 'незнакомое слово не трогается')
+  assert.equal(nominativePlacePhrase('Кленовку'), 'Кленовку', 'имя деревни не угадывается')
+  assert.equal(nominativePlacePhrase('маяк'), 'маяк')
+})

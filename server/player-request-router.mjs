@@ -533,8 +533,9 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
       title: knownFrom ? `Покинуть «${from}»?` : 'Покинуть подземелье?',
       // Голос ведущего, а не правило голосования: вопрос задаёт сама карточка,
       // а в хронике звучит решение в путь. «Все идут?» судья трижды назвал
-      // служебной проверкой (замеры 10–12, 2026-10-10).
-      description: phrase ? `Значит, в путь ${phrase}.` : 'Значит, пора уходить.',
+      // служебной проверкой (замеры 10–12, 2026-10-10), а «Значит, в путь в
+      // «Заброшенный маяк»» — внутренней кухней с двумя «в» подряд (замер 19).
+      description: phrase ? `${phrase.charAt(0).toLocaleUpperCase('ru')}${phrase.slice(1)} — так в путь?` : 'Так что, уходим?',
       options: [leaveOption, ...(abandonOption ? [abandonOption] : []), 'Остаться и исследовать дальше'],
       resolutionPrompt: 'Исполни решение большинства. Если отряд уходит, бесшовно открой следующую локацию.',
       ...(exit.destinationLocationId ? { destinationLocationId: exit.destinationLocationId } : {}),

@@ -975,6 +975,10 @@ function confirmedHeroDeedGesture(sentence, brief) {
   const declaredRoots = new Set(words.map(verbRoot))
   const agency = new RegExp(`(?:${HERO_AGENCY_VERBS})`, 'iu').exec(sentence)?.[0] ?? ''
   const spoken = agency.toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/\s+/u).pop() ?? ''
+  // «Идёт к бочкам» → «подходит к бочкам»: тот же заявленный шаг к цели,
+  // а не новое решение. Отбраковка оставляла «Вышло: идёт к бочкам…»
+  // (замер 19, 2026-10-11).
+  if (/^подход/u.test(spoken) && /(?<![\p{L}\p{M}])(?:ид[уеё]т?|ид[её]м|направля\p{L}*|шага\p{L}*|подход\p{L}*|подойд\p{L}*|пробира\p{L}*|возвраща\p{L}*)(?![\p{L}\p{M}])/iu.test(action)) return true
   const stem = spoken.slice(0, 5)
   return stem.length === 5 && (declared.has(stem) || declaredRoots.has(verbRoot(spoken)))
     && !/(?:бер[её]т|клад[её]т|доста[её]т|переда[её]т)/iu.test(agency)
@@ -2072,9 +2076,17 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
   // место значимым: раньше «оружие завершает ход, начинается ход ветерана»
   // съедали место, и падение героя без сознания не звучало вовсе.
   const essential = ordered.filter((event) => !ROUTINE_NARRATION_EVENTS.has(String(event?.event_type ?? '')))
-  const summaries = (ordered.length > 4 && essential.length ? essential : ordered)
-    .map((event) => withoutVisibleNumbers(qualitativeEventSummary(event, resolve)))
-    .filter(Boolean)
+  // Деталь исхода от судьи — то, что герой видит при этом исходе, — звучит
+  // вместо «Проверка «Восприятие» завершилась неудачей» с описью места: так
+  // отвечал запасной рассказчик, когда модель не успела (замер 19, 2026-10-11).
+  const outcomeDetail = sceneText((brief?.known_environment?.player_intent ?? brief?.player_intent ?? {})?.outcome_detail, 400)
+  const checkOnly = !discovery && allOutcomeEvents.length > 0
+    && allOutcomeEvents.every((event) => ['AbilityCheckResolved', 'DieRolled', 'RollResolved', 'RulingRecorded', 'WorldTimeAdvanced'].includes(String(event?.event_type ?? '')))
+  const summaries = outcomeDetail && checkOnly
+    ? [withoutVisibleNumbers(outcomeDetail)]
+    : (ordered.length > 4 && essential.length ? essential : ordered)
+      .map((event) => withoutVisibleNumbers(qualitativeEventSummary(event, resolve)))
+      .filter(Boolean)
   const combatTurn = brief.visible_events.some((event) => COMBAT_TURN_EVENTS.has(String(event?.event_type ?? '')))
   const { opening, quest } = responsePlan.include_scene_detail ? deterministicFraming(brief, variant) : {}
   const memory = responsePlan.include_memory ? withoutVisibleNumbers(memoryFocusReminder(narratorMemoryFocus(brief), variant)) : ''
@@ -2101,7 +2113,7 @@ function deterministicNarrationCandidate(brief, resolve, variant, arcRecap) {
         ][variant % 4]
   const memorySentence = narrationSentence(memory)
   const dialogueOnly = outcomeEvents.length > 0 && outcomeEvents.every(event => event?.event_type === 'NpcConversationRecorded')
-  const quiet = dialogueOnly || discovery || combatTurn
+  const quiet = dialogueOnly || discovery || combatTurn || Boolean(outcomeDetail && checkOnly)
   return [recap, body, quiet ? '' : opening, quiet ? '' : memorySentence].filter(Boolean).join(' ')
 }
 

@@ -263,14 +263,16 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   })
   assertStatus(forest, 200, log)
   // Второй переход — из города в чащу: тот же фиксированный сид, то же жёсткое
-  // ожидание, и небо снова ровно одной строкой.
+  // ожидание. С замера 19 (2026-10-11) место зовётся «Серая чаща», а не
+  // «Серую чащу» из фразы, и по этому сиду встаёт в тот же край, что и город:
+  // неба не меняется, строки погоды нет — и не больше одной в любом случае.
   const forestTypes = forest.body.mechanics.map((event) => event.event_type)
   assert.deepEqual(forestTypes, [
-    'TimeAdvanced', 'TimeOfDayChanged', 'PartyDecisionConsumed', 'SceneAdvanced', 'WeatherChanged',
+    'TimeAdvanced', 'TimeOfDayChanged', 'PartyDecisionConsumed', 'SceneAdvanced',
     'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
     'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
   ])
-  assert.equal(forestTypes.filter((type) => type === 'WeatherChanged').length, 1, 'небо объявляется ровно один раз на переход')
+  assert.ok(forestTypes.filter((type) => type === 'WeatherChanged').length <= 1, 'небо объявляется не больше одного раза на переход')
   assert.equal(forest.body.mechanics.find((event) => event.event_type === 'SceneAdvanced').payload.scene.scene_kind, 'wilderness')
   assert.equal(forest.body.mechanics.find((event) => event.event_type === 'SceneAdvanced').payload.scene_commerce.action, 'none')
   assert.equal(forest.body.authoritative_state.merchants.length, 1)
@@ -287,7 +289,7 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   adminCookie = cookie(login)
   const durable = await request(baseUrl, '/api/rooms/DIRECTOR-SHOP', { cookie: adminCookie })
   assertStatus(durable, 200, log)
-  assert.equal(durable.body.state.scene.location, 'Серую чащу')
+  assert.equal(durable.body.state.scene.location, 'Серая чаща')
   assert.equal(durable.body.state.adventure.chapter, 3)
   assert.equal(durable.body.state.merchants.length, 1)
   assert.equal(durable.body.state.merchants[0].location, 'Большой город Норвин')

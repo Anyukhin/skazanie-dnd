@@ -366,7 +366,7 @@ test('награда встречи называет вещи, монеты и �
     ],
     unassigned: { xp: 0, coins_cp: 0, items: [] },
   } }], party)
-  assert.match(text, /[Дд]оля отряда за победу: Лира забирает «Короткий лук» и «Стрелы, 20 штук»; Бор — «Кинжал» \(2 шт\.\); монеты поровну — 2 зм 9 мм; опыт поровну — 50\.$/u)
+  assert.match(text, /[Дд]оля отряда за победу: Лира забирает «Короткий лук» и «Стрелы, 20 штук»; Бор — «Кинжал» \(2 шт\.\); монеты поровну — 2 золотых и 9 медяков; опыт поровну — 50\.$/u)
   assert.equal(hasCombatNarrationEvent([event('EncounterRewardsDistributed')]), true)
   // Пустая доля строки не даёт: «награда» без содержимого — шум.
   assert.equal(combatNarration([{ event_type: 'EncounterRewardsDistributed', payload: { allocations: [{ recipient_id: 'hero', xp: 0, coins_cp: 0, items: [] }] } }], party), '')

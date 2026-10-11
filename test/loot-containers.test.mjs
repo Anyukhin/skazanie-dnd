@@ -1302,4 +1302,8 @@ test('«обыскивает поверженных» — тела, а не об
   assert.ok(answer.narration.includes('Разбойник 1') && answer.narration.includes('Разбойник 2'), answer.narration)
   assert.doesNotMatch(answer.narration, /Уточните|выдумывать|сервер/u)
   assert.match(answer.narration, /панель добычи/u)
+  // Замер 19: «приседает у тел, обыскивает одежду» — родительный «тел».
+  const crouching = searchAloud(both.state, 'hero', 'Мирель приседает у тел, осторожно обыскивает одежду и мешочек с компонентами')
+  assert.ok(crouching?.narration.includes('Разбойник 2'), crouching?.narration)
+  assert.doesNotMatch(crouching.narration, /Тело: /u, 'подпись панели не звучит в рассказе')
 })

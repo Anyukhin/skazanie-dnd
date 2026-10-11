@@ -1256,11 +1256,15 @@ export function resolvePickpocket(state = {}, actorId = '', text = '', reading =
 
 // «Обыскивает поверженных», «осматриваю убитых» — тоже тела: прежде такая
 // заявка уходила в общий осмотр места и вместо карманов врагов находила
-// верёвку «у основания фонаря» (замер 11, 2026-10-10).
-const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман|(?<![\p{L}\p{M}])(?:поверженн|павш|убит|мертвец|мёртв|мертв))|(?:труп|тел[оаеу]|останки|карман|(?<![\p{L}\p{M}])(?:поверженн|павш|убит|мертвец|мёртв|мертв))[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu
+// верёвку «у основания фонаря» (замер 11, 2026-10-10). «Приседает у тел,
+// обыскивает одежду» — то же: родительный «тел» не узнавался, и обыск
+// врагов снова кончался фонарём (замер 19, 2026-10-11).
+const CORPSE_WORD = String.raw`(?:труп|тел[оаеу]|(?<![\p{L}\p{M}])тел(?![\p{L}\p{M}])|останки|карман|(?<![\p{L}\p{M}])(?:поверженн|павш|убит|мертвец|мёртв|мертв))`
+const SEARCH_VERB = String.raw`(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)`
+const CORPSE_SEARCH = new RegExp(String.raw`${SEARCH_VERB}[^.!?]{0,80}${CORPSE_WORD}|${CORPSE_WORD}[^.!?]{0,80}${SEARCH_VERB}`, 'iu')
 
 /** Заявка обыскивает всех сразу: «поверженных», «тела», «всех убитых». */
-const PLURAL_LOOT_SEARCH = /(?<![\p{L}\p{M}])(?:поверженн(?:ых|ые)|павш(?:их|ие)|убит(?:ых|ые)|мертвец(?:ов|ы)|мёртв(?:ых|ые)|мертв(?:ых|ые)|тела(?![\p{L}\p{M}])|трупы|трупов|всех)(?![\p{L}\p{M}])/iu
+const PLURAL_LOOT_SEARCH = /(?<![\p{L}\p{M}])(?:поверженн(?:ых|ые)|павш(?:их|ие)|убит(?:ых|ые)|мертвец(?:ов|ы)|мёртв(?:ых|ые)|мертв(?:ых|ые)|тела(?![\p{L}\p{M}])|тел|трупы|трупов|всех)(?![\p{L}\p{M}])/iu
 
 /**
  * Как фраза называет вид контейнера. Таблица работает в одну сторону: названный
@@ -1381,9 +1385,16 @@ function lootContainerAnswer(state, hero, container) {
   const combat = state?.mechanics?.combat?.active === true
   // Голос ведущего, а не устав: «набор выдаёт сервер, и выдумывать находку я
   // не стану» звучало служебно (замер 11).
+  // Тело — словами осмотра, а не подписью панели «Тело: Прислужник 1: …»
+  // (замер 19, 2026-10-11). Имя тела — только когда тел несколько: игроку
+  // надо знать, о котором речь.
+  const owner = String(container.name).replace(/^Тело:\s*/u, '')
+  const crowded = lootContainersInScene(state).filter((entry) => entry.kind === 'corpse').length > 1
+  const found = container.kind !== 'corpse' ? `${container.name}: ${summary}`
+    : crowded ? `${owner}: под одеждой и в карманах — ${summary}` : `Под одеждой и в карманах — ${summary}`
   return {
     ...common,
-    narration: `${container.name}: ${summary}. Забрать нужное можно через панель добычи.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
+    narration: `${found}. Забрать нужное можно через панель добычи.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
     loot_items: items,
     loot_action_cost: combat ? 'action' : null,
   }
@@ -1397,13 +1408,13 @@ function lootContainersAnswer(state, hero, containers) {
   const reached = containers.filter((container) => container.status === 'available' && lootContainerReachFor(state, hero, container).reachable)
   if (reached.length < 2) return null
   const combat = state?.mechanics?.combat?.active === true
-  const lines = reached.slice(0, 4).map((container) => `${container.name}: ${spokenLootContents(container).summary}`)
+  const lines = reached.slice(0, 4).map((container) => `${container.kind === 'corpse' ? String(container.name).replace(/^Тело:\s*/u, '') : container.name} —${spokenLootContents(container).summary}`)
   return {
     status: 'clarification',
     server_owned_contents: true,
     loot_container_ids: reached.map((container) => container.id),
     loot_items: reached.flatMap((container) => spokenLootContents(container).items),
-    narration: `${lines.join('. ')}. Забрать нужное можно через панель добычи.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
+    narration: `${reached.every((container) => container.kind === 'corpse') ? 'При телах: ' : ''}${lines.join('; ')}. Забрать нужное можно через панель добычи.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
     loot_action_cost: combat ? 'action' : null,
   }
 }

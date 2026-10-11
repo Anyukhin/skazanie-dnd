@@ -12,7 +12,7 @@ import { ActionAdjudicator } from '../server/action-adjudicator.mjs'
 import { IntentParser, inferRequestKind } from '../server/intent-parser.mjs'
 import { createTacticalMap, setCell, setDoor, serializeTacticalMap, legacyCellsFromTacticalMap } from '../server/tactical-map.mjs'
 
-async function fixture({ reader = new ActionAdjudicator(), narrator, state: extra = {}, rolls = [18, 18, 18] } = {}) {
+async function fixture({ reader = new ActionAdjudicator(), narrator, npcSocialController, state: extra = {}, rolls = [18, 18, 18] } = {}) {
   const state = normalizeCampaignState({
     sessionCode: 'DM-UPGRADE', activePlayerId: 'hero', partyMemberIds: ['hero'],
     scene: { title: 'Караульная', location: 'Караульная', objective: 'Найти пропавшего курьера', cells: [] },
@@ -25,7 +25,7 @@ async function fixture({ reader = new ActionAdjudicator(), narrator, state: extr
   await eventStore.initializeCampaign({ campaign_id: state.sessionCode, initial_state: state })
   const rulesEngine = new RulesEngine({ diceService: new DiceService({ rng: new SequenceDiceRng(rolls) }) })
   const unknownActionHandler = new AutonomousCampaignOrchestrator({ eventStore, rulesEngine, actionAdjudicator: reader })
-  const game = new GameOrchestrator({ eventStore, rulesEngine, unknownActionHandler, ...(narrator ? { narrator } : {}) })
+  const game = new GameOrchestrator({ eventStore, rulesEngine, unknownActionHandler, ...(narrator ? { narrator } : {}), ...(npcSocialController ? { npcSocialController } : {}) })
   let next = 0
   return { state, game, eventStore, send: async (message, options = {}) => game.handle({ state: (await eventStore.load(state.sessionCode)).state, playerId: 'hero', message, idempotencyKey: `upgrade-${++next}`, ...options }) }
 }
@@ -434,4 +434,23 @@ test('заклинание словами вне боя — творческое
   const result = await send('Ада сотворяет заклинание и создаёт иллюзию пропавшей сестры, следя за лицом стражника.', { idempotencyKey: 'spell-free' })
   assert.doesNotMatch(String(result.narration), /Действие ещё не выполнено/u)
   assert.ok(result.mechanics.some((event) => ['AbilityCheckResolved', 'RulingRecorded'].includes(event.event_type)), result.mechanics.map((event) => event.event_type).join(','))
+})
+
+test('шаг плана перед словами собеседнику: NPC видит сделанное, голоса в записи не смешиваются', async () => {
+  // Замер 19 (2026-10-11): «творит «Безмолвный образ» с чертами Илы, затем
+  // следит за Иарой. «Узнаёте её?»» — Иара просила «покажи или назови её»: шаг
+  // с заклинанием до неё не доходил, а описание иллюзии звучало её голосом.
+  const { NpcSocialController } = await import('../server/npc-social-controller.mjs')
+  const briefs = []
+  const llmClient = { model: 'test-npc', completeJson: async ({ messages }) => {
+    briefs.push(String(messages.at(-1)?.content ?? ''))
+    return { npc_id: 'mira', reply: 'Видела. Ловко у тебя выходит.', stance: 'friendly', disclosed_fact_ids: [], disclosed_claim_ids: [], relationship_delta: 0, promise: null, confidence: 0.9 }
+  } }
+  const narrator = { render: async () => ({ narration: 'Верёвка ложится ровными кольцами.', provider: 'test-narrator' }) }
+  const { send } = await fixture({ state: roomWithDoor(), narrator, npcSocialController: new NpcSocialController({ llmClient }) })
+  const response = await send('Сматываю верёвку; затем говорю Мире: «Видела?»', { idempotencyKey: 'rope-then-talk' })
+  assert.ok(briefs.some((brief) => brief.includes('just_seen') && brief.includes('верёвк')), 'собеседник видит первый шаг')
+  assert.ok(String(response.narration).split('\n\n').length >= 2, response.narration)
+  assert.match(String(response.narration), /Мира Ветрокрыл: «Видела\. Ловко у тебя выходит\.»/u, response.narration)
+  assert.equal(response.journal_author, undefined, 'общая запись подписана ведущим, а не собеседником')
 })

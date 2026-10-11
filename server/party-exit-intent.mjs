@@ -576,6 +576,12 @@ const OBLIQUE_ADJECTIVE = /** @type {Array<[RegExp, string, 'm'|'f']>} */ ([
  */
 export function nominativePlacePhrase(phrase) {
   const words = compact(phrase, 120).split(' ').filter(Boolean)
+  // Голое существительное без определения: «к маяку на скале» стало местом
+  // «Маяку на скале» и главой «Глава 2 · Маяку на скале» (замер 19,
+  // 2026-10-11). Род по одному слову не угадать, поэтому — только знакомые
+  // слова мест.
+  const bare = words.length ? bareNominativePlaceNoun(words[0]) : ''
+  if (bare) return [keepCase(words[0], bare), ...words.slice(1)].join(' ')
   /** @type {'m'|'f'|''} */
   let gender = ''
   let index = 0
@@ -608,6 +614,35 @@ export function nominativePlacePhrase(phrase) {
   if (!nominative) return compact(phrase, 120)
   result[index] = keepCase(words[index], nominative)
   return result.join(' ')
+}
+
+/** Слова мест, которые часто называют без определения: «к маяку», «в таверну». */
+const BARE_PLACE_NOUNS = Object.freeze([
+  'маяк', 'склеп', 'храм', 'лес', 'порт', 'причал', 'мост', 'холм', 'утёс', 'остров', 'форт', 'двор',
+  'погреб', 'сарай', 'амбар', 'курган', 'овраг', 'грот', 'трактир', 'город', 'перевал', 'тракт', 'берег',
+  'пирс', 'склад', 'особняк', 'дворец', 'бастион', 'лагерь', 'монастырь', 'башня', 'таверна', 'пещера',
+  'часовня', 'мельница', 'гавань', 'крепость', 'деревня', 'роща', 'кузница', 'лавка', 'площадь', 'скала',
+  'хижина', 'усадьба', 'пристань', 'застава', 'сторожка', 'святилище', 'кладбище', 'болото', 'озеро',
+])
+const BARE_PLACE_ENDING = /^(?:|а|я|у|ю|е|и|ы|ом|ем|ой|ей|ою|ею)$/u
+
+/**
+ * Именительный падеж знакомого слова места в косвенном: «маяку» — «маяк»,
+ * «таверне» — «таверна», «пещеру» — «пещера». Уже именительный и незнакомое
+ * слово — пустая строка.
+ *
+ * @param {string} word
+ * @returns {string}
+ */
+function bareNominativePlaceNoun(word) {
+  const lower = String(word ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  for (const base of BARE_PLACE_NOUNS) {
+    const plain = base.replace(/ё/gu, 'е')
+    if (lower === plain) return ''
+    const stem = /[аяьео]$/u.test(plain) ? plain.slice(0, -1) : plain
+    if (lower.startsWith(stem) && BARE_PLACE_ENDING.test(lower.slice(stem.length))) return base
+  }
+  return ''
 }
 
 /**

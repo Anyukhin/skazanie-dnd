@@ -393,7 +393,8 @@ test('явный лес назначения важнее упоминания �
     destinationHint: 'Серую чащу',
   })
 
-  assert.equal(planned.sceneArgs.location, 'Серую чащу')
+  // Имя места — в именительном, а не в падеже фразы «идём в Серую чащу» (замер 19).
+  assert.equal(planned.sceneArgs.location, 'Серая чаща')
   assert.equal(planned.sceneArgs.map.layout, 'winding')
   assert.equal(planned.shopIntent.action, 'none')
 })

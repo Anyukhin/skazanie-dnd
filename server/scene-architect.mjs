@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { publicAdventureMemory } from './adventure-director.mjs'
 import { authoredLocationMapMetaFor } from './authored-location-maps.mjs'
-import { classifyPartyDecision, objectiveRemainder, onwardRouteObjective, onwardRouteTarget } from './party-exit-intent.mjs'
+import { classifyPartyDecision, nominativePlacePhrase, objectiveRemainder, onwardRouteObjective, onwardRouteTarget } from './party-exit-intent.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { defaultSceneShopIntent, normalizeSceneShopIntent } from './scene-commerce.mjs'
 import { normalizeSceneMapDesign, sceneMapDesignFor } from './scene-map-design.mjs'
@@ -451,7 +451,9 @@ function fallbackDestination(state, from) {
 
 function fallbackPlan({ action, state, decision, destinationHint, destinationLocationId = '', abandonsQuest = false }) {
   const from = clean(state.scene?.location || state.scene?.title, 120) || 'прежняя локация'
-  const hinted = clean(destinationHint, 120)
+  // Подсказка — слова игрока в его падеже («к маяку на скале»); имя места —
+  // в именительном.
+  const hinted = clean(destinationHint, 120) ? nominativePlacePhrase(clean(destinationHint, 120)) : ''
   const destinationById = knownWorldDestinationById(state, destinationLocationId)
   const chosen = hinted || destinationById ? null : fallbackDestination(state, from)
   const intendedKnownDestination = destinationById ?? (hinted ? knownWorldDestinationByName(state, hinted) : null)

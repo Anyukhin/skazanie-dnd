@@ -1106,12 +1106,19 @@ function planStepInput(input) {
  * @param {Record<string, any>} next
  */
 function mergePlanStepResults(first, next) {
-  const narration = [first?.narration, next?.narration]
-    .map((text) => String(text ?? '').trim())
-    .filter((text, index, all) => text && all.indexOf(text) === index)
+  const parts = [first, next]
+    .map((result) => ({ text: String(result?.narration ?? '').trim(), author: String(result?.journal_author ?? '').trim() }))
+    .filter((part, index, all) => part.text && all.findIndex((other) => other.text === part.text) === index)
+  // Рассказ шага и реплика собеседника — разные голоса. Прежде общая запись
+  // подписывалась последним, и описание иллюзии звучало от имени Иары (замер
+  // 19, 2026-10-11): чужой голос в общей записи называется по имени.
+  const mixed = new Set(parts.map((part) => part.author)).size > 1
+  const narration = parts
+    .map((part) => (mixed && part.author ? `${part.author}: «${part.text.replace(/^«|»$/gu, '')}»` : part.text))
     .join('\n\n')
   return {
     ...next,
+    ...(mixed ? { journal_author: undefined } : {}),
     narration,
     mechanics: [...(first?.mechanics ?? []), ...(next?.mechanics ?? [])],
     visible_state_changes: [...(first?.visible_state_changes ?? []), ...(next?.visible_state_changes ?? [])],
@@ -1350,7 +1357,12 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
         // (плейтест 2026-10-10). «Вышло:» остаётся только у цели-глагола.
         ? !failed && rawGoal.startsWith(`${freeActionHeroName(events, state)} `)
           ? `${rawGoal}.`
-          : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
+          // Шаг плана без имени — «идёт к бочкам и простукивает их — нет ли
+          // тайника» — тоже сцена от лица героя, а не «Вышло: идёт…» (замер
+          // 19, 2026-10-11); хвост-вопрос игрока ответом ведущего не звучит.
+          : !failed && !/^\p{L}+(?:ть|ться|ти|чь)(?![\p{L}\p{M}])/u.test(rawGoal) && /^\p{Ll}/u.test(rawGoal)
+            ? `${freeActionHeroName(events, state)} ${rawGoal.replace(/\s+[—–-]\s+[^—–]*(?:\?|(?<![\p{L}\p{M}])ли(?![\p{L}\p{M}]))[^—–]*$/u, '')}.`
+            : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
         : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
   // Находка и есть ответ ведущего: «Вышло: найти метку. <другая находка>»
@@ -2389,6 +2401,9 @@ export class GameOrchestrator {
         clarificationId: next.id,
         idempotencyKey: nextKey,
         planStep: depth + 1,
+        // Следующий шаг видит, что герой сделал этим же ходом: собеседник
+        // отвечает на слова после заклинания, а не на голую реплику.
+        precedingStep: [stepText, result.narration].map((text) => String(text ?? '').trim()).filter(Boolean).join(' — ').slice(0, 600),
       })
       return mergePlanStepResults(result, continued)
     }
@@ -3277,6 +3292,7 @@ export class GameOrchestrator {
       if (!duplicate) {
         socialTurn = await this.npcSocialController.respond({
           state: socialBaseState, playerId, npcId: socialRequest.npcId, message, turnId, checkOutcome,
+          justSeen: String(input.precedingStep ?? ''),
         })
         if (!socialTurn) throw new Error('NPC is no longer available for this social turn')
         rulesContext.isSocialController = true

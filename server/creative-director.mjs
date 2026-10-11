@@ -206,7 +206,9 @@ export class CriticalNarrationCoordinator {
       knownRuleIds: [],
       timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
       recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
-      style: 'Два-три предложения о начале схватки: кто выходит из укрытия и откуда, как выглядят и чего хотят — по сцене и составу из encounter_foes; имена без номеров («двое разбойников и волк»). Без чисел, ходов, очереди и правил; не добавляй бросков, урона, находок и решений правил.',
+      // Цель сцены и зацепки — не тема вводки: «их появление обрывает поиски
+      // другого пути к разгадке; баркас остаётся зацепкой» (замер 19).
+      style: 'Два-три предложения о начале схватки: кто выходит из укрытия и откуда, как выглядят и что делали здесь до появления героев — по сцене и составу из encounter_foes; имена без номеров («двое разбойников и волк»). Не пересказывай цель сцены, задания и зацепки. Без чисел, ходов, очереди и правил; не добавляй бросков, урона, находок и решений правил.',
     })
     if (/^deterministic/u.test(String(narration?.provider ?? '')) || !String(narration?.narration ?? '').trim()) return null
     return { ...narration, trigger }
