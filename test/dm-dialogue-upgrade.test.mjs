@@ -523,3 +523,10 @@ test('замер 30: явное обращение сильнее последн
   const state = { scene: { location: 'Причал' }, players: [{ id: 'mirel', character: 'Мирель' }, { id: 'borin', character: 'Борин' }], social: { npcs: [{ id: 'saven', name: 'Савен Руд', location: 'Причал' }] } }
   assert.deepEqual(speechAddressee('Мирель подходит к Савену Руду, записывая на полях слова Борина: «Расскажите всё, что заметили. Вот монета».', state, 'mirel'), { kind: 'npc', id: 'saven' })
 })
+
+test('замер 31: «слова Оскара» — чьи слова, а не обращение к Оскару', async () => {
+  const { speechAddressee } = await import('../server/game-orchestrator.mjs')
+  const state = { scene: { location: 'Т' }, players: [{ id: 'mirel', character: 'Мирель' }, { id: 'borin', character: 'Борин' }], social: { npcs: [{ id: 'oskar', name: 'Оскар Лемм', location: 'Т' }, { id: 'marta', name: 'Марта Вейл', location: 'Т' }] } }
+  assert.notDeepEqual(speechAddressee('Мирель записывает слова Оскара, закрывает тетрадь: «Пора к маяку. Борин, идём».', state, 'mirel'), { kind: 'npc', id: 'oskar' })
+  assert.deepEqual(speechAddressee('Мирель находит Марту у окна и показывает ей монету: «Что вы видели?»', state, 'mirel'), { kind: 'npc', id: 'marta' })
+})

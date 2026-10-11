@@ -98,3 +98,32 @@ test('контекст сцены несёт, что карта мира обе�
   assert.equal(sceneContextForAgent(state).place_summary, 'Маяк на скале, чей свет вновь замечают по ночам.')
   assert.equal(sceneContextForAgent({ scene: state.scene }).place_summary, undefined)
 })
+
+test('сводка поля: кто где стоит, в каком состоянии и кто рядом — без чисел и скрытых врагов', async () => {
+  // Замеры 27–31 (2026-10-11): рассказчик знал только, где стоит сам
+  // действующий, — описывал очаг и свечи, когда отряд стоял на причале.
+  const { fieldSummaryFor } = await import('../server/agent-context.mjs')
+  const { setCell } = await import('../server/tactical-map.mjs')
+  const map = createTacticalMap({ width: 6, height: 3, locationId: 'pier', seed: 'field', sizeClass: 'arena' })
+  addZone(map, { id: 'pier', kind: 'exterior', material: 'wood', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Причал' })
+  addZone(map, { id: 'hall', kind: 'interior', material: 'wood', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Общий зал' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 6; x += 1) setCell(map, x, y, { passable: true, revealed: x < 5, zone: x < 3 ? 'pier' : 'hall' })
+  const state = normalizeCampaignState({
+    scene: { title: 'Причал', location: 'Серый Причал', location_id: 'pier', map: serializeTacticalMap(map) },
+    players: [
+      { id: 'mirel', character: 'Мирель', hp: 20, maxHp: 20, x: 0, y: 1 },
+      { id: 'borin', character: 'Борин', hp: 9, maxHp: 31, x: 1, y: 1 },
+    ],
+    enemies: [
+      { id: 'cult', name: 'Культист 1', hp: 3, maxHp: 9, alive: true, x: 2, y: 1 },
+      { id: 'hidden', name: 'Культист 2', hp: 9, maxHp: 9, alive: true, x: 5, y: 1 },
+    ],
+    mechanics: { combat: { active: true }, positions: { mirel: { x: 0, y: 1 }, borin: { x: 1, y: 1 }, cult: { x: 2, y: 1 }, hidden: { x: 5, y: 1 } } },
+  })
+  const field = fieldSummaryFor(state)
+  assert.deepEqual(field.heroes.map((hero) => [hero.name, hero.area, hero.indoors, hero.condition]), [['Мирель', 'Причал', false, 'цел'], ['Борин', 'Причал', false, 'тяжело ранен']])
+  assert.deepEqual(field.heroes[1].next_to, ['Мирель', 'Культист 1'])
+  assert.deepEqual(field.enemies.map((enemy) => [enemy.name, enemy.condition]), [['Культист 1', 'тяжело ранен']], 'враг на нераскрытой клетке не называется')
+  assert.doesNotMatch(JSON.stringify(field), /\d+\s*\/\s*\d+|"hp"/u, 'чисел здоровья нет')
+  assert.ok(sceneContextForAgent(state, 'borin').field, 'сводка уходит рассказчику')
+})

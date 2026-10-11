@@ -158,6 +158,92 @@ export function sceneCanonFor(state = {}) {
     .slice(0, 8)
 }
 
+const HEALTH_WORDS = Object.freeze({ unharmed: 'цел', wounded: 'ранен', bloodied: 'тяжело ранен', critical: 'едва стоит', defeated: 'выбыл' })
+
+/** Состояние словами стола — те же ступени, что видит игрок у противника. */
+function healthWord(actor = {}, { hero = false, dead = false } = {}) {
+  if (dead) return 'погиб'
+  if (actor.hp == null && actor.maxHp == null) {
+    if (actor.alive === false) return hero ? 'без сознания' : 'выбыл'
+    return HEALTH_WORDS[String(actor.healthStatus ?? '')] ?? 'цел'
+  }
+  const hp = Math.max(0, Number(actor.hp) || 0)
+  const maximum = Math.max(1, Number(actor.maxHp ?? actor.max_hp) || 1)
+  if (hp <= 0 || actor.alive === false) return hero ? 'без сознания' : 'выбыл'
+  const ratio = hp / maximum
+  return ratio >= 1 ? 'цел' : ratio > 0.5 ? 'ранен' : ratio > 0.25 ? 'тяжело ранен' : 'едва стоит'
+}
+
+/**
+ * Сводка поля для рассказчика: кто где стоит (часть места, под крышей или
+ * нет), в каком состоянии и кто с кем рядом. Рассказчик знал только, где
+ * стоит сам действующий, и описывал очаг и свечи, когда отряд стоял на
+ * причале под грозой; в бою — не знал, кто кому угрожает (замеры 27–31,
+ * 2026-10-11). Чисел здесь нет: состояние — словами, как видит игрок;
+ * противники — только на раскрытых клетках.
+ *
+ * @param {Record<string, any>} state
+ * @param {import('./tactical-map.mjs').TacticalMap|null} [preparedMap]
+ * @returns {{ heroes: any[], enemies: any[], people: any[] } | null}
+ */
+export function fieldSummaryFor(state = {}, preparedMap = null) {
+  const scene = state.scene ?? {}
+  let map = preparedMap
+  if (!map && scene.map && typeof scene.map === 'object') {
+    try { map = scene.map.layers?.present instanceof Uint8Array ? scene.map : deserializeTacticalMap(scene.map) } catch { map = null }
+  }
+  if (!map) return null
+  const zones = new Map((Array.isArray(map.zones) ? map.zones : []).map((zone) => [zone.id, zone]))
+  const positionOf = (id, actor) => {
+    const stored = state.mechanics?.positions?.[id]
+    const x = Number(stored?.x ?? actor?.x)
+    const y = Number(stored?.y ?? actor?.y)
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+  }
+  const areaOf = (at) => {
+    const cell = at ? cellAt(map, at.x, at.y) : null
+    const zone = cell ? zones.get(cell.zone) : null
+    return zone ? { area: clean(zone.label || zone.kind, 80), indoors: zone.kind === 'interior' } : {}
+  }
+  const dead = state.mechanics?.death?.heroes ?? {}
+  const entries = []
+  for (const hero of state.players ?? []) {
+    const at = positionOf(String(hero.id), hero)
+    if (!at) continue
+    entries.push({ side: 'heroes', id: String(hero.id), name: clean(hero.character || hero.name, 80), at, ...areaOf(at), condition: healthWord(hero, { hero: true, dead: dead[hero.id]?.status === 'dead' }) })
+  }
+  for (const enemy of state.enemies ?? []) {
+    const at = positionOf(String(enemy.id), enemy)
+    if (!at || cellAt(map, at.x, at.y)?.revealed !== true) continue
+    const condition = healthWord(enemy)
+    if (condition === 'выбыл' && !state.mechanics?.combat?.active) continue
+    entries.push({ side: 'enemies', id: String(enemy.id), name: clean(enemy.name, 80), at, ...areaOf(at), condition })
+  }
+  const here = clean(scene.location_id, 120)
+  for (const placement of state.npc_world?.placements ?? []) {
+    if (here && clean(placement?.location_id, 120) !== here) continue
+    const npc = (state.social?.npcs ?? []).find((entry) => String(entry?.id) === String(placement?.npc_id))
+    if (!npc || npc.available === false) continue
+    const at = { x: Number(placement.x), y: Number(placement.y) }
+    if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) continue
+    entries.push({ side: 'people', id: String(npc.id), name: clean(npc.name, 80), at, ...areaOf(at) })
+  }
+  const near = (entry) => entries
+    .filter((other) => other !== entry && Math.max(Math.abs(other.at.x - entry.at.x), Math.abs(other.at.y - entry.at.y)) <= 1)
+    .map((other) => other.name)
+    .slice(0, 6)
+  const shape = (entry) => {
+    const close = near(entry)
+    const { at: _at, side: _side, id: _id, ...rest } = entry
+    return { ...rest, ...(close.length ? { next_to: close } : {}) }
+  }
+  return {
+    heroes: entries.filter((entry) => entry.side === 'heroes').map(shape).slice(0, 8),
+    enemies: entries.filter((entry) => entry.side === 'enemies').map(shape).slice(0, 12),
+    people: entries.filter((entry) => entry.side === 'people').map(shape).slice(0, 8),
+  }
+}
+
 /** Видимая обстановка у действующего лица, без скрытых комнат и бинарных слоёв карты. */
 export function sceneContextForAgent(state = {}, actorId = '') {
   const scene = state.scene ?? {}
@@ -209,8 +295,10 @@ export function sceneContextForAgent(state = {}, actorId = '') {
   const objectSelection = boundedSelectionMetadata({ scope: 'visible_interactable_objects_in_current_area', candidateCount: visibleObjects.length, limit: 16 })
   const areaSelection = boundedSelectionMetadata({ scope: 'visible_discovered_areas_in_current_location', candidateCount: visibleAreas.length, limit: 16 })
   const program = sceneLandmarks(scene, map, position ? { x: Number(position.x), y: Number(position.y) } : null)
+  const field = fieldSummaryFor(state, map)
   return { ...context,
     ...(program ? program : {}),
+    ...(field && (field.heroes.length || field.enemies.length || field.people.length) ? { field } : {}),
     context_metadata: metadata,
     ...(currentZone ? { id: `${scene.location_id || scene.location}:${currentZone.id}`, theme: currentZone.label || currentZone.kind } : {}),
     spatial_context: {

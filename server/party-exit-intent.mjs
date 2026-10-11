@@ -507,6 +507,15 @@ function speechTravelProposal(text, context) {
           : destinationIn(`идём ${preposition} ${phrase}`, context)
         if (probe.isPlace && probe.destination) return { destination: withoutStrayQuote(probe.destination), source: 'speech' }
       }
+    } else {
+      // Без «туда» зов тоже ведёт к названному месту, если оно стоит с
+      // предлогом направления: «пора к маяку на скале — … Борин, идём»
+      // оставляло отряд в порту (замер 31, 2026-10-11). «В таверне
+      // поговорим» — где, а не куда: только «к», «ко», «до».
+      for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(к|ко|до)\s+([^,.;:!?—–«»]{3,80})/giu)) {
+        const probe = destinationIn(`идём ${candidate[1].toLocaleLowerCase('ru')} ${candidate[2].trim()}`, context)
+        if (probe.isPlace && probe.destination) return { destination: withoutStrayQuote(probe.destination), source: 'speech' }
+      }
     }
   }
   return null

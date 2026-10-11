@@ -1069,7 +1069,11 @@ export function speechAddressee(message, state, playerId, { allowSpell = false }
     if (!person) return null
     const nominative = normal(person.name).split(/[\s-]+/u).includes(spoken)
     const lead = before.slice(Math.max(0, Number(match.index) - 60), match.index)
-    return !nominative || ADDRESS_CUE_PATTERN.test(lead) ? person : null
+    // Косвенный падеж — обращение, только если это дательный или творительный
+    // («Марте», «с Ингой»): родительный «слова Оскара» — чьи слова, а не к
+    // кому (замер 31, 2026-10-11).
+    const toward = !nominative && /(?:у|ю|е|и|ой|ей|ом|ем|ою|ею)$/u.test(spoken)
+    return toward || ADDRESS_CUE_PATTERN.test(lead) ? person : null
   }
   // Явное обращение («подходит к Савену», «говорит Марте») сильнее
   // последнего косвенного упоминания: «подходит к Савену Руду, записывая…
