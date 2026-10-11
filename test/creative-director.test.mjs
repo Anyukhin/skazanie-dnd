@@ -162,3 +162,28 @@ test('начало схватки — абзац ведущего без ном�
   assert.equal(await quiet.renderEncounterOpening({ events, state }), null)
   assert.equal(await director.renderEncounterOpening({ events: [], state }), null)
 })
+
+test('после схватки, где пал герой, сцена начинается с павшего; падение — зов к товарищу', async () => {
+  // Замер 27 (2026-10-11): Мирель погибла, а «после боя» звучало так, будто
+  // ничего не случилось; её падение — одна строка без зова на помощь.
+  const state = {
+    players: [{ id: 'mirel', character: 'Мирель', hp: 0, maxHp: 20, backstory: 'Ищет сестру Илу.' }, { id: 'borin', character: 'Борин', hp: 12, maxHp: 31 }],
+    enemies: [{ id: 'gob', name: 'Гоблин 1', hp: 0 }],
+    scene: { location: 'Маяк', objective: 'Найти, кто зажигает огонь' },
+    mechanics: { combat: { active: false }, death: { heroes: { mirel: { status: 'dead' } } } },
+  }
+  const briefs = []
+  const styles = []
+  const narrator = { render: async (brief, options) => { briefs.push(brief); styles.push(options?.style ?? ''); return { narration: 'Мирель лежит у порога маяка; Борин не двигается.', provider: 'RouterAI' } } }
+  const live = new CriticalNarrationCoordinator({ narrator })
+  await live.renderAftermath({ events: [{ event_id: 'out-2', event_type: 'EncounterOutcomeRecorded', payload: { outcome: 'enemies_defeated' } }], state })
+  const fallen = briefs[0].known_environment.fallen_heroes
+  assert.equal(fallen?.length, 1)
+  assert.equal(fallen[0].condition, 'погиб')
+  assert.match(JSON.stringify(fallen[0]), /Мирель/u)
+  assert.match(styles[0], /fallen_heroes/u)
+
+  const falling = { ...state, players: [{ ...state.players[0] }, state.players[1]], mechanics: { combat: { active: true }, death: { heroes: {} } } }
+  await live.renderCriticalMoment({ events: [{ event_id: 'zero', event_type: 'HitPointsReducedToZero', actor_id: 'gob', target_ids: ['mirel'], payload: { successes: 0, failures: 0 } }], state: falling })
+  assert.match(styles.at(-1), /успеешь/u, 'падение героя кончается зовом к товарищу')
+})

@@ -111,6 +111,24 @@ function heroMomentEvents(events, trigger) {
     && (String(event?.actor_id ?? '') === hero || (event?.target_ids ?? []).map(String).includes(hero)))
 }
 
+/**
+ * Павшие герои отряда: погибшие и лежащие без сознания, с карточкой — их
+ * узы и предыстория, ради чего они пришли.
+ *
+ * @param {Record<string, any>} state
+ */
+function fallenHeroesFor(state) {
+  const death = state.mechanics?.death?.heroes ?? {}
+  return (state.players ?? [])
+    .map((actor) => ({ actor, id: actorId(actor) }))
+    .filter(({ actor, id }) => death[id]?.status === 'dead' || Number(actor?.hp) <= 0)
+    .slice(0, 4)
+    .map(({ id }) => ({
+      ...heroCardForAgent(state, id),
+      condition: death[id]?.status === 'dead' ? 'погиб' : 'без сознания',
+    }))
+}
+
 function publicEnvironment(state, trigger) {
   const scene = state.scene ?? {}
   // Карточка павшего героя: его предыстория и узы — то, о чём эта смерть или
@@ -118,8 +136,13 @@ function publicEnvironment(state, trigger) {
   const fallenCard = ['hero_fallen', 'hero_died'].includes(String(trigger?.kind ?? ''))
     ? heroCardForAgent(state, trigger.target_id)
     : null
+  // После схватки — кто из героев пал: погиб или лежит без сознания. Прежде
+  // сцена «после боя» звучала так, будто ничего не случилось, хотя Мирель
+  // только что погибла (замер 27, 2026-10-11).
+  const fallenHeroes = trigger?.kind === 'encounter_aftermath' ? fallenHeroesFor(state) : []
   return {
     ...(fallenCard ? { fallen_hero: fallenCard } : {}),
+    ...(fallenHeroes.length ? { fallen_heroes: fallenHeroes } : {}),
     campaign_premise: campaignConceptForAgent(state),
     scene: {
       title: String(scene.title ?? ''),
@@ -175,7 +198,7 @@ export class CriticalNarrationCoordinator {
       knownRuleIds: [],
       timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
       recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
-      style: 'Две-три фразы после схватки: тишина, дыхание, что видно у тел и вокруг, и куда тянет цель сцены. Исход и добыча — только из событий, без чисел; не добавляй находок, бросков и решений правил.',
+      style: 'Две-три фразы после схватки: тишина, дыхание, что видно вокруг, и куда тянет цель сцены. Если в fallen_heroes кто-то пал — начни с него: где он лежит и как замирает отряд (погибшего не воскрешай; за живых героев не говори и не решай; без сознания — жив). Добычу, монеты и награды не пересказывай — их показывает стол. Без чисел; не добавляй находок, бросков и решений правил.',
     })
     if (/^deterministic/u.test(String(narration?.provider ?? '')) || !String(narration?.narration ?? '').trim()) return null
     return { ...narration, trigger }
@@ -247,7 +270,9 @@ export class CriticalNarrationCoordinator {
       timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
       recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
       style: trigger.kind === 'hero_fallen'
-        ? 'Один выразительный абзац о падении героя без сознания: удар, как он падает, что видно вокруг, — и ясно, что жизнь ещё теплится и товарищи могут успеть. Герой ещё не объявлен мёртвым: не описывай смерть, предсмертные слова, похороны или окончательный исход. Не пиши о ходах, очереди и правилах. Не добавляй новых бросков, урона, наград или решений правил.'
+        // Замер 27: «падает без сознания, и у скал видна пена» — строка, а
+        // не момент; и никто не позвал товарища на помощь.
+        ? 'Три-четыре фразы о падении героя без сознания: удар, как он падает, что видно вокруг, — и ясно, что жизнь ещё теплится. Закончи зовом к тому, кто из героев (participants.heroes) может успеть, по имени: «Борин, она в трёх шагах — успеешь?». Герой ещё не объявлен мёртвым: не описывай смерть, предсмертные слова, похороны или окончательный исход. За живых героев не решай. Не пиши о ходах, очереди и правилах. Не добавляй новых бросков, урона, наград или решений правил.'
         : trigger.kind === 'hero_died'
           ? 'Один выразительный абзац об окончательной смерти героя — главный момент вечера. Покажи последний миг: взгляд, движение, то, что осталось несказанным, по fallen_hero (его узы и предыстория — то, ради чего он пришёл), и как замирает поле боя. Не пиши о ходах, очереди и правилах, не говори за живых героев. Не воскрешай героя и не продолжай историю за него. Не добавляй новых бросков, урона, наград или решений правил.'
           : trigger.kind === 'hero_flourish'
