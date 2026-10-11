@@ -462,7 +462,7 @@ function withoutStrayQuote(value) {
   const text = String(value ?? '')
   const opened = (text.match(/«/gu) ?? []).length
   const closed = (text.match(/»/gu) ?? []).length
-  return closed > opened ? text.replace(/»+s*$/u, '').trim() : text
+  return closed > opened ? text.replace(/»+\s*$/u, '').trim() : text
 }
 
 /**
@@ -488,6 +488,13 @@ function speechTravelProposal(text, context) {
       for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(?:у|к|ко|в|во|на|до|около|возле|от)\s+((?:[А-ЯЁ][\p{L}-]*\s*){1,3})/gu)) {
         const named = knownPlaceName(compact(candidate[1], 120), context.knownPlaces)
         if (named) return { destination: named, source: 'speech' }
+      }
+      // И словом места без заглавной: «пора к маяку на скале — … пойдём туда
+      // вместе» оставляло отряд в порту (замер 21, 2026-10-11). Место
+      // проверяет тот же разбор, что и фразу «идём к маяку на скале».
+      for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(к|ко|в|во|на|до)\s+([^,.;:!?—–«»]{3,80})/giu)) {
+        const probe = destinationIn(`идём ${candidate[1].toLocaleLowerCase('ru')} ${candidate[2].trim()}`, context)
+        if (probe.isPlace && probe.destination) return { destination: withoutStrayQuote(probe.destination), source: 'speech' }
       }
     }
   }

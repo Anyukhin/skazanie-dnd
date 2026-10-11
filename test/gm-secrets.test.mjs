@@ -248,6 +248,10 @@ test('свидетельство по теме открывается, толь�
   assert.ok(!watching.some((command) => /Орен/u.test(command.fact?.summary ?? '')))
   const askingHolder = freeActionDiscoveryCommands(only, { checkEvent: check('insight', 'read-oren'), skill: 'insight', actionText: 'Смотрю, как Орен отводит глаза, когда речь о зарубке на баркасе' })
   assert.ok(askingHolder.some((command) => /Орен/u.test(command.fact?.summary ?? '')))
+  // Замер 21: «благодарит Орена и идёт осмотреть баркас» — обыск, а не
+  // разговор; показания хранителя глазами не находятся.
+  const searching = freeActionDiscoveryCommands(only, { checkEvent: check('perception', 'search-oren'), skill: 'perception', actionText: 'Благодарю Орена и осматриваю баркас: зарубка на борту, сеть, палуба' })
+  assert.ok(!searching.some((command) => /Орен/u.test(command.fact?.summary ?? '')), 'свидетельство не находится обыском')
 })
 
 test('удачная Проницательность без детали не подсовывает «X явно знает больше» о другом жителе', async () => {

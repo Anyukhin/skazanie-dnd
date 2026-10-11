@@ -27,6 +27,7 @@ import { abilityScoreChoiceLevelsFor, classSkillRuleFor, featureChoiceGroupsFor,
 import { characterCreationChoicesComplete } from '../server/character-lifecycle.mjs'
 import { combatClassCatalogInfo, combatSubclassOptionsFor, normalizedCombatSubclassFor } from '../server/combat-actions.mjs'
 import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells.mjs'
+import { previewApproachAttack } from '../server/rules-engine.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const argv = process.argv.slice(2)
@@ -524,7 +525,22 @@ async function fight() {
       await command(actorId, { command_type: 'CastSpell', spell_id: 'fire-bolt', target_id: target.id }, 'Огненный снаряд', accountFor(actorId), line)
     } else {
       const distance = Math.max(Math.abs(target.x - hero.x), Math.abs(target.y - hero.y))
+      // Подход с ударом — маршрутом движка, как у кнопки «подойти и ударить»:
+      // прямой шаг к стрелку упирался в стены, Борин раунд за раундом
+      // проходил по 10 фт и не доходил, а судья списывал гибель героев на
+      // ведущего (замер 21, 2026-10-11).
+      let route = null
       if (distance > 1) {
+        const preview = { ...state, enemies: (state.enemies ?? []).map((enemy) => (enemy.hp == null && enemy.alive !== false ? { ...enemy, hp: Number(enemy.maxHp) || 1 } : enemy)) }
+        try { route = previewApproachAttack(preview, actorId, target.id) } catch { route = null }
+      }
+      if (route?.commands?.length) {
+        for (const step of route.commands) {
+          const { server_authoritative: _trusted, actor_id: _actor, ...clean } = step
+          const sent = await command(actorId, clean, clean.command_type === 'MoveActor' ? 'Подойти' : 'Атаковать выбранную цель', accountFor(actorId), clean.command_type === 'MakeAttack' ? line : '')
+          if (sent.status !== 200) break
+        }
+      } else if (distance > 1) {
         const near = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]].map(([dx, dy]) => ({ x: target.x + dx, y: target.y + dy }))
         let moved = false
         for (const cell of near) { const step = await command(actorId, { command_type: 'MoveActor', to: cell }, 'Подойти'); if (step.status === 200) { moved = true; break } }
@@ -541,8 +557,10 @@ async function fight() {
           if (step.status === 200) moved = true
         }
       }
-      const weapon = (hero.inventory ?? []).find((item) => item.equipped && /меч|топор|молот/iu.test(String(item.name)))
-      await command(actorId, { command_type: 'MakeAttack', target_id: target.id, ...(weapon ? { item_id: weapon.id } : {}) }, 'Атаковать выбранную цель', accountFor(actorId), line)
+      if (!route?.commands?.length) {
+        const weapon = (hero.inventory ?? []).find((item) => item.equipped && /меч|топор|молот/iu.test(String(item.name)))
+        await command(actorId, { command_type: 'MakeAttack', target_id: target.id, ...(weapon ? { item_id: weapon.id } : {}) }, 'Атаковать выбранную цель', accountFor(actorId), line)
+      }
     }
     const after = await room()
     if (after.mechanics?.combat?.active && after.tacticalTurn?.actorId === actorId) await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход')

@@ -482,3 +482,19 @@ test('запись в свою тетрадь — без броска и без 
   assert.equal(reading?.plausibility, 'trivial')
   assert.equal(harmlessFreeActionReading(state, 'mirel', 'Мирель записывает в тетрадь и говорит: «Пора»'), null, 'реплика — уже не только запись')
 })
+
+test('заклинание и вопрос человеку рядом одной заявкой: после заклинания отвечает сам человек', async () => {
+  // Замеры 20–21 (2026-10-11): «сотворяет «Безмолвный образ» перед Эдной…
+  // «Эдна, узнаёте её?»» получало только рассказ — вопрос оставался без ответа.
+  const { NpcSocialController } = await import('../server/npc-social-controller.mjs')
+  const briefs = []
+  const llmClient = { model: 'test-npc', completeJson: async ({ messages }) => {
+    briefs.push(String(messages.at(-1)?.content ?? ''))
+    return { npc_id: 'mira', reply: 'Лицо знакомое. Она заходила сюда перед штормом.', stance: 'neutral', disclosed_fact_ids: [], disclosed_claim_ids: [], relationship_delta: 0, promise: null, confidence: 0.9 }
+  } }
+  const reader = { read: async (_state, _actor, action) => ({ goal_summary: action, approach_summary: action, ability: 'int', skill: 'arcana', plausibility: 'trivial', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator' }) }
+  const { send } = await fixture({ state: roomWithDoor(), reader, npcSocialController: new NpcSocialController({ llmClient }) })
+  const response = await send('Ада сотворяет «Безмолвный образ» перед Мирой — лицо пропавшей сестры. «Мира, вы её узнаёте?»', { idempotencyKey: 'spell-then-ask' })
+  assert.ok(briefs.some((brief) => brief.includes('just_seen') && brief.includes('Безмолвный образ')), 'собеседник видит заклинание')
+  assert.match(String(response.narration), /Мира Ветрокрыл: «Лицо знакомое/u, response.narration)
+})

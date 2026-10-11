@@ -242,7 +242,12 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
     const holder = String(entry.meta.holder ?? '').trim().split(/\s+/u)[0] ?? ''
     return holder.length >= 3 && String(actionText ?? '').toLocaleLowerCase('ru').includes(holder.toLocaleLowerCase('ru').slice(0, Math.max(3, holder.length - 1)))
   }
-  const topical = candidates.filter((entry) => !testimonyOfHolder(entry) || asksHolder(entry))
+  // Обыск руками и глазами свидетельства не находит, даже если хранитель
+  // назван в той же заявке: «благодарит Эдну и идёт осмотреть баркас» с
+  // удачным Восприятием открыло «Эдна видела, как Таррен мазал смолой борт»
+  // (замер 21, оба прогона). Свидетельство — разговор или Проницательность.
+  const physicalSearch = SEARCH_SKILLS.has(normalizedSkill)
+  const topical = candidates.filter((entry) => !testimonyOfHolder(entry) || (!physicalSearch && asksHolder(entry)))
     .filter((entry) => entry.score >= 2 || (entry.score >= 1 && (entry.here || entry.personal)))
     .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
   // Общий поиск открывает тайну этого места сперва своим навыком, затем

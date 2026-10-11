@@ -1021,11 +1021,12 @@ function speechToPartyOrAir(message, state, playerId, explicitNpcId = '') {
  * @param {string} playerId
  * @returns {{ kind: 'npc'|'hero', id: string } | null}
  */
-export function speechAddressee(message, state, playerId) {
+export function speechAddressee(message, state, playerId, { allowSpell = false } = {}) {
   const text = String(message ?? '')
   // Сотворение заклинания со словами — заклинание, а не разговор: название в
-  // кавычках («Безмолвный образ») принималось за реплику (замер 16).
-  if (SPELLCASTING_PATTERN.test(text)) return null
+  // кавычках («Безмолвный образ») принималось за реплику (замер 16). Кому
+  // обращены слова при заклинании, спрашивает `spellSpeechFollowUp`.
+  if (!allowSpell && SPELLCASTING_PATTERN.test(text)) return null
   // Реплика — кавычка со знаком препинания, иначе последняя: название места в
   // кавычках («Ржавый якорь») не должно заслонять слова героя после него.
   const quotes = [...text.matchAll(/[«"“]([^«»"“”]{1,800})[»"”]/gu)]
@@ -1076,6 +1077,28 @@ export function speechAddressee(message, state, playerId) {
 }
 
 const SPELLCASTING_PATTERN = /(?<![\p{L}\p{M}])(?:заклинани\p{L}*|сотвор\p{L}*|колду\p{L}*|чару\p{L}*|читаю\s+«|творю\s+«)/iu
+
+/**
+ * Заклинание и вопрос человеку рядом одной заявкой: «сотворяет «Безмолвный
+ * образ» перед Эдной… «Эдна, узнаёте её?»». Сначала исполняется заклинание,
+ * затем отвечает сам человек — как вторым шагом плана. Прежде вопрос
+ * оставался без ответа: судья ставил «образ Илы оставлен без результата»
+ * (замеры 20–21, 2026-10-11).
+ *
+ * @param {string} message
+ * @param {Record<string, any>} state
+ * @param {string} playerId
+ * @returns {{ npcId: string, speech: string } | null}
+ */
+export function spellSpeechFollowUp(message, state, playerId) {
+  const text = String(message ?? '')
+  if (!SPELLCASTING_PATTERN.test(text)) return null
+  const speech = [...text.matchAll(/«([^«»]{1,800})»/gu)].map((match) => match[1].trim()).find((quote) => /[.!?…,:;—]/u.test(quote)) ?? ''
+  if (!speech) return null
+  const addressee = speechAddressee(text, state, playerId, { allowSpell: true })
+  if (addressee?.kind !== 'npc') return null
+  return { npcId: addressee.id, speech: `«${speech}»` }
+}
 
 /** Слова перед именем, с которыми оно — обращение: «к Иаре», «говорит Марте». */
 const ADDRESS_CUE_PATTERN = /(?:^|[\s,])(?:к|ко|у|перед|для|обраща\p{L}*|говор\p{L}*|скаж\p{L}*|спрашива\p{L}*|спрос\p{L}*|шепч\p{L}*|шепта\p{L}*|оклика\p{L}*|окликн\p{L}*|зов[её]т|кива\p{L}*|протягива\p{L}*|показыва\p{L}*|подход\p{L}*|наклоня\p{L}*|поворачива\p{L}*|клад[её]т|обеща\p{L}*)\s+(?:\p{L}+\s+){0,2}$/iu
@@ -1384,7 +1407,11 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
           // 19, 2026-10-11); хвост-вопрос игрока ответом ведущего не звучит.
           : !failed && !/^\p{L}+(?:ть|ться|ти|чь)(?![\p{L}\p{M}])/u.test(rawGoal) && /^\p{Ll}/u.test(rawGoal)
             ? `${freeActionHeroName(events, state)} ${rawGoal.replace(/\s+[—–-]\s+[^—–]*(?:\?|(?<![\p{L}\p{M}])ли(?![\p{L}\p{M}]))[^—–]*$/u, '')}.`
-            : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
+            // Провал цели-описания — «Не вышло: Борин хочет первым войти в
+            // маяк» читалось протоколом (замер 21): дверь просто не поддаётся.
+            : failed && rawGoal.startsWith(`${freeActionHeroName(events, state)} `)
+              ? freeActionGoalIsPassage(rawGoal) ? 'Дверь не поддаётся.' : `${freeActionHeroName(events, state)} пробует, но не выходит.`
+              : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
         : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
   // Находка и есть ответ ведущего: «Вышло: найти метку. <другая находка>»
@@ -2383,6 +2410,23 @@ export class GameOrchestrator {
           idempotencyKey: `${idempotencyKey}:talk`,
           routeRedirect: true,
         })
+      }
+      const spellReply = !clarificationId && !npcId && requestKind === 'action' && !input.commands && input.routeRedirect !== true
+        && this.npcSocialController && result?.mechanics?.length && !result.check && !result.clarification && !result.action_proposal
+        && result.authoritative_state?.mechanics?.combat?.active !== true
+        ? spellSpeechFollowUp(message, result.authoritative_state ?? input.state, playerId)
+        : null
+      if (spellReply) {
+        const replied = await this.handle({
+          ...planStepInput(input),
+          state: result.authoritative_state ?? input.state,
+          message: spellReply.speech,
+          npcId: spellReply.npcId,
+          idempotencyKey: `${idempotencyKey}:reply`,
+          routeRedirect: true,
+          precedingStep: [message, result.narration].map((text) => String(text ?? '').trim()).filter(Boolean).join(' — ').slice(0, 600),
+        })
+        return mergePlanStepResults(result, replied)
       }
       if (!clarificationId || requestKind !== 'action') return result
       const pending = this.clarificationRegistry.resolve(clarificationId, { campaignId, actorId: playerId })

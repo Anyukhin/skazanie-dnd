@@ -468,3 +468,12 @@ test('голое слово места в косвенном падеже — и
   assert.equal(nominativePlacePhrase('Кленовку'), 'Кленовку', 'имя деревни не угадывается')
   assert.equal(nominativePlacePhrase('маяк'), 'маяк')
 })
+
+test('зов «пойдём туда» к месту, названному словом без заглавной, — уход отряда', async () => {
+  // Замер 21 (2026-10-11): «пора к маяку на скале — … пойдём туда вместе»
+  // оставило отряд в порту, и вход в маяк кончился «такого здания не видно».
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const said = 'Мирель сухо замечает Борину: «Раз уж Таррен советует искать знаки, пора к маяку на скале — возможно, там найдётся зацепка об Иле; пойдём туда вместе».'
+  assert.equal(detectPartyExitRequest(said, { knownPlaces: [], presentNames: ['Таррен Кель'] })?.destination, 'маяку на скале')
+  assert.equal(detectPartyExitRequest('Мирель говорит Борину: «Пора к Таррену, пойдём туда вместе».', { knownPlaces: [], presentNames: ['Таррен Кель'] }), null, 'к собеседнику — не уход')
+})
