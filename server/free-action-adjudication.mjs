@@ -1416,7 +1416,9 @@ function lootContainerAnswer(state, hero, container) {
     : crowded ? `${owner}: под одеждой и в карманах — ${summary}` : `Под одеждой и в карманах — ${summary}`
   return {
     ...common,
-    narration: `${found}. Забрать нужное можно через панель добычи.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
+    // «Забрать нужное можно через панель добычи» судья читал интерфейсом
+    // (15 прогонов из 24): брать — с доски, ведущий только называет.
+    narration: `${found}. Бери, что приглянется.${combat ? ' В бою снять что-то стоит действия; посмотреть — нет.' : ''}`,
     loot_items: items,
     loot_action_cost: combat ? 'action' : null,
   }
@@ -1436,7 +1438,7 @@ function lootContainersAnswer(state, hero, containers) {
     server_owned_contents: true,
     loot_container_ids: reached.map((container) => container.id),
     loot_items: reached.flatMap((container) => spokenLootContents(container).items),
-    narration: `${reached.every((container) => container.kind === 'corpse') ? 'При телах: ' : ''}${lines.join('; ')}. Забрать нужное можно через панель добычи.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
+    narration: `${reached.every((container) => container.kind === 'corpse') ? 'При телах: ' : ''}${lines.join('; ')}. Бери, что приглянется.${combat ? ' В бою снять что-то стоит действия; посмотреть — нет.' : ''}`,
     loot_action_cost: combat ? 'action' : null,
   }
 }

@@ -219,7 +219,7 @@ test('fallback на просьбу об обещании не выдумывае
   const controller = new NpcSocialController({ llmClient: { completeJson: async () => { throw new Error('timeout') } } })
   const result = await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Пообещай сообщить о курьере сигналом.', turnId: 'fallback-promise' })
   assert.equal(result.promise, null)
-  assert.equal(result.reply, 'Нового обещания пока нет; уточним конкретную помощь.')
+  assert.match(result.reply, /разводит руками: «Обещать пока нечего/u)
   assert.doesNotMatch(result.reply, /Пограничный город|пролог|курьер/u)
 })
 
@@ -328,7 +328,7 @@ test('fallback без совпавшего факта честно говори�
   ].entries()) {
     const result = await offlineController().respond({ state: prologueState(), playerId: 'hero', npcId: 'npc:mira', message, turnId: `prologue-miss-${index}` })
     assert.equal(result.provider, 'deterministic-social-fallback')
-    assert.match(result.reply, /не сообщает ничего нового/u, message)
+    assert.match(result.reply, /Больше мне сказать нечего/u, message)
     assert.doesNotMatch(result.reply, /Трактир гудит|колокола|бледнеет/u, message)
   }
 })
@@ -340,7 +340,7 @@ test('fallback без совпавшего факта честно говори�
 test('fallback не произносит пролог вслух, даже совпавший с вопросом', async () => {
   const result = await offlineController().respond({ state: prologueState(), playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-aloud' })
   assert.equal(result.provider, 'deterministic-social-fallback')
-  assert.match(result.reply, /не сообщает ничего нового/u)
+  assert.match(result.reply, /Больше мне сказать нечего/u)
   assert.doesNotMatch(result.reply, /колокол/u)
 })
 
@@ -353,7 +353,7 @@ test('fallback отвечает одним совпавшим предложен
 
   state.social.conversations.push({ ...first.conversation, id: 'said-bell' })
   const again = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Ещё раз про колокол?', turnId: 'prologue-again' })
-  assert.match(again.reply, /не сообщает ничего нового/u)
+  assert.match(again.reply, /Больше мне сказать нечего/u)
 })
 
 // Прогон Асстохана 2026-10-05: длинный пролог обрезан пределом длины, и хвост
@@ -365,7 +365,7 @@ test('fallback не отвечает оборванным хвостом дли�
   state.worldMemory.facts[0].summary = `${'Трактир гудит после ярмарки, и никто не слышит соседа. '.repeat(8)}Удар колокола из погреба слышен всем, и все кружки в зале звенят ему в ответ.`
   const result = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-cut' })
   assert.equal(result.provider, 'deterministic-social-fallback')
-  assert.match(result.reply, /не сообщает ничего нового|[.!?…]»$/u, result.reply)
+  assert.match(result.reply, /Больше мне сказать нечего|[.!?…]»$/u, result.reply)
   assert.doesNotMatch(result.reply, /колокол[^»]*[^.!?…]»$/u, 'обрубок фразы не становится репликой')
 })
 
@@ -404,7 +404,7 @@ test('fallback подтверждает публичную зацепку о с�
   assert.equal(result.provider, 'deterministic-social-fallback')
   assert.equal(result.reply, 'Мира подтверждает: «Хозяйка трактира Мира обнаружила подменённую мерную рейку.»')
   const unrelated = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:orin', message: 'Какая рейка подменена?', turnId: 'hook-fallback-orin' })
-  assert.match(unrelated.reply, /не сообщает ничего нового/u)
+  assert.match(unrelated.reply, /Больше мне сказать нечего/u)
 })
 
 test('структурно неверный ответ NPC не становится прямой речью', async () => {

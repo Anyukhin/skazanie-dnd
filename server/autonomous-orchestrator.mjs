@@ -1208,7 +1208,7 @@ export class AutonomousCampaignOrchestrator {
         : passagePlan.status === 'already_inside'
           ? `${heroName} уже под крышей${loaded.state.scene?.location ? ` — внутри «${String(loaded.state.scene.location).slice(0, 80)}»` : ''}: дверь позади, можно осмотреться.`
           : passagePlan.reason === 'destination_mismatch'
-            ? 'Такого здания здесь не видно. Укажите на карте дверь, в которую идёте, или назовите то, что видно отсюда.'
+            ? 'Здесь такого здания нет — до него ещё надо дойти.'
             : passagePlan.reason === 'alternate_route'
               ? 'Так не пролезть: нужен лаз — окно, пролом или щель. Укажите его на карте.'
               : 'Дверь закрыта — откройте её на карте, и можно входить.'
@@ -1411,7 +1411,7 @@ export class AutonomousCampaignOrchestrator {
           ? 'В действии подходит несколько или не подтверждён предмет. Назовите конкретную вещь.'
           : reading.reference_ambiguities.includes('prop_id')
             ? 'Назовите конкретный видимый предмет обстановки из текущей сцены.'
-            : 'В действии подходят несколько или не подтверждена цель. Назовите конкретного участника.',
+            : 'Кого именно? Здесь таких несколько — назовите по имени.',
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,

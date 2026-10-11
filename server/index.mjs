@@ -5376,7 +5376,8 @@ async function handleHttpRequest(req, res) {
           // Начало боя вводка уже сказала: «…схватка началась. Схватка
           // началась. Ход открывает…» звучало дважды (замер 22, 2026-10-11).
           const rest = (intro && combatNarrationText.includes(intro) ? combatNarrationText.replace(intro, '').trim() : combatNarrationText)
-            .replace(/^(?:Бой начинается\.|Звенит сталь — бой начался\.|Схватка началась\.)\s*/u, '')
+            // Очерёдность видна на панели хода — после вводки она не звучит.
+            .replace(/^(?:Звенит сталь\.|Сталь покидает ножны\.|Медлить больше некогда\.)\s*(?:Первый ход — за [^.]+\.\s*)?/u, '')
           narration = [String(opening.narration).trim(), rest].filter(Boolean).join(' ')
         }
       }
@@ -6202,7 +6203,7 @@ async function handleHttpRequest(req, res) {
         }
       }
       const directorInteraction = !conversationOnly && mode === 'enforce' && !explicitNpcId && !directorResolution && !directorReplay
-        ? proposeAgentInteraction(action, trustedState)
+        ? proposeAgentInteraction(action, trustedState, { actorName: String(player?.character ?? player?.name ?? '') })
         : null
       // Соло-стол не голосует. Бросок судьбы остаётся карточкой и в одиночку:
       // там решение принимает кубик, а не отряд, и пропускать его нечестно.
@@ -6284,7 +6285,7 @@ async function handleHttpRequest(req, res) {
           // (место не прошло словарь, уже открыто другое решение) — остаётся
           // ответ судьи с подсказкой, как заявить уход явно.
           if (result?.free_action_outcome === 'route_travel') {
-            const routedTravel = proposeRoutedTravel(autonomousCampaign.takeRouteHint(campaignId, idempotencyKey), trustedState, action)
+            const routedTravel = proposeRoutedTravel(autonomousCampaign.takeRouteHint(campaignId, idempotencyKey), trustedState, action, String(player?.character ?? player?.name ?? ''))
             if (routedTravel) {
               const effects = { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null }
               executeTool('request_party_decision', routedTravel, effects, trustedState)

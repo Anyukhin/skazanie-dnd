@@ -89,11 +89,11 @@ test('2014 completion distributes XP, coins and loot once across retry and resta
   const chronicle = combatNarration(first.events, afterFirst.state)
   const rewardItems = firstHero.inventory.filter((item) => item.origin === 'reward')
   assert.ok(rewardItems.length > 0, 'фикстура обязана выдать вещь награды')
-  assert.match(chronicle, /[Дд]оля отряда за победу: [^]*опыт — 50\./u)
+  assert.match(chronicle, /(?:После схватки|Когда всё стихает): [^]*опыта — 50\./u)
   for (const item of rewardItems) assert.ok(chronicle.includes(`«${item.name}»`), `в летописи нет «${item.name}»`)
   // Привала после победы без заявки нет (решение владельца 2026-10-10).
   assert.doesNotMatch(chronicle, /отдыхает|[Пп]ривал/u)
-  assert.equal((chronicle.match(/[Дд]оля отряда за победу/gu) ?? []).length, 1)
+  assert.equal((chronicle.match(/(?:После схватки|Когда всё стихает):/gu) ?? []).length, 1)
   const repeated = await makeAutonomy(eventStore).completeEncounter({ campaignId, outcome: 'enemies_defeated', idempotencyKey: 'retry-after-browser' })
   assert.equal(repeated.duplicate, true)
   assert.equal(repeated.state_version, first.state_version)

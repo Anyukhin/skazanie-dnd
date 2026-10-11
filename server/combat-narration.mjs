@@ -168,7 +168,7 @@ function rewardItemsLabel(items) {
 function encounterRewardLine(payload, state, book, event) {
   const allocations = Array.isArray(payload?.allocations) ? payload.allocations : []
   // «Лира забирает «Короткий лук» и «Стрелы», Бор — «Кинжал» (2 шт.)»: кто что
-  // взял, одной фразой, а не таблицей. Слова «доля отряда за победу» остаются:
+  // взял, одной фразой, а не таблицей. Начало «После схватки» говорит, что
   // это вещи общей добычи, а не снятое с тела (MC-05).
   const shares = allocations.flatMap((allocation) => {
     const items = rewardItemsList(allocation?.items)
@@ -179,15 +179,19 @@ function encounterRewardLine(payload, state, book, event) {
     const [first, ...rest] = shares
     parts.push([`${first.name} забирает ${first.items}`, ...rest.map((share) => `${share.name} — ${share.items}`)].join('; '))
   }
-  const shared = allocations.length > 1 ? ' поровну' : ''
+  // Голосом ведущего, а не ведомостью: «Доля отряда за победу: …; монеты
+  // поровну — …; опыт поровну — 100» судья называл служебной строкой в 22
+  // прогонах из 24 (замеры 15–26, 2026-10-11).
+  const several = allocations.length > 1
   const coins = coinsLabelRu(allocations.reduce((sum, allocation) => sum + Math.max(0, Number(allocation?.coins_cp) || 0), 0))
-  if (coins) parts.push(`монеты${shared} — ${coins}`)
-  const xp = allocations.reduce((sum, allocation) => sum + Math.max(0, Math.trunc(Number(allocation?.xp) || 0)), 0)
-  if (xp) parts.push(`опыт${shared} — ${xp}`)
+  if (coins) parts.push(`в кошелях набралось ${coins}${several ? ' — на всех поровну' : ''}`)
+  const xpShares = allocations.map((allocation) => Math.max(0, Math.trunc(Number(allocation?.xp) || 0)))
+  const xp = xpShares.reduce((sum, value) => sum + value, 0)
+  if (xp) parts.push(several && xpShares.every((value) => value === xpShares[0]) ? `опыта — по ${xpShares[0]} каждому` : `опыта — ${xp}`)
   const leftover = rewardItemsLabel(payload?.unassigned?.items)
   if (leftover) parts.push(`всё унести не выходит, пришлось оставить: ${leftover}`)
   if (!parts.length) return ''
-  const head = book.pick('reward', ['Доля отряда за победу', 'Добыча делится — доля отряда за победу'], event)
+  const head = book.pick('reward', ['После схватки', 'Когда всё стихает'], event)
   return `${head}: ${parts.join('; ')}.`
 }
 
@@ -684,8 +688,10 @@ function tacticalNarrationLines(events, state, options = {}) {
     } else if (event.event_type === 'CombatStarted') {
       const opening = payload.opening_action
       const firstId = state?.mechanics?.combat?.initiative?.[0]?.actor_id
-      const order = opening?.actor_id ? '' : firstId ? ` Ход открывает ${tacticalActorName(state, firstId)}.` : ' Инициатива брошена.'
-      meaningful.push(`${book.pick('combat-start', ['Бой начинается.', 'Звенит сталь — бой начался.', 'Схватка началась.'], event)}${order}`)
+      // «Ход открывает X. Схватка началась.» — протокол, а не ведущий (24 и
+      // 16 прогонов из 24, замеры 15–26).
+      const order = opening?.actor_id ? '' : firstId ? ` Первый ход — за ${tacticalActorName(state, firstId)}.` : ''
+      meaningful.push(`${book.pick('combat-start', ['Звенит сталь.', 'Сталь покидает ножны.', 'Медлить больше некогда.'], event)}${order}`)
       // Бой открыт ударом из исследования. Отложенный удар обязан сказать о
       // себе: иначе игрок видит начавшийся бой и не понимает, куда делся замах.
       if (opening?.actor_id) {

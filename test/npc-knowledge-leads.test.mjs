@@ -124,7 +124,7 @@ test('отказ ведёт к хранителю тайны: зацепка б�
   const fallback = await offline().respond({
     state, playerId: 'wizard', npcId: 'npc:helga', message: 'Кто правил «Чайкой» той ночью?', turnId: 'helga-owner-offline',
   })
-  assert.match(fallback.reply, /не сообщает ничего нового, но подсказывает: «Об этом больше знает Борс, трактирщик/u)
+  assert.match(fallback.reply, /качает головой: «Больше мне сказать нечего\. Об этом больше знает Борс, трактирщик/u)
   assert.doesNotMatch(fallback.reply, /без огней|чужак/u)
 })
 

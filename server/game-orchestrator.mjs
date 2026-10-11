@@ -930,14 +930,14 @@ function humanMissingInformation(values, state, intent = {}) {
       return role ? `${name} (${role})` : name
     }).filter(Boolean).slice(0, 6)
     return candidates.length
-      ? `По описанию подходят несколько собеседников: ${candidates.join(', ')}. Назовите одного из них.`
-      : 'По описанию подходят несколько собеседников. Назовите конкретного NPC.'
+      ? `Кому именно — ${candidates.join(', ')}?`
+      : 'Кому именно? Здесь таких несколько.'
   }
   if (missing.includes('npc_id') || missing.includes('available_npc')) {
     const names = availableNpcNames(state, intent.actor_id)
     return names.length
-      ? `Назовите собеседника по имени. Сейчас рядом: ${names.join(', ')}.`
-      : 'Рядом нет никого, с кем можно заговорить. Осмотритесь или дойдите туда, где есть люди.'
+      ? `Кому это — ${names.join(', ')}?`
+      : 'Рядом никого, кто бы ответил: люди — там, где жильё и дорога.'
   }
   return missing.length ? `Уточните ${missing.map((value) => labels[value] ?? 'деталь действия').join(' и ')}.` : 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
 }

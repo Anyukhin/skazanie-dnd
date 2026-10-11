@@ -933,7 +933,7 @@ test('свободное действие «обыскиваю тело» вед
   const answer = searchAloud(killed.state, 'hero', 'Обыскиваю тело разбойника')
   assert.equal(answer.server_owned_contents, true)
   assert.equal(answer.loot_container_id, container.id)
-  assert.match(answer.narration, /панель добычи/u)
+  assert.match(answer.narration, /Бери, что приглянется/u)
   assert.doesNotMatch(answer.narration, /команды извлечения/u)
 
   const looted = commit(killed.state, {
@@ -970,7 +970,7 @@ test('вплотную фраза называет содержимое ровн
   assert.equal(answer.loot_action_cost, null)
   const inFight = searchAloud(kill(campaign({ combat: true }), 'foe-1').state, 'hero', 'Обыскиваю тело разбойника')
   assert.equal(inFight.loot_action_cost, 'action')
-  assert.match(inFight.narration, /В бою обыск стоит действия/u)
+  assert.match(inFight.narration, /В бою снять что-то стоит действия/u)
 
   // Закрытый учёт наружу не едет ни строкой, ни ключом.
   const serialized = JSON.stringify(answer)
@@ -1301,7 +1301,7 @@ test('«обыскивает поверженных» — тела, а не об
   assert.ok(answer, 'заявка распознана как обыск тел')
   assert.ok(answer.narration.includes('Разбойник 1') && answer.narration.includes('Разбойник 2'), answer.narration)
   assert.doesNotMatch(answer.narration, /Уточните|выдумывать|сервер/u)
-  assert.match(answer.narration, /панель добычи/u)
+  assert.match(answer.narration, /Бери, что приглянется/u)
   // Замер 19: «приседает у тел, обыскивает одежду» — родительный «тел».
   const crouching = searchAloud(both.state, 'hero', 'Мирель приседает у тел, осторожно обыскивает одежду и мешочек с компонентами')
   assert.ok(crouching?.narration.includes('Разбойник 2'), crouching?.narration)

@@ -542,8 +542,8 @@ export function corpseClueCommand(state = {}, container = {}) {
 export function thoroughSearchDetail(outcome, heroName = 'Герой') {
   const name = String(heroName || 'Герой').slice(0, 80)
   return outcome?.found
-    ? `С ходу ничего не попалось, но ${name} не торопится и перебирает всё по одному — уходит около получаса — и находит то, что ускользало.`
-    : `${name} не торопясь перебирает всё по одному — уходит около получаса — и убеждается: ничего спрятанного здесь нет.`
+    ? `С ходу ничего не попалось, но ${name} не жалеет получаса, перебирает всё по одному — и находит то, что ускользало.`
+    : `${name} не жалеет получаса, перебирает всё по одному — и убеждается: ничего спрятанного здесь нет.`
 }
 
 export function freeActionDiscoveryCommands(state = {}, input = {}) {

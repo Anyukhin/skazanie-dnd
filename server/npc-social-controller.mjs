@@ -803,11 +803,13 @@ function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory 
   if (checkOutcome) return { reply: `${profile.name} отвечает: «${withLead('Нет. Меня это не убеждает.')}»`, claimIds: [], factIds: [] }
   const request = clean(message, 1_000).toLocaleLowerCase('ru')
   if (/(?:пообещ|обещани|помоги|проведи|передай|открой)/iu.test(request)) {
-    return { reply: 'Нового обещания пока нет; уточним конкретную помощь.', claimIds: [], factIds: [] }
+    return { reply: `${profile.name} разводит руками: «Обещать пока нечего — скажи, чем именно помочь.»`, claimIds: [], factIds: [] }
   }
   if (/(?:напомни|вспомни|сигнал|договор|обещал|что мы)/iu.test(request)) {
     const remembered = memory.find((entry) => entry.kind === 'conversation' && entry.npc_reply)
-    if (remembered) return { reply: `${profile.name} напоминает: «${clean(remembered.npc_reply, 500)}»`, claimIds: [], factIds: [] }
+    // Просьбу напомнить исполняет повтором своих же слов — без ярлыка
+    // «напоминает:», который судья читал служебным (замер 26, 2026-10-11).
+    if (remembered) return { reply: `${profile.name} повторяет: «${clean(remembered.npc_reply, 500)}»`, claimIds: [], factIds: [] }
   }
   const answer = fallbackAnswer(profile, message, hooks, facts, alreadySaid)
   if (answer?.kind === 'hook') return { reply: `${profile.name} подтверждает: «${answer.sentence}»`, claimIds: [], factIds: [] }
@@ -817,8 +819,10 @@ function fallbackDisclosure(profile, facts, claims, checkOutcome = null, memory 
   const belief = claims.find((claim) => !alreadySaid(claim.summary))
   if (belief) return { reply: `${profile.name} отвечает: «${belief.summary}»`, claimIds: [belief.id], factIds: [] }
   if (ownSecretAsked) return { reply: `${profile.name} отвечает уклончиво: «Может, что-то и знаю. Но просто так такое не рассказывают.»`, claimIds: [], factIds: [] }
-  if (usableLead) return { reply: `${profile.name} не сообщает ничего нового, но подсказывает: «${leadLine(usableLead)}»`, claimIds: [], factIds: [] }
-  return { reply: `${profile.name} выслушивает героя, но не сообщает ничего нового.`, claimIds: [], factIds: [] }
+  // Голосом собеседника, а не протоколом: «X не сообщает ничего нового»
+  // (замеры 20–26).
+  if (usableLead) return { reply: `${profile.name} качает головой: «Больше мне сказать нечего. ${leadLine(usableLead)}»`, claimIds: [], factIds: [] }
+  return { reply: `${profile.name} качает головой: «Больше мне сказать нечего.»`, claimIds: [], factIds: [] }
 }
 
 /**

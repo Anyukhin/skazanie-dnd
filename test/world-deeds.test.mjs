@@ -444,5 +444,5 @@ test('дошедший слух попадает в разговор своег�
   // Отрицательный контроль: до отшельника молва не дошла, и говорить ему нечего.
   const silent = await controller.respond({ state, playerId: 'hero', npcId: 'hermit', message: 'Что слышно нового?', turnId: 'turn-2' })
   assert.deepEqual(silent.disclosed_claim_ids, [])
-  assert.match(silent.reply, /не сообщает ничего нового/u)
+  assert.match(silent.reply, /Больше мне сказать нечего/u)
 })

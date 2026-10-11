@@ -542,7 +542,7 @@ test('обыск тела вплотную называет добычу кон�
   assert.equal(result.free_action_outcome, 'loot_inspection')
   assert.equal(result.clarification ?? null, null)
   assert.ok(result.narration.includes('Кинжал'), result.narration)
-  assert.match(result.narration, /панель добычи/u)
+  assert.match(result.narration, /Бери, что приглянется/u)
   assert.deepEqual(result.mechanics, [])
   assert.equal(result.turn_consumed, false)
   assert.equal(after.state_version, before.state_version)
@@ -818,7 +818,7 @@ test('заявка «войти внутрь» без подтверждённо
 
   assert.equal(result.free_action_outcome, 'clarification')
   assert.deepEqual(result.mechanics, [])
-  assert.match(result.narration, /Такого здания здесь не видно/u)
+  assert.match(result.narration, /такого здания нет/u)
   assert.doesNotMatch(result.narration, /не меняя его словами/u)
   assert.equal(renderCalls, 0, 'заблокированный вход не вызывает Narrator')
 })

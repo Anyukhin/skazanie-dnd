@@ -480,7 +480,7 @@ export function unknownDestinationReply(action, state = {}, { isRevealed = null 
  *   игрока, когда `action` собран сервером из ответа судьи: по ней подпись
  *   берёт предлог и падеж самого игрока
  */
-export function proposeAgentInteraction(action, state = {}, { sourceText = '' } = {}) {
+export function proposeAgentInteraction(action, state = {}, { sourceText = '', actorName = '' } = {}) {
   const text = String(action || '').normalize('NFKC')
   if (!text || /^\s*\[РЕШЕНИЕ ГРУППЫ\]/iu.test(text) || state.agentInteraction) return null
   if (FATE_REQUEST.test(text)) {
@@ -535,7 +535,11 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
       // а в хронике звучит решение в путь. «Все идут?» судья трижды назвал
       // служебной проверкой (замеры 10–12, 2026-10-10), а «Значит, в путь в
       // «Заброшенный маяк»» — внутренней кухней с двумя «в» подряд (замер 19).
-      description: phrase ? `${phrase.charAt(0).toLocaleUpperCase('ru')}${phrase.slice(1)} — так в путь?` : 'Так что, уходим?',
+      // «В «Маяк» — так в путь?» судья читал интерфейсом (11 прогонов из 24):
+      // ведущий называет, кто зовёт и куда.
+      description: phrase
+        ? (actorName ? `${actorName} зовёт отряд ${phrase}.` : `Отряд собирается ${phrase}.`)
+        : (actorName ? `${actorName} зовёт уходить.` : 'Отряд собирается уходить.'),
       options: [leaveOption, ...(abandonOption ? [abandonOption] : []), 'Остаться и исследовать дальше'],
       resolutionPrompt: 'Исполни решение большинства. Если отряд уходит, бесшовно открой следующую локацию.',
       ...(exit.destinationLocationId ? { destinationLocationId: exit.destinationLocationId } : {}),
@@ -556,7 +560,7 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
  * @param {{ route?: string, destination?: string }|null} hint
  * @param {Record<string, any>} [state]
  */
-export function proposeRoutedTravel(hint, state = {}, action = '') {
+export function proposeRoutedTravel(hint, state = {}, action = '', actorName = '') {
   if (hint?.route !== 'travel' || state.agentInteraction) return null
   const destination = String(hint.destination ?? '').replace(/[«»]/gu, '').replace(/\s+/gu, ' ').trim().slice(0, 80)
   // Место из цели сцены годится и без родового слова: «смотровой дамбы» нет
@@ -565,7 +569,7 @@ export function proposeRoutedTravel(hint, state = {}, action = '') {
   if (!travelDestinationIsPlace(destination, exitContextFromState(state))
     && !(objectiveNamesDestination(destination, state.scene?.objective)
       && !objectiveNamesDestination(destination, state.scene?.location))) return null
-  const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state, { sourceText: String(action ?? '') })
+  const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state, { sourceText: String(action ?? ''), actorName })
   if (card?.type !== 'vote') return null
   return {
     ...card,

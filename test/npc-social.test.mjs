@@ -662,7 +662,7 @@ test('двое присутствующих NPC с одной ролью даю�
   })
   const after = await eventStore.load('NPC-SOCIAL')
 
-  assert.match(result.narration, /несколько собеседников/u)
+  assert.match(result.narration, /Кому именно/u)
   assert.deepEqual(result.mechanics, [])
   assert.equal(result.turn_consumed, false)
   assert.equal(after.state_version, before.state_version)
@@ -788,7 +788,7 @@ test('direct orchestrator caller cannot select a hidden explicit npc_id', async 
   })
 
   assert.equal(result.turn_consumed, false)
-  assert.match(result.narration, /собеседник|рядом/iu)
+  assert.match(result.narration, /Кому это|рядом/iu)
   assert.equal(socialCalls, 0)
 })
 
