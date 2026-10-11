@@ -61,9 +61,9 @@ export const PREDICATES = Object.freeze({
   }),
   discovery: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: '«clue»',
-    producers: ['world-memory'], consumers: ['campaign-scenario', 'game-orchestrator', 'narrator', 'npc-social', 'player-request-router', 'rules-engine', 'scenario-knight', 'world-memory'],
+    producers: ['world-memory'], consumers: ['campaign-scenario', 'game-orchestrator', 'narrator', 'npc-social', 'npc-social-controller', 'player-request-router', 'rules-engine', 'scenario-knight', 'world-memory'],
     visibility: 'party',
-    description_ru: 'Находка свободного действия: открытая заготовка ведущего, знающий собеседник или улика по теме активного поручения. Рассказчик обязан её назвать; для часов поручения — доказательство; для сценария — найденная улика узла сюжета (по `supersedes_fact_id`). NPC знает находку, только если видел её сам (граница знания `npcKnownFactIds`); находку о себе самом NPC не знает.',
+    description_ru: 'Находка свободного действия: открытая заготовка ведущего, знающий собеседник или улика по теме активного поручения. Рассказчик обязан её назвать; для часов поручения — доказательство; для сценария — найденная улика узла сюжета (по `supersedes_fact_id`). NPC знает находку, только если видел её сам (граница знания `npcKnownFactIds`); находку о себе самом NPC не знает. Собеседнику уходят и последние находки отряда (`table_knows`) — чтобы он не пересказывал их как новость.',
   }),
   quest_progress: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: 'что именно продвинуло дело',
@@ -101,6 +101,12 @@ export const PREDICATES = Object.freeze({
     producers: ['campaign-bootstrap'], consumers: ['action-adjudicator', 'npc-social', 'npc-social-controller', 'player-request-router'],
     visibility: 'party',
     description_ru: 'Абзацы пролога кампании; судья свободных действий читает их как описание места, модель собеседника — как фон. Запасной ответ NPC без модели пролог вслух не произносит. Граница знания NPC берёт отсюда место старта отряда.',
+  }),
+  scene_canon: Object.freeze({
+    record: 'fact', subject_kinds: ['location'], object: 'установленный факт исходной ситуации',
+    producers: ['campaign-bootstrap'], consumers: ['agent-context'],
+    visibility: 'party',
+    description_ru: 'Канон сцены (campaign_creator/v8): короткие очевидные факты исходной ситуации — что случилось и когда, где что стоит, чьё это, сколько идти. Их знает любой в первой сцене; `sceneCanonFor` отдаёт их рассказчику, собеседнику и судье свободных действий, чтобы мир не переписывался от реплики к реплике.',
   }),
   gm_secret: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'JSON { topic, skills, holder, hero_id? }',

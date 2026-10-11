@@ -535,6 +535,9 @@ const TRAVEL_DISTANCE_BANDS = Object.freeze([
   Object.freeze({ band: 'far', maxDistance: Number.POSITIVE_INFINITY, minutes: 240 }),
 ])
 
+/** Путь к новому месту, которого нет на карте мира: оно рядом. */
+export const NEW_PLACE_TRAVEL_MINUTES = 30
+
 const TRAVEL_BASE_MINUTES = Object.freeze(Object.fromEntries(
   TRAVEL_DISTANCE_BANDS.map((entry) => [entry.band, entry.minutes]),
 ))
@@ -819,10 +822,11 @@ const LEGACY_GRAVE_NAME = /(кладбищ|склеп|руин|grave|crypt|ruin)
 
 /**
  * ПУТЬ СОВМЕСТИМОСТИ для кампаний без графа мира: `state.worldMap` пуст, не
- * нормализован или в нём нет исходной либо целевой локации. Это не второй
- * способ считать расстояние — считать здесь просто нечем, а числа обязаны
- * совпадать с прежним поведением, иначе у сохранённых кампаний изменится
- * длительность пути. Новую логику сюда не добавлять.
+ * нормализован или в нём нет исходной локации. Это не второй способ считать
+ * расстояние — считать здесь просто нечем, а числа обязаны совпадать с
+ * прежним поведением, иначе у сохранённых кампаний изменится длительность
+ * пути. Новую логику сюда не добавлять. Новое место при известной исходной
+ * (`new_place`) берёт отсюда только тему встречи, а путь — короткий.
  */
 function legacyTextTravelFacts(state, from, to, entropy) {
   const sceneKind = clean(state.scene?.scene_kind, 40).toLowerCase()
@@ -860,10 +864,18 @@ export function planServerTravel(state = {}, {
   const chapter = Math.max(1, Number(state.adventure?.chapter) || 1)
   const fingerprint = `${campaignId}:${idempotencyKey}:${from}:${to}:${chapter}`
   const entropy = hashNumber(fingerprint)
+  // Новое место, названное игроками: откуда идёт отряд, карта мира знает, а
+  // куда — нет. Это то, что видно отсюда или о чём только что сказали рядом, —
+  // короткий путь, около получаса. Прежде полоса выпадала случайно, и маяк,
+  // видный из таверны, оказывался в четырёх часах пути (замеры 19–24).
+  // Решение владельца 2026-10-11. Кампании без карты мира идут прежним путём.
+  const newPlace = Boolean(origin && !target)
   const facts = origin && target
     ? graphTravelFacts(graph, origin, target)
-    : legacyTextTravelFacts(state, from, to, entropy)
-  const durationMinutes = TRAVEL_BASE_MINUTES[facts.band] + (facts.wilderness ? 30 : 0)
+    : newPlace
+      ? { ...legacyTextTravelFacts(state, from, to, entropy), source: 'new_place', band: 'near' }
+      : legacyTextTravelFacts(state, from, to, entropy)
+  const durationMinutes = newPlace ? NEW_PLACE_TRAVEL_MINUTES : TRAVEL_BASE_MINUTES[facts.band] + (facts.wilderness ? 30 : 0)
   const pacingTension = clamp(state.autonomy?.pacing?.tension, 0, 100)
   const activeQuestPressure = (state.worldMemory?.quests ?? []).some((quest) => (
     quest.status === 'active' && Number(quest.clock?.current) >= Math.max(1, Number(quest.clock?.max) - 2)

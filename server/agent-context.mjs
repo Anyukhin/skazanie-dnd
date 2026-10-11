@@ -142,6 +142,22 @@ function unavailableSpatialContext() {
   }
 }
 
+/**
+ * Канон сцены — установленные публичные факты исходной ситуации
+ * (`scene_canon`, campaign_creator/v8): рассказчик, NPC и судья заявок
+ * держатся их, а не достраивают мир каждый по-своему.
+ *
+ * @param {Record<string, any>} state
+ * @returns {string[]}
+ */
+export function sceneCanonFor(state = {}) {
+  return (state.worldMemory?.facts ?? [])
+    .filter((fact) => fact?.predicate === 'scene_canon' && fact.status !== 'superseded' && fact.visibility === 'party')
+    .map((fact) => clean(fact.summary, 220))
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
 /** Видимая обстановка у действующего лица, без скрытых комнат и бинарных слоёв карты. */
 export function sceneContextForAgent(state = {}, actorId = '') {
   const scene = state.scene ?? {}
@@ -153,7 +169,8 @@ export function sceneContextForAgent(state = {}, actorId = '') {
     .find((entry) => entry?.known !== false && (String(entry?.id ?? '') === String(state.worldMap?.currentLocationId ?? '')
       || clean(entry?.name, 160).toLocaleLowerCase('ru') === clean(scene.location, 160).toLocaleLowerCase('ru')))
   const placeSummary = clean(place?.summary, 300)
-  const context = placeSummary ? { ...baseContext, place_summary: placeSummary } : baseContext
+  const canon = sceneCanonFor(state)
+  const context = { ...baseContext, ...(placeSummary ? { place_summary: placeSummary } : {}), ...(canon.length ? { canon } : {}) }
   const metadata = agentContextMetadata(state, { role: 'scene_context', actorId, contractVersion: 'scene-context/v2' })
   if (!scene.map || typeof scene.map !== 'object') return { ...context, context_metadata: metadata, spatial_context: unavailableSpatialContext() }
   let map

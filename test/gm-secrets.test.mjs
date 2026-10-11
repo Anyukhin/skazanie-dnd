@@ -323,3 +323,39 @@ test('удачная Проницательность без реакции от
   const found = freeActionDiscoveryCommands(withKlara, { checkEvent: check('insight', 'check-read'), skill: 'insight', actionText: 'Спрашиваю Клару про журнал и слежу за её лицом' })
   assert.deepEqual(found.map((command) => command.fact?.summary), [knows])
 })
+
+test('канон сцены: публичные факты исходной ситуации — в памяти мира, у рассказчика, NPC и судьи заявок', async () => {
+  // Замеры 19–24 (2026-10-11): NPC и рассказчик достраивали мир каждый
+  // по-своему — баркас то вернулся этой ночью, то давно, то чужой.
+  const withCanon = {
+    ...opening,
+    canon: [
+      'Футляр с картой принесли на мытню этим утром, до дождя',
+      'Клара Вельм — хранительница карты мытни',
+      'коротко',
+    ],
+  }
+  const state = await new CampaignBootstrapper({ llmClient: new FakeLLM([{ content: JSON.stringify(withCanon) }]) }).create({
+    code: 'GM-CANON', name: 'Канон', partyName: 'Двое', world: {}, players: [hero],
+  })
+  const canon = state.worldMemory.facts.filter((fact) => fact.predicate === 'scene_canon')
+  assert.equal(canon.length, 2, 'короче двенадцати знаков — не факт')
+  assert.ok(canon.every((fact) => fact.visibility === 'party' && fact.status === 'active'))
+  const clara = state.social.npcs.find((npc) => npc.name === 'Клара Вельм')
+  assert.ok(canon.every((fact) => clara.known_fact_ids.includes(fact.id)), 'канон знают все в сцене')
+
+  const { sceneContextForAgent } = await import('../server/agent-context.mjs')
+  assert.deepEqual(sceneContextForAgent(state, 'nova').canon, canon.map((fact) => fact.summary))
+  const { adjudicationBrief } = await import('../server/action-adjudicator.mjs')
+  assert.deepEqual(adjudicationBrief(state, 'nova', 'Осматриваю футляр').scene.canon, canon.map((fact) => fact.summary))
+
+  const { NpcSocialController } = await import('../server/npc-social-controller.mjs')
+  const briefs = []
+  const llmClient = { model: 'test-npc', completeJson: async ({ messages }) => {
+    briefs.push(String(messages.at(-1)?.content ?? ''))
+    return { npc_id: clara.id, reply: 'Утром принесли, до дождя.', stance: 'neutral', disclosed_fact_ids: [], disclosed_claim_ids: [], relationship_delta: 0, promise: null, confidence: 0.9 }
+  } }
+  await new NpcSocialController({ llmClient }).respond({ state, playerId: 'nova', npcId: clara.id, message: 'Когда принесли футляр?' })
+  assert.ok(briefs[0].includes('scene_canon') && briefs[0].includes('этим утром, до дождя'))
+  assert.ok(briefs[0].includes('table_knows'))
+})

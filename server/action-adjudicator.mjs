@@ -30,7 +30,7 @@ import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 import { campaignStateForViewer } from './viewer-projection.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
-import { agentContextMetadata, boundedSelectionMetadata } from './agent-context.mjs'
+import { agentContextMetadata, boundedSelectionMetadata, sceneCanonFor } from './agent-context.mjs'
 
 /**
  * Арбитр свободного действия. Единственная роль модели здесь — **понять
@@ -445,6 +445,8 @@ export function adjudicationBrief(state, actorId, text, dialogue = {}) {
       mood: clean(state?.scene?.mood, 160),
       objective: clean(state?.scene?.objective, 160),
       known_description: knownSceneDescription(state),
+      // Канон сцены: детали успеха и провала не переписывают установленного.
+      canon: sceneCanonFor(state),
     },
     participants: participants.items,
     scene_props: sceneProps.items,

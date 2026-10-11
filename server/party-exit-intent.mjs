@@ -492,8 +492,14 @@ function speechTravelProposal(text, context) {
       // И словом места без заглавной: «пора к маяку на скале — … пойдём туда
       // вместе» оставляло отряд в порту (замер 21, 2026-10-11). Место
       // проверяет тот же разбор, что и фразу «идём к маяку на скале».
-      for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(к|ко|в|во|на|до)\s+([^,.;:!?—–«»]{3,80})/giu)) {
-        const probe = destinationIn(`идём ${candidate[1].toLocaleLowerCase('ru')} ${candidate[2].trim()}`, context)
+      // «Искать следы у Маяка Чёрной скалы; идём туда» — место в родительном
+      // после «у», «около», «возле»: проверяется его именительный (замер 24).
+      for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(к|ко|в|во|на|до|у|около|возле)\s+([^,.;:!?—–«»]{3,80})/giu)) {
+        const preposition = candidate[1].toLocaleLowerCase('ru')
+        const phrase = candidate[2].trim()
+        const probe = ['у', 'около', 'возле'].includes(preposition)
+          ? destinationIn(`идём к ${nominativePlacePhrase(phrase)}`, context)
+          : destinationIn(`идём ${preposition} ${phrase}`, context)
         if (probe.isPlace && probe.destination) return { destination: withoutStrayQuote(probe.destination), source: 'speech' }
       }
     }

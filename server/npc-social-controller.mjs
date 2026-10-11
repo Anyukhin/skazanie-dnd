@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import {
   ensureNpcSocialState, implicitSecretHolderIds, npcBehaviorPolicy, npcKnownFactIds, npcProfileAtWorldTime, npcSecretMeta, relationshipTier,
 } from './npc-social.mjs'
-import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent, heroCardForAgent, sceneContextForAgent } from './agent-context.mjs'
+import { agentContextMetadata, boundedSelectionMetadata, campaignConceptForAgent, heroCardForAgent, sceneCanonFor, sceneContextForAgent } from './agent-context.mjs'
 import { NPC_SOCIAL_RESPONSE_JSON_SCHEMA } from './llm-json-schemas.mjs'
 import { promptForModelRole } from './model-style-profiles.mjs'
 import { buildDataOnlyContext } from './security.mjs'
@@ -623,6 +623,22 @@ function repeatAcknowledgement(leads = []) {
   return 'Всё, что знаю, вы уже слышали.'
 }
 
+/**
+ * Что отряд уже знает: находки, открытые за игру (`discovery`, видимые
+ * отряду), — последние восемь. Свои тайны NPC видит отдельно, в
+ * `speakable_facts`; здесь только то, что за столом уже прозвучало.
+ *
+ * @param {Record<string, any>} state
+ * @returns {string[]}
+ */
+function partyKnownFacts(state) {
+  return (state.worldMemory?.facts ?? [])
+    .filter((fact) => fact?.predicate === 'discovery' && fact.visibility === 'party' && fact.status !== 'superseded')
+    .map((fact) => clean(fact.summary, 240))
+    .filter(Boolean)
+    .slice(-8)
+}
+
 function briefFor(state, profile, playerId, message, checkOutcome = null, { leads = [], repeatRetry = false, justSeen = '' } = {}) {
   const social = ensureNpcSocialState(state.social, state)
   const alreadySaid = alreadySaidForBrief(social, profile, playerId)
@@ -665,6 +681,11 @@ function briefFor(state, profile, playerId, message, checkOutcome = null, { lead
       mood: clean(state.scene?.mood, 160),
       spatial_context: sceneContextForAgent(state, playerId).spatial_context,
     },
+    // Канон сцены и то, что стол уже узнал: NPC не меняет установленного
+    // («баркас вошёл этой ночью») и не пересказывает найденное, а говорит
+    // новое — прежде двое NPC по кругу твердили одну находку (замеры 20–24).
+    scene_canon: sceneCanonFor(state),
+    table_knows: partyKnownFacts(state),
     // Цели и убеждения профиля намеренно не передаются: всё, что уходит в
     // модель, может дословно оказаться в реплике перед игроком, поэтому бриф
     // держит только party-видимые поля. Характер выражают voice и summary.

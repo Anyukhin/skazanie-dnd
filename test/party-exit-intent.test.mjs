@@ -477,3 +477,11 @@ test('зов «пойдём туда» к месту, названному сл�
   assert.equal(detectPartyExitRequest(said, { knownPlaces: [], presentNames: ['Таррен Кель'] })?.destination, 'маяку на скале')
   assert.equal(detectPartyExitRequest('Мирель говорит Борину: «Пора к Таррену, пойдём туда вместе».', { knownPlaces: [], presentNames: ['Таррен Кель'] }), null, 'к собеседнику — не уход')
 })
+
+test('«искать следы у Маяка Чёрной скалы; идём туда» — уход к новому месту в именительном', async () => {
+  // Замер 24: место в родительном после «у» не узнавалось, и отряд остался.
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const said = 'Мирель заносит в тетрадь слова о верёвке: «Пора искать следы у Маяка Чёрной скалы; мы с Бориным идём туда».'
+  assert.equal(detectPartyExitRequest(said, { knownPlaces: ['Серый Причал'], presentNames: ['Эйра'] })?.destination, 'Маяк Чёрной скалы')
+  assert.equal(detectPartyExitRequest('Мирель шепчет: «Подожди у Эйры, я схожу туда одна».', { knownPlaces: [], presentNames: ['Эйра'] }), null)
+})

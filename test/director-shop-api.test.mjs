@@ -266,9 +266,11 @@ test('enforce Director atomically advances scene and assembles a durable catalog
   // ожидание. С замера 19 (2026-10-11) место зовётся «Серая чаща», а не
   // «Серую чащу» из фразы, и по этому сиду встаёт в тот же край, что и город:
   // неба не меняется, строки погоды нет — и не больше одной в любом случае.
+  // Чащи нет на карте мира — новое место, путь около получаса (решение
+  // владельца 2026-10-11), и время суток за дорогу не меняется.
   const forestTypes = forest.body.mechanics.map((event) => event.event_type)
   assert.deepEqual(forestTypes, [
-    'TimeAdvanced', 'TimeOfDayChanged', 'PartyDecisionConsumed', 'SceneAdvanced',
+    'TimeAdvanced', 'PartyDecisionConsumed', 'SceneAdvanced',
     'WorldEntityUpserted', 'QuestUpserted', 'QuestUpserted',
     'WorldFactRecorded', 'WorldFactRecorded', 'NarrativeSummaryRecorded',
   ])

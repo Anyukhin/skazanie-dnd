@@ -418,8 +418,44 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
     hook: clean(source.hook, 500) || fallback.hook,
     npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs, { authored }),
     secrets: normalizeOpeningSecrets(source.secrets),
+    canon: normalizeOpeningCanon(source.canon),
     ...(worldRules ? { worldRules } : {}),
   }
+}
+
+/**
+ * Канон сцены (campaign_creator/v8): короткие факты исходной ситуации, которые
+ * знают все в первой сцене, — что случилось, когда, где, чьё и сколько идти.
+ * Без него NPC и рассказчик достраивали мир каждый по-своему: баркас то
+ * «Илин», то «Лиссы», то вернулся сегодня, то давно (замеры 19–24).
+ *
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+export function normalizeOpeningCanon(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.map((entry) => clean(typeof entry === 'string' ? entry : entry?.fact, 220))
+    .filter((entry) => entry.length >= 12))].slice(0, OPENING_CANON_LIMIT)
+}
+
+const OPENING_CANON_LIMIT = 6
+
+/** Факты канона: публичные, о стартовом месте; id детерминирован от текста. */
+function openingCanonFacts(opening, locationEntity, campaignCode, recordedAtMinutes = 0) {
+  if (!locationEntity?.id) return []
+  return (opening?.canon ?? []).map((summary, index) => ({
+    id: `fact:canon:${createHash('sha256').update(`scene-canon\0${campaignCode}\0${index}\0${summary}`).digest('hex').slice(0, 24)}`,
+    subject_id: locationEntity.id,
+    predicate: 'scene_canon',
+    object: 'Установленный факт исходной ситуации',
+    summary,
+    visibility: 'party',
+    source_event_ids: [],
+    source_command_id: `campaign-bootstrap:${campaignCode}`,
+    supersedes_fact_id: '',
+    status: 'active',
+    recorded_at_minutes: recordedAtMinutes,
+  }))
 }
 
 /**
@@ -946,7 +982,10 @@ export class CampaignBootstrapper {
     })
     const openingLocationEntity = sceneMemory.entities.find((entity) => entity.kind === 'location'
       && entity.name.toLocaleLowerCase('ru') === opening.scene.location.toLocaleLowerCase('ru'))
-    const openingFacts = openingNarrationFacts(opening, openingLocationEntity, campaignCode, startMinutes)
+    const openingFacts = [
+      ...openingNarrationFacts(opening, openingLocationEntity, campaignCode, startMinutes),
+      ...openingCanonFacts(opening, openingLocationEntity, campaignCode, startMinutes),
+    ]
     const openingFactIds = openingFacts.map((fact) => fact.id)
     // Знание принадлежит NPC текущей сцены. Публичность самих фактов позволяет
     // партии и её собеседнику читать их через общий retriever, а список IDs
