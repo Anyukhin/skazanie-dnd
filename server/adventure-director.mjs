@@ -378,6 +378,49 @@ export function openingEntrySide(worldMap, locationId) {
  * @param {string} side
  * @returns {{x: number, y: number}|null}
  */
+/**
+ * Отряд, пришедший к постройке дорогой, стоит снаружи, у входной двери, а не
+ * внутри: генератор «постройка с двором» ставит точку появления в зал, и
+ * после перехода к маяку герои оказывались под крышей, пока рассказ и игроки
+ * стояли у двери, — «Борин уже под крышей» на «толкает дверь и входит» (замер
+ * 27, 2026-10-11). Точка внутри помещения переносится на клетку двора у
+ * ближайшей наружной двери; карта без такой двери остаётся как есть.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}|null|undefined} spawn
+ * @returns {{x: number, y: number}|null}
+ */
+export function outsideEntranceFor(map, spawn) {
+  if (!spawn || !map) return null
+  const kind = new Map((map.zones ?? []).map((zone) => [zone.id, zone.kind]))
+  const here = cellAt(map, Number(spawn.x), Number(spawn.y))
+  if (!here || kind.get(here.zone) !== 'interior') return null
+  const blocked = new Set()
+  for (const prop of map.props ?? []) {
+    if (!prop.blocksMove || prop.mount) continue
+    for (const point of prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]) blocked.add(`${point.x},${point.y}`)
+  }
+  /** @type {{x: number, y: number, score: number}|null} */
+  let best = null
+  for (const door of map.doors ?? []) {
+    if (door.locked === true || door.barricade) continue
+    const first = { x: Number(door.x), y: Number(door.y) }
+    const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
+    const sides = [first, second].map((position) => ({ position, cell: cellAt(map, position.x, position.y) }))
+    const inside = sides.find(({ cell }) => cell?.passable && kind.get(cell.zone) === 'interior')
+    const outside = sides.find(({ cell }) => cell?.passable && kind.get(cell.zone) !== 'interior' && cell.surface !== 'water')
+    if (!inside || !outside || blocked.has(`${outside.position.x},${outside.position.y}`)) continue
+    // Шаг от двери наружу, если там свободно: герой не заслоняет проём.
+    const step = { x: outside.position.x + (outside.position.x - inside.position.x), y: outside.position.y + (outside.position.y - inside.position.y) }
+    const stepCell = cellAt(map, step.x, step.y)
+    const stand = stepCell?.passable && kind.get(stepCell.zone) !== 'interior' && stepCell.surface !== 'water' && !blocked.has(`${step.x},${step.y}`)
+      ? step : outside.position
+    const score = Math.abs(stand.x - Number(spawn.x)) + Math.abs(stand.y - Number(spawn.y))
+    if (!best || score < best.score) best = { x: stand.x, y: stand.y, score }
+  }
+  return best ? { x: best.x, y: best.y } : null
+}
+
 export function entranceOnSide(map, side) {
   if (!['west', 'east', 'north', 'south'].includes(side)) return null
   const party = map.spawnPoints?.find((point) => point.role === 'party')
@@ -967,9 +1010,18 @@ export function createSceneTransition(input = {}, state = {}) {
         }
       })()
     : null
-  const partySpawn = returnEntrance ?? (Array.isArray(tacticalMap.spawnPoints)
+  const mapSpawn = Array.isArray(tacticalMap.spawnPoints)
     ? tacticalMap.spawnPoints.find((point) => point?.role === 'party')
-    : null)
+    : null
+  const partySpawn = returnEntrance ?? (() => {
+    if (!mapSpawn) return null
+    try {
+      const live = tacticalMap.layers?.present instanceof Uint8Array ? tacticalMap : deserializeTacticalMap(clone(serializedMap))
+      return outsideEntranceFor(live, mapSpawn) ?? mapSpawn
+    } catch {
+      return mapSpawn
+    }
+  })()
   // Слова перехода сверяются с построенной картой: фраза о маяке, двери или
   // мосте, которых на карте нет, в событие не попадает (живой замер
   // 2026-10-10 — «башня на скале» над картой-дорогой). Имя места, которое

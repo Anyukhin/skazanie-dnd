@@ -128,3 +128,25 @@ test('к постройке по дороге отряд приходит сна
   assert.ok(labels.includes('Нижний ярус маяка'), labels.join(', '))
   assert.ok(!labels.includes('Парадный зал') && !labels.includes('Салон'), 'у маяка не комнаты усадьбы')
 })
+
+test('к постройке отряд приходит снаружи, у входной двери, и входит заявкой', async () => {
+  // Замер 27 (2026-10-11): генератор «постройка с двором» ставил точку
+  // появления в зал маяка, и на «толкает дверь и входит первым» ведущий
+  // отвечал «Борин уже под крышей», хотя рассказ и игроки стояли у двери.
+  const { freeActionPassagePlan } = await import('../server/free-action-adjudication.mjs')
+  const transition = createSceneTransition({
+    title: 'Огни заброшенного маяка', location: 'Маяк на скале', theme: 'маяк', objective: 'Узнать, кто зажигает огонь',
+    arrival: 'Тропа выводит отряд к двери маяка.', objective_status: 'completed',
+  }, stateAt('brod', 'Старый Брод'))
+  const map = deserializeTacticalMap(transition.scene.map)
+  const entrance = transition.entrance
+  const zone = (map.zones ?? []).find((entry) => entry.id === cellAt(map, entrance.x, entrance.y)?.zone)
+  assert.notEqual(zone?.kind, 'interior', `отряд появляется снаружи: ${zone?.label ?? zone?.id}`)
+  const state = {
+    scene: { ...transition.scene, location: 'Маяк на скале' },
+    players: [{ id: 'borin', character: 'Борин', hp: 20, maxHp: 20, speed: 30 }],
+    mechanics: { combat: { active: false }, positions: { borin: { x: entrance.x, y: entrance.y } } },
+  }
+  const plan = freeActionPassagePlan(state, 'borin', 'Борин упирается плечом в дверь маяка и толкает её, входя первым')
+  assert.notEqual(plan.status, 'already_inside')
+})
