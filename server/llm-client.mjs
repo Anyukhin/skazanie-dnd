@@ -432,6 +432,52 @@ export async function parseRouterAIEventStream(body, {
   }
 }
 
+/**
+ * OpenAI-совместимый провайдер за `ROUTERAI_BASE_URL`. По умолчанию это
+ * RouterAI; OhMyLama (`https://ohmylama.ru/v1`) узнаётся по адресу. У неё имена
+ * моделей без префикса производителя (`gpt-6-luna`, а не `openai/gpt-6-luna`),
+ * а глубина рассуждений — `reasoning_effort`, а не объект `reasoning`. Внутри
+ * сервера имена остаются прежними: учёт расхода, профили стиля и список
+ * разрешённых моделей не знают, какой провайдер их обслужил.
+ *
+ * @param {string} baseUrl
+ * @returns {'ohmylama'|'routerai'}
+ */
+export function llmProviderFor(baseUrl) {
+  try {
+    return /(?:^|\.)ohmylama\.ru$/iu.test(new URL(String(baseUrl)).hostname) ? 'ohmylama' : 'routerai'
+  } catch {
+    return 'routerai'
+  }
+}
+
+const VENDOR_MODEL_PREFIX = /^(?:openai|anthropic|google|z-ai|deepseek|meta|x-ai|mistralai|qwen|moonshotai)\//u
+
+/**
+ * Имя модели и параметры рассуждений в формате провайдера.
+ *
+ * @param {'ohmylama'|'routerai'} provider
+ * @param {Record<string, any>} body
+ */
+export function providerRequestBody(provider, body) {
+  if (provider !== 'ohmylama') return body
+  const { reasoning, ...rest } = body
+  const effort = reasoning && typeof reasoning === 'object' && typeof reasoning.effort === 'string' ? reasoning.effort : ''
+  const model = String(body.model ?? '').replace(VENDOR_MODEL_PREFIX, '')
+  // Claude у OhMyLama отклоняет temperature и штрафы повторов (HTTP 400
+  // unsupported_parameter, проба 2026-10-11); RouterAI их молча пропускал.
+  if (/^claude-/u.test(model)) {
+    delete rest.temperature
+    delete rest.frequency_penalty
+    delete rest.presence_penalty
+  }
+  return {
+    ...rest,
+    model,
+    ...(['low', 'medium', 'high'].includes(effort) ? { reasoning_effort: effort } : {}),
+  }
+}
+
 export class RouterAIClient extends LLMClient {
   constructor({
     apiKey = process.env.ROUTERAI_API_KEY ?? '',
@@ -455,6 +501,8 @@ export class RouterAIClient extends LLMClient {
     this.maxToolCalls = positiveInteger(maxToolCalls, DEFAULT_MAX_TOOL_CALLS, 'maxToolCalls')
     this.maxResponseBytes = positiveInteger(maxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES, 'maxResponseBytes')
     this.fetchImpl = fetchImpl
+    this.provider = llmProviderFor(this.baseUrl)
+    this.providerLabel = this.provider === 'ohmylama' ? 'OhMyLama' : 'RouterAI'
   }
 
   async complete(input, options = {}) {
@@ -510,14 +558,17 @@ export class RouterAIClient extends LLMClient {
       body.stream_options = { include_usage: true }
     }
 
+    // Имя модели внутри сервера — прежнее; провайдеру уходит его формат.
+    const internalModel = body.model
+    const wire = providerRequestBody(this.provider, body)
     try {
       const response = await raceWithSignal(this.fetchImpl(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-        body: JSON.stringify(body),
+        body: JSON.stringify(wire),
         signal: scope.signal,
       }), scope.signal)
-      if (!response.ok) throw new LLMError(`RouterAI ответил HTTP ${response.status}`, 'LLM_PROVIDER_ERROR', { status: response.status })
+      if (!response.ok) throw new LLMError(`${this.providerLabel} ответил HTTP ${response.status}`, 'LLM_PROVIDER_ERROR', { status: response.status })
       if (streaming) {
         const streamed = await raceWithSignal(parseRouterAIEventStream(response.body, {
           onDelta: request.onDelta,
@@ -530,21 +581,21 @@ export class RouterAIClient extends LLMClient {
         }, request, this))
         return {
           ...message,
-          model: streamed.model ?? body.model,
+          model: this.provider === 'ohmylama' ? internalModel : streamed.model ?? body.model,
           usage: streamed.usage,
-          provider: 'RouterAI',
+          provider: this.providerLabel,
           streamed: true,
         }
       }
       const payload = await raceWithSignal(readProviderBody(response, this.maxResponseBytes), scope.signal)
       const usage = payload.usage ?? null
       const message = normalizeWithKnownUsage(usage, () => normalizeAssistantMessage(payload.choices?.[0]?.message, request, this))
-      return { ...message, model: payload.model ?? body.model, usage, provider: 'RouterAI' }
+      return { ...message, model: this.provider === 'ohmylama' ? internalModel : payload.model ?? body.model, usage, provider: this.providerLabel }
     } catch (error) {
       if (scope.timedOut()) throw new LLMTimeoutError(timeoutMs)
       if (request.signal?.aborted) throw new LLMError('LLM-запрос отменён', 'LLM_ABORTED', { cause: error })
       if (error instanceof LLMError) throw error
-      throw new LLMError('Не удалось вызвать RouterAI', 'LLM_PROVIDER_UNAVAILABLE', { cause: error })
+      throw new LLMError(`Не удалось вызвать ${this.providerLabel}`, 'LLM_PROVIDER_UNAVAILABLE', { cause: error })
     } finally {
       scope.close()
     }

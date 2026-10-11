@@ -255,3 +255,30 @@ test('RouterAIClient без схемы или с негодной схемой �
   await text.client.complete({ messages, jsonSchema: DIRECTOR_INTENT_JSON_SCHEMA })
   assert.equal(text.captured[0].response_format, undefined)
 })
+
+test('OhMyLama за ROUTERAI_BASE_URL: имя модели без префикса, рассуждения — reasoning_effort, учёт — прежнее имя', async () => {
+  // 2026-10-11: у RouterAI кончился баланс (HTTP 402), владелец подключил
+  // OhMyLama. Её имена моделей — `gpt-6-luna`, а не `openai/gpt-6-luna`.
+  const { RouterAIClient, llmProviderFor, providerRequestBody } = await import('../server/llm-client.mjs')
+  assert.equal(llmProviderFor('https://ohmylama.ru/v1'), 'ohmylama')
+  assert.equal(llmProviderFor('https://routerai.ru/api/v1'), 'routerai')
+  assert.equal(llmProviderFor('http://127.0.0.1:9999/v1'), 'routerai')
+  assert.deepEqual(providerRequestBody('ohmylama', { model: 'anthropic/claude-sonnet-5.5', temperature: 0, reasoning: { effort: 'low' }, messages: [] }),
+    { model: 'claude-sonnet-5.5', reasoning_effort: 'low', messages: [] }, 'Claude у OhMyLama не принимает temperature')
+  assert.deepEqual(providerRequestBody('ohmylama', { model: 'openai/gpt-6-luna', reasoning: { enabled: false }, messages: [] }),
+    { model: 'gpt-6-luna', messages: [] })
+  const routed = { model: 'openai/gpt-6-luna', reasoning: { enabled: false }, messages: [] }
+  assert.equal(providerRequestBody('routerai', routed), routed)
+  const sent = []
+  const fetchImpl = async (url, init) => {
+    sent.push({ url, body: JSON.parse(init.body) })
+    return new Response(JSON.stringify({ model: 'gpt-6-luna', choices: [{ message: { role: 'assistant', content: 'да' } }], usage: { prompt_tokens: 3, completion_tokens: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  const client = new RouterAIClient({ apiKey: 'test-key', baseUrl: 'https://ohmylama.ru/v1', model: 'openai/gpt-6-luna', reasoning: { enabled: false }, fetchImpl })
+  const result = await client.complete({ messages: [{ role: 'user', content: 'да?' }] })
+  assert.equal(sent[0].url, 'https://ohmylama.ru/v1/chat/completions')
+  assert.equal(sent[0].body.model, 'gpt-6-luna')
+  assert.equal(sent[0].body.reasoning, undefined)
+  assert.equal(result.model, 'openai/gpt-6-luna', 'учёт расхода видит внутреннее имя')
+  assert.equal(result.provider, 'OhMyLama')
+})
