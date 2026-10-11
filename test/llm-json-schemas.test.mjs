@@ -357,3 +357,30 @@ test('негодный ответ не снимает модель: битый J
   assert.equal((await client.complete({ messages: [{ role: 'user', content: 'ход' }] })).content, 'основная')
   assert.deepEqual(calls, ['primary', 'reserve', 'primary'])
 })
+
+test('одиночная недоступность провайдера после успеха не снимает модель', async () => {
+  // Замер 28 (2026-10-11): один обрыв Luna при создании мира отдал резервным
+  // моделям весь первый акт партии.
+  const { FallbackLLMClient, LLMError } = await import('../server/llm-client.mjs')
+  const calls = []
+  let down = false
+  const primary = { model: 'primary', async complete() {
+    calls.push('primary')
+    if (down) throw new LLMError('reset', 'LLM_PROVIDER_UNAVAILABLE')
+    return { content: 'основная', model: 'primary' }
+  } }
+  const reserve = { model: 'reserve', async complete() { calls.push('reserve'); return { content: 'запас', model: 'reserve' } } }
+  const client = new FallbackLLMClient({ clients: [primary, reserve], failureCooldownMs: 60_000, now: () => 1_000 })
+  await client.complete({ messages: [{ role: 'user', content: 'раз' }] })
+  down = true
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'мир' }] })).content, 'запас')
+  down = false
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'ход' }] })).content, 'основная')
+  down = true
+  await client.complete({ messages: [{ role: 'user', content: 'два' }] })
+  await client.complete({ messages: [{ role: 'user', content: 'три' }] })
+  calls.length = 0
+  down = false
+  await client.complete({ messages: [{ role: 'user', content: 'четыре' }] })
+  assert.deepEqual(calls, ['reserve'], 'вторая недоступность подряд — остывание')
+})

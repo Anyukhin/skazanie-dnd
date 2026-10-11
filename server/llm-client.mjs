@@ -669,7 +669,13 @@ export class FallbackLLMClient extends LLMClient {
     // ходы этого окна уходили резервным, которые у OhMyLama отвечают по
     // 5–38 с: рассказ и прочтение заявок сыпались в шаблоны (замер 19,
     // 2026-10-11). Второй тайм-аут подряд — уже отказ.
-    const slowOnce = error instanceof LLMTimeoutError && status.failures === 0 && status.lastSuccessAt != null
+    // Так же — одиночная недоступность провайдера (обрыв соединения, 5xx):
+    // в замере 28 один обрыв при создании мира отдал резервным моделям весь
+    // первый акт, и разговоры с NPC пошли по кругу.
+    const transient = error instanceof LLMTimeoutError
+      || error?.code === 'LLM_PROVIDER_UNAVAILABLE'
+      || (error?.code === 'LLM_PROVIDER_ERROR' && Number(error?.status) >= 500)
+    const slowOnce = transient && status.failures === 0 && status.lastSuccessAt != null
     // Негодный ответ (битый JSON, отказ валидатора роли) — изъян одного
     // ответа, а не провайдера: модель отвечает. Прежде обрезанный JSON мира
     // снимал Luna на две минуты, и первые ходы партии писали резервные модели

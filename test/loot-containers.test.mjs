@@ -1036,6 +1036,14 @@ test('два тела: под ногами — то, о котором речь;
   assert.doesNotMatch(ambiguous.narration, /Уточните/u)
   assert.equal(ambiguous.loot_container_ids?.length, 2)
   assert.ok(ambiguous.narration.includes('Разбойник 1') && ambiguous.narration.includes('Разбойник 2'))
+
+  // Оба поодаль и поровну — ответ про первое тело, без «Уточните, что именно
+  // обыскивает герой» (замер 28, дважды подряд).
+  const apart = campaign({ combat: false, heroX: 0, enemies: [bandit('foe-1', { x: 7, y: 1 }), bandit('foe-2', { x: 7, y: 3 })] })
+  const spread = kill(kill(apart, 'foe-1').state, 'foe-2')
+  const distant = searchAloud(spread.state, 'hero', 'Обыскиваю тело')
+  assert.doesNotMatch(distant.narration, /Уточните/u, distant.narration)
+  assert.ok(distant.loot_container_id, 'выбрано одно тело')
 })
 
 test('этажом выше фраза не дотягивается до тела внизу и не пересказывает его', () => {

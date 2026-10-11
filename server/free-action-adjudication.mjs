@@ -1473,12 +1473,19 @@ function resolveLootContainerSearch(state, hero, text, reading) {
   // получило уточнение).
   const together = chosen ? null : lootContainersAnswer(state, hero, pool)
   if (together) return together
+  // Оба поодаль и поровну — герой идёт к первому, а не переспрашивает
+  // «что именно обыскивает» (замер 28, дважды подряд): вне боя оркестратор
+  // сам подводит героя к телу.
   if (!chosen) {
-    return {
-      status: 'clarification',
-      narration: `Уточните, что именно обыскивает герой: рядом ${pool.map((container) => container.name).join(', ')}.`,
-      server_owned_contents: available.length > 0,
+    const first = [...pool].sort((left, right) => left.id.localeCompare(right.id))[0]
+    if (!first) {
+      return {
+        status: 'clarification',
+        narration: 'Обыскивать здесь нечего.',
+        server_owned_contents: false,
+      }
     }
+    return lootContainerAnswer(state, hero, first)
   }
   return lootContainerAnswer(state, hero, chosen.container)
 }
