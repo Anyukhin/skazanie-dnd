@@ -36,8 +36,13 @@ const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v
  * три подряд таймаута и 35 секунд ожидания, прежде чем ответила четвёртая
  * модель. Операция разовая и происходит на экране создания мира, где
  * ожидание уместно, а сожжённые впустую попытки — нет.
+ *
+ * 120 с с 2026-10-11: у OhMyLama Luna пишет мир от 20 до 45+ секунд, и при
+ * 45 с кампании раз за разом получали запасной шаблон «Ночной район
+ * Ривермарк» (замер 19). Клиент ждёт ответа без своего срока; первой модели
+ * достаётся 72 с, резервной — остаток.
  */
-export const CAMPAIGN_BOOTSTRAP_TIMEOUT_MS = 45_000
+export const CAMPAIGN_BOOTSTRAP_TIMEOUT_MS = 120_000
 
 function clean(value, maximum = 500) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
