@@ -249,7 +249,10 @@ test('реплика своему спутнику — сцена для рас�
   const offline = await fixture({ state: { ...roomWithDoor(), players: room.players, partyMemberIds: ['hero', 'ally'] } })
   offline.game.npcSocialController = new NpcSocialController()
   const quiet = await offline.send(speech)
-  assert.match(String(quiet.narration), /«Ила любила это море/u, 'без модели ведущий повторяет сказанное')
+  // Без модели — отклик того, кто рядом, а не эхо реплики (замеры 20–23:
+  // ««…», — негромко звучит над сценой» судья называл пересказом).
+  assert.match(String(quiet.narration), /Мира Ветрокрыл оборачивается на голос/u)
+  assert.doesNotMatch(String(quiet.narration), /«Ила любила это море/u)
 })
 
 test('прямая проверка навыка получает деталь места от судьи действий при любом исходе', async () => {
@@ -497,4 +500,18 @@ test('заклинание и вопрос человеку рядом одно�
   const response = await send('Ада сотворяет «Безмолвный образ» перед Мирой — лицо пропавшей сестры. «Мира, вы её узнаёте?»', { idempotencyKey: 'spell-then-ask' })
   assert.ok(briefs.some((brief) => brief.includes('just_seen') && brief.includes('Безмолвный образ')), 'собеседник видит заклинание')
   assert.match(String(response.narration), /Мира Ветрокрыл: «Лицо знакомое/u, response.narration)
+})
+
+test('замер 23: затаиться и следить с репликой спутнику — попытка, а не отыгрыш', async () => {
+  const { NpcSocialController } = await import('../server/npc-social-controller.mjs')
+  const room = roomWithDoor()
+  room.players.push({ id: 'ally', character: 'Борин', x: 2, y: 1, hp: 12, maxHp: 12, armor: 16, speed: 30, abilities: { str: 16 }, inventory: [] })
+  const readings = []
+  const reader = { read: async (_state, _actor, action) => { readings.push(action); return { goal_summary: 'следить за вершиной маяка', approach_summary: 'из укрытия', ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none', required_means: [], effect: 'none', source: 'agent-adjudicator' } } }
+  const base = await fixture({ state: { ...room, partyMemberIds: ['hero', 'ally'] }, reader })
+  base.game.npcSocialController = new NpcSocialController()
+  const response = await base.send('Ада пригибается за камнями у тропы и, не сводя глаз с вершины маяка, шепчет Борину: «К двери пока не подходим».')
+  assert.equal(readings.length, 1, JSON.stringify({ n: readings.length, narration: response.narration, outcome: response.free_action_outcome, check: Boolean(response.check) }))
+  // Исход решает судья: попытка получает его ruling, а не эхо отыгрыша.
+  assert.ok(response.mechanics.some((event) => event.event_type === 'RulingRecorded' || event.event_type === 'AbilityCheckResolved') || response.check, JSON.stringify(response.mechanics.map((event) => event.event_type)))
 })

@@ -103,6 +103,20 @@ for (const [state, text, actor, accepted] of [
   if (!accepted) assert.ok(result.verification.repaired_from.some(entry => entry.code === 'HERO_AGENCY_NOT_IN_BRIEF'))
 })
 
+test('вход, исполненный сервером этим ходом, — не новое решение за героя', async () => {
+  // Замер 23 (2026-10-11): дверь открыта Борином и шаг внутрь сделан, а
+  // «Борин первым входит в маяк» отбраковывалось в «Вышло: войти первым…».
+  const entered = brief([
+    { event_type: 'DoorStateChanged', actor_id: 'ada', payload: { state: 'open' } },
+    { event_type: 'ActorMoved', actor_id: 'ada', payload: { from: { x: 1, y: 1 }, to: { x: 1, y: 0 } } },
+  ])
+  const accepted = await new Narrator({ llmClient: { complete: async () => ({ content: 'Ада толкает дверь и первой входит в зал.' }) }, asyncFeedback: false }).render(entered)
+  assert.equal(accepted.provider, 'Object', JSON.stringify(accepted.verification))
+  const notMoved = brief([{ event_type: 'DoorStateChanged', actor_id: 'ada', payload: { state: 'open' } }])
+  const rejected = await new Narrator({ llmClient: { complete: async () => ({ content: 'Ада толкает дверь и первой входит в зал.' }) }, asyncFeedback: false }).render(notMoved)
+  assert.notEqual(rejected.provider, 'Object', 'без шага внутрь вход не подтверждён')
+})
+
 test('голая проверка не разрешает открыть дверь даже тому же герою', async () => {
   const input = brief([{ event_type: 'AbilityCheckResolved', payload: { success: true } }])
   const result = await new Narrator({ llmClient: { complete: async () => ({ content: 'Ада открывает дверь.' }) }, asyncFeedback: false }).render(input)

@@ -1520,6 +1520,12 @@ export function verifyNarratorCraft(narration, brief, verification, recentNarrat
 function confirmedHeroDoorAction(sentence, brief, heroes) {
   for (const hero of heroes) {
     if (!hero?.id || !hero?.name) continue
+    // Вход, который сервер исполнил этим ходом — дверь открыта им и шаг
+    // внутрь сделан, — не новое решение за героя: «Борин первым входит в
+    // маяк» отбраковывалось, и звучало «Вышло: войти первым…» (замер 23).
+    const moved = brief.visible_events.some((event) => event?.actor_id === hero.id && event.event_type === 'ActorMoved')
+    const opened = brief.visible_events.some((event) => event?.actor_id === hero.id && event.event_type === 'DoorStateChanged' && event.payload?.state === 'open')
+    if (moved && opened && new RegExp(`${escapePattern(hero.name)}[^.!?]{0,48}(?:вход(?:ит|ят)|заход(?:ит|ят)|проход(?:ит|ят)|переступа(?:ет|ют)|открыва(?:ет|ют)|распахива(?:ет|ют)|толка(?:ет|ют))`, 'iu').test(sentence)) return true
     const match = new RegExp(`^\\s*${escapePattern(hero.name)}\\s+(открывает|закрывает)\\s+дверь\\s*$`, 'iu').exec(sentence)
     if (!match) continue
     const state = match[1].toLocaleLowerCase('ru') === 'открывает' ? 'open' : 'closed'

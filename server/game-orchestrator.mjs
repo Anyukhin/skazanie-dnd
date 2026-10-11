@@ -1103,6 +1103,19 @@ export function spellSpeechFollowUp(message, state, playerId) {
 /** Слова перед именем, с которыми оно — обращение: «к Иаре», «говорит Марте». */
 const ADDRESS_CUE_PATTERN = /(?:^|[\s,])(?:к|ко|у|перед|для|обраща\p{L}*|говор\p{L}*|скаж\p{L}*|спрашива\p{L}*|спрос\p{L}*|шепч\p{L}*|шепта\p{L}*|оклика\p{L}*|окликн\p{L}*|зов[её]т|кива\p{L}*|протягива\p{L}*|показыва\p{L}*|подход\p{L}*|наклоня\p{L}*|поворачива\p{L}*|клад[её]т|обеща\p{L}*)\s+(?:\p{L}+\s+){0,2}$/iu
 
+/**
+ * Вне кавычек герой что-то делает — затаился, следит, ищет: это попытка с
+ * исходом, а не отыгрыш. «Пригибается за камнями и не сводит глаз с вершины
+ * маяка. «К двери пока не подходим»» шло отыгрышем без проверки, рассказ о
+ * высмотренном огне отбраковывался, и звучало эхо реплики (замер 23).
+ *
+ * @param {string} message
+ */
+function actsBeyondSpeech(message) {
+  const acted = String(message ?? '').replace(/[«"“][^«»"“”]*[»"”]/gu, ' ')
+  return hasRecognizedFreeActionApproach(acted)
+}
+
 /** Передача вещи с репликой остаётся передачей: «отдаю Лине верёвку: «Держи»». */
 const SPEECH_HANDOVER_PATTERN = /(?<![\p{L}\p{M}])(?:переда|отда|вруча|протягива)\p{L}*/iu
 
@@ -1349,8 +1362,15 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
   // просьба о сведениях, и «стоит расспросить здешних» звучало глухотой
   // (плейтест 2026-10-10). Без модели ведущий хотя бы повторяет сказанное.
   if (roleplaySpeech && ['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) {
+    // Не эхо реплики — судья трижды назвал ««…», — негромко звучит над
+    // сценой» пересказом (замеры 20–23): отклик того, кто рядом, или манера.
     const quote = [...String(message ?? '').matchAll(/«([^«»]{3,400})»/gu)].map((match) => match[1].trim()).join(' ')
-    if (quote) return `«${quote.replace(/[.!?…]+$/u, '')}», — негромко звучит над сценой.`
+    if (quote) {
+      const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+      const nearby = (state?.social?.npcs ?? []).find((npc) => npc?.available !== false && npc?.name
+        && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
+      return nearby ? `${nearby.name} оборачивается на голос.` : `${freeActionHeroName(events, state)} говорит негромко — так, чтобы слышали только свои.`
+    }
   }
   if (!roleplaySpeech && !unconfirmedPassage && unconfirmedFreeActionDisclosure({ freeAction, message, events })) {
     return [freeActionUnchangedSceneNarration({ freeAction, message, events, state }), ...freeActionEffectText(events, state), freeActionTimeText(events)]
@@ -3034,7 +3054,7 @@ export class GameOrchestrator {
       if (addressee?.kind === 'npc' && socialIds.has(addressee.id) && (!SPEECH_HANDOVER_PATTERN.test(message) || asks)) {
         intent = { ...intent, intent: 'social', targets: [addressee.id], missing_information: [], requires_clarification: false }
       } else if (addressee?.kind === 'hero') {
-        intent = { ...intent, intent: 'improvised_action', roleplay_speech: true, targets: [], missing_information: [], requires_clarification: false }
+        intent = { ...intent, intent: 'improvised_action', roleplay_speech: !actsBeyondSpeech(message), targets: [], missing_information: [], requires_clarification: false }
       }
     }
     let socialRequest = null
@@ -3049,7 +3069,7 @@ export class GameOrchestrator {
         // «говорит Борину: «Я не уйду, пока не узнаю правду»» получало
         // служебное «Назовите собеседника» (плейтест 2026-10-10). Такую реплику
         // разбирает арбитр свободного действия как сцену без броска.
-        intent = { ...intent, intent: 'improvised_action', roleplay_speech: true, targets: [], missing_information: [], requires_clarification: false }
+        intent = { ...intent, intent: 'improvised_action', roleplay_speech: !actsBeyondSpeech(message), targets: [], missing_information: [], requires_clarification: false }
       } else if (!npcId) {
         intent.requires_clarification = true
         intent.missing_information = ['npc_id']
