@@ -43,6 +43,10 @@ const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v
  * достаётся 72 с, резервной — остаток.
  */
 export const CAMPAIGN_BOOTSTRAP_TIMEOUT_MS = 120_000
+/** Повтор создания мира — только при недоступности провайдера и с запасом срока. */
+const CAMPAIGN_BOOTSTRAP_RETRY_CODES = new Set(['LLM_FALLBACK_EXHAUSTED', 'LLM_PROVIDER_UNAVAILABLE', 'LLM_PROVIDER_ERROR'])
+const CAMPAIGN_BOOTSTRAP_RETRY_MINIMUM_MS = 30_000
+const CAMPAIGN_BOOTSTRAP_RETRY_PAUSE_MS = 5_000
 
 function clean(value, maximum = 500) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -639,8 +643,9 @@ function startingCells(cells, count, { anchorFeatures = [], map = null, origin =
 }
 
 export class CampaignBootstrapper {
-  constructor({ llmClient = null, loreAuthor = null, diceService = null } = {}) {
+  constructor({ llmClient = null, loreAuthor = null, diceService = null, retryPauseMs = CAMPAIGN_BOOTSTRAP_RETRY_PAUSE_MS } = {}) {
     this.llmClient = llmClient
+    this.retryPauseMs = Math.max(0, Number(retryPauseMs) || 0)
     this.loreAuthor = loreAuthor
     // Единственный источник случайности в проекте. В тестах он детерминирован,
     // поэтому «разные броски дают разные зёрна» — проверяемое утверждение.
@@ -697,8 +702,8 @@ export class CampaignBootstrapper {
       ...(startCanon.weather_pin ? { weather_pins: [startCanon.weather_pin] } : {}),
     }
     if (this.llmClient && !worldTemplate) {
-      try {
-        const result = await this.llmClient.completeJson({
+      const startedAt = Date.now()
+      const request = {
           messages: [
             { role: 'system', content: prompt },
             // Вводные владельца и листы героев — свободный текст игроков. Они
@@ -726,11 +731,23 @@ export class CampaignBootstrapper {
           // С каноном сцены мир занимает около 2900 токенов: при 3200 ответ
           // Luna обрывался битым JSON, и мир писала резервная модель (замер 27).
           maxTokens: 4800,
-          timeoutMs: CAMPAIGN_BOOTSTRAP_TIMEOUT_MS,
-        })
-        opening = normalizeOpening(result, fallback)
-        generatedBy = 'ai-storyteller'
-      } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
+      }
+      // Провайдер лёг на минуту — ещё одна попытка, пока срок не вышел:
+      // шаблонный «Ривермарк» вместо мира по вводным — худший исход создания
+      // (замеры 27–29, 2026-10-11: OhMyLama не отвечала ни одной моделью).
+      for (let attempt = 0; attempt < 2 && generatedBy !== 'ai-storyteller'; attempt += 1) {
+        const remaining = CAMPAIGN_BOOTSTRAP_TIMEOUT_MS - (Date.now() - startedAt)
+        if (remaining < CAMPAIGN_BOOTSTRAP_RETRY_MINIMUM_MS) break
+        try {
+          const result = await this.llmClient.completeJson({ ...request, timeoutMs: remaining })
+          opening = normalizeOpening(result, fallback)
+          generatedBy = 'ai-storyteller'
+        } catch (error) {
+          // A new campaign must still be playable when the provider is unavailable.
+          if (!CAMPAIGN_BOOTSTRAP_RETRY_CODES.has(String(error?.code ?? ''))) break
+          await new Promise((resolve) => setTimeout(resolve, this.retryPauseMs))
+        }
+      }
     }
     // У авторского мира со сценарием арку задаёт сюжет (`campaign-scenario.mjs`),
     // а не хеш: главы, финал и развязки — данные сценария.

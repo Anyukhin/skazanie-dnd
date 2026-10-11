@@ -359,3 +359,20 @@ test('канон сцены: публичные факты исходной си
   assert.ok(briefs[0].includes('scene_canon') && briefs[0].includes('этим утром, до дождя'))
   assert.ok(briefs[0].includes('table_knows'))
 })
+
+test('провайдер недоступен при создании мира — ещё одна попытка, а не шаблонный мир', async () => {
+  // Замеры 27–29 (2026-10-11): OhMyLama минуту не отвечала ни одной моделью,
+  // и кампании получали шаблон «Ривермарк» вместо мира по вводным.
+  const { LLMError } = await import('../server/llm-client.mjs')
+  let calls = 0
+  const llmClient = { model: 'test', completeJson: async () => {
+    calls += 1
+    if (calls === 1) throw new LLMError('down', 'LLM_FALLBACK_EXHAUSTED')
+    return opening
+  } }
+  const state = await new CampaignBootstrapper({ llmClient, retryPauseMs: 0 }).create({
+    code: 'GM-RETRY', name: 'Повтор', partyName: 'Двое', world: {}, players: [hero],
+  })
+  assert.equal(calls, 2)
+  assert.equal(state.scene.location, 'Мытарский Двор', 'мир — по ответу модели, а не шаблон')
+})
