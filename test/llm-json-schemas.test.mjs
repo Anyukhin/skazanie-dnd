@@ -300,3 +300,41 @@ test('длинный разовый вызов не обрезается лим�
   const long = await client.complete({ messages: [{ role: 'user', content: 'мир' }] }, { timeoutMs: 400 })
   assert.equal(long.content, 'мир', 'длинный вызов дождался первой модели')
 })
+
+test('Gemini у OhMyLama: без штрафов повторов и с json_object вместо json_schema', async () => {
+  // Проба 2026-10-11: presence_penalty — HTTP 400, strict json_schema — 503 на
+  // каждом вызове. Самая быстрая резервная модель падала на рассказе и ролях.
+  const { providerRequestBody } = await import('../server/llm-client.mjs')
+  const schema = { type: 'json_schema', json_schema: { name: 'probe', strict: true, schema: { type: 'object' } } }
+  assert.deepEqual(providerRequestBody('ohmylama', {
+    model: 'google/gemini-2.5-flash', temperature: 0.4, frequency_penalty: 0.3, presence_penalty: 0.2, response_format: schema, messages: [],
+  }), { model: 'gemini-2.5-flash', temperature: 0.4, response_format: { type: 'json_object' }, messages: [] })
+  const luna = providerRequestBody('ohmylama', { model: 'openai/gpt-6-luna', presence_penalty: 0.2, response_format: schema, messages: [] })
+  assert.equal(luna.presence_penalty, 0.2, 'Luna штрафы принимает')
+  assert.deepEqual(luna.response_format, schema)
+})
+
+test('один тайм-аут после успеха не снимает основную модель на время остывания', async () => {
+  // Замер 19 (2026-10-11): медленный ответ Luna на большой запрос отправлял
+  // её в двухминутное остывание, и ходы этого окна уходили резервным моделям,
+  // которые не успевали, — рассказ сыпался в шаблоны.
+  const { FallbackLLMClient, LLMTimeoutError } = await import('../server/llm-client.mjs')
+  const calls = []
+  let slow = false
+  const primary = { model: 'primary', async complete() {
+    calls.push('primary')
+    if (slow) throw new LLMTimeoutError(10)
+    return { content: 'основная', model: 'primary' }
+  } }
+  const reserve = { model: 'reserve', async complete() { calls.push('reserve'); return { content: 'запас', model: 'reserve' } } }
+  const client = new FallbackLLMClient({ clients: [primary, reserve], failureCooldownMs: 60_000, now: () => 1_000 })
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'раз' }] })).content, 'основная')
+  slow = true
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'два' }] })).content, 'запас')
+  assert.equal(client.health().find(entry => entry.model === 'primary')?.state, 'ready')
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'три' }] })).content, 'запас')
+  assert.deepEqual(calls, ['primary', 'primary', 'reserve', 'primary', 'reserve'], 'после первого тайм-аута основную спрашивают снова')
+  calls.length = 0
+  await client.complete({ messages: [{ role: 'user', content: 'четыре' }] })
+  assert.deepEqual(calls, ['reserve'], 'второй тайм-аут подряд — остывание')
+})

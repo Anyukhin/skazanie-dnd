@@ -471,6 +471,16 @@ export function providerRequestBody(provider, body) {
     delete rest.frequency_penalty
     delete rest.presence_penalty
   }
+  // Gemini у OhMyLama: штрафы повторов — HTTP 400 unsupported_parameter, а
+  // strict json_schema — 503 model_temporarily_unavailable при каждом вызове
+  // (проба 2026-10-11). Рассказчик со штрафами и роли со схемой падали на
+  // самой быстрой резервной модели (около секунды на ответ). JSON mode она
+  // исполняет; формат ответа и так описан в промпте и проверяется ролью.
+  if (/^gemini-/u.test(model)) {
+    delete rest.frequency_penalty
+    delete rest.presence_penalty
+    if (rest.response_format?.type === 'json_schema') rest.response_format = { type: 'json_object' }
+  }
   return {
     ...rest,
     model,
@@ -652,10 +662,16 @@ export class FallbackLLMClient extends LLMClient {
 
   _markFailure(client, error) {
     const status = this._status(client)
+    // Один тайм-аут после успеха — медленный ответ на большой запрос, а не
+    // упавшая модель. Прежде он снимал основную модель на две минуты, и все
+    // ходы этого окна уходили резервным, которые у OhMyLama отвечают по
+    // 5–38 с: рассказ и прочтение заявок сыпались в шаблоны (замер 19,
+    // 2026-10-11). Второй тайм-аут подряд — уже отказ.
+    const slowOnce = error instanceof LLMTimeoutError && status.failures === 0 && status.lastSuccessAt != null
     Object.assign(status, {
-      state: 'cooldown',
+      state: slowOnce ? 'ready' : 'cooldown',
       failures: status.failures + 1,
-      disabledUntil: this.now() + this.failureCooldownMs,
+      disabledUntil: slowOnce ? 0 : this.now() + this.failureCooldownMs,
       lastErrorCode: String(error?.code ?? error?.name ?? 'LLM_ERROR').slice(0, 80),
       lastFailureAt: this.now(),
     })
