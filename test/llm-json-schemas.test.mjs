@@ -282,3 +282,21 @@ test('OhMyLama за ROUTERAI_BASE_URL: имя модели без префикс
   assert.equal(result.model, 'openai/gpt-6-luna', 'учёт расхода видит внутреннее имя')
   assert.equal(result.provider, 'OhMyLama')
 })
+
+test('длинный разовый вызов не обрезается лимитом горячего пути первой модели', async () => {
+  // Замер 19 (2026-10-11): у OhMyLama Luna пишет мир за 20,4 с, лимит модели
+  // 20 с срывал создание кампании (вызов просит 45 с), и мир становился
+  // запасным шаблоном. Запас резервной модели — 60 % срока — сохраняется.
+  const { FallbackLLMClient } = await import('../server/llm-client.mjs')
+  const slow = { model: 'primary', timeoutMs: 20, async complete(_input, options) {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, 40)
+      options?.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')) }, { once: true })
+    })
+    return { content: 'мир', model: 'primary' }
+  } }
+  const reserve = { model: 'reserve', timeoutMs: 20, async complete() { return { content: 'запас', model: 'reserve' } } }
+  const client = new FallbackLLMClient({ clients: [slow, reserve] })
+  const long = await client.complete({ messages: [{ role: 'user', content: 'мир' }] }, { timeoutMs: 400 })
+  assert.equal(long.content, 'мир', 'длинный вызов дождался первой модели')
+})

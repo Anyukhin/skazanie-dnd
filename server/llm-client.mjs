@@ -713,11 +713,18 @@ export class FallbackLLMClient extends LLMClient {
           if (remaining != null && remaining <= 0) throw new LLMTimeoutError(requestedTimeout)
           // Оставляем время резервной модели: зависший основной запрос
           // иначе израсходует весь общий бюджет до переключения.
+          // Лимит модели — для горячего пути. Разовый длинный вызов, который
+          // сам просит больше (создание мира — 45 с), им не обрезается: у
+          // OhMyLama Luna пишет мир за 20,4 с, лимит 20 с срывал его, и
+          // кампания получала запасной шаблон «Ривермарк» (замер 19,
+          // 2026-10-11). Запас резервной модели (60 %) остаётся.
           const configuredLimit = Number(client.timeoutMs)
+          const modelLimit = Number.isFinite(configuredLimit) && configuredLimit > 0 && !(hasDeadline && requestedTimeout > configuredLimit)
+            ? configuredLimit
+            : remaining
           const attemptBudget = remaining == null
             ? null
-            : Math.max(1, Math.min(remaining,
-              Number.isFinite(configuredLimit) && configuredLimit > 0 ? configuredLimit : remaining,
+            : Math.max(1, Math.min(remaining, modelLimit ?? remaining,
               candidateIndex === 0 && candidates.length > 1 ? Math.floor(requestedTimeout * 0.6) : remaining))
           const attemptScope = attemptBudget == null ? null : makeAbortScope(attemptBudget, sharedSignal)
           try {
