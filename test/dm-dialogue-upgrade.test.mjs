@@ -383,6 +383,38 @@ test('прямая речь живого игрока: человеку рядо
   assert.equal(speechAddressee('Мирель кричит «Пожар!» на весь двор', state, 'mirel'), null)
 })
 
+test('собеседник по падежу и фамилии: «Марте Вейл» — не «Мартен», «Госпожа Вельт» узнаётся', async () => {
+  // Замер 19 (2026-10-11): «говорит Марте Вейл: «…»» отвечал Мартен Рыжий —
+  // префикс «Марте» совпал с его именем; «Госпожа Вельт, скажите…» не
+  // узнавалась, и вопрос хозяйке уходил в бросок.
+  const { speechAddressee } = await import('../server/game-orchestrator.mjs')
+  const state = {
+    scene: { location: 'Причал' },
+    players: [{ id: 'mirel', character: 'Мирель' }, { id: 'borin', character: 'Борин' }],
+    social: { npcs: [
+      { id: 'marten', name: 'Мартен Рыжий', location: 'Причал' },
+      { id: 'marta', name: 'Марта Вейл', location: 'Причал' },
+      { id: 'iara', name: 'Иара Вельт', location: 'Причал' },
+    ] },
+  }
+  assert.deepEqual(speechAddressee('Борин тихо говорит Марте Вейл: «Капитан велел мне молчать. Скажи, кто ходил на баркасе?»', state, 'borin'), { kind: 'npc', id: 'marta' })
+  assert.deepEqual(speechAddressee('Мирель раскрывает тетрадь, готовя перо. «Госпожа Вельт, скажите, чей был баркас?»', state, 'mirel'), { kind: 'npc', id: 'iara' })
+  assert.deepEqual(speechAddressee('Мирель подходит к Мартену: «Что за товар у вас?»', state, 'mirel'), { kind: 'npc', id: 'marten' })
+  assert.deepEqual(speechAddressee('«Марта Вейл, кто платит за тишину?»', state, 'mirel'), { kind: 'npc', id: 'marta' })
+})
+
+test('без модели «раскрывает тетрадь» и «тихо говорит» — не Скрытность', async () => {
+  // Замер 19: вопрос хозяйке «Мирель раскрывает тетрадь… «…»» без модели
+  // получал Ловкость (Скрытность) — «скрыва» сидит в «раскрывает».
+  const { interpretFreeAction } = await import('../server/free-action-adjudication.mjs')
+  for (const text of ['Мирель раскрывает тетрадь и спрашивает о баркасе', 'Вскрываю замок сундука', 'Борин тихо говорит Мирели о капитане']) {
+    assert.notEqual(interpretFreeAction(text).skill, 'stealth', text)
+  }
+  for (const text of ['Крадусь вдоль стены', 'Скрываюсь в тени у тропы', 'Тихо пробираюсь к двери', 'Бесшумно обхожу часового', 'Затаиваюсь в кустах']) {
+    assert.equal(interpretFreeAction(text).skill, 'stealth', text)
+  }
+})
+
 test('заклинание со словами в кавычках — заклинание, а не разговор', async () => {
   // Замер 16: «сотворяет «Безмолвный образ»… «Прошу простить…»» уходило в
   // разговор с NPC, и иллюзия так и не появлялась.

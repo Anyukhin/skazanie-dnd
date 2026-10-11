@@ -254,7 +254,14 @@ function wordTokens(value) {
   return String(value ?? '').toLocaleLowerCase('ru').match(/\p{L}[\p{L}\p{M}]*|\d+/gu) ?? []
 }
 
-function sameNameToken(left, right) {
+/**
+ * Одно и то же слово имени в разных падежах: «Марте» — это «Марта», а не
+ * «Мартен». Слова — в нижнем регистре.
+ *
+ * @param {string} left
+ * @param {string} right
+ */
+export function sameNameToken(left, right) {
   if (left === right) return true
   if (/^\d+$/u.test(left) || /^\d+$/u.test(right)) return false
   if (!/^[а-яё]{3,}$/u.test(left) || !/^[а-яё]{3,}$/u.test(right)) return false

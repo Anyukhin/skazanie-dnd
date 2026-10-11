@@ -338,7 +338,11 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(взлам|выбива|выломать|ломаю)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'преграда' },
   { test: /(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'противник' },
   { test: /(поджиг|зажиг|подпал|факел\w*\s+к)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'огонь' },
-  { test: /(крад|тих\w+|незамет|прячусь|скрыва)/iu, ability: 'dex', skill: 'stealth', plausibility: 'plausible', risk: 'minor', obstacle: 'наблюдатели' },
+  // «Скрыва» — с начала слова: «раскрывает тетрадь» и «вскрывает замок» не
+  // прятки; «тихо» — только с движением: «тихо говорит Борину» — реплика.
+  // Без модели вопрос хозяйке «раскрывает тетрадь… «Скажите…»» получал
+  // Скрытность (замер 19, 2026-10-11).
+  { test: /(?:крад|незамет|бесшумн|прячусь|затаи|(?<![\p{L}\p{M}])скрыва|(?<![\p{L}\p{M}])тих\p{L}*\s+(?:\p{L}+\s+)?(?:пробир|проскаль|проход|прокрад|ступа|двига|обход|ид[уеёт]))/iu, ability: 'dex', skill: 'stealth', plausibility: 'plausible', risk: 'minor', obstacle: 'наблюдатели' },
   { test: /(запуг|угрож|пригрож)/iu, ability: 'cha', skill: 'intimidation', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(убежда|уговар|догова|прош\w+\s+помощ)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(обман|вру|соврать|притвор)/iu, ability: 'cha', skill: 'deception', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
@@ -1712,9 +1716,13 @@ export function freeActionGoalIsPassage(goal = '') {
 // телепортировать героя через стену или туман.
 // «Заходит внутрь», «захожу в маяк» — тот же вход: без этих форм толчок двери
 // плечом и шаг внутрь отвечал «сцена не изменилась» (плейтест 2026-10-10).
-const INWARD_PASSAGE_PATTERN = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|входит|входим|входят|захож\p{L}*|заход(?:ит|им|ят)|зайд\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,100}(?:внутр\p{L}*|(?<![\p{L}\p{M}])(?:в|во)\s+(?:монастыр\p{L}*|здани\p{L}*|храм\p{L}*|башн\p{L}*|крепост\p{L}*|замк\p{L}*|дом\p{L}*|маяк\p{L}*))(?![\p{L}\p{M}])/iu
+// Деепричастие и инфинитив — тоже вход: «толкает её, входя первым»,
+// «толкает дверь, чтобы войти первым» прежде не узнавались, и удачная
+// Атлетика кончалась «прохода туда отсюда нет» (замер 19, 2026-10-11).
+const ENTRY_VERB = String.raw`(?:войд\p{L}*|войти|вош(?:ёл|ел|ла|ли)|вхож\p{L}*|вход(?:я|ит|им|ят|ить)|захож\p{L}*|заход(?:я|ит|им|ят|ить)|зайд\p{L}*|зайти|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)`
+const INWARD_PASSAGE_PATTERN = new RegExp(String.raw`(?<![\p{L}\p{M}])${ENTRY_VERB}(?![\p{L}\p{M}])[^.!?]{0,100}(?:внутр\p{L}*|(?<![\p{L}\p{M}])(?:в|во)\s+(?:монастыр\p{L}*|здани\p{L}*|храм\p{L}*|башн\p{L}*|крепост\p{L}*|замк\p{L}*|дом\p{L}*|маяк\p{L}*))(?![\p{L}\p{M}])`, 'iu')
 // «Толкает дверь маяка плечом и входит первым» — вход и без слова «внутрь».
-const DOOR_PUSH_ENTRY_PATTERN = /(?<![\p{L}\p{M}])двер\p{L}*[^.!?]{0,80}(?<![\p{L}\p{M}])(?:входит|входим|входят|вхожу|захожу|заходит|заходим|заходят|войду|войдёт|войдем|войдём)(?![\p{L}\p{M}])/iu
+const DOOR_PUSH_ENTRY_PATTERN = new RegExp(String.raw`(?<![\p{L}\p{M}])двер\p{L}*[^.!?]{0,80}(?<![\p{L}\p{M}])(?:входя|входит|входим|входят|вхожу|войти|войдя|вошёл|вошел|вошла|вошли|захожу|заходя|заходит|заходим|заходят|зайти|зайдя|войду|войдёт|войдет|войдем|войдём)(?![\p{L}\p{M}])`, 'iu')
 const PASSAGE_MAX_STEPS = 6
 const BUILDING_DESTINATION_STEMS = Object.freeze(['монастыр', 'здани', 'храм', 'башн', 'крепост', 'замк', 'дом', 'маяк'])
 const PASSAGE_ALTERNATE_ROUTE_PATTERN = /(?:через|сквозь)\s+(?:окн\p{L}*|щел\p{L}*|стен\p{L}*|пролом\p{L}*|про[её]м\p{L}*|люк\p{L}*|реш[её]тк\p{L}*|ворот\p{L}*)/iu
@@ -1779,7 +1787,7 @@ function inwardPassageAction(raw) {
   if (/[«»"“”„?]/u.test(value)) return false
   if (!INWARD_PASSAGE_PATTERN.test(value) && !DOOR_PUSH_ENTRY_PATTERN.test(value)) return false
   if (/(?:можно\s+ли|могу\s+ли|если|что\s+если)/iu.test(value)) return false
-  const verb = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|входит|входим|входят|захож\p{L}*|заход(?:ит|им|ят)|зайд\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])/iu
+  const verb = new RegExp(String.raw`(?<![\p{L}\p{M}])${ENTRY_VERB}(?![\p{L}\p{M}])`, 'iu')
   return !/(?<![\p{L}\p{M}])не\s+/iu.test(value.slice(0, Math.max(0, value.search(verb))))
 }
 

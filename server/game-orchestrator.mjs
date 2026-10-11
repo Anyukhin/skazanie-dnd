@@ -11,7 +11,7 @@ import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
 import { combatNarrator, combatNarration, damageTypeLabel } from './combat-narration.mjs'
 import './encounter-narration.mjs'
-import { IntentParser, actionSequence, buildRuleQueries, inferRequestKind, namedKnownSpell, normalizeRequestKind } from './intent-parser.mjs'
+import { IntentParser, actionSequence, buildRuleQueries, inferRequestKind, namedKnownSpell, normalizeRequestKind, sameNameToken } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
@@ -1032,15 +1032,23 @@ export function speechAddressee(message, state, playerId) {
       .map((hero) => ({ kind: /** @type {'hero'} */ ('hero'), id: String(hero.id), name: String(hero.character || hero.name || '') })),
   ]
   const normal = (word) => String(word ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
-  const personFor = (word) => people.find((person) => {
-    const first = normal(person.name.split(/\s+/u)[0])
-    if (first.length < 3) return false
-    const stem = first.slice(0, Math.max(3, first.length - 1))
+  // Сначала — то же слово имени в падеже, любое слово имени, фамилия тоже:
+  // «говорит Марте Вейл» прежде доставалось «Мартену Рыжему» по префиксу
+  // «Марте», а «Госпожа Вельт» не узнавалась вовсе (замер 19, 2026-10-11).
+  const personFor = (word) => {
     const spoken = normal(word)
-    return spoken.startsWith(stem) && spoken.length <= first.length + 3
-  }) ?? null
-  const vocative = /^\s*([А-ЯЁ][\p{L}-]+)\s*[,!]/u.exec(quote[1])?.[1]
-  const called = vocative ? personFor(vocative) : null
+    return people.find((person) => normal(person.name).split(/[\s-]+/u)
+      .some((part) => part.length >= 3 && sameNameToken(part, spoken)))
+      ?? people.find((person) => {
+        const first = normal(person.name.split(/\s+/u)[0])
+        if (first.length < 3) return false
+        const stem = first.slice(0, Math.max(3, first.length - 1))
+        return spoken.startsWith(stem) && spoken.length <= first.length + 3
+      }) ?? null
+  }
+  // Обращение в начале реплики: «Ивар, …», «Госпожа Вельт, …», «Мастер Эдрен!».
+  const vocative = /^\s*(?:(?:[Гг]оспож\p{L}*|[Гг]осподин\p{L}*|[Мм]астер\p{L}*|[Сс]удар\p{L}*|[Хх]озяй\p{L}*|[Пп]очтенн\p{L}*|[Уу]важаем\p{L}*|[Дд]обр\p{L}*)\s+)?([А-ЯЁ][\p{L}-]+)(?:\s+([А-ЯЁ][\p{L}-]+))?\s*[,!]/u.exec(quote[1])
+  const called = vocative ? personFor(vocative[1]) ?? (vocative[2] ? personFor(vocative[2]) : null) : null
   if (called) return { kind: called.kind, id: called.id }
   const before = text.slice(0, quote.index)
   const named = [...before.matchAll(/(?<![\p{L}\p{M}])[А-ЯЁ][\p{L}-]+/gu)].map((match) => personFor(match[0])).filter(Boolean)
