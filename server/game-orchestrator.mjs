@@ -1429,6 +1429,10 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
             ? `${freeActionHeroName(events, state)} ${rawGoal.replace(/\s+[—–-]\s+[^—–]*(?:\?|(?<![\p{L}\p{M}])ли(?![\p{L}\p{M}]))[^—–]*$/u, '')}.`
             // Провал цели-описания — «Не вышло: Борин хочет первым войти в
             // маяк» читалось протоколом (замер 21): дверь просто не поддаётся.
+            // Провалившийся вход — «дверь не поддаётся», в любой форме цели:
+            // «Не вышло: войти в маяк первым…» читалось канцелярией (замер 25).
+            : failed && freeActionGoalIsPassage(rawGoal)
+              ? 'Дверь не поддаётся.'
             : failed && rawGoal.startsWith(`${freeActionHeroName(events, state)} `)
               ? freeActionGoalIsPassage(rawGoal) ? 'Дверь не поддаётся.' : `${freeActionHeroName(events, state)} пробует, но не выходит.`
               : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`

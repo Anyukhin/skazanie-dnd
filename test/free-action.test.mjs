@@ -968,6 +968,15 @@ test('запасной рассказчик не меняет «Вышло: …�
   const wished = await wish.orchestrator.handle(actionInput('Ада выходит вперёд и громко объявляет о себе', 'free-wish', campaign()))
   assert.equal(wished.free_action_outcome, 'check_failure')
   assert.doesNotMatch(wished.narration, /Не вышло: Ада хочет/u, wished.narration)
+
+  // Замер 25: «Не вышло: войти в маяк первым…» — провал входа звучит дверью.
+  const door = await setup(campaign(), {
+    narrator: new Narrator(), diceRolls: [2, 2, 2, 2],
+    reading: passageReading({ goal_summary: 'войти в монастырь первой и позвать спутника', approach_summary: 'плечом', ability: 'str', skill: 'athletics' }),
+  })
+  const pushed = await door.orchestrator.handle(actionInput('Ада толкает дверь монастыря плечом', 'free-door-fail', campaign()))
+  assert.equal(pushed.free_action_outcome, 'check_failure')
+  assert.doesNotMatch(pushed.narration, /Не вышло: войти/u, pushed.narration)
 })
 
 test('цель-знание без подтверждённых показаний получает честный ответ, а не голое «Вышло.»', async () => {
