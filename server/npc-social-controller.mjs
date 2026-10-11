@@ -371,11 +371,28 @@ function wordRuns(words, size = REPEAT_WORD_RUN) {
 function earlierReplyIndex(replies) {
   const runs = new Set()
   const sentences = []
+  const stems = []
   for (const reply of replies) {
     for (const run of wordRuns(plainWords(reply, 2_000))) runs.add(run)
-    for (const sentence of replySentences(reply)) sentences.push(new Set(plainWords(sentence)))
+    for (const sentence of replySentences(reply)) {
+      sentences.push(new Set(plainWords(sentence)))
+      stems.push(contentStems(sentence))
+    }
   }
-  return { runs, sentences }
+  return { runs, sentences, stems }
+}
+
+/** Служебные слова не делают предложение новым и не делают его повтором. */
+const REPEAT_STOP_WORDS = new Set([
+  'это', 'этот', 'эта', 'эти', 'того', 'тому', 'тоже', 'было', 'была', 'были', 'будет', 'есть', 'когда', 'тогда',
+  'потом', 'только', 'чтобы', 'если', 'даже', 'ещё', 'еще', 'всего', 'всех', 'свой', 'своя', 'свои', 'меня', 'тебя',
+  'тебе', 'мне', 'него', 'неё', 'нее', 'него', 'ними', 'здесь', 'там', 'тут', 'вот', 'так', 'как', 'что', 'кто', 'где',
+  'уже', 'может', 'знаю', 'знаешь', 'скажу', 'говорю', 'видела', 'видел',
+])
+
+/** Основы содержательных слов: «баркаса без огней» и «баркас без огня» — одно. */
+function contentStems(text) {
+  return new Set(plainWords(text).filter((word) => word.length >= 4 && !REPEAT_STOP_WORDS.has(word)).map((word) => word.slice(0, 4)))
 }
 
 /**
@@ -388,13 +405,26 @@ function sentenceRepeats(sentence, index) {
   if (words.length >= REPEAT_WORD_RUN && [...wordRuns(words)].some((run) => index.runs.has(run))) return true
   if (words.length < 3) return false
   const own = new Set(words)
-  return index.sentences.some((earlier) => {
+  if (index.sentences.some((earlier) => {
     if (earlier.size < 3) return false
     let shared = 0
     for (const word of own) if (earlier.has(word)) shared += 1
     return shared / own.size >= 0.8 && shared / earlier.size >= 0.5
+  })) return true
+  // Пересказ другими формами тех же слов: «баркас без огней у маяка, стража
+  // отворачивалась» пять раз подряд в разных падежах (замеры 27–29).
+  const stems = contentStems(sentence)
+  if (stems.size < 4) return false
+  return (index.stems ?? []).some((earlier) => {
+    if (earlier.size < 3) return false
+    let shared = 0
+    for (const stem of stems) if (earlier.has(stem)) shared += 1
+    return shared / stems.size >= 0.65
   })
 }
+
+/** Просьба повторить сказанное — повтор и есть ответ: «Напомни сигнал». */
+const REMIND_REQUEST = /(?<![\p{L}\p{M}])(?:напомн\p{L}*|повтор\p{L}*|ещё\s+раз|еще\s+раз|снова\s+скаж\p{L}*)(?![\p{L}\p{M}])/iu
 
 const REFERRAL_VERB = /(?<![\p{L}\p{M}])(?:спрос\p{L}*|спраш\p{L}*|расспрос\p{L}*|поговор\p{L}*|обратись|обратитесь|узна(?:й|йте)\s+у|загляни|загляните|иди(?:те)?\s+к|ступай(?:те)?\s+к)(?![\p{L}\p{M}])/iu
 
@@ -639,7 +669,7 @@ function partyKnownFacts(state) {
     .slice(-8)
 }
 
-function briefFor(state, profile, playerId, message, checkOutcome = null, { leads = [], repeatRetry = false, justSeen = '' } = {}) {
+function briefFor(state, profile, playerId, message, checkOutcome = null, { leads = [], repeatRetry = false, repeatedLines = [], justSeen = '' } = {}) {
   const social = ensureNpcSocialState(state.social, state)
   const alreadySaid = alreadySaidForBrief(social, profile, playerId)
   const alreadySaidCandidates = social.conversations
@@ -742,6 +772,7 @@ function briefFor(state, profile, playerId, message, checkOutcome = null, { lead
     // (замер 19, 2026-10-11).
     ...(clean(justSeen, 600) ? { just_seen: clean(justSeen, 600) } : {}),
     ...(repeatRetry ? { repeat_retry: true } : {}),
+    ...(repeatRetry && repeatedLines.length ? { repeated_lines: repeatedLines.map((line) => clean(line, 300)).filter(Boolean).slice(0, 6) } : {}),
     ...selectionFields(boundedSelectionMetadata({ scope: 'server_safe_leads_for_conversation_topic', candidateCount: leads.length, limit: NPC_LEAD_LIMIT }), 'leads'),
     ...selectionFields(boundedSelectionMetadata({ scope: 'npc_replies_visible_to_active_hero', candidateCount: alreadySaidCandidates, limit: NPC_ALREADY_SAID_LIMIT }), 'already_said'),
     ...selectionFields(conversationSelection, 'recent_conversation'),
@@ -1052,15 +1083,25 @@ export class NpcSocialController {
       // вырезаются. Ничего нового не осталось — одна повторная попытка с явным
       // списком сказанного, а если и она повторяет — короткое признание и
       // зацепка, а не та же фраза в третий раз.
-      const earlierFor = (candidate) => npcEarlierReplies(social, profile, heroId, {
-        includeOtherPrivate: !privateKnowledgeDisclosed(state, profile, candidate?.disclosed_fact_ids ?? [], candidate?.disclosed_claim_ids ?? []),
-      })
+      // Стол уже слышал не только самого NPC: соседи пересказывали ту же
+      // историю, а находки отряда NPC подавал как новость (замеры 20–29).
+      const tableHeard = [
+        ...othersSaidNearby(state, social, profile).map((entry) => entry.npc_reply),
+        ...partyKnownFacts(state),
+      ]
+      const remind = REMIND_REQUEST.test(String(message ?? ''))
+      const earlierFor = (candidate) => remind ? [] : [
+        ...npcEarlierReplies(social, profile, heroId, {
+          includeOtherPrivate: !privateKnowledgeDisclosed(state, profile, candidate?.disclosed_fact_ids ?? [], candidate?.disclosed_claim_ids ?? []),
+        }),
+        ...tableHeard,
+      ]
       let repetition = null
       const fresh = freshReplyText(result.reply, earlierFor(result))
       if (!fresh.text) {
         let retried = null
         try {
-          retried = await complete({ repeatRetry: true })
+          retried = await complete({ repeatRetry: true, repeatedLines: replySentences(result.reply).slice(0, 6) })
         } catch {
           retried = null
         }

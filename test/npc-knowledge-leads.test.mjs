@@ -314,3 +314,52 @@ test('собеседник видит, что при нём сказали др�
   }
   assert.deepEqual(othersSaidNearby(state, social, { id: 'mara' }), [{ npc: 'Орн', npc_reply: 'Это лодка Илы, я её знаю.' }])
 })
+
+test('пересказ другими формами тех же слов — тоже повтор', () => {
+  // Замеры 27–29 (2026-10-11): «баркас без огней у маяка, стража
+  // отворачивалась» пять раз подряд в разных падежах проходил сверку слов.
+  const earlier = 'Баркас без огней стоял у старого маяка, а стража отворачивалась.'
+  assert.equal(freshReplyText('Видела я баркас без огня у старого маяка — стражники тогда отворачивались.', [earlier]).text, '')
+  assert.equal(freshReplyText('А сети в трюме были сухие, будто их не бросали вовсе.', [earlier]).text, 'А сети в трюме были сухие, будто их не бросали вовсе.')
+})
+
+test('стол уже слышал это от соседа или нашёл сам — повторная попытка с перечнем повторённого', async () => {
+  const state = greyPier()
+  state.social.npcs.push({ id: 'npc:ola', name: 'Ола', role: 'подавальщица', location: 'Таверна «Сеть»', public_summary: 'Разносит пиво.', voice: 'Звонко.', visibility: 'party', available: true, known_fact_ids: [] })
+  state.social.conversations.push({
+    id: 'conv:ola', npc_id: 'npc:ola', hero_id: 'fighter', player_message: 'Что за баркас?',
+    npc_reply: OWNER_CLUE, stance: 'neutral', visibility: 'party',
+  })
+  const llm = scriptedLlm([
+    replyWith('Баркас «Чайка» той ночью ушёл к маяку без огней, правил им какой-то чужак.'),
+    replyWith('Чужака того я видел: высокий, в промасленном плаще, расплатился серебром.'),
+  ])
+  const result = await new NpcSocialController({ llmClient: llm }).respond({
+    state, playerId: 'wizard', npcId: 'npc:bors', message: 'Что ты знаешь о «Чайке»?', turnId: 'bors-neighbour-repeat',
+  })
+  assert.equal(llm.calls.length, 2, 'пересказ соседа — повторная попытка')
+  assert.equal(result.repetition, 'regenerated')
+  const retry = untrustedPayload(llm.calls[1].input.messages[1].content, 'npc_social_brief')
+  assert.ok(retry.repeated_lines?.some((line) => /Чайка/u.test(line)))
+
+  const found = scriptedLlm([replyWith('На борту того баркаса выжжен знак: рыба с тремя глазами.'), replyWith('Такой знак ставят люди с Чёрной скалы — я его знаю по сетям.')])
+  const told = await new NpcSocialController({ llmClient: found }).respond({
+    state: greyPier(), playerId: 'wizard', npcId: 'npc:bors', message: 'Что за знак на баркасе?', turnId: 'bors-discovery-repeat',
+  })
+  assert.equal(found.calls.length, 2, 'находка отряда — не новость')
+  assert.match(told.reply, /Чёрной скалы/u)
+})
+
+test('просьба напомнить — повтор и есть ответ', async () => {
+  const state = greyPier()
+  state.social.conversations.push({
+    id: 'conv:bors:signal', npc_id: 'npc:bors', hero_id: 'wizard', player_message: 'Какой сигнал?',
+    npc_reply: 'Сигнал — три коротких удара в дверь кладовой.', stance: 'friendly', visibility: 'party',
+  })
+  const llm = scriptedLlm([replyWith('Сигнал — три коротких удара в дверь кладовой.')])
+  const result = await new NpcSocialController({ llmClient: llm }).respond({
+    state, playerId: 'wizard', npcId: 'npc:bors', message: 'Напомни сигнал', turnId: 'bors-remind',
+  })
+  assert.equal(llm.calls.length, 1)
+  assert.match(result.reply, /три коротких удара/u)
+})
