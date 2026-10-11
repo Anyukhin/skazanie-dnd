@@ -427,6 +427,15 @@ export function knownSceneDescription(state = {}) {
   return clean([...opening, ...arrival].filter(Boolean).join(' '), 1_800)
 }
 
+/** Известные отряду места карты мира, кроме текущего, — до двенадцати. */
+function knownPlacesFor(state = {}) {
+  const here = clean(state?.scene?.location, 160).toLocaleLowerCase('ru')
+  return (Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : [])
+    .filter((location) => location?.known !== false && clean(location?.name, 160) && clean(location.name, 160).toLocaleLowerCase('ru') !== here)
+    .map((location) => clean(location.name, 120))
+    .slice(0, 12)
+}
+
 export function adjudicationBrief(state, actorId, text, dialogue = {}) {
   const participants = participantsBrief(state, actorId)
   const sceneProps = scenePropsBrief(state, actorId)
@@ -448,6 +457,11 @@ export function adjudicationBrief(state, actorId, text, dialogue = {}) {
       // Канон сцены: детали успеха и провала не переписывают установленного.
       canon: sceneCanonFor(state),
     },
+    // Закрытый список мест мира, куда можно уйти: судье легче узнать
+    // «пойдём туда вместе» как уход и назвать место как на карте (FIREBALL:
+    // разбор с состоянием игры исполним втрое чаще). Новое место игрок
+    // может назвать и своими словами.
+    known_places: knownPlacesFor(state),
     participants: participants.items,
     scene_props: sceneProps.items,
     ...selectionFields(participants.metadata, 'participants'),

@@ -442,3 +442,24 @@ test('без модели исход проверки звучит по-русс
     assert.doesNotMatch(reply, /[A-Za-z]{3,}/u, `${checkOutcome.skill}/${checkOutcome.success}: ${reply}`)
   }
 })
+
+test('давние ответы NPC приходят сутью, дословно — только последние два; архив их не дублирует', async () => {
+  // Xu et al., 2022: чем чаще прежняя фраза стоит в контексте, тем охотнее
+  // модель её повторяет. Замеры 19–31 — NPC пересказывал свой же ответ.
+  const state = dialogueState()
+  state.social.conversations = Array.from({ length: 5 }, (_, index) => ({
+    id: `own-${index}`, npc_id: 'npc:mira', hero_id: 'hero',
+    player_message: `Вопрос ${index}`, npc_reply: `Ответ номер ${index}. Подробности, которые повторять не нужно.`, stance: 'neutral', visibility: 'party',
+  }))
+  const requests = []
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => { requests.push(input); return { reply: 'Слушаю.', stance: 'neutral' } } },
+  })
+  await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Ответ номер подробности', turnId: 'voice-gist' })
+  const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
+  assert.deepEqual(brief.recent_conversation.map((entry) => entry.npc_reply ?? null), [null, null, null,
+    'Ответ номер 3. Подробности, которые повторять не нужно.', 'Ответ номер 4. Подробности, которые повторять не нужно.'])
+  assert.deepEqual(brief.recent_conversation.slice(0, 3).map((entry) => entry.npc_reply_gist), ['Ответ номер 0.', 'Ответ номер 1.', 'Ответ номер 2.'])
+  assert.ok(!brief.relevant_memory.some((entry) => String(entry.id).startsWith('own-')), 'то, что уже в окне, архив не повторяет')
+  assert.match(requests[0].messages[0].content, /npc_reply_gist/u)
+})

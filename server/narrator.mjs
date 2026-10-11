@@ -682,6 +682,28 @@ export function narratorMemoryFocus(brief) {
  * сводка по-русски и поля, которые сверяет verifier. Внутри narration_brief
  * его копия не повторяется.
  */
+/**
+ * Где и когда отряд прямо сейчас — коротко, в конце запроса: место, часть
+ * места героя (под крышей или снаружи), время, небо, кто рядом и канон.
+ *
+ * @param {Record<string, any>} brief
+ * @param {Record<string, any>|null} canon
+ */
+function nowCardFor(brief, canon) {
+  const scene = brief?.known_environment?.scene ?? {}
+  const area = scene.spatial_context?.current_area
+  const heroes = Array.isArray(scene.field?.heroes) ? scene.field.heroes : []
+  const card = {
+    place: sceneText(scene.location, 120),
+    ...(area?.name ? { hero_area: sceneText(area.name, 80), indoors: area.indoors === true } : {}),
+    ...(canon?.time?.phase_label ? { time_of_day: sceneText(canon.time.phase_label, 40) } : {}),
+    ...(canon?.weather?.label ? { weather: sceneText(canon.weather.label, 40) } : {}),
+    ...(heroes.length ? { party: heroes.slice(0, 6).map((hero) => `${sceneText(hero.name, 40)}: ${sceneText(hero.area, 40)}${hero.condition && hero.condition !== 'цел' ? `, ${sceneText(hero.condition, 20)}` : ''}`) } : {}),
+    ...(Array.isArray(scene.canon) && scene.canon.length ? { canon: scene.canon.slice(0, 4).map((fact) => sceneText(fact, 200)) } : {}),
+  }
+  return card.place || card.hero_area ? card : null
+}
+
 function sceneCanonForPrompt(canon) {
   return {
     summary: sceneText(canon.summary, 900),
@@ -2437,6 +2459,10 @@ export class Narrator {
               ...(recent.length ? { recent_narrations: recent.slice(-3).map((entry) => sceneText(entry, 500)) } : {}),
               ...(weatherRecentlyMentioned(recent) ? { skip_weather: true } : {}),
               ...(priorFeedback.length ? { previous_narration_feedback: priorFeedback } : {}),
+              // Последним — карточка «сейчас»: модель хуже всего читает
+              // середину длинного контекста (Liu et al., «Lost in the
+              // Middle»), а место и погоду рассказчик путал (замеры 27–31).
+              ...(nowCardFor(brief, sceneCanon) ? { now: nowCardFor(brief, sceneCanon) } : {}),
             }),
           },
         ],

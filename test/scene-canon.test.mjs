@@ -360,3 +360,29 @@ test('авторский мир заказа не читает: часы с 08:0
   assert.equal(created.mechanics.weather_pins, undefined)
   assert.equal(sceneCanonFor(normalizeCampaignState(created), { playerId: 'ada', actorId: 'ada' }).time.clock, '08:00')
 })
+
+test('карточка «сейчас» — последним блоком запроса Рассказчика: место, часть места, время, небо, отряд', async () => {
+  // «Lost in the Middle» (Liu et al., 2023): модель хуже читает середину
+  // длинного контекста. Рассказчик описывал очаг и свечи, когда отряд стоял
+  // на причале под грозой (замеры 27–31, 2026-10-11).
+  const llm = new FakeLLM([{ content: 'Туман лежит на досках причала.' }])
+  const narrator = new Narrator({ llmClient: llm, asyncFeedback: false })
+  await narrator.render(briefWith({
+    scene: {
+      location: 'Причал Аквилона',
+      spatial_context: { current_area: { name: 'Сходни', indoors: false } },
+      field: { heroes: [{ name: 'Ада', area: 'Сходни', indoors: false, condition: 'ранен' }, { name: 'Борин', area: 'Сходни', indoors: false, condition: 'цел' }], enemies: [], people: [] },
+      canon: ['Баркас ушёл в море на рассвете'],
+    },
+    world_clock: worldClock({ weather: 'fog' }),
+  }))
+  const content = llm.requests[0].messages[1].content
+  const now = untrustedPayload(content, 'now')
+  assert.equal(now.place, 'Причал Аквилона')
+  assert.equal(now.hero_area, 'Сходни')
+  assert.equal(now.indoors, false)
+  assert.equal(now.weather, 'Туман')
+  assert.deepEqual(now.party, ['Ада: Сходни, ранен', 'Борин: Сходни'])
+  assert.deepEqual(now.canon, ['Баркас ушёл в море на рассвете'])
+  assert.ok(content.lastIndexOf(`${UNTRUSTED_DATA_START}:`) === content.indexOf(`${UNTRUSTED_DATA_START}:now>>>`), 'карточка — последний блок данных')
+})

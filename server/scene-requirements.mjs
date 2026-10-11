@@ -55,6 +55,8 @@ const MAX_COUNT = 6
  *   список — у реестра такого предмета ещё нет, и карта обещание не выполнит
  * @property {'platform'} [terrain] объект строится не предметом, а клетками
  *   карты: настил — приподнятый деревянный пол (`server/prop-placement.mjs`)
+ * @property {false} [fromText] вид не читается из слов сцены, только из якорей
+ *   модели: лодку сюжет чаще ищет, чем видит («баркас не вернулся»)
  */
 
 /**
@@ -91,6 +93,12 @@ export const SCENE_REQUIREMENT_KINDS = Object.freeze([
   { id: 'oak', label: 'дуб', pattern: /дуб(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})/u, assets: ['tree_oak'] },
   { id: 'notice_board', label: 'доска объявлений', pattern: /доск(?:а|и|е|у|ой)\s+(?:объявлений|указов|приказов|вестей)(?!\p{L})/u, assets: ['notice_board'] },
   { id: 'forge', label: 'кузница', pattern: /кузн(?:ица|ицы|ице|ицу|ицей|ечн\p{L}*)(?!\p{L})|наковальн\p{L}*/u, assets: ['forge', 'anvil'] },
+  // Замер 31 (2026-10-11): пролог ставил героиню «у причала», а карта была
+  // таверной с двором — ни столба, ни лодки; «выходит к причалу» фишку не
+  // двигало, рассказчик описывал очаг. Причал — по словам сцены, лодка —
+  // только якорем модели.
+  { id: 'mooring', label: 'причал', pattern: /(?:причал|пирс)(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})|пристан(?:ь|и|ью|ей|ям|ями|ях)(?!\p{L})|кнехт\p{L}*|швартов\p{L}*\s+тумб\p{L}*/u, assets: ['mooring_post'] },
+  { id: 'rowboat', label: 'лодка', pattern: /(?:лодк|баркас|шлюпк|ялик|плоскодонк)\p{L}*|чел(?:н|ён|ен)(?:а|у|ом|е|ы|ов)?(?!\p{L})/u, assets: ['rowboat', 'punt'], fromText: false },
 ])
 
 /**
@@ -187,6 +195,7 @@ export function sceneRequirementsFromText(texts) {
   /** @type {Map<string, { id: string, count: number, at: number }>} */
   const found = new Map()
   for (const kind of SCENE_REQUIREMENT_KINDS) {
+    if (kind.fromText === false) continue
     const pattern = new RegExp(kind.pattern.source, 'gu')
     for (const match of source.matchAll(pattern)) {
       const at = match.index ?? 0
@@ -289,7 +298,10 @@ export function normalizeLandmarks(value) {
   const result = []
   for (const entry of Array.isArray(value) ? value : []) {
     if (result.length >= MAX_LANDMARKS) break
-    const id = String(entry?.kind ?? '')
+    // Нормализованный якорь хранит вид в `id`: замысел первой карты
+    // (`normalizeSceneMapDesign`) нормализуется ещё раз в программе сцены, и
+    // якоря автора кампании до карты не доходили (замер 31, 2026-10-12).
+    const id = String(entry?.kind ?? entry?.id ?? '')
     if (!KINDS_BY_ID.has(id) || result.some((mark) => mark.id === id)) continue
     const role = LANDMARK_ROLES.includes(entry?.role) ? String(entry.role) : 'dressing'
     const count = Number(entry?.count)

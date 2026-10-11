@@ -300,6 +300,27 @@ function memoryTerms(value) {
   return new Set(clean(value, 1_000).toLocaleLowerCase('ru').match(/[\p{L}\p{N}]{4,}/gu) ?? [])
 }
 
+/**
+ * Суть давней реплики: первая фраза, не длиннее сотни знаков. Модель, которой
+ * дают её прежние ответы дословно, повторяет их тем охотнее, чем чаще они
+ * стоят в контексте (Xu et al., 2022, «Learning to Break the Loop»); замеры
+ * 19–31 — NPC пересказывал свой же ответ. Дословно остаются последние слова.
+ */
+function replyGist(reply) {
+  const text = clean(reply, 600)
+  const first = text.split(/(?<=[.!?…])\s+/u)[0] ?? ''
+  return first.length > 100 ? `${first.slice(0, 99).trimEnd()}…` : first
+}
+
+/** Последние `verbatim` ответов — дословно, старые — сутью. */
+function withReplyGists(entries, verbatim) {
+  return entries.map((entry, index) => {
+    if (index >= entries.length - verbatim || !entry.npc_reply) return entry
+    const { npc_reply: reply, ...rest } = entry
+    return { ...rest, npc_reply_gist: replyGist(reply) }
+  })
+}
+
 function relevantNpcMemory(social, profile, playerId, message) {
   const query = memoryTerms(message)
   const score = (text) => [...memoryTerms(text)].filter((term) => query.has(term)).length
@@ -683,6 +704,7 @@ function briefFor(state, profile, playerId, message, checkOutcome = null, { lead
     .filter((entry) => entry.npc_id === profile.id
       && entry.hero_id !== playerId
       && conversationVisibleTo(entry, playerId))
+  const recentIds = new Set([...currentConversation.slice(-6), ...partyConversation.slice(-4)].map((entry) => entry.id).filter(Boolean))
   const openPromises = social.promises
     .filter((entry) => entry.npc_id === profile.id && entry.hero_id === playerId && entry.status === 'open')
   const relevantMemory = relevantNpcMemory(social, profile, playerId, message)
@@ -740,17 +762,22 @@ function briefFor(state, profile, playerId, message, checkOutcome = null, { lead
     open_promises: openPromises
       .slice(-10)
       .map((entry) => ({ id: entry.id, direction: entry.direction, text: entry.text, due_hint: entry.due_hint })),
-    recent_conversation: currentConversation
+    recent_conversation: withReplyGists(currentConversation
       .slice(-6)
-      .map((entry) => ({ player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance, ...(entry.check ? { check: { skill: entry.check.skill, success: entry.check.success, degree: entry.check.degree } } : {}) })),
+      .map((entry) => ({ player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance, ...(entry.check ? { check: { skill: entry.check.skill, success: entry.check.success, degree: entry.check.degree } } : {}) })), 2),
     // NPC помнит отряд, а не одно лицо: последние разговоры с другими героями
     // видимы группе (visibility: party) и приходят с именем собеседника.
-    recent_party_conversation: partyConversation
+    recent_party_conversation: withReplyGists(partyConversation
       .slice(-4)
-      .map((entry) => ({ hero: heroName(state, entry.hero_id), player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })),
+      .map((entry) => ({ hero: heroName(state, entry.hero_id), player_message: entry.player_message, npc_reply: entry.npc_reply, stance: entry.stance })), 1),
     // Релевантный архив дополняет короткое окно последних реплик; visibility
     // проверяется до ранжирования, поэтому чужая личная беседа не просачивается.
-    relevant_memory: relevantMemory,
+    // Без разговоров, которые уже стоят в окнах выше, и сутью, а не дословно.
+    relevant_memory: relevantMemory
+      .filter((entry) => entry.kind !== 'conversation' || !recentIds.has(entry.id))
+      .map((entry) => entry.kind === 'conversation' && entry.npc_reply
+        ? (({ npc_reply: reply, ...rest }) => ({ ...rest, npc_reply_gist: replyGist(reply) }))(entry)
+        : entry),
     speakable_facts: speakableFacts,
     speakable_claims: speakableClaims,
     // Что о собеседнике открыто сказано на карте (плейтест 2026-10-04, QP-01):

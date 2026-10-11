@@ -739,7 +739,8 @@ export class CampaignBootstrapper {
         const remaining = CAMPAIGN_BOOTSTRAP_TIMEOUT_MS - (Date.now() - startedAt)
         if (remaining < CAMPAIGN_BOOTSTRAP_RETRY_MINIMUM_MS) break
         try {
-          const result = await this.llmClient.completeJson({ ...request, timeoutMs: remaining })
+          // Первая попытка — весь срок; повтор — сколько осталось.
+          const result = await this.llmClient.completeJson({ ...request, timeoutMs: attempt === 0 ? CAMPAIGN_BOOTSTRAP_TIMEOUT_MS : remaining })
           opening = normalizeOpening(result, fallback)
           generatedBy = 'ai-storyteller'
         } catch (error) {

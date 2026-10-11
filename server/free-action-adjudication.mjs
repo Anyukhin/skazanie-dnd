@@ -967,7 +967,7 @@ const APPROACH_PROP_TARGETS = Object.freeze([
   { stems: ['фонтан'], asset: /fountain/u },
   { stems: ['доске объявлен', 'доска объявлен', 'объявлен'], asset: /notice_board/u },
   { stems: ['сетям', 'сетей', 'сети', 'снаст'], asset: /(?:fishing_nets|cargo_net)/u },
-  { stems: ['тумб', 'кнехт', 'швартов'], asset: /mooring/u },
+  { stems: ['тумб', 'кнехт', 'швартов', 'причал', 'пристан', 'пирс'], asset: /mooring/u },
   { stems: ['лотк', 'лоток', 'прилавок'], asset: /market_stall/u },
   { stems: ['алтар'], asset: /altar/u },
   { stems: ['стату', 'изваян'], asset: /statue/u },
