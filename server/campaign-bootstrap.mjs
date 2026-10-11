@@ -723,7 +723,9 @@ export class CampaignBootstrapper {
             }) },
           ],
           temperature: 0.8,
-          maxTokens: 3200,
+          // С каноном сцены мир занимает около 2900 токенов: при 3200 ответ
+          // Luna обрывался битым JSON, и мир писала резервная модель (замер 27).
+          maxTokens: 4800,
           timeoutMs: CAMPAIGN_BOOTSTRAP_TIMEOUT_MS,
         })
         opening = normalizeOpening(result, fallback)
