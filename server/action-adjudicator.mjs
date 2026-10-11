@@ -467,8 +467,12 @@ export class ActionAdjudicator {
    * `systemPrompt` — подмена текста контракта только для замеров
    * (`eval/intent-routing-eval-2026-10-01.mjs` сравнивает v6 и v7 на одних
    * фразах). Сервер её не передаёт и работает с загруженным v7.
+   *
+   * Срок 12 с: у OhMyLama Luna читает заявку с брифом в 7–10 тыс. токенов за
+   * 3–9 с, а первой модели достаётся 60 % срока. При 9 с она обрывалась на
+   * 5,4 с, и заявку судила резервная модель или шаблон (замеры 19–20).
    */
-  constructor({ llmClient = null, timeoutMs = 9_000, systemPrompt = null } = {}) {
+  constructor({ llmClient = null, timeoutMs = 12_000, systemPrompt = null } = {}) {
     this.llmClient = llmClient
     this.timeoutMs = timeoutMs
     this.systemPrompt = typeof systemPrompt === 'string' && systemPrompt.trim() ? systemPrompt : prompt

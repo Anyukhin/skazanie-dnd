@@ -617,6 +617,8 @@ export class RouterAIClient extends LLMClient {
   }
 }
 
+const CONTENT_FAILURE_CODES = new Set(['LLM_JSON_INVALID', 'LLM_RESPONSE_INVALID', 'LLM_RESPONSE_TOO_LARGE'])
+
 export class FallbackLLMClient extends LLMClient {
   constructor({
     clients = [],
@@ -668,6 +670,14 @@ export class FallbackLLMClient extends LLMClient {
     // 5–38 с: рассказ и прочтение заявок сыпались в шаблоны (замер 19,
     // 2026-10-11). Второй тайм-аут подряд — уже отказ.
     const slowOnce = error instanceof LLMTimeoutError && status.failures === 0 && status.lastSuccessAt != null
+    // Негодный ответ (битый JSON, отказ валидатора роли) — изъян одного
+    // ответа, а не провайдера: модель отвечает. Прежде обрезанный JSON мира
+    // снимал Luna на две минуты, и первые ходы партии писали резервные модели
+    // (замер 20, 2026-10-11). Запрос уходит резервной, модель остаётся в строю.
+    if (CONTENT_FAILURE_CODES.has(String(error?.code ?? ''))) {
+      Object.assign(status, { lastErrorCode: String(error.code).slice(0, 80), lastFailureAt: this.now() })
+      return
+    }
     Object.assign(status, {
       state: slowOnce ? 'ready' : 'cooldown',
       failures: status.failures + 1,

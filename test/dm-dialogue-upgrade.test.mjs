@@ -454,3 +454,31 @@ test('шаг плана перед словами собеседнику: NPC в
   assert.match(String(response.narration), /Мира Ветрокрыл: «Видела\. Ловко у тебя выходит\.»/u, response.narration)
   assert.equal(response.journal_author, undefined, 'общая запись подписана ведущим, а не собеседником')
 })
+
+test('замер 20: подлежащее — не собеседник, фляга с вопросом — разговор, реплика без вопроса — отыгрыш', async () => {
+  // «Мирель записывает, что Иара умолчала… «Пора к маяку»» ушло хозяйке, и
+  // уход не состоялся; «протягивает Иаре флягу: «…А кто сорит деньгами?»»
+  // получало «Чего Борин хочет добиться»; «Борин мрачно говорит: «Больше не
+  // стану молчать»» — «Назовите собеседника по имени».
+  const { speechAddressee } = await import('../server/game-orchestrator.mjs')
+  const state = {
+    scene: { location: 'Причал' },
+    players: [{ id: 'mirel', character: 'Мирель' }, { id: 'borin', character: 'Борин' }],
+    social: { npcs: [{ id: 'iara', name: 'Иара Вельд', location: 'Причал' }] },
+  }
+  assert.equal(speechAddressee('Мирель записывает в тетрадь, что Иара умолчала о деньгах: «Пора к Заброшенному маяку — здесь правду не вытянешь».', state, 'mirel'), null)
+  assert.deepEqual(speechAddressee('Мирель возвращается к Иара Вельд и протягивает монету: «Кто здесь мог им помогать?»', state, 'mirel'), { kind: 'npc', id: 'iara' })
+  assert.deepEqual(speechAddressee('Борин протягивает Иаре флягу: «Выпьем за тех, кто не вернулся. А кто сорит деньгами?»', state, 'borin'), { kind: 'npc', id: 'iara' })
+
+  const { send } = await fixture({ state: roomWithDoor() })
+  const monologue = await send('Ада мрачно смотрит на дверь и говорит: «Тогда я промолчала. Больше не стану».')
+  assert.doesNotMatch(String(monologue.narration), /Назовите собеседника/u, monologue.narration)
+})
+
+test('запись в свою тетрадь — без броска и без судьи', async () => {
+  const { harmlessFreeActionReading } = await import('../server/free-action-adjudication.mjs')
+  const state = { players: [{ id: 'mirel', character: 'Мирель', inventory: [] }], mechanics: { combat: { active: false } } }
+  const reading = harmlessFreeActionReading(state, 'mirel', 'Мирель заносит в тетрадь знак Утопленной Матери, царапину и волокна верёвки')
+  assert.equal(reading?.plausibility, 'trivial')
+  assert.equal(harmlessFreeActionReading(state, 'mirel', 'Мирель записывает в тетрадь и говорит: «Пора»'), null, 'реплика — уже не только запись')
+})

@@ -404,6 +404,18 @@ export function harmlessFreeActionReading(state, actorId, text) {
   if (/[;]|\b(?:if|then)\b|(?:затем|потом|чтобы|противник|страж|двер|обрыв|пропаст|огонь|подж|связать\s+его)/iu.test(value)) return null
   const actor = (state?.players ?? []).find(entry => String(entry.id) === String(actorId))
   if (!actor) return null
+  // Запись в свою тетрадь — жест героя, а не испытание. Судья однажды дал на
+  // «заносит в тетрадь знак, царапину и волокна верёвки» Атлетику, провал
+  // оборвал план, и подкуп хозяйки следующим шагом не случился (замер 20,
+  // 2026-10-11). Реплика в кавычках — уже не только запись.
+  if (!/[«»"]/u.test(value) && /(?<![\p{L}\p{M}])(?:записыва\p{L}*|запис(?:ал|ала|ываю)|занос\p{L}*|занош\p{L}*|вписыва\p{L}*|отмеча\p{L}*|помеча\p{L}*|дела(?:ю|ет)\s+(?:по)?метк\p{L}*|набрасыва\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,200}?(?<![\p{L}\p{M}])в\s+(?:сво\p{L}*\s+)?(?:тетрад\p{L}*|дневник\p{L}*|блокнот\p{L}*|записн\p{L}*\s+книжк\p{L}*)/iu.test(value)
+    && !/(?:прыга|лез|бега|броса|атак|бь[её]т|удар|толка|лома|вскрыва)/iu.test(value)) {
+    return normalizeFreeActionReading({
+      goal_summary: clean(text, 200), approach_summary: clean(text, 200),
+      plausibility: 'trivial', risk: 'none', effect: 'none', action_cost: 'free',
+      ability: 'int', skill: 'investigation', required_means: [], source: 'deterministic-trivial',
+    }, text)
+  }
   const ropeGesture = /^(?:я\s+)?(?:развязываю\s+и\s+заново\s+завязываю|завязываю|перевязываю|сматываю|распутываю)\s+(?:(?:свою|имеющуюся)\s+)?веревку(?:,?\s+проверяя\s+прочность\s+узлов(?:\s+перед\s+использованием)?)?[.!]?$/u.test(value)
   const rope = ropeGesture
     ? (actor.inventory ?? []).find(item => /веревк|rope/iu.test(String(item.name).replace(/ё/gu, 'е'))) : null

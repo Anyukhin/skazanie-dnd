@@ -996,7 +996,15 @@ function speechToPartyOrAir(message, state, playerId, explicitNpcId = '') {
   const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
   const presentNpcs = (state?.social?.npcs ?? []).filter((npc) => npc?.available !== false
     && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
-  return namesHero || presentNpcs.length === 0
+  // Реплика без вопроса, никому из здешних не названная, — слова в сцену:
+  // «Борин мрачно говорит: «Тогда промолчал — больше не стану»» получала
+  // «Назовите собеседника по имени» (замер 20, 2026-10-11). Вопрос без
+  // адресата по-прежнему уточняется: на него кому-то надо ответить.
+  const quoted = [...String(message ?? '').matchAll(/[«"“]([^«»"“”]{1,800})[»"”]/gu)].map((match) => match[1]).join(' ')
+  const namesNpc = presentNpcs.some((npc) => (String(npc?.name ?? '').match(/\p{L}{3,}/gu) ?? []).some((word) => words.has(stem(word))))
+  const request = /(?<![\p{L}\p{M}])(?:расскаж\p{L}*|скажи\p{L}*|скажите|подскаж\p{L}*|объясн\p{L}*|покаж\p{L}*|дай|дайте|ответь\p{L}*|помоги\p{L}*|прошу)(?![\p{L}\p{M}])/iu.test(quoted)
+  const statement = Boolean(quoted) && !/\?/u.test(quoted) && !request && !namesNpc
+  return namesHero || presentNpcs.length === 0 || statement
 }
 
 /**
@@ -1051,12 +1059,26 @@ export function speechAddressee(message, state, playerId) {
   const called = vocative ? personFor(vocative[1]) ?? (vocative[2] ? personFor(vocative[2]) : null) : null
   if (called) return { kind: called.kind, id: called.id }
   const before = text.slice(0, quote.index)
-  const named = [...before.matchAll(/(?<![\p{L}\p{M}])[А-ЯЁ][\p{L}-]+/gu)].map((match) => personFor(match[0])).filter(Boolean)
+  // До реплики собеседник — только в обращении: «подходит к Лине», «говорит
+  // Марте», «показывает Грете». Подлежащее «что Иара умолчала» — не адресат:
+  // такая заявка ушла хозяйке, и уход к маяку не состоялся (замер 20).
+  const addressed = (match) => {
+    const spoken = normal(match[0])
+    const person = personFor(match[0])
+    if (!person) return null
+    const nominative = normal(person.name).split(/[\s-]+/u).includes(spoken)
+    const lead = before.slice(Math.max(0, Number(match.index) - 60), match.index)
+    return !nominative || ADDRESS_CUE_PATTERN.test(lead) ? person : null
+  }
+  const named = [...before.matchAll(/(?<![\p{L}\p{M}])[А-ЯЁ][\p{L}-]+/gu)].map(addressed).filter(Boolean)
   const last = named.at(-1)
   return last ? { kind: last.kind, id: last.id } : null
 }
 
 const SPELLCASTING_PATTERN = /(?<![\p{L}\p{M}])(?:заклинани\p{L}*|сотвор\p{L}*|колду\p{L}*|чару\p{L}*|читаю\s+«|творю\s+«)/iu
+
+/** Слова перед именем, с которыми оно — обращение: «к Иаре», «говорит Марте». */
+const ADDRESS_CUE_PATTERN = /(?:^|[\s,])(?:к|ко|у|перед|для|обраща\p{L}*|говор\p{L}*|скаж\p{L}*|спрашива\p{L}*|спрос\p{L}*|шепч\p{L}*|шепта\p{L}*|оклика\p{L}*|окликн\p{L}*|зов[её]т|кива\p{L}*|протягива\p{L}*|показыва\p{L}*|подход\p{L}*|наклоня\p{L}*|поворачива\p{L}*|клад[её]т|обеща\p{L}*)\s+(?:\p{L}+\s+){0,2}$/iu
 
 /** Передача вещи с репликой остаётся передачей: «отдаю Лине верёвку: «Держи»». */
 const SPEECH_HANDOVER_PATTERN = /(?<![\p{L}\p{M}])(?:переда|отда|вруча|протягива)\p{L}*/iu
@@ -2961,7 +2983,11 @@ export class GameOrchestrator {
       && ['improvised_action', 'explore', 'unknown', 'social'].includes(String(intent.intent))) {
       const addressee = speechAddressee(message, visibleState, playerId)
       const socialIds = new Set((visibleState.social?.npcs ?? []).map((npc) => String(npc.id)))
-      if (addressee?.kind === 'npc' && socialIds.has(addressee.id) && !SPEECH_HANDOVER_PATTERN.test(message)) {
+      // Протянутая фляга с вопросом — разговор, а не передача: «протягивает
+      // Иаре флягу: «Выпьем… А кто сорит деньгами?»» получало «Чего Борин
+      // хочет добиться» (замер 20). «Отдаю верёвку: «Держи»» — передача.
+      const asks = /\?/u.test([...message.matchAll(/«([^«»]{1,800})»/gu)].map((match) => match[1]).join(' '))
+      if (addressee?.kind === 'npc' && socialIds.has(addressee.id) && (!SPEECH_HANDOVER_PATTERN.test(message) || asks)) {
         intent = { ...intent, intent: 'social', targets: [addressee.id], missing_information: [], requires_clarification: false }
       } else if (addressee?.kind === 'hero') {
         intent = { ...intent, intent: 'improvised_action', roleplay_speech: true, targets: [], missing_information: [], requires_clarification: false }

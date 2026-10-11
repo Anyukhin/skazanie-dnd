@@ -338,3 +338,22 @@ test('один тайм-аут после успеха не снимает ос�
   await client.complete({ messages: [{ role: 'user', content: 'четыре' }] })
   assert.deepEqual(calls, ['reserve'], 'второй тайм-аут подряд — остывание')
 })
+
+test('негодный ответ не снимает модель: битый JSON уходит резервной, следующий запрос — снова первой', async () => {
+  // Замер 20 (2026-10-11): обрезанный JSON при создании мира снял Luna на две
+  // минуты, и первые ходы партии писали резервные модели.
+  const { FallbackLLMClient, LLMError } = await import('../server/llm-client.mjs')
+  const calls = []
+  let broken = true
+  const primary = { model: 'primary', async complete() {
+    calls.push('primary')
+    if (broken) throw new LLMError('broken json', 'LLM_JSON_INVALID')
+    return { content: 'основная', model: 'primary' }
+  } }
+  const reserve = { model: 'reserve', async complete() { calls.push('reserve'); return { content: 'запас', model: 'reserve' } } }
+  const client = new FallbackLLMClient({ clients: [primary, reserve], failureCooldownMs: 60_000, now: () => 1_000 })
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'мир' }] })).content, 'запас')
+  broken = false
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'ход' }] })).content, 'основная')
+  assert.deepEqual(calls, ['primary', 'reserve', 'primary'])
+})
