@@ -75,6 +75,7 @@ import {
   roleplaySpeechReading,
   assertFreeActionConfirmation,
   previousFailedAttempt,
+  freeActionIsCorpseSearch,
   resolveCorpseSearch,
   lootApproachDestination,
   resolveInventoryTransfer,
@@ -1397,7 +1398,12 @@ export class AutonomousCampaignOrchestrator {
     })
     if (routed) return { context_metadata: actionContextMetadata, ...routed }
     const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading, { preserveActionProfile: Boolean(storedReading) })
-    if (reading.reference_ambiguities.length) {
+    // «Обыскивает тело прислужника» при двух прислужниках — обыск ближнего:
+    // разбор тел ниже выбирает его сам, а «Назовите конкретного участника»
+    // звучало канцелярией (замер 22, 2026-10-11).
+    const corpseTargetOnly = freeActionIsCorpseSearch(text)
+      && reading.reference_ambiguities.every((field) => field === 'target_id')
+    if (reading.reference_ambiguities.length && !corpseTargetOnly) {
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification',
@@ -1655,10 +1661,16 @@ export class AutonomousCampaignOrchestrator {
     }
     // Знак культа на теле культиста — улика сюжета, а не только добыча.
     let corpseClue = null
-    if (corpseSearch?.loot_items?.length) {
+    const bodiesSearched = corpseSearch?.status === 'bodies_searched'
+    if (corpseSearch?.loot_items?.length || bodiesSearched) {
       const now = corpseApproach?.state ?? loaded.state
       const ids = new Set([corpseSearch.loot_container_id, ...(corpseSearch.loot_container_ids ?? [])].filter(Boolean).map(String))
-      const clue = (now.loot_containers?.containers ?? []).filter((entry) => ids.has(String(entry?.id)))
+      // Пустые тела — без контейнера добычи, но знак культа при них тот же.
+      const encounterId = String(now.mechanics?.encounter?.id ?? now.mechanics?.encounter?.encounter_id ?? '')
+      const bodies = bodiesSearched
+        ? [{ kind: 'corpse', id: `bodies:${(corpseSearch.corpse_ids ?? []).join(',')}`, encounter_id: encounterId, source_enemy_ids: corpseSearch.corpse_ids ?? [] }]
+        : []
+      const clue = [...(now.loot_containers?.containers ?? []).filter((entry) => ids.has(String(entry?.id))), ...bodies]
         .map((entry) => corpseClueCommand(now, entry)).find(Boolean)
       if (clue) {
         try {
@@ -1676,7 +1688,7 @@ export class AutonomousCampaignOrchestrator {
         // Названное содержимое тела — ответ ведущего, а не вопрос: карточка
         // уточнения ждала «Да», и тот же список звучал в летописи дважды
         // (замер 12, 2026-10-10).
-        kind: Array.isArray(corpseSearch.loot_items) && corpseSearch.loot_items.length ? 'loot_inspection' : 'clarification',
+        kind: (Array.isArray(corpseSearch.loot_items) && corpseSearch.loot_items.length) || bodiesSearched ? 'loot_inspection' : 'clarification',
         narration: clueText ? `${corpseSearch.narration} ${clueText}` : corpseSearch.narration,
         turn_consumed: false,
         admin_commands: 0,

@@ -1275,6 +1275,16 @@ const CORPSE_WORD = String.raw`(?:труп|тел[оаеу]|(?<![\p{L}\p{M}])т�
 const SEARCH_VERB = String.raw`(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)`
 const CORPSE_SEARCH = new RegExp(String.raw`${SEARCH_VERB}[^.!?]{0,80}${CORPSE_WORD}|${CORPSE_WORD}[^.!?]{0,80}${SEARCH_VERB}`, 'iu')
 
+/**
+ * Заявка — обыск тела или тел. Неоднозначная цель «тело прислужника» при двух
+ * прислужниках решается обыском ближнего, а не вопросом «назовите участника».
+ *
+ * @param {unknown} text
+ */
+export function freeActionIsCorpseSearch(text = '') {
+  return CORPSE_SEARCH.test(clean(text, 2_000))
+}
+
 /** Заявка обыскивает всех сразу: «поверженных», «тела», «всех убитых». */
 const PLURAL_LOOT_SEARCH = /(?<![\p{L}\p{M}])(?:поверженн(?:ых|ые)|павш(?:их|ие)|убит(?:ых|ые)|мертвец(?:ов|ы)|мёртв(?:ых|ые)|мертв(?:ых|ые)|тела(?![\p{L}\p{M}])|тел|трупы|трупов|всех)(?![\p{L}\p{M}])/iu
 
@@ -1500,6 +1510,21 @@ export function resolveCorpseSearch(state = {}, actorId = '', text = '', reading
   const requested = corpses.find((corpse) => String(corpse?.id) === String(reading.target_id ?? ''))
   const mentioned = requested ? [requested] : corpses.filter((corpse) => mentionsReference(text, referenceNames(corpse)))
   const candidates = mentioned.length ? mentioned : corpses.length === 1 ? corpses : []
+  // Тела есть, но ни при одном ничего: ни вещей, ни монет — ведущий так и
+  // говорит, а не переспрашивает «укажите конкретное тело» (замер 22).
+  const pool = candidates.length ? candidates : corpses
+  const emptyHanded = (corpse) => !(Array.isArray(corpse?.loadout?.items) && corpse.loadout.items.length)
+    && !(Number(corpse?.loadout?.purse_cp) > 0)
+    && !(Array.isArray(corpse?.search_contents) && corpse.search_contents.length)
+    && !(Array.isArray(corpse?.corpse_contents) && corpse.corpse_contents.length)
+  if (candidates.length !== 1 && pool.length && pool.every(emptyHanded)) {
+    return {
+      status: 'bodies_searched',
+      narration: pool.length > 1 ? 'Карманы и пояса пусты: ничего ценного при телах нет.' : 'Карманы и пояс пусты: ничего ценного при теле нет.',
+      server_owned_contents: true,
+      corpse_ids: pool.map((corpse) => String(corpse.id ?? '')),
+    }
+  }
   if (candidates.length !== 1) {
     return {
       status: 'clarification',

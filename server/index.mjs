@@ -5373,7 +5373,10 @@ async function handleHttpRequest(req, res) {
         }).catch(() => null)
         if (opening?.narration) {
           const intro = encounterIntro(createdEvent, latest.state)
-          const rest = intro && combatNarrationText.includes(intro) ? combatNarrationText.replace(intro, '').trim() : combatNarrationText
+          // Начало боя вводка уже сказала: «…схватка началась. Схватка
+          // началась. Ход открывает…» звучало дважды (замер 22, 2026-10-11).
+          const rest = (intro && combatNarrationText.includes(intro) ? combatNarrationText.replace(intro, '').trim() : combatNarrationText)
+            .replace(/^(?:Бой начинается\.|Звенит сталь — бой начался\.|Схватка началась\.)\s*/u, '')
           narration = [String(opening.narration).trim(), rest].filter(Boolean).join(' ')
         }
       }

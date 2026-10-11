@@ -1193,3 +1193,47 @@ test('обыск тела культиста: при добыче — знак �
   assert.doesNotMatch(again.narration, /знак культа/u, 'улика одна на встречу')
   assert.equal((await eventStore.load('FREE-ACTION')).state.worldMemory.facts.filter((fact) => fact.predicate === 'discovery').length, 1)
 })
+
+test('замер 22: пустые тела — «карманы пусты» и знак культа, «тело прислужника» при двух — ближнее без вопроса', async () => {
+  // «Обыскивает поверженных культистов» получало «Укажите конкретное тело»:
+  // у культистов не было снаряжения и контейнера; «тело прислужника» при двух
+  // прислужниках — «Назовите конкретного участника».
+  const map = createTacticalMap({ width: 6, height: 3, locationId: 'cliff', seed: 'empty-bodies', sizeClass: 'arena' })
+  addZone(map, { id: 'cliff', kind: 'exterior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Скала' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 6; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'cliff' })
+  const base = {
+    campaignConcept: { premise: 'В порту тайно действует культ «Утопленной Матери».' },
+    scene: { title: 'Скала у маяка', location: 'Маяк', location_id: 'cliff', objective: 'Узнать, кто зажигает огонь', cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    players: [hero('hero', 'Ада'), hero('other', 'Бор')],
+    mechanics: { combat: { active: false }, encounter: { id: 'enc-empty' }, positions: { hero: { x: 0, y: 1 }, other: { x: 0, y: 0 } } },
+    worldMemory: { entities: [{ id: 'loc:lighthouse', kind: 'location', name: 'Маяк', summary: '', aliases: [], visibility: 'party', tags: [] }], facts: [] },
+  }
+  const empty = campaign({ ...base, enemies: [
+    { id: 'cultist-1', name: 'Культист 1', hp: 0, maxHp: 9, armor: 12, alive: false, x: 2, y: 1, stat_block_id: 'dnd_5e_2014:monster:cultist' },
+    { id: 'cultist-2', name: 'Культист 2', hp: 0, maxHp: 9, armor: 12, alive: false, x: 3, y: 1, stat_block_id: 'dnd_5e_2014:monster:cultist' },
+  ] })
+  const first = await setup(empty)
+  const searched = await first.orchestrator.handle(actionInput('Ада осторожно обыскивает поверженных культистов', 'free-empty-bodies', empty))
+  assert.equal(searched.free_action_outcome, 'loot_inspection', searched.narration)
+  assert.match(searched.narration, /Карманы и пояса пусты/u)
+  assert.match(searched.narration, /знак культа «Утопленной Матери»/u)
+
+  const pouch = (owner) => createItemInstance({
+    instanceId: `inst-pouch-${owner}`, catalogId: 'srd_5_2_1:component-pouch',
+    owner: { kind: 'container', actor_id: `loot:corpse:${owner}` }, origin: { kind: 'enemy_loadout' }, quantity: 1, lootable: true,
+  })
+  const twins = campaign({ ...base,
+    enemies: [
+      { id: 'acolyte-1', name: 'Прислужник 1', hp: 0, maxHp: 9, armor: 10, alive: false, x: 1, y: 1, stat_block_id: 'dnd_5e_2014:monster:acolyte' },
+      { id: 'acolyte-2', name: 'Прислужник 2', hp: 0, maxHp: 9, armor: 10, alive: false, x: 5, y: 1, stat_block_id: 'dnd_5e_2014:monster:acolyte' },
+    ],
+    loot_containers: { containers: ['acolyte-1', 'acolyte-2'].map((owner, index) => ({
+      id: `loot:corpse:${owner}`, kind: 'corpse', source_enemy_id: owner, encounter_id: 'enc-empty', name: `Тело: Прислужник ${index + 1}`,
+      location_id: 'cliff', x: index ? 5 : 1, y: 1, status: 'available', items: [pouch(owner)],
+    })) },
+  })
+  const second = await setup(twins)
+  const one = await second.orchestrator.handle(actionInput('Ада тщательно обыскивает тело прислужника и его мешочек компонентов', 'free-twin-bodies', twins))
+  assert.equal(one.free_action_outcome, 'loot_inspection', one.narration)
+  assert.doesNotMatch(one.narration, /Назовите конкретного участника/u)
+})
