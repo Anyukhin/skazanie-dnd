@@ -478,8 +478,13 @@ function withoutStrayQuote(value) {
  * @returns {{ destination: string, source: 'speech' } | null}
  */
 function speechTravelProposal(text, context) {
-  for (const match of String(text ?? '').matchAll(/[«"“]([^«»"“”]{4,400})[»"”]/gu)) {
-    const speech = compact(match[1], 400)
+  // Место и зов бывают в разных репликах одной заявки: «…у Скального маяка
+  // найдутся следы». Она обращается к Борину: «Пойдём туда вместе»» —
+  // каждая реплика по отдельности уходом не была (замер 30, 2026-10-11).
+  const quoted = [...String(text ?? '').matchAll(/[«"“]([^«»"“”]{4,400})[»"”]/gu)].map((match) => match[1])
+  const speeches = quoted.length > 1 ? [...quoted, quoted.join('. ')] : quoted
+  for (const raw of speeches) {
+    const speech = compact(raw, 800)
     if (!SPEECH_TRAVEL_CALL.test(speech) || NEGATED_MOVEMENT.test(speech)) continue
     const heading = destinationIn(speech, context)
     if (heading.isPlace && heading.destination) return { destination: withoutStrayQuote(heading.destination), source: 'speech' }

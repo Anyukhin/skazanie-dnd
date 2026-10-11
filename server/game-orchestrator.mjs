@@ -1071,8 +1071,14 @@ export function speechAddressee(message, state, playerId, { allowSpell = false }
     const lead = before.slice(Math.max(0, Number(match.index) - 60), match.index)
     return !nominative || ADDRESS_CUE_PATTERN.test(lead) ? person : null
   }
-  const named = [...before.matchAll(/(?<![\p{L}\p{M}])[А-ЯЁ][\p{L}-]+/gu)].map(addressed).filter(Boolean)
-  const last = named.at(-1)
+  // Явное обращение («подходит к Савену», «говорит Марте») сильнее
+  // последнего косвенного упоминания: «подходит к Савену Руду, записывая…
+  // слова Борина: «…»» уходило Борину (замер 30, 2026-10-11).
+  const mentions = [...before.matchAll(/(?<![\p{L}\p{M}])[А-ЯЁ][\p{L}-]+/gu)]
+  const cued = mentions.filter((match) => ADDRESS_CUE_PATTERN.test(before.slice(Math.max(0, Number(match.index) - 60), match.index)))
+    .map((match) => personFor(match[0])).filter(Boolean)
+  const named = mentions.map(addressed).filter(Boolean)
+  const last = cued.at(-1) ?? named.at(-1)
   return last ? { kind: last.kind, id: last.id } : null
 }
 

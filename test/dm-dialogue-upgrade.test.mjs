@@ -515,3 +515,11 @@ test('замер 23: затаиться и следить с репликой с
   // Исход решает судья: попытка получает его ruling, а не эхо отыгрыша.
   assert.ok(response.mechanics.some((event) => event.event_type === 'RulingRecorded' || event.event_type === 'AbilityCheckResolved') || response.check, JSON.stringify(response.mechanics.map((event) => event.event_type)))
 })
+
+test('замер 30: явное обращение сильнее последнего упоминания', async () => {
+  // «подходит к Савену Руду, записывая… слова Борина: «…»» уходило Борину,
+  // и звучало «Кого именно? Здесь таких несколько».
+  const { speechAddressee } = await import('../server/game-orchestrator.mjs')
+  const state = { scene: { location: 'Причал' }, players: [{ id: 'mirel', character: 'Мирель' }, { id: 'borin', character: 'Борин' }], social: { npcs: [{ id: 'saven', name: 'Савен Руд', location: 'Причал' }] } }
+  assert.deepEqual(speechAddressee('Мирель подходит к Савену Руду, записывая на полях слова Борина: «Расскажите всё, что заметили. Вот монета».', state, 'mirel'), { kind: 'npc', id: 'saven' })
+})

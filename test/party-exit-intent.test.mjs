@@ -485,3 +485,11 @@ test('«искать следы у Маяка Чёрной скалы; идём 
   assert.equal(detectPartyExitRequest(said, { knownPlaces: ['Серый Причал'], presentNames: ['Эйра'] })?.destination, 'Маяк Чёрной скалы')
   assert.equal(detectPartyExitRequest('Мирель шепчет: «Подожди у Эйры, я схожу туда одна».', { knownPlaces: [], presentNames: ['Эйра'] }), null)
 })
+
+test('место в одной реплике, зов «пойдём туда» — в другой: тоже уход', async () => {
+  // Замер 30: «…у Скального маяка найдутся следы». Она обращается к Борину:
+  // «Пойдём туда вместе»» — по отдельности ни одна реплика уходом не была.
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const said = 'Мирель закрывает тетрадь: «Гадать бесполезно; у Скального маяка, возможно, удастся найти следы». Она обращается к Борину: «Пойдём туда вместе».'
+  assert.equal(detectPartyExitRequest(said, { knownPlaces: [], presentNames: ['Товен Риск'] })?.destination, 'Скальный маяк')
+})
