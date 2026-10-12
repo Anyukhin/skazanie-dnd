@@ -53,6 +53,16 @@ export function criticalMomentFor(events = [], state = {}) {
     const targetId = String(event.target_ids?.[0] ?? event.actor_id ?? '')
     return { kind, actor_id: String(event.actor_id ?? ''), target_id: targetId, target_name: actorName(state, targetId) }
   }
+  // Критический удар героя или по герою — момент, который за столом
+  // описывают словами, а не строкой «крит, 14 урона» (владелец, 2026-10-12).
+  // Обычные попадания и промахи идут строкой боя.
+  for (const event of events) {
+    if (event.event_type !== 'AttackResolved' || event.payload?.critical !== true || event.payload?.hit === false) continue
+    const attacker = String(event.actor_id ?? '')
+    const targetId = String(event.payload?.target_id ?? event.target_ids?.[0] ?? '')
+    if (!playerIds.has(attacker) && !playerIds.has(targetId)) continue
+    return { kind: 'critical_hit', actor_id: attacker, target_id: targetId, target_name: actorName(state, targetId), attacker_name: actorName(state, attacker) }
+  }
   return null
 }
 
@@ -242,7 +252,13 @@ export class CriticalNarrationCoordinator {
   }
 
   async renderCriticalMoment({ events: allEvents = [], state = {}, viewer = {}, recentNarrations = [], playerNote = '', actorId = '' } = {}) {
-    const trigger = criticalMomentFor(allEvents, state) ?? heroFlourishFor(allEvents, state, { playerNote, actorId })
+    const moment = criticalMomentFor(allEvents, state)
+    // Слова игрока к удару, который свалил врага, не теряются: момент тот же,
+    // но рассказчик вплетает заявку героя.
+    const note = String(playerNote ?? '').trim()
+    const trigger = moment
+      ? (note && actorId && String(moment.actor_id) === String(actorId) ? { ...moment, note: note.slice(0, 400) } : moment)
+      : heroFlourishFor(allEvents, state, { playerNote, actorId })
     if (!trigger) return null
     const heroMoment = ['hero_fallen', 'hero_died'].includes(trigger.kind)
     const focused = heroMoment ? heroMomentEvents(allEvents, trigger) : []
@@ -285,13 +301,17 @@ export class CriticalNarrationCoordinator {
             // Игрок описал поступок словами — ответ сценой, а не сухим
             // «снаряд проходит мимо» (владелец, 2026-10-12; замеры 19–31).
             ? 'Две-три фразы о поступке героя — сцена, а не строка журнала. Заявка игрока уже в летописи: не пересказывай её, а покажи, как это выглядело — движение, звук, лицо врага, — как ответил противник и что изменилось на поле по field (кто где, кто ранен, кто рядом). Боевой клич можно коротко подхватить цитатой. Исход — попадание, промах, урон — только из событий, словами, без чисел; не добавляй бросков, урона, наград и решений правил.'
-            : 'Один выразительный абзац о переломном моменте. Не добавляй новых бросков, урона, наград или решений правил.',
+            : trigger.kind === 'critical_hit'
+              ? 'Две фразы о сокрушительном ударе: куда он пришёлся и как его принял тот, по кому ударили, — по событиям и field. Без чисел, бросков и слова «критический»; не добавляй урона, наград и решений правил. Если удар пришёлся по герою — он жив, пока события не сказали иного.'
+              : trigger.kind === 'enemy_defeated'
+                ? 'Две-три фразы: как падает противник и чей удар его свалил — по событиям; что это меняет на поле по field (кто ещё стоит, кто рядом). Если есть заявка игрока — вплети её, не пересказывая. Без чисел, ходов и правил; не добавляй бросков, урона, наград и решений правил.'
+                : 'Один выразительный абзац о переломном моменте. Не добавляй новых бросков, урона, наград или решений правил.',
     })
     // Живой текст не пришёл — короткая реплика о моменте, а не повтор строки боя.
     // У слов героя запасной реплики нет: строка боя и его собственная реплика
     // уже в летописи.
     const deterministic = /^deterministic/u.test(String(narration?.provider ?? ''))
-    if (deterministic && trigger.kind === 'hero_flourish') return { ...narration, narration: '', trigger }
+    if (deterministic && ['hero_flourish', 'critical_hit'].includes(trigger.kind)) return { ...narration, narration: '', trigger }
     const fallback = deterministic ? criticalMomentLine(trigger, allEvents) : ''
     return { ...narration, ...(fallback ? { narration: fallback } : {}), trigger }
   }

@@ -187,3 +187,35 @@ test('после схватки, где пал герой, сцена начин
   await live.renderCriticalMoment({ events: [{ event_id: 'zero', event_type: 'HitPointsReducedToZero', actor_id: 'gob', target_ids: ['mirel'], payload: { successes: 0, failures: 0 } }], state: falling })
   assert.match(styles.at(-1), /успеешь/u, 'падение героя кончается зовом к товарищу')
 })
+
+test('критический удар героя или по герою — сцена; крит врага по врагу и обычное попадание — строка боя', async () => {
+  // Владелец, 2026-10-12: на ключевые действия — слова ведущего, а не сухие
+  // цифры; на каждый обычный удар — по-прежнему строка боя.
+  const state = { players: [{ id: 'borin', character: 'Борин' }], enemies: [{ id: 'gob', name: 'Гоблин' }, { id: 'wolf', name: 'Волк' }], mechanics: { combat: { active: true } } }
+  const crit = (actor, target) => [{ event_id: `crit-${actor}`, event_type: 'AttackResolved', actor_id: actor, target_ids: [target], payload: { hit: true, critical: true, target_id: target } }]
+  assert.equal(criticalMomentFor(crit('borin', 'gob'), state)?.kind, 'critical_hit')
+  assert.equal(criticalMomentFor(crit('gob', 'borin'), state)?.kind, 'critical_hit', 'по герою — тоже момент')
+  assert.equal(criticalMomentFor(crit('gob', 'wolf'), state), null)
+  assert.equal(criticalMomentFor([{ event_type: 'AttackResolved', actor_id: 'borin', target_ids: ['gob'], payload: { hit: true, critical: false } }], state), null)
+  const styles = []
+  const live = new CriticalNarrationCoordinator({ narrator: { render: async (_brief, options) => { styles.push(options.style); return { narration: 'Топор Борина входит под щит.', provider: 'RouterAI' } } } })
+  assert.equal((await live.renderCriticalMoment({ events: crit('borin', 'gob'), state })).trigger.kind, 'critical_hit')
+  assert.match(styles[0], /Без чисел/u)
+  const silent = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Борин наносит критический удар.', provider: 'deterministic-fallback' }) } })
+  assert.equal((await silent.renderCriticalMoment({ events: crit('borin', 'gob'), state })).narration, '', 'без живого текста — строка боя уже всё сказала')
+})
+
+test('слова игрока к удару, который свалил врага, доходят до рассказчика', async () => {
+  const state = { players: [{ id: 'borin', character: 'Борин' }], enemies: [{ id: 'gob', name: 'Гоблин' }], mechanics: { combat: { active: true } } }
+  const events = [
+    { event_id: 'hit-k', event_type: 'AttackResolved', actor_id: 'borin', target_ids: ['gob'], payload: { hit: true } },
+    { event_id: 'down-k', event_type: 'HitPointsReducedToZero', actor_id: 'borin', target_ids: ['gob'], payload: {} },
+  ]
+  const briefs = []
+  const live = new CriticalNarrationCoordinator({ narrator: { render: async (brief) => { briefs.push(brief); return { narration: '«За Илу!» — гоблин валится в камыш.', provider: 'RouterAI' } } } })
+  const told = await live.renderCriticalMoment({ events, state, playerNote: 'Борин рычит «За Илу!»', actorId: 'borin' })
+  assert.equal(told.trigger.kind, 'enemy_defeated')
+  assert.equal(briefs[0].known_environment.player_intent.action, 'Борин рычит «За Илу!»')
+  await live.renderCriticalMoment({ events, state, playerNote: 'Мирель шепчет молитву', actorId: 'mirel' })
+  assert.equal(briefs[1].known_environment.player_intent, undefined, 'чужие слова к чужому удару не липнут')
+})
