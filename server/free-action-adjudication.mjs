@@ -1900,6 +1900,37 @@ function passageDestinationMatchesScene(state, action) {
 }
 
 /**
+ * Известное место карты мира, которое называет постройка из заявки входа:
+ * «подхожу к двери маяка» в таверне — это «Скальный маяк», до которого ещё
+ * дорога. Замер 31 (2026-10-11): ведущий дважды ответил «Здесь такого здания
+ * нет», и судья записал тупик. Пустая строка — такого места отряд не знает
+ * или их несколько.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} text
+ * @returns {string}
+ */
+export function passageDestinationPlace(state = {}, text = '') {
+  const action = clean(text, 1_500).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  // Цель входа — последняя названная постройка: «через дверь башни внутрь
+  // маяка» ведёт в маяк, а не в любую башню карты мира.
+  const stem = BUILDING_DESTINATION_STEMS
+    .map((candidate) => ({ candidate, at: action.lastIndexOf(candidate) }))
+    .filter((entry) => entry.at >= 0)
+    .sort((left, right) => right.at - left.at)[0]?.candidate
+  if (!stem) return ''
+  const here = clean(state?.scene?.location, 160).toLocaleLowerCase('ru')
+  const places = (Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : [])
+    .filter((location) => location?.known !== false && clean(location?.name, 160))
+    .filter((location) => clean(location.name, 160).toLocaleLowerCase('ru') !== here)
+    .filter((location) => {
+      const name = clean(location.name, 160).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+      return name.includes(stem)
+    })
+  return places.length === 1 ? clean(places[0].name, 80) : ''
+}
+
+/**
  * Планирует bounded-вход свободного действия. Возвращает только клетку,
  * которую затем ещё раз проверит `MoveActor` в Rules Engine.
  *

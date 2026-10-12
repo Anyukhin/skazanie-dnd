@@ -158,6 +158,28 @@ export function sceneCanonFor(state = {}) {
     .slice(0, 8)
 }
 
+/**
+ * Знает ли отряд этого NPC по имени: говорил с ним, или имя уже звучало в
+ * летописи (пролог, рассказ, реплики), или его назвал открытый факт мира.
+ * Замеры 31–32 (2026-10-11/12): рассказчик писал «Мара и Мартен следят за
+ * происходящим», а Мартена отряд ни разу не видел — судья: «имя из
+ * ниоткуда». Незнакомого рассказчик зовёт по роли.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ id?: unknown, name?: unknown }} npc
+ */
+export function npcKnownByName(state = {}, npc = {}) {
+  const id = String(npc?.id ?? '')
+  if (id && (state.social?.conversations ?? []).some((entry) => String(entry?.npc_id ?? '') === id)) return true
+  const name = clean(npc?.name, 80)
+  const first = name.split(/\s+/u)[0] ?? ''
+  if (first.length < 3) return true
+  const stem = first.toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, Math.max(3, first.length - 1))
+  const mentions = (text) => String(text ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').includes(stem)
+  if ((state.messages ?? []).some((message) => mentions(message?.text))) return true
+  return (state.worldMemory?.facts ?? []).some((fact) => ['party', 'public'].includes(String(fact?.visibility)) && mentions(fact?.summary))
+}
+
 const HEALTH_WORDS = Object.freeze({ unharmed: 'цел', wounded: 'ранен', bloodied: 'тяжело ранен', critical: 'едва стоит', defeated: 'выбыл' })
 
 /** Состояние словами стола — те же ступени, что видит игрок у противника. */
@@ -226,7 +248,9 @@ export function fieldSummaryFor(state = {}, preparedMap = null) {
     if (!npc || npc.available === false) continue
     const at = { x: Number(placement.x), y: Number(placement.y) }
     if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) continue
-    entries.push({ side: 'people', id: String(npc.id), name: clean(npc.name, 80), at, ...areaOf(at) })
+    // Незнакомого — по роли: имени отряд ещё не слышал.
+    const known = npcKnownByName(state, npc)
+    entries.push({ side: 'people', id: String(npc.id), name: known ? clean(npc.name, 80) : clean(npc.role, 80) || 'незнакомец', at, ...areaOf(at), ...(known ? {} : { known_by_name: false }) })
   }
   const near = (entry) => entries
     .filter((other) => other !== entry && Math.max(Math.abs(other.at.x - entry.at.x), Math.abs(other.at.y - entry.at.y)) <= 1)

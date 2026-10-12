@@ -315,7 +315,10 @@ export function narratorResponsePlan(brief) {
       // следишь, как…» повторял игроку его же слова (замеры 2026-10-10, судья
       // по ходам 2–3). Заявку игрок уже сказал — ведущий говорит, что вышло.
       : roleplay
-        ? 'Слова героя уже прозвучали и услышаны — не повторяй, не пересказывай и не глуши их («слова тонут в грохоте»). Ответь на них как ведущий: чем откликается место — звук, свет, движение воды или ветра, — и взгляд кого-то из permitted_npc_reactions; если сказанное касается предыстории героя, дай ей отозваться деталью места. За других героев отряда не отвечай и решений за них не принимай.'
+        // Замер 32: «Мара задерживает сухой взгляд» трижды подряд — план
+        // сам велел «и взгляд кого-то из реакций». Теперь — одна новая деталь
+        // места (`new_element`, её выбирает сервер), взгляд — только свежий.
+        ? 'Слова героя уже прозвучали и услышаны — не повторяй, не пересказывай и не глуши их («слова тонут в грохоте»). Ответь на них как ведущий одной-двумя фразами: дай отозваться месту через new_element (если он есть) — деталь, которой ещё не было, и пусть она откликается на сказанное или подталкивает к следующему шагу; если сказанное касается предыстории героя, пусть деталь отзовётся ей. Взгляд или жест из permitted_npc_reactions — только если такого не было в recent_narrations. За других героев отряда не отвечай и решений за них не принимай.'
       : discovered
         ? 'Не пересказывая заявку, сразу назвать находку из события WorldFactRecorded (predicate discovery) — то, что герой нашёл или узнал, своими словами и вещественно; добавить, как откликается место или люди рядом (только permitted_npc_reactions). Сверх находки сведений и согласия NPC не добавлять.'
       : freeOutcome === 'success'
@@ -683,6 +686,27 @@ export function narratorMemoryFocus(brief) {
  * его копия не повторяется.
  */
 /**
+ * Деталь места, которой не было в последних ответах: якорь карты с его
+ * стороной. Пусто — нечего предложить, модель берёт деталь сама.
+ *
+ * @param {Record<string, any>} brief
+ * @param {string[]} recent
+ */
+export function freshSceneElement(brief, recent = []) {
+  const scene = brief?.known_environment?.scene ?? {}
+  const said = (Array.isArray(recent) ? recent : []).slice(-4).join(' ').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  const marks = Array.isArray(scene.landmarks) ? scene.landmarks : []
+  for (const mark of marks) {
+    const label = sceneText(mark?.label, 60)
+    const stem = label.toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/\s+/u)[0]?.slice(0, 5) ?? ''
+    if (!label || stem.length < 3 || said.includes(stem)) continue
+    const where = sceneText(mark?.where, 40)
+    return where ? `${label} — ${where}` : label
+  }
+  return ''
+}
+
+/**
  * Где и когда отряд прямо сейчас — коротко, в конце запроса: место, часть
  * места героя (под крышей или снаружи), время, небо, кто рядом и канон.
  *
@@ -765,6 +789,7 @@ function briefForNarratorPrompt(brief) {
             mannerism: sceneText(npc?.speech_profile?.mannerism, 180),
           },
           relationship: sceneText(npc?.relationship, 40),
+          ...(npc?.known_by_name === false ? { known_by_name: false } : {}),
         })),
         open_promises: (Array.isArray(story.open_promises) ? story.open_promises : [])
           .filter(visibleSocialRecord)
@@ -2179,6 +2204,36 @@ function completeSentencePrefix(value) {
   return end ? text.slice(0, end).trim() : ''
 }
 
+/**
+ * Записка к правке отклонённого черновика: что именно нарушено и где.
+ * Сообщения — серверные, фрагмент — из самого черновика модели.
+ *
+ * @param {Array<{ code?: string, message?: string, match?: string|null }>} violations
+ */
+export function narrationRepairNote(violations = []) {
+  const lines = (Array.isArray(violations) ? violations : []).slice(0, 4).map((violation) => {
+    const match = sceneText(violation?.match ?? '', 160)
+    return `- ${sceneText(violation?.message || violation?.code || 'нарушение', 200)}${match ? ` (фрагмент: «${match}»)` : ''}`
+  })
+  return [
+    'Этот вариант сервер отклонил:',
+    ...lines,
+    'Перепиши ответ целиком: исправь только это, остальное держи по тем же данным. Не утверждай того, чего нет в подтверждённых событиях; заявку игрока, которой не случилось, не описывай свершившейся. Только текст ответа, без пояснений.',
+  ].join('\n')
+}
+
+/** Сумма расхода двух запросов: поля-числа складываются. */
+function addedUsage(left, right) {
+  if (!right || typeof right !== 'object') return left
+  if (!left || typeof left !== 'object') return right
+  const sum = { ...left }
+  for (const [key, value] of Object.entries(right)) {
+    if (typeof value === 'number' && typeof sum[key] === 'number') sum[key] += value
+    else if (!(key in sum)) sum[key] = value
+  }
+  return sum
+}
+
 function awaitNarrationDeadline(operation, signal) {
   const promise = Promise.resolve(operation)
   if (!signal) return promise
@@ -2390,7 +2445,11 @@ export class Narrator {
       recappedArcKeys: this.arcRecapMemory,
     })
     brief = withArcRecapOverride(brief, arcRecap)
-    const responsePlan = narratorResponsePlan(brief)
+    const basePlan = narratorResponsePlan(brief)
+    // Один обязательный новый элемент сцены — выбор сервера, а не модели
+    // (план ответа с новизной, исследования 2026-10-12).
+    const newElement = (brief?.known_environment?.player_intent ?? brief?.player_intent)?.roleplay_speech === true ? freshSceneElement(brief, recent) : ''
+    const responsePlan = newElement ? { ...basePlan, new_element: newElement } : basePlan
     const sensoryAnchors = responsePlan.include_scene_detail ? sensoryAnchorsFor(brief, { rotation: recent.length }) : {}
     const sceneCanon = sceneCanonFromEnvironment(brief.known_environment ?? {})
     const contentDirectives = narratorContentDirectives(brief)
@@ -2538,6 +2597,45 @@ export class Narrator {
           provider: this.llmClient.constructor?.name ?? 'llm',
           tokenUsage,
         })
+      }
+      // Одна правка вместо запасной сводки: модель получает свой черновик и
+      // перечень нарушений (Self-Refine, Madaan и др., 2023). Замер 32
+      // (2026-10-12): живой текст об «Огненном снаряде» отбраковали за шаг,
+      // которого не было, и игрок получил «Мирель применяет «Огненный
+      // снаряд». Мирель не достигает цели атакой». Правка — в том же сроке.
+      if (narration && !deadlineController?.signal.aborted && typeof this.llmClient.complete === 'function') {
+        try {
+          const repair = await awaitNarrationDeadline(this.llmClient.complete({
+            ...request,
+            messages: [
+              ...request.messages,
+              { role: 'assistant', content: narration },
+              { role: 'user', content: narrationRepairNote(safetyVerification.violations) },
+            ],
+          }), deadlineController?.signal)
+          tokenUsage = addedUsage(tokenUsage, repair?.usage ?? null)
+          const repaired = withoutEchoOfPlayer(String(repair?.content ?? '').trim(), brief)
+          const repairedVerification = verifyNarratorCraft(
+            repaired,
+            brief,
+            this.verifier.verify(currentNarrationSegment(repaired, brief, recent), brief, { knownRuleIds }),
+            recent,
+          )
+          if (repaired && repairedVerification.valid) {
+            return finish({
+              narration: repaired,
+              brief,
+              recent,
+              sensoryAnchors,
+              contentDirectives,
+              verification: { ...repairedVerification, repaired_after: safetyVerification.violations },
+              priorFeedback,
+              examples,
+              provider: this.llmClient.constructor?.name ?? 'llm',
+              tokenUsage,
+            })
+          }
+        } catch { /* Правка не успела — запасной текст ниже. */ }
       }
       const fallback = deterministicNarration(brief, undefined, { recentNarrations: recent })
       return finish({

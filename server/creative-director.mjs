@@ -197,9 +197,18 @@ export class CriticalNarrationCoordinator {
    */
   async renderAftermath({ events = [], state = {}, viewer = {}, recentNarrations = [] } = {}) {
     const outcome = (events ?? []).find((event) => event?.event_type === 'EncounterOutcomeRecorded')?.payload?.outcome
-    if (!['enemies_defeated', 'fled'].includes(String(outcome ?? ''))) return null
-    const trigger = { kind: 'encounter_aftermath', actor_id: '', target_id: '', target_name: '' }
-    const visible = (events ?? []).filter((event) => ['EncounterOutcomeRecorded', 'EncounterRewardsDistributed', 'LootContainerCreated', 'WorldFactRecorded'].includes(String(event?.event_type ?? '')))
+    // Поражение без смертей — тоже сцена: замер 32 (2026-10-12) после
+    // «продолжим» получил «Мирель приходит в сознание с 1 ОЗ… герои отдыхают
+    // 12 часов… Небо затянуто, но сухо», и судья спросил: кто спас, почему
+    // враги ушли, сколько прошло времени.
+    const defeat = String(outcome ?? '') === 'party_incapacitated'
+    if (!defeat && !['enemies_defeated', 'fled'].includes(String(outcome ?? ''))) return null
+    const trigger = { kind: defeat ? 'defeat_aftermath' : 'encounter_aftermath', actor_id: '', target_id: '', target_name: '' }
+    const kinds = defeat
+      ? ['EncounterOutcomeRecorded', 'ConditionAdded', 'HealingApplied', 'HeroStabilized', 'DowntimeResolved', 'TimeAdvanced', 'WorldFactRecorded']
+      : ['EncounterOutcomeRecorded', 'EncounterRewardsDistributed', 'LootContainerCreated', 'WorldFactRecorded']
+    const visible = (events ?? []).filter((event) => kinds.includes(String(event?.event_type ?? '')))
+      .filter((event) => event.event_type !== 'ConditionAdded' || ['fled', 'surrendered'].includes(String(event.payload?.condition ?? '')))
       .map((event) => event.event_type === 'EncounterOutcomeRecorded' ? { ...event, payload: { outcome: event.payload?.outcome } } : event)
     const brief = buildNarrationBrief({
       visible_events: visible,
@@ -212,7 +221,9 @@ export class CriticalNarrationCoordinator {
       knownRuleIds: [],
       timeoutMs: CRITICAL_NARRATION_TIMEOUT_MS,
       recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
-      style: 'Две-три фразы после схватки: тишина, дыхание, что видно вокруг, и куда тянет цель сцены. Если в fallen_heroes кто-то пал — начни с него: где он лежит и как замирает отряд (погибшего не воскрешай; за живых героев не говори и не решай; без сознания — жив). Добычу, монеты и награды не пересказывай — их показывает стол. Без чисел; не добавляй находок, бросков и решений правил.',
+      style: defeat
+        ? 'Три-четыре фразы о том, как отряд приходит в себя после поражения — по событиям: противники ушли, не добив (кто отступил — из событий), герои очнулись сами, прошло долгое время — покажи его светом и небом (к рассвету, к полудню), а не часами. Раны и слабость — словами, без чисел и очков здоровья. Не выдумывай спасителя, пленения и пропаж, которых нет в событиях. Закончи тем, что осталось у отряда и куда тянет цель сцены. За героев не говори и не решай.'
+        : 'Две-три фразы после схватки: тишина, дыхание, что видно вокруг, и куда тянет цель сцены. Если в fallen_heroes кто-то пал — начни с него: где он лежит и как замирает отряд (погибшего не воскрешай; за живых героев не говори и не решай; без сознания — жив). Добычу, монеты и награды не пересказывай — их показывает стол. Без чисел; не добавляй находок, бросков и решений правил.',
     })
     if (/^deterministic/u.test(String(narration?.provider ?? '')) || !String(narration?.narration ?? '').trim()) return null
     return { ...narration, trigger }
@@ -225,7 +236,7 @@ export class CriticalNarrationCoordinator {
    * 2026-10-10). Один вызов модели на встречу, как у перелома боя; без живого
    * текста остаётся прежняя строка.
    */
-  async renderEncounterOpening({ events = [], state = {}, viewer = {}, recentNarrations = [] } = {}) {
+  async renderEncounterOpening({ events = [], state = {}, viewer = {}, recentNarrations = [], lastPlayerAction = '' } = {}) {
     const created = (events ?? []).find((event) => event?.event_type === 'EncounterCreated')
     const encounter = created?.payload?.encounter
     if (!encounter) return null
@@ -235,7 +246,14 @@ export class CriticalNarrationCoordinator {
     const brief = buildNarrationBrief({
       visible_events: [{ ...created, payload: { encounter: { theme: String(encounter.theme ?? ''), enemies: enemies.map((name) => ({ name })) } } }],
       visible_state_changes: [],
-      known_environment: { ...publicEnvironment(state, trigger), encounter_foes: enemies },
+      known_environment: {
+        ...publicEnvironment(state, trigger),
+        encounter_foes: enemies,
+        // Что герой сделал прямо перед схваткой: замер 32 — «дверь не
+        // поддаётся», и тут же засада из ниоткуда; судья: «ведущий глушит
+        // действия». Появление врагов — ответ на шум, а не случайность.
+        ...(String(lastPlayerAction ?? '').trim() ? { just_happened: String(lastPlayerAction).trim().slice(0, 400) } : {}),
+      },
       permitted_npc_reactions: [],
       viewer,
     })
@@ -245,7 +263,7 @@ export class CriticalNarrationCoordinator {
       recentNarrations: (Array.isArray(recentNarrations) ? recentNarrations : []).map((text) => String(text ?? '')).filter(Boolean),
       // Цель сцены и зацепки — не тема вводки: «их появление обрывает поиски
       // другого пути к разгадке; баркас остаётся зацепкой» (замер 19).
-      style: 'Два-три предложения о начале схватки: кто выходит из укрытия и откуда, как выглядят и что делали здесь до появления героев — по сцене и составу из encounter_foes; имена без номеров («двое разбойников и волк»). Не пересказывай цель сцены, задания и зацепки. Без чисел, ходов, очереди и правил; не добавляй бросков, урона, находок и решений правил.',
+      style: 'Два-три предложения о начале схватки: кто выходит из укрытия и откуда, как выглядят и что делали здесь до появления героев — по сцене и составу из encounter_foes; имена без номеров («двое разбойников и волк»). Если есть just_happened — то, что герой сделал только что (удар в дверь, стук, слежка), — покажи появление врагов ответом на это: шум услышали, дверь распахнули изнутри, наблюдателя заметили; заявку дословно не пересказывай. Не пересказывай цель сцены, задания и зацепки. Без чисел, ходов, очереди и правил; не добавляй бросков, урона, находок и решений правил.',
     })
     if (/^deterministic/u.test(String(narration?.provider ?? '')) || !String(narration?.narration ?? '').trim()) return null
     return { ...narration, trigger }

@@ -809,18 +809,41 @@ const PASSAGE_TEXT = 'Вхожу через дверь башни внутрь �
 
 test('заявка «войти внутрь» без подтверждённой карты уточняется до броска — MAP2-02', async () => {
   let renderCalls = 0
-  const { orchestrator } = await setup(campaign(), {
+  // Маяка нет ни здесь, ни на карте мира — честное «такого здания нет».
+  // Башня на карте мира есть, но вход — в маяк: «через дверь башни внутрь маяка».
+  const nowhere = campaign()
+  assert.ok(!(nowhere.worldMap?.locations ?? []).some((location) => /маяк/iu.test(String(location?.name ?? ''))))
+  const { orchestrator } = await setup(nowhere, {
     reading: passageReading(),
     // Модель описала бы вход: ей велено показать, «как герой делает заявленное».
     narrator: { render: async () => { renderCalls += 1; return { narration: 'Ада толкает дверь и оказывается внутри маяка.', provider: 'test-llm' } } },
   })
-  const result = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage', campaign()))
+  const result = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage', nowhere))
 
   assert.equal(result.free_action_outcome, 'clarification')
   assert.deepEqual(result.mechanics, [])
   assert.match(result.narration, /такого здания нет/u)
   assert.doesNotMatch(result.narration, /не меняя его словами/u)
   assert.equal(renderCalls, 0, 'заблокированный вход не вызывает Narrator')
+})
+
+test('вход в постройку, которая — другое известное место, зовёт в путь, а не «такого здания нет»', async () => {
+  // Замер 31 (2026-10-11): у двери маяка ведущий дважды ответил «Здесь
+  // такого здания нет» — судья записал тупик. Живой ведущий: «маяк — дальше
+  // по скалам», и отряд решает, идти ли.
+  let renderCalls = 0
+  const state = campaign()
+  // Одно из мест карты мира переименовано в маяк: остальное у него настоящее.
+  state.worldMap = { ...state.worldMap, locations: (state.worldMap?.locations ?? []).map((location, index) => index === 2 ? { ...location, name: 'Скальный маяк', known: true } : location) }
+  const { orchestrator } = await setup(state, {
+    reading: passageReading(),
+    narrator: { render: async () => { renderCalls += 1; return { narration: 'Ада входит в маяк.', provider: 'test-llm' } } },
+  })
+  const result = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'far-passage', state))
+  assert.equal(result.free_action_outcome, 'route_travel')
+  assert.deepEqual(result.mechanics, [])
+  assert.match(result.narration, /«Скальный маяк» — не здесь/u)
+  assert.equal(renderCalls, 0)
 })
 
 test('успешное «протиснуться внутрь» двигает героя через открытую дверь одним commit и replay — MAP2-03', async () => {

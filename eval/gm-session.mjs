@@ -862,6 +862,9 @@ function narratorDiagnostics() {
   walk(root)
   const rejected = []
   const codes = {}
+  // Черновики, которые проверка отклонила, а правка спасла (narrator, Self-Refine).
+  const repairedCodes = {}
+  let repairedDrafts = 0
   let turns = 0
   for (const file of files) {
     let trace = null
@@ -870,6 +873,10 @@ function narratorDiagnostics() {
     if (!result) continue
     turns += 1
     const verification = result.verification ?? {}
+    if (Array.isArray(verification.repaired_after) && verification.repaired_after.length) {
+      repairedDrafts += 1
+      for (const violation of verification.repaired_after) repairedCodes[violation?.code ?? '?'] = (repairedCodes[violation?.code ?? '?'] ?? 0) + 1
+    }
     const repaired = Array.isArray(verification.repaired_from) ? verification.repaired_from : []
     const provider = String(result.provider ?? '')
     if (!repaired.length && !/^deterministic/u.test(provider)) continue
@@ -908,7 +915,7 @@ function narratorDiagnostics() {
   }
   details.detail = [...new Set(details.detail)]
   details.surface = [...new Set(details.surface)]
-  return { turns, rejected, codes, details }
+  return { turns, rejected, codes, details, repaired_drafts: repairedDrafts, repaired_codes: repairedCodes }
 }
 
 // ---------------------------------------------------------------------------
@@ -1054,6 +1061,9 @@ if (JUDGE && exchanges.length) {
 const diagnostics = narratorDiagnostics()
 writeFileSync(join(OUT, 'narrator-diagnostics.json'), JSON.stringify(diagnostics, null, 2))
 console.log(`Деталей арбитра записано: по вопросу ${diagnostics.details.detail.length}, видимых ${diagnostics.details.surface.length}`)
+if (diagnostics.repaired_drafts) {
+  console.log(`Черновиков, спасённых правкой: ${diagnostics.repaired_drafts}; нарушения: ${Object.entries(diagnostics.repaired_codes).map(([code, count]) => `${code}×${count}`).join(', ')}`)
+}
 if (diagnostics.rejected.length) {
   console.log(`Отбракованных черновиков рассказчика: ${diagnostics.rejected.length} из ${diagnostics.turns}; причины: ${Object.entries(diagnostics.codes).map(([code, count]) => `${code}×${count}`).join(', ')}`)
 }

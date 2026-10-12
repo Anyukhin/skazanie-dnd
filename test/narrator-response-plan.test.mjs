@@ -138,7 +138,7 @@ test('короткий ответ проверяется целиком: поз�
     return { content: 'Проверка завершилась успехом. Ада открывает дверь.' }
   } }, asyncFeedback: false }).render(input, { onProgress: text => shown.push(text) })
   assert.deepEqual(shown, [result.narration])
-  assert.equal(calls, 1)
+  assert.ok(calls <= 2, 'не больше одной правки')
   assert.equal(result.provider, 'deterministic-fallback')
   assert.match(request.messages[1].content, /UNTRUSTED_DATA:response_plan/u)
   assert.match(request.messages[1].content, /after_validation/u)
@@ -195,4 +195,28 @@ test('план строится после проекции: личное соб
     visible_events: [{ event_type: 'DoorStateChanged', visibility: 'specific_player', player_id: 'two', payload: { state: 'open' } }],
   })
   assert.deepEqual(narratorResponsePlan(projected), narratorResponsePlan(buildNarrationBrief()))
+})
+
+test('реплика героя: план несёт одну новую деталь места, которой не было в последних ответах', async () => {
+  // Замер 32 (2026-10-12): «Мара задерживает сухой взгляд» трижды подряд —
+  // план сам велел «и взгляд кого-то из реакций».
+  const { freshSceneElement } = await import('../server/narrator.mjs')
+  const input = buildNarrationBrief({
+    visible_events: [],
+    known_environment: {
+      player_intent: { action: 'Мирель негромко говорит Борину: «Я не уйду, пока не узнаю правду»', roleplay_speech: true },
+      scene: {
+        title: 'Причал', location: 'Серый Причал',
+        landmarks: [{ kind: 'barrels', label: 'бочки', count: 2, where: 'рядом' }, { kind: 'mooring', label: 'причал', count: 1, where: 'к западу' }],
+      },
+      story_context: { heroes: [{ id: 'mirel', name: 'Мирель', is_viewer: true }, { id: 'borin', name: 'Борин' }] },
+    },
+  })
+  assert.equal(freshSceneElement(input, ['Мокрые бочки поскрипывают у стены.']), 'причал — к западу', 'бочки уже звучали')
+  assert.equal(freshSceneElement(input, ['Бочки скрипят.', 'Причал пустеет.']), '')
+  const requests = []
+  await new Narrator({ asyncFeedback: false, llmClient: { complete: async (value) => { requests.push(value); return { content: 'Со стороны причала доносится плеск — кто-то отвязывает лодку.' } } } }).render(input)
+  const content = String(requests[0].messages[1].content)
+  assert.match(content, /"new_element":"бочки — рядом"/u)
+  assert.doesNotMatch(content, /и взгляд кого-то из permitted_npc_reactions/u)
 })

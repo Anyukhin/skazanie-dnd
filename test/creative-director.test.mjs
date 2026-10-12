@@ -102,7 +102,7 @@ test('слова игрока к ходу в бою зовут рассказч�
   assert.equal((await silent.renderCriticalMoment({ events, state, playerNote: 'За Илу!', actorId: 'borin' })).narration, '', 'без живого текста — без дубля строки боя')
 })
 
-test('после победы — сцена после схватки; без живого текста и после поражения — ничего', async () => {
+test('после победы — сцена после схватки; без живого текста — ничего', async () => {
   const state = { players: [{ id: 'borin', character: 'Борин' }], enemies: [{ id: 'gob', name: 'Гоблин 1' }], scene: { location: 'Маяк', objective: 'Найти, кто зажигает огонь' }, mechanics: { combat: { active: false } } }
   const victory = [{ event_id: 'out-1', event_type: 'EncounterOutcomeRecorded', payload: { outcome: 'enemies_defeated', plan: { secret: 'не для рассказчика' } } }]
   const briefs = []
@@ -111,7 +111,28 @@ test('после победы — сцена после схватки; без �
   assert.doesNotMatch(JSON.stringify(briefs[0].visible_events), /не для рассказчика/u, 'план награды в бриф не идёт')
   const silent = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Встреча завершилась.', provider: 'deterministic-fallback' }) } })
   assert.equal(await silent.renderAftermath({ events: victory, state }), null)
-  assert.equal(await live.renderAftermath({ events: [{ event_type: 'EncounterOutcomeRecorded', payload: { outcome: 'party_incapacitated' } }], state }), null)
+})
+
+test('после поражения без смертей — сцена: враги ушли, отряд очнулся; без чисел и выдуманных спасителей', async () => {
+  // Замер 32 (2026-10-12): «Мирель приходит в сознание с 1 ОЗ… герои отдыхают
+  // 12 часов… Небо затянуто, но сухо» — судья: кто спас, почему враги ушли.
+  const state = { players: [{ id: 'borin', character: 'Борин' }], enemies: [{ id: 'cult', name: 'Культист' }], scene: { location: 'Маяк', objective: 'Найти, кто зажигает огонь' }, mechanics: { combat: { active: false } } }
+  const events = [
+    { event_id: 'out-d', event_type: 'EncounterOutcomeRecorded', payload: { outcome: 'party_incapacitated' } },
+    { event_id: 'fled-d', event_type: 'ConditionAdded', target_ids: ['cult'], payload: { condition: 'fled' } },
+    { event_id: 'poison-d', event_type: 'ConditionAdded', target_ids: ['borin'], payload: { condition: 'poisoned' } },
+    { event_id: 'rest-d', event_type: 'DowntimeResolved', payload: { reason: 'post_defeat_recovery', duration_minutes: 720 } },
+  ]
+  const briefs = []
+  const styles = []
+  const live = new CriticalNarrationCoordinator({ narrator: { render: async (brief, options) => { briefs.push(brief); styles.push(options.style); return { narration: 'Борин открывает глаза на мокрых камнях: культистов нет, над морем светает.', provider: 'RouterAI' } } } })
+  const told = await live.renderAftermath({ events, state })
+  assert.equal(told.trigger.kind, 'defeat_aftermath')
+  assert.match(styles[0], /без чисел/u)
+  assert.match(styles[0], /Не выдумывай спасителя/u)
+  assert.deepEqual(briefs[0].visible_events.map((event) => event.event_type), ['EncounterOutcomeRecorded', 'ConditionAdded', 'DowntimeResolved'], 'отравление — не повод сцены, бегство врага — повод')
+  const silent = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Отряд отдыхает.', provider: 'deterministic-fallback' }) } })
+  assert.equal(await silent.renderAftermath({ events, state }), null, 'без живого текста — прежняя строка')
 })
 
 test('гибель героя: рассказчик видит только сам момент и карточку героя, без смены хода', async () => {
@@ -161,6 +182,12 @@ test('начало схватки — абзац ведущего без ном�
   const quiet = new CriticalNarrationCoordinator({ narrator: { render: async () => ({ narration: 'Засада!', provider: 'deterministic-mechanics' }) } })
   assert.equal(await quiet.renderEncounterOpening({ events, state }), null)
   assert.equal(await director.renderEncounterOpening({ events: [], state }), null)
+  // Замер 32: «дверь не поддаётся» — и засада из ниоткуда. Вводка знает, что
+  // герой сделал только что, и связывает появление врагов с этим.
+  await director.renderEncounterOpening({ events, state, lastPlayerAction: 'Борин толкает дверь плечом и первым входит внутрь' })
+  assert.equal(briefs.at(-1).brief.known_environment.just_happened, 'Борин толкает дверь плечом и первым входит внутрь')
+  assert.match(briefs.at(-1).options.style, /just_happened/u)
+  assert.equal(briefs[0].brief.known_environment.just_happened, undefined)
 })
 
 test('после схватки, где пал герой, сцена начинается с павшего; падение — зов к товарищу', async () => {

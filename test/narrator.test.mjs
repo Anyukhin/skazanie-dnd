@@ -71,7 +71,8 @@ test('резервный рассказ локализует спасбросо�
   assert.doesNotMatch(unknownText, /Атака по возможности|custom-reaction/u)
 })
 
-test('Narrator не тратит второй вызов на неподтверждённую механику и использует безопасный fallback', async () => {
+test('неподтверждённая механика: одна правка с перечнем нарушений, выдумка игроку не уходит', async () => {
+  // С 2026-10-12 (Self-Refine): отклонённый черновик получает одну правку.
   const llm = new FakeLLM([
     { content: JSON.stringify({ narration: 'Выпало 20, и герой получает 1000 HP.', suggestions: [] }) },
     { content: JSON.stringify({ narration: deterministicNarration(brief).narration, suggestions: ['Продолжить'] }) },
@@ -80,8 +81,18 @@ test('Narrator не тратит второй вызов на неподтвер
   assert.equal(result.verification.valid, true)
   assert.doesNotMatch(result.narration, /1000/)
   assert.doesNotMatch(result.narration, /\d/u)
-  assert.equal(result.provider, 'deterministic-fallback')
-  assert.equal(llm.requests.length, 1)
+  assert.equal(llm.requests.length, 2, 'одна правка, не больше')
+  assert.ok(result.verification.repaired_after?.length, 'правка помнит, что исправляла')
+  assert.match(String(llm.requests[1].messages.at(-1).content), /сервер отклонил/u)
+  // Правка снова нарушает — запасной текст, третьего вызова нет.
+  const stubborn = new FakeLLM([
+    { content: JSON.stringify({ narration: 'Выпало 20, и герой получает 1000 HP.', suggestions: [] }) },
+    { content: JSON.stringify({ narration: 'Герой получает 1000 HP.', suggestions: [] }) },
+  ])
+  const fallback = await new Narrator({ llmClient: stubborn }).render(brief, { knownRuleIds: ['srd:test:damage'] })
+  assert.equal(fallback.provider, 'deterministic-fallback')
+  assert.doesNotMatch(fallback.narration, /1000/)
+  assert.equal(stubborn.requests.length, 2)
 })
 
 test('Narrator превращает ошибку провайдера после commit в deterministic fallback', async () => {

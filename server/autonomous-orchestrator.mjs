@@ -66,6 +66,7 @@ import {
   FREE_ACTION_RESOLUTION_POLICY_VERSION,
   freeActionResolutionPolicy,
   freeActionPassagePlan,
+  passageDestinationPlace,
   freeActionApproachPlan,
   freeActionSuccessPromise,
   hasRecognizedFreeActionApproach,
@@ -1198,6 +1199,22 @@ export class AutonomousCampaignOrchestrator {
     const approachMove = approachPlan.status === 'ready' && approachPlan.remainder
       ? [{ command_type: 'MoveActor', actor_id: actorId, to: approachPlan.destination.to, server_authoritative: true }]
       : []
+    // Постройка из заявки — другое место карты мира: живой ведущий говорит
+    // «маяк — дальше по скалам» и зовёт в путь, а не «здесь такого нет».
+    const farPlace = passagePlan.reason === 'destination_mismatch' && !loaded.state.mechanics?.combat?.active
+      ? passageDestinationPlace(loaded.state, text)
+      : ''
+    if (farPlace) {
+      this.rememberRouteHint(campaignId, idempotencyKey, { route: 'travel', destination: farPlace, actor_id: actorId })
+      return {
+        context_metadata: actionContextMetadata,
+        kind: 'route_travel', route_hint: { route: 'travel', destination: farPlace },
+        narration: `«${farPlace}» — не здесь: до него ещё дорога.`,
+        turn_consumed: false, admin_commands: 0,
+        state: loaded.state, state_version: loaded.state_version,
+        events: [], commands: [], rolls: [], duplicate: false,
+      }
+    }
     if (['blocked', 'already_inside', 'ambiguous'].includes(passagePlan.status)) {
       // Голос ведущего, а не протокол: прежде здесь звучало «Уточните место, не
       // меняя его словами», а у развилки входов — их служебные id (плейтест

@@ -5131,7 +5131,10 @@ async function handleHttpRequest(req, res) {
           text: aftermath.narration, speaker: 'narrator', author: 'Рассказчик', turnConsumed: false,
         }])
       }
-      persistAuthoritativeProjection(campaignId, authoritative.state, events, directorNarration ? {
+      // После поражения сцена и есть рассказ: сухая сводка «с 1 ОЗ… отдыхают
+      // 12 часов» за ней повторяла бы то же цифрами. Числа видны на карточках.
+      const defeatTold = aftermath?.trigger?.kind === 'defeat_aftermath' && Boolean(aftermath?.narration)
+      persistAuthoritativeProjection(campaignId, authoritative.state, events, directorNarration && !defeatTold ? {
         id: `director-${createHash('sha256').update(String(key)).digest('hex').slice(0, 20)}`,
         text: directorNarration,
         speaker: 'narrator',
@@ -5370,6 +5373,7 @@ async function handleHttpRequest(req, res) {
           state: latest.state,
           viewer: { playerId: actorId, partyIds: campaignHeroIds(admin, campaignId), isPartyMember: true, role: admin.role },
           recentNarrations: recentNarratorTexts(getRoom(campaignId).state),
+          lastPlayerAction: String([...(getRoom(campaignId).state?.messages ?? [])].reverse().find((message) => message?.speaker === 'player')?.text ?? ''),
         }).catch(() => null)
         if (opening?.narration) {
           const intro = encounterIntro(createdEvent, latest.state)

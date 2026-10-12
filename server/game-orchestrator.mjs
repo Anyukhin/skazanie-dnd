@@ -42,7 +42,7 @@ import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
-import { agentContextMetadata, campaignConceptForAgent, heroCardForAgent, sceneContextForAgent } from './agent-context.mjs'
+import { agentContextMetadata, campaignConceptForAgent, heroCardForAgent, npcKnownByName, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
 import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
@@ -273,6 +273,8 @@ export function narrationStoryContext(state, viewer = {}, events = []) {
       mannerism: memoryText(npc.speech_profile?.mannerism, 180),
     },
     relationship: relationshipTier(relationships[npc.id]?.[viewer?.playerId] ?? 0),
+    // Отряд ещё не слышал имени: рассказчик зовёт по роли (narrator/v14).
+    ...(npcKnownByName(state, npc) ? {} : { known_by_name: false }),
   })).filter((npc) => npc.id && npc.name)
   const presentIds = new Set(presentProfiles.map((npc) => String(npc.id)))
   const npcNames = new Map(presentProfiles.map((npc) => [String(npc.id), npc.name]))
