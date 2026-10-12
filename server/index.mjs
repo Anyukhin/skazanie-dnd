@@ -404,7 +404,8 @@ const npcSocialController = new NpcSocialController({ llmClient: apiKey ? llmCli
 // остаётся на дешёвой luna (~8 кредитов за вечер), а длинная форма — на
 // luna-pro: там задержка неважна, а качество текста — главное. Пролог и хроника
 // зовутся раз за кампанию и раз за арку, поэтому вклад в бюджет — копейки.
-const loreModel = process.env.DND_AI_LORE_MODEL ?? 'openai/gpt-5.6-luna-pro'
+// Пустая строка из образца `.env.example` — тоже «по умолчанию».
+const loreModel = process.env.DND_AI_LORE_MODEL || 'openai/gpt-5.6-luna-pro'
 // Аудит PR #131, AI-02: летописец получал голый RouterAIClient и обходил
 // дневную квоту и usage-ledger. Теперь он идёт через тот же MeteredLLMClient,
 // что и остальные роли: отдельная модель, но общий учёт и общий предел.
