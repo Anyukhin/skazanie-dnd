@@ -252,8 +252,8 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, campaignScenario, scenarioArmoryRules, scenarioClueFactId, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
-import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueFor, dialogueOptionsFor, normalizeDialogueState } from './campaign-dialogues.mjs'
+import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueFor, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_PURSE_COMMAND_TYPES,
@@ -19998,9 +19998,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(...acted.events)
         rolls.push(...(acted.rolls ?? []))
       }
-      const scenario = campaignScenario(state)
-      const revealFactId = outcome.reveal && scenario ? scenarioClueFactId(scenario, outcome.reveal) : ''
-      const revealable = Boolean(revealFactId && (state.worldMemory?.facts ?? []).some((fact) => fact?.id === revealFactId))
+      // Тайна сценария по id или тайна исходной ситуации мира по теме.
+      const revealFactId = dialogueRevealFactId(state, outcome)
+      const revealable = Boolean(revealFactId)
       const chosenEventId = `dialogue:${String(command.command_id).slice(0, 100)}`
       events.push({
         ...eventFrom(command, DIALOGUE_EVENT, {
@@ -20014,7 +20014,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           reply: outcome.reply,
           check,
           sets: [...outcome.sets],
-          reveal: revealable ? outcome.reveal : null,
+          reveal: revealable ? outcome.reveal || null : null,
+          ...(revealable && outcome.reveal_topic ? { reveal_topic: outcome.reveal_topic } : {}),
+          ...(revealable ? { revealed_fact_id: revealFactId } : {}),
           ends: option.ends === true,
         }, [command.npc_id, command.actor_id]),
         event_id: chosenEventId,

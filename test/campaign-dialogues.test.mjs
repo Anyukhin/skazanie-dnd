@@ -31,10 +31,12 @@ test('каждый диалог ссылается на настоящих со�
     ])
     assert.ok(npcIds.has(dialogue.npc_id), `${dialogue.id}: собеседник ${dialogue.npc_id}`)
     const secretIds = new Set(scenario.locations.flatMap((location) => (location.secrets ?? []).map((secret) => secret.id)))
+    const openingTopics = new Set((world?.opening?.secrets ?? []).map((secret) => secret.topic))
     const armory = new Set(scenario.progression?.armory?.catalog_ids ?? [])
     for (const option of dialogue.options) {
       for (const clue of [...option.requires.clues_any, ...option.requires.clues_all]) assert.ok(secretIds.has(clue), `${dialogue.id}.${option.id}: улика ${clue}`)
       for (const reveal of [option.success.reveal, option.failure?.reveal].filter(Boolean)) assert.ok(secretIds.has(reveal), `${dialogue.id}.${option.id}: тайна ${reveal}`)
+      for (const topic of [option.success.reveal_topic, option.failure?.reveal_topic].filter(Boolean)) assert.ok(openingTopics.has(topic), `${dialogue.id}.${option.id}: тема ${topic}`)
       if (option.action?.command_type === 'ChooseScenarioArmoryItem') assert.ok(armory.has(option.action.catalog_id), `${dialogue.id}.${option.id}: предмет ${option.action.catalog_id}`)
     }
     assert.ok(dialogue.options.some((option) => option.ends), `${dialogue.id}: разговор можно закончить`)
@@ -123,15 +125,18 @@ test('оружейная и кошель — вариантами разгово
 
 test('проверка в разговоре: одна попытка на героя, успех открывает флаг, провал — свой ответ', async () => {
   const run = await astohan()
+  const missed = run.choose('vulkanis-eyes', { hero: heroes[1].id, diceService: fixedDice(1) })
+  assert.ok(types(missed).includes('AbilityCheckResolved'))
+  assert.match(chosenOf(missed).reply, /Старая рана/u)
+  assert.ok(!run.options(heroes[1].id).includes('vulkanis-eyes'), 'попытка героя потрачена')
+  assert.throws(() => run.choose('vulkanis-eyes', { hero: heroes[1].id }), { code: 'DIALOGUE_OPTION_UNAVAILABLE' })
+  assert.ok(run.options().includes('vulkanis-eyes'), 'у другого героя своя попытка')
   const read = run.choose('vulkanis-eyes', { diceService: fixedDice(20) })
-  assert.ok(types(read).includes('AbilityCheckResolved'))
   assert.equal(chosenOf(read).check.success, true)
   assert.match(chosenOf(read).reply, /недоговаривает/u)
   assert.ok(run.state.dialogues['astohan-ares'].flags.includes('ares-hides'))
-  assert.ok(!run.options().includes('vulkanis-eyes'), 'попытка героя потрачена')
-  const missed = run.choose('vulkanis-eyes', { hero: heroes[1].id, diceService: fixedDice(1) })
-  assert.match(chosenOf(missed).reply, /Старая рана/u)
-  assert.throws(() => run.choose('vulkanis-eyes', { hero: heroes[1].id }), { code: 'DIALOGUE_OPTION_UNAVAILABLE' })
+  assert.ok(read.events.some((event) => event.event_type === 'KnowledgeRevealed'), 'тайна исходной ситуации о взгляде короля раскрыта по теме')
+  assert.ok(!run.options().includes('vulkanis-eyes'), 'понятое второй раз не выясняют')
 })
 
 test('признание Ареса — только с уликой; удача раскрывает тайну всему отряду, и сюжет её засчитывает', async () => {
@@ -153,7 +158,7 @@ test('признание Ареса — только с уликой; удача
 test('разговор — только у собеседника, вне боя, от своего героя', async () => {
   const run = await astohan()
   assert.throws(() => run.choose('task', { context: { allowedActorIds: [heroes[1].id] } }), (error) => /ACTOR|FORBIDDEN|PERMISSION/u.test(String(error.code)))
-  assert.throws(() => run.apply({ command_type: 'ChooseDialogueOption', actor_id: heroes[0].id, npc_id: 'astohan-ivara', option_id: 'task' }), { code: 'DIALOGUE_ABSENT' })
+  assert.throws(() => run.apply({ command_type: 'ChooseDialogueOption', actor_id: heroes[0].id, npc_id: 'starter-provisioner', option_id: 'task' }), { code: 'DIALOGUE_ABSENT' })
   assert.throws(() => run.choose('no-such-option'), { code: 'DIALOGUE_OPTION_UNAVAILABLE' })
   const peaceful = run.state
   run.state = normalizeCampaignState({ ...peaceful, mechanics: { ...peaceful.mechanics, combat: { ...peaceful.mechanics.combat, active: true } } })
@@ -164,4 +169,40 @@ test('разговор — только у собеседника, вне боя
     run.apply({ command_type: 'AdvanceScene', scene_args: sceneArgs })
   }
   assert.throws(() => run.choose('task'), { code: 'DIALOGUE_NPC_ABSENT' })
+})
+
+test('Штормберг: Ивара, Орен и Мира — свои тайны по теме и цепочка до признания короля', async () => {
+  const run = await astohan()
+  const say = (npc, option, { hero = heroes[0].id, ...options } = {}) => run.apply({ command_type: 'ChooseDialogueOption', actor_id: hero, npc_id: npc, option_id: option }, options)
+  const ids = (npc, hero = heroes[0].id) => (dialogueOptionsFor(run.state, npc, hero)?.options ?? []).map((option) => option.id)
+  const known = (topicPart) => run.state.worldMemory.facts.some((fact) => fact.predicate === 'gm_secret' && fact.object.includes(topicPart)
+    && (run.state.worldMemory.knowledge_revealed ?? []).some((entry) => entry.fact_id === fact.id))
+
+  // Маршал отдаёт военное донесение без торга: она против того, чтобы двор прятал сведения.
+  const report = say('astohan-ivara', 'ash-watch-report')
+  assert.match(chosenOf(report).reply, /засов снят изнутри/u)
+  assert.ok(known('донесение о сожжённой Пепельной заставе'))
+  assert.ok(!ids('astohan-ivara').includes('ash-watch-report'), 'рассказанное второй раз не спрашивают')
+
+  // Орен: журнал — либо Убеждением, либо без проверки, если у короля поняли, что он скрывает.
+  assert.ok(ids('astohan-oren').includes('journal'))
+  assert.ok(!ids('astohan-oren').includes('journal-for-the-truth'))
+  assert.ok(!ids(ARES).includes('confession'))
+  run.choose('vulkanis-eyes', { diceService: fixedDice(20) })
+  assert.ok(ids('astohan-oren').includes('journal-for-the-truth'), 'понятое у короля открывает путь у архивиста')
+  const journal = say('astohan-oren', 'journal-for-the-truth')
+  assert.ok(journal.events.some((event) => event.event_type === 'KnowledgeRevealed'))
+  assert.ok(scenarioFoundClueIds(run.state).has('stormberg-journal-page'))
+  assert.ok(!ids('astohan-oren').includes('journal') && !ids('astohan-oren').includes('journal-for-the-truth'))
+  assert.ok(ids(ARES).includes('confession'), 'с вырванной страницей на руках — к королю')
+
+  // Мира: Проницательность показывает страх за деревню и открывает разговор без торга.
+  assert.ok(!ids('astohan-mira').includes('protect-village'))
+  say('astohan-mira', 'read-her', { diceService: fixedDice(20) })
+  assert.ok(ids('astohan-mira').includes('protect-village'))
+  const mill = say('astohan-mira', 'protect-village')
+  assert.match(chosenOf(mill).reply, /двор у старой мельницы/u)
+  assert.ok(known('исчезнувший сборщик налогов у Митглайда'))
+  assert.ok(!ids('astohan-mira').includes('tax-collector'), 'второй путь к той же тайне закрыт')
+  assert.deepEqual(replayEvents(run.initial, run.events).dialogues, run.state.dialogues)
 })

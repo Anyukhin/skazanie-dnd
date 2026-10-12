@@ -17,8 +17,12 @@
  *   сценария (`clues_any`, `clues_all`);
  * - `check` — проверка навыка с СЛ; исход — `success`/`failure`, у каждого
  *   свой ответ. Попытка одна на героя: после неё вариант для него закрыт;
- * - `sets` — флаги разговора, которые открывает вариант (общие для отряда);
- * - `reveal` — тайна сценария, которую собеседник рассказывает;
+ * - `sets` — флаги, которые открывает вариант. Флаги общие для отряда и для
+ *   всех разговоров кампании: понятое у одного собеседника открывает путь у
+ *   другого («король что-то скрывает» → архивист показывает журнал);
+ * - `reveal` — тайна сценария (id из карточки места), которую собеседник
+ *   рассказывает; `reveal_topic` — тайна исходной ситуации мира по её теме
+ *   (`opening.secrets` шаблона: у них нет стабильного id, есть тема);
  * - `action` — сюжетная команда, которую вариант исполняет тем же путём, что
  *   и фраза («берём кошель короля»): `ReceiveScenarioPurse`,
  *   `ChooseScenarioArmoryItem`;
@@ -30,7 +34,7 @@
  */
 import { readFileSync } from 'node:fs'
 
-import { campaignScenario, scenarioFoundClueIds } from './campaign-scenario.mjs'
+import { campaignScenario, scenarioClueFactId, scenarioFoundClueIds } from './campaign-scenario.mjs'
 
 export const DIALOGUES_SCHEMA_VERSION = 1
 /** Команда игрока: выбрать вариант разговора. */
@@ -56,7 +60,8 @@ function invalid(message) {
  * @typedef {object} DialogueOutcome
  * @property {string} reply
  * @property {string[]} sets
- * @property {string} reveal
+ * @property {string} reveal тайна сценария по id
+ * @property {string} reveal_topic тайна исходной ситуации по теме
  */
 
 /**
@@ -97,7 +102,9 @@ function outcome(raw, where) {
   if (!reply) invalid(`${where}: нет ответа`)
   const reveal = raw?.reveal == null ? '' : clean(raw.reveal, 80)
   if (reveal && !ID_PATTERN.test(reveal)) invalid(`${where}: тайна «${reveal}»`)
-  return { reply, sets: ids(raw?.sets, `${where}.sets`), reveal }
+  const revealTopic = raw?.reveal_topic == null ? '' : clean(raw.reveal_topic, 200)
+  if (reveal && revealTopic) invalid(`${where}: одна тайна на исход — reveal или reveal_topic`)
+  return { reply, sets: ids(raw?.sets, `${where}.sets`), reveal, reveal_topic: revealTopic }
 }
 
 /** @param {any} raw @param {string} where @returns {DialogueOption} */
@@ -146,7 +153,8 @@ export function normalizeDialogues(raw) {
   if (raw?.schema_version !== DIALOGUES_SCHEMA_VERSION) invalid(`schema_version ${raw?.schema_version}`)
   if (!Array.isArray(raw.dialogues)) invalid('нет списка dialogues')
   const seen = new Set()
-  return raw.dialogues.map((/** @type {any} */ entry, /** @type {number} */ index) => {
+  /** @type {Dialogue[]} */
+  const dialogues = raw.dialogues.map((/** @type {any} */ entry, /** @type {number} */ index) => {
     const id = clean(entry?.id, 80)
     if (!ID_PATTERN.test(id) || seen.has(id)) invalid(`диалог ${index}: id «${id}»`)
     seen.add(id)
@@ -162,12 +170,18 @@ export function normalizeDialogues(raw) {
       if (optionIds.has(item.id)) invalid(`${id}: вариант «${item.id}» повторяется`)
       optionIds.add(item.id)
     }
-    const setFlags = new Set(options.flatMap((/** @type {DialogueOption} */ item) => [...item.success.sets, ...(item.failure?.sets ?? [])]))
-    for (const item of options) {
-      for (const flag of item.requires.flags) if (!setFlags.has(flag)) invalid(`${id}.${item.id}: флаг «${flag}» никто не ставит`)
-    }
     return Object.freeze({ id, scenario_id: scenarioId, npc_id: npcId, greeting, options: Object.freeze(options) })
   })
+  // Флаги общие для всех разговоров сценария: требуемый флаг должен ставить
+  // хотя бы один вариант какого-нибудь диалога того же сценария.
+  for (const dialogue of dialogues) {
+    const setFlags = new Set(dialogues.filter((entry) => entry.scenario_id === dialogue.scenario_id)
+      .flatMap((entry) => entry.options.flatMap((/** @type {DialogueOption} */ item) => [...item.success.sets, ...(item.failure?.sets ?? [])])))
+    for (const item of dialogue.options) {
+      for (const flag of item.requires.flags) if (!setFlags.has(flag)) invalid(`${dialogue.id}.${item.id}: флаг «${flag}» никто не ставит`)
+    }
+  }
+  return dialogues
 }
 
 /** @type {readonly Dialogue[]} */
@@ -206,6 +220,57 @@ export function dialogueProgress(state, dialogueId) {
 }
 
 /**
+ * Флаги отряда по всем разговорам кампании.
+ *
+ * @param {any} state
+ * @returns {Set<string>}
+ */
+export function dialogueFlags(state) {
+  const registry = state?.dialogues && typeof state.dialogues === 'object' ? state.dialogues : {}
+  return new Set(Object.values(registry).flatMap((entry) => (Array.isArray(entry?.flags) ? entry.flags.map(String) : [])))
+}
+
+/**
+ * Факт памяти мира, который раскрывает исход: тайна сценария по id или тайна
+ * исходной ситуации по теме. Пустая строка — раскрывать нечего или такой
+ * тайны в этой кампании нет.
+ *
+ * @param {any} state
+ * @param {{ reveal?: string, reveal_topic?: string } | null | undefined} result
+ * @returns {string}
+ */
+export function dialogueRevealFactId(state, result) {
+  const facts = Array.isArray(state?.worldMemory?.facts) ? state.worldMemory.facts : []
+  if (result?.reveal) {
+    const scenario = campaignScenario(state)
+    const factId = scenario ? scenarioClueFactId(scenario, result.reveal) : ''
+    return factId && facts.some((/** @type {any} */ fact) => fact?.id === factId) ? factId : ''
+  }
+  if (result?.reveal_topic) {
+    const topic = clean(result.reveal_topic, 200)
+    const fact = facts.find((/** @type {any} */ entry) => {
+      if (entry?.predicate !== 'gm_secret') return false
+      try { return clean(JSON.parse(String(entry.object ?? '{}'))?.topic, 200) === topic } catch { return false }
+    })
+    return fact ? String(fact.id) : ''
+  }
+  return ''
+}
+
+/**
+ * Знает ли отряд этот факт: его рассказали (журнал знания) или нашли поиском.
+ *
+ * @param {any} state
+ * @param {string} factId
+ */
+function factKnownToParty(state, factId) {
+  if (!factId) return false
+  const memory = state?.worldMemory ?? {}
+  return (Array.isArray(memory.knowledge_revealed) ? memory.knowledge_revealed : []).some((/** @type {any} */ entry) => String(entry?.fact_id) === factId)
+    || (Array.isArray(memory.facts) ? memory.facts : []).some((/** @type {any} */ fact) => fact?.predicate === 'discovery' && String(fact.supersedes_fact_id ?? '') === factId)
+}
+
+/**
  * Выполнены ли условия показа варианта.
  *
  * @param {any} state
@@ -213,9 +278,9 @@ export function dialogueProgress(state, dialogueId) {
  * @param {DialogueOption} item
  */
 export function dialogueOptionUnlocked(state, dialogue, item) {
-  const progress = dialogueProgress(state, dialogue.id)
+  const flags = dialogueFlags(state)
   const clues = scenarioFoundClueIds(state)
-  if (!item.requires.flags.every((flag) => progress.flags.includes(flag))) return false
+  if (!item.requires.flags.every((flag) => flags.has(flag))) return false
   if (item.requires.clues_all.length && !item.requires.clues_all.every((clue) => clues.has(clue))) return false
   if (item.requires.clues_any.length && !item.requires.clues_any.some((clue) => clues.has(clue))) return false
   return true
@@ -237,11 +302,11 @@ export function dialogueOptionsFor(state, npcId, heroId) {
   if (!dialogue) return null
   const hero = clean(heroId, 120)
   const progress = dialogueProgress(state, dialogue.id)
-  const clues = scenarioFoundClueIds(state)
   const options = dialogue.options
     .filter((item) => dialogueOptionUnlocked(state, dialogue, item))
     .filter((item) => !(item.check && (progress.attempted[item.id] ?? []).includes(hero)))
-    .filter((item) => !(item.success.reveal && clues.has(item.success.reveal)))
+    // Рассказанное второй раз не спрашивают: тайну успеха отряд уже знает.
+    .filter((item) => !factKnownToParty(state, dialogueRevealFactId(state, item.success)))
     .filter((item) => !(item.action && (progress.chosen[item.id] ?? []).includes(hero)))
     .map((item) => ({
       id: item.id,

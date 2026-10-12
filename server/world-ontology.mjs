@@ -61,7 +61,7 @@ export const PREDICATES = Object.freeze({
   }),
   discovery: Object.freeze({
     record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: '«clue»',
-    producers: ['world-memory'], consumers: ['campaign-scenario', 'game-orchestrator', 'narrator', 'npc-social', 'npc-social-controller', 'player-request-router', 'rules-engine', 'scenario-knight', 'world-memory'],
+    producers: ['world-memory'], consumers: ['campaign-dialogues', 'campaign-scenario', 'game-orchestrator', 'narrator', 'npc-social', 'npc-social-controller', 'player-request-router', 'rules-engine', 'scenario-knight', 'world-memory'],
     visibility: 'party',
     description_ru: 'Находка свободного действия: открытая заготовка ведущего, знающий собеседник или улика по теме активного поручения. Рассказчик обязан её назвать; для часов поручения — доказательство; для сценария — найденная улика узла сюжета (по `supersedes_fact_id`). NPC знает находку, только если видел её сам (граница знания `npcKnownFactIds`); находку о себе самом NPC не знает. Собеседнику уходят и последние находки отряда (`table_knows`) — чтобы он не пересказывал их как новость.',
   }),
@@ -110,7 +110,7 @@ export const PREDICATES = Object.freeze({
   }),
   gm_secret: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'JSON { topic, skills, holder, hero_id? }',
-    producers: ['world-memory'], consumers: ['hero-hooks', 'npc-social', 'npc-social-controller', 'world-memory'],
+    producers: ['world-memory'], consumers: ['campaign-dialogues', 'hero-hooks', 'npc-social', 'npc-social-controller', 'world-memory'],
     visibility: 'gm_only',
     description_ru: 'Заготовка ведущего: то, что уже правда в первой сцене (campaign_creator/v7 или авторский мир), в новой области (map_architect/v7) или в месте сценария (`campaign-scenario`, стабильный id) и скрыто от героев. Факт строит `gmSecretFact`. Удачная проверка подходящего навыка заменяет её фактом отряда discovery; знающий NPC может выдать её в разговоре (хранитель — по `holder`, `known_fact_ids` или, у заготовки места без хранителя, житель места, выбранный `implicitSecretHolderIds`). Зацепки из предысторий героев (`hero-hooks`) — те же заготовки с `hero_id` в JSON `object`; собеседник указывает на их хранителя зацепкой (`conversationLeads`), не раскрывая текста.',
   }),
