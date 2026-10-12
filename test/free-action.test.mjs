@@ -1269,3 +1269,24 @@ test('замер 22: пустые тела — «карманы пусты» и 
   assert.equal(one.free_action_outcome, 'loot_inspection', one.narration)
   assert.doesNotMatch(one.narration, /Назовите конкретного участника/u)
 })
+
+test('без модели цель — сама фраза игрока: исход звучит от лица героя, а не её эхом', async () => {
+  // Прогон Асстохана без модели 2026-10-12: «Обращаюсь к Терену: ты …!» →
+  // «Вышло: Обращаюсь к Терену: ты …» — судья без модели берёт фразу как цель.
+  const phrase = 'Ору на весь двор, что все здесь трусы и лжецы!'
+  const success = await setup(campaign(), {
+    narrator: new Narrator(),
+    reading: passageReading({ goal_summary: phrase, approach_summary: phrase, ability: 'cha', skill: 'performance' }),
+  })
+  const told = await success.orchestrator.handle(actionInput(phrase, 'free-echo', campaign()))
+  assert.equal(told.free_action_outcome, 'check_success')
+  assert.doesNotMatch(told.narration, /Вышло: Ору/u, told.narration)
+  assert.match(told.narration, /Ада добивается своего\./u, told.narration)
+  const failure = await setup(campaign(), {
+    narrator: new Narrator(), diceRolls: [2, 2, 2, 2],
+    reading: passageReading({ goal_summary: phrase, approach_summary: phrase, ability: 'cha', skill: 'performance' }),
+  })
+  const missed = await failure.orchestrator.handle(actionInput(phrase, 'free-echo-fail', campaign()))
+  assert.equal(missed.free_action_outcome, 'check_failure')
+  assert.doesNotMatch(missed.narration, /Не вышло: Ору/u, missed.narration)
+})

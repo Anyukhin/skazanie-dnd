@@ -1369,6 +1369,18 @@ function freeActionCopyNote({ freeAction, message, events }) {
  * задумку и уже записанные события, поэтому не может закрыть дверь, нанести
  * урон или объявить навык, которого нет в commit.
  */
+/**
+ * Цель — это сама фраза игрока, и фраза — реплика, а не короткое действие:
+ * без модели судья берёт её как есть. «Не вышло: подпираю дверь верёвкой»
+ * говорит, что сорвалось; «Вышло: Обращаюсь к …: ты …!» — только эхо.
+ */
+function goalEchoesPlayer(goal, message) {
+  const plain = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  const own = plain(goal)
+  if (!own || !plain(message).startsWith(own.slice(0, 60))) return false
+  return /[:«»"!?]/u.test(String(message ?? '')) || own.split(' ').length > 8
+}
+
 function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false, roleplaySpeech = false }) {
   // Слова своему отряду — это и есть сцена: «узнаю правду» в реплике не
   // просьба о сведениях, и «стоит расспросить здешних» звучало глухотой
@@ -1447,6 +1459,11 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
               ? 'Дверь не поддаётся.'
             : failed && rawGoal.startsWith(`${freeActionHeroName(events, state)} `)
               ? freeActionGoalIsPassage(rawGoal) ? 'Дверь не поддаётся.' : `${freeActionHeroName(events, state)} пробует, но не выходит.`
+              // Цели от судьи нет — без модели «цель» и есть сырая фраза
+              // игрока, и ответ звучал её эхом: «Вышло: Обращаюсь к …: ты …»
+              // (прогон Асстохана без модели 2026-10-12). Итог — от лица героя.
+              : goalEchoesPlayer(rawGoal, message)
+                ? failed ? `${freeActionHeroName(events, state)} пробует, но не выходит.` : `${freeActionHeroName(events, state)} добивается своего.`
               : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
         : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
@@ -3607,6 +3624,13 @@ export class GameOrchestrator {
    * прежним.
    */
   async commitCheckDiscovery({ campaignId, idempotencyKey, committed, message, rulesContext, checkCommand }) {
+    // Повтор хода: проверка уже брошена, а её улика или сдвиг времени записаны
+    // под своим ключом. Ответ повтора несёт ту же версию, что и первый, — иначе
+    // повтор отставал на коммит находки (прогон Асстохана 2026-10-12, сид 2).
+    if (!checkCommand && committed?.duplicate) {
+      const prior = await this.eventStore.getByIdempotencyKey?.(campaignId, `${idempotencyKey}:discovery`) ?? null
+      return prior ? { ...committed, state: prior.state, state_version: prior.state_version, events: [...(committed.events ?? []), ...(prior.events ?? [])] } : committed
+    }
     if (!checkCommand || committed?.state?.mechanics?.combat?.active === true) return committed
     const checkEvent = (committed.events ?? []).find((event) => event.event_type === 'AbilityCheckResolved')
     if (!checkEvent) return committed

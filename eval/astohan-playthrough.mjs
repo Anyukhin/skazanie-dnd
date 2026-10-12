@@ -110,6 +110,10 @@ const stats = {
   lootTaken: 0, rests: 0, levelUps: 0, restarts: 0, scenes: [], chapters: 0,
   // Реальные фразы игроков: сколько сказано и сколько из них упёрлось в тупик, по видам.
   corpus: { said: 0, deadEnds: 0, byKind: {} },
+  // Разговор (docs/offline-playable-plan.md, этап 0): реплик собеседников и
+  // отписок среди них — реплика есть, а сведений нет. Без модели это главное
+  // место, где игра упирается в отсутствие диалога.
+  npcReplies: 0, npcBrushOffs: 0, npcBrushOffSamples: [],
   trade: { bought: 0, sold: 0, refused: 0 }, potionsUsed: 0,
   parley: { attempts: 0, truces: 0, outcomes: [] },
   spells: {}, sneakAttacks: 0,
@@ -526,6 +530,13 @@ async function say(actorId, action, { label = '', requestKind, npcId, expect = '
     final = answer
     const text = String(answer.narration ?? '')
     if (text) { note(`> ${short(text, 1400)}`); narrations.push({ kind: 'reply', action, label, text }) }
+    if (text && answer.provider === 'NpcSocialController') {
+      stats.npcReplies += 1
+      if (NPC_BRUSH_OFF.test(text)) {
+        stats.npcBrushOffs += 1
+        if (stats.npcBrushOffSamples.length < 3) stats.npcBrushOffSamples.push(`«${short(action, 70)}» → «${short(text, 110)}»`)
+      }
+    }
     if (answer.check && !answer.mechanics?.some((event) => event.event_type === 'AbilityCheckResolved')) {
       stats.checks += 1
       const check = answer.check
@@ -594,6 +605,12 @@ async function sayFollowUp(body, account, steps) {
   if (result.body.narration) { note(`> ${short(result.body.narration, 1400)}`); narrations.push({ kind: 'roll', action: body.action, label: 'после броска', text: String(result.body.narration) }) }
   return result.body
 }
+
+/**
+ * Отписка собеседника: запасные реплики без сведений
+ * (`fallbackDisclosure` в `server/npc-social-controller.mjs`).
+ */
+const NPC_BRUSH_OFF = /(?:Больше мне сказать нечего|Может, что-то и знаю\. Но просто так такое не рассказывают|Ладно\. Говори, я слушаю|Нет\. Меня это не убеждает|отвечает уклончиво, и за словами угадывается|по лицу ничего не прочесть|Обещать пока нечего)/u
 
 const answersSeen = new Map()
 function classifyOutcome(action, answer, expect, rolledCheck = null) {
@@ -1676,12 +1693,26 @@ function grade(final, usage, audit, quality, judge) {
     { id: 8, name: 'Бюджет', score: !LIVE ? null : usage?.per_evening_rub == null ? 5 : usage.per_evening_rub <= 50 ? 10 : usage.per_evening_rub <= 75 ? 6 : 3, detail: LIVE ? `вызовов модели ${usage?.requests ?? '?'}, токенов ${usage?.tokens ?? '?'}, ≈${usage?.cost_rub ?? '?'} ₽ (${usage?.cost_source ?? '?'}); ≈${usage?.per_action_rub ?? '?'} ₽ на реплику, вечер в ${EVENING_ACTIONS} реплик ≈${usage?.per_evening_rub ?? '?'} ₽ (цель ≤ 50 ₽)` : 'без модели не меряется' },
     { id: 'Т', name: 'Текст рассказчика', score: narrationScore(quality, judge), detail: `${quality.samples} ответов, в среднем ${quality.average_chars} знаков; повторы ${quality.repeated_share_pct} %, пересечение 3-грамм ${quality.ngram_overlap_pct} %, штампов ${quality.cliches}, служебных кодов ${quality.raw_identifiers}, коротких ${quality.short_share_pct} %${judge?.average != null ? `; судья ${judge.model}: ${judge.average}/5` : ''}` },
     { id: 'С', name: 'Согласованность', score: consistencyScore(judge), detail: consistencyDetail(judge) },
+    { id: 'Р', name: 'Разговор', score: npcTalkScore(), detail: npcTalkDetail() },
     { id: 9, name: 'Устойчивость', score: Math.max(1, 10 - 4 * findings.filter((entry) => /restart|replay|idempotency|transport|http-5xx/u.test(entry.kind)).length), detail: `перезапусков ${stats.restarts}, 5xx ${stats.http5xx}, audit-cutover ${audit.status === 0 ? 'чистый' : `код ${audit.status}`}` },
   ]
   const scored = criteria.filter((entry) => entry.score != null)
   const average = scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length
   const overall = Math.max(1, Math.round((average - blockers * 1.5 - critical * 1) * 10) / 10)
   return { criteria, overall, blockers, critical, major, status, p50, p95 }
+}
+
+/** Доля отписок среди реплик собеседников: ≤ 5 % — разговор даёт сведения. */
+function npcTalkScore() {
+  if (!stats.npcReplies) return null
+  const share = stats.npcBrushOffs / stats.npcReplies
+  return share <= 0.05 ? 10 : share <= 0.15 ? 6 : share <= 0.3 ? 3 : 1
+}
+
+function npcTalkDetail() {
+  if (!stats.npcReplies) return 'реплик собеседников не было'
+  const share = Math.round(100 * stats.npcBrushOffs / stats.npcReplies)
+  return `реплик собеседников ${stats.npcReplies}, отписок ${stats.npcBrushOffs} (${share} %)${stats.npcBrushOffSamples.length ? `; например ${stats.npcBrushOffSamples.join('; ')}` : ''}`
 }
 
 /** Реплик отряда (свободных и шагов Режиссёра) за трёхчасовой вечер — для пересчёта цены. */

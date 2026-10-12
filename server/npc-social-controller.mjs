@@ -119,6 +119,11 @@ function npcFacts(state, profile, message = '', { summaryLimit = 500, spokenAlou
   const records = retrieveWorldMemory(retrievalMemory(state, { facts: speakable }), { isAdmin: true }, {
     query: clean(message, 1_000), limit: NPC_SOCIAL_MEMORY_LIMIT,
   })
+  // Находка отряда, которую NPC лишь видел, — не его знание для ответа: пленный
+  // огр зачитывал «Три фрески библиотеки…», найденные отрядом при нём (прогон
+  // Асстохана без модели 2026-10-12). Своей правдой находка остаётся только у
+  // хранителя тайны, которую она заменила.
+  const known = spokenAloud ? npcKnownFactIds(state, profile) : null
   return records.filter((record) => record.kind === 'fact' && allowedIds.has(String(record.fact?.id))).map((record) => ({
     id: String(record.fact.id),
     subject: clean(record.entity?.name, 160),
@@ -126,6 +131,8 @@ function npcFacts(state, profile, message = '', { summaryLimit = 500, spokenAlou
     // Тайна, которую знает только этот собеседник: её не говорят первому
     // встречному. Модель видит пометку, запасной ответ такой факт не зачитывает.
     ...(['public', 'party'].includes(String(record.fact.visibility)) ? {} : { guarded: true }),
+    ...(known && record.fact.predicate === 'discovery' && !(record.fact.supersedes_fact_id && known.has(String(record.fact.supersedes_fact_id)))
+      ? { party_finding: true } : {}),
   }))
 }
 
@@ -953,7 +960,7 @@ function fallbackAnswer(profile, message, hooks, facts, alreadySaid) {
   if (!stems.length) return null
   const candidates = [
     ...hooks.map((hook) => ({ kind: 'hook', text: hook.text })),
-    ...facts.filter((fact) => !fact.guarded).map((fact) => ({ kind: 'fact', text: fact.summary })),
+    ...facts.filter((fact) => !fact.guarded && !fact.party_finding).map((fact) => ({ kind: 'fact', text: fact.summary })),
   ]
   let best = null
   for (const candidate of candidates) {

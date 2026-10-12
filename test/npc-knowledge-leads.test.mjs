@@ -363,3 +363,25 @@ test('просьба напомнить — повтор и есть ответ'
   assert.equal(llm.calls.length, 1)
   assert.match(result.reply, /три коротких удара/u)
 })
+
+test('без модели NPC не зачитывает находку отряда как свой ответ, хранитель — свою правду может', async () => {
+  // Прогон Асстохана без модели 2026-10-12: пленный огр на «что вы видели в
+  // последние дни?» зачитывал улику, которую отряд нашёл при нём.
+  const state = greyPier()
+  assert.equal(npcKnownFactIds(state, state.social.npcs[1]).has('fact:found-mark'), true, 'рыбачка видела находку')
+  const seen = await offline().respond({
+    state, playerId: 'wizard', npcId: 'npc:helga', message: 'Что вы видели на борту баркаса?', turnId: 'helga-seen-offline',
+  })
+  assert.doesNotMatch(seen.reply, /выжжен|тремя глазами/u, seen.reply)
+
+  // Отряд докопался до тайны Борса сам: находка заменила его тайну — это его
+  // собственная правда, её он может подтвердить.
+  const solved = greyPier()
+  solved.worldMemory.facts = solved.worldMemory.facts.map((fact) => fact.id === 'fact:secret:owner' ? { ...fact, status: 'superseded' } : fact)
+  solved.worldMemory.facts.push({ id: 'fact:found-owner', subject_id: 'loc:tavern', predicate: 'discovery', object: 'clue', summary: OWNER_CLUE, visibility: 'party', status: 'active', supersedes_fact_id: 'fact:secret:owner', source_event_ids: ['event:search-owner'], recorded_at_minutes: 55 })
+  assert.equal(npcKnownFactIds(solved, solved.social.npcs[0]).has('fact:found-owner'), true)
+  const told = await offline().respond({
+    state: solved, playerId: 'wizard', npcId: 'npc:bors', message: 'Чей баркас «Чайка» и кто правил им той ночью?', turnId: 'bors-owner-offline',
+  })
+  assert.match(told.reply, /без огней|чужак/u, told.reply)
+})
