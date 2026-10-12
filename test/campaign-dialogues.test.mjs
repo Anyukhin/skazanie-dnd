@@ -206,3 +206,75 @@ test('Штормберг: Ивара, Орен и Мира — свои тайн
   assert.ok(!ids('astohan-mira').includes('tax-collector'), 'второй путь к той же тайне закрыт')
   assert.deepEqual(replayEvents(run.initial, run.events).dialogues, run.state.dialogues)
 })
+
+// --- Линия А: Ломар, Трент, Великое Древо ------------------------------------
+
+async function travel(run, locationId) {
+  for (let hop = 0; hop < 10 && scenarioLocationId(run.state) !== locationId; hop += 1) {
+    const { sceneArgs } = await new SceneArchitectAgent().plan({ state: run.state, decision: `В ${locationId}`, destinationLocationId: locationId })
+    run.apply({ command_type: 'AdvanceScene', scene_args: sceneArgs })
+  }
+  assert.equal(scenarioLocationId(run.state), locationId)
+}
+
+const sayTo = (run, npc, option, { hero = heroes[0].id, ...options } = {}) => run.apply({ command_type: 'ChooseDialogueOption', actor_id: hero, npc_id: npc, option_id: option }, options)
+const offeredBy = (run, npc, hero = heroes[0].id) => (dialogueOptionsFor(run.state, npc, hero)?.options ?? []).map((option) => option.id)
+const wardHolders = (run) => run.state.players.filter((player) => (player.inventory ?? []).some((item) => item.catalog_id === 'scenario_astohan:lomar-ward')).map((player) => player.id)
+
+test('Ломар: сделка отдаёт оберег задатком, и находка на столе второго не выдаёт', async () => {
+  const run = await astohan()
+  await travel(run, 'astohan-lomar-tower')
+  assert.ok(offeredBy(run, 'astohan-lomar').includes('barrier'))
+  assert.ok(!offeredBy(run, 'astohan-lomar').includes('pact'), 'сделка — после его предложения')
+  const notes = sayTo(run, 'astohan-lomar', 'barrier')
+  assert.ok(notes.events.some((event) => event.event_type === 'KnowledgeRevealed'))
+  assert.ok(scenarioFoundClueIds(run.state).has('tower-barrier-notes'))
+  sayTo(run, 'astohan-lomar', 'offer')
+  const pact = sayTo(run, 'astohan-lomar', 'pact')
+  assert.ok(pact.events.some((event) => event.event_type === 'ItemGranted'), pact.events.map((event) => event.event_type).join(','))
+  assert.deepEqual(wardHolders(run), [heroes[0].id])
+  assert.ok(run.state.dialogues['astohan-lomar'].granted.length === 1)
+  const found = run.discover('tower-fire-ward')
+  assert.ok(!found.events.some((event) => event.event_type === 'ItemGranted'), 'оберег уже выдан разговором')
+  assert.deepEqual(wardHolders(run), [heroes[0].id])
+  assert.deepEqual(replayEvents(run.initial, run.events).dialogues, run.state.dialogues)
+})
+
+test('Трент пропускает того, кто назвал свой страх; Древо — один вопрос на героя и уговор Ломара его историей', async () => {
+  const run = await astohan()
+  await travel(run, 'astohan-wild-forest')
+  assert.ok(run.state.social.npcs.some((npc) => npc.id === 'astohan-trent'), 'трент стоит в своём лесу')
+  assert.ok(!offeredBy(run, 'astohan-trent').includes('fear-alone'), 'страх называют, когда трент спросит')
+  sayTo(run, 'astohan-trent', 'not-lomar')
+  assert.ok(offeredBy(run, 'astohan-trent').includes('fear-alone'))
+  const passed = sayTo(run, 'astohan-trent', 'fear-alone')
+  assert.match(chosenOf(passed).reply, /Проходите/u)
+  assert.ok(scenarioFoundClueIds(run.state).has('forest-trent'))
+  assert.ok(!offeredBy(run, 'astohan-trent', heroes[1].id).some((id) => id.startsWith('fear-')), 'отряд пропущен — страх больше не спрашивают')
+
+  await travel(run, 'astohan-eldrin-heart')
+  const story = sayTo(run, 'astohan-eldrin', 'who')
+  assert.match(chosenOf(story).reply, /Я был Элдрином/u)
+  assert.ok(scenarioFoundClueIds(run.state).has('eldrin-story'), 'история Древа закрывает линию')
+  const path = sayTo(run, 'astohan-eldrin', 'beat-sargat')
+  assert.ok(path.events.some((event) => event.event_type === 'KnowledgeRevealed'))
+  assert.ok(scenarioFoundClueIds(run.state).has('eldrin-lava-path'))
+  assert.ok(!offeredBy(run, 'astohan-eldrin').some((id) => ['stop-lomar', 'free-you', 'dragons'].includes(id)), 'свой вопрос герой уже задал')
+  assert.ok(offeredBy(run, 'astohan-eldrin', heroes[1].id).includes('stop-lomar'), 'у другого героя свой вопрос')
+  sayTo(run, 'astohan-eldrin', 'stop-lomar', { hero: heroes[1].id })
+  assert.ok(!offeredBy(run, 'astohan-eldrin', heroes[1].id).includes('dragons'))
+
+  // С историей Древа — к Ломару: страх, увиденный Проницательностью, делает уговор лёгким.
+  await travel(run, 'astohan-lomar-tower')
+  assert.ok(offeredBy(run, 'astohan-lomar').includes('dissuade'))
+  sayTo(run, 'astohan-lomar', 'fear', { diceService: fixedDice(20) })
+  assert.ok(!offeredBy(run, 'astohan-lomar').includes('dissuade'))
+  assert.ok(offeredBy(run, 'astohan-lomar').includes('dissuade-fear'))
+  const dissuaded = sayTo(run, 'astohan-lomar', 'dissuade-fear', { diceService: fixedDice(10) })
+  assert.equal(chosenOf(dissuaded).check.success, true)
+  assert.ok(!offeredBy(run, 'astohan-lomar').includes('pact'), 'отговорённый маг сделку не предлагает')
+  const gift = sayTo(run, 'astohan-lomar', 'ward-gift')
+  assert.ok(gift.events.some((event) => event.event_type === 'ItemGranted'))
+  assert.deepEqual(wardHolders(run), [heroes[0].id])
+  assert.deepEqual(replayEvents(run.initial, run.events).dialogues, run.state.dialogues)
+})

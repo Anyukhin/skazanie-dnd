@@ -253,7 +253,7 @@ import {
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
 import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
-import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueFor, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
+import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueFor, dialogueGrantedFactIds, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_PURSE_COMMAND_TYPES,
@@ -20001,6 +20001,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // Тайна сценария по id или тайна исходной ситуации мира по теме.
       const revealFactId = dialogueRevealFactId(state, outcome)
       const revealable = Boolean(revealFactId)
+      // Тайна с наградой (оберег Ломара) отдаёт предмет герою, который её
+      // услышал, — если её ещё не нашли поиском и не выдали в разговоре.
+      const rewardId = revealable ? scenarioClueRewardCatalogId(state, revealFactId) : null
+      const rewardTaken = rewardId && ((state.worldMemory?.facts ?? []).some((fact) => fact?.predicate === 'discovery' && String(fact.supersedes_fact_id ?? '') === revealFactId)
+        || dialogueGrantedFactIds(state).has(revealFactId))
+      const grantReward = Boolean(rewardId && !rewardTaken)
       const chosenEventId = `dialogue:${String(command.command_id).slice(0, 100)}`
       events.push({
         ...eventFrom(command, DIALOGUE_EVENT, {
@@ -20017,6 +20023,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           reveal: revealable ? outcome.reveal || null : null,
           ...(revealable && outcome.reveal_topic ? { reveal_topic: outcome.reveal_topic } : {}),
           ...(revealable ? { revealed_fact_id: revealFactId } : {}),
+          ...(grantReward ? { granted_fact_id: revealFactId } : {}),
           ends: option.ends === true,
         }, [command.npc_id, command.actor_id]),
         event_id: chosenEventId,
@@ -20038,6 +20045,12 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           ...(socialSkill ? { check: { skill: check.skill, success: check.success, total: check.total } } : {}),
         },
       }, [command.npc_id, command.actor_id]))
+      if (grantReward) {
+        const item = normalizeInventoryItem(materializeCatalogItem(String(rewardId), { quantity: 1, origin: 'gifted' }), {
+          idFallback: `scenario-reward:${revealFactId}`, preserveUnknown: true,
+        })
+        events.push(itemGrantedEventFrom(command, { item }, [command.actor_id]))
+      }
       if (revealable) {
         // Рассказ слышит весь отряд у собеседника — запись в журнале знания
         // каждого героя отряда.
@@ -22005,7 +22018,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const found = command.command_type === 'RecordWorldFact' && command.fact?.predicate === 'discovery'
         ? String(command.fact?.supersedes_fact_id ?? '') : ''
       const rewardId = found ? scenarioClueRewardCatalogId(state, found) : null
-      const alreadyFound = rewardId && (state.worldMemory?.facts ?? []).some((fact) => fact?.predicate === 'discovery' && String(fact.supersedes_fact_id ?? '') === found)
+      // Награду за ту же тайну уже мог выдать разговор («Мы поможем вам» у Ломара).
+      const alreadyFound = rewardId && ((state.worldMemory?.facts ?? []).some((fact) => fact?.predicate === 'discovery' && String(fact.supersedes_fact_id ?? '') === found)
+        || dialogueGrantedFactIds(state).has(found))
       if (rewardId && !alreadyFound) {
         const partyIds = uniqueStrings(state.partyMemberIds ?? [])
         const recipient = partyIds.includes(String(command.actor_id ?? '')) ? String(command.actor_id)

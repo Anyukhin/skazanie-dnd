@@ -5830,8 +5830,13 @@ async function handleHttpRequest(req, res) {
       // это время обгоняла проекция хода врага. Критический момент не стирает
       // боевой лог: строка с бросками и уроном стоит перед текстом рассказчика
       // (плейтест 2026-10-03), а небо дописывается к рассказчику.
+      // Сцена на слова игрока и на критический удар — добавка к строке боя, а
+      // не её замена: без модели (или при её отказе) рассказчик молчит, и конец
+      // хода обязан остаться на строке боя. Иначе ход терялся на каждом
+      // критическом ударе врага в кампании без ключа (5 % ходов).
+      const additiveMoment = ['hero_flourish', 'critical_hit'].includes(String(criticalTrigger?.kind ?? ''))
       const turnEntry = criticalTrigger
-        ? (tactical.main ? { id: combatMessageId(`${idempotencyKey}:log`), text: tactical.main, turnConsumed: false, ...voice } : null)
+        ? (tactical.main ? { id: combatMessageId(`${idempotencyKey}:log`), text: tactical.main, turnConsumed: additiveMoment && types.has('EndTurn'), ...voice } : null)
         : tacticalText
           ? { id: narrationKeyId, text: tacticalText, turnConsumed: types.has('EndTurn'), ...voice }
           : merchantText ? { id: merchantMessageId(idempotencyKey), text: merchantText, turnConsumed: types.has('EndTurn'), ...voice } : null
@@ -5878,7 +5883,7 @@ async function handleHttpRequest(req, res) {
           // состояние комнаты за время ожидания могло уйти вперёд.
           if (narratorText) {
             journaled = appendRoomJournal(commandMatch[1], [{
-              id: narrationKeyId, text: narratorText, turnConsumed: types.has('EndTurn'), speaker: 'narrator', author: 'Рассказчик',
+              id: narrationKeyId, text: narratorText, turnConsumed: !additiveMoment && types.has('EndTurn'), speaker: 'narrator', author: 'Рассказчик',
             }])
           }
         }

@@ -13,8 +13,11 @@
  * диалогов нет. Вариант — тема или реплика героя (`label`) и ответ
  * собеседника (`reply`); у варианта могут быть:
  *
- * - `requires` — условия показа: флаги разговора (`flags`), найденные тайны
- *   сценария (`clues_any`, `clues_all`);
+ * - `requires` — условия показа: флаги разговора (`flags`, а `flags_none` —
+ *   флаги, которых быть не должно), найденные тайны сценария (`clues_any`,
+ *   `clues_all`);
+ * - `group` — группа вариантов, из которой герой выбирает один: «каждый
+ *   задаёт Древу один вопрос»;
  * - `check` — проверка навыка с СЛ; исход — `success`/`failure`, у каждого
  *   свой ответ. Попытка одна на героя: после неё вариант для него закрыт;
  * - `sets` — флаги, которые открывает вариант. Флаги общие для отряда и для
@@ -22,7 +25,9 @@
  *   другого («король что-то скрывает» → архивист показывает журнал);
  * - `reveal` — тайна сценария (id из карточки места), которую собеседник
  *   рассказывает; `reveal_topic` — тайна исходной ситуации мира по её теме
- *   (`opening.secrets` шаблона: у них нет стабильного id, есть тема);
+ *   (`opening.secrets` шаблона: у них нет стабильного id, есть тема). Тайна
+ *   с наградой (`grants_catalog_id`, оберег Ломара) отдаёт и предмет — один
+ *   раз: находка той же тайны поиском второго не выдаёт;
  * - `action` — сюжетная команда, которую вариант исполняет тем же путём, что
  *   и фраза («берём кошель короля»): `ReceiveScenarioPurse`,
  *   `ChooseScenarioArmoryItem`;
@@ -68,7 +73,8 @@ function invalid(message) {
  * @typedef {object} DialogueOption
  * @property {string} id
  * @property {string} label
- * @property {{ flags: string[], clues_any: string[], clues_all: string[] }} requires
+ * @property {{ flags: string[], flags_none: string[], clues_any: string[], clues_all: string[] }} requires
+ * @property {string} group
  * @property {{ skill: string, dc: number } | null} check
  * @property {DialogueOutcome} success исход без проверки — тоже здесь
  * @property {DialogueOutcome | null} failure
@@ -115,6 +121,7 @@ function option(raw, where) {
   if (!label) invalid(`${where}.${id}: нет реплики героя`)
   const requires = {
     flags: ids(raw?.requires?.flags, `${where}.${id}.requires.flags`),
+    flags_none: ids(raw?.requires?.flags_none, `${where}.${id}.requires.flags_none`),
     clues_any: ids(raw?.requires?.clues_any, `${where}.${id}.requires.clues_any`),
     clues_all: ids(raw?.requires?.clues_all, `${where}.${id}.requires.clues_all`),
   }
@@ -139,7 +146,9 @@ function option(raw, where) {
     if (commandType === 'ChooseScenarioArmoryItem' && !catalogId) invalid(`${where}.${id}: не указан предмет оружейной`)
     action = { command_type: commandType, ...(catalogId ? { catalog_id: catalogId } : {}) }
   }
-  return { id, label, requires, check, success, failure, action, ends: raw?.ends === true }
+  const group = raw?.group == null ? '' : clean(raw.group, 80)
+  if (group && !ID_PATTERN.test(group)) invalid(`${where}.${id}: группа «${group}»`)
+  return { id, label, requires, group, check, success, failure, action, ends: raw?.ends === true }
 }
 
 /**
@@ -178,7 +187,7 @@ export function normalizeDialogues(raw) {
     const setFlags = new Set(dialogues.filter((entry) => entry.scenario_id === dialogue.scenario_id)
       .flatMap((entry) => entry.options.flatMap((/** @type {DialogueOption} */ item) => [...item.success.sets, ...(item.failure?.sets ?? [])])))
     for (const item of dialogue.options) {
-      for (const flag of item.requires.flags) if (!setFlags.has(flag)) invalid(`${dialogue.id}.${item.id}: флаг «${flag}» никто не ставит`)
+      for (const flag of [...item.requires.flags, ...item.requires.flags_none]) if (!setFlags.has(flag)) invalid(`${dialogue.id}.${item.id}: флаг «${flag}» никто не ставит`)
     }
   }
   return dialogues
@@ -258,6 +267,18 @@ export function dialogueRevealFactId(state, result) {
 }
 
 /**
+ * Тайны, награду за которые уже выдал разговор: находка той же тайны поиском
+ * второй предмет не выдаёт.
+ *
+ * @param {any} state
+ * @returns {Set<string>}
+ */
+export function dialogueGrantedFactIds(state) {
+  const registry = state?.dialogues && typeof state.dialogues === 'object' ? state.dialogues : {}
+  return new Set(Object.values(registry).flatMap((entry) => (Array.isArray(entry?.granted) ? entry.granted.map(String) : [])))
+}
+
+/**
  * Знает ли отряд этот факт: его рассказали (журнал знания) или нашли поиском.
  *
  * @param {any} state
@@ -281,6 +302,7 @@ export function dialogueOptionUnlocked(state, dialogue, item) {
   const flags = dialogueFlags(state)
   const clues = scenarioFoundClueIds(state)
   if (!item.requires.flags.every((flag) => flags.has(flag))) return false
+  if (item.requires.flags_none.some((flag) => flags.has(flag))) return false
   if (item.requires.clues_all.length && !item.requires.clues_all.every((clue) => clues.has(clue))) return false
   if (item.requires.clues_any.length && !item.requires.clues_any.some((clue) => clues.has(clue))) return false
   return true
@@ -305,6 +327,9 @@ export function dialogueOptionsFor(state, npcId, heroId) {
   const options = dialogue.options
     .filter((item) => dialogueOptionUnlocked(state, dialogue, item))
     .filter((item) => !(item.check && (progress.attempted[item.id] ?? []).includes(hero)))
+    // Из группы герой выбирает один вариант: остальные для него закрыты.
+    .filter((item) => !(item.group && dialogue.options.some((other) => other.group === item.group && other.id !== item.id
+      && (progress.chosen[other.id] ?? []).includes(hero))))
     // Рассказанное второй раз не спрашивают: тайну успеха отряд уже знает.
     .filter((item) => !factKnownToParty(state, dialogueRevealFactId(state, item.success)))
     .filter((item) => !(item.action && (progress.chosen[item.id] ?? []).includes(hero)))
@@ -323,10 +348,10 @@ export function dialogueOptionsFor(state, npcId, heroId) {
  * Выводится из журнала событием `DialogueOptionChosen`, поэтому replay сходится.
  *
  * @param {unknown} value
- * @returns {Record<string, { flags: string[], chosen: Record<string, string[]>, attempted: Record<string, string[]> }>}
+ * @returns {Record<string, { flags: string[], chosen: Record<string, string[]>, attempted: Record<string, string[]>, granted: string[] }>}
  */
 export function normalizeDialogueState(value) {
-  /** @type {Record<string, { flags: string[], chosen: Record<string, string[]>, attempted: Record<string, string[]> }>} */
+  /** @type {Record<string, { flags: string[], chosen: Record<string, string[]>, attempted: Record<string, string[]>, granted: string[] }>} */
   const result = {}
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result
   /** @param {unknown} map */
@@ -340,6 +365,7 @@ export function normalizeDialogueState(value) {
       flags: [...new Set((Array.isArray(entry.flags) ? entry.flags : []).map((/** @type {unknown} */ flag) => clean(flag, 80)).filter(Boolean))],
       chosen: lists(entry.chosen),
       attempted: lists(entry.attempted),
+      granted: [...new Set((Array.isArray(entry.granted) ? entry.granted : []).map((/** @type {unknown} */ factId) => clean(factId, 200)).filter(Boolean))],
     }
   }
   return result
@@ -360,12 +386,14 @@ export function applyDialogueEvent(value, event) {
   const optionId = clean(payload.option_id, 80)
   const hero = clean(payload.hero_id, 120)
   if (!dialogueId || !optionId || !hero) return state
-  const entry = state[dialogueId] ?? { flags: [], chosen: {}, attempted: {} }
+  const entry = state[dialogueId] ?? { flags: [], chosen: {}, attempted: {}, granted: [] }
+  const granted = clean(payload.granted_fact_id, 200)
   const sets = (Array.isArray(payload.sets) ? payload.sets : []).map((/** @type {unknown} */ flag) => clean(flag, 80)).filter(Boolean)
   state[dialogueId] = {
     flags: [...new Set([...entry.flags, ...sets])],
     chosen: { ...entry.chosen, [optionId]: [...new Set([...(entry.chosen[optionId] ?? []), hero])] },
     attempted: payload.check ? { ...entry.attempted, [optionId]: [...new Set([...(entry.attempted[optionId] ?? []), hero])] } : entry.attempted,
+    granted: granted ? [...new Set([...entry.granted, granted])] : entry.granted,
   }
   return state
 }
