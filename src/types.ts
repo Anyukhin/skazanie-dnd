@@ -1746,6 +1746,25 @@ export type ActorFootprint = {
   size: 1 | 2 | 3 | 4
 }
 
+/**
+ * Вариант авторского разговора (`server/campaign-dialogues.mjs`) для героя-
+ * зрителя. Ответ собеседник даёт только после выбора — в варианте его нет.
+ */
+export type SceneDialogueOption = {
+  id: string
+  label: string
+  check?: { skill: string; dc: number }
+  /** Вопрос уже задавали — серый пункт, как в BG3. */
+  asked: boolean
+  /** Вариант закрывает разговор. */
+  ends: boolean
+}
+
+export type SceneDialogue = {
+  greeting: string
+  options: SceneDialogueOption[]
+}
+
 export type GameState = {
   sessionCode: string
   campaign: string
@@ -1870,6 +1889,11 @@ export type GameState = {
    * запертости сундуков в ней нет и не будет.
    */
   lockpicking?: LockpickingProjection | null
+  /**
+   * Разговоры сцены с вариантами ответа: собеседник → приветствие и варианты
+   * для героя-зрителя. Собирает сервер; вне боя и только для авторской кампании.
+   */
+  scene_dialogues?: Record<string, SceneDialogue>
   /**
    * Ходы мира за спиной отряда. Ветка одинакова у игрока и у ведущего: «Пока
    * вас не было…» — монтаж для всего стола.

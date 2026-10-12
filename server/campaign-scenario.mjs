@@ -484,6 +484,19 @@ export function scenarioSecretsFor(state, locationId) {
 }
 
 /**
+ * Найденные тайны сценария по их id в данных (`ash-gate`, `camp-gedrik`):
+ * условие варианта диалога ссылается на тайну, а не на факт памяти.
+ * @param {any} state
+ * @returns {Set<string>}
+ */
+export function scenarioFoundClueIds(state) {
+  const scenario = campaignScenario(state)
+  if (!scenario) return new Set()
+  const prefix = scenarioClueFactId(scenario, '')
+  return new Set([...foundClueFactIds(state)].filter((factId) => factId.startsWith(prefix)).map((factId) => factId.slice(prefix.length)))
+}
+
+/**
  * Найденные тайны: удачный поиск (`discovery`) или рассказ хранителя тайны в
  * разговоре (`KnowledgeRevealed` → `worldMemory.knowledge_revealed`).
  * @param {any} state

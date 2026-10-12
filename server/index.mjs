@@ -62,6 +62,7 @@ import { combatJournalVoice, encounterIntro, tacticalNarrationOr, tacticalNarrat
 import { NpcMoraleAgent } from './npc-controller.mjs'
 import { NpcSocialController } from './npc-social-controller.mjs'
 import { ensureNpcSocialState, npcProfileAtWorldTime, npcSocialForViewer } from './npc-social.mjs'
+import { DIALOGUE_COMMAND_TYPE, dialogueCheckLine } from './campaign-dialogues.mjs'
 import { RollRegistry } from './roll-registry.mjs'
 import { loadRulePacks } from './rule-pack.mjs'
 import { createRuleRetriever } from './rule-retriever.mjs'
@@ -627,6 +628,9 @@ const PLAYER_LETTER_COMMANDS = COURIER_LETTER_COMMAND_TYPES
 // требу принимают вне боя, и экономику хода она не трогает. Список берётся у
 // модуля благословений — второго перечисления в проекте быть не должно.
 const PLAYER_BLESSING_COMMANDS = BLESSING_COMMAND_TYPES
+// Вариант авторского разговора (`server/campaign-dialogues.mjs`): ответ, СЛ и
+// раскрытие — из данных, из запроса только герой, собеседник и вариант.
+const PLAYER_DIALOGUE_COMMANDS = new Set([DIALOGUE_COMMAND_TYPE])
 const ADMIN_MERCHANT_LIFECYCLE_COMMANDS = new Set(['CreateMerchant', 'ConfigureMerchant', 'RestockMerchant', 'MoveMerchant', 'SetMerchantAvailability'])
 const SERVER_WORLD_COMMANDS = new Set(['AdvanceScene'])
 const SERVER_ENCOUNTER_COMMANDS = new Set(['CreateEncounter'])
@@ -1806,6 +1810,37 @@ function sanitizePlayerBlessingCommand(user, state, input) {
     command_type: type,
     actor_id: actor,
     npc_id: String(input?.npc_id ?? input?.npcId ?? '').trim().slice(0, 120),
+    server_authoritative: true,
+    ...(expected == null ? {} : { expected_state_version: expected }),
+  }
+}
+
+function sanitizePlayerDialogueCommand(user, state, input) {
+  const type = commandType(input)
+  if (!PLAYER_DIALOGUE_COMMANDS.has(type)) {
+    throw commandPolicyError('Команда не относится к разговору', 'PLAYER_COMMAND_FORBIDDEN')
+  }
+  const allowedFields = new Set([
+    'command_type', 'commandType', 'type',
+    'actor_id', 'actorId',
+    'npc_id', 'npcId',
+    'option_id', 'optionId',
+    'expected_state_version', 'expectedStateVersion',
+  ])
+  const unexpected = Object.keys(input ?? {}).filter((key) => !allowedFields.has(key))
+  if (unexpected.length) {
+    throw commandPolicyError(`Выбор в разговоре содержит запрещённые поля: ${unexpected.join(', ')}`, 'DIALOGUE_COMMAND_UNKNOWN_FIELD')
+  }
+  const actor = String(input?.actor_id ?? input?.actorId ?? '')
+  if (!actor || !canUseHero(user, actor, state.sessionCode)) {
+    throw commandPolicyError('Говорят только своим героем', 'ACTOR_FORBIDDEN')
+  }
+  const expected = input?.expected_state_version ?? input?.expectedStateVersion
+  return {
+    command_type: type,
+    actor_id: actor,
+    npc_id: String(input?.npc_id ?? input?.npcId ?? '').trim().slice(0, 120),
+    option_id: String(input?.option_id ?? input?.optionId ?? '').trim().slice(0, 80),
     server_authoritative: true,
     ...(expected == null ? {} : { expected_state_version: expected }),
   }
@@ -5569,6 +5604,7 @@ async function handleHttpRequest(req, res) {
         if (PLAYER_TAVERN_COMMANDS.has(type)) return sanitizePlayerTavernCommand(user, authoritativeBefore, command)
         if (PLAYER_LETTER_COMMANDS.has(type)) return sanitizePlayerLetterCommand(user, authoritativeBefore, command)
         if (PLAYER_BLESSING_COMMANDS.has(type)) return sanitizePlayerBlessingCommand(user, authoritativeBefore, command)
+        if (PLAYER_DIALOGUE_COMMANDS.has(type)) return sanitizePlayerDialogueCommand(user, authoritativeBefore, command)
         if (PLAYER_NPC_COMBAT_COMMANDS.has(type)) return sanitizePlayerNpcCombatCommand(user, authoritativeBefore, command)
         // Права администратора меняют авторизацию MakeAttack, но не делают
         // клиентские поля или request_fingerprint авторитетными. Ограничение
@@ -5601,6 +5637,9 @@ async function handleHttpRequest(req, res) {
       const blessingCommands = commands.filter((command) => PLAYER_BLESSING_COMMANDS.has(commandType(command)))
       if (blessingCommands.length && commands.length !== 1) {
         throw commandPolicyError('Благословение идёт отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
+      }
+      if (commands.some((command) => PLAYER_DIALOGUE_COMMANDS.has(commandType(command))) && commands.length !== 1) {
+        throw commandPolicyError('Выбор в разговоре идёт отдельной атомарной командой', 'PLAYER_COMMAND_FORBIDDEN')
       }
       // Письмо — отдельная атомарная команда по той же причине, что кости и
       // ответ страже: у него своя цена в монете и свои минуты кампании.
@@ -5796,7 +5835,19 @@ async function handleHttpRequest(req, res) {
         : tacticalText
           ? { id: narrationKeyId, text: tacticalText, turnConsumed: types.has('EndTurn'), ...voice }
           : merchantText ? { id: merchantMessageId(idempotencyKey), text: merchantText, turnConsumed: types.has('EndTurn'), ...voice } : null
-      const firstEntries = [noteEntry, turnEntry].filter(Boolean)
+      // Разговор с вариантами: реплика героя и ответ собеседника, подписанный
+      // его именем, — как у свободной реплики в `/api/narrate`. Строка механики
+      // (кошель, вещь из оружейной) идёт после ответа.
+      const dialogueChosen = (result.mechanics ?? []).find((event) => event.event_type === 'DialogueOptionChosen')?.payload ?? null
+      const dialogueEntries = dialogueChosen ? [
+        { id: playerMessageId(`${idempotencyKey}:dialogue`), text: String(dialogueChosen.label ?? ''), speaker: 'player', author: playerNoteAuthor(committedState, commandActor, actor) },
+        {
+          id: narrationMessageId(`${idempotencyKey}:dialogue`),
+          text: [dialogueCheckLine(dialogueChosen.check), String(dialogueChosen.reply ?? '')].filter(Boolean).join('\n'),
+          speaker: 'narrator', author: String(dialogueChosen.npc_name || 'Собеседник'), turnConsumed: false,
+        },
+      ] : []
+      const firstEntries = [noteEntry, ...dialogueEntries, turnEntry].filter(Boolean)
       const projected = committedState
         ? persistAuthoritativeProjection(commandMatch[1], committedState, result.mechanics, firstEntries.length ? firstEntries : null, { awaitProjection: true })
         : null

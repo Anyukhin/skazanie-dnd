@@ -308,7 +308,13 @@ function purseText(currency: { platinum?: number; gold?: number; silver?: number
   return parts.length ? parts.join(' ') : '0 зм'
 }
 
-export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, chronicleStatus, freeRoll, children }: {
+/** Подписи навыков у вариантов разговора с проверкой — как в листе героя. */
+const DIALOGUE_SKILL_LABELS: Record<string, string> = {
+  persuasion: 'Убеждение', deception: 'Обман', intimidation: 'Запугивание', insight: 'Проницательность',
+  history: 'История', religion: 'Религия', arcana: 'Магия', performance: 'Выступление', medicine: 'Медицина',
+}
+
+export function DungeonMap({ state, players, turnActorId, typingActorId, canAct, canConverse, dialogueBusy, dialogueDraft, tacticalBusy, tacticalError, autoAttackRoll, scenicBackdrop, boardLighting, combatAnimations, combatAudio, visualBatch, onStartCombat, onNpcAttack, onMove, onAttack, onAreaAttack, onCastSpell, onUseCombatAction, onSetSpellBonusPreference, onSetReactionMode, onChangeWeapon, onOperateDoor, onOperateSceneObject, onUseLevelTransition, onLeaveLocation, leaveLocationDisabled, onOpenMerchant, onFinishTurn, onFreeAction, onNpcAction, onCaptiveAction, onLootContainer, onBeastAction, onResolveGuardEncounter, onProposeParley, onSettleParley, onOpenTavernDiceRound, onAnswerTavernDiceRound, onLeaveTavernDiceRound, onOrderTavernDrink, onSendLetter, onReceiveNpcBlessing, onTransferItem, onDialogueOption, onStartRest, onSpendHitPointDie, onCompleteRest, onTypingChange, narrating, playerHud, foreignTurn, statusContent, chronicleStatus, freeRoll, children }: {
   state: GameState
   players: Player[]
   turnActorId: string
@@ -358,6 +364,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onSendLetter: (addresseeKind: LetterAddresseeKind, addresseeId: string, body: string) => Promise<CommandOutcome>
   onReceiveNpcBlessing: (npcId: string) => Promise<CommandOutcome>
   onTransferItem: (itemId: string, npcId: string, quantity: number) => Promise<CommandOutcome>
+  onDialogueOption: (npcId: string, optionId: string) => Promise<CommandOutcome>
   onStartRest: (kind: 'short' | 'long') => Promise<CommandOutcome>
   onSpendHitPointDie: () => Promise<CommandOutcome>
   onCompleteRest: () => Promise<CommandOutcome>
@@ -2103,6 +2110,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     if (outcome.ok) setNpcDialogueText('')
   }
 
+  // Авторский разговор: варианты собирает сервер под героя-зрителя, ответ
+  // собеседника приходит в летопись. Вариант-прощание закрывает окно.
+  const dossierDialogue = dossierSceneNpc ? state.scene_dialogues?.[dossierSceneNpc.id] ?? null : null
+  const chooseNpcDialogueOption = async (optionId: string, ends: boolean) => {
+    if (!dossierSceneNpc || !dossierCanTalk) return
+    const outcome = await onDialogueOption(dossierSceneNpc.id, optionId)
+    if (outcome.ok && ends) setNpcDossier(null)
+  }
+
   const submitNpcGift = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!dossierSceneNpc || !selectedGiftItem || !dossierCanReceiveGift) return
@@ -3612,6 +3628,25 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   {tacticalError && <p className="npc-gift-error">{tacticalError}</p>}
                 </form>
               : <>
+                  {dossierDialogue && <div className="npc-dialogue-options">
+                    {/* Над вариантами — последние слова собеседника, как в BG3; до первого вопроса — приветствие. */}
+                    <p className="npc-dialogue-greeting">{dossierConversations[0]?.npc_reply || dossierDialogue.greeting}</p>
+                    <ol>
+                      {dossierDialogue.options.map((option, index) => <li key={option.id}>
+                        <button
+                          type="button"
+                          className={option.asked ? 'asked' : undefined}
+                          disabled={!dossierCanTalk || tacticalBusy}
+                          onClick={() => void chooseNpcDialogueOption(option.id, option.ends)}
+                        >
+                          <span className="npc-dialogue-index">{index + 1}.</span>
+                          {option.check && <span className="npc-dialogue-check">[{DIALOGUE_SKILL_LABELS[option.check.skill] ?? option.check.skill} · СЛ {option.check.dc}]</span>}
+                          <span>{option.label}</span>
+                        </button>
+                      </li>)}
+                    </ol>
+                    {tacticalError && <p className="npc-gift-error">{tacticalError}</p>}
+                  </div>}
                   <form onSubmit={submitNpcDialogue}>
                     <input
                       ref={npcDialogueInputRef}

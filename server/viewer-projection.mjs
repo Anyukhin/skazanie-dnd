@@ -30,6 +30,7 @@ import { publicTavernRoundFor, tavernForViewer } from './tavern-life.mjs'
 import { blessingsForViewer } from './blessings.mjs'
 import { lockpickingForViewer } from './lockpicking.mjs'
 import { scenarioCourtForViewer } from './scenario-attention.mjs'
+import { sceneDialoguesForViewer } from './campaign-dialogues.mjs'
 import { OFFSCREEN_WORLD_SCHEMA_VERSION, offscreenWorldFeed } from './offscreen-world.mjs'
 import { courierLetterForViewer, courierLettersForViewer } from './courier-letters.mjs'
 import { weatherForViewer } from './weather.mjs'
@@ -1615,6 +1616,16 @@ export const PROJECTED_STATE_KEYS = Object.freeze([
   // (`scenarioCourtForViewer`, `server/scenario-attention.mjs`) и говорит
   // только одно — ждут ли этого героя кошель и вещь из оружейной.
   'scenario_court',
+  // Прогресс авторских разговоров: флаги отряда и кто какой вариант пробовал.
+  // Наружу не копируется: игрок видит его только как набор доступных ему
+  // вариантов ниже.
+  'dialogues',
+  // Разговоры сцены. Собственного ключа в состоянии нет: варианты собираются
+  // под героя-зрителя из данных диалога и прогресса
+  // (`sceneDialoguesForViewer`, `server/campaign-dialogues.mjs`). Скрытого в
+  // них нет: вариант с условием показывается, только когда условие выполнено,
+  // а ответ собеседник даёт уже после выбора.
+  'scene_dialogues',
   // Взлом отмычками. Собственного ключа в состоянии нет: карточка выводится из
   // листа героя-зрителя (`lockpickingForViewer`, `server/lockpicking.mjs`) и
   // существует только в проекции. Скрытого в ней нет ни грамма — владение
@@ -1870,6 +1881,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Двор короля сценария: ждут ли этого героя кошель и вещь из оружейной.
     // Сам реестр внимания закрыт, карточка несёт только его собственные слоты.
     scenario_court: scenarioCourtForViewer(state, { playerId: String(actorId ?? '') }),
+    // Разговоры сцены с вариантами ответа — под героя-зрителя.
+    scene_dialogues: sceneDialoguesForViewer(state, { playerId: String(actorId ?? '') }),
     // Небо у ведущего и у игрока одно и то же: время суток и погода выводятся
     // из минут кампании и сида, тайной ведущего они не являются.
     weather: weatherForViewer(state, actorId),
@@ -1942,6 +1955,7 @@ export function campaignStateForViewer(state, user, actorId = '') {
     courier_letters: _courierLetters,
     scenario_attention: _scenarioAttention,
     scenario_knight: _scenarioKnight,
+    dialogues: _dialogues,
     ...publicState
   } = visible
   const currentLocationId = String(state.scene?.location_id ?? state.scene?.locationId ?? state.worldMap?.currentLocationId ?? '')
@@ -2115,6 +2129,8 @@ export function campaignStateForViewer(state, user, actorId = '') {
     // Двор короля сценария: ждут ли этого героя кошель и вещь из оружейной.
     // Сам реестр внимания закрыт, карточка несёт только его собственные слоты.
     scenario_court: scenarioCourtForViewer(state, { playerId: String(actorId ?? '') }),
+    // Разговоры сцены с вариантами ответа — под героя-зрителя.
+    scene_dialogues: sceneDialoguesForViewer(state, { playerId: String(actorId ?? '') }),
     // Ход мира едет столу той же лентой, что и ведущему: карточка «Пока вас не
     // было…» показывается всем, и вторая форма для неё была бы вторым ответом
     // на один вопрос.

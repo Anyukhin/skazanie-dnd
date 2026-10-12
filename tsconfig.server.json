@@ -21,6 +21,7 @@
     "server/authored-location-maps.mjs",
     "server/backgrounds.mjs",
     "server/campaign-scenario.mjs",
+    "server/campaign-dialogues.mjs",
     "server/scenario-attention.mjs",
     "server/scenario-knight.mjs",
     "server/building-generator.mjs",

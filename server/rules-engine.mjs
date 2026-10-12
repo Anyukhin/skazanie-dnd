@@ -252,7 +252,8 @@ import {
   sceneWorldMemoryEventId,
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
-import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { applyScenarioMapReveals, campaignScenario, scenarioArmoryRules, scenarioClueFactId, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueFor, dialogueOptionsFor, normalizeDialogueState } from './campaign-dialogues.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_PURSE_COMMAND_TYPES,
@@ -875,6 +876,9 @@ const COMMAND_RULES = Object.freeze({
   // Осведомитель: перевербовка — проверка навыка; выдать и отпустить —
   // решение сценария (провенанс — политика проекта).
   ResolveScenarioInformant: [],
+  // Вариант авторского диалога: ответ и раскрытие — данные сценария
+  // (провенанс — политика проекта); проверка навыка — вложенная команда.
+  ChooseDialogueOption: [],
   SetCharacterChoices: [],
   SetSpellSelections: [],
   SetSpellBonusPreference: [RULE_IDS.conditions],
@@ -920,6 +924,7 @@ export const ALLOWED_COMMAND_TYPES = new Set([
   ...SCENARIO_PURSE_COMMAND_TYPES,
   ...SCENARIO_ARMORY_COMMAND_TYPES,
   ...SCENARIO_INFORMANT_COMMAND_TYPES,
+  DIALOGUE_COMMAND_TYPE,
   'SetCharacterChoices', 'SetSpellSelections', 'SetSpellBonusPreference', 'SetReactionPreference',
   'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'LevelUp', 'ImportCharacter', 'RollCharacterAbilities', 'RollCharacterWealth',
   'CompleteCampaign', 'AdvanceCampaignArc', 'ResolveQuestDecision',
@@ -2182,6 +2187,7 @@ export function normalizeCampaignState(input = {}) {
   state.captives = normalizeCaptivesState(state.captives)
   state.scenario_attention = normalizeScenarioAttentionState(state.scenario_attention)
   state.scenario_knight = normalizeScenarioKnightState(state.scenario_knight)
+  state.dialogues = normalizeDialogueState(state.dialogues)
   // Контейнеры добычи живут в состоянии кампании, а не в сцене: невзятое
   // обязано пережить и уход со сцены, и подъём на другой этаж.
   state.loot_containers = normalizeLootContainersState(state.loot_containers)
@@ -4398,6 +4404,16 @@ function normalizeCommand(input, state) {
     command.npc_id = String(command.npc_id ?? command.npcId ?? '').slice(0, 120)
     delete command.npcId
   }
+  if (command.command_type === DIALOGUE_COMMAND_TYPE) {
+    // Из запроса — герой, собеседник и вариант; ответ, СЛ и раскрытие — из
+    // данных диалога (`server/campaign-dialogues.mjs`).
+    command.target_id = null
+    command.target_ids = []
+    command.npc_id = String(command.npc_id ?? '').slice(0, 120)
+    command.option_id = String(command.option_id ?? '').slice(0, 80)
+    delete command.dialogue_option
+    command.house_rule_id = DIALOGUE_POLICY_ID
+  }
   if (SCENARIO_PURSE_COMMAND_TYPES.has(command.command_type)) {
     // Из запроса — только герой: кости и сумма — из данных сценария.
     command.target_id = null
@@ -4611,6 +4627,7 @@ function needsActor(type) {
     'CalmBeast', 'FeedBeast', 'ScareWithBeast',
     'OpenTavernDiceRound', 'AnswerTavernDiceRound', 'LeaveTavernDiceRound', 'OrderTavernDrink',
     'SendLetter', 'ReceiveNpcBlessing', 'ReturnKnightHead', 'ReleaseCursedKnight', 'NegotiateScenarioTreaty', 'ReceiveScenarioPurse', 'ChooseScenarioArmoryItem', 'ResolveScenarioInformant',
+    'ChooseDialogueOption',
     'BargainWithMerchant', 'AppraiseItem', 'BuyItem', 'SellItem', 'PurchaseMerchantService',
     'EquipItem', 'UseItem', 'TransferItem', 'AttuneItem', 'ActivateItem', 'SetCharacterChoices', 'SetSpellSelections', 'LevelUp', 'ImportCharacter']).has(type)
 }
@@ -6222,6 +6239,30 @@ export function validateCommand(input, rawState, context = {}) {
       command.difficulty = informant.turn.dc
     }
     command.visibility = 'public'
+  }
+  if (command.command_type === DIALOGUE_COMMAND_TYPE) {
+    // Авторский диалог (`docs/offline-playable-plan.md`, этап 1): вариант
+    // выбирает герой отряда, вне боя, у собеседника, который здесь; условия и
+    // попытки проверки — по данным и прогрессу разговора.
+    const dialogue = dialogueFor(state, command.npc_id)
+    if (!dialogue) throw new RulesValidationError('С этим собеседником нет разговора с вариантами', 'DIALOGUE_ABSENT')
+    const hero = playerActor(state, command.actor_id)
+    if (!hero || !sameCampaignParty(state, command.actor_id)) throw new RulesValidationError('Говорит герой отряда', 'ACTOR_FORBIDDEN')
+    if (!isLivingActor(hero)) throw new RulesValidationError('Герой без сознания не разговаривает', 'ACTOR_DEFEATED')
+    if (state.mechanics.combat.active) throw new RulesValidationError('Посреди боя не до разговоров', 'DIALOGUE_DURING_COMBAT')
+    const npc = (state.social?.npcs ?? []).find((entry) => String(entry?.id) === command.npc_id)
+    const place = (value) => String(value ?? '').trim().toLocaleLowerCase('ru')
+    if (!npc || npc.available === false || state.npc_world?.vitals?.[npc.id]?.alive === false
+      || place(npc.location) !== place(state.scene?.location)) {
+      throw new RulesValidationError('Собеседника здесь нет', 'DIALOGUE_NPC_ABSENT')
+    }
+    const option = dialogue.options.find((entry) => entry.id === command.option_id)
+    const offered = dialogueOptionsFor(state, command.npc_id, command.actor_id)?.options ?? []
+    if (!option || !offered.some((entry) => entry.id === option.id)) {
+      throw new RulesValidationError('Этот вариант разговора сейчас недоступен', 'DIALOGUE_OPTION_UNAVAILABLE')
+    }
+    command.dialogue_option = { dialogue_id: dialogue.id, npc_name: String(npc.name ?? ''), ...clone(option) }
+    command.visibility = 'party'
   }
   if (SCENARIO_ARMORY_COMMAND_TYPES.has(command.command_type)) {
     // Королевская оружейная (`docs/astohan-scenario.md`, пролог): одна вещь
@@ -19923,6 +19964,93 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       }
       break
     }
+    case DIALOGUE_COMMAND_TYPE: {
+      // Ответ собеседника по данным: проверка навыка — вложенная команда,
+      // сюжетное действие — та же команда, что у фразы («берём кошель
+      // короля»), со всеми её проверками; тайна — запись в журнале знания
+      // героев, как у допроса пленного.
+      const option = command.dialogue_option
+      const { dialogue_option: _option, ...plain } = command
+      let check = null
+      if (option.check) {
+        const resolved = resolveCommandInternal({
+          ...plain,
+          command_type: 'MakeAbilityCheck',
+          command_id: `${command.command_id}:check`,
+          skill: option.check.skill,
+          difficulty: option.check.dc,
+          source_rule_ids: [...command.source_rule_ids, rulesetRuleId(RULE_IDS.abilityCheck, command.ruleset_id)],
+        }, state, { diceService, context })
+        events.push(...resolved.events)
+        rolls.push(...(resolved.rolls ?? []))
+        const result = resolved.events.find((event) => event.event_type === 'AbilityCheckResolved')?.payload ?? {}
+        check = { skill: option.check.skill, dc: option.check.dc, success: result.success === true, total: safeInteger(result.total, 0) }
+      }
+      const outcome = !check || check.success ? option.success : option.failure
+      if (option.action) {
+        const acted = resolveCommandInternal({
+          command_type: option.action.command_type,
+          campaign_id: command.campaign_id,
+          command_id: `${command.command_id}:action`,
+          actor_id: command.actor_id,
+          ...(option.action.catalog_id ? { catalog_id: option.action.catalog_id } : {}),
+        }, state, { diceService, context })
+        events.push(...acted.events)
+        rolls.push(...(acted.rolls ?? []))
+      }
+      const scenario = campaignScenario(state)
+      const revealFactId = outcome.reveal && scenario ? scenarioClueFactId(scenario, outcome.reveal) : ''
+      const revealable = Boolean(revealFactId && (state.worldMemory?.facts ?? []).some((fact) => fact?.id === revealFactId))
+      const chosenEventId = `dialogue:${String(command.command_id).slice(0, 100)}`
+      events.push({
+        ...eventFrom(command, DIALOGUE_EVENT, {
+          schema_version: 1,
+          dialogue_id: option.dialogue_id,
+          npc_id: command.npc_id,
+          npc_name: option.npc_name,
+          option_id: option.id,
+          hero_id: command.actor_id,
+          label: option.label,
+          reply: outcome.reply,
+          check,
+          sets: [...outcome.sets],
+          reveal: revealable ? outcome.reveal : null,
+          ends: option.ends === true,
+        }, [command.npc_id, command.actor_id]),
+        event_id: chosenEventId,
+      })
+      // Разговор помнит и сам собеседник: та же запись, что у свободной
+      // реплики, — память NPC, «уже говорил с ним» и подпись в летописи.
+      const socialSkill = check && ['persuasion', 'deception', 'intimidation', 'insight'].includes(check.skill)
+      events.push(eventFrom(command, 'NpcConversationRecorded', {
+        conversation: {
+          id: `conversation:dialogue:${String(command.command_id).slice(0, 90)}`,
+          npc_id: command.npc_id,
+          hero_id: command.actor_id,
+          player_message: option.label,
+          npc_reply: outcome.reply,
+          stance: 'neutral',
+          disclosed_fact_ids: revealable ? [revealFactId] : [],
+          disclosed_claim_ids: [],
+          visibility: 'party',
+          ...(socialSkill ? { check: { skill: check.skill, success: check.success, total: check.total } } : {}),
+        },
+      }, [command.npc_id, command.actor_id]))
+      if (revealable) {
+        // Рассказ слышит весь отряд у собеседника — запись в журнале знания
+        // каждого героя отряда.
+        const party = uniqueStrings([command.actor_id, ...(state.partyMemberIds ?? [])])
+        events.push(eventFrom(command, 'KnowledgeRevealed', {
+          knowledge_id: `${chosenEventId}:knowledge`,
+          hero_id: command.actor_id,
+          fact_id: revealFactId,
+          source_event_ids: [chosenEventId],
+          source_kind: 'npc',
+          revealed_at_minutes: campaignElapsedMinutes(state),
+        }, party))
+      }
+      break
+    }
     case 'ChooseScenarioArmoryItem': {
       events.push(itemGrantedEventFrom(command, { item: clone(command.armory_item) }, [command.actor_id]))
       events.push(eventFrom(command, SCENARIO_ARMORY_EVENT, {
@@ -26175,6 +26303,8 @@ function applyGameEventCurrent(rawState, event) {
   // берётся из сцены, в которой случилось событие, поэтому replay сходится.
   state.scenario_attention = applyScenarioAttentionEvent(state.scenario_attention, event, state)
   state.scenario_knight = applyScenarioKnightEvent(state.scenario_knight, event, state)
+  // Прогресс авторских разговоров — вывод из журнала: флаги и попытки героев.
+  state.dialogues = applyDialogueEvent(state.dialogues, event)
   // Реестр зверей — такой же вывод из журнала: подход заводит запись, а ступени,
   // укусы и переезды спутника только меняют её, поэтому replay восстанавливает
   // всю лестницу без отдельного снимка.

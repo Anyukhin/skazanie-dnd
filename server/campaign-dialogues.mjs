@@ -1,0 +1,350 @@
+// @ts-check
+/**
+ * Авторские диалоги кампании — разговор с вариантами ответа, как в BG3.
+ *
+ * Зачем. Прогон «Асстоханских равнин» без модели (2026-10-12) показал, что
+ * разговор — главный разрыв: король Арес на первый же вопрос о поручении
+ * отвечал «Больше мне сказать нечего», и все реплики собеседников были
+ * отписками. Принцип 8 (`docs/product-principles.md`): у каждого собеседника
+ * авторской кампании — авторский диалог, кампания проходится без модели.
+ *
+ * Данные — `data/campaign-dialogues-v1.json`. Диалог привязан к собеседнику
+ * сценария (`npc_id`) и к сценарию (`scenario_id`): в кампании без сценария
+ * диалогов нет. Вариант — тема или реплика героя (`label`) и ответ
+ * собеседника (`reply`); у варианта могут быть:
+ *
+ * - `requires` — условия показа: флаги разговора (`flags`), найденные тайны
+ *   сценария (`clues_any`, `clues_all`);
+ * - `check` — проверка навыка с СЛ; исход — `success`/`failure`, у каждого
+ *   свой ответ. Попытка одна на героя: после неё вариант для него закрыт;
+ * - `sets` — флаги разговора, которые открывает вариант (общие для отряда);
+ * - `reveal` — тайна сценария, которую собеседник рассказывает;
+ * - `action` — сюжетная команда, которую вариант исполняет тем же путём, что
+ *   и фраза («берём кошель короля»): `ReceiveScenarioPurse`,
+ *   `ChooseScenarioArmoryItem`;
+ * - `ends` — вариант закрывает окно разговора.
+ *
+ * Модуль — лист: читает состояние и данные, событий не создаёт. Команду и
+ * события исполняет Rules Engine; прогресс разговора (флаги и попытки) —
+ * в состоянии, его пишет редьюсер.
+ */
+import { readFileSync } from 'node:fs'
+
+import { campaignScenario, scenarioFoundClueIds } from './campaign-scenario.mjs'
+
+export const DIALOGUES_SCHEMA_VERSION = 1
+/** Команда игрока: выбрать вариант разговора. */
+export const DIALOGUE_COMMAND_TYPE = 'ChooseDialogueOption'
+/** Событие выбранного варианта: ответ собеседника и прогресс разговора. */
+export const DIALOGUE_EVENT = 'DialogueOptionChosen'
+/** Провенанс: авторский диалог — политика проекта, а не правило редакции. */
+export const DIALOGUE_POLICY_ID = 'skazanie:authored-dialogue-v1'
+const DIALOGUES_URL = new URL('../data/campaign-dialogues-v1.json', import.meta.url)
+const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/u
+const DIALOGUE_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight', 'history', 'religion', 'arcana', 'performance', 'medicine'])
+const DIALOGUE_ACTIONS = new Set(['ReceiveScenarioPurse', 'ChooseScenarioArmoryItem'])
+
+/** @param {unknown} value @param {number} [maximum] */
+const clean = (value, maximum = 240) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
+
+/** @param {string} message @returns {never} */
+function invalid(message) {
+  throw new Error(`Диалоги кампании: ${message}`)
+}
+
+/**
+ * @typedef {object} DialogueOutcome
+ * @property {string} reply
+ * @property {string[]} sets
+ * @property {string} reveal
+ */
+
+/**
+ * @typedef {object} DialogueOption
+ * @property {string} id
+ * @property {string} label
+ * @property {{ flags: string[], clues_any: string[], clues_all: string[] }} requires
+ * @property {{ skill: string, dc: number } | null} check
+ * @property {DialogueOutcome} success исход без проверки — тоже здесь
+ * @property {DialogueOutcome | null} failure
+ * @property {{ command_type: string, catalog_id?: string } | null} action
+ * @property {boolean} ends
+ */
+
+/**
+ * @typedef {object} Dialogue
+ * @property {string} id
+ * @property {string} scenario_id
+ * @property {string} npc_id
+ * @property {string} greeting
+ * @property {DialogueOption[]} options
+ */
+
+/** @param {unknown} value @param {string} where */
+function ids(value, where) {
+  if (value == null) return []
+  if (!Array.isArray(value)) invalid(`${where}: ожидается список`)
+  return value.map((entry) => {
+    const id = clean(entry, 80)
+    if (!ID_PATTERN.test(id)) invalid(`${where}: id «${id}»`)
+    return id
+  })
+}
+
+/** @param {any} raw @param {string} where @returns {DialogueOutcome} */
+function outcome(raw, where) {
+  const reply = clean(raw?.reply, 1_200)
+  if (!reply) invalid(`${where}: нет ответа`)
+  const reveal = raw?.reveal == null ? '' : clean(raw.reveal, 80)
+  if (reveal && !ID_PATTERN.test(reveal)) invalid(`${where}: тайна «${reveal}»`)
+  return { reply, sets: ids(raw?.sets, `${where}.sets`), reveal }
+}
+
+/** @param {any} raw @param {string} where @returns {DialogueOption} */
+function option(raw, where) {
+  const id = clean(raw?.id, 80)
+  if (!ID_PATTERN.test(id)) invalid(`${where}: id варианта «${id}»`)
+  const label = clean(raw?.label, 200)
+  if (!label) invalid(`${where}.${id}: нет реплики героя`)
+  const requires = {
+    flags: ids(raw?.requires?.flags, `${where}.${id}.requires.flags`),
+    clues_any: ids(raw?.requires?.clues_any, `${where}.${id}.requires.clues_any`),
+    clues_all: ids(raw?.requires?.clues_all, `${where}.${id}.requires.clues_all`),
+  }
+  let check = null
+  if (raw?.check != null) {
+    const skill = clean(raw.check.skill, 40)
+    const dc = Number(raw.check.dc)
+    if (!DIALOGUE_SKILLS.has(skill)) invalid(`${where}.${id}: навык «${skill}»`)
+    if (!Number.isInteger(dc) || dc < 5 || dc > 30) invalid(`${where}.${id}: СЛ ${raw.check.dc}`)
+    check = { skill, dc }
+  }
+  if (check && (!raw?.success || !raw?.failure)) invalid(`${where}.${id}: у проверки нужны success и failure`)
+  if (!check && (raw?.success || raw?.failure)) invalid(`${where}.${id}: success/failure — только у проверки`)
+  const success = check ? outcome(raw.success, `${where}.${id}.success`) : outcome(raw, `${where}.${id}`)
+  const failure = check ? outcome(raw.failure, `${where}.${id}.failure`) : null
+  let action = null
+  if (raw?.action != null) {
+    const commandType = clean(raw.action.command_type, 60)
+    if (!DIALOGUE_ACTIONS.has(commandType)) invalid(`${where}.${id}: команда «${commandType}»`)
+    if (check) invalid(`${where}.${id}: команда и проверка в одном варианте не поддержаны`)
+    const catalogId = clean(raw.action.catalog_id, 120)
+    if (commandType === 'ChooseScenarioArmoryItem' && !catalogId) invalid(`${where}.${id}: не указан предмет оружейной`)
+    action = { command_type: commandType, ...(catalogId ? { catalog_id: catalogId } : {}) }
+  }
+  return { id, label, requires, check, success, failure, action, ends: raw?.ends === true }
+}
+
+/**
+ * Проверяет и замораживает каталог диалогов. Ошибка данных — исключение при
+ * загрузке: сломанный диалог не должен всплыть посреди вечера.
+ *
+ * @param {any} raw
+ * @returns {Dialogue[]}
+ */
+export function normalizeDialogues(raw) {
+  if (raw?.schema_version !== DIALOGUES_SCHEMA_VERSION) invalid(`schema_version ${raw?.schema_version}`)
+  if (!Array.isArray(raw.dialogues)) invalid('нет списка dialogues')
+  const seen = new Set()
+  return raw.dialogues.map((/** @type {any} */ entry, /** @type {number} */ index) => {
+    const id = clean(entry?.id, 80)
+    if (!ID_PATTERN.test(id) || seen.has(id)) invalid(`диалог ${index}: id «${id}»`)
+    seen.add(id)
+    const scenarioId = clean(entry?.scenario_id, 80)
+    const npcId = clean(entry?.npc_id, 80)
+    if (!ID_PATTERN.test(scenarioId) || !ID_PATTERN.test(npcId)) invalid(`${id}: scenario_id и npc_id обязательны`)
+    const greeting = clean(entry?.greeting, 1_200)
+    if (!greeting) invalid(`${id}: нет приветствия`)
+    if (!Array.isArray(entry?.options) || !entry.options.length) invalid(`${id}: нет вариантов`)
+    const options = entry.options.map((/** @type {any} */ raw) => option(raw, id))
+    const optionIds = new Set()
+    for (const item of options) {
+      if (optionIds.has(item.id)) invalid(`${id}: вариант «${item.id}» повторяется`)
+      optionIds.add(item.id)
+    }
+    const setFlags = new Set(options.flatMap((/** @type {DialogueOption} */ item) => [...item.success.sets, ...(item.failure?.sets ?? [])]))
+    for (const item of options) {
+      for (const flag of item.requires.flags) if (!setFlags.has(flag)) invalid(`${id}.${item.id}: флаг «${flag}» никто не ставит`)
+    }
+    return Object.freeze({ id, scenario_id: scenarioId, npc_id: npcId, greeting, options: Object.freeze(options) })
+  })
+}
+
+/** @type {readonly Dialogue[]} */
+export const DIALOGUES = Object.freeze(normalizeDialogues(JSON.parse(readFileSync(DIALOGUES_URL, 'utf8'))))
+
+/**
+ * Диалог собеседника в этой кампании или `null`: только у кампании со
+ * сценарием, к которому он написан.
+ *
+ * @param {any} state
+ * @param {unknown} npcId
+ * @returns {Dialogue | null}
+ */
+export function dialogueFor(state, npcId) {
+  const scenario = campaignScenario(state)
+  const id = clean(npcId, 120)
+  if (!scenario || !id) return null
+  return DIALOGUES.find((entry) => entry.scenario_id === scenario.id && entry.npc_id === id) ?? null
+}
+
+/**
+ * Прогресс разговора в состоянии: флаги отряда и попытки героев. Пишет его
+ * только редьюсер по событию `DialogueOptionChosen`.
+ *
+ * @param {any} state
+ * @param {string} dialogueId
+ * @returns {{ flags: string[], chosen: Record<string, string[]>, attempted: Record<string, string[]> }}
+ */
+export function dialogueProgress(state, dialogueId) {
+  const entry = state?.dialogues?.[dialogueId]
+  return {
+    flags: Array.isArray(entry?.flags) ? entry.flags.map(String) : [],
+    chosen: entry?.chosen && typeof entry.chosen === 'object' ? entry.chosen : {},
+    attempted: entry?.attempted && typeof entry.attempted === 'object' ? entry.attempted : {},
+  }
+}
+
+/**
+ * Выполнены ли условия показа варианта.
+ *
+ * @param {any} state
+ * @param {Dialogue} dialogue
+ * @param {DialogueOption} item
+ */
+export function dialogueOptionUnlocked(state, dialogue, item) {
+  const progress = dialogueProgress(state, dialogue.id)
+  const clues = scenarioFoundClueIds(state)
+  if (!item.requires.flags.every((flag) => progress.flags.includes(flag))) return false
+  if (item.requires.clues_all.length && !item.requires.clues_all.every((clue) => clues.has(clue))) return false
+  if (item.requires.clues_any.length && !item.requires.clues_any.some((clue) => clues.has(clue))) return false
+  return true
+}
+
+/**
+ * Варианты, которые видит герой: открытые условием и ещё не исчерпанные.
+ * Проверку герой пробует один раз; вариант с открытой тайной после её
+ * раскрытия не нужен; сюжетная команда после исполнения этим героем — тоже.
+ * Уже заданный вопрос остаётся, но помечен `asked`, как серый пункт в BG3.
+ *
+ * @param {any} state
+ * @param {unknown} npcId
+ * @param {unknown} heroId
+ * @returns {{ greeting: string, options: Array<{ id: string, label: string, check?: { skill: string, dc: number }, asked: boolean, ends: boolean }> } | null}
+ */
+export function dialogueOptionsFor(state, npcId, heroId) {
+  const dialogue = dialogueFor(state, npcId)
+  if (!dialogue) return null
+  const hero = clean(heroId, 120)
+  const progress = dialogueProgress(state, dialogue.id)
+  const clues = scenarioFoundClueIds(state)
+  const options = dialogue.options
+    .filter((item) => dialogueOptionUnlocked(state, dialogue, item))
+    .filter((item) => !(item.check && (progress.attempted[item.id] ?? []).includes(hero)))
+    .filter((item) => !(item.success.reveal && clues.has(item.success.reveal)))
+    .filter((item) => !(item.action && (progress.chosen[item.id] ?? []).includes(hero)))
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      ...(item.check ? { check: { ...item.check } } : {}),
+      asked: (progress.chosen[item.id] ?? []).length > 0,
+      ends: item.ends,
+    }))
+  return { greeting: dialogue.greeting, options }
+}
+
+/**
+ * Реестр разговоров в состоянии: `{ [dialogue_id]: { flags, chosen, attempted } }`.
+ * Выводится из журнала событием `DialogueOptionChosen`, поэтому replay сходится.
+ *
+ * @param {unknown} value
+ * @returns {Record<string, { flags: string[], chosen: Record<string, string[]>, attempted: Record<string, string[]> }>}
+ */
+export function normalizeDialogueState(value) {
+  /** @type {Record<string, { flags: string[], chosen: Record<string, string[]>, attempted: Record<string, string[]> }>} */
+  const result = {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result
+  /** @param {unknown} map */
+  const lists = (map) => Object.fromEntries(Object.entries(map && typeof map === 'object' && !Array.isArray(map) ? map : {})
+    .map(([key, heroes]) => [clean(key, 80), [...new Set((Array.isArray(heroes) ? heroes : []).map((hero) => clean(hero, 120)).filter(Boolean))]])
+    .filter(([key]) => key))
+  for (const [dialogueId, entry] of Object.entries(value)) {
+    const id = clean(dialogueId, 80)
+    if (!id || !entry || typeof entry !== 'object') continue
+    result[id] = {
+      flags: [...new Set((Array.isArray(entry.flags) ? entry.flags : []).map((/** @type {unknown} */ flag) => clean(flag, 80)).filter(Boolean))],
+      chosen: lists(entry.chosen),
+      attempted: lists(entry.attempted),
+    }
+  }
+  return result
+}
+
+/**
+ * Свёртка события выбранного варианта: флаги отряда, кто выбирал вариант и
+ * кто уже пробовал его проверку.
+ *
+ * @param {unknown} value
+ * @param {any} event
+ */
+export function applyDialogueEvent(value, event) {
+  const state = normalizeDialogueState(value)
+  if (event?.event_type !== DIALOGUE_EVENT) return state
+  const payload = event.payload ?? {}
+  const dialogueId = clean(payload.dialogue_id, 80)
+  const optionId = clean(payload.option_id, 80)
+  const hero = clean(payload.hero_id, 120)
+  if (!dialogueId || !optionId || !hero) return state
+  const entry = state[dialogueId] ?? { flags: [], chosen: {}, attempted: {} }
+  const sets = (Array.isArray(payload.sets) ? payload.sets : []).map((/** @type {unknown} */ flag) => clean(flag, 80)).filter(Boolean)
+  state[dialogueId] = {
+    flags: [...new Set([...entry.flags, ...sets])],
+    chosen: { ...entry.chosen, [optionId]: [...new Set([...(entry.chosen[optionId] ?? []), hero])] },
+    attempted: payload.check ? { ...entry.attempted, [optionId]: [...new Set([...(entry.attempted[optionId] ?? []), hero])] } : entry.attempted,
+  }
+  return state
+}
+
+/**
+ * Разговоры сцены для зрителя: у каких собеседников здесь есть авторский
+ * диалог и какие варианты видит его герой. Вне боя и только у тех, кто стоит
+ * в сцене и виден отряду. Сам реестр разговоров (`dialogues`) наружу не идёт.
+ *
+ * @param {any} state
+ * @param {{ playerId?: unknown }} [viewer]
+ * @returns {Record<string, { greeting: string, options: Array<{ id: string, label: string, check?: { skill: string, dc: number }, asked: boolean, ends: boolean }> }>}
+ */
+export function sceneDialoguesForViewer(state, { playerId = '' } = {}) {
+  /** @type {Record<string, any>} */
+  const result = {}
+  if (state?.mechanics?.combat?.active || !campaignScenario(state)) return result
+  /** @param {unknown} value */
+  const place = (value) => clean(value, 180).toLocaleLowerCase('ru')
+  const here = place(state?.scene?.location)
+  for (const npc of Array.isArray(state?.social?.npcs) ? state.social.npcs : []) {
+    if (!npc || npc.available === false || place(npc.location) !== here) continue
+    if (npc.visibility && !['party', 'public'].includes(String(npc.visibility))) continue
+    if (state?.npc_world?.vitals?.[npc.id]?.alive === false) continue
+    const view = dialogueOptionsFor(state, npc.id, playerId)
+    if (view) result[String(npc.id)] = view
+  }
+  return result
+}
+
+const CHECK_SKILL_LABELS = Object.freeze({
+  persuasion: 'Убеждение', deception: 'Обман', intimidation: 'Запугивание', insight: 'Проницательность',
+  history: 'История', religion: 'Религия', arcana: 'Магия', performance: 'Выступление', medicine: 'Медицина',
+})
+
+/**
+ * Строка летописи об исходе проверки в разговоре — та же форма, что у
+ * свободной реплики собеседнику («Проверка «Убеждение»: успех (19).»).
+ *
+ * @param {{ skill?: unknown, success?: unknown, total?: unknown } | null | undefined} check
+ */
+export function dialogueCheckLine(check) {
+  if (!check) return ''
+  const label = CHECK_SKILL_LABELS[/** @type {keyof typeof CHECK_SKILL_LABELS} */ (clean(check.skill, 40))] ?? clean(check.skill, 40)
+  const total = Number(check.total)
+  return `Проверка «${label}»: ${check.success === true ? 'успех' : 'провал'}${Number.isFinite(total) ? ` (${total})` : ''}.`
+}

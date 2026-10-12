@@ -87,6 +87,7 @@ type TacticalCommand =
   | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
   | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number; to?: { x: number; y: number }; use_mode?: 'spill'; weapon_id?: string }
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
+  | { command_type: 'ChooseDialogueOption'; actor_id: string; npc_id: string; option_id: string }
   | { command_type: 'AttuneItem'; actor_id: string; item_id: string; attuned: boolean }
   | { command_type: 'ActivateItem'; actor_id: string; item_id: string; activated: boolean }
   | { command_type: 'SetSpellBonusPreference'; actor_id: string; spell_id: 'bless'; enabled: boolean }
@@ -1959,6 +1960,12 @@ export function useGameSession(options: {
     return executeTacticalCommand({ command_type: 'TransferItem', actor_id: playerId, item_id: itemId, recipient_id: recipientId, quantity }, 'Передать предмет союзнику')
   }, [executeTacticalCommand])
 
+  // Вариант авторского разговора: ответ, СЛ и раскрытие решает сервер по
+  // данным диалога; клиент отправляет только героя, собеседника и вариант.
+  const chooseDialogueOption = useCallback((playerId: string, npcId: string, optionId: string) => {
+    return executeTacticalCommand({ command_type: 'ChooseDialogueOption', actor_id: playerId, npc_id: npcId, option_id: optionId }, 'Ответ в разговоре')
+  }, [executeTacticalCommand])
+
   const attuneItem = useCallback((playerId: string, itemId: string, attuned: boolean) => {
     return executeTacticalCommand({ command_type: 'AttuneItem', actor_id: playerId, item_id: itemId, attuned }, attuned ? 'Настроиться на предмет' : 'Разорвать настройку')
   }, [executeTacticalCommand])
@@ -2407,6 +2414,7 @@ export function useGameSession(options: {
     equipItem,
     useItem,
     transferItem,
+    chooseDialogueOption,
     attuneItem,
     activateItem,
     importCharacter,
