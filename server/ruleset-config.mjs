@@ -18,12 +18,22 @@ export const CLASS_RESOURCES_2024_POLICY_ID = 'skazanie:class-resources-2024-v1'
 export const BG3_OPENING_STRIKE_HOUSE_RULE_ID = 'house:bg3-opening-strike'
 
 /**
+ * Домашнее правило в духе BG3: жесты и материальный компонент заклинания не
+ * требуют свободной руки — оружие и щит в руках колдовать не мешают. По PHB
+ * нужна свободная рука (кроме черты «Боевой заклинатель»), и жрица с булавой и
+ * щитом не могла читать «Священное пламя», пока не уберёт оружие (прогон
+ * Асстохана без модели 2026-10-12). Решение владельца от 2026-10-13: включено
+ * по умолчанию, как удар из исследования; ведущий выключает в настройках.
+ */
+export const BG3_SPELL_HANDS_HOUSE_RULE_ID = 'house:bg3-spell-hands'
+
+/**
  * Правила, которые сервер сам включает и уже идущим кампаниям — при старте,
  * событием `CampaignHouseRuleChanged` (`defaultHouseRuleEvent`). Решение
  * владельца от 2026-10-04: удар как в BG3 включён у всех, пока ведущий его
  * явно не выключит.
  */
-export const DEFAULT_ON_HOUSE_RULE_IDS = Object.freeze([BG3_OPENING_STRIKE_HOUSE_RULE_ID])
+export const DEFAULT_ON_HOUSE_RULE_IDS = Object.freeze([BG3_OPENING_STRIKE_HOUSE_RULE_ID, BG3_SPELL_HANDS_HOUSE_RULE_ID])
 
 /**
  * Домашние правила, которые ведущий переключает в настройках идущей кампании.
@@ -35,6 +45,11 @@ export const TOGGLEABLE_HOUSE_RULES = Object.freeze([
     id: BG3_OPENING_STRIKE_HOUSE_RULE_ID,
     label: 'Нападение как в BG3',
     description: 'Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым',
+  }),
+  Object.freeze({
+    id: BG3_SPELL_HANDS_HOUSE_RULE_ID,
+    label: 'Заклинания как в BG3',
+    description: 'Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»',
   }),
 ])
 
@@ -50,7 +65,7 @@ const profiles = [
     creation_enabled: true,
     process_default_allowed: false,
     enabled_rule_packs: ['dnd_5e_2014'],
-    default_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1', BG3_OPENING_STRIKE_HOUSE_RULE_ID],
+    default_house_rules: ['skazanie:2014-preview-legacy-catalogs-v1', BG3_OPENING_STRIKE_HOUSE_RULE_ID, BG3_SPELL_HANDS_HOUSE_RULE_ID],
     limitations: [
       'Снаряжение и монстры пока общие с правилами 2024 года.',
       'Часть различий между редакциями ещё не перенесена: такие правила работают по-2024.',
@@ -67,7 +82,7 @@ const profiles = [
     creation_enabled: true,
     process_default_allowed: true,
     enabled_rule_packs: ['srd_5_2_1'],
-    default_house_rules: [CLASS_RESOURCES_2024_POLICY_ID, BG3_OPENING_STRIKE_HOUSE_RULE_ID],
+    default_house_rules: [CLASS_RESOURCES_2024_POLICY_ID, BG3_OPENING_STRIKE_HOUSE_RULE_ID, BG3_SPELL_HANDS_HOUSE_RULE_ID],
     limitations: [
       'Часть классовых умений, заклинаний и существ пока объявляется словами.',
     ],

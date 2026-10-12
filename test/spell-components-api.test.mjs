@@ -309,7 +309,11 @@ test('HTTP компоненты: расходуемые и нерасходуе�
   const restorationRoom = await request(baseUrl, '/api/rooms/COMPONENTS-RESTORATION', { cookie: playerCookie })
   assertStatus(restorationRoom, 200, log)
   const restorationSpell = restorationRoom.body.state.players.find((candidate) => candidate.id === 'hero').combatSpells.find((spell) => spell.id === 'greater-restoration')
-  assert.equal(restorationSpell.componentAvailability.code, 'SPELL_MATERIAL_HAND_REQUIRED')
+  // Новые кампании создаются с «Заклинаниями как в BG3» (решение владельца
+  // 2026-10-13): булава и щит в руках материальному компоненту не мешают.
+  // Свободную руку по редакции стерегут модульные тесты компонентов.
+  assert.ok(restorationRoom.body.state.enabled_house_rules.includes('house:bg3-spell-hands'))
+  assert.equal(restorationSpell.componentAvailability.available, true)
   const stowCommand = { command_type: 'EquipItem', actor_id: 'hero', item_id: 'cleric-mace', equipped: false }
   const stowed = await command(baseUrl, 'COMPONENTS-RESTORATION', playerCookie, 'stow-mace', stowCommand)
   assertStatus(stowed, 200, log)

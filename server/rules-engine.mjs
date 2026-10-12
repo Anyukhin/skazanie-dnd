@@ -4,7 +4,7 @@ import { withBackgroundBenefits } from './backgrounds.mjs'
 import { PHB_STARTING_WEALTH, startingPurchaseCatalog } from './character-creation-wealth.mjs'
 import { DiceService, parseDiceExpression } from './dice-service.mjs'
 import { monsterActionAvailable, monsterActionSpentMarker, monsterActionUsageKey, monsterAreaAction, monsterAttackTargetAllowed, monsterOnHitTargetAllowed, monsterRechargeMinimum, monsterMultiattackSequences, monsterMultiattackSequenceFor } from './monster-actions.mjs'
-import { BG3_OPENING_STRIKE_HOUSE_RULE_ID, DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './ruleset-config.mjs'
+import { BG3_OPENING_STRIKE_HOUSE_RULE_ID, BG3_SPELL_HANDS_HOUSE_RULE_ID, DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
 import {
   createSceneTransition,
@@ -8894,7 +8894,8 @@ export function spellComponentAvailabilityFor(state, actor, spell) {
   const held = inventory.filter(({ item, catalog }) => item.equipped
     && (['main_hand', 'off_hand'].includes(catalog?.lifecycle?.equip_slot)
       || !catalog && (item.type === 'weapon' || item.armor_profile?.kind === 'shield')))
-  const freeHand = held.length < 2
+  // Домашнее правило в духе BG3: руки для заклинания не проверяются.
+  const freeHand = held.length < 2 || (state.enabled_house_rules ?? []).includes(BG3_SPELL_HANDS_HOUSE_RULE_ID)
   const benefits = actor?.creationBenefits?.static ?? actor?.creationBenefits ?? {}
   const warCaster = benefits.somatic_components_with_hands_full === true
     || (actor?.selectedFeatureIds ?? []).includes('war-caster')

@@ -241,3 +241,14 @@ for (const scenario of [
   assert.ok(final.mechanics.conditions.enemy.some(condition => condition.id === 'monster-spell-used:greater-restoration#1'))
   assert.deepEqual(after(pending, JSON.parse(JSON.stringify(counter.events))), final)
 })
+
+test('правило «Заклинания как в BG3»: оружие и щит в руках колдовать не мешают, а сам компонент нужен', () => {
+  // Прогон Асстохана без модели 2026-10-12: жрица с булавой и щитом не могла
+  // читать заклинания с жестами. Решение владельца 2026-10-13 — как в BG3.
+  const byBook = fixture({ inventory: [item('longsword', true), item('shield', true)] })
+  assert.equal(availability(byBook, 'magic-missile').code, 'SPELL_SOMATIC_COMPONENT_BLOCKED', 'по редакции нужна свободная рука')
+  const bg3 = fixture({ inventory: [item('longsword', true), item('shield', true)] })
+  bg3.enabled_house_rules.push('house:bg3-spell-hands')
+  assert.equal(availability(bg3, 'magic-missile').available, true)
+  assert.equal(availability(bg3, 'fireball').code, 'SPELL_MATERIAL_COMPONENT_REQUIRED', 'без фокуса и сумки материальный компонент всё ещё нужен')
+})
