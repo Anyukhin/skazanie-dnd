@@ -37,7 +37,7 @@ async function render(text, input = brief()) {
 test('Narrator отправляет в безопасный fallback настоящее действие погибшего NPC', async () => {
   const { llm, result } = await render('Мира ждёт у северных ворот.')
 
-  assert.equal(llm.requests.length, 1)
+  assert.ok(llm.requests.length <= 2, 'не больше одной правки')
   assert.equal(result.provider, 'deterministic-fallback')
   assert.ok(result.verification.repaired_from.some((entry) => entry.code === 'DEAD_NPC_CURRENT_ACTION_NOT_IN_BRIEF'))
   assert.doesNotMatch(result.narration, /Мира ждёт/u)

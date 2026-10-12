@@ -45,6 +45,7 @@ test('порядок стадий объявлен данными и совпа�
     { name: 'quest-consequences', keyKind: 'once' },
     { name: 'combat-continuation', keyKind: 'loop' },
     { name: 'encounter-completion', keyKind: 'once' },
+    { name: 'hero-hooks', keyKind: 'once' },
     { name: 'director-trigger', keyKind: 'loop' },
     { name: 'visible-projection', keyKind: 'once' },
     { name: 'narration', keyKind: 'once' },

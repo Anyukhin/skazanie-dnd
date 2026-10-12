@@ -27,7 +27,9 @@ async function render(text, input) {
       return { content: text }
     },
   } }).render(input, { onProgress: value => shown.push(value) })
-  assert.equal(calls, 1, 'Исправление проверки не требует второй генерации')
+  // С 2026-10-12 отклонённый черновик получает одну правку с перечнем
+  // нарушений (Self-Refine); стилистика второй генерации по-прежнему не зовёт.
+  assert.ok(calls <= 2, 'не больше одной правки отклонённого черновика')
   return { result, shown }
 }
 const check = (ability = 'cha', success = true) => brief([event('AbilityCheckResolved', { ability, success })])

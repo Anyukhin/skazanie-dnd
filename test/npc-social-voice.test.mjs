@@ -62,7 +62,7 @@ test('бриф NPC-диалога несёт сцену, цели NPC и пам�
   assert.ok(result)
   assert.equal(requests.length, 1)
 
-  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v7/)
+  assert.match(requests[0].messages[0].content, /PROMPT_ID: npc_controller\/social-v8/)
   assert.equal(result.prompt_version, NPC_SOCIAL_PROMPT_VERSION)
   const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
 
@@ -128,7 +128,15 @@ test('бриф NPC не раскрывает specific_player разговор д
   assert.ok(brief.recent_conversation.some((entry) => entry.player_message === 'МОЙ СКРЫТЫЙ ВОПРОС'))
   assert.ok(brief.recent_party_conversation.some((entry) => entry.player_message === 'Что слышно у ворот?'))
   assert.doesNotMatch(JSON.stringify(brief), /ЧУЖОЙ СКРЫТЫЙ ВОПРОС|ЧУЖОЙ СКРЫТЫЙ ОТВЕТ/u)
-  assert.equal(result.conversation.visibility, 'specific_player', 'ответ, использующий личную историю героя, не становится общепартийным')
+  // Плейтест 2026-10-10: личной реплика становится по тому, что в ней
+  // прозвучало, а не потому, что личная беседа вообще была. «Слушаю.» ничего
+  // личного не несёт и видна отряду.
+  assert.equal(result.conversation.visibility, 'party', 'реплика без личного не прячется от отряда')
+
+  const echoing = await new NpcSocialController({
+    llmClient: { completeJson: async () => ({ reply: 'Помню наш скрытый ответ, мой друг.', stance: 'neutral' }) },
+  }).respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Что ты помнишь?', turnId: 'voice-private-echo' })
+  assert.equal(echoing.conversation.visibility, 'specific_player', 'ответ, повторяющий личную беседу героя, не становится общепартийным')
 })
 
 test('два NPC одной сцены получают разные server-owned речевые профили', async () => {
@@ -211,7 +219,7 @@ test('fallback на просьбу об обещании не выдумывае
   const controller = new NpcSocialController({ llmClient: { completeJson: async () => { throw new Error('timeout') } } })
   const result = await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Пообещай сообщить о курьере сигналом.', turnId: 'fallback-promise' })
   assert.equal(result.promise, null)
-  assert.equal(result.reply, 'Нового обещания пока нет; уточним конкретную помощь.')
+  assert.match(result.reply, /разводит руками: «Обещать пока нечего/u)
   assert.doesNotMatch(result.reply, /Пограничный город|пролог|курьер/u)
 })
 
@@ -320,7 +328,7 @@ test('fallback без совпавшего факта честно говори�
   ].entries()) {
     const result = await offlineController().respond({ state: prologueState(), playerId: 'hero', npcId: 'npc:mira', message, turnId: `prologue-miss-${index}` })
     assert.equal(result.provider, 'deterministic-social-fallback')
-    assert.match(result.reply, /не сообщает ничего нового/u, message)
+    assert.match(result.reply, /Больше мне сказать нечего/u, message)
     assert.doesNotMatch(result.reply, /Трактир гудит|колокола|бледнеет/u, message)
   }
 })
@@ -332,7 +340,7 @@ test('fallback без совпавшего факта честно говори�
 test('fallback не произносит пролог вслух, даже совпавший с вопросом', async () => {
   const result = await offlineController().respond({ state: prologueState(), playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-aloud' })
   assert.equal(result.provider, 'deterministic-social-fallback')
-  assert.match(result.reply, /не сообщает ничего нового/u)
+  assert.match(result.reply, /Больше мне сказать нечего/u)
   assert.doesNotMatch(result.reply, /колокол/u)
 })
 
@@ -345,7 +353,7 @@ test('fallback отвечает одним совпавшим предложен
 
   state.social.conversations.push({ ...first.conversation, id: 'said-bell' })
   const again = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Ещё раз про колокол?', turnId: 'prologue-again' })
-  assert.match(again.reply, /не сообщает ничего нового/u)
+  assert.match(again.reply, /Больше мне сказать нечего/u)
 })
 
 // Прогон Асстохана 2026-10-05: длинный пролог обрезан пределом длины, и хвост
@@ -357,7 +365,7 @@ test('fallback не отвечает оборванным хвостом дли�
   state.worldMemory.facts[0].summary = `${'Трактир гудит после ярмарки, и никто не слышит соседа. '.repeat(8)}Удар колокола из погреба слышен всем, и все кружки в зале звенят ему в ответ.`
   const result = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Расскажи о колоколе.', turnId: 'prologue-cut' })
   assert.equal(result.provider, 'deterministic-social-fallback')
-  assert.match(result.reply, /не сообщает ничего нового|[.!?…]»$/u, result.reply)
+  assert.match(result.reply, /Больше мне сказать нечего|[.!?…]»$/u, result.reply)
   assert.doesNotMatch(result.reply, /колокол[^»]*[^.!?…]»$/u, 'обрубок фразы не становится репликой')
 })
 
@@ -396,7 +404,7 @@ test('fallback подтверждает публичную зацепку о с�
   assert.equal(result.provider, 'deterministic-social-fallback')
   assert.equal(result.reply, 'Мира подтверждает: «Хозяйка трактира Мира обнаружила подменённую мерную рейку.»')
   const unrelated = await offlineController().respond({ state, playerId: 'hero', npcId: 'npc:orin', message: 'Какая рейка подменена?', turnId: 'hook-fallback-orin' })
-  assert.match(unrelated.reply, /не сообщает ничего нового/u)
+  assert.match(unrelated.reply, /Больше мне сказать нечего/u)
 })
 
 test('структурно неверный ответ NPC не становится прямой речью', async () => {
@@ -433,4 +441,25 @@ test('без модели исход проверки звучит по-русс
     assert.ok(reply.startsWith('Мира'), reply)
     assert.doesNotMatch(reply, /[A-Za-z]{3,}/u, `${checkOutcome.skill}/${checkOutcome.success}: ${reply}`)
   }
+})
+
+test('давние ответы NPC приходят сутью, дословно — только последние два; архив их не дублирует', async () => {
+  // Xu et al., 2022: чем чаще прежняя фраза стоит в контексте, тем охотнее
+  // модель её повторяет. Замеры 19–31 — NPC пересказывал свой же ответ.
+  const state = dialogueState()
+  state.social.conversations = Array.from({ length: 5 }, (_, index) => ({
+    id: `own-${index}`, npc_id: 'npc:mira', hero_id: 'hero',
+    player_message: `Вопрос ${index}`, npc_reply: `Ответ номер ${index}. Подробности, которые повторять не нужно.`, stance: 'neutral', visibility: 'party',
+  }))
+  const requests = []
+  const controller = new NpcSocialController({
+    llmClient: { completeJson: async (input) => { requests.push(input); return { reply: 'Слушаю.', stance: 'neutral' } } },
+  })
+  await controller.respond({ state, playerId: 'hero', npcId: 'npc:mira', message: 'Ответ номер подробности', turnId: 'voice-gist' })
+  const brief = untrustedPayload(requests[0].messages[1].content, 'npc_social_brief')
+  assert.deepEqual(brief.recent_conversation.map((entry) => entry.npc_reply ?? null), [null, null, null,
+    'Ответ номер 3. Подробности, которые повторять не нужно.', 'Ответ номер 4. Подробности, которые повторять не нужно.'])
+  assert.deepEqual(brief.recent_conversation.slice(0, 3).map((entry) => entry.npc_reply_gist), ['Ответ номер 0.', 'Ответ номер 1.', 'Ответ номер 2.'])
+  assert.ok(!brief.relevant_memory.some((entry) => String(entry.id).startsWith('own-')), 'то, что уже в окне, архив не повторяет')
+  assert.match(requests[0].messages[0].content, /npc_reply_gist/u)
 })

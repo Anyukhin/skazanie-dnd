@@ -13,7 +13,6 @@ import { canonicalCombatSpellFor, combatSpellsFor } from './combat-spells.mjs'
 import { featureChoiceGroupsFor, normalizedSelectedFeatureIds } from './character-progression.mjs'
 import { combatActionsFor } from './combat-actions.mjs'
 import {
-  LOOT_CONTAINER_REACH_FEET,
   lootContainerList,
   lootContainerReachFor,
   lootContainersInScene,
@@ -341,12 +340,24 @@ const APPROACH_PATTERNS = Object.freeze([
   { test: /(взлам|выбива|выломать|ломаю)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'преграда' },
   { test: /(опрокид|сбива|толка|рывк|поднож|жаровн|спотык|оступить)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'противник' },
   { test: /(поджиг|зажиг|подпал|факел\w*\s+к)/iu, ability: 'dex', skill: 'sleight-of-hand', plausibility: 'plausible', risk: 'serious', obstacle: 'огонь' },
-  { test: /(крад|тих\w+|незамет|прячусь|скрыва)/iu, ability: 'dex', skill: 'stealth', plausibility: 'plausible', risk: 'minor', obstacle: 'наблюдатели' },
+  // «Скрыва» — с начала слова: «раскрывает тетрадь» и «вскрывает замок» не
+  // прятки; «тихо» — только с движением: «тихо говорит Борину» — реплика.
+  // Без модели вопрос хозяйке «раскрывает тетрадь… «Скажите…»» получал
+  // Скрытность (замер 19, 2026-10-11).
+  { test: /(?:крад|незамет|бесшумн|прячусь|затаи|пригиба\p{L}*\s+(?:за|у|в)\s|укрыва\p{L}*\s+(?:за|у|в)\s|залега\p{L}*|(?<![\p{L}\p{M}])скрыва|(?<![\p{L}\p{M}])тих\p{L}*\s+(?:\p{L}+\s+)?(?:пробир|проскаль|проход|прокрад|ступа|двига|обход|ид[уеёт]))/iu, ability: 'dex', skill: 'stealth', plausibility: 'plausible', risk: 'minor', obstacle: 'наблюдатели' },
   { test: /(запуг|угрож|пригрож)/iu, ability: 'cha', skill: 'intimidation', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(убежда|уговар|догова|прош\w+\s+помощ)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(обман|вру|соврать|притвор)/iu, ability: 'cha', skill: 'deception', plausibility: 'plausible', risk: 'minor', obstacle: 'собеседник' },
   { test: /(крич|зову|окликa|подзыва)/iu, ability: 'cha', skill: 'persuasion', plausibility: 'plausible', risk: 'minor', obstacle: 'окружающие' },
+  // Поиск тайника руками: «простукивает бочки — нет ли тайника». Без модели
+  // такая заявка уходила в «Чего Борин хочет добиться…», и вопрос попадал в
+  // летопись голосом рассказчика (замер 10, 2026-10-10).
+  { test: /(?<![\p{L}\p{M}])(?:простук\p{L}*|ощупыва\p{L}*|обшари\p{L}*|тайник\p{L}*|тайничок\p{L}*)/iu, ability: 'int', skill: 'investigation', plausibility: 'plausible', risk: 'none', obstacle: 'тайник' },
   { test: /(осматр|разгляд|изуча|ищу\s+след|обыск)/iu, ability: 'wis', skill: 'perception', plausibility: 'trivial', risk: 'none', obstacle: 'обстановка' },
+  // Наблюдение за чем-то, что может случиться: «смотрим на маяк — загорится
+  // ли огонь?», «следим за дверью». Это вопрос миру, и без модели ответ даёт
+  // Восприятие, а не «Чего герой хочет добиться» (плейтест 2026-10-10).
+  { test: /(?<![\p{L}\p{M}])(?:наблюда\p{L}*|след(?:им|ит|ю|ят)\s+за|слежу\s+за|смотр\p{L}*\s+(?:на|в|за)\s|вгляд\p{L}*|высматр\p{L}*|караул\p{L}*|не\s+свод\p{L}*\s+(?:глаз|взгляд\p{L}*))/iu, ability: 'wis', skill: 'perception', plausibility: 'plausible', risk: 'none', obstacle: 'то, что происходит вокруг' },
   { test: /(вспомина|припомин|знаю\s+ли|что\s+известно)/iu, ability: 'int', skill: 'history', plausibility: 'trivial', risk: 'none', obstacle: 'память' },
   { test: /(залез|взбира|караб|подтягива)/iu, ability: 'str', skill: 'athletics', plausibility: 'strenuous', risk: 'serious', obstacle: 'высота' },
   { test: /(?<![\p{L}\p{M}])(?:вс|с|за|пере|под|вы|при|от)?прыг|(?<![\p{L}\p{M}])(?:прыж|соскоч|перескоч)/iu, ability: 'dex', skill: 'acrobatics', plausibility: 'strenuous', risk: 'serious', obstacle: 'разрыв' },
@@ -395,6 +406,18 @@ export function harmlessFreeActionReading(state, actorId, text) {
   if (/[;]|\b(?:if|then)\b|(?:затем|потом|чтобы|противник|страж|двер|обрыв|пропаст|огонь|подж|связать\s+его)/iu.test(value)) return null
   const actor = (state?.players ?? []).find(entry => String(entry.id) === String(actorId))
   if (!actor) return null
+  // Запись в свою тетрадь — жест героя, а не испытание. Судья однажды дал на
+  // «заносит в тетрадь знак, царапину и волокна верёвки» Атлетику, провал
+  // оборвал план, и подкуп хозяйки следующим шагом не случился (замер 20,
+  // 2026-10-11). Реплика в кавычках — уже не только запись.
+  if (!/[«»"]/u.test(value) && /(?<![\p{L}\p{M}])(?:записыва\p{L}*|запис(?:ал|ала|ываю)|занос\p{L}*|занош\p{L}*|вписыва\p{L}*|отмеча\p{L}*|помеча\p{L}*|дела(?:ю|ет)\s+(?:по)?метк\p{L}*|набрасыва\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,200}?(?<![\p{L}\p{M}])в\s+(?:сво\p{L}*\s+)?(?:тетрад\p{L}*|дневник\p{L}*|блокнот\p{L}*|записн\p{L}*\s+книжк\p{L}*)/iu.test(value)
+    && !/(?:прыга|лез|бега|броса|атак|бь[её]т|удар|толка|лома|вскрыва)/iu.test(value)) {
+    return normalizeFreeActionReading({
+      goal_summary: clean(text, 200), approach_summary: clean(text, 200),
+      plausibility: 'trivial', risk: 'none', effect: 'none', action_cost: 'free',
+      ability: 'int', skill: 'investigation', required_means: [], source: 'deterministic-trivial',
+    }, text)
+  }
   const ropeGesture = /^(?:я\s+)?(?:развязываю\s+и\s+заново\s+завязываю|завязываю|перевязываю|сматываю|распутываю)\s+(?:(?:свою|имеющуюся)\s+)?веревку(?:,?\s+проверяя\s+прочность\s+узлов(?:\s+перед\s+использованием)?)?[.!]?$/u.test(value)
   const rope = ropeGesture
     ? (actor.inventory ?? []).find(item => /веревк|rope/iu.test(String(item.name).replace(/ё/gu, 'е'))) : null
@@ -412,6 +435,23 @@ export function harmlessFreeActionReading(state, actorId, text) {
     plausibility: 'trivial', risk: 'none', effect: 'none', action_cost: 'free',
     ability: 'dex', skill: 'sleight_of_hand', item_id: rope?.id ?? '',
     required_means: rope ? [String(rope.id)] : [], source: 'deterministic-trivial',
+  }, text)
+}
+
+/**
+ * Реплика своему отряду или в пустоту — отыгрыш без механики: ни броска, ни
+ * цены хода, ни «Чего герой хочет добиться» (плейтест 2026-10-10). Отвечает
+ * рассказчик сценой. В бою — `null`: там у слов может быть цена хода.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} text
+ */
+export function roleplaySpeechReading(state, text) {
+  if (state?.mechanics?.combat?.active) return null
+  return normalizeFreeActionReading({
+    goal_summary: clean(text, 200), approach_summary: clean(text, 200),
+    plausibility: 'trivial', risk: 'none', effect: 'none', action_cost: 'free',
+    ability: 'cha', skill: 'performance', required_means: [], source: 'deterministic-trivial',
   }, text)
 }
 
@@ -904,6 +944,199 @@ function resolveLevelTransitionPhrase(state, actorId, value, map, actorAt) {
 }
 
 /** Свободная фраза выбирает только существующую команду; путь и замок считает движок. */
+// ---------------------------------------------------------------------------
+// Подход к тому, что названо словами: к человеку, к вещи на карте, к месту.
+//
+// Плейтест 2026-10-10: «Мирель выходит к мосткам», «подхожу к баркасу и
+// осматриваю его», «Борин идёт к бочкам» — рассказ уводил героя к причалу, а
+// фишка стояла на краю карты, и «иду к бочкам» получало «К кому именно
+// подойти?». Живой ведущий просто передвигает фигурку.
+
+const APPROACH_VERB = /(?<![\p{L}\p{M}])(?:подхож\p{L}*|подход(?:ит|им|ят)|подойд\p{L}*|подош[её]л\p{L}*|приближа\p{L}*|приблиз\p{L}*|иду|ид[её]т|ид[её]м|идут|направля\p{L}*|выхож\p{L}*|выход(?:ит|им|ят)|выйд\p{L}*|вышл\p{L}*|выш[её]л|отхож\p{L}*|отход(?:ит|им|ят)|отойд\p{L}*|возвраща\p{L}*|пробира\p{L}*|бреду|бред[её]т|спуска\p{L}*|шагаю|шага(?:ет|ем|ют))(?![\p{L}\p{M}])/giu
+const APPROACH_TARGET = /(?:^|\s)(?:к|ко)\s+([^,.;:!?«»"()]{2,60})/iu
+const APPROACH_REMAINDER = /(?:,|\s+и\s+|\s+чтобы\s+|\s+—\s+)/u
+
+/** Предметы, к которым подходят словами: основа слова → вид пропса на карте. */
+const APPROACH_PROP_TARGETS = Object.freeze([
+  { stems: ['баркас', 'лодк', 'шлюпк', 'ялик', 'челн'], asset: /(?:rowboat|boat|skiff|canoe)/u },
+  { stems: ['бочк', 'бочонк', 'бочек'], asset: /(?:barrel|keg)/u },
+  { stems: ['ящик'], asset: /crate/u },
+  { stems: ['сундук', 'ларц', 'ларец'], asset: /chest/u },
+  { stems: ['стойк', 'прилавк', 'стойке'], asset: /(?:bar_counter|shop_counter|counter)/u },
+  { stems: ['очаг', 'камин'], asset: /(?:fireplace|hearth|campfire)/u },
+  { stems: ['костр', 'костёр', 'костер'], asset: /campfire/u },
+  { stems: ['колодц', 'колодец'], asset: /well/u },
+  { stems: ['фонтан'], asset: /fountain/u },
+  { stems: ['доске объявлен', 'доска объявлен', 'объявлен'], asset: /notice_board/u },
+  { stems: ['сетям', 'сетей', 'сети', 'снаст'], asset: /(?:fishing_nets|cargo_net)/u },
+  { stems: ['тумб', 'кнехт', 'швартов', 'причал', 'пристан', 'пирс'], asset: /mooring/u },
+  { stems: ['лотк', 'лоток', 'прилавок'], asset: /market_stall/u },
+  { stems: ['алтар'], asset: /altar/u },
+  { stems: ['стату', 'изваян'], asset: /statue/u },
+  { stems: ['телег', 'повозк'], asset: /cart/u },
+  { stems: ['столб', 'фонар'], asset: /(?:lamp_post|signpost)/u },
+  { stems: ['стол'], asset: /(?:table|desk)/u },
+  { stems: ['скамь', 'лавк'], asset: /bench/u },
+  { stems: ['кроват', 'постел', 'койк'], asset: /(?:bed|bunk)/u },
+  { stems: ['дров', 'поленниц'], asset: /(?:woodpile|firewood)/u },
+])
+
+function approachWords(phrase) {
+  return clean(phrase, 120).toLocaleLowerCase('ru').replace(/ё/gu, 'е').split(/\s+/u).filter(Boolean)
+}
+
+/**
+ * Разбор фразы подхода: глагол движения, «к …» и то, что идёт после.
+ * Берётся последнее «к …»: «выхожу к причалу, подхожу к баркасу» ведёт к баркасу.
+ *
+ * @param {string} text
+ * @returns {{ phrase: string, remainder: string } | null}
+ */
+export function approachRequestFrom(text = '') {
+  const value = clean(text, 1_000)
+  let found = null
+  for (const verb of value.matchAll(APPROACH_VERB)) {
+    const after = value.slice(verb.index + verb[0].length, verb.index + verb[0].length + 90)
+    const target = APPROACH_TARGET.exec(after)
+    if (!target) continue
+    const raw = target[1]
+    const cut = raw.search(APPROACH_REMAINDER)
+    const phrase = (cut >= 0 ? raw.slice(0, cut) : raw).trim().split(/\s+/u).slice(0, 4).join(' ')
+    if (!phrase || /^(?:себе|нему|ней|ним|вам|нам|тебе|делу|концу)$/iu.test(phrase)) continue
+    const end = verb.index + verb[0].length + target.index + target[0].length - (cut >= 0 ? raw.length - cut : 0)
+    found = { phrase, remainder: value.slice(end).replace(/^[\s,;—-]*(?:и\s+)?/u, '').trim() }
+  }
+  return found
+}
+
+function approachCellsAround(map, cells, occupied) {
+  const own = new Set(cells.map(positionKey))
+  const result = []
+  for (const cell of cells) {
+    for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
+      if (!dx && !dy) continue
+      const to = { x: cell.x + dx, y: cell.y + dy }
+      const key = positionKey(to)
+      if (own.has(key) || occupied.has(key)) continue
+      const at = cellAt(map, to.x, to.y)
+      if (!at?.passable || at.revealed !== true) continue
+      result.push(to)
+    }
+  }
+  return [...new Map(result.map((entry) => [positionKey(entry), entry])).values()]
+}
+
+/**
+ * Куда встать, чтобы обыскать тело вне боя: ближайшая свободная раскрытая
+ * клетка рядом с контейнером добычи и путь к ней. Живой ведущий не говорит
+ * «отсюда не дотянуться — подойдите вплотную»: герой подходит и смотрит
+ * (замер 13, 2026-10-11). `null` — подойти нельзя или контейнера нет на карте.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} actorId
+ * @param {{ x?: number, y?: number }} container
+ * @returns {{ x: number, y: number } | null}
+ */
+export function lootApproachDestination(state = {}, actorId = '', container = {}) {
+  const at = { x: Number(container?.x), y: Number(container?.y) }
+  if (!Number.isFinite(at.x) || !Number.isFinite(at.y) || !state?.scene?.map) return null
+  let map
+  try { map = deserializeTacticalMap(state.scene.map) } catch { return null }
+  const occupied = new Set([
+    ...(state.players ?? []).filter((actor) => String(actor?.id) !== String(actorId)).map((actor) => actorPosition(state, actor.id)),
+    ...presentSceneNpcs(state).map((npc) => npcPlacementFor(state, npc.id) ?? null),
+  ].filter((cell) => Number.isFinite(cell?.x) && Number.isFinite(cell?.y)).map(positionKey))
+  const from = actorPosition(state, actorId)
+  if (!from) return null
+  const route = approachCellsAround(map, [at], occupied)
+    .map((to) => ({ to, path: shortestTacticalPath(state, actorId, to) }))
+    .filter((entry) => Array.isArray(entry.path) && entry.path.length > 0 && entry.path.every((step) => cellAt(map, step.x, step.y)?.revealed === true))
+    .sort((left, right) => left.path.length - right.path.length || left.to.y - right.to.y || left.to.x - right.to.x)[0]
+  return route?.to ?? null
+}
+
+/**
+ * Куда встать, чтобы оказаться рядом с названным: человек, вещь на карте или
+ * место (зона карты). Только раскрытые клетки и только по существующему пути —
+ * подход не открывает тумана и не проходит сквозь стены.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} actorId
+ * @param {string} text
+ * @returns {{ status: 'not_applicable' } | { status: 'unresolved', phrase: string } | { status: 'already_there', phrase: string, label: string }
+ *   | { status: 'ready', phrase: string, label: string, kind: 'actor'|'prop'|'zone', remainder: string, destination: { to: {x:number,y:number}, path: Array<{x:number,y:number}> } }}
+ */
+export function freeActionApproachPlan(state = {}, actorId = '', text = '') {
+  const request = approachRequestFrom(text)
+  if (!request) return { status: 'not_applicable' }
+  if (/не\s+(?:покида|выход|двига|подход)|без\s+перемещ/iu.test(clean(text, 1_000))) return { status: 'not_applicable' }
+  const from = actorPosition(state, actorId)
+  if (!from || !state?.scene?.map) return { status: 'unresolved', phrase: request.phrase }
+  let map
+  try { map = deserializeTacticalMap(state.scene.map) } catch { return { status: 'unresolved', phrase: request.phrase } }
+  const words = approachWords(request.phrase)
+  const occupied = new Set([
+    ...(state.players ?? []).filter((actor) => String(actor?.id) !== String(actorId)).map((actor) => actorPosition(state, actor.id)),
+    ...presentSceneNpcs(state).map((npc) => npcPlacementFor(state, npc.id) ?? null),
+  ].filter((at) => Number.isFinite(at?.x) && Number.isFinite(at?.y)).map(positionKey))
+  const ready = (kind, label, targetCells, cells) => {
+    if (targetCells.some((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)) <= 1)) {
+      return { status: 'already_there', phrase: request.phrase, label }
+    }
+    const routes = cells
+      .sort((left, right) => Math.max(Math.abs(left.x - from.x), Math.abs(left.y - from.y)) - Math.max(Math.abs(right.x - from.x), Math.abs(right.y - from.y))
+        || left.y - right.y || left.x - right.x)
+      .slice(0, 8)
+      .map((to) => ({ to, path: shortestTacticalPath(state, actorId, to) }))
+      .filter((route) => Array.isArray(route.path) && route.path.length > 0
+        && route.path.every((step) => cellAt(map, step.x, step.y)?.revealed === true))
+      .sort((left, right) => left.path.length - right.path.length || left.to.y - right.to.y || left.to.x - right.to.x)
+    return routes.length
+      ? { status: 'ready', kind, label, phrase: request.phrase, remainder: request.remainder, destination: routes[0] }
+      : { status: 'unresolved', phrase: request.phrase }
+  }
+  // Человек: герой отряда или NPC этой сцены.
+  const people = namedActors(partyActors(state, actorId), request.phrase)
+  if (people.length === 1) {
+    const target = people[0]
+    const at = npcPlacementFor(state, target.id) ?? actorPosition(state, target.id)
+    if (Number.isFinite(at?.x) && Number.isFinite(at?.y)) {
+      const label = clean(target.character ?? target.name, 80)
+      return ready('actor', label, [at], approachCellsAround(map, [at], occupied))
+    }
+  }
+  // Вещь на карте: ближайшая из подходящих по виду и уже раскрытых.
+  const propTarget = APPROACH_PROP_TARGETS.find((entry) => entry.stems.some((stem) => words.some((word) => word.startsWith(stem))))
+  if (propTarget) {
+    const props = (Array.isArray(state.scene.map.props) ? state.scene.map.props : [])
+      .filter((prop) => propTarget.asset.test(clean(prop?.assetId ?? prop?.id, 120).toLowerCase()))
+      .filter((prop) => !['gm_only', 'npc_private'].includes(String(prop?.visibility ?? '').toLowerCase()) && prop?.revealed !== false)
+      .map((prop) => ({ prop, cells: hazardPropCells(prop).filter((cell) => cellAt(map, cell.x, cell.y)?.revealed === true) }))
+      .filter((entry) => entry.cells.length)
+      .map((entry) => ({ ...entry, distance: Math.min(...entry.cells.map((cell) => Math.max(Math.abs(cell.x - from.x), Math.abs(cell.y - from.y)))) }))
+      .sort((left, right) => left.distance - right.distance || clean(left.prop.id).localeCompare(clean(right.prop.id)))
+    for (const entry of props.slice(0, 3)) {
+      const plan = ready('prop', request.phrase, entry.cells, approachCellsAround(map, entry.cells, occupied))
+      if (plan.status !== 'unresolved') return plan
+    }
+  }
+  // Место: зона карты, чьё название начинается так же, как слово игрока.
+  const zone = (map.zones ?? []).find((candidate) => {
+    const label = approachWords(candidate?.label ?? candidate?.name ?? '')
+    return label.length && words.some((word) => word.length >= 4 && label.some((part) => part.length >= 4 && part.slice(0, 5) === word.slice(0, 5)))
+  })
+  if (zone) {
+    const cells = []
+    for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+      const cell = cellAt(map, x, y)
+      if (String(cell?.zone ?? '') === String(zone.id) && cell.passable && cell.revealed === true && !occupied.has(positionKey({ x, y }))) cells.push({ x, y })
+    }
+    if (cells.some((cell) => cell.x === from.x && cell.y === from.y)) return { status: 'already_there', phrase: request.phrase, label: clean(zone.label ?? zone.name, 80) }
+    if (cells.length) return ready('zone', clean(zone.label ?? zone.name, 80), [], cells)
+  }
+  return { status: 'unresolved', phrase: request.phrase }
+}
+
 export function resolveExplorationCommand(state, actorId, text) {
   const value = clean(text, 2_000)
   const actorAt = actorPosition(state, actorId)
@@ -945,10 +1178,23 @@ export function resolveExplorationCommand(state, actorId, text) {
   }
   const stairs = resolveLevelTransitionPhrase(state, actorId, value, map, actorAt)
   if (stairs) return stairs
-  if (!/^(?:я\s+)?(?:подхожу|приближаюсь|иду)\s+к\s+/iu.test(value) || /(?:затем|потом|и\s+(?:прошу|спрашиваю|атакую|открываю))/iu.test(value)) return null
+  const approach = approachRequestFrom(value)
+  if (!approach || approach.remainder || /(?:затем|потом|и\s+(?:прошу|спрашиваю|атакую|открываю))/iu.test(value)) return null
   if (/не\s+(?:покида|выход|двига)|без\s+перемещ/iu.test(value)) return { status: 'clarification', narration: 'Подход означает перемещение, а вы просите оставаться на месте или под укрытием. Можно обратиться к собеседнику с места; либо уточните, какое перемещение допустимо.' }
-  const candidates = namedActors(partyActors(state, actorId), value)
-  if (candidates.length !== 1) return { status: 'clarification', narration: 'К кому именно подойти? Назовите одного видимого собеседника или выберите клетку на карте.' }
+  const candidates = namedActors(partyActors(state, actorId), approach.phrase)
+  if (candidates.length !== 1) {
+    // Не человек — может быть, вещь или место на карте. Не нашлось и их —
+    // фразу читает арбитр, а не служебное «к кому именно подойти?».
+    const plan = freeActionApproachPlan(state, actorId, value)
+    const hero = clean(findActor(state, actorId)?.character ?? findActor(state, actorId)?.name, 80) || 'Герой'
+    if (plan.status === 'already_there') return { status: 'clarification', narration: `${hero} уже стоит рядом — можно действовать.` }
+    if (plan.status !== 'ready') return null
+    return {
+      status: 'command',
+      command: { command_type: 'MoveActor', actor_id: String(actorId), to: plan.destination.to, server_authoritative: true },
+      narration: `${hero} подходит к ${plan.phrase}.`,
+    }
+  }
   const target = candidates[0]
   const placement = npcPlacementFor(state, target.id)
   const at = placement ?? actorPosition(state, target.id)
@@ -1022,7 +1268,27 @@ export function resolvePickpocket(state = {}, actorId = '', text = '', reading =
   }
 }
 
-const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)[^.!?]{0,80}(?:труп|тел[оаеу]|останки|карман)|(?:труп|тел[оаеу]|останки|карман)[^.!?]{0,80}(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)/iu
+// «Обыскивает поверженных», «осматриваю убитых» — тоже тела: прежде такая
+// заявка уходила в общий осмотр места и вместо карманов врагов находила
+// верёвку «у основания фонаря» (замер 11, 2026-10-10). «Приседает у тел,
+// обыскивает одежду» — то же: родительный «тел» не узнавался, и обыск
+// врагов снова кончался фонарём (замер 19, 2026-10-11).
+const CORPSE_WORD = String.raw`(?:труп|тел[оаеу]|(?<![\p{L}\p{M}])тел(?![\p{L}\p{M}])|останки|карман|(?<![\p{L}\p{M}])(?:поверженн|павш|убит|мертвец|мёртв|мертв))`
+const SEARCH_VERB = String.raw`(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*|ищ\p{L}*)`
+const CORPSE_SEARCH = new RegExp(String.raw`${SEARCH_VERB}[^.!?]{0,80}${CORPSE_WORD}|${CORPSE_WORD}[^.!?]{0,80}${SEARCH_VERB}`, 'iu')
+
+/**
+ * Заявка — обыск тела или тел. Неоднозначная цель «тело прислужника» при двух
+ * прислужниках решается обыском ближнего, а не вопросом «назовите участника».
+ *
+ * @param {unknown} text
+ */
+export function freeActionIsCorpseSearch(text = '') {
+  return CORPSE_SEARCH.test(clean(text, 2_000))
+}
+
+/** Заявка обыскивает всех сразу: «поверженных», «тела», «всех убитых». */
+const PLURAL_LOOT_SEARCH = /(?<![\p{L}\p{M}])(?:поверженн(?:ых|ые)|павш(?:их|ие)|убит(?:ых|ые)|мертвец(?:ов|ы)|мёртв(?:ых|ые)|мертв(?:ых|ые)|тела(?![\p{L}\p{M}])|тел|трупы|трупов|всех)(?![\p{L}\p{M}])/iu
 
 /**
  * Как фраза называет вид контейнера. Таблица работает в одну сторону: названный
@@ -1032,7 +1298,7 @@ const CORPSE_SEARCH = /(?:обыск\p{L}*|провер\p{L}*|осматр\p{L}*
 const LOOT_KIND_WORDS = Object.freeze({
   // «Тело» кончается здесь и не продолжается: без границы слова `тел[оаеу]\p{L}*`
   // считал телом всякую телегу.
-  corpse: /(?:труп\p{L}*|тел[оаеу](?![\p{L}\p{M}])|телами|останк\p{L}*|павш\p{L}*|мертвец\p{L}*|убит\p{L}*)/iu,
+  corpse: /(?:труп\p{L}*|тел[оаеу](?![\p{L}\p{M}])|телами|останк\p{L}*|павш\p{L}*|мертвец\p{L}*|убит\p{L}*|поверженн\p{L}*|мёртв\p{L}*|мертв\p{L}*)/iu,
   captive: /(?:пленн\p{L}*|сдавш\p{L}*|связанн\p{L}*)/iu,
   abandoned: /(?:брошенн\p{L}*|оставленн\p{L}*|откуп\p{L}*)/iu,
   cache: /(?:схрон\p{L}*|тайник\p{L}*|заначк\p{L}*)/iu,
@@ -1132,8 +1398,8 @@ function lootContainerAnswer(state, hero, container) {
   if (!withinReach) {
     return {
       ...common,
-      narration: `${container.name}: отсюда не дотянуться${distanceFeet == null ? '' : ` — идти ещё ${distanceFeet} фт`}.`
-        + ` Обыскивают в пределах ${LOOT_CONTAINER_REACH_FEET} футов: подойдите вплотную, и я скажу, что там.`,
+      narration: `${container.name}: отсюда не дотянуться${distanceFeet == null ? '' : ` (ещё ${distanceFeet} фт)`}`
+        + ' — подойдите вплотную, и станет видно, что там.',
     }
   }
   const { items, summary } = spokenLootContents(container)
@@ -1141,11 +1407,40 @@ function lootContainerAnswer(state, hero, container) {
   // (`validateLootContainerCommand`): смотреть бесплатно всегда, а вот забрать
   // посреди боя стоит действия — и узнать об этом игрок обязан до, а не после.
   const combat = state?.mechanics?.combat?.active === true
+  // Голос ведущего, а не устав: «набор выдаёт сервер, и выдумывать находку я
+  // не стану» звучало служебно (замер 11).
+  // Тело — словами осмотра, а не подписью панели «Тело: Прислужник 1: …»
+  // (замер 19, 2026-10-11). Имя тела — только когда тел несколько: игроку
+  // надо знать, о котором речь.
+  const owner = String(container.name).replace(/^Тело:\s*/u, '')
+  const crowded = lootContainersInScene(state).filter((entry) => entry.kind === 'corpse').length > 1
+  const found = container.kind !== 'corpse' ? `${container.name}: ${summary}`
+    : crowded ? `${owner}: под одеждой и в карманах — ${summary}` : `Под одеждой и в карманах — ${summary}`
   return {
     ...common,
-    narration: `${container.name}: ${summary}. Забрать нужное можно через панель добычи — набор выдаёт сервер,`
-      + ` и выдумывать находку я не стану.${combat ? ' В бою обыск стоит действия; смотреть — бесплатно.' : ''}`,
+    // «Забрать нужное можно через панель добычи» судья читал интерфейсом
+    // (15 прогонов из 24): брать — с доски, ведущий только называет.
+    narration: `${found}. Бери, что приглянется.${combat ? ' В бою снять что-то стоит действия; посмотреть — нет.' : ''}`,
     loot_items: items,
+    loot_action_cost: combat ? 'action' : null,
+  }
+}
+
+/**
+ * Обыск всех тел сразу: содержимое каждого, до которого герой дотянулся, одной
+ * репликой. Взятия нет — как и у одного тела, набор выдаёт панель.
+ */
+function lootContainersAnswer(state, hero, containers) {
+  const reached = containers.filter((container) => container.status === 'available' && lootContainerReachFor(state, hero, container).reachable)
+  if (reached.length < 2) return null
+  const combat = state?.mechanics?.combat?.active === true
+  const lines = reached.slice(0, 4).map((container) => `${container.kind === 'corpse' ? String(container.name).replace(/^Тело:\s*/u, '') : container.name} —${spokenLootContents(container).summary}`)
+  return {
+    status: 'clarification',
+    server_owned_contents: true,
+    loot_container_ids: reached.map((container) => container.id),
+    loot_items: reached.flatMap((container) => spokenLootContents(container).items),
+    narration: `${reached.every((container) => container.kind === 'corpse') ? 'При телах: ' : ''}${lines.join('; ')}. Бери, что приглянется.${combat ? ' В бою снять что-то стоит действия; посмотреть — нет.' : ''}`,
     loot_action_cost: combat ? 'action' : null,
   }
 }
@@ -1170,13 +1465,29 @@ function resolveLootContainerSearch(state, hero, text, reading) {
   // тогда, когда другого фраза не назвала.
   const available = candidates.filter((container) => container.status === 'available')
   const pool = available.length ? available : candidates
+  if (PLURAL_LOOT_SEARCH.test(String(text ?? ''))) {
+    const all = lootContainersAnswer(state, hero, pool)
+    if (all) return all
+  }
   const chosen = nearestLootContainer(state, hero, pool)
+  // Два тела под ногами поровну — ведущий описывает оба, а не переспрашивает
+  // «что именно обыскивает герой» (замер 16: «обыскивает кобольдов» дважды
+  // получило уточнение).
+  const together = chosen ? null : lootContainersAnswer(state, hero, pool)
+  if (together) return together
+  // Оба поодаль и поровну — герой идёт к первому, а не переспрашивает
+  // «что именно обыскивает» (замер 28, дважды подряд): вне боя оркестратор
+  // сам подводит героя к телу.
   if (!chosen) {
-    return {
-      status: 'clarification',
-      narration: `Уточните, что именно обыскивает герой: рядом ${pool.map((container) => container.name).join(', ')}.`,
-      server_owned_contents: available.length > 0,
+    const first = [...pool].sort((left, right) => left.id.localeCompare(right.id))[0]
+    if (!first) {
+      return {
+        status: 'clarification',
+        narration: 'Обыскивать здесь нечего.',
+        server_owned_contents: false,
+      }
     }
+    return lootContainerAnswer(state, hero, first)
   }
   return lootContainerAnswer(state, hero, chosen.container)
 }
@@ -1210,6 +1521,21 @@ export function resolveCorpseSearch(state = {}, actorId = '', text = '', reading
   const requested = corpses.find((corpse) => String(corpse?.id) === String(reading.target_id ?? ''))
   const mentioned = requested ? [requested] : corpses.filter((corpse) => mentionsReference(text, referenceNames(corpse)))
   const candidates = mentioned.length ? mentioned : corpses.length === 1 ? corpses : []
+  // Тела есть, но ни при одном ничего: ни вещей, ни монет — ведущий так и
+  // говорит, а не переспрашивает «укажите конкретное тело» (замер 22).
+  const pool = candidates.length ? candidates : corpses
+  const emptyHanded = (corpse) => !(Array.isArray(corpse?.loadout?.items) && corpse.loadout.items.length)
+    && !(Number(corpse?.loadout?.purse_cp) > 0)
+    && !(Array.isArray(corpse?.search_contents) && corpse.search_contents.length)
+    && !(Array.isArray(corpse?.corpse_contents) && corpse.corpse_contents.length)
+  if (candidates.length !== 1 && pool.length && pool.every(emptyHanded)) {
+    return {
+      status: 'bodies_searched',
+      narration: pool.length > 1 ? 'Карманы и пояса пусты: ничего ценного при телах нет.' : 'Карманы и пояс пусты: ничего ценного при теле нет.',
+      server_owned_contents: true,
+      corpse_ids: pool.map((corpse) => String(corpse.id ?? '')),
+    }
+  }
   if (candidates.length !== 1) {
     return {
       status: 'clarification',
@@ -1462,7 +1788,15 @@ export function freeActionGoalIsPassage(goal = '') {
 // только через уже существующее server-owned ребро двери из внешней зоны во
 // внутреннюю, по раскрытому короткому пути. Иначе проверка не получает права
 // телепортировать героя через стену или туман.
-const INWARD_PASSAGE_PATTERN = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])[^.!?]{0,100}(?:внутр\p{L}*|(?<![\p{L}\p{M}])(?:в|во)\s+(?:монастыр\p{L}*|здани\p{L}*|храм\p{L}*|башн\p{L}*|крепост\p{L}*|замк\p{L}*|дом\p{L}*|маяк\p{L}*))(?![\p{L}\p{M}])/iu
+// «Заходит внутрь», «захожу в маяк» — тот же вход: без этих форм толчок двери
+// плечом и шаг внутрь отвечал «сцена не изменилась» (плейтест 2026-10-10).
+// Деепричастие и инфинитив — тоже вход: «толкает её, входя первым»,
+// «толкает дверь, чтобы войти первым» прежде не узнавались, и удачная
+// Атлетика кончалась «прохода туда отсюда нет» (замер 19, 2026-10-11).
+const ENTRY_VERB = String.raw`(?:войд\p{L}*|войти|вош(?:ёл|ел|ла|ли)|вхож\p{L}*|вход(?:я|ит|им|ят|ить)|захож\p{L}*|заход(?:я|ит|им|ят|ить)|зайд\p{L}*|зайти|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)`
+const INWARD_PASSAGE_PATTERN = new RegExp(String.raw`(?<![\p{L}\p{M}])${ENTRY_VERB}(?![\p{L}\p{M}])[^.!?]{0,100}(?:внутр\p{L}*|(?<![\p{L}\p{M}])(?:в|во)\s+(?:монастыр\p{L}*|здани\p{L}*|храм\p{L}*|башн\p{L}*|крепост\p{L}*|замк\p{L}*|дом\p{L}*|маяк\p{L}*))(?![\p{L}\p{M}])`, 'iu')
+// «Толкает дверь маяка плечом и входит первым» — вход и без слова «внутрь».
+const DOOR_PUSH_ENTRY_PATTERN = new RegExp(String.raw`(?<![\p{L}\p{M}])двер\p{L}*[^.!?]{0,80}(?<![\p{L}\p{M}])(?:входя|входит|входим|входят|вхожу|войти|войдя|вошёл|вошел|вошла|вошли|захожу|заходя|заходит|заходим|заходят|зайти|зайдя|войду|войдёт|войдет|войдем|войдём)(?![\p{L}\p{M}])`, 'iu')
 const PASSAGE_MAX_STEPS = 6
 const BUILDING_DESTINATION_STEMS = Object.freeze(['монастыр', 'здани', 'храм', 'башн', 'крепост', 'замк', 'дом', 'маяк'])
 const PASSAGE_ALTERNATE_ROUTE_PATTERN = /(?:через|сквозь)\s+(?:окн\p{L}*|щел\p{L}*|стен\p{L}*|пролом\p{L}*|про[её]м\p{L}*|люк\p{L}*|реш[её]тк\p{L}*|ворот\p{L}*)/iu
@@ -1518,12 +1852,61 @@ function pathCrossesInwardDoor(map, outside, from, path) {
   return ''
 }
 
-function inwardPassageAction(value) {
+function inwardPassageAction(raw) {
+  // Слова героя в кавычках — не сам вход, но и не запрет на него: «толкает
+  // дверь плечом и входит первым. «За мной»» прежде отбрасывалось целиком, и
+  // удачный бросок кончался «прохода туда отсюда нет» (замер 16, 2026-10-11).
+  // Вопрос и кавычки без хода остаются вне прохода, как прежде.
+  const value = String(raw ?? '').replace(/[«"“„][^«»"“”„]*[»"”]/gu, ' ')
   if (/[«»"“”„?]/u.test(value)) return false
-  if (!INWARD_PASSAGE_PATTERN.test(value)) return false
+  if (!INWARD_PASSAGE_PATTERN.test(value) && !DOOR_PUSH_ENTRY_PATTERN.test(value)) return false
   if (/(?:можно\s+ли|могу\s+ли|если|что\s+если)/iu.test(value)) return false
-  const verb = /(?<![\p{L}\p{M}])(?:войд\p{L}*|вхож\p{L}*|проник\p{L}*|протис\p{L}*|протолк\p{L}*|пробир\p{L}*|проскальз\p{L}*)(?![\p{L}\p{M}])/iu
+  const verb = new RegExp(String.raw`(?<![\p{L}\p{M}])${ENTRY_VERB}(?![\p{L}\p{M}])`, 'iu')
   return !/(?<![\p{L}\p{M}])не\s+/iu.test(value.slice(0, Math.max(0, value.search(verb))))
+}
+
+const DOOR_ENTRY_MAX_STEPS = 40
+
+/**
+ * Вход через закрытую дверь: клетка снаружи у двери, сама дверь и клетка
+ * внутри. Только раскрытые клетки и только незапертая дверь без баррикады;
+ * каждую из трёх команд движок ещё раз проверит сам.
+ *
+ * @returns {{ status: 'ready', door_id: string, open_door: true, approach: {x:number,y:number}, destination: { to: {x:number,y:number}, path: Array<{x:number,y:number}> } } | null}
+ */
+function closedDoorEntry(state, actorId, map, outside) {
+  const from = actorPosition(state, actorId)
+  // Клетка у двери, где уже стоит другой (Мирель прислушивалась у двери), —
+  // не подход: движок отклонял шаг как PATH_BLOCKED уже после броска.
+  const occupied = new Set([...(state?.players ?? []), ...(state?.enemies ?? []), ...(state?.scene_npcs ?? [])]
+    .filter((actor) => actor?.id && String(actor.id) !== String(actorId) && actor.alive !== false)
+    .map((actor) => actorPosition(state, String(actor.id)))
+    .filter(Boolean)
+    .map((position) => positionKey(position)))
+  const options = []
+  for (const door of map.doors ?? []) {
+    if (String(door.state ?? 'closed') !== 'closed' || door.locked === true || door.barricade) continue
+    const first = { x: Number(door.x), y: Number(door.y) }
+    const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
+    const sides = [first, second].map((position) => ({ position, cell: cellAt(map, position.x, position.y) }))
+    if (sides.some(({ cell }) => !cell?.passable)) continue
+    const out = sides.find(({ position }) => outside.has(positionKey(position)))
+    const inside = sides.find(({ position }) => !outside.has(positionKey(position)))
+    // За закрытой дверью ещё темно: помещение раскрывается, когда дверь
+    // открыта. Раскрытой должна быть сторона, где стоит герой, — прежде вход
+    // в маяк с улицы отбрасывался как «откройте дверь на карте» (замер 2026-10-10).
+    if (!out || !inside || out.cell?.revealed !== true) continue
+    if (occupied.has(positionKey(out.position)) || occupied.has(positionKey(inside.position))) continue
+    const atDoor = from && from.x === out.position.x && from.y === out.position.y
+    const path = atDoor ? [] : shortestTacticalPath(state, actorId, out.position)
+    if (!atDoor && (!Array.isArray(path) || !path.length || path.length > DOOR_ENTRY_MAX_STEPS)) continue
+    if (path.some((step) => cellAt(map, step.x, step.y)?.revealed !== true)) continue
+    options.push({ door_id: String(door.id), approach: out.position, inside: inside.position, steps: path.length })
+  }
+  options.sort((left, right) => left.steps - right.steps || left.door_id.localeCompare(right.door_id))
+  const best = options[0]
+  if (!best) return null
+  return { status: 'ready', door_id: best.door_id, open_door: true, approach: best.approach, ...(best.steps === 0 ? { at_door: true } : {}), destination: { to: best.inside, path: [best.inside] } }
 }
 
 function passageDestinationMatchesScene(state, action) {
@@ -1531,6 +1914,37 @@ function passageDestinationMatchesScene(state, action) {
   if (!mentioned.length) return true
   const scene = `${state?.scene?.location ?? ''} ${state?.scene?.title ?? ''}`.toLocaleLowerCase('ru').replace(/ё/gu, 'е')
   return mentioned.some((stem) => scene.includes(stem))
+}
+
+/**
+ * Известное место карты мира, которое называет постройка из заявки входа:
+ * «подхожу к двери маяка» в таверне — это «Скальный маяк», до которого ещё
+ * дорога. Замер 31 (2026-10-11): ведущий дважды ответил «Здесь такого здания
+ * нет», и судья записал тупик. Пустая строка — такого места отряд не знает
+ * или их несколько.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} text
+ * @returns {string}
+ */
+export function passageDestinationPlace(state = {}, text = '') {
+  const action = clean(text, 1_500).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  // Цель входа — последняя названная постройка: «через дверь башни внутрь
+  // маяка» ведёт в маяк, а не в любую башню карты мира.
+  const stem = BUILDING_DESTINATION_STEMS
+    .map((candidate) => ({ candidate, at: action.lastIndexOf(candidate) }))
+    .filter((entry) => entry.at >= 0)
+    .sort((left, right) => right.at - left.at)[0]?.candidate
+  if (!stem) return ''
+  const here = clean(state?.scene?.location, 160).toLocaleLowerCase('ru')
+  const places = (Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : [])
+    .filter((location) => location?.known !== false && clean(location?.name, 160))
+    .filter((location) => clean(location.name, 160).toLocaleLowerCase('ru') !== here)
+    .filter((location) => {
+      const name = clean(location.name, 160).toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+      return name.includes(stem)
+    })
+  return places.length === 1 ? clean(places[0].name, 80) : ''
 }
 
 /**
@@ -1588,7 +2002,14 @@ export function freeActionPassagePlan(state = {}, actorId = '', text = '') {
   }
   candidates.sort((left, right) => left.path.length - right.path.length
     || left.to.y - right.to.y || left.to.x - right.to.x || left.door_id.localeCompare(right.door_id))
-  if (!candidates.length) return { status: 'blocked', reason: 'no_open_path' }
+  if (!candidates.length) {
+    // Открытого прохода нет, но есть закрытая (не запертая) дверь внутрь:
+    // живой ведущий не отвечает «откройте дверь на карте» — герой подходит,
+    // открывает её и входит одним шагом заявки. Замок и баррикада по-прежнему
+    // решаются своими путями.
+    const closed = closedDoorEntry(state, actorId, map, outside)
+    return closed ?? { status: 'blocked', reason: 'no_open_path' }
+  }
   const shortest = candidates[0].path.length
   const tied = candidates.filter((candidate) => candidate.path.length === shortest)
   if (tied.length > 1) return { status: 'ambiguous', door_ids: tied.map((candidate) => candidate.door_id) }

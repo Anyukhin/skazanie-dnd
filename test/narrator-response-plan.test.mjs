@@ -103,6 +103,20 @@ for (const [state, text, actor, accepted] of [
   if (!accepted) assert.ok(result.verification.repaired_from.some(entry => entry.code === 'HERO_AGENCY_NOT_IN_BRIEF'))
 })
 
+test('вход, исполненный сервером этим ходом, — не новое решение за героя', async () => {
+  // Замер 23 (2026-10-11): дверь открыта Борином и шаг внутрь сделан, а
+  // «Борин первым входит в маяк» отбраковывалось в «Вышло: войти первым…».
+  const entered = brief([
+    { event_type: 'DoorStateChanged', actor_id: 'ada', payload: { state: 'open' } },
+    { event_type: 'ActorMoved', actor_id: 'ada', payload: { from: { x: 1, y: 1 }, to: { x: 1, y: 0 } } },
+  ])
+  const accepted = await new Narrator({ llmClient: { complete: async () => ({ content: 'Ада толкает дверь и первой входит в зал.' }) }, asyncFeedback: false }).render(entered)
+  assert.equal(accepted.provider, 'Object', JSON.stringify(accepted.verification))
+  const notMoved = brief([{ event_type: 'DoorStateChanged', actor_id: 'ada', payload: { state: 'open' } }])
+  const rejected = await new Narrator({ llmClient: { complete: async () => ({ content: 'Ада толкает дверь и первой входит в зал.' }) }, asyncFeedback: false }).render(notMoved)
+  assert.notEqual(rejected.provider, 'Object', 'без шага внутрь вход не подтверждён')
+})
+
 test('голая проверка не разрешает открыть дверь даже тому же герою', async () => {
   const input = brief([{ event_type: 'AbilityCheckResolved', payload: { success: true } }])
   const result = await new Narrator({ llmClient: { complete: async () => ({ content: 'Ада открывает дверь.' }) }, asyncFeedback: false }).render(input)
@@ -124,7 +138,7 @@ test('короткий ответ проверяется целиком: поз�
     return { content: 'Проверка завершилась успехом. Ада открывает дверь.' }
   } }, asyncFeedback: false }).render(input, { onProgress: text => shown.push(text) })
   assert.deepEqual(shown, [result.narration])
-  assert.equal(calls, 1)
+  assert.ok(calls <= 2, 'не больше одной правки')
   assert.equal(result.provider, 'deterministic-fallback')
   assert.match(request.messages[1].content, /UNTRUSTED_DATA:response_plan/u)
   assert.match(request.messages[1].content, /after_validation/u)
@@ -181,4 +195,28 @@ test('план строится после проекции: личное соб
     visible_events: [{ event_type: 'DoorStateChanged', visibility: 'specific_player', player_id: 'two', payload: { state: 'open' } }],
   })
   assert.deepEqual(narratorResponsePlan(projected), narratorResponsePlan(buildNarrationBrief()))
+})
+
+test('реплика героя: план несёт одну новую деталь места, которой не было в последних ответах', async () => {
+  // Замер 32 (2026-10-12): «Мара задерживает сухой взгляд» трижды подряд —
+  // план сам велел «и взгляд кого-то из реакций».
+  const { freshSceneElement } = await import('../server/narrator.mjs')
+  const input = buildNarrationBrief({
+    visible_events: [],
+    known_environment: {
+      player_intent: { action: 'Мирель негромко говорит Борину: «Я не уйду, пока не узнаю правду»', roleplay_speech: true },
+      scene: {
+        title: 'Причал', location: 'Серый Причал',
+        landmarks: [{ kind: 'barrels', label: 'бочки', count: 2, where: 'рядом' }, { kind: 'mooring', label: 'причал', count: 1, where: 'к западу' }],
+      },
+      story_context: { heroes: [{ id: 'mirel', name: 'Мирель', is_viewer: true }, { id: 'borin', name: 'Борин' }] },
+    },
+  })
+  assert.equal(freshSceneElement(input, ['Мокрые бочки поскрипывают у стены.']), 'причал — к западу', 'бочки уже звучали')
+  assert.equal(freshSceneElement(input, ['Бочки скрипят.', 'Причал пустеет.']), '')
+  const requests = []
+  await new Narrator({ asyncFeedback: false, llmClient: { complete: async (value) => { requests.push(value); return { content: 'Со стороны причала доносится плеск — кто-то отвязывает лодку.' } } } }).render(input)
+  const content = String(requests[0].messages[1].content)
+  assert.match(content, /"new_element":"бочки — рядом"/u)
+  assert.doesNotMatch(content, /и взгляд кого-то из permitted_npc_reactions/u)
 })

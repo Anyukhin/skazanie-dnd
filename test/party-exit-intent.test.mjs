@@ -5,7 +5,7 @@ import test from 'node:test'
 import {
   WORLD_MAP_TRAVEL_MARKER, abandonableQuest, classifyPartyDecision, detectPartyExitRequest, isRouteContinuation,
   objectiveCallsTo, objectiveNamesDestination, objectiveRemainder, onwardRouteObjective, onwardRouteTarget,
-  pendingOnwardTarget, unrecognizedDestination,
+  partyDestinationLabel, pendingOnwardTarget, unrecognizedDestination,
 } from '../server/party-exit-intent.mjs'
 import {
   PARTY_OPTION_LIMIT, partyOptionLabel, proposeAgentInteraction, proposeRoutedTravel, resolvePartyDecision,
@@ -424,4 +424,81 @@ test('движение к месту, которого нет ни на карт
   assert.equal(unknownDestinationReply('Отправляюсь к старой арке', withPlan), '')
   // Без известных соседей ответ это признаёт, а не перечисляет пустоту.
   assert.match(unknownDestinationReply('Отправляюсь к старой арке', { scene: veldburg.scene }), /Знакомых направлений отсюда на карте мира пока нет\./u)
+})
+
+test('строка голосования «Уходим из «…» и идём к …» называет место назначения, а не последний предлог', () => {
+  // Плейтест 2026-10-10: «Уходим из «Серый Причал» и идём к старому маяку на
+  // скале» превращалось в локацию «Скале» — карта особняка вместо маяка.
+  const vote = 'Уходим из «Серый Причал» и идём к старому маяку на скале'
+  const request = detectPartyExitRequest(vote, {})
+  assert.equal(request?.destination, 'старому маяку на скале')
+  assert.equal(partyDestinationLabel(vote, request.destination).place, 'Старый маяк на скале')
+  assert.equal(detectPartyExitRequest('Выходим из деревни и идём на север к руинам', {})?.destination, 'руинам', 'сторона света — путь, а не место')
+})
+
+test('из известных мест выбирается самое точное: маяк города — не сам город', () => {
+  // Плейтест 2026-10-10: «идём к «Маяк Серого Причала» на скале» вело в «Серый
+  // Причал» — первое по списку место, чьи слова все есть во фразе.
+  const known = { knownPlaces: ['Серый Причал', 'Маяк Серого Причала'] }
+  const lighthouse = 'Мы с Борином идём к «Маяк Серого Причала» на скале.'
+  assert.equal(partyDestinationLabel(lighthouse, detectPartyExitRequest(lighthouse, known).destination, known).place, 'Маяк Серого Причала')
+  const town = 'Идём в Серый Причал'
+  assert.equal(partyDestinationLabel(town, detectPartyExitRequest(town, known).destination, known).place, 'Серый Причал')
+})
+
+test('уход, предложенный спутнику в прямой речи, — заявка отряда; отказ и «туда, где тише» — нет', async () => {
+  // Замер 15 (2026-10-11): «обращается к Борину: «…пора искать ответы у
+  // Старого Маяка; пойдём туда вместе»» — отряд оставался в таверне.
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const options = { knownPlaces: ['Старый Маяк', 'Серый Причал'] }
+  assert.deepEqual(detectPartyExitRequest('Мирель обращается к Борину: «Ивар молчит — пора искать ответы у Старого Маяка; пойдём туда вместе».', options), { destination: 'Старый Маяк', source: 'speech' })
+  assert.equal(detectPartyExitRequest('Мирель говорит Борину: «Я не уйду отсюда, пока не узнаю правду».', options), null)
+  assert.equal(detectPartyExitRequest('Мирель шепчет: «Пойдём туда, где тише».', options), null)
+  assert.equal(detectPartyExitRequest('Мирель говорит Борину: «Не пойдём туда — Старый Маяк подождёт».', options), null)
+})
+
+test('голое слово места в косвенном падеже — имя в именительном', async () => {
+  // Замер 19 (2026-10-11): «пойдём к маяку на скале» создало место «Маяку на
+  // скале» и главу «Глава 2 · Маяку на скале».
+  const { nominativePlacePhrase } = await import('../server/party-exit-intent.mjs')
+  assert.equal(nominativePlacePhrase('маяку на скале'), 'маяк на скале')
+  assert.equal(nominativePlacePhrase('Таверне'), 'Таверна')
+  assert.equal(nominativePlacePhrase('пещеру у реки'), 'пещера у реки')
+  assert.equal(nominativePlacePhrase('Мыс Сломанного Зуба'), 'Мыс Сломанного Зуба', 'незнакомое слово не трогается')
+  assert.equal(nominativePlacePhrase('Кленовку'), 'Кленовку', 'имя деревни не угадывается')
+  assert.equal(nominativePlacePhrase('маяк'), 'маяк')
+})
+
+test('зов «пойдём туда» к месту, названному словом без заглавной, — уход отряда', async () => {
+  // Замер 21 (2026-10-11): «пора к маяку на скале — … пойдём туда вместе»
+  // оставило отряд в порту, и вход в маяк кончился «такого здания не видно».
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const said = 'Мирель сухо замечает Борину: «Раз уж Таррен советует искать знаки, пора к маяку на скале — возможно, там найдётся зацепка об Иле; пойдём туда вместе».'
+  assert.equal(detectPartyExitRequest(said, { knownPlaces: [], presentNames: ['Таррен Кель'] })?.destination, 'маяку на скале')
+  assert.equal(detectPartyExitRequest('Мирель говорит Борину: «Пора к Таррену, пойдём туда вместе».', { knownPlaces: [], presentNames: ['Таррен Кель'] }), null, 'к собеседнику — не уход')
+})
+
+test('«искать следы у Маяка Чёрной скалы; идём туда» — уход к новому месту в именительном', async () => {
+  // Замер 24: место в родительном после «у» не узнавалось, и отряд остался.
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const said = 'Мирель заносит в тетрадь слова о верёвке: «Пора искать следы у Маяка Чёрной скалы; мы с Бориным идём туда».'
+  assert.equal(detectPartyExitRequest(said, { knownPlaces: ['Серый Причал'], presentNames: ['Эйра'] })?.destination, 'Маяк Чёрной скалы')
+  assert.equal(detectPartyExitRequest('Мирель шепчет: «Подожди у Эйры, я схожу туда одна».', { knownPlaces: [], presentNames: ['Эйра'] }), null)
+})
+
+test('место в одной реплике, зов «пойдём туда» — в другой: тоже уход', async () => {
+  // Замер 30: «…у Скального маяка найдутся следы». Она обращается к Борину:
+  // «Пойдём туда вместе»» — по отдельности ни одна реплика уходом не была.
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const said = 'Мирель закрывает тетрадь: «Гадать бесполезно; у Скального маяка, возможно, удастся найти следы». Она обращается к Борину: «Пойдём туда вместе».'
+  assert.equal(detectPartyExitRequest(said, { knownPlaces: [], presentNames: ['Товен Риск'] })?.destination, 'Скальный маяк')
+})
+
+test('зов без «туда» к месту с предлогом направления — уход; «в таверне поговорим» — нет', async () => {
+  // Замер 31 (2026-10-11): «пора к маяку на скале — … Борин, идём» оставило
+  // отряд в порту, и вход в маяк кончился «здесь такого здания нет».
+  const { detectPartyExitRequest } = await import('../server/party-exit-intent.mjs')
+  const said = 'Мирель закрывает тетрадь: «Раз его лодка может прояснить, что творится в порту, пора к маяку на скале. Борин, идём».'
+  assert.equal(detectPartyExitRequest(said, { knownPlaces: [], presentNames: ['Оскар Лемм'] })?.destination, 'маяку на скале')
+  assert.equal(detectPartyExitRequest('Мирель шепчет Борину: «Идём, к Инге подойдём позже».', { knownPlaces: [], presentNames: ['Инга'] }), null, 'к собеседнику — не уход')
 })

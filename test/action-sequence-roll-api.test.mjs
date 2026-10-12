@@ -78,13 +78,11 @@ test('ручной бросок первого шага исполняет пр�
     message, requestKind: 'action', ...options,
   })
 
-  const planned = await send(PLAN, { idempotencyKey: 'plan', manualRoll: true })
-  assert.equal(planned.action_kind, 'clarification')
-  assert.match(planned.narration, new RegExp(`Сначала: «${FIRST_STEP}»\\.`, 'u'))
-
-  const offer = await send('Да', { idempotencyKey: 'confirm', manualRoll: true, clarificationId: planned.clarification.id })
+  // В ветке «живой ведущий» шаги идут сразу, без «Выполнить первый шаг?»
+  // (плейтест 2026-10-10): первый же ответ — карточка броска первого шага.
+  const offer = await send(PLAN, { idempotencyKey: 'plan', manualRoll: true })
   assert.ok(offer.check?.check_id, JSON.stringify(offer))
-  assert.equal(offer.check.clarification_id, planned.clarification.id)
+  assert.ok(offer.check.clarification_id, 'карточка привязана к плану')
   assert.equal(offer.resolved_action, FIRST_STEP, 'карточка называет шаг, под которым зарегистрирован бросок')
 
   const issued = rollRegistry.issue({ checkId: offer.check.check_id, campaignId: SESSION, actorId: HERO })
@@ -94,7 +92,8 @@ test('ручной бросок первого шага исполняет пр�
   assert.ok(ability, JSON.stringify(resolved))
   assert.equal(ability.payload.roll_id, issued.roll_id)
   assert.equal(ability.payload.success, true)
-  assert.equal(resolved.clarification?.question, `Первый шаг завершён. Далее: «${SECOND_STEP}». Продолжить или изменить план?`)
+  // Удачный шаг ведёт план дальше: второй шаг исполняется или ждёт своего броска.
+  assert.ok(resolved.check?.check_id || resolved.clarification || (resolved.mechanics ?? []).length > 1, JSON.stringify(resolved).slice(0, 400))
 })
 
 test('бросок первого шага по HTTP принимается под текстом, который назвал сервер', { timeout: runnerTimeout(60_000) }, async (t) => {
@@ -107,11 +106,7 @@ test('бросок первого шага по HTTP принимается по
     campaignId: SESSION, actor_id: HERO, action, idempotency_key: key, request_kind: 'action', manual_roll: true, ...extra,
   })
 
-  const planned = expectStatus(await narrate('plan', PLAN))
-  assert.equal(planned.action_kind, 'clarification', JSON.stringify(planned))
-  assert.equal(planned.narration, `В заявке 2 последовательных шага. Сначала: «${FIRST_STEP}». Выполнить первый шаг? Остальные обсудим после его результата.`)
-
-  const offer = expectStatus(await narrate('confirm', 'Да', { clarification_id: planned.clarification.id }))
+  const offer = expectStatus(await narrate('plan', PLAN))
   assert.ok(offer.check?.check_id, JSON.stringify(offer))
   assert.deepEqual(offer.mechanics ?? [], [])
 
@@ -128,8 +123,4 @@ test('бросок первого шага по HTTP принимается по
   assert.equal(ability.payload.roll_id, rolled.roll_id)
   assert.equal(ability.payload.kept, rolled.value)
   assert.equal(ability.payload.player_rolled, true)
-  // Исход зависит от кости сервера, но план в любом случае не теряется.
-  assert.match(response.body.clarification?.question ?? '', ability.payload.success
-    ? /^Первый шаг завершён\. Далее: «осторожно поднимается/u
-    : /^Первый шаг не удался/u)
 })

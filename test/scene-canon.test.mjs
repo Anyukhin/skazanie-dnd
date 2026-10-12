@@ -5,16 +5,20 @@ import test from 'node:test'
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
 import { FakeLLM } from '../server/llm-client.mjs'
 import { Narrator, sensoryAnchorsFor } from '../server/narrator.mjs'
+import { normalizeCampaignState, resolveCommand } from '../server/rules-engine.mjs'
 import {
   SCENE_CANON_CONTRADICTION,
   campaignStartCanon,
+  requestedOpeningCanon,
   sceneCanonContradictions,
   sceneCanonFor,
   sceneCanonFromEnvironment,
 } from '../server/scene-canon.mjs'
 import { UNTRUSTED_DATA_END, UNTRUSTED_DATA_START, assertNarrationBrief, buildNarrationBrief, verifyNarration } from '../server/security.mjs'
-import { dayPhaseLabel, weatherConditionLabel, weatherConditionSummary } from '../server/weather.mjs'
+import { dayPhaseLabel, weatherConditionLabel, weatherConditionSummary, weatherOnDay, worldClockFor } from '../server/weather.mjs'
 import { getWorldTemplate, listWorldTemplates, worldTemplateOpening } from '../server/world-template-catalog.mjs'
+import { dice } from './kit/dice.mjs'
+import { assertReplayMatches, commitEvents, createCampaignStore } from './kit/engine.mjs'
 
 const hero = {
   id: 'ada', name: 'Игрок', character: 'Ада', role: 'Следопыт · ур. 1', species: 'Человек',
@@ -250,4 +254,135 @@ test('размеченный набор: полнота не ниже 0.8 и н�
   const recall = contradictions.filter(flagged).length / contradictions.length
   assert.ok(recall >= 0.8, `полнота ${recall}`)
   assert.deepEqual(clean.filter(flagged).map((entry) => entry.text), [])
+})
+
+// ---------------------------------------------------------------------------
+// Заказ владельца: час и небо первой сцены (живой замер 2026-10-10)
+// ---------------------------------------------------------------------------
+
+const NIGHT_STORM = 'Ночь, гроза. Герои сидят в портовой таверне «Ржавый якорь», когда в гавань без огней заходит рыбацкий баркас без единого человека на борту.'
+
+async function stormCampaign(code = 'STORM-NIGHT') {
+  const llm = new FakeLLM([{ content: JSON.stringify(pierOpening) }])
+  const created = await new CampaignBootstrapper({ llmClient: llm }).create({
+    code, name: 'Солёные сваи', partyName: 'Отряд', players: [hero],
+    world: { startingLocation: 'Причал Аквилона', openingSituation: NIGHT_STORM },
+  })
+  return { created, state: normalizeCampaignState(created), llm }
+}
+
+test('вводные владельца: время суток и небо читаются с отрицаниями, кавычками и слабой сутью мира', () => {
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: NIGHT_STORM }), { phase: 'night', weather: 'storm' })
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: 'Утро после грозы. Герои у причала.' }), { phase: 'morning', weather: '' })
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: 'Вечер. Дождя нет, но туман стелется по воде.' }), { phase: 'evening', weather: 'fog' })
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: 'Прошлой ночью пропал баркас. Утром герои собираются на площади.' }), { phase: 'morning', weather: '' })
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: 'Герои подходят к таверне ночью.' }), { phase: 'night', weather: '' })
+  // Имя в кавычках и «ясно, что…» ничего не заказывают.
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: 'Таверна «Ночной якорь» гудит. Ясно, что беда близко.' }), { phase: '', weather: '' })
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: 'Полдень, ясно.' }), { phase: 'day', weather: 'clear' })
+  // Суть мира — только о том, о чём молчит исходная ситуация; «по ночам» и
+  // «после Бури» — не заказ.
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: 'Герои у ворот.', premise: 'Порт, где по ночам загорается маяк. Мир после Великой Бури.' }), { phase: '', weather: '' })
+  assert.deepEqual(requestedOpeningCanon({ openingSituation: 'Герои у ворот, моросит дождь.', premise: 'Вечная ночь над королевством.' }), { phase: 'night', weather: 'rain' })
+  // Снега среди погод сервера нет — небо он не закрепляет.
+  assert.equal(requestedOpeningCanon({ openingSituation: 'Утро, метель и снег.' }).weather, '')
+})
+
+test('часы старта по заказу — первые сутки и в стороне от границ фаз', () => {
+  const expected = { '': ['08:00', 'morning', 0], morning: ['08:00', 'morning', 0], day: ['13:00', 'day', 300], evening: ['19:00', 'evening', 660], night: ['23:00', 'night', 900], midnight: ['00:00', 'night', 960] }
+  for (const [phase, [clock, id, elapsed]] of Object.entries(expected)) {
+    const start = campaignStartCanon('seed', { phase })
+    assert.deepEqual([start.time.clock, start.time.phase, start.elapsed_minutes, start.time.day], [clock, id, elapsed, 1], phase)
+    assert.equal(start.weather_pin, undefined, 'без заказа неба закрепления нет')
+  }
+  const storm = campaignStartCanon('seed', { phase: 'night', weather: 'storm' })
+  assert.deepEqual(storm.weather_pin, { day: 0, weather: 'storm' })
+  assert.ok(Object.values(storm.weather_by_biome).every((weather) => weather.id === 'storm'), 'заказанное небо одно во всех краях')
+  assert.deepEqual(campaignStartCanon('seed'), { ...campaignStartCanon('seed', null) }, 'без заказа — прежние 08:00 и небо по климату')
+})
+
+test('«Ночь, гроза» во вводных: автор кампании получает ночь и грозу, канон сцены — тоже', async () => {
+  const { created, state, llm } = await stormCampaign()
+  const content = llm.requests[0].messages[1].content
+  assert.deepEqual(untrustedPayload(content, 'starting_world_clock'), { day: 1, clock: '23:00', time_of_day: 'night', time_of_day_label: 'Ночь' })
+  const table = untrustedPayload(content, 'starting_weather_by_biome')
+  assert.ok(Object.values(table).every((line) => line.startsWith('Гроза.')), JSON.stringify(table))
+  assert.equal(created.mechanics.world_time.elapsed_minutes, 900)
+  assert.deepEqual(created.mechanics.weather_pins, [{ day: 0, weather: 'storm' }])
+  // Сид этого стола даёт первому дню ясное небо: гроза — от заказа, а не от климата.
+  assert.notEqual(weatherOnDay({ seed: state.worldMap.seed, day: 0, biome: 'coast' }), 'storm')
+  const canon = sceneCanonFor(state, { playerId: 'ada', actorId: 'ada' })
+  assert.deepEqual([canon.time.phase, canon.time.clock, canon.weather.id], ['night', '23:00', 'storm'])
+  assert.match(canon.summary, /Ночь, 23:00/u)
+  // Пролог записан в час первой сцены, а не на нулевой минуте.
+  const prologue = state.worldMemory.facts.filter((fact) => fact.predicate === 'opening_narration')
+  assert.ok(prologue.length && prologue.every((fact) => fact.recorded_at_minutes === 900))
+})
+
+test('сдвиг часов и закреплённое небо переживают TimeAdvanced, смену суток и replay', async (t) => {
+  const { created } = await stormCampaign()
+  const store = await createCampaignStore(t, 'STORM-NIGHT', created)
+  const start = (await store.load('STORM-NIGHT')).state
+  assert.equal(start.mechanics.world_time.elapsed_minutes, 900, 'сдвиг переживает нормализацию журнала')
+  assert.deepEqual(start.mechanics.weather_pins, [{ day: 0, weather: 'storm' }])
+  const advance = (state, hours) => resolveCommand(
+    { command_type: 'AdvanceTime', amount: hours, unit: 'hour', server_authoritative: true },
+    state,
+    { diceService: dice([]), context: { serverAuthoritativeCombat: true, isAdmin: true } },
+  )
+  const hour = advance(start, 1)
+  assert.deepEqual(hour.events.filter((event) => ['TimeOfDayChanged', 'WeatherChanged'].includes(event.event_type)), [])
+  await commitEvents(store, 'STORM-NIGHT', hour.events)
+  const midnight = (await store.load('STORM-NIGHT')).state
+  assert.equal(midnight.mechanics.world_time.elapsed_minutes, 960)
+  assert.deepEqual([worldClockFor(midnight).clock, worldClockFor(midnight).phase, worldClockFor(midnight).weather], ['00:00', 'night', 'storm'])
+  // Рассвет — новые погодные сутки: закрепление кончилось, небо — по климату.
+  const dawn = advance(midnight, 6)
+  const changed = dawn.events.find((event) => event.event_type === 'WeatherChanged')
+  const nextSky = weatherOnDay({ seed: midnight.worldMap.seed, day: 1, biome: 'coast' })
+  assert.notEqual(nextSky, 'storm', 'сид подобран так, что утро меняет небо')
+  assert.deepEqual([changed?.payload.weather_before, changed?.payload.weather_after], ['storm', nextSky])
+  assert.equal(dawn.events.find((event) => event.event_type === 'TimeOfDayChanged')?.payload.phase_after, 'morning')
+  await commitEvents(store, 'STORM-NIGHT', dawn.events)
+  const morning = await assertReplayMatches(store, 'STORM-NIGHT')
+  assert.equal(morning.mechanics.world_time.elapsed_minutes, 1_320)
+  assert.deepEqual(morning.mechanics.weather_pins, [{ day: 0, weather: 'storm' }])
+  assert.deepEqual([worldClockFor(morning).clock, worldClockFor(morning).weather], ['06:00', nextSky])
+})
+
+test('авторский мир заказа не читает: часы с 08:00 и без закреплённого неба', async () => {
+  const created = await new CampaignBootstrapper().create({
+    code: 'CANON-TEMPLATE', name: 'Проверка', partyName: 'Отряд', players: [hero],
+    worldTemplateId: listWorldTemplates()[0].id,
+    world: { openingSituation: NIGHT_STORM },
+  })
+  assert.equal(created.mechanics.world_time, undefined)
+  assert.equal(created.mechanics.weather_pins, undefined)
+  assert.equal(sceneCanonFor(normalizeCampaignState(created), { playerId: 'ada', actorId: 'ada' }).time.clock, '08:00')
+})
+
+test('карточка «сейчас» — последним блоком запроса Рассказчика: место, часть места, время, небо, отряд', async () => {
+  // «Lost in the Middle» (Liu et al., 2023): модель хуже читает середину
+  // длинного контекста. Рассказчик описывал очаг и свечи, когда отряд стоял
+  // на причале под грозой (замеры 27–31, 2026-10-11).
+  const llm = new FakeLLM([{ content: 'Туман лежит на досках причала.' }])
+  const narrator = new Narrator({ llmClient: llm, asyncFeedback: false })
+  await narrator.render(briefWith({
+    scene: {
+      location: 'Причал Аквилона',
+      spatial_context: { current_area: { name: 'Сходни', indoors: false } },
+      field: { heroes: [{ name: 'Ада', area: 'Сходни', indoors: false, condition: 'ранен' }, { name: 'Борин', area: 'Сходни', indoors: false, condition: 'цел' }], enemies: [], people: [] },
+      canon: ['Баркас ушёл в море на рассвете'],
+    },
+    world_clock: worldClock({ weather: 'fog' }),
+  }))
+  const content = llm.requests[0].messages[1].content
+  const now = untrustedPayload(content, 'now')
+  assert.equal(now.place, 'Причал Аквилона')
+  assert.equal(now.hero_area, 'Сходни')
+  assert.equal(now.indoors, false)
+  assert.equal(now.weather, 'Туман')
+  assert.deepEqual(now.party, ['Ада: Сходни, ранен', 'Борин: Сходни'])
+  assert.deepEqual(now.canon, ['Баркас ушёл в море на рассвете'])
+  assert.ok(content.lastIndexOf(`${UNTRUSTED_DATA_START}:`) === content.indexOf(`${UNTRUSTED_DATA_START}:now>>>`), 'карточка — последний блок данных')
 })

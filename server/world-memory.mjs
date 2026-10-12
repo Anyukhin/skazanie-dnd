@@ -48,7 +48,7 @@ export function questProgressEvidenceFor(state = {}, questId = '', { includeCons
  * Навыки, успех которых может что-то открыть. Атлетика или Скрытность — способ
  * сделать, а не узнать; их успех уликой не становится.
  */
-const DISCOVERY_SKILLS = new Set(['perception', 'investigation', 'insight', 'survival', 'history', 'arcana', 'religion', 'nature', 'medicine'])
+export const DISCOVERY_SKILLS = new Set(['perception', 'investigation', 'insight', 'survival', 'history', 'arcana', 'religion', 'nature', 'medicine'])
 
 /** Слова, совпадение по которым ещё не говорит, что действие про это дело. */
 const GENERIC_TOPIC_STEMS = new Set([
@@ -131,9 +131,22 @@ export function gmSecretFact(secret, { subjectId, salt, index, sourceCommandId =
 // «Осматриваюсь», «ищу что-нибудь», «изучаю место» — общий поиск без темы.
 // «Иду по следам», «выслеживаю» — тоже поиск: следопыт с удачным броском
 // Выживания прежде не находил ничего (прогон Асстохана 2026-10-07).
-const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|прислуш\p{L}*|смотр\p{L}*|высматр\p{L}*|наблюда\p{L}*|пригляд\p{L}*|след\p{L}*|выслеж\p{L}*|высле\p{L}*)(?![\p{L}\p{M}])/iu
+// Прислушаться у двери или следить за огнём маяка — не обыск: такая удача
+// открывала тайну места не о том («прислушиваюсь, есть ли кто внутри» давало
+// маршрут баркаса трёхмесячной давности, плейтест 2026-10-10). Им остаётся
+// видимая деталь (`surface_detail`) и тайна по теме самой заявки.
+const GENERAL_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:осматр\p{L}*|осмотр\p{L}*|огляд\p{L}*|обыскива\p{L}*|ищу|изуча\p{L}*|исследу\p{L}*|разгляд\p{L}*|рассматр\p{L}*|смотр\p{L}*\s+по\s+сторонам|пригляд\p{L}*|след\p{L}*|выслеж\p{L}*|высле\p{L}*)(?![\p{L}\p{M}])/iu
 
 const SEARCH_SKILLS = new Set(['perception', 'investigation', 'survival'])
+
+const TESTIMONY_VERB = /(?<![\p{L}\p{M}])(?:видел\p{L}*|слышал\p{L}*|знает|знал\p{L}*|помнит|помнил\p{L}*|заметил\p{L}*|рассказ\p{L}*|клянётся|клянется)(?![\p{L}\p{M}])/iu
+
+function testimonyOfHolder(entry) {
+  const holder = String(entry?.meta?.holder ?? '').trim().split(/\s+/u)[0] ?? ''
+  if (holder.length < 3) return false
+  const summary = String(entry?.fact?.summary ?? '')
+  return summary.toLocaleLowerCase('ru').includes(holder.toLocaleLowerCase('ru')) && TESTIMONY_VERB.test(summary)
+}
 const SECRET_STOP_STEMS = new Set(['геро', 'чтоб', 'кото', 'этог', 'свой', 'свои', 'своё', 'этот', 'этой', 'есть', 'было', 'была', 'были', 'него', 'тоже', 'лишь', 'пока', 'кто-', 'когд', 'толь', 'сейч', 'здес', 'очен', 'всех', 'весь', 'вижу', 'смот', 'ищу-'])
 
 /**
@@ -154,10 +167,32 @@ export function parseGmSecretObject(value) {
       topic: text(parsed?.topic, 200),
       skills: Array.isArray(parsed?.skills) ? parsed.skills.map((entry) => text(entry, 40).replace(/_/gu, '-')).filter(Boolean) : [],
       holder: text(parsed?.holder, 120),
+      hero_id: text(parsed?.hero_id, 120),
     }
   } catch {
-    return { topic: '', skills: [], holder: '' }
+    return { topic: '', skills: [], holder: '', hero_id: '' }
   }
+}
+
+/**
+ * Заготовка, которую отряд уже услышал: NPC назвал её id в разговоре
+ * (`knowledge_ledger`) или пересказал её почти теми же словами. Такая тайна
+ * больше не «находится» поиском: удачная Проницательность заново открыла
+ * меловую метку, о которой грузчица сказала в первой же реплике, и судья
+ * записал это в повтор вместо реакции (замер 10, 2026-10-10).
+ */
+function secretAlreadyTold(state, fact) {
+  const id = String(fact?.id ?? '')
+  const memory = state.worldMemory ?? {}
+  if ([...(memory.knowledge_ledger ?? []), ...(memory.knowledge_revealed ?? [])]
+    .some((entry) => id && String(entry?.fact_id ?? '') === id)) return true
+  const content = secretStems(fact?.summary)
+  if (content.size < 5) return false
+  return (state.social?.conversations ?? []).some((entry) => {
+    const said = secretStems(entry?.npc_reply)
+    const shared = [...content].filter((stem) => said.has(stem)).length
+    return shared >= 6 || shared / content.size >= 0.5
+  })
 }
 
 /**
@@ -180,6 +215,7 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
   const candidates = (memory.facts ?? [])
     .filter((fact) => fact && GM_SECRET_PREDICATES.has(fact.predicate))
     .filter((fact) => fact.status === 'active')
+    .filter((fact) => !secretAlreadyTold(state, fact))
     .map((fact) => ({ fact, meta: parseGmSecretObject(fact.object) }))
     .map((entry) => {
       const topic = secretStems(`${entry.meta.topic} ${entry.fact.summary}`)
@@ -191,16 +227,39 @@ function secretRevealCommand(state = {}, { sourceEventId = '', skill = '', actio
         related: SEARCH_SKILLS.has(normalizedSkill) && entry.meta.skills.some((skill) => SEARCH_SKILLS.has(skill)),
         score: [...spoken].filter((stem) => topic.has(stem)).length,
         here: hereIds.has(String(entry.fact.subject_id)),
+        personal: Boolean(entry.meta.hero_id),
       }
     })
     .filter((entry) => entry.exact || entry.related)
-  const topical = candidates.filter((entry) => entry.score > 0)
+  // Одна общая основа слова — ещё не тема: «ищу метку на корме» и секрет о
+  // «царапинах на борту» сходились по «борт», и вместо ответа на вопрос герой
+  // получал чужую находку (плейтест 2026-10-10). Тема — две общие основы или
+  // одна, но о тайне этого же места или о личной нити героя: «ищу след
+  // сестры» — это вопрос о его предыстории, где бы ни лежала зацепка.
+  // Свидетельство хранителя по теме открывается, только если герой обращается
+  // к самому хранителю: следил за реакцией Эды — не узнал, что видел Орен.
+  const asksHolder = (entry) => {
+    const holder = String(entry.meta.holder ?? '').trim().split(/\s+/u)[0] ?? ''
+    return holder.length >= 3 && String(actionText ?? '').toLocaleLowerCase('ru').includes(holder.toLocaleLowerCase('ru').slice(0, Math.max(3, holder.length - 1)))
+  }
+  // Обыск руками и глазами свидетельства не находит, даже если хранитель
+  // назван в той же заявке: «благодарит Эдну и идёт осмотреть баркас» с
+  // удачным Восприятием открыло «Эдна видела, как Таррен мазал смолой борт»
+  // (замер 21, оба прогона). Свидетельство — разговор или Проницательность.
+  const physicalSearch = SEARCH_SKILLS.has(normalizedSkill)
+  const topical = candidates.filter((entry) => !testimonyOfHolder(entry) || (!physicalSearch && asksHolder(entry)))
+    .filter((entry) => entry.score >= 2 || (entry.score >= 1 && (entry.here || entry.personal)))
     .sort((left, right) => right.score - left.score || Number(right.here) - Number(left.here))[0]
   // Общий поиск открывает тайну этого места сперва своим навыком, затем
   // родственным: тайна лагеря ждала Анализа, и удачная Внимательность у
   // обелиска не давала ничего (прогон Асстохана 2026-10-07).
+  // Свидетельство хранителя — «Йорен Келл видел, как…» — знает человек, а не
+  // место: его открывает разговор или поиск по теме, а не общий осмотр. Улика
+  // с хранителем, оставившая след («её почерк на последних строках другой»),
+  // по-прежнему находится руками.
+  const searchable = candidates.filter((entry) => !testimonyOfHolder(entry))
   const general = !topical && !topicalOnly && GENERAL_SEARCH_PATTERN.test(String(actionText ?? ''))
-    ? candidates.find((entry) => entry.here && entry.exact) ?? candidates.find((entry) => entry.here && entry.related) ?? null
+    ? searchable.find((entry) => entry.here && entry.exact) ?? searchable.find((entry) => entry.here && entry.related) ?? null
     : null
   const chosen = topical ?? general
   if (!chosen) return null
@@ -253,6 +312,38 @@ function presentNpcLead(state = {}, spokenText = '') {
   return leads[0] ?? null
 }
 
+/**
+ * Мелкая деталь, о которой спросил игрок, — находка о текущем месте. Текст
+ * назвал арбитр до броска (`success_detail`), сервер проверил форму; тайн
+ * сцены она не раскрывает, а повтор хода не записывает её дважды.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ sourceEventId?: string, successDetail?: string }} input
+ */
+function successDetailCommand(state = {}, { sourceEventId = '', successDetail = '', kind = 'detail' } = {}) {
+  const summary = text(successDetail, 300)
+  if (!summary || !sourceEventId) return null
+  const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
+  const here = (state.worldMemory?.entities ?? [])
+    .find((entity) => location && text(entity?.name, 160).toLocaleLowerCase('ru') === location)
+  if (!here?.id) return null
+  const known = (state.worldMemory?.facts ?? []).some((fact) => fact?.predicate === 'discovery'
+    && text(fact.summary, 1_000).toLocaleLowerCase('ru') === summary.toLocaleLowerCase('ru'))
+  if (known) return null
+  return {
+    command_type: 'RecordWorldFact',
+    fact: {
+      id: `fact-${kind}-${createHash('sha256').update(`${sourceEventId}\u0000${summary}`).digest('hex').slice(0, 24)}`,
+      subject_id: String(here.id),
+      predicate: 'discovery',
+      object: kind,
+      summary,
+      visibility: 'party',
+      source_event_ids: [sourceEventId],
+    },
+  }
+}
+
 function npcLeadSummary(lead) {
   const role = text(lead.npc.role, 160)
   const goal = lead.goal.replace(/[.!?…]+$/u, '')
@@ -275,7 +366,193 @@ function npcLeadSummary(lead) {
  * @param {{ checkEvent?: Record<string, any>|null, skill?: string, actionText?: string, goalSummary?: string, skillLabel?: string }} input
  * @returns {Array<Record<string, any>>}
  */
-export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, skill = '', actionText = '', goalSummary = '', skillLabel = '' } = {}) {
+/**
+ * Что видно и без броска (`surface_detail` арбитра): на проваленном осмотре
+ * ведущий всё равно показывает место — «не нашёл ничего нового» без единой
+ * детали звучало глухо (плейтест 2026-10-10). Тайн деталь не раскрывает.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ checkEvent?: any, skill?: string, surfaceDetail?: string }} input
+ */
+export function freeActionSurfaceCommands(state = {}, { checkEvent = null, skill = '', surfaceDetail = '' } = {}) {
+  const sourceEventId = String(checkEvent?.event_id ?? '')
+  if (!sourceEventId || !DISCOVERY_SKILLS.has(String(skill ?? '').replace(/_/gu, '-'))) return []
+  const command = successDetailCommand(state, { sourceEventId, successDetail: surfaceDetail, kind: 'surface' })
+  return command ? [command] : []
+}
+
+/**
+ * Что удачная Проницательность читает в человеке, когда судья не назвал
+ * реакцию: правду о том, знает ли он больше, чем говорит. Ответ выводится из
+ * заготовок ведущего, хранитель которых — этот человек: знает по теме заявки
+ * или о личной нити героя — «это знакомо»; хранит другое — «что-то скрывает»;
+ * ничего — «не притворяется». Прежде успех оборачивался «по лицу не понять»
+ * (замеры 10–11, 2026-10-10), а это ответ провала, не удачи. Сама тайна не
+ * раскрывается: Проницательность читает человека, а не его память.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ actionText?: string, actorId?: string }} input
+ */
+export function insightRead(state = {}, { actionText = '', actorId = '' } = {}) {
+  const said = String(actionText ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  const here = String(state.scene?.location_id ?? '')
+  const npc = (state.scene_npcs ?? [])
+    .filter((entry) => entry?.alive !== false && (!here || !entry?.location_id || String(entry.location_id) === here))
+    .find((entry) => {
+      const first = text(entry?.name, 120).split(/\s+/u)[0]?.toLocaleLowerCase('ru').replace(/ё/gu, 'е') ?? ''
+      // Имя склоняется: «Иара» — «Иару», «Иарой»; сверяется основа слова.
+      const stem = first.slice(0, Math.max(3, first.length - 1))
+      return first.length >= 3 && (said.match(/\p{L}+/gu) ?? []).some((word) => word.startsWith(stem))
+    })
+  if (!npc) return ''
+  const name = text(npc.name, 120)
+  const first = name.split(/\s+/u)[0].toLocaleLowerCase('ru')
+  // Имя самого человека в его же тайне — не тема разговора.
+  const own = secretStems(name)
+  const spoken = new Set([...secretStems(actionText)].filter((stem) => !own.has(stem)))
+  const held = (state.worldMemory?.facts ?? [])
+    .filter((fact) => fact && GM_SECRET_PREDICATES.has(fact.predicate))
+    .filter((fact) => fact.status === 'active' && !secretAlreadyTold(state, fact))
+    .map((fact) => ({ fact, meta: parseGmSecretObject(fact.object) }))
+    .filter((entry) => {
+      const holder = entry.meta.holder.toLocaleLowerCase('ru')
+      return holder && (holder === name.toLocaleLowerCase('ru') || holder.split(/\s+/u)[0] === first)
+    })
+  if (!held.length) return `${name} смотрит без тени узнавания — и, похоже, не притворяется: скрывать тут нечего.`
+  const topical = held.some((entry) => (actorId && entry.meta.hero_id === actorId)
+    || [...spoken].some((stem) => secretStems(`${entry.meta.topic} ${entry.fact.summary}`).has(stem)))
+  return topical
+    ? `${name} выдаёт себя: взгляд на миг застывает и тут же уходит в сторону — это знакомо. ${name} знает об этом больше, чем говорит.`
+    : `${name} держится ровно и узнавания не выдаёт, но настороженность не уходит: что-то ${name} скрывает — только, похоже, не это.`
+}
+
+/**
+ * Тщательный поиск — правило «Многократные проверки» (DMG 2014, гл. 8):
+ * когда спешить некуда, персонаж, потративший вдесятеро больше обычного
+ * времени, справляется с задачей без броска. Вне боя и без врагов рядом обыск
+ * и есть такой выбор: провал броска решает лишь время, а не то, найдётся ли
+ * спрятанное. Обычный осмотр — минуты, поэтому тщательный стоит полчаса. Нет
+ * тайны — герой честно убеждается, что здесь ничего не спрятано.
+ */
+export const THOROUGH_SEARCH_MINUTES = 30
+const THOROUGH_SEARCH_PATTERN = /(?<![\p{L}\p{M}])(?:методичн\p{L}*|тщательн\p{L}*|не\s+(?:торопясь|спеша)|кажд(?:ую|ый|ое|ой)\s+(?:доск|щел|угол|угл|камен|камн|бочк|ящик|половиц|пядь|дюйм)\p{L}*|дюйм\s+за\s+дюймом|пядь\s+за\s+пядью|шаг\s+за\s+шагом|сантиметр\s+за\s+сантиметром|перебира\p{L}*\s+вс[её])(?![\p{L}\p{M}])/iu
+
+/** Заявка просит обыскать не торопясь. @param {unknown} value */
+export function isThoroughSearch(value) {
+  return THOROUGH_SEARCH_PATTERN.test(String(value ?? ''))
+}
+
+/**
+ * Заявка ищет спрятанное — осмотр, обыск, простукивание. Вне спешки такой
+ * поиск — тщательный и без слов «методично»: живой ведущий не отвечает на
+ * проваленный осмотр «ушло бы полчаса», а говорит, что вышло за эти полчаса
+ * (замер 11: подсказку судья прочёл отпиской). Прислушаться у двери — не обыск.
+ */
+function searchesForHidden(value) {
+  const said = String(value ?? '')
+  return isThoroughSearch(said) || GENERAL_SEARCH_PATTERN.test(said) || /(?<![\p{L}\p{M}])(?:простук|тайник|ощупыва|обшари)/iu.test(said)
+}
+
+/**
+ * Что даёт проваленный тщательный поиск вне спешки: тайну по заявке или места
+ * (как у удачного поиска) и цену — полчаса. `null` — правило неприменимо:
+ * не поиск, не тщательно или есть враги.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ checkEvent?: any, skill?: string, actionText?: string }} input
+ * @returns {{ commands: Array<Record<string, any>>, found: boolean, minutes: number }|null}
+ */
+export function thoroughSearchOutcome(state = {}, { checkEvent = null, skill = '', actionText = '' } = {}) {
+  const sourceEventId = String(checkEvent?.event_id ?? '')
+  const normalizedSkill = String(skill ?? '').replace(/_/gu, '-')
+  if (!sourceEventId || checkEvent?.payload?.success === true || !SEARCH_SKILLS.has(normalizedSkill)) return null
+  if (!searchesForHidden(actionText) || state?.mechanics?.combat?.active === true) return null
+  const hostile = (state.enemies ?? []).some((enemy) => enemy?.alive !== false && Number(enemy?.hp ?? 1) > 0 && enemy?.hidden !== true)
+  if (hostile) return null
+  const secret = secretRevealCommand(state, { sourceEventId, skill: normalizedSkill, actionText })
+  return { commands: secret ? [secret] : [], found: Boolean(secret), minutes: THOROUGH_SEARCH_MINUTES }
+}
+
+/**
+ * Культ, названный в замысле кампании: «культ «Утопленной Матери»» —
+ * «Утопленной Матери». Пустая строка, если культа в замысле нет: тогда и
+ * знака на телах нет — выдумывать имя секты сервер не станет.
+ *
+ * @param {Record<string, any>} state
+ */
+export function cultNameFrom(state = {}) {
+  const concept = state.campaignConcept ?? state.campaign_concept ?? {}
+  const source = [concept.premise, concept.worldSummary, concept.world_summary, concept.hook].map((value) => text(value, 1_200)).join(' ')
+  const quoted = /(?<![\p{L}])культ\p{L}*\s+«([^«»]{2,60})»/iu.exec(source)?.[1]
+  if (quoted) return text(quoted, 60)
+  return text(/(?<![\p{L}])культ\p{L}*\s+((?:[А-ЯЁ][\p{L}-]+\s*){1,3})/u.exec(source)?.[1], 60)
+}
+
+/** Бестиарий MM14: кто носит знак культа. */
+const CULT_STAT_BLOCK_SLUGS = new Set(['cultist', 'cult-fanatic', 'acolyte'])
+const CULT_TOKENS = Object.freeze([
+  'амулет из пробитой ракушки на просмолённом шнурке',
+  'медный жетон, стёртый пальцами до блеска',
+  'вытатуированная на запястье волна',
+  'лоскут, нашитый на подкладку изнанкой наружу',
+])
+
+/**
+ * Улика на теле культиста: знак культа из замысла кампании. Засада у маяка
+ * культа прежде не давала при обыске ничего, кроме оружия, и судья раз за
+ * разом писал «обыск врагов — ни знака культа, ни связи с пропавшими»
+ * (замеры 10–18, 2026-10-11). Одна улика на встречу: остальные тела — просто
+ * добыча. Вещь выбирается по id контейнера — повтор хода даёт тот же знак.
+ *
+ * @param {Record<string, any>} state
+ * @param {Record<string, any>} container — контейнер добычи (`loot-containers`)
+ * @returns {Record<string, any> | null} команда RecordWorldFact
+ */
+export function corpseClueCommand(state = {}, container = {}) {
+  if (String(container?.kind ?? '') !== 'corpse') return null
+  const cult = cultNameFrom(state)
+  if (!cult) return null
+  const sources = new Set([container.source_enemy_id, ...(container.source_enemy_ids ?? [])].filter(Boolean).map(String))
+  const enemy = (state.enemies ?? []).find((entry) => sources.has(String(entry?.id ?? ''))
+    && CULT_STAT_BLOCK_SLUGS.has(String(entry?.stat_block_id ?? '').split(':').at(-1)))
+  if (!enemy) return null
+  const encounterKey = text(container.encounter_id, 160) || text(container.id, 160)
+  const id = `fact-cult-sign-${createHash('sha256').update(encounterKey).digest('hex').slice(0, 24)}`
+  if ((state.worldMemory?.facts ?? []).some((fact) => fact?.id === id)) return null
+  const location = text(state.scene?.location, 160).toLocaleLowerCase('ru')
+  const here = (state.worldMemory?.entities ?? []).find((entity) => location && text(entity?.name, 160).toLocaleLowerCase('ru') === location)
+  if (!here?.id) return null
+  const token = CULT_TOKENS[parseInt(createHash('sha256').update(text(container.id, 160)).digest('hex').slice(0, 8), 16) % CULT_TOKENS.length]
+  const name = text(enemy.name, 80).replace(/\s+\d+$/u, '')
+  return {
+    command_type: 'RecordWorldFact',
+    fact: {
+      id,
+      subject_id: String(here.id),
+      predicate: 'discovery',
+      object: 'clue',
+      summary: `При теле — ${token}: знак культа «${cult}». ${name} был из них.`,
+      visibility: 'party',
+      source_event_ids: [],
+    },
+  }
+}
+
+/** Слова ведущего об исходе тщательного поиска: нашлось или честно пусто. */
+export function thoroughSearchDetail(outcome, heroName = 'Герой') {
+  const name = String(heroName || 'Герой').slice(0, 80)
+  return outcome?.found
+    ? `С ходу ничего не попалось, но ${name} не жалеет получаса, перебирает всё по одному — и находит то, что ускользало.`
+    : `${name} не жалеет получаса, перебирает всё по одному — и убеждается: ничего спрятанного здесь нет.`
+}
+
+export function freeActionDiscoveryCommands(state = {}, input = {}) {
+  const found = discoveryCommandsFor(state, input)
+  // Удача без находки — всё равно сцена: видимая деталь места вместо пустоты.
+  return found.length ? found : freeActionSurfaceCommands(state, input)
+}
+
+function discoveryCommandsFor(state = {}, { checkEvent = null, skill = '', actionText = '', goalSummary = '', skillLabel = '', successDetail = '' } = {}) {
   const sourceEventId = String(checkEvent?.event_id ?? '')
   // Успех без броска — решение судьи с outcome success: «изучаю повестку»
   // без риска живой ведущий не превращает в кубик, а просто говорит, что
@@ -283,11 +560,32 @@ export function freeActionDiscoveryCommands(state = {}, { checkEvent = null, ski
   const unrolled = checkEvent?.event_type === 'RulingRecorded' && checkEvent?.payload?.ruling?.outcome === 'success'
   if (!sourceEventId || (checkEvent?.payload?.success !== true && !unrolled)) return []
   if (!DISCOVERY_SKILLS.has(String(skill ?? '').replace(/_/gu, '-'))) return []
+  // Проницательность читает человека: удача — это его реакция, которую назвал
+  // судья (`success_detail`), а не тайна места по совпавшим словам. Прежде
+  // слежка за грузчицей открывала заготовку о меле, и ведущий писал «больше о
+  // её реакции ничего не ясно» (замер 10, 2026-10-10).
+  if (String(skill ?? '').replace(/_/gu, '-') === 'insight') {
+    const reaction = successDetailCommand(state, { sourceEventId, successDetail })
+      ?? successDetailCommand(state, { sourceEventId, successDetail: insightRead(state, { actionText, actorId: String(checkEvent?.actor_id ?? '') }) })
+    if (reaction) return [reaction]
+  }
   // Секрет мастера важнее безликой «зацепки»: удачный поиск открывает то, что
   // в мире действительно спрятано, и рассказчик называет найденное словами.
-  const secret = secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}`, topicalOnly: unrolled })
-  if (secret) return [secret]
+  const topicalSecret = secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}`, topicalOnly: true })
+  if (topicalSecret) return [topicalSecret]
+  // Игрок спросил о конкретной мелочи («какая метка на корме?»), а заготовки на
+  // эту тему нет: ответ на его вопрос, названный арбитром до броска, становится
+  // находкой отряда. Живой ведущий отвечает на заданный вопрос, а не открывает
+  // вместо него соседнюю тайну. Общий поиск при этом всё ещё может найти тайну
+  // места — тогда игрок получает и ответ, и улику.
+  const detail = successDetailCommand(state, { sourceEventId, successDetail })
+  const secret = unrolled ? null : secretRevealCommand(state, { sourceEventId, skill, actionText: `${actionText} ${goalSummary}` })
+  if (detail || secret) return [detail, secret].filter(Boolean)
   if (unrolled) return []
+  // Проницательность читает человека напротив: «X явно знает больше» о другом
+  // жителе на месте реакции того, за кем следили, звучало мимо (замер
+  // 2026-10-10: слежка за Эдой — «Тавен явно знает больше»).
+  if (String(skill ?? '').replace(/_/gu, '-') === 'insight') return []
   const lead = presentNpcLead(state, `${actionText} ${goalSummary}`)
   const spoken = topicStems(`${actionText} ${goalSummary}`)
   const entities = new Set((state.worldMemory?.entities ?? []).map((entity) => String(entity?.id ?? '')))

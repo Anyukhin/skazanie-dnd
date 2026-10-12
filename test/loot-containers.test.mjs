@@ -933,7 +933,7 @@ test('свободное действие «обыскиваю тело» вед
   const answer = searchAloud(killed.state, 'hero', 'Обыскиваю тело разбойника')
   assert.equal(answer.server_owned_contents, true)
   assert.equal(answer.loot_container_id, container.id)
-  assert.match(answer.narration, /панель добычи/u)
+  assert.match(answer.narration, /Бери, что приглянется/u)
   assert.doesNotMatch(answer.narration, /команды извлечения/u)
 
   const looted = commit(killed.state, {
@@ -970,7 +970,7 @@ test('вплотную фраза называет содержимое ровн
   assert.equal(answer.loot_action_cost, null)
   const inFight = searchAloud(kill(campaign({ combat: true }), 'foe-1').state, 'hero', 'Обыскиваю тело разбойника')
   assert.equal(inFight.loot_action_cost, 'action')
-  assert.match(inFight.narration, /В бою обыск стоит действия/u)
+  assert.match(inFight.narration, /В бою снять что-то стоит действия/u)
 
   // Закрытый учёт наружу не едет ни строкой, ни ключом.
   const serialized = JSON.stringify(answer)
@@ -1027,13 +1027,23 @@ test('два тела: под ногами — то, о котором речь;
   assert.equal(named.loot_container_id, far.id)
   assert.match(named.narration, /подойдите вплотную/u)
 
-  // Оба тела под ногами — выбирает игрок, а не алфавит.
+  // Оба тела под ногами поровну — ведущий называет оба, а не выбирает по
+  // алфавиту и не переспрашивает (замер 16); что взять, игрок решит в панели.
   const crowded = campaign({ combat: false, enemies: [bandit('foe-1', { x: 2, y: 1 }), bandit('foe-2', { x: 2, y: 3 })] })
   const tie = kill(kill(crowded, 'foe-1').state, 'foe-2')
   const ambiguous = searchAloud(tie.state, 'hero', 'Обыскиваю тело')
   assert.equal(ambiguous.loot_container_id, undefined)
-  assert.match(ambiguous.narration, /Уточните/u)
+  assert.doesNotMatch(ambiguous.narration, /Уточните/u)
+  assert.equal(ambiguous.loot_container_ids?.length, 2)
   assert.ok(ambiguous.narration.includes('Разбойник 1') && ambiguous.narration.includes('Разбойник 2'))
+
+  // Оба поодаль и поровну — ответ про первое тело, без «Уточните, что именно
+  // обыскивает герой» (замер 28, дважды подряд).
+  const apart = campaign({ combat: false, heroX: 0, enemies: [bandit('foe-1', { x: 7, y: 1 }), bandit('foe-2', { x: 7, y: 3 })] })
+  const spread = kill(kill(apart, 'foe-1').state, 'foe-2')
+  const distant = searchAloud(spread.state, 'hero', 'Обыскиваю тело')
+  assert.doesNotMatch(distant.narration, /Уточните/u, distant.narration)
+  assert.ok(distant.loot_container_id, 'выбрано одно тело')
 })
 
 test('этажом выше фраза не дотягивается до тела внизу и не пересказывает его', () => {
@@ -1288,4 +1298,20 @@ test('уговор «разойтись миром» добычи не оста�
   })
   const settled = commit(state, { command_type: 'SettleParley', actor_id: 'hero', outcome: 'withdraw' })
   assert.equal(lootContainerList(settled.state).length, 0, 'ушедшие с миром уносят своё')
+})
+
+test('«обыскивает поверженных» — тела, а не общий осмотр; оба под ногами — оба в ответе', () => {
+  // Замер 11 (2026-10-10): заявка без слова «тело» уходила в общий осмотр
+  // места, и вместо карманов врагов находилась верёвка «у основания фонаря».
+  const crowded = campaign({ combat: false, enemies: [bandit('foe-1', { x: 2, y: 1 }), bandit('foe-2', { x: 2, y: 3 })] })
+  const both = kill(kill(crowded, 'foe-1').state, 'foe-2')
+  const answer = searchAloud(both.state, 'hero', 'Борин обыскивает поверженных: нет ли при них знака культа?')
+  assert.ok(answer, 'заявка распознана как обыск тел')
+  assert.ok(answer.narration.includes('Разбойник 1') && answer.narration.includes('Разбойник 2'), answer.narration)
+  assert.doesNotMatch(answer.narration, /Уточните|выдумывать|сервер/u)
+  assert.match(answer.narration, /Бери, что приглянется/u)
+  // Замер 19: «приседает у тел, обыскивает одежду» — родительный «тел».
+  const crouching = searchAloud(both.state, 'hero', 'Мирель приседает у тел, осторожно обыскивает одежду и мешочек с компонентами')
+  assert.ok(crouching?.narration.includes('Разбойник 2'), crouching?.narration)
+  assert.doesNotMatch(crouching.narration, /Тело: /u, 'подпись панели не звучит в рассказе')
 })

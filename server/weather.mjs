@@ -80,6 +80,12 @@ export const MINUTES_PER_DAY = 1_440
  * Который час в мире на нулевой минуте кампании. Восемь утра выбраны потому,
  * что кампания начинается уже начавшимся днём: отряд просыпается, а не выходит
  * из ниоткуда в полночь.
+ *
+ * С 2026-10-10 нулевая минута — ещё не обязательно первая минута игры: если
+ * владелец заказал во вводных вечер или ночь, создание кампании начинает
+ * `elapsed_minutes` со сдвига (`campaignStartCanon`, `server/scene-canon.mjs`).
+ * Сама точка отсчёта не двигается — на ней стоят рассвет перезарядки
+ * предметов и ночи сценария.
  */
 export const CAMPAIGN_START_MINUTE_OF_DAY = 480
 
@@ -288,11 +294,38 @@ export function campaignSeedOf(state = {}) {
   return text(state?.worldMap?.seed, 120) || text(state?.sessionCode, 120)
 }
 
+/**
+ * Небо, закреплённое за погодными сутками: `mechanics.weather_pins`.
+ *
+ * Владелец заказал «Ночь, гроза» во вводных — и первые сутки кампании обязаны
+ * быть грозовыми при любом сиде (`campaignStartCanon`, `server/scene-canon.mjs`).
+ * Закрепление пишет только создание кампании, событий у него нет: поле лежит в
+ * seed-снимке, и replay видит его по построению. Внутрь `world_time` оно не
+ * кладётся намеренно — тот пересобирают нормализатор и `TimeAdvanced`.
+ * Старые кампании закреплений не знают и живут по таблице климата.
+ *
+ * Закрепление сильнее климата края: заказанная гроза не стихает от того, что
+ * отряд в ту же ночь перешёл границу края. Следующие сутки — снова по таблице,
+ * и их смену объявит обычный `WeatherChanged`.
+ *
+ * @param {object} state
+ * @param {number} day номер погодных суток (`campaignDayOf`)
+ * @returns {string} id погоды или пустая строка
+ */
+export function pinnedWeatherOn(state = {}, day = 0) {
+  const pins = /** @type {any} */ (state)?.mechanics?.weather_pins
+  if (!Array.isArray(pins)) return ''
+  const pin = pins.find((entry) => Number.isSafeInteger(entry?.day) && entry.day === Math.trunc(Number(day))
+    && WEATHER_CONDITION_IDS.includes(String(entry?.weather)))
+  return pin ? String(pin.weather) : ''
+}
+
 /** Погода прямо сейчас. */
 export function weatherOf(state = {}, elapsedMinutes = elapsedMinutesOf(state)) {
-  return weatherOnDay({
+  const day = campaignDayOf(elapsedMinutes)
+  return pinnedWeatherOn(state, day) || weatherOnDay({
     seed: campaignSeedOf(state),
-    day: campaignDayOf(elapsedMinutes),
+    day,
     biome: currentBiomeOf(state),
   })
 }

@@ -24,12 +24,13 @@ import {
 import { ENVIRONMENT_HAZARD_IDS, IMPROVISED_EFFECT_IDS, scenePropIntentFor } from './improvised-effects.mjs'
 import { hazardPropCells, igniteDefinitionFor, sceneHazardVerbsFor, toppleDefinitionFor } from './scene-hazards.mjs'
 import { sceneInteractionCatalogEntry } from './scene-interactions.mjs'
+import { canonicalCombatSpellFor } from './combat-spells.mjs'
 import { buildDataOnlyContext } from './security.mjs'
 import { cellAt, deserializeTacticalMap } from './tactical-map.mjs'
 import { campaignStateForViewer } from './viewer-projection.mjs'
 import { npcSocialForViewer } from './npc-social.mjs'
 import { footprintDistanceFeet } from './actor-footprint.mjs'
-import { agentContextMetadata, boundedSelectionMetadata } from './agent-context.mjs'
+import { agentContextMetadata, boundedSelectionMetadata, sceneCanonFor } from './agent-context.mjs'
 
 /**
  * Арбитр свободного действия. Единственная роль модели здесь — **понять
@@ -42,10 +43,10 @@ import { agentContextMetadata, boundedSelectionMetadata } from './agent-context.
  * ошибке, таймауте или отсутствии ключа предложение молча заменяется
  * детерминированным прочтением, и игра продолжается.
  */
-const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v9.txt', import.meta.url)), 'utf8')
+const prompt = readFileSync(fileURLToPath(new URL('../prompts/action_adjudicator/v10.txt', import.meta.url)), 'utf8')
 
 /** Версия контракта: она же попадает в метаданные контекста и трассу. */
-export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v9'
+export const ACTION_ADJUDICATOR_PROMPT_VERSION = 'action_adjudicator/v10'
 
 const clean = (value, maximum = 240) => String(value ?? '').normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, maximum)
 const list = (value) => Array.isArray(value) ? value : []
@@ -58,6 +59,15 @@ const FREE_ACTION_RESPONSE_FIELDS = new Set([
   // v7: маршрут заявки. Поле необязательно — его отсутствие значит `check`,
   // так что ответ в форме v6 остаётся допустимым и судится как раньше.
   'route', 'destination', 'npc_hint',
+  // v10: что герой узнаёт при успехе, если игрок спросил о конкретной детали.
+  // Сервер записывает её находкой только когда готовой заготовки на эту тему нет.
+  'success_detail',
+  // v10: что видно и без броска — деталь места при любом исходе осмотра. На
+  // провале и на успехе без находки она становится записанной деталью сцены.
+  'surface_detail',
+  // v10: что герой видит и чем платит, когда попытка сорвалась. Рассказчик
+  // получает её вместо «не вышло» без причины; мира она не меняет.
+  'failure_detail',
 ])
 
 /**
@@ -104,6 +114,21 @@ function routeFromResponse(result, participants) {
   }
 }
 
+/**
+ * Деталь успеха из ответа модели: одна фраза без разметки и чисел механики.
+ * Пустая строка — детали нет, и сервер ничего не записывает.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+export function cleanSuccessDetail(value) {
+  const text = clean(value, 300).replace(/[\u0000-\u001f\u007f]/gu, '').replace(/[{}<>[\]]/gu, '').trim()
+  if (text.length < 12 || text.length > 220) return ''
+  // Числа механики и исход броска — дело сервера, не детали мира.
+  if (/(?<![\p{L}\p{N}])(?:СЛ|КД|d20|к20)(?![\p{L}\p{N}])|(?:хит|урон|бросок|проверк|успех|провал)/iu.test(text)) return ''
+  return /[.!?…»]$/u.test(text) ? text : `${text}.`
+}
+
 const ABILITIES = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha'])
 const ACTION_COSTS = new Set(['action', 'bonus_action', 'free'])
 
@@ -139,7 +164,7 @@ function structurallyValidFreeActionResponse(value) {
   // Маршрут проверяется так же строго, как остальные перечисления: выдуманное
   // значение — не повод угадывать, а признак сломанного ответа.
   if (Object.hasOwn(value, 'route') && !validStringField(value.route, new Set(FREE_ACTION_ROUTES))) return false
-  for (const key of ['destination', 'npc_hint']) {
+  for (const key of ['destination', 'npc_hint', 'success_detail', 'surface_detail', 'failure_detail']) {
     if (Object.hasOwn(value, key) && (typeof value[key] !== 'string' || value[key].length > 300)) return false
   }
   return true
@@ -164,6 +189,11 @@ function heroBrief(state, actorId) {
     ].map((entry) => clean(entry, 60)).slice(0, 20),
     prepared_spells: list(hero.preparedSpellIds).map((entry) => clean(entry, 60)).slice(0, 20),
     known_spells: list(hero.knownSpellIds).map((entry) => clean(entry, 60)).slice(0, 20),
+    // Игрок называет заклинание по-русски; без имён модель считала известный
+    // заговор «средством, которого нет» (плейтест 2026-10-10).
+    spell_names: [...new Set([...list(hero.knownSpellIds), ...list(hero.preparedSpellIds)])]
+      .map((id) => clean(canonicalCombatSpellFor(id, { rulesetId: state?.ruleset_id })?.name, 80))
+      .filter(Boolean).slice(0, 24),
     features: list(hero.selectedFeatureIds).map((entry) => clean(entry, 60)).slice(0, 20),
     inventory: inventory.slice(0, 30).map((item) => ({
       id: clean(item?.id, 120), name: clean(item?.name, 80), equipped: item?.equipped === true,
@@ -397,6 +427,15 @@ export function knownSceneDescription(state = {}) {
   return clean([...opening, ...arrival].filter(Boolean).join(' '), 1_800)
 }
 
+/** Известные отряду места карты мира, кроме текущего, — до двенадцати. */
+function knownPlacesFor(state = {}) {
+  const here = clean(state?.scene?.location, 160).toLocaleLowerCase('ru')
+  return (Array.isArray(state?.worldMap?.locations) ? state.worldMap.locations : [])
+    .filter((location) => location?.known !== false && clean(location?.name, 160) && clean(location.name, 160).toLocaleLowerCase('ru') !== here)
+    .map((location) => clean(location.name, 120))
+    .slice(0, 12)
+}
+
 export function adjudicationBrief(state, actorId, text, dialogue = {}) {
   const participants = participantsBrief(state, actorId)
   const sceneProps = scenePropsBrief(state, actorId)
@@ -415,7 +454,14 @@ export function adjudicationBrief(state, actorId, text, dialogue = {}) {
       mood: clean(state?.scene?.mood, 160),
       objective: clean(state?.scene?.objective, 160),
       known_description: knownSceneDescription(state),
+      // Канон сцены: детали успеха и провала не переписывают установленного.
+      canon: sceneCanonFor(state),
     },
+    // Закрытый список мест мира, куда можно уйти: судье легче узнать
+    // «пойдём туда вместе» как уход и назвать место как на карте (FIREBALL:
+    // разбор с состоянием игры исполним втрое чаще). Новое место игрок
+    // может назвать и своими словами.
+    known_places: knownPlacesFor(state),
     participants: participants.items,
     scene_props: sceneProps.items,
     ...selectionFields(participants.metadata, 'participants'),
@@ -437,8 +483,12 @@ export class ActionAdjudicator {
    * `systemPrompt` — подмена текста контракта только для замеров
    * (`eval/intent-routing-eval-2026-10-01.mjs` сравнивает v6 и v7 на одних
    * фразах). Сервер её не передаёт и работает с загруженным v7.
+   *
+   * Срок 12 с: у OhMyLama Luna читает заявку с брифом в 7–10 тыс. токенов за
+   * 3–9 с, а первой модели достаётся 60 % срока. При 9 с она обрывалась на
+   * 5,4 с, и заявку судила резервная модель или шаблон (замеры 19–20).
    */
-  constructor({ llmClient = null, timeoutMs = 9_000, systemPrompt = null } = {}) {
+  constructor({ llmClient = null, timeoutMs = 12_000, systemPrompt = null } = {}) {
     this.llmClient = llmClient
     this.timeoutMs = timeoutMs
     this.systemPrompt = typeof systemPrompt === 'string' && systemPrompt.trim() ? systemPrompt : prompt
@@ -461,7 +511,9 @@ export class ActionAdjudicator {
           { role: 'user', content: buildDataOnlyContext({ free_action_brief: brief }) },
         ],
         temperature: 0.2,
-        maxTokens: 700,
+        // Два поля-детали (v10) удлинили ответ: при 700 строгий JSON мог обрезаться,
+        // и заявка падала в запасное «Чего герой хочет добиться».
+        maxTokens: 1000,
       }, { timeoutMs: this.timeoutMs })
       if (!structurallyValidFreeActionResponse(result)) throw new Error('ACTION_ADJUDICATOR_RESPONSE_INVALID_SHAPE')
       const participantIds = new Set(brief.participants.map((entry) => entry.id))
@@ -497,10 +549,16 @@ export class ActionAdjudicator {
       // проверки и о маршруте не знает. Для `check` поля не добавляются вовсе —
       // прочтение остаётся тем же, что у v6.
       const route = routeFromResponse(result, brief.participants)
+      const successDetail = cleanSuccessDetail(result.success_detail)
+      const surfaceDetail = cleanSuccessDetail(result.surface_detail)
+      const failureDetail = cleanSuccessDetail(result.failure_detail)
       return {
         ...bindFreeActionReadingToState(state, actorId, text, reading),
         context_metadata: contextMetadata,
         ...(route.route !== 'check' ? route : {}),
+        ...(successDetail ? { success_detail: successDetail } : {}),
+        ...(surfaceDetail && surfaceDetail !== successDetail ? { surface_detail: surfaceDetail } : {}),
+        ...(failureDetail && failureDetail !== surfaceDetail ? { failure_detail: failureDetail } : {}),
       }
     } catch (error) {
       const bound = bindFreeActionReadingToState(state, actorId, text, {

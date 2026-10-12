@@ -7,6 +7,9 @@ import { normalizeCampaignState } from '../server/rules-engine.mjs'
 import {
   SCENE_REQUIREMENTS_VERSION,
   SCENE_REQUIREMENT_KINDS,
+  SCENE_STRUCTURE_KINDS,
+  missingStructureFor,
+  textAgainstMap,
   normalizeSceneRequirements,
   normalizeScenePosts,
   requirementAssets,
@@ -126,4 +129,67 @@ test('программа сцены: центр, посты жителей и п
   assert.deepEqual(normalizeScenePosts({ version: 'scene-requirements/v1', items: [{ id: 'well', count: 1 }] }), [], 'старая сцена — без постов')
   // Кузнец без описания — по роли; странник поста не получает.
   assert.deepEqual(sceneMapRequirementsFor('Площадь с колодцем.', { npcs: [{ name: 'Тор', role: 'кузнец', summary: '' }] }).posts, [{ npc: 'Тор', id: 'forge' }])
+})
+
+test('строка прибытия теряет фразы о постройках, которых нет на карте, и только их', () => {
+  const road = { theme: 'road', zones: [{ kind: 'exterior', label: 'Дорога' }, { kind: 'exterior', label: 'Река' }, { kind: 'exterior', label: 'Мост' }], doors: 0, props: [], water: true }
+  const tower = { theme: 'building', zones: [{ kind: 'exterior', label: 'Участок' }, { kind: 'interior', label: 'Парадный зал' }], doors: 3, props: [], water: false }
+  const arrival = 'Над обрывом высится башня маяка. Тяжёлая дверь приоткрыта. Через реку перекинут мост. Вдали белеет ещё один маяк.'
+  // Карта-дорога (баг живого замера): маяка и двери нет — фразы о них уходят.
+  assert.deepEqual(textAgainstMap(arrival, road, { location: 'Старый маяк' }), {
+    text: 'Через реку перекинут мост. Вдали белеет ещё один маяк.', dropped: ['lighthouse', 'door'],
+  })
+  // Карта-башня: маяк по имени места и дверь на месте, моста и реки нет.
+  assert.deepEqual(textAgainstMap(arrival, tower, { location: 'Старый маяк' }), {
+    text: 'Над обрывом высится башня маяка. Тяжёлая дверь приоткрыта. Вдали белеет ещё один маяк.', dropped: ['bridge'],
+  })
+  // Имя места и названия в кавычках постройки не обещают; отрицание — тоже.
+  assert.equal(textAgainstMap('Путь приводит героев в «Старую башню». Моста здесь нет.', road, { location: 'Старый маяк' }).text, 'Путь приводит героев в «Старую башню». Моста здесь нет.')
+  assert.equal(textAgainstMap('Перед героями открывается Старый маяк.', road, { location: 'Старый маяк' }).dropped.length, 0)
+  // Строка пути: мост и река — дорога, об уходе — не о новой карте.
+  assert.equal(textAgainstMap('Отряд переходит мост и покидает таверну.', tower, { location: 'Старый маяк', journey: true }).dropped.length, 0)
+  assert.deepEqual(textAgainstMap('Герои входят в таверну на берегу.', tower, { location: 'Старый маяк', journey: true }).dropped, ['tavern'])
+  // Имя называет постройку, а помещений нет — недостающее; на карте-башне — нет.
+  assert.equal(missingStructureFor('Старый маяк', road), 'lighthouse')
+  assert.equal(missingStructureFor('Старый маяк', tower), '')
+  assert.equal(missingStructureFor('Северная пристань', road), '')
+  assert.equal(requirementLabel('lighthouse'), 'маяк')
+  assert.ok(SCENE_STRUCTURE_KINDS.every((kind) => !SCENE_REQUIREMENT_KINDS.some((item) => item.id === kind.id)), 'постройки не входят в словарь предметов: очки библиотеки карт не меняются')
+})
+
+test('причал из слов сцены — на карте, лодка — только якорем модели; к причалу фишка подходит', async () => {
+  // Замер 31 (2026-10-11): пролог ставил героиню «у причала», карта была
+  // двором без столба и лодки, и «выходит к причалу» фишку не двигало.
+  assert.deepEqual(ids('Таверна стоит у самого причала, пахнет смолой.'), ['mooring'])
+  assert.deepEqual(ids('Баркас Тома не вернулся с ночного лова.'), [], 'пропавшая лодка — не предмет на карте')
+  assert.deepEqual(ids('Он причалил на рассвете, челнок застрял в ткацком станке.'), [], 'глагол и «челнок» — не причал и не лодка')
+  const marked = sceneMapRequirementsFor('Утро у пристани.', { landmarks: [{ kind: 'rowboat', role: 'clue' }] })
+  assert.deepEqual(marked.items, [{ id: 'mooring', count: 1 }, { id: 'rowboat', count: 1 }])
+  assert.deepEqual(marked.clues, ['rowboat'])
+  assert.deepEqual(requirementAssets('mooring'), ['mooring_post'])
+
+  const opening = {
+    campaignName: 'Сваи', partyName: 'Путники',
+    worldSummary: 'Рыбацкий посёлок на реке.',
+    openingNarration: 'Посёлок Ветлуга просыпается. У причала Ада смотрит на воду, где покачивается привязанная лодка.',
+    scene: {
+      title: 'Ветлуга', location: 'Посёлок Ветлуга', mood: 'Сырое утро', objective: 'Найти перевозчика', theme: 'рыбацкий посёлок', danger: 'низкая',
+      map: { layout: 'streets', pattern: 'organic', material: 'earth', width: 26, height: 22, openness: .6, water: 0, featureCount: 6, design: { landmarks: [{ kind: 'mooring', role: 'focus' }, { kind: 'rowboat', role: 'dressing' }] } },
+    },
+    hook: 'Пропавший перевозчик',
+  }
+  const created = await new CampaignBootstrapper({ llmClient: new FakeLLM([{ content: JSON.stringify(opening) }]) }).create({
+    code: 'PIER-1', name: 'Сваи', partyName: 'Путники', world: { startingLocation: 'Посёлок Ветлуга' },
+    players: [{ id: 'hero', name: 'Анна', character: 'Ада', role: 'Следопыт · ур. 1', species: 'Человек', speed: 30, maxHp: 12, armor: 13, online: true }],
+  })
+  // Якоря автора кампании доходят до программы: замысел нормализуется дважды.
+  assert.equal(created.scene.map_requirements.focus, 'mooring')
+  assert.ok(created.scene.map_requirements.items.some((item) => item.id === 'rowboat'))
+  const state = normalizeCampaignState(created)
+  const assets = state.scene.map.props.map((prop) => prop.assetId)
+  assert.ok(assets.includes('mooring_post'), 'причальный столб на карте')
+  assert.ok(assets.some((id) => id === 'rowboat' || id === 'punt'), 'лодка на карте')
+  const { freeActionApproachPlan } = await import('../server/free-action-adjudication.mjs')
+  const plan = freeActionApproachPlan(state, 'hero', 'Ада выходит к причалу и смотрит на воду')
+  assert.ok(['ready', 'already_there'].includes(plan.status), `подход к причалу: ${plan.status}`)
 })

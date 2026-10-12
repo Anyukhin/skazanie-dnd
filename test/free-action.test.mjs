@@ -16,7 +16,7 @@ import { createItemInstance } from '../server/item-instances.mjs'
 import { Narrator } from '../server/narrator.mjs'
 import { buildNarrationBrief, verifyNarration } from '../server/security.mjs'
 import { RollRegistry } from '../server/roll-registry.mjs'
-import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
+import { RulesEngine, applyGameEvent, normalizeCampaignState, RulesValidationError } from '../server/rules-engine.mjs'
 import { addProp, addZone, createTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, setCell, setDoor } from '../server/tactical-map.mjs'
 
 function hero(id, character = id) {
@@ -36,12 +36,12 @@ function campaign(overrides = {}) {
   })
 }
 
-function passageCampaign(doorState = 'open') {
+function passageCampaign(doorState = 'open', { darkInside = false } = {}) {
   const map = createTacticalMap({ width: 5, height: 3, locationId: 'passage-fixture', seed: 'passage-fixture', sizeClass: 'arena' })
   addZone(map, { id: 'outside', kind: 'exterior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Снаружи' })
   addZone(map, { id: 'inside', kind: 'interior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Монастырь' })
   for (let y = 0; y < 3; y += 1) for (let x = 0; x < 5; x += 1) {
-    setCell(map, x, y, { passable: y === 1, revealed: true, zone: x < 2 ? 'outside' : 'inside' })
+    setCell(map, x, y, { passable: y === 1, revealed: !darkInside || x < 2, zone: x < 2 ? 'outside' : 'inside' })
   }
   setDoor(map, { id: 'passage-door', x: 1, y: 1, dir: 'e', state: doorState })
   return campaign({
@@ -538,9 +538,11 @@ test('обыск тела вплотную называет добычу кон�
   const result = await orchestrator.handle(actionInput('Осматриваю и обыскиваю тело гоблина', 'free-search-container', initialState))
   const after = await eventStore.load('FREE-ACTION')
 
-  assert.equal(result.free_action_outcome, 'clarification')
+  // Названное содержимое — ответ, а не вопрос: без карточки уточнения (замер 12).
+  assert.equal(result.free_action_outcome, 'loot_inspection')
+  assert.equal(result.clarification ?? null, null)
   assert.ok(result.narration.includes('Кинжал'), result.narration)
-  assert.match(result.narration, /панель добычи/u)
+  assert.match(result.narration, /Бери, что приглянется/u)
   assert.deepEqual(result.mechanics, [])
   assert.equal(result.turn_consumed, false)
   assert.equal(after.state_version, before.state_version)
@@ -807,17 +809,41 @@ const PASSAGE_TEXT = 'Вхожу через дверь башни внутрь �
 
 test('заявка «войти внутрь» без подтверждённой карты уточняется до броска — MAP2-02', async () => {
   let renderCalls = 0
-  const { orchestrator } = await setup(campaign(), {
+  // Маяка нет ни здесь, ни на карте мира — честное «такого здания нет».
+  // Башня на карте мира есть, но вход — в маяк: «через дверь башни внутрь маяка».
+  const nowhere = campaign()
+  assert.ok(!(nowhere.worldMap?.locations ?? []).some((location) => /маяк/iu.test(String(location?.name ?? ''))))
+  const { orchestrator } = await setup(nowhere, {
     reading: passageReading(),
     // Модель описала бы вход: ей велено показать, «как герой делает заявленное».
     narrator: { render: async () => { renderCalls += 1; return { narration: 'Ада толкает дверь и оказывается внутри маяка.', provider: 'test-llm' } } },
   })
-  const result = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage', campaign()))
+  const result = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'free-passage', nowhere))
 
   assert.equal(result.free_action_outcome, 'clarification')
   assert.deepEqual(result.mechanics, [])
-  assert.match(result.narration, /названного здания|место/u)
+  assert.match(result.narration, /такого здания нет/u)
+  assert.doesNotMatch(result.narration, /не меняя его словами/u)
   assert.equal(renderCalls, 0, 'заблокированный вход не вызывает Narrator')
+})
+
+test('вход в постройку, которая — другое известное место, зовёт в путь, а не «такого здания нет»', async () => {
+  // Замер 31 (2026-10-11): у двери маяка ведущий дважды ответил «Здесь
+  // такого здания нет» — судья записал тупик. Живой ведущий: «маяк — дальше
+  // по скалам», и отряд решает, идти ли.
+  let renderCalls = 0
+  const state = campaign()
+  // Одно из мест карты мира переименовано в маяк: остальное у него настоящее.
+  state.worldMap = { ...state.worldMap, locations: (state.worldMap?.locations ?? []).map((location, index) => index === 2 ? { ...location, name: 'Скальный маяк', known: true } : location) }
+  const { orchestrator } = await setup(state, {
+    reading: passageReading(),
+    narrator: { render: async () => { renderCalls += 1; return { narration: 'Ада входит в маяк.', provider: 'test-llm' } } },
+  })
+  const result = await orchestrator.handle(actionInput(PASSAGE_TEXT, 'far-passage', state))
+  assert.equal(result.free_action_outcome, 'route_travel')
+  assert.deepEqual(result.mechanics, [])
+  assert.match(result.narration, /«Скальный маяк» — не здесь/u)
+  assert.equal(renderCalls, 0)
 })
 
 test('успешное «протиснуться внутрь» двигает героя через открытую дверь одним commit и replay — MAP2-03', async () => {
@@ -852,15 +878,38 @@ test('успешное «протиснуться внутрь» двигает 
   assert.deepEqual((await eventStore.replay('FREE-ACTION')).state, (await eventStore.load('FREE-ACTION')).state)
 })
 
-test('успешное «протиснуться внутрь» не телепортирует через закрытую дверь', async () => {
+test('успешное «протиснуться внутрь» через закрытую дверь открывает её и входит, а не телепортирует', async () => {
+  // Плейтест 2026-10-10: «толкает дверь маяка и заходит внутрь» отвечало «сцена
+  // не изменилась». Живой ведущий открывает незапертую дверь и ведёт героя внутрь
+  // — шагами по карте и событием двери, без прыжка сквозь стену.
   const initial = passageCampaign('closed')
-  const { orchestrator, eventStore, narratorCalls } = await setup(initial)
+  const { orchestrator, eventStore } = await setup(initial)
   const text = 'Я протискиваусь внутрь монастыря'
   const result = await orchestrator.handle(actionInput(text, 'free-passage-closed', initial))
+  assert.equal(result.free_action_outcome, 'check_success')
+  const types = result.mechanics.map((event) => event.event_type)
+  assert.ok(types.includes('DoorStateChanged'), types.join(','))
+  assert.ok(types.indexOf('DoorStateChanged') < types.lastIndexOf('ActorMoved'))
+  const state = (await eventStore.load('FREE-ACTION')).state
+  assert.deepEqual(state.mechanics.positions.hero, { x: 2, y: 1 })
+})
+
+test('вход через закрытую дверь, за которой ещё не раскрыто помещение', async () => {
+  // Замер 2026-10-10: у маяка помещение за дверью было в тумане, и «толкаю
+  // дверь плечом, вхожу» получало «Дверь закрыта — откройте её на карте».
+  const initial = passageCampaign('closed', { darkInside: true })
+  const { orchestrator, eventStore } = await setup(initial)
+  const result = await orchestrator.handle(actionInput('Я протискиваусь внутрь монастыря', 'free-passage-dark', initial))
+  assert.notEqual(result.free_action_outcome, 'clarification', result.narration)
+  assert.ok(result.mechanics.some((event) => event.event_type === 'DoorStateChanged'))
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
+})
+
+test('запертая дверь не открывается словами входа', async () => {
+  const initial = passageCampaign('locked')
+  const { orchestrator, eventStore } = await setup(initial)
+  const result = await orchestrator.handle(actionInput('Я протискиваусь внутрь монастыря', 'free-passage-locked', initial))
   assert.equal(result.free_action_outcome, 'clarification')
-  assert.deepEqual(result.mechanics, [])
-  assert.match(result.narration, /открыт|карт/u)
-  assert.equal(narratorCalls(), 0)
   assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 0, y: 1 })
 })
 
@@ -897,8 +946,12 @@ test('крыльцо с interior-меткой считается внешним 
   assert.equal(open.status, 'ready')
   assert.equal(open.door_id, 'porch-door')
   assert.deepEqual(open.destination.to, { x: 3, y: 1 })
+  // Закрытая незапертая дверь — не тупик: подойти, открыть, войти.
   const closed = freeActionPassagePlan(porchPassageCampaign('closed'), 'hero', 'Я протискиваюсь внутрь монастыря')
-  assert.deepEqual(closed, { status: 'blocked', reason: 'no_open_path' })
+  assert.equal(closed.status, 'ready')
+  assert.equal(closed.open_door, true)
+  assert.equal(closed.door_id, 'porch-door')
+  assert.deepEqual(closed.destination.to, { x: 3, y: 1 })
 })
 
 test('произнесённый или вопросительный passage-текст не авторизует перемещение', () => {
@@ -919,6 +972,34 @@ test('запасной рассказчик не меняет «Вышло: …�
   assert.equal(shouted.free_action_outcome, 'check_success')
   assert.match(shouted.narration, /^Вышло: крикнуть «Пожар!» на весь двор\./u)
 
+  // Замер 19 (2026-10-11): шаг плана без имени — «идёт к бочкам и простукивает
+  // их — нет ли тайника» — звучал «Вышло: идёт к бочкам…».
+  const step = await setup(campaign(), {
+    narrator: new Narrator(),
+    reading: passageReading({ goal_summary: 'идёт к бочкам у ворот и простукивает их — нет ли тайника', approach_summary: 'простукивает', ability: 'cha', skill: 'performance' }),
+  })
+  const stepped = await step.orchestrator.handle(actionInput('идёт к бочкам у ворот и простукивает их — нет ли тайника', 'free-step', campaign()))
+  assert.equal(stepped.free_action_outcome, 'check_success')
+  assert.match(stepped.narration, /^Ада идёт к бочкам у ворот и простукивает их\./u, stepped.narration)
+
+  // Замер 21: провал цели-описания звучал «Не вышло: Борин хочет первым
+  // войти в маяк…».
+  const wish = await setup(campaign(), {
+    narrator: new Narrator(), diceRolls: [2, 2, 2, 2],
+    reading: passageReading({ goal_summary: 'Ада хочет первой выступить перед толпой и объявить о себе', approach_summary: 'громко', ability: 'cha', skill: 'performance' }),
+  })
+  const wished = await wish.orchestrator.handle(actionInput('Ада выходит вперёд и громко объявляет о себе', 'free-wish', campaign()))
+  assert.equal(wished.free_action_outcome, 'check_failure')
+  assert.doesNotMatch(wished.narration, /Не вышло: Ада хочет/u, wished.narration)
+
+  // Замер 25: «Не вышло: войти в маяк первым…» — провал входа звучит дверью.
+  const door = await setup(campaign(), {
+    narrator: new Narrator(), diceRolls: [2, 2, 2, 2],
+    reading: passageReading({ goal_summary: 'войти в монастырь первой и позвать спутника', approach_summary: 'плечом', ability: 'str', skill: 'athletics' }),
+  })
+  const pushed = await door.orchestrator.handle(actionInput('Ада толкает дверь монастыря плечом', 'free-door-fail', campaign()))
+  assert.equal(pushed.free_action_outcome, 'check_failure')
+  assert.doesNotMatch(pushed.narration, /Не вышло: войти/u, pushed.narration)
 })
 
 test('цель-знание без подтверждённых показаний получает честный ответ, а не голое «Вышло.»', async () => {
@@ -930,8 +1011,10 @@ test('цель-знание без подтверждённых показани
   const offline = await setup(campaign(), { narrator: new Narrator(), reading })
   const plain = await offline.orchestrator.handle(actionInput(text, 'free-knowledge-offline', campaign()))
   assert.equal(plain.free_action_outcome, 'check_success')
-  assert.match(plain.narration, /^Ада: попытка засчитана, но сцена от неё не изменилась/u)
-  assert.match(plain.narration, /обратитесь к собеседнику по имени/u)
+  // Голос ведущего, а не протокол «попытка засчитана, сцена прежняя».
+  assert.match(plain.narration, /^Ада старается, но нового это не приносит/u)
+  assert.match(plain.narration, /стоит расспросить/u)
+  assert.doesNotMatch(plain.narration, /засчитана|сцена прежняя/u)
   assert.equal(plain.verification.valid, true)
 
   // Черновик модели с репликой стражника без подтверждённого разговора.
@@ -941,7 +1024,7 @@ test('цель-знание без подтверждённых показани
   assert.equal(result.free_action_outcome, 'check_success')
   assert.doesNotMatch(result.narration, /^(?:Не )?[Вв]ышло.?$/u)
   assert.doesNotMatch(result.narration, /дракон/u)
-  assert.match(result.narration, /^Ада: попытка засчитана/u)
+  assert.match(result.narration, /^Ада старается/u)
   assert.equal(result.verification.valid, true)
 })
 
@@ -1026,4 +1109,163 @@ test('нераспознанное действие без модели: уто�
   assert.match(flavor.narration, /броска не нужно/u)
   assert.equal(mundaneActionOutcome('я поднимаю весь замок одной рукой', { heroName: 'Торвальд' }).kind, 'impossible')
   assert.equal(mundaneActionOutcome('Поднимаю шишку с пола', { inCombat: true }), null, 'в бою действие стоит часть хода — прежнее уточнение')
+})
+
+test('движок отклонил проход уже после броска — ход доигран без перемещения и с ответом', async () => {
+  // Замер 2026-10-10: «Борин толкает дверь маяка и входит» после удачной
+  // Атлетики падало 400 PATH_BLOCKED без единого слова ведущего.
+  const initial = passageCampaign('closed')
+  const { orchestrator, eventStore } = await setup(initial)
+  const handler = orchestrator.unknownActionHandler
+  const runCommands = handler.runCommands.bind(handler)
+  let refused = 0
+  handler.runCommands = async (campaignId, key, commands, ...rest) => {
+    if (String(key).endsWith(':consequence') && commands.some((command) => command.command_type === 'MoveActor')) {
+      refused += 1
+      throw new RulesValidationError('Путь перекрыт', 'PATH_BLOCKED')
+    }
+    return runCommands(campaignId, key, commands, ...rest)
+  }
+  const result = await orchestrator.handle(actionInput('Я протискиваусь внутрь монастыря', 'free-passage-refused', initial))
+  assert.equal(refused, 1, 'движок отклонил проход один раз')
+  assert.ok(String(result.narration ?? '').trim(), 'ведущий отвечает')
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 0, y: 1 })
+})
+
+test('герой уже стоит у закрытой двери: удачный вход открывает её и проходит, без PATH_BLOCKED', async () => {
+  // Замер 12 (2026-10-10): «толкает дверь плечом и заходит» — успех, а движок
+  // отклонил шаг «до клетки, где герой и так стоит»: PATH_BLOCKED, и ведущий
+  // ответил «прохода туда отсюда нет».
+  const initial = passageCampaign('closed')
+  initial.mechanics.positions.hero = { x: 1, y: 1 }
+  const { orchestrator, eventStore } = await setup(initial)
+  const result = await orchestrator.handle(actionInput('Я протискиваусь внутрь монастыря', 'free-passage-at-door', initial))
+  assert.equal(result.free_action_outcome, 'check_success')
+  assert.equal(result.passage_refused ?? null, null)
+  assert.ok(result.mechanics.some((event) => event.event_type === 'DoorStateChanged'))
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
+})
+
+test('вне боя герой сам подходит к телу и называет добычу, а не «подойдите вплотную»', async () => {
+  // Замер 13 (2026-10-11): «отсюда не дотянуться (ещё 15 фт) — подойдите
+  // вплотную» звучало дважды и оставляло обыск тупиком.
+  const map = createTacticalMap({ width: 7, height: 3, locationId: 'yard', seed: 'loot-approach', sizeClass: 'arena' })
+  addZone(map, { id: 'yard', kind: 'exterior', material: 'earth', lightLevel: 'bright', floorDirection: 'horizontal', label: 'Двор' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 7; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'yard' })
+  const dagger = createItemInstance({
+    instanceId: 'inst-dagger-far', catalogId: 'srd_5_2_1:dagger',
+    owner: { kind: 'container', actor_id: 'loot:corpse:far' }, origin: { kind: 'enemy_loadout' }, quantity: 1, lootable: true,
+  })
+  const initialState = campaign({
+    scene: { title: 'Двор', location: 'Двор', location_id: 'yard', objective: 'Осмотреть двор', cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    players: [hero('hero', 'Ада'), hero('other', 'Бор')],
+    enemies: [{ id: 'goblin', name: 'Гоблин', hp: 0, maxHp: 7, armor: 12, alive: false, x: 5, y: 1 }],
+    mechanics: { combat: { active: false }, positions: { hero: { x: 0, y: 1 }, other: { x: 0, y: 0 } } },
+    loot_containers: { containers: [{ id: 'loot:corpse:far', kind: 'corpse', source_enemy_id: 'goblin', name: 'Тело: Гоблин', location_id: 'yard', x: 5, y: 1, status: 'available', items: [dagger] }] },
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const result = await orchestrator.handle(actionInput('Обыскиваю тело гоблина', 'free-search-far', initialState))
+  assert.equal(result.free_action_outcome, 'loot_inspection', result.narration)
+  assert.ok(result.narration.includes('Кинжал'), result.narration)
+  assert.doesNotMatch(result.narration, /подойдите|не дотянуться/u)
+  const at = (await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero
+  assert.ok(Math.max(Math.abs(at.x - 5), Math.abs(at.y - 1)) <= 1, JSON.stringify(at))
+})
+
+test('вход с репликой в кавычках и «входит первым» без «внутрь» — тот же вход', async () => {
+  // Замер 16 (2026-10-11), живые игроки: «толкает дверь маяка плечом и входит
+  // первым. «За мной»» — проверка прохода отбрасывала любую заявку с
+  // кавычками, и удачный бросок кончался «прохода туда отсюда нет».
+  const initial = passageCampaign('closed')
+  const { orchestrator, eventStore } = await setup(initial)
+  const result = await orchestrator.handle(actionInput('Ада толкает дверь монастыря плечом и входит первым. «За мной, не отставать».', 'free-passage-speech', initial))
+  assert.equal(result.free_action_outcome, 'check_success', result.narration)
+  assert.ok(result.mechanics.some((event) => event.event_type === 'DoorStateChanged'))
+  assert.deepEqual((await eventStore.load('FREE-ACTION')).state.mechanics.positions.hero, { x: 2, y: 1 })
+  assert.equal(freeActionPassagePlan(passageCampaign('open'), 'hero', 'Говорю: «Я протискиваюсь внутрь монастыря»').status, 'not_applicable', 'сама речь о входе — не вход')
+})
+
+test('«толкает её, входя первым» и «чтобы войти первым» — тоже вход', () => {
+  // Замер 19 (2026-10-11), оба прогона: деепричастие и инфинитив не
+  // узнавались, и удачная Атлетика у двери маяка кончалась «прохода нет».
+  for (const text of [
+    'Ада упирается плечом в дверь и толкает её, входя первым с оружием наготове: «За мной».',
+    'Ада ставит плечо в дверь монастыря и толкает её, держа оружие наготове, чтобы войти первым.',
+  ]) assert.equal(freeActionPassagePlan(passageCampaign('closed'), 'hero', text).status, 'ready', text)
+  assert.equal(freeActionPassagePlan(passageCampaign('closed'), 'hero', 'Ада толкает дверь, но не входит').status, 'not_applicable')
+})
+
+test('обыск тела культиста: при добыче — знак культа из замысла кампании, один раз на встречу', async () => {
+  // Замеры 10–18 (2026-10-11): «обыск врагов — ни знака культа, ни связи с
+  // пропавшими», хотя засада была у маяка культа.
+  const map = createTacticalMap({ width: 5, height: 3, locationId: 'cliff', seed: 'cult-clue', sizeClass: 'arena' })
+  addZone(map, { id: 'cliff', kind: 'exterior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Скала' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 5; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'cliff' })
+  const dagger = createItemInstance({
+    instanceId: 'inst-cult-dagger', catalogId: 'srd_5_2_1:dagger',
+    owner: { kind: 'container', actor_id: 'loot:corpse:cultist' }, origin: { kind: 'enemy_loadout' }, quantity: 1, lootable: true,
+  })
+  const initialState = campaign({
+    campaignConcept: { premise: 'В порту тайно действует культ «Утопленной Матери», приносящий людей в жертву морю.' },
+    scene: { title: 'Скала у маяка', location: 'Маяк', location_id: 'cliff', objective: 'Узнать, кто зажигает огонь', cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    players: [hero('hero', 'Ада'), hero('other', 'Бор')],
+    enemies: [{ id: 'cultist-1', name: 'Культист 1', hp: 0, maxHp: 9, armor: 12, alive: false, x: 1, y: 1, stat_block_id: 'dnd_5e_2014:monster:cultist' }],
+    mechanics: { combat: { active: false }, positions: { hero: { x: 0, y: 1 }, other: { x: 0, y: 0 } } },
+    worldMemory: { entities: [{ id: 'loc:lighthouse', kind: 'location', name: 'Маяк', summary: '', aliases: [], visibility: 'party', tags: [] }], facts: [] },
+    loot_containers: { containers: [{ id: 'loot:corpse:cultist', kind: 'corpse', source_enemy_id: 'cultist-1', encounter_id: 'enc-cult', name: 'Тело: Культист 1', location_id: 'cliff', x: 1, y: 1, status: 'available', items: [dagger] }] },
+  })
+  const { orchestrator, eventStore } = await setup(initialState)
+  const result = await orchestrator.handle(actionInput('Обыскиваю тело культиста', 'free-search-cult', initialState))
+  assert.equal(result.free_action_outcome, 'loot_inspection', result.narration)
+  assert.match(result.narration, /знак культа «Утопленной Матери»/u)
+  const facts = (await eventStore.load('FREE-ACTION')).state.worldMemory.facts.filter((fact) => fact.predicate === 'discovery')
+  assert.equal(facts.length, 1)
+  assert.equal(facts[0].visibility, 'party')
+  const again = await orchestrator.handle(actionInput('Ещё раз осматриваю тело культиста', 'free-search-cult-2', (await eventStore.load('FREE-ACTION')).state))
+  assert.doesNotMatch(again.narration, /знак культа/u, 'улика одна на встречу')
+  assert.equal((await eventStore.load('FREE-ACTION')).state.worldMemory.facts.filter((fact) => fact.predicate === 'discovery').length, 1)
+})
+
+test('замер 22: пустые тела — «карманы пусты» и знак культа, «тело прислужника» при двух — ближнее без вопроса', async () => {
+  // «Обыскивает поверженных культистов» получало «Укажите конкретное тело»:
+  // у культистов не было снаряжения и контейнера; «тело прислужника» при двух
+  // прислужниках — «Назовите конкретного участника».
+  const map = createTacticalMap({ width: 6, height: 3, locationId: 'cliff', seed: 'empty-bodies', sizeClass: 'arena' })
+  addZone(map, { id: 'cliff', kind: 'exterior', material: 'stone', lightLevel: 'dim', floorDirection: 'horizontal', label: 'Скала' })
+  for (let y = 0; y < 3; y += 1) for (let x = 0; x < 6; x += 1) setCell(map, x, y, { passable: true, revealed: true, zone: 'cliff' })
+  const base = {
+    campaignConcept: { premise: 'В порту тайно действует культ «Утопленной Матери».' },
+    scene: { title: 'Скала у маяка', location: 'Маяк', location_id: 'cliff', objective: 'Узнать, кто зажигает огонь', cells: legacyCellsFromTacticalMap(map), map: serializeTacticalMap(map) },
+    players: [hero('hero', 'Ада'), hero('other', 'Бор')],
+    mechanics: { combat: { active: false }, encounter: { id: 'enc-empty' }, positions: { hero: { x: 0, y: 1 }, other: { x: 0, y: 0 } } },
+    worldMemory: { entities: [{ id: 'loc:lighthouse', kind: 'location', name: 'Маяк', summary: '', aliases: [], visibility: 'party', tags: [] }], facts: [] },
+  }
+  const empty = campaign({ ...base, enemies: [
+    { id: 'cultist-1', name: 'Культист 1', hp: 0, maxHp: 9, armor: 12, alive: false, x: 2, y: 1, stat_block_id: 'dnd_5e_2014:monster:cultist' },
+    { id: 'cultist-2', name: 'Культист 2', hp: 0, maxHp: 9, armor: 12, alive: false, x: 3, y: 1, stat_block_id: 'dnd_5e_2014:monster:cultist' },
+  ] })
+  const first = await setup(empty)
+  const searched = await first.orchestrator.handle(actionInput('Ада осторожно обыскивает поверженных культистов', 'free-empty-bodies', empty))
+  assert.equal(searched.free_action_outcome, 'loot_inspection', searched.narration)
+  assert.match(searched.narration, /Карманы и пояса пусты/u)
+  assert.match(searched.narration, /знак культа «Утопленной Матери»/u)
+
+  const pouch = (owner) => createItemInstance({
+    instanceId: `inst-pouch-${owner}`, catalogId: 'srd_5_2_1:component-pouch',
+    owner: { kind: 'container', actor_id: `loot:corpse:${owner}` }, origin: { kind: 'enemy_loadout' }, quantity: 1, lootable: true,
+  })
+  const twins = campaign({ ...base,
+    enemies: [
+      { id: 'acolyte-1', name: 'Прислужник 1', hp: 0, maxHp: 9, armor: 10, alive: false, x: 1, y: 1, stat_block_id: 'dnd_5e_2014:monster:acolyte' },
+      { id: 'acolyte-2', name: 'Прислужник 2', hp: 0, maxHp: 9, armor: 10, alive: false, x: 5, y: 1, stat_block_id: 'dnd_5e_2014:monster:acolyte' },
+    ],
+    loot_containers: { containers: ['acolyte-1', 'acolyte-2'].map((owner, index) => ({
+      id: `loot:corpse:${owner}`, kind: 'corpse', source_enemy_id: owner, encounter_id: 'enc-empty', name: `Тело: Прислужник ${index + 1}`,
+      location_id: 'cliff', x: index ? 5 : 1, y: 1, status: 'available', items: [pouch(owner)],
+    })) },
+  })
+  const second = await setup(twins)
+  const one = await second.orchestrator.handle(actionInput('Ада тщательно обыскивает тело прислужника и его мешочек компонентов', 'free-twin-bodies', twins))
+  assert.equal(one.free_action_outcome, 'loot_inspection', one.narration)
+  assert.doesNotMatch(one.narration, /Назовите конкретного участника/u)
 })

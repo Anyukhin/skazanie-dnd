@@ -89,9 +89,27 @@ test('social assembler creates a replay-stable bounded NPC using only known publ
   assert.deepEqual(first, assembleSocialNpc(baseState, options))
   assert.match(first.id, /^npc-[a-f0-9]{16}$/u)
   assert.equal(first.location, 'Северный тракт')
-  assert.deepEqual(first.known_fact_ids, ['fact-1'])
+  // Плейтест 2026-10-10: находка отряда без места (подлежащее — фракция) новому
+  // жителю не известна; прежде он получал все факты отряда.
+  assert.deepEqual(first.known_fact_ids, [])
   assert.deepEqual(first.tags, ['faction:wardens'])
   assert.deepEqual(first.inventory, [])
+})
+
+test('social assembler gives a new local only public facts and party finds made at its location', () => {
+  const state = structuredClone(baseState)
+  state.worldMemory.entities.push(
+    { id: 'loc:road', kind: 'location', name: 'Северный тракт' },
+    { id: 'loc:pier', kind: 'location', name: 'Пирс' },
+  )
+  state.worldMemory.facts.push(
+    { id: 'fact-public', predicate: 'local_lore', subject_id: 'wardens', status: 'active', visibility: 'public' },
+    { id: 'fact-here', predicate: 'discovery', subject_id: 'loc:road', status: 'active', visibility: 'party', recorded_at_minutes: 60 },
+    { id: 'fact-pier', predicate: 'discovery', subject_id: 'loc:pier', status: 'active', visibility: 'party', recorded_at_minutes: 90 },
+    { id: 'fact-secret', predicate: 'gm_secret', subject_id: 'loc:road', status: 'active', visibility: 'gm_only' },
+  )
+  const npc = assembleSocialNpc(state, { campaignId: 'LOOP-1', idempotencyKey: 'social-witness' })
+  assert.deepEqual(npc.known_fact_ids, ['fact-public', 'fact-here'])
 })
 
 test('downtime excludes dead heroes and derives its own duration', () => {

@@ -406,10 +406,13 @@ export function battleEventText(state: GameState, event: BattleLogEvent) {
     const damage = event.damage != null ? ` · ${damageAmountText(event.damage, event.damageType)}` : ''
     const hp = !hideTargetFacts && event.hpAfter != null ? ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter}` : ''
     const automatic = event.automaticSuccess ? ' · автоматический успех' : event.immunity ? ` · иммунитет: ${event.immunity}` : ''
+    // «от заклинания «Огненные ладони»», а не «от «Огненные ладони»»: название
+    // в кавычках не склоняется, падеж держит слово «заклинания» (плейтест 2026-10-10).
+    const source = event.spellName ?? event.spellId ? `заклинания «${event.spellName ?? event.spellId}»` : 'заклинания'
     const itemBonus = event.itemSavingThrowBonus ? ` · предмет +${event.itemSavingThrowBonus}` : ''
     return hideTargetFacts
-      ? `${actorName(event.targetId)} делает спасбросок от «${event.spellName ?? event.spellId ?? 'заклинания'}» — ${outcome}${automatic}${itemBonus}${damage}.`
-      : `${actorName(event.targetId)}: спасбросок ${abilitySaveLabel(event.ability)} от «${event.spellName ?? event.spellId ?? 'заклинания'}» ${formula} против СЛ ${event.roll?.difficulty ?? '?'} — ${outcome}${automatic}${itemBonus}${damage}${hp}.`
+      ? `${actorName(event.targetId)} делает спасбросок от ${source} — ${outcome}${automatic}${itemBonus}${damage}.`
+      : `${actorName(event.targetId)}: спасбросок ${abilitySaveLabel(event.ability)} от ${source} ${formula} против СЛ ${event.roll?.difficulty ?? '?'} — ${outcome}${automatic}${itemBonus}${damage}${hp}.`
   }
   if (event.type === 'spell-damage') return `${actorName(event.actorId)} применяет «${event.spellName ?? event.spellId ?? 'заклинание'}» к ${actorName(event.targetId)}: ${damageAmountText(event.damage ?? 0, event.damageType)}${hideTargetFacts ? '' : ` · ОЗ ${event.hpBefore ?? '?'} → ${event.hpAfter ?? '?'}`}.`
   if (event.type === 'healing') {
@@ -446,7 +449,8 @@ export function battleEventText(state: GameState, event: BattleLogEvent) {
     return `${actorName(event.actorId)}: спасбросок от смерти ${rollText} — ${event.result === 'revived' ? 'натуральная 20, 1 ОЗ' : event.result === 'stabilized' ? 'стабилизация' : event.result === 'died' ? 'смерть' : event.result === 'success' ? 'успех' : 'провал'} (${event.successes ?? 0} успехов / ${event.failures ?? 0} провалов).${event.itemSavingThrowBonus ? ` Предмет: +${event.itemSavingThrowBonus}.` : ''}${event.auraBonus ? ` Аура защиты: +${event.auraBonus}.` : ''}${event.indomitableBonus ? ` Несгибаемый: +${event.indomitableBonus}, исходный итог ${event.indomitableOriginalTotal ?? '?'}.` : ''}`
   }
   if (event.type === 'death-save-damage') return `${actorName(event.actorId)} получает ${event.critical ? 'два провала' : 'провал'} спасброска от смерти из-за урона.`
-  if (event.type === 'hero-stabilized') return `${actorName(event.actorId)} стабилизирован и больше не делает спасброски от смерти.`
+  // Рода у героя в данных нет: «стабилизирован» звучало мужским у Мирель.
+  if (event.type === 'hero-stabilized') return `${actorName(event.actorId)} без сознания, но кровь остановлена — спасброски от смерти больше не нужны.`
   if (event.type === 'concentration-save') {
     const natural = event.roll?.die ?? '?'
     const modifier = Number(event.roll?.modifier) || 0

@@ -135,3 +135,20 @@ test('обрамление не нарушает собственный Verifier
     assert.equal(verification.valid, true, `${JSON.stringify(constraints)}: ${JSON.stringify(verification.violations)}`)
   }
 })
+
+test('деталь исхода от судьи звучит вместо «Проверка … завершилась неудачей»', () => {
+  // Замер 19 (2026-10-11): модель не успела, и на «прислушивается у двери»
+  // запасной текст ответил «Проверка «Восприятие» завершилась неудачей.
+  // Заброшенный маяк. …» — с описью места вместо того, что герой услышал.
+  const failed = { ...CHECK_EVENT, payload: { ability: 'wis', skill: 'perception', total: 3, difficulty: 15, success: false } }
+  const withDetail = buildNarrationBrief({
+    visible_events: [failed], visible_state_changes: [],
+    known_environment: {
+      scene: { title: 'Маяк', location: 'Заброшенный маяк', mood: 'тревожно' }, story_context: STORY,
+      player_intent: { action: 'Прислушиваюсь у двери', outcome_detail: 'За дверью только вой сквозняка в щелях — ничего не разобрать.' },
+    },
+    permitted_npc_reactions: [], narration_constraints: [],
+  })
+  const { narration } = deterministicNarration(withDetail)
+  assert.equal(narration, 'За дверью только вой сквозняка в щелях — ничего не разобрать.')
+})

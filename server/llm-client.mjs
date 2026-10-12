@@ -432,6 +432,62 @@ export async function parseRouterAIEventStream(body, {
   }
 }
 
+/**
+ * OpenAI-совместимый провайдер за `ROUTERAI_BASE_URL`. По умолчанию это
+ * RouterAI; OhMyLama (`https://ohmylama.ru/v1`) узнаётся по адресу. У неё имена
+ * моделей без префикса производителя (`gpt-6-luna`, а не `openai/gpt-6-luna`),
+ * а глубина рассуждений — `reasoning_effort`, а не объект `reasoning`. Внутри
+ * сервера имена остаются прежними: учёт расхода, профили стиля и список
+ * разрешённых моделей не знают, какой провайдер их обслужил.
+ *
+ * @param {string} baseUrl
+ * @returns {'ohmylama'|'routerai'}
+ */
+export function llmProviderFor(baseUrl) {
+  try {
+    return /(?:^|\.)ohmylama\.ru$/iu.test(new URL(String(baseUrl)).hostname) ? 'ohmylama' : 'routerai'
+  } catch {
+    return 'routerai'
+  }
+}
+
+const VENDOR_MODEL_PREFIX = /^(?:openai|anthropic|google|z-ai|deepseek|meta|x-ai|mistralai|qwen|moonshotai)\//u
+
+/**
+ * Имя модели и параметры рассуждений в формате провайдера.
+ *
+ * @param {'ohmylama'|'routerai'} provider
+ * @param {Record<string, any>} body
+ */
+export function providerRequestBody(provider, body) {
+  if (provider !== 'ohmylama') return body
+  const { reasoning, ...rest } = body
+  const effort = reasoning && typeof reasoning === 'object' && typeof reasoning.effort === 'string' ? reasoning.effort : ''
+  const model = String(body.model ?? '').replace(VENDOR_MODEL_PREFIX, '')
+  // Claude у OhMyLama отклоняет temperature и штрафы повторов (HTTP 400
+  // unsupported_parameter, проба 2026-10-11); RouterAI их молча пропускал.
+  if (/^claude-/u.test(model)) {
+    delete rest.temperature
+    delete rest.frequency_penalty
+    delete rest.presence_penalty
+  }
+  // Gemini у OhMyLama: штрафы повторов — HTTP 400 unsupported_parameter, а
+  // strict json_schema — 503 model_temporarily_unavailable при каждом вызове
+  // (проба 2026-10-11). Рассказчик со штрафами и роли со схемой падали на
+  // самой быстрой резервной модели (около секунды на ответ). JSON mode она
+  // исполняет; формат ответа и так описан в промпте и проверяется ролью.
+  if (/^gemini-/u.test(model)) {
+    delete rest.frequency_penalty
+    delete rest.presence_penalty
+    if (rest.response_format?.type === 'json_schema') rest.response_format = { type: 'json_object' }
+  }
+  return {
+    ...rest,
+    model,
+    ...(['low', 'medium', 'high'].includes(effort) ? { reasoning_effort: effort } : {}),
+  }
+}
+
 export class RouterAIClient extends LLMClient {
   constructor({
     apiKey = process.env.ROUTERAI_API_KEY ?? '',
@@ -455,6 +511,8 @@ export class RouterAIClient extends LLMClient {
     this.maxToolCalls = positiveInteger(maxToolCalls, DEFAULT_MAX_TOOL_CALLS, 'maxToolCalls')
     this.maxResponseBytes = positiveInteger(maxResponseBytes, DEFAULT_MAX_RESPONSE_BYTES, 'maxResponseBytes')
     this.fetchImpl = fetchImpl
+    this.provider = llmProviderFor(this.baseUrl)
+    this.providerLabel = this.provider === 'ohmylama' ? 'OhMyLama' : 'RouterAI'
   }
 
   async complete(input, options = {}) {
@@ -510,14 +568,17 @@ export class RouterAIClient extends LLMClient {
       body.stream_options = { include_usage: true }
     }
 
+    // Имя модели внутри сервера — прежнее; провайдеру уходит его формат.
+    const internalModel = body.model
+    const wire = providerRequestBody(this.provider, body)
     try {
       const response = await raceWithSignal(this.fetchImpl(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.apiKey}` },
-        body: JSON.stringify(body),
+        body: JSON.stringify(wire),
         signal: scope.signal,
       }), scope.signal)
-      if (!response.ok) throw new LLMError(`RouterAI ответил HTTP ${response.status}`, 'LLM_PROVIDER_ERROR', { status: response.status })
+      if (!response.ok) throw new LLMError(`${this.providerLabel} ответил HTTP ${response.status}`, 'LLM_PROVIDER_ERROR', { status: response.status })
       if (streaming) {
         const streamed = await raceWithSignal(parseRouterAIEventStream(response.body, {
           onDelta: request.onDelta,
@@ -530,21 +591,21 @@ export class RouterAIClient extends LLMClient {
         }, request, this))
         return {
           ...message,
-          model: streamed.model ?? body.model,
+          model: this.provider === 'ohmylama' ? internalModel : streamed.model ?? body.model,
           usage: streamed.usage,
-          provider: 'RouterAI',
+          provider: this.providerLabel,
           streamed: true,
         }
       }
       const payload = await raceWithSignal(readProviderBody(response, this.maxResponseBytes), scope.signal)
       const usage = payload.usage ?? null
       const message = normalizeWithKnownUsage(usage, () => normalizeAssistantMessage(payload.choices?.[0]?.message, request, this))
-      return { ...message, model: payload.model ?? body.model, usage, provider: 'RouterAI' }
+      return { ...message, model: this.provider === 'ohmylama' ? internalModel : payload.model ?? body.model, usage, provider: this.providerLabel }
     } catch (error) {
       if (scope.timedOut()) throw new LLMTimeoutError(timeoutMs)
       if (request.signal?.aborted) throw new LLMError('LLM-запрос отменён', 'LLM_ABORTED', { cause: error })
       if (error instanceof LLMError) throw error
-      throw new LLMError('Не удалось вызвать RouterAI', 'LLM_PROVIDER_UNAVAILABLE', { cause: error })
+      throw new LLMError(`Не удалось вызвать ${this.providerLabel}`, 'LLM_PROVIDER_UNAVAILABLE', { cause: error })
     } finally {
       scope.close()
     }
@@ -555,6 +616,8 @@ export class RouterAIClient extends LLMClient {
     return result.json
   }
 }
+
+const CONTENT_FAILURE_CODES = new Set(['LLM_JSON_INVALID', 'LLM_RESPONSE_INVALID', 'LLM_RESPONSE_TOO_LARGE'])
 
 export class FallbackLLMClient extends LLMClient {
   constructor({
@@ -601,10 +664,30 @@ export class FallbackLLMClient extends LLMClient {
 
   _markFailure(client, error) {
     const status = this._status(client)
+    // Один тайм-аут после успеха — медленный ответ на большой запрос, а не
+    // упавшая модель. Прежде он снимал основную модель на две минуты, и все
+    // ходы этого окна уходили резервным, которые у OhMyLama отвечают по
+    // 5–38 с: рассказ и прочтение заявок сыпались в шаблоны (замер 19,
+    // 2026-10-11). Второй тайм-аут подряд — уже отказ.
+    // Так же — одиночная недоступность провайдера (обрыв соединения, 5xx):
+    // в замере 28 один обрыв при создании мира отдал резервным моделям весь
+    // первый акт, и разговоры с NPC пошли по кругу.
+    const transient = error instanceof LLMTimeoutError
+      || error?.code === 'LLM_PROVIDER_UNAVAILABLE'
+      || (error?.code === 'LLM_PROVIDER_ERROR' && Number(error?.status) >= 500)
+    const slowOnce = transient && status.failures === 0 && status.lastSuccessAt != null
+    // Негодный ответ (битый JSON, отказ валидатора роли) — изъян одного
+    // ответа, а не провайдера: модель отвечает. Прежде обрезанный JSON мира
+    // снимал Luna на две минуты, и первые ходы партии писали резервные модели
+    // (замер 20, 2026-10-11). Запрос уходит резервной, модель остаётся в строю.
+    if (CONTENT_FAILURE_CODES.has(String(error?.code ?? ''))) {
+      Object.assign(status, { lastErrorCode: String(error.code).slice(0, 80), lastFailureAt: this.now() })
+      return
+    }
     Object.assign(status, {
-      state: 'cooldown',
+      state: slowOnce ? 'ready' : 'cooldown',
       failures: status.failures + 1,
-      disabledUntil: this.now() + this.failureCooldownMs,
+      disabledUntil: slowOnce ? 0 : this.now() + this.failureCooldownMs,
       lastErrorCode: String(error?.code ?? error?.name ?? 'LLM_ERROR').slice(0, 80),
       lastFailureAt: this.now(),
     })
@@ -662,11 +745,18 @@ export class FallbackLLMClient extends LLMClient {
           if (remaining != null && remaining <= 0) throw new LLMTimeoutError(requestedTimeout)
           // Оставляем время резервной модели: зависший основной запрос
           // иначе израсходует весь общий бюджет до переключения.
+          // Лимит модели — для горячего пути. Разовый длинный вызов, который
+          // сам просит больше (создание мира — 45 с), им не обрезается: у
+          // OhMyLama Luna пишет мир за 20,4 с, лимит 20 с срывал его, и
+          // кампания получала запасной шаблон «Ривермарк» (замер 19,
+          // 2026-10-11). Запас резервной модели (60 %) остаётся.
           const configuredLimit = Number(client.timeoutMs)
+          const modelLimit = Number.isFinite(configuredLimit) && configuredLimit > 0 && !(hasDeadline && requestedTimeout > configuredLimit)
+            ? configuredLimit
+            : remaining
           const attemptBudget = remaining == null
             ? null
-            : Math.max(1, Math.min(remaining,
-              Number.isFinite(configuredLimit) && configuredLimit > 0 ? configuredLimit : remaining,
+            : Math.max(1, Math.min(remaining, modelLimit ?? remaining,
               candidateIndex === 0 && candidates.length > 1 ? Math.floor(requestedTimeout * 0.6) : remaining))
           const attemptScope = attemptBudget == null ? null : makeAbortScope(attemptBudget, sharedSignal)
           try {

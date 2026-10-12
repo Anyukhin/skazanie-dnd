@@ -20,9 +20,9 @@ export const PLAYER_REQUEST_ROLES = Object.freeze({
   worldkeeper: { id: 'worldkeeper', purpose: 'Лор, память мира и знания героя' },
   director: { id: 'director', prompt_id: ['director/v4_story', 'director/v4_chaos'], purpose: 'Темп, развилки, групповые решения и переходы сцен' },
   game_master: { id: 'game_master', purpose: 'Правила, проверки, кубики и игровые инструменты' },
-  narrator: { id: 'narrator', prompt_id: 'narrator/v13', purpose: 'Финальное повествование из подтверждённых результатов' },
+  narrator: { id: 'narrator', prompt_id: 'narrator/v14', purpose: 'Финальное повествование из подтверждённых результатов' },
   map_architect: { id: 'map_architect', prompt_id: 'map_architect/v8', purpose: 'Динамическая архитектура новой локации и игровой карты' },
-  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v9', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
+  action_adjudicator: { id: 'action_adjudicator', prompt_id: 'action_adjudicator/v10', purpose: 'Разбор свободного действия: маршрут заявки, цель, средство, применимый навык и цена провала' },
 })
 
 const LORE_REQUEST = /(?:лор|легенд|предани|истори[яию]|что\s+(?:я|мы)\s+(?:уже\s+|вообще\s+)?зна|кто\s+так|что\s+так|расскажи\s+(?:мне\s+)?(?:о|об|про)|помню\s+ли)/iu
@@ -125,15 +125,17 @@ export function answerTableQuestion(action, state = {}, { actorId = '', worldClo
   // Имя в именительном падеже: склонять чужие имена сервер не умеет, а «у
   // Клара Вельм» режет слух сильнее, чем перечисление.
   const askWho = informed.length
-    ? ` Знать могут здесь: ${informed.slice(0, 2).map((npc) => `${visibleText(npc.name, 80)} — ${visibleText(npc.role, 80).toLocaleLowerCase('ru')}`).join('; ')}.`
-    : ' Можно осмотреться или расспросить местных.'
+    ? ` Можно посмотреть самим или спросить: ${informed.slice(0, 2).map((npc) => `${visibleText(npc.name, 80)} — ${visibleText(npc.role, 80).toLocaleLowerCase('ru')}`).join('; ')}.`
+    : ' Можно посмотреть самим или поискать того, кто видел.'
   if (presence && subject) {
     const mentioned = npcs.find((npc) => RU_WORD_STEM(subject) && visibleText(`${npc.role} ${npc.name}`, 200).toLocaleLowerCase('ru').replace(/ё/gu, 'е').includes(RU_WORD_STEM(subject)))
     if (mentioned) return reply(`Да: ${visibleText(mentioned.name, 80)} — ${visibleText(mentioned.role, 120).toLocaleLowerCase('ru')}.`, 'visible-scene')
     return reply(`Пока на глаза не попадается.${askWho}`, 'visible-scene')
   }
   if (/\?\s*$/u.test(text) || /^(?:а\s+)?(?:сколько|где|когда|куда|откуда|какой|какая|какое|какие|кто|что|почему|зачем)(?![\p{L}\p{M}])/iu.test(text)) {
-    return reply(`Этого вы пока не знаете.${askWho}`, 'unknown-to-party')
+    // Не «этого вы не знаете, знать могут…» по кругу: ведущий честно говорит,
+    // что ответа ещё не звучало, и называет, где его взять (плейтест 2026-10-10).
+    return reply(`Этого пока никто не сказал и вы сами не видели.${askWho}`, 'unknown-to-party')
   }
   return null
 }
@@ -478,7 +480,7 @@ export function unknownDestinationReply(action, state = {}, { isRevealed = null 
  *   игрока, когда `action` собран сервером из ответа судьи: по ней подпись
  *   берёт предлог и падеж самого игрока
  */
-export function proposeAgentInteraction(action, state = {}, { sourceText = '' } = {}) {
+export function proposeAgentInteraction(action, state = {}, { sourceText = '', actorName = '' } = {}) {
   const text = String(action || '').normalize('NFKC')
   if (!text || /^\s*\[РЕШЕНИЕ ГРУППЫ\]/iu.test(text) || state.agentInteraction) return null
   if (FATE_REQUEST.test(text)) {
@@ -529,7 +531,15 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
     return {
       type: 'vote',
       title: knownFrom ? `Покинуть «${from}»?` : 'Покинуть подземелье?',
-      description: 'Дорога ведёт весь отряд, поэтому решаете вместе: уходит отряд, если за это большинство.',
+      // Голос ведущего, а не правило голосования: вопрос задаёт сама карточка,
+      // а в хронике звучит решение в путь. «Все идут?» судья трижды назвал
+      // служебной проверкой (замеры 10–12, 2026-10-10), а «Значит, в путь в
+      // «Заброшенный маяк»» — внутренней кухней с двумя «в» подряд (замер 19).
+      // «В «Маяк» — так в путь?» судья читал интерфейсом (11 прогонов из 24):
+      // ведущий называет, кто зовёт и куда.
+      description: phrase
+        ? (actorName ? `${actorName} зовёт отряд ${phrase}.` : `Отряд собирается ${phrase}.`)
+        : (actorName ? `${actorName} зовёт уходить.` : 'Отряд собирается уходить.'),
       options: [leaveOption, ...(abandonOption ? [abandonOption] : []), 'Остаться и исследовать дальше'],
       resolutionPrompt: 'Исполни решение большинства. Если отряд уходит, бесшовно открой следующую локацию.',
       ...(exit.destinationLocationId ? { destinationLocationId: exit.destinationLocationId } : {}),
@@ -550,7 +560,7 @@ export function proposeAgentInteraction(action, state = {}, { sourceText = '' } 
  * @param {{ route?: string, destination?: string }|null} hint
  * @param {Record<string, any>} [state]
  */
-export function proposeRoutedTravel(hint, state = {}, action = '') {
+export function proposeRoutedTravel(hint, state = {}, action = '', actorName = '') {
   if (hint?.route !== 'travel' || state.agentInteraction) return null
   const destination = String(hint.destination ?? '').replace(/[«»]/gu, '').replace(/\s+/gu, ' ').trim().slice(0, 80)
   // Место из цели сцены годится и без родового слова: «смотровой дамбы» нет
@@ -559,11 +569,11 @@ export function proposeRoutedTravel(hint, state = {}, action = '') {
   if (!travelDestinationIsPlace(destination, exitContextFromState(state))
     && !(objectiveNamesDestination(destination, state.scene?.objective)
       && !objectiveNamesDestination(destination, state.scene?.location))) return null
-  const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state, { sourceText: String(action ?? '') })
+  const card = proposeAgentInteraction(destination ? `Отправляемся в «${destination}»` : 'Уходим отсюда', state, { sourceText: String(action ?? ''), actorName })
   if (card?.type !== 'vote') return null
   return {
     ...card,
-    description: 'Похоже, отряд собрался в другое место. Дорога ведёт весь отряд, поэтому её подтверждают голосованием — даже за столом из одного героя.',
+    description: destination ? `Похоже, пора в путь — в «${destination}».` : 'Похоже, пора уходить.',
   }
 }
 
@@ -588,6 +598,20 @@ function heroBackstoryAnswer(action, state = {}, actorId = '') {
     effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
     provider: 'AgentWorldkeeper', model: 'hero-backstory', turn_consumed: false, action_kind: 'free',
   }
+}
+
+/**
+ * Основы слов вопроса для сверки с находками: «хозяин» и «хозяина»,
+ * «баркас» и «баркаса» сходятся по первым пяти буквам.
+ *
+ * @param {unknown} value
+ * @returns {Set<string>}
+ */
+function questionStems(value) {
+  const stop = new Set(['что', 'чего', 'кто', 'как', 'где', 'мы', 'уже', 'знаем', 'знает', 'знаю', 'об', 'обо', 'про', 'этом', 'этот', 'наш', 'нашим', 'было', 'есть'])
+  return new Set((String(value ?? '').normalize('NFKC').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/[\p{L}-]{4,}/gu) ?? [])
+    .filter((word) => !stop.has(word))
+    .map((word) => word.slice(0, 5)))
 }
 
 export function answerKnownLore(action, state = {}, options = {}) {
@@ -635,35 +659,99 @@ export function answerKnownLore(action, state = {}, options = {}) {
       action_kind: 'free',
     }
   }
-  // Сначала то, что отряд нашёл сам, затем остальное известное — коротко:
-  // ведущий напоминает суть, а не зачитывает пролог целиком.
-  const found = []
-  const known = []
-  // «Что мы уже знаем?» не называет темы: находки отряда перечисляются все,
-  // даже если поиск по словам вопроса ничего не нашёл.
+  // Ведущий отвечает на вопрос, а не зачитывает всё подряд: сначала находки и
+  // слова собеседников по теме вопроса, затем — если прямого ответа нет — кто
+  // может знать. Плейтест 2026-10-10: «Что мы знаем о хозяине баркаса?» получало
+  // «Ещё известно: <пролог>. Цель: …» — сухой пересказ без ответа.
+  const asked = questionStems(action)
+  const relevance = (value) => asked.size ? [...questionStems(value)].filter((stem) => asked.has(stem)).length : 0
   const discoveries = (visibleMemory?.facts ?? [])
     .filter((fact) => fact?.status !== 'superseded' && ['party', 'public'].includes(String(fact?.visibility)))
     .filter((fact) => fact.predicate === 'discovery')
-  for (const fact of [...discoveries, ...worldFacts]) {
-    const line = asSentence(fact.fact?.summary || fact.summary || fact.object || fact.predicate, 400)
-    if (!line) continue
-    if ((fact.fact?.predicate ?? fact.predicate) === 'discovery') found.push(line)
-    else if ((fact.fact?.predicate ?? fact.predicate) !== 'opening_narration') known.push(line)
+    .map((fact) => asSentence(fact.summary || fact.object, 400))
+    .filter(Boolean)
+  const knownFacts = worldFacts
+    .filter((fact) => !['discovery', 'opening_narration'].includes(String(fact.fact?.predicate ?? fact.predicate)))
+    .map((fact) => asSentence(fact.fact?.summary || fact.summary || fact.object, 400))
+    .filter(Boolean)
+  const npcNames = new Map((state.social?.npcs ?? []).map((npc) => [String(npc?.id), visibleText(npc?.name, 80)]))
+  const heard = (state.social?.conversations ?? [])
+    .filter((entry) => entry?.visibility === 'party' || entry?.hero_id === (options.viewer?.playerId ?? options.actorId))
+    .map((entry) => ({ who: npcNames.get(String(entry.npc_id)) ?? '', line: heardSentence(entry.npc_reply) }))
+    .filter((entry) => entry.who && entry.line)
+  // Из ответа собеседника — фраза по теме вопроса, а не первые 240 знаков:
+  // прежде цитата обрывалась на полуслове, а нужное стояло в конце реплики.
+  function heardSentence(reply) {
+    const sentences = (visibleText(reply, 1_200).match(/[^.!?…]+[.!?…]*/gu) ?? []).map((sentence) => sentence.trim()).filter(Boolean)
+    if (!sentences.length) return ''
+    const best = sentences.map((sentence, index) => ({ sentence, index, score: relevance(sentence) }))
+      .sort((left, right) => right.score - left.score || left.index - right.index)[0]
+    const next = sentences[best.index + 1]
+    return visibleText(next && best.sentence.length + next.length <= 220 ? `${best.sentence} ${next}` : best.sentence, 240)
   }
-  const goal = asSentence(scene.objective || questObjective, 240)
-  const history = (Array.isArray(adventure.history) ? adventure.history.slice(-2) : [])
+  const ranked = (items, score) => items
+    .map((item, index) => ({ item, index, score: score(item) }))
+    .sort((left, right) => right.score - left.score || right.index - left.index)
+  const foundRanked = ranked([...new Set(discoveries)], relevance)
+  const heardRanked = ranked(heard, (entry) => relevance(entry.line))
+  const knownRanked = ranked([...new Set(knownFacts)], relevance)
+  const topical = asked.size > 0
+  const foundLines = (topical && foundRanked.some((entry) => entry.score > 0)
+    ? foundRanked.filter((entry) => entry.score > 0) : foundRanked).slice(0, 3).map((entry) => entry.item)
+  const heardPicked = heardRanked.filter((entry) => !topical || entry.score > 0).slice(0, 2)
+  const heardLines = heardPicked
+    .map((entry) => `${entry.item.who}: «${entry.item.line.replace(/[«»]/gu, '"').replace(/[.!?…]+$/u, '')}».`)
+  const quoted = new Set(heardPicked.map((entry) => entry.item.who))
+  // Память мира уже отобрана по словам вопроса (`retrieveKnownWorldMemory`):
+  // её порядок — порядок уместности.
+  // Один факт не звучит дважды: запись памяти, пересказывающая уже названную
+  // находку или слова собеседника, отбрасывается (плейтест 2026-10-10: «Мара
+  // внесла в книгу…» прозвучало находкой, цитатой и фактом подряд).
+  const said = [...foundLines, ...heardPicked.map((entry) => entry.item.line)].map((line) => questionStems(line))
+  const repeats = (line) => {
+    const stems = questionStems(line)
+    return stems.size > 0 && said.some((other) => [...stems].filter((stem) => other.has(stem)).length / stems.size >= 0.5)
+  }
+  const knownLines = knownRanked.filter((entry) => !topical || entry.score > 0).map((entry) => entry.item)
+    .filter((line) => !repeats(line)).slice(0, 2)
+  const history = (Array.isArray(adventure.history) ? adventure.history.slice(-1) : [])
     .map((chapter) => asSentence(chapter?.outcome, 240)).filter(Boolean)
+  // Того, кого только что процитировали, второй раз не советуют спросить.
+  // Совет — только к тому, кого отряд уже знает: с кем говорил или кого назвал
+  // рассказ. «Знать может Мартен Рыжий» о ни разу не встреченном торговце
+  // судья читал как имя из ниоткуда (замеры 2026-10-10).
+  const talkedTo = new Set((state.social?.conversations ?? []).map((entry) => String(entry?.npc_id ?? '')))
+  const toldOf = (visibleMemory?.facts ?? []).filter((fact) => ['party', 'public'].includes(String(fact?.visibility)))
+    .map((fact) => String(fact.summary ?? '')).join(' ').toLocaleLowerCase('ru')
+  const introduced = (npc) => talkedTo.has(String(npc.id ?? ''))
+    || (visibleText(npc.name, 80).split(/\s+/u)[0].length >= 3 && toldOf.includes(visibleText(npc.name, 80).split(/\s+/u)[0].toLocaleLowerCase('ru')))
+  const informed = presentSceneNpcs(state).filter((npc) => visibleText(npc.role, 120))
+    .filter((npc) => !quoted.has(visibleText(npc.name, 80)) && introduced(npc)).slice(0, 2)
+  const answered = foundLines.length || heardLines.length || knownLines.length
+  // Слова собеседника — уже ответ, хоть и не проверенный: «прямого ответа нет»
+  // рядом с цитатой спорило бы с ней.
+  const leadHead = heardLines.length ? 'Своими глазами вы этого не видели' : 'Прямого ответа пока нет'
+  // Имя без склонения: «спросить можно Мартен Рыжий» резало слух. «Знать
+  // может» держит именительный падеж.
+  const lead = informed.length
+    ? `${leadHead} — знать ${informed.length > 1 ? 'могут' : 'может'} ${informed.map((npc) => `${visibleText(npc.name, 80)} (${visibleText(npc.role, 80).toLocaleLowerCase('ru')})`).join(' или ')}.`
+    : `${leadHead} — стоит осмотреться или поискать того, кто видел.`
   const hook = asSentence(adventure.currentHook, 400)
-  if (hook) known.unshift(hook)
   const parts = [
-    found.length ? `Вы выяснили: ${[...new Set(found)].slice(0, 4).join(' ')}` : '',
-    known.length ? `Ещё известно: ${[...new Set(known)].slice(0, 2).join(' ')}` : '',
-    history.length ? `Прежде: ${history.join(' ')}` : '',
-    goal ? `Цель: ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}` : '',
+    foundLines.length ? `Из того, что вы нашли: ${foundLines.join(' ')}` : '',
+    heardLines.length ? `Вам говорили — ${heardLines.join(' ')}` : '',
+    knownLines.length ? knownLines.join(' ') : '',
+    !answered && hook ? `Известно немногое: ${hook}` : '',
+    !answered && history.length ? `Прежде: ${history.join(' ')}` : '',
+    topical && !foundRanked.some((entry) => entry.score > 0)
+      ? answered || hook ? lead : `Пока ничего подтверждённого об этом не известно. ${lead}`
+      : '',
   ].filter(Boolean)
-  const narration = found.length || known.length || history.length
+  const narration = parts.length
     ? parts.join(' ')
-    : `Пока ничего подтверждённого об этом не известно — только то, что вы видели сами.${goal ?` Цель: ${goal.charAt(0).toLocaleLowerCase('ru')}${goal.slice(1)}` : ''} Осмотритесь или расспросите местных.`
+    : hook
+      ? `Известно немногое: ${hook} ${lead}`
+      : `Пока ничего подтверждённого об этом не известно. ${lead}`
   return {
     narration,
     effects: { roll: null, reveal: [], spawn: [], objective: null, grantItems: [], scene: null, interaction: null },
@@ -672,6 +760,16 @@ export function answerKnownLore(action, state = {}, options = {}) {
     model: 'campaign-memory',
     turn_consumed: false,
     action_kind: 'free',
+    // Тот же отобранный материал — для голоса хранителя (`server/lore-voice.mjs`):
+    // модель пересказывает только его, а без неё звучит ответ выше.
+    lore_material: {
+      found: foundLines,
+      heard: heardPicked.map((entry) => ({ who: entry.item.who, line: entry.item.line })),
+      known: knownLines,
+      lead: informed.map((npc) => ({ name: visibleText(npc.name, 80), role: visibleText(npc.role, 80) })),
+      hook: !answered ? hook : '',
+      unknown: Boolean(topical && !foundRanked.some((entry) => entry.score > 0) && !heardLines.length),
+    },
   }
 }
 

@@ -256,9 +256,46 @@ test('ответ Хранителя говорит простым языком �
   const known = answerKnownLore('Что я знаю про архивариуса?', {
     adventure: { currentHook: 'Печать открывает путь к забытому королю' },
   })
-  assert.match(known.narration, /Ещё известно: Печать открывает путь/u)
+  assert.match(known.narration, /Известно немногое: Печать открывает путь/u)
   assert.doesNotMatch(known.narration, /Скрытых сведений сверх этой памяти/u)
 
   const unknown = answerKnownLore('Что я знаю про архивариуса?', {})
   assert.match(unknown.narration, /Пока ничего подтверждённого об этом не известно/u)
+})
+
+test('ответ о знании цитирует фразу собеседника по теме и не советует спросить его же', () => {
+  // Плейтест 2026-10-10: цитата обрывалась на 240-м знаке, а нужное стояло в
+  // конце реплики; следом шло «спросить можно Марен» — у той, кого только что
+  // процитировали.
+  const state = {
+    scene: { location: 'Старый маяк' },
+    social: {
+      npcs: [
+        { id: 'npc:maren', name: 'Марен', role: 'Смотритель маяка', location: 'Старый маяк', visibility: 'party' },
+        { id: 'npc:bors', name: 'Борс', role: 'Рыбак', location: 'Старый маяк', visibility: 'party' },
+      ],
+      conversations: [{
+        npc_id: 'npc:maren', hero_id: 'hero', visibility: 'party',
+        npc_reply: 'Дождь третий день, сети гниют, крыша течёт, а жалованья нет с весны, и никто в городе об этом не думает. Баркас «Чайка» видели у северной отмели в ночь грозы.',
+      }, {
+        id: 'conversation:bors-1', npc_id: 'npc:bors', hero_id: 'hero', visibility: 'party',
+        player_message: 'Как улов?', npc_reply: 'Сети пустые третью неделю.',
+      }],
+    },
+  }
+  const known = answerKnownLore('Что мы знаем о баркасе?', state, { viewer: { playerId: 'hero' } })
+  assert.match(known.narration, /Марен: «Баркас "Чайка" видели у северной отмели в ночь грозы»/u)
+  assert.doesNotMatch(known.narration, /сети гниют/u)
+  assert.doesNotMatch(known.narration, /знать может Марен/u)
+  assert.match(known.narration, /Своими глазами вы этого не видели — знать может Борс \(рыбак\)/u)
+  // Незнакомца, с которым отряд не говорил и о ком не слышал, не советуют.
+  const stranger = { ...state, social: { ...state.social, conversations: state.social.conversations.filter((entry) => entry.npc_id !== 'npc:bors') } }
+  assert.doesNotMatch(answerKnownLore('Что мы знаем о баркасе?', stranger, { viewer: { playerId: 'hero' } }).narration, /Борс/u)
+
+  // Тот же факт, записанный памятью мира, второй раз не звучит; без цитаты — звучит.
+  const remembered = { ...state, worldMemory: { entities: [{ id: 'loc', name: 'Старый маяк', kind: 'location', visibility: 'party' }], facts: [{ id: 'f1', subject_id: 'loc', predicate: 'npc_said', object: 'boat', summary: 'Марен говорит, что баркас «Чайка» видели у северной отмели в ночь грозы.', visibility: 'party', status: 'active', recorded_at_minutes: 0 }] } }
+  const once = answerKnownLore('Что мы знаем о баркасе?', remembered, { viewer: { playerId: 'hero', isPartyMember: true } }).narration
+  assert.equal((once.match(/северной отмели/gu) ?? []).length, 1)
+  const factOnly = answerKnownLore('Что мы знаем о баркасе?', { ...remembered, social: { ...state.social, conversations: [] } }, { viewer: { playerId: 'hero', isPartyMember: true } }).narration
+  assert.match(factOnly, /Марен говорит, что баркас/u)
 })

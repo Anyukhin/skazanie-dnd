@@ -30,6 +30,7 @@ import {
   clockLabelOf,
   isIndoors,
   isIndoorScene,
+  pinnedWeatherOn,
   regionWeatherEventDraft,
   timeOfDayOf,
   weatherCheckSwing,
@@ -575,6 +576,34 @@ test('переход в другой край объявляет небо, а н
     scene_args: { location: 'Старый тракт', location_id: 'road', title: 'Тракт', objective: 'Осмотреться' },
   }], before, { diceService: dice([]), context: { isAdmin: true, allowedActorIds: ['scout'] } })
   assert.equal(stayed.events.some((event) => event.event_type === 'WeatherChanged'), false)
+})
+
+test('закреплённое небо держит свои сутки во всех краях и уступает таблице на следующее утро', () => {
+  // Владелец заказал «Ночь, гроза» (`campaignStartCanon`): первые сутки
+  // грозовые при любом сиде и в любом краю, дальше — климат края.
+  const pinned = (options) => {
+    const state = field({ combat: false, ...options })
+    state.mechanics.weather_pins = [{ day: 0, weather: 'storm' }]
+    return state
+  }
+  const night = pinned({ minutes: 900 })
+  assert.equal(campaignDayOf(900), 0)
+  assert.equal(pinnedWeatherOn(night, 0), 'storm')
+  assert.equal(worldClockFor(night).weather, 'storm')
+  assert.equal(regionWeatherEventDraft(night, pinned({ minutes: 900, locationId: 'fen' })), null, 'граница края не гасит заказанную грозу')
+  const nextDay = weatherOnDay({ seed: SEED, day: 1, biome: 'plains' })
+  assert.equal(worldClockFor(pinned({ minutes: 1_320 })).weather, nextDay, 'следующие сутки — по таблице климата')
+  const drafts = worldClockEventDrafts(night, 420)
+  const sky = drafts.find((draft) => draft.event_type === 'WeatherChanged')
+  if (nextDay === 'storm') assert.equal(sky, undefined)
+  else assert.deepEqual([sky?.payload.weather_before, sky?.payload.weather_after], ['storm', nextDay])
+  // Мусор в закреплении не ломает часы: неизвестная погода и дробный день не в счёт.
+  const junk = field({ minutes: 900, combat: false })
+  junk.mechanics.weather_pins = [{ day: 0.5, weather: 'storm' }, { day: 0, weather: 'snow' }, null]
+  assert.equal(pinnedWeatherOn(junk, 0), '')
+  assert.equal(worldClockFor(junk).weather, weatherOnDay({ seed: SEED, day: 0, biome: 'plains' }))
+  // Закрепление переживает нормализацию состояния.
+  assert.deepEqual(normalizeCampaignState(night).mechanics.weather_pins, [{ day: 0, weather: 'storm' }])
 })
 
 test('одно и то же небо не даёт навыку и помеху, и преимущество', () => {

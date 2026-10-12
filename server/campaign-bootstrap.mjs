@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { generateSceneGeometry, levelKey, librarySceneFields, openingEntrySide, rememberSceneMap } from './adventure-director.mjs'
 import { applyNpcWorldEvent, planSceneNpcPlacementEvents } from './npc-positioning.mjs'
-import { deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
+import { cellAt, deserializeTacticalMap, legacyCellsFromTacticalMap, serializeTacticalMap, reachableCells, SIZE_CLASSES } from './tactical-map.mjs'
 import { ECONOMY_POLICY_ID, createStarterMerchant, normalizeInventoryItem, normalizeMerchants } from './merchant-economy.mjs'
 import { STARTER_KIT_2024_POLICY, withStarterKit } from './starter-kit.mjs'
 import { MAX_CHARACTER_LEVEL, partyPresentationFor } from './character-lifecycle.mjs'
@@ -23,7 +23,7 @@ import { getWorldTemplate, worldTemplateConcept, worldTemplateOpening } from './
 import { normalizeWorldOfficesState } from './world-offices.mjs'
 import { isLiveTheme, resolveSceneTheme, SCENE_THEME_IDS } from './scene-themes.mjs'
 import { normalizeSceneMapDesign, worldLocationDesignContext } from './scene-map-design.mjs'
-import { campaignStartCanon } from './scene-canon.mjs'
+import { campaignStartCanon, requestedOpeningCanon } from './scene-canon.mjs'
 import { materializeCatalogItem } from './item-catalog.mjs'
 import { sceneMapRequirementsFor } from './scene-requirements.mjs'
 
@@ -36,8 +36,17 @@ const prompt = readFileSync(fileURLToPath(new URL('../prompts/campaign_creator/v
  * три подряд таймаута и 35 секунд ожидания, прежде чем ответила четвёртая
  * модель. Операция разовая и происходит на экране создания мира, где
  * ожидание уместно, а сожжённые впустую попытки — нет.
+ *
+ * 120 с с 2026-10-11: у OhMyLama Luna пишет мир от 20 до 45+ секунд, и при
+ * 45 с кампании раз за разом получали запасной шаблон «Ночной район
+ * Ривермарк» (замер 19). Клиент ждёт ответа без своего срока; первой модели
+ * достаётся 72 с, резервной — остаток.
  */
-export const CAMPAIGN_BOOTSTRAP_TIMEOUT_MS = 45_000
+export const CAMPAIGN_BOOTSTRAP_TIMEOUT_MS = 120_000
+/** Повтор создания мира — только при недоступности провайдера и с запасом срока. */
+const CAMPAIGN_BOOTSTRAP_RETRY_CODES = new Set(['LLM_FALLBACK_EXHAUSTED', 'LLM_PROVIDER_UNAVAILABLE', 'LLM_PROVIDER_ERROR'])
+const CAMPAIGN_BOOTSTRAP_RETRY_MINIMUM_MS = 30_000
+const CAMPAIGN_BOOTSTRAP_RETRY_PAUSE_MS = 5_000
 
 function clean(value, maximum = 500) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum)
@@ -53,7 +62,7 @@ function prose(value, maximum = 4000) {
  * скрытые ответы будущих арок. Абзацы разделяются, чтобы bounded-факт не
  * обрезал важное имя в длинном сгенерированном вступлении.
  */
-function openingNarrationFacts(opening, locationEntity, campaignCode) {
+function openingNarrationFacts(opening, locationEntity, campaignCode, recordedAtMinutes = 0) {
   if (!locationEntity?.id) return []
   const paragraphs = prose(opening?.openingNarration, 4_000)
     .split(/\n{2,}/u)
@@ -79,7 +88,8 @@ function openingNarrationFacts(opening, locationEntity, campaignCode) {
       source_command_id: `campaign-bootstrap:${campaignCode}`,
       supersedes_fact_id: '',
       status: 'active',
-      recorded_at_minutes: 0,
+      // Пролог звучит в час первой сцены, а не на нулевой минуте часов.
+      recorded_at_minutes: recordedAtMinutes,
     }
   })
 }
@@ -412,8 +422,44 @@ function normalizeOpening(input, fallback, { authored = false } = {}) {
     hook: clean(source.hook, 500) || fallback.hook,
     npcs: normalizeOpeningNpcs(source.npcs, fallback.npcs, { authored }),
     secrets: normalizeOpeningSecrets(source.secrets),
+    canon: normalizeOpeningCanon(source.canon),
     ...(worldRules ? { worldRules } : {}),
   }
+}
+
+/**
+ * Канон сцены (campaign_creator/v8): короткие факты исходной ситуации, которые
+ * знают все в первой сцене, — что случилось, когда, где, чьё и сколько идти.
+ * Без него NPC и рассказчик достраивали мир каждый по-своему: баркас то
+ * «Илин», то «Лиссы», то вернулся сегодня, то давно (замеры 19–24).
+ *
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+export function normalizeOpeningCanon(value) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value.map((entry) => clean(typeof entry === 'string' ? entry : entry?.fact, 220))
+    .filter((entry) => entry.length >= 12))].slice(0, OPENING_CANON_LIMIT)
+}
+
+const OPENING_CANON_LIMIT = 6
+
+/** Факты канона: публичные, о стартовом месте; id детерминирован от текста. */
+function openingCanonFacts(opening, locationEntity, campaignCode, recordedAtMinutes = 0) {
+  if (!locationEntity?.id) return []
+  return (opening?.canon ?? []).map((summary, index) => ({
+    id: `fact:canon:${createHash('sha256').update(`scene-canon\0${campaignCode}\0${index}\0${summary}`).digest('hex').slice(0, 24)}`,
+    subject_id: locationEntity.id,
+    predicate: 'scene_canon',
+    object: 'Установленный факт исходной ситуации',
+    summary,
+    visibility: 'party',
+    source_event_ids: [],
+    source_command_id: `campaign-bootstrap:${campaignCode}`,
+    supersedes_fact_id: '',
+    status: 'active',
+    recorded_at_minutes: recordedAtMinutes,
+  }))
 }
 
 /**
@@ -439,9 +485,135 @@ function openingSecretFacts(opening, locationEntity, campaignCode) {
   }))
 }
 
-function startingCells(cells, count, { anchorFeatures = [], map = null } = {}) {
+/**
+ * Помещение, в котором вводные усаживают героев: «сидят в портовой таверне»,
+ * «укрылись в часовне». Живой замер 2026-10-10: пролог посадил отряд в таверну
+ * «Ржавый якорь», а фишки стояли у восточного края улицы — точка входа
+ * поселения стоит у дороги. Таверна на карте при этом была: самый крупный дом
+ * поселения (`settlementUses`, `server/settlement-generator.mjs`).
+ *
+ * `at` — предложный падеж («в таверне»): герои уже внутри; `into` —
+ * винительный («в таверну»): внутрь ставит только глагол входа в той же фразе
+ * («заходят в таверну»), а «идут в таверну» — ещё снаружи. `zone` — подписи
+ * помещений, которые этим местом считаются (`labelFor` поселения,
+ * `HALL_LABELS` здания).
+ */
+const IN = String.raw`(?<!\p{L})(?:в|во)\s+(?:\p{L}+\s+){0,2}?`
+const END = String.raw`(?!\p{L})`
+const OPENING_INTERIOR_PLACES = Object.freeze([
+  {
+    kind: 'tavern',
+    at: new RegExp(`${IN}(?:таверне|трактире|корчме|кабаке|харчевне|пивной|гостинице|постоялом\\s+дворе|питейном\\s+доме|общем\\s+зале)${END}`, 'u'),
+    into: new RegExp(`${IN}(?:таверну|трактир|корчму|кабак|харчевню|пивную|гостиницу|постоялый\\s+двор|питейный\\s+дом|общий\\s+зал)${END}`, 'u'),
+    zone: /таверн|трактир|постоял|питейн|гостев|корчм|харчевн|общий\s+зал/iu,
+  },
+  {
+    kind: 'temple',
+    at: new RegExp(`${IN}(?:храме|святилище|часовне|церкви|соборе|монастыре|капище)${END}`, 'u'),
+    into: new RegExp(`${IN}(?:храм|часовню|церковь|собор|монастырь)${END}`, 'u'),
+    zone: /храм|святилищ|часовн|неф|притвор|алтарн|собор|монастыр/iu,
+  },
+  {
+    kind: 'shop',
+    at: new RegExp(`${IN}(?:лавке|мастерской|кузнице|аптеке)${END}`, 'u'),
+    into: new RegExp(`${IN}(?:лавку|мастерскую|кузницу|аптеку)${END}`, 'u'),
+    zone: /лавк|торгов|мастерск|кузн|аптек/iu,
+  },
+  {
+    kind: 'manor',
+    at: new RegExp(`${IN}(?:усадьбе|особняке|ратуше|доме\\s+старосты)${END}`, 'u'),
+    into: new RegExp(`${IN}(?:усадьбу|особняк|ратушу|дом\\s+старосты)${END}`, 'u'),
+    zone: /усадьб|старост|резиденц|контор|парадн|ратуш/iu,
+  },
+  {
+    kind: 'barn',
+    at: new RegExp(`${IN}(?:амбаре|конюшне|сарае|хлеву|хлеве)${END}`, 'u'),
+    into: new RegExp(`${IN}(?:амбар|конюшню|сарай|хлев)${END}`, 'u'),
+    zone: /амбар|конюшн|скотн|сара/iu,
+  },
+])
+
+/** Глагол входа: «зашли», «входят», «ввалились», «укрылись». */
+const OPENING_ENTERING_VERB = /(?<!\p{L})(?:заш[её]?л|зашл|заход|вош[её]?л|вошл|вход|вбега|вбежа|ввалива|ввали|забега|забежа|прячут|спрята|укрыва|укрыл)\p{L}*/u
+
+/** Вход снаружи и прошлое: «у дверей таверны», «вчера в таверне». */
+const OPENING_OUTSIDE_SENTENCE = /(?<!\p{L})(?:снаружи|у\s+входа|у\s+двер\p{L}*|перед\s+(?:\p{L}+\s+)?(?:таверн|трактир|храм|лавк|усадьб|амбар|дом)\p{L}*|вчера|накануне|назад|когда-то|прежде|раньше|слух\p{L}*|говорят|помн\p{L}*)(?!\p{L})/u
+
+/**
+ * Вид помещения, в котором вводные застают героев, или `null`. Владелец
+ * сильнее модели: его исходная ситуация спрашивается первой, пролог модели —
+ * только первым абзацем.
+ *
+ * @param {Array<unknown>} texts
+ * @returns {typeof OPENING_INTERIOR_PLACES[number]|null}
+ */
+function openingInteriorPlace(texts) {
+  for (const value of texts) {
+    const sentences = clean(String(value ?? '').replace(/«[^»]{0,200}»/gu, ' '), 2_000).toLocaleLowerCase('ru')
+      .split(/(?<=[.!?…])\s+/u)
+    for (const sentence of sentences) {
+      if (OPENING_OUTSIDE_SENTENCE.test(sentence)) continue
+      let best = null
+      for (const place of OPENING_INTERIOR_PLACES) {
+        const match = place.at.exec(sentence) ?? (OPENING_ENTERING_VERB.test(sentence) ? place.into.exec(sentence) : null)
+        if (match && (!best || match.index < best.at)) best = { place, at: match.index }
+      }
+      if (best) return best.place
+    }
+  }
+  return null
+}
+
+/**
+ * Клетка, от которой отряд рассаживается внутри заказанного помещения, или
+ * `null` — тогда старт прежний, у точки входа карты. Точку входа
+ * (`map.spawnPoints`) это не двигает: по ней отряд возвращается на знакомую
+ * карту (`entranceOnSide`, `server/adventure-director.mjs`).
+ *
+ * Помещение — самое просторное с подписью этого места. Нет такого, а вся
+ * сцена — одно здание (тема `building`/`temple`), — его главный зал, то есть
+ * самое просторное помещение. Поселение без такого дома остаётся как было:
+ * сажать отряд в первый попавшийся дом хуже, чем на улицу.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap|null} map
+ * @param {Array<unknown>} texts
+ * @returns {{x: number, y: number, zone: string}|null}
+ */
+function openingInteriorAnchor(map, texts) {
+  if (!map || !Array.isArray(map.zones)) return null
+  const place = openingInteriorPlace(texts)
+  if (!place) return null
+  const spawn = map.spawnPoints?.find((point) => point.role === 'party')
+  const interior = new Set(map.zones.filter((zone) => zone.kind === 'interior' && zone.label).map((zone) => zone.id))
+  if (spawn && interior.has(cellAt(map, spawn.x, spawn.y)?.zone ?? '')) return null
+  const occupied = new Set((map.props ?? []).flatMap((prop) => prop.footprint ?? []).map((cell) => `${cell.x},${cell.y}`))
+  /** @type {Map<string, Array<{x: number, y: number}>>} */
+  const free = new Map()
+  for (let y = 0; y < map.height; y += 1) for (let x = 0; x < map.width; x += 1) {
+    const cell = cellAt(map, x, y)
+    if (!cell?.passable || !interior.has(cell.zone) || cell.surface === 'water' || occupied.has(`${x},${y}`)) continue
+    if (!free.has(cell.zone)) free.set(cell.zone, [])
+    free.get(cell.zone)?.push({ x, y })
+  }
+  const roomiest = (/** @type {string[]} */ ids) => ids
+    .sort((left, right) => (free.get(right)?.length ?? 0) - (free.get(left)?.length ?? 0) || left.localeCompare(right))[0]
+  const labelled = map.zones.filter((zone) => interior.has(zone.id) && place.zone.test(zone.label)).map((zone) => zone.id)
+  const wholeBuilding = ['building', 'temple'].includes(String(map.theme ?? ''))
+  const zoneId = roomiest(labelled) ?? (wholeBuilding ? roomiest([...free.keys()]) : undefined)
+  const room = zoneId ? free.get(zoneId) ?? [] : []
+  if (!room.length) return null
+  const cx = room.reduce((sum, cell) => sum + cell.x, 0) / room.length
+  const cy = room.reduce((sum, cell) => sum + cell.y, 0) / room.length
+  const anchor = [...room].sort((left, right) => (Math.abs(left.x - cx) + Math.abs(left.y - cy)) - (Math.abs(right.x - cx) + Math.abs(right.y - cy))
+    || left.x - right.x || left.y - right.y)[0]
+  return { ...anchor, zone: String(zoneId) }
+}
+
+function startingCells(cells, count, { anchorFeatures = [], map = null, origin = null } = {}) {
   const occupied = new Set((map?.props ?? []).flatMap((prop) => prop.footprint ?? []).map((cell) => `${cell.x},${cell.y}`))
-  const spawn = map?.spawnPoints?.find((point) => point.role === 'party')
+  // Отряд рассаживается от заказанного вводными помещения, если оно есть,
+  // иначе — от точки входа карты.
+  const spawn = origin ?? map?.spawnPoints?.find((point) => point.role === 'party')
   const reached = spawn ? reachableCells(map, spawn.x, spawn.y, { throughDoors: false }) : null
   const floors = cells.filter((cell) => cell.revealed && cell.type === 'floor' && !cell.feature && !occupied.has(`${cell.x},${cell.y}`) && (!reached || reached.has(`${cell.x},${cell.y}`)))
     .sort((left, right) => left.x - right.x || left.y - right.y)
@@ -471,8 +643,9 @@ function startingCells(cells, count, { anchorFeatures = [], map = null } = {}) {
 }
 
 export class CampaignBootstrapper {
-  constructor({ llmClient = null, loreAuthor = null, diceService = null } = {}) {
+  constructor({ llmClient = null, loreAuthor = null, diceService = null, retryPauseMs = CAMPAIGN_BOOTSTRAP_RETRY_PAUSE_MS } = {}) {
     this.llmClient = llmClient
+    this.retryPauseMs = Math.max(0, Number(retryPauseMs) || 0)
     this.loreAuthor = loreAuthor
     // Единственный источник случайности в проекте. В тестах он детерминирован,
     // поэтому «разные броски дают разные зёрна» — проверяемое утверждение.
@@ -517,10 +690,20 @@ export class CampaignBootstrapper {
       worldTemplate: worldTemplate ? `${worldTemplate.id}@${worldTemplate.version}` : '',
       heroes: heroes.map((hero) => hero.id),
     })).digest('hex').slice(0, 24)
-    const startCanon = campaignStartCanon(seed)
+    // Час и небо, заказанные владельцем во вводных («Ночь, гроза…»): живой
+    // замер 2026-10-10 начал такую кампанию в 08:00 при ясном небе, и пролог
+    // послушно описал утро. Авторский мир начинается своим утром.
+    const startCanon = campaignStartCanon(seed, worldTemplate ? null : requestedOpeningCanon(world))
+    const startMinutes = startCanon.elapsed_minutes
+    // Сдвиг часов и закреплённое небо лежат в seed-снимке: replay их не
+    // пересчитывает, а без заказа механика остаётся прежней пустой.
+    const startMechanics = {
+      ...(startMinutes > 0 ? { world_time: { amount: startMinutes, unit: 'minute', elapsed_minutes: startMinutes } } : {}),
+      ...(startCanon.weather_pin ? { weather_pins: [startCanon.weather_pin] } : {}),
+    }
     if (this.llmClient && !worldTemplate) {
-      try {
-        const result = await this.llmClient.completeJson({
+      const startedAt = Date.now()
+      const request = {
           messages: [
             { role: 'system', content: prompt },
             // Вводные владельца и листы героев — свободный текст игроков. Они
@@ -545,12 +728,27 @@ export class CampaignBootstrapper {
             }) },
           ],
           temperature: 0.8,
-          maxTokens: 3200,
-          timeoutMs: CAMPAIGN_BOOTSTRAP_TIMEOUT_MS,
-        })
-        opening = normalizeOpening(result, fallback)
-        generatedBy = 'ai-storyteller'
-      } catch { /* A new campaign must still be playable when the provider is unavailable. */ }
+          // С каноном сцены мир занимает около 2900 токенов: при 3200 ответ
+          // Luna обрывался битым JSON, и мир писала резервная модель (замер 27).
+          maxTokens: 4800,
+      }
+      // Провайдер лёг на минуту — ещё одна попытка, пока срок не вышел:
+      // шаблонный «Ривермарк» вместо мира по вводным — худший исход создания
+      // (замеры 27–29, 2026-10-11: OhMyLama не отвечала ни одной моделью).
+      for (let attempt = 0; attempt < 2 && generatedBy !== 'ai-storyteller'; attempt += 1) {
+        const remaining = CAMPAIGN_BOOTSTRAP_TIMEOUT_MS - (Date.now() - startedAt)
+        if (remaining < CAMPAIGN_BOOTSTRAP_RETRY_MINIMUM_MS) break
+        try {
+          // Первая попытка — весь срок; повтор — сколько осталось.
+          const result = await this.llmClient.completeJson({ ...request, timeoutMs: attempt === 0 ? CAMPAIGN_BOOTSTRAP_TIMEOUT_MS : remaining })
+          opening = normalizeOpening(result, fallback)
+          generatedBy = 'ai-storyteller'
+        } catch (error) {
+          // A new campaign must still be playable when the provider is unavailable.
+          if (!CAMPAIGN_BOOTSTRAP_RETRY_CODES.has(String(error?.code ?? ''))) break
+          await new Promise((resolve) => setTimeout(resolve, this.retryPauseMs))
+        }
+      }
     }
     // У авторского мира со сценарием арку задаёт сюжет (`campaign-scenario.mjs`),
     // а не хеш: главы, финал и развязки — данные сценария.
@@ -640,7 +838,22 @@ export class CampaignBootstrapper {
       entrySide: openingEntrySide(campaignWorldMap, campaignWorldMap.currentLocationId),
     })
     const cells = geometry.cells
-    const positions = startingCells(cells, heroes.length, {
+    // Старт там, где вводные застали героев: «сидят в таверне» — за её
+    // столами, а не у края улицы. Тесная комната или карта без такого дома —
+    // прежний старт у точки входа. Авторский мир стартует как задуман.
+    const interiorOrigin = worldTemplate ? null : openingInteriorAnchor(geometry.map, [
+      world.openingSituation,
+      prose(opening.openingNarration, 4_000).split(/\n{2,}/u)[0],
+    ])
+    let positions = null
+    if (interiorOrigin) {
+      try {
+        positions = startingCells(cells, heroes.length, { map: geometry.map, origin: interiorOrigin })
+      } catch {
+        positions = null
+      }
+    }
+    positions ??= startingCells(cells, heroes.length, {
       map: geometry.map,
       anchorFeatures: worldTemplate ? ['table_small', 'market_stall', 'well', 'water_trough'] : [],
     })
@@ -773,7 +986,7 @@ export class CampaignBootstrapper {
       social: { npcs: openingNpcs },
       players: positionedHeroes,
       npc_world: emptyNpcWorld,
-      mechanics: {},
+      mechanics: structuredClone(startMechanics),
     }
     let npcWorld = emptyNpcWorld
     planSceneNpcPlacementEvents(placementDraft).forEach((draft, index) => {
@@ -789,7 +1002,10 @@ export class CampaignBootstrapper {
     })
     const openingLocationEntity = sceneMemory.entities.find((entity) => entity.kind === 'location'
       && entity.name.toLocaleLowerCase('ru') === opening.scene.location.toLocaleLowerCase('ru'))
-    const openingFacts = openingNarrationFacts(opening, openingLocationEntity, campaignCode)
+    const openingFacts = [
+      ...openingNarrationFacts(opening, openingLocationEntity, campaignCode, startMinutes),
+      ...openingCanonFacts(opening, openingLocationEntity, campaignCode, startMinutes),
+    ]
     const openingFactIds = openingFacts.map((fact) => fact.id)
     // Знание принадлежит NPC текущей сцены. Публичность самих фактов позволяет
     // партии и её собеседнику читать их через общий retriever, а список IDs
@@ -869,7 +1085,7 @@ export class CampaignBootstrapper {
       players: positionedHeroes,
       merchants,
       ...(worldOffices ? { world_offices: worldOffices } : {}),
-      enemies: [], entities: [], mapFeedback: [], battleLog: [], mechanics: {}, rulings: [],
+      enemies: [], entities: [], mapFeedback: [], battleLog: [], mechanics: startMechanics, rulings: [],
       activePlayerId: positionedHeroes[0].id,
       tacticalTurn: { sceneTurn: 1, actorId: positionedHeroes[0].id, movementSpent: 0, actionUsed: false },
       isNarrating: false, pendingCheck: null, agentInteraction: null, lastDiceRoll: null,

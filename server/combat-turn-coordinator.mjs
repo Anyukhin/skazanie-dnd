@@ -18,6 +18,10 @@ export const DEFAULT_RETRY_BASE_DELAY_MS = 250
 export const ACTIVE_TURN_LIMIT_FACTOR = 3
 export const DEFAULT_RETRY_MAX_DELAY_MS = 30_000
 export const DEFAULT_RETRY_BACKOFF_STEPS = 8
+// Предел удержания автохода (`hold`): дольше маршрут команды не держит бой,
+// даже если забыл отпустить. С запасом выше срока критической реплики
+// рассказчика (`CRITICAL_NARRATION_TIMEOUT_MS`, 8 с).
+export const DEFAULT_HOLD_MAX_MS = 12_000
 
 const normalizedCampaignId = (value) => String(value ?? '').trim().toUpperCase()
 const keyPart = (value) => String(value ?? '').replace(/[^A-Za-z0-9._-]/gu, '-').slice(0, 60) || 'none'
@@ -286,38 +290,68 @@ export class CombatTurnCoordinator {
     return clock ? { ...clock, actor_ids: [...clock.actor_ids] } : null
   }
 
-  nudge(campaignId) {
-    const id = normalizedCampaignId(campaignId)
-    if (!id) return
+  #entryFor(id) {
     const entry = this.entries.get(id) ?? {
       running: false,
       pending: false,
       timer: null,
       clock: null,
       retryAttempt: 0,
+      holds: new Set(),
     }
-    entry.pending = true
     this.entries.set(id, entry)
+    return entry
+  }
+
+  nudge(campaignId) {
+    const id = normalizedCampaignId(campaignId)
+    if (!id) return
+    const entry = this.#entryFor(id)
+    entry.pending = true
     if (!entry.running) queueMicrotask(() => { void this.#settle(id) })
   }
 
   async settleNow(campaignId) {
     const id = normalizedCampaignId(campaignId)
     if (!id) return
-    const entry = this.entries.get(id) ?? {
-      running: false,
-      pending: false,
-      timer: null,
-      clock: null,
-      retryAttempt: 0,
-    }
+    const entry = this.#entryFor(id)
     entry.pending = true
-    this.entries.set(id, entry)
     await this.#settle(id)
   }
 
+  /**
+   * Придерживает автоход кампании, пока держатель не отпустит его (или не
+   * истечёт `maxMs`). Координатор не начинает следующий оборот — ходы NPC и
+   * пропуск по часам ждут; уже начатый оборот доигрывается.
+   *
+   * Зачем: маршрут команды пишет в летопись строку своего хода, а затем ждёт
+   * критическую реплику рассказчика. Плейтест 2026-10-10: за эти секунды
+   * координатор успевал сыграть ход огра, и реплика о падении героя ложилась
+   * после чужого хода, а строка атаки по возможности пропадала вовсе.
+   *
+   * @returns {() => void} отпустить; повторный вызов безопасен
+   */
+  hold(campaignId, { maxMs = DEFAULT_HOLD_MAX_MS } = {}) {
+    const id = normalizedCampaignId(campaignId)
+    if (!id) return () => {}
+    const entry = this.#entryFor(id)
+    let release = () => {}
+    const released = new Promise((resolve) => { release = () => resolve(undefined) })
+    const timer = this.setTimer(() => release(), positiveRetryDelay(maxMs, DEFAULT_HOLD_MAX_MS))
+    const hold = { release, promise: released }
+    entry.holds.add(hold)
+    void released.then(() => {
+      this.clearTimer(timer)
+      entry.holds.delete(hold)
+    })
+    return release
+  }
+
   close() {
-    for (const entry of this.entries.values()) if (entry.timer != null) this.clearTimer(entry.timer)
+    for (const entry of this.entries.values()) {
+      if (entry.timer != null) this.clearTimer(entry.timer)
+      for (const hold of entry.holds ?? []) hold.release()
+    }
     this.entries.clear()
   }
 
@@ -341,6 +375,8 @@ export class CombatTurnCoordinator {
     entry.running = true
     try {
       while (entry.pending) {
+        // Удержание маршрута команды: следующий оборот ждёт, пока его отпустят.
+        while (entry.holds?.size) await Promise.all([...entry.holds].map((hold) => hold.promise))
         entry.pending = false
         if (entry.timer != null) {
           this.clearTimer(entry.timer)
@@ -356,7 +392,8 @@ export class CombatTurnCoordinator {
         })
         let loaded = await this.eventStore.load(campaignId)
         if (npc.events?.length) {
-          await this.onCommitted({ campaignId, state: loaded.state, events: npc.events })
+          // `turns` несут публичную тактику существ — ею хроника окрашивает ход.
+          await this.onCommitted({ campaignId, state: loaded.state, events: npc.events, turns: npc.turns ?? [] })
         }
 
         const turnActorIds = activeTurnActorIds(loaded.state)

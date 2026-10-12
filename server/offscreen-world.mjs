@@ -468,6 +468,18 @@ function factionMovesByKind(ledger) {
 const questLabel = (quest) => text(quest?.title, 180) || text(quest?.id, 120) || 'задание'
 
 /**
+ * Короткое имя задания для врезки: до двоеточия и не длиннее семидесяти
+ * знаков по границе слова. Заголовки заданий бывают целыми целями — «Найти в
+ * «Скале» другой путь к разгадке: …» — и три таких строки топили карточку.
+ */
+function shortQuestTitle(title) {
+  const head = String(title ?? '').split(/:\s/u)[0].replace(/[.!?…\s]+$/u, '').trim()
+  if (head.length <= 70) return head
+  const cut = head.slice(0, 70)
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), 40)).replace(/[,;—–-]+$/u, '')}…`
+}
+
+/**
  * Черновик факта памяти мира в той форме, которую ждёт редьюсер
  * (`safeFact`, `server/world-memory.mjs`). Собран в одном месте намеренно:
  * поля памяти мира легко забыть, а забытое `recorded_at_minutes` тихо ставит
@@ -589,7 +601,7 @@ export function planOffscreenWorldStep(state = {}, { elapsedMinutes = 0 } = {}) 
       quest_id: text(quest.id, 120),
       quest_title: title,
       count: clock.current + 1,
-      summary: `«${title}»: срок поджимает (${clock.current + 1} из ${clock.max}).`,
+      summary: `«${shortQuestTitle(title)}» — времени на это остаётся меньше.`,
     })
     drafts.push({
       event_type: 'QuestClockAdvanced',
@@ -730,11 +742,21 @@ const LINE_PRIORITY = Object.freeze(['quest_expired', 'faction_move', 'quest_dea
 
 export function offscreenLinesFor(entries = []) {
   const list = Array.isArray(entries) ? entries : []
+  // Тиканье часов — одна строка на всю врезку: «срок поджимает (1 из 5)» трижды
+  // подряд читалось как журнал, а не как мир (плейтест 2026-10-10).
+  const clocks = list.filter((entry) => entry?.kind === 'quest_clock')
   return LINE_PRIORITY
-    .flatMap((kind) => list.filter((entry) => entry?.kind === kind))
-    .map((entry) => text(entry.summary, 400))
+    .flatMap((kind) => kind === 'quest_clock'
+      ? (clocks.length ? [questClockLine(clocks)] : [])
+      : list.filter((entry) => entry?.kind === kind).map((entry) => text(entry.summary, 400)))
     .filter(Boolean)
     .slice(0, MAX_LINES)
+}
+
+function questClockLine(clocks) {
+  const [first] = clocks
+  if (clocks.length === 1) return text(first?.summary, 400)
+  return `Время не ждёт: «${shortQuestTitle(first?.quest_title)}» и другие дела отряда без вас не стоят на месте.`
 }
 
 // ---------------------------------------------------------------------------
