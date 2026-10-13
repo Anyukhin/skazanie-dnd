@@ -789,7 +789,37 @@ test('direct orchestrator caller cannot select a hidden explicit npc_id', async 
 
   assert.equal(result.turn_consumed, false)
   assert.match(result.narration, /Кому это|рядом/iu)
+  assert.doesNotMatch(result.narration, /Hidden/u, 'имя скрытого собеседника не раскрывается')
   assert.equal(socialCalls, 0)
+})
+
+test('known npc in another place: the answer says where, not «who is it?»', async () => {
+  // Прогон Асстохана 2026-10-13: «Спрашиваю короля Ареса…» в лагере стражи
+  // получал «Кому это — Гедрик Сол?» — переспрос про того, кого не называли.
+  const initial = campaign()
+  initial.social.npcs.push({ ...initial.social.npcs[0], id: 'ares', name: 'King Ares', role: 'king', location: 'Stormberg' })
+  const root = mkdtempSync(join(tmpdir(), 'skazanie-absent-npc-'))
+  const eventStore = new FileEventStore({ rootDir: join(root, 'events'), reducer: applyGameEvent, normalizeState: normalizeCampaignState })
+  await eventStore.initializeCampaign({ campaign_id: 'ABSENT-NPC', initial_state: { ...initial, sessionCode: 'ABSENT-NPC' } })
+  const orchestrator = new GameOrchestrator({
+    intentParser: { parse: async ({ message, playerId }) => ({
+      actor_id: playerId, intent: 'unknown', approach: '', targets: [],
+      mentioned_entities: [], missing_information: [], requires_clarification: false,
+      confidence: 1, raw_message: message,
+    }) },
+    adjudicator: { createPlan: async () => { throw new Error('Absent npc must not reach adjudication') } },
+    npcSocialController: { respond: async () => null },
+    rulesEngine: new RulesEngine({ diceService: dice() }),
+    eventStore,
+  })
+  const result = await orchestrator.handle({
+    state: { ...initial, sessionCode: 'ABSENT-NPC' }, campaignId: 'ABSENT-NPC', playerId: 'hero',
+    message: 'Ask the king where to go.', idempotencyKey: 'absent-explicit', npcId: 'ares', user: { role: 'player' },
+  })
+  assert.equal(result.turn_consumed, false)
+  assert.match(result.narration, /King Ares — не здесь, а в другом месте: Stormberg./u)
+  assert.match(result.narration, /Здесь можно поговорить: Marta./u)
+  assert.doesNotMatch(result.narration, /Кому это/u)
 })
 
 test('an explicit npc_id conflicts with a duplicate non-social request', async () => {

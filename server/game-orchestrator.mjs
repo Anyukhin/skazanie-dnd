@@ -937,6 +937,15 @@ function humanMissingInformation(values, state, intent = {}) {
   }
   if (missing.includes('npc_id') || missing.includes('available_npc')) {
     const names = availableNpcNames(state, intent.actor_id)
+    const absent = intent.absent_npc
+    if (absent?.name) {
+      const why = absent.reason === 'combat' ? `${absent.name} сейчас не ответит: идёт схватка.`
+        : absent.reason === 'elsewhere' && absent.location ? `${absent.name} — не здесь, а в другом месте: ${absent.location}.`
+          : `${absent.name} сейчас не ответит.`
+      if (absent.reason === 'combat') return why
+      const others = names.filter((name) => name !== absent.name)
+      return others.length ? `${why} Здесь можно поговорить: ${others.join(', ')}.` : `${why} Рядом никого, кто бы ответил.`
+    }
     return names.length
       ? `Кому это — ${names.join(', ')}?`
       : 'Рядом никого, кто бы ответил: люди — там, где жильё и дорога.'
@@ -3266,6 +3275,20 @@ export class GameOrchestrator {
       if (unavailable) {
         intent.requires_clarification = true
         intent.missing_information = ['available_npc']
+        // Названного собеседника нет в сцене — ответ говорит об этом прямо, а
+        // не переспрашивает «кому это?» про тех, кого игрок не называл (прогон
+        // Асстохана 2026-10-13: «Спрашиваю короля Ареса…» в лагере стражи).
+        // Только того, кого игрок знает: имя скрытого NPC ответ не раскрывает.
+        const knownToViewer = npcSocialForViewer(authoritativeState.social, { state: authoritativeState, playerId, isPartyMember: true }).npcs
+          .some((npc) => String(npc?.id ?? '') === String(profile?.id ?? ''))
+        if (profile?.name && !speaksUnderTruce && knownToViewer) {
+          intent.absent_npc = {
+            name: String(profile.name),
+            reason: authoritativeState.mechanics?.combat?.active ? 'combat'
+              : sceneLocation && npcLocation && sceneLocation !== npcLocation ? 'elsewhere' : 'unavailable',
+            location: profile.location ? String(profile.location) : null,
+          }
+        }
       }
     }
 

@@ -23,6 +23,7 @@
  *   node eval/astohan-playthrough.mjs                 # без модели, 3–15 мин до развязки
  *   node eval/astohan-playthrough.mjs --seed 7        # повторяемые кости
  *   node eval/astohan-playthrough.mjs --party fighter,cleric   # быстрый прогон вдвоём
+ *   node eval/astohan-playthrough.mjs --tactics bot            # прежняя простая тактика бота
  *   node eval/astohan-playthrough.mjs --live          # с моделью из .env, бюджет и темп
  *   node eval/astohan-playthrough.mjs --live --judge  # плюс оценка текста моделью-судьёй
  *   node eval/astohan-playthrough.mjs --minutes 20 --out tmp/astohan-playtest/run1
@@ -46,6 +47,7 @@ import { combatSpellsFor, spellSelectionRulesFor } from '../server/combat-spells
 import { movementForActor, movementStepCostFor, normalizeCampaignState, previewApproachAttack } from '../server/rules-engine.mjs'
 import { occupiedPositions, shortestTacticalPath } from '../server/rules/tactical-geometry.mjs'
 import { footprintCellsFor } from '../server/actor-footprint.mjs'
+import { planHeroCombatCommand } from '../server/party-tactics.mjs'
 import { isDirectorPartyDecision } from '../src/director-continuation.mjs'
 import { findNarratorCliches } from '../server/narrator-craft-quality.mjs'
 import { measureNarratorCraft } from './narrator-craft-metrics.mjs'
@@ -66,6 +68,12 @@ const KEEP = flag('keep') || VISIT.length > 0
 // Судья тратит вызовы модели, поэтому включается только явно.
 const JUDGE = flag('judge')
 const PARTY = option('party', 'fighter,cleric,wizard,rogue').split(',').map((entry) => entry.trim()).filter(Boolean)
+// Тактика героев в бою: `server` — серверная автотактика (`planHeroCombatCommand`,
+// та же, что у автономных героев и стенда боёв 7-го уровня: ячейки всех
+// кругов, умения классов, реакции), `bot` — прежняя простая лестница бота
+// (заговоры, один огненный шар). Прогон 2026-10-13: на простой тактике бой
+// отряда 7-го уровня шёл по 14 раундов, и кампания не успевала до финала.
+const TACTICS = option('tactics', 'server')
 const SEED = option('seed', null)
 const MINUTES = Number(option('minutes', LIVE ? 25 : 20))
 const PORT = Number(option('port', 8900 + Math.floor(Math.random() * 90)))
@@ -119,7 +127,7 @@ const stats = {
   dialogue: { chosen: 0, refused: 0, reveals: 0, actions: 0, npcs: {}, refusals: [] },
   trade: { bought: 0, sold: 0, refused: 0 }, potionsUsed: 0,
   parley: { attempts: 0, truces: 0, outcomes: [] },
-  spells: {}, sneakAttacks: 0,
+  spells: {}, features: {}, sneakAttacks: 0,
   // Сколько ответов сверено с картой и механикой и какие расхождения нашлись.
   consistencyChecked: 0, consistency: {},
 }
@@ -305,6 +313,7 @@ async function command(actorId, commandValue, label = commandValue.command_type,
   })
   stats.playerCommands += 1
   if (turnLog && result.status === 200 && /MakeAttack|CastSpell|MakeAreaAttack/u.test(commandValue.command_type)) combatActs[actorId] = (combatActs[actorId] ?? 0) + 1
+  if (turnLog && result.status === 200 && commandValue.command_type === 'UseCombatAction' && !/decline|dash|dodge|disengage|stand-up/u.test(String(commandValue.action_id))) combatActs[actorId] = (combatActs[actorId] ?? 0) + 1
   turnLog?.push(`${label}${result.status === 200 ? ' ✓' : ` ✗${result.body?.code ? ` ${result.body.code}` : ''}`}`)
   if (result.status !== 200) {
     stats.commandRefused += 1
@@ -799,7 +808,8 @@ async function playCombat(label) {
     }
     if (combat.reaction_window) {
       const actorId = String(combat.reaction_window.actor_id)
-      if (heroIds().includes(actorId)) await command(actorId, { command_type: 'UseCombatAction', action_id: 'decline-reaction' }, 'Пропустить реакцию')
+      if (heroIds().includes(actorId) && TACTICS === 'server') await serverTacticsReaction(actorId)
+      else if (heroIds().includes(actorId)) await command(actorId, { command_type: 'UseCombatAction', action_id: 'decline-reaction' }, 'Пропустить реакцию')
       else await request(`/api/campaigns/${CODE}/system-tick`, { method: 'POST', account: accounts.owner })
       continue
     }
@@ -862,6 +872,7 @@ async function heroTurnActions(state, actorId) {
     const at = state.mechanics.positions?.[actorId] ?? me
     const foes = (state.enemies ?? []).filter(isUp).map((enemy) => ({ enemy, at: state.mechanics.positions?.[enemy.id] ?? enemy })).sort((a, b) => distance(at, a.at) - distance(at, b.at))
     if (await tryParley(state, actorId, foes)) { /* действие ушло на переговоры */ }
+    else if (TACTICS === 'server') await serverTacticsTurn(actorId)
     else if (me.characterClass === 'cleric') await clericTurn(state, actorId, at, foes)
     else if (me.characterClass === 'wizard') await wizardTurn(state, actorId, at, foes)
     else if (me.characterClass === 'rogue') await rogueTurn(state, actorId, at, foes)
@@ -876,6 +887,47 @@ async function heroTurnActions(state, actorId) {
   const ended = await command(actorId, { command_type: 'EndTurn' }, 'Завершить ход')
   if (ended.status !== 200 && ended.body?.code === 'HERO_DEAD_UNRESOLVED') await command(actorId, { command_type: 'ResolveHeroDeath', resolution: 'resurrect' }, 'Воскресить')
   else if (ended.status !== 200) finding('major', 'end-turn-refused', `EndTurn ${actorId}: ${ended.body?.code} — ${short(ended.body?.error, 200)}`)
+}
+
+/**
+ * Ход героя серверной автотактикой: она видит то же, что игрок (проекция его
+ * аккаунта), и шаг за шагом выбирает команду, а бот отправляет её обычным
+ * HTTP-путём игрока. Отказ одной и той же команды дважды не повторяется.
+ */
+async function serverTacticsTurn(actorId) {
+  const refused = new Set()
+  for (let step = 0; step < 14; step += 1) {
+    const view = await room(accountFor(actorId))
+    const combat = view.mechanics?.combat
+    if (!combat?.active || combat.reaction_window) return
+    if (String(combat.initiative?.[combat.active_index]?.actor_id ?? '') !== actorId) return
+    const plan = planHeroCombatCommand(view, actorId)
+    const next = plan.command
+    if (!next || next.command_type === 'EndTurn') return
+    const signature = JSON.stringify(next)
+    if (refused.has(signature)) return
+    const { actor_id: _actor, server_authoritative: _authority, ...body } = next
+    const sent = await command(actorId, body, short(plan.reason, 90), { expectFailure: true })
+    if (next.command_type === 'CastSpell') countSpell(String(next.spell_id), sent)
+    if (sent.status === 200 && next.sneak_attack === true) stats.sneakAttacks += 1
+    if (sent.status === 200 && next.command_type === 'UseItem') stats.potionsUsed += 1
+    if (sent.status === 200 && next.command_type === 'UseCombatAction') stats.features[String(next.action_id)] = (stats.features[String(next.action_id)] ?? 0) + 1
+    if (sent.status !== 200) {
+      refused.add(signature)
+      if (!EXPECTED_REFUSALS.test(String(sent.body?.code))) finding('major', 'tactic-refused', `${next.command_type}:${next.action_id ?? next.spell_id ?? ''} ${heroOf(view, actorId)?.character ?? actorId}: ${sent.body?.code} — ${short(sent.body?.error, 200)}`)
+    }
+  }
+}
+
+/** Ответ героя на окно реакции — той же автотактикой (Щит, уклонение, словцо…). */
+async function serverTacticsReaction(actorId) {
+  const view = await room(accountFor(actorId))
+  const plan = planHeroCombatCommand(view, actorId)
+  const next = plan.command?.command_type === 'UseCombatAction' ? plan.command : { command_type: 'UseCombatAction', action_id: 'decline-reaction' }
+  const { actor_id: _actor, server_authoritative: _authority, ...body } = next
+  const sent = await command(actorId, body, short(plan.reason, 90), { expectFailure: true })
+  if (sent.status === 200 && next.action_id !== 'decline-reaction') stats.features[`reaction:${next.action_id}`] = (stats.features[`reaction:${next.action_id}`] ?? 0) + 1
+  if (sent.status !== 200) await command(actorId, { command_type: 'UseCombatAction', action_id: 'decline-reaction' }, 'Пропустить реакцию', { expectFailure: true })
 }
 
 const EXPECTED_REFUSALS = /TARGET_OUT_OF_RANGE|TRAJECTORY|COVER|VISIBLE|SPEED|PATH|DIFFICULT|OCCUPIED|DESTINATION|NO_ACTION|ACTION_USED|ACTION_SPENT|ALREADY|INSUFFICIENT|SLOT|BONUS_ACTION|ONE_SPELL|CONCENTRATION|LINE_OF_SIGHT|REACTION_PENDING/u
@@ -1874,7 +1926,7 @@ function writeReport(final, scorecard, usage, audit, quality, judge, sample) {
     '',
     '## Механики отряда',
     '',
-    `Отряд: ${PARTY.join(', ')}. Заклинания: ${Object.entries(stats.spells).map(([id, count]) => `${id} ×${count}`).join(', ') || '—'}; скрытых атак ${stats.sneakAttacks}; зелий выпито ${stats.potionsUsed}. Торговля: куплено ${stats.trade.bought}, продано ${stats.trade.sold}, отказов ${stats.trade.refused}. Переговоры: попыток ${stats.parley.attempts}, перемирий ${stats.parley.truces}, исходы ${stats.parley.outcomes.join(', ') || '—'}.`,
+    `Отряд: ${PARTY.join(', ')}, тактика ${TACTICS}. Заклинания: ${Object.entries(stats.spells).map(([id, count]) => `${id} ×${count}`).join(', ') || '—'}; умения: ${Object.entries(stats.features).map(([id, count]) => `${id} ×${count}`).join(', ') || '—'}; скрытых атак ${stats.sneakAttacks}; зелий выпито ${stats.potionsUsed}. Торговля: куплено ${stats.trade.bought}, продано ${stats.trade.sold}, отказов ${stats.trade.refused}. Переговоры: попыток ${stats.parley.attempts}, перемирий ${stats.parley.truces}, исходы ${stats.parley.outcomes.join(', ') || '—'}.`,
     '',
     '## Путь отряда',
     '',
