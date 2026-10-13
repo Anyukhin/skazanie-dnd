@@ -247,6 +247,8 @@ const DECK_HINTS: Record<CombatDeck, string> = {
    (`resolveOpeningStrike`, server/rules-engine.mjs); как именно — решает
    домашнее правило кампании `house:bg3-opening-strike`. */
 const BG3_OPENING_STRIKE_HOUSE_RULE_ID = 'house:bg3-opening-strike'
+/** Цена ячейки в чародейских очках, как у сервера (`fontOfMagicActionFor`). */
+const FONT_OF_MAGIC_SLOT_COST: Record<number, number> = { 1: 2, 2: 3, 3: 5, 4: 6, 5: 7 }
 const explorationStrikeHint = (freeStrike: boolean) => freeStrike
   ? 'вне боя: удар пройдёт сразу, как в BG3, затем бросается инициатива — ваш ход в первом раунде останется целым'
   : 'вне боя: удар начнёт бой — сначала инициатива, и если первым ходит противник, удар придётся повторить в свой ход'
@@ -335,7 +337,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onAttack: (actorId: string, enemyId: string, itemId?: string, choice?: WeaponAttackChoice) => Promise<CommandOutcome>
   onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { itemId?: string; spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
-  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push' }) => Promise<CommandOutcome>
+  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push', fontMode?: 'create' | 'convert' }) => Promise<CommandOutcome>
   onSetSpellBonusPreference?: (actorId: string, enabled: boolean) => Promise<CommandOutcome>
   onSetReactionMode?: (actorId: string, reactionId: string, mode: ReactionMode, reactionName?: string) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
@@ -1526,7 +1528,25 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     ? selectedSpellAction !== 'long_cast' && (selectedSpellAction === 'bonus_action' ? bonusReady : selectedSpellAction === 'reaction' ? reactionReady : actionReady)
     : Boolean(selectedSpell && (castableOutOfCombat(selectedSpell) || explorationStrikeAvailable)))
   const selectedActionPool = selectedCombatAction?.resource ? activeResources[selectedCombatAction.resource] : undefined
-  const selectedActionResourceReady = !selectedCombatAction?.resource || Number(selectedActionPool?.current ?? 0) >= Number(selectedCombatAction.cost ?? 1)
+  // Кара и Источник магии берут ячейку любого круга, а не только первого.
+  const smiteSlotLevels = [1, 2, 3, 4, 5].filter((level) => Number(activeResources[`spell_slots_${level}`]?.current ?? 0) > 0)
+  /* Источник магии: какую ячейку создать из очков или какую перевести в очки —
+     выбор игрока, как в BG3. Порядок тот же, что у сервера без выбора:
+     сначала младшая недостающая ячейка, затем младшая свободная — в очки. */
+  const fontSelected = combatMode === 'action' && selectedCombatAction?.id === 'font-of-magic'
+  const fontPoints = activeResources.sorcery_points
+  const fontSlotPools = [1, 2, 3, 4, 5].map((level) => ({ level, pool: activeResources[`spell_slots_${level}`] })).filter((entry) => Number(entry.pool?.max ?? 0) > 0)
+  const fontOptions = [
+    ...fontSlotPools.filter((entry) => Number(entry.pool?.current ?? 0) < Number(entry.pool?.max ?? 0) && Number(fontPoints?.current ?? 0) >= FONT_OF_MAGIC_SLOT_COST[entry.level])
+      .map((entry) => ({ key: `create-${entry.level}`, mode: 'create' as const, level: entry.level, label: `+${entry.level}`, title: `Создать ячейку ${entry.level}-го круга за ${FONT_OF_MAGIC_SLOT_COST[entry.level]} чародейских очка` })),
+    ...(Number(fontPoints?.current ?? 0) < Number(fontPoints?.max ?? 0) ? fontSlotPools.filter((entry) => Number(entry.pool?.current ?? 0) > 0)
+      .map((entry) => ({ key: `convert-${entry.level}`, mode: 'convert' as const, level: entry.level, label: `${entry.level}→✦`, title: `Перевести ячейку ${entry.level}-го круга в ${entry.level} ${entry.level === 1 ? 'чародейское очко' : 'чародейских очка'}` })) : []),
+  ]
+  const [fontChoice, setFontChoice] = useState<string | null>(null)
+  const fontOption = fontOptions.find((option) => option.key === fontChoice) ?? fontOptions[0]
+  const selectedActionResourceReady = selectedCombatAction?.id === 'divine-smite' ? smiteSlotLevels.length > 0
+    : selectedCombatAction?.id === 'font-of-magic' ? fontOptions.length > 0
+      : !selectedCombatAction?.resource || Number(selectedActionPool?.current ?? 0) >= Number(selectedCombatAction.cost ?? 1)
   const selectedActionSupport = mechanicsSupportPresentation(selectedCombatAction?.mechanicsSupport, selectedCombatAction?.supportNote)
   const selectedActionEconomyReady = Boolean(selectedCombatAction && actionUsableNow(selectedCombatAction) && !selectedActionSupport.blocked && selectedActionResourceReady && (selectedCombatAction.actionType === 'free' || (selectedCombatAction.actionType === 'bonus_action' ? bonusReady : selectedCombatAction.actionType === 'reaction' ? reactionReady : actionReady)))
   const selectedCommandReady = combatMode === 'magic' ? spellEconomyReady : combatMode === 'action' ? selectedActionEconomyReady : weaponAttackReady
@@ -1548,7 +1568,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     const outcome = selfCastSpell
       ? await onCastSpell(selected, selfCastSpell.id, { targetId: selected, ...selectedSpellItemOption, ...selectedSpellSlotOption, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(note ? { note } : {}) })
       : selfUseAction
-        ? await onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note)
+        ? await onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note,
+          selfUseAction.id === 'font-of-magic' ? fontOption?.level : undefined,
+          selfUseAction.id === 'font-of-magic' && fontOption ? { fontMode: fontOption.mode } : undefined)
         : null
     if (outcome?.ok) setCombatMode('weapon')
     return outcome
@@ -1695,7 +1717,6 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   /* Божественная кара: круг ячейки выбирает игрок, как в BG3. Без выбора сервер
      берёт младшую свободную ячейку. */
   const smiteSelected = combatMode === 'action' && selectedCombatAction?.id === 'divine-smite'
-  const smiteSlotLevels = [1, 2, 3, 4, 5].filter((level) => Number(activeResources[`spell_slots_${level}`]?.current ?? 0) > 0)
   const [smiteSlot, setSmiteSlot] = useState<number | null>(null)
   const smiteSlotLevel = smiteSlot && smiteSlotLevels.includes(smiteSlot) ? smiteSlot : smiteSlotLevels[0]
   useEffect(() => { if (!shoveSelected) setShovePush(false) }, [shoveSelected])
@@ -1822,8 +1843,9 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     if (mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote).blocked) return
     if (!selected || tacticalBusy) return
     const pool = action.resource ? activeResources[action.resource] : undefined
-    // Кара берёт ячейку любого круга, а не только первого.
-    const resourceReady = action.id === 'divine-smite' ? smiteSlotLevels.length > 0 : !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1)
+    // Кара берёт ячейку любого круга, а не только первого; Источник магии
+    // годится и без очков, если есть ячейка перевести в очки.
+    const resourceReady = action.id === 'divine-smite' ? smiteSlotLevels.length > 0 : action.id === 'font-of-magic' ? fontOptions.length > 0 : !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1)
     const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : action.actionType === 'reaction' ? reactionReady : actionReady)
     if (!resourceReady || !economyReady || !actionUsableNow(action)) return
     setSelectedCombatActionId(action.id)
@@ -3188,7 +3210,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </button>,
     })
   })
-  if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = action.id === 'divine-smite' ? smiteSlotLevels.length > 0 : !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked || !actionUsableNow(action)} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}${combatActive ? '' : actionExplorationHint(action, explorationStrikeAvailable, freeOpeningStrike)}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
+  if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = action.id === 'divine-smite' ? smiteSlotLevels.length > 0 : action.id === 'font-of-magic' ? fontOptions.length > 0 : !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked || !actionUsableNow(action)} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}${combatActive ? '' : actionExplorationHint(action, explorationStrikeAvailable, freeOpeningStrike)}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
   /* Переговоры — плиткой среди действий, как в макете боя: цена — действие,
      отклик решает мораль противника. */
   if (combatActive && !truce && (activeDeck === 'all' || activeDeck === 'common')) deckTiles.push({ id: 'propose-parley', cost: 'action', section: 'action', node: <button className="action-tile parley-hotbar" disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck) || !actionReady} onClick={() => { void onProposeParley('persuasion') }}
@@ -4587,6 +4609,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   или «оттолкнуть на 5 фт». Стену и занятую клетку проверяет сервер. */}
               {smiteSelected && smiteSlotLevels.length > 1 && smiteSlotLevels.map((level) => <button key={`smite-${level}`} type="button" className={`hud-reaction hud-toggle-button smite-slot-toggle${smiteSlotLevel === level ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={smiteSlotLevel === level} aria-label={`Кара ячейкой ${level}-го круга: ${Math.min(5, level + 1)}к8 излучением`} onClick={() => setSmiteSlot(level)} title={`Кара ячейкой ${level}-го круга: ${Math.min(5, level + 1)}к8 излучением, по нежити и исчадиям — на 1к8 больше. Ячейка тратится только при попадании.`}><b>{level}</b></button>)}
               {shoveSelected && <button type="button" className={`hud-reaction hud-toggle-button shove-push-toggle${shovePush ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={shovePush} aria-label={`Толчок отталкивает — ${shovePush ? 'включено' : 'выключено, сбивает с ног'}`} onClick={() => setShovePush((current) => !current)} title="Оттолкнуть: при успехе толчка цель отлетает на 5 футов от вас вместо того, чтобы упасть. Стена или другое существо её остановят"><CombatIcon id="shove" kind="action" size={34} compact /></button>}
+            </div>
+          </div>}
+          {fontSelected && fontOptions.length > 1 && <div className="hud-toggles" role="group" aria-label="Источник магии">
+            <span className="hud-side-title">Источник магии</span>
+            <div className="hud-reaction-grid">
+              {fontOptions.map((option) => <button key={option.key} type="button" className={`hud-reaction hud-toggle-button font-of-magic-toggle${fontOption?.key === option.key ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={fontOption?.key === option.key} aria-label={option.title} onClick={() => setFontChoice(option.key)} title={option.title}><b>{option.label}</b></button>)}
             </div>
           </div>}
           {/* Часы хода — под реакциями, как в макете: тот же серверный срок, что

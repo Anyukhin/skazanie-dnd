@@ -3440,6 +3440,47 @@ function divineSmiteActionFor(state, command, action) {
   return { ...action, resource: `spell_slots_${slot}`, smite_slot_level: slot }
 }
 
+/** Цена ячейки в чародейских очках (PHB 2014, «Источник магии»). */
+const FONT_OF_MAGIC_SLOT_COST = Object.freeze({ 1: 2, 2: 3, 3: 5, 4: 6, 5: 7 })
+
+/**
+ * Источник магии чародея: `font_mode: 'create'` — ячейка круга `slot_level`
+ * из очков, `'convert'` — ячейка в очки по её кругу. Без выбора — младшая
+ * недостающая ячейка, которую хватает очков создать, иначе младшая свободная
+ * ячейка в очки. Ячейка не растёт выше своего запаса, очки — выше уровня.
+ * @param {any} state
+ * @param {any} command
+ * @param {any} action
+ */
+function fontOfMagicActionFor(state, command, action) {
+  const points = resourcePool(state, command.actor_id, 'sorcery_points')
+  const slots = [1, 2, 3, 4, 5].map((level) => ({ level, pool: resourcePool(state, command.actor_id, `spell_slots_${level}`) }))
+    .filter((entry) => entry.pool.max > 0)
+  const requested = safeInteger(command.slot_level, 0)
+  const mode = command.font_mode === 'convert' || command.font_mode === 'create' ? command.font_mode : null
+  const creatable = slots.filter((entry) => entry.pool.current < entry.pool.max && points.current >= FONT_OF_MAGIC_SLOT_COST[entry.level])
+  const convertible = points.current < points.max ? slots.filter((entry) => entry.pool.current > 0) : []
+  const pick = (list) => requested ? list.find((entry) => entry.level === requested) : list[0]
+  const create = mode === 'convert' ? null : pick(creatable)
+  const convert = create || mode === 'create' ? null : pick(convertible)
+  if (create) {
+    command.font_mode = 'create'
+    command.slot_level = create.level
+    return { ...action, resource: 'sorcery_points', cost: FONT_OF_MAGIC_SLOT_COST[create.level], effect: { kind: 'restore_resource', resource: `spell_slots_${create.level}`, amount: 1 } }
+  }
+  if (convert) {
+    command.font_mode = 'convert'
+    command.slot_level = convert.level
+    return { ...action, resource: `spell_slots_${convert.level}`, cost: 1, effect: { kind: 'restore_resource', resource: 'sorcery_points', amount: convert.level } }
+  }
+  if (mode === 'convert' || (!mode && points.current >= points.max)) {
+    throw new RulesValidationError(points.current >= points.max ? 'Чародейские очки и так полны' : 'Нет свободной ячейки, которую можно перевести в очки', 'FONT_OF_MAGIC_NOTHING_TO_CONVERT')
+  }
+  throw new RulesValidationError(requested
+    ? `Ячейку ${requested}-го круга сейчас не создать: запас полон или не хватает очков`
+    : 'Все ячейки полны или не хватает чародейских очков', 'FONT_OF_MAGIC_NOTHING_TO_CREATE')
+}
+
 /**
  * Наложение рук: из запаса тратится названная сумма, без неё — столько,
  * сколько не хватает цели, но не больше остатка.
@@ -3456,6 +3497,23 @@ function layOnHandsActionFor(state, command, action) {
   if (amount < 1) throw new RulesValidationError('Запас Наложения рук пуст', 'INSUFFICIENT_RESOURCE')
   command.amount = amount
   return { ...action, cost: amount, effect: { ...action.effect, amount } }
+}
+
+/**
+ * «Добыча охотника» следопыта-Охотника с 3-го уровня, вариант «Убийца
+ * колоссов» (PHB 2014; в BG3 — выбор по умолчанию): раз в ход попадание
+ * оружием по существу, у которого хитов меньше максимума, наносит ещё 1к8.
+ * Раз в ход держит ключ хода в экономике, как у Коварной атаки.
+ * @param {any} state
+ * @param {any} actor
+ * @param {any} target
+ */
+function colossusSlayerReady(state, actor, target) {
+  if (!actor || !target || isEnemyActor(state, actorId(actor)) || characterClassKey(actor) !== 'ranger' || safeInteger(actor?.level, 1) < 3) return false
+  if (!/охотник|hunter/iu.test(String(normalizedCombatSubclassFor(actor) ?? ''))) return false
+  if (actorHp(target) >= actorMaxHp(target)) return false
+  const turnKey = combatTurnKey(state, actorId(actor))
+  return !turnKey || String(state.mechanics.combat.action_economy?.[actorId(actor)]?.colossus_slayer_turn_key ?? '') !== turnKey
 }
 
 /**
@@ -7645,7 +7703,8 @@ export function validateCommand(input, rawState, context = {}) {
     }
     const chosenAction = action.id === 'divine-smite' ? divineSmiteActionFor(state, command, action)
       : action.id === 'lay-on-hands' ? layOnHandsActionFor(state, command, action)
-        : wildShapeAction ?? action
+        : action.id === 'font-of-magic' ? fontOfMagicActionFor(state, command, action)
+          : wildShapeAction ?? action
     command.combat_action = chosenAction
     if (action.spell?.id === 'silvery-barbs') {
       const beneficiaryId = String(command.beneficiary_id ?? command.beneficiaryId ?? command.actor_id)
@@ -13986,6 +14045,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           events.push(...absorbElementsConditionEvents(command, targetId, protectiveChoice.damage_type || damageType, protectiveChoice.slot_level))
         }
       }
+      const colossusSlayer = landed && Boolean(selectedProfile) && colossusSlayerReady(state, actor, target)
       const attackResolvedEventId = `attack-resolved:${String(command.command_id).slice(0, 96)}`
       const attackKind = attackKindFor(selectedProfile, profile, npcBinding)
       const weaponSource = weaponDamageSourceFor(state, actor, profile, selectedProfile, npcBinding)
@@ -14008,6 +14068,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         hit: landed,
         ...(interceptedByImage ? { mirror_image_intercepted: true, mirror_images_before: mirrorImages } : {}),
         ...(protectiveReactionChoices.get(protectiveAttackKey)?.use === true && protectiveReactionChoices.get(protectiveAttackKey)?.kind === 'shield' ? { shielded_by_reaction: true } : {}),
+        ...(colossusSlayer ? { colossus_slayer_turn_key: combatTurnKey(state, command.actor_id) ?? '' } : {}),
         critical,
         ...(criticalBeforeProtection && !critical ? {
           critical_prevented: true,
@@ -14185,6 +14246,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const markSides = targetConditions.has('favored-foe') ? (safeInteger(actor?.level, 1) >= 10 ? 8 : safeInteger(actor?.level, 1) >= 6 ? 6 : 4) : 6
         const markRoll = marked ? diceService.roll(critical ? `2d${markSides}` : `1d${markSides}`, 'marked_target_damage', command.actor_id, command.visibility ?? 'public') : null
         if (markRoll) { rolls.push(markRoll); events.push(eventFrom(command, 'DieRolled', markRoll, [])) }
+        const colossusRoll = colossusSlayer ? diceService.roll(critical ? '2d8' : '1d8', 'colossus_slayer_damage', command.actor_id, command.visibility ?? 'public') : null
+        if (colossusRoll) { rolls.push(colossusRoll); events.push(eventFrom(command, 'DieRolled', { ...colossusRoll, colossus_slayer: true, damage_type: damageType }, [])) }
         const hexed = targetConditions.has(`hexed:${command.actor_id}`)
         const hexRoll = hexed ? diceService.roll(critical ? '2d6' : '1d6', 'spell:hex:damage', command.actor_id, command.visibility ?? 'public') : null
         if (hexRoll) { rolls.push(hexRoll); events.push(eventFrom(command, 'DieRolled', { ...hexRoll, damage_type: 'necrotic' }, [])) }
@@ -14263,7 +14326,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const typedSpellRiders = smiteRoll && smiteRoll.total > 0
           ? [...editionSpellRiders, { roll: smiteRoll, type: 'radiant', spellId: 'divine-smite' }]
           : editionSpellRiders
-        let raw = (damageRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))) + (sneakAttackRoll?.total ?? 0) + (markRoll?.total ?? 0) + foldedSpellRiderDamage + (savageAttackRoll?.total ?? 0) + rageBonus + enchantmentDamage
+        let raw = (damageRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))) + (sneakAttackRoll?.total ?? 0) + (markRoll?.total ?? 0) + (colossusRoll?.total ?? 0) + foldedSpellRiderDamage + (savageAttackRoll?.total ?? 0) + rageBonus + enchantmentDamage
         // Ослабление режет удар вдвое — но только тот, что считается от нужной
         // характеристики. Делится весь сложенный урон, включая метки и порчу.
         const enfeeblingCondition = [...actorConditions].find((condition) => CONDITION_EFFECTS[condition]?.halvesWeaponDamageForAbility
@@ -25120,6 +25183,10 @@ function applyGameEventCurrent(rawState, event) {
           const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
           state.mechanics.combat.action_economy[event.actor_id] = withLoadingWeaponItem(economy, resource, payload.item_id)
         }
+      }
+      if (payload.colossus_slayer_turn_key && state.mechanics.combat.active && event.actor_id) {
+        const economy = state.mechanics.combat.action_economy[event.actor_id] ?? actionEconomy()
+        state.mechanics.combat.action_economy[event.actor_id] = { ...economy, colossus_slayer_turn_key: String(payload.colossus_slayer_turn_key) }
       }
       const attackVisual = normalizeAttackVisual(payload.attack_visual)
       const attackEndpoints = attackVisual ? attackEndpointsFor(payload.trajectory) : null

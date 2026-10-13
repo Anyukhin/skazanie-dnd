@@ -1385,9 +1385,10 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       ...(input?.item_id ? { item_id: String(input.item_id).slice(0, 120) } : {}),
       // Исход толчка выбирает игрок; значение сверяет Rules Engine.
       ...(actionId === 'shove' && input?.shove_mode != null ? { shove_mode: String(input.shove_mode).slice(0, 20) } : {}),
-      // Круг ячейки Божественной кары и сумма Наложения рук — выбор игрока;
-      // наличие ячейки и остаток запаса сверяет Rules Engine.
-      ...(actionId === 'divine-smite' && Number.isSafeInteger(input?.slot_level) && input.slot_level >= 1 && input.slot_level <= 5 ? { slot_level: input.slot_level } : {}),
+      // Круг ячейки Божественной кары и Источника магии, сумма Наложения рук —
+      // выбор игрока; наличие ячейки и остаток запаса сверяет Rules Engine.
+      ...((actionId === 'divine-smite' || actionId === 'font-of-magic') && Number.isSafeInteger(input?.slot_level) && input.slot_level >= 1 && input.slot_level <= 5 ? { slot_level: input.slot_level } : {}),
+      ...(actionId === 'font-of-magic' && (input?.font_mode === 'create' || input?.font_mode === 'convert') ? { font_mode: input.font_mode } : {}),
       ...(actionId === 'lay-on-hands' && Number.isSafeInteger(input?.amount) && input.amount >= 1 && input.amount <= 200 ? { amount: input.amount } : {}),
       // Зверь Дикого облика — выбор игрока; доступность по кругу и уровню сверяет Rules Engine.
       ...(actionId === 'wild-shape' && typeof input?.form_id === 'string' && /^[a-z-]{1,40}$/u.test(input.form_id) ? { form_id: input.form_id } : {}),

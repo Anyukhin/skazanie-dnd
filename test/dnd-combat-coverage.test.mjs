@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { combatActionsFor, combatClassCatalogInfo, combatResourceMaximumsFor } from '../server/combat-actions.mjs'
+import { combatActionsFor, combatClassCatalogInfo, combatResourceMaximumsFor, passiveClassFeatureIds } from '../server/combat-actions.mjs'
 import { combatSpellsFor, spellCatalogInfo, spellSelectionRulesFor, spellSlotMaximumsFor } from '../server/combat-spells.mjs'
 import { classBuildCatalogInfo, featureChoiceGroupsFor } from '../server/character-progression.mjs'
 
@@ -52,6 +52,8 @@ test('каждое активируемое умение dnd.su до 12 уров
       assert.ok(candidate.minimumLevel >= 1 && candidate.minimumLevel <= 12)
       assert.ok(String(candidate.sourceUrl).startsWith('https://www.dnd.su/class/'))
       if (candidate.actionType === 'free') continue
+      // Пассивное умение (`passiveClassFeatureIds`) Rules Engine играет без плитки.
+      if (passiveClassFeatureIds().includes(candidate.id)) continue
       const current = actor(classEntry.classKey, candidate.minimumLevel, candidate.subclass ?? undefined)
       const available = combatActionsFor(current)
       const found = available.some((entry) => entry.id === candidate.id || normalizeName(entry.name) === normalizeName(candidate.name))

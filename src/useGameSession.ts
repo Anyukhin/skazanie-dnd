@@ -1914,7 +1914,7 @@ export function useGameSession(options: {
     return executeTacticalCommand({ command_type: 'UseLevelTransition', actor_id: actorId, prop_id: propId }, 'Перейти на другой этаж')
   }, [executeTacticalCommand])
 
-  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push' }) => {
+  const useCombatAction = useCallback((actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push', fontMode?: 'create' | 'convert' }) => {
     return executeTacticalCommand({
       command_type: 'UseCombatAction', actor_id: actorId, action_id: actionId,
       ...(targetId ? { target_id: targetId } : {}),
@@ -1922,6 +1922,7 @@ export function useGameSession(options: {
       ...(beneficiaryId ? { beneficiary_id: beneficiaryId } : {}),
       ...(slotLevel ? { slot_level: slotLevel } : {}),
       ...(options?.shoveMode ? { shove_mode: options.shoveMode } : {}),
+      ...(options?.fontMode ? { font_mode: options.fontMode } : {}),
     }, 'Использовать выбранное боевое действие', {}, { playerNote: note })
   }, [executeTacticalCommand])
 

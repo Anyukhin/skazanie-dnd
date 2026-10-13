@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { iconIdsOnDisk, manifestIsCurrent, manifestSource } from '../tools/build-icon-manifest.mjs'
-import { combatActionsFor } from '../server/combat-actions.mjs'
+import { combatActionsFor, passiveClassFeatureIds } from '../server/combat-actions.mjs'
 import { speciesBenefitsFor } from '../server/character-creation-catalog.mjs'
 import { pngContractFailures } from './png-asset-contract.mjs'
 
@@ -113,6 +113,8 @@ function allRuntimeActionIds() {
   assert.ok(dragonborn, 'реальный профиль speciesBenefits драконорождённого должен разрешаться')
   for (const action of combatActionsFor({ level: 12, abilities: {}, speciesBenefits: dragonborn })) ids.add(String(action.id))
   for (const id of clientCatalogActionIds()) ids.add(id)
+  // Пассивное умение плитки не имеет, но рисунок у него остаётся.
+  for (const id of passiveClassFeatureIds()) ids.add(id)
   return ids
 }
 

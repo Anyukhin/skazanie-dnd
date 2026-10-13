@@ -154,7 +154,7 @@ const CLASS_ACTIONS = Object.freeze({
     action('uncanny-dodge', 'Невероятное уклонение', { actionType: 'reaction', minimumLevel: 5, description: 'Реакцией уменьшить урон видимой атаки вдвое.', effect: { kind: 'condition', condition: 'uncanny-dodge', duration: 'until-used' } }),
   ]),
   sorcerer: Object.freeze([
-    action('font-of-magic', 'Источник магии', { actionType: 'bonus_action', minimumLevel: 2, resource: 'sorcery_points', description: 'Преобразовать чародейские очки в ячейку заклинания.', effect: { kind: 'restore_resource', resource: 'spell_slots_1', amount: 1 } }),
+    action('font-of-magic', 'Источник магии', { actionType: 'bonus_action', minimumLevel: 2, resource: 'sorcery_points', cost: 2, description: 'Бонусным действием создать ячейку из чародейских очков (1-й круг — 2 очка, 2-й — 3, 3-й — 5, 4-й — 6, 5-й — 7) или перевести ячейку в очки по её кругу.', effect: { kind: 'restore_resource', resource: 'spell_slots_1', amount: 1 } }),
     action('careful-spell', 'Аккуратное заклинание', { actionType: 'free', minimumLevel: 3, resource: 'sorcery_points', description: 'Союзники в области следующего заклинания автоматически преуспевают в спасброске.', effect: { kind: 'condition', condition: 'metamagic-careful', duration: 'until-used' } }),
     action('distant-spell', 'Далёкое заклинание', { actionType: 'free', minimumLevel: 3, resource: 'sorcery_points', description: 'Удвоить дальность следующего заклинания.', effect: { kind: 'condition', condition: 'metamagic-distant', duration: 'until-used' } }),
     action('empowered-spell', 'Непреодолимое заклинание', { actionType: 'free', minimumLevel: 3, resource: 'sorcery_points', description: 'Перебросить часть костей урона следующего заклинания.', effect: { kind: 'condition', condition: 'metamagic-empowered', duration: 'until-used' } }),
@@ -306,6 +306,19 @@ const GENERATED_POOLS_OWNED_BY_CURATED = Object.freeze({
   'cleric-bozhestvennyy-kanal': 'channel_divinity',
 })
 
+/**
+ * Каталожные умения, которые Rules Engine играет пассивно: плитки у них нет.
+ * «Добыча охотника» dnd.su собралась реакцией с лечением 1к8 по противнику;
+ * в игре это «Убийца колоссов» — лишняя к8 по раненой цели раз в ход, как
+ * выбор по умолчанию в BG3 (`colossusSlayerReady` в rules-engine).
+ */
+const PASSIVE_GENERATED_ACTION_IDS = new Set(['ranger-ohotnik-dobycha-ohotnika'])
+
+/** Каталожные умения, сыгранные пассивно (без плитки действия). */
+export function passiveClassFeatureIds() {
+  return [...PASSIVE_GENERATED_ACTION_IDS]
+}
+
 function generatedPoolSuperseded(entry, curatedNames) {
   return curatedNames.has(normalizedName(entry.name)) || Object.hasOwn(GENERATED_POOLS_OWNED_BY_CURATED, entry.id)
 }
@@ -350,7 +363,7 @@ export function combatActionsFor(actor) {
   const curated = curatedActionsFor(actor, classKey, subclass)
   const curatedNames = curatedActionNamesFor(curated)
   const curatedIds = new Set(curated.map((entry) => entry.id))
-  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name)) && !curatedIds.has(entry.id)) : []
+  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && !PASSIVE_GENERATED_ACTION_IDS.has(entry.id) && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name)) && !curatedIds.has(entry.id)) : []
   const classActions = [...curated, ...generated]
   const ancestry = actor?.speciesBenefits?.mechanics?.dragon_ancestry
   const speciesActions = actor?.speciesBenefits?.mechanics?.breath_weapon === true && ancestry
