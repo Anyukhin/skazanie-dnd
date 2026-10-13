@@ -101,6 +101,64 @@ export function propModelTreeStretch(assetId: string, heightCells: number): numb
 const MAX_HEIGHT_LIMIT = 8
 const MAX_SIZE_LIMIT = 10_000
 
+/**
+ * Поправка лица модели. Предмет с поворотом 0° смотрит на юг, и модель
+ * обязана смотреть лицом в +Z. Часть авторских рецептов собрана лицом в −Z
+ * (печь, лавочный прилавок, зеркала, стойка с доспехом), а у трёх знамён и
+ * колеса Kenney полотно стоит вдоль X — на стене они торчали ребром. Пока
+ * генератор ставил настенные вещи лицом в стену, эти модели смотрели в
+ * комнату по случайности; после исправления стороны (обзор генератора
+ * 2026-10-10) их развернула бы та же правка. Лестница `kd-stairs`
+ * поднимается к +Z, а подниматься ей к стене — у неё та же поправка.
+ *
+ * `baseYaw` — yaw записи в манифесте, к которому поправка относится. При
+ * пересборке пакета с исправленным yaw в `tools/graphics-style-sources.mjs`
+ * запись отсюда убирается; сторож — `test/prop-model-front.test.mjs`.
+ * Замер — агентный обход рецептов и GLB 2026-10-10.
+ */
+const FRONT_TURN_DETAIL_ASSETS = Object.freeze([
+  'kitchen_stove', 'bread_oven', 'shop_counter', 'jailer_desk', 'standing_mirror', 'idol', 'scroll_rack',
+  'reading_nook', 'armor_stand', 'archery_target', 'wall_chains', 'candle_desk', 'straw_bed', 'bathtub',
+])
+export const PROP_MODEL_FRONT_TURNS: Readonly<Record<string, { turn: 90 | 180 | 270; baseYaw: number }>> = Object.freeze({
+  ...Object.fromEntries(FRONT_TURN_DETAIL_ASSETS.flatMap((assetId) => [
+    [`style-detail-${assetId.replaceAll('_', '-')}`, { turn: 180, baseYaw: 0 }],
+    [`detail-v1-${assetId}`, { turn: 180, baseYaw: 0 }],
+  ])),
+  'style-detail-magic-mirror': { turn: 180, baseYaw: 0 },
+  'style-detail-potion-cabinet': { turn: 180, baseYaw: 0 },
+  'style-detail-iron-maiden': { turn: 180, baseYaw: 0 },
+  'style-detail-arcane-lectern': { turn: 180, baseYaw: 0 },
+  'style-extra-weapon-rack': { turn: 180, baseYaw: 0 },
+  'detail-v1-weapon_rack': { turn: 180, baseYaw: 0 },
+  'style-extra-alchemy-table': { turn: 180, baseYaw: 0 },
+  'detail-v1-alchemy_table': { turn: 180, baseYaw: 0 },
+  'style-extra-timber-shoring': { turn: 180, baseYaw: 0 },
+  'detail-v1-timber_shoring': { turn: 180, baseYaw: 0 },
+  'kd-stairs': { turn: 180, baseYaw: 0 },
+  'style-kenney-town-banner-green': { turn: 90, baseYaw: 0 },
+  'style-kenney-town-banner-red': { turn: 90, baseYaw: 0 },
+  'style-kenney-castle-flag-banner-long': { turn: 90, baseYaw: 0 },
+  'style-kenney-town-wheel': { turn: 90, baseYaw: 0 },
+})
+
+/** Доворот модели к её лицу в градусах yaw (против часовой сверху); 0 — без поправки. */
+export function propModelFrontTurn(key: string): number {
+  return Object.prototype.hasOwnProperty.call(PROP_MODEL_FRONT_TURNS, key) ? PROP_MODEL_FRONT_TURNS[key].turn : 0
+}
+
+/**
+ * Запись модели для 3D с поправкой лица: yaw доворачивается, а bbox после
+ * четверти оборота меняет ширину и глубину местами. 2D рисует вид сверху,
+ * снятый при исходном yaw, и доворачивает его сам.
+ */
+export function frontFacingEntry<T extends Pick<PropModelEntry, 'key' | 'yaw' | 'size'>>(entry: T): T {
+  const turn = propModelFrontTurn(entry.key)
+  if (!turn) return entry
+  const size = entry.size && turn % 180 ? [entry.size[2], entry.size[1], entry.size[0]] as [number, number, number] : entry.size
+  return { ...entry, yaw: entry.yaw + turn, ...(size ? { size } : {}) }
+}
+
 /** Предел высоты модели предмета в клетках; `null` — высота не ограничена. */
 export function propModelMaxHeight(assetId: string, entry?: Pick<PropModelEntry, 'maxHeight'> | null): number | null {
   if (entry?.maxHeight !== undefined) return entry.maxHeight

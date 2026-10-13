@@ -3,7 +3,7 @@ import { auditTacticalMap } from './map-quality.mjs'
 import { thinWalls } from './thin-walls.mjs'
 import { applyRoomFloors, buildingWallStyleFor } from './room-floors.mjs'
 import { raiseDais } from './scene-features.mjs'
-import { ensurePropAccess, placeColonnade, placeProps } from './prop-placement.mjs'
+import { KEY_FURNITURE, ensurePropAccess, placeColonnade, placeProps, seatAroundSurface } from './prop-placement.mjs'
 import { assetById } from './asset-registry.mjs'
 import {
   SIZE_CLASSES,
@@ -36,7 +36,7 @@ import {
  * стены можно будет убрать, а рёбра останутся на месте.
  */
 
-export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '7' })
+export const BUILDING_GENERATOR = Object.freeze({ id: 'building-with-yard', version: '8' })
 
 /** Генератор authored-крепости: геометрия одна на все столы, seed меняет только отделку. */
 export const ARES_FORTRESS_GENERATOR = Object.freeze({ id: 'ares-fortress', version: '1' })
@@ -1052,6 +1052,9 @@ function designPropPlans(design, rooms, includeDecorativeTransition = true) {
     else add('salon', 'hall', ['table_small', 'chair', 'candelabra'], ['table_small', 'chair', 'candelabra', 'rug'], 'interior', 22)
     add('kitchen', 'kitchen', ['fireplace', 'cupboard', 'crate'], ['fireplace', 'cupboard', 'cauldron', 'crate', 'shelf_wall'], 'interior', 25)
     add('store', 'store', ['crate_stack', 'barrel_stack', 'chest'], ['crate_stack', 'barrel_stack', 'sack', 'chest'], 'interior', 28)
+    // Хозяйская спальня. Плана у неё не было вовсе — только у `bedroom-2` и
+    // дальше, и спальня усадьбы в 34 клетки стояла голой (обзор 2026-10-10).
+    add('bedroom', 'bedroom', ['bed', 'wardrobe', 'night_table', 'chest'], ['bed', 'wardrobe', 'night_table', 'chest', 'rug', 'candle'], 'interior', 28)
   }
   // Комнаты коридорной планировки: вторые спальни, гостевые постоялого
   // двора, кабинет усадьбы и сам коридор — свет на стене и ничего поперёк.
@@ -1111,7 +1114,11 @@ function generateDesignedBuildingScene(options = {}) {
       try {
         const shaped = designedBuildingAttempt({ ...options, design: { ...(options.design ?? {}), shape, ...(scheme ? { scheme } : {}) } })
         // Форма, срезавшая комнату целиком, — потеря назначения: следующий раскрой.
-        if (!auditTacticalMap(shaped).problems.length && !emptyRooms(shaped).length) return shaped
+        // Так же и форма, в чей зал не встала его главная мебель: Г-образный
+        // трактир отдавал залу 32 клетки, и стойка помещалась, только
+        // протыкая стену (обзор генератора 2026-10-10).
+        if (!auditTacticalMap(shaped).problems.length && !emptyRooms(shaped).length
+          && !lostKeyFurniture(shaped, normalizeBuildingDesign({ ...(options.design ?? {}), shape }), shaped.zones).length) return shaped
       } catch {
         // форма не легла с этим раскроем — следующий
       }
@@ -1460,9 +1467,14 @@ function furnishEmptyQuarters(map, zoneId, use, seed) {
         const before = reachCount(anchor, blocked)
         if (reachCount(anchor, new Set([...blocked, `${cell.x},${cell.y}`])) !== before - 1) continue
       }
-      addFurniture(map, asset, cell, `quarter-${zoneId}-${index}`)
+      const surface = addFurniture(map, asset, cell, `quarter-${zoneId}-${index}`)
       placed += 1
       const companion = assetById(companionId)
+      if (companion && ['chair', 'stool', 'bench'].includes(companion.id)) {
+        // Стол четверти — с гарнитуром: два сиденья по сторонам, лицом к столу.
+        placed += seatAroundSurface(map, surface, { idPrefix: `quarter-${zoneId}-${index}-seat`, blocked: nearDoors, spec: [[companion.id, 2]] }).length
+        break
+      }
       const besides = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: cell.x + dx, y: cell.y + dy }))
         .find((point) => cellAt(map, point.x, point.y)?.passable && cellAt(map, point.x, point.y)?.zone === zoneId
           && !occupied().has(`${point.x},${point.y}`) && !nearDoors.has(`${point.x},${point.y}`))
@@ -1487,13 +1499,40 @@ function furnishEmptyQuarters(map, zoneId, use, seed) {
  */
 function addFurniture(map, asset, cell, id) {
   const span = asset.scaleRange.max - asset.scaleRange.min
-  addProp(map, {
+  return addProp(map, {
     id, assetId: asset.id, x: cell.x + 0.5, y: cell.y + 0.5, rotation: 0,
     scale: Number((asset.scaleRange.min + span / 2).toFixed(3)),
     footprint: [{ x: cell.x, y: cell.y }], zOrder: 0,
     blocksMove: asset.blocksMove, blocksSight: asset.blocksSight, cover: asset.cover,
     destructible: asset.destructible, hp: asset.hp, interactive: asset.interactive,
   })
+}
+
+/**
+ * Главная мебель, которую план помещения требовал, а корпус не вместил:
+ * стойка и очаг трактира, кровать спальни. Лестницу ставит
+ * `ensureDeclaredTransitions`, она не в счёт; двор и внутренний двор — не
+ * помещения, колодец на срезанном дворе назначения дома не отнимает.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {ReturnType<typeof normalizeBuildingDesign>} design
+ * @param {Array<{id: string, kind?: string}>} zones
+ * @returns {string[]}
+ */
+function lostKeyFurniture(map, design, zones) {
+  const rooms = /** @type {RoomPlan[]} */ (zones.map((zone) => ({ zoneId: zone.id, minX: 0, minY: 0, maxX: 0, maxY: 0 })))
+  const interior = new Set(zones.filter((zone) => zone.kind === 'interior').map((zone) => zone.id))
+  /** @type {string[]} */
+  const lost = []
+  for (const plan of designPropPlans(design, rooms)) {
+    if (!interior.has(plan.zoneId)) continue
+    for (const assetId of new Set(plan.require)) {
+      if (!KEY_FURNITURE.has(assetId) || assetId.startsWith('stairs_')) continue
+      const present = map.props.some((prop) => prop.assetId === assetId && cellAt(map, Math.floor(prop.x), Math.floor(prop.y))?.zone === plan.zoneId)
+      if (!present) lost.push(`LOST_FURNITURE:${plan.zoneId}:${assetId}`)
+    }
+  }
+  return lost
 }
 
 /**

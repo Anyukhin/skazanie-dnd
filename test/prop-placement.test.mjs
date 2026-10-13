@@ -17,6 +17,7 @@ import {
   setDoor,
   validateTacticalMap,
   reachableCells,
+  orientTacticalMap,
 } from '../server/tactical-map.mjs'
 
 /** Комната с внешним двором: слева здание, справа трава за стеной. */
@@ -176,23 +177,19 @@ test('стулья стоят рядом со столом и повёрнуты
   assert.ok(tables.length > 0, 'на сцене обязан быть стол')
   assert.ok(chairs.length > 0, 'на сцене обязан быть стул')
 
+  // Стул — вплотную к стороне стола (не к углу) и лицом к нему: клетка перед
+  // ним — клетка стола. Поворот 0 смотрит на юг, 90 — на запад, 180 — на
+  // север, 270 — на восток. Прежде стул тянулся к опорной клетке стола, и
+  // треть стульев стояла у угла (обзор генератора 2026-10-10).
+  const tableCells = new Set(tables.flatMap((table) => table.footprint.map((cell) => `${cell.x},${cell.y}`)))
   for (const chair of chairs) {
-    const distance = Math.min(...tables.map((table) => Math.max(
-      Math.abs(Math.floor(table.x) - Math.floor(chair.x)),
-      Math.abs(Math.floor(table.y) - Math.floor(chair.y)),
-    )))
-    assert.ok(distance <= 2, `стул ${chair.id} стоит в ${distance} клетках от ближайшего стола`)
-
-    // Поворот обязан указывать в сторону стола: 0 — на юг, 90 — на запад,
-    // 180 — на север, 270 — на восток.
-    const table = tables.reduce((best, candidate) => {
-      const measure = (prop) => Math.max(Math.abs(prop.x - chair.x), Math.abs(prop.y - chair.y))
-      return measure(candidate) < measure(best) ? candidate : best
-    })
-    const dx = Math.floor(table.x) - Math.floor(chair.x)
-    const dy = Math.floor(table.y) - Math.floor(chair.y)
-    const expected = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 270 : 90) : (dy >= 0 ? 0 : 180)
-    assert.equal(chair.rotation, expected, `стул ${chair.id} повёрнут не к столу`)
+    const [cell] = chair.footprint
+    const quarter = Math.round(((chair.rotation % 360) + 360) % 360 / 90) % 4
+    const [dx, dy] = [[0, 1], [-1, 0], [0, -1], [1, 0]][quarter]
+    assert.ok(tableCells.has(`${cell.x + dx},${cell.y + dy}`), `стул ${chair.id} на ${cell.x},${cell.y} смотрит не на стол`)
+    // Точка рисунка придвинута к столу, но не выходит из своей клетки.
+    assert.ok(chair.x > cell.x && chair.x < cell.x + 1 && chair.y > cell.y && chair.y < cell.y + 1, `стул ${chair.id} вне своей клетки`)
+    assert.ok((chair.x - cell.x - 0.5) * dx + (chair.y - cell.y - 0.5) * dy > 0, `стул ${chair.id} не придвинут к столу`)
   }
 })
 
@@ -203,7 +200,10 @@ test('предметы с якорем у стены стоят у стены и
   for (const prop of anchored) {
     const x = Math.floor(prop.x)
     const y = Math.floor(prop.y)
-    const sides = [[0, -1, 180], [1, 0, 270], [0, 1, 0], [-1, 0, 90]]
+    // Спиной к стене: стена с севера — лицом на юг (0), с востока — на запад
+    // (90), с юга — на север (180), с запада — на восток (270). Прежний тест
+    // проверял угол на саму стену и закреплял камин лицом в кладку.
+    const sides = [[0, -1, 0], [1, 0, 90], [0, 1, 180], [-1, 0, 270]]
     const walls = sides.filter(([dx, dy]) => {
       const neighbor = cellAt(map, x + dx, y + dy)
       return !neighbor || !neighbor.passable
@@ -437,6 +437,54 @@ test('деревья и кусты под открытым небом держа
       const reach = Math.max(radius[a.assetId], radius[b.assetId])
       const distance = Math.hypot(Math.floor(a.x) - Math.floor(b.x), Math.floor(a.y) - Math.floor(b.y))
       assert.ok(distance >= reach, `${seed}: ${a.assetId} и ${b.assetId} в ${distance.toFixed(2)} клетках`)
+    }
+  }
+})
+
+test('поворот карты под сторону входа сохраняет стул лицом к столу и настенную вещь спиной к стене', () => {
+  const map = generateBuildingScene({ seed: 'orient-seats', width: 30, height: 26, design: { building_use: 'tavern' } })
+  const facingCell = (prop, [cell] = prop.footprint) => {
+    const quarter = Math.round(((prop.rotation % 360) + 360) % 360 / 90) % 4
+    const [dx, dy] = [[0, 1], [-1, 0], [0, -1], [1, 0]][quarter]
+    return { x: cell.x + dx, y: cell.y + dy, dx, dy }
+  }
+  // Сторона опоры — откуда стена; лицо — от неё.
+  const away = { n: [0, 1], e: [-1, 0], s: [0, -1], w: [1, 0] }
+  for (const side of ['west', 'east', 'north', 'south']) {
+    const oriented = orientTacticalMap(map, side)
+    const surfaces = oriented.props.filter((prop) => /^table_|^bar_counter$/u.test(prop.assetId))
+    const surfaceCells = new Set(surfaces.flatMap((prop) => prop.footprint.map((cell) => `${cell.x},${cell.y}`)))
+    const seats = oriented.props.filter((prop) => ['chair', 'stool', 'bench'].includes(prop.assetId))
+    assert.ok(seats.length > 0, `${side}: в трактире нет сидений`)
+    for (const seat of seats) {
+      const ahead = facingCell(seat)
+      assert.ok(surfaceCells.has(`${ahead.x},${ahead.y}`), `${side}: ${seat.id} смотрит не на стол`)
+    }
+    const mounted = oriented.props.filter((prop) => prop.mount?.kind === 'wall')
+    assert.ok(mounted.length > 0, `${side}: нет настенных вещей`)
+    for (const prop of mounted) {
+      const { dx, dy } = facingCell(prop, [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }])
+      assert.deepEqual([dx, dy], away[prop.mount.side], `${side}: ${prop.id} смотрит не от стены ${prop.mount.side}`)
+    }
+  }
+})
+
+test('мебель со спинкой стоит у стены, а не у закрытой на время расстановки точки появления', () => {
+  // Обзор 2026-10-10: точка появления отряда в зале на время расстановки
+  // непроходима, и камин, полка за стойкой и фонарь прислонялись к ней
+  // посреди зала; при нехватке стен полка вставала в пустоте.
+  const backed = new Set(['bar_shelf', 'bookshelf', 'wardrobe', 'cupboard', 'pantry_shelf', 'shelf_wall', 'fireplace', 'lantern_wall', 'torch_wall'])
+  for (const seed of ['spawn-a', 'spawn-b', 'spawn-c', 'spawn-d', 'spawn-e', 'spawn-f']) {
+    const map = generateBuildingScene({ seed, width: 30, height: 26, design: { building_use: 'tavern' }, entry: 'interior' })
+    for (const prop of map.props.filter((entry) => backed.has(entry.assetId))) {
+      const cells = prop.footprint.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]
+      const againstWall = cells.some((cell) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
+        const edge = edgeBetween(map, cell.x, cell.y, cell.x + dx, cell.y + dy)
+        if (edge && ['wall', 'rail', 'window', 'door'].includes(edge.kind)) return true
+        const neighbor = cellAt(map, cell.x + dx, cell.y + dy)
+        return !neighbor || !neighbor.passable
+      }))
+      assert.ok(againstWall, `${seed}: ${prop.assetId} на ${cells[0].x},${cells[0].y} стоит не у стены`)
     }
   }
 })

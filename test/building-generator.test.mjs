@@ -518,7 +518,7 @@ function assertProportions(map, use, label) {
 }
 
 test('эталонные здания: комнаты в площадях своего назначения, зал — самый большой', () => {
-  assert.equal(BUILDING_GENERATOR.version, '7', 'пропорции по назначению — новая версия генератора')
+  assert.equal(BUILDING_GENERATOR.version, '8', 'мебель не сквозь стену, гарнитуры и середина комнат — новая версия генератора')
   for (const preset of MAP_PREVIEW_PRESETS.filter((entry) => PRESET_USE[entry.id])) {
     for (const size of [{ width: 16, height: 14 }, { width: 26, height: 26 }, { width: 36, height: 30 }, { width: 40, height: 32 }]) {
       for (const seed of ['s1', 's2', 's3']) {

@@ -2087,10 +2087,20 @@ export function orientTacticalMap(map, side) {
   const point = (x, y) => (side === 'east' ? { x: width - x, y }
     : side === 'north' ? { x: y, y: x }
       : { x: y, y: width - x })
-  /** @param {number} degrees */
+  /**
+   * Поворот предмета: 0° смотрит на юг (+y), 90° — на запад, 180° — на север,
+   * 270° — на восток, то есть направление (−sin θ, cos θ). Зеркало по
+   * горизонтали меняет знак x — угол становится −θ; транспонирование меняет
+   * x и y местами — 270° − θ; транспонирование с зеркалом по вертикали —
+   * 270° + θ. Прежде восток и север давали 180° − θ и 90° − θ: на 180° мимо,
+   * и в деревне, куда отряд пришёл с востока или севера, все стулья
+   * смотрели от стола (обзор генератора 2026-10-10).
+   *
+   * @param {number} degrees
+   */
   const turn = (degrees) => {
     const angle = Number(degrees) || 0
-    const mirrored = side === 'east' ? 180 - angle : side === 'north' ? 90 - angle : 270 + angle
+    const mirrored = side === 'east' ? -angle : side === 'north' ? 270 - angle : 270 + angle
     return ((Math.round(mirrored) % 360) + 360) % 360
   }
   /** @type {Record<string, 'n'|'e'|'s'|'w'>} */

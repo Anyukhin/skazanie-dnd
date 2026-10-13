@@ -7,7 +7,7 @@ import {
   LIGHT_FULL, LIGHT_LINK_EAST, LIGHT_LINK_SOUTH, lightAt, lightGridFor, lightLinksFor, lightSourceVisibilityFor, lightSourcesOf,
   type LightSource,
 } from './board-lighting'
-import { LEGACY_CATALOG_REVISION, propModelFit, propModelFor, type PropModelCatalog } from './prop-model-catalog'
+import { LEGACY_CATALOG_REVISION, propModelFit, propModelFor, propModelFrontTurn, type PropModelCatalog } from './prop-model-catalog'
 import type { GraphicsStylePack } from './board3d-style'
 import { detailPropAlias } from './detail-props'
 import { cellAt, cellIndex, doorStates, edgeBetween, edgeList, edgeNeighbor, passableAt, revealedAt } from './tactical-map-client'
@@ -3474,14 +3474,24 @@ function propSpanInCells(prop: TacticalProp, drawing: PropDrawing) {
     if (cell.y < minY) minY = cell.y
     if (cell.y > maxY) maxY = cell.y
   }
+  // Стул и табурет придвинуты к столу внутри своей клетки: сервер пишет точку
+  // рисунка в x/y (`arrangeSeats`). Модель стола не доходит до границы клеток,
+  // и стул по центру клетки стоял в половине клетки от него. Сохранённые
+  // карты держат x/y в центре клетки — для них ничего не меняется.
+  const single = minX === maxX && minY === maxY
+  const nudged = single && SEAT_NUDGE_ASSETS.has(prop.assetId)
+    && prop.x > minX && prop.x < minX + 1 && prop.y > minY && prop.y < minY + 1
   return {
-    centerX: (minX + maxX + 1) / 2,
-    centerY: (minY + maxY + 1) / 2,
+    centerX: nudged ? prop.x : (minX + maxX + 1) / 2,
+    centerY: nudged ? prop.y : (minY + maxY + 1) / 2,
     w: maxX - minX + 1,
     h: maxY - minY + 1,
     fromFootprint: true,
   }
 }
+
+/** Сиденья, чья точка рисунка может сдвигаться внутри клетки к столу. */
+const SEAT_NUDGE_ASSETS: ReadonlySet<string> = new Set(['chair', 'stool'])
 
 /** Центр и радиус охвата рисунка в клетках — для отбора предметов по тайлам. */
 function propReach(prop: TacticalProp) {
@@ -3689,8 +3699,13 @@ export function drawProps(context: BoardContext2D, scene: BoardScene, tile: Boar
     // Декаль лежит на полу: прозрачность возвращается руками, а не `restore`, —
     // поддельный контекст тестов не обязан хранить стек состояний.
     if (drawing.flat) context.globalAlpha = PROP_DECAL_ALPHA
-    if (modelPreview && modelAtlas) drawStamp(context, modelBox, modelAtlas.texture, modelPreview)
-    else if (stamp && stampAtlas) drawStamp(context, placement.box, stampAtlas.texture, stamp)
+    if (modelPreview && modelAtlas) {
+      // Вид сверху снят при yaw манифеста; поправка лица модели
+      // (`PROP_MODEL_FRONT_TURNS`) доворачивает его так же, как 3D.
+      const turn = modelEntry ? propModelFrontTurn(modelEntry.key) : 0
+      if (turn) context.rotate(-turn * Math.PI / 180)
+      drawStamp(context, modelBox, modelAtlas.texture, modelPreview)
+    } else if (stamp && stampAtlas) drawStamp(context, placement.box, stampAtlas.texture, stamp)
     else if (level === 'full') drawing.paint(context, placement.box, scene.palette)
     else if (level === 'simple') drawSilhouette(context, placement.box, scene.palette, drawing)
     else drawMark(context, placement.box, scene.palette, drawing)
