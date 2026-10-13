@@ -254,11 +254,30 @@ export function normalizedCombatSubclassFor(actor) {
  * действий уже оставляет curated-запись; ресурсы обязаны принять то же решение,
  * иначе рядом с настоящим пулом рождается недостижимый `feature_*`.
  */
+/**
+ * Исполнимые умения подклассов под id каталога dnd.su — тем же, под которым у
+ * них рисунок; каталожная запись с тем же id из списка уходит. Разбор каталога
+ * местами неточен (Священное оружие там — «реакция со спасброском»), поэтому
+ * профиль задан здесь по PHB 2014, в духе BG3.
+ */
+const SUBCLASS_ACTIONS = Object.freeze({
+  [normalizedName('Путь берсерка')]: Object.freeze([
+    action('barbarian-put-berserka-beshenstvo', 'Бешенство', { target: 'enemy', actionType: 'bonus_action', range: 5, minimumLevel: 3, requiresWeapon: true, requiresCondition: 'raging', description: 'В ярости — бонусным действием ещё одна атака оружием ближнего боя (как в BG3; истощения после ярости нет).', effect: { kind: 'weapon_attack', attacks: 1 } }),
+  ]),
+  [normalizedName('Клятва преданности')]: Object.freeze([
+    action('paladin-klyatva-predannosti-bozhestvennyy-kanal', 'Священное оружие', { target: 'self', minimumLevel: 3, resource: 'channel_divinity', description: 'Божественный канал: на минуту оружие светится, считается магическим и прибавляет модификатор Харизмы (не меньше +1) к броскам атаки.', effect: { kind: 'condition', condition: 'sacred-weapon', duration: 'rounds:10' } }),
+  ]),
+  [normalizedName('Путь открытой ладони')]: Object.freeze([
+    action('monk-put-otkrytoy-ladoni-tehniki-otkrytoy-ladoni', 'Шквал открытой ладони', { target: 'enemy', actionType: 'bonus_action', range: 5, minimumLevel: 3, resource: 'ki', description: 'Шквал ударов: 1 ци, две безоружные атаки; каждое попадание — спасбросок Ловкости против СЛ ци, иначе цель сбита с ног.', effect: { kind: 'weapon_attack', attacks: 2, unarmed: true, saveAbility: 'dex', saveDcAbility: 'wis', condition: 'prone', conditionDuration: 'none' } }),
+  ]),
+})
+
 function curatedActionsFor(actor, classKey, subclass) {
   const curated = classKey
     ? [
       ...(CLASS_ACTIONS[classKey] ?? []),
       ...(classKey === 'fighter' && normalizedName(subclass) === normalizedName('Мастер боевых искусств') ? MANEUVERS : []),
+      ...(SUBCLASS_ACTIONS[normalizedName(subclass)] ?? []),
     ]
     : []
   return curated.filter((entry) => isOptionalFeatureSelected(actor, entry.id))
@@ -322,7 +341,8 @@ export function combatActionsFor(actor) {
   const subclass = actorSubclass(actor, classKey)
   const curated = curatedActionsFor(actor, classKey, subclass)
   const curatedNames = curatedActionNamesFor(curated)
-  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name))) : []
+  const curatedIds = new Set(curated.map((entry) => entry.id))
+  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name)) && !curatedIds.has(entry.id)) : []
   const classActions = [...curated, ...generated]
   const ancestry = actor?.speciesBenefits?.mechanics?.dragon_ancestry
   const speciesActions = actor?.speciesBenefits?.mechanics?.breath_weapon === true && ancestry
@@ -457,6 +477,8 @@ export function combatResourceMaximumsFor(actor, { classResources2024 = false } 
   if (classKey === 'paladin') {
     resources.divine_sense = Math.max(1, Number(actor?.abilities?.cha ? Math.floor((Number(actor.abilities.cha) - 10) / 2) + 1 : 1))
     resources.lay_on_hands = level * 5
+    // Божественный канал клятвы — с 3-го уровня, один на короткий отдых.
+    if (level >= 3) resources.channel_divinity = 1
   }
   if (classKey === 'ranger') resources.favored_foe = proficiency
   if (classKey === 'sorcerer' && level >= 2) resources.sorcery_points = level
@@ -496,6 +518,7 @@ export function combatResourceRecoveryFor(actor, { classResources2024 = false } 
   if (classKey === 'barbarian') recovery.rage = classResources2024 ? ONE_ON_SHORT_REST : 'long'
   if (classKey === 'bard') recovery.bardic_inspiration = level >= 5 ? 'short_or_long' : 'long'
   if (classKey === 'cleric' && level >= 2) recovery.channel_divinity = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'
+  if (classKey === 'paladin' && level >= 3) recovery.channel_divinity = 'short_or_long'
   if (classKey === 'druid' && level >= 2) recovery.wild_shape = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'
   if (classKey === 'fighter') {
     recovery.second_wind = classResources2024 ? ONE_ON_SHORT_REST : 'short_or_long'

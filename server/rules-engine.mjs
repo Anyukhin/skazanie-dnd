@@ -582,6 +582,9 @@ const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // Внутренний маркер для атак, которые уже оплачены родительским бонусным
 // действием. Символ и токен не могут приехать в JSON-команде игрока.
 const MONK_BONUS_ATTACK_CONTEXT = Symbol('monk-bonus-attack')
+// Безоружные удары монаха бонусным действием: боевые искусства, Шквал ударов
+// и Шквал открытой ладони.
+const MONK_BONUS_UNARMED_ACTION_IDS = new Set(['martial-arts-strike', 'flurry-of-blows', 'monk-put-otkrytoy-ladoni-tehniki-otkrytoy-ladoni'])
 const MONK_BONUS_ATTACK_TOKEN = Object.freeze({})
 // Божественная кара едет во вложенную атаку только серверным контекстом:
 // поле команды клиент мог бы прислать сам и получить кару без ячейки.
@@ -3247,7 +3250,7 @@ function combatItem(actor, itemId) {
 
 const SHILLELAGH_CONDITION = 'shillelagh'
 const SHILLELAGH_WEAPON_KEYS = new Set(['club', 'quarterstaff'])
-const MAGICAL_WEAPON_CONDITIONS = new Set(['magic-weapon', 'elemental-weapon', 'elemental-weapon-2', 'elemental-weapon-3', 'holy-weapon'])
+const MAGICAL_WEAPON_CONDITIONS = new Set(['magic-weapon', 'elemental-weapon', 'elemental-weapon-2', 'elemental-weapon-3', 'holy-weapon', 'sacred-weapon'])
 
 function itemInstanceKey(item) {
   return String(item?.item_instance_id ?? item?.itemInstanceId ?? item?.id ?? '')
@@ -5425,7 +5428,7 @@ function assertActorPermission(command, context, state) {
 }
 
 function assertMonkUnarmedActionAllowed(state, actor, action) {
-  if (!['martial-arts-strike', 'flurry-of-blows'].includes(String(action?.id ?? ''))) return
+  if (!MONK_BONUS_UNARMED_ACTION_IDS.has(String(action?.id ?? ''))) return
   const economy = state.mechanics.combat.action_economy[actorId(actor)] ?? {}
   if (Math.max(0, safeInteger(economy.attacks_used, 0)) < 1) {
     throw new RulesValidationError('Безоружный удар монаха бонусным действием доступен после действия «Атака»', 'MONK_ATTACK_ACTION_REQUIRED')
@@ -7600,6 +7603,9 @@ export function validateCommand(input, rawState, context = {}) {
       if (!reactionWindow || String(reactionWindow.actor_id) !== command.actor_id || !(reactionWindow.action_ids ?? []).includes(action.id)) throw new RulesValidationError('У этой реакции сейчас нет подходящего триггера', 'REACTION_NOT_AVAILABLE')
       command.reaction_window = reactionWindow
       if (action.target === 'enemy') command.target_id = String(reactionWindow.source_actor_id)
+    }
+    if (action.requiresCondition && !conditionIdsFor(state, command.actor_id).has(String(action.requiresCondition))) {
+      throw new RulesValidationError(action.requiresCondition === 'raging' ? 'Бешенство — только в ярости' : 'Умение сейчас недоступно', 'ACTION_CONDITION_REQUIRED')
     }
     if (action.effect?.offHand === true) {
       const offHandItem = offHandWeaponFor(actor)
@@ -13769,6 +13775,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // а не из частного случая, поэтому любое новое зачарование включается
       // одной строкой в `CONDITION_EFFECTS`.
       modifier += conditionNumericBonus(state, command.actor_id, 'attackBonus')
+      // Священное оружие паладина Преданности: +Харизма, не меньше +1.
+      if (actorConditions.has('sacred-weapon')) modifier += Math.max(1, abilityModifier(actor?.abilities?.cha))
       const alliedSupport = listActors(state).some((candidate) => actorId(candidate) !== command.actor_id
         && isEnemyActor(state, actorId(candidate)) === isEnemyActor(state, command.actor_id)
         && isLivingActor(candidate)
@@ -16254,7 +16262,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const level = Math.max(1, safeInteger(actor?.level, 1))
         const tier = Object.entries(action.effect.attacksByLevel ?? {}).sort(([left], [right]) => Number(right) - Number(left)).find(([minimum]) => level >= Number(minimum))
         const attacks = Math.max(1, safeInteger(tier?.[1] ?? action.effect.attacks, 1))
-        const monkUnarmedBonus = action.effect.unarmed === true && ['martial-arts-strike', 'flurry-of-blows'].includes(action.id)
+        const monkUnarmedBonus = action.effect.unarmed === true && MONK_BONUS_UNARMED_ACTION_IDS.has(action.id)
         const nestedContext = {
           ...context,
           [LOADING_ACTION_TYPE_CONTEXT]: action.actionType,
@@ -16315,7 +16323,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               rolls.push(save)
               const saved = savingThrowSucceeded(save, dc)
               attackResult.events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', { ability: saveAbility, difficulty: dc, saved, ...save }, [actionTargetId]))
-              if (!saved) attackResult.events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: action.effect.condition, duration: 'until-next-turn', source_actor: command.actor_id }, [actionTargetId]))
+              if (!saved) attackResult.events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: action.effect.condition, duration: action.effect.conditionDuration === 'none' ? null : 'until-next-turn', source_actor: command.actor_id }, [actionTargetId]))
             } else if (action.effect.condition) {
               attackResult.events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', { condition: action.effect.condition, duration: 'until-next-turn', source_actor: command.actor_id }, [actionTargetId]))
             }
