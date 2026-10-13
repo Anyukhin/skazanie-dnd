@@ -11,6 +11,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 sk-core.workspace = true
 rusqlite = { version = "0.37", features = ["bundled"] }
+scrypt = "0.12.0"
+base64 = "0.23.1"
+rand.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
