@@ -76,6 +76,10 @@ test('склонение места и обрыв на полуслове', () =
   const state = stateWith()
   assert.equal(undeclinedPlaceNames('Найти в Пепельная застава другой путь к разгадке.', state)[0]?.code, 'PLACE_NAME_NOT_DECLINED')
   assert.deepEqual(undeclinedPlaceNames('Найти в Пепельной заставе другой путь к разгадке.', state), [])
+  // Мужской род: винительный неодушевлённого совпадает с именительным (прогон 2026-10-13).
+  const forest = { ...state, worldMap: { ...state.worldMap, locations: [...state.worldMap.locations, { id: 'forest', name: 'Дикий лес' }] } }
+  assert.deepEqual(undeclinedPlaceNames('Маг всё время ходил в Дикий лес.', forest), [])
+  assert.equal(undeclinedPlaceNames('Он вернулся из Дикий лес обожжённым.', forest)[0]?.code, 'PLACE_NAME_NOT_DECLINED')
   assert.equal(truncatedText('Три свежих донесения связывают его охоту с забытым походом самого короля и пох')[0]?.code, 'TEXT_TRUNCATED')
   assert.deepEqual(truncatedText('Три свежих донесения связывают его охоту с забытым походом самого короля.'), [])
 })
