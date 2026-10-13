@@ -765,7 +765,11 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       continue
     }
     if (['stabilize', 'first-aid'].includes(action.id)) {
-      const target = allies.find((ally) => downedAlly(ally) && combatDistance(state, actorIdValue, combatId(ally)) <= Number(action.range ?? 5))
+      // Стабилизировать можно только того, кто ещё бросает спасброски от смерти:
+      // погибший и уже стабильный движок отклонит (стенд 7-го уровня, 2026-10-13).
+      const target = allies.find((ally) => downedAlly(ally) && !isDeadHero(state, combatId(ally))
+        && state?.mechanics?.death?.saving_throws?.[combatId(ally)]?.stable !== true
+        && combatDistance(state, actorIdValue, combatId(ally)) <= Number(action.range ?? 5))
       if (target) add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id, target_id: combatId(target), target_ids: [combatId(target)] }), 8_000, `${action.name} спасает лежащего союзника`)
       continue
     }
