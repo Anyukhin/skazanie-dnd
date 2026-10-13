@@ -583,6 +583,15 @@ test('HTTP sanitizer сохраняет владельца героя и не п
   assert.equal(forgedForce.status, 200, `${forgedForce.text}\n${logs}`)
   const operated = forgedForce.body.mechanics.find((event) => event.event_type === 'SceneObjectOperated')
   assert.equal(operated.payload.approach, 'hand')
+  // Плейтест 2026-10-10: осмотр бочки вне боя подписывался «Система боя» и
+  // звучал квитанцией «Внутри обнаружено: …». Вне боя строку говорит
+  // рассказчик, а находка названа у своего предмета.
+  assert.equal(forgedForce.body.narration_author, 'Рассказчик')
+  assert.match(forgedForce.body.narration, /^Под крышкой сундука — /u)
+  const sceneRoom = await request(baseUrl, '/api/rooms/SCENE-HTTP', { cookie: registered.cookie })
+  const sceneLine = sceneRoom.body.state.messages.find((message) => message.id === forgedForce.body.narration_message_id)
+  assert.equal(sceneLine?.author, 'Рассказчик')
+  assert.equal(sceneLine?.speaker, 'narrator')
 
   const foreignActor = await request(baseUrl, '/api/campaigns/SCENE-HTTP/commands', {
     method: 'POST',

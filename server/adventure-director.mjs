@@ -9,7 +9,7 @@ import { REFERENCE_SIZE } from './building-generator.mjs'
 import { applyRoomFloors } from './room-floors.mjs'
 import { normalizeDeclaredLevels } from './level-generator.mjs'
 import { sceneMapDesignFor, worldLocationDesignContext } from './scene-map-design.mjs'
-import { normalizeSceneRequirements, sceneMapRequirementsFor } from './scene-requirements.mjs'
+import { SCENE_REQUIREMENTS_VERSION, missingStructureFor, normalizeSceneRequirements, sceneMapRequirementsFor, textAgainstMap } from './scene-requirements.mjs'
 import { applyScenePlan, programFocusOutdoors } from './scene-program-layout.mjs'
 import { SETTLEMENT_MIN_SIZE, programReport } from './map-quality.mjs'
 import {
@@ -378,6 +378,49 @@ export function openingEntrySide(worldMap, locationId) {
  * @param {string} side
  * @returns {{x: number, y: number}|null}
  */
+/**
+ * Отряд, пришедший к постройке дорогой, стоит снаружи, у входной двери, а не
+ * внутри: генератор «постройка с двором» ставит точку появления в зал, и
+ * после перехода к маяку герои оказывались под крышей, пока рассказ и игроки
+ * стояли у двери, — «Борин уже под крышей» на «толкает дверь и входит» (замер
+ * 27, 2026-10-11). Точка внутри помещения переносится на клетку двора у
+ * ближайшей наружной двери; карта без такой двери остаётся как есть.
+ *
+ * @param {import('./tactical-map.mjs').TacticalMap} map
+ * @param {{x: number, y: number}|null|undefined} spawn
+ * @returns {{x: number, y: number}|null}
+ */
+export function outsideEntranceFor(map, spawn) {
+  if (!spawn || !map) return null
+  const kind = new Map((map.zones ?? []).map((zone) => [zone.id, zone.kind]))
+  const here = cellAt(map, Number(spawn.x), Number(spawn.y))
+  if (!here || kind.get(here.zone) !== 'interior') return null
+  const blocked = new Set()
+  for (const prop of map.props ?? []) {
+    if (!prop.blocksMove || prop.mount) continue
+    for (const point of prop.footprint?.length ? prop.footprint : [{ x: Math.floor(prop.x), y: Math.floor(prop.y) }]) blocked.add(`${point.x},${point.y}`)
+  }
+  /** @type {{x: number, y: number, score: number}|null} */
+  let best = null
+  for (const door of map.doors ?? []) {
+    if (door.locked === true || door.barricade) continue
+    const first = { x: Number(door.x), y: Number(door.y) }
+    const second = door.dir === 'e' ? { x: first.x + 1, y: first.y } : { x: first.x, y: first.y + 1 }
+    const sides = [first, second].map((position) => ({ position, cell: cellAt(map, position.x, position.y) }))
+    const inside = sides.find(({ cell }) => cell?.passable && kind.get(cell.zone) === 'interior')
+    const outside = sides.find(({ cell }) => cell?.passable && kind.get(cell.zone) !== 'interior' && cell.surface !== 'water')
+    if (!inside || !outside || blocked.has(`${outside.position.x},${outside.position.y}`)) continue
+    // Шаг от двери наружу, если там свободно: герой не заслоняет проём.
+    const step = { x: outside.position.x + (outside.position.x - inside.position.x), y: outside.position.y + (outside.position.y - inside.position.y) }
+    const stepCell = cellAt(map, step.x, step.y)
+    const stand = stepCell?.passable && kind.get(stepCell.zone) !== 'interior' && stepCell.surface !== 'water' && !blocked.has(`${step.x},${step.y}`)
+      ? step : outside.position
+    const score = Math.abs(stand.x - Number(spawn.x)) + Math.abs(stand.y - Number(spawn.y))
+    if (!best || score < best.score) best = { x: stand.x, y: stand.y, score }
+  }
+  return best ? { x: best.x, y: best.y } : null
+}
+
 export function entranceOnSide(map, side) {
   if (!['west', 'east', 'north', 'south'].includes(side)) return null
   const party = map.spawnPoints?.find((point) => point.role === 'party')
@@ -409,6 +452,37 @@ export function entranceOnSide(map, side) {
   return best ? { x: best.x, y: best.y } : null
 }
 
+/**
+ * Что карта знает о постройках и местности — для сверки слов перехода
+ * (`textAgainstMap`, `server/scene-requirements.mjs`). Принимает и живую, и
+ * сохранённую карту; битая карта даёт пустые факты, и сверка тогда молчит
+ * только о воде — зоны и двери читаются и у сохранённой формы.
+ *
+ * @param {Record<string, any>|null} rawMap
+ * @returns {import('./scene-requirements.mjs').StructureMapFacts}
+ */
+function sceneStructureFacts(rawMap) {
+  if (!rawMap || typeof rawMap !== 'object') return {}
+  const facts = {
+    theme: text(rawMap.theme, 60),
+    zones: (Array.isArray(rawMap.zones) ? rawMap.zones : []).map((zone) => ({ kind: text(zone?.kind, 20), label: text(zone?.label, 80) })),
+    doors: Array.isArray(rawMap.doors) ? rawMap.doors.length : 0,
+    props: (Array.isArray(rawMap.props) ? rawMap.props : []).map((prop) => text(prop?.assetId, 80)).filter(Boolean),
+    water: false,
+  }
+  try {
+    const live = rawMap.layers?.present instanceof Uint8Array ? rawMap : deserializeTacticalMap(clone(rawMap))
+    for (let y = 0; y < live.height && !facts.water; y += 1) {
+      for (let x = 0; x < live.width; x += 1) {
+        if (cellAt(live, x, y)?.surface === 'water') { facts.water = true; break }
+      }
+    }
+  } catch {
+    // Старая карта без слоёв: воду не узнать, остальное уже прочитано.
+  }
+  return facts
+}
+
 /** Сколько раз генератор пробует карту, прежде чем взять лучшую из неудачных. */
 const MAP_CHECK_ATTEMPTS = 4
 
@@ -423,6 +497,35 @@ const MAP_CHECK_ATTEMPTS = 4
 function mapCheckFor(theme, _plan) {
   const settlement = theme?.kind === 'settlement'
   return { minSize: settlement ? SETTLEMENT_MIN_SIZE : null, openScene: settlement }
+}
+
+/**
+ * Маяк строится башней-усадьбой (`scene-map-design`), и комнаты носили
+ * подписи усадьбы: «Парадный зал, Кухня, Салон» у маяка на скале читались
+ * рассказчиком и игроками как особняк (замер 2026-10-10). Подписи — по
+ * назначению маяка; геометрия, двери и программа сцены не меняются.
+ */
+const LIGHTHOUSE_ROOM_LABELS = Object.freeze({
+  'Парадный зал': 'Нижний ярус маяка',
+  'Кухня': 'Каморка смотрителя',
+  'Салон': 'Лестница к фонарю',
+  'Кладовая': 'Кладовая масла',
+  'Участок': 'Скала у маяка',
+})
+
+/** @param {any} map @param {string} location */
+function relabelLighthouseRooms(map, location) {
+  if (!/(?<![\p{L}\p{M}])маяк\p{L}*/iu.test(String(location ?? ''))) return
+  for (const zone of map?.zones ?? []) {
+    const label = LIGHTHOUSE_ROOM_LABELS[/** @type {keyof typeof LIGHTHOUSE_ROOM_LABELS} */ (String(zone?.label ?? ''))]
+    if (label) zone.label = label
+  }
+  if (map?.overlays?.roomLabels) {
+    map.overlays.roomLabels = map.overlays.roomLabels.map((/** @type {any} */ entry) => {
+      const label = LIGHTHOUSE_ROOM_LABELS[/** @type {keyof typeof LIGHTHOUSE_ROOM_LABELS} */ (String(entry?.label ?? ''))]
+      return label ? { ...entry, label } : entry
+    })
+  }
 }
 
 function generateSceneGeometryFor({ theme, danger, location, sceneKind, settlementType = '', worldKind = '', seed, locationId, requestedMap, levels = [], description = '', worldDescription = '', biome = '', useLibrary = true, usedLibraryIds = [], requirements = [], program = null, entrySide = '' }) {
@@ -470,8 +573,15 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
   }
   if (matched) {
     const exteriorCue = /снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей)/iu
+    // Пришли по дороге (`entrySide` — сторона прежнего места на карте мира) —
+    // значит, стоят снаружи, у входа: «добирается до маяка» ставило отряд в
+    // парадный зал, и «толкаю дверь, вхожу» получало «Борин и так уже внутри»
+    // (плейтест 2026-10-10). Сцена, где отряд уже в помещении («в зале», «за
+    // столом»), начинается внутри, как прежде.
+    const interiorCue = /(?<![\p{L}\p{M}])(?:внутри|в зале|в залу|за стол\p{L}*|у стойк\p{L}*|у очага|в помещени\p{L}*|входит|входят|заходит|заходят)(?![\p{L}\p{M}])/iu
     const startsOutside = exteriorCue.test(`${location} ${theme}`)
       || /(?:отряд|герои|путники|вы)[^.!?]{0,50}(?:снаружи|у входа|перед (?:дом|здани|таверн|трактир|замк|дворц)|у двер(?:и|ей))/iu.test(description)
+      || (Boolean(entrySide) && !interiorCue.test(description))
     const check = mapCheckFor(matched, plan)
     /** @type {{ built: ReturnType<typeof buildThemedScene>, report: ReturnType<typeof programReport> }|null} */
     let best = null
@@ -510,6 +620,7 @@ function generateSceneGeometryFor({ theme, danger, location, sceneKind, settleme
       if (!report.problems.length) break
     }
     const { built, report } = /** @type {NonNullable<typeof best>} */ (best)
+    relabelLighthouseRooms(built.map, location)
     // Вход по дороге: улица и поле строят вход отряда у западного края, а
     // отряд пришёл с той стороны, где на карте мира лежит прежнее место.
     // Карта поворачивается целиком — та же карта, иначе лежащая. Здание и
@@ -899,9 +1010,31 @@ export function createSceneTransition(input = {}, state = {}) {
         }
       })()
     : null
-  const partySpawn = returnEntrance ?? (Array.isArray(tacticalMap.spawnPoints)
+  const mapSpawn = Array.isArray(tacticalMap.spawnPoints)
     ? tacticalMap.spawnPoints.find((point) => point?.role === 'party')
-    : null)
+    : null
+  const partySpawn = returnEntrance ?? (() => {
+    if (!mapSpawn) return null
+    try {
+      const live = tacticalMap.layers?.present instanceof Uint8Array ? tacticalMap : deserializeTacticalMap(clone(serializedMap))
+      return outsideEntranceFor(live, mapSpawn) ?? mapSpawn
+    } catch {
+      return mapSpawn
+    }
+  })()
+  // Слова перехода сверяются с построенной картой: фраза о маяке, двери или
+  // мосте, которых на карте нет, в событие не попадает (живой замер
+  // 2026-10-10 — «башня на скале» над картой-дорогой). Имя места, которое
+  // называет постройку, а помещений на карте нет, — обещание, которое карта
+  // не держит: оно уходит в `missing`, и Рассказчик о нём молчит.
+  const structureFacts = sceneStructureFacts(tacticalMap)
+  const checkedArrival = textAgainstMap(arrival, structureFacts, { location })
+  const checkedTransition = textAgainstMap(transition, structureFacts, { location, journey: true })
+  const arrivalText = checkedArrival.text || `Отряд прибывает в локацию «${location}».`
+  const transitionText = checkedTransition.text || `Путь из «${text(previousScene.location || previousScene.title, 100, 'прежнего места')}» приводит героев в «${location}».`
+  const missingStructure = rememberedMap ? '' : missingStructureFor(location, structureFacts)
+  const missing = [...new Set([...(generated?.missing ?? []), ...(missingStructure ? [missingStructure] : [])])]
+  const program = mapRequirements ?? (missingStructure ? { version: SCENE_REQUIREMENTS_VERSION, items: [] } : null)
   const scene = {
     title,
     location,
@@ -921,7 +1054,7 @@ export function createSceneTransition(input = {}, state = {}) {
     // Библиотечная карта приносит свои этажи: заявка архитектора на этажи
     // уступает фактической постройке, иначе подписи разошлись бы с картой.
     ...(library ? librarySceneFields(library) : {}),
-    ...(mapRequirements ? { map_requirements: { ...mapRequirements, ...(generated?.missing?.length ? { missing: generated.missing } : {}) } } : {}),
+    ...(program ? { map_requirements: { ...program, ...(missing.length ? { missing } : {}) } } : {}),
     cells,
     map: serializedMap,
   }
@@ -933,7 +1066,7 @@ export function createSceneTransition(input = {}, state = {}) {
       chapter,
       history,
       currentHook: hook,
-      lastTransition: transition,
+      lastTransition: transitionText,
       unresolvedThreads: [...new Set(unresolvedThreads.filter(Boolean))].slice(-20),
       visitedLocations: [...new Set([...(Array.isArray(previousAdventure.visitedLocations) ? previousAdventure.visitedLocations : []), location])].slice(-50),
       visitedLocationIds: [...new Set([
@@ -941,8 +1074,8 @@ export function createSceneTransition(input = {}, state = {}) {
         worldMap.currentLocationId,
       ].filter(Boolean))].slice(-50),
     },
-    transition,
-    arrival,
+    transition: transitionText,
+    arrival: arrivalText,
     ...(library?.levels.length ? { library_levels: library.levels } : {}),
     // Старый переход без заявки сохраняет совместимую точку (1,4). Для
     // заявленной карты вход выводится из её размеров, чтобы широкий берег или

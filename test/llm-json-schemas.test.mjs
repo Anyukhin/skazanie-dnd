@@ -13,6 +13,7 @@ import {
   CAMPAIGN_CREATION_JSON_SCHEMA,
   DIRECTOR_INTENT_JSON_SCHEMA,
   DIRECTOR_SCENE_RESOLUTIONS,
+  HERO_HOOKS_JSON_SCHEMA,
   NPC_PROMISE_DIRECTIONS,
   NPC_SOCIAL_RESPONSE_JSON_SCHEMA,
   NPC_SOCIAL_STANCES,
@@ -20,7 +21,7 @@ import {
 import { STRUCTURED_OUTPUT_MODELS, supportsJsonSchema } from '../server/model-style-profiles.mjs'
 import { NpcSocialController } from '../server/npc-social-controller.mjs'
 
-const ALL_SCHEMAS = [DIRECTOR_INTENT_JSON_SCHEMA, NPC_SOCIAL_RESPONSE_JSON_SCHEMA, CAMPAIGN_CREATION_JSON_SCHEMA]
+const ALL_SCHEMAS = [DIRECTOR_INTENT_JSON_SCHEMA, NPC_SOCIAL_RESPONSE_JSON_SCHEMA, CAMPAIGN_CREATION_JSON_SCHEMA, HERO_HOOKS_JSON_SCHEMA]
 
 /** Минимальная проверка значения по подмножеству JSON Schema, которое используют схемы ролей. */
 function conforms(schema, value) {
@@ -253,4 +254,133 @@ test('RouterAIClient без схемы или с негодной схемой �
   const text = capturingClient('openai/gpt-6-luna')
   await text.client.complete({ messages, jsonSchema: DIRECTOR_INTENT_JSON_SCHEMA })
   assert.equal(text.captured[0].response_format, undefined)
+})
+
+test('OhMyLama за ROUTERAI_BASE_URL: имя модели без префикса, рассуждения — reasoning_effort, учёт — прежнее имя', async () => {
+  // 2026-10-11: у RouterAI кончился баланс (HTTP 402), владелец подключил
+  // OhMyLama. Её имена моделей — `gpt-6-luna`, а не `openai/gpt-6-luna`.
+  const { RouterAIClient, llmProviderFor, providerRequestBody } = await import('../server/llm-client.mjs')
+  assert.equal(llmProviderFor('https://ohmylama.ru/v1'), 'ohmylama')
+  assert.equal(llmProviderFor('https://routerai.ru/api/v1'), 'routerai')
+  assert.equal(llmProviderFor('http://127.0.0.1:9999/v1'), 'routerai')
+  assert.deepEqual(providerRequestBody('ohmylama', { model: 'anthropic/claude-sonnet-5.5', temperature: 0, reasoning: { effort: 'low' }, messages: [] }),
+    { model: 'claude-sonnet-5.5', reasoning_effort: 'low', messages: [] }, 'Claude у OhMyLama не принимает temperature')
+  assert.deepEqual(providerRequestBody('ohmylama', { model: 'openai/gpt-6-luna', reasoning: { enabled: false }, messages: [] }),
+    { model: 'gpt-6-luna', messages: [] })
+  const routed = { model: 'openai/gpt-6-luna', reasoning: { enabled: false }, messages: [] }
+  assert.equal(providerRequestBody('routerai', routed), routed)
+  const sent = []
+  const fetchImpl = async (url, init) => {
+    sent.push({ url, body: JSON.parse(init.body) })
+    return new Response(JSON.stringify({ model: 'gpt-6-luna', choices: [{ message: { role: 'assistant', content: 'да' } }], usage: { prompt_tokens: 3, completion_tokens: 1 } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  const client = new RouterAIClient({ apiKey: 'test-key', baseUrl: 'https://ohmylama.ru/v1', model: 'openai/gpt-6-luna', reasoning: { enabled: false }, fetchImpl })
+  const result = await client.complete({ messages: [{ role: 'user', content: 'да?' }] })
+  assert.equal(sent[0].url, 'https://ohmylama.ru/v1/chat/completions')
+  assert.equal(sent[0].body.model, 'gpt-6-luna')
+  assert.equal(sent[0].body.reasoning, undefined)
+  assert.equal(result.model, 'openai/gpt-6-luna', 'учёт расхода видит внутреннее имя')
+  assert.equal(result.provider, 'OhMyLama')
+})
+
+test('длинный разовый вызов не обрезается лимитом горячего пути первой модели', async () => {
+  // Замер 19 (2026-10-11): у OhMyLama Luna пишет мир за 20,4 с, лимит модели
+  // 20 с срывал создание кампании (вызов просит 45 с), и мир становился
+  // запасным шаблоном. Запас резервной модели — 60 % срока — сохраняется.
+  const { FallbackLLMClient } = await import('../server/llm-client.mjs')
+  const slow = { model: 'primary', timeoutMs: 20, async complete(_input, options) {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, 40)
+      options?.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')) }, { once: true })
+    })
+    return { content: 'мир', model: 'primary' }
+  } }
+  const reserve = { model: 'reserve', timeoutMs: 20, async complete() { return { content: 'запас', model: 'reserve' } } }
+  const client = new FallbackLLMClient({ clients: [slow, reserve] })
+  const long = await client.complete({ messages: [{ role: 'user', content: 'мир' }] }, { timeoutMs: 400 })
+  assert.equal(long.content, 'мир', 'длинный вызов дождался первой модели')
+})
+
+test('Gemini у OhMyLama: без штрафов повторов и с json_object вместо json_schema', async () => {
+  // Проба 2026-10-11: presence_penalty — HTTP 400, strict json_schema — 503 на
+  // каждом вызове. Самая быстрая резервная модель падала на рассказе и ролях.
+  const { providerRequestBody } = await import('../server/llm-client.mjs')
+  const schema = { type: 'json_schema', json_schema: { name: 'probe', strict: true, schema: { type: 'object' } } }
+  assert.deepEqual(providerRequestBody('ohmylama', {
+    model: 'google/gemini-2.5-flash', temperature: 0.4, frequency_penalty: 0.3, presence_penalty: 0.2, response_format: schema, messages: [],
+  }), { model: 'gemini-2.5-flash', temperature: 0.4, response_format: { type: 'json_object' }, messages: [] })
+  const luna = providerRequestBody('ohmylama', { model: 'openai/gpt-6-luna', presence_penalty: 0.2, response_format: schema, messages: [] })
+  assert.equal(luna.presence_penalty, 0.2, 'Luna штрафы принимает')
+  assert.deepEqual(luna.response_format, schema)
+})
+
+test('один тайм-аут после успеха не снимает основную модель на время остывания', async () => {
+  // Замер 19 (2026-10-11): медленный ответ Luna на большой запрос отправлял
+  // её в двухминутное остывание, и ходы этого окна уходили резервным моделям,
+  // которые не успевали, — рассказ сыпался в шаблоны.
+  const { FallbackLLMClient, LLMTimeoutError } = await import('../server/llm-client.mjs')
+  const calls = []
+  let slow = false
+  const primary = { model: 'primary', async complete() {
+    calls.push('primary')
+    if (slow) throw new LLMTimeoutError(10)
+    return { content: 'основная', model: 'primary' }
+  } }
+  const reserve = { model: 'reserve', async complete() { calls.push('reserve'); return { content: 'запас', model: 'reserve' } } }
+  const client = new FallbackLLMClient({ clients: [primary, reserve], failureCooldownMs: 60_000, now: () => 1_000 })
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'раз' }] })).content, 'основная')
+  slow = true
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'два' }] })).content, 'запас')
+  assert.equal(client.health().find(entry => entry.model === 'primary')?.state, 'ready')
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'три' }] })).content, 'запас')
+  assert.deepEqual(calls, ['primary', 'primary', 'reserve', 'primary', 'reserve'], 'после первого тайм-аута основную спрашивают снова')
+  calls.length = 0
+  await client.complete({ messages: [{ role: 'user', content: 'четыре' }] })
+  assert.deepEqual(calls, ['reserve'], 'второй тайм-аут подряд — остывание')
+})
+
+test('негодный ответ не снимает модель: битый JSON уходит резервной, следующий запрос — снова первой', async () => {
+  // Замер 20 (2026-10-11): обрезанный JSON при создании мира снял Luna на две
+  // минуты, и первые ходы партии писали резервные модели.
+  const { FallbackLLMClient, LLMError } = await import('../server/llm-client.mjs')
+  const calls = []
+  let broken = true
+  const primary = { model: 'primary', async complete() {
+    calls.push('primary')
+    if (broken) throw new LLMError('broken json', 'LLM_JSON_INVALID')
+    return { content: 'основная', model: 'primary' }
+  } }
+  const reserve = { model: 'reserve', async complete() { calls.push('reserve'); return { content: 'запас', model: 'reserve' } } }
+  const client = new FallbackLLMClient({ clients: [primary, reserve], failureCooldownMs: 60_000, now: () => 1_000 })
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'мир' }] })).content, 'запас')
+  broken = false
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'ход' }] })).content, 'основная')
+  assert.deepEqual(calls, ['primary', 'reserve', 'primary'])
+})
+
+test('одиночная недоступность провайдера после успеха не снимает модель', async () => {
+  // Замер 28 (2026-10-11): один обрыв Luna при создании мира отдал резервным
+  // моделям весь первый акт партии.
+  const { FallbackLLMClient, LLMError } = await import('../server/llm-client.mjs')
+  const calls = []
+  let down = false
+  const primary = { model: 'primary', async complete() {
+    calls.push('primary')
+    if (down) throw new LLMError('reset', 'LLM_PROVIDER_UNAVAILABLE')
+    return { content: 'основная', model: 'primary' }
+  } }
+  const reserve = { model: 'reserve', async complete() { calls.push('reserve'); return { content: 'запас', model: 'reserve' } } }
+  const client = new FallbackLLMClient({ clients: [primary, reserve], failureCooldownMs: 60_000, now: () => 1_000 })
+  await client.complete({ messages: [{ role: 'user', content: 'раз' }] })
+  down = true
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'мир' }] })).content, 'запас')
+  down = false
+  assert.equal((await client.complete({ messages: [{ role: 'user', content: 'ход' }] })).content, 'основная')
+  down = true
+  await client.complete({ messages: [{ role: 'user', content: 'два' }] })
+  await client.complete({ messages: [{ role: 'user', content: 'три' }] })
+  calls.length = 0
+  down = false
+  await client.complete({ messages: [{ role: 'user', content: 'четыре' }] })
+  assert.deepEqual(calls, ['reserve'], 'вторая недоступность подряд — остывание')
 })

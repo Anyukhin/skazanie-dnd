@@ -863,3 +863,54 @@ test('координатор продлевает срок после хода �
   await coordinator.settleNow('ACTIVE-HERO')
   assert.equal(scheduled.at(-1), 90_000)
 })
+
+// Плейтест 2026-10-10: атака по возможности свалила героя, а реплика
+// рассказчика о падении пришла уже после хода огра — координатор сыграл его,
+// пока маршрут команды ждал рассказчика. Маршрут теперь придерживает автоход.
+function holdFixture({ setTimer = () => 0, clearTimer = () => {} } = {}) {
+  const calls = []
+  const state = normalizeCampaignState({ players: [], enemies: [], mechanics: {} })
+  const coordinator = new CombatTurnCoordinator({
+    eventStore: { load: async () => ({ state, state_version: 1 }) },
+    rulesEngine: {},
+    runNpcTurns: async () => {
+      calls.push('npc')
+      return { events: [], turns: [] }
+    },
+    setTimer,
+    clearTimer,
+  })
+  return { calls, coordinator }
+}
+
+async function settleTicks(count = 20) {
+  for (let index = 0; index < count; index += 1) await new Promise((resolve) => setImmediate(resolve))
+}
+
+test('удержание маршрута команды откладывает автоход до отпускания', async () => {
+  const { calls, coordinator } = holdFixture()
+  const release = coordinator.hold('hold-camp')
+  coordinator.nudge('HOLD-CAMP')
+  await settleTicks()
+  assert.deepEqual(calls, [], 'пока ход идёт к летописи, координатор не играет за NPC')
+  release()
+  await waitUntil(() => calls.length === 1, 'после отпускания автоход продолжается')
+  release()
+  coordinator.nudge('HOLD-CAMP')
+  await waitUntil(() => calls.length === 2, 'повторное отпускание ничего не держит')
+  coordinator.close()
+})
+
+test('забытое удержание снимается по пределу и не замораживает бой', async () => {
+  const timers = []
+  const { calls, coordinator } = holdFixture({ setTimer: (callback, ms) => { timers.push({ callback, ms }); return timers.length } })
+  coordinator.hold('stuck-camp', { maxMs: 500 })
+  coordinator.nudge('stuck-camp')
+  await settleTicks()
+  assert.deepEqual(calls, [])
+  const limit = timers.find((timer) => timer.ms === 500)
+  assert.ok(limit, 'у удержания есть предел')
+  limit.callback()
+  await waitUntil(() => calls.length === 1, 'по пределу автоход идёт сам')
+  coordinator.close()
+})

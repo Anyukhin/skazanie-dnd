@@ -516,7 +516,7 @@ test('боевой текст называет удар вне очереди и
   assert.match(resistance, /Владыка кургана стряхивает с себя чары/u)
   assert.match(combatNarration([{
     event_type: 'LegendaryResistanceUsed', actor_id: 'hero', target_ids: ['boss'], visibility: 'public', payload: { reason: 'lethal' },
-  }], state), /должен был пасть — и устоял/u)
+  }], state), /валит любого — но Владыка кургана остаётся на ногах/u)
   for (const type of ['LegendaryActionUsed', 'LegendaryActionsReset', 'LegendaryResistanceUsed']) {
     assert.ok(COMBAT_NARRATION_EVENT_TYPES.has(type), `рассказчик не знает про ${type}`)
   }

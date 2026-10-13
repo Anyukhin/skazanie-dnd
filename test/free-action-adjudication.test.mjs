@@ -221,6 +221,55 @@ test('заявленное средство сверяется с листом �
   assert.deepEqual(missing.missing, ['Крылья'])
 })
 
+test('известное заклинание узнаётся по русскому имени, как его называет игрок', () => {
+  // Плейтест 2026-10-10: «швыряю Огненный снаряд» → «Мирель таким не
+  // располагает», хотя заговор стоял на панели. Модель пишет средство так, как
+  // его назвал игрок, а лист хранит id.
+  const state = { players: [{ id: 'hero', inventory: [], knownSpellIds: ['fire-bolt'] }] }
+  for (const named of ['заклинание «Огненный снаряд»', 'Огненный снаряд', 'заговор «огненный снаряд»']) {
+    assert.equal(verifyMeans(state, 'hero', [named]).satisfied, true, named)
+  }
+  assert.deepEqual(verifyMeans(state, 'hero', ['заклинание «Огненный шар»']).missing, ['заклинание «Огненный шар»'])
+})
+
+// Плейтест 2026-10-10: волшебница с заговором на панели получила отказ
+// «не располагает заклинанием «Огненный снаряд»» — модель называет средство
+// именем, а лист хранит `fire-bolt`.
+test('заклинание и особенность узнаются по имени из каталога, а не только по идентификатору', () => {
+  const state = {
+    ruleset_id: 'srd_5_2_1',
+    players: [{
+      id: 'mirel', character: 'Мирель', characterClass: 'wizard', level: 3, abilities: { int: 16 },
+      knownSpellIds: ['fire-bolt', 'mage-hand', 'magic-missile', 'shield'],
+      preparedSpellIds: ['magic-missile'],
+      inventory: [{ id: 'staff-1', catalog_id: 'srd_5_2_1:quarterstaff', name: 'Боевой посох' }],
+    }, {
+      id: 'borin', character: 'Борин', characterClass: 'fighter', level: 3,
+      selectedFeatureIds: ['fighting-style-defense'],
+    }],
+  }
+
+  for (const named of ['заклинание «Огненный снаряд»', '«Огненный снаряд»', 'огненный снаряд', 'заговор "Огненный Снаряд"', 'Fire Bolt']) {
+    assert.equal(verifyMeans(state, 'mirel', [named]).satisfied, true, named)
+  }
+  assert.equal(verifyMeans(state, 'mirel', ['заклинание «Волшебная стрела»']).satisfied, true)
+
+  for (const absent of ['заклинание «Огненный шар»', 'заклинание «Луч холода»', 'полёт']) {
+    const refusal = verifyMeans(state, 'mirel', [absent, 'заклинание «Огненный снаряд»'])
+    assert.equal(refusal.satisfied, false, absent)
+    assert.deepEqual(refusal.missing, [absent])
+  }
+
+  assert.equal(verifyMeans(state, 'mirel', ['Боевой посох']).satisfied, true)
+  assert.equal(verifyMeans(state, 'mirel', ['staff-1']).satisfied, true)
+  assert.equal(verifyMeans(state, 'mirel', ['предмет «Боевой посох»']).satisfied, true)
+
+  assert.equal(verifyMeans(state, 'borin', ['умение «Второе дыхание»']).satisfied, true)
+  assert.equal(verifyMeans(state, 'borin', ['боевой стиль «Защита»']).satisfied, true)
+  assert.deepEqual(verifyMeans(state, 'borin', ['умение «Ярость»']).missing, ['умение «Ярость»'])
+  assert.deepEqual(verifyMeans(state, 'borin', ['заклинание «Огненный снаряд»']).missing, ['заклинание «Огненный снаряд»'])
+})
+
 test('старые согласованные проверки сохраняют прежнюю таблицу последствий', () => {
   for (const risk of ['none', 'minor', 'serious', 'deadly']) {
     const consequence = failForwardFor(risk)

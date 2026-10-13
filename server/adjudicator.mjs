@@ -3,6 +3,7 @@ import { RULE_IDS, RulesValidationError, abilityModifier, defaultAttackItemIdFor
 import { LEGACY_DEFAULT_RULESET_ID, rulesetRuleId } from './ruleset-config.mjs'
 import { waitTargetFromText } from './intent-parser.mjs'
 import { minutesUntilClock } from './weather.mjs'
+import { combatSpellFor } from './combat-spells.mjs'
 
 export const DIFFICULTY_CLASSES = Object.freeze({ easy: 10, medium: 15, hard: 20 })
 export const DIFFICULTY_CATEGORIES = Object.freeze(Object.keys(DIFFICULTY_CLASSES))
@@ -62,6 +63,16 @@ export function difficultyCategoryFor(intent, state = {}) {
 export function difficultyClassFor(category) {
   return DIFFICULTY_CLASSES[DIFFICULTY_CATEGORIES.includes(category) ? category : 'medium']
 }
+
+/**
+ * Сколько длится наступивший час: ночь держится до рассвета, вечер — до ночи,
+ * остальное — четыре часа. Прежде окно было одно на всё, и «ждём темноты» в
+ * 02:04 перематывало часы на 22:00 следующих суток (замер 11, 2026-10-10).
+ */
+const WAIT_TARGET_SPAN_MINUTES = Object.freeze({ night: 7 * 60, dusk: 5 * 60 })
+const WAIT_DEFAULT_SPAN_MINUTES = 4 * 60
+/** Сколько выжидает отряд, когда ждать нужного часа уже не нужно. */
+const WAIT_ALREADY_MINUTES = 30
 
 export class Adjudicator {
   async createPlan({ intent, state, retrievedRules }) {
@@ -151,6 +162,36 @@ export class Adjudicator {
         } catch (error) {
           if (!(error instanceof RulesValidationError)) throw error
           return { ...base, clarification_required: true, clarification_message: `${error.message}. Попытка ничего не расходует.` }
+        }
+      }
+      case 'cast_spell': {
+        // Заклинание, названное словами в бою (`intent-parser`, namedKnownSpell):
+        // та же команда, что у панели. Дальность, ход, ячейку и цель проверит движок.
+        const spellId = String(intent.spell_id ?? '')
+        if (!spellId) break
+        const spell = combatSpellFor(actor, spellId, { rulesetId: state?.ruleset_id })
+        if (!spell) {
+          return { ...base, clarification_required: true, clarification_message: 'Этого заклинания сейчас нет под рукой — оно не подготовлено. Можно выбрать другое на панели.' }
+        }
+        if (spell.target === 'point') {
+          return { ...base, clarification_required: true, clarification_message: `«${spell.name}» бьёт по площади — укажите место на карте, и заклинание сорвётся с пальцев.` }
+        }
+        const targetId = intent.targets?.[0]
+        if (!targetId && ['enemy', 'creature'].includes(String(spell.target))) {
+          return { ...base, clarification_required: true, clarification_message: `«${spell.name}» — в кого именно? Назовите цель или выберите её на карте.` }
+        }
+        return {
+          ...base,
+          rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]),
+          proposed_commands: [{
+            // Как у панели (`/commands`): без флага движок только объявляет
+            // сотворение, а бросок атаки, спасбросок и урон не разрешает.
+            command_type: 'CastSpell', actor_id: intent.actor_id, spell_id: spellId, server_authoritative: true,
+            ...(targetId ? { target_id: targetId } : {}),
+            ...(intent.knock_out ? { knock_out: true } : {}),
+            source_rule_ids: ruleIdsFor([RULE_IDS.attack, RULE_IDS.damage]),
+          }],
+          confidence: 0.82,
         }
       }
       case 'attack': {
@@ -279,12 +320,16 @@ export class Adjudicator {
         if (state.mechanics?.combat?.active) {
           return { ...base, clarification_required: true, clarification_message: 'Посреди боя ждать некогда. Попытка ничего не расходует.' }
         }
-        const minutes = minutesUntilClock(state.mechanics?.world_time?.elapsed_minutes ?? 0, target.minute)
-        if (!minutes) return { ...base, clarification_required: true, clarification_message: `Ждать не нужно: уже время ${target.label}.` }
+        const until = minutesUntilClock(state.mechanics?.world_time?.elapsed_minutes ?? 0, target.minute)
+        // Цель уже наступила, и недавно: «ждём темноты» в 23:48 никто за столом
+        // не понимает как «до 22:00 следующих суток» — часы в шапке «шли назад»
+        // (плейтест 2026-10-10). Отряд выжидает полчаса, и план идёт дальше.
+        const already = !until || 24 * 60 - until <= (WAIT_TARGET_SPAN_MINUTES[/** @type {keyof typeof WAIT_TARGET_SPAN_MINUTES} */ (target.id)] ?? WAIT_DEFAULT_SPAN_MINUTES)
+        const minutes = already ? WAIT_ALREADY_MINUTES : until
         return {
           ...base,
           rule_ids: ruleIdsFor([RULE_IDS.resource]),
-          wait: { target: target.id, label: target.label, minutes },
+          wait: { target: target.id, label: target.label, minutes, ...(already ? { already: true } : {}) },
           proposed_commands: [
             { command_type: 'AdvanceTime', amount: minutes, unit: 'minute', source_rule_ids: ruleIdsFor([RULE_IDS.resource]) },
           ],

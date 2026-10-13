@@ -66,14 +66,19 @@ import {
   FREE_ACTION_RESOLUTION_POLICY_VERSION,
   freeActionResolutionPolicy,
   freeActionPassagePlan,
+  passageDestinationPlace,
+  freeActionApproachPlan,
   freeActionSuccessPromise,
   hasRecognizedFreeActionApproach,
   interpretFreeAction,
   harmlessFreeActionReading,
   mundaneActionOutcome,
+  roleplaySpeechReading,
   assertFreeActionConfirmation,
   previousFailedAttempt,
+  freeActionIsCorpseSearch,
   resolveCorpseSearch,
+  lootApproachDestination,
   resolveInventoryTransfer,
   resolveExplorationCommand,
   resolvePickpocket,
@@ -83,7 +88,7 @@ import {
   stakesFor,
   verifyMeans,
 } from './free-action-adjudication.mjs'
-import { freeActionDiscoveryCommands } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, corpseClueCommand, freeActionDiscoveryCommands, freeActionSurfaceCommands, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
 import { planImprovisedEffect, resolveActionCost, scenePropIntentFor } from './improvised-effects.mjs'
 import { npcProfileAtWorldTime } from './npc-social.mjs'
 import { sceneHazardNarration } from './scene-hazard-narration.mjs'
@@ -406,6 +411,72 @@ function factionIdsForWitnesses(state, witnessIds) {
 
 function parseJsonFact(fact) {
   try { return JSON.parse(String(fact?.object ?? '')) } catch { return null }
+}
+
+/**
+ * Вход через закрытую дверь: подойти, открыть, затем общий шаг внутрь.
+ *
+ * @param {string} actorId
+ * @param {Record<string, any>} plan
+ * @param {string} rulingId
+ */
+function passageDoorCommands(actorId, plan, rulingId) {
+  if (plan?.open_door !== true || !plan.door_id) return []
+  // Герой уже у двери — шага к ней нет: движок отклонял путь «до клетки, где
+  // герой и так стоит» (PATH_BLOCKED), и удачный вход срывался (замер 12).
+  return [
+    ...(plan.at_door ? [] : [{ command_type: 'MoveActor', actor_id: actorId, to: plan.approach, server_authoritative: true, ruling_id: rulingId }]),
+    { command_type: 'OperateDoor', actor_id: actorId, door_id: plan.door_id, intent: 'open' },
+  ]
+}
+
+/**
+ * События, которые пишут память мира в фоне и не трогают сцену, героя и
+ * экономику хода. Расстановка хранителя зацепки (`NpcPlaced`) — тоже: новый
+ * человек на поле не меняет цель, средства и цену уже разобранного хода.
+ */
+const BACKGROUND_MEMORY_EVENT_TYPES = new Set([
+  'WorldFactRecorded', 'WorldEntityUpserted', 'WorldRelationshipRecorded',
+  'NarrativeThreadUpserted', 'NarrativeThreadClockAdvanced', 'NarrativeSummaryRecorded',
+  'NpcSocialProfileUpserted', 'NpcPlaced',
+])
+
+/** Живые герои отряда есть, но все на нуле: заявить отдых некому. */
+function nobodyStanding(state = {}) {
+  const partyIds = new Set((state.partyMemberIds ?? []).map(String))
+  const alive = (state.players ?? []).filter((hero) => partyIds.has(String(hero.id))
+    && state.mechanics?.death?.heroes?.[hero.id]?.status !== 'dead')
+  return alive.length > 0 && alive.every((hero) => Number(hero.hp) <= 0)
+}
+
+async function onlyBackgroundMemoryChanged(eventStore, campaignId, fromVersion, toVersion) {
+  if (typeof eventStore?.getEvents !== 'function') return false
+  const events = await eventStore.getEvents(campaignId, { afterVersion: Number(fromVersion), upToVersion: Number(toVersion) })
+  return events.length > 0 && events.every((event) => BACKGROUND_MEMORY_EVENT_TYPES.has(String(event?.event_type ?? '')))
+}
+
+/** Состояние, которое не даёт действовать, — словом ведущего, а не кодом. */
+const INCAPACITATING_CONDITION_NAMES = Object.freeze({
+  paralyzed: 'паралич', stunned: 'оглушение', petrified: 'окаменение', incapacitated: 'бессилие',
+})
+
+/**
+ * Отказ действию героя, который лежит без сознания или скован: ведущий
+ * говорит, что с героем и что может отряд. Прежде игрок читал
+ * «Недееспособный герой не может совершать действие (unconscious)», и судья
+ * записал это в «технические ошибки» (замер 2026-10-10).
+ *
+ * @param {Record<string, any>} actor
+ * @param {string|null} condition
+ * @returns {string}
+ */
+export function incapacitatedActionRefusal(actor, condition) {
+  const name = String(actor?.character || actor?.name || 'Герой').slice(0, 80)
+  if (!condition || condition === 'unconscious') {
+    return `${name} без сознания и сейчас ничего не сделает сам. Поднять героя может отряд: перевязать раны (Мудрость (Медицина), СЛ 10), дать зелье или исцелить чарами.`
+  }
+  const reason = INCAPACITATING_CONDITION_NAMES[/** @type {keyof typeof INCAPACITATING_CONDITION_NAMES} */ (condition)] ?? 'бессилие'
+  return `${name} сейчас не может действовать — ${reason}; пока это не пройдёт, ход за отрядом.`
 }
 
 export class AutonomousCampaignOrchestrator {
@@ -1038,11 +1109,7 @@ export class AutonomousCampaignOrchestrator {
     if (!isLivingActor(actor) || incapacitating) {
       return {
         kind: 'rejected',
-        narration: !actor
-          ? 'Герой для действия не найден.'
-          : incapacitating
-            ? `Недееспособный герой не может совершать действие (${incapacitating}).`
-            : 'Герой без хитов не может совершать действие.',
+        narration: !actor ? 'Герой для действия не найден.' : incapacitatedActionRefusal(actor, incapacitating),
         turn_consumed: false,
         rejected: true,
         admin_commands: 0,
@@ -1123,16 +1190,45 @@ export class AutonomousCampaignOrchestrator {
     const passagePlan = previousCommit?.events?.length
       ? { status: 'not_applicable' }
       : freeActionPassagePlan(loaded.state, actorId, text)
+    // «Подхожу к баркасу и осматриваю его»: сначала шаги по карте, потом сама
+    // попытка. Подход едет в том же коммите, что и решение, — рассказ и фишка
+    // не расходятся (плейтест 2026-10-10). Вне боя: в бою движение — часть хода.
+    const approachPlan = !previousCommit?.events?.length && passagePlan.status === 'not_applicable' && !loaded.state.mechanics?.combat?.active
+      ? freeActionApproachPlan(loaded.state, actorId, text)
+      : { status: 'not_applicable' }
+    const approachMove = approachPlan.status === 'ready' && approachPlan.remainder
+      ? [{ command_type: 'MoveActor', actor_id: actorId, to: approachPlan.destination.to, server_authoritative: true }]
+      : []
+    // Постройка из заявки — другое место карты мира: живой ведущий говорит
+    // «маяк — дальше по скалам» и зовёт в путь, а не «здесь такого нет».
+    const farPlace = passagePlan.reason === 'destination_mismatch' && !loaded.state.mechanics?.combat?.active
+      ? passageDestinationPlace(loaded.state, text)
+      : ''
+    if (farPlace) {
+      this.rememberRouteHint(campaignId, idempotencyKey, { route: 'travel', destination: farPlace, actor_id: actorId })
+      return {
+        context_metadata: actionContextMetadata,
+        kind: 'route_travel', route_hint: { route: 'travel', destination: farPlace },
+        narration: `«${farPlace}» — не здесь: до него ещё дорога.`,
+        turn_consumed: false, admin_commands: 0,
+        state: loaded.state, state_version: loaded.state_version,
+        events: [], commands: [], rolls: [], duplicate: false,
+      }
+    }
     if (['blocked', 'already_inside', 'ambiguous'].includes(passagePlan.status)) {
+      // Голос ведущего, а не протокол: прежде здесь звучало «Уточните место, не
+      // меняя его словами», а у развилки входов — их служебные id (плейтест
+      // 2026-10-10).
+      const heroName = String((loaded.state.players ?? []).find((player) => String(player?.id) === String(actorId))?.character || 'Герой')
       const narration = passagePlan.status === 'ambiguous'
-        ? `Поблизости несколько одинаково близких входов (${(passagePlan.door_ids ?? []).join(', ')}). Выберите дверь на карте.`
+        ? `Входов рядом несколько, и все одинаково близко — в какой идёт ${heroName}? Укажите дверь на карте.`
         : passagePlan.status === 'already_inside'
-          ? 'Герой уже находится внутри этой сцены.'
+          ? `${heroName} уже под крышей${loaded.state.scene?.location ? ` — внутри «${String(loaded.state.scene.location).slice(0, 80)}»` : ''}: дверь позади, можно осмотреться.`
           : passagePlan.reason === 'destination_mismatch'
-            ? 'В текущей сцене нет названного здания. Уточните место, не меняя его словами.'
+            ? 'Здесь такого здания нет — до него ещё надо дойти.'
             : passagePlan.reason === 'alternate_route'
-              ? 'Этот способ требует отдельного окна, пролома или щели. Выберите подтверждённый проход на карте.'
-              : 'Откройте дверь на карте и повторите действие.'
+              ? 'Так не пролезть: нужен лаз — окно, пролом или щель. Укажите его на карте.'
+              : 'Дверь закрыта — откройте её на карте, и можно входить.'
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification', narration, turn_consumed: false, admin_commands: 0,
@@ -1274,6 +1370,7 @@ export class AutonomousCampaignOrchestrator {
       : null
     if (verifiedRoll) assertFreeActionConfirmation(verifiedRoll.context, text, loaded.state_version)
     const harmlessReading = harmlessFreeActionReading(loaded.state, actorId, text)
+      ?? (intent?.roleplay_speech === true ? roleplaySpeechReading(loaded.state, text) : null)
     const proposedReading = storedReading ?? harmlessReading
       ?? (this.actionAdjudicator
         ? await this.actionAdjudicator.read(loaded.state, actorId, text, deterministicReading)
@@ -1284,7 +1381,14 @@ export class AutonomousCampaignOrchestrator {
     // команды без конфликта версии.
     const adjudicationMayAwait = !storedReading && !harmlessReading && Boolean(this.actionAdjudicator?.llmClient?.completeJson)
     const afterAdjudication = adjudicationMayAwait ? await this.load(campaignId) : loaded
-    if (adjudicationMayAwait && Number(afterAdjudication.state_version) !== Number(loaded.state_version)) {
+    // Фоновая запись памяти — зацепки из предысторий, нити, профиль собеседника
+    // — сцену, героя и цену хода не меняет. Прежде любая такая запись во время
+    // разбора отбрасывала ход: «Обстановка изменилась… Отправьте его ещё раз»
+    // (плейтест 2026-10-10, плетение зацепок шло рядом со вторым шагом плана).
+    const versionMoved = adjudicationMayAwait && Number(afterAdjudication.state_version) !== Number(loaded.state_version)
+    if (versionMoved && await onlyBackgroundMemoryChanged(this.eventStore, campaignId, loaded.state_version, afterAdjudication.state_version)) {
+      actionStateVersion = afterAdjudication.state_version
+    } else if (versionMoved) {
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification',
@@ -1311,7 +1415,12 @@ export class AutonomousCampaignOrchestrator {
     })
     if (routed) return { context_metadata: actionContextMetadata, ...routed }
     const reading = bindFreeActionReadingToState(loaded.state, actorId, text, proposedReading, { preserveActionProfile: Boolean(storedReading) })
-    if (reading.reference_ambiguities.length) {
+    // «Обыскивает тело прислужника» при двух прислужниках — обыск ближнего:
+    // разбор тел ниже выбирает его сам, а «Назовите конкретного участника»
+    // звучало канцелярией (замер 22, 2026-10-11).
+    const corpseTargetOnly = freeActionIsCorpseSearch(text)
+      && reading.reference_ambiguities.every((field) => field === 'target_id')
+    if (reading.reference_ambiguities.length && !corpseTargetOnly) {
       return {
         context_metadata: actionContextMetadata,
         kind: 'clarification',
@@ -1319,7 +1428,7 @@ export class AutonomousCampaignOrchestrator {
           ? 'В действии подходит несколько или не подтверждён предмет. Назовите конкретную вещь.'
           : reading.reference_ambiguities.includes('prop_id')
             ? 'Назовите конкретный видимый предмет обстановки из текущей сцены.'
-            : 'В действии подходят несколько или не подтверждена цель. Назовите конкретного участника.',
+            : 'Кого именно? Здесь таких несколько — назовите по имени.',
         turn_consumed: false,
         admin_commands: 0,
         state: loaded.state,
@@ -1550,20 +1659,62 @@ export class AutonomousCampaignOrchestrator {
         duplicate: Boolean(commit.duplicate),
       }
     }
-    const corpseSearch = resolveCorpseSearch(loaded.state, actorId, text, reading)
+    let corpseSearch = resolveCorpseSearch(loaded.state, actorId, text, reading)
+    let corpseApproach = null
+    // Вне боя герой сам подходит к телу и смотрит — без «подойдите вплотную».
+    if (corpseSearch?.loot_container_id && !corpseSearch.loot_items?.length && corpseSearch.distance_feet != null
+      && !loaded.state.mechanics?.combat?.active) {
+      const container = (loaded.state.loot_containers?.containers ?? []).find((entry) => String(entry?.id) === String(corpseSearch.loot_container_id))
+      const to = container ? lootApproachDestination(loaded.state, actorId, container) : null
+      if (to) {
+        try {
+          corpseApproach = await run([{ command_type: 'MoveActor', actor_id: actorId, to, server_authoritative: true }])
+          corpseSearch = resolveCorpseSearch(corpseApproach.state ?? loaded.state, actorId, text, reading) ?? corpseSearch
+        } catch (error) {
+          if (!(error instanceof RulesValidationError)) throw error
+          corpseApproach = null
+        }
+      }
+    }
+    // Знак культа на теле культиста — улика сюжета, а не только добыча.
+    let corpseClue = null
+    const bodiesSearched = corpseSearch?.status === 'bodies_searched'
+    if (corpseSearch?.loot_items?.length || bodiesSearched) {
+      const now = corpseApproach?.state ?? loaded.state
+      const ids = new Set([corpseSearch.loot_container_id, ...(corpseSearch.loot_container_ids ?? [])].filter(Boolean).map(String))
+      // Пустые тела — без контейнера добычи, но знак культа при них тот же.
+      const encounterId = String(now.mechanics?.encounter?.id ?? now.mechanics?.encounter?.encounter_id ?? '')
+      const bodies = bodiesSearched
+        ? [{ kind: 'corpse', id: `bodies:${(corpseSearch.corpse_ids ?? []).join(',')}`, encounter_id: encounterId, source_enemy_ids: corpseSearch.corpse_ids ?? [] }]
+        : []
+      const clue = [...(now.loot_containers?.containers ?? []).filter((entry) => ids.has(String(entry?.id))), ...bodies]
+        .map((entry) => corpseClueCommand(now, entry)).find(Boolean)
+      if (clue) {
+        try {
+          corpseClue = await this.runCommands(campaignId, `${idempotencyKey}:clue`, [clue])
+        } catch (error) {
+          if (!(error instanceof RulesValidationError) && error?.code !== 'STATE_VERSION_CONFLICT') throw error
+        }
+      }
+    }
     if (corpseSearch) {
+      const clueText = (corpseClue?.events ?? []).filter((event) => event.event_type === 'WorldFactRecorded')
+        .map((event) => String(event.payload?.fact?.summary ?? '')).filter(Boolean).join(' ')
       return {
         context_metadata: actionContextMetadata,
-        kind: 'clarification',
-        narration: corpseSearch.narration,
+        // Названное содержимое тела — ответ ведущего, а не вопрос: карточка
+        // уточнения ждала «Да», и тот же список звучал в летописи дважды
+        // (замер 12, 2026-10-10).
+        kind: (Array.isArray(corpseSearch.loot_items) && corpseSearch.loot_items.length) || bodiesSearched ? 'loot_inspection' : 'clarification',
+        narration: clueText ? `${corpseSearch.narration} ${clueText}` : corpseSearch.narration,
         turn_consumed: false,
         admin_commands: 0,
-        state: loaded.state,
-        state_version: loaded.state_version,
-        events: [],
-        commands: [],
+        state: corpseClue?.state ?? corpseApproach?.state ?? loaded.state,
+        state_version: corpseClue?.state_version ?? corpseApproach?.state_version ?? loaded.state_version,
+        events: [...(corpseApproach?.events ?? []), ...(corpseClue?.events ?? [])],
+        commands: [...(corpseApproach?.commands ?? []), ...(corpseClue?.commands ?? [])],
         rolls: [],
-        duplicate: false,
+        duplicate: Boolean(corpseApproach?.duplicate),
       }
     }
     const inventoryTransfer = resolveInventoryTransfer(loaded.state, actorId, text, reading)
@@ -1731,8 +1882,9 @@ export class AutonomousCampaignOrchestrator {
       const successRuling = { ...ruling, outcome: 'success', world_change: Boolean(passageDestination) }
       const commit = await run([
         declaration,
+        ...approachMove,
         { command_type: 'RecordRuling', ruling: successRuling, ruling_id: ruling.id },
-        ...(passageDestination ? [{
+        ...(passageDestination ? [...passageDoorCommands(actorId, passagePlan, ruling.id), {
           command_type: 'MoveActor', actor_id: actorId, to: passageDestination.to,
           server_authoritative: true, ruling_id: ruling.id,
         }] : []),
@@ -1746,6 +1898,7 @@ export class AutonomousCampaignOrchestrator {
       const discovery = !loaded.state.mechanics?.combat?.active && rulingEvent
         ? freeActionDiscoveryCommands(commit.state ?? loaded.state, {
           checkEvent: rulingEvent, skill: reading.skill, actionText: text, goalSummary: reading.goal_summary,
+          successDetail: reading.success_detail ?? '', surfaceDetail: reading.surface_detail ?? '',
         })
         : []
       let discoveryCommit = null
@@ -1890,6 +2043,7 @@ export class AutonomousCampaignOrchestrator {
     // Проверка: бросок делает движок своим Dice Service, число СЛ выбрал сервер.
     const checkCommit = await run([
       declaration,
+      ...approachMove,
       // Провенанс обязателен для любого механического решения: импровизация
       // опирается на то же самое судейское решение, что записывается ниже.
       ...(inCombat ? [{
@@ -1913,6 +2067,12 @@ export class AutonomousCampaignOrchestrator {
     const checkEvent = (checkCommit.events ?? []).find((entry) => entry.event_type === 'AbilityCheckResolved')
     const succeeded = checkEvent?.payload?.success === true
     const consequence = outcomePolicy.failure
+    // Провал методичного поиска вне спешки решает время, а не находку
+    // (`thoroughSearchOutcome`, DMG 2014, гл. 8).
+    const thorough = !succeeded && !inCombat
+      ? thoroughSearchOutcome(checkCommit.state ?? loaded.state, { checkEvent, skill: reading.skill, actionText: text })
+      : null
+    const failureMinutes = thorough ? Math.max(Number(consequence.minutes) || 0, thorough.minutes) : consequence.minutes
     const outcomeRuling = { ...ruling, outcome: succeeded ? 'success' : 'failure', world_change: succeeded && Boolean(passageDestination) }
     // Внутри раунда время не идёт и цель отряда не переписывается: ход занимает
     // секунды, а «следующая цель» посреди боя ломала бы сцену.
@@ -1923,7 +2083,7 @@ export class AutonomousCampaignOrchestrator {
       : null
     const followUp = [
       { command_type: 'RecordRuling', ruling: outcomeRuling, ruling_id: ruling.id },
-      ...(succeeded && passageDestination ? [{
+      ...(succeeded && passageDestination ? [...passageDoorCommands(actorId, passagePlan, ruling.id), {
         command_type: 'MoveActor', actor_id: actorId, to: passageDestination.to,
         server_authoritative: true, ruling_id: ruling.id,
       }] : []),
@@ -1933,8 +2093,8 @@ export class AutonomousCampaignOrchestrator {
         expression: consequence.damage_expression, damage_type: consequence.damage_type,
         source: `free-action:${reading.activity_kind}`, ruling_id: ruling.id,
       }] : []),
-      ...(inCombat || (succeeded ? outcomePolicy.success_minutes : consequence.minutes) <= 0 ? [] : [
-        { command_type: 'AdvanceTime', amount: succeeded ? outcomePolicy.success_minutes : consequence.minutes, unit: 'minute' },
+      ...(inCombat || (succeeded ? outcomePolicy.success_minutes : failureMinutes) <= 0 ? [] : [
+        { command_type: 'AdvanceTime', amount: succeeded ? outcomePolicy.success_minutes : failureMinutes, unit: 'minute' },
       ]),
     ]
     if (!succeeded && !inCombat && consequence.advances_quest_clock) {
@@ -1952,14 +2112,34 @@ export class AutonomousCampaignOrchestrator {
         actionText: text,
         goalSummary: reading.goal_summary,
         skillLabel: SKILL_LABELS_RU[String(reading.skill ?? '').replace(/_/gu, '-')] ?? '',
+        successDetail: reading.success_detail ?? '',
+        surfaceDetail: reading.surface_detail ?? '',
       }))
+    } else if (!inCombat) {
+      followUp.push(...freeActionSurfaceCommands(checkCommit.state ?? loaded.state, {
+        checkEvent, skill: reading.skill, surfaceDetail: reading.surface_detail ?? '',
+      }), ...(thorough?.commands ?? []))
     }
     let consequenceCommit = null
+    let passageRefused = false
+    let passageRefusedCode = ''
     for (let attemptIndex = 0; attemptIndex < 3; attemptIndex += 1) {
       try {
         consequenceCommit = await this.runCommands(campaignId, `${idempotencyKey}:consequence`, followUp)
         break
       } catch (error) {
+        // Бросок уже сделан: если движок отклонил сам проход (путь занят,
+        // дверь перекрыта), ход доигрывается без перемещения, и ведущий
+        // говорит, что пройти не вышло, — а не голая ошибка 400 после броска
+        // (замер 2026-10-10, PATH_BLOCKED у двери маяка).
+        const movement = new Set(['MoveActor', 'OperateDoor'])
+        if (error instanceof RulesValidationError && !passageRefused && followUp.some((command) => movement.has(command.command_type))) {
+          passageRefused = true
+          passageRefusedCode = String(error.code ?? 'RULES_VALIDATION_FAILED').slice(0, 80)
+          console.warn('[Сказание] Проход после удачной проверки отклонён движком:', passageRefusedCode, String(error.message ?? '').slice(0, 160))
+          for (let index = followUp.length - 1; index >= 0; index -= 1) if (movement.has(followUp[index].command_type)) followUp.splice(index, 1)
+          continue
+        }
         if (error?.code !== 'STATE_VERSION_CONFLICT' || attemptIndex === 2) throw error
       }
     }
@@ -1968,9 +2148,25 @@ export class AutonomousCampaignOrchestrator {
       .reduce((sum, event) => sum + (Number(event.payload?.applied_amount) || 0), 0)
     const failureText = consequence.damage_expression
       ? `Неудачное движение. Герой получает ${injuryAmount} ${damageTypeLabelRu(consequence.damage_type)} урона.` : consequence.summary
+    // Что герой видит при этом исходе — словами судьи, названными до броска:
+    // на провале — почему сорвалось и чем стоило, на успехе вне поиска — как
+    // именно вышло. Прежде ведущий отвечал «дверь не поддаётся» без причины и
+    // «по её реакции неясно» после удачной Проницательности (замер 9,
+    // 2026-10-10). Находку поиска записывает сервер фактом — здесь её нет.
+    // Успех прохода, который движок потом отклонил, деталью не обещается.
+    const discoverySkill = DISCOVERY_SKILLS.has(String(reading.skill ?? '').replace(/_/gu, '-'))
+    const heroName = String(findActor(loaded.state, actorId)?.character || 'Герой')
+    const outcomeDetail = inCombat ? '' : succeeded
+      ? (passageRefused || discoverySkill ? '' : String(reading.success_detail ?? ''))
+      : thorough
+        ? thoroughSearchDetail(thorough, heroName)
+        : String(reading.failure_detail ?? '')
     return {
       context_metadata: actionContextMetadata,
       kind: succeeded ? 'check_success' : 'check_failure',
+      ...(outcomeDetail ? { outcome_detail: outcomeDetail } : {}),
+      ...(thorough ? { thorough_search: thorough.found ? 'found' : 'nothing' } : {}),
+      ...(passageRefused ? { passage_refused: passageRefusedCode } : {}),
       ruling: outcomeRuling,
       reading,
       stakes,
@@ -2221,7 +2417,16 @@ export class AutonomousCampaignOrchestrator {
     // оставались на 0 ОЗ навсегда, и следующая просьба о бое собирала встречу
     // на пустой отряд — `INVALID_PARTY` (прогон Асстохана, сид 2, 2026-10-05).
     // Теперь отряд так же приходит в себя через 1d4 часа и отдыхает.
-    if (plan.outcome === 'enemies_defeated' || plan.outcome === 'fled' || plan.outcome === 'party_incapacitated') {
+    //
+    // После победы и бегства врагов отдыха без заявки нет (решение владельца
+    // 2026-10-10): восемь часов привала после каждой стычки обрывали сцену —
+    // «продолжим» у маяка переносил отряд в утро. Отряд отдыхает, когда сам
+    // скажет; стабильный герой приходит в себя по своему таймеру 1d4 часа.
+    // Исключение — победа, после которой на ногах не осталось никого: заявить
+    // отдых некому, и отряд лежал бы без сознания вечно. Тогда время идёт
+    // ровно до пробуждения, без привала.
+    const victory = plan.outcome === 'enemies_defeated' || plan.outcome === 'fled'
+    if (plan.outcome === 'party_incapacitated' || (victory && nobodyStanding((await this.load(campaignId)).state))) {
       let afterConsequences = await this.load(campaignId)
       if (plan.outcome === 'party_incapacitated') {
         // Победители, уложив отряд, уходят — тем же состоянием `fled`, что и
@@ -2255,7 +2460,7 @@ export class AutonomousCampaignOrchestrator {
         afterConsequences = await this.load(campaignId)
       }
       const restingHeroes = survivors(afterConsequences.state).filter((hero) => Number(hero.hp) > 0)
-      if (restingHeroes.length) {
+      if (restingHeroes.length && plan.outcome === 'party_incapacitated') {
         const downtime = completedDowntime(afterConsequences.state, {
           kind: 'long_rest',
           durationMinutes: 480 + stableRecoveryMinutes,

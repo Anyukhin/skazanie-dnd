@@ -503,9 +503,11 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   const loaded = await eventStore.load('AUTONOMY-30')
   const eventTypes = (await eventStore.getEvents('AUTONOMY-30')).map((event) => event.event_type)
   assert.ok(turns.length >= 30)
-  for (const required of ['SceneAdvanced', 'AbilityCheckResolved', 'NpcPromiseResolved', 'EncounterCreated', 'CombatStarted', 'AttackResolved', 'EncounterEnded', 'EncounterOutcomeRecorded', 'ExperienceAwarded', 'EncounterCoinsRolled', 'ServerLootGenerated', 'EncounterRewardsDistributed', 'QuestClockAdvanced', 'WorldFactRecorded', 'TransitionUnlocked', 'CampaignPacingAdvanced', 'TravelResolved', 'DowntimeResolved']) {
+  for (const required of ['SceneAdvanced', 'AbilityCheckResolved', 'NpcPromiseResolved', 'EncounterCreated', 'CombatStarted', 'AttackResolved', 'EncounterEnded', 'EncounterOutcomeRecorded', 'ExperienceAwarded', 'EncounterCoinsRolled', 'ServerLootGenerated', 'EncounterRewardsDistributed', 'QuestClockAdvanced', 'WorldFactRecorded', 'TransitionUnlocked', 'CampaignPacingAdvanced', 'TravelResolved']) {
     assert.ok(eventTypes.includes(required), `missing event ${required}`)
   }
+  // После победы отдыха без заявки нет (решение владельца 2026-10-10).
+  assert.equal(eventTypes.includes('DowntimeResolved'), false, 'победа не проматывает восемь часов привала')
   for (const exactlyOnce of ['EncounterOutcomeRecorded', 'ExperienceAwarded', 'EncounterCoinsRolled', 'ServerLootGenerated', 'EncounterRewardsDistributed', 'TransitionUnlocked']) {
     assert.equal(eventTypes.filter((type) => type === exactlyOnce).length, 1, `${exactlyOnce} must be committed exactly once`)
   }
@@ -515,11 +517,13 @@ test('30+ turn campaign completes the autonomous vertical slice and survives rep
   assert.ok(eventTypes.filter((type) => type === 'AbilityCheckResolved').length >= 3)
   assert.equal(loaded.state.social.promises.find((promise) => promise.id === 'promise-ledger').status, 'fulfilled')
   assert.ok(loaded.state.players[0].inventory.some((item) => String(item.id).startsWith('loot-')))
-  assert.ok(loaded.state.worldMemory.quests.find((quest) => quest.id === 'ledger-quest').clock.current >= 2)
+  // Второе деление прежде ставил ход мира во время восьмичасового привала
+  // после победы; привала без заявки больше нет — часы двигает Режиссёр.
+  assert.ok(loaded.state.worldMemory.quests.find((quest) => quest.id === 'ledger-quest').clock.current >= 1)
   assert.ok(cleanObjective(loaded.state.scene.objective))
   assert.ok(loaded.state.autonomy.pacing.beat >= 7)
   assert.equal(loaded.state.autonomy.travel_history.length, 1)
-  assert.equal(loaded.state.autonomy.downtime_history.length, 1)
+  assert.equal(loaded.state.autonomy.downtime_history.length, 0, 'после победы отдых — только по заявке')
   const authorizedTypes = loaded.state.autonomy.director_history.map((entry) => entry.intent.type)
   assert.ok(authorizedTypes.every((type, index) => index === 0 || type !== authorizedTypes[index - 1]))
   assert.equal(loaded.state.social.npcs.some((npc) => npc.id === 'generated-witness'), false)
@@ -579,4 +583,44 @@ test('шаг Режиссёра без громких событий говор�
   assert.match(exhausted, /Цель: Найти, кто открыл ворота\./u)
   assert.match(exhausted, /Дальше можно отправиться в «Обсидиановый перевал» — скажите «Перейти дальше»\./u)
   assert.equal(directorStepNarration('advance_quest_clock', [], state), '', 'у прочих шагов свой текст')
+})
+
+test('после победы времени не проматывает; если на ногах никого — только до пробуждения, без привала', async (t) => {
+  // Решение владельца 2026-10-10: отдых после победы — только по заявке.
+  // Исключение — победа, после которой все выжившие без сознания: заявить
+  // отдых некому, и отряд приходит в себя по таймеру, но не отдыхает.
+  for (const allDown of [false, true]) {
+    const initial = campaign()
+    initial.partyMemberIds = ['hero', 'ally']
+    initial.players[0] = { ...initial.players[0], hp: 30, maxHp: 30 }
+    initial.players.push({ ...initial.players[0], id: 'ally', character: 'Bryn', x: 1, y: 0 })
+    initial.mechanics.positions.ally = { x: 1, y: 0 }
+    const { eventStore, autonomy } = await fixture(t, initial)
+    await autonomy.runCommands('AUTONOMY-30', 'victory-encounter', [
+      { command_type: 'CreateEncounter', theme: 'beasts', difficulty: 'easy', seed: 'victory' },
+      { command_type: 'StartCombat', server_authoritative: true },
+    ])
+    const state = (await eventStore.load('AUTONOMY-30')).state
+    const enemyId = state.enemies[0].id
+    for (const heroId of allDown ? ['hero', 'ally'] : ['ally']) {
+      await autonomy.runCommands('AUTONOMY-30', `down-${heroId}`, [{ command_type: 'ApplyDamage', actor_id: enemyId, target_id: heroId, amount: 30, damage_type: 'slashing' }])
+      await autonomy.commitEventsWithRetry('AUTONOMY-30', `stable-${heroId}`, [{
+        command_id: `stable-${heroId}`, event_type: 'HeroStabilized', actor_id: null, target_ids: [heroId],
+        payload: { method: 'three-death-save-successes' }, source_rule_ids: [], house_rule_id: null, ruling_id: null, visibility: 'party',
+      }])
+    }
+    for (const enemy of state.enemies) {
+      await autonomy.runCommands('AUTONOMY-30', `kill-${enemy.id}`, [{ command_type: 'ApplyDamage', actor_id: 'hero', target_id: enemy.id, amount: 999, damage_type: 'slashing' }])
+    }
+    const before = (await eventStore.load('AUTONOMY-30')).state.mechanics.world_time?.elapsed_minutes ?? 0
+    const result = await autonomy.completeEncounter({ campaignId: 'AUTONOMY-30', outcome: 'enemies_defeated' })
+    const after = result.state.mechanics.world_time?.elapsed_minutes ?? 0
+    assert.equal(result.state.autonomy.downtime_history.length, 0, 'привала после победы нет')
+    if (allDown) {
+      assert.ok(after > before, 'время идёт до пробуждения')
+      assert.ok(result.state.players.every((hero) => hero.hp >= 1 && hero.hp < hero.maxHp), 'пришли в себя, но не отдохнули')
+    } else {
+      assert.equal(after, before, 'герой на ногах — время стоит')
+    }
+  }
 })

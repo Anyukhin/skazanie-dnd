@@ -28,7 +28,9 @@ function directionWord(dx, dy) {
  */
 function sceneLandmarks(scene, map, position) {
   const items = normalizeSceneRequirements(scene.map_requirements)
-  if (!items.length) return null
+  // Программа без предметов, но с недостроенной постройкой («Старый маяк»
+  // без помещений, `missingStructureFor`) тоже говорит Рассказчику, о чём молчать.
+  if (!items.length && !(Array.isArray(scene.map_requirements?.missing) && scene.map_requirements.missing.length)) return null
   const origin = position ?? map.spawnPoints?.find((point) => point.role === 'party') ?? { x: map.width / 2, y: map.height / 2 }
   const landmarks = []
   const absent = []
@@ -140,10 +142,145 @@ function unavailableSpatialContext() {
   }
 }
 
+/**
+ * Канон сцены — установленные публичные факты исходной ситуации
+ * (`scene_canon`, campaign_creator/v8): рассказчик, NPC и судья заявок
+ * держатся их, а не достраивают мир каждый по-своему.
+ *
+ * @param {Record<string, any>} state
+ * @returns {string[]}
+ */
+export function sceneCanonFor(state = {}) {
+  return (state.worldMemory?.facts ?? [])
+    .filter((fact) => fact?.predicate === 'scene_canon' && fact.status !== 'superseded' && fact.visibility === 'party')
+    .map((fact) => clean(fact.summary, 220))
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+/**
+ * Знает ли отряд этого NPC по имени: говорил с ним, или имя уже звучало в
+ * летописи (пролог, рассказ, реплики), или его назвал открытый факт мира.
+ * Замеры 31–32 (2026-10-11/12): рассказчик писал «Мара и Мартен следят за
+ * происходящим», а Мартена отряд ни разу не видел — судья: «имя из
+ * ниоткуда». Незнакомого рассказчик зовёт по роли.
+ *
+ * @param {Record<string, any>} state
+ * @param {{ id?: unknown, name?: unknown }} npc
+ */
+export function npcKnownByName(state = {}, npc = {}) {
+  const id = String(npc?.id ?? '')
+  if (id && (state.social?.conversations ?? []).some((entry) => String(entry?.npc_id ?? '') === id)) return true
+  const name = clean(npc?.name, 80)
+  const first = name.split(/\s+/u)[0] ?? ''
+  if (first.length < 3) return true
+  const stem = first.toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, Math.max(3, first.length - 1))
+  const mentions = (text) => String(text ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').includes(stem)
+  if ((state.messages ?? []).some((message) => mentions(message?.text))) return true
+  return (state.worldMemory?.facts ?? []).some((fact) => ['party', 'public'].includes(String(fact?.visibility)) && mentions(fact?.summary))
+}
+
+const HEALTH_WORDS = Object.freeze({ unharmed: 'цел', wounded: 'ранен', bloodied: 'тяжело ранен', critical: 'едва стоит', defeated: 'выбыл' })
+
+/** Состояние словами стола — те же ступени, что видит игрок у противника. */
+function healthWord(actor = {}, { hero = false, dead = false } = {}) {
+  if (dead) return 'погиб'
+  if (actor.hp == null && actor.maxHp == null) {
+    if (actor.alive === false) return hero ? 'без сознания' : 'выбыл'
+    return HEALTH_WORDS[String(actor.healthStatus ?? '')] ?? 'цел'
+  }
+  const hp = Math.max(0, Number(actor.hp) || 0)
+  const maximum = Math.max(1, Number(actor.maxHp ?? actor.max_hp) || 1)
+  if (hp <= 0 || actor.alive === false) return hero ? 'без сознания' : 'выбыл'
+  const ratio = hp / maximum
+  return ratio >= 1 ? 'цел' : ratio > 0.5 ? 'ранен' : ratio > 0.25 ? 'тяжело ранен' : 'едва стоит'
+}
+
+/**
+ * Сводка поля для рассказчика: кто где стоит (часть места, под крышей или
+ * нет), в каком состоянии и кто с кем рядом. Рассказчик знал только, где
+ * стоит сам действующий, и описывал очаг и свечи, когда отряд стоял на
+ * причале под грозой; в бою — не знал, кто кому угрожает (замеры 27–31,
+ * 2026-10-11). Чисел здесь нет: состояние — словами, как видит игрок;
+ * противники — только на раскрытых клетках.
+ *
+ * @param {Record<string, any>} state
+ * @param {import('./tactical-map.mjs').TacticalMap|null} [preparedMap]
+ * @returns {{ heroes: any[], enemies: any[], people: any[] } | null}
+ */
+export function fieldSummaryFor(state = {}, preparedMap = null) {
+  const scene = state.scene ?? {}
+  let map = preparedMap
+  if (!map && scene.map && typeof scene.map === 'object') {
+    try { map = scene.map.layers?.present instanceof Uint8Array ? scene.map : deserializeTacticalMap(scene.map) } catch { map = null }
+  }
+  if (!map) return null
+  const zones = new Map((Array.isArray(map.zones) ? map.zones : []).map((zone) => [zone.id, zone]))
+  const positionOf = (id, actor) => {
+    const stored = state.mechanics?.positions?.[id]
+    const x = Number(stored?.x ?? actor?.x)
+    const y = Number(stored?.y ?? actor?.y)
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null
+  }
+  const areaOf = (at) => {
+    const cell = at ? cellAt(map, at.x, at.y) : null
+    const zone = cell ? zones.get(cell.zone) : null
+    return zone ? { area: clean(zone.label || zone.kind, 80), indoors: zone.kind === 'interior' } : {}
+  }
+  const dead = state.mechanics?.death?.heroes ?? {}
+  const entries = []
+  for (const hero of state.players ?? []) {
+    const at = positionOf(String(hero.id), hero)
+    if (!at) continue
+    entries.push({ side: 'heroes', id: String(hero.id), name: clean(hero.character || hero.name, 80), at, ...areaOf(at), condition: healthWord(hero, { hero: true, dead: dead[hero.id]?.status === 'dead' }) })
+  }
+  for (const enemy of state.enemies ?? []) {
+    const at = positionOf(String(enemy.id), enemy)
+    if (!at || cellAt(map, at.x, at.y)?.revealed !== true) continue
+    const condition = healthWord(enemy)
+    if (condition === 'выбыл' && !state.mechanics?.combat?.active) continue
+    entries.push({ side: 'enemies', id: String(enemy.id), name: clean(enemy.name, 80), at, ...areaOf(at), condition })
+  }
+  const here = clean(scene.location_id, 120)
+  for (const placement of state.npc_world?.placements ?? []) {
+    if (here && clean(placement?.location_id, 120) !== here) continue
+    const npc = (state.social?.npcs ?? []).find((entry) => String(entry?.id) === String(placement?.npc_id))
+    if (!npc || npc.available === false) continue
+    const at = { x: Number(placement.x), y: Number(placement.y) }
+    if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) continue
+    // Незнакомого — по роли: имени отряд ещё не слышал.
+    const known = npcKnownByName(state, npc)
+    entries.push({ side: 'people', id: String(npc.id), name: known ? clean(npc.name, 80) : clean(npc.role, 80) || 'незнакомец', at, ...areaOf(at), ...(known ? {} : { known_by_name: false }) })
+  }
+  const near = (entry) => entries
+    .filter((other) => other !== entry && Math.max(Math.abs(other.at.x - entry.at.x), Math.abs(other.at.y - entry.at.y)) <= 1)
+    .map((other) => other.name)
+    .slice(0, 6)
+  const shape = (entry) => {
+    const close = near(entry)
+    const { at: _at, side: _side, id: _id, ...rest } = entry
+    return { ...rest, ...(close.length ? { next_to: close } : {}) }
+  }
+  return {
+    heroes: entries.filter((entry) => entry.side === 'heroes').map(shape).slice(0, 8),
+    enemies: entries.filter((entry) => entry.side === 'enemies').map(shape).slice(0, 12),
+    people: entries.filter((entry) => entry.side === 'people').map(shape).slice(0, 8),
+  }
+}
+
 /** Видимая обстановка у действующего лица, без скрытых комнат и бинарных слоёв карты. */
 export function sceneContextForAgent(state = {}, actorId = '') {
   const scene = state.scene ?? {}
-  const context = Object.fromEntries(['title', 'location', 'mood', 'objective', 'theme', 'scene_kind', 'layout'].map((key) => [key, clean(scene[key], key === 'layout' ? 400 : 300)]).filter(([key, value]) => key !== 'layout' || value))
+  const baseContext = Object.fromEntries(['title', 'location', 'mood', 'objective', 'theme', 'scene_kind', 'layout'].map((key) => [key, clean(scene[key], key === 'layout' ? 400 : 300)]).filter(([key, value]) => key !== 'layout' || value))
+  // Что карта мира обещает об этом месте: «заброшенный маяк, чей свет вновь
+  // замечают по ночам». Без этого ведущий на «загорится ли огонь?» отвечал то
+  // «горит», то «в темноте не видно» (замеры 11–18, 2026-10-11).
+  const place = (Array.isArray(state.worldMap?.locations) ? state.worldMap.locations : [])
+    .find((entry) => entry?.known !== false && (String(entry?.id ?? '') === String(state.worldMap?.currentLocationId ?? '')
+      || clean(entry?.name, 160).toLocaleLowerCase('ru') === clean(scene.location, 160).toLocaleLowerCase('ru')))
+  const placeSummary = clean(place?.summary, 300)
+  const canon = sceneCanonFor(state)
+  const context = { ...baseContext, ...(placeSummary ? { place_summary: placeSummary } : {}), ...(canon.length ? { canon } : {}) }
   const metadata = agentContextMetadata(state, { role: 'scene_context', actorId, contractVersion: 'scene-context/v2' })
   if (!scene.map || typeof scene.map !== 'object') return { ...context, context_metadata: metadata, spatial_context: unavailableSpatialContext() }
   let map
@@ -182,8 +319,10 @@ export function sceneContextForAgent(state = {}, actorId = '') {
   const objectSelection = boundedSelectionMetadata({ scope: 'visible_interactable_objects_in_current_area', candidateCount: visibleObjects.length, limit: 16 })
   const areaSelection = boundedSelectionMetadata({ scope: 'visible_discovered_areas_in_current_location', candidateCount: visibleAreas.length, limit: 16 })
   const program = sceneLandmarks(scene, map, position ? { x: Number(position.x), y: Number(position.y) } : null)
+  const field = fieldSummaryFor(state, map)
   return { ...context,
     ...(program ? program : {}),
+    ...(field && (field.heroes.length || field.enemies.length || field.people.length) ? { field } : {}),
     context_metadata: metadata,
     ...(currentZone ? { id: `${scene.location_id || scene.location}:${currentZone.id}`, theme: currentZone.label || currentZone.kind } : {}),
     spatial_context: {
@@ -201,6 +340,54 @@ export function sceneContextForAgent(state = {}, actorId = '') {
 function positiveInteger(value) {
   const number = Number(value)
   return Number.isSafeInteger(number) && number > 0 ? number : null
+}
+
+/** Заглушки незаполненного листа героя: в карточку они не идут. */
+const HERO_CARD_PLACEHOLDERS = new Set(['не выбран', 'не выбрано', 'не определено', 'ожидает игрока', 'герой ещё не создан'])
+
+/**
+ * Текст карточки, обрезанный по концу предложения, а не на полуслове:
+ * «…ушла в море на баркасе „Чайка“.» лучше, чем «…ушла в море на бар».
+ */
+function heroCardText(value, maximum) {
+  const text = clean(value, 8_000)
+  if (!text || HERO_CARD_PLACEHOLDERS.has(text.toLocaleLowerCase('ru'))) return ''
+  if (text.length <= maximum) return text
+  const cut = text.slice(0, maximum)
+  const sentenceEnd = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '), cut.lastIndexOf('… '))
+  return sentenceEnd >= maximum / 2 ? cut.slice(0, sentenceEnd + 1) : `${cut.replace(/\s+\S*$/u, '')}…`
+}
+
+/**
+ * Карточка героя для агента, который с ним говорит или о нём рассказывает:
+ * имя, класс, предыстория (до 300 знаков) и привязанности. Предыстория и
+ * привязанности героя видны отряду (лист героя), поэтому карточка не несёт
+ * скрытого. Имена полей намеренно без «secret»/«unrevealed»: бриф рассказчика
+ * вырезает такие ключи (`server/security.mjs`, `NARRATOR_PRIVATE_KEYS`).
+ *
+ * Плейтест 2026-10-10: сестра волшебника пропала в море, бывшего стражника
+ * капитан учил не замечать ночных лодок у маяка — и ни один NPC этого не знал.
+ *
+ * @param {Record<string, any>} state
+ * @param {string} heroId
+ * @returns {{ id: string, name: string, class?: string, species?: string, background?: string, backstory?: string, bonds?: string, ideals?: string } | null}
+ */
+export function heroCardForAgent(state = {}, heroId = '') {
+  const expected = String(heroId ?? '')
+  const hero = (Array.isArray(state.players) ? state.players : []).find((player) => String(player?.id ?? '') === expected)
+  if (!hero) return null
+  const role = heroCardText(String(hero.role ?? '').split('·')[0], 80)
+  const card = {
+    id: clean(hero.id, 120),
+    name: heroCardText(hero.character || hero.name, 120),
+    class: role || heroCardText(hero.characterClass, 60),
+    species: heroCardText(hero.species, 80),
+    background: heroCardText(hero.background, 120),
+    backstory: heroCardText(hero.backstory, 300),
+    bonds: heroCardText(hero.bonds, 200),
+    ideals: heroCardText(hero.ideals, 160),
+  }
+  return /** @type {any} */ (Object.fromEntries(Object.entries(card).filter(([, value]) => value)))
 }
 
 /** Public, bounded campaign contract shared by every creative agent. */

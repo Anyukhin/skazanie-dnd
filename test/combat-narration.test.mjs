@@ -8,7 +8,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { COMBAT_NARRATION_EVENT_TYPES, accusativeName, combatNarration, encounterEndText, combatNarrator, hasCombatNarrationEvent } from '../server/combat-narration.mjs'
+import { COMBAT_NARRATION_EVENT_TYPES, accusativeName, combatJournalVoice, combatNarration, encounterEndText, combatNarrator, hasCombatNarrationEvent } from '../server/combat-narration.mjs'
+import { confidentAccusative } from '../server/combat-phrases.mjs'
 import { assertNarratorContract } from '../server/deterministic-narration.mjs'
 
 const state = {
@@ -98,8 +99,10 @@ test('залп из нескольких лучей называет закли�
     spellCast('rays:beam:3', false),
     attack('rays:beam:3'),
   ], state)
-  assert.equal((text.match(/творит заклинание «Палящий луч»/gu) ?? []).length, 1)
-  assert.equal((text.match(/атакует Волка/gu) ?? []).length, 3)
+  // Заклинание называется одной строкой каста, у каждого луча — своя строка
+  // атаки с целью (формулировки разные, цель одна).
+  assert.equal((text.match(/«Палящий луч»/gu) ?? []).length, 1)
+  assert.equal((text.match(/Волк/gu) ?? []).length, 3)
 })
 
 test('persisted beam events use canonical event_id while command_id is shared', () => {
@@ -117,15 +120,17 @@ test('persisted beam events use canonical event_id while command_id is shared', 
     cast('spell-cast:367e138e-3230-4a5b-94d6-cf3fec35d7ea:1:beam:2', false),
     cast('spell-cast:367e138e-3230-4a5b-94d6-cf3fec35d7ea:1:beam:3', false),
   ], state)
-  assert.equal((text.match(/творит заклинание «Палящий луч»/gu) ?? []).length, 1)
+  assert.equal((text.match(/«Палящий луч»/gu) ?? []).length, 1)
 })
 
 test('бой, открытый ударом из исследования, говорит, состоялся ли удар', () => {
   const opened = (status, first) => combatNarration([
     event('CombatStarted', { opening_action: { actor_id: 'hero', command_type: 'MakeAttack', status, first_actor_id: first } }, ['hero', 'wolf']),
   ], state)
-  assert.match(opened('resolved', 'hero'), /Лира нападает первым и открывает бой/u)
-  assert.match(opened('deferred', 'wolf'), /Лира нападает, но первым ходит Волк: удар придётся повторить в свой ход/u)
+  // Без рода: «первым» у Лиры звучало мужским (плейтест 2026-10-10).
+  assert.match(opened('resolved', 'hero'), /Лира нападает и открывает бой/u)
+  assert.match(opened('deferred', 'wolf'), /Лира нападает, но Волк успевает раньше: удар придётся повторить в свой ход/u)
+  assert.doesNotMatch(opened('resolved', 'hero'), /первым/u)
   const free = combatNarration([
     event('CombatStarted', { opening_action: { actor_id: 'hero', command_type: 'MakeAttack', status: 'resolved', free_strike: true, npc_id: 'wolf', first_actor_id: 'wolf' } }, ['hero', 'wolf']),
   ], state)
@@ -160,13 +165,17 @@ test('спасбросок заклинания сообщает исход бе
   const saved = combatNarration([
     event('SpellSavingThrowResolved', { spell_id: 'sacred-flame', total: 21, difficulty: 13, modifier: 2, saved: true }, ['wolf']),
   ], state)
-  assert.match(saved, /Волк успешно проходит спасбросок от «Священное пламя»/u)
+  // «от заклинания «…»»: название в кавычках не склоняется (плейтест 2026-10-10).
+  assert.match(saved, /^Волк [^.]*спасбросок от заклинания «Священное пламя»[^.]*\.$/u)
+  assert.match(saved, /успешн/u)
+  assert.doesNotMatch(saved, /от «/u)
   assert.doesNotMatch(saved, /21|13|\b2\b|sacred-flame/u)
 
   const failed = combatNarration([
     event('SpellSavingThrowResolved', { spell_id: 'sacred-flame', total: 8, difficulty: 13, modifier: 2, saved: false }, ['wolf']),
   ], state)
-  assert.match(failed, /Волк проваливает спасбросок от «Священное пламя»/u)
+  assert.match(failed, /^Волк [^.]*спасбросок от заклинания «Священное пламя»[^.]*\.$/u)
+  assert.match(failed, /провал/u)
   assert.doesNotMatch(failed, /13|\b2\b|sacred-flame/u)
 })
 
@@ -176,22 +185,25 @@ test('окно реакции и UseCombatAction получают безопас
     event('ReactionWindowClosed', { accepted: true, action_id: 'opportunity-attack' }, ['hero']),
     event('CombatActionUsed', { action_type: 'reaction', action_id: 'opportunity-attack', reaction_window_id: 'reaction:opportunity' }, ['hero']),
   ], state)
-  assert.match(text, /получает возможность использовать реакцию «Атака по возможности»/u)
-  assert.match(text, /подтверждает реакцию «Атака по возможности»/u)
-  assert.match(text, /использует реакцию «Атака по возможности»/u)
+  assert.match(text, /Волк выходит из досягаемости — Лира может ответить реакцией «Атака по возможности»/u)
+  // Подтверждение окна и сама реакция — одна новость, а не две строки подряд.
+  assert.match(text, /Лира (?:использует реакцию|отвечает реакцией) «Атака по возможности»\./u)
+  assert.equal((text.match(/«Атака по возможности»/gu) ?? []).length, 2)
   assert.doesNotMatch(text, /ReactionWindow|CombatActionUsed|opportunity-attack/u)
 
   const unknown = combatNarration([
     { ...event('ReactionWindowOpened', { source_actor_id: 'wolf', action_ids: ['custom-reaction'], trigger: 'spell-cast' }, ['hero']), actor_id: 'wolf' },
     event('ReactionWindowClosed', { accepted: true, action_id: 'custom-reaction' }, ['hero']),
   ], state)
-  assert.match(unknown, /получает возможность использовать реакцию против Волк/u)
+  // Раньше: «реакцию против Волк» — без падежа. Теперь имя стоит подлежащим.
+  assert.match(unknown, /Лира может ответить реакцией\./u)
+  assert.doesNotMatch(unknown, /против Волк/u)
   assert.doesNotMatch(unknown, /Атака по возможности|custom-reaction/u)
 
   const named = combatNarration([
     event('CombatActionUsed', { action_type: 'action', action_id: 'dash', name: 'Рывок' }, ['hero']),
   ], state)
-  assert.match(named, /Лира использует «Рывок»/u)
+  assert.match(named, /^Лира [^.]*«Рывок»/u)
   assert.doesNotMatch(named, /dash/u)
 })
 
@@ -199,7 +211,8 @@ test('причина использования Resistance локализует�
   const text = combatNarration([
     event('ConcentrationEnded', { reason: 'resistance-used' }, ['hero']),
   ], state)
-  assert.equal(text, 'Концентрация Лира прекращается (бонус спасброска использован).')
+  // «Концентрация Лира» было без падежа; имя теперь подлежащее.
+  assert.equal(text, 'Лира теряет концентрацию (бонус спасброска использован).')
   assert.doesNotMatch(text, /resistance-used/u)
 })
 
@@ -294,7 +307,7 @@ test('конец боя называется по-русски, служебны
   assert.equal(encounterEndText('some_new_code'), 'исход подтверждён')
   assert.equal(encounterEndText('стража разняла драку'), 'стража разняла драку')
   const text = combatNarration([{ event_type: 'EncounterEnded', payload: { reason: 'enemies_defeated', outcome: 'enemies_defeated' } }], {})
-  assert.match(text, /Столкновение завершено: противники повержены\./u)
+  assert.match(text, /^(?:Столкновение завершено|Бой стихает|Всё кончено): противники повержены\./u)
   assert.doesNotMatch(text, /[a-z]_[a-z]/u)
 })
 
@@ -310,17 +323,14 @@ const party = {
 }
 const victory = { event_type: 'EncounterEnded', payload: { reason: 'enemies_defeated', outcome: 'enemies_defeated' } }
 
-test('победа заранее называет отдых, который начнётся с продолжением истории — MC-03', () => {
-  assert.match(combatNarration([victory], party),
-    /Столкновение завершено: противники повержены\. Когда отряд продолжит историю \(«продолжим»\), он сначала отдохнёт 8 часов и восстановит силы\./u)
-  // Выживший на нуле сначала приходит в себя: политика добавляет 4 часа.
+test('победа не обещает привала: отдых — только по заявке игроков', () => {
+  // MC-03 (2026-10-04) объявлял восьмичасовой привал в строке победы; с
+  // 2026-10-10 автоотдыха после победы нет (решение владельца), и строке
+  // нечего обещать.
+  assert.match(combatNarration([victory], party), /противники повержены\./u)
+  assert.doesNotMatch(combatNarration([victory], party), /отдохн|привал/u)
   const wounded = { ...party, players: [party.players[0], { ...party.players[1], hp: 0 }] }
-  assert.match(combatNarration([victory], wounded), /отдохнёт 12 часов/u)
-  // Нет отдыха — нет обещания: поражение, погибший отряд, герой вне отряда.
-  assert.doesNotMatch(combatNarration([{ event_type: 'EncounterEnded', payload: { reason: 'party_defeated', outcome: 'party_defeated' } }], party), /отдохн/u)
-  const fallen = { ...party, mechanics: { death: { heroes: { hero: { status: 'dead' }, ally: { status: 'dead' } } } } }
-  assert.doesNotMatch(combatNarration([victory], fallen), /отдохн/u)
-  assert.doesNotMatch(combatNarration([victory], { ...party, partyMemberIds: [] }), /отдохн/u)
+  assert.doesNotMatch(combatNarration([victory], wounded), /отдохн|привал/u)
 })
 
 test('отдых после победы — одна строка за отряд с длительностью — MC-03', () => {
@@ -333,7 +343,9 @@ test('отдых после победы — одна строка за отря
       kind: 'long_rest', duration_minutes: 480, participant_ids: ['ally', 'hero'], reason: 'post_encounter_recovery',
     } },
   ], party)
-  assert.equal(text, 'После победы отряд отдыхает 8 часов и восстанавливает силы: продолжительный отдых завершён.')
+  // Одна строка за отряд: без «завершает отдых» по каждому герою.
+  assert.match(text, /^[^.]*(?:отдыхает 8 часов|Привал на 8 часов)[^.]*\.$/u)
+  assert.doesNotMatch(text, /Лира|Бор/u)
   assert.equal(hasCombatNarrationEvent([event('DowntimeResolved')]), true)
   // После поражения без смертей — не «после победы» (прогон Асстохана, 2026-10-06).
   const defeat = combatNarration([
@@ -354,7 +366,7 @@ test('награда встречи называет вещи, монеты и �
     ],
     unassigned: { xp: 0, coins_cp: 0, items: [] },
   } }], party)
-  assert.equal(text, 'Награда встречи — доля отряда за победу: Лира — «Короткий лук», «Стрелы, 20 штук»; Бор — «Кинжал» (2 шт.); монеты поровну: 2 зм 9 мм; опыт поровну: 50.')
+  assert.match(text, /(?:После схватки|Когда всё стихает): Лира забирает «Короткий лук» и «Стрелы, 20 штук»; Бор — «Кинжал» \(2 шт\.\); в кошелях набралось 2 золотых и 9 медяков — на всех поровну; опыта — по 25 каждому\.$/u)
   assert.equal(hasCombatNarrationEvent([event('EncounterRewardsDistributed')]), true)
   // Пустая доля строки не даёт: «награда» без содержимого — шум.
   assert.equal(combatNarration([{ event_type: 'EncounterRewardsDistributed', payload: { allocations: [{ recipient_id: 'hero', xp: 0, coins_cp: 0, items: [] }] } }], party), '')
@@ -370,7 +382,173 @@ test('ход выбывшего противника в хронику не по
   ]
   const text = combatNarration(wolfTurn, fallen)
   assert.doesNotMatch(text, /Волк/u)
-  assert.match(text, /Начинается ход Лира, раунд 4/u)
+  assert.match(text, /Раунд 4[:.] (?:Теперь )?ходит Лира\./u)
   const alive = combatNarration(wolfTurn, state)
-  assert.match(alive, /Волк завершает ход/u)
+  assert.match(alive, /Волк (?:завершает ход|заканчивает ход|передаёт ход дальше)/u)
+})
+
+// --- Голос боя без модели (плейтест 2026-10-10, поток D) -------------------
+//
+// Бой читался журналом: один шаблон на событие. Реплики теперь выбираются из
+// вариантов по идентификатору события — повтор и replay дают ту же строку, а
+// соседние удары звучат по-разному.
+
+const battle = {
+  players: [
+    { id: 'mirel', character: 'Мирель', hp: 0, maxHp: 20 },
+    { id: 'borin', character: 'Борин', hp: 30, maxHp: 30 },
+  ],
+  enemies: [
+    { id: 'ogre', name: 'Огр', hp: 52, maxHp: 59 },
+    { id: 'wolf', name: 'Лютый волк', hp: 10, maxHp: 37 },
+  ],
+  actors: [],
+}
+
+const withId = (id, type, actor, targets, payload) => ({ event_id: id, command_id: id.split(':')[0], event_type: type, actor_id: actor, target_ids: targets, payload })
+
+function heroHit(seed) {
+  return [
+    withId(`${seed}:1`, 'AttackResolved', 'borin', ['wolf'], { target_id: 'wolf', total: 19, armor_class: 14, hit: true, attack_kind: 'melee', item_name: 'Боевой топор', damage_type: 'slashing' }),
+    withId(`${seed}:2`, 'DamageApplied', 'borin', ['wolf'], { target_id: 'wolf', applied_amount: 9, hp_before: 19, hp_after: 10 }),
+  ]
+}
+
+test('реплика удара детерминирована по идентификатору события и меняется от события к событию', () => {
+  const first = combatNarration(heroHit('cmd-a'), battle)
+  assert.equal(combatNarration(heroHit('cmd-a'), battle), first, 'повтор того же события — та же строка')
+  const variants = new Set(Array.from({ length: 24 }, (_, index) => combatNarration(heroHit(`cmd-${index}`), battle)))
+  assert.ok(variants.size >= 3, `формулировок слишком мало: ${[...variants].join(' | ')}`)
+  for (const line of variants) {
+    // Урон удара в той же строке, оружие и цель названы, ровно одно предложение.
+    assert.match(line, /^Борин [^.]*Лютого волка[^.]*9 урона\.$/u, line)
+  }
+  assert.ok([...variants].some((line) => /боевым топором/u.test(line)), 'оружие называется творительным падежом')
+})
+
+test('числа противника не уходят в реплику ни в одном варианте', () => {
+  for (let index = 0; index < 40; index += 1) {
+    const text = combatNarration([
+      withId(`leak-${index}:1`, 'AttackResolved', 'borin', ['ogre'], { target_id: 'ogre', total: 23, armor_class: 17, hit: index % 3 !== 0, critical: index % 7 === 0, attack_kind: index % 2 ? 'ranged' : 'melee', item_name: index % 2 ? 'Длинный лук' : 'Длинный меч', damage_type: 'piercing' }),
+      withId(`leak-${index}:2`, 'DamageApplied', 'borin', ['ogre'], { target_id: 'ogre', applied_amount: 6, hp_before: 58, hp_after: 52 }),
+      withId(`leak-${index}:3`, 'ConcentrationSavingThrowResolved', 'borin', ['ogre'], { target_id: 'ogre', kept: 9, modifier: 4, total: 13, difficulty: 11, saved: true }),
+    ], battle)
+    assert.doesNotMatch(text, /\b(?:17|23|58|52|13|11)\b|КД|ОЗ/u, text)
+  }
+})
+
+test('на нуле герой бросает спасброски от смерти, а чудовище просто выбывает', () => {
+  for (let index = 0; index < 12; index += 1) {
+    const hero = combatNarration([withId(`down-${index}:1`, 'HitPointsReducedToZero', 'ogre', ['mirel'], { condition: 'unconscious' })], battle)
+    assert.match(hero, /^Мирель [^.]*сознани[^]*спасброски от смерти\.$/u, hero)
+    const monster = combatNarration([withId(`down-${index}:2`, 'HitPointsReducedToZero', 'borin', ['ogre'], { condition: 'unconscious' })], battle)
+    // Плейтест 2026-10-10: огр «начинал делать спасброски от смерти».
+    assert.match(monster, /^Огр /u, monster)
+    assert.doesNotMatch(monster, /спасброс|погиб|умер|мёртв/u, monster)
+  }
+})
+
+test('стабилизация и подъём героя звучат без рода', () => {
+  for (let index = 0; index < 8; index += 1) {
+    const text = combatNarration([
+      withId(`stab-${index}:1`, 'HeroStabilized', 'borin', ['mirel'], {}),
+      withId(`stab-${index}:2`, 'StableRecoveryScheduled', 'borin', ['mirel'], { recovery_hours: 2 }),
+    ], battle)
+    assert.match(text, /Мирель/u)
+    assert.match(text, /[Кк]ровь остановлена/u)
+    assert.match(text, /через 2 часа/u)
+    assert.doesNotMatch(text, /стабилизирован|стабилен|упал|упала/u, text)
+  }
+})
+
+test('атака по возможности — одна строка «вдогонку» с уроном, затем падение героя', () => {
+  const text = combatNarration([
+    withId('oa:1', 'CombatActionUsed', 'ogre', ['mirel'], { action_id: 'opportunity-attack', name: 'Атака по возможности', action_type: 'reaction', target_id: 'mirel' }),
+    withId('oa:2', 'AttackResolved', 'ogre', ['mirel'], { target_id: 'mirel', total: 17, armor_class: 13, hit: true, attack_kind: 'melee', action_name: 'Палица', damage_type: 'bludgeoning', reaction_attack: true }),
+    withId('oa:3', 'DamageApplied', 'ogre', ['mirel'], { target_id: 'mirel', applied_amount: 13, hp_before: 9, hp_after: 0 }),
+    withId('oa:4', 'HitPointsReducedToZero', 'ogre', ['mirel'], { condition: 'unconscious' }),
+  ], battle)
+  assert.doesNotMatch(text, /использует реакцию/u, 'строка реакции слита с ударом')
+  assert.match(text, /Огр [^.]*: 17 против КД 13 — попадание, 13 урона; ОЗ 9 → 0\./u, 'свои числа отряд видит, как и раньше')
+  assert.match(text, /вдогонку|Отступая|на отходе/u)
+  assert.ok(text.indexOf('13 урона') < text.indexOf('сознани'), text)
+})
+
+test('публичная тактика существа окрашивает его перемещение и первую атаку', () => {
+  const events = [
+    withId('pack:1', 'ActorMoved', 'wolf', ['wolf'], { distance: 30 }),
+    withId('pack:2', 'AttackResolved', 'wolf', ['borin'], { target_id: 'borin', total: 15, armor_class: 16, hit: false, attack_kind: 'melee', action_name: 'Укус', damage_type: 'piercing' }),
+  ]
+  const closing = combatNarration(events, battle, { npcTurns: [{ actor_id: 'wolf', tactic: 'сокращает дистанцию' }] })
+  assert.match(closing, /Лютый волк (?:сокращает дистанцию|рвётся вперёд)/u, closing)
+  const pack = combatNarration(events, battle, { npcTurns: [{ actor_id: 'wolf', tactic: 'тактика стаи' }] })
+  assert.match(pack, /Пользуясь поддержкой стаи, Лютый волк (?:кусает|вцепляется зубами в) Борина/u, pack)
+  assert.match(pack, /15 против КД 16 — промах/u)
+})
+
+test('вступление столкновения опирается на обстановку и состав', () => {
+  const created = withId('enc:1', 'EncounterCreated', null, [], { encounter: { theme: 'undead', enemies: [{ name: 'Скелет 1' }, { name: 'Скелет 2' }, { name: 'Зомби' }] } })
+  const cave = combatNarration([created], { ...battle, scene: { theme: 'cave' } })
+  assert.match(cave, /^(?:Из темноты выходят|В глубине прохода шевелятся тени — это|Из мрака показываются) Скелет 1, Скелет 2 и Зомби\.$/u, cave)
+  assert.doesNotMatch(cave, /На поле появляются/u)
+  const forest = combatNarration([{ ...created, payload: { encounter: { enemies: [{ name: 'Огр' }] } } }], { ...battle, scene: { theme: 'forest' } })
+  assert.match(forest, /(?:Из-за деревьев выходит|навстречу выходит) Огр\./u, forest)
+})
+
+test('двенадцать часов отдыха — одна строка о времени суток, последняя', () => {
+  const text = combatNarration([
+    withId('rest:1', 'TimeOfDayChanged', null, [], { phase_before: 'evening', phase_after: 'night' }),
+    withId('rest:2', 'TimeOfDayChanged', null, [], { phase_before: 'night', phase_after: 'morning' }),
+  ], battle)
+  assert.equal(text, 'Светает: над отрядом занимается утро.')
+})
+
+test('находка в бочке звучит сценой, а вне боя строку говорит рассказчик', () => {
+  const scene = { ...battle, scene: { map: { props: [{ id: 'prop-barrel', assetId: 'barrel' }] } } }
+  const events = [
+    withId('loot:1', 'SceneObjectOperated', 'borin', [], { prop_id: 'prop-barrel', kind: 'container', intent: 'open' }),
+    withId('loot:2', 'SceneObjectStateChanged', 'borin', [], { prop_id: 'prop-barrel', state: 'open', success: true, intent: 'open' }),
+    withId('loot:3', 'SceneObjectLootRevealed', 'borin', [], { prop_id: 'prop-barrel', loot: [{ name: 'Боевой посох' }] }),
+  ]
+  assert.equal(combatNarration(events, scene), 'Под крышкой бочки — боевой посох.')
+  assert.deepEqual(combatJournalVoice(events, scene), { speaker: 'narrator', author: 'Рассказчик' })
+  assert.deepEqual(combatJournalVoice(events, { ...scene, mechanics: { combat: { active: true } } }), { speaker: 'system', author: 'Система боя' })
+  assert.deepEqual(combatJournalVoice(heroHit('voice'), battle), { speaker: 'system', author: 'Система боя' })
+  // Предмет без русского имени остаётся прежней строкой, а не пустотой.
+  assert.match(combatNarration(events.slice(0, 2), { ...battle, scene: { map: { props: [] } } }), /Объект открыт/u)
+})
+
+test('надёжный винительный для имён бестиария и именительный для остальных', () => {
+  assert.equal(confidentAccusative('Лютый волк'), 'Лютого волка')
+  assert.equal(confidentAccusative('Гигантская крыса 2'), 'Гигантскую крысу 2')
+  assert.equal(confidentAccusative('Бурый медведь'), 'Бурого медведя')
+  assert.equal(confidentAccusative('Чёрная слизь'), 'Чёрную слизь')
+  assert.equal(confidentAccusative('Скелет минотавра'), 'Скелета минотавра')
+  assert.equal(confidentAccusative('Зомби'), 'Зомби')
+  for (const name of ['Мирель', 'Брам Тихий Молот', 'Торн «Без Весла»', 'Суккуб / Инкуб']) assert.equal(confidentAccusative(name), null, name)
+  // Цель без надёжного склонения стоит в именительном: «цель — Мирель».
+  const text = combatNarration([withId('nom:1', 'AttackResolved', 'ogre', ['mirel'], { target_id: 'mirel', total: 9, armor_class: 13, hit: false, attack_kind: 'melee' })], battle)
+  assert.match(text, /цель — Мирель: 9 против КД 13 — промах\./u, text)
+})
+
+test('реакция и закрытие её окна — одна строка в любом порядке событий', () => {
+  // Замер 2026-10-10: «Мирель отвечает реакцией «Щит». Мирель отвечает
+  // реакцией «Щит».» — у «Щита» реакция идёт раньше закрытия окна.
+  const state = { players: [{ id: 'mirel', character: 'Мирель' }], enemies: [{ id: 'gob', name: 'Гоблин 1' }] }
+  const used = { event_id: 'use-1', event_type: 'CombatActionUsed', actor_id: 'mirel', payload: { action_type: 'reaction', action_id: 'cast:shield', name: 'Щит', reaction_window_id: 'w1' } }
+  const closed = { event_id: 'close-1', event_type: 'ReactionWindowClosed', actor_id: 'mirel', payload: { accepted: true, action_id: 'cast:shield', name: 'Щит', reaction_window_id: 'w1' } }
+  for (const events of [[closed, used], [used, closed]]) {
+    const text = combatNarration(events, state)
+    assert.equal((text.match(/Щит/gu) ?? []).length, 1, text)
+  }
+})
+
+test('укрытие в строке боя — словом, а не служебным именем предмета', () => {
+  // Замер 2026-10-10: «посылает выстрел сквозь tree_oak (три четверти укрытия)».
+  const state = { players: [{ id: 'mirel', character: 'Мирель' }], enemies: [{ id: 'bandit', name: 'Разбойник 1' }] }
+  const shot = (scenery) => combatNarration([{ event_id: `shot-${scenery}`, event_type: 'AttackResolved', actor_id: 'bandit', target_ids: ['mirel'], payload: { hit: false, total: 7, armor_class: 16, cover: 'three-quarters', cover_bonus: 5, cover_scenery: [scenery] } }], state)
+  assert.match(shot('tree_oak'), /сквозь дерево/u)
+  assert.match(shot('table_long'), /сквозь стол/u)
+  assert.match(shot('mystery_prop_42'), /сквозь укрытие/u)
+  assert.doesNotMatch(shot('tree_oak'), /tree_oak/u)
 })

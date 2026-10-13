@@ -1361,7 +1361,7 @@ export function useGameSession(options: {
      * серверный бросок во второй фазе. Обычные команды доски обходятся без них.
      */
     dice: { manualRoll?: boolean; roll?: RollResult; idempotencyKey?: string } = {},
-    options: { allowUncertainRetry?: boolean } = {},
+    options: { allowUncertainRetry?: boolean; playerNote?: string } = {},
   ): Promise<CommandOutcome> => {
     if (tacticalBusyRef.current) return { ok: false, error: 'Предыдущая команда ещё выполняется.' }
     const current = stateRef.current
@@ -1392,6 +1392,7 @@ export function useGameSession(options: {
       message,
       manualRoll: dice.manualRoll === true,
       ...(dice.roll?.roll_id ? { rollId: dice.roll.roll_id } : {}),
+      ...(options.playerNote?.trim() ? { playerNote: options.playerNote.trim() } : {}),
     }
     const request = tacticalCommandRequest(pending)
     rememberPendingTacticalCommand(pending, false)
@@ -1598,7 +1599,7 @@ export function useGameSession(options: {
         ...(pending.rollId ? { roll: { roll_id: pending.rollId } as RollResult } : {}),
         idempotencyKey: pending.requestId,
       },
-      { allowUncertainRetry: true },
+      { allowUncertainRetry: true, playerNote: pending.playerNote },
     )
   }, [executeRestCommand, executeTacticalCommand, pendingRecoveryForCampaign])
 
@@ -1666,8 +1667,10 @@ export function useGameSession(options: {
   }, [executeTacticalCommand])
 
   /* Слова игрока едут вместе с командой: подтверждение теперь одно на всё —
-     кнопка «Отправить», и приписка к действию должна доходить до рассказчика
-     тем же запросом, а не отдельной репликой после. */
+     кнопка «Отправить», и приписка к действию доходит тем же запросом, а не
+     отдельной репликой после. Отдельным полем `player_note`: сервер пишет её
+     репликой героя перед строкой хода и не вклеивает в результат — промах не
+     должен читаться попаданием (плейтест 2026-10-10). */
   const attackEnemy = useCallback((playerId: string, enemyId: string, itemId?: string, choice: WeaponAttackChoice = {}) => {
     const { attackMode, attackAbility, sneakAttack = false, knockOut = false, note } = choice
     const base = knockOut ? 'Нокаутировать выбранную цель' : 'Атаковать выбранную цель'
@@ -1678,12 +1681,12 @@ export function useGameSession(options: {
       ...(itemId && attackAbility ? { attack_ability: attackAbility } : {}),
       ...(itemId && sneakAttack ? { sneak_attack: true } : {}),
       ...(knockOut ? { knock_out: true } : {}),
-    } as TacticalCommand, note ? `${base}. ${note}` : base)
+    } as TacticalCommand, base, {}, { playerNote: note })
   }, [executeTacticalCommand])
 
   const throwAreaItem = useCallback((playerId: string, itemId: string, x: number, y: number, note?: string) => {
     const base = `Бросить предмет в клетку ${x}, ${y}`
-    return executeTacticalCommand({ command_type: 'MakeAreaAttack', actor_id: playerId, item_id: itemId, to: { x, y } }, note ? `${base}. ${note}` : base)
+    return executeTacticalCommand({ command_type: 'MakeAreaAttack', actor_id: playerId, item_id: itemId, to: { x, y } }, base, {}, { playerNote: note })
   }, [executeTacticalCommand])
 
   const castSpell = useCallback((actorId: string, spellId: string, target: ({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { itemId?: string; spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string }) => {
@@ -1698,7 +1701,7 @@ export function useGameSession(options: {
       : 'targetIds' in target
         ? { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, target_ids: [...new Set(target.targetIds)], ...(target.itemId ? { item_id: target.itemId } : {}), ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}), ...(target.knockOut ? { knock_out: true } : {}) }
         : { command_type: 'CastSpell', actor_id: actorId, spell_id: spellId, to: { x: target.x, y: target.y }, ...(target.itemId ? { item_id: target.itemId } : {}), ...slotLevel, ...(target.spellOption ? { spell_option: target.spellOption } : {}) }
-    return executeTacticalCommand(command, target.note ? `Сотворить выбранное заклинание. ${target.note}` : 'Сотворить выбранное заклинание')
+    return executeTacticalCommand(command, 'Сотворить выбранное заклинание', {}, { playerNote: target.note })
   }, [executeTacticalCommand])
 
   const changeWeapon = useCallback((playerId: string, itemId: string) => {
@@ -1918,7 +1921,7 @@ export function useGameSession(options: {
       ...(beneficiaryId ? { beneficiary_id: beneficiaryId } : {}),
       ...(slotLevel ? { slot_level: slotLevel } : {}),
       ...(options?.shoveMode ? { shove_mode: options.shoveMode } : {}),
-    }, note ? `Использовать выбранное боевое действие. ${note}` : 'Использовать выбранное боевое действие')
+    }, 'Использовать выбранное боевое действие', {}, { playerNote: note })
   }, [executeTacticalCommand])
 
   const finishMapTurn = useCallback(() => {

@@ -6,6 +6,7 @@ import { FakeLLM } from '../server/llm-client.mjs'
 import {
   applyWorldMemoryEvent,
   freeActionDiscoveryCommands,
+  freeActionSurfaceCommands,
   normalizeWorldMemory,
   validateWorldMemoryCommand,
   worldMemoryEvent,
@@ -165,4 +166,213 @@ test('общий поиск родственным навыком открыва
   }
   // Навык вне поиска (Атлетика) по-прежнему ничего не открывает.
   assert.deepEqual(freeActionDiscoveryCommands(onlyJournal, { checkEvent: check('athletics'), skill: 'athletics', actionText: 'Осматриваюсь' }), [])
+})
+
+test('удачный поиск отвечает на заданный вопрос, а не открывает соседнюю тайну по одному общему слову', async () => {
+  // Плейтест 2026-10-10: «ищу метку владельца на корме» сходилось с чужим
+  // секретом по одной основе и открывало его вместо ответа; метку так и не
+  // назвали. Деталь, названная арбитром до броска, становится находкой.
+  const state = await campaign()
+  const detail = 'На корме выжжена чайка с перебитым крылом — так метят лодки семьи Ворониных.'
+  const commands = freeActionDiscoveryCommands(state, {
+    checkEvent: check('investigation', 'detail-check'), skill: 'investigation',
+    actionText: 'Осматриваю корму баркаса и ищу метку владельца', successDetail: detail,
+  })
+  const summaries = commands.map((command) => command.fact.summary)
+  assert.ok(summaries.includes(detail), 'ответ на вопрос записан находкой')
+  const recorded = commit(state, commands)
+  assert.ok(worldMemoryForViewer(recorded.worldMemory, { isPartyMember: true }).facts.some((fact) => fact.summary === detail))
+  // Повтор того же хода не записывает деталь второй раз.
+  const again = freeActionDiscoveryCommands(recorded, {
+    checkEvent: check('investigation', 'detail-check-2'), skill: 'investigation',
+    actionText: 'Осматриваю корму баркаса и ищу метку владельца', successDetail: detail,
+  })
+  assert.ok(!again.some((command) => command.fact.summary === detail))
+})
+
+test('тема заготовки сильнее детали: вопрос о футляре открывает тайну футляра', async () => {
+  const state = await campaign()
+  const commands = freeActionDiscoveryCommands(state, {
+    checkEvent: check('investigation', 'case-check'), skill: 'investigation',
+    actionText: 'Осматриваю футляр с картой и его замок', successDetail: 'На футляре клеймо мастерской.',
+  })
+  assert.equal(commands.length, 1)
+  assert.match(commands[0].fact.summary, /царапина от ножа/u)
+})
+
+test('проваленный осмотр показывает видимую деталь места, а пустая удача — её же вместо пустоты', async () => {
+  // Плейтест 2026-10-10: «Осмотреть баркас не удалось: ничего нового» — без
+  // единой детали. Что видно и без броска, называет арбитр (`surface_detail`).
+  const state = await campaign()
+  const surface = 'Сеть на корме сложена аккуратно, будто её укладывали на берегу, а не в море.'
+  const failed = { event_id: 'failed-look', event_type: 'AbilityCheckResolved', payload: { success: false, skill: 'perception' } }
+  const [seen] = freeActionSurfaceCommands(state, { checkEvent: failed, skill: 'perception', surfaceDetail: surface })
+  assert.equal(seen?.fact?.summary, surface)
+  assert.equal(seen.fact.object, 'surface')
+  assert.equal(seen.fact.visibility, 'party')
+  assert.ok(!JSON.stringify(seen).includes('царапина'), 'тайна сцены не раскрывается')
+  assert.deepEqual(freeActionSurfaceCommands(state, { checkEvent: failed, skill: 'athletics', surfaceDetail: surface }), [], 'только поиск')
+
+  const emptyLuck = freeActionDiscoveryCommands({ ...state, worldMemory: { ...state.worldMemory, facts: [] } }, {
+    checkEvent: check('perception', 'lucky-look'), skill: 'perception', actionText: 'Смотрю на воду', surfaceDetail: surface,
+  })
+  assert.deepEqual(emptyLuck.map((command) => command.fact.summary), [surface])
+})
+
+test('общий осмотр не открывает чужого свидетельства и не срабатывает на «прислушиваюсь»', async () => {
+  // Плейтест 2026-10-10: «прислушиваюсь у двери маяка» и «смотрю на вершину
+  // маяка» открывали тайну места не о том, а наблюдение — «Йорен Келл видел,
+  // как…»: показания, которые даёт человек, а не место.
+  const state = await campaign()
+  const location = state.worldMemory.entities.find((entity) => entity.name === state.scene.location)
+  const testimony = { id: 'fact:secret:witness', subject_id: location.id, predicate: 'gm_secret', status: 'active', visibility: 'gm_only',
+    object: JSON.stringify({ topic: 'канат стражник', skills: ['perception', 'insight'], holder: 'Йорен Келл' }),
+    summary: 'Йорен Келл видел, как стражник с баронским жетоном помог незнакомцам перерезать канат.', recorded_at_minutes: 0 }
+  const onlyTestimony = { ...state, worldMemory: { ...state.worldMemory, facts: [...state.worldMemory.facts.map((fact) => fact.predicate === 'gm_secret' ? { ...fact, status: 'superseded' } : fact), testimony] } }
+  const looked = freeActionDiscoveryCommands(onlyTestimony, { checkEvent: check('perception', 'look-around'), skill: 'perception', actionText: 'Осматриваюсь у причала' })
+  assert.ok(!looked.some((command) => /Йорен/u.test(command.fact?.summary ?? '')), 'свидетельство не находится осмотром')
+  const listened = freeActionDiscoveryCommands(state, { checkEvent: check('perception', 'listen'), skill: 'perception', actionText: 'Прислушиваюсь у двери, есть ли кто-то внутри' })
+  assert.ok(!listened.some((command) => /царапина|почерк/u.test(command.fact?.summary ?? '')), 'прислушаться — не обыск')
+})
+
+test('свидетельство по теме открывается, только когда герой обращается к его хранителю', async () => {
+  // Замер 2026-10-10: Мирель следила за реакцией Эды на иллюзию, а удача
+  // открыла «Орен признаётся: видел такую же зарубку» — показания другого.
+  const state = await campaign()
+  const location = state.worldMemory.entities.find((entity) => entity.name === state.scene.location)
+  const testimony = { id: 'fact:secret:witness-topic', subject_id: location.id, predicate: 'gm_secret', status: 'active', visibility: 'gm_only',
+    object: JSON.stringify({ topic: 'зарубка баркас', skills: ['insight', 'perception'], holder: 'Орен Вейл' }),
+    summary: 'Орен Вейл видел такую же зарубку на другом баркасе, но молчал.', recorded_at_minutes: 0 }
+  const only = { ...state, worldMemory: { ...state.worldMemory, facts: [...state.worldMemory.facts.map((fact) => fact.predicate === 'gm_secret' ? { ...fact, status: 'superseded' } : fact), testimony] } }
+  const watching = freeActionDiscoveryCommands(only, { checkEvent: check('insight', 'watch-eda'), skill: 'insight', actionText: 'Слежу, как Эда смотрит на зарубку на баркасе' })
+  assert.ok(!watching.some((command) => /Орен/u.test(command.fact?.summary ?? '')))
+  const askingHolder = freeActionDiscoveryCommands(only, { checkEvent: check('insight', 'read-oren'), skill: 'insight', actionText: 'Смотрю, как Орен отводит глаза, когда речь о зарубке на баркасе' })
+  assert.ok(askingHolder.some((command) => /Орен/u.test(command.fact?.summary ?? '')))
+  // Замер 21: «благодарит Орена и идёт осмотреть баркас» — обыск, а не
+  // разговор; показания хранителя глазами не находятся.
+  const searching = freeActionDiscoveryCommands(only, { checkEvent: check('perception', 'search-oren'), skill: 'perception', actionText: 'Благодарю Орена и осматриваю баркас: зарубка на борту, сеть, палуба' })
+  assert.ok(!searching.some((command) => /Орен/u.test(command.fact?.summary ?? '')), 'свидетельство не находится обыском')
+})
+
+test('удачная Проницательность без детали не подсовывает «X явно знает больше» о другом жителе', async () => {
+  const state = await campaign()
+  const quiet = { ...state, worldMemory: { ...state.worldMemory, facts: state.worldMemory.facts.filter((fact) => fact.predicate !== 'gm_secret') } }
+  const read = freeActionDiscoveryCommands(quiet, { checkEvent: check('insight', 'read-face'), skill: 'insight', actionText: 'Слежу, как Клара смотрит на журнал' })
+  assert.ok(!read.some((command) => /явно знает об этом больше/u.test(command.fact?.summary ?? '')))
+})
+
+test('тщательный поиск вне спешки: провал броска стоит времени, а спрятанное находится', async () => {
+  // Замер 10 (2026-10-10): «стена отказов» — три проваленных осмотра подряд
+  // и ни одной улики, хотя заготовки лежали рядом. Правило «Многократные
+  // проверки» (DMG 2014, гл. 8): вдесятеро больше времени — успех без броска.
+  const { thoroughSearchOutcome, isThoroughSearch, THOROUGH_SEARCH_MINUTES } = await import('../server/world-memory.mjs')
+  const state = await campaign()
+  const failed = { event_id: 'check-thorough', event_type: 'AbilityCheckResolved', payload: { success: false, skill: 'investigation' } }
+  assert.equal(isThoroughSearch('Методично осматриваю футляр, каждую щель'), true)
+  assert.equal(isThoroughSearch('Быстро осматриваю футляр'), false)
+  const found = thoroughSearchOutcome(state, { checkEvent: failed, skill: 'investigation', actionText: 'Методично осматриваю футляр и замок' })
+  assert.equal(found?.found, true)
+  assert.equal(found.minutes, THOROUGH_SEARCH_MINUTES)
+  assert.match(found.commands[0].fact.summary, /царапина от ножа/u)
+  assert.equal(thoroughSearchOutcome(state, { checkEvent: failed, skill: 'investigation', actionText: 'Осматриваю футляр' })?.found, true, 'обыск вне спешки — тщательный и без слова «методично» (замер 11)')
+  assert.equal(thoroughSearchOutcome(state, { checkEvent: failed, skill: 'perception', actionText: 'Прислушиваюсь у двери' }), null, 'прислушаться — не обыск')
+  const fighting = { ...state, mechanics: { ...state.mechanics, combat: { ...(state.mechanics?.combat ?? {}), active: true } } }
+  assert.equal(thoroughSearchOutcome(fighting, { checkEvent: failed, skill: 'investigation', actionText: 'Методично осматриваю футляр' }), null, 'в бою спешка — правило не действует')
+  const success = { ...failed, payload: { success: true, skill: 'investigation' } }
+  assert.equal(thoroughSearchOutcome(state, { checkEvent: success, skill: 'investigation', actionText: 'Методично осматриваю футляр' }), null)
+})
+
+test('заготовка, которую NPC уже рассказал, не находится поиском второй раз', async () => {
+  const state = await campaign()
+  const secret = state.worldMemory.facts.find((fact) => fact.predicate === 'gm_secret' && /футляр/u.test(fact.summary))
+  const lucky = check('investigation', 'check-told')
+  assert.ok(freeActionDiscoveryCommands(state, { checkEvent: lucky, skill: 'investigation', actionText: 'Осматриваю футляр и замок' })
+    .some((command) => command.fact?.summary === secret.summary), 'без разговора заготовка находится')
+  const ledger = { ...state, worldMemory: { ...state.worldMemory, knowledge_ledger: [{ id: 'k1', fact_id: secret.id, hero_id: 'nova' }] } }
+  assert.ok(!freeActionDiscoveryCommands(ledger, { checkEvent: lucky, skill: 'investigation', actionText: 'Осматриваю футляр и замок' })
+    .some((command) => command.fact?.summary === secret.summary), 'названная в разговоре заготовка не повторяется')
+  const retold = { ...state, social: { ...(state.social ?? {}), conversations: [{ id: 'c1', npc_id: 'npc', npc_reply: 'На футляре свежая царапина от ножа — его уже вскрывали этой ночью, клянусь.', disclosed_fact_ids: [] }] } }
+  assert.ok(!freeActionDiscoveryCommands(retold, { checkEvent: lucky, skill: 'investigation', actionText: 'Осматриваю футляр и замок' })
+    .some((command) => command.fact?.summary === secret.summary), 'пересказанная почти дословно заготовка тоже')
+})
+
+test('удачная Проницательность — реакция того, за кем следили, а не тайна места', async () => {
+  const state = await campaign()
+  const reaction = 'Клара бледнеет и прижимает футляр к груди — вопрос ей неприятен.'
+  const found = freeActionDiscoveryCommands(state, {
+    checkEvent: check('insight', 'check-insight'), skill: 'insight',
+    actionText: 'Слежу за лицом Клары, когда спрашиваю про журнал и отметки', successDetail: reaction,
+  })
+  assert.deepEqual(found.map((command) => command.fact?.summary), [reaction])
+})
+
+test('удачная Проницательность без реакции от судьи читает правду о человеке', async () => {
+  // Замеры 10–11: «по её взгляду не понять, узнала ли» — ответ провала на
+  // удачу. Правда выводится из заготовок, хранитель которых — этот человек;
+  // сама тайна не раскрывается.
+  const { insightRead } = await import('../server/world-memory.mjs')
+  const state = await campaign()
+  const here = state.scene?.location_id
+  const withKlara = { ...state, scene_npcs: [{ id: 'klara', name: 'Клара Вельм', location_id: here, alive: true }, { id: 'tom', name: 'Том Рыбак', location_id: here, alive: true }] }
+  const knows = insightRead(withKlara, { actionText: 'Спрашиваю Клару про журнал и слежу за её лицом' })
+  assert.match(knows, /Клара Вельм знает об этом больше, чем говорит/u)
+  assert.doesNotMatch(knows, /почерк/u, 'тайна не раскрывается')
+  assert.match(insightRead(withKlara, { actionText: 'Слежу за лицом Клары, когда говорю о погоде на реке' }), /скрывает — только, похоже, не это/u)
+  assert.match(insightRead(withKlara, { actionText: 'Слежу за Томом, когда спрашиваю про журнал' }), /не притворяется/u)
+  assert.equal(insightRead(withKlara, { actionText: 'Слежу за лицом незнакомца' }), '')
+  const found = freeActionDiscoveryCommands(withKlara, { checkEvent: check('insight', 'check-read'), skill: 'insight', actionText: 'Спрашиваю Клару про журнал и слежу за её лицом' })
+  assert.deepEqual(found.map((command) => command.fact?.summary), [knows])
+})
+
+test('канон сцены: публичные факты исходной ситуации — в памяти мира, у рассказчика, NPC и судьи заявок', async () => {
+  // Замеры 19–24 (2026-10-11): NPC и рассказчик достраивали мир каждый
+  // по-своему — баркас то вернулся этой ночью, то давно, то чужой.
+  const withCanon = {
+    ...opening,
+    canon: [
+      'Футляр с картой принесли на мытню этим утром, до дождя',
+      'Клара Вельм — хранительница карты мытни',
+      'коротко',
+    ],
+  }
+  const state = await new CampaignBootstrapper({ llmClient: new FakeLLM([{ content: JSON.stringify(withCanon) }]) }).create({
+    code: 'GM-CANON', name: 'Канон', partyName: 'Двое', world: {}, players: [hero],
+  })
+  const canon = state.worldMemory.facts.filter((fact) => fact.predicate === 'scene_canon')
+  assert.equal(canon.length, 2, 'короче двенадцати знаков — не факт')
+  assert.ok(canon.every((fact) => fact.visibility === 'party' && fact.status === 'active'))
+  const clara = state.social.npcs.find((npc) => npc.name === 'Клара Вельм')
+  assert.ok(canon.every((fact) => clara.known_fact_ids.includes(fact.id)), 'канон знают все в сцене')
+
+  const { sceneContextForAgent } = await import('../server/agent-context.mjs')
+  assert.deepEqual(sceneContextForAgent(state, 'nova').canon, canon.map((fact) => fact.summary))
+  const { adjudicationBrief } = await import('../server/action-adjudicator.mjs')
+  assert.deepEqual(adjudicationBrief(state, 'nova', 'Осматриваю футляр').scene.canon, canon.map((fact) => fact.summary))
+
+  const { NpcSocialController } = await import('../server/npc-social-controller.mjs')
+  const briefs = []
+  const llmClient = { model: 'test-npc', completeJson: async ({ messages }) => {
+    briefs.push(String(messages.at(-1)?.content ?? ''))
+    return { npc_id: clara.id, reply: 'Утром принесли, до дождя.', stance: 'neutral', disclosed_fact_ids: [], disclosed_claim_ids: [], relationship_delta: 0, promise: null, confidence: 0.9 }
+  } }
+  await new NpcSocialController({ llmClient }).respond({ state, playerId: 'nova', npcId: clara.id, message: 'Когда принесли футляр?' })
+  assert.ok(briefs[0].includes('scene_canon') && briefs[0].includes('этим утром, до дождя'))
+  assert.ok(briefs[0].includes('table_knows'))
+})
+
+test('провайдер недоступен при создании мира — ещё одна попытка, а не шаблонный мир', async () => {
+  // Замеры 27–29 (2026-10-11): OhMyLama минуту не отвечала ни одной моделью,
+  // и кампании получали шаблон «Ривермарк» вместо мира по вводным.
+  const { LLMError } = await import('../server/llm-client.mjs')
+  let calls = 0
+  const llmClient = { model: 'test', completeJson: async () => {
+    calls += 1
+    if (calls === 1) throw new LLMError('down', 'LLM_FALLBACK_EXHAUSTED')
+    return opening
+  } }
+  const state = await new CampaignBootstrapper({ llmClient, retryPauseMs: 0 }).create({
+    code: 'GM-RETRY', name: 'Повтор', partyName: 'Двое', world: {}, players: [hero],
+  })
+  assert.equal(calls, 2)
+  assert.equal(state.scene.location, 'Мытарский Двор', 'мир — по ответу модели, а не шаблон')
 })

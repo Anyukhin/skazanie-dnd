@@ -117,12 +117,14 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | --- | --- | --- |
 | `server/director-agent.mjs` | `prompts/director/v4_story.txt`, `v4_chaos.txt` | темп, развилки, переходы; вариант по `improv_mode` в `choose()` |
 | `server/npc-controller.mjs` | `prompts/npc_controller/v1.txt` | мораль и перелом боя NPC |
-| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v7.txt` | социальные сцены; зацепки карты о собеседнике (`public_hooks_naming_npc`) |
-| `server/narrator.mjs` | `prompts/narrator/v13.txt` | текст после commit; якоря карты (`landmarks`, `landmarks_absent`); сюжет сценария (`scenario`) |
+| `server/npc-social-controller.mjs` | `prompts/npc_controller/social_v8.txt` | социальные сцены; зацепки карты о собеседнике (`public_hooks_naming_npc`), встречные зацепки (`leads`), карточка героя (`speaking_hero`), антиповтор (`already_said`) |
+| `server/narrator.mjs` | `prompts/narrator/v14.txt` | текст после commit, живой ответ на слова и поступки игрока; якоря карты (`landmarks`, `landmarks_absent`); сюжет сценария (`scenario`) |
 | `server/scene-architect.mjs` | `prompts/map_architect/v8.txt` | новые области, заготовки (`secrets`), якоря (`map.design.landmarks`) |
 | `server/campaign-bootstrap.mjs` | `prompts/campaign_creator/v8.txt` | исходная ситуация, заготовки (`secrets`), якоря первой карты |
-| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v9.txt` | прочтение свободного действия и маршрут (`check`/`travel`/`talk`/`clarify`) |
+| `server/action-adjudicator.mjs` | `prompts/action_adjudicator/v10.txt` | прочтение свободного действия, маршрут (`check`/`travel`/`talk`/`clarify`) и деталь успеха (`success_detail`) |
 | `server/campaign-recap.mjs` | `prompts/recap/v1.txt` | рекап «в прошлой серии» |
+| `server/lore-voice.mjs` | `prompts/lore_keeper/v1.txt` | ответ «что мы знаем» голосом ведущего: пересказ материала, отобранного `answerKnownLore`, без новых имён и фактов |
+| `server/hero-hooks.mjs` | `prompts/hero_hooks/v1.txt` | зацепки из предысторий героев: скрытые `gm_secret` с `hero_id`, личная нить; стадия `hero-hooks` после коммита |
 
 Других загрузок промптов нет. Остальные файлы в `prompts/` — прежние версии тех
 же контрактов и few-shot, оставлены как история. Сторож соответствия —
@@ -135,14 +137,16 @@ pnpm backup           # зашифрованная копия storage в ./backu
 `map-quality`, `weather`, `offscreen-world`, `loot-containers`, `tavern-life`,
 `courier-letters`, `talespire-slab`, `talespire-import`, `map-library`,
 `thin-walls`, `room-floors`, `detail-props`, `scene-features`, `scene-dressing`,
-`reaction-preferences`, `campaign-scenario`, `scenario-attention`, `scenario-knight` (все — `server/*.mjs`).
+`reaction-preferences`, `campaign-scenario`, `scenario-attention`, `scenario-knight`, `combat-phrases` (все — `server/*.mjs`).
 
 **Маршрутизация ввода:** `server/player-request-router.mjs` объявляет
 `PLAYER_REQUEST_ROLES`. `prompt_id` там — метаданные, а не привязка: его не
 читает ни один модуль, он стоит только у ролей, исполняемых моделью (строка или
 список вариантов). `worldkeeper` (детерминированный `answerKnownLore`) и
 `game_master` (Rules Engine) — без `prompt_id`. Сторож —
-`test/player-request-router.test.mjs`.
+`test/player-request-router.test.mjs`. Материал хранителя отбирает
+`answerKnownLore`; голосом ведущего его пересказывает `lore-voice`
+(`lore_keeper/v1`), а не прошедший проверку пересказ уступает серверному ответу.
 
 **Сценарий авторской кампании:** `campaign-scenario` читает
 `data/campaign-scenarios-v1.json` (сюжет для людей — `docs/astohan-scenario.md`).
@@ -168,8 +172,9 @@ pnpm backup           # зашифрованная копия storage в ./backu
 
 **Домен NPC (не путать):**
 
-- `npc-social.mjs` — профили, обещания, отношения; `npc-social-check.mjs` —
-  навыковые проверки;
+- `npc-social.mjs` — профили, обещания, отношения и граница знания NPC
+  (`npcKnownFactIds`: своё, публичное, увиденное самим NPC, заготовки, где он
+  хранитель); `npc-social-check.mjs` — навыковые проверки;
 - `npc-turn-scheduler.mjs` — детерминированная боевая политика NPC;
 - `npc-controller.mjs` (`NpcMoraleAgent`) — только мораль и перелом боя: вне
   момента морали `decide()` возвращает `null`;
@@ -214,6 +219,9 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
 | Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs`, `test/combat-forecast-disclosure.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
+| NPC знает только своё, публичное и увиденное им самим; повтор своей реплики вырезается сервером; отказ ведёт к зацепке, а не в тупик | `test/npc-knowledge-leads.test.mjs` |
+| Зацепки из предыстории плетутся один раз на героя путём заготовок ведущего, replay сходится, Режиссёр видит мотивы без текста зацепок | `test/hero-hooks.test.mjs` |
+| Летопись хода не пропадает на устаревшей проекции: слова игрока, строка хода и критическая реплика рассказчика идут по порядку до автохода врага и переживают перезапуск | `test/combat-journal-order-api.test.mjs` |
 | Сгенерированная карта играбельна: дверь наружу, окна, комнаты, досягаемость, мебель не в проёмах и не за краем | `test/map-quality.test.mjs`, `pnpm maps:preview -- --preset all --audit` |
 | Карта держит программу сцены: центр, посты и улики на месте и досягаемы; библиотечная карта без них не выбирается; двадцать мест корпуса строятся без замечаний | `test/scene-program-layout.test.mjs`, `test/map-library.test.mjs`, `test/scene-program-corpus.test.mjs` |
 | В поселении у каждой двери дома есть дорога, на тропе ничего не стоит; отряд входит со стороны, откуда пришёл, а центр сцены стоит на площади | `test/settlement-generator.test.mjs` (`DOOR_OFF_ROAD`, `PATH_BLOCKED`), `test/scene-entry-road.test.mjs` |

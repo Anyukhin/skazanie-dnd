@@ -11,7 +11,7 @@ import { IdempotencyConflictError } from './event-store.mjs'
 import { deterministicNarratorFor, renderDeterministicNarration } from './deterministic-narration.mjs'
 import { combatNarrator, combatNarration, damageTypeLabel } from './combat-narration.mjs'
 import './encounter-narration.mjs'
-import { IntentParser, actionSequence, buildRuleQueries, inferRequestKind, normalizeRequestKind } from './intent-parser.mjs'
+import { IntentParser, actionSequence, buildRuleQueries, inferRequestKind, namedKnownSpell, normalizeRequestKind, sameNameToken } from './intent-parser.mjs'
 import './merchant-narration.mjs'
 import { ensureNpcSocialState, npcConversationNarration, npcProfileAtWorldTime, npcSocialForViewer, relationshipTier } from './npc-social.mjs'
 import { assertNpcSocialCheckFingerprint, buildNpcSocialCheckPolicy, npcSocialCheckOutcome } from './npc-social-check.mjs'
@@ -37,18 +37,18 @@ import {
   pickpocketDifficultyFor,
 } from './pickpocket.mjs'
 import { actorNameResolver, eventSummary, normalizeCampaignState, previewD20Check, previewTavernDiceRoll, shrinePrayerRefusalFor } from './rules-engine.mjs'
-import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, minutesLabelRu } from './free-action-adjudication.mjs'
+import { ABILITY_LABELS_RU, SKILL_LABELS_RU, d20CheckLabel, explainActionCheck, freeActionApproachPlan, freeActionGoalIsPassage, freeActionIsCopyRequest, hasRecognizedFreeActionApproach, interpretFreeAction, minutesLabelRu } from './free-action-adjudication.mjs'
 import './scene-narration.mjs'
 import './scene-hazard-narration.mjs'
 import { buildNarrationBrief, projectVisibleState, redactTrace, validateAllowedCommands, verifyNarration } from './security.mjs'
 import { campaignStateForViewer, mechanicsForViewer, publicAdventureFor, turnExplanationForViewer } from './viewer-projection.mjs'
-import { agentContextMetadata, campaignConceptForAgent, sceneContextForAgent } from './agent-context.mjs'
+import { agentContextMetadata, campaignConceptForAgent, heroCardForAgent, npcKnownByName, sceneContextForAgent } from './agent-context.mjs'
 import { questStateForViewer, knowledgeGateVisible } from './quest-consequences.mjs'
 import { scenarioNarratorBrief } from './campaign-scenario.mjs'
 import { worldClockForAgents } from './weather.mjs'
 import { sceneCanonFor } from './scene-canon.mjs'
 import { buildTurnExplanation } from './trace-store.mjs'
-import { freeActionDiscoveryCommands, retrieveWorldMemory } from './world-memory.mjs'
+import { DISCOVERY_SKILLS, freeActionDiscoveryCommands, freeActionSurfaceCommands, retrieveWorldMemory, thoroughSearchDetail, thoroughSearchOutcome } from './world-memory.mjs'
 import { ClarificationRegistry } from './clarification-registry.mjs'
 
 /**
@@ -222,12 +222,20 @@ export function narrationStoryContext(state, viewer = {}, events = []) {
       const role = memoryText(actor?.role || actor?.characterClass, 120)
         .replace(/\s*[·—-]?\s*(?:ур(?:овень)?\.?|level)\s*\d+.*$/iu, '')
         .trim()
+      // Предыстория, узы и идеалы — только героя этого игрока, той же
+      // карточкой, что видит собеседник-NPC: ведущему есть на что опереться,
+      // когда сцена касается личной истории (плейтест 2026-10-10: сестра
+      // Мирель за весь вечер не прозвучала ни разу).
+      const card = isViewer ? heroCardForAgent(state, id) : null
       return {
         id,
         name: memoryText(actor?.character || actor?.name, 120),
         is_viewer: isViewer,
         ...(isViewer && role ? { class_name: role } : {}),
         ...(isViewer && actor?.background ? { background: memoryText(actor.background, 160) } : {}),
+        ...(card?.backstory ? { backstory: card.backstory } : {}),
+        ...(card?.bonds ? { bonds: card.bonds } : {}),
+        ...(card?.ideals ? { ideals: card.ideals } : {}),
       }
     })
     .filter((hero) => hero.id && hero.name)
@@ -265,6 +273,8 @@ export function narrationStoryContext(state, viewer = {}, events = []) {
       mannerism: memoryText(npc.speech_profile?.mannerism, 180),
     },
     relationship: relationshipTier(relationships[npc.id]?.[viewer?.playerId] ?? 0),
+    // Отряд ещё не слышал имени: рассказчик зовёт по роли (narrator/v14).
+    ...(npcKnownByName(state, npc) ? {} : { known_by_name: false }),
   })).filter((npc) => npc.id && npc.name)
   const presentIds = new Set(presentProfiles.map((npc) => String(npc.id)))
   const npcNames = new Map(presentProfiles.map((npc) => [String(npc.id), npc.name]))
@@ -386,6 +396,49 @@ export function narrationNpcReactions(presentNpcs = [], events = [], { heroDeed 
           : NPC_REACTION_BY_TIER[npc.relationship] ?? 'attentive'
     return { npc_id: String(npc.id), name: memoryText(npc.name, 120), reaction, description: NPC_REACTION_LABELS[reaction] }
   })
+}
+
+/**
+ * Реакция NPC, которую назвала подтверждённая деталь исхода («Мара бледнеет —
+ * лицо ей знакомо») или записанная находка, разрешена рассказчику тем же
+ * allowlist: описание реакции дополняется текстом детали. Без этого удачная
+ * Проницательность оборачивалась «по её реакции неясно» — проверка рассказчика
+ * отбрасывала любую реакцию вне словаря (замер 9, 2026-10-10).
+ *
+ * @param {Array<Record<string, any>>} permits
+ * @param {string[]} details
+ */
+export function withDetailReactions(permits = [], details = []) {
+  const texts = details.map((detail) => memoryText(detail, 300)).filter(Boolean)
+  if (!texts.length) return permits
+  const stem = (word) => word.toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, 4)
+  return permits.map((permit) => {
+    const first = memoryText(permit?.name, 120).split(/\s+/u)[0] ?? ''
+    if (first.length < 3) return permit
+    const named = texts.filter((text) => (text.match(/\p{L}{3,}/gu) ?? []).some((word) => stem(word) === stem(first) && /^\p{Lu}/u.test(word)))
+    return named.length ? { ...permit, description: [permit.description, ...named].filter(Boolean).join(' ') } : permit
+  })
+}
+
+/**
+ * Участники видимых событий хода по именам — для запасного рассказа. Без них
+ * отбракованный рассказ о заклинании словами в бою звучал «Мирель поражает
+ * Цель. Цель получает урон» (замер 11, 2026-10-10). Только те, кто уже
+ * назван в событиях игрока, — ничего сверх видимого.
+ */
+function narrationParticipants(state = {}, events = []) {
+  const ids = new Set((events ?? []).flatMap((event) => [event?.actor_id, ...(event?.target_ids ?? [])]).filter(Boolean).map(String))
+  const pick = (list) => (Array.isArray(list) ? list : [])
+    .filter((actor) => ids.has(String(actor?.id ?? '')))
+    .map((actor) => ({ id: String(actor.id), name: memoryText(actor.character || actor.name, 120) }))
+    .filter((actor) => actor.name)
+  return { heroes: pick(state.players), enemies: pick(state.enemies) }
+}
+
+function discoveryDetailTexts(events = []) {
+  return (events ?? [])
+    .filter((event) => event?.event_type === 'WorldFactRecorded' && event?.payload?.fact?.predicate === 'discovery')
+    .map((event) => String(event.payload.fact.summary ?? ''))
 }
 
 function narrationSocialConsequences(events, state) {
@@ -879,14 +932,14 @@ function humanMissingInformation(values, state, intent = {}) {
       return role ? `${name} (${role})` : name
     }).filter(Boolean).slice(0, 6)
     return candidates.length
-      ? `По описанию подходят несколько собеседников: ${candidates.join(', ')}. Назовите одного из них.`
-      : 'По описанию подходят несколько собеседников. Назовите конкретного NPC.'
+      ? `Кому именно — ${candidates.join(', ')}?`
+      : 'Кому именно? Здесь таких несколько.'
   }
   if (missing.includes('npc_id') || missing.includes('available_npc')) {
     const names = availableNpcNames(state, intent.actor_id)
     return names.length
-      ? `Назовите собеседника по имени. Сейчас рядом: ${names.join(', ')}.`
-      : 'Рядом нет никого, с кем можно заговорить. Осмотритесь или дойдите туда, где есть люди.'
+      ? `Кому это — ${names.join(', ')}?`
+      : 'Рядом никого, кто бы ответил: люди — там, где жильё и дорога.'
   }
   return missing.length ? `Уточните ${missing.map((value) => labels[value] ?? 'деталь действия').join(' и ')}.` : 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
 }
@@ -924,6 +977,224 @@ function mergeClarificationAction(original, answer) {
   if (!first) return second
   if (!second) return first
   return `${first}. Уточнение игрока: ${second}`.slice(0, 2_000)
+}
+
+/**
+ * Реплика, обращённая к другому герою отряда, — или вовсе без собеседника-NPC
+ * в сцене. Такая речь не требует NPC: это отыгрыш.
+ *
+ * @param {string} message
+ * @param {Record<string, any>} state
+ * @param {string} playerId
+ * @param {string} explicitNpcId
+ */
+function speechToPartyOrAir(message, state, playerId, explicitNpcId = '') {
+  if (explicitNpcId) return false
+  const stem = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, 4)
+  const words = new Set((String(message ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').match(/\p{L}{3,}/gu) ?? []).map(stem))
+  const heroes = (state?.players ?? []).filter((player) => String(player?.id) !== String(playerId))
+  const namesHero = heroes.some((hero) => [hero?.character, hero?.name]
+    .some((name) => (String(name ?? '').match(/\p{L}{3,}/gu) ?? []).some((word) => words.has(stem(word)))))
+  const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const presentNpcs = (state?.social?.npcs ?? []).filter((npc) => npc?.available !== false
+    && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
+  // Реплика без вопроса, никому из здешних не названная, — слова в сцену:
+  // «Борин мрачно говорит: «Тогда промолчал — больше не стану»» получала
+  // «Назовите собеседника по имени» (замер 20, 2026-10-11). Вопрос без
+  // адресата по-прежнему уточняется: на него кому-то надо ответить.
+  const quoted = [...String(message ?? '').matchAll(/[«"“]([^«»"“”]{1,800})[»"”]/gu)].map((match) => match[1]).join(' ')
+  const namesNpc = presentNpcs.some((npc) => (String(npc?.name ?? '').match(/\p{L}{3,}/gu) ?? []).some((word) => words.has(stem(word))))
+  const request = /(?<![\p{L}\p{M}])(?:расскаж\p{L}*|скажи\p{L}*|скажите|подскаж\p{L}*|объясн\p{L}*|покаж\p{L}*|дай|дайте|ответь\p{L}*|помоги\p{L}*|прошу)(?![\p{L}\p{M}])/iu.test(quoted)
+  const statement = Boolean(quoted) && !/\?/u.test(quoted) && !request && !namesNpc
+  return namesHero || presentNpcs.length === 0 || statement
+}
+
+/**
+ * Кому обращена прямая речь заявки. Живые игроки пишут не «Ивар, чей баркас?»,
+ * а «Мирель раскрывает тетрадь… «Ивар, прошу вас: …»», «обращается к Грому:
+ * «…»», «подходит к Лине, кладёт монету. «Скажите честно…»». Такая заявка —
+ * разговор с этим человеком, а не проверка Убеждения; реплика спутнику —
+ * отыгрыш без броска (замер 15, 2026-10-11: «Гром остаётся при своём, не
+ * желая указывать дорогу к причалу», «слова не успокоили её»). Сначала —
+ * обращение в начале кавычки, затем последний названный перед ней.
+ *
+ * @param {string} message
+ * @param {Record<string, any>} state
+ * @param {string} playerId
+ * @returns {{ kind: 'npc'|'hero', id: string } | null}
+ */
+export function speechAddressee(message, state, playerId, { allowSpell = false } = {}) {
+  const text = String(message ?? '')
+  // Сотворение заклинания со словами — заклинание, а не разговор: название в
+  // кавычках («Безмолвный образ») принималось за реплику (замер 16). Кому
+  // обращены слова при заклинании, спрашивает `spellSpeechFollowUp`.
+  if (!allowSpell && SPELLCASTING_PATTERN.test(text)) return null
+  // Реплика — кавычка со знаком препинания, иначе последняя: название места в
+  // кавычках («Ржавый якорь») не должно заслонять слова героя после него.
+  const quotes = [...text.matchAll(/[«"“]([^«»"“”]{1,800})[»"”]/gu)]
+  if (!quotes.length) return null
+  const quote = quotes.find((match) => /[.!?…,:;—]/u.test(match[1])) ?? quotes.at(-1)
+  const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+  const people = [
+    ...(state?.social?.npcs ?? []).filter((npc) => npc?.available !== false
+      && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
+      .map((npc) => ({ kind: /** @type {'npc'} */ ('npc'), id: String(npc.id), name: String(npc.name ?? '') })),
+    ...(state?.players ?? []).filter((hero) => String(hero?.id) !== String(playerId))
+      .map((hero) => ({ kind: /** @type {'hero'} */ ('hero'), id: String(hero.id), name: String(hero.character || hero.name || '') })),
+  ]
+  const normal = (word) => String(word ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  // Сначала — то же слово имени в падеже, любое слово имени, фамилия тоже:
+  // «говорит Марте Вейл» прежде доставалось «Мартену Рыжему» по префиксу
+  // «Марте», а «Госпожа Вельт» не узнавалась вовсе (замер 19, 2026-10-11).
+  const personFor = (word) => {
+    const spoken = normal(word)
+    return people.find((person) => normal(person.name).split(/[\s-]+/u)
+      .some((part) => part.length >= 3 && sameNameToken(part, spoken)))
+      ?? people.find((person) => {
+        const first = normal(person.name.split(/\s+/u)[0])
+        if (first.length < 3) return false
+        const stem = first.slice(0, Math.max(3, first.length - 1))
+        return spoken.startsWith(stem) && spoken.length <= first.length + 3
+      }) ?? null
+  }
+  // Обращение в начале реплики: «Ивар, …», «Госпожа Вельт, …», «Мастер Эдрен!».
+  const vocative = /^\s*(?:(?:[Гг]оспож\p{L}*|[Гг]осподин\p{L}*|[Мм]астер\p{L}*|[Сс]удар\p{L}*|[Хх]озяй\p{L}*|[Пп]очтенн\p{L}*|[Уу]важаем\p{L}*|[Дд]обр\p{L}*)\s+)?([А-ЯЁ][\p{L}-]+)(?:\s+([А-ЯЁ][\p{L}-]+))?\s*[,!]/u.exec(quote[1])
+  const called = vocative ? personFor(vocative[1]) ?? (vocative[2] ? personFor(vocative[2]) : null) : null
+  if (called) return { kind: called.kind, id: called.id }
+  const before = text.slice(0, quote.index)
+  // До реплики собеседник — только в обращении: «подходит к Лине», «говорит
+  // Марте», «показывает Грете». Подлежащее «что Иара умолчала» — не адресат:
+  // такая заявка ушла хозяйке, и уход к маяку не состоялся (замер 20).
+  const addressed = (match) => {
+    const spoken = normal(match[0])
+    const person = personFor(match[0])
+    if (!person) return null
+    const nominative = normal(person.name).split(/[\s-]+/u).includes(spoken)
+    const lead = before.slice(Math.max(0, Number(match.index) - 60), match.index)
+    // Косвенный падеж — обращение, только если это дательный или творительный
+    // («Марте», «с Ингой»): родительный «слова Оскара» — чьи слова, а не к
+    // кому (замер 31, 2026-10-11).
+    const toward = !nominative && /(?:у|ю|е|и|ой|ей|ом|ем|ою|ею)$/u.test(spoken)
+    return toward || ADDRESS_CUE_PATTERN.test(lead) ? person : null
+  }
+  // Явное обращение («подходит к Савену», «говорит Марте») сильнее
+  // последнего косвенного упоминания: «подходит к Савену Руду, записывая…
+  // слова Борина: «…»» уходило Борину (замер 30, 2026-10-11).
+  const mentions = [...before.matchAll(/(?<![\p{L}\p{M}])[А-ЯЁ][\p{L}-]+/gu)]
+  const cued = mentions.filter((match) => ADDRESS_CUE_PATTERN.test(before.slice(Math.max(0, Number(match.index) - 60), match.index)))
+    .map((match) => personFor(match[0])).filter(Boolean)
+  const named = mentions.map(addressed).filter(Boolean)
+  const last = cued.at(-1) ?? named.at(-1)
+  return last ? { kind: last.kind, id: last.id } : null
+}
+
+const SPELLCASTING_PATTERN = /(?<![\p{L}\p{M}])(?:заклинани\p{L}*|сотвор\p{L}*|колду\p{L}*|чару\p{L}*|читаю\s+«|творю\s+«)/iu
+
+/**
+ * Заклинание и вопрос человеку рядом одной заявкой: «сотворяет «Безмолвный
+ * образ» перед Эдной… «Эдна, узнаёте её?»». Сначала исполняется заклинание,
+ * затем отвечает сам человек — как вторым шагом плана. Прежде вопрос
+ * оставался без ответа: судья ставил «образ Илы оставлен без результата»
+ * (замеры 20–21, 2026-10-11).
+ *
+ * @param {string} message
+ * @param {Record<string, any>} state
+ * @param {string} playerId
+ * @returns {{ npcId: string, speech: string } | null}
+ */
+export function spellSpeechFollowUp(message, state, playerId) {
+  const text = String(message ?? '')
+  if (!SPELLCASTING_PATTERN.test(text)) return null
+  const speech = [...text.matchAll(/«([^«»]{1,800})»/gu)].map((match) => match[1].trim()).find((quote) => /[.!?…,:;—]/u.test(quote)) ?? ''
+  if (!speech) return null
+  const addressee = speechAddressee(text, state, playerId, { allowSpell: true })
+  if (addressee?.kind !== 'npc') return null
+  return { npcId: addressee.id, speech: `«${speech}»` }
+}
+
+/** Слова перед именем, с которыми оно — обращение: «к Иаре», «говорит Марте». */
+const ADDRESS_CUE_PATTERN = /(?:^|[\s,])(?:к|ко|у|перед|для|обраща\p{L}*|говор\p{L}*|скаж\p{L}*|спрашива\p{L}*|спрос\p{L}*|шепч\p{L}*|шепта\p{L}*|оклика\p{L}*|окликн\p{L}*|зов[её]т|кива\p{L}*|протягива\p{L}*|показыва\p{L}*|подход\p{L}*|наклоня\p{L}*|поворачива\p{L}*|клад[её]т|обеща\p{L}*)\s+(?:\p{L}+\s+){0,2}$/iu
+
+/**
+ * Вне кавычек герой что-то делает — затаился, следит, ищет: это попытка с
+ * исходом, а не отыгрыш. «Пригибается за камнями и не сводит глаз с вершины
+ * маяка. «К двери пока не подходим»» шло отыгрышем без проверки, рассказ о
+ * высмотренном огне отбраковывался, и звучало эхо реплики (замер 23).
+ *
+ * @param {string} message
+ */
+function actsBeyondSpeech(message) {
+  const acted = String(message ?? '').replace(/[«"“][^«»"“”]*[»"”]/gu, ' ')
+  return hasRecognizedFreeActionApproach(acted)
+}
+
+/** Передача вещи с репликой остаётся передачей: «отдаю Лине верёвку: «Держи»». */
+const SPEECH_HANDOVER_PATTERN = /(?<![\p{L}\p{M}])(?:переда|отда|вруча|протягива)\p{L}*/iu
+
+/** Сколько шагов одной заявки ведущий исполняет подряд без вопроса. */
+const PLAN_STEP_LIMIT = 4
+
+/**
+ * Вход внутреннего запроса — следующего шага плана или переадресации к NPC.
+ * Бросок, подтверждения и поток прошлого запроса ему не принадлежат: шаг
+ * получает свой ключ, своё уточнение и свой ход, а текст отдаётся клиенту
+ * целиком, вместе с первым шагом.
+ *
+ * @param {Record<string, any>} input
+ */
+function planStepInput(input) {
+  return {
+    ...input,
+    action: undefined,
+    message: undefined,
+    clarification_id: undefined,
+    clarificationId: undefined,
+    idempotency_key: undefined,
+    verifiedRoll: null,
+    confirmedProposalId: null,
+    confirmed_proposal_id: undefined,
+    supersedesCheckId: undefined,
+    supersedes_check_id: undefined,
+    supersedesProposalId: undefined,
+    supersedes_proposal_id: undefined,
+    questionCheckId: undefined,
+    question_check_id: undefined,
+    questionProposalId: undefined,
+    question_proposal_id: undefined,
+    turnId: undefined,
+    turn_id: undefined,
+    onNarrationStart: undefined,
+    onNarrationProgress: undefined,
+  }
+}
+
+/**
+ * Два шага одной заявки — один ответ ведущего: текст подряд, события подряд,
+ * карточка броска и уточнение — от последнего шага.
+ *
+ * @param {Record<string, any>} first
+ * @param {Record<string, any>} next
+ */
+function mergePlanStepResults(first, next) {
+  const parts = [first, next]
+    .map((result) => ({ text: String(result?.narration ?? '').trim(), author: String(result?.journal_author ?? '').trim() }))
+    .filter((part, index, all) => part.text && all.findIndex((other) => other.text === part.text) === index)
+  // Рассказ шага и реплика собеседника — разные голоса. Прежде общая запись
+  // подписывалась последним, и описание иллюзии звучало от имени Иары (замер
+  // 19, 2026-10-11): чужой голос в общей записи называется по имени.
+  const mixed = new Set(parts.map((part) => part.author)).size > 1
+  const narration = parts
+    .map((part) => (mixed && part.author ? `${part.author}: «${part.text.replace(/^«|»$/gu, '')}»` : part.text))
+    .join('\n\n')
+  return {
+    ...next,
+    ...(mixed ? { journal_author: undefined } : {}),
+    narration,
+    mechanics: [...(first?.mechanics ?? []), ...(next?.mechanics ?? [])],
+    visible_state_changes: [...(first?.visible_state_changes ?? []), ...(next?.visible_state_changes ?? [])],
+    turn_consumed: Boolean(first?.turn_consumed || next?.turn_consumed),
+    plan_turn_ids: [...(first?.plan_turn_ids ?? [first?.turn_id]), ...(next?.plan_turn_ids ?? [next?.turn_id])].filter(Boolean),
+  }
 }
 
 const INDEPENDENT_ACTION_INTENTS = new Set([
@@ -970,16 +1241,11 @@ function freeActionTimeText(events = []) {
 }
 
 function freeActionEffectText(events = [], state = {}) {
-  const labels = new Map([
-    ['SceneObjectOperated', 'объект сцены обработан по правилам'],
-    ['SceneObjectStateChanged', 'состояние объекта сцены изменилось'],
-    ['ConditionApplied', 'на цели подтверждено состояние'],
-    ['ConditionRemoved', 'с цели снято состояние'],
-    ['ItemTransferred', 'предмет передан по правилам'],
-    ['CombatActionUsed', 'действие героя израсходовано'],
-    ['WorldFactRecorded', 'изменение записано в память мира'],
-    ['WorldFactRevealed', 'отряду открыт подтверждённый факт'],
-  ])
+  // Служебных ярлыков («изменение записано в память мира», «объект сцены
+  // обработан по правилам») в голосе ведущего больше нет: судья цитировал их
+  // как поломку погружения (замер 13, 2026-10-11). Событие без собственных
+  // слов просто не добавляет фразы; журнал и карта показывают его сами.
+  const labels = new Map()
   return [...new Set(events.map((event) => {
     if (event?.event_type === 'DamageApplied') {
       return `${damageTypeLabel(event.payload?.damage_type)}: ${combatNarration([event], state)}`
@@ -1045,15 +1311,15 @@ function freeActionHeroName(events, state) {
 
 function freeActionPassageNarration({ freeAction, events, state }) {
   const name = freeActionHeroName(events, state)
-  const opener = freeAction?.kind === 'check_success' ? 'Проверка удалась' : 'Попытка удалась'
-  return `${opener}, но сама сцена от этого не изменилась: ${name} пока на прежнем месте. `
-    + 'Путь дальше — на карте: дверь и проход — шагами по клеткам, лестница — через её меню, '
-    + 'а в другое место отряд переходит через «Решение группы».'
+  // Голос ведущего, а не инструкция по интерфейсу (плейтест 2026-10-10).
+  return `${name} остаётся где стоял: прохода туда отсюда нет — нужна дверь, проём или лестница рядом.`
 }
 
 // Цель — узнать или договориться: итог такой заявки — показания или реплика,
 // а их подтверждает только событие факта или разговора.
-const FREE_ACTION_KNOWLEDGE_GOAL = /(?<![\p{L}])(?:узна|вызна|разузна|выясн|выспрос|расспрос|спроси|выведа|понять|поясни|объясни|услыш|подслуш|поговор|разговор|договор|убедить(?!ся)|уговор)/iu
+// «Найти метку», «отыскать тайник» — тоже знание: без события находки «Вышло:
+// найти метку» обещало то, чего commit не содержит (плейтест 2026-10-10).
+const FREE_ACTION_KNOWLEDGE_GOAL = /(?<![\p{L}])(?:узна|вызна|разузна|выясн|выспрос|расспрос|спроси|выведа|понять|поясни|объясни|услыш|подслуш|поговор|разговор|договор|убедить(?!ся)|уговор|найти|найд|отыска|отыщ|обнаруж)/iu
 const FREE_ACTION_DISCLOSURE_EVENT = /^(?:WorldFact(?:Recorded|Revealed)|KnowledgeRevealed|Clue\w*|NpcSocial\w*|NpcConversation\w*)$/u
 
 function unconfirmedFreeActionDisclosure({ freeAction, message, events }) {
@@ -1074,13 +1340,15 @@ function freeActionUnchangedSceneNarration({ freeAction, message, events, state 
   const goal = String(freeAction?.reading?.goal_summary || message || '')
   const failed = freeAction?.kind === 'check_failure'
   const route = FREE_ACTION_KNOWLEDGE_GOAL.test(goal)
-    ? 'Чтобы узнать новое, обратитесь к собеседнику по имени — так начинается разговор — или осмотрите место: у этого есть проверка и итог.'
+    ? 'Может, кто-то из здешних знает больше — стоит расспросить.'
     : freeActionGoalIsPassage(goal)
-      ? 'Путь дальше — на карте: дверь и проход — шагами по клеткам, лестница — через её меню, а в другое место отряд переходит через «Решение группы».'
-      : 'Если нужен другой итог, опишите, чего именно герой добивается.'
-  return failed
-    ? `${name}: не вышло, сцена прежняя. ${route}`
-    : `${name}: попытка засчитана, но сцена от неё не изменилась — нового пока ничего. ${route}`
+      ? 'Пройти можно только настоящим проходом — дверью, проёмом или лестницей рядом.'
+      : ''
+  // Голос ведущего, а не протокол: «попытка засчитана, сцена прежняя» и
+  // подсказки по интерфейсу читались как сбой (плейтест 2026-10-10).
+  return (failed
+    ? `${name} пробует, но не выходит. ${route}`
+    : `${name} старается, но нового это не приносит. ${route}`).trim()
 }
 
 /**
@@ -1101,8 +1369,22 @@ function freeActionCopyNote({ freeAction, message, events }) {
  * задумку и уже записанные события, поэтому не может закрыть дверь, нанести
  * урон или объявить навык, которого нет в commit.
  */
-function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false }) {
-  if (!unconfirmedPassage && unconfirmedFreeActionDisclosure({ freeAction, message, events })) {
+function deterministicFreeActionNarration({ freeAction, message, events, state, unconfirmedPassage = false, roleplaySpeech = false }) {
+  // Слова своему отряду — это и есть сцена: «узнаю правду» в реплике не
+  // просьба о сведениях, и «стоит расспросить здешних» звучало глухотой
+  // (плейтест 2026-10-10). Без модели ведущий хотя бы повторяет сказанное.
+  if (roleplaySpeech && ['auto_success', 'check_success'].includes(String(freeAction?.kind ?? ''))) {
+    // Не эхо реплики — судья трижды назвал ««…», — негромко звучит над
+    // сценой» пересказом (замеры 20–23): отклик того, кто рядом, или манера.
+    const quote = [...String(message ?? '').matchAll(/«([^«»]{3,400})»/gu)].map((match) => match[1].trim()).join(' ')
+    if (quote) {
+      const location = String(state?.scene?.location ?? '').trim().toLocaleLowerCase('ru')
+      const nearby = (state?.social?.npcs ?? []).find((npc) => npc?.available !== false && npc?.name
+        && (!location || !npc?.location || String(npc.location).trim().toLocaleLowerCase('ru') === location))
+      return nearby ? `${nearby.name} оборачивается на голос.` : `${freeActionHeroName(events, state)} говорит негромко — так, чтобы слышали только свои.`
+    }
+  }
+  if (!roleplaySpeech && !unconfirmedPassage && unconfirmedFreeActionDisclosure({ freeAction, message, events })) {
     return [freeActionUnchangedSceneNarration({ freeAction, message, events, state }), ...freeActionEffectText(events, state), freeActionTimeText(events)]
       .filter(Boolean).join(' ')
   }
@@ -1126,19 +1408,56 @@ function deterministicFreeActionNarration({ freeAction, message, events, state, 
     ? `${rawGoal.charAt(0).toLocaleLowerCase('ru')}${rawGoal.slice(1)}`
     : rawGoal
   const failed = kind === 'check_failure'
-  const parts = [unconfirmedPassage && !failed
+  // Наблюдение с вопросом миру — «смотрим на дверь — выйдет ли кто-нибудь?» —
+  // нельзя пересказать как итог «Вышло: …выйдет ли кто-нибудь». Без события
+  // находки честный ответ ведущего — ничего заметного не произошло.
+  const watchQuestion = !unconfirmedPassage && /\?|(?<![\p{L}\p{M}])ли(?![\p{L}\p{M}])/u.test(`${message ?? ''} ${rawGoal}`)
+    && /(?<![\p{L}\p{M}])(?:смотр|наблюда|след|слеж|вгляд|высматр|всматр|прислуш|жд|караул)\p{L}*/iu.test(rawGoal)
+  const watcher = freeActionHeroName(events, state)
+  // Деталь исхода от судьи — то, что герой видит при этом исходе, — лучше
+  // голого «Не вышло: войти в маяк» (замер 11, 2026-10-10): запасной текст
+  // звучит, когда рассказ модели отбракован, и ему тоже есть что сказать.
+  const outcomeDetail = String(freeAction?.outcome_detail ?? '').trim()
+  const parts = [outcomeDetail && !unconfirmedPassage
+    ? outcomeDetail
+    : watchQuestion
+    ? (failed ? `${watcher} всматривается, но толком ничего не разглядеть.` : `${watcher} не сводит глаз, но ничего заметного за это время не происходит.`)
+    : unconfirmedPassage && !failed
     ? freeActionPassageNarration({ freeAction, events, state })
     : freeAction?.reading?.activity_kind === 'stunt'
       ? (failed ? 'Трюк сорвался.' : 'Трюк удался.')
       : goal
         // «Вышло», а не «Получилось»: guard передачи вещей читает «получил…
         // монетку» как полученный предмет и выбрасывал весь текст.
-        ? `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
+        // Цель уже сказана от лица героя («Борин присаживается у находки…») —
+        // это и есть сцена: «Вышло: Борин присаживается» звучало протоколом
+        // (плейтест 2026-10-10). «Вышло:» остаётся только у цели-глагола.
+        ? !failed && rawGoal.startsWith(`${freeActionHeroName(events, state)} `)
+          ? `${rawGoal}.`
+          // Шаг плана без имени — «идёт к бочкам и простукивает их — нет ли
+          // тайника» — тоже сцена от лица героя, а не «Вышло: идёт…» (замер
+          // 19, 2026-10-11); хвост-вопрос игрока ответом ведущего не звучит.
+          : !failed && !/^\p{L}+(?:ть|ться|ти|чь)(?![\p{L}\p{M}])/u.test(rawGoal) && /^\p{Ll}/u.test(rawGoal)
+            ? `${freeActionHeroName(events, state)} ${rawGoal.replace(/\s+[—–-]\s+[^—–]*(?:\?|(?<![\p{L}\p{M}])ли(?![\p{L}\p{M}]))[^—–]*$/u, '')}.`
+            // Провал цели-описания — «Не вышло: Борин хочет первым войти в
+            // маяк» читалось протоколом (замер 21): дверь просто не поддаётся.
+            // Провалившийся вход — «дверь не поддаётся», в любой форме цели:
+            // «Не вышло: войти в маяк первым…» читалось канцелярией (замер 25).
+            : failed && freeActionGoalIsPassage(rawGoal)
+              ? 'Дверь не поддаётся.'
+            : failed && rawGoal.startsWith(`${freeActionHeroName(events, state)} `)
+              ? freeActionGoalIsPassage(rawGoal) ? 'Дверь не поддаётся.' : `${freeActionHeroName(events, state)} пробует, но не выходит.`
+              : `${failed ? 'Не вышло' : 'Вышло'}: ${goal}.`
         : (failed ? 'Не вышло.' : 'Вышло.')]
   const effects = freeActionEffectText(events, state)
+  // Находка и есть ответ ведущего: «Вышло: найти метку. <другая находка>»
+  // объявляло удачу цели, которой commit не подтверждал, и звучало протоколом.
+  const discovered = !failed && events.some((event) => event?.event_type === 'WorldFactRecorded'
+    && event?.payload?.fact?.predicate === 'discovery')
+  if (discovered && effects.length) parts.splice(0, parts.length)
   parts.push(...effects)
   const time = freeActionTimeText(events)
-  if (time) parts.push(time)
+  if (time && !discovered) parts.push(time)
   return parts.join(' ')
 }
 
@@ -1174,6 +1493,7 @@ export class GameOrchestrator {
     narrator = new Narrator(),
     npcSocialController = null,
     unknownActionHandler = null,
+    loreVoice = null,
     rollRegistry = null,
     clarificationRegistry = null,
     idFactory = randomUUID,
@@ -1181,6 +1501,8 @@ export class GameOrchestrator {
   } = {}) {
     if (!rulesEngine) throw new TypeError('GameOrchestrator требует RulesEngine')
     if (!eventStore) throw new TypeError('GameOrchestrator требует EventStore')
+    /** Голос хранителя знаний (`server/lore-voice.mjs`): без него звучит серверный ответ. */
+    this.loreVoice = loreVoice
     /**
      * Последние нарации кампании — тёплый буфер в памяти процесса.
      *
@@ -1645,6 +1967,17 @@ export class GameOrchestrator {
           goal: String(freeAction.reading?.goal_summary ?? message).slice(0, 500),
           approach: String(freeAction.reading?.approach_summary ?? '').slice(0, 500),
           outcome: freeAction.kind,
+          ...(intent?.roleplay_speech === true ? { roleplay_speech: true } : {}),
+          ...(freeAction.outcome_detail ? { outcome_detail: String(freeAction.outcome_detail).slice(0, 300) } : {}),
+          ...(freeAction.thorough_search ? { thorough_search: String(freeAction.thorough_search) } : {}),
+          // Своё заклинание героя вне боя срабатывает: проверка судит цель —
+          // реакцию, обман, — а не само заклинание. Прежде рассказчик писал «на
+          // мостках ничего не появилось» после проваленной Проницательности
+          // (замеры 16–17, 2026-10-11).
+          ...(() => {
+            const spell = state.mechanics?.combat?.active ? null : namedKnownSpell(message, state, playerId)
+            return spell ? { spell_cast: { name: String(spell.name).slice(0, 120) } } : {}
+          })(),
         },
         structured_result: { outcome: freeAction.kind, event_types: publicCommittedEvents.map(event => event.event_type) },
         // Небо и час — данные, а не право сочинять: Рассказчик получает уже
@@ -1656,7 +1989,7 @@ export class GameOrchestrator {
         ...narrationScenarioContext(state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, state),
       },
-      permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents, {
+      permitted_npc_reactions: withDetailReactions(narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents, {
         heroDeed: ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
           && !state.mechanics?.combat?.active
           // Удавшуюся скрытность никто не заметил — реагировать не на что.
@@ -1665,7 +1998,7 @@ export class GameOrchestrator {
           && ['check_success', 'check_failure'].includes(String(freeAction.kind))
           ? { npcId: freeAction.reading.target_id, success: freeAction.kind === 'check_success' }
           : null,
-      }),
+      }), [String(freeAction.outcome_detail ?? ''), ...discoveryDetailTexts(publicCommittedEvents)]),
       narration_constraints: constraints,
       viewer,
     })
@@ -1679,10 +2012,15 @@ export class GameOrchestrator {
     // Заявка-перемещение без события перемещения получает серверный ответ со
     // штатным путём, а не пересказ модели: модели велено показать, «как герой
     // делает заявленное», и она описала бы вход, которого не было (MAP2-02).
-    const unconfirmedPassage = unconfirmedFreeActionPassage({ freeAction, message, events: publicCommittedEvents, state })
+    // Реплика своему отряду — сцена, а не заявка на проход: «отходит к краю
+    // причала и говорит Борину…» не должно уходить в ответ «прохода нет».
+    const roleplaySpeech = intent?.roleplay_speech === true
+    const unconfirmedPassage = !roleplaySpeech && unconfirmedFreeActionPassage({ freeAction, message, events: publicCommittedEvents, state })
     const narrateCommittedImprovisation = !freeAction.duplicate
       && !unconfirmedPassage
-      && freeAction.reading?.source !== 'deterministic-trivial'
+      // Безобидный жест без модели не стоит вызова рассказчика, а реплика
+      // своему отряду — стоит: на неё отвечает сцена.
+      && (freeAction.reading?.source !== 'deterministic-trivial' || roleplaySpeech)
       && ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
       && committedEvents.length > 0
       && typeof this.narrator?.render === 'function'
@@ -1714,6 +2052,7 @@ export class GameOrchestrator {
       events: publicCommittedEvents,
       state: narrationState,
       unconfirmedPassage,
+      roleplaySpeech,
     })
     const deterministicProvider = /^deterministic(?:-|$)/u.test(renderedProvider)
     const preferredNarration = deterministicProvider || unconfirmedPassage
@@ -1739,7 +2078,7 @@ export class GameOrchestrator {
     // Текст модели не прошёл guard — сначала свой запасной текст и честный
     // ответ «сцена прежняя», и только потом голое «вышло / не вышло».
     const fallbackNarrations = ['auto_success', 'check_success', 'check_failure'].includes(String(freeAction.kind))
-      ? [deterministicNarration, freeActionUnchangedSceneNarration({ freeAction, message, events: publicCommittedEvents, state: narrationState })]
+      ? [deterministicNarration, ...(roleplaySpeech ? [] : [freeActionUnchangedSceneNarration({ freeAction, message, events: publicCommittedEvents, state: narrationState })])]
       : []
     const verifiedFallback = fallbackNarrations
       .find((text) => text && text !== preferredNarration && verifyNarration(text, brief, { knownRuleIds: [] }).valid) ?? ''
@@ -1749,7 +2088,7 @@ export class GameOrchestrator {
         ? verifiedFallback
         : groundedVerification?.valid && groundedNarration
           ? groundedNarration
-          : freeAction.kind === 'clarification'
+          : ['clarification', 'loot_inspection'].includes(String(freeAction.kind))
           ? candidateNarration || deterministicNarration || 'Опишите действие подробнее, чтобы его можно было разрешить по правилам.'
           // Исход уже записан событиями: если ни один текст не прошёл guard,
           // честнее короткое «вышло / не вышло», чем просьба уточнить уже
@@ -1829,6 +2168,11 @@ export class GameOrchestrator {
       free_action_outcome: freeAction.kind,
       ...(freeAction.rejected ? { rejected: true } : {}),
       ...(resolvedAction ? { resolved_action: resolvedAction } : {}),
+      // Маршрут «разговор» с узнанным собеседником переадресуется ему же
+      // (`handle`), а не возвращается игроку просьбой переформулировать.
+      ...(freeAction.route_hint?.route === 'talk' && freeAction.route_hint.npc_hint
+        ? { route_hint: { route: 'talk', npc_hint: String(freeAction.route_hint.npc_hint) } }
+        : {}),
     }
     if (['clarification', 'counter_offer'].includes(String(freeAction.kind))) {
         response.clarification = this.clarificationRegistry.create({
@@ -1885,13 +2229,31 @@ export class GameOrchestrator {
   }
 
   /**
+   * Ответ «что мы знаем» голосом ведущего: материал отобрал сервер, модель его
+   * только пересказывает, а не прошедший проверку пересказ уступает прежнему
+   * серверному ответу. Сам материал наружу не уходит.
+   */
+  async voiceLore(lore, { message, state, playerId }) {
+    if (!lore) return lore
+    const { lore_material: material, ...answer } = lore
+    if (!material || !this.loreVoice) return answer
+    const hero = (state?.players ?? []).find((player) => String(player?.id) === String(playerId))
+    const voiced = await this.loreVoice.retell({
+      question: message, material,
+      location: String(state?.scene?.location ?? ''),
+      hero: String(hero?.character ?? hero?.name ?? ''),
+    })
+    return voiced ? { ...answer, narration: voiced.narration, prompt_version: voiced.prompt_version, lore_voiced: true } : answer
+  }
+
+  /**
    * Ответы игроку, которые не объявляют действие. Они остаются в чате, но не
    * попадают в Rules Engine: вопрос и обсуждение не могут случайно потратить
    * слот, продвинуть часы или создать проверку даже посреди боя.
    */
   async nonActionResponse({ campaignId, playerId, requestKind, message, pendingClarification, questionCheckId = '', questionProposalId = '', state, turnId, mode, viewer, idempotencyKey = null, started = null }) {
     let lore = requestKind === 'question'
-      ? answerKnownLore(message, state, { viewer })
+      ? await this.voiceLore(answerKnownLore(message, state, { viewer }), { message, state, playerId })
       : null
     let pending = pendingClarification
       ? {
@@ -2071,24 +2433,81 @@ export class GameOrchestrator {
     const coalesces = !input.commands && message !== '/why' && input.why !== true && Boolean(campaignId && idempotencyKey)
     const run = async () => {
       const result = await this._handle(input)
+      // Арбитр узнал в заявке разговор с присутствующим персонажем (route talk):
+      // отвечает сам персонаж, а не ведущий просьбой «скажите прямо, от лица
+      // героя». Плейтест 2026-10-10: «Борин предлагает Кривому выпить и
+      // спрашивает…» получал служебное «назовите собеседника».
+      const talkNpcId = String(result?.route_hint?.route === 'talk' ? result.route_hint.npc_hint ?? '' : '')
+      if (talkNpcId && this.npcSocialController && !npcId && input.routeRedirect !== true && requestKind === 'action' && !input.commands) {
+        return this.handle({
+          ...planStepInput(input),
+          message,
+          npcId: talkNpcId,
+          idempotencyKey: `${idempotencyKey}:talk`,
+          routeRedirect: true,
+        })
+      }
+      const spellReply = !clarificationId && !npcId && requestKind === 'action' && !input.commands && input.routeRedirect !== true
+        && this.npcSocialController && result?.mechanics?.length && !result.check && !result.clarification && !result.action_proposal
+        && result.authoritative_state?.mechanics?.combat?.active !== true
+        ? spellSpeechFollowUp(message, result.authoritative_state ?? input.state, playerId)
+        : null
+      if (spellReply) {
+        const replied = await this.handle({
+          ...planStepInput(input),
+          state: result.authoritative_state ?? input.state,
+          message: spellReply.speech,
+          npcId: spellReply.npcId,
+          idempotencyKey: `${idempotencyKey}:reply`,
+          routeRedirect: true,
+          precedingStep: [message, result.narration].map((text) => String(text ?? '').trim()).filter(Boolean).join(' — ').slice(0, 600),
+        })
+        return mergePlanStepResults(result, replied)
+      }
       if (!clarificationId || requestKind !== 'action') return result
       const pending = this.clarificationRegistry.resolve(clarificationId, { campaignId, actorId: playerId })
       if (result.mechanics?.length && !result.check && !result.action_proposal) this.clarificationRegistry.complete(clarificationId, { campaignId, actorId: playerId })
       const steps = pending.original_intent?.action_steps ?? []
-      if (!steps.length || mergeClarificationAction(pending, message) !== steps[0]) return result
+      // Вторая фаза броска шага приходит с текстом самого шага
+      // (`resolved_action`), а не с «Да»: это тот же шаг плана.
+      const stepText = steps.length && message === steps[0] ? message : mergeClarificationAction(pending, message)
+      if (!steps.length || stepText !== steps[0]) return result
       if (result.check) return { ...result, check: { ...result.check, clarification_id: clarificationId } }
       if (!result.mechanics?.length || result.clarification || result.action_proposal || steps.length < 2) return result
-      if (result.idempotent_replay && (await this.eventStore.load(campaignId)).state_version > result.state_version) return result
+      const depth = Number(input.planStep ?? 0)
+      const nextKey = `${idempotencyKey}:step-${depth + 2}`
+      // Повтор запроса воспроизводит шаги, которые уже были исполнены, но не
+      // исполняет новых поверх изменившегося мира.
+      const nextReplay = await this.eventStore.getByIdempotencyKey?.(campaignId, nextKey)
+      if (result.idempotent_replay && !nextReplay?.events?.length
+        && (await this.eventStore.load(campaignId)).state_version > result.state_version) return result
       const failed = result.mechanics.some(event => event.event_type === 'AbilityCheckResolved' && event.payload?.success === false)
+      // Неудача шага обрывает план: рассказчик уже показал, что не вышло, и
+      // живой ведущий не переспрашивает «как изменить план» — игрок решит сам.
+      if (failed) return result
       const rest = steps.slice(1)
-      return { ...result, clarification: this.clarificationRegistry.create({
-        campaignId, actorId: playerId, stateVersion: result.state_version,
+      const next = this.clarificationRegistry.create({
+        campaignId, actorId: playerId, stateVersion: nextReplay?.events?.[0]?.state_version_before ?? result.state_version,
         action: rest.join('; затем '),
-        question: failed
-          ? 'Первый шаг не удался. Остальные шаги не выполнены. Как вы хотите изменить план?'
-          : `Первый шаг завершён. Далее: «${rest[0]}». Продолжить или изменить план?`,
-        intent: failed ? { pending_step: 'reconsider' } : { action_steps: rest },
-      }) }
+        question: `Дальше по плану: «${rest[0]}».`,
+        intent: { action_steps: rest },
+      })
+      // Следующий шаг исполняется сразу, как сказал игрок: ведущий не спрашивает
+      // «продолжить?» после каждого шага. Ключ шага выводится из ключа запроса,
+      // поэтому повтор того же запроса повторяет и шаги, а не исполняет их заново.
+      if (depth >= PLAN_STEP_LIMIT) return { ...result, clarification: next }
+      const continued = await this.handle({
+        ...planStepInput(input),
+        state: result.authoritative_state ?? input.state,
+        message: 'Да',
+        clarificationId: next.id,
+        idempotencyKey: nextKey,
+        planStep: depth + 1,
+        // Следующий шаг видит, что герой сделал этим же ходом: собеседник
+        // отвечает на слова после заклинания, а не на голую реплику.
+        precedingStep: [stepText, result.narration].map((text) => String(text ?? '').trim()).filter(Boolean).join(' — ').slice(0, 600),
+      })
+      return mergePlanStepResults(result, continued)
     }
     if (!coalesces) return run()
 
@@ -2200,7 +2619,7 @@ export class GameOrchestrator {
     const loreAnswer = requestKind !== 'action' || input.commands || explicitNpcId
       || (originalState.mechanics?.combat?.active === true && mentionsParley(message))
       ? null
-      : answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer })
+      : await this.voiceLore(answerKnownLore(message, worldkeeperState, { viewer: worldkeeperViewer }), { message, state: worldkeeperState, playerId })
     if (loreAnswer) {
       const loreIntent = {
         actor_id: playerId, intent: 'known_lore_query', approach: 'deterministic',
@@ -2278,17 +2697,25 @@ export class GameOrchestrator {
       return missing.length ? `${step}. Ограничение игрока: ${missing.join('; ')}` : step
     })
     if (!input.commands && !explicitNpcId && steps.length && (standaloneAction || !pendingClarification?.original_intent?.action_steps?.length)) {
-      const question = `В заявке ${steps.length} последовательных шага. Сначала: «${steps[0]}». Выполнить первый шаг? Остальные обсудим после его результата.`
-      return {
-        narration: question, effects: emptyEffects(), mechanics: [], visible_state_changes: [],
-        provider: 'deterministic-dialogue', model: 'server-policy', turn_id: turnId,
-        engine_mode: mode, state_version: authoritativeState.state_version,
-        turn_consumed: false, action_kind: 'clarification', request_kind: 'action',
-        clarification: this.clarificationRegistry.create({ campaignId, actorId: playerId,
-          stateVersion: authoritativeState.state_version, action: message, question,
-          intent: { action_steps: steps, constraints },
-        }),
-      }
+      // Живой ведущий не спрашивает «выполнить первый шаг?»: игрок уже сказал,
+      // что делает. Шаги исполняются по порядку тем же путём, что и ответ на
+      // уточнение, и останавливаются на броске, неудаче или вопросе мира
+      // (плейтест 2026-10-10: «В заявке 2 последовательных шага…» в каждом
+      // сложном ходе). Ключ первого шага выводится из ключа запроса.
+      const firstStepKey = `${idempotencyKey}:step-1`
+      const firstStepReplay = await this.eventStore.getByIdempotencyKey?.(campaignId, firstStepKey)
+      const plan = this.clarificationRegistry.create({ campaignId, actorId: playerId,
+        stateVersion: firstStepReplay?.events?.[0]?.state_version_before ?? authoritativeState.state_version, action: message,
+        question: `Сначала: «${steps[0]}».`,
+        intent: { action_steps: steps, constraints },
+      })
+      return this.handle({
+        ...planStepInput(input),
+        message: 'Да',
+        clarificationId: plan.id,
+        idempotencyKey: firstStepKey,
+        planStep: 0,
+      })
     }
     if (supersedesProposalId) {
       this.clarificationRegistry.revokeProposal(supersedesProposalId, { campaignId, actorId: playerId })
@@ -2621,6 +3048,31 @@ export class GameOrchestrator {
         requires_clarification: false,
       }
     }
+    // Заклинание словами вне боя, которое движку нечем исполнить (команду
+    // строит только боевой путь с `spell_id`), — творческое применение: его
+    // судит судья свободных действий, как «Читаю «Безмолвный образ»: иллюзия…».
+    // Прежде такая заявка становилась одной декларацией — «Действие ещё не
+    // выполнено» (замер 18, 2026-10-11).
+    if (!input.commands && originalState.mechanics?.combat?.active !== true
+      && intent.intent === 'cast_spell' && !intent.spell_id) {
+      intent = { ...intent, intent: 'improvised_action', missing_information: [], requires_clarification: false }
+    }
+    // Прямая речь, обращённая к человеку рядом, — разговор с ним; спутнику —
+    // отыгрыш (`speechAddressee`). Вне боя: там у слов своя цена хода.
+    if (!input.commands && !explicitNpcId && originalState.mechanics?.combat?.active !== true
+      && ['improvised_action', 'explore', 'unknown', 'social'].includes(String(intent.intent))) {
+      const addressee = speechAddressee(message, visibleState, playerId)
+      const socialIds = new Set((visibleState.social?.npcs ?? []).map((npc) => String(npc.id)))
+      // Протянутая фляга с вопросом — разговор, а не передача: «протягивает
+      // Иаре флягу: «Выпьем… А кто сорит деньгами?»» получало «Чего Борин
+      // хочет добиться» (замер 20). «Отдаю верёвку: «Держи»» — передача.
+      const asks = /\?/u.test([...message.matchAll(/«([^«»]{1,800})»/gu)].map((match) => match[1]).join(' '))
+      if (addressee?.kind === 'npc' && socialIds.has(addressee.id) && (!SPEECH_HANDOVER_PATTERN.test(message) || asks)) {
+        intent = { ...intent, intent: 'social', targets: [addressee.id], missing_information: [], requires_clarification: false }
+      } else if (addressee?.kind === 'hero') {
+        intent = { ...intent, intent: 'improvised_action', roleplay_speech: !actsBeyondSpeech(message), targets: [], missing_information: [], requires_clarification: false }
+      }
+    }
     let socialRequest = null
     if (!input.commands && intent.intent === 'social' && this.npcSocialController) {
       const socialNpcIds = new Set((visibleState.social?.npcs ?? []).map((npc) => String(npc.id)))
@@ -2628,6 +3080,12 @@ export class GameOrchestrator {
       if (intent.requires_clarification) {
         // Резолвер уже нашёл неоднозначность и сохранил кандидатов для полезного уточнения.
         socialRequest = null
+      } else if (!npcId && speechToPartyOrAir(message, visibleState, playerId, explicitNpcId)) {
+        // Слова герою отряда или в пустоту — отыгрыш, а не разговор с NPC:
+        // «говорит Борину: «Я не уйду, пока не узнаю правду»» получало
+        // служебное «Назовите собеседника» (плейтест 2026-10-10). Такую реплику
+        // разбирает арбитр свободного действия как сцену без броска.
+        intent = { ...intent, intent: 'improvised_action', roleplay_speech: !actsBeyondSpeech(message), targets: [], missing_information: [], requires_clarification: false }
       } else if (!npcId) {
         intent.requires_clarification = true
         intent.missing_information = ['npc_id']
@@ -2675,6 +3133,19 @@ export class GameOrchestrator {
         : await this.adjudicator.createPlan({ intent, state: ['approach_attack', 'compound_maneuver'].includes(intent.intent)
           ? duplicate ? (await this.eventStore.load(campaignId, { atVersion: duplicate.events[0].state_version_before })).state : authoritativeState
           : originalState, retrievedRules })
+    // «Подхожу к баркасу и методично осматриваю его»: распознанная проверка
+    // начинается с шагов по карте — фишка идёт туда же, куда рассказ
+    // (плейтест 2026-10-10). Только вне боя: в бою движение — часть хода.
+    if (!input.commands && !duplicate && intent.intent === 'ability_check' && !authoritativeState.mechanics?.combat?.active
+      && (plan.proposed_commands ?? []).some((command) => command.command_type === 'MakeAbilityCheck')) {
+      const approach = freeActionApproachPlan(authoritativeState, playerId, message)
+      if (approach.status === 'ready' && approach.remainder) {
+        plan = { ...plan, proposed_commands: [
+          { command_type: 'MoveActor', actor_id: playerId, to: approach.destination.to, server_authoritative: true },
+          ...(plan.proposed_commands ?? []),
+        ] }
+      }
+    }
     plan = { ...plan, proposed_commands: validateAllowedCommands(plan.proposed_commands ?? []).map((command, index) => ({ ...command,
       ...(intent.knock_out && ['MakeAttack', 'CastSpell'].includes(command.command_type) ? { knock_out: true } : {}),
       campaign_id: campaignId, command_id: `${idempotencyKey}:${index + 1}` })) }
@@ -2851,6 +3322,10 @@ export class GameOrchestrator {
         visible_state_changes: [],
         check: { ...check, sides: 20, skill: preview.skill },
         turn_consumed: false,
+        // Бросок привязан к `message`, а после уточнения это уже не текст
+        // ответа («Да»), а согласованный шаг. Клиент шлёт кость с этим
+        // текстом; без него `/api/narrate` отвечал ROLL_CONTEXT_MISMATCH.
+        ...(pendingClarification ? { resolved_action: message } : {}),
       }
     }
     if (planCheckCommand && verifiedRoll) {
@@ -2923,6 +3398,7 @@ export class GameOrchestrator {
       if (!duplicate) {
         socialTurn = await this.npcSocialController.respond({
           state: socialBaseState, playerId, npcId: socialRequest.npcId, message, turnId, checkOutcome,
+          justSeen: String(input.precedingStep ?? ''),
         })
         if (!socialTurn) throw new Error('NPC is no longer available for this social turn')
         rulesContext.isSocialController = true
@@ -2998,8 +3474,18 @@ export class GameOrchestrator {
       known_environment: {
         context_metadata: agentContextMetadata(committed.state, { role: 'narrator', actorId: playerId, contractVersion: NARRATOR_PROMPT_VERSION }),
         scene: sceneContextForAgent(committed.state, playerId),
-        player_intent: { action: message, constraints: message.match(/(?:не\s+|без\s+)[^,.;!?]+/giu)?.slice(0, 6) ?? [] },
+        player_intent: {
+          action: message,
+          constraints: message.match(/(?:не\s+|без\s+)[^,.;!?]+/giu)?.slice(0, 6) ?? [],
+          // «Ждём темноты» глубокой ночью: ждать нечего, отряд выжидает
+          // полчаса. Без этой пометки рассказчик рассказывал «наступление ночи»,
+          // и судья ловил «ждут темноты в глубокую ночь» (замеры 2026-10-10).
+          ...(plan.wait ? { wait: { until: String(plan.wait.label ?? ''), already: plan.wait.already === true } } : {}),
+          ...(committed.outcome_detail ? { outcome_detail: String(committed.outcome_detail).slice(0, 300) } : {}),
+          ...(committed.thorough_search ? { thorough_search: String(committed.thorough_search) } : {}),
+        },
         campaign_premise: campaignConceptForAgent(committed.state),
+        participants: narrationParticipants(committed.state, publicCommittedEvents),
         // Небо и час — данные, а не право сочинять: тот же расчёт, что у
         // индикатора в шапке сцены, чтобы текст и картинка не разошлись.
         world_clock: worldClockForAgents(committed.state, playerId),
@@ -3011,7 +3497,10 @@ export class GameOrchestrator {
         ...narrationScenarioContext(committed.state),
         social_consequences: narrationSocialConsequences(publicCommittedEvents, committed.state),
       },
-      permitted_npc_reactions: narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),
+      permitted_npc_reactions: withDetailReactions(
+        narrationNpcReactions(storyContext.present_npcs, publicCommittedEvents),
+        [String(committed.outcome_detail ?? ''), ...discoveryDetailTexts(publicCommittedEvents)],
+      ),
       viewer,
     })
     const resolvedRuleIds = [...new Set([...(plan.rule_ids ?? []), ...committedEvents.flatMap((event) => event.source_rule_ids ?? [])])]
@@ -3120,16 +3609,48 @@ export class GameOrchestrator {
   async commitCheckDiscovery({ campaignId, idempotencyKey, committed, message, rulesContext, checkCommand }) {
     if (!checkCommand || committed?.state?.mechanics?.combat?.active === true) return committed
     const checkEvent = (committed.events ?? []).find((event) => event.event_type === 'AbilityCheckResolved')
-    if (checkEvent?.payload?.success !== true) return committed
+    if (!checkEvent) return committed
+    const succeeded = checkEvent.payload?.success === true
+    const skill = String(checkEvent.payload?.skill ?? checkCommand.skill ?? '').replace(/_/gu, '-')
     const discoveryKey = `${idempotencyKey}:discovery`
     let discoveryCommit = await this.eventStore.getByIdempotencyKey?.(campaignId, discoveryKey) ?? null
     let baseState = committed.state
     let baseVersion = committed.state_version
+    // Деталь места — то, что видно при любом исходе, и ответ на вопрос игрока
+    // при успехе — называет судья действий: «осматриваю баркас» идёт мимо него
+    // прямой проверкой навыка, и провал оставался пустым «ничего не заметила»
+    // (замер 2026-10-10: ни одной записанной детали за партию). Повтор хода
+    // судью не зовёт: улика уже записана под своим ключом.
+    const details = discoveryCommit ? {} : await this.checkDetailsFor(committed.state, checkCommand.actor_id, message, skill)
+    // Деталь исхода для рассказчика — то, что герой видит при этом исходе:
+    // на провале — причина и цена, на успехе вне поиска — как именно вышло.
+    // Находку поиска сервер пишет фактом ниже; здесь её нет.
+    // Провал поиска вне спешки решает время, а не находку
+    // (`thoroughSearchOutcome`, DMG 2014, гл. 8).
+    const thorough = succeeded ? null : thoroughSearchOutcome(committed.state, { checkEvent, skill, actionText: message })
+    const heroName = String((committed.state?.players ?? []).find((player) => String(player?.id) === String(checkCommand.actor_id))?.character || 'Герой')
+    const outcomeDetail = succeeded
+      ? (DISCOVERY_SKILLS.has(skill) ? '' : String(details.success_detail ?? ''))
+      : thorough
+        ? thoroughSearchDetail(thorough, heroName)
+        : String(details.failure_detail ?? '')
+    if (outcomeDetail) committed = { ...committed, outcome_detail: outcomeDetail }
+    if (thorough) committed = { ...committed, thorough_search: thorough.found ? 'found' : 'nothing' }
+    if (!DISCOVERY_SKILLS.has(skill)) return committed
     for (let attempt = 0; !discoveryCommit && attempt < 3; attempt += 1) {
-      const skill = String(checkEvent.payload.skill ?? checkCommand.skill ?? '').replace(/_/gu, '-')
-      const commands = freeActionDiscoveryCommands(baseState, {
-        checkEvent, skill, actionText: message, skillLabel: SKILL_LABELS_RU[skill] ?? '',
-      }).map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${discoveryKey}:${index + 1}` }))
+      const found = succeeded
+        ? freeActionDiscoveryCommands(baseState, {
+          checkEvent, skill, actionText: message, skillLabel: SKILL_LABELS_RU[skill] ?? '',
+          successDetail: details.success_detail ?? '', surfaceDetail: details.surface_detail ?? '',
+        })
+        : [
+          ...freeActionSurfaceCommands(baseState, { checkEvent, skill, surfaceDetail: details.surface_detail ?? '' }),
+          ...(thorough ? [
+            ...(thoroughSearchOutcome(baseState, { checkEvent, skill, actionText: message })?.commands ?? []),
+            { command_type: 'AdvanceTime', amount: thorough.minutes, unit: 'minute' },
+          ] : []),
+        ]
+      const commands = found.map((command, index) => ({ ...command, campaign_id: campaignId, command_id: `${discoveryKey}:${index + 1}` }))
       if (!commands.length) return committed
       try {
         const resolved = this.rulesEngine.resolvePlan({ proposed_commands: commands }, baseState, { ...rulesContext, isDirector: true })
@@ -3153,6 +3674,29 @@ export class GameOrchestrator {
       state: discoveryCommit.state,
       state_version: discoveryCommit.state_version,
       events: [...(committed.events ?? []), ...(discoveryCommit.events ?? [])],
+    }
+  }
+
+  /**
+   * Детали осмотра для прямой проверки навыка: вне боя, для навыков поиска и
+   * только с моделью. Механики судья здесь не решает — проверка уже брошена;
+   * берутся лишь `success_detail` и `surface_detail`, их форму сервер уже
+   * проверил. Отказ модели — пустые детали, ход прежний.
+   *
+   * @returns {Promise<{ success_detail?: string, surface_detail?: string }>}
+   */
+  async checkDetailsFor(state, actorId, message, skill) {
+    const adjudicator = this.unknownActionHandler?.actionAdjudicator
+    if (!skill || typeof adjudicator?.read !== 'function' || !adjudicator.llmClient?.completeJson) return {}
+    try {
+      const reading = await adjudicator.read(state, String(actorId ?? ''), String(message ?? ''), interpretFreeAction(message))
+      return {
+        success_detail: String(reading?.success_detail ?? ''),
+        surface_detail: String(reading?.surface_detail ?? ''),
+        failure_detail: String(reading?.failure_detail ?? ''),
+      }
+    } catch {
+      return {}
     }
   }
 

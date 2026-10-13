@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { FakeLLM } from '../server/llm-client.mjs'
-import { Narrator, deterministicNarration } from '../server/narrator.mjs'
+import { Narrator, deterministicNarration, narratorResponsePlan, withoutEchoOfPlayer } from '../server/narrator.mjs'
 import { buildNarrationBrief } from '../server/security.mjs'
 import {
   NARRATOR_GENERATION_PARAMETERS,
@@ -71,7 +71,8 @@ test('резервный рассказ локализует спасбросо�
   assert.doesNotMatch(unknownText, /Атака по возможности|custom-reaction/u)
 })
 
-test('Narrator не тратит второй вызов на неподтверждённую механику и использует безопасный fallback', async () => {
+test('неподтверждённая механика: одна правка с перечнем нарушений, выдумка игроку не уходит', async () => {
+  // С 2026-10-12 (Self-Refine): отклонённый черновик получает одну правку.
   const llm = new FakeLLM([
     { content: JSON.stringify({ narration: 'Выпало 20, и герой получает 1000 HP.', suggestions: [] }) },
     { content: JSON.stringify({ narration: deterministicNarration(brief).narration, suggestions: ['Продолжить'] }) },
@@ -80,8 +81,18 @@ test('Narrator не тратит второй вызов на неподтвер
   assert.equal(result.verification.valid, true)
   assert.doesNotMatch(result.narration, /1000/)
   assert.doesNotMatch(result.narration, /\d/u)
-  assert.equal(result.provider, 'deterministic-fallback')
-  assert.equal(llm.requests.length, 1)
+  assert.equal(llm.requests.length, 2, 'одна правка, не больше')
+  assert.ok(result.verification.repaired_after?.length, 'правка помнит, что исправляла')
+  assert.match(String(llm.requests[1].messages.at(-1).content), /сервер отклонил/u)
+  // Правка снова нарушает — запасной текст, третьего вызова нет.
+  const stubborn = new FakeLLM([
+    { content: JSON.stringify({ narration: 'Выпало 20, и герой получает 1000 HP.', suggestions: [] }) },
+    { content: JSON.stringify({ narration: 'Герой получает 1000 HP.', suggestions: [] }) },
+  ])
+  const fallback = await new Narrator({ llmClient: stubborn }).render(brief, { knownRuleIds: ['srd:test:damage'] })
+  assert.equal(fallback.provider, 'deterministic-fallback')
+  assert.doesNotMatch(fallback.narration, /1000/)
+  assert.equal(stubborn.requests.length, 2)
 })
 
 test('Narrator превращает ошибку провайдера после commit в deterministic fallback', async () => {
@@ -253,4 +264,90 @@ test('этап 7 плана карт: Рассказчик не описывае
   const noProgram = { visible_events: [], known_environment: { scene: {} } }
   assert.equal(verifyNarratorCraft('Под общим навесом шепчутся жители.', noProgram, base).violations.some((violation) => violation.code === 'ABSENT_LANDMARK_MENTIONED'), false,
     'без программы сцены прежнее поведение')
+})
+
+test('реплика своему спутнику: тот же глагол с другой приставкой и слова героя не отбраковывают живой текст', async () => {
+  // Плейтест 2026-10-10: игрок «отходит к краю причала и говорит Борину…», а
+  // текст «Мирель подходит к краю…» падал как HERO_AGENCY_NOT_IN_BRIEF и
+  // «тихо говорит Борину» — как UNCONFIRMED_SOCIAL_ACTION; игрок получал
+  // запасной повтор своей реплики.
+  const roleplay = buildNarrationBrief({
+    visible_events: [
+      { event_type: 'ActionDeclared', actor_id: 'hero', payload: { action: 'отходит к краю причала и говорит Борину' }, visibility: 'party' },
+      { event_type: 'RulingRecorded', actor_id: 'hero', payload: { ruling: { outcome: 'success', question: 'Мирель говорит Борину' } }, visibility: 'party' },
+    ],
+    visible_state_changes: [],
+    known_environment: {
+      location: 'Причал',
+      player_intent: { action: 'Мирель отходит к краю причала и негромко говорит Борину: «Ила любила это море».', goal: 'Поделиться с Борином', outcome: 'auto_success', roleplay_speech: true },
+      story_context: { heroes: [{ id: 'hero', name: 'Мирель', is_viewer: true }, { id: 'ally', name: 'Борин', is_viewer: false }] },
+    },
+    permitted_npc_reactions: [],
+  })
+  const text = 'Мирель подходит к самому краю причала; внизу тёмная вода лижет сваи. Она тихо говорит Борину, что Ила любила это море, и ветер уносит слова к маяку.'
+  const llm = new FakeLLM([{ content: JSON.stringify({ narration: text, suggestions: [] }) }])
+  const result = await new Narrator({ llmClient: llm }).render(roleplay, { knownRuleIds: [] })
+  assert.equal(result.provider === 'deterministic-fallback', false, JSON.stringify(result.verification?.repaired_from ?? result.verification))
+  assert.match(result.narration, /тёмная вода/u)
+})
+
+test('заглавное слово в начале фразы не делает героя незнакомцем, а пересказ слов героя — новым знанием', async () => {
+  // Замер 2026-10-10: «Пока Мирель следит…» падало как реакция незнакомца
+  // «Пока Мирель», а «не уйдёт, пока не узнает правду» — как раскрытие тайны.
+  const { verifyNarration } = await import('../server/security.mjs')
+  const watching = buildNarrationBrief({
+    visible_events: [{ event_type: 'RulingRecorded', actor_id: 'hero', payload: { ruling: { outcome: 'success', question: 'Мирель следит за маяком' } }, visibility: 'party' }],
+    visible_state_changes: [],
+    known_environment: { location: 'Маяк', story_context: { heroes: [{ id: 'hero', name: 'Мирель', is_viewer: true }] } },
+    permitted_npc_reactions: [],
+  })
+  const llm = new FakeLLM([{ content: JSON.stringify({ narration: 'Пока Мирель следит за вершиной маяка, ветер треплет мокрые флаги на шпиле.', suggestions: [] }) }])
+  const watched = await new Narrator({ llmClient: llm }).render(watching, { knownRuleIds: [] })
+  assert.notEqual(watched.provider, 'deterministic-fallback', JSON.stringify(watched.verification?.repaired_from ?? []))
+
+  const speech = buildNarrationBrief({
+    visible_events: [{ event_type: 'RulingRecorded', actor_id: 'hero', payload: { ruling: { outcome: 'success', question: 'Мирель говорит Борину' } }, visibility: 'party' }],
+    visible_state_changes: [],
+    known_environment: { location: 'Причал', player_intent: { action: 'Мирель негромко говорит Борину: «Я не уйду отсюда, пока не узнаю правду».', outcome: 'auto_success', roleplay_speech: true } },
+    permitted_npc_reactions: [],
+  })
+  const paraphrase = 'Мирель тихо говорит Борину, что не уйдёт, пока не узнает правду; волна шлёпает о сваи.'
+  assert.equal(verifyNarration(paraphrase, speech, { knownRuleIds: [] }).violations.some((entry) => entry.code === 'UNCONFIRMED_DISCLOSURE'), false)
+  const invented = 'Мирель говорит Борину, что слышала показания рыбаков о ночных лодках.'
+  assert.equal(verifyNarration(invented, speech, { knownRuleIds: [] }).violations.some((entry) => entry.code === 'UNCONFIRMED_DISCLOSURE'), true, 'новое знание по-прежнему ловится')
+})
+
+test('ответ ведущего не повторяет заявку: эхо срезается, а план просит отклик мира', () => {
+  // Замеры 2026-10-10: «Ты читаешь заклинание… Ты следишь, как…» и «Мирель
+  // подходит к краю причала и говорит Борину: «…»» — судья ставил 2–3.
+  const roleplay = { known_environment: { player_intent: { action: 'Мирель отходит к краю причала и негромко говорит Борину: «Ила любила это море».', roleplay_speech: true } }, visible_events: [{ event_type: 'RulingRecorded', payload: { ruling: { outcome: 'success' } } }] }
+  assert.equal(withoutEchoOfPlayer('Мирель подходит к краю причала и негромко говорит Борину: «Ила любила это море». Волна глухо бьёт в сваи.', roleplay), 'Волна глухо бьёт в сваи.')
+  assert.equal(withoutEchoOfPlayer('Мирель подходит к краю причала.', roleplay), 'Мирель подходит к краю причала.', 'текст целиком из эха не обнуляется')
+  assert.match(narratorResponsePlan(roleplay).must_answer, /не повторяй/u)
+  const success = { known_environment: { player_intent: { action: 'Читаю «Безмолвный образ»' } }, visible_events: [{ event_type: 'RulingRecorded', payload: { ruling: { outcome: 'success' } } }] }
+  assert.match(narratorResponsePlan(success).must_answer, /^Не пересказывая заявку/u)
+})
+
+test('пересказ серверной детали исхода — не выдуманный поступок героя', async () => {
+  // Замер 13 (2026-10-11): «Борин не торопясь перебирает всё…» — серверная
+  // деталь тщательного поиска — отбраковывалась как действие героя не из
+  // заявки, и звучало «Борин пробует, но не выходит».
+  const { confirmedOutcomeDetailSentence } = await import('../server/narrator.mjs')
+  const brief = { known_environment: { player_intent: { action: 'Борин простукивает бочки', outcome_detail: 'Борин не торопясь перебирает всё по одному — уходит около получаса — и убеждается: ничего спрятанного здесь нет.' } } }
+  assert.equal(confirmedOutcomeDetailSentence('Борин не торопясь перебирает бочки одну за другой — уходит около получаса', brief), true)
+  assert.equal(confirmedOutcomeDetailSentence('Борин решает уйти к маяку и обнажает меч', brief), false)
+  assert.equal(confirmedOutcomeDetailSentence('Борин перебирает бочки', { known_environment: { player_intent: {} } }), false)
+})
+
+
+test('своё заклинание героя вне боя — сработало, даже если проверка цели провалена', async () => {
+  // Замеры 16–17 (2026-10-11): «На мостках ничего не появилось» после
+  // проваленной Проницательности — провал касается реакции, не иллюзии.
+  const { narratorResponsePlan } = await import('../server/narrator.mjs')
+  const brief = {
+    visible_events: [{ event_type: 'AbilityCheckResolved', payload: { success: false, skill: 'insight' } }],
+    known_environment: { player_intent: { action: 'Читаю «Безмолвный образ»: иллюзия Илы', spell_cast: { name: 'Безмолвный образ' } } },
+  }
+  assert.match(narratorResponsePlan(brief).must_answer, /«Безмолвный образ» сработало/u)
+  assert.doesNotMatch(narratorResponsePlan({ ...brief, known_environment: { player_intent: { action: 'Слежу за Марой' } } }).must_answer, /сработало/u)
 })

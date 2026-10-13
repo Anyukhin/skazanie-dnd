@@ -294,7 +294,8 @@ test('спасбросок и область называют характери
       roll: { die: 7, modifier: 2, total: 9, difficulty: 13, hit: false }, result: 'failure',
       damage: 6, damageType: 'fire', hpBefore: 12, hpAfter: 6,
     }),
-    'Гоблин 2: спасбросок ЛОВ от «Огненные ладони» 7 + 2 = 9 против СЛ 13 — провал · 6 огненного · ОЗ 12 → 6.',
+    // «от заклинания «…»», а не «от «…»» — тот же падеж, что у серверной хроники.
+    'Гоблин 2: спасбросок ЛОВ от заклинания «Огненные ладони» 7 + 2 = 9 против СЛ 13 — провал · 6 огненного · ОЗ 12 → 6.',
   )
   assert.equal(
     battleEventText(tableState(), {
@@ -362,4 +363,11 @@ test('конец концентрации в журнале назван сло�
   const text = battleEventText(state(), { id: 'c1', type: 'concentration-end', actorId: 'hero', reason: 'failed-saving-throw' })
   assert.match(text, /спасбросок концентрации провален/u)
   assert.doesNotMatch(text, /failed-saving-throw/u)
+})
+
+test('стабилизация героя в журнале звучит без рода', () => {
+  // «Мирель стабилизирован» — у героев нет поля рода (плейтест 2026-10-10).
+  const text = battleEventText(tableState(), { id: 'stab', type: 'hero-stabilized', actorId: 'hero' })
+  assert.match(text, /без сознания, но кровь остановлена/u)
+  assert.doesNotMatch(text, /стабилизирован/u)
 })

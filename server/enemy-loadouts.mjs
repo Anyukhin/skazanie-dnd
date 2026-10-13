@@ -264,7 +264,11 @@ function thrownBundle(catalogId, primaryCatalogId) {
 export function enemyLoadoutFor({ statBlockId, block, ownerId, seed, sourceId = '' } = {}) {
   const templateId = text(statBlockId, 120)
   const classicSlug = templateId.startsWith('dnd_5e_2014:monster:') ? templateId.split(':').at(-1) : null
-  const classicAliases = { goblin: 'goblin-warrior', veteran: 'warrior-veteran' }
+  // Культист классической редакции носит то же, что разбойник: оружие своего
+  // стат-блока и горсть медяков. Без шаблона его тело было пустым — ни
+  // контейнера добычи, ни знака культа при обыске, только «Укажите конкретное
+  // тело» (замер 22, 2026-10-11).
+  const classicAliases = { goblin: 'goblin-warrior', veteran: 'warrior-veteran', cultist: 'bandit' }
   const template = TEMPLATES[templateId] ?? (classicSlug ? TEMPLATES[id(classicAliases[classicSlug] ?? classicSlug)] : null)
   const owner = text(ownerId, 120)
   const fallbackSpellcasterTemplate = classicSlug && spellcasterNeedsComponentPouch(block)

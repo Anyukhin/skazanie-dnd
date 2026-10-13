@@ -306,8 +306,13 @@ test('пустая или ненормализованная карта тоже
   assert.equal(call({}).source, 'legacy_text')
   assert.equal(call({ locations: [] }).source, 'legacy_text')
   assert.equal(call({ locations: [{ name: 'Без идентификатора' }] }).source, 'legacy_text')
-  // Карта есть, но целевой локации в ней нет — считать по графу нечего.
-  assert.equal(call(plainsPair(3)).source, 'legacy_text')
+  // Карта есть, исходная точка на ней, а целевой нет — это новое место,
+  // названное игроками: короткий путь, около получаса (решение владельца
+  // 2026-10-11; прежде полоса выпадала случайно — до четырёх часов).
+  const fresh = call(plainsPair(3))
+  assert.equal(fresh.source, 'new_place')
+  assert.equal(fresh.distance_band, 'near')
+  assert.equal(fresh.duration_minutes, 30)
 })
 
 test('в теле planServerTravel не осталось регулярных выражений по названиям', () => {

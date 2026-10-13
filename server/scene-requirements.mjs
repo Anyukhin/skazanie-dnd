@@ -55,6 +55,8 @@ const MAX_COUNT = 6
  *   список — у реестра такого предмета ещё нет, и карта обещание не выполнит
  * @property {'platform'} [terrain] объект строится не предметом, а клетками
  *   карты: настил — приподнятый деревянный пол (`server/prop-placement.mjs`)
+ * @property {false} [fromText] вид не читается из слов сцены, только из якорей
+ *   модели: лодку сюжет чаще ищет, чем видит («баркас не вернулся»)
  */
 
 /**
@@ -91,6 +93,12 @@ export const SCENE_REQUIREMENT_KINDS = Object.freeze([
   { id: 'oak', label: 'дуб', pattern: /дуб(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})/u, assets: ['tree_oak'] },
   { id: 'notice_board', label: 'доска объявлений', pattern: /доск(?:а|и|е|у|ой)\s+(?:объявлений|указов|приказов|вестей)(?!\p{L})/u, assets: ['notice_board'] },
   { id: 'forge', label: 'кузница', pattern: /кузн(?:ица|ицы|ице|ицу|ицей|ечн\p{L}*)(?!\p{L})|наковальн\p{L}*/u, assets: ['forge', 'anvil'] },
+  // Замер 31 (2026-10-11): пролог ставил героиню «у причала», а карта была
+  // таверной с двором — ни столба, ни лодки; «выходит к причалу» фишку не
+  // двигало, рассказчик описывал очаг. Причал — по словам сцены, лодка —
+  // только якорем модели.
+  { id: 'mooring', label: 'причал', pattern: /(?:причал|пирс)(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})|пристан(?:ь|и|ью|ей|ям|ями|ях)(?!\p{L})|кнехт\p{L}*|швартов\p{L}*\s+тумб\p{L}*/u, assets: ['mooring_post'] },
+  { id: 'rowboat', label: 'лодка', pattern: /(?:лодк|баркас|шлюпк|ялик|плоскодонк)\p{L}*|чел(?:н|ён|ен)(?:а|у|ом|е|ы|ов)?(?!\p{L})/u, assets: ['rowboat', 'punt'], fromText: false },
 ])
 
 /**
@@ -187,6 +195,7 @@ export function sceneRequirementsFromText(texts) {
   /** @type {Map<string, { id: string, count: number, at: number }>} */
   const found = new Map()
   for (const kind of SCENE_REQUIREMENT_KINDS) {
+    if (kind.fromText === false) continue
     const pattern = new RegExp(kind.pattern.source, 'gu')
     for (const match of source.matchAll(pattern)) {
       const at = match.index ?? 0
@@ -289,7 +298,10 @@ export function normalizeLandmarks(value) {
   const result = []
   for (const entry of Array.isArray(value) ? value : []) {
     if (result.length >= MAX_LANDMARKS) break
-    const id = String(entry?.kind ?? '')
+    // Нормализованный якорь хранит вид в `id`: замысел первой карты
+    // (`normalizeSceneMapDesign`) нормализуется ещё раз в программе сцены, и
+    // якоря автора кампании до карты не доходили (замер 31, 2026-10-12).
+    const id = String(entry?.kind ?? entry?.id ?? '')
     if (!KINDS_BY_ID.has(id) || result.some((mark) => mark.id === id)) continue
     const role = LANDMARK_ROLES.includes(entry?.role) ? String(entry.role) : 'dressing'
     const count = Number(entry?.count)
@@ -437,12 +449,167 @@ export function requirementAssets(id) {
 }
 
 /**
- * Подпись вида объекта по-русски.
+ * Подпись вида объекта по-русски. Знает и постройки (`SCENE_STRUCTURE_KINDS`):
+ * их id попадают в `missing`, когда карта не построила названное место.
  * @param {string} id
  * @returns {string}
  */
 export function requirementLabel(id) {
-  return KINDS_BY_ID.get(id)?.label ?? id
+  return KINDS_BY_ID.get(id)?.label ?? STRUCTURES_BY_ID.get(id)?.label ?? id
+}
+
+// ---------------------------------------------------------------------------
+// Постройки и местность в строках перехода
+// ---------------------------------------------------------------------------
+
+/**
+ * Постройка или местность в строках перехода.
+ * @typedef {object} StructureKind
+ * @property {string} id
+ * @property {string} label
+ * @property {RegExp} pattern
+ * @property {boolean} building
+ * @property {boolean} journey
+ */
+
+/**
+ * Постройки и местность, которые архитектор называет в строках перехода
+ * (`arrival`, `transition`). Словарь отдельный от предметов сцены: их
+ * воплощают зоны, двери и вода карты, а не предметы реестра, и библиотека
+ * готовых карт (`server/map-library.mjs`) по ним не считает очков.
+ *
+ * Живой замер 2026-10-10: прибытие обещало «башню на скале над гаванью» и
+ * дверь маяка, а карта была дорогой с рекой и мостом; заявка «открываю дверь
+ * маяка» упёрлась в пустоту.
+ *
+ * `building` — постройка, которую может называть само имя места: если имя
+ * её называет, а помещений на карте нет, это записывается в `missing`.
+ * `journey` — то, что законно встречается по дороге и в строке пути не
+ * проверяется: мост, река, лодка.
+ *
+ * @type {readonly StructureKind[]}
+ */
+export const SCENE_STRUCTURE_KINDS = Object.freeze([
+  { id: 'lighthouse', label: 'маяк', pattern: /маяк(?:а|у|ом|е|и|ов|ам|ами|ах)?(?!\p{L})/u, building: true, journey: false },
+  { id: 'tower', label: 'башня', pattern: /башн(?:я|и|е|ю|ей|ею|ям|ями|ях)(?!\p{L})/u, building: true, journey: false },
+  { id: 'tavern', label: 'таверна', pattern: /(?:таверн|трактир|корчм|харчевн)\p{L}*|постоял\p{L}*\s+двор\p{L}*/u, building: true, journey: false },
+  { id: 'temple', label: 'храм', pattern: /(?:храм|святилищ|собор)(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})/u, building: true, journey: false },
+  { id: 'door', label: 'дверь', pattern: /двер(?:ь|и|ью|ей|ям|ями|ях)(?!\p{L})/u, building: false, journey: false },
+  { id: 'bridge', label: 'мост', pattern: /мост(?:а|у|ом|е|ы|ов|ам|ами|ах)?(?!\p{L})/u, building: false, journey: true },
+  { id: 'river', label: 'река', pattern: /рек(?:а|и|е|у|ой|ою)(?!\p{L})|речк\p{L}*/u, building: false, journey: true },
+  { id: 'boat', label: 'лодка', pattern: /(?:лодк|баркас|шлюпк|ялик)\p{L}*|чел(?:н|ён|ен)(?:а|у|ом|е|ы|ов)?(?!\p{L})/u, building: false, journey: true },
+])
+
+const STRUCTURES_BY_ID = new Map(SCENE_STRUCTURE_KINDS.map((kind) => [kind.id, kind]))
+
+/**
+ * Что о постройках знает карта. Собирает её вызывающий
+ * (`server/adventure-director.mjs`): модуль — лист и карт не читает.
+ *
+ * @typedef {object} StructureMapFacts
+ * @property {string} [theme] тема карты (`map.theme`)
+ * @property {Array<{ kind?: string, label?: string }>} [zones]
+ * @property {number} [doors] сколько дверей
+ * @property {string[]} [props] идентификаторы предметов реестра на карте
+ * @property {boolean} [water] есть ли водная гладь
+ */
+
+/**
+ * Стоит ли постройка или местность на карте. Подписи зон — те, что ставят
+ * генераторы: «Таверна»/«Общий зал», «Река»/«Мост», «Основание маяка».
+ *
+ * @param {string} id
+ * @param {StructureMapFacts} facts
+ * @param {{ location?: string }} [options] имя места: здание по имени «Старый
+ *   маяк» и есть маяк, если карта — здание с помещениями
+ * @returns {boolean}
+ */
+export function structurePresent(id, facts, { location = '' } = {}) {
+  const zones = Array.isArray(facts?.zones) ? facts.zones : []
+  const labels = zones.map((zone) => clean(zone?.label))
+  const interior = zones.filter((zone) => zone?.kind === 'interior' && clean(zone?.label)).map((zone) => clean(zone?.label))
+  const place = clean(location)
+  const building = interior.length > 0 && ['building', 'temple'].includes(String(facts?.theme ?? ''))
+  const props = Array.isArray(facts?.props) ? facts.props : []
+  switch (id) {
+    case 'lighthouse': return labels.some((label) => /маяк|маяч/u.test(label)) || (building && /маяк/u.test(place))
+    case 'tower': return labels.some((label) => /башн|маяк|маяч/u.test(label)) || (building && /башн|маяк/u.test(place))
+    case 'tavern': return interior.some((label) => /таверн|трактир|постоял|питейн|гостев|корчм|харчевн|общий зал/u.test(label))
+    case 'temple': return String(facts?.theme ?? '') === 'temple' || interior.some((label) => /храм|неф|притвор|алтарн|святилищ|часовн|собор/u.test(label))
+    case 'door': return Number(facts?.doors) > 0
+    case 'bridge': return labels.some((label) => /мост|рек/u.test(label))
+    case 'river': return labels.some((label) => /рек|ручей|ручь/u.test(label)) || facts?.water === true
+    case 'boat': return props.some((assetId) => /boat|ship|raft/u.test(String(assetId)))
+    default: return true
+  }
+}
+
+/** Вдали, за краем карты: «вдали белеет маяк» карте не противоречит. */
+const FAR_CONTEXT = /(?<!\p{L})(?:вдал\p{L}*|вдалек\p{L}*|на\s+горизонт\p{L}*|далеко|издалека|издали|за\s+(?:морем|холмами|рекой|лесом|горами|перевалом|заливом))(?!\p{L})/u
+/** Строка пути говорит о месте прибытия, а не о дороге: «входят», «перед героями». */
+const ARRIVAL_CUE = /(?<!\p{L})(?:вход\p{L}*|вош\p{L}*|заход\p{L}*|заш\p{L}*|внутр\p{L}*|прибыва\p{L}*|прибыл\p{L}*|оказыва\p{L}*|оказал\p{L}*|встреча\p{L}*|перед\s+(?:ними|героями|отрядом)|открыва\p{L}*)(?!\p{L})/u
+/** …а не об оставленном месте: «покидают таверну». */
+const DEPARTURE_CUE = /(?<!\p{L})(?:покида\p{L}*|покинул\p{L}*|оставля\p{L}*|оставил\p{L}*|выход\p{L}*|вышл\p{L}*|выш[её]л|уход\p{L}*|ушл\p{L}*|уш[её]л|отступа\p{L}*|из\s+(?:таверн|трактир|храм|башн|дом))(?!\p{L})/u
+/** «Двери нет», «моста не видно». */
+const NEGATED_AFTER = /^\s*(?:,\s*)?(?:нет|не\s+(?:было|видно|видать|осталось))(?!\p{L})/u
+
+/**
+ * Строка перехода без фраз о постройках, которых нет на карте. Фраза
+ * выбрасывается целиком: подправлять слова модели сервер не берётся. Имя
+ * места и названия в кавычках постройкой не считаются — «к «Старому маяку»»
+ * называет цель пути, а не обещает башню.
+ *
+ * @param {unknown} value текст `arrival` или `transition`
+ * @param {StructureMapFacts} facts
+ * @param {{ location?: string, journey?: boolean }} [options] `journey` —
+ *   строка пути: проверяются только фразы о прибытии и только постройки
+ * @returns {{ text: string, dropped: string[] }} `dropped` — id отсутствующего
+ */
+export function textAgainstMap(value, facts, { location = '', journey = false } = {}) {
+  const source = String(value ?? '').replace(/\s+/gu, ' ').trim()
+  if (!source) return { text: '', dropped: [] }
+  const place = clean(location).replace(/[«»"„“”]/gu, '').trim()
+  /** @type {string[]} */
+  const dropped = []
+  const kept = []
+  for (const sentence of source.split(/(?<=[.!?…])\s+/u)) {
+    let probe = clean(sentence).replace(/«[^»]{0,160}»|“[^”]{0,160}”|"[^"]{0,160}"/gu, ' ')
+    if (place) probe = probe.split(place).join(' ')
+    const absent = FAR_CONTEXT.test(probe) || (journey && (!ARRIVAL_CUE.test(probe) || DEPARTURE_CUE.test(probe))) ? ''
+      : SCENE_STRUCTURE_KINDS.find((kind) => {
+        if (journey && kind.journey) return false
+        for (const match of probe.matchAll(new RegExp(kind.pattern.source, 'gu'))) {
+          const at = match.index ?? 0
+          if (at > 0 && /\p{L}/u.test(probe[at - 1])) continue
+          if (NEGATION_BEFORE.test(probe.slice(Math.max(0, at - 64), at))) continue
+          if (NEGATED_AFTER.test(probe.slice(at + match[0].length))) continue
+          return !structurePresent(kind.id, facts, { location })
+        }
+        return false
+      })?.id ?? ''
+    if (absent) dropped.push(absent)
+    else kept.push(sentence)
+  }
+  return { text: kept.join(' '), dropped: [...new Set(dropped)] }
+}
+
+/**
+ * Постройка, которую называет имя места, а карта не построила: «Старый маяк»
+ * без единого помещения. Пустая строка — имя постройки не называет или карта
+ * её держит. Записывается в `scene.map_requirements.missing`, чтобы
+ * Рассказчик не описывал дверь и лестницу, которых нет.
+ *
+ * @param {string} location
+ * @param {StructureMapFacts} facts
+ * @returns {string}
+ */
+export function missingStructureFor(location, facts) {
+  const place = clean(location).replace(/[«»"„“”]/gu, ' ')
+  const named = SCENE_STRUCTURE_KINDS.find((kind) => kind.building && new RegExp(`(?<!\\p{L})(?:${kind.pattern.source})`, 'u').test(place))
+  if (!named) return ''
+  const zones = Array.isArray(facts?.zones) ? facts.zones : []
+  const hasInterior = zones.some((zone) => zone?.kind === 'interior' && clean(zone?.label))
+  return hasInterior || structurePresent(named.id, facts, { location }) ? '' : named.id
 }
 
 /**

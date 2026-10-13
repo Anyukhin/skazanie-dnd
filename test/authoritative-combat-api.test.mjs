@@ -530,7 +530,9 @@ test('player combat API is server-authoritative, bounded, and durable across res
   assertStatus(ended, 200, log)
   assert.ok(ended.body.narration_message_id)
   assert.doesNotMatch(ended.body.narration, /TurnEnded|TurnStarted|ActorMoved|AttackResolved/u)
-  assert.match(ended.body.narration, /атаку|перемещ|урон|ход/u)
+  // Строка удара — один из вариантов словаря боя (`combat-phrases`, выбор по
+  // хешу id события): «атакует», «наносит удар», «бросается в атаку».
+  assert.match(ended.body.narration, /атак|удар|выстрел|стреля|чар|оружи|перемещ|урон|ход/u)
   assert.ok((ended.body.mechanics ?? []).length <= 20, 'one player end turn must have a bounded event batch')
   assert.ok((ended.body.npc_turns ?? []).length >= 1, 'the scheduler must report the intervening NPC turn')
   assert.ok(ended.body.npc_turns.length <= 4, 'the NPC scheduler must be bounded')

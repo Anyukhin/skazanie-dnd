@@ -561,6 +561,29 @@ function playerIntentFromBrief(brief) {
   return intent && typeof intent === 'object' && !Array.isArray(intent) ? intent : {}
 }
 
+/**
+ * Текст рассказа без дословного повтора слов самого игрока в кавычках.
+ * «Ила любила это море. Я не уйду, пока не узнаю правду», — это реплика
+ * героя из заявки, а не новое знание или перемещение от рассказчика
+ * (плейтест 2026-10-10: такой повтор падал как UNCONFIRMED_DISCLOSURE).
+ */
+function withoutEchoedPlayerSpeech(text, brief) {
+  const normalize = (value) => String(value ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  const said = normalize(playerIntentFromBrief(brief).action)
+  if (!said) return text
+  return text.replace(/«([^«»]{3,600})»/gu, (quote, inner) => {
+    const words = normalize(inner)
+    return words && said.includes(words) ? ' ' : quote
+  })
+}
+
+/** Текст без слов, чьи основы (пять букв) есть в заявке игрока. */
+function withoutPlayerWords(text, brief) {
+  const stem = (word) => word.toLocaleLowerCase('ru').replace(/ё/gu, 'е').slice(0, 5)
+  const said = new Set((String(playerIntentFromBrief(brief).action ?? '').match(/\p{L}{4,}/gu) ?? []).map(stem))
+  return text.replace(/\p{L}{4,}/gu, (word) => said.has(stem(word)) ? ' ' : word)
+}
+
 function hasDirectMovementConstraint(brief) {
   const intent = playerIntentFromBrief(brief)
   const constraints = Array.isArray(intent.constraints) ? intent.constraints : []
@@ -660,9 +683,14 @@ export function verifyNarration(narration, brief, {
   // Найденная улика сама может говорить о вещи, уходе или разговоре («оттуда
   // недавно забрали предмет», «список прибывающих»): пересказ подтверждённого
   // факта — не новая передача вещи, не перемещение и не новая реплика.
-  const confirmedFactTexts = (brief?.visible_events ?? [])
-    .filter((event) => event?.event_type === 'WorldFactRecorded')
-    .map((event) => String(event?.payload?.fact?.summary ?? ''))
+  // Деталь исхода, которую положил сервер, — такой же подтверждённый текст,
+  // как записанная находка: «Борин не торопясь перебирает всё» не выдумка.
+  const confirmedFactTexts = [
+    ...(brief?.visible_events ?? [])
+      .filter((event) => event?.event_type === 'WorldFactRecorded')
+      .map((event) => String(event?.payload?.fact?.summary ?? '')),
+    String(playerIntentFromBrief(brief).outcome_detail ?? ''),
+  ].filter(Boolean)
   const confirmedFactMentionsItem = confirmedFactTexts.some((summary) => ITEM_TRANSFER_PATTERN.test(summary))
   const confirmedFactMentionsMovement = confirmedFactTexts.some((summary) => MOVEMENT_ASSERTION_PATTERN.test(summary))
   const confirmedFactMentionsSpeech = confirmedFactTexts.some((summary) => SOCIAL_ASSERTION_PATTERN.test(summary))
@@ -673,11 +701,16 @@ export function verifyNarration(narration, brief, {
   const result = brief?.known_environment?.structured_result ?? brief?.structured_result
   const hasFreeActionContext = Object.keys(playerIntentFromBrief(brief)).length > 0
     || Boolean(result && typeof result === 'object')
-  const movementAssertion = positiveAssertion(MOVEMENT_ASSERTION_PATTERN, text)
-  const socialAssertion = positiveAssertion(SOCIAL_ASSERTION_PATTERN, text)
-    || namedNpcSpeechAssertion(text, brief)
-  const disclosureAssertion = positiveAssertion(DISCLOSURE_ASSERTION_PATTERN, text)
-    || (namedNpcSpeechAssertion(text, brief) && /(?<![а-яё])что(?![а-яё])/iu.test(text))
+  const claimText = withoutEchoedPlayerSpeech(text, brief)
+  const movementAssertion = positiveAssertion(MOVEMENT_ASSERTION_PATTERN, claimText)
+  const socialAssertion = positiveAssertion(SOCIAL_ASSERTION_PATTERN, claimText)
+    || namedNpcSpeechAssertion(claimText, brief)
+  // У реплики своему отряду пересказ слов героя — «не уйдёт, пока не узнает
+  // правду» — не новое знание: слова, которые сказал сам игрок, из этой
+  // проверки выпадают.
+  const disclosureText = playerIntentFromBrief(brief).roleplay_speech === true ? withoutPlayerWords(claimText, brief) : claimText
+  const disclosureAssertion = positiveAssertion(DISCLOSURE_ASSERTION_PATTERN, disclosureText)
+    || (namedNpcSpeechAssertion(claimText, brief) && /(?<![а-яё])что(?![а-яё])/iu.test(claimText))
   if (hasDirectMovementConstraint(brief) && movementAssertion && !evidence.hasMovement) {
     addViolation(violations, 'PLAYER_CONSTRAINT_VIOLATION', 'Narrator нарушил прямое ограничение игрока на перемещение')
   }
@@ -693,7 +726,10 @@ export function verifyNarration(narration, brief, {
   if (positiveOutcomeAssertion(DOOR_OPENING_ASSERTION_PATTERN, text) && !evidence.hasDoorOpening) {
     addViolation(violations, 'WORLD_CHANGE_NOT_IN_BRIEF', 'Рассказчик открыл дверь или сдвинул засов без подтверждённого события')
   }
-  if (hasFreeActionContext && socialAssertion && !hasSocialAuthority && !hasPermittedSocialReaction(brief) && !confirmedFactMentionsSpeech) {
+  // Слова героя своему отряду подтверждает сама заявка: «Мирель тихо говорит
+  // Борину…» — это и есть поступок. Реплика NPC по-прежнему требует события.
+  const heroSpeechOnly = playerIntentFromBrief(brief).roleplay_speech === true && !namedNpcSpeechAssertion(claimText, brief)
+  if (hasFreeActionContext && socialAssertion && !heroSpeechOnly && !hasSocialAuthority && !hasPermittedSocialReaction(brief) && !confirmedFactMentionsSpeech) {
     addViolation(violations, 'UNCONFIRMED_SOCIAL_ACTION', 'Narrator объявил разговор или реплику NPC без подтверждённого события')
   }
   if (hasFreeActionContext && disclosureAssertion && !evidence.hasDisclosure) {

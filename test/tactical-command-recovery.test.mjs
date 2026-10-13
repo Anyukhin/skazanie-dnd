@@ -473,3 +473,32 @@ test('REC-02: тело запроса совпадает с прежним фо�
   assert.equal(pendingPartyDecisionStorageKey('', 'PARTY-1'), null)
   assert.equal(readPendingNarrate(storage, key), null, 'запись голоса не читается как свободное действие')
 })
+
+test('слова игрока к действию едут полем player_note, а не внутри message', () => {
+  // Плейтест 2026-10-10: «Борин рычит «За стражу Причала!»» склеивалось с
+  // подписью кнопки в message, а сервер message у структурной команды не читает.
+  const withNote = { ...pending, command: { command_type: 'MakeAttack', actor_id: 'hero', target_id: 'ogre' }, message: 'Атаковать выбранную цель', playerNote: '  Борин рычит «За стражу Причала!»  ' }
+  const request = tacticalCommandRequest(withNote)
+  assert.equal(request.body.message, 'Атаковать выбранную цель')
+  assert.equal(request.body.player_note, 'Борин рычит «За стражу Причала!»')
+  const storage = new Map()
+  const adapter = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) }
+  const key = pendingTacticalCommandStorageKey('account-note', withNote.campaignId)
+  writePendingTacticalCommand(adapter, key, withNote)
+  const restored = parsePendingTacticalCommand(adapter.getItem(key))
+  assert.equal(restored.playerNote, 'Борин рычит «За стражу Причала!»')
+  assert.deepEqual(tacticalCommandRequest(restored).body, request.body, 'повтор шлёт ровно то же тело')
+})
+
+test('запись, сохранённая до поля player_note, повторяется прежним телом', () => {
+  const legacy = { ...pending, message: 'Атаковать выбранную цель. За стражу!' }
+  const storage = new Map()
+  const adapter = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) }
+  const key = pendingTacticalCommandStorageKey('account-legacy', legacy.campaignId)
+  adapter.setItem(key, JSON.stringify({ schema_version: 1, pending: legacy }))
+  const restored = parsePendingTacticalCommand(adapter.getItem(key))
+  assert.deepEqual(restored, legacy)
+  const body = tacticalCommandRequest(restored).body
+  assert.equal(body.message, 'Атаковать выбранную цель. За стражу!')
+  assert.equal(Object.hasOwn(body, 'player_note'), false)
+})

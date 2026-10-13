@@ -63,7 +63,7 @@ test('exports an expanded dnd.su-linked SRD 5.2.1 monster catalog with fixed sou
   assert.deepEqual(ENCOUNTER_THEMES, [
     'goblinoids', 'undead', 'beasts', 'raiders',
     'warband', 'law', 'vermin', 'ambush', 'crypt', 'cave', 'wilderness',
-    'generic',
+    'cult', 'generic',
   ])
   assert.equal(Object.keys(SRD_5_2_1_MONSTER_ALLOWLIST).length, 50)
   assert.equal(DND_SU_BESTIARY_SOURCE.url, 'https://dnd.su/bestiary/')
@@ -386,4 +386,17 @@ test('окно держит шаг, как стена: сквозь него в�
     ...[5, 6, 7, 8, 9].map((x) => ({ x, y: 0, type: 'floor', revealed: true }))]
   const proposal = assembleEncounter(baseInput({ scene: { cells }, party: [{ id: 'hero', level: 1, x: 0, y: 0 }], difficulty: 'easy', theme: 'beasts' }))
   assert.ok(proposal.enemies.every((enemy) => enemy.x <= 4), 'враги по эту сторону окна')
+})
+
+test('тема «культ» — только люди: в MM14 культисты, фанатики и прислужники, в SRD 5.2.1 — разбойники и главари', () => {
+  // Засада у маяка культа прежде собиралась из волков и гоблинов — судья
+  // читал её «из ниоткуда» (замеры 10–16, 2026-10-11).
+  for (const difficulty of ['easy', 'medium', 'hard']) {
+    const classic = assembleEncounter(baseInput({ theme: 'cult', difficulty, ruleset_id: 'dnd_5e_2014', seed: `cult-${difficulty}` }))
+    const names = classic.enemies.map((enemy) => String(enemy.name).replace(/\s+\d+$/u, ''))
+    assert.ok(names.length >= 1)
+    assert.ok(names.every((name) => ['Культист', 'Фанатик культа', 'Прислужник', 'Разбойник', 'Капитан разбойников'].includes(name)), names.join(', '))
+    const modern = assembleEncounter(baseInput({ theme: 'cult', difficulty, seed: `cult-${difficulty}` }))
+    assert.ok(modern.enemies.every((enemy) => /Бандит|Разбойник|Шпион|Главар|Капитан|Громил|Вожак|Атаман/u.test(String(enemy.name))), modern.enemies.map((enemy) => enemy.name).join(', '))
+  }
 })

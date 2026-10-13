@@ -122,7 +122,7 @@ const QUOTED = String.raw`«([^»]{1,120})»|"([^"]{1,120})"|“([^”]{1,120})�
  * соседству» и «в палату по делам гильдий» название не теряют.
  */
 const ROUTE_NOUN = String.raw`(?:маршрут|дорог|тропинк|троп|тракт|след|берег|улиц|мост|набережн|пут|склон|кромк|рек|течени|направлени)`
-const ROUTE = String.raw`(?:вдоль|через|мимо|минуя|сквозь|огибая|обходя|в\s+обход|по\s+(?:[\p{L}-]+\s+){0,2}?${ROUTE_NOUN}${NOUN_END})(?![\p{L}\p{M}])`
+const ROUTE = String.raw`(?:вдоль|через|мимо|минуя|сквозь|огибая|обходя|в\s+обход|на\s+(?:север|юг|запад|восток|северо-\p{L}+|юго-\p{L}+)|по\s+(?:[\p{L}-]+\s+){0,2}?${ROUTE_NOUN}${NOUN_END})(?![\p{L}\p{M}])`
 
 /**
  * Куда собрались: глагол ухода или движения, предлог и название до ближайшей
@@ -148,8 +148,11 @@ const ROUTE = String.raw`(?:вдоль|через|мимо|минуя|сквоз
 // (плейтест 2026-10-04): перед предлогом — «иду по свежим следам к провалу»,
 // «иду от пристани вдоль складов к молу»; после названия — «к дамбе по
 // маршруту от пристани» (шестая группа, её читает `destinationIn`).
+// «Откуда» — ленивое: в строке голосования «Уходим из «Серый Причал» и идём к
+// старому маяку на скале» жадный кусок съедал всё до последнего «на», и новая
+// локация называлась «Скале» (плейтест 2026-10-10).
 const DESTINATION = new RegExp(
-  String.raw`(?<![\p{L}\p{M}])(?:${LEAVE}|${HEAD_TO})\s+(?:отсюда\s+|из\s+[^,.;!?]{1,80}\s+)?(?:(?:${ROUTE}|от(?![\p{L}\p{M}]))[^,.;!?—]{0,80}?\s+)?(?:${PURPOSE_INFINITIVE}(?:\s+[^\s,.;!?—]+){0,3}?\s+)?(?:в|во|на|к|ко|до)\s+(?:(?:${QUOTED})|(?![«"“„])([^,.;!?—]{1,120}?)(?:\s+(${ROUTE}[^,.;!?—]{0,120}?))?(?=\s+(?:и|а|но|чтобы|затем|потом|сохранив|бросив|отказавшись|оставив)\s|\s+${PURPOSE_INFINITIVE}|[,.;!?—]|$))`,
+  String.raw`(?<![\p{L}\p{M}])(?:${LEAVE}|${HEAD_TO})\s+(?:отсюда\s+|из\s+[^,.;!?]{1,80}?\s+)?(?:(?:${ROUTE}|от(?![\p{L}\p{M}]))[^,.;!?—]{0,80}?\s+)?(?:${PURPOSE_INFINITIVE}(?:\s+[^\s,.;!?—]+){0,3}?\s+)?(?:в|во|на|к|ко|до)\s+(?:(?:${QUOTED})|(?![«"“„])([^,.;!?—]{1,120}?)(?:\s+(${ROUTE}[^,.;!?—]{0,120}?))?(?=\s+(?:и|а|но|чтобы|затем|потом|сохранив|бросив|отказавшись|оставив)\s|\s+${PURPOSE_INFINITIVE}|[,.;!?—]|$))`,
   'iu',
 )
 
@@ -220,13 +223,28 @@ function knownPlaceName(phrase, knownPlaces) {
   if (!phrase || !knownPlaces.length) return ''
   const spoken = nameWords(phrase)
   if (!spoken.distinctive.length) return ''
-  return knownPlaces.find((name) => {
+  // Из подходящих — самое полное: «Маяк Серого Причала» содержит и «Серый
+  // Причал», и прежде первое по списку уводило отряд в город вместо маяка
+  // (плейтест 2026-10-10).
+  const matches = knownPlaces.filter((name) => {
     const place = nameWords(name)
     if (!place.distinctive.length || spoken.distinctive.length > place.distinctive.length + 2) return false
     if (!place.distinctive.every((stem) => spoken.distinctive.some((word) => sameWordInflected(word, stem)))) return false
     return !spoken.generic.length || !place.generic.length
       || place.generic.some((kind) => spoken.generic.some((word) => sameWordInflected(word, kind)))
-  }) ?? ''
+  })
+  // Точность: слово места, названное во фразе, — плюс, не названное — минус
+  // вдвое. «Идём в Серый Причал» остаётся в городе, «к Маяку Серого Причала» —
+  // уходит на маяк.
+  const said = [...spoken.distinctive, ...spoken.generic]
+  const weight = (/** @type {string} */ name) => {
+    const place = nameWords(name)
+    const words = [...place.distinctive, ...place.generic]
+    const named = words.filter((stem) => said.some((word) => sameWordInflected(word, stem))).length
+    return named - 2 * (words.length - named)
+  }
+  return matches.map((name, index) => ({ name, index, score: weight(name) }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)[0]?.name ?? ''
 }
 
 /**
@@ -401,7 +419,7 @@ export function exitContextFromState(state = {}) {
  * @param {unknown} action
  * @param {{ knownPlaces?: unknown, presentNames?: unknown }} [options] названия
  *   известных точек карты и имена присутствующих — см. `exitContextFromState`
- * @returns {{destination: string, source: 'world-map'|'text', destinationLocationId?: string}|null}
+ * @returns {{destination: string, source: 'world-map'|'text'|'speech', destinationLocationId?: string}|null}
  */
 export function detectPartyExitRequest(action, options = {}) {
   const text = compact(action, 2_000)
@@ -419,14 +437,102 @@ export function detectPartyExitRequest(action, options = {}) {
       ...(destinationLocationId ? { destinationLocationId } : {}),
     }
   }
-  const leftPlace = LEAVE_OBJECT.exec(text)?.[1] ?? ''
-  const leaves = LEAVE_TARGET.test(text)
-    || heading.isPlace
-    || (LEAVE_VERB.test(text) && EXIT_SCOPE.test(text))
-    || BARE_LEAVE.test(text)
+  // Прямая речь героя и отрицание — не заявка на уход: «говорит Борину: «Я не
+  // уйду отсюда, пока не узнаю правду»» открывало голосование «Покинуть
+  // таверну?» (плейтест 2026-10-10).
+  const acted = withoutDirectSpeech(text).replace(new RegExp(NEGATED_MOVEMENT.source, 'giu'), ' ')
+  const actedHeading = acted === text ? heading : destinationIn(acted, context)
+  const leftPlace = LEAVE_OBJECT.exec(acted)?.[1] ?? ''
+  const leaves = LEAVE_TARGET.test(acted)
+    || actedHeading.isPlace
+    || (LEAVE_VERB.test(acted) && EXIT_SCOPE.test(acted))
+    || BARE_LEAVE.test(acted)
     || namesKnownPlace(leftPlace, context.knownPlaces)
-  if (!leaves) return null
-  return { destination: heading.destination, source: 'text' }
+  if (!leaves) return speechTravelProposal(text, context)
+  return { destination: withoutStrayQuote(actedHeading.destination), source: 'text' }
+}
+
+/**
+ * Закрывающая кавычка без открывающей — хвост речи, а не часть названия.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+function withoutStrayQuote(value) {
+  const text = String(value ?? '')
+  const opened = (text.match(/«/gu) ?? []).length
+  const closed = (text.match(/»/gu) ?? []).length
+  return closed > opened ? text.replace(/»+\s*$/u, '').trim() : text
+}
+
+/**
+ * Уход, предложенный в прямой речи спутнику: «Пора искать ответы у Старого
+ * Маяка; пойдём туда вместе». Речь обычно не уход — «Я не уйду отсюда» не
+ * открывает голосования, — но зов «пойдём / идём / отправляемся» с названным
+ * местом — это и есть заявка отряда (замер 15, 2026-10-11: живой игрок так и
+ * сказал, а отряд остался в таверне). «Туда» указывает на известное место,
+ * названное в той же реплике.
+ *
+ * @param {string} text
+ * @param {{ knownPlaces: string[], presentNames: string[] }} context
+ * @returns {{ destination: string, source: 'speech' } | null}
+ */
+function speechTravelProposal(text, context) {
+  // Место и зов бывают в разных репликах одной заявки: «…у Скального маяка
+  // найдутся следы». Она обращается к Борину: «Пойдём туда вместе»» —
+  // каждая реплика по отдельности уходом не была (замер 30, 2026-10-11).
+  const quoted = [...String(text ?? '').matchAll(/[«"“]([^«»"“”]{4,400})[»"”]/gu)].map((match) => match[1])
+  const speeches = quoted.length > 1 ? [...quoted, quoted.join('. ')] : quoted
+  for (const raw of speeches) {
+    const speech = compact(raw, 800)
+    if (!SPEECH_TRAVEL_CALL.test(speech) || NEGATED_MOVEMENT.test(speech)) continue
+    const heading = destinationIn(speech, context)
+    if (heading.isPlace && heading.destination) return { destination: withoutStrayQuote(heading.destination), source: 'speech' }
+    if (/(?<![\p{L}\p{M}])туда(?![\p{L}\p{M}])/iu.test(speech)) {
+      // Место ищется по именам с заглавной после предлога: «у Старого Маяка».
+      for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(?:у|к|ко|в|во|на|до|около|возле|от)\s+((?:[А-ЯЁ][\p{L}-]*\s*){1,3})/gu)) {
+        const named = knownPlaceName(compact(candidate[1], 120), context.knownPlaces)
+        if (named) return { destination: named, source: 'speech' }
+      }
+      // И словом места без заглавной: «пора к маяку на скале — … пойдём туда
+      // вместе» оставляло отряд в порту (замер 21, 2026-10-11). Место
+      // проверяет тот же разбор, что и фразу «идём к маяку на скале».
+      // «Искать следы у Маяка Чёрной скалы; идём туда» — место в родительном
+      // после «у», «около», «возле»: проверяется его именительный (замер 24).
+      for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(к|ко|в|во|на|до|у|около|возле)\s+([^,.;:!?—–«»]{3,80})/giu)) {
+        const preposition = candidate[1].toLocaleLowerCase('ru')
+        const phrase = candidate[2].trim()
+        const probe = ['у', 'около', 'возле'].includes(preposition)
+          ? destinationIn(`идём к ${nominativePlacePhrase(phrase)}`, context)
+          : destinationIn(`идём ${preposition} ${phrase}`, context)
+        if (probe.isPlace && probe.destination) return { destination: withoutStrayQuote(probe.destination), source: 'speech' }
+      }
+    } else {
+      // Без «туда» зов тоже ведёт к названному месту, если оно стоит с
+      // предлогом направления: «пора к маяку на скале — … Борин, идём»
+      // оставляло отряд в порту (замер 31, 2026-10-11). «В таверне
+      // поговорим» — где, а не куда: только «к», «ко», «до».
+      for (const candidate of speech.matchAll(/(?<![\p{L}\p{M}])(к|ко|до)\s+([^,.;:!?—–«»]{3,80})/giu)) {
+        const probe = destinationIn(`идём ${candidate[1].toLocaleLowerCase('ru')} ${candidate[2].trim()}`, context)
+        if (probe.isPlace && probe.destination) return { destination: withoutStrayQuote(probe.destination), source: 'speech' }
+      }
+    }
+  }
+  return null
+}
+
+const SPEECH_TRAVEL_CALL = /(?<![\p{L}\p{M}])(?:пойд[её]м|ид[её]м|пошли|отправ(?:имся|ляемся)|двинемся|двинули|выдвигаемся|поехали|поедем)(?![\p{L}\p{M}])/iu
+
+/**
+ * Текст заявки без прямой речи: реплика после двоеточия или тире в кавычках
+ * и длинная кавычка-фраза — это слова героя, а не его движение. Короткие
+ * кавычки остаются: так в заявке пишут названия мест («Ржавый якорь»).
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function withoutDirectSpeech(text) {
+  return String(text ?? '').replace(/[:—–]\s*«[^«»]*[.!?,][^«»]*»/gu, ' ')
 }
 
 /**
@@ -497,6 +603,12 @@ const OBLIQUE_ADJECTIVE = /** @type {Array<[RegExp, string, 'm'|'f']>} */ ([
  */
 export function nominativePlacePhrase(phrase) {
   const words = compact(phrase, 120).split(' ').filter(Boolean)
+  // Голое существительное без определения: «к маяку на скале» стало местом
+  // «Маяку на скале» и главой «Глава 2 · Маяку на скале» (замер 19,
+  // 2026-10-11). Род по одному слову не угадать, поэтому — только знакомые
+  // слова мест.
+  const bare = words.length ? bareNominativePlaceNoun(words[0]) : ''
+  if (bare) return [keepCase(words[0], bare), ...words.slice(1)].join(' ')
   /** @type {'m'|'f'|''} */
   let gender = ''
   let index = 0
@@ -529,6 +641,35 @@ export function nominativePlacePhrase(phrase) {
   if (!nominative) return compact(phrase, 120)
   result[index] = keepCase(words[index], nominative)
   return result.join(' ')
+}
+
+/** Слова мест, которые часто называют без определения: «к маяку», «в таверну». */
+const BARE_PLACE_NOUNS = Object.freeze([
+  'маяк', 'склеп', 'храм', 'лес', 'порт', 'причал', 'мост', 'холм', 'утёс', 'остров', 'форт', 'двор',
+  'погреб', 'сарай', 'амбар', 'курган', 'овраг', 'грот', 'трактир', 'город', 'перевал', 'тракт', 'берег',
+  'пирс', 'склад', 'особняк', 'дворец', 'бастион', 'лагерь', 'монастырь', 'башня', 'таверна', 'пещера',
+  'часовня', 'мельница', 'гавань', 'крепость', 'деревня', 'роща', 'кузница', 'лавка', 'площадь', 'скала',
+  'хижина', 'усадьба', 'пристань', 'застава', 'сторожка', 'святилище', 'кладбище', 'болото', 'озеро',
+])
+const BARE_PLACE_ENDING = /^(?:|а|я|у|ю|е|и|ы|ом|ем|ой|ей|ою|ею)$/u
+
+/**
+ * Именительный падеж знакомого слова места в косвенном: «маяку» — «маяк»,
+ * «таверне» — «таверна», «пещеру» — «пещера». Уже именительный и незнакомое
+ * слово — пустая строка.
+ *
+ * @param {string} word
+ * @returns {string}
+ */
+function bareNominativePlaceNoun(word) {
+  const lower = String(word ?? '').toLocaleLowerCase('ru').replace(/ё/gu, 'е')
+  for (const base of BARE_PLACE_NOUNS) {
+    const plain = base.replace(/ё/gu, 'е')
+    if (lower === plain) return ''
+    const stem = /[аяьео]$/u.test(plain) ? plain.slice(0, -1) : plain
+    if (lower.startsWith(stem) && BARE_PLACE_ENDING.test(lower.slice(stem.length))) return base
+  }
+  return ''
 }
 
 /**
