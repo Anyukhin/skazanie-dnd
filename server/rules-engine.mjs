@@ -2009,6 +2009,8 @@ export function normalizeCampaignState(input = {}) {
         status: fate.status === 'dead' ? 'dead' : 'resolved',
         resolution: ['resurrected', 'replaced'].includes(String(fate.resolution)) ? String(fate.resolution) : null,
         died_at: fate.died_at ?? null,
+        ...(Number.isSafeInteger(fate.died_round) ? { died_round: fate.died_round } : {}),
+        ...(Number.isSafeInteger(fate.died_world_minutes) ? { died_world_minutes: fate.died_world_minutes } : {}),
         resolved_at: fate.resolved_at ?? null,
         replacement_name: fate.replacement_name == null ? null : String(fate.replacement_name).slice(0, 120),
       }])),
@@ -7335,7 +7337,9 @@ export function validateCommand(input, rawState, context = {}) {
         const target = spellCreatureFor(state, requestedId, spell)
         const targetState = target && !findActor(state, requestedId) ? npcDamageContext(state, requestedId) : state
         const canAffectDyingHero = Boolean(target && isDyingHero(state, requestedId) && ['healing', 'buff'].includes(spell.kind))
-        if (!target || (!isLivingActor(target) && !canAffectDyingHero)) throw new RulesValidationError('Нужна допустимая цель заклинания', 'INVALID_SPELL_TARGET')
+        if (spell.revivesDead === true) assertRevivableHero(state, requestedId, spell)
+        const canReviveDeadHero = spell.revivesDead === true
+        if (!target || (!isLivingActor(target) && !canAffectDyingHero && !canReviveDeadHero)) throw new RulesValidationError('Нужна допустимая цель заклинания', 'INVALID_SPELL_TARGET')
         const targetIsHostile = isEnemyActor(state, actorId(target)) !== isEnemyActor(state, command.actor_id)
         if (spell.target === 'enemy' && !targetIsHostile) throw new RulesValidationError('Это заклинание требует противника', 'INVALID_SPELL_TARGET')
         if (spell.target === 'ally' && targetIsHostile) throw new RulesValidationError('Это заклинание требует союзника', 'INVALID_SPELL_TARGET')
@@ -9013,6 +9017,48 @@ const PHB_MATERIAL_BOOKS = new Map(
     .map((entry) => [String(entry.catalog_id), Object.freeze({ type: 'book', price_cp: Number(entry.price_cp) })]),
 )
 
+/** Заклинания, которым годятся алмазы в сумме: «бриллианты, стоящие в сумме 300 зм». */
+const SUMMED_DIAMOND_SPELLS = new Set(['revivify'])
+
+/**
+ * Чем платится расходуемый компонент: вещь и сколько штук. Обычно одна вещь
+ * нужной стоимости; «Возрождению» годится стопка алмазов, если их цена в
+ * сумме не меньше требуемой (шесть алмазов по 50 зм — 300 зм).
+ */
+function spellMaterialPaymentFor(state, actor, spell) {
+  const single = spellMaterialItemFor(state, actor, spell)
+  if (single) return { item: single, quantity: 1 }
+  if (!SUMMED_DIAMOND_SPELLS.has(String(spell?.id ?? ''))) return null
+  const minimumValue = Number(spell?.components?.material?.costGp ?? 0) * 100
+  for (const item of spellInventoryFor(state, actor)) {
+    const material = catalogItem(String(item.catalog_id ?? ''))?.material_component
+    const each = Number(material?.value_cp ?? 0)
+    if (material?.kind !== 'diamond' || each <= 0) continue
+    const needed = Math.ceil(minimumValue / each)
+    if (safeInteger(item.quantity, 1) >= needed) return { item, quantity: needed }
+  }
+  return null
+}
+
+/**
+ * «Возрождение»: цель — погибший герой отряда, чья смерть ещё не решена, и
+ * с гибели прошло не больше 10 раундов боя (или минуты мира вне боя).
+ */
+function assertRevivableHero(state, targetId, spell) {
+  const fate = state.mechanics?.death?.heroes?.[String(targetId)]
+  if (!playerActor(state, targetId) || fate?.status !== 'dead') {
+    throw new RulesValidationError('«Возрождение» возвращает только погибшего героя отряда', 'REVIVIFY_TARGET_NOT_DEAD')
+  }
+  const combat = state.mechanics?.combat
+  const rounds = Math.max(0, safeInteger(spell.reviveWindowRounds, 10))
+  const minutes = Math.max(0, safeInteger(spell.reviveWindowMinutes, 1))
+  const elapsedMinutes = Math.max(0, safeInteger(state.mechanics?.world_time?.elapsed_minutes, 0)) - Math.max(0, safeInteger(fate.died_world_minutes, 0))
+  const inTime = combat?.active && Number.isSafeInteger(fate.died_round)
+    ? Math.max(1, safeInteger(combat.round, 1)) - fate.died_round <= rounds && elapsedMinutes <= minutes
+    : Number.isSafeInteger(fate.died_world_minutes) && elapsedMinutes <= minutes
+  if (!inTime) throw new RulesValidationError('Слишком поздно: «Возрождение» действует не позже минуты после смерти', 'REVIVIFY_TOO_LATE')
+}
+
 function spellMaterialItemFor(state, actor, spell) {
   const minimumValue = Number(spell?.components?.material?.costGp ?? 0) * 100
   return spellInventoryFor(state, actor).find((item) => {
@@ -9029,14 +9075,15 @@ function spellMaterialItemFor(state, actor, spell) {
 
 function spellComponentCostEvents(state, command, spell, context = {}) {
   if (!usesDnd2014(state) || context.additionalBeam || context.readiedRelease || !spell?.components?.material?.consumed) return []
-  const item = spellMaterialItemFor(state, findActor(state, command.actor_id), spell)
-  if (!item) throw new RulesValidationError('Не найден расходуемый материальный компонент', 'SPELL_MATERIAL_COMPONENT_REQUIRED')
+  const payment = spellMaterialPaymentFor(state, findActor(state, command.actor_id), spell)
+  if (!payment) throw new RulesValidationError('Не найден расходуемый материальный компонент', 'SPELL_MATERIAL_COMPONENT_REQUIRED')
+  const { item, quantity } = payment
   if (isEnemyActor(state, command.actor_id)) return [npcEquipmentSpentEvent(command, {
     item_instance_id: item.id, catalog_id: item.catalog_id,
-    quantity_before: item.quantity, quantity_after: item.quantity - 1, reason: 'spell-component', spell_id: spell.id,
+    quantity_before: item.quantity, quantity_after: item.quantity - quantity, reason: 'spell-component', spell_id: spell.id,
   })]
   return [eventFrom(commandWithRules(command, RULE_IDS.resource), 'ItemConsumed', {
-    item_id: item.id, item_name: item.name, quantity: 1, reason: 'spell-component', spell_id: spell.id,
+    item_id: item.id, item_name: item.name, quantity, reason: 'spell-component', spell_id: spell.id,
   }, [command.actor_id])]
 }
 
@@ -9096,7 +9143,7 @@ export function spellComponentAvailabilityFor(state, actor, spell) {
       if (!focus && !pouch) return refuse('SPELL_MATERIAL_COMPONENT_REQUIRED', 'Нужна сумка с компонентами или подходящая заклинанию фокусировка.')
       if (!freeHand && !focus) return refuse('SPELL_MATERIAL_HAND_REQUIRED', 'Нужна свободная рука для материального компонента.')
     } else {
-      const requiredItem = spellMaterialItemFor(state, actor, spell)
+      const requiredItem = spellMaterialPaymentFor(state, actor, spell)
       if (!requiredItem) return refuse('SPELL_MATERIAL_COMPONENT_REQUIRED', `Нужен материальный компонент: ${material.description}.`)
       if (!freeHand) return refuse('SPELL_MATERIAL_HAND_REQUIRED', 'Нужна свободная рука для материального компонента.')
     }
@@ -17962,6 +18009,16 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             const slotLevel = Math.max(spell.level, safeInteger(command.slot_level, spell.level))
             // Стабилизация — то же событие, что у проверки Медицины и набора
             // лекаря: счётчик спасбросков от смерти сбрасывается, никакой метки.
+            if (spell.revivesDead === true) {
+              const hero = playerActor(state, resolvedTargetId)
+              events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp, RULE_IDS.healing), 'HeroResurrected', {
+                hp_after: 1,
+                previous_name: String(hero?.character ?? hero?.name ?? resolvedTargetId),
+                method: 'revivify',
+                spell_id: spell.id,
+              }, [resolvedTargetId]))
+              continue
+            }
             if (spell.stabilizesDying === true) {
               events.push(eventFrom(commandWithRules(command, RULE_IDS.zeroHp), 'HeroStabilized', {
                 hero_name: String(playerActor(state, resolvedTargetId)?.character ?? playerActor(state, resolvedTargetId)?.name ?? resolvedTargetId),
@@ -24457,6 +24514,9 @@ function applyGameEventCurrent(rawState, event) {
         status: 'dead',
         resolution: null,
         died_at: event.occurred_at ?? event.created_at ?? null,
+        // Раунд боя и минута мира гибели: «Возрождение» действует минуту.
+        ...(state.mechanics.combat?.active ? { died_round: Math.max(1, safeInteger(state.mechanics.combat.round, 1)) } : {}),
+        died_world_minutes: Math.max(0, safeInteger(state.mechanics.world_time?.elapsed_minutes, 0)),
         resolved_at: null,
         replacement_name: null,
       }

@@ -53,6 +53,15 @@ export function spellRuntimeFixture(id) {
     state.mechanics.death.saving_throws.ally = { successes: 0, failures: 1, stable: false }
     state.mechanics.conditions.ally = [{ id: 'unconscious', duration: null }]
   }
+  // «Возрождение» возвращает погибшего: союзник стенда погиб в этом раунде,
+  // а бриллианты на 300 зм — шесть алмазов по 50 зм.
+  if (profile.revivesDead === true) {
+    state.players[1].hp = 0
+    state.mechanics.death.heroes.ally = { status: 'dead', resolution: null, died_at: null, resolved_at: null, replacement_name: null, died_round: 1, died_world_minutes: 0 }
+    state.mechanics.conditions.ally = [{ id: 'dead', duration: null }]
+    const diamond = state.players[0].inventory.find((item) => item.catalog_id === 'srd_5_2_1:diamond-50gp')
+    if (diamond) diamond.quantity = 6
+  }
   const runtime = combatSpellFor(state.players[0], id, { rulesetId: state.ruleset_id })
   assert.ok(runtime, `Нет источника заклинания в стенде: ${id}`)
   const command = { command_type: 'CastSpell', command_id: `audit:${id}`, actor_id: 'caster', spell_id: id, server_authoritative: true }
