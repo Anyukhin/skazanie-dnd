@@ -547,6 +547,7 @@ dependencies = [
  "fancy-regex",
  "hex",
  "icu_collator",
+ "indexmap",
  "regex",
  "serde",
  "serde_json",

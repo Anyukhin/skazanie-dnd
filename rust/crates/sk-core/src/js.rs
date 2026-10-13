@@ -420,3 +420,184 @@ mod tests {
         assert_eq!(parse_float("1e3x"), 1000.0);
     }
 }
+
+/// `ToInt32(value)` — то, что делают `value | 0`, `value >> 0`, `~~value`.
+pub fn to_int32(value: f64) -> i32 {
+    to_uint32(value) as i32
+}
+
+/// `ToUint32(value)` — то, что делает `value >>> 0`.
+pub fn to_uint32(value: f64) -> u32 {
+    if !value.is_finite() {
+        return 0;
+    }
+    let truncated = value.trunc();
+    let modulo = truncated.rem_euclid(4_294_967_296.0);
+    modulo as u32
+}
+
+/// `Math.imul(a, b)`.
+pub fn imul(a: f64, b: f64) -> i32 {
+    to_int32(a).wrapping_mul(to_int32(b))
+}
+
+/// `value.toFixed(digits)`: ровно `digits` знаков после точки; половина —
+/// к большему по модулю, как в JS, а не к чётному, как `format!`.
+pub fn to_fixed(value: f64, digits: usize) -> String {
+    if !value.is_finite() {
+        return f64_string(value);
+    }
+    if value.abs() >= 1e21 {
+        return f64_string(value);
+    }
+    let negative = value < 0.0;
+    // Точное десятичное разложение двоичного числа: у f64 не больше 1074
+    // знаков после точки.
+    let exact = format!("{:.1100}", value.abs());
+    let (whole, fraction) = exact.split_once('.').unwrap_or((&exact, ""));
+    let kept = &fraction[..digits.min(fraction.len())];
+    let rest = &fraction[digits.min(fraction.len())..];
+    let round_up = rest.as_bytes().first().is_some_and(|digit| *digit >= b'5');
+    let mut number: Vec<u8> = whole.bytes().chain(kept.bytes()).collect();
+    if round_up {
+        let mut index = number.len();
+        loop {
+            if index == 0 {
+                number.insert(0, b'1');
+                break;
+            }
+            index -= 1;
+            if number[index] == b'9' {
+                number[index] = b'0';
+            } else {
+                number[index] += 1;
+                break;
+            }
+        }
+    }
+    let text = String::from_utf8(number).unwrap_or_default();
+    let split = text.len() - digits;
+    let body = if digits == 0 { text } else { format!("{}.{}", &text[..split], &text[split..]) };
+    let is_zero = body.bytes().all(|byte| byte == b'0' || byte == b'.');
+    if negative && !is_zero {
+        format!("-{body}")
+    } else {
+        body
+    }
+}
+
+/// Ключ объекта, который JS считает индексом массива: `"0"`, `"12"`, но не
+/// `"01"` и не `"-1"`.
+pub fn is_array_index_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.bytes().all(|byte| byte.is_ascii_digit())
+        && (key == "0" || !key.starts_with('0'))
+        && key.parse::<u64>().is_ok_and(|index| index < 4_294_967_295)
+}
+
+/// Пары объекта в порядке `Object.entries`: сначала ключи-индексы по
+/// возрастанию, затем остальные в порядке вставки.
+pub fn entries(map: &Map<String, Value>) -> Vec<(&String, &Value)> {
+    let mut indexed: Vec<(&String, &Value)> = map.iter().filter(|(key, _)| is_array_index_key(key)).collect();
+    indexed.sort_by_key(|(key, _)| key.parse::<u64>().unwrap_or(0));
+    indexed.extend(map.iter().filter(|(key, _)| !is_array_index_key(key)));
+    indexed
+}
+
+/// Ключи в порядке `Object.keys`.
+pub fn keys(map: &Map<String, Value>) -> Vec<&String> {
+    entries(map).into_iter().map(|(key, _)| key).collect()
+}
+
+/// `array.sort()` без сравнителя: по строковому виду элементов (UTF-16 —
+/// здесь по кодовым точкам), `undefined` в конце. Сортировка устойчивая.
+pub fn default_sort(values: &mut [Value]) {
+    values.sort_by_key(|value| s(Some(value)));
+}
+
+/// `Math.max(...values)`: `-Infinity` для пустого списка, `NaN` заразен.
+pub fn max_of(values: impl IntoIterator<Item = f64>) -> f64 {
+    let mut result = f64::NEG_INFINITY;
+    for value in values {
+        if value.is_nan() {
+            return f64::NAN;
+        }
+        if value > result {
+            result = value;
+        }
+    }
+    result
+}
+
+/// `Math.min(...values)`: `Infinity` для пустого списка, `NaN` заразен.
+pub fn min_of(values: impl IntoIterator<Item = f64>) -> f64 {
+    let mut result = f64::INFINITY;
+    for value in values {
+        if value.is_nan() {
+            return f64::NAN;
+        }
+        if value < result {
+            result = value;
+        }
+    }
+    result
+}
+
+/// `value.toLocaleString('ru-RU')` для целого: группы по три через
+/// неразрывный пробел (U+00A0), как печатает ICU.
+pub fn ru_integer(value: i64) -> String {
+    let digits = value.unsigned_abs().to_string();
+    let mut grouped = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            grouped.push('\u{a0}');
+        }
+        grouped.push(digit);
+    }
+    if value < 0 {
+        format!("-{grouped}")
+    } else {
+        grouped
+    }
+}
+
+#[cfg(test)]
+mod more_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn integer_coercions_follow_js() {
+        assert_eq!(to_int32(4_294_967_297.0), 1);
+        assert_eq!(to_int32(-1.5), -1);
+        assert_eq!(to_uint32(-1.0), 4_294_967_295);
+        assert_eq!(imul(0x7fff_ffff as f64, 2.0), -2);
+    }
+
+    #[test]
+    fn to_fixed_rounds_half_up_on_exact_binary() {
+        assert_eq!(to_fixed(2.5, 0), "3");
+        assert_eq!(to_fixed(1.005, 2), "1.00");
+        assert_eq!(to_fixed(1.25, 1), "1.3");
+        assert_eq!(to_fixed(-1.5, 0), "-2");
+        assert_eq!(to_fixed(-0.0001, 2), "0.00");
+        assert_eq!(to_fixed(0.1, 3), "0.100");
+        assert_eq!(to_fixed(99.96, 1), "100.0");
+    }
+
+    #[test]
+    fn entries_put_index_keys_first() {
+        let map = json!({ "b": 1, "10": 2, "a": 3, "2": 4, "01": 5 });
+        let keys: Vec<&str> = keys(map.as_object().expect("объект")).into_iter().map(String::as_str).collect();
+        assert_eq!(keys, ["2", "10", "b", "a", "01"]);
+    }
+
+    #[test]
+    fn default_sort_compares_strings() {
+        let mut values = vec![json!(10), json!(9), json!(1)];
+        default_sort(&mut values);
+        assert_eq!(values, vec![json!(1), json!(10), json!(9)]);
+        assert_eq!(ru_integer(1234567), "1\u{a0}234\u{a0}567");
+        assert_eq!(max_of([]), f64::NEG_INFINITY);
+    }
+}

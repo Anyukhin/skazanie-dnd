@@ -17,3 +17,4 @@ fancy-regex.workspace = true
 unicode-normalization.workspace = true
 icu_collator.workspace = true
 sk-dice.workspace = true
+indexmap.workspace = true

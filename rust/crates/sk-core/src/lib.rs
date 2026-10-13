@@ -22,5 +22,6 @@ pub use command::Command;
 pub use error::{RuleError, RuleResult};
 pub use event::{Event, EventDraft};
 pub use fancy_regex;
+pub use indexmap;
 pub use regex;
 pub use state::*;

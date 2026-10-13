@@ -20,6 +20,7 @@ regex = "1.13.1"
 fancy-regex = "0.19.2"
 unicode-normalization = "0.1.25"
 icu_collator = "2.3.1"
+indexmap = "2.14.2"
 
 sk-dice = { path = "crates/sk-dice" }
 sk-core = { path = "crates/sk-core" }
