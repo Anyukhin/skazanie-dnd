@@ -281,4 +281,8 @@ test('обойдя места линий, отряд зовётся в лого�
   assert.notEqual(midway[0], 'astohan-vulkanis-brazier', 'до обхода линий финал не первый')
   const exhausted = scenarioDestinationIds(at(lineIds))
   assert.equal(exhausted[0], 'astohan-vulkanis-brazier', 'линии обойдены — сюжет зовёт в логово')
+  // Дорогу в логово открывает перевал: пока она закрыта, отряд идёт на подступ,
+  // а не на ближайшее непосещённое Озеро (прогон 2026-10-13).
+  assert.ok(exhausted.includes('astohan-obsidian-pass'), 'и на подступ к логову')
+  assert.equal(nextWorldMapDestination(at(lineIds)), 'Обсидиановый перевал')
 })

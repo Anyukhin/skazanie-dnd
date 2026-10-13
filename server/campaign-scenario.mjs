@@ -947,7 +947,13 @@ export function scenarioDestinationIds(state = {}) {
     .flatMap((beat) => beat.location_ids)
     .filter((id) => id !== here && !visited.has(id))
   const finaleReady = progress.lines_completed >= Math.min(2, progress.lines_total) || !lineUnvisited.length
-  const finaleIds = here !== finale.boss.location_id ? [finale.boss.location_id] : []
+  // Финал зовёт в логово и на подступ к нему: дорогу в логово открывает сам
+  // подступ (перевал, `map_reveals`). Без подступа логово недостижимо, и
+  // Режиссёр уводил отряд в ближайшее непосещённое место — на Озеро и в
+  // Проклятый лес (прогон Асстохана 2026-10-13). В логове звать некуда.
+  const finaleIds = here !== finale.boss.location_id
+    ? [...new Set([finale.boss.location_id, ...(finale.location_ids ?? [])])].filter((id) => id !== here)
+    : []
   // Пролог и первая глава не открыты — сначала они: финал до заставы — это
   // не свобода, а пропущенная завязка.
   if (opening.some((id) => id !== here)) {
