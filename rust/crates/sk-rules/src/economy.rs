@@ -378,3 +378,59 @@ pub fn combat_turn_key(state: &Value, fallback_actor: &str) -> Option<String> {
         .unwrap_or_else(|| fallback_actor.to_string());
     Some(format!("combat:{}:{active}", safe_int(combat.get("round"), 1)))
 }
+
+/// `spendVersionedAttackReplacement(state, id)`: действие предметом вместо
+/// атаки — тратит одну атаку текущего кадра, а не всё действие.
+pub fn spend_versioned_attack_replacement(state: &mut Value, id: &str) {
+    let economy = economy_of(state, id);
+    let actor = find_actor(state, id).cloned();
+    let current = current_frame(&economy).unwrap_or_else(|| Frame {
+        id: format!("item-action:{id}"),
+        kind: "normal".into(),
+        limit: weapon_attack_limit_for_action(state, actor.as_ref(), id, false).max(1),
+        attacks_used: 0,
+        loading: json!({ "action": [], "bonus_action": [], "reaction": [] }),
+    });
+    let used = current.attacks_used.max(0) + 1;
+    let mut next = with(
+        &economy,
+        json!({
+            "action_economy_version": ACTION_ECONOMY_EVENT_VERSION,
+            "attack_action_id": current.id,
+            "attack_action_kind": current.kind,
+            "attack_action_limit": current.limit,
+            "attacks_allowed": current.limit,
+            "attacks_used": used,
+            "loading_weapon_item_ids": current.loading,
+        }),
+    );
+    if current.kind != "normal" && used >= current.limit {
+        let mut pending = pending_frames(&economy);
+        let extra_actions = (safe_int(economy.get("extra_actions"), 0) - 1).max(0);
+        if pending.is_empty() {
+            let cleared = clear_loading_weapon_resource(&next, "action");
+            next = with(
+                &next,
+                json!({ "action": false, "extra_actions": extra_actions, "attack_action_stack": [], "loading_weapon_item_ids": cleared["loading_weapon_item_ids"].clone() }),
+            );
+        } else {
+            let resumed = pending.remove(0);
+            next = resume(&next, &resumed, &pending, extra_actions);
+        }
+    } else if current.kind == "normal" {
+        next["action"] = Value::Bool(false);
+    }
+    set_economy(state, id, next);
+}
+
+/// `spendVersionedSpellAction(state, id)`: заклинание действием; всплеск
+/// действия годится только по редакции 2014.
+pub fn spend_versioned_spell_action(state: &mut Value, id: &str) {
+    let allow_surge = sk_core::game::uses_2014(state);
+    spend_versioned_action_frame(state, id, allow_surge, false);
+}
+
+/// `spendVersionedActionOnly(state, id)`.
+pub fn spend_versioned_action_only(state: &mut Value, id: &str) {
+    spend_versioned_action_frame(state, id, false, false);
+}

@@ -225,8 +225,9 @@ pub fn ability_modifier(actor: &Value, ability: &str) -> i64 {
 
 /// Используется ли редакция 2014.
 pub fn uses_2014(state: &Value) -> bool {
-    let ruleset = s(state.get("ruleset_id"));
-    ruleset.is_empty() || ruleset == "dnd_5e_2014"
+    // `String(state?.ruleset_id ?? DEFAULT_RULESET_ID) === DND_2014_RULESET_ID`:
+    // без редакции кампания живёт по `srd_5_2_1`, а не по 2014.
+    s(state.get("ruleset_id")) == "dnd_5e_2014"
 }
 
 /// Включено ли домашнее правило.
