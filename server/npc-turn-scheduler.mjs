@@ -656,10 +656,19 @@ function targetCandidates(state, enemy) {
   const profiles = actionProfiles(state, enemy)
   const candidates = []
   const hostileToAll = enemy?.hostile_to_all === true
+  const stopBlocked = stopBlockedFor(state, actorId(enemy))
+  const large = footprintSizeFor(enemy) > 1
   for (const target of attackableTargetsFor(state, enemy)) {
     const targetAt = actorPosition(state, actorId(target))
-    const path = shortestTacticalPath(state, actorId(enemy), targetAt, { allowOccupiedDestination: true })
-      ?? footprintStrikePath(state, enemy, target, profiles)
+    let path = shortestTacticalPath(state, actorId(enemy), targetAt, { allowOccupiedDestination: true })
+    // Путь крупного тела в клетку цели мог идти сквозь лежащих героев так, что
+    // ни на одной его клетке ход не кончается: подход тогда стоит на месте.
+    // Совомед у края карты рядом с двумя упавшими простоял так 30 раундов
+    // (прогон Асстохана 2026-10-13) — тогда ищется клетка удара рядом с целью.
+    if (path && large && path.length > 1 && path.slice(0, -1).every((step) => stopBlocked(step))) {
+      path = footprintStrikePath(state, enemy, target, profiles) ?? path
+    }
+    path ??= footprintStrikePath(state, enemy, target, profiles)
     const pathDistance = path ? path.length : gridDistance({ state, id: actorId(enemy) }, { state, id: actorId(target) })
     const support = adjacentEnemyAlly(state, enemy, target)
     for (const profile of profiles) {

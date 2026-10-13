@@ -704,8 +704,57 @@ function movementCandidateFor(state, actorIdValue, targetIdValue, itemId = null)
     chosen = step
     chosenCost = spent
   }
+  if (!chosen && !adjacentThreats.length) {
+    // Путь к опорной клетке цели мог упереться в лежащего союзника и в само
+    // тело цели: совомед 2×2 у края карты, рядом двое упавших — и бой стоял
+    // 30 раундов (прогон Асстохана 2026-10-13). Тогда ищется свободная клетка
+    // вокруг цели, откуда удар достаёт и до которой хватает движения.
+    const alternative = attackCellNearTarget(validationState, actorIdValue, targetIdValue, itemId, budget, occupied)
+    if (alternative) {
+      chosen = alternative.cell
+      chosenCost = alternative.cost
+    }
+  }
   if (!chosen || !validatesTacticCommand(state, actorIdValue, { command_type: 'MoveActor', actor_id: actorIdValue, to: chosen, server_authoritative: true })) return null
   return { command: { command_type: 'MoveActor', actor_id: actorIdValue, to: chosen, server_authoritative: true }, cost: chosenCost }
+}
+
+/**
+ * Ближайшая по цене пути свободная клетка вокруг цели (на клетку от её
+ * фишки), с которой прогноз удара достаёт. `null` — такой нет в пределах
+ * оставшегося движения.
+ * @param {Record<string, any>} state техническая копия для проверки
+ * @param {string} actorIdValue
+ * @param {string} targetIdValue
+ * @param {string | null} itemId
+ * @param {number} budget оставшееся движение, футы
+ * @param {Set<string>} occupied занятые клетки, кроме самого героя
+ */
+function attackCellNearTarget(state, actorIdValue, targetIdValue, itemId, budget, occupied) {
+  const actor = findActor(state, actorIdValue)
+  const target = findActor(state, targetIdValue)
+  const targetAt = combatPosition(state, targetIdValue)
+  if (!actor || !target || !targetAt) return null
+  const body = footprintCellsFor(target, targetAt)
+  const bodyKeys = new Set(body.map((cell) => `${cell.x},${cell.y}`))
+  const ring = new Map()
+  for (const cell of body) for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) {
+    const key = `${cell.x + dx},${cell.y + dy}`
+    if (!bodyKeys.has(key)) ring.set(key, { x: cell.x + dx, y: cell.y + dy })
+  }
+  let best = null
+  for (const cell of ring.values()) {
+    if (footprintCellsFor(actor, cell).some((part) => occupied.has(`${part.x},${part.y}`) || bodyKeys.has(`${part.x},${part.y}`))) continue
+    const path = shortestTacticalPath(state, actorIdValue, cell)
+    if (!path?.length) continue
+    const cost = movementCostOfPath(state, actorIdValue, path)
+    if (cost > budget || (best && cost >= best.cost)) continue
+    const attackState = structuredClone(state)
+    attackState.mechanics.positions[actorIdValue] = { x: cell.x, y: cell.y }
+    const forecast = attackForecast(attackState, actorIdValue, targetIdValue, itemId ? { itemId } : {})
+    if (forecast?.reachable ?? forecast?.in_range) best = { cell, cost }
+  }
+  return best
 }
 
 function addAttackCandidates(state, actorIdValue, actor, add) {
