@@ -31,11 +31,15 @@
  * - `action` — сюжетная команда, которую вариант исполняет тем же путём, что
  *   и фраза («берём кошель короля»): `ReceiveScenarioPurse`,
  *   `ChooseScenarioArmoryItem` (раз на героя), `ReturnKnightHead` (голова
- *   перед рыцарем) и `ReleaseCursedKnight` (упокоение). У упокоения проверку
- *   бросает сама команда: `check` варианта называет навык и СЛ для окна, а
- *   исход берётся из её броска. Показ варианта с командой рыцаря следует его
- *   правилам: голова — когда загадка разгадана и голова ещё не возвращена,
- *   упокоение — когда голова перед ним и герой этой ночью ещё не пробовал;
+ *   перед рыцарем), `ReleaseCursedKnight` (упокоение),
+ *   `ResolveScenarioInformant` (судьба осведомителя: `informant_id`,
+ *   `choice`) и `NegotiateScenarioTreaty` (договор с драконом). Упокоение,
+ *   перевербовка и договор бросают проверку сами: `check` варианта называет
+ *   навык и СЛ для окна, а исход берётся из их броска. Вариант с командой
+ *   показан, только пока команда его примет: голова — когда загадка разгадана
+ *   и голова ещё не возвращена, упокоение — когда голова перед рыцарем и герой
+ *   этой ночью ещё не пробовал, судьба осведомителя — пока она не решена,
+ *   договор — когда правда о походе раскрыта и герой ещё не пробовал;
  * - `ends` — вариант закрывает окно разговора.
  *
  * Модуль — лист: читает состояние и данные, событий не создаёт. Команду и
@@ -44,7 +48,7 @@
  */
 import { readFileSync } from 'node:fs'
 
-import { campaignScenario, scenarioClueFactId, scenarioFoundClueIds } from './campaign-scenario.mjs'
+import { campaignScenario, scenarioClueFactId, scenarioFoundClueIds, scenarioInformantRules, scenarioLocationId, scenarioTreatyRules } from './campaign-scenario.mjs'
 import { scenarioKnightRiddleSolved, scenarioKnightState, scenarioNightIndex } from './scenario-knight.mjs'
 
 export const DIALOGUES_SCHEMA_VERSION = 1
@@ -57,9 +61,18 @@ export const DIALOGUE_POLICY_ID = 'skazanie:authored-dialogue-v1'
 const DIALOGUES_URL = new URL('../data/campaign-dialogues-v1.json', import.meta.url)
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/u
 const DIALOGUE_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight', 'history', 'religion', 'arcana', 'performance', 'medicine'])
-const DIALOGUE_ACTIONS = new Set(['ReceiveScenarioPurse', 'ChooseScenarioArmoryItem', 'ReturnKnightHead', 'ReleaseCursedKnight'])
-/** Команды, которые бросают проверку сами: вариант задаёт навык, исход — их бросок. */
-const CHECKED_ACTIONS = new Set(['ReleaseCursedKnight'])
+const DIALOGUE_ACTIONS = new Set(['ReceiveScenarioPurse', 'ChooseScenarioArmoryItem', 'ReturnKnightHead', 'ReleaseCursedKnight', 'ResolveScenarioInformant', 'NegotiateScenarioTreaty'])
+const INFORMANT_CHOICES = new Set(['expose', 'release', 'turn'])
+
+/**
+ * Бросает ли команда проверку сама: тогда вариант задаёт навык, а исход — её
+ * бросок. Упокоение рыцаря, договор и перевербовка осведомителя.
+ * @param {{ command_type: string, choice?: string }} action
+ */
+export function dialogueActionChecks(action) {
+  return action.command_type === 'ReleaseCursedKnight' || action.command_type === 'NegotiateScenarioTreaty'
+    || (action.command_type === 'ResolveScenarioInformant' && action.choice === 'turn')
+}
 
 /** @param {unknown} value @param {number} [maximum] */
 const clean = (value, maximum = 240) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -86,7 +99,7 @@ function invalid(message) {
  * @property {{ skill: string, dc: number } | null} check
  * @property {DialogueOutcome} success исход без проверки — тоже здесь
  * @property {DialogueOutcome | null} failure
- * @property {{ command_type: string, catalog_id?: string } | null} action
+ * @property {{ command_type: string, catalog_id?: string, informant_id?: string, choice?: string } | null} action
  * @property {boolean} ends
  */
 
@@ -149,11 +162,16 @@ function option(raw, where) {
   if (raw?.action != null) {
     const commandType = clean(raw.action.command_type, 60)
     if (!DIALOGUE_ACTIONS.has(commandType)) invalid(`${where}.${id}: команда «${commandType}»`)
-    if (CHECKED_ACTIONS.has(commandType) && !check) invalid(`${where}.${id}: команда «${commandType}» бросает проверку — нужен check с навыком`)
-    if (!CHECKED_ACTIONS.has(commandType) && check) invalid(`${where}.${id}: команда и проверка в одном варианте не поддержаны`)
     const catalogId = clean(raw.action.catalog_id, 120)
     if (commandType === 'ChooseScenarioArmoryItem' && !catalogId) invalid(`${where}.${id}: не указан предмет оружейной`)
-    action = { command_type: commandType, ...(catalogId ? { catalog_id: catalogId } : {}) }
+    const informantId = commandType === 'ResolveScenarioInformant' ? clean(raw.action.informant_id, 80) : ''
+    const choice = commandType === 'ResolveScenarioInformant' ? clean(raw.action.choice, 20) : ''
+    if (commandType === 'ResolveScenarioInformant' && (!ID_PATTERN.test(informantId) || !INFORMANT_CHOICES.has(choice))) {
+      invalid(`${where}.${id}: осведомитель «${informantId}» и решение «${choice}»`)
+    }
+    action = { command_type: commandType, ...(catalogId ? { catalog_id: catalogId } : {}), ...(informantId ? { informant_id: informantId, choice } : {}) }
+    if (dialogueActionChecks(action) && !check) invalid(`${where}.${id}: команда «${commandType}» бросает проверку — нужен check с навыком`)
+    if (!dialogueActionChecks(action) && check) invalid(`${where}.${id}: команда и проверка в одном варианте не поддержаны`)
   }
   const group = raw?.group == null ? '' : clean(raw.group, 80)
   if (group && !ID_PATTERN.test(group)) invalid(`${where}.${id}: группа «${group}»`)
@@ -334,6 +352,17 @@ function dialogueActionOpen(state, item, hero, progress) {
     if (!knight || knight.released) return false
     if (type === 'ReturnKnightHead') return !knight.head_returned && scenarioKnightRiddleSolved(state)
     return knight.head_returned && !knight.attempts.includes(`${hero}:${scenarioNightIndex(state)}`)
+  }
+  if (type === 'ResolveScenarioInformant') {
+    const informant = scenarioInformantRules(state).find((entry) => entry.id === item.action?.informant_id)
+    if (!informant?.revealed || scenarioLocationId(state) !== informant.location_id) return false
+    if (state?.scenario_attention?.informants?.[informant.id]) return false
+    return !(item.action?.choice === 'turn' && (state?.scenario_attention?.informant_turn_failed ?? []).includes(informant.id))
+  }
+  if (type === 'NegotiateScenarioTreaty') {
+    const rules = scenarioTreatyRules(state)
+    if (!rules || rules.concluded || !rules.truth_revealed || scenarioLocationId(state) !== rules.boss_location_id) return false
+    return !(state?.scenario_attention?.treaty?.attempts ?? []).map(String).includes(hero)
   }
   return !(progress.chosen[item.id] ?? []).includes(hero)
 }

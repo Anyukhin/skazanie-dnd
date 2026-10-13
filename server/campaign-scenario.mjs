@@ -648,6 +648,9 @@ export function scenarioInformantRules(state) {
     name: clean(informant.name, 120),
     location_id: String(informant.location_id),
     name_stems: informant.name_stems.map(String),
+    // Собеседник-осведомитель и исходы, после которых он уходит из сцены.
+    npc_id: clean(informant.npc_id, 120),
+    departs_on: (Array.isArray(informant.departs_on) ? informant.departs_on : []).map(String),
     revealed: found.has(scenarioClueFactId(scenario, informant.clue)),
     expose_delta: Number(informant.expose_delta),
     turn: { skill: String(informant.turn.skill), dc: Number(informant.turn.dc), delta: Number(informant.turn.delta) },

@@ -253,7 +253,7 @@ import {
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
 import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
-import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueFor, dialogueGrantedFactIds, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
+import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueActionChecks, dialogueFor, dialogueGrantedFactIds, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
   SCENARIO_PURSE_COMMAND_TYPES,
@@ -12514,6 +12514,25 @@ function resolveCommandWithPauses(input, rawState, { diceService, context = {} }
   }
 }
 
+const NPC_DEPARTURE_FIELDS = Object.freeze(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs',
+  'known_fact_ids', 'social_dcs', 'visibility', 'reveal_on_presence', 'tags', 'schedule', 'inventory'])
+
+/**
+ * Собеседник уходит из сцены: профиль остаётся, но недоступен. Рыцарь обрёл
+ * покой, дракон улетел по договору, осведомителя увела стража.
+ * @param {any} command
+ * @param {any} state
+ * @param {string} npcId
+ */
+function npcDepartureEvents(command, state, npcId) {
+  const stored = (state.social?.npcs ?? []).find((npc) => npc.id === npcId)
+  if (!stored || stored.available === false) return []
+  const profile = Object.fromEntries(NPC_DEPARTURE_FIELDS.filter((field) => stored[field] !== undefined).map((field) => [field, clone(stored[field])]))
+  const hidden = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...profile, available: false } }, state, { isDirector: true })
+  return npcSocialEvents(hidden, state)
+    .map((socialEvent) => eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
+}
+
 function resolveCommandInternal(input, rawState, { diceService, context = {} } = {}) {
   if (!diceService) throw new TypeError('RulesEngine требует DiceService')
   const resolveDepth = Math.max(0, safeInteger(context.__resolve_depth, 0))
@@ -19962,6 +19981,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       } else {
         resolved('release', informant.release_text)
       }
+      // Выданного уводит стража, отпущенный перевозчик уплывает: собеседник
+      // уходит из сцены, если так велит сценарий (`departs_on`).
+      const outcome = events.find((event) => event.event_type === SCENARIO_INFORMANT_EVENT)?.payload?.outcome
+      if (informant.npc_id && outcome && informant.departs_on.includes(outcome)) events.push(...npcDepartureEvents(command, state, informant.npc_id))
       break
     }
     case DIALOGUE_COMMAND_TYPE: {
@@ -19971,8 +19994,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // героев, как у допроса пленного.
       const option = command.dialogue_option
       const { dialogue_option: _option, ...plain } = command
-      // Упокоение рыцаря бросает проверку само: исход варианта — его бросок.
-      const checkedAction = Boolean(option.action && option.check)
+      // Упокоение, договор и перевербовка бросают проверку сами: исход
+      // варианта — их бросок.
+      const checkedAction = Boolean(option.action && dialogueActionChecks(option.action))
       let check = null
       let actionText = ''
       if (option.check && !checkedAction) {
@@ -19996,6 +20020,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           command_id: `${command.command_id}:action`,
           actor_id: command.actor_id,
           ...(option.action.catalog_id ? { catalog_id: option.action.catalog_id } : {}),
+          ...(option.action.informant_id ? { informant_id: option.action.informant_id, choice: option.action.choice } : {}),
           ...(checkedAction ? { skill: option.check.skill } : {}),
         }, state, { diceService, context })
         events.push(...acted.events)
@@ -20004,10 +20029,11 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           const result = acted.events.find((event) => event.event_type === 'AbilityCheckResolved')?.payload ?? {}
           check = { skill: option.check.skill, dc: option.check.dc, success: result.success === true, total: safeInteger(result.total, 0) }
         }
-        // Авторский текст сцены рыцаря (голова легла, упокоение, отказ) —
-        // продолжение ответа: строки боя у этих событий вне боя нет, и без
-        // этого он в летопись не попадал.
-        const authored = new Set([SCENARIO_KNIGHT_HEAD_EVENT, SCENARIO_KNIGHT_RELEASED_EVENT, SCENARIO_KNIGHT_RELEASE_FAILED_EVENT])
+        // Авторский текст сюжетной сцены (голова легла, упокоение, судьба
+        // осведомителя, ответ дракона) — продолжение ответа: строки боя у этих
+        // событий вне боя нет, и без этого он в летопись не попадал.
+        const authored = new Set([SCENARIO_KNIGHT_HEAD_EVENT, SCENARIO_KNIGHT_RELEASED_EVENT, SCENARIO_KNIGHT_RELEASE_FAILED_EVENT,
+          SCENARIO_INFORMANT_EVENT, SCENARIO_INFORMANT_TURN_FAILED_EVENT, SCENARIO_TREATY_CONCLUDED_EVENT, SCENARIO_TREATY_REFUSED_EVENT])
         actionText = acted.events.filter((event) => authored.has(event.event_type))
           .map((event) => String(event.payload?.text ?? '').trim()).filter(Boolean).join(' ')
       }
@@ -20120,16 +20146,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
       } else {
         // До боя: дракон уходит с равнин, собеседника в логове больше нет.
-        const stored = state.social.npcs.find((npc) => npc.id === rules.boss_npc_id)
-        if (stored && stored.available !== false) {
-          const profile = Object.fromEntries(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs',
-            'known_fact_ids', 'social_dcs', 'visibility', 'reveal_on_presence', 'tags', 'schedule', 'inventory']
-            .filter((field) => stored[field] !== undefined).map((field) => [field, clone(stored[field])]))
-          const hidden = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...profile, available: false } }, state, { isDirector: true })
-          for (const socialEvent of npcSocialEvents(hidden, state)) {
-            events.push(eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
-          }
-        }
+        events.push(...npcDepartureEvents(command, state, rules.boss_npc_id))
       }
       break
     }
@@ -20164,14 +20181,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           ...(command.reward_source_npc_id ? { source_npc_id: command.reward_source_npc_id } : {}),
         }, [command.actor_id]))
         // Рыцарь уходит: собеседника больше нет, в замок он не вернётся.
-        const stored = state.social.npcs.find((npc) => npc.id === rules.npc_id)
-        const profile = Object.fromEntries(['id', 'name', 'role', 'location', 'location_id', 'public_summary', 'voice', 'speech_profile', 'goals', 'beliefs',
-          'known_fact_ids', 'social_dcs', 'visibility', 'reveal_on_presence', 'tags', 'schedule', 'inventory']
-          .filter((field) => stored?.[field] !== undefined).map((field) => [field, clone(stored[field])]))
-        const hidden = validateNpcSocialCommand({ ...command, actor_id: null, command_type: 'UpsertNpcSocialProfile', npc: { ...profile, available: false } }, state, { isDirector: true })
-        for (const socialEvent of npcSocialEvents(hidden, state)) {
-          events.push(eventFrom({ ...command, actor_id: null, visibility: socialEvent.visibility }, socialEvent.event_type, socialEvent.payload, socialEvent.target_ids))
-        }
+        events.push(...npcDepartureEvents(command, state, rules.npc_id))
       } else {
         events.push(eventFrom(command, SCENARIO_KNIGHT_RELEASE_FAILED_EVENT, {
           schema_version: 1, npc_id: rules.npc_id, skill: command.skill, night: scenarioNightIndex(state), text: rules.release.failure_text,

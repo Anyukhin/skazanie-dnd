@@ -47,6 +47,19 @@ test('каждый диалог ссылается на настоящих со�
         assert.ok(scenario.knight.release.skills.includes(option.check.skill), `${dialogue.id}.${option.id}: навык ${option.check.skill}`)
         assert.equal(option.check.dc, scenario.knight.release.dc, `${dialogue.id}.${option.id}: СЛ упокоения`)
       }
+      // Судьба осведомителя — в разговоре с ним самим; перевербовка в окне —
+      // те же навык и СЛ, что бросит команда.
+      if (option.action?.command_type === 'ResolveScenarioInformant') {
+        const informant = scenario.attention.informants.find((entry) => entry.id === option.action.informant_id)
+        assert.ok(informant, `${dialogue.id}.${option.id}: осведомитель ${option.action.informant_id}`)
+        assert.equal(informant.npc_id, dialogue.npc_id, `${dialogue.id}.${option.id}: собеседник осведомителя`)
+        if (option.action.choice === 'turn') assert.deepEqual(option.check, { skill: informant.turn.skill, dc: informant.turn.dc })
+      }
+      if (option.action?.command_type === 'NegotiateScenarioTreaty') {
+        const finale = scenario.beats.find((beat) => beat.kind === 'finale')
+        assert.equal(dialogue.npc_id, finale.boss.npc_id, `${dialogue.id}.${option.id}: договор — с главным противником`)
+        assert.deepEqual(option.check, { skill: finale.treaty.skill, dc: finale.treaty.dc })
+      }
     }
     assert.ok(dialogue.options.some((option) => option.ends), `${dialogue.id}: разговор можно закончить`)
   }
@@ -60,6 +73,7 @@ test('сломанные данные диалога отвергаются пр
   assert.throws(broken({ options: [{ id: 'x', label: 'Кто ты?', reply: 'Да.', requires: { flags: ['nobody-sets'] } }] }), /никто не ставит/u)
   assert.throws(broken({ options: [{ id: 'x', label: 'Кто ты?', reply: 'Да.', action: { command_type: 'KillEveryone' } }] }), /команда/u)
   assert.throws(broken({ options: [{ id: 'x', label: 'Покойся.', reply: 'Да.', action: { command_type: 'ReleaseCursedKnight' } }] }), /бросает проверку/u)
+  assert.throws(broken({ options: [{ id: 'x', label: 'К страже.', reply: 'Да.', action: { command_type: 'ResolveScenarioInformant', informant_id: 'toban', choice: 'burn' } }] }), /решение/u)
   assert.throws(broken({ options: [{ id: 'x', label: 'Кошель.', check: { skill: 'insight', dc: 15 }, success: { reply: 'Да.' }, failure: { reply: 'Нет.' }, action: { command_type: 'ReceiveScenarioPurse' } }] }), /не поддержаны/u)
   assert.throws(broken({ options: [{ id: 'x', label: 'Кто ты?', check: { skill: 'insight', dc: 99 }, success: { reply: 'Да.' }, failure: { reply: 'Нет.' } }] }), /СЛ/u)
   assert.throws(() => normalizeDialogues({ ...base, schema_version: 2 }), /schema_version/u)
@@ -366,4 +380,84 @@ test('Каэлан: вопросы из набросков дословно, г�
   const replayed = replayEvents(run.initial, run.events)
   assert.deepEqual(replayed.dialogues, run.state.dialogues)
   assert.deepEqual(replayed.scenario_knight, run.state.scenario_knight)
+})
+
+// --- Линия В: осведомители, Гедрик и договор с Саргатом -----------------------
+
+const npcAvailable = (run, npcId) => run.state.social.npcs.find((npc) => npc.id === npcId)?.available !== false
+const informantFate = (run, informantId) => run.state.scenario_attention?.informants?.[informantId]
+
+test('Тобан: страх за семью открывает правду, перевербовка — один раз, отпущенный остаётся на мельнице', async () => {
+  const run = await astohan()
+  await travel(run, 'astohan-redstone')
+  const ids = (hero = heroes[0].id) => offeredBy(run, 'astohan-toban', hero)
+  assert.ok(!ids().includes('help'), 'просьба о правде — когда видно, чего он боится')
+  assert.ok(!ids().some((id) => ['expose', 'release', 'turn'].includes(id)), 'судьба — после правды')
+  sayTo(run, 'astohan-toban', 'read', { diceService: fixedDice(20) })
+  const truth = sayTo(run, 'astohan-toban', 'help')
+  assert.match(chosenOf(truth).reply, /клетка с почтовыми стрижами/u)
+  assert.ok(scenarioFoundClueIds(run.state).has('redstone-mill'))
+  assert.ok(!ids().includes('press'), 'вторая дорога к той же правде закрыта')
+  assert.ok(['expose', 'release', 'turn'].every((id) => ids().includes(id)))
+
+  const failed = sayTo(run, 'astohan-toban', 'turn', { diceService: minDice() })
+  assert.deepEqual({ skill: chosenOf(failed).check.skill, success: chosenOf(failed).check.success }, { skill: 'persuasion', success: false })
+  assert.match(chosenOf(failed).reply, /Тобан пятится к жерновам\. Тобан мотает головой/u, 'ответ и авторский текст сценария — одной репликой')
+  assert.ok(!ids(heroes[1].id).includes('turn'), 'перевербовать не вышло — у всех')
+  const released = sayTo(run, 'astohan-toban', 'release', { hero: heroes[1].id })
+  assert.ok(types(released).includes('ScenarioInformantResolved'), types(released).join(','))
+  assert.equal(informantFate(run, 'toban'), 'release')
+  assert.ok(npcAvailable(run, 'astohan-toban'), 'отпущенный мельник остаётся у себя')
+  assert.ok(!ids().some((id) => ['expose', 'release', 'turn'].includes(id)), 'судьба решена один раз')
+  assert.deepEqual(replayEvents(run.initial, run.events).scenario_attention, run.state.scenario_attention)
+})
+
+test('Ларс: кошель с драконьей медью Запугиванием; выданного уводит стража', async () => {
+  const run = await astohan()
+  await travel(run, 'astohan-mittlayd')
+  const told = sayTo(run, 'astohan-lars', 'purse', { diceService: fixedDice(20) })
+  assert.equal(chosenOf(told).check.success, true)
+  assert.ok(scenarioFoundClueIds(run.state).has('mittlayd-informant'))
+  const exposed = sayTo(run, 'astohan-lars', 'expose')
+  assert.match(chosenOf(exposed).reply, /от реки не убежишь\. Ларса берут прямо у причала/u)
+  assert.equal(informantFate(run, 'ferryman'), 'expose')
+  assert.equal(npcAvailable(run, 'astohan-lars'), false, 'выданного уводит стража')
+  assert.equal(sceneDialoguesForViewer(run.state, { playerId: heroes[0].id })['astohan-lars'], undefined)
+  assert.throws(() => sayTo(run, 'astohan-lars', 'who-crossed'), { code: 'DIALOGUE_NPC_ABSENT' })
+  const replayed = replayEvents(run.initial, run.events)
+  assert.deepEqual(replayed.scenario_attention, run.state.scenario_attention)
+  assert.equal(replayed.social.npcs.find((npc) => npc.id === 'astohan-lars').available, false)
+})
+
+test('Гедрик признаётся только разговором; с правдой о походе Саргат соглашается на договор в логове', async () => {
+  const run = await astohan()
+  await travel(run, 'astohan-quiet-watch-camp')
+  const ids = () => offeredBy(run, 'astohan-gedrik')
+  assert.ok(!ids().includes('confess-guilt') && !ids().includes('confess-journal') && !ids().includes('why-ares'))
+  sayTo(run, 'astohan-gedrik', 'read', { diceService: fixedDice(20) })
+  const confession = sayTo(run, 'astohan-gedrik', 'confess-guilt')
+  assert.match(chosenOf(confession).reply, /разбил яйца/u)
+  assert.ok(scenarioFoundClueIds(run.state).has('camp-gedrik'))
+  assert.ok(ids().includes('why-ares') && !ids().includes('confess-press'))
+
+  // Вторая улика правды — страница журнала; затем — в логово.
+  run.discover('stormberg-journal-page')
+  // Логово открывается с Обсидианового перевала (`map_reveals` сценария).
+  await travel(run, 'astohan-obsidian-pass')
+  await travel(run, 'astohan-vulkanis-brazier')
+  assert.ok(npcAvailable(run, 'astohan-sargat'), 'дракон в логове')
+  assert.ok(offeredBy(run, 'astohan-sargat').includes('treaty'))
+  const pact = sayTo(run, 'astohan-sargat', 'treaty', { diceService: maxDice() })
+  assert.equal(chosenOf(pact).check.success, true)
+  assert.ok(types(pact).includes('ScenarioTreatyConcluded'), types(pact).join(','))
+  assert.match(chosenOf(pact).reply, /Правда стоит больше мести/u)
+  assert.equal(npcAvailable(run, 'astohan-sargat'), false, 'дракон ушёл с равнин')
+  assert.deepEqual(replayEvents(run.initial, run.events).scenario_attention, run.state.scenario_attention)
+})
+
+test('договор не предлагают, пока правда о походе не раскрыта', async () => {
+  const run = await astohan()
+  await travel(run, 'astohan-vulkanis-brazier')
+  assert.ok(offeredBy(run, 'astohan-sargat').includes('why'))
+  assert.ok(!offeredBy(run, 'astohan-sargat').includes('treaty'))
 })
