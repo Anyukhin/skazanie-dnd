@@ -1244,6 +1244,10 @@ function publicTacticFor(state, enemy, candidate, commands = []) {
 
 function monsterAreaPlanFor(state, enemy, candidate) {
   const id = actorId(enemy)
+  // Дыхание и другие области занимают действие целиком. Если ход уже начат
+  // мультиатакой (её прервало окно реакции героя), продолжаются её удары —
+  // стенд боёв 7-го уровня 2026-10-13 ловил здесь ACTION_SPENT.
+  if (state?.mechanics?.combat?.action_economy?.[id]?.action === false) return null
   const areaActions = (Array.isArray(enemy.special_actions) ? enemy.special_actions : []).filter(action => action.kind === 'save_area')
   const origins = livingParty(state).map(target => actorPosition(state, actorId(target))).filter(Boolean)
   const attackValue = candidate ? averageDamage(candidate.profile.damage_expression, candidate.profile.damage_amount) * multiattackCount(enemy) * .6 : 0

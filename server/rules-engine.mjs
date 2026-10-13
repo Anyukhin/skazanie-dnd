@@ -18760,6 +18760,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               target_ids: [beamTargetId],
             }, beamState, { diceService, context: { ...context, additionalBeam: true } })
             } catch (error) {
+              // Отталкивающий взрыв первого луча мог отбросить цель за стену или
+              // из дальности: следующий луч по ней пропадает, а не отменяет
+              // весь залп (стенд боёв 7-го уровня, 2026-10-13).
+              const pushedAway = error instanceof RulesValidationError
+                && ['TRAJECTORY_BLOCKED', 'TARGET_OUT_OF_RANGE', 'TARGET_NOT_VISIBLE', 'TOTAL_COVER'].includes(String(error.code))
+                && JSON.stringify(actorPosition(state, beamTargetId)) !== JSON.stringify(actorPosition(beamState, beamTargetId))
+              if (pushedAway) continue
               if (isCombatPause(error)) {
                 // Продолжается весь оплачиваемый залп, включая ещё не выпущенные
                 // лучи. Ранее сделанные броски берутся из общего транскрипта.

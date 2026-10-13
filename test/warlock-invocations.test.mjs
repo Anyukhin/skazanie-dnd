@@ -74,3 +74,17 @@ test('Дьявольское зрение: в магической тьме ко
   assert.notEqual(darkness([...INVOCATIONS.slice(0, 3), 'devils-sight']).payload.mode, 'disadvantage')
   assert.equal(darkness(INVOCATIONS).payload.mode, 'disadvantage', 'без воззвания тьма мешает')
 })
+
+test('отброшенная первым лучом цель вне досягаемости — второй луч пропадает, залп не отменяется', () => {
+  // Стенд боёв 7-го уровня 2026-10-13: второй луч по отброшенному за стену
+  // кабану отменял весь Мистический заряд отказом TRAJECTORY_BLOCKED.
+  const { state, command } = warlockFixture(['agonizing-blast', 'repelling-blast'])
+  // За толчком — нераскрытая часть карты: второму лучу цель не видна.
+  for (const cell of state.scene.cells) if (cell.x >= 5) cell.revealed = false
+  const result = resolveCommand({ ...command, target_ids: ['enemy', 'enemy'], server_authoritative: true }, normalizeCampaignState(state),
+    { diceService: fixedDice(15), context: { serverAuthoritativeCombat: true, allowedActorIds: ['caster'] } })
+  const pushes = result.events.filter((event) => event.event_type === 'ActorMoved' && event.payload.invocation === 'repelling-blast')
+  assert.equal(pushes.length, 1)
+  assert.equal(result.events.filter((event) => event.event_type === 'AttackResolved').length, 1, 'второй луч пропал')
+  assert.ok(result.events.some((event) => event.event_type === 'SpellCast' || event.event_type === 'ResourceSpent' || event.event_type === 'CombatActionUsed'))
+})
