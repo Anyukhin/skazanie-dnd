@@ -27,6 +27,7 @@
     "server/combat-bounds.mjs",
     "server/combat-phrases.mjs",
     "server/combat-forecast-view.mjs",
+    "server/weapon-attack-view.mjs",
     "server/concentration-end-reasons.mjs",
     "server/contracts.mjs",
     "server/detail-props.mjs",

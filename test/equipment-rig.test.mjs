@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -17,8 +17,14 @@ const compiled = spawnSync(process.execPath, [
   '--lib', 'ES2022,DOM', '--strict', '--skipLibCheck', '--outDir', buildDir, source,
 ], { encoding: 'utf8' })
 assert.equal(compiled.status, 0, compiled.stderr || compiled.stdout)
-renameSync(join(buildDir, 'equipment-rig.js'), join(buildDir, 'equipment-rig.mjs'))
+// tsc выпускает и импорты rig (оболочка доспеха): у Node нет резолва без расширения.
+for (const name of ['equipment-rig.js', 'equipment-shell.js']) {
+  const path = join(buildDir, name)
+  writeFileSync(path, readFileSync(path, 'utf8').replace(/(from\s+["'])(\.\.?\/[^"']+)(["'])/gu, (match, before, specifier, after) => /\.(json|mjs|js)$/u.test(specifier) ? match : `${before}${specifier}.mjs${after}`))
+  renameSync(path, path.replace(/\.js$/u, '.mjs'))
+}
 const { createEquipmentRig, kayKitBowSide } = await import(pathToFileURL(join(buildDir, 'equipment-rig.mjs')).href)
+const { ARMOR_SHELLS, buildCapeGeometry } = await import(pathToFileURL(join(buildDir, 'equipment-shell.mjs')).href)
 process.on('exit', () => rmSync(buildDir, { recursive: true, force: true }))
 
 globalThis.self = globalThis
@@ -160,6 +166,135 @@ test('экспортированные human-male/female bases принимаю�
     disposeGraph(actor)
   }
   disposeGraph(sourceArmor)
+})
+
+test('доспех ложится оболочкой по одежде human base на её скелете и снимается целиком', async () => {
+  const actor = await normalizedActor(join(humanBaseDir, 'human-male.glb'), 'warrior')
+  const rig = createEquipmentRig(actor, { height: 1.4, profile: 'warrior' })
+  const sources = []
+  actor.traverse((object) => { if (object.isSkinnedMesh) sources.push(object) })
+  const triangles = new Map()
+  assert.equal(Object.keys(ARMOR_SHELLS).length, 12)
+  for (const [key, spec] of Object.entries(ARMOR_SHELLS)) {
+    const count = rig.mountShell(spec)
+    assert.ok(count > 0, `${key}: оболочка не построена`)
+    const shells = []
+    actor.traverse((object) => { if (object.userData.equipmentShell) shells.push(object) })
+    assert.equal(shells.length, count, `${key}: число оболочек`)
+    let total = 0
+    for (const shell of shells) {
+      assert.equal(shell.isSkinnedMesh, true, `${key}: оболочка должна быть skinned`)
+      assert.ok(sources.some((source) => source.skeleton === shell.skeleton), `${key}: оболочка не на скелете фигурки`)
+      assert.doesNotMatch(shell.name, /^(Head|Hair|Eye)/u, `${key}: доспех лёг на голову`)
+      const position = shell.geometry.getAttribute('position')
+      assert.ok([...position.array].every(Number.isFinite), `${key}: нечисловая геометрия`)
+      assert.ok(shell.geometry.getAttribute('uv') && shell.geometry.getAttribute('skinIndex'), `${key}: нет uv или skinIndex`)
+      total += position.count / 3
+    }
+    triangles.set(key, total)
+    const bounds = finiteGraph(actor)
+    assert.ok(bounds.max.y < 1.5 && bounds.getSize(new THREE.Vector3()).x < 1.5, `${key}: оболочка раздувает силуэт`)
+    rig.clear()
+    let leftovers = 0
+    actor.traverse((object) => { if (object.userData.equipmentShell) leftovers += 1 })
+    assert.equal(leftovers, 0, `${key}: clear оставил оболочку`)
+  }
+  assert.ok(sources.every((source) => source.visible), 'одежда фигурки не прячется под оболочкой')
+  assert.ok(triangles.get('armor-plate') > triangles.get('armor-leather'), 'латы закрывают больше, чем кожаный доспех')
+  assert.ok(triangles.get('armor-chainmail') > triangles.get('armor-chainshirt'), 'кольчуга длиннее кольчужной рубахи')
+  rig.dispose()
+  disposeGraph(actor)
+})
+
+test('плащ крепится к кости груди и висит за спиной ниже пояса', async () => {
+  const actor = await normalizedActor(join(humanBaseDir, 'human-male.glb'), 'warrior')
+  const rig = createEquipmentRig(actor, { height: 1.4, profile: 'warrior' })
+  const chest = rig.getFrame('chest')
+  assert.ok(chest)
+  const cape = new THREE.Mesh(buildCapeGeometry(chest, 1.4), new THREE.MeshBasicMaterial())
+  cape.name = 'cloak-cape'
+  assert.equal(rig.attachRigid(cape, 'chest'), true)
+  assert.equal(cape.parent?.isBone, true)
+  const bounds = finiteGraph(cape)
+  assert.ok(bounds.getCenter(new THREE.Vector3()).z < chest.center.z, 'плащ должен висеть за спиной')
+  assert.ok(bounds.min.y < chest.center.y - 0.35 && bounds.max.y > chest.center.y, 'плащ от плеч ниже пояса')
+  rig.clear()
+  assert.equal(cape.parent, null, 'clear снимает плащ')
+  rig.dispose()
+  disposeGraph(actor)
+})
+
+test('кольцо садится на безымянный палец в настоящем размере, брошь — у ключицы', async () => {
+  const actor = await normalizedActor(join(humanBaseDir, 'human-male.glb'), 'warrior')
+  const rig = createEquipmentRig(actor, { height: 1.4, profile: 'warrior' })
+  const ring = new THREE.Group()
+  ring.add(new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.014, 6, 12).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial()))
+  assert.equal(rig.mountRingOnFinger(ring, 'right'), true)
+  assert.match(ring.parent?.name ?? '', /^ring_01_r$/u)
+  const ringSize = finiteGraph(ring).getSize(new THREE.Vector3())
+  assert.ok(Math.max(ringSize.x, ringSize.y, ringSize.z) < 0.03, `кольцо размером с браслет: ${ringSize.toArray()}`)
+  const brooch = new THREE.Group()
+  brooch.add(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 12).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial()))
+  assert.equal(rig.mountBrooch(brooch), true)
+  assert.equal(brooch.parent?.isBone, true)
+  const chest = rig.getFrame('chest')
+  const broochBounds = finiteGraph(brooch)
+  const at = broochBounds.getCenter(new THREE.Vector3())
+  assert.ok(Math.max(...broochBounds.getSize(new THREE.Vector3()).toArray()) < 0.06, 'брошь не блюдце')
+  assert.ok(at.y > chest.center.y && at.z > chest.center.z, 'брошь на верхней части груди спереди')
+  rig.clear()
+  assert.equal(ring.parent, null)
+  assert.equal(brooch.parent, null)
+  rig.dispose()
+  disposeGraph(actor)
+})
+
+test('поза выстрела ставит оружие по миру, а выход из неё возвращает обычный хват', async () => {
+  const actor = await normalizedActor(join(humanBaseDir, 'human-male.glb'), 'warrior')
+  const rig = createEquipmentRig(actor, { height: 1.4, profile: 'warrior' })
+  const crossbow = new THREE.Group()
+  crossbow.add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.6), new THREE.MeshBasicMaterial()))
+  assert.ok(rig.mountHeld(crossbow, 'right', { kind: 'crossbow', key: 'light-crossbow' }))
+  assert.equal(rig.heldKind('right'), 'crossbow')
+  assert.equal(rig.heldKind('left'), null)
+  const base = crossbow.quaternion.clone()
+  // Кисть уходит в позу выстрела — оружие всё равно смотрит туда, куда велено миром.
+  rig.getGrip('right').parent.rotateX(1.1)
+  const body = actor.getWorldQuaternion(new THREE.Quaternion())
+  rig.orientHeld('right', body)
+  actor.updateMatrixWorld(true)
+  const forward = new THREE.Vector3(0, 0, 1).transformDirection(crossbow.matrixWorld)
+  assert.ok(forward.angleTo(new THREE.Vector3(0, 0, 1).applyQuaternion(body)) < 1e-3, 'арбалет смотрит вперёд тела')
+  rig.orientHeld('right', null)
+  assert.ok(crossbow.quaternion.angleTo(base) < 1e-6, 'обычный хват вернулся')
+  rig.clear()
+  assert.equal(rig.heldKind('right'), null)
+  rig.dispose()
+  disposeGraph(actor)
+})
+
+test('клинок в опущенной руке смотрит вниз-вперёд, щит — лицом наружу', async () => {
+  const actor = await normalizedActor(join(humanBaseDir, 'human-male.glb'), 'warrior')
+  const rig = createEquipmentRig(actor, { height: 1.4, profile: 'warrior' })
+  const direction = (object, axis) => axis.clone().transformDirection(object.matrixWorld)
+  const sword = new THREE.Group()
+  sword.add(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8, 0.01), new THREE.MeshBasicMaterial()))
+  assert.ok(rig.mountHeld(sword, 'right', { kind: 'blade', key: 'longsword' }))
+  actor.updateMatrixWorld(true)
+  const blade = direction(sword, new THREE.Vector3(0, 1, 0))
+  assert.ok(blade.y < -0.3 && blade.z > 0.3, `клинок должен смотреть вниз-вперёд: ${blade.toArray()}`)
+  const shield = new THREE.Group()
+  shield.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.02), new THREE.MeshBasicMaterial()))
+  assert.ok(rig.mountHeld(shield, 'left', { kind: 'shield', key: 'shield' }))
+  actor.updateMatrixWorld(true)
+  const face = direction(shield, new THREE.Vector3(0, 0, 1))
+  assert.ok(face.z > 0.6 && face.x > 0.2, `лицо щита должно смотреть вперёд и наружу: ${face.toArray()}`)
+  const grip = rig.getGrip('left').getWorldPosition(new THREE.Vector3())
+  const center = shield.getWorldPosition(new THREE.Vector3())
+  assert.ok(center.clone().sub(grip).dot(face) > 0.02, 'щит выдвинут перед кулаком')
+  rig.clear()
+  rig.dispose()
+  disposeGraph(actor)
 })
 
 test('оружие из реального GLB крепится в grip0 с canonical world scale и освобождается без общей геометрии', async () => {

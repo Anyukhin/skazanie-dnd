@@ -4008,6 +4008,28 @@ export function attackForecast(state, attackerIdValue, targetIdValue, { actionId
   }
 }
 
+/**
+ * Сводка удара оружием для куклы героя: модификатор атаки и урон считаются тем
+ * же `itemAttackProfile`, что и настоящий удар, плюс постоянные бонусы
+ * состояний (как в прогнозе). Цель не нужна — КД, укрытие и дальность до врага
+ * сюда не входят; кость «Благословения» или «Порчи» добавится при самом ударе.
+ */
+export function weaponAttackSummary(state, actorIdValue, itemId) {
+  const actor = findActor(state, actorIdValue)
+  if (!actor) return null
+  const profile = itemAttackProfile(state, actor, itemId)
+  if (!profile) return null
+  return {
+    attack_modifier: safeInteger(profile.modifier, 0) + conditionNumericBonus(state, actorIdValue, 'attackBonus'),
+    damage_expression: String(profile.damage_expression ?? ''),
+    damage_type: profile.damage_type,
+    ability: profile.ability ?? null,
+    kind: profile.kind,
+    normal_range_feet: profile.normal_range_feet,
+    range_feet: profile.range_feet,
+  }
+}
+
 function averageDamageOf(profile) {
   const match = String(profile?.damage_expression ?? '').match(/^(\d+)d(\d+)([+-]\d+)?$/u)
   if (!match) return Math.max(0, safeInteger(profile?.damage_amount, 0))
