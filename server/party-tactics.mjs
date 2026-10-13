@@ -230,7 +230,7 @@ export const UNCANNY_DODGE_DAMAGE_PERCENT = 25
  * цена и свой повод, и выбирать их вслепую значило бы тратить ресурс героя за
  * игрока, а не играть за него.
  */
-export const AUTONOMOUS_REACTION_PRIORITY = Object.freeze(['opportunity-attack', 'cast:shield', 'uncanny-dodge'])
+export const AUTONOMOUS_REACTION_PRIORITY = Object.freeze(['opportunity-attack', 'fighter-zaschita', 'paladin-zaschita', 'bard-kollegiya-znaniy-ostroe-slovtso', 'cast:shield', 'uncanny-dodge'])
 
 /** Сколько ОЗ снял удар, открывший окно: обычный урон плюс съеденный временный. */
 function reactionDamageTaken(reactionWindow) {

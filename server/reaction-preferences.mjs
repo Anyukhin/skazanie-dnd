@@ -33,6 +33,9 @@ export const REACTION_MODES = Object.freeze(['ask', 'auto', 'never'])
  */
 export const REACTION_PREFERENCE_IDS = Object.freeze([
   'cast:counterspell',
+  'fighter-zaschita',
+  'paladin-zaschita',
+  'bard-kollegiya-znaniy-ostroe-slovtso',
   'cast:shield',
   'cast:absorb-elements',
   'uncanny-dodge',

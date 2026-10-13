@@ -271,6 +271,11 @@ const SUBCLASS_ACTIONS = Object.freeze({
     action('wild-shape', 'Дикая форма', { actionType: 'bonus_action', minimumLevel: 2, resource: 'wild_shape', description: 'Боевой дикий облик: бонусным действием принять облик зверя (ПО 1 со 2-го уровня, с 6-го — уровень / 3): его хиты, КД, скорость и атака. Повторно — вернуться в свой облик. В облике нельзя колдовать.', effect: { kind: 'wild_shape' } }),
     action('druid-krug-luny-boevoy-dikiy-oblik', 'Целебный облик', { actionType: 'bonus_action', minimumLevel: 2, description: 'В диком облике бонусным действием потратить ячейку заклинаний и восстановить 1к8 хитов за каждый её круг.', effect: { kind: 'wild_shape_heal' } }),
   ]),
+  // Острое словцо: реакция на бросок атаки врага. Окно открывает Rules
+  // Engine (`allyAttackReactionFor`); вне окна действия нет.
+  [normalizedName('Коллегия знаний')]: Object.freeze([
+    action('bard-kollegiya-znaniy-ostroe-slovtso', 'Острое словцо', { actionType: 'reaction', target: 'self', minimumLevel: 3, resource: 'bardic_inspiration', description: 'Реакцией, когда враг в 60 футах попадает броском атаки по герою, вычесть из броска кость Вдохновения барда — удар может сорваться. Тратит одно Вдохновение.', effect: { kind: 'ally_attack_reaction', reaction: 'cutting-words' } }),
+  ]),
   [normalizedName('Путь открытой ладони')]: Object.freeze([
     action('monk-put-otkrytoy-ladoni-tehniki-otkrytoy-ladoni', 'Шквал открытой ладони', { target: 'enemy', actionType: 'bonus_action', range: 5, minimumLevel: 3, resource: 'ki', description: 'Шквал ударов: 1 ци, две безоружные атаки; каждое попадание — спасбросок Ловкости против СЛ ци, иначе цель сбита с ног.', effect: { kind: 'weapon_attack', attacks: 2, unarmed: true, saveAbility: 'dex', saveDcAbility: 'wis', condition: 'prone', conditionDuration: 'none' } }),
   ]),
@@ -313,6 +318,17 @@ const GENERATED_POOLS_OWNED_BY_CURATED = Object.freeze({
  * выбор по умолчанию в BG3 (`colossusSlayerReady` в rules-engine).
  */
 const PASSIVE_GENERATED_ACTION_IDS = new Set(['ranger-ohotnik-dobycha-ohotnika'])
+
+/**
+ * Боевой стиль «Оборона» (PHB 2014): реакцией, со щитом, помеха на атаку
+ * врага по союзнику в 5 футах. Каталожная «Защита» dnd.su была особым
+ * эффектом без исполнителя; здесь — то же id, только при выбранном стиле.
+ */
+const PROTECTION_STYLE_ACTIONS = Object.freeze(['fighter', 'paladin'].map((classKey) => action(`${classKey}-zaschita`, 'Оборона', {
+  actionType: 'reaction', target: 'self', minimumLevel: classKey === 'fighter' ? 1 : 2,
+  description: 'Реакцией, когда враг атакует союзника в 5 футах от вас, наложить помеху на бросок. Нужен щит в руке.',
+  effect: { kind: 'ally_attack_reaction', reaction: 'protection' },
+})))
 
 /** Каталожные умения, сыгранные пассивно (без плитки действия). */
 export function passiveClassFeatureIds() {
@@ -360,10 +376,12 @@ export function combatActionsFor(actor) {
   const level = Math.max(1, Math.min(12, Number(actor?.level) || 1))
   const classKey = actorClass(actor)
   const subclass = actorSubclass(actor, classKey)
-  const curated = curatedActionsFor(actor, classKey, subclass)
+  const protectionStyle = PROTECTION_STYLE_ACTIONS.filter((entry) => entry.id === `${classKey}-zaschita` && level >= entry.minimumLevel)
+  const curated = [...curatedActionsFor(actor, classKey, subclass), ...(isOptionalFeatureSelected(actor, 'fighting-style-protection') ? protectionStyle : [])]
   const curatedNames = curatedActionNamesFor(curated)
   const curatedIds = new Set(curated.map((entry) => entry.id))
-  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && !PASSIVE_GENERATED_ACTION_IDS.has(entry.id) && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name)) && !curatedIds.has(entry.id)) : []
+  const generated = classKey ? generatedActionsFor(classKey, subclass).filter((entry) => entry.actionType !== 'free' && !PASSIVE_GENERATED_ACTION_IDS.has(entry.id)
+    && !PROTECTION_STYLE_ACTIONS.some((style) => style.id === entry.id) && isOptionalFeatureSelected(actor, entry.id) && !curatedNames.has(normalizedName(entry.name)) && !curatedIds.has(entry.id)) : []
   const classActions = [...curated, ...generated]
   const ancestry = actor?.speciesBenefits?.mechanics?.dragon_ancestry
   const speciesActions = actor?.speciesBenefits?.mechanics?.breath_weapon === true && ancestry

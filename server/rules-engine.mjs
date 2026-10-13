@@ -7684,6 +7684,12 @@ export function validateCommand(input, rawState, context = {}) {
         wildShapeAction = { ...action, wild_shape_form: form }
       }
     }
+    if (action.effect?.kind === 'ally_attack_reaction') {
+      const window = state.mechanics.combat?.reaction_window
+      if (!window?.pending_protective_reaction || String(window.actor_id) !== String(command.actor_id) || !(window.action_ids ?? []).includes(action.id)) {
+        throw new RulesValidationError(`«${action.name}» — реакция на атаку врага по союзнику: её предлагает окно реакции`, 'REACTION_TRIGGER_REQUIRED')
+      }
+    }
     if (action.effect?.kind === 'wild_shape_heal') {
       if (shape?.form?.wild_shape !== true) throw new RulesValidationError('Целебный облик — только в диком облике', 'WILD_SHAPE_REQUIRED')
       const slot = [1, 2, 3, 4, 5].find((level) => resourcePool(state, command.actor_id, `spell_slots_${level}`).current > 0)
@@ -9599,6 +9605,67 @@ function protectiveAttackReactionOptions(state, target, { hit, critical, attackT
     allowParry: false,
   })
   return options.filter((option) => ['cast:shield', 'uncanny-dodge', 'cast:absorb-elements'].includes(option.id))
+}
+
+/** Острое словцо барда Знаний (PHB 2014, 3-й уровень). */
+const CUTTING_WORDS_ACTION_ID = 'bard-kollegiya-znaniy-ostroe-slovtso'
+/** Боевой стиль «Оборона» (PHB 2014) — id каталожной «Защиты» dnd.su. */
+const PROTECTION_ACTION_IDS = new Set(['fighter-zaschita', 'paladin-zaschita'])
+
+/** Кость Вдохновения барда по его уровню: к6, с 5-го к8, с 10-го к10, с 15-го к12. */
+function bardicInspirationDieSides(bard) {
+  const level = safeInteger(bard?.level, 1)
+  return level >= 15 ? 12 : level >= 10 ? 10 : level >= 5 ? 8 : 6
+}
+
+/**
+ * Союзник, который реакцией отвечает на атаку врага по герою: «Острое
+ * словцо» барда Знаний — после броска и до исхода, враг в 60 футах; боевой
+ * стиль «Оборона» — до броска, цель в 5 футах от защитника, щит в руке.
+ * Защитник дееспособен, не ослеплён, видит атакующего и не потратил реакцию.
+ * Если таких несколько — первый по инициативе.
+ * @param {any} state
+ * @param {string} attackerId
+ * @param {string} targetId
+ * @param {'cutting-words' | 'protection'} kind
+ */
+function allyAttackReactionFor(state, attackerId, targetId, kind) {
+  if (!state.mechanics.combat?.active || !isEnemyActor(state, attackerId) || isEnemyActor(state, targetId)) return null
+  const attackerAt = actorPosition(state, attackerId)
+  if (!attackerAt) return null
+  const initiativeOrder = new Map((state.mechanics.combat.initiative ?? []).map((entry, index) => [String(entry.actor_id), index]))
+  return state.players
+    .map((candidate) => {
+      const id = actorId(candidate)
+      if (kind === 'protection' && id === String(targetId)) return null
+      if (!isLivingActor(candidate) || incapacitatingConditionFor(state, id) || state.mechanics.combat.action_economy[id]?.reaction === false) return null
+      if (conditionIdsFor(state, id).has('blinded')) return null
+      const at = actorPosition(state, id)
+      if (!at || !hasClearActorTrajectory(state, id, attackerId, at, attackerAt)) return null
+      const reaction = combatActionsFor(candidate).find((entry) => kind === 'cutting-words' ? entry.id === CUTTING_WORDS_ACTION_ID : PROTECTION_ACTION_IDS.has(entry.id))
+      if (!reaction) return null
+      if (kind === 'cutting-words') {
+        if (resourcePool(state, id, 'bardic_inspiration').current < 1) return null
+        const distance = distanceBetweenActors(state, id, attackerId)
+        if (distance == null || distance > 60) return null
+      } else {
+        if (!normalizedSelectedFeatureIds(candidate).includes('fighting-style-protection') || !hasEquippedShield(candidate)) return null
+        const distance = distanceBetweenActors(state, id, targetId)
+        if (distance == null || distance > 5) return null
+      }
+      return { actor: candidate, action: reaction }
+    })
+    .filter(Boolean)
+    .sort((left, right) => (initiativeOrder.get(actorId(left.actor)) ?? Number.MAX_SAFE_INTEGER) - (initiativeOrder.get(actorId(right.actor)) ?? Number.MAX_SAFE_INTEGER)
+      || actorId(left.actor).localeCompare(actorId(right.actor)))[0] ?? null
+}
+
+/** Вариант окна для союзной реакции: то же описание, что у плитки. */
+function allyAttackReactionOption(reactor) {
+  return {
+    id: reactor.action.id, name: reactor.action.name, description: reactor.action.description,
+    resource: reactor.action.resource ?? null, cost: 1, reactor_id: actorId(reactor.actor),
+  }
 }
 
 function shieldReactionOption(state, target) {
@@ -12409,7 +12476,7 @@ class ElementalDamageReactionPause extends Error {
 }
 
 class ProtectiveReactionPause extends Error {
-  constructor({ command, targetId, sourceActorId, trigger, kind, decisionKey = null, actionOptions, triggerRoll, damage, diceTranscript, choices = {}, resistanceChoices = {}, elementalChoices = {} }) {
+  constructor({ command, targetId, reactorId = null, sourceActorId, trigger, kind, decisionKey = null, actionOptions, triggerRoll, damage, diceTranscript, choices = {}, resistanceChoices = {}, elementalChoices = {} }) {
     super('Ожидается защитная реакция')
     this.name = 'ProtectiveReactionPause'
     this.command = clone(command)
@@ -12418,7 +12485,7 @@ class ProtectiveReactionPause extends Error {
     this.windowEvent = eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowOpened', {
       id: windowId,
       trigger,
-      actor_id: target,
+      actor_id: String(reactorId ?? target),
       source_actor_id: String(sourceActorId ?? command.actor_id ?? ''),
       target_id: target,
       action_ids: actionOptions.map((option) => option.id),
@@ -12440,7 +12507,7 @@ class ProtectiveReactionPause extends Error {
         damage_key: String(key),
         ...(choice && typeof choice === 'object' ? clone(choice) : { use: choice === true }),
       })),
-    }, [target])
+    }, [...new Set([target, String(reactorId ?? target)])])
   }
 }
 
@@ -12641,9 +12708,10 @@ const REACTION_PREFERENCE_LABELS = Object.freeze({
   'opportunity-attack': 'Атака по возможности', 'cast:counterspell': 'Контрзаклинание', 'cast:shield': 'Щит',
   'cast:absorb-elements': 'Поглощение стихий', 'cast:hellish-rebuke': 'Адское возмездие', 'cast:silvery-barbs': 'Искусная острота',
   'uncanny-dodge': 'Невероятное уклонение', parry: 'Парирование', riposte: 'Ответный удар',
+  [CUTTING_WORDS_ACTION_ID]: 'Острое словцо', 'fighter-zaschita': 'Оборона', 'paladin-zaschita': 'Оборона',
 })
 const REACTION_PREFERENCE_SPELL_IDS = Object.freeze(['counterspell', 'shield', 'absorb-elements', 'hellish-rebuke', 'silvery-barbs'])
-const REACTION_PREFERENCE_ACTION_IDS = Object.freeze(['uncanny-dodge', 'parry', 'riposte'])
+const REACTION_PREFERENCE_ACTION_IDS = Object.freeze(['uncanny-dodge', 'parry', 'riposte', CUTTING_WORDS_ACTION_ID, ...PROTECTION_ACTION_IDS])
 
 /**
  * Реакции героя, которым можно задать режим, вместе с текущим режимом.
@@ -13938,7 +14006,29 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           break
         }
       }
-      let attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage, visibility: command.visibility })
+      // Оборона союзника со щитом: до броска, помеха. Окно — защитнику.
+      const protectionKey = `protection:${command.command_id}:${targetId}`
+      let protectionChoice = protectiveReactionChoices.get(protectionKey)
+      if (!protectionChoice && context.protectiveReactionChoice?.key === protectionKey) {
+        protectionChoice = { ...context.protectiveReactionChoice, use: context.protectiveReactionChoice.use === true }
+        protectiveReactionChoices.set(protectionKey, protectionChoice)
+      }
+      if (!protectionChoice && !command.reaction_attack && !disadvantage) {
+        const protector = allyAttackReactionFor(state, command.actor_id, targetId, 'protection')
+        if (protector) {
+          throw new ProtectiveReactionPause({
+            command, targetId, reactorId: actorId(protector.actor), sourceActorId: command.actor_id,
+            trigger: 'attack-protection-choice', kind: 'protection', decisionKey: protectionKey,
+            actionOptions: [allyAttackReactionOption(protector)], triggerRoll: null, damage: null, diceTranscript,
+            choices: Object.fromEntries(protectiveReactionChoices),
+            resistanceChoices: resistanceChoicesObject(resistanceChoices),
+            elementalChoices: Object.fromEntries(elementalReactionChoices),
+          })
+        }
+      }
+      const protectedBy = protectionChoice?.use === true ? String(protectionChoice.reactor_id ?? '') : null
+      let attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage: disadvantage || Boolean(protectedBy), visibility: command.visibility })
+      if (protectedBy) attack = { ...attack, protected_by: protectedBy }
       // Чемпион критует на 19–20: такой удар попадает, как и натуральная 20.
       const criticalThreshold = weaponCriticalThreshold(state, actor)
       // Вдохновение барда само прибавляется к проваленной атаке (BG3);
@@ -13946,6 +14036,37 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (attack.kept !== 1 && attack.kept < criticalThreshold && attack.total < armorClass) {
         const boost = spendBardicInspiration(state, command.actor_id, 'attack')
         if (boost) attack = { ...attack, total: attack.total + boost, bardic_inspiration: boost }
+      }
+      // Острое словцо барда Знаний: бросок уже виден, исход ещё нет. Спрашивает
+      // только когда кость может сорвать попадание; критический удар она не
+      // отменяет.
+      const cuttingKey = `cutting-words:${command.command_id}:${targetId}`
+      if (!command.reaction_attack && attack.kept !== 1 && attack.kept < criticalThreshold && attack.total >= armorClass) {
+        let cuttingChoice = protectiveReactionChoices.get(cuttingKey)
+        if (!cuttingChoice && context.protectiveReactionChoice?.key === cuttingKey) {
+          cuttingChoice = { ...context.protectiveReactionChoice, use: context.protectiveReactionChoice.use === true }
+          protectiveReactionChoices.set(cuttingKey, cuttingChoice)
+        }
+        const bard = cuttingChoice ? null : allyAttackReactionFor(state, command.actor_id, targetId, 'cutting-words')
+        if (bard && attack.total - bardicInspirationDieSides(bard.actor) < armorClass) {
+          throw new ProtectiveReactionPause({
+            command, targetId, reactorId: actorId(bard.actor), sourceActorId: command.actor_id,
+            trigger: 'attack-cutting-words-choice', kind: 'cutting-words', decisionKey: cuttingKey,
+            actionOptions: [allyAttackReactionOption(bard)],
+            triggerRoll: { roll_id: attack.roll_id, kept: attack.kept, modifier: attack.modifier, total: attack.total, armor_class: armorClass, hit: true, critical: false },
+            damage: null, diceTranscript,
+            choices: Object.fromEntries(protectiveReactionChoices),
+            resistanceChoices: resistanceChoicesObject(resistanceChoices),
+            elementalChoices: Object.fromEntries(elementalReactionChoices),
+          })
+        }
+        if (cuttingChoice?.use === true) {
+          const bardId = String(cuttingChoice.reactor_id ?? '')
+          const cut = diceService.roll(`1d${bardicInspirationDieSides(findActor(state, bardId))}`, 'cutting_words', bardId, command.visibility ?? 'public')
+          rolls.push(cut)
+          events.push(eventFrom(command, 'DieRolled', { ...cut, cutting_words: true, reactor_id: bardId }, []))
+          attack = { ...attack, total: attack.total - cut.total, cutting_words: cut.total, cutting_words_by: bardId }
+        }
       }
       const hit = attack.kept >= criticalThreshold || (attack.kept !== 1 && attack.total >= armorClass)
       // A melee hit on a creature that cannot move or react is a critical hit
@@ -15356,7 +15477,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         )
         const choices = {
           ...previousChoices,
-          [key]: { key, kind: selectedKind, action_id: protectionAction?.id ?? null, target_id: String(pendingProtection.target_id), use: useProtection === true,
+          [key]: { key, kind: selectedKind, action_id: protectionAction?.id ?? null, target_id: String(pendingProtection.target_id), reactor_id: String(command.actor_id), use: useProtection === true,
             damage_type: reactionWindow.damage?.damage_type, slot_level: protectionAction?.spell?.reactionSlotLevel ?? protectionAction?.spell?.level },
         }
         events.push(eventFrom(commandWithRules(command, RULE_IDS.reaction), 'ReactionWindowClosed', {
@@ -15687,7 +15808,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             spell_id: 'enervation',
           }, [command.actor_id]))
         }
-      } else if (reactionWindow?.pending_protective_reaction && ['cast:shield', 'uncanny-dodge', 'cast:absorb-elements'].includes(action.id)) {
+      } else if (reactionWindow?.pending_protective_reaction && (['cast:shield', 'uncanny-dodge', 'cast:absorb-elements'].includes(action.id) || action.effect?.kind === 'ally_attack_reaction')) {
         spendActionResource()
         events.push(actionEvent({ reaction_window_id: reactionWindow.id, protective_reaction: action.id }))
         resumePendingProtectiveReaction(true, action)
