@@ -1,0 +1,22 @@
+[package]
+name = "sk-server"
+description = "HTTP-сервер «Сказания» на axum: вход, сессии, кампании, команды, живой поток, раздача клиента"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "skazanie-server"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8.9"
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-store = { path = "../sk-store" }
+tokio = { version = "1.53.2", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tower = { version = "0.5.3", features = ["util"] }
