@@ -800,7 +800,9 @@ function addActionCandidates(state, actorIdValue, actor, add) {
     let score = action.id === 'rage' ? 900 : action.id === 'reckless-attack' ? 750 : 70
     if (action.effect?.kind === 'weapon_attack' && target) {
       const forecast = attackForecast(state, actorIdValue, combatId(target), command.item_id ? { itemId: command.item_id } : {})
-      const extraDamage = action.effect.extraDamageByLevel === 'sneak' ? `${Math.ceil(Number(actor.level) / 2)}d6` : action.effect.extraDamage
+      // Кара оценивается младшей ячейкой: её движок и возьмёт без названного круга.
+      const extraDamage = action.effect.extraDamageByLevel === 'sneak' ? `${Math.ceil(Number(actor.level) / 2)}d6`
+        : action.effect.divineSmite ? '2d8' : action.effect.extraDamage
       const extra = spellDamageEstimate(actor, { level: 1, damage: extraDamage })
       const attacks = Math.max(1, Number(action.effect.attacks) || 1)
       score = 500 + (Math.max(0, Number(forecast?.average_damage) || 0) + extra) * attacks * 30

@@ -582,6 +582,9 @@ const MAGIC_ITEM_SPELL_IMMUNITY_EVENT_SCHEMA_VERSION = 1
 // действием. Символ и токен не могут приехать в JSON-команде игрока.
 const MONK_BONUS_ATTACK_CONTEXT = Symbol('monk-bonus-attack')
 const MONK_BONUS_ATTACK_TOKEN = Object.freeze({})
+// Божественная кара едет во вложенную атаку только серверным контекстом:
+// поле команды клиент мог бы прислать сам и получить кару без ячейки.
+const DIVINE_SMITE_CONTEXT = Symbol('divine-smite')
 // `loading` отдельно ограничивает один экземпляр оружия для действия,
 // бонусного действия и реакции. Маркер контекста живёт только на сервере:
 // клиент не может превратить обычную атаку в бонусную или реакционную полем.
@@ -3325,6 +3328,124 @@ function weaponDamageSourceFor(state, actor, profile, selectedProfile = null, np
   }
 }
 
+/**
+ * Боевой стиль героя на удар оружием (PHB 2014, гл. 3; TCE):
+ * «Стрельба» — +2 к броску атаки дальнобойным оружием (брошенный кинжал —
+ * оружие ближнего боя, ему не положено); «Дуэлянт» — +2 к урону оружием
+ * ближнего боя в одной руке, когда другого оружия в руках нет; «Сражение
+ * метательным оружием» — +2 к урону брошенным оружием; «Сражение большим
+ * оружием» — переброс 1 и 2 на костях урона оружия ближнего боя в двух руках.
+ * @param {any} actor
+ * @param {any} item
+ * @param {any} mode
+ * @param {string[]} properties
+ */
+function weaponFightingStyleBonus(actor, item, mode, properties) {
+  const styles = new Set(normalizedSelectedFeatureIds(actor).filter((id) => id.startsWith('fighting-style-')))
+  const result = { attack_bonus: 0, damage_bonus: 0, great_weapon_fighting: false, ids: /** @type {string[]} */ ([]) }
+  if (!styles.size) return result
+  const melee = mode.kind === 'melee'
+  const thrown = mode.thrown === true
+  const twoHands = mode.twoHanded === true || properties.includes('two-handed')
+  if (styles.has('fighting-style-archery') && mode.kind === 'ranged' && !thrown) {
+    result.attack_bonus += 2
+    result.ids.push('fighting-style-archery')
+  }
+  const otherWeaponHeld = (Array.isArray(actor?.inventory) ? actor.inventory : []).some((candidate) => candidate?.equipped === true
+    && String(candidate.id) !== String(item?.id)
+    && (candidate.type === 'weapon' || ['melee', 'ranged'].includes(String(catalogItem(String(candidate.catalog_id ?? candidate.catalogId ?? ''))?.combat?.kind ?? ''))))
+  if (styles.has('fighting-style-dueling') && melee && !twoHands && !otherWeaponHeld) {
+    result.damage_bonus += 2
+    result.ids.push('fighting-style-dueling')
+  }
+  if (styles.has('fighting-style-thrown') && thrown) {
+    result.damage_bonus += 2
+    result.ids.push('fighting-style-thrown')
+  }
+  if (styles.has('fighting-style-great-weapon') && melee && twoHands) {
+    result.great_weapon_fighting = true
+    result.ids.push('fighting-style-great-weapon')
+  }
+  return result
+}
+
+/**
+ * Божественная кара: ячейка какого круга. Названный круг должен быть в запасе;
+ * без него — младшая свободная ячейка. Кара — только оружием ближнего боя.
+ * @param {any} state
+ * @param {any} command
+ * @param {any} action
+ */
+function divineSmiteActionFor(state, command, action) {
+  const actor = findActor(state, command.actor_id)
+  if (command.item_id) {
+    const profile = itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode })
+    if (profile && profile.kind !== 'melee') throw new RulesValidationError('Божественная кара — только при атаке оружием ближнего боя', 'DIVINE_SMITE_MELEE_ONLY')
+  }
+  const available = [1, 2, 3, 4, 5].filter((level) => resourcePool(state, command.actor_id, `spell_slots_${level}`).current > 0)
+  const requested = safeInteger(command.slot_level, 0)
+  if (requested && !available.includes(requested)) throw new RulesValidationError(`Ячейки ${requested}-го круга для кары нет`, 'SPELL_SLOT_UNAVAILABLE')
+  const slot = requested || available[0]
+  if (!slot) throw new RulesValidationError('Для Божественной кары нужна свободная ячейка заклинаний', 'INSUFFICIENT_RESOURCE')
+  command.slot_level = slot
+  return { ...action, resource: `spell_slots_${slot}`, smite_slot_level: slot }
+}
+
+/**
+ * Наложение рук: из запаса тратится названная сумма, без неё — столько,
+ * сколько не хватает цели, но не больше остатка.
+ * @param {any} state
+ * @param {any} command
+ * @param {any} action
+ */
+function layOnHandsActionFor(state, command, action) {
+  const pool = resourcePool(state, command.actor_id, action.resource)
+  const target = findActor(state, targetFor(command))
+  const missing = target ? Math.max(0, actorMaxHp(target) - actorHp(target)) : 0
+  const requested = safeInteger(command.amount, 0)
+  const amount = Math.min(Math.max(0, pool.current), requested > 0 ? requested : Math.max(1, missing))
+  if (amount < 1) throw new RulesValidationError('Запас Наложения рук пуст', 'INSUFFICIENT_RESOURCE')
+  command.amount = amount
+  return { ...action, cost: amount, effect: { ...action.effect, amount } }
+}
+
+/**
+ * Порог критического удара оружием героя: 20, у Чемпиона с 3-го уровня — 19,
+ * с 15-го — 18 («Улучшенный критический удар», «Превосходный критический
+ * удар», PHB 2014). Критический удар попадает: так играет и BG3.
+ * @param {any} state
+ * @param {any} actor
+ */
+function weaponCriticalThreshold(state, actor) {
+  if (!actor || isEnemyActor(state, actorId(actor)) || characterClassKey(actor) !== 'fighter') return 20
+  if (!/champion|чемпион/iu.test(String(normalizedCombatSubclassFor(actor) ?? ''))) return 20
+  const level = safeInteger(actor?.level, 1)
+  return level >= 15 ? 18 : level >= 3 ? 19 : 20
+}
+
+/**
+ * «Сражение большим оружием»: кость урона оружия с 1 или 2 перебрасывается
+ * один раз, и герой берёт новое значение, даже если оно снова 1 или 2.
+ * @param {any} roll
+ * @param {any} diceService
+ * @param {any} command
+ */
+function greatWeaponFightingReroll(roll, diceService, command) {
+  const sides = parseDiceExpression(String(roll.expression)).sides
+  const rerolls = []
+  const dice = roll.dice.map((/** @type {number} */ value) => {
+    if (value > 2) return value
+    const again = diceService.roll(`1d${sides}`, 'damage:great-weapon-fighting', command.actor_id, command.visibility ?? 'public')
+    rerolls.push({ ...again, replaces: value })
+    return again.dice[0]
+  })
+  if (!rerolls.length) return { roll, rerolls }
+  return {
+    roll: { ...roll, dice, total: dice.reduce((/** @type {number} */ sum, /** @type {number} */ value) => sum + value, safeInteger(roll.modifier, 0)), great_weapon_fighting: true },
+    rerolls,
+  }
+}
+
 function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbility = null } = {}) {
   const item = combatItemForCommand(actor, itemId)
   // Каталожный предмет всегда читает боевой профиль из реестра. Поля
@@ -3370,8 +3491,9 @@ function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbil
   if (requestedAbility && !shillelaghAbilities.includes(requestedAbility)) return null
   const ability = requestedAbility ?? (shillelaghActive ? shillelaghAbility : (allowedAbilities.includes(mode.ability) ? mode.ability : allowedAbilities.at(-1)))
   const abilityBonus = abilityModifier(actor?.abilities?.[ability])
-  const attackBonus = safeInteger(mode.attackBonus ?? combat.attackBonus, 0)
-  const damageBonus = safeInteger(mode.damageBonus ?? combat.damageBonus, 0)
+  const style = weaponFightingStyleBonus(actor, item, mode, baseProperties)
+  const attackBonus = safeInteger(mode.attackBonus ?? combat.attackBonus, 0) + style.attack_bonus
+  const damageBonus = safeInteger(mode.damageBonus ?? combat.damageBonus, 0) + style.damage_bonus
   let damage
   try { damage = diceExpression(shillelaghActive ? '1d8' : mode.damage ?? combat.damage, abilityBonus + damageBonus, mode.kind === 'ranged' ? 8 : 8) } catch {
     const fallbackBonus = abilityBonus + damageBonus
@@ -3380,6 +3502,10 @@ function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbil
   return {
     item,
     modifier: abilityBonus + Math.max(0, safeInteger(actor?.proficiency, 0)) + attackBonus,
+    // Боевой стиль, который сработал на этом ударе: прибавка уже в числах выше,
+    // флаг «Большого оружия» читает бросок урона.
+    ...(style.ids.length ? { fighting_styles: style.ids } : {}),
+    great_weapon_fighting: style.great_weapon_fighting,
     damage_expression: damage,
     damage_type: String(mode.damageType ?? combat.damageType ?? 'piercing').slice(0, 40),
     range_feet: Math.max(5, Math.min(600, safeInteger(mode.longRange ?? mode.normalRange ?? combat.longRange ?? combat.normalRange, 5))),
@@ -7411,7 +7537,10 @@ export function validateCommand(input, rawState, context = {}) {
       command.reaction_window = reactionWindow
       if (action.target === 'enemy') command.target_id = String(reactionWindow.source_actor_id)
     }
-    command.combat_action = action
+    const chosenAction = action.id === 'divine-smite' ? divineSmiteActionFor(state, command, action)
+      : action.id === 'lay-on-hands' ? layOnHandsActionFor(state, command, action)
+        : action
+    command.combat_action = chosenAction
     if (action.spell?.id === 'silvery-barbs') {
       const beneficiaryId = String(command.beneficiary_id ?? command.beneficiaryId ?? command.actor_id)
       const beneficiary = findActor(state, beneficiaryId)
@@ -7420,9 +7549,9 @@ export function validateCommand(input, rawState, context = {}) {
       if (distance == null || distance > 60) throw new RulesValidationError('Союзник находится вне дистанции Искусной остроты', 'TARGET_OUT_OF_RANGE')
       command.beneficiary_id = beneficiaryId
     }
-    if (action.resource) {
-      const pool = resourcePool(state, command.actor_id, action.resource)
-      if (pool.current < Math.max(1, safeInteger(action.cost, 1))) throw new RulesValidationError('Недостаточно классового ресурса', 'INSUFFICIENT_RESOURCE')
+    if (chosenAction.resource) {
+      const pool = resourcePool(state, command.actor_id, chosenAction.resource)
+      if (pool.current < Math.max(1, safeInteger(chosenAction.cost, 1))) throw new RulesValidationError('Недостаточно классового ресурса', 'INSUFFICIENT_RESOURCE')
     }
     if (action.target !== 'self') {
       const target = findActor(state, targetFor(command))
@@ -10663,7 +10792,7 @@ export function effectiveSpeedFeet(state, actor, id) {
     if (Number.isFinite(effect.speedMultiplier)) multiplier *= Number(effect.speedMultiplier)
     flat += safeInteger(effect.speedBonusFeet, 0)
   }
-  const base = Math.max(0, safeInteger(actor?.speed, 30))
+  const base = Math.max(0, safeInteger(actor?.speed, 30)) + (isEnemyActor(state, id) ? 0 : classSpeedBonusFeet(actor))
   const armorPenalty = actor?.speciesBenefits?.mechanics?.ignore_armor_speed_penalty === true ? 0 : armorStrengthSpeedPenalty(actor)
   // Повторные наложения одного заклинания не складываются. Увеличенную
   // скорость затем удваивает Ускорение или делит Замедление.
@@ -11643,10 +11772,11 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
     condition: conditionContext,
     purpose: options.purpose,
   })
+  const dangerSense = dangerSenseAdvantage(state, targetId, options.ability)
   return {
     ...rollD20WithSpeciesLuck(state, diceService, targetId, {
       ...diceOptions,
-      advantage: options.advantage === true || Boolean(advantageCondition) || bloodiedFrenzy || Boolean(antitoxin) || Boolean(speciesAdvantage),
+      advantage: options.advantage === true || Boolean(advantageCondition) || bloodiedFrenzy || Boolean(antitoxin) || Boolean(speciesAdvantage) || dangerSense,
       disadvantage: options.disadvantage === true || Boolean(disadvantageCondition),
       modifier: auraProtection.modifier,
       actorId: targetId,
@@ -11658,6 +11788,7 @@ function rollSavingThrowD20(state, diceService, targetId, options = {}) {
     ...(bloodiedFrenzy ? { bloodied_frenzy: true } : {}),
     ...(antitoxin ? { antitoxin_advantage: true, antitoxin_expires_at_minutes: antitoxin.expires_at_minutes } : {}),
     ...(speciesAdvantage ? { species_save_advantage: speciesAdvantage } : {}),
+    ...(dangerSense ? { danger_sense: true } : {}),
     ...(disadvantageCondition ? { save_disadvantage_condition: disadvantageCondition } : {}),
     ...(autoFailed ? { auto_failed: true, auto_failed_condition: autoFailed } : {}),
   }
@@ -11685,6 +11816,72 @@ function rollSavingThrowCheck(state, diceService, targetId, options = {}) {
     ...(speciesAdvantage ? { species_save_advantage: speciesAdvantage } : {}),
     ...(autoFailed ? { success: false, auto_failed: true, auto_failed_condition: autoFailed } : {}),
   }
+}
+
+/**
+ * Увёртливость (плут и монах 7-го уровня, PHB 2014; черта существа
+ * «Увёртливость»): от эффекта со спасброском Ловкости на половину урона
+ * успех — без урона, провал — половина. Недееспособный ею не пользуется.
+ * @param {any} state
+ * @param {string} targetId
+ */
+function hasEvasion(state, targetId) {
+  const actor = findActor(state, targetId)
+  if (!actor) return false
+  const classKey = characterClassKey(actor)
+  const feature = !isEnemyActor(state, targetId) && ['rogue', 'monk'].includes(classKey) && safeInteger(actor?.level, 1) >= 7
+  if (!feature && !monsterTraitFor(actor, 'evasion')) return false
+  const conditions = conditionIdsFor(state, targetId)
+  return !['incapacitated', 'paralyzed', 'stunned', 'unconscious', 'petrified'].some((condition) => conditions.has(condition))
+}
+
+/**
+ * Урон от эффекта со спасброском: единое чтение «половины при успехе» с
+ * Увёртливостью. Вызывать только там, где спасбросок действительно был.
+ * @param {any} state
+ * @param {string} targetId
+ * @param {{ ability: unknown, saved: boolean, halfOnSave: unknown, total: unknown }} save
+ */
+function savedDamageAmount(state, targetId, { ability, saved, halfOnSave, total }) {
+  const amount = Math.max(0, safeInteger(total, 0))
+  if (!halfOnSave) return saved ? 0 : amount
+  if (String(ability) === 'dex' && hasEvasion(state, targetId)) return saved ? 0 : Math.floor(amount / 2)
+  return saved ? Math.floor(amount / 2) : amount
+}
+
+/**
+ * Чувство опасности (варвар 2-го уровня): преимущество на спасброски
+ * Ловкости от того, что он видит, — если он не ослеплён, не оглушён и
+ * дееспособен.
+ * @param {any} state
+ * @param {string} targetId
+ * @param {unknown} ability
+ */
+function dangerSenseAdvantage(state, targetId, ability) {
+  if (String(ability) !== 'dex') return false
+  const actor = findActor(state, targetId)
+  if (!actor || isEnemyActor(state, targetId) || characterClassKey(actor) !== 'barbarian' || safeInteger(actor?.level, 1) < 2) return false
+  const conditions = conditionIdsFor(state, targetId)
+  return !['blinded', 'deafened', 'incapacitated', 'paralyzed', 'stunned', 'unconscious', 'petrified'].some((condition) => conditions.has(condition))
+}
+
+/**
+ * Прибавка к скорости от умений класса: Быстрое передвижение варвара
+ * (5-й уровень, +10 футов без тяжёлого доспеха) и Движение без доспехов
+ * монаха (2-й уровень +10, 6-й +15, 10-й +20, 14-й +25, 18-й +30; без
+ * доспеха и щита).
+ * @param {any} actor
+ */
+function classSpeedBonusFeet(actor) {
+  const classKey = characterClassKey(actor)
+  const level = safeInteger(actor?.level, 1)
+  const worn = (Array.isArray(actor?.inventory) ? actor.inventory : []).filter((item) => item?.equipped === true)
+    .map((item) => String(catalogItem(String(item.catalog_id ?? item.catalogId ?? ''))?.armor?.category ?? item?.armor_profile?.category ?? ''))
+  if (classKey === 'barbarian' && level >= 5 && !worn.includes('heavy')) return 10
+  if (classKey === 'monk' && level >= 2 && !worn.some((category) => ['light', 'medium', 'heavy', 'shield'].includes(category))) {
+    return level >= 18 ? 30 : level >= 14 ? 25 : level >= 10 ? 20 : level >= 6 ? 15 : 10
+  }
+  return 0
 }
 
 /** Single reading of a saving throw result, so a forced failure cannot be lost. */
@@ -13490,11 +13687,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         }
       }
       const attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage, visibility: command.visibility })
-      const hit = attack.kept === 20 || (attack.kept !== 1 && attack.total >= armorClass)
+      // Чемпион критует на 19–20: такой удар попадает, как и натуральная 20.
+      const criticalThreshold = weaponCriticalThreshold(state, actor)
+      const hit = attack.kept >= criticalThreshold || (attack.kept !== 1 && attack.total >= armorClass)
       // A melee hit on a creature that cannot move or react is a critical hit
       // regardless of the die, so every rider damage roll below scales off
       // `critical` rather than off the natural 20.
-      const criticalBeforeProtection = attack.kept === 20 || (hit && conditionModifiers.automaticCritical)
+      const criticalBeforeProtection = attack.kept >= criticalThreshold || (hit && conditionModifiers.automaticCritical)
       // Adamantine must intercept the critical before any damage expression or
       // rider is doubled.  The exact worn instance is recorded in the attack
       // event so replay and narration never need to consult a future catalog.
@@ -13557,7 +13756,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (landed && !isEnemyActor(state, targetId) && isLivingActor(target)) {
         const protectiveOptions = protectiveAttackReactionOptions(state, target, {
           hit: true, critical, attackTotal: attack.total, armorClass, damageType, distanceFeet,
-        }).filter((option) => !(option.id === 'cast:shield' && attack.kept === 20))
+        }).filter((option) => !(option.id === 'cast:shield' && attack.kept >= criticalThreshold))
         let protectiveChoice = protectiveReactionChoices.get(protectiveAttackKey)
         if (!protectiveChoice && context.protectiveReactionChoice?.key === protectiveAttackKey) {
           protectiveChoice = { ...context.protectiveReactionChoice, use: context.protectiveReactionChoice.use === true }
@@ -13617,6 +13816,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           critical_protection_sources: criticalProtectionSources,
         } : {}),
         ...(conditionModifiers.automaticCritical && critical && attack.kept !== 20 ? { automatic_critical: true } : {}),
+        ...(critical && attack.kept < 20 && attack.kept >= criticalThreshold ? { improved_critical: true } : {}),
         ...(conditionModifiers.advantage.length ? { condition_advantage: conditionModifiers.advantage } : {}),
         ...(conditionModifiers.disadvantage.length ? { condition_disadvantage: conditionModifiers.disadvantage } : {}),
         ...(swing.advantageSources.length ? { advantage_sources: swing.advantageSources } : {}),
@@ -13744,10 +13944,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       if (hidden) events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'hidden' }, [command.actor_id]))
       if (landed && (configuredDamageExpression || command.damage_amount != null)) {
         const damageExpression = configuredDamageExpression && critical ? criticalDamageExpression(configuredDamageExpression) : configuredDamageExpression
-        const damageRoll = damageExpression
+        const rolledDamage = damageExpression
           ? diceService.roll(damageExpression, 'damage', command.actor_id, command.visibility ?? 'public')
           : null
+        const greatWeapon = rolledDamage && profile?.great_weapon_fighting === true
+          ? greatWeaponFightingReroll(rolledDamage, diceService, command)
+          : { roll: rolledDamage, rerolls: [] }
+        const damageRoll = greatWeapon.roll
         if (damageRoll) { rolls.push(damageRoll); events.push(eventFrom(command, 'DieRolled', damageRoll, [])) }
+        for (const reroll of greatWeapon.rerolls) {
+          rolls.push(reroll)
+          events.push(eventFrom(command, 'DieRolled', { ...reroll, great_weapon_fighting: true }, []))
+        }
         const sneakAttackDice = sneakAttackRequested ? sneakAttackDiceCount(actor) : 0
         const sneakAttackExpression = sneakAttackDice > 0
           ? (critical ? `${sneakAttackDice * 2}d6` : `${sneakAttackDice}d6`)
@@ -13833,13 +14041,29 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         // (некротический и излучение): сопротивление оружию их не режет, а
         // невосприимчивость к ним считается отдельно. Они приходят отдельным
         // DamageApplied ниже. Прежняя редакция складывает их с оружием.
-        const typedSpellRiders = usesDnd2014(state)
+        const editionSpellRiders = usesDnd2014(state)
           ? [[hexRoll, 'necrotic', 'hex'], [divineFavorRoll, 'radiant', 'divine-favor']]
             .filter(([roll]) => roll && roll.total > 0)
             .map(([roll, type, spellId]) => ({ roll, type, spellId }))
             .concat(typedConditionRiders.filter((rider) => rider.roll.total > 0))
           : []
-        const foldedSpellRiderDamage = typedSpellRiders.length ? 0 : (hexRoll?.total ?? 0) + (divineFavorRoll?.total ?? 0)
+        const foldedSpellRiderDamage = editionSpellRiders.length ? 0 : (hexRoll?.total ?? 0) + (divineFavorRoll?.total ?? 0)
+        // Божественная кара: 2к8 излучением за ячейку 1-го круга, +1к8 за
+        // каждый круг выше (до 5к8), +1к8 по нежити и исчадиям; крит удваивает
+        // кости. Отдельный урон излучением — сопротивление оружию его не режет.
+        const smite = context?.[DIVINE_SMITE_CONTEXT] ?? null
+        const smiteRoll = smite ? (() => {
+          const creatureType = String(target?.creature_type ?? target?.creatureType ?? target?.type ?? '').toLowerCase()
+          const extra = /undead|fiend|нежить|исчади/u.test(creatureType) ? 1 : 0
+          const count = Math.min(5, 1 + safeInteger(smite.slot_level, 1)) + extra
+          const roll = diceService.roll(`${critical ? count * 2 : count}d8`, 'divine_smite_damage', command.actor_id, command.visibility ?? 'public')
+          rolls.push(roll)
+          events.push(eventFrom(command, 'DieRolled', { ...roll, damage_type: 'radiant', divine_smite: true, slot_level: safeInteger(smite.slot_level, 1) }, []))
+          return roll
+        })() : null
+        const typedSpellRiders = smiteRoll && smiteRoll.total > 0
+          ? [...editionSpellRiders, { roll: smiteRoll, type: 'radiant', spellId: 'divine-smite' }]
+          : editionSpellRiders
         let raw = (damageRoll?.total ?? Math.max(0, safeInteger(command.damage_amount, 0))) + (sneakAttackRoll?.total ?? 0) + (markRoll?.total ?? 0) + foldedSpellRiderDamage + (savageAttackRoll?.total ?? 0) + rageBonus + enchantmentDamage
         // Ослабление режет удар вдвое — но только тот, что считается от нужной
         // характеристики. Делится весь сложенный урон, включая метки и порчу.
@@ -14257,7 +14481,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             const burstSaved = savingThrowSucceeded(save, saveDc)
             rolls.push(save)
             events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: pendingWeaponHitSpell.id, ability, difficulty: saveDc, saved: burstSaved, trigger: 'next-weapon-hit-burst' }, [burstTargetId]))
-            const amount = burstSaved ? (burst.halfOnSave ? Math.floor(burstRoll.total / 2) : 0) : burstRoll.total
+            const amount = savedDamageAmount(burstState, burstTargetId, { ability, saved: burstSaved, halfOnSave: burst.halfOnSave, total: burstRoll.total })
             if (amount <= 0) continue
             const burstBeforeDamageState = burstState
             const burstPayload = resolveDamagePayload(burstBeforeDamageState, burstTargetId, amount, String(burst.damageType))
@@ -14428,7 +14652,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           ...save, ability, difficulty: action.save.dc, saved, success: saved, source: 'monster-action', action_id: action.id,
         }, [targetId]))
         for (const component of damage) {
-          const raw = saved ? action.save.success === 'half_damage' ? Math.floor(component.rolled / 2) : 0 : component.rolled
+          const raw = savedDamageAmount(workingState, targetId, { ability, saved, halfOnSave: action.save.success === 'half_damage', total: component.rolled })
           const before = workingState
           const payload = resolveDamagePayload(before, targetId, raw, component.type)
           const damageEvent = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', {
@@ -14486,7 +14710,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           source: 'area-attack',
           item_id: item.id,
         }, [targetIdValue]))
-        const raw = saved && combat.halfOnSave ? Math.floor(damageRoll.total / 2) : saved ? 0 : damageRoll.total
+        const raw = savedDamageAmount(state, targetIdValue, { ability: combat.saveAbility || 'dex', saved, halfOnSave: combat.halfOnSave, total: damageRoll.total })
         events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...resolveDamagePayload(state, targetIdValue, raw, String(combat.damageType || 'fire')), save_total: save.total, save_dc: safeInteger(combat.saveDc, 12), saved }, [targetIdValue]))
       }
       let npcDamageState = projectEvents(events)
@@ -14511,7 +14735,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           source_event_id: areaEventId,
           policy_id: NPC_WORLD_POLICY_ID,
         }, [npcId]))
-        const raw = saved && combat.halfOnSave ? Math.floor(damageRoll.total / 2) : saved ? 0 : damageRoll.total
+        const raw = savedDamageAmount(npcContext, npcId, { ability: combat.saveAbility || 'dex', saved, halfOnSave: combat.halfOnSave, total: damageRoll.total })
         const harmEvents = npcWorldEventsFrom(commandWithRules(command, RULE_IDS.damage), npcHarmEventDrafts(npcDamageState, {
           npcId,
           amount: resolveDamagePayload(npcContext, npcId, raw, String(combat.damageType || 'fire')).applied_amount,
@@ -15265,7 +15489,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           rolls.push(save, damageRoll)
           events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: action.spell.id, ability: 'dex', difficulty: dc, saved: savingThrowSucceeded(save, dc) }, [String(reactionWindow.source_actor_id)]))
           events.push(eventFrom(command, 'DieRolled', { ...damageRoll, spell_id: action.spell.id, slot_level: reactionSlotLevel }, []))
-          const raw = savingThrowSucceeded(save, dc) ? Math.floor(damageRoll.total / 2) : damageRoll.total
+          const raw = savedDamageAmount(state, String(reactionWindow.source_actor_id), { ability: 'dex', saved: savingThrowSucceeded(save, dc), halfOnSave: true, total: damageRoll.total })
           const damageState = state
           const sourceActorId = String(reactionWindow.source_actor_id)
           const payload = resolveDamagePayload(damageState, sourceActorId, raw, 'fire')
@@ -15696,7 +15920,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
             ...save, ability, difficulty, saved, success: saved, source: 'species-breath',
           }, [caughtId]))
-          const raw = saved ? Math.floor(damageRoll.total / 2) : damageRoll.total
+          const raw = savedDamageAmount(breathState, caughtId, { ability, saved, halfOnSave: true, total: damageRoll.total })
           const beforeDamageState = breathState
           const payload = damagePayload(beforeDamageState, caughtId, raw, String(action.effect.damageType ?? 'fire'))
           const damageEvent = eventFrom(commandWithRules(command, RULE_IDS.damage, payload.resistant ? RULE_IDS.resistance : null), 'DamageApplied', {
@@ -15844,7 +16068,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const bonus = (action.effect.addLevel ? Math.max(1, safeInteger(actor?.level, 1)) : 0)
           + (action.effect.addProficiency ? Math.max(0, safeInteger(actor?.proficiency, 0)) : 0)
           + (action.effect.ability ? abilityModifier(actor?.abilities?.[action.effect.ability]) : 0)
-        let amount = Math.max(0, safeInteger(action.effect.amount, 0) + bonus)
+        let amount = Math.max(0, safeInteger(action.effect.amount, 0) + (action.effect.fromPool ? 0 : bonus))
         let healing = { amount }
         if (action.effect.dice) {
           const expression = diceExpression(action.effect.dice, bonus, 8)
@@ -15863,7 +16087,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         // Манёвр мастера боевых искусств — надбавка к попаданию: кость
         // превосходства тратится, когда удар попал, а промах её не сжигает
         // (плейтест 2026-10-03). Прочие удары с запасом платят заранее.
-        const spendOnHit = action.resource === 'superiority_dice'
+        // Кара и Ошеломляющий удар тоже решаются после попадания (PHB 2014).
+        const spendOnHit = action.resource === 'superiority_dice' || action.effect.divineSmite === true || action.id === 'stunning-strike'
         if (!spendOnHit) spendActionResource()
         let resourceSpent = !spendOnHit
         const level = Math.max(1, safeInteger(actor?.level, 1))
@@ -15874,6 +16099,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           ...context,
           [LOADING_ACTION_TYPE_CONTEXT]: action.actionType,
           ...(monkUnarmedBonus ? { [MONK_BONUS_ATTACK_CONTEXT]: MONK_BONUS_ATTACK_TOKEN } : {}),
+          ...(action.effect.divineSmite === true ? { [DIVINE_SMITE_CONTEXT]: { slot_level: Math.max(1, safeInteger(action.smite_slot_level, 1)) } } : {}),
         }
         const parentPaysAttackEconomy = action.actionType !== 'action'
         let workingState = state
@@ -15919,7 +16145,11 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             if (action.effect.saveAbility && action.effect.condition) {
               const target = findActor(workingState, actionTargetId)
               const saveAbility = action.effect.saveAbility
-              const dc = 8 + Math.max(0, safeInteger(actor?.proficiency, 0)) + Math.max(abilityModifier(actor?.abilities?.str), abilityModifier(actor?.abilities?.dex))
+              // СЛ ци монаха — по Мудрости; прочие приёмы — по Силе или Ловкости.
+              const dcAbilityBonus = action.effect.saveDcAbility
+                ? abilityModifier(actor?.abilities?.[action.effect.saveDcAbility])
+                : Math.max(abilityModifier(actor?.abilities?.str), abilityModifier(actor?.abilities?.dex))
+              const dc = 8 + Math.max(0, safeInteger(actor?.proficiency, 0)) + dcAbilityBonus
               const save = rollSavingThrow(workingState, actionTargetId, { ability: saveAbility, modifier: abilityModifier(target?.abilities?.[saveAbility]), purpose: `action_save:${action.id}`, avoid_or_end_condition: action.effect.condition === 'poisoned' ? 'poisoned' : null, visibility: command.visibility })
               rolls.push(save)
               const saved = savingThrowSucceeded(save, dc)
@@ -16100,7 +16330,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
             ...save, ability: action.saveAbility, difficulty, saved, legendary_action_id: action.id,
           }, [caughtId]))
-          const amount = damageRoll ? (saved ? (action.halfOnSave ? Math.floor(damageRoll.total / 2) : 0) : damageRoll.total) : 0
+          const amount = damageRoll ? savedDamageAmount(sweepState, caughtId, { ability: action.saveAbility, saved, halfOnSave: action.halfOnSave, total: damageRoll.total }) : 0
           if (amount > 0) {
             const damageState = sweepState
             const payload = resolveDamagePayload(damageState, caughtId, amount, action.damageType)
@@ -16994,7 +17224,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               const saved = savingThrowSucceeded(save, spellSaveDc)
               rolls.push(save)
               events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: spell.id, ability, difficulty: spellSaveDc, saved, trigger: 'secondary-burst' }, [burstTargetId]))
-              const raw = saved ? (burst.halfOnSave ? Math.floor(burstRoll.total / 2) : 0) : burstRoll.total
+              const raw = savedDamageAmount(burstState, burstTargetId, { ability, saved, halfOnSave: burst.halfOnSave, total: burstRoll.total })
               if (raw <= 0) continue
               const payload = resolveDamagePayload(burstState, burstTargetId, raw, String(burst.damageType || 'force'))
               const damageEvent = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, spell_id: spell.id, secondary_burst: true, saved }, [burstTargetId])
@@ -17153,8 +17383,8 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             // половины: автоматический успех здесь — отсутствие эффекта.
             const damage = immuneByType || outOfReachAfterPull ? 0 : spell.saveDamage
               ? (outcomeDamageRoll?.total ?? 0)
-              : sharedDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total) : 0
-            const bonusDamage = immuneByType ? 0 : bonusDamageRoll ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total) : 0
+              : sharedDamageRoll ? savedDamageAmount(state, resolvedTargetId, { ability: saveAbility, saved, halfOnSave: spell.halfOnSave, total: sharedDamageRoll.total }) : 0
+            const bonusDamage = immuneByType ? 0 : bonusDamageRoll ? savedDamageAmount(state, resolvedTargetId, { ability: saveAbility, saved, halfOnSave: spell.halfOnSave, total: bonusDamageRoll.total }) : 0
             const elementalReactionKey = spell.bonusDamage
               ? `${command.command_id}:${resolvedTargetId}:spell-area:${spell.id}`
               : `${command.command_id}:${resolvedTargetId}:${damageType}`
@@ -17432,10 +17662,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               npcSpellState = applyGameEvent(npcSpellState, proneEvent)
             }
             const baseAmount = sharedDamageRoll
-              ? (saved ? (spell.halfOnSave ? Math.floor(sharedDamageRoll.total / 2) : 0) : sharedDamageRoll.total)
+              ? savedDamageAmount(npcContext, npcId, { ability: saveAbility, saved, halfOnSave: spell.halfOnSave, total: sharedDamageRoll.total })
               : 0
             const bonusAmount = bonusDamageRoll
-              ? (saved ? (spell.halfOnSave ? Math.floor(bonusDamageRoll.total / 2) : 0) : bonusDamageRoll.total)
+              ? savedDamageAmount(npcContext, npcId, { ability: saveAbility, saved, halfOnSave: spell.halfOnSave, total: bonusDamageRoll.total })
               : 0
             const npcDamageComponents = []
             let npcDamageState = npcContext
@@ -17884,7 +18114,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
                 const saved = savingThrowSucceeded(save, spellSaveDc)
                 rolls.push(save)
                 events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SpellSavingThrowResolved', { ...save, spell_id: spell.id, ability, difficulty: spellSaveDc, saved }, [caughtId]))
-                const amount = saved ? (spell.halfOnSave ? Math.floor(blastRoll.total / 2) : 0) : blastRoll.total
+                const amount = savedDamageAmount(state, caughtId, { ability, saved, halfOnSave: spell.halfOnSave, total: blastRoll.total })
                 if (amount <= 0) continue
                 const payload = resolveDamagePayload(state, caughtId, amount, damageType)
                 events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, spell_id: spell.id, saved }, [caughtId]))
@@ -18706,7 +18936,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               rolls.push(damageRoll)
               events.push(eventFrom(command, 'DieRolled', damageRoll, []))
               // Спасбросок делит урон пополам, как у площадных эффектов.
-              const amount = Math.max(0, save.success ? Math.floor(damageRoll.total / 2) : damageRoll.total)
+              const amount = savedDamageAmount(state, victimId, { ability: hazard.save_ability, saved: save.success === true, halfOnSave: true, total: damageRoll.total })
               if (amount > 0) {
                 const damagePayload = {
                   ...resolveDamagePayload(state, victimId, amount, hazard.damage_type),
@@ -19149,11 +19379,13 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const initiativeItemSources = activeItemMechanicEffects(actor)
           .filter((effect) => effect.initiative_advantage)
           .map((effect) => ({ effect_id: effect.effect_id, item_id: effect.item_id, item_name: effect.item_name, catalog_id: effect.catalog_id }))
+        // Дикий инстинкт варвара 7-го уровня — преимущество на инициативу.
+        const feralInstinct = !isEnemyActor(state, id) && characterClassKey(actor) === 'barbarian' && safeInteger(actor?.level, 1) >= 7
         const roll = diceService.rollD20({
           modifier,
           purpose: 'initiative',
           actorId: id,
-          advantage: initiativeItemSources.length > 0,
+          advantage: initiativeItemSources.length > 0 || feralInstinct,
           visibility: 'public',
         })
         rolls.push(roll)
@@ -19164,9 +19396,9 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           roll: roll.kept,
           dice: clone(roll.dice),
           roll_id: roll.roll_id,
-          ...(initiativeItemSources.length ? {
+          ...(initiativeItemSources.length || feralInstinct ? {
             mode: 'advantage',
-            advantage_sources: initiativeItemSources,
+            advantage_sources: [...initiativeItemSources, ...(feralInstinct ? [{ feature_id: 'feral-instinct' }] : [])],
           } : {}),
         })
       }
@@ -20231,7 +20463,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', {
           ...save, ability: breath.ability, difficulty: breath.dc, saved, source: 'scenario-stranger',
         }, [heroId]))
-        const amount = saved ? Math.floor(damageRoll.total / 2) : damageRoll.total
+        const amount = savedDamageAmount(sweepState, heroId, { ability: breath.ability, saved, halfOnSave: true, total: damageRoll.total })
         if (amount <= 0) continue
         const damageState = sweepState
         const payload = resolveDamagePayload(damageState, heroId, amount, breath.damage_type)
