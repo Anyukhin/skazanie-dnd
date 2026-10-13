@@ -1898,7 +1898,7 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
            combatBonusActionAvailable={state.mechanics?.combat?.action_economy?.[activePlayer.id]?.bonus_action !== false}
           busy={tacticalBusy}
           error={tacticalError}
-          onEquip={(itemId, equipped) => equipItem(activePlayer.id, itemId, equipped)}
+          onEquip={(itemId, equipped, slot) => equipItem(activePlayer.id, itemId, equipped, slot)}
           onUse={(itemId, options) => useItem(activePlayer.id, itemId, options)}
           onTransfer={(itemId, recipientId, quantity) => transferItem(activePlayer.id, itemId, recipientId, quantity)}
           onAttune={(itemId, attuned) => attuneItem(activePlayer.id, itemId, attuned)}

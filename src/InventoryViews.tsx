@@ -756,7 +756,7 @@ export function InventoryView({
   combatBonusActionAvailable?: boolean
   busy?: boolean
   error?: string | null
-  onEquip: (itemId: string, equipped: boolean) => void
+  onEquip: (itemId: string, equipped: boolean, slot?: 'off_hand') => void
   onUse: (itemId: string, options?: ItemUseOptions) => void
   onTransfer: (itemId: string, recipientId: string, quantity: number) => void
   onAttune: (itemId: string, attuned: boolean) => void
@@ -952,7 +952,8 @@ export function InventoryView({
       const combat = item.combat
       const combatAbility = combat?.ability ? abilityNames[combat.ability] : ''
       const combatRange = combat ? combat.kind === 'melee' ? `${combat.normalRange} фт.` : `${combat.normalRange}/${combat.longRange ?? combat.normalRange} фт.` : ''
-      const equipSlot = item.capabilities?.equip_slot ? equipSlotNames[item.capabilities.equip_slot] ?? item.capabilities.equip_slot : ''
+      const equipSlot = item.equipped_slot === 'off_hand' ? equipSlotNames.off_hand
+        : item.capabilities?.equip_slot ? equipSlotNames[item.capabilities.equip_slot] ?? item.capabilities.equip_slot : ''
       const activated = item.capabilities?.activated ?? item.activated === true
       const useDisabledReason = item.capabilities?.usable ? useDisabledReasonFor(item) : ''
       const activationDisabledReason = item.capabilities?.activatable ? activationDisabledReasonFor(item) : ''
@@ -988,6 +989,7 @@ export function InventoryView({
         {item.capabilities?.charges && <div className="item-charge-state">Применения: <b>{item.capabilities.charges.current}/{item.capabilities.charges.max}</b></div>}
         <div className="item-actions">
           {item.capabilities?.equippable && <button disabled={busy || Boolean(equipDisabledReasonFor(item))} title={equipDisabledReasonFor(item) || equipCostHintFor(item) || undefined} onClick={() => onEquip(item.id, !item.equipped)}>{item.equipped ? 'Снять' : 'Экипировать'}{combatActive && !equipDisabledReasonFor(item) ? (combatObjectInteractionAvailable ? ' · бесплатно' : ' · действие') : ''}</button>}
+          {item.capabilities?.off_hand && !item.equipped && <button disabled={busy || Boolean(equipDisabledReasonFor(item))} title="Бой двумя оружиями: лёгкое оружие во второй руке, удар бонусным действием после атаки" onClick={() => onEquip(item.id, true, 'off_hand')}>Во вторую руку</button>}
           {item.capabilities?.equippable && combatActive && <small className="item-use-hint" role="status">{equipDisabledReasonFor(item) || equipCostHintFor(item)}</small>}
           {item.capabilities?.usable && item.capabilities.use?.use_modes && <label className="item-use-target">
             <span>Режим</span>

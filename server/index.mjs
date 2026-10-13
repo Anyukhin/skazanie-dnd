@@ -665,7 +665,7 @@ function itemCommandFingerprint(command) {
     type,
     actor_id: String(command?.actor_id ?? ''),
     item_id: String(command?.item_id ?? ''),
-    ...(type === 'EquipItem' ? { equipped: command?.equipped !== false } : {}),
+    ...(type === 'EquipItem' ? { equipped: command?.equipped !== false, ...(command?.equip_slot === 'off_hand' ? { equip_slot: 'off_hand' } : {}) } : {}),
     ...(type === 'AttuneItem' ? { attuned: command?.attuned !== false } : {}),
     ...(type === 'ActivateItem' ? { activated: command?.activated === true } : {}),
     ...(type === 'UseItem' ? {
@@ -1985,7 +1985,7 @@ function sanitizePlayerItemCommand(user, state, input) {
     ...(expected == null ? {} : { expected_state_version: expected }),
   }
   const withFingerprint = (command) => ({ ...command, request_fingerprint: itemCommandFingerprint(command) })
-  if (type === 'EquipItem') return withFingerprint({ ...base, equipped: input?.equipped !== false })
+  if (type === 'EquipItem') return withFingerprint({ ...base, equipped: input?.equipped !== false, ...(input?.equip_slot === 'off_hand' ? { equip_slot: 'off_hand' } : {}) })
   if (type === 'AttuneItem') return withFingerprint({ ...base, attuned: input?.attuned !== false })
   if (type === 'ActivateItem') {
     if (typeof input?.activated !== 'boolean') {

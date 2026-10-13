@@ -84,7 +84,7 @@ type TacticalCommand =
   | { command_type: 'ProposeParley'; actor_id: string; skill: 'persuasion' | 'intimidation' }
   | { command_type: 'SettleParley'; actor_id: string; outcome: ParleyOutcome }
   | { command_type: 'ResolveHeroDeath'; actor_id: string; resolution: 'resurrect' | 'replace'; replacement_name?: string }
-  | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean }
+  | { command_type: 'EquipItem'; actor_id: string; item_id: string; equipped: boolean; equip_slot?: 'off_hand' }
   | { command_type: 'UseItem'; actor_id: string; item_id: string; target_id?: string; charges_to_spend?: number; to?: { x: number; y: number }; use_mode?: 'spill'; weapon_id?: string }
   | { command_type: 'TransferItem'; actor_id: string; item_id: string; recipient_id: string; quantity: number }
   | { command_type: 'ChooseDialogueOption'; actor_id: string; npc_id: string; option_id: string }
@@ -1939,8 +1939,8 @@ export function useGameSession(options: {
     }, resolution === 'resurrect' ? 'Воскресить погибшего героя' : 'Заменить погибшего героя новым')
   }, [executeTacticalCommand])
 
-  const equipItem = useCallback((playerId: string, itemId: string, equipped: boolean) => {
-    return executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped }, equipped ? 'Экипировать предмет' : 'Снять предмет')
+  const equipItem = useCallback((playerId: string, itemId: string, equipped: boolean, slot?: 'off_hand') => {
+    return executeTacticalCommand({ command_type: 'EquipItem', actor_id: playerId, item_id: itemId, equipped, ...(slot ? { equip_slot: slot } : {}) }, slot ? 'Взять во вторую руку' : equipped ? 'Экипировать предмет' : 'Снять предмет')
   }, [executeTacticalCommand])
 
   const useItem = useCallback((playerId: string, itemId: string, options: ItemUseOptions = {}) => {

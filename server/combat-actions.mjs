@@ -61,6 +61,10 @@ const action = (id, name, options = {}) => {
 }
 
 const COMMON_ACTIONS = Object.freeze([
+  // Бой двумя оружиями (PHB 2014): бонусным действием после действия Атака —
+  // удар лёгким оружием второй руки; модификатор характеристики к урону — только
+  // со стилем «Сражение двумя оружиями» (или если он отрицательный).
+  action('offhand-attack', 'Атака второй рукой', { category: 'common', target: 'enemy', actionType: 'bonus_action', range: 5, requiresOffHandWeapon: true, description: 'Бонусным действием после действия Атака ударить лёгким оружием второй руки. Модификатор характеристики к урону — только со стилем «Сражение двумя оружиями».', effect: { kind: 'weapon_attack', attacks: 1, offHand: true } }),
   action('stand-up', 'Встать', { category: 'common', actionType: 'free', description: 'Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».', effect: { kind: 'stand_up' } }),
   action('break-free', 'Высвободиться', { category: 'common', description: 'Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.', effect: { kind: 'break_free' } }),
   action('steady-nerves', 'Совладать с собой', { category: 'common', description: 'Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).', effect: { kind: 'steady_nerves' } }),
@@ -339,8 +343,10 @@ export function combatActionsFor(actor) {
         },
       })]
     : []
+  const holdsOffHandWeapon = (Array.isArray(actor?.inventory) ? actor.inventory : []).some((item) => item?.equipped === true && item.equipped_slot === 'off_hand')
   return [...COMMON_ACTIONS, ...classActions, ...speciesActions]
     .filter((entry) => level >= entry.minimumLevel)
+    .filter((entry) => !entry.requiresOffHandWeapon || holdsOffHandWeapon)
     .map((entry) => ({
       ...clone(entry),
       sourceUrl: entry.sourceUrl ?? CLASS_URL[classKey] ?? 'https://www.dnd.su/articles/actions-in-combat/',

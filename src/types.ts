@@ -741,6 +741,8 @@ export type InventoryItem = {
   quantity: number
   weight: number
   equipped: boolean
+  /** Оружие во второй руке (бой двумя оружиями). */
+  equipped_slot?: 'off_hand'
   activated?: boolean
   requires_attunement?: boolean
   attuned_to?: string | null
@@ -763,6 +765,8 @@ export type InventoryItem = {
   capabilities?: {
     equippable: boolean
     equip_slot: string | null
+    /** Лёгкое оружие ближнего боя — его можно взять во вторую руку. */
+    off_hand?: boolean
     /** Ручной предмет, доступный для Equip/Unequip в бою этой волны. */
     combat_equip?: boolean
     usable: boolean

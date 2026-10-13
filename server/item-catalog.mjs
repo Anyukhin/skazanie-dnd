@@ -2110,6 +2110,17 @@ export function hydrateCatalogItem(input = {}) {
   return catalogItem(catalogId) ? materializeCatalogItem(catalogId, source) : clone(source)
 }
 
+/**
+ * Лёгкое оружие ближнего боя — его держат во второй руке (бой двумя оружиями,
+ * PHB 2014): кинжал, короткий меч, ручной топор, скимитар, лёгкий молот…
+ * @param {any} entryOrItem запись каталога или предмет инвентаря
+ */
+export function offHandWeaponAllowed(entryOrItem) {
+  const entry = entryOrItem?.lifecycle ? entryOrItem : catalogItem(String(entryOrItem?.catalog_id ?? entryOrItem?.catalogId ?? ''))
+  if (!entry || entry.type !== 'weapon' || entry.combat?.kind !== 'melee' || entry.combat?.twoHanded === true) return false
+  return [...(entry.weapon?.properties ?? []), ...(entry.combat?.properties ?? [])].map(String).includes('light')
+}
+
 export function itemViewerCapabilities(item = {}, { rulesetId = '' } = {}) {
   const entry = catalogItem(item?.catalog_id ?? item?.catalogId)
   if (!entry) {
@@ -2191,6 +2202,7 @@ export function itemViewerCapabilities(item = {}, { rulesetId = '' } = {}) {
       && (entry.type === 'weapon' && Boolean(entry.combat)
         || entry.focus_mode === 'held' && Array.isArray(entry.spellcasting_focus) && entry.spellcasting_focus.length > 0),
     usable: Boolean(use),
+    ...(offHandWeaponAllowed(entry) ? { off_hand: true } : {}),
     catalog_description: entry.description,
     use,
     ...(activation ? {

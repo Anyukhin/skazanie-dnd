@@ -401,6 +401,7 @@ import {
   catalogItem,
   materializeCatalogItem,
   normalizeItemOriginKind,
+  offHandWeaponAllowed,
 } from './item-catalog.mjs'
 import {
   PICKPOCKET_ABILITY,
@@ -585,6 +586,8 @@ const MONK_BONUS_ATTACK_TOKEN = Object.freeze({})
 // Божественная кара едет во вложенную атаку только серверным контекстом:
 // поле команды клиент мог бы прислать сам и получить кару без ячейки.
 const DIVINE_SMITE_CONTEXT = Symbol('divine-smite')
+// Удар второй рукой: урон без положительного модификатора характеристики.
+const OFFHAND_ATTACK_CONTEXT = Symbol('offhand-attack')
 // `loading` отдельно ограничивает один экземпляр оружия для действия,
 // бонусного действия и реакции. Маркер контекста живёт только на сервере:
 // клиент не может превратить обычную атаку в бонусную или реакционную полем.
@@ -3487,7 +3490,18 @@ function greatWeaponFightingReroll(roll, diceService, command) {
   }
 }
 
-function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbility = null } = {}) {
+/**
+ * Оружие второй руки, если обе руки держат лёгкое оружие ближнего боя.
+ * @param {any} actor
+ */
+function offHandWeaponFor(actor) {
+  const inventory = Array.isArray(actor?.inventory) ? actor.inventory : []
+  const offHand = inventory.find((item) => item?.equipped === true && item.equipped_slot === 'off_hand' && offHandWeaponAllowed(item))
+  const mainHand = inventory.find((item) => item?.equipped === true && item.equipped_slot !== 'off_hand' && item.type === 'weapon' && offHandWeaponAllowed(item))
+  return offHand && mainHand ? offHand : null
+}
+
+function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbility = null, offHand = false } = {}) {
   const item = combatItemForCommand(actor, itemId)
   // Каталожный предмет всегда читает боевой профиль из реестра. Поля
   // сохранённого экземпляра годятся только для legacy/custom-инвентаря и не
@@ -3535,9 +3549,13 @@ function itemAttackProfile(state, actor, itemId, { attackMode = null, attackAbil
   const style = weaponFightingStyleBonus(actor, item, mode, baseProperties)
   const attackBonus = safeInteger(mode.attackBonus ?? combat.attackBonus, 0) + style.attack_bonus
   const damageBonus = safeInteger(mode.damageBonus ?? combat.damageBonus, 0) + style.damage_bonus
+  // Удар второй рукой не добавляет к урону положительный модификатор — разве
+  // что со стилем «Сражение двумя оружиями».
+  const twoWeaponStyle = normalizedSelectedFeatureIds(actor).includes('fighting-style-two-weapon')
+  const damageAbilityBonus = offHand && !twoWeaponStyle ? Math.min(0, abilityBonus) : abilityBonus
   let damage
-  try { damage = diceExpression(shillelaghActive ? '1d8' : mode.damage ?? combat.damage, abilityBonus + damageBonus, mode.kind === 'ranged' ? 8 : 8) } catch {
-    const fallbackBonus = abilityBonus + damageBonus
+  try { damage = diceExpression(shillelaghActive ? '1d8' : mode.damage ?? combat.damage, damageAbilityBonus + damageBonus, mode.kind === 'ranged' ? 8 : 8) } catch {
+    const fallbackBonus = damageAbilityBonus + damageBonus
     damage = `1d8${fallbackBonus >= 0 ? '+' : ''}${fallbackBonus}`
   }
   return {
@@ -7582,6 +7600,14 @@ export function validateCommand(input, rawState, context = {}) {
       if (!reactionWindow || String(reactionWindow.actor_id) !== command.actor_id || !(reactionWindow.action_ids ?? []).includes(action.id)) throw new RulesValidationError('У этой реакции сейчас нет подходящего триггера', 'REACTION_NOT_AVAILABLE')
       command.reaction_window = reactionWindow
       if (action.target === 'enemy') command.target_id = String(reactionWindow.source_actor_id)
+    }
+    if (action.effect?.offHand === true) {
+      const offHandItem = offHandWeaponFor(actor)
+      if (!offHandItem) throw new RulesValidationError('Для атаки второй рукой нужны лёгкое оружие ближнего боя в обеих руках', 'OFFHAND_WEAPON_REQUIRED')
+      if (!state.mechanics.combat.action_economy?.[command.actor_id]?.attack_action_id) {
+        throw new RulesValidationError('Атака второй рукой — бонусным действием после действия Атака', 'OFFHAND_ATTACK_REQUIRES_ATTACK')
+      }
+      command.item_id = String(offHandItem.id)
     }
     const chosenAction = action.id === 'divine-smite' ? divineSmiteActionFor(state, command, action)
       : action.id === 'lay-on-hands' ? layOnHandsActionFor(state, command, action)
@@ -13659,7 +13685,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const authoritative = Boolean(command.server_authoritative || context.serverAuthoritativeCombat || context.isNpcScheduler || isEnemyActor(state, command.actor_id) || isEnemyActor(state, targetId))
       const monkBonusAttack = isMonkBonusAttackContext(context)
       const selectedProfile = authoritative && command.item_id
-        ? itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability })
+        ? itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability, offHand: context?.[OFFHAND_ATTACK_CONTEXT] === true })
         : null
       const profile = monkBonusAttack
         ? monkMartialArtsAttackProfile(actor)
@@ -16234,6 +16260,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           [LOADING_ACTION_TYPE_CONTEXT]: action.actionType,
           ...(monkUnarmedBonus ? { [MONK_BONUS_ATTACK_CONTEXT]: MONK_BONUS_ATTACK_TOKEN } : {}),
           ...(action.effect.divineSmite === true ? { [DIVINE_SMITE_CONTEXT]: { slot_level: Math.max(1, safeInteger(action.smite_slot_level, 1)) } } : {}),
+          ...(action.effect.offHand === true ? { [OFFHAND_ATTACK_CONTEXT]: true } : {}),
         }
         const parentPaysAttackEconomy = action.actionType !== 'action'
         let workingState = state
