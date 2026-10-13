@@ -3307,16 +3307,18 @@ export class GameOrchestrator {
         visible_state_changes: [],
         authoritative_state: authoritativeState,
         turn_consumed: false,
-        action_kind: 'clarification',
+        // Названный собеседник не здесь — это ответ, а не вопрос: переспросить
+        // нечего, и повтор той же фразы не должен ходить по кругу уточнений.
+        action_kind: intent.absent_npc ? 'answer' : 'clarification',
         request_kind: 'action',
-        clarification: this.clarificationRegistry.create({
+        ...(intent.absent_npc ? {} : { clarification: this.clarificationRegistry.create({
           campaignId,
           actorId: playerId,
           stateVersion: authoritativeState.state_version,
           action: message,
           question: narration,
           intent,
-        }),
+        }) }),
         ...(pendingClarification ? { resolved_action: message } : {}),
       }
       this.saveTrace({ turnId, campaignId, mode, intent, retrievalQueries, retrievedRules, plan, stateBefore: authoritativeState.state_version, stateAfter: authoritativeState.state_version, verification: { valid: true }, latency: this.now() - started })

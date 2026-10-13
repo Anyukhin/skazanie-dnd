@@ -820,6 +820,8 @@ test('known npc in another place: the answer says where, not «who is it?»', as
   assert.match(result.narration, /King Ares — не здесь, а в другом месте: Stormberg./u)
   assert.match(result.narration, /Здесь можно поговорить: Marta./u)
   assert.doesNotMatch(result.narration, /Кому это/u)
+  assert.equal(result.clarification, undefined, 'ответ, а не вопрос: уточнять нечего')
+  assert.equal(result.action_kind, 'answer')
 })
 
 test('an explicit npc_id conflicts with a duplicate non-social request', async () => {
