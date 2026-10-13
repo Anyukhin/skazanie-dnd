@@ -1,0 +1,133 @@
+//! Редьюсер событий — перенос `applyGameEventCurrent` (`rules-engine.mjs`).
+//!
+//! Событие применяется к состоянию той же JSON-формы, что в JS. После ветки
+//! события идут общие шаги: память карты сцены, реестры-выводы из журнала
+//! (летопись поступков, закон, таверна…), версия состояния и тактический ход.
+
+mod combat;
+mod conditions;
+mod vitals;
+
+use serde_json::Value;
+use sk_core::js::safe_int;
+use sk_core::Event;
+
+/// Что делать с событием этого типа.
+type Handler = fn(&mut Value, &Event);
+
+fn handler(event_type: &str) -> Option<Handler> {
+    Some(match event_type {
+        // Только журнал: на состояние не влияют.
+        "DieRolled" => noop,
+        // Живучесть.
+        "DamageApplied" => vitals::damage_applied,
+        "HitPointMaximumReduced" => vitals::hit_point_maximum_reduced,
+        "HitPointMaximumIncreased" => vitals::hit_point_maximum_increased,
+        "HitPointMaximumReductionPrevented" => vitals::hit_point_maximum_reduction_prevented,
+        "HealingApplied" => vitals::healing_applied,
+        "CreatureKnockedOut" => vitals::creature_knocked_out,
+        "KnockoutRecoveryProgressed" => vitals::knockout_recovery_progressed,
+        "KnockoutEnded" => vitals::knockout_ended,
+        "DeathSavingThrowRolled" => vitals::death_saving_throw_rolled,
+        "DeathSaveFailureRecorded" => vitals::death_save_failure_recorded,
+        "StableRecoveryScheduled" => vitals::stable_recovery_scheduled,
+        "StableRecoveryProgressed" => vitals::stable_recovery_progressed,
+        "HeroStabilized" => vitals::hero_stabilized,
+        "HeroDied" => vitals::hero_died,
+        "HeroResurrected" | "HeroReplaced" => vitals::hero_resurrected_or_replaced,
+        "TemporaryHitPointsGranted" => vitals::temporary_hit_points_granted,
+        "HitPointsReducedToZero" => vitals::hit_points_reduced_to_zero,
+        "ResourceSpent" | "ResourceRestored" => vitals::resource_changed,
+        // Состояния и концентрация.
+        "ConditionAdded" => conditions::condition_added,
+        "ConditionRemoved" => conditions::condition_removed,
+        "SpellSavingThrowResolved" => conditions::spell_saving_throw_resolved,
+        "ConcentrationSavingThrowResolved" => conditions::concentration_saving_throw_resolved,
+        "ConcentrationStarted" => conditions::concentration_started,
+        "ConcentrationEnded" => conditions::concentration_ended,
+        "EnemyKnowledgeRevealed" => conditions::enemy_knowledge_revealed,
+        // Бой.
+        "SneakAttackApplied" => combat::sneak_attack_applied,
+        "AttackResolved" => combat::attack_resolved,
+        "AreaAttackResolved" => combat::area_attack_resolved,
+        "CombatActionUsed" => combat::combat_action_used,
+        _ => return None,
+    })
+}
+
+fn noop(_: &mut Value, _: &Event) {}
+
+/// Перенесено ли событие этого типа.
+pub fn is_ported(event_type: &str) -> bool {
+    handler(event_type).is_some()
+}
+
+/// Применить событие: ветка типа и общие шаги после неё.
+pub fn apply_event(state: &mut Value, event: &Event) {
+    if let Some(apply) = handler(&event.event_type) {
+        apply(state, event);
+    }
+    crate::scene_maps::remember_current_scene_map(state);
+    // Реестры-выводы из журнала (`applyWorldDeedEvent`, `applyLawEvent`…)
+    // переносятся отдельными модулями; пока они не тронуты.
+    let next_version = event
+        .extra
+        .get("state_version_after")
+        .filter(|value| sk_core::js::is_safe_integer(Some(value)))
+        .map(|value| safe_int(Some(value), 0))
+        .unwrap_or_else(|| sk_core::game::state_version(state) + 1);
+    state["state_version"] = Value::from(next_version);
+    synchronize_tactical_turn(state);
+}
+
+/// `synchronizeTacticalTurn(state)`.
+fn synchronize_tactical_turn(state: &mut Value) {
+    let combat = sk_core::game::combat(state);
+    let active_index = safe_int(combat.get("active_index"), -1);
+    let initiative = combat.get("initiative").and_then(Value::as_array).cloned().unwrap_or_default();
+    if !sk_core::js::is_true(combat.get("active")) || initiative.is_empty() || active_index < 0 {
+        return;
+    }
+    let active_id = sk_core::js::s(initiative.get(active_index as usize).and_then(|entry| entry.get("actor_id")));
+    if active_id.is_empty() {
+        return;
+    }
+    let round = combat.get("round").cloned().unwrap_or(Value::Null);
+    let economy = crate::economy::economy_of(state, &active_id);
+    let scene_turn = safe_int(state.get("scene").and_then(|scene| scene.get("turn")), safe_int(Some(&round), 0));
+    state["activePlayerId"] = Value::String(active_id.clone());
+    state["tacticalTurn"] = serde_json::json!({
+        "sceneTurn": scene_turn,
+        "actorId": active_id,
+        "movementSpent": safe_int(economy.get("movement_spent"), 0).max(0),
+        "actionUsed": economy.get("action") == Some(&Value::Bool(false)),
+        "round": round,
+        "activeIndex": active_index,
+    });
+}
+
+/// Выбросить производные поля героя — как делает запись корпуса.
+pub fn strip_derived(state: &mut Value) {
+    if let Some(players) = state.get_mut("players").and_then(Value::as_array_mut) {
+        for player in players {
+            if let Some(map) = player.as_object_mut() {
+                for field in ["combatSpells", "combatActions", "characterSheet", "inventoryLoad"] {
+                    map.remove(field);
+                }
+            }
+        }
+    }
+}
+
+/// Общие поля записи боевого журнала: ход сцены и раунд.
+pub(crate) fn scene_turn_and_round(state: &Value) -> (i64, Value) {
+    let round = sk_core::game::combat(state).get("round").cloned().unwrap_or(Value::Null);
+    let scene_turn = safe_int(state.get("scene").and_then(|scene| scene.get("turn")), safe_int(Some(&round), 0));
+    (scene_turn, round)
+}
+
+/// Цель события: первая из `target_ids`, иначе действующее лицо.
+pub(crate) fn target_of(event: &Event) -> String {
+    let unique = sk_core::js::unique_strings(Some(&Value::Array(event.target_ids.iter().map(|id| Value::String(id.clone())).collect())));
+    unique.into_iter().next().unwrap_or_else(|| event.actor_id.clone().unwrap_or_default())
+}

@@ -4519,6 +4519,9 @@ const INCAPACITATING_CONDITIONS = Object.freeze(Object.entries(CONDITION_EFFECTS
   .filter(([, effect]) => effect.incapacitated === true)
   .map(([condition]) => condition))
 
+/** Таблица для выгрузки в Rust (`tools/export-rust-tables.mjs`); движок читает её напрямую. */
+export const CONDITION_EFFECTS_TABLE = CONDITION_EFFECTS
+
 const SPEED_ZERO_CONDITIONS = Object.freeze(Object.entries(CONDITION_EFFECTS)
   .filter(([, effect]) => effect.speedZero === true)
   .map(([condition]) => condition))
