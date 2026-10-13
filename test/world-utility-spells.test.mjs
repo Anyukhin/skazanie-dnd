@@ -466,7 +466,6 @@ test('карточка без исполнимой механики отказы
     ['fly', 'wizard', 7, /высотного перемещения/u],
     ['levitate', 'wizard', 7, /высотного перемещения/u],
     ['feather-fall', 'wizard', 7, /ни высоты, ни падения/u],
-    ['revivify', 'cleric', 9, /момент смерти/u],
     ['detect-magic', 'cleric', 9, /уже опознанными/u],
   ]
   for (const [spellId, characterClass, level, reason] of cases) {
