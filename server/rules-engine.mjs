@@ -3390,6 +3390,21 @@ function bardicInspirationFor(state, actorIdValue) {
   return { sides: level >= 15 ? 12 : level >= 10 ? 10 : level >= 5 ? 8 : 6, source_actor: String(condition.source_actor ?? '') }
 }
 
+/**
+ * Лепка заклинаний: сколько союзников заклинатель-воплотитель выводит из-под
+ * своего заклинания школы Воплощения (1 + круг). 0 — не воплотитель или не та
+ * школа.
+ * @param {any} actor
+ * @param {any} spell
+ * @param {unknown} slotLevel
+ */
+function sculptSpellsLimit(actor, spell, slotLevel) {
+  if (!actor || characterClassKey(actor) !== 'wizard' || safeInteger(actor?.level, 1) < 2) return 0
+  if (!/воплощ|evocation/iu.test(String(normalizedCombatSubclassFor(actor) ?? ''))) return 0
+  if (!/воплощ|evocation/iu.test(String(spell?.school ?? ''))) return 0
+  return 1 + Math.max(safeInteger(spell.level, 0), safeInteger(slotLevel, spell.level))
+}
+
 /** «Дьявольское зрение» колдуна: видит в обычной и магической тьме на 120 футов. @param {any} actor */
 function seesInMagicalDarkness(actor) {
   return Boolean(actor) && characterClassKey(actor) === 'warlock' && normalizedSelectedFeatureIds(actor).includes('devils-sight')
@@ -17416,9 +17431,16 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         } else if (['save', 'area-save', 'debuff'].includes(spell.kind)) {
           const saveAbility = String(spell.saveAbility || 'dex')
           const carefulLimit = Math.max(1, abilityModifier(actor?.abilities?.cha))
-          const carefulProtectedIds = new Set(metamagic.has('metamagic-careful')
-            ? affected.filter((candidate) => actorId(candidate) !== command.actor_id && !isEnemyActor(state, actorId(candidate))).slice(0, carefulLimit).map(actorId)
+          // Лепка заклинаний (волшебник Школы Воплощения, 2-й уровень): от своего
+          // заклинания школы Воплощения союзники числом 1 + круг спасаются
+          // автоматически и не получают урона, даже половины.
+          const sculptLimit = sculptSpellsLimit(actor, spell, command.slot_level)
+          const sculptedIds = new Set(sculptLimit
+            ? affected.filter((candidate) => actorId(candidate) !== command.actor_id && !isEnemyActor(state, actorId(candidate)) === !isEnemyActor(state, command.actor_id)).slice(0, sculptLimit).map(actorId)
             : [])
+          const carefulProtectedIds = new Set([...(metamagic.has('metamagic-careful')
+            ? affected.filter((candidate) => actorId(candidate) !== command.actor_id && !isEnemyActor(state, actorId(candidate))).slice(0, carefulLimit).map(actorId)
+            : []), ...sculptedIds])
           let sharedDamageRoll = null
           if (damageExpression && (affected.length || npcAffected.length) && !spell.saveDamage) {
             sharedDamageRoll = diceService.roll(damageExpression, `spell_damage:${spell.id}`, command.actor_id, command.visibility ?? 'public')
@@ -17561,10 +17583,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
             }
             // Невосприимчивый по типу («не действует на нежить») не получает и
             // половины: автоматический успех здесь — отсутствие эффекта.
-            const damage = immuneByType || outOfReachAfterPull ? 0 : spell.saveDamage
+            const damage = immuneByType || outOfReachAfterPull || sculptedIds.has(resolvedTargetId) ? 0 : spell.saveDamage
               ? (outcomeDamageRoll?.total ?? 0)
               : sharedDamageRoll ? savedDamageAmount(state, resolvedTargetId, { ability: saveAbility, saved, halfOnSave: spell.halfOnSave, total: sharedDamageRoll.total }) : 0
-            const bonusDamage = immuneByType ? 0 : bonusDamageRoll ? savedDamageAmount(state, resolvedTargetId, { ability: saveAbility, saved, halfOnSave: spell.halfOnSave, total: bonusDamageRoll.total }) : 0
+            const bonusDamage = immuneByType || sculptedIds.has(resolvedTargetId) ? 0 : bonusDamageRoll ? savedDamageAmount(state, resolvedTargetId, { ability: saveAbility, saved, halfOnSave: spell.halfOnSave, total: bonusDamageRoll.total }) : 0
             const elementalReactionKey = spell.bonusDamage
               ? `${command.command_id}:${resolvedTargetId}:spell-area:${spell.id}`
               : `${command.command_id}:${resolvedTargetId}:${damageType}`
