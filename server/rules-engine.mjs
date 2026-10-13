@@ -3,6 +3,7 @@ import { authoredNpcCombatant } from './authored-npc.mjs'
 import { withBackgroundBenefits } from './backgrounds.mjs'
 import { PHB_STARTING_WEALTH, startingPurchaseCatalog } from './character-creation-wealth.mjs'
 import { DiceService, parseDiceExpression } from './dice-service.mjs'
+import { corpusRecordingEnabled, recordCorpusCommand } from './rules-corpus.mjs'
 import { monsterActionAvailable, monsterActionSpentMarker, monsterActionUsageKey, monsterAreaAction, monsterAttackTargetAllowed, monsterOnHitTargetAllowed, monsterRechargeMinimum, monsterMultiattackSequences, monsterMultiattackSequenceFor } from './monster-actions.mjs'
 import { BG3_OPENING_STRIKE_HOUSE_RULE_ID, BG3_SPELL_HANDS_HOUSE_RULE_ID, DND_2014_RULESET_ID, INSTALLED_RULESET_IDS, rulesetRuleId } from './ruleset-config.mjs'
 import { applyAutonomyEvent, normalizeAutonomyState } from './autonomous-campaign.mjs'
@@ -12802,6 +12803,16 @@ function resolveReactionPreferences(result, rawState, input, diceService) {
 }
 
 export function resolveCommand(input, rawState, { diceService, context = {} } = {}) {
+  // Корпус для переноса на Rust (`server/rules-corpus.mjs`): только верхний
+  // уровень и только с `DND_CORPUS_DIR`.
+  if (corpusRecordingEnabled() && safeInteger(context?.__resolve_depth, 0) === 0 && !context?.__corpus_recording) {
+    return recordCorpusCommand({
+      input, rawState, context, diceService,
+      normalize: normalizeCampaignState,
+      reduce: applyGameEvent,
+      run: (dice) => resolveCommand(input, rawState, { diceService: dice, context: { ...context, __corpus_recording: true } }),
+    })
+  }
   const result = resolveCommandWithPauses(input, rawState, { diceService, context })
   if (safeInteger(context?.__resolve_depth, 0) !== 0) return result
   return resolveReactionPreferences(result, rawState, input, diceService)

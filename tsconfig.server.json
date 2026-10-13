@@ -19,6 +19,7 @@
   "include": [
     "server/asset-registry.mjs",
     "server/wild-shape.mjs",
+    "server/rules-corpus.mjs",
     "server/authored-location-maps.mjs",
     "server/backgrounds.mjs",
     "server/campaign-scenario.mjs",
