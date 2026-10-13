@@ -30,7 +30,12 @@
  *   раз: находка той же тайны поиском второго не выдаёт;
  * - `action` — сюжетная команда, которую вариант исполняет тем же путём, что
  *   и фраза («берём кошель короля»): `ReceiveScenarioPurse`,
- *   `ChooseScenarioArmoryItem`;
+ *   `ChooseScenarioArmoryItem` (раз на героя), `ReturnKnightHead` (голова
+ *   перед рыцарем) и `ReleaseCursedKnight` (упокоение). У упокоения проверку
+ *   бросает сама команда: `check` варианта называет навык и СЛ для окна, а
+ *   исход берётся из её броска. Показ варианта с командой рыцаря следует его
+ *   правилам: голова — когда загадка разгадана и голова ещё не возвращена,
+ *   упокоение — когда голова перед ним и герой этой ночью ещё не пробовал;
  * - `ends` — вариант закрывает окно разговора.
  *
  * Модуль — лист: читает состояние и данные, событий не создаёт. Команду и
@@ -40,6 +45,7 @@
 import { readFileSync } from 'node:fs'
 
 import { campaignScenario, scenarioClueFactId, scenarioFoundClueIds } from './campaign-scenario.mjs'
+import { scenarioKnightRiddleSolved, scenarioKnightState, scenarioNightIndex } from './scenario-knight.mjs'
 
 export const DIALOGUES_SCHEMA_VERSION = 1
 /** Команда игрока: выбрать вариант разговора. */
@@ -51,7 +57,9 @@ export const DIALOGUE_POLICY_ID = 'skazanie:authored-dialogue-v1'
 const DIALOGUES_URL = new URL('../data/campaign-dialogues-v1.json', import.meta.url)
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/u
 const DIALOGUE_SKILLS = new Set(['persuasion', 'deception', 'intimidation', 'insight', 'history', 'religion', 'arcana', 'performance', 'medicine'])
-const DIALOGUE_ACTIONS = new Set(['ReceiveScenarioPurse', 'ChooseScenarioArmoryItem'])
+const DIALOGUE_ACTIONS = new Set(['ReceiveScenarioPurse', 'ChooseScenarioArmoryItem', 'ReturnKnightHead', 'ReleaseCursedKnight'])
+/** Команды, которые бросают проверку сами: вариант задаёт навык, исход — их бросок. */
+const CHECKED_ACTIONS = new Set(['ReleaseCursedKnight'])
 
 /** @param {unknown} value @param {number} [maximum] */
 const clean = (value, maximum = 240) => String(value ?? '').replace(/\s+/gu, ' ').trim().slice(0, maximum)
@@ -141,7 +149,8 @@ function option(raw, where) {
   if (raw?.action != null) {
     const commandType = clean(raw.action.command_type, 60)
     if (!DIALOGUE_ACTIONS.has(commandType)) invalid(`${where}.${id}: команда «${commandType}»`)
-    if (check) invalid(`${where}.${id}: команда и проверка в одном варианте не поддержаны`)
+    if (CHECKED_ACTIONS.has(commandType) && !check) invalid(`${where}.${id}: команда «${commandType}» бросает проверку — нужен check с навыком`)
+    if (!CHECKED_ACTIONS.has(commandType) && check) invalid(`${where}.${id}: команда и проверка в одном варианте не поддержаны`)
     const catalogId = clean(raw.action.catalog_id, 120)
     if (commandType === 'ChooseScenarioArmoryItem' && !catalogId) invalid(`${where}.${id}: не указан предмет оружейной`)
     action = { command_type: commandType, ...(catalogId ? { catalog_id: catalogId } : {}) }
@@ -309,6 +318,27 @@ export function dialogueOptionUnlocked(state, dialogue, item) {
 }
 
 /**
+ * Открыта ли сюжетная команда варианта для героя. Кошель и вещь оружейной —
+ * раз на героя; команды рыцаря — по его правилам (`server/scenario-knight.mjs`):
+ * вариант не обещает того, от чего команда откажет.
+ *
+ * @param {any} state
+ * @param {DialogueOption} item
+ * @param {string} hero
+ * @param {{ chosen: Record<string, string[]> }} progress
+ */
+function dialogueActionOpen(state, item, hero, progress) {
+  const type = item.action?.command_type
+  if (type === 'ReturnKnightHead' || type === 'ReleaseCursedKnight') {
+    const knight = scenarioKnightState(state)
+    if (!knight || knight.released) return false
+    if (type === 'ReturnKnightHead') return !knight.head_returned && scenarioKnightRiddleSolved(state)
+    return knight.head_returned && !knight.attempts.includes(`${hero}:${scenarioNightIndex(state)}`)
+  }
+  return !(progress.chosen[item.id] ?? []).includes(hero)
+}
+
+/**
  * Варианты, которые видит герой: открытые условием и ещё не исчерпанные.
  * Проверку герой пробует один раз; вариант с открытой тайной после её
  * раскрытия не нужен; сюжетная команда после исполнения этим героем — тоже.
@@ -326,13 +356,13 @@ export function dialogueOptionsFor(state, npcId, heroId) {
   const progress = dialogueProgress(state, dialogue.id)
   const options = dialogue.options
     .filter((item) => dialogueOptionUnlocked(state, dialogue, item))
-    .filter((item) => !(item.check && (progress.attempted[item.id] ?? []).includes(hero)))
+    .filter((item) => !(item.check && !item.action && (progress.attempted[item.id] ?? []).includes(hero)))
     // Из группы герой выбирает один вариант: остальные для него закрыты.
     .filter((item) => !(item.group && dialogue.options.some((other) => other.group === item.group && other.id !== item.id
       && (progress.chosen[other.id] ?? []).includes(hero))))
     // Рассказанное второй раз не спрашивают: тайну успеха отряд уже знает.
     .filter((item) => !factKnownToParty(state, dialogueRevealFactId(state, item.success)))
-    .filter((item) => !(item.action && (progress.chosen[item.id] ?? []).includes(hero)))
+    .filter((item) => !item.action || dialogueActionOpen(state, item, hero, progress))
     .map((item) => ({
       id: item.id,
       label: item.label,
@@ -416,7 +446,9 @@ export function sceneDialoguesForViewer(state, { playerId = '' } = {}) {
   const here = place(state?.scene?.location)
   for (const npc of Array.isArray(state?.social?.npcs) ? state.social.npcs : []) {
     if (!npc || npc.available === false || place(npc.location) !== here) continue
-    if (npc.visibility && !['party', 'public'].includes(String(npc.visibility))) continue
+    // Закрытый собеседник виден отряду, пока стоит в сцене (`reveal_on_presence`,
+    // как в `npcSocialForViewer`): рыцарь в полночь.
+    if (npc.visibility && !['party', 'public'].includes(String(npc.visibility)) && npc.reveal_on_presence !== true) continue
     if (state?.npc_world?.vitals?.[npc.id]?.alive === false) continue
     const view = dialogueOptionsFor(state, npc.id, playerId)
     if (view) result[String(npc.id)] = view

@@ -19971,8 +19971,11 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // героев, как у допроса пленного.
       const option = command.dialogue_option
       const { dialogue_option: _option, ...plain } = command
+      // Упокоение рыцаря бросает проверку само: исход варианта — его бросок.
+      const checkedAction = Boolean(option.action && option.check)
       let check = null
-      if (option.check) {
+      let actionText = ''
+      if (option.check && !checkedAction) {
         const resolved = resolveCommandInternal({
           ...plain,
           command_type: 'MakeAbilityCheck',
@@ -19986,7 +19989,6 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const result = resolved.events.find((event) => event.event_type === 'AbilityCheckResolved')?.payload ?? {}
         check = { skill: option.check.skill, dc: option.check.dc, success: result.success === true, total: safeInteger(result.total, 0) }
       }
-      const outcome = !check || check.success ? option.success : option.failure
       if (option.action) {
         const acted = resolveCommandInternal({
           command_type: option.action.command_type,
@@ -19994,10 +19996,23 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           command_id: `${command.command_id}:action`,
           actor_id: command.actor_id,
           ...(option.action.catalog_id ? { catalog_id: option.action.catalog_id } : {}),
+          ...(checkedAction ? { skill: option.check.skill } : {}),
         }, state, { diceService, context })
         events.push(...acted.events)
         rolls.push(...(acted.rolls ?? []))
+        if (checkedAction) {
+          const result = acted.events.find((event) => event.event_type === 'AbilityCheckResolved')?.payload ?? {}
+          check = { skill: option.check.skill, dc: option.check.dc, success: result.success === true, total: safeInteger(result.total, 0) }
+        }
+        // Авторский текст сцены рыцаря (голова легла, упокоение, отказ) —
+        // продолжение ответа: строки боя у этих событий вне боя нет, и без
+        // этого он в летопись не попадал.
+        const authored = new Set([SCENARIO_KNIGHT_HEAD_EVENT, SCENARIO_KNIGHT_RELEASED_EVENT, SCENARIO_KNIGHT_RELEASE_FAILED_EVENT])
+        actionText = acted.events.filter((event) => authored.has(event.event_type))
+          .map((event) => String(event.payload?.text ?? '').trim()).filter(Boolean).join(' ')
       }
+      const outcome = !check || check.success ? option.success : option.failure
+      const reply = [outcome.reply, actionText].filter(Boolean).join(' ')
       // Тайна сценария по id или тайна исходной ситуации мира по теме.
       const revealFactId = dialogueRevealFactId(state, outcome)
       const revealable = Boolean(revealFactId)
@@ -20017,7 +20032,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           option_id: option.id,
           hero_id: command.actor_id,
           label: option.label,
-          reply: outcome.reply,
+          reply,
           check,
           sets: [...outcome.sets],
           reveal: revealable ? outcome.reveal || null : null,
@@ -20037,7 +20052,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           npc_id: command.npc_id,
           hero_id: command.actor_id,
           player_message: option.label,
-          npc_reply: outcome.reply,
+          npc_reply: reply,
           stance: 'neutral',
           disclosed_fact_ids: revealable ? [revealFactId] : [],
           disclosed_claim_ids: [],

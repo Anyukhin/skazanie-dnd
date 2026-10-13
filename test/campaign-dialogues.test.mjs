@@ -9,11 +9,13 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { CampaignBootstrapper } from '../server/campaign-bootstrap.mjs'
-import { DIALOGUES, dialogueOptionsFor, normalizeDialogues } from '../server/campaign-dialogues.mjs'
+import { DIALOGUES, dialogueOptionsFor, normalizeDialogues, sceneDialoguesForViewer } from '../server/campaign-dialogues.mjs'
 import { campaignScenario, scenarioClueFactId, scenarioFoundClueIds, scenarioLocationId } from '../server/campaign-scenario.mjs'
 import { normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
 import { SceneArchitectAgent } from '../server/scene-architect.mjs'
-import { fixedDice } from './kit/dice.mjs'
+import { scenarioKnightState } from '../server/scenario-knight.mjs'
+import { minutesUntilClock } from '../server/weather.mjs'
+import { fixedDice, maxDice, minDice } from './kit/dice.mjs'
 
 const scenarios = JSON.parse(readFileSync(new URL('../data/campaign-scenarios-v1.json', import.meta.url), 'utf8')).scenarios
 const worlds = JSON.parse(readFileSync(new URL('../data/campaign-worlds-v1.json', import.meta.url), 'utf8'))
@@ -38,6 +40,13 @@ test('каждый диалог ссылается на настоящих со�
       for (const reveal of [option.success.reveal, option.failure?.reveal].filter(Boolean)) assert.ok(secretIds.has(reveal), `${dialogue.id}.${option.id}: тайна ${reveal}`)
       for (const topic of [option.success.reveal_topic, option.failure?.reveal_topic].filter(Boolean)) assert.ok(openingTopics.has(topic), `${dialogue.id}.${option.id}: тема ${topic}`)
       if (option.action?.command_type === 'ChooseScenarioArmoryItem') assert.ok(armory.has(option.action.catalog_id), `${dialogue.id}.${option.id}: предмет ${option.action.catalog_id}`)
+      // Команды рыцаря — только в разговоре с самим рыцарем; навык и СЛ в окне
+      // — те, что бросит команда упокоения.
+      if (['ReturnKnightHead', 'ReleaseCursedKnight'].includes(option.action?.command_type)) assert.equal(dialogue.npc_id, scenario.knight?.npc_id, `${dialogue.id}.${option.id}: рыцарь`)
+      if (option.action?.command_type === 'ReleaseCursedKnight') {
+        assert.ok(scenario.knight.release.skills.includes(option.check.skill), `${dialogue.id}.${option.id}: навык ${option.check.skill}`)
+        assert.equal(option.check.dc, scenario.knight.release.dc, `${dialogue.id}.${option.id}: СЛ упокоения`)
+      }
     }
     assert.ok(dialogue.options.some((option) => option.ends), `${dialogue.id}: разговор можно закончить`)
   }
@@ -50,6 +59,8 @@ test('сломанные данные диалога отвергаются пр
   assert.throws(broken({ options: [{ id: 'x', label: 'Кто ты?', check: { skill: 'insight', dc: 15 }, success: { reply: 'Да.' } }] }), /success и failure/u)
   assert.throws(broken({ options: [{ id: 'x', label: 'Кто ты?', reply: 'Да.', requires: { flags: ['nobody-sets'] } }] }), /никто не ставит/u)
   assert.throws(broken({ options: [{ id: 'x', label: 'Кто ты?', reply: 'Да.', action: { command_type: 'KillEveryone' } }] }), /команда/u)
+  assert.throws(broken({ options: [{ id: 'x', label: 'Покойся.', reply: 'Да.', action: { command_type: 'ReleaseCursedKnight' } }] }), /бросает проверку/u)
+  assert.throws(broken({ options: [{ id: 'x', label: 'Кошель.', check: { skill: 'insight', dc: 15 }, success: { reply: 'Да.' }, failure: { reply: 'Нет.' }, action: { command_type: 'ReceiveScenarioPurse' } }] }), /не поддержаны/u)
   assert.throws(broken({ options: [{ id: 'x', label: 'Кто ты?', check: { skill: 'insight', dc: 99 }, success: { reply: 'Да.' }, failure: { reply: 'Нет.' } }] }), /СЛ/u)
   assert.throws(() => normalizeDialogues({ ...base, schema_version: 2 }), /schema_version/u)
 })
@@ -277,4 +288,82 @@ test('Трент пропускает того, кто назвал свой с�
   assert.ok(gift.events.some((event) => event.event_type === 'ItemGranted'))
   assert.deepEqual(wardHolders(run), [heroes[0].id])
   assert.deepEqual(replayEvents(run.initial, run.events).dialogues, run.state.dialogues)
+})
+
+// --- Линия Б: Каэлан ---------------------------------------------------------
+
+const KAELAN = 'astohan-kaelan'
+
+/** Ждать до минуты суток — тем же путём, что «ждём до полуночи». */
+const waitUntil = (run, minuteOfDay) => run.apply({
+  command_type: 'AdvanceTime', unit: 'minute', amount: minutesUntilClock(run.state.mechanics.world_time.elapsed_minutes, minuteOfDay),
+})
+
+/** Герой ставится у поста рыцаря: подготовка сцены, а не проверяемое правило. */
+function standByKnight(run, heroId, offset) {
+  const placements = run.state.npc_world.placements ?? {}
+  const post = placements[KAELAN] ?? Object.values(placements).flat().find((entry) => entry?.npc_id === KAELAN)
+  assert.ok(post, 'у рыцаря есть пост')
+  const state = structuredClone(run.state)
+  const x = Number(post.x) + offset
+  const y = Number(post.y)
+  state.mechanics.positions = { ...(state.mechanics.positions ?? {}), [heroId]: { x, y } }
+  Object.assign(state.players.find((entry) => entry.id === heroId), { x, y })
+  run.state = normalizeCampaignState(state)
+}
+
+test('Каэлан: вопросы из набросков дословно, голова и упокоение — командами рыцаря', async () => {
+  const run = await astohan()
+  await travel(run, 'astohan-forgotten-cliffs')
+  const ids = (hero = heroes[0].id) => offeredBy(run, KAELAN, hero)
+
+  // Днём рыцаря в замке нет — и разговора с ним тоже.
+  waitUntil(run, 12 * 60)
+  assert.throws(() => sayTo(run, KAELAN, 'who'), { code: 'DIALOGUE_NPC_ABSENT' })
+  assert.equal(sceneDialoguesForViewer(run.state, { playerId: heroes[0].id })[KAELAN], undefined)
+
+  waitUntil(run, 0)
+  const view = sceneDialoguesForViewer(run.state, { playerId: heroes[0].id })[KAELAN]
+  assert.ok(view, 'закрытый рыцарь виден отряду, пока стоит в сцене')
+  assert.match(view.greeting, /Вы пришли за смертью… или за правдой\?/u)
+  assert.deepEqual(ids(), ['who', 'why-cursed', 'how-free', 'tear', 'throne', 'farewell'])
+  const who = chosenOf(sayTo(run, KAELAN, 'who'))
+  assert.equal(who.npc_name, 'Каэлан Вердант')
+  assert.match(who.reply, /Я был Каэланом Вердантом, рыцарем Короны Пламени/u)
+  assert.match(chosenOf(sayTo(run, KAELAN, 'how-free')).reply, /туда, где пали небеса/u)
+
+  // Голова — когда отряд разгадал загадку часовни; ставит её тот, кто рядом.
+  run.discover('cliffs-chapel')
+  assert.ok(ids().includes('head'))
+  assert.ok(!ids().includes('release-words'), 'упокоение — после головы')
+  standByKnight(run, heroes[0].id, 6)
+  assert.throws(() => sayTo(run, KAELAN, 'head'), { code: 'TARGET_OUT_OF_RANGE' })
+  standByKnight(run, heroes[0].id, 1)
+  const head = sayTo(run, KAELAN, 'head')
+  assert.ok(types(head).includes('ScenarioKnightHeadReturned'), types(head).join(','))
+  // Строки боя у сцены головы вне боя нет: её авторский текст — в ответе.
+  assert.match(chosenOf(head).reply, /Вы нашли меня\. Голова ложится на камень перед всадником/u)
+  assert.equal(scenarioKnightState(run.state).head_returned, true)
+  assert.ok(!ids(heroes[1].id).includes('head'), 'голова уже перед ним — у всех')
+  assert.ok(ids().includes('release-words') && ids().includes('release-prayer'))
+
+  // Провал сжигает попытку героя этой ночью — оба пути упокоения для него
+  // закрыты, у второго героя открыты.
+  const failed = sayTo(run, KAELAN, 'release-prayer', { diceService: minDice() })
+  assert.deepEqual({ skill: chosenOf(failed).check.skill, dc: chosenOf(failed).check.dc, success: chosenOf(failed).check.success }, { skill: 'religion', dc: 18, success: false })
+  assert.match(chosenOf(failed).reply, /Молитва тонет в тумане/u)
+  assert.ok(types(failed).includes('ScenarioKnightReleaseFailed'))
+  assert.ok(!ids().some((id) => id.startsWith('release-')))
+  assert.ok(ids(heroes[1].id).includes('release-words'))
+
+  const released = sayTo(run, KAELAN, 'release-words', { hero: heroes[1].id, diceService: maxDice() })
+  assert.equal(chosenOf(released).check.success, true)
+  assert.match(chosenOf(released).reply, /становится тише\. Каэлан опускает Лунного Судью.+Я свободен… а он — следующий/u, 'ответ и авторский текст упокоения — одной репликой')
+  assert.ok(types(released).includes('ScenarioKnightReleased'))
+  assert.ok(run.state.players.find((player) => player.id === heroes[1].id).inventory.some((item) => item.name === 'Слеза Проклятого Рыцаря'))
+  assert.equal(run.state.social.npcs.find((npc) => npc.id === KAELAN).available, false)
+  assert.equal(sceneDialoguesForViewer(run.state, { playerId: heroes[0].id })[KAELAN], undefined, 'обретший покой ушёл')
+  const replayed = replayEvents(run.initial, run.events)
+  assert.deepEqual(replayed.dialogues, run.state.dialogues)
+  assert.deepEqual(replayed.scenario_knight, run.state.scenario_knight)
 })
