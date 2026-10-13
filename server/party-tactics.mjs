@@ -788,7 +788,10 @@ function addActionCandidates(state, actorIdValue, actor, add) {
         .sort((left, right) => combatDistance(state, actorIdValue, combatId(left)) - combatDistance(state, actorIdValue, combatId(right)) || combatId(left).localeCompare(combatId(right)))[0]
     if (action.target === 'enemy' && (!target || combatDistance(state, actorIdValue, combatId(target)) > Number(action.range ?? 5))) continue
     if (action.target === 'ally' && !target) continue
-    if (action.target === 'self' && !['dash', 'dodge', 'rage', 'reckless-attack'].includes(action.id)) continue
+    // Изгнание нежити — когда рядом есть неизгнанная нежить; без неё действие пустое.
+    const undeadNear = action.effect?.areaUndead === true && enemies.some((enemy) => /undead|нежит/u.test(String(enemy.creature_type ?? enemy.creatureType ?? '').toLowerCase())
+      && !conditionIdsForTactics(state, combatId(enemy)).has('turned') && combatDistance(state, actorIdValue, combatId(enemy)) <= Number(action.effect.radius ?? 30))
+    if (action.target === 'self' && !['dash', 'dodge', 'rage', 'reckless-attack'].includes(action.id) && !undeadNear) continue
     if (action.id === 'dash' && !enemies.some((enemy) => movementCandidateFor(state, actorIdValue, combatId(enemy)))) continue
     if (action.id === 'dodge' && !enemies.some((enemy) => combatDistance(state, actorIdValue, combatId(enemy)) <= 5)
       && Number(actor.hp) > combatMaxHp(actor) * .4) continue
@@ -797,7 +800,7 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       ...(target ? { target_id: combatId(target), target_ids: [combatId(target)] } : {}),
       ...(action.requiresWeapon && equippedWeapon(actor) ? { item_id: String(equippedWeapon(actor).id) } : {}),
     })
-    let score = action.id === 'rage' ? 900 : action.id === 'reckless-attack' ? 750 : 70
+    let score = action.id === 'rage' ? 900 : action.id === 'reckless-attack' ? 750 : undeadNear ? 800 : 70
     if (action.effect?.kind === 'weapon_attack' && target) {
       const forecast = attackForecast(state, actorIdValue, combatId(target), command.item_id ? { itemId: command.item_id } : {})
       // Кара оценивается младшей ячейкой: её движок и возьмёт без названного круга.

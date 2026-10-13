@@ -100,7 +100,7 @@ const CLASS_ACTIONS = Object.freeze({
     action('countercharm', 'Контрочарование', { minimumLevel: 6, description: 'Вы и союзники получаете преимущество против испуга и очарования.', effect: { kind: 'condition', condition: 'countercharm', duration: 'until-next-turn' } }),
   ]),
   cleric: Object.freeze([
-    action('turn-undead', 'Изгнание нежити', { target: 'enemy', range: 30, minimumLevel: 2, resource: 'channel_divinity', description: 'Нежить совершает спасбросок Мудрости или обращается в бегство.', effect: { kind: 'save', saveAbility: 'wis', condition: 'turned', duration: 'rounds:10' } }),
+    action('turn-undead', 'Изгнание нежити', { target: 'self', range: 30, minimumLevel: 2, resource: 'channel_divinity', description: 'Вся нежить в 30 футах спасается Мудростью или на минуту изгнана: бежит прочь, не атакует и не отвечает, пока не получит урон. С 5-го уровня слабая нежить уничтожается (ПО ½, с 8-го — 1).', effect: { kind: 'save', saveAbility: 'wis', condition: 'turned', duration: 'rounds:10', areaUndead: true, radius: 30 } }),
     action('divine-spark', 'Божественная искра', { target: 'ally', range: 30, minimumLevel: 2, resource: 'channel_divinity', description: 'Направить божественную силу и восстановить хиты союзнику.', effect: { kind: 'heal', dice: '1d8', ability: 'wis' } }),
     action('divine-intervention', 'Божественное вмешательство', { minimumLevel: 10, description: 'Просить божество вмешаться; шанс успеха равен уровню жреца в процентах.', effect: { kind: 'percent_check' } }),
   ]),

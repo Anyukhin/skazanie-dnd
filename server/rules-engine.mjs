@@ -4235,6 +4235,8 @@ const CONDITION_EFFECTS = Object.freeze({
   blinded: { attackDisadvantage: true, grantsAttackAdvantage: true },
   // Зависимость от линии обзора проверяется общей функцией для редакции 2014.
   frightened: { attackDisadvantage: true, checkDisadvantage: true },
+  // Изгнание нежити (PHB 2014): бежит прочь и не отвечает; урон снимает.
+  turned: { forbidsReactions: true },
   // Ниже — не состояния SRD, а эффекты заклинаний, которые двигают те же числа.
   // Они живут в одной таблице с состояниями, потому что читаются теми же
   // функциями: класс доспеха, скорость и экономика хода не должны знать, какое
@@ -16212,6 +16214,46 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           if (!monkUnarmedBonus && workingState.mechanics.combat.action_economy[command.actor_id]) workingState.mechanics.combat.action_economy[command.actor_id].action = true
         }
         events.push(actionEvent({ hit: landed, attacks, ...(parentPaysAttackEconomy || monkUnarmedBonus ? {} : { economy_consumed_by_attack: true }) }))
+      } else if (action.effect?.kind === 'save' && action.effect.areaUndead === true) {
+        // Изгнание нежити: каждая нежить в 30 футах, что видит или слышит
+        // жреца, спасается Мудростью; провалившая — изгнана на минуту, а с
+        // 5-го уровня слабая нежить уничтожается (Уничтожение нежити).
+        const dc = 8 + Math.max(0, safeInteger(actor?.proficiency, 0)) + abilityModifier(actor?.abilities?.wis)
+        const level = Math.max(1, safeInteger(actor?.level, 1))
+        const destroyUpTo = level >= 17 ? 4 : level >= 14 ? 3 : level >= 11 ? 2 : level >= 8 ? 1 : level >= 5 ? 0.5 : -1
+        const radius = Math.max(5, safeInteger(action.effect.radius, 30))
+        spendActionResource()
+        let workingState = state
+        const turned = []
+        for (const candidate of listActors(state)) {
+          const candidateId = actorId(candidate)
+          if (!isLivingActor(candidate) || isEnemyActor(state, candidateId) === isEnemyActor(state, command.actor_id)) continue
+          if (creatureTypeFor(candidate) !== 'undead') continue
+          const distance = distanceBetweenActors(state, command.actor_id, candidateId)
+          if (distance == null || distance > radius) continue
+          const save = rollSavingThrow(workingState, candidateId, { ability: 'wis', modifier: abilityModifier(candidate?.abilities?.wis), purpose: 'action_save:turn-undead', visibility: command.visibility })
+          rolls.push(save)
+          const saved = savingThrowSucceeded(save, dc)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.savingThrow), 'SavingThrowResolved', { ability: 'wis', difficulty: dc, saved, ...save, action_id: action.id }, [candidateId]))
+          if (saved) continue
+          if (challengeRatingValue(candidate) <= destroyUpTo) {
+            const payload = resolveDamagePayload(workingState, candidateId, Math.max(1, actorHp(candidate)) * 2, 'radiant')
+            const damageEvent = eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...payload, action_id: 'destroy-undead', destroy_undead: true }, [candidateId])
+            events.push(damageEvent)
+            const consequences = zeroHitPointDamageConsequences(workingState, command, candidateId, payload)
+            events.push(...consequences)
+            workingState = [damageEvent, ...consequences].reduce(applyGameEvent, workingState)
+            turned.push(candidateId)
+            continue
+          }
+          const condition = eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionAdded', {
+            condition: 'turned', duration: action.effect.duration ?? 'rounds:10', source_actor: command.actor_id, break_on_any_damage: true,
+          }, [candidateId])
+          events.push(condition)
+          workingState = applyGameEvent(workingState, condition)
+          turned.push(candidateId)
+        }
+        events.push(actionEvent({ success: turned.length > 0, affected_ids: turned }))
       } else if (action.effect?.kind === 'save') {
         const target = findActor(state, actionTargetId)
         const saveAbility = String(action.effect.saveAbility ?? 'wis')

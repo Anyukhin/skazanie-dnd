@@ -757,6 +757,44 @@ function stopBlockedFor(state, actorIdValue) {
   return (position) => footprintCellsFor(actor, position).some((cell) => occupied.has(positionKey(cell)))
 }
 
+/** Куда бежать изгнанному: клетка в пределах хода, дальше всего от изгнавшего. */
+function fleeDestination(state, enemy, sourceId) {
+  const from = actorPosition(state, actorId(enemy))
+  const sourceAt = actorPosition(state, sourceId)
+  if (!from || !sourceAt) return null
+  const budgetFeet = remainingMovementFeet(state, enemy)
+  const maximumSteps = Math.max(0, Math.floor(budgetFeet / CELL_FEET))
+  if (!maximumSteps) return null
+  const { stepCost } = movementStepCostFor(state, actorId(enemy))
+  const stopBlocked = stopBlockedFor(state, actorId(enemy))
+  const here = distanceFeetBetweenActors(state, actorId(enemy), sourceId, from, sourceAt)
+  let best = null
+  for (const cell of state.scene?.cells ?? []) {
+    if (!cell.revealed || !['floor', 'door'].includes(cell.type)) continue
+    const destination = { x: Number(cell.x), y: Number(cell.y) }
+    if (stopBlocked(destination)) continue
+    const distance = distanceFeetBetweenActors(state, actorId(enemy), sourceId, destination, sourceAt)
+    if (distance <= here || (best && distance < best.distance)) continue
+    const path = shortestTacticalPath(state, actorId(enemy), destination)
+    if (!path?.length || path.length > maximumSteps) continue
+    if (path.reduce((total, step) => total + stepCost(step), 0) > budgetFeet) continue
+    if (!best || distance > best.distance || distance === best.distance && (destination.x < best.destination.x
+      || destination.x === best.destination.x && destination.y < best.destination.y)) best = { distance, destination: path.at(-1) }
+  }
+  return best?.destination ?? null
+}
+
+function turnedUndeadPlan(state, enemy, sourceId) {
+  const id = String(actorId(enemy))
+  const commands = []
+  const destination = fleeDestination(state, enemy, sourceId)
+  if (destination) commands.push({ command_type: 'MoveActor', actor_id: id, to: destination })
+  const dodge = { command_type: 'UseCombatAction', actor_id: id, action_id: 'dodge' }
+  if (!destination && npcCommandValid(state, dodge)) commands.push(dodge)
+  commands.push({ command_type: 'EndTurn', actor_id: id })
+  return commands
+}
+
 function retreatDestination(state, enemy, target, profile) {
   const from = actorPosition(state, actorId(enemy))
   const targetAt = actorPosition(state, actorId(target))
@@ -1245,6 +1283,10 @@ export function planNpcTurn(rawState, enemyId) {
   // initiative, but the Rules Engine refuses every command except ending the
   // turn — so the scheduler must not propose one.
   if (incapacitatingConditionFor(state, enemyId)) return [{ command_type: 'EndTurn', actor_id: String(enemyId) }]
+  // Изгнанная нежить бежит от изгнавшего как можно дальше и уклоняется,
+  // а не атакует (PHB 2014, «Изгнание нежити»).
+  const turned = (state.mechanics?.conditions?.[String(enemyId)] ?? []).find((condition) => String(condition?.id ?? condition) === 'turned')
+  if (turned) return turnedUndeadPlan(state, enemy, String(turned.source_actor ?? ''))
   // «Сбит с ног» без срока (редакция 2014) сам не проходит: существо встаёт,
   // тратя половину скорости. Остаток хода планировщик соберёт следующим
   // проходом, уже от состояния с потраченным движением.
