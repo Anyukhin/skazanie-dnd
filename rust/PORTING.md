@@ -130,7 +130,7 @@
 Окружение (Git Bash):
 
 ```bash
-export PATH="$USERPROFILE/.cargo/bin:$USERPROFILE/.cargo/mingw-binutils:$PATH"
+export PATH="$USERPROFILE/.cargo/bin:$HOME/.cargo/mingw64-root/mingw64/bin:$PATH"
 cd <worktree>/rust
 cargo build -p sk-<имя>
 cargo test -p sk-<имя>

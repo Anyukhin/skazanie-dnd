@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "commit_id": "fixture-9",
+  "campaign_id": "LEGACY-ONE",
+  "command_id": "fixture-7",
+  "idempotency_key": "hit-2",
+  "request_hash": "570f9464091315d58a5e48049e2cdc7b9cdd4f11c31429d374c5586317dd51f2",
+  "state_version_before": 2,
+  "state_version_after": 3,
+  "created_at": "2026-10-13T12:00:00.000Z",
+  "events": [
+    {
+      "event_type": "DamageApplied",
+      "payload": {
+        "amount": 5
+      },
+      "event_id": "fixture-8",
+      "campaign_id": "LEGACY-ONE",
+      "command_id": "fixture-7",
+      "idempotency_key": "hit-2",
+      "reducer_version": 15,
+      "actor_id": null,
+      "target_ids": [],
+      "source_rule_ids": [],
+      "ruling_id": null,
+      "state_version_before": 2,
+      "state_version_after": 3,
+      "created_at": "2026-10-13T12:00:00.000Z"
+    }
+  ],
+  "reducer_version": 15,
+  "projection_outbox": {
+    "schema_version": 1,
+    "target": "compatibility-room",
+    "state_version_after": 3
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "commit_id": "fixture-15",
+  "campaign_id": "LEGACY-TWO",
+  "command_id": "fixture-13",
+  "idempotency_key": "heal",
+  "request_hash": "b88e35528957ec241d7de62e9b707ce3eea9af03d190698c51ceb7927bbf6a2b",
+  "state_version_before": 1,
+  "state_version_after": 2,
+  "created_at": "2026-10-13T12:00:00.000Z",
+  "events": [
+    {
+      "event_type": "HealingApplied",
+      "payload": {
+        "amount": 2
+      },
+      "event_id": "fixture-14",
+      "campaign_id": "LEGACY-TWO",
+      "command_id": "fixture-13",
+      "idempotency_key": "heal",
+      "reducer_version": 15,
+      "actor_id": null,
+      "target_ids": [],
+      "source_rule_ids": [],
+      "ruling_id": null,
+      "state_version_before": 1,
+      "state_version_after": 2,
+      "created_at": "2026-10-13T12:00:00.000Z"
+    }
+  ],
+  "reducer_version": 15,
+  "projection_outbox": {
+    "schema_version": 1,
+    "target": "compatibility-room",
+    "state_version_after": 2
+  }
+}
