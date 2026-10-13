@@ -142,8 +142,10 @@ test('оружейная и кошель — вариантами разгово
   const cloak = run.choose('armory-cloak')
   assert.ok(types(cloak).includes('ItemGranted') && types(cloak).includes('ScenarioArmoryItemChosen'), types(cloak).join(','))
   assert.ok(!run.options().includes('armory-cloak'), 'свою вещь герой уже взял')
+  assert.ok(!run.options().some((id) => id.startsWith('armory-')), 'вещь — одна на героя: других вещей оружейной ему не предлагают')
   assert.ok(run.options(heroes[1].id).includes('armory-cloak'), 'второй герой ещё выбирает')
-  assert.throws(() => run.choose('armory-mail'), { code: 'SCENARIO_ARMORY_ALREADY_TAKEN' }, 'вторая вещь тому же герою — отказ самой оружейной')
+  // Вторую вещь окно не предлагает, а поданный в обход вариант отвергается.
+  assert.throws(() => run.choose('armory-mail'), { code: 'DIALOGUE_OPTION_UNAVAILABLE' }, 'вторая вещь тому же герою — отказ')
   const purse = run.choose('purse', { hero: heroes[1].id })
   assert.ok(types(purse).includes('ScenarioPurseGranted'), types(purse).join(','))
 })

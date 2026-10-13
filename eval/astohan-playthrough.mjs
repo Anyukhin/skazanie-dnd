@@ -114,6 +114,9 @@ const stats = {
   // отписок среди них — реплика есть, а сведений нет. Без модели это главное
   // место, где игра упирается в отсутствие диалога.
   npcReplies: 0, npcBrushOffs: 0, npcBrushOffSamples: [],
+  // Авторский разговор вариантами (этап 1): выборы, отказы, раскрытые тайны
+  // и сюжетные команды из окна собеседника — как в BG3.
+  dialogue: { chosen: 0, refused: 0, reveals: 0, actions: 0, npcs: {}, refusals: [] },
   trade: { bought: 0, sold: 0, refused: 0 }, potionsUsed: 0,
   parley: { attempts: 0, truces: 0, outcomes: [] },
   spells: {}, sneakAttacks: 0,
@@ -1434,16 +1437,77 @@ async function tradeAtMerchant() {
   else { stats.trade.refused += 1; finding('major', 'sell-refused', `SellItem ${sale.item_id}: ${sold.body?.code} — ${short(sold.body?.error, 200)}`) }
 }
 
+/**
+ * Пройти авторские разговоры сцены, как игрок BG3: у каждого собеседника с
+ * вариантами — незаданные вопросы по порядку, проверку бросает тот герой,
+ * чья очередь, сюжетные варианты (кошель, оружейная, судьба осведомителя,
+ * договор) — когда окно их предлагает. Прощание не выбирается: окно и так
+ * закрывается, когда вопросов не осталось.
+ */
+async function talkThroughDialogues(reason = '', { limit = 24 } = {}) {
+  const tried = new Set()
+  for (let step = 0; step < limit; step += 1) {
+    const state = await room()
+    if (state.mechanics.combat?.active || state.law?.encounter) return
+    let choice = null
+    for (const heroId of heroIds()) {
+      const view = (await room(accountFor(heroId))).scene_dialogues ?? {}
+      for (const [npcId, dialogue] of Object.entries(view)) {
+        const option = (dialogue.options ?? []).find((entry) => !entry.asked && !entry.ends && !tried.has(`${heroId}:${npcId}:${entry.id}`))
+        if (option) { choice = { heroId, npcId, option }; break }
+      }
+      if (choice) break
+    }
+    if (!choice) return
+    const { heroId, npcId, option } = choice
+    tried.add(`${heroId}:${npcId}:${option.id}`)
+    const npcName = (state.social?.npcs ?? []).find((npc) => npc.id === npcId)?.name ?? npcId
+    const label = `${npcName}: ${option.check ? `[${option.check.skill} СЛ ${option.check.dc}] ` : ''}${option.label}`
+    note(`\n**${heroOf(state, heroId)?.character ?? heroId} · разговор:** ${label}`)
+    const result = await command(heroId, { command_type: 'ChooseDialogueOption', npc_id: npcId, option_id: option.id }, `разговор: ${short(option.label, 60)}`, { expectFailure: true })
+    if (result.status !== 200) {
+      stats.dialogue.refused += 1
+      if (stats.dialogue.refusals.length < 5) stats.dialogue.refusals.push(`${npcName} «${short(option.label, 50)}» → ${result.body?.code ?? result.status}`)
+      note(`> ⚠ отказ ${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error, 200)}`)
+      // Отказ законной команде из окна — находка: окно не должно предлагать
+      // того, что сервер не примет (кроме «подойдите ближе» у головы рыцаря).
+      if (!['TARGET_OUT_OF_RANGE', 'DIALOGUE_NPC_ABSENT'].includes(result.body?.code)) {
+        finding('major', 'dialogue-refused', `${npcName}: «${short(option.label, 70)}» → ${result.status} ${result.body?.code ?? ''}: ${short(result.body?.error, 160)}`)
+      }
+      continue
+    }
+    const mechanics = result.body?.mechanics ?? []
+    const chosen = mechanics.find((event) => event.event_type === 'DialogueOptionChosen')?.payload
+    stats.dialogue.chosen += 1
+    stats.dialogue.npcs[npcName] = (stats.dialogue.npcs[npcName] ?? 0) + 1
+    if (mechanics.some((event) => event.event_type === 'KnowledgeRevealed')) stats.dialogue.reveals += 1
+    if (mechanics.some((event) => /^Scenario|ItemGranted/u.test(String(event.event_type)))) stats.dialogue.actions += 1
+    const reply = String(chosen?.reply ?? result.body?.narration ?? '')
+    if (chosen?.check) note(`> 🎲 ${chosen.check.skill}: ${chosen.check.total} против СЛ ${chosen.check.dc} → ${chosen.check.success ? 'успех' : 'провал'}`)
+    if (reply) { note(`> ${short(reply, 1200)}`); narrations.push({ kind: 'dialogue', action: option.label, label: npcName, text: reply }) }
+    if (reason) await settleInteraction(`dialogue:${reason}`)
+  }
+}
+
 async function exploreScene(state, round) {
   const scene = sceneSnapshot(state)
   const owner = accounts.owner.heroId
   const guest = accounts.guest.heroId
-  const presentNpc = (state.social?.npcs ?? []).find((npc) => scene.npcs.includes(npc.name))
+  // Собеседник с авторским разговором говорит вариантами (talkThroughDialogues);
+  // свободная реплика — тем, у кого окна нет, как у живого стола в BG3.
+  const dialogueNpcs = new Set(Object.keys(state.scene_dialogues ?? {}))
+  const presentNpc = (state.social?.npcs ?? []).find((npc) => scene.npcs.includes(npc.name) && !dialogueNpcs.has(String(npc.id)))
   const lines = [
     [guest, `Внимательно осматриваю ${scene.location}: ищу следы того, что здесь произошло, и всё, что связано с драконом Саргатом.`, 'осмотр'],
     [owner, 'Иду по следам, которые мы нашли, и пытаюсь понять, куда они ведут.', 'следы'],
     ...(presentNpc ? [[guest, `Обращаюсь к ${presentNpc.name}: что вы видели в последние дни и кто ещё может знать о налётах дракона?`, 'разговор']] : []),
   ]
+  // Каэлан приходит в замок только в полночь: отряд ждёт его, как и живой стол.
+  if (round === 0 && state.scene?.location_id === 'astohan-forgotten-cliffs' && !(state.scene_dialogues ?? {})['astohan-kaelan']) {
+    await say(owner, 'Ждём до полуночи', { label: 'ждём рыцаря', expect: 'any' })
+    await settleInteraction('knight-wait')
+  }
+  if (round === 0) await talkThroughDialogues('explore')
   for (const [actorId, text, label] of lines.slice(0, round === 0 ? 3 : 1)) {
     if ((await room()).mechanics.combat?.active) return
     await say(actorId, text, { label })
@@ -1458,7 +1522,7 @@ async function openingScene() {
   await trackScene(state)
   const owner = accounts.owner.heroId
   const guest = accounts.guest.heroId
-  await say(owner, 'Ваше величество, какое поручение вы даёте нам и что известно о Саргате?', { label: 'к королю' })
+  await talkThroughDialogues('opening')
   const accepted = await request(`/api/campaigns/${CODE}/quests/accept`, { method: 'POST', account: accounts.owner, key: `bot-quest-${randomUUID()}`, body: { actor_id: owner, quest_id: 'quest:astohan-crown-report', idempotency_key: `bot-quest-${randomUUID()}` } })
   if (accepted.status !== 200) finding('major', 'quest-accept', `принять «Вернуть донесение короне»: ${accepted.status} ${accepted.body?.code ?? ''} — ${short(accepted.body?.error, 200)}`)
   await settleInteraction('quest')
@@ -1467,9 +1531,7 @@ async function openingScene() {
   note(`- 📜 задание «${quest?.title ?? '?'}»: ${quest?.status ?? 'нет в журнале'}`)
   if (quest && quest.status !== 'active') finding('major', 'quest-not-active', `после голосования задание в статусе ${quest.status}`)
   await say(guest, 'Изучаю донесение о сожжённой Пепельной заставе: кто открыл ворота и откуда начинаются следы когтей?', { label: 'донесение' })
-  await say(owner, 'Присматриваюсь к Орену Фалю: правду ли он говорит о человеке в порту, который расспрашивал о последней охоте на Вулканиса?', { label: 'проницательность' })
-  await say(guest, 'Расспрашиваю Миру Венн об исчезнувшем сборщике налогов у Митглайда.', { label: 'Мира Венн' })
-  await say(owner, 'Наблюдаю за королём Аресом, когда маршал произносит имя Вулканиса.', { label: 'Арес и Вулканис' })
+
   await say(guest, 'Что мы уже знаем о Пепельной заставе?', { label: 'вопрос', requestKind: 'question', expect: 'any' })
   await tradeAtMerchant()
   await sayRealPhrase(2)
@@ -1704,12 +1766,25 @@ function grade(final, usage, audit, quality, judge) {
 
 /** Доля отписок среди реплик собеседников: ≤ 5 % — разговор даёт сведения. */
 function npcTalkScore() {
-  if (!stats.npcReplies) return null
-  const share = stats.npcBrushOffs / stats.npcReplies
+  const replies = stats.npcReplies + stats.dialogue.chosen
+  if (!replies) return null
+  const share = stats.npcBrushOffs / replies
   return share <= 0.05 ? 10 : share <= 0.15 ? 6 : share <= 0.3 ? 3 : 1
 }
 
+function dialogueDetail() {
+  const d = stats.dialogue
+  if (!d.chosen && !d.refused) return 'вариантов разговора бот не выбирал'
+  const npcs = Object.entries(d.npcs).map(([name, count]) => `${name} ${count}`).join(', ')
+  return `выборов ${d.chosen} (${npcs}), раскрыто тайн ${d.reveals}, сюжетных команд ${d.actions}, отказов ${d.refused}${d.refusals.length ? `: ${d.refusals.join('; ')}` : ''}`
+}
+
 function npcTalkDetail() {
+  if (!stats.npcReplies) return `реплик собеседников свободным текстом не было; варианты: ${dialogueDetail()}`
+  return `${npcTalkDetailFree()}; варианты: ${dialogueDetail()}`
+}
+
+function npcTalkDetailFree() {
   if (!stats.npcReplies) return 'реплик собеседников не было'
   const share = Math.round(100 * stats.npcBrushOffs / stats.npcReplies)
   return `реплик собеседников ${stats.npcReplies}, отписок ${stats.npcBrushOffs} (${share} %)${stats.npcBrushOffSamples.length ? `; например ${stats.npcBrushOffSamples.join('; ')}` : ''}`

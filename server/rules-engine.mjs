@@ -2232,8 +2232,13 @@ function actorObjectDistanceCells(state, actorIdValue, object, position = actorP
 }
 
 function blindTargetAllowed(command, context = {}) {
+  // Туман войны — знание отряда, а не врага: ход, который играет планировщик
+  // противников, им не ограничен. Прогон Асстохана 2026-10-13: гигантский паук
+  // стоял целиком в ещё не открытой части замка, планировщик выбрал «Паутину»,
+  // а движок отказал «траектория перекрыта» — бой встал.
+  if (context.isNpcScheduler === true) return true
   return command?.blind_target === true
-    && (context.allowBlindTarget === true || context.isAdmin === true || context.isDirector === true || context.isNpcScheduler === true)
+    && (context.allowBlindTarget === true || context.isAdmin === true || context.isDirector === true)
 }
 
 function distanceBetweenActorPositions(state, firstActorId, firstPosition, secondActorId, secondPosition) {

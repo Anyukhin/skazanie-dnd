@@ -364,6 +364,11 @@ function dialogueActionOpen(state, item, hero, progress) {
     if (!rules || rules.concluded || !rules.truth_revealed || scenarioLocationId(state) !== rules.boss_location_id) return false
     return !(state?.scenario_attention?.treaty?.attempts ?? []).map(String).includes(hero)
   }
+  // Кошель и вещь оружейной — раз на героя, каким бы путём он их ни взял:
+  // фразой, другим вариантом или этим.
+  const taken = type === 'ReceiveScenarioPurse' ? state?.scenario_attention?.purse_paid
+    : type === 'ChooseScenarioArmoryItem' ? state?.scenario_attention?.armory_taken : null
+  if ((Array.isArray(taken) ? taken : []).map(String).includes(hero)) return false
   return !(progress.chosen[item.id] ?? []).includes(hero)
 }
 
