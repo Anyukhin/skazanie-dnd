@@ -78,6 +78,14 @@
       ]
     },
     {
+      "id": "warlock-invocations", "classKey": "warlock", "name": "Таинственные воззвания", "unlockLevel": 2, "countsByLevel": { "2": 2, "5": 3, "7": 4, "9": 5, "12": 6 },
+      "options": [
+        { "id": "agonizing-blast", "name": "Мучительный взрыв" }, { "id": "repelling-blast", "name": "Отталкивающий взрыв" },
+        { "id": "eldritch-spear", "name": "Мистическое копьё" }, { "id": "armor-of-shadows", "name": "Доспех теней" },
+        { "id": "beguiling-influence", "name": "Влияние обольщения" }, { "id": "devils-sight", "name": "Дьявольское зрение" }
+      ]
+    },
+    {
       "id": "warlock-pact-boon", "classKey": "warlock", "name": "Дар договора", "unlockLevel": 3, "countsByLevel": { "3": 1 },
       "options": [
         { "id": "pact-tome", "name": "Договор гримуара" }, { "id": "pact-blade", "name": "Договор клинка" },

@@ -554,7 +554,10 @@ export function deriveArmorClass(actor, { abilities = normalizedAbilityScores(ac
     ? 10 + dexterityModifier + abilityModifier(abilities.con)
     : classKey === 'monk' && !equipped.some((entry) => entry.profile.kind === 'shield')
       ? 10 + dexterityModifier + abilityModifier(abilities.wis)
-      : 10 + dexterityModifier
+      // «Доспех теней» колдуна — «Доспехи мага» по желанию: 13 + Ловкость без доспеха.
+      : classKey === 'warlock' && normalizedSelectedFeatureIds(actor).includes('armor-of-shadows')
+        ? 13 + dexterityModifier
+        : 10 + dexterityModifier
   const bodyArmor = equipped.filter((entry) => entry.profile.kind === 'armor')
     .map((entry) => ({
       ...entry,

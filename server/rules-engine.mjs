@@ -3371,6 +3371,11 @@ function weaponFightingStyleBonus(actor, item, mode, properties) {
   return result
 }
 
+/** «Дьявольское зрение» колдуна: видит в обычной и магической тьме на 120 футов. @param {any} actor */
+function seesInMagicalDarkness(actor) {
+  return Boolean(actor) && characterClassKey(actor) === 'warlock' && normalizedSelectedFeatureIds(actor).includes('devils-sight')
+}
+
 /**
  * Божественная кара: ячейка какого круга. Названный круг должен быть в запасе;
  * без него — младшая свободная ячейка. Кара — только оружием ближнего боя.
@@ -7386,8 +7391,9 @@ export function validateCommand(input, rawState, context = {}) {
         if (spell.requiresSight === true) {
           const sourceConditions = conditionIdsFor(state, command.actor_id)
           const targetConditions = conditionIdsFor(state, requestedId)
-          if (sourceConditions.has('blinded') || targetConditions.has('invisible') && requestedId !== command.actor_id
-            || sourceConditions.has('magical-darkness') || targetConditions.has('magical-darkness')) {
+          const darkness = (sourceConditions.has('magical-darkness') || targetConditions.has('magical-darkness'))
+            && !seesInMagicalDarkness(findActor(state, command.actor_id))
+          if (sourceConditions.has('blinded') || targetConditions.has('invisible') && requestedId !== command.actor_id || darkness) {
             throw new RulesValidationError('Для этого заклинания нужно видеть выбранное существо', 'SPELL_TARGET_REQUIRES_SIGHT')
           }
         }
@@ -9638,7 +9644,12 @@ function scaledSpellDice(spell, actor, slotLevel) {
   } else if (spell.upcastDicePerLevel && safeInteger(slotLevel, spell.level) > spell.level) {
     count += safeInteger(spell.upcastDicePerLevel, 0) * (safeInteger(slotLevel, spell.level) - spell.level)
   }
-  return `${count}d${parsed.sides}${parsed.modifier > 0 ? `+${parsed.modifier}` : parsed.modifier < 0 ? parsed.modifier : ''}`
+  // «Мучительный взрыв» колдуна: к урону каждого луча Мистического заряда
+  // прибавляется модификатор Харизмы.
+  const agonizing = spell.id === 'eldritch-blast' && actor && !spell.monsterSpell
+    && normalizedSelectedFeatureIds(actor).includes('agonizing-blast') ? abilityModifier(actor?.abilities?.cha) : 0
+  const modifier = parsed.modifier + agonizing
+  return `${count}d${parsed.sides}${modifier > 0 ? `+${modifier}` : modifier < 0 ? modifier : ''}`
 }
 
 function scaledDiceExpression(expression, extraLevels = 0, dicePerLevel = 0, maximumDice = 100) {
@@ -11279,9 +11290,12 @@ function conditionAttackModifiers(state, attackerId, targetId, { distanceFeet = 
   const beyondReach = distanceFeet != null && distanceFeet > conditionReach
   const advantage = []
   const disadvantage = []
+  // «Дьявольское зрение» колдуна: в магической тьме он видит как при свете.
+  const devilsSight = seesInMagicalDarkness(findActor(state, attackerId))
   for (const condition of attackerConditions) {
     const effect = CONDITION_EFFECTS[condition]
     if (effect?.attackAdvantage) advantage.push(`attacker:${condition}`)
+    if (condition === 'magical-darkness' && devilsSight) continue
     if (effect?.attackDisadvantage && (condition !== 'frightened' || frightenedSourceInSight(state, attackerId))) disadvantage.push(`attacker:${condition}`)
     if (effect?.attackDisadvantageAgainstSource && (state.mechanics.conditions[attackerId] ?? [])
       .some((entry) => entry?.id === condition && String(entry.source_actor ?? '') === String(targetId))) disadvantage.push(`attacker:${condition}`)
@@ -11289,6 +11303,7 @@ function conditionAttackModifiers(state, attackerId, targetId, { distanceFeet = 
   for (const condition of targetConditions) {
     const effect = CONDITION_EFFECTS[condition]
     if (effect?.grantsAttackAdvantage) advantage.push(`target:${condition}`)
+    if (condition === 'magical-darkness' && devilsSight) continue
     if (effect?.grantsAttackDisadvantage) disadvantage.push(`target:${condition}`)
     if (effect?.grantsRangedWeaponAttackDisadvantage && weaponAttack && profileKind === 'ranged') disadvantage.push(`target:${condition}`)
   }
@@ -17138,6 +17153,27 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               const firePayload = resolveDamagePayload(state, actorId(secondTarget), rawFire, 'fire')
                 events.push(eventFrom(commandWithRules(command, RULE_IDS.damage), 'DamageApplied', { ...firePayload, spell_id: spell.id, secondary: true }, [actorId(secondTarget)]))
                 if (firePayload.hp_after === 0) events.push(...zeroHitPointDamageConsequences(events.slice(0, -1).reduce(applyGameEvent, state), command, actorId(secondTarget), firePayload))
+              }
+            }
+            // «Отталкивающий взрыв» колдуна: луч Мистического заряда отталкивает
+            // попавшую цель Большого размера или меньше на 10 футов.
+            const repelling = spell.id === 'eldritch-blast' && normalizedSelectedFeatureIds(actor).includes('repelling-blast')
+            if (repelling) {
+              const pushState = events.reduce(applyGameEvent, state)
+              const pushed = findActor(pushState, resolvedTargetId)
+              if (isLivingActor(pushed) && creatureSizeRank(pushed) <= sizeRankByName('large')) {
+                const pushedFrom = actorPosition(pushState, resolvedTargetId)
+                const path = forcedPushPath(pushState, resolvedTargetId, actorPosition(pushState, command.actor_id), 10)
+                if (path.length) {
+                  events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ActorMoved', {
+                    from: pushedFrom, to: path.at(-1), path, distance: path.length * 5,
+                    movement_cost: 0, movement_spent: 0, movement_remaining: effectiveSpeedFeet(pushState, pushed, resolvedTargetId),
+                    spend_movement: false, forced_movement: true, pushed: true, spell_id: spell.id, invocation: 'repelling-blast', phase: 'combat',
+                  }, [resolvedTargetId]))
+                  events.push(...areaEntryConsequences(events.reduce(applyGameEvent, state), command, resolvedTargetId, pushedFrom, path.at(-1), {
+                    diceService, rolls, resolveDamage: resolveDamageWithReactions, rollSavingThrow, saveModifierFor: areaSaveModifierFor, trigger: 'forced-entry',
+                  }))
+                }
               }
             }
             // Притягивание при попадании: «Терновый кнут» тянет цель к себе.
