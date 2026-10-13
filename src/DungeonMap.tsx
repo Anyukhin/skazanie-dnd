@@ -1692,6 +1692,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   }, [selectedItem?.id, selectedWeaponCatalogCombat?.abilities?.join('|'), weaponModeKey, attackMode, activeShillelaghAbility])
   useEffect(() => { if (!knockoutEligible) setKnockOut(false) }, [knockoutEligible])
   const shoveSelected = combatMode === 'action' && selectedCombatAction?.id === 'shove'
+  /* Божественная кара: круг ячейки выбирает игрок, как в BG3. Без выбора сервер
+     берёт младшую свободную ячейку. */
+  const smiteSelected = combatMode === 'action' && selectedCombatAction?.id === 'divine-smite'
+  const smiteSlotLevels = [1, 2, 3, 4, 5].filter((level) => Number(activeResources[`spell_slots_${level}`]?.current ?? 0) > 0)
+  const [smiteSlot, setSmiteSlot] = useState<number | null>(null)
+  const smiteSlotLevel = smiteSlot && smiteSlotLevels.includes(smiteSlot) ? smiteSlot : smiteSlotLevels[0]
   useEffect(() => { if (!shoveSelected) setShovePush(false) }, [shoveSelected])
   useEffect(() => { if (!sneakAttackEligible || sneakAttackSpent) setSneakAttack(false) }, [sneakAttackEligible, sneakAttackSpent])
   useEffect(() => {
@@ -1816,7 +1822,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     if (mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote).blocked) return
     if (!selected || tacticalBusy) return
     const pool = action.resource ? activeResources[action.resource] : undefined
-    const resourceReady = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1)
+    // Кара берёт ячейку любого круга, а не только первого.
+    const resourceReady = action.id === 'divine-smite' ? smiteSlotLevels.length > 0 : !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1)
     const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : action.actionType === 'reaction' ? reactionReady : actionReady)
     if (!resourceReady || !economyReady || !actionUsableNow(action)) return
     setSelectedCombatActionId(action.id)
@@ -1919,7 +1926,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
     } else if (pendingCommand.kind === 'spell-targets' && selectedSpell) {
       outcome = await onCastSpell(selected, selectedSpell.id, { targetIds: pendingCommand.targetIds, ...selectedSpellItemOption, ...selectedSpellSlotOption, ...(selectedSpellOption ? { spellOption: selectedSpellOption } : {}), ...(knockOut && knockoutEligible ? { knockOut: true } : {}), ...(note ? { note } : {}) })
     } else if (pendingCommand.kind === 'action-target' && selectedCombatAction) {
-      outcome = await onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note, undefined,
+      outcome = await onUseCombatAction(selected, selectedCombatAction.id, pendingCommand.targetId, selectedCombatAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note,
+        selectedCombatAction.id === 'divine-smite' ? smiteSlotLevel : undefined,
         selectedCombatAction.id === 'shove' && shovePush ? { shoveMode: 'push' } : undefined)
     }
     if (outcome?.ok) {
@@ -3180,7 +3188,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       </button>,
     })
   })
-  if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked || !actionUsableNow(action)} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}${combatActive ? '' : actionExplorationHint(action, explorationStrikeAvailable, freeOpeningStrike)}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
+  if (activeDeck === 'common' || activeDeck === 'class' || activeDeck === 'all') combatActions.filter((action) => (activeDeck === 'all' ? action.category === 'common' || action.category === 'class' : action.category === activeDeck) && action.actionType !== 'reaction').forEach((action) => { const support = mechanicsSupportPresentation(action.mechanicsSupport, action.supportNote); const pool = action.resource ? activeResources[action.resource] : undefined; const ready = action.id === 'divine-smite' ? smiteSlotLevels.length > 0 : !action.resource || Number(pool?.current ?? 0) >= Number(action.cost ?? 1); const economyReady = action.actionType === 'free' || (action.actionType === 'bonus_action' ? bonusReady : actionReady); deckTiles.push({ id: action.id, cost: action.actionType === 'bonus_action' ? 'bonus_action' : action.actionType === 'free' ? 'free' : action.actionType === 'reaction' ? 'reaction' : 'action', section: action.actionType === 'bonus_action' || action.actionType === 'free' ? 'bonus' : 'action', node: <button key={action.id} className={`action-tile feature-action support-${support.status} ${combatMode === 'action' && selectedCombatAction?.id === action.id ? 'selected' : ''}`} disabled={support.blocked || !selected || !ready || !economyReady || actionsLocked || !actionUsableNow(action)} onClick={() => selectCombatAction(action)} title={`${action.name} — ${support.blocked ? `${support.label}. ${support.explanation}` : action.description}${combatActive ? '' : actionExplorationHint(action, explorationStrikeAvailable, freeOpeningStrike)}`}><CombatIcon id={action.id} kind="action" hint={`${action.name} ${action.category} ${action.target}`} /><strong>{action.name}</strong><small>{action.target === 'self' ? 'на себя' : action.target === 'ally' ? `${action.range} фт · союзник` : `${action.range} фт · враг`}</small>{pool && <em>{Number(pool.current ?? 0)}/{Number(pool.max ?? 0)}</em>}{support.status !== 'verified' && <i className={`mechanics-support-badge support-${support.status}`}>{support.shortLabel}</i>}<i className={`action-cost ${action.actionType}`}>{action.actionType === 'bonus_action' ? 'бонус' : action.actionType === 'free' ? 'свободно' : 'действие'}</i></button>  }) })
   /* Переговоры — плиткой среди действий, как в макете боя: цена — действие,
      отклик решает мораль противника. */
   if (combatActive && !truce && (activeDeck === 'all' || activeDeck === 'common')) deckTiles.push({ id: 'propose-parley', cost: 'action', section: 'action', node: <button className="action-tile parley-hotbar" disabled={!canAct || tacticalBusy || narrating || Boolean(state.pendingCheck) || !actionReady} onClick={() => { void onProposeParley('persuasion') }}
@@ -4571,12 +4579,13 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
           </div>}
           {/* Переключатели, как «Не убивать» макета: флаг `knock_out` уходит с
               ближайшей атакой ближнего боя, сервер сам решает, сработал ли он. */}
-          {combatActive && (knockoutEligible || shoveSelected) && <div className="hud-toggles" role="group" aria-label="Переключатели">
+          {combatActive && (knockoutEligible || shoveSelected || smiteSelected && smiteSlotLevels.length > 1) && <div className="hud-toggles" role="group" aria-label="Переключатели">
             <span className="hud-side-title">Переключатели</span>
             <div className="hud-reaction-grid">
               {knockoutEligible && <button type="button" className={`hud-reaction hud-toggle-button knockout-turn-toggle${knockOut ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={knockOut} aria-label={`Не убивать — ${knockOut ? 'включено' : 'выключено'}`} onClick={() => setKnockOut((current) => !current)} title="Не убивать: удар, сводящий ОЗ к нулю, оставит цель с 1 ОЗ без сознания. Только ближний бой"><CombatIcon id="nonlethal" kind="action" size={34} compact /></button>}
               {/* Исход толчка выбирается до броска: правило даёт «сбить с ног»
                   или «оттолкнуть на 5 фт». Стену и занятую клетку проверяет сервер. */}
+              {smiteSelected && smiteSlotLevels.length > 1 && smiteSlotLevels.map((level) => <button key={`smite-${level}`} type="button" className={`hud-reaction hud-toggle-button smite-slot-toggle${smiteSlotLevel === level ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={smiteSlotLevel === level} aria-label={`Кара ячейкой ${level}-го круга: ${Math.min(5, level + 1)}к8 излучением`} onClick={() => setSmiteSlot(level)} title={`Кара ячейкой ${level}-го круга: ${Math.min(5, level + 1)}к8 излучением, по нежити и исчадиям — на 1к8 больше. Ячейка тратится только при попадании.`}><b>{level}</b></button>)}
               {shoveSelected && <button type="button" className={`hud-reaction hud-toggle-button shove-push-toggle${shovePush ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={shovePush} aria-label={`Толчок отталкивает — ${shovePush ? 'включено' : 'выключено, сбивает с ног'}`} onClick={() => setShovePush((current) => !current)} title="Оттолкнуть: при успехе толчка цель отлетает на 5 футов от вас вместо того, чтобы упасть. Стена или другое существо её остановят"><CombatIcon id="shove" kind="action" size={34} compact /></button>}
             </div>
           </div>}
