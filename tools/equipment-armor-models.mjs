@@ -626,41 +626,63 @@ function buildPlate() {
 function buildShield() {
   const root = new THREE.Group()
   root.name = 'armor:shield'
-  root.userData = { key: 'shield', recipe: 'skazanie-armor-v1', source: 'original', plane: 'XY', faceDirection: '+Z' }
+  root.userData = { key: 'shield', recipe: 'skazanie-armor-v2', source: 'original', plane: 'XY', faceDirection: '+Z' }
+  // Каплевидный («рыцарский») щит около 60×75 см в масштабе фигурки 1,4:
+  // выпуклое крашеное поле, стальной обод по всему контуру, умбон, заклёпки.
   const shape = new THREE.Shape()
-  shape.moveTo(0, 0.27)
-  shape.quadraticCurveTo(0.17, 0.24, 0.18, 0.1)
-  shape.lineTo(0.16, -0.12)
-  shape.quadraticCurveTo(0.1, -0.23, 0, -0.29)
-  shape.quadraticCurveTo(-0.1, -0.23, -0.16, -0.12)
-  shape.lineTo(-0.18, 0.1)
-  shape.quadraticCurveTo(-0.17, 0.24, 0, 0.27)
+  shape.moveTo(0, 0.26)
+  shape.quadraticCurveTo(0.2, 0.26, 0.21, 0.2)
+  shape.lineTo(0.2, -0.02)
+  shape.quadraticCurveTo(0.17, -0.2, 0, -0.33)
+  shape.quadraticCurveTo(-0.17, -0.2, -0.2, -0.02)
+  shape.lineTo(-0.21, 0.2)
+  shape.quadraticCurveTo(-0.2, 0.26, 0, 0.26)
   shape.closePath()
-  const bodyGeometry = new THREE.ExtrudeGeometry(shape, { depth: 0.055, bevelEnabled: true, bevelSegments: 1, bevelSize: 0.012, bevelThickness: 0.008, curveSegments: 2 })
-  bodyGeometry.translate(0, 0, -0.0275)
-  mesh(root, 'shield-face', bodyGeometry, material('steel', COLORS.steelBlue, { roughness: 0.45, metalness: 0.78 }))
+  const bulge = (geometry) => {
+    const position = geometry.getAttribute('position')
+    for (let index = 0; index < position.count; index += 1) {
+      const x = position.getX(index)
+      const y = position.getY(index)
+      position.setZ(index, position.getZ(index) - 0.32 * x * x - 0.06 * y * y)
+    }
+    geometry.computeVertexNormals()
+    return geometry
+  }
+  const bodyGeometry = new THREE.ExtrudeGeometry(shape, { depth: 0.022, bevelEnabled: true, bevelSegments: 1, bevelSize: 0.004, bevelThickness: 0.004, curveSegments: 6 })
+  bodyGeometry.translate(0, 0, -0.011)
+  mesh(root, 'shield-face', bulge(bodyGeometry), material('wood', '#7c2b22', { roughness: 0.72 }))
+  // Геральдическая перевязь поверх поля: светлая полоса по диагонали.
+  const band = new THREE.Shape()
+  band.moveTo(-0.21, 0.13); band.lineTo(-0.13, 0.26); band.lineTo(0.21, -0.08); band.lineTo(0.16, -0.17); band.closePath()
+  const bandGeometry = new THREE.ShapeGeometry(band)
+  const clipped = bulge(bandGeometry)
+  const bandMesh = mesh(root, 'shield-face-band', clipped, material('wood', '#c9a45e', { roughness: 0.7, side: THREE.DoubleSide }))
+  bandMesh.position.z = 0.0185
   const rim = new THREE.Group()
   rim.name = 'shield-rim'
   rim.userData = { role: 'edge-protection' }
   root.add(rim)
-  for (const side of [-1, 1]) {
-    box(rim, 'shield-rim-side', [0.025, 0.3, 0.04], [side * 0.17, 0, 0.035], material('steel', COLORS.steelLight, { roughness: 0.36, metalness: 0.84 }), [0, side * 0.08, 0])
-  }
-  box(rim, 'shield-rim-top', [0.18, 0.025, 0.04], [0, 0.235, 0.035], material('steel', COLORS.steelLight, { roughness: 0.36, metalness: 0.84 }))
-  box(rim, 'shield-rim-bottom', [0.13, 0.025, 0.04], [0, -0.22, 0.035], material('steel', COLORS.steelLight, { roughness: 0.36, metalness: 0.84 }))
+  const outline = shape.getPoints(10).map((point) => new THREE.Vector3(point.x, point.y, 0.012 - 0.32 * point.x * point.x - 0.06 * point.y * point.y))
+  const curve = new THREE.CatmullRomCurve3(outline, true, 'centripetal')
+  mesh(rim, 'shield-rim-band', new THREE.TubeGeometry(curve, 96, 0.011, 6, true), material('steel', COLORS.steelLight, { roughness: 0.34, metalness: 0.86 }))
   const boss = new THREE.Group()
   boss.name = 'shield-boss'
   boss.userData = { role: 'center-boss', faceDirection: '+Z' }
   root.add(boss)
-  cylinder(boss, 'shield-boss-dome', 0.058, 0.072, 0.045, [0, 0.02, 0.055], material('brass', COLORS.brass, { roughness: 0.35, metalness: 0.82 }), 12, [Math.PI / 2, 0, 0])
-  for (const y of [0.15, -0.1]) box(root, 'shield-rivet-row', [0.08, 0.014, 0.014], [0, y, 0.06], material('brass', COLORS.brass, { roughness: 0.35, metalness: 0.82 }))
+  const brass = material('brass', COLORS.brass, { roughness: 0.32, metalness: 0.84 })
+  const dome = mesh(boss, 'shield-boss-dome', new THREE.SphereGeometry(0.052, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), brass, [0, 0.03, 0.012], [Math.PI / 2, 0, 0])
+  dome.scale.set(1, 0.55, 1)
+  mesh(boss, 'shield-boss-flange', new THREE.CylinderGeometry(0.066, 0.066, 0.006, 16), brass, [0, 0.03, 0.012], [Math.PI / 2, 0, 0])
+  for (const [x, y] of [[-0.15, 0.2], [0.15, 0.2], [-0.15, -0.04], [0.15, -0.04], [0, -0.24]]) {
+    mesh(root, 'shield-rivet', new THREE.SphereGeometry(0.008, 8, 6), brass, [x, y, 0.014 - 0.32 * x * x - 0.06 * y * y])
+  }
   const grip = new THREE.Group()
   grip.name = 'grip'
   grip.position.set(0, 0, 0)
   grip.userData = { role: 'grip', attachment: 'off-hand' }
   root.add(grip)
-  box(grip, 'shield-grip-bar', [0.055, 0.27, 0.045], [0, 0, -0.055], material('leather', COLORS.leatherDark, { roughness: 0.9 }))
-  box(grip, 'shield-grip-strap', [0.15, 0.035, 0.03], [0, 0, -0.02], material('leather', COLORS.leather, { roughness: 0.88 }))
+  box(grip, 'shield-grip-bar', [0.03, 0.14, 0.022], [0, 0, -0.03], material('leather', COLORS.leatherDark, { roughness: 0.9 }))
+  box(grip, 'shield-grip-strap', [0.17, 0.028, 0.012], [0, 0.11, -0.022], material('leather', COLORS.leather, { roughness: 0.88 }))
   root.updateMatrixWorld(true)
   return root
 }

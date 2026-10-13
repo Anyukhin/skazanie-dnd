@@ -1,0 +1,12 @@
+Неизменяемый локальный выпуск моделей экипировки «Сказания»: equipment-502ed32043691b15f9ad1258.
+Авторство геометрии: проект «Сказание». Лицензия: оригинальная работа проекта; условия использования определяет владелец проекта.
+Сторонние геометрии и фиктивные сведения о лицензиях в этот набор не включались.
+Генератор: tools/build-equipment-models.mjs; SHA-256: 6da673dc261d75c4e521e95f9ca4ff64e293876ef027305aff64c5a65b6b359e.
+Three.js r186; моделей: 76; каталожных id: 83.
+Исходные файлы генерации:
+- server/equipment-visuals.mjs; SHA-256: 69baa38d14d9868f5110fc3cdb4e6ed04b67f92f7e70eaec73e31f4ab898b6d4; байт: 17470.
+- server/item-catalog.mjs; SHA-256: 5718bf1c2dad2f29e9d8dcf2a3fe71a12e98092dff8d8bf86855c2c14f61ee5a; байт: 141296.
+- tools/build-equipment-models.mjs; SHA-256: 6da673dc261d75c4e521e95f9ca4ff64e293876ef027305aff64c5a65b6b359e; байт: 20688.
+- tools/equipment-accessory-models.mjs; SHA-256: 159df0676bd4ca5a880897fbbcd04f5350809e1a1d3a409a66d919c0b6229c87; байт: 24526.
+- tools/equipment-armor-models.mjs; SHA-256: c86ac1588de41dea5548bda98a28ec2076dc83105239654d2a127ce960c8bdf1; байт: 34906.
+- tools/equipment-weapon-models.mjs; SHA-256: 9a1afc79bf0ee323788398f3dc9b6cea676fb767bb37368f7950cde132b403ed; байт: 41577.

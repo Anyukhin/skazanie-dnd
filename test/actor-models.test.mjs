@@ -254,9 +254,13 @@ test('v2 использует нейтральную основу и меняе�
     assert.equal(actor.equipmentStatus, 'ready', actor.equipmentError?.message)
     assert.equal(actor.getObjectByName('Body'), body)
     assert.equal(body.geometry, originalGeometry, 'маска не мутирует исходную геометрию')
-    const pieces = []
-    actor.traverse((object) => { if (/^part:?/u.test(object.name) && object.parent?.isBone) pieces.push(object) })
-    assert.ok(pieces.length >= 12, `отдельно закреплено ${pieces.length} частей вместо полного доспеха`)
+    // Латы — оболочка по одежде самой фигурки на её же скелете, а не коробки по частям тела.
+    const shells = []
+    actor.traverse((object) => { if (object.isSkinnedMesh && object.userData.equipmentShell) shells.push(object) })
+    assert.ok(shells.length >= 2, `латы не легли оболочкой: ${shells.length}`)
+    assert.ok(shells.every((shell) => shell.skeleton === body.skeleton), 'оболочка доспеха на скелете фигурки')
+    assert.ok(new Set(shells.map((shell) => shell.material.name)).has('armor-shell-plate'), 'материал лат')
+    assert.equal(body.visible, true, 'одежда под оболочкой не вырезана')
     const held = actor.getObjectByName('equipment-main_hand-longsword-default')
     assert.ok(held, 'реальный длинный меч загружен')
     let parent = held.parent
@@ -268,6 +272,9 @@ test('v2 использует нейтральную основу и меняе�
     await actor.equipmentReady
     assert.equal(actor.getObjectByName('Body'), body)
     assert.equal(body.visible, true, 'снятие брони восстанавливает базовую одежду')
+    let leftovers = 0
+    actor.traverse((object) => { if (object.userData.equipmentShell) leftovers += 1 })
+    assert.equal(leftovers, 0, 'снятые латы не оставляют оболочку')
     assert.equal(body.geometry, originalGeometry)
     assert.equal(actor.getObjectByName('equipment-main_hand-longsword-default'), undefined)
     assert.equal(actor.getObjectByName('hand_r'), rightHand)

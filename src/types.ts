@@ -814,6 +814,20 @@ export type InventoryItem = {
     catalog_description?: string
     limitation?: string
   }
+  /**
+   * Сводка удара надетым оружием своего героя (`server/weapon-attack-view.mjs`):
+   * модификатор и урон считает Rules Engine тем же путём, что и атаку. Без
+   * поля кукла показывает только кость урона и число не выводит сама.
+   */
+  attack_summary?: {
+    attack_modifier: number
+    damage_expression: string
+    damage_type: string
+    ability: 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha' | null
+    kind: 'melee' | 'ranged'
+    normal_range_feet: number
+    range_feet: number
+  }
   combat?: {
     kind: 'melee' | 'ranged' | 'thrown-area'
     ability?: 'str' | 'dex'

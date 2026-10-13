@@ -151,6 +151,7 @@ import { DEADLY_ENCOUNTER_WARNING, assembleEncounter, encounterBarrierSides } fr
 import { assembleShop } from './shop-assembler.mjs'
 import { campaignStateForViewer, turnExplanationForViewer, turnResultForViewer } from './viewer-projection.mjs'
 import { withCombatForecast } from './combat-forecast-view.mjs'
+import { withWeaponAttackSummaries } from './weapon-attack-view.mjs'
 import { compactStateForTransport } from './reveal-transport.mjs'
 import { isPartySummon } from './combat-spells.mjs'
 import { assertCampaignPlayable, lifecycleEventForAction } from './campaign-lifecycle.mjs'
@@ -2500,7 +2501,7 @@ function campaignVoterCount(campaignId, state = {}) {
  * параметры врага — КД раскрывается только там, где уже раскрыто здоровье.
  */
 function viewerStateFor(state, user, actorId) {
-  return withCombatForecast(campaignStateForViewer(state, user, actorId), state, actorId)
+  return withWeaponAttackSummaries(withCombatForecast(campaignStateForViewer(state, user, actorId), state, actorId), state, actorId)
 }
 
 function ownedViewerActorId(state, user, campaignId) {

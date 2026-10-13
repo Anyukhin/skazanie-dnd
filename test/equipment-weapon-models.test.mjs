@@ -57,7 +57,7 @@ test('модели покрывают каждое базовое оружие �
 
 test('каждая модель конечна, имеет геометрию и допустимые PBR материалы', () => {
   const canonicalHeights = new Map([
-    ['longsword', 0.72], ['greatsword', 1.0], ['spear', 1.3],
+    ['longsword', 0.87], ['greatsword', 1.251], ['spear', 1.657],
   ])
   for (const spec of WEAPON_MODELS) {
     const model = createWeaponModel(spec.key)

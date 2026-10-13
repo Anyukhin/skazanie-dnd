@@ -4,40 +4,40 @@
   "build": {
     "generator": "tools/build-equipment-models.mjs",
     "generatorVersion": 1,
-    "generatorSha256": "643590bbb0b5dbab8a405621979c1ef8f9f8fff8a9306b3a5137649df53515ad",
+    "generatorSha256": "6da673dc261d75c4e521e95f9ca4ff64e293876ef027305aff64c5a65b6b359e",
     "threeRevision": "186",
     "canonicalHumanHeight": 1.4,
     "catalogEquippableCount": 83,
     "sourceInputs": [
       {
         "path": "server/equipment-visuals.mjs",
-        "sha256": "449d4834e65b19e21c409d6326aa0214e826a254e2dbaf42421f1ca0dc9d4216",
-        "bytes": 17422
+        "sha256": "69baa38d14d9868f5110fc3cdb4e6ed04b67f92f7e70eaec73e31f4ab898b6d4",
+        "bytes": 17470
       },
       {
         "path": "server/item-catalog.mjs",
-        "sha256": "aa16e84acffdb02ef8ae74a5bd75160c13ee2b57e2cea141f30f47c42a5d79f6",
-        "bytes": 133816
+        "sha256": "5718bf1c2dad2f29e9d8dcf2a3fe71a12e98092dff8d8bf86855c2c14f61ee5a",
+        "bytes": 141296
       },
       {
         "path": "tools/build-equipment-models.mjs",
-        "sha256": "643590bbb0b5dbab8a405621979c1ef8f9f8fff8a9306b3a5137649df53515ad",
-        "bytes": 20642
+        "sha256": "6da673dc261d75c4e521e95f9ca4ff64e293876ef027305aff64c5a65b6b359e",
+        "bytes": 20688
       },
       {
         "path": "tools/equipment-accessory-models.mjs",
-        "sha256": "5a434559dbd21b3c231435d7143e47b463e4f76b5122cbad2f4006eb40660a3c",
-        "bytes": 24327
+        "sha256": "159df0676bd4ca5a880897fbbcd04f5350809e1a1d3a409a66d919c0b6229c87",
+        "bytes": 24526
       },
       {
         "path": "tools/equipment-armor-models.mjs",
-        "sha256": "bd695a365055c4802444a846c5751b9296e570cc21ca2eb4eef2b8e6aeb6cb7f",
-        "bytes": 34282
+        "sha256": "c86ac1588de41dea5548bda98a28ec2076dc83105239654d2a127ce960c8bdf1",
+        "bytes": 34906
       },
       {
         "path": "tools/equipment-weapon-models.mjs",
-        "sha256": "b28591dcbc0aeb1a6c7e36713d7a2ac55eb5d67b6bf1356e89a3e259d9a2dd4e",
-        "bytes": 33650
+        "sha256": "9a1afc79bf0ee323788398f3dc9b6cea676fb767bb37368f7950cde132b403ed",
+        "bytes": 41577
       }
     ]
   },
@@ -54,15 +54,16 @@
         "club-handle",
         "club-grip-binding",
         "club-head",
-        "club-head-band",
+        "club-head-knot",
+        "club-head-burl",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/club.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/club.glb",
       "catalogIds": [
         "srd_5_2_1:club"
       ],
-      "bytes": 15932,
-      "sha256": "becca558d2974b526ae86c823d76b71e779e82df86debfbd83664faa14eab186"
+      "bytes": 36808,
+      "sha256": "d321076d2b6a8cecfa4a4c25e9a01dccdd4d17770ad124c885b2a5574e8e5795"
     },
     {
       "key": "dagger",
@@ -74,18 +75,18 @@
       "handedness": "one-handed",
       "parts": [
         "dagger-grip",
+        "dagger-grip-wrap",
         "dagger-pommel",
-        "dagger-guard",
+        "dagger-crossguard",
         "dagger-blade",
-        "dagger-fuller",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/dagger.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/dagger.glb",
       "catalogIds": [
         "srd_5_2_1:dagger"
       ],
-      "bytes": 11744,
-      "sha256": "b870cebf28b10101e926c35e1a515eff4e677056ce7b8fefaa84d12a347de1c4"
+      "bytes": 61020,
+      "sha256": "9c3b116f5cefd44be37489c3f273f5d1eb4bf917969f4a3d4df1076ebfc5e4cd"
     },
     {
       "key": "greatclub",
@@ -98,17 +99,19 @@
       "parts": [
         "greatclub-shaft",
         "greatclub-head",
-        "greatclub-head-ridge",
-        "greatclub-neck-band",
+        "greatclub-head-cap",
+        "greatclub-iron-band",
+        "greatclub-stud",
+        "greatclub-grip-wrap",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/greatclub.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/greatclub.glb",
       "catalogIds": [
         "srd_5_2_1:greatclub"
       ],
-      "bytes": 16232,
-      "sha256": "c57a5dbe6a5027f34a9685fe10b6046ec12b4cf3ef26433b1ec1d062dcbc84b8"
+      "bytes": 37668,
+      "sha256": "a2ce161bd0d03d2afa5dcd509ea33b43a55bcb202bdece22a7c5e33feb1fc81e"
     },
     {
       "key": "handaxe",
@@ -121,16 +124,17 @@
       "parts": [
         "handaxe-haft",
         "handaxe-haft-grip",
+        "handaxe-eye",
         "handaxe-blade",
-        "handaxe-edge",
+        "handaxe-cutting-edge",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/handaxe.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/handaxe.glb",
       "catalogIds": [
         "srd_5_2_1:handaxe"
       ],
-      "bytes": 14768,
-      "sha256": "b5bb0c54a77005d3c60ef3053cbcb6f9af63bc2e956535dca8c8474fe309bfd8"
+      "bytes": 20120,
+      "sha256": "7547a38b1381952ade283a763576aa830eb8c0990b214809560c85e7dc3d4d14"
     },
     {
       "key": "javelin",
@@ -142,16 +146,17 @@
       "handedness": "one-handed",
       "parts": [
         "javelin-shaft",
+        "javelin-grip-binding",
+        "javelin-socket",
         "javelin-head",
-        "javelin-fletching",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/javelin.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/javelin.glb",
       "catalogIds": [
         "srd_5_2_1:javelin"
       ],
-      "bytes": 9888,
-      "sha256": "5633074afaeb99d178ac97d43f3bfa5b070d484f1ca927bb500d05a0947c3572"
+      "bytes": 14508,
+      "sha256": "32c7be6cc8c345e6e36a35ba52c16977b3d94211659c477ed28dcce19f4ee93d"
     },
     {
       "key": "light-hammer",
@@ -163,17 +168,18 @@
       "handedness": "one-handed",
       "parts": [
         "light-hammer-grip",
+        "light-hammer-grip-wrap",
         "light-hammer-head",
-        "light-hammer-neck",
         "light-hammer-face",
+        "light-hammer-claw",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/light-hammer.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/light-hammer.glb",
       "catalogIds": [
         "srd_5_2_1:light-hammer"
       ],
-      "bytes": 10400,
-      "sha256": "f9e2848ab7228885be866f03fd37923a0db65addad2486999a7b7dc9bf97c5a6"
+      "bytes": 18308,
+      "sha256": "8fc7841215251a9c7fd134bb5b92a89892a9f0035a7b04ed6da56c6c3ff97071"
     },
     {
       "key": "mace",
@@ -185,17 +191,19 @@
       "handedness": "one-handed",
       "parts": [
         "mace-grip",
-        "mace-collar",
+        "mace-haft",
+        "mace-pommel",
         "mace-head",
+        "mace-head-cap",
         "mace-flange",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/mace.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/mace.glb",
       "catalogIds": [
         "srd_5_2_1:mace"
       ],
-      "bytes": 25396,
-      "sha256": "60f4fab254370ee766e8a90fe1c749c1d40cb055b3f7b06bff0c9b3d5d126f96"
+      "bytes": 40672,
+      "sha256": "a831a62e1240a43c85f5eaa003c32d50230e6a8d1c2f62c9974f078f4568cdfd"
     },
     {
       "key": "quarterstaff",
@@ -213,14 +221,14 @@
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/quarterstaff.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/quarterstaff.glb",
       "catalogIds": [
         "srd_5_2_1:arcane-focus-staff",
         "srd_5_2_1:druidic-focus-wooden-staff",
         "srd_5_2_1:quarterstaff"
       ],
-      "bytes": 27340,
-      "sha256": "7ad7bc2b40eb79bdcc0029f2511e41af9dd9f41590b4616e4faae4814397ceb6"
+      "bytes": 35036,
+      "sha256": "f49258e02a5de88e9d2cf4a1981da998a702ff5550014fed2eb4328a4be245bd"
     },
     {
       "key": "sickle",
@@ -232,17 +240,16 @@
       "handedness": "one-handed",
       "parts": [
         "sickle-grip",
-        "sickle-pommel",
+        "sickle-ferrule",
         "sickle-blade",
-        "sickle-spine",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/sickle.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/sickle.glb",
       "catalogIds": [
         "srd_5_2_1:sickle"
       ],
-      "bytes": 15312,
-      "sha256": "2b62cbd79a458a4839ae019f58aa2aba265c8bb5fc346f8c9daceda61cdbedeb"
+      "bytes": 15868,
+      "sha256": "5e4e6bceb504a1b35f993f71410d5fddbb5f6f4741fe6f652a0d0a91e2cd0270"
     },
     {
       "key": "spear",
@@ -254,18 +261,19 @@
       "handedness": "variable",
       "parts": [
         "spear-shaft",
-        "spear-grip-ring",
+        "spear-butt-cap",
+        "spear-grip-wrap",
+        "spear-socket",
         "spear-head",
-        "spear-head-fuller",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/spear.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/spear.glb",
       "catalogIds": [
         "srd_5_2_1:spear"
       ],
-      "bytes": 14392,
-      "sha256": "9042e0b0136ede38c9c01eb73e83f321d1e4911ddf6fb014f524db90371d5259"
+      "bytes": 18696,
+      "sha256": "9a82dc8220746ce308cb59d7db3623fb1685162cf1e12dfb4e57ee0565340551"
     },
     {
       "key": "dart",
@@ -282,12 +290,12 @@
         "hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/dart.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/dart.glb",
       "catalogIds": [
         "srd_5_2_1:dart"
       ],
-      "bytes": 9776,
-      "sha256": "e51a23f4c0cac28b3efda8c62687d04ed1f65484852702389a3562e20750526c"
+      "bytes": 9684,
+      "sha256": "663889609aa49581a08eefc1fb93867b68d5f68c7f4a392f2d3678813b7adc4c"
     },
     {
       "key": "light-crossbow",
@@ -300,23 +308,23 @@
       "parts": [
         "light-crossbow-stock",
         "light-crossbow-grip",
-        "light-crossbow-barrel",
-        "light-crossbow-prod-center",
-        "light-crossbow-prod-left",
-        "light-crossbow-prod-right",
+        "light-crossbow-rail",
+        "light-crossbow-prod",
         "light-crossbow-string",
         "light-crossbow-string-return",
+        "light-crossbow-trigger",
         "light-crossbow-trigger-guard",
+        "light-crossbow-stirrup",
         "hand-grip",
         "off-hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/light-crossbow.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/light-crossbow.glb",
       "catalogIds": [
         "srd_5_2_1:light-crossbow"
       ],
-      "bytes": 20180,
-      "sha256": "ba2e9467c315ec5d8a3f155760a695820a8ad088787f061c5866c61191c4bbb1"
+      "bytes": 86896,
+      "sha256": "9c81f8e6e76e19eedc737bfbdd073df9d92005ccdd6601cbf55c0d57fa483780"
     },
     {
       "key": "shortbow",
@@ -328,20 +336,20 @@
       "handedness": "two-handed",
       "parts": [
         "shortbow-limb",
+        "shortbow-limb-belly",
         "shortbow-string",
         "shortbow-grip-wrap",
-        "shortbow-upper-nock",
-        "shortbow-lower-nock",
+        "shortbow-arrow-rest",
         "hand-grip",
         "off-hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/shortbow.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/shortbow.glb",
       "catalogIds": [
         "srd_5_2_1:shortbow"
       ],
-      "bytes": 15408,
-      "sha256": "ad96d3b4e2fda84516bb290f4526dcddedf00db40752bf87f77696800fbbc9a8"
+      "bytes": 22572,
+      "sha256": "a5df1f31406cecd0438728e23088c9c56c822120928ab4e5c8f076c285eddd7a"
     },
     {
       "key": "sling",
@@ -352,6 +360,7 @@
       "kind": "sling",
       "handedness": "one-handed",
       "parts": [
+        "sling-finger-loop",
         "sling-cord-left",
         "sling-cord-right",
         "sling-pouch",
@@ -359,12 +368,12 @@
         "hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/sling.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/sling.glb",
       "catalogIds": [
         "srd_5_2_1:sling"
       ],
-      "bytes": 13604,
-      "sha256": "712d2cf7ba243d496636e2847671b2e6cbb3b104c2219a886e84ef335d67efd1"
+      "bytes": 52356,
+      "sha256": "cba2ee94056a78fcd3a1fb2954d0093388be6ba048350ec7a12405de596a644d"
     },
     {
       "key": "net",
@@ -379,15 +388,16 @@
         "net-handle-loop",
         "net-mesh-row-1",
         "net-mesh-row-2",
+        "net-mesh-row-3",
         "net-mesh-cord",
         "net-edge-weight",
         "hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/net.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/net.glb",
       "catalogIds": [],
-      "bytes": 31744,
-      "sha256": "c56f2db4f231c18e6532cdd8d8a4382a3ed73000fc1b41e9dfdb7a94c082e4cf"
+      "bytes": 39932,
+      "sha256": "b4a5bf2ebdebb9d19ca87f5fdfc6eb6faf92c9be9fce4ff309d99a76376efd66"
     },
     {
       "key": "battleaxe",
@@ -400,17 +410,20 @@
       "parts": [
         "battleaxe-haft",
         "battleaxe-grip-wrap",
+        "battleaxe-butt",
+        "battleaxe-eye",
         "battleaxe-blade",
         "battleaxe-cutting-edge",
+        "battleaxe-back-spike",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/battleaxe.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/battleaxe.glb",
       "catalogIds": [
         "srd_5_2_1:battleaxe"
       ],
-      "bytes": 15228,
-      "sha256": "a1183b5290c6afd9e0a435ae670a6e3fb0247a94e2c9c946f726ff3acc122289"
+      "bytes": 25552,
+      "sha256": "5ee64b4bcbea45545868c39beccbdaf243f4041606958bcac64114938d13aa4c"
     },
     {
       "key": "flail",
@@ -422,18 +435,19 @@
       "handedness": "one-handed",
       "parts": [
         "flail-grip",
-        "flail-pommel",
+        "flail-grip-wrap",
+        "flail-end-cap",
         "flail-chain-link",
         "flail-striker",
-        "flail-striker-rivet",
+        "flail-striker-spike",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/flail.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/flail.glb",
       "catalogIds": [
         "srd_5_2_1:flail"
       ],
-      "bytes": 31152,
-      "sha256": "933dc556ff3a5f5062b2c1eb882f8220f63b40aa85f711e5356017ba2e829d30"
+      "bytes": 49420,
+      "sha256": "1a604f69d3622283c125e761858e1d31c851279b0b93c631ef74f87e4e59e10a"
     },
     {
       "key": "glaive",
@@ -444,18 +458,20 @@
       "kind": "polearm",
       "handedness": "two-handed",
       "parts": [
-        "glaive-pole",
+        "glaive-shaft",
+        "glaive-butt-cap",
+        "glaive-grip-wrap",
+        "glaive-socket",
         "glaive-blade",
-        "glaive-haft-socket",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/glaive.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/glaive.glb",
       "catalogIds": [
         "srd_5_2_1:glaive"
       ],
-      "bytes": 8660,
-      "sha256": "9d705f79e286d4156a1c5d57f6158e9768cf8f3994ff89d777c3cf127bd1722e"
+      "bytes": 18720,
+      "sha256": "980f15963089f542669908179819a770a883a6d4cdf7060ad424d4d94a7ef617"
     },
     {
       "key": "greataxe",
@@ -468,18 +484,21 @@
       "parts": [
         "greataxe-haft",
         "greataxe-grip-wrap",
+        "greataxe-eye",
         "greataxe-blade",
         "greataxe-edge",
-        "greataxe-eye",
+        "greataxe-blade-back",
+        "greataxe-edge-back",
+        "greataxe-top-spike",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/greataxe.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/greataxe.glb",
       "catalogIds": [
         "srd_5_2_1:greataxe"
       ],
-      "bytes": 17532,
-      "sha256": "8518185805cbe6a6339169b6422c8cb0168eca7b921db93d85d831ed69f8fb47"
+      "bytes": 37400,
+      "sha256": "fb2f35399cd837bcabd2aab767a0d69737311f5293627d138706a3be0e7a826c"
     },
     {
       "key": "greatsword",
@@ -491,19 +510,22 @@
       "handedness": "two-handed",
       "parts": [
         "greatsword-grip",
+        "greatsword-grip-wrap",
         "greatsword-pommel",
         "greatsword-crossguard",
+        "greatsword-ricasso",
+        "greatsword-parry-lug",
         "greatsword-blade",
         "greatsword-fuller",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/greatsword.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/greatsword.glb",
       "catalogIds": [
         "srd_5_2_1:greatsword"
       ],
-      "bytes": 15524,
-      "sha256": "3737f91b4abd143fb2dbcd87b805261a1a106d259189519f84c19b69333c1c5a"
+      "bytes": 68900,
+      "sha256": "8409b7e99f7f1f0fac904f57dc1d6805f4fa6aa40fb046c689ce4cadf224a861"
     },
     {
       "key": "halberd",
@@ -514,19 +536,23 @@
       "kind": "polearm",
       "handedness": "two-handed",
       "parts": [
-        "halberd-pole",
+        "halberd-shaft",
+        "halberd-butt-cap",
+        "halberd-grip-wrap",
+        "halberd-socket",
         "halberd-axe-head",
-        "halberd-top-spike",
+        "halberd-edge",
         "halberd-hook",
+        "halberd-top-spike",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/halberd.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/halberd.glb",
       "catalogIds": [
         "srd_5_2_1:halberd"
       ],
-      "bytes": 10892,
-      "sha256": "ba950e14fb6c28826412068a2d7bd052fd44f47e6015ce54d17e0de651a73bdb"
+      "bytes": 27472,
+      "sha256": "ffba96915ab9235c8e44016f0b3507930b34466cbb41e8254b159d361502093d"
     },
     {
       "key": "lance",
@@ -538,18 +564,19 @@
       "handedness": "two-handed",
       "parts": [
         "lance-shaft",
-        "lance-grip-wrap",
-        "lance-head",
+        "lance-grip",
         "lance-butt-cap",
+        "lance-vamplate",
+        "lance-head",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/lance.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/lance.glb",
       "catalogIds": [
         "srd_5_2_1:lance"
       ],
-      "bytes": 15408,
-      "sha256": "65675b0057420618569051bc25c65dd07f940f5df8d61b3e8ee8535330ef56ce"
+      "bytes": 16768,
+      "sha256": "2c76e5481fb42c33553b95abd7dc92caba4ece4c7c28bf9d6cbe097d1f4b2f36"
     },
     {
       "key": "longsword",
@@ -566,6 +593,7 @@
       "handedness": "variable",
       "parts": [
         "longsword-grip",
+        "longsword-grip-wrap",
         "longsword-pommel",
         "longsword-crossguard",
         "longsword-blade",
@@ -573,7 +601,7 @@
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/longsword.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/longsword.glb",
       "catalogIds": [
         "srd_5_2_1:flame-tongue-longsword",
         "srd_5_2_1:longsword",
@@ -581,8 +609,8 @@
         "srd_5_2_1:vicious-longsword",
         "srd_5_2_1:weapon-of-warning-longsword"
       ],
-      "bytes": 15492,
-      "sha256": "d23d528ee42ced093dbdbae86f365ae85ff9a0b166ce26046871dd163cd7fcb4"
+      "bytes": 63048,
+      "sha256": "80c71b52a52f42f43a30f7aad215c752972880d16f00feb82f41e5d8430ba4c7"
     },
     {
       "key": "maul",
@@ -594,18 +622,19 @@
       "handedness": "two-handed",
       "parts": [
         "maul-shaft",
+        "maul-grip-wrap",
         "maul-head",
-        "maul-head-face-front",
+        "maul-head-face",
         "maul-head-band",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/maul.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/maul.glb",
       "catalogIds": [
         "srd_5_2_1:maul"
       ],
-      "bytes": 37232,
-      "sha256": "49e93f6a0ace9194e69c68f3e35c6d9413d9da8d04174ac55678baeba8ea70dc"
+      "bytes": 46000,
+      "sha256": "dc2c2f3bd7821346e2d687259ff714713b83f891fbf5ac7b1682961de540e4e7"
     },
     {
       "key": "morningstar",
@@ -617,16 +646,18 @@
       "handedness": "one-handed",
       "parts": [
         "morningstar-grip",
+        "morningstar-grip-wrap",
+        "morningstar-collar",
         "morningstar-head",
         "morningstar-spike",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/morningstar.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/morningstar.glb",
       "catalogIds": [
         "srd_5_2_1:morningstar"
       ],
-      "bytes": 20340,
-      "sha256": "e959a05619b3f73a3528402b88367f3d7568f6ccc4ecc5e90250e4448b353f59"
+      "bytes": 45840,
+      "sha256": "2be43318c54914dbd5fbf02272579fc1178e5c6382f8aa61a832391b9cbd6f86"
     },
     {
       "key": "pike",
@@ -638,18 +669,19 @@
       "handedness": "two-handed",
       "parts": [
         "pike-shaft",
-        "pike-grip-wrap",
-        "pike-head",
         "pike-butt-cap",
+        "pike-grip-wrap",
+        "pike-socket",
+        "pike-head",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/pike.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/pike.glb",
       "catalogIds": [
         "srd_5_2_1:pike"
       ],
-      "bytes": 15384,
-      "sha256": "6f1fe3ec9c47466af5be8d9b0474a4bce810401fcfceb0900374a2cc7c0b8772"
+      "bytes": 18116,
+      "sha256": "eba973042fc14871409a94853b41e6b28dc23c7ce8229246527b098ccdd17ea3"
     },
     {
       "key": "rapier",
@@ -663,16 +695,17 @@
         "rapier-grip",
         "rapier-pommel",
         "rapier-guard",
-        "rapier-blade",
+        "rapier-quillon",
         "rapier-knuckle-bow",
+        "rapier-blade",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/rapier.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/rapier.glb",
       "catalogIds": [
         "srd_5_2_1:rapier"
       ],
-      "bytes": 20276,
-      "sha256": "75b471526cd98ed43cdaf49d9f42aa4b6afdafecba21f48c8ad5520246b17359"
+      "bytes": 26164,
+      "sha256": "262dabb3bc939e7e66c54f1704a5e225e2cd15e3573c678c831c98b8cd728eea"
     },
     {
       "key": "scimitar",
@@ -684,17 +717,18 @@
       "handedness": "one-handed",
       "parts": [
         "scimitar-grip",
-        "scimitar-guard",
+        "scimitar-grip-wrap",
+        "scimitar-pommel",
+        "scimitar-crossguard",
         "scimitar-blade",
-        "scimitar-spine",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/scimitar.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/scimitar.glb",
       "catalogIds": [
         "srd_5_2_1:scimitar"
       ],
-      "bytes": 11356,
-      "sha256": "da1cf7e2583a831747f9913eb51cd8b608488dc960e5af0afd9f15a399faedbc"
+      "bytes": 63976,
+      "sha256": "691407eae86138ff3438839d2fcdfa340fd5b736489c1a6c8fa36130697538d4"
     },
     {
       "key": "shortsword",
@@ -706,17 +740,19 @@
       "handedness": "one-handed",
       "parts": [
         "shortsword-grip",
+        "shortsword-grip-wrap",
         "shortsword-pommel",
-        "shortsword-guard",
+        "shortsword-crossguard",
         "shortsword-blade",
+        "shortsword-fuller",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/shortsword.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/shortsword.glb",
       "catalogIds": [
         "srd_5_2_1:shortsword"
       ],
-      "bytes": 10124,
-      "sha256": "964b27d0643cff994b02eb52572800d1f0e75eccee132f36b4d2f8ac45fbe179"
+      "bytes": 62960,
+      "sha256": "080da8999b6ba44ad03c4f4fe9ffdea8c3604f25f40c272bc3275df52065a0f0"
     },
     {
       "key": "trident",
@@ -728,18 +764,20 @@
       "handedness": "variable",
       "parts": [
         "trident-shaft",
+        "trident-butt-cap",
+        "trident-grip-wrap",
         "trident-collar",
         "trident-prong-shaft",
         "trident-prong",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/trident.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/trident.glb",
       "catalogIds": [
         "srd_5_2_1:trident"
       ],
-      "bytes": 21008,
-      "sha256": "7afd69ad1c7e3f88667ac7d9dbcb7cbcf9975bf4c5da92342117556cf5b11317"
+      "bytes": 57788,
+      "sha256": "8ec3f83c77e602d0b6bfc1991bd237bacfbd0000a46614f2312365c907b90f54"
     },
     {
       "key": "warhammer",
@@ -751,18 +789,21 @@
       "handedness": "variable",
       "parts": [
         "warhammer-grip",
+        "warhammer-grip-wrap",
+        "warhammer-langet",
         "warhammer-head",
         "warhammer-face",
         "warhammer-peen",
+        "warhammer-top-spike",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/warhammer.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/warhammer.glb",
       "catalogIds": [
         "srd_5_2_1:warhammer"
       ],
-      "bytes": 37292,
-      "sha256": "3d8f3cd7cdebf2c924cc45128f6cfb0a96addd896839e17086173ac608145f1d"
+      "bytes": 51428,
+      "sha256": "4213aa3fb91bb319d5c30786e10f578713210efb49e1beba438c887cc915eea3"
     },
     {
       "key": "war-pick",
@@ -774,18 +815,19 @@
       "handedness": "variable",
       "parts": [
         "war-pick-haft",
+        "war-pick-grip-wrap",
         "war-pick-head",
         "war-pick-beak",
         "war-pick-back",
         "hand-grip",
         "off-hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/war-pick.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/war-pick.glb",
       "catalogIds": [
         "srd_5_2_1:war-pick"
       ],
-      "bytes": 10088,
-      "sha256": "8426695fcc6ae98e009a3de8946157fbcc526870c3f8e66646a7912ab9d9cc21"
+      "bytes": 18228,
+      "sha256": "efd07f28482267434b9a1fcfa0ed13c93fe45be293e28c6b625c065c998296bd"
     },
     {
       "key": "whip",
@@ -802,12 +844,12 @@
         "whip-tip",
         "hand-grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/whip.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/whip.glb",
       "catalogIds": [
         "srd_5_2_1:whip"
       ],
-      "bytes": 19024,
-      "sha256": "22f3505a2ec9931223d18c1ca0e93699727c45707a7c06eaba6d02af879ffdb3"
+      "bytes": 32972,
+      "sha256": "05ea3b9d9df65d2cacbe7239e737696272d8c9e92cc1f019be4d66353bceb08a"
     },
     {
       "key": "blowgun",
@@ -819,18 +861,18 @@
       "handedness": "one-handed",
       "parts": [
         "blowgun-tube",
+        "blowgun-binding",
         "blowgun-muzzle-ring",
         "blowgun-mouthpiece",
-        "blowgun-sight",
         "hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/blowgun.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/blowgun.glb",
       "catalogIds": [
         "srd_5_2_1:blowgun"
       ],
-      "bytes": 12452,
-      "sha256": "ac027d8ea626ca117c08da3fb8fa4ebc561f5ba7276c0aa408d020861ed54419"
+      "bytes": 23464,
+      "sha256": "cce9387dfd73f270de91e13859ebf07fccd74b202ef443f9de337712cd62c524"
     },
     {
       "key": "hand-crossbow",
@@ -843,22 +885,21 @@
       "parts": [
         "hand-crossbow-stock",
         "hand-crossbow-grip",
-        "hand-crossbow-barrel",
-        "hand-crossbow-prod-center",
-        "hand-crossbow-prod-left",
-        "hand-crossbow-prod-right",
+        "hand-crossbow-rail",
+        "hand-crossbow-prod",
         "hand-crossbow-string",
         "hand-crossbow-string-return",
+        "hand-crossbow-trigger",
         "hand-crossbow-trigger-guard",
         "hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/hand-crossbow.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/hand-crossbow.glb",
       "catalogIds": [
         "srd_5_2_1:hand-crossbow"
       ],
-      "bytes": 20012,
-      "sha256": "dfbc10a52189a41c2d9bb3a05cedf22d820abb4aa4e226448796c8dc0bbba7ac"
+      "bytes": 81840,
+      "sha256": "3972b7f66b4aa60f015d835b2f0b52815869d86c456c3476154108fc2bb0413a"
     },
     {
       "key": "heavy-crossbow",
@@ -871,23 +912,24 @@
       "parts": [
         "heavy-crossbow-stock",
         "heavy-crossbow-grip",
-        "heavy-crossbow-barrel",
-        "heavy-crossbow-prod-center",
-        "heavy-crossbow-prod-left",
-        "heavy-crossbow-prod-right",
+        "heavy-crossbow-rail",
+        "heavy-crossbow-prod",
         "heavy-crossbow-string",
         "heavy-crossbow-string-return",
+        "heavy-crossbow-trigger",
         "heavy-crossbow-trigger-guard",
+        "heavy-crossbow-stirrup",
+        "heavy-crossbow-windlass",
         "hand-grip",
         "off-hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/heavy-crossbow.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/heavy-crossbow.glb",
       "catalogIds": [
         "srd_5_2_1:heavy-crossbow"
       ],
-      "bytes": 20176,
-      "sha256": "51007ceeb77afaa659d234317d17e54ae8fdd6e5591f6decd5cdb1c90052ec18"
+      "bytes": 116604,
+      "sha256": "1aa0ac336dc2d024730beb41e941c370e97fda651737f153280e62aacbb25ae1"
     },
     {
       "key": "longbow",
@@ -899,20 +941,20 @@
       "handedness": "two-handed",
       "parts": [
         "longbow-limb",
+        "longbow-limb-belly",
         "longbow-string",
         "longbow-grip-wrap",
-        "longbow-upper-nock",
-        "longbow-lower-nock",
+        "longbow-arrow-rest",
         "hand-grip",
         "off-hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/longbow.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/longbow.glb",
       "catalogIds": [
         "srd_5_2_1:longbow"
       ],
-      "bytes": 15396,
-      "sha256": "043e1e9801e13bf9277b3f9759962bbb61033ad5efdecc5c552320b97764cdc5"
+      "bytes": 22568,
+      "sha256": "6e7f016eb281ba37c26da6a6eeff85c25aa84f44d15b6c98f72f4163a4a0a504"
     },
     {
       "key": "musket",
@@ -925,7 +967,9 @@
       "parts": [
         "musket-stock",
         "musket-barrel",
+        "musket-forestock",
         "musket-muzzle-ring",
+        "musket-lock",
         "musket-trigger-guard",
         "musket-trigger",
         "musket-sight",
@@ -933,12 +977,12 @@
         "off-hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/musket.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/musket.glb",
       "catalogIds": [
         "srd_5_2_1:musket"
       ],
-      "bytes": 14176,
-      "sha256": "d5daa74436053b26d12573ae1eb99e4e85381f3a4c41d06cc3043cf4d439b786"
+      "bytes": 105656,
+      "sha256": "d17d44992b1ea3675a3e75cbe79ed5b3e8332b0cbbe042f5246761126477ffdd"
     },
     {
       "key": "pistol",
@@ -951,19 +995,21 @@
       "parts": [
         "pistol-stock",
         "pistol-barrel",
+        "pistol-forestock",
         "pistol-muzzle-ring",
+        "pistol-lock",
         "pistol-trigger-guard",
         "pistol-trigger",
         "pistol-sight",
         "hand-grip",
         "muzzle"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/pistol.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/pistol.glb",
       "catalogIds": [
         "srd_5_2_1:pistol"
       ],
-      "bytes": 14096,
-      "sha256": "36d56723e5e8c15a35ba879d9cb2766395c929a848c20ad88bcbd25e72287061"
+      "bytes": 105612,
+      "sha256": "e66dadce4d662be6763819fa7c54ceeca2958e7f8ff3c9167a35826685a56bf2"
     },
     {
       "key": "armor-padded",
@@ -991,7 +1037,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-padded.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-padded.glb",
       "catalogIds": [
         "srd_5_2_1:padded-armor"
       ],
@@ -1024,7 +1070,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-leather.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-leather.glb",
       "catalogIds": [
         "srd_5_2_1:leather-armor"
       ],
@@ -1057,7 +1103,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-studded.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-studded.glb",
       "catalogIds": [
         "srd_5_2_1:studded-leather-armor"
       ],
@@ -1098,7 +1144,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-hide.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-hide.glb",
       "catalogIds": [
         "srd_5_2_1:hide-armor"
       ],
@@ -1127,7 +1173,7 @@
         "forearm-left",
         "forearm-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-chainshirt.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-chainshirt.glb",
       "catalogIds": [
         "srd_5_2_1:chain-shirt"
       ],
@@ -1168,7 +1214,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-scalemail.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-scalemail.glb",
       "catalogIds": [
         "srd_5_2_1:scale-mail"
       ],
@@ -1189,7 +1235,7 @@
         "chest",
         "waist"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-breastplate.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-breastplate.glb",
       "catalogIds": [
         "srd_5_2_1:breastplate"
       ],
@@ -1230,7 +1276,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-halfplate.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-halfplate.glb",
       "catalogIds": [
         "srd_5_2_1:half-plate-armor"
       ],
@@ -1271,7 +1317,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-ringmail.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-ringmail.glb",
       "catalogIds": [
         "srd_5_2_1:ring-mail"
       ],
@@ -1316,7 +1362,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-chainmail.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-chainmail.glb",
       "catalogIds": [
         "srd_5_2_1:adamantine-chain-mail",
         "srd_5_2_1:chain-mail"
@@ -1358,7 +1404,7 @@
         "foot-left",
         "foot-right"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-splint.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-splint.glb",
       "catalogIds": [
         "srd_5_2_1:splint-armor"
       ],
@@ -1405,7 +1451,7 @@
         "hand-right",
         "head"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/armor-plate.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/armor-plate.glb",
       "catalogIds": [
         "srd_5_2_1:plate-armor"
       ],
@@ -1424,12 +1470,12 @@
         "shield-boss",
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/shield.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/shield.glb",
       "catalogIds": [
         "srd_5_2_1:shield"
       ],
-      "bytes": 29136,
-      "sha256": "516637a3ecab85a3294068b1d95b8e99bd10816b676630fc22db47c3bd45dfb8"
+      "bytes": 86304,
+      "sha256": "b158b82e2512b5a49cba61979ee38174c632dc6126643f75e0046698ff59b998"
     },
     {
       "key": "wand",
@@ -1440,7 +1486,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/wand.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/wand.glb",
       "catalogIds": [
         "srd_5_2_1:arcane-focus-wand",
         "srd_5_2_1:druidic-focus-yew-wand"
@@ -1457,7 +1503,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/wand-enchanted.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/wand-enchanted.glb",
       "catalogIds": [
         "srd_5_2_1:wand-of-magic-missiles"
       ],
@@ -1474,7 +1520,7 @@
         "partback",
         "partcollar"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/cloak.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/cloak.glb",
       "catalogIds": [
         "srd_5_2_1:cloak-of-protection"
       ],
@@ -1491,7 +1537,7 @@
         "partfront",
         "partpin"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/brooch.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/brooch.glb",
       "catalogIds": [
         "srd_5_2_1:brooch-of-shielding"
       ],
@@ -1508,7 +1554,7 @@
         "partband",
         "partstone"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/ring.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/ring.glb",
       "catalogIds": [
         "srd_5_2_1:ring-of-protection"
       ],
@@ -1525,7 +1571,7 @@
         "partband",
         "partstone"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/ring.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/ring.glb",
       "catalogIds": [
         "srd_5_2_1:ring-of-fire-resistance"
       ],
@@ -1541,7 +1587,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/arcane-crystal.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/arcane-crystal.glb",
       "catalogIds": [
         "srd_5_2_1:arcane-focus-crystal"
       ],
@@ -1557,7 +1603,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/arcane-orb.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/arcane-orb.glb",
       "catalogIds": [
         "srd_5_2_1:arcane-focus-orb"
       ],
@@ -1573,7 +1619,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/arcane-rod.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/arcane-rod.glb",
       "catalogIds": [
         "srd_5_2_1:arcane-focus-rod"
       ],
@@ -1589,7 +1635,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/druidic-mistletoe.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/druidic-mistletoe.glb",
       "catalogIds": [
         "srd_5_2_1:druidic-focus-mistletoe"
       ],
@@ -1605,7 +1651,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/druidic-totem.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/druidic-totem.glb",
       "catalogIds": [
         "srd_5_2_1:druidic-focus-totem"
       ],
@@ -1621,7 +1667,7 @@
       "parts": [
         "partbrooch"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/holy-amulet.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/holy-amulet.glb",
       "catalogIds": [
         "srd_5_2_1:holy-symbol-amulet"
       ],
@@ -1637,7 +1683,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/holy-emblem.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/holy-emblem.glb",
       "catalogIds": [
         "srd_5_2_1:holy-symbol-emblem"
       ],
@@ -1653,7 +1699,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/holy-reliquary.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/holy-reliquary.glb",
       "catalogIds": [
         "srd_5_2_1:holy-symbol-reliquary"
       ],
@@ -1669,7 +1715,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/bagpipes.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/bagpipes.glb",
       "catalogIds": [
         "srd_5_2_1:bagpipes"
       ],
@@ -1685,7 +1731,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/drum.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/drum.glb",
       "catalogIds": [
         "srd_5_2_1:drum"
       ],
@@ -1701,7 +1747,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/dulcimer.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/dulcimer.glb",
       "catalogIds": [
         "srd_5_2_1:dulcimer"
       ],
@@ -1717,7 +1763,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/flute.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/flute.glb",
       "catalogIds": [
         "srd_5_2_1:flute"
       ],
@@ -1733,7 +1779,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/lute.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/lute.glb",
       "catalogIds": [
         "srd_5_2_1:lute"
       ],
@@ -1749,7 +1795,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/lyre.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/lyre.glb",
       "catalogIds": [
         "srd_5_2_1:lyre"
       ],
@@ -1765,7 +1811,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/horn.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/horn.glb",
       "catalogIds": [
         "srd_5_2_1:horn"
       ],
@@ -1781,7 +1827,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/pan-flute.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/pan-flute.glb",
       "catalogIds": [
         "srd_5_2_1:pan-flute"
       ],
@@ -1797,7 +1843,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/shawm.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/shawm.glb",
       "catalogIds": [
         "srd_5_2_1:shawm"
       ],
@@ -1813,7 +1859,7 @@
       "parts": [
         "grip"
       ],
-      "url": "/assets/models/equipment/equipment-6f7920c19bd1c861fb3f2c54/viol.glb",
+      "url": "/assets/models/equipment/equipment-502ed32043691b15f9ad1258/viol.glb",
       "catalogIds": [
         "srd_5_2_1:viol"
       ],
@@ -1823,203 +1869,203 @@
   ],
   "release": {
     "schema": "equipment-release/v1",
-    "id": "equipment-6f7920c19bd1c861fb3f2c54",
-    "fingerprint": "6f7920c19bd1c861fb3f2c54f8ed9acce35e7e786bea6c8a637af44cccd77723",
+    "id": "equipment-502ed32043691b15f9ad1258",
+    "fingerprint": "502ed32043691b15f9ad1258ca79be72296dbbe33d9238a3389cd06db9524d2a",
     "files": [
       {
         "path": "club.glb",
-        "bytes": 15932,
-        "sha256": "becca558d2974b526ae86c823d76b71e779e82df86debfbd83664faa14eab186"
+        "bytes": 36808,
+        "sha256": "d321076d2b6a8cecfa4a4c25e9a01dccdd4d17770ad124c885b2a5574e8e5795"
       },
       {
         "path": "dagger.glb",
-        "bytes": 11744,
-        "sha256": "b870cebf28b10101e926c35e1a515eff4e677056ce7b8fefaa84d12a347de1c4"
+        "bytes": 61020,
+        "sha256": "9c3b116f5cefd44be37489c3f273f5d1eb4bf917969f4a3d4df1076ebfc5e4cd"
       },
       {
         "path": "greatclub.glb",
-        "bytes": 16232,
-        "sha256": "c57a5dbe6a5027f34a9685fe10b6046ec12b4cf3ef26433b1ec1d062dcbc84b8"
+        "bytes": 37668,
+        "sha256": "a2ce161bd0d03d2afa5dcd509ea33b43a55bcb202bdece22a7c5e33feb1fc81e"
       },
       {
         "path": "handaxe.glb",
-        "bytes": 14768,
-        "sha256": "b5bb0c54a77005d3c60ef3053cbcb6f9af63bc2e956535dca8c8474fe309bfd8"
+        "bytes": 20120,
+        "sha256": "7547a38b1381952ade283a763576aa830eb8c0990b214809560c85e7dc3d4d14"
       },
       {
         "path": "javelin.glb",
-        "bytes": 9888,
-        "sha256": "5633074afaeb99d178ac97d43f3bfa5b070d484f1ca927bb500d05a0947c3572"
+        "bytes": 14508,
+        "sha256": "32c7be6cc8c345e6e36a35ba52c16977b3d94211659c477ed28dcce19f4ee93d"
       },
       {
         "path": "light-hammer.glb",
-        "bytes": 10400,
-        "sha256": "f9e2848ab7228885be866f03fd37923a0db65addad2486999a7b7dc9bf97c5a6"
+        "bytes": 18308,
+        "sha256": "8fc7841215251a9c7fd134bb5b92a89892a9f0035a7b04ed6da56c6c3ff97071"
       },
       {
         "path": "mace.glb",
-        "bytes": 25396,
-        "sha256": "60f4fab254370ee766e8a90fe1c749c1d40cb055b3f7b06bff0c9b3d5d126f96"
+        "bytes": 40672,
+        "sha256": "a831a62e1240a43c85f5eaa003c32d50230e6a8d1c2f62c9974f078f4568cdfd"
       },
       {
         "path": "quarterstaff.glb",
-        "bytes": 27340,
-        "sha256": "7ad7bc2b40eb79bdcc0029f2511e41af9dd9f41590b4616e4faae4814397ceb6"
+        "bytes": 35036,
+        "sha256": "f49258e02a5de88e9d2cf4a1981da998a702ff5550014fed2eb4328a4be245bd"
       },
       {
         "path": "sickle.glb",
-        "bytes": 15312,
-        "sha256": "2b62cbd79a458a4839ae019f58aa2aba265c8bb5fc346f8c9daceda61cdbedeb"
+        "bytes": 15868,
+        "sha256": "5e4e6bceb504a1b35f993f71410d5fddbb5f6f4741fe6f652a0d0a91e2cd0270"
       },
       {
         "path": "spear.glb",
-        "bytes": 14392,
-        "sha256": "9042e0b0136ede38c9c01eb73e83f321d1e4911ddf6fb014f524db90371d5259"
+        "bytes": 18696,
+        "sha256": "9a82dc8220746ce308cb59d7db3623fb1685162cf1e12dfb4e57ee0565340551"
       },
       {
         "path": "dart.glb",
-        "bytes": 9776,
-        "sha256": "e51a23f4c0cac28b3efda8c62687d04ed1f65484852702389a3562e20750526c"
+        "bytes": 9684,
+        "sha256": "663889609aa49581a08eefc1fb93867b68d5f68c7f4a392f2d3678813b7adc4c"
       },
       {
         "path": "light-crossbow.glb",
-        "bytes": 20180,
-        "sha256": "ba2e9467c315ec5d8a3f155760a695820a8ad088787f061c5866c61191c4bbb1"
+        "bytes": 86896,
+        "sha256": "9c81f8e6e76e19eedc737bfbdd073df9d92005ccdd6601cbf55c0d57fa483780"
       },
       {
         "path": "shortbow.glb",
-        "bytes": 15408,
-        "sha256": "ad96d3b4e2fda84516bb290f4526dcddedf00db40752bf87f77696800fbbc9a8"
+        "bytes": 22572,
+        "sha256": "a5df1f31406cecd0438728e23088c9c56c822120928ab4e5c8f076c285eddd7a"
       },
       {
         "path": "sling.glb",
-        "bytes": 13604,
-        "sha256": "712d2cf7ba243d496636e2847671b2e6cbb3b104c2219a886e84ef335d67efd1"
+        "bytes": 52356,
+        "sha256": "cba2ee94056a78fcd3a1fb2954d0093388be6ba048350ec7a12405de596a644d"
       },
       {
         "path": "net.glb",
-        "bytes": 31744,
-        "sha256": "c56f2db4f231c18e6532cdd8d8a4382a3ed73000fc1b41e9dfdb7a94c082e4cf"
+        "bytes": 39932,
+        "sha256": "b4a5bf2ebdebb9d19ca87f5fdfc6eb6faf92c9be9fce4ff309d99a76376efd66"
       },
       {
         "path": "battleaxe.glb",
-        "bytes": 15228,
-        "sha256": "a1183b5290c6afd9e0a435ae670a6e3fb0247a94e2c9c946f726ff3acc122289"
+        "bytes": 25552,
+        "sha256": "5ee64b4bcbea45545868c39beccbdaf243f4041606958bcac64114938d13aa4c"
       },
       {
         "path": "flail.glb",
-        "bytes": 31152,
-        "sha256": "933dc556ff3a5f5062b2c1eb882f8220f63b40aa85f711e5356017ba2e829d30"
+        "bytes": 49420,
+        "sha256": "1a604f69d3622283c125e761858e1d31c851279b0b93c631ef74f87e4e59e10a"
       },
       {
         "path": "glaive.glb",
-        "bytes": 8660,
-        "sha256": "9d705f79e286d4156a1c5d57f6158e9768cf8f3994ff89d777c3cf127bd1722e"
+        "bytes": 18720,
+        "sha256": "980f15963089f542669908179819a770a883a6d4cdf7060ad424d4d94a7ef617"
       },
       {
         "path": "greataxe.glb",
-        "bytes": 17532,
-        "sha256": "8518185805cbe6a6339169b6422c8cb0168eca7b921db93d85d831ed69f8fb47"
+        "bytes": 37400,
+        "sha256": "fb2f35399cd837bcabd2aab767a0d69737311f5293627d138706a3be0e7a826c"
       },
       {
         "path": "greatsword.glb",
-        "bytes": 15524,
-        "sha256": "3737f91b4abd143fb2dbcd87b805261a1a106d259189519f84c19b69333c1c5a"
+        "bytes": 68900,
+        "sha256": "8409b7e99f7f1f0fac904f57dc1d6805f4fa6aa40fb046c689ce4cadf224a861"
       },
       {
         "path": "halberd.glb",
-        "bytes": 10892,
-        "sha256": "ba950e14fb6c28826412068a2d7bd052fd44f47e6015ce54d17e0de651a73bdb"
+        "bytes": 27472,
+        "sha256": "ffba96915ab9235c8e44016f0b3507930b34466cbb41e8254b159d361502093d"
       },
       {
         "path": "lance.glb",
-        "bytes": 15408,
-        "sha256": "65675b0057420618569051bc25c65dd07f940f5df8d61b3e8ee8535330ef56ce"
+        "bytes": 16768,
+        "sha256": "2c76e5481fb42c33553b95abd7dc92caba4ece4c7c28bf9d6cbe097d1f4b2f36"
       },
       {
         "path": "longsword.glb",
-        "bytes": 15492,
-        "sha256": "d23d528ee42ced093dbdbae86f365ae85ff9a0b166ce26046871dd163cd7fcb4"
+        "bytes": 63048,
+        "sha256": "80c71b52a52f42f43a30f7aad215c752972880d16f00feb82f41e5d8430ba4c7"
       },
       {
         "path": "maul.glb",
-        "bytes": 37232,
-        "sha256": "49e93f6a0ace9194e69c68f3e35c6d9413d9da8d04174ac55678baeba8ea70dc"
+        "bytes": 46000,
+        "sha256": "dc2c2f3bd7821346e2d687259ff714713b83f891fbf5ac7b1682961de540e4e7"
       },
       {
         "path": "morningstar.glb",
-        "bytes": 20340,
-        "sha256": "e959a05619b3f73a3528402b88367f3d7568f6ccc4ecc5e90250e4448b353f59"
+        "bytes": 45840,
+        "sha256": "2be43318c54914dbd5fbf02272579fc1178e5c6382f8aa61a832391b9cbd6f86"
       },
       {
         "path": "pike.glb",
-        "bytes": 15384,
-        "sha256": "6f1fe3ec9c47466af5be8d9b0474a4bce810401fcfceb0900374a2cc7c0b8772"
+        "bytes": 18116,
+        "sha256": "eba973042fc14871409a94853b41e6b28dc23c7ce8229246527b098ccdd17ea3"
       },
       {
         "path": "rapier.glb",
-        "bytes": 20276,
-        "sha256": "75b471526cd98ed43cdaf49d9f42aa4b6afdafecba21f48c8ad5520246b17359"
+        "bytes": 26164,
+        "sha256": "262dabb3bc939e7e66c54f1704a5e225e2cd15e3573c678c831c98b8cd728eea"
       },
       {
         "path": "scimitar.glb",
-        "bytes": 11356,
-        "sha256": "da1cf7e2583a831747f9913eb51cd8b608488dc960e5af0afd9f15a399faedbc"
+        "bytes": 63976,
+        "sha256": "691407eae86138ff3438839d2fcdfa340fd5b736489c1a6c8fa36130697538d4"
       },
       {
         "path": "shortsword.glb",
-        "bytes": 10124,
-        "sha256": "964b27d0643cff994b02eb52572800d1f0e75eccee132f36b4d2f8ac45fbe179"
+        "bytes": 62960,
+        "sha256": "080da8999b6ba44ad03c4f4fe9ffdea8c3604f25f40c272bc3275df52065a0f0"
       },
       {
         "path": "trident.glb",
-        "bytes": 21008,
-        "sha256": "7afd69ad1c7e3f88667ac7d9dbcb7cbcf9975bf4c5da92342117556cf5b11317"
+        "bytes": 57788,
+        "sha256": "8ec3f83c77e602d0b6bfc1991bd237bacfbd0000a46614f2312365c907b90f54"
       },
       {
         "path": "warhammer.glb",
-        "bytes": 37292,
-        "sha256": "3d8f3cd7cdebf2c924cc45128f6cfb0a96addd896839e17086173ac608145f1d"
+        "bytes": 51428,
+        "sha256": "4213aa3fb91bb319d5c30786e10f578713210efb49e1beba438c887cc915eea3"
       },
       {
         "path": "war-pick.glb",
-        "bytes": 10088,
-        "sha256": "8426695fcc6ae98e009a3de8946157fbcc526870c3f8e66646a7912ab9d9cc21"
+        "bytes": 18228,
+        "sha256": "efd07f28482267434b9a1fcfa0ed13c93fe45be293e28c6b625c065c998296bd"
       },
       {
         "path": "whip.glb",
-        "bytes": 19024,
-        "sha256": "22f3505a2ec9931223d18c1ca0e93699727c45707a7c06eaba6d02af879ffdb3"
+        "bytes": 32972,
+        "sha256": "05ea3b9d9df65d2cacbe7239e737696272d8c9e92cc1f019be4d66353bceb08a"
       },
       {
         "path": "blowgun.glb",
-        "bytes": 12452,
-        "sha256": "ac027d8ea626ca117c08da3fb8fa4ebc561f5ba7276c0aa408d020861ed54419"
+        "bytes": 23464,
+        "sha256": "cce9387dfd73f270de91e13859ebf07fccd74b202ef443f9de337712cd62c524"
       },
       {
         "path": "hand-crossbow.glb",
-        "bytes": 20012,
-        "sha256": "dfbc10a52189a41c2d9bb3a05cedf22d820abb4aa4e226448796c8dc0bbba7ac"
+        "bytes": 81840,
+        "sha256": "3972b7f66b4aa60f015d835b2f0b52815869d86c456c3476154108fc2bb0413a"
       },
       {
         "path": "heavy-crossbow.glb",
-        "bytes": 20176,
-        "sha256": "51007ceeb77afaa659d234317d17e54ae8fdd6e5591f6decd5cdb1c90052ec18"
+        "bytes": 116604,
+        "sha256": "1aa0ac336dc2d024730beb41e941c370e97fda651737f153280e62aacbb25ae1"
       },
       {
         "path": "longbow.glb",
-        "bytes": 15396,
-        "sha256": "043e1e9801e13bf9277b3f9759962bbb61033ad5efdecc5c552320b97764cdc5"
+        "bytes": 22568,
+        "sha256": "6e7f016eb281ba37c26da6a6eeff85c25aa84f44d15b6c98f72f4163a4a0a504"
       },
       {
         "path": "musket.glb",
-        "bytes": 14176,
-        "sha256": "d5daa74436053b26d12573ae1eb99e4e85381f3a4c41d06cc3043cf4d439b786"
+        "bytes": 105656,
+        "sha256": "d17d44992b1ea3675a3e75cbe79ed5b3e8332b0cbbe042f5246761126477ffdd"
       },
       {
         "path": "pistol.glb",
-        "bytes": 14096,
-        "sha256": "36d56723e5e8c15a35ba879d9cb2766395c929a848c20ad88bcbd25e72287061"
+        "bytes": 105612,
+        "sha256": "e66dadce4d662be6763819fa7c54ceeca2958e7f8ff3c9167a35826685a56bf2"
       },
       {
         "path": "armor-padded.glb",
@@ -2083,8 +2129,8 @@
       },
       {
         "path": "shield.glb",
-        "bytes": 29136,
-        "sha256": "516637a3ecab85a3294068b1d95b8e99bd10816b676630fc22db47c3bd45dfb8"
+        "bytes": 86304,
+        "sha256": "b158b82e2512b5a49cba61979ee38174c632dc6126643f75e0046698ff59b998"
       },
       {
         "path": "wand.glb",
