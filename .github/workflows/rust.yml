@@ -1,0 +1,37 @@
+name: rust
+
+# Перенос сервера на Rust (`docs/rust-rewrite-plan.md`): workspace `rust/`
+# собирается и проходит свои тесты на Linux — там же, где будет жить
+# Docker-образ. Локально на Windows сборка идёт через GNU-toolchain и MinGW
+# (`rust/PORTING.md` §6), поэтому без этого гейта разница платформ всплыла бы
+# только при переключении.
+on:
+  pull_request:
+    paths: ['rust/**', 'data/**', 'prompts/**', '.github/workflows/rust.yml']
+  push:
+    branches: [main]
+    paths: ['rust/**', 'data/**', 'prompts/**', '.github/workflows/rust.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Сборка без предупреждений
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo build --workspace --all-targets --locked
+
+      - name: Тесты
+        run: cargo test --workspace --locked
