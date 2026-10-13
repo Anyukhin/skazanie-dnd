@@ -68,13 +68,7 @@ pub fn armor_strength_speed_penalty(actor: &Value) -> i64 {
     if heavy { 10 } else { 0 }
 }
 
-/// Секунды мира (`worldTimeSeconds`).
-pub fn world_time_seconds(state: &Value) -> f64 {
-    let time = sk_core::game::mechanics(state).get("world_time");
-    let minutes = safe_int(time.and_then(|t| t.get("elapsed_minutes")), 0).max(0) as f64;
-    let remainder = time.and_then(|t| t.get("second_remainder")).and_then(Value::as_f64).unwrap_or(0.0);
-    minutes * 60.0 + remainder
-}
+pub use crate::world_clock::world_time_seconds;
 
 fn active_longstrider(state: &Value, id: &str) -> bool {
     let now = world_time_seconds(state);

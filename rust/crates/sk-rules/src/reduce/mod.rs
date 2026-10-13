@@ -6,6 +6,8 @@
 
 mod combat;
 mod conditions;
+mod labels;
+mod turns;
 mod vitals;
 
 use serde_json::Value;
@@ -51,6 +53,15 @@ fn handler(event_type: &str) -> Option<Handler> {
         "AttackResolved" => combat::attack_resolved,
         "AreaAttackResolved" => combat::area_attack_resolved,
         "CombatActionUsed" => combat::combat_action_used,
+        // Ход, раунд, отдых, время.
+        "CombatRoundTimeMarked" => turns::combat_round_time_marked,
+        "TurnStarted" => turns::turn_started,
+        "TurnEnded" => turns::turn_ended,
+        "CombatEnded" => turns::combat_ended,
+        "EncounterEnded" => turns::encounter_ended,
+        "RestStarted" => turns::rest_started,
+        "HitPointDieSpent" | "HitPointDiceRestored" => turns::hit_point_dice_changed,
+        "TimeAdvanced" => turns::time_advanced,
         _ => return None,
     })
 }
@@ -59,7 +70,7 @@ fn noop(_: &mut Value, _: &Event) {}
 
 /// Перенесено ли событие этого типа.
 pub fn is_ported(event_type: &str) -> bool {
-    handler(event_type).is_some()
+    handler(event_type).is_some() || !labels::JS_REDUCER_EVENT_TYPES.contains(&event_type)
 }
 
 /// Применить событие: ветка типа и общие шаги после неё.

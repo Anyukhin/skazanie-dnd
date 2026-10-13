@@ -11,3 +11,4 @@ pub mod reduce;
 pub mod scene_maps;
 pub mod speed;
 pub mod tables;
+pub mod world_clock;
