@@ -2238,12 +2238,13 @@ function actorObjectDistanceCells(state, actorIdValue, object, position = actorP
   return distanceFeet == null ? Number.POSITIVE_INFINITY : distanceFeet / 5
 }
 
-function blindTargetAllowed(command, context = {}) {
+function blindTargetAllowed(command, context = {}, state = null) {
   // Туман войны — знание отряда, а не врага: ход, который играет планировщик
   // противников, им не ограничен. Прогон Асстохана 2026-10-13: гигантский паук
   // стоял целиком в ещё не открытой части замка, планировщик выбрал «Паутину»,
-  // а движок отказал «траектория перекрыта» — бой встал.
-  if (context.isNpcScheduler === true) return true
+  // а движок отказал «траектория перекрыта» — бой встал. Призванные отряда,
+  // которых водит тот же планировщик, туман отряда по-прежнему соблюдают.
+  if (context.isNpcScheduler === true && state && isEnemyActor(state, command?.actor_id)) return true
   return command?.blind_target === true
     && (context.allowBlindTarget === true || context.isAdmin === true || context.isDirector === true)
 }
@@ -7332,7 +7333,7 @@ export function validateCommand(input, rawState, context = {}) {
       const needsEmptyCell = ['summon', 'teleport'].includes(spell.kind)
       if (!isWalkableCell(cell) || needsEmptyCell && !actorFootprintFits(state, command.actor_id, to)) throw new RulesValidationError('Выбранная клетка недоступна', 'INVALID_DESTINATION')
       const teleportWithoutSight = spell.kind === 'teleport' && String(spell.id) === 'dimension-door'
-      if (!teleportWithoutSight && cell.revealed !== true && !blindTargetAllowed(command, context)) {
+      if (!teleportWithoutSight && cell.revealed !== true && !blindTargetAllowed(command, context, state)) {
         throw new RulesValidationError('Точка находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
       }
       const distance = footprintDistanceFeet(findActor(state, command.actor_id), [to], from)
@@ -7427,7 +7428,7 @@ export function validateCommand(input, rawState, context = {}) {
         const to = actorPosition(targetState, actorId(target))
         if (!to) throw new RulesValidationError('Цель должна находиться на карте', 'MAP_POSITION_REQUIRED')
         if (tacticalCellMap(state).size > 0 && !actorFootprintVisible(targetState, requestedId, to)
-          && !blindTargetAllowed(command, context)) {
+          && !blindTargetAllowed(command, context, state)) {
           throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
         }
         const secondary = Boolean(primaryAnchor && targetIndex > 0)
@@ -7442,12 +7443,12 @@ export function validateCommand(input, rawState, context = {}) {
           // В цепной молнии каждый вторичный разряд начинается у первой цели;
           // путь от заклинателя к дальней цели не является условием.
           assertClearActorTrajectory(targetState, sourceId, requestedId, sourcePosition, to, {
-            allowHiddenTarget: blindTargetAllowed(command, context),
+            allowHiddenTarget: blindTargetAllowed(command, context, state),
           })
         } else {
           if (distance > maximumSpellRange) throw new RulesValidationError('Цель находится вне дальности заклинания', 'TARGET_OUT_OF_RANGE')
           if (distance > 5 || spell.id === 'longstrider' || usesDnd2014(state) && spell.mechanicsSupport === 'verified') assertClearActorTrajectory(targetState, sourceId, requestedId, sourcePosition, to, {
-            allowHiddenTarget: blindTargetAllowed(command, context),
+            allowHiddenTarget: blindTargetAllowed(command, context, state),
           })
         }
         if (spell.requiresSight === true) {
@@ -13744,7 +13745,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const hasTacticalMap = tacticalCellMap(state).size > 0
       if (authoritative && state.mechanics.combat.active && hasTacticalMap
         && !actorFootprintVisible(state, targetId, targetAt)
-        && !blindTargetAllowed(command, context)) {
+        && !blindTargetAllowed(command, context, state)) {
         throw new RulesValidationError('Цель находится в нераскрытой части карты', 'TARGET_NOT_VISIBLE')
       }
       const cover = coverBetween(state, command.actor_id, targetId, actorAt, targetAt)
@@ -13755,7 +13756,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         distanceFeet = distanceBetweenActorPositions(state, command.actor_id, actorAt, targetId, targetAt)
         if (distanceFeet < 5 || distanceFeet > profile.range_feet) throw new RulesValidationError('Цель находится вне дальности атаки', 'TARGET_OUT_OF_RANGE')
          if (profile.range_feet > 5) assertClearActorTrajectory(state, command.actor_id, targetId, actorAt, targetAt, {
-           allowHiddenTarget: blindTargetAllowed(command, context),
+           allowHiddenTarget: blindTargetAllowed(command, context, state),
          })
       }
       let modifier = profile?.modifier ?? safeInteger(command.attack_modifier, 0)
