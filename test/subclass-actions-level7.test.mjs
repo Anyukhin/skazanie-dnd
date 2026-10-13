@@ -78,3 +78,12 @@ test('Шквал открытой ладони: после Атаки — две
   assert.equal(prone.length >= 0, true)
   assert.ok(hitting.result.events.some((event) => event.event_type === 'ResourceSpent' && event.payload.resource === 'ki'))
 })
+
+test('Бешенство — и после того, как действие Атака потрачено целиком (обе атаки)', () => {
+  const barbarian = { characterClass: 'barbarian', subclass: 'Путь берсерка', abilities: { str: 18, dex: 12, con: 16, int: 8, wis: 10, cha: 8 }, inventory: [AXE] }
+  let state = battle(barbarian, { conditions: ['raging'] })
+  for (const index of [1, 2]) state = act(state, { command_type: 'MakeAttack', target_id: 'ogre', item_id: 'axe', server_authoritative: true, command_id: `swing-${index}` }).state
+  assert.equal(state.mechanics.combat.action_economy.hero.action, false, 'Дополнительная атака израсходована')
+  const { result } = act(state, { command_type: 'UseCombatAction', action_id: 'barbarian-put-berserka-beshenstvo', target_id: 'ogre', item_id: 'axe' })
+  assert.ok(result.events.some((event) => event.event_type === 'AttackResolved'), 'удар бонусным действием')
+})

@@ -5695,6 +5695,9 @@ function assertTurn(command, state, context = {}) {
     }
     if (economy && economy.action === false) {
       if (command.command_type === 'MakeAttack' && isMonkBonusAttackContext(context)) return
+      // Удар бонусным действием (Бешенство, вторая рука) платит бонусным
+      // действием родительского умения, а не действием Атака.
+      if (command.command_type === 'MakeAttack' && context?.[LOADING_ACTION_TYPE_CONTEXT] === 'bonus_action') return
       if (command.command_type === 'MakeAttack' && actionEconomyEventVersion(economy) >= ACTION_ECONOMY_EVENT_VERSION) {
         const attacksUsed = Math.max(0, safeInteger(economy.attacks_used, 0))
         const attackLimit = Math.max(1, safeInteger(economy.attack_action_limit, safeInteger(economy.attacks_allowed, 1)))

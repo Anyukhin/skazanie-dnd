@@ -66,3 +66,12 @@ test('со стилем «Сражение двумя оружиями» уда�
   const second = run(swing.state, { command_type: 'UseCombatAction', actor_id: 'hero', action_id: 'offhand-attack', target_id: 'ogre' })
   assert.equal(second.result.events.find((event) => event.event_type === 'DamageApplied').payload.applied_amount, 4 + 4)
 })
+
+test('у героя без Дополнительной атаки вторая рука бьёт после единственной атаки', () => {
+  const equipped = equipOffHand(arena()).state
+  const ready = normalizeCampaignState({ ...equipped, players: [{ ...equipped.players[0], level: 4 }], mechanics: arena({ combat: true }).mechanics })
+  const swing = run(ready, { command_type: 'MakeAttack', actor_id: 'hero', target_id: 'ogre', item_id: 'sword', server_authoritative: true })
+  assert.equal(swing.state.mechanics.combat.action_economy.hero.action, false)
+  const second = run(swing.state, { command_type: 'UseCombatAction', actor_id: 'hero', action_id: 'offhand-attack', target_id: 'ogre' })
+  assert.ok(second.result.events.some((event) => event.event_type === 'AttackResolved'))
+})
