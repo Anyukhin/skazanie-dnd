@@ -1389,6 +1389,8 @@ function sanitizePlayerCombatCommand(user, state, input, { skipAttackTargetPolic
       // наличие ячейки и остаток запаса сверяет Rules Engine.
       ...(actionId === 'divine-smite' && Number.isSafeInteger(input?.slot_level) && input.slot_level >= 1 && input.slot_level <= 5 ? { slot_level: input.slot_level } : {}),
       ...(actionId === 'lay-on-hands' && Number.isSafeInteger(input?.amount) && input.amount >= 1 && input.amount <= 200 ? { amount: input.amount } : {}),
+      // Зверь Дикого облика — выбор игрока; доступность по кругу и уровню сверяет Rules Engine.
+      ...(actionId === 'wild-shape' && typeof input?.form_id === 'string' && /^[a-z-]{1,40}$/u.test(input.form_id) ? { form_id: input.form_id } : {}),
     }
   }
   if (type === 'ResolveHeroDeath') {

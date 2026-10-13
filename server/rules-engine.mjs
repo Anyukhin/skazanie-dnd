@@ -253,6 +253,7 @@ import {
   sceneWorldMemoryEvents,
 } from './scene-memory.mjs'
 import { applyScenarioMapReveals, scenarioArmoryRules, scenarioInformantRules, scenarioLocationNpcs, scenarioClueRewardCatalogId, scenarioEnding, scenarioLocationId, scenarioMilestoneLevel, scenarioProgress, scenarioPurseRules, scenarioSceneArgs, scenarioSecretsFor, scenarioTreatyRules } from './campaign-scenario.mjs'
+import { wildShapeFormFor } from './wild-shape.mjs'
 import { DIALOGUE_COMMAND_TYPE, DIALOGUE_EVENT, DIALOGUE_POLICY_ID, applyDialogueEvent, dialogueActionChecks, dialogueFor, dialogueGrantedFactIds, dialogueOptionsFor, dialogueRevealFactId, normalizeDialogueState } from './campaign-dialogues.mjs'
 import {
   SCENARIO_COMMAND_TYPES,
@@ -5536,6 +5537,9 @@ function assertTurn(command, state, context = {}) {
   }
   assertNormalActionFrameAvailable(command, combat.action_economy[command.actor_id])
   if (command.command_type === 'CastSpell') {
+    if (state.mechanics.shapes?.[command.actor_id]?.form?.wild_shape === true) {
+      throw new RulesValidationError('В диком облике друид не колдует: сначала вернитесь в свой облик', 'WILD_SHAPE_NO_SPELLS')
+    }
     const spell = combatSpellFor(findActor(state, command.actor_id), command.spell_id, { rulesetId: state.ruleset_id })
     const quickened = conditionIdsFor(state, command.actor_id).has('metamagic-quickened') && spell?.actionType === 'action'
     const resource = quickened || spell?.actionType === 'bonus_action' ? 'bonus_action' : spell?.actionType === 'reaction' ? 'reaction' : 'action'
@@ -7604,6 +7608,26 @@ export function validateCommand(input, rawState, context = {}) {
       command.reaction_window = reactionWindow
       if (action.target === 'enemy') command.target_id = String(reactionWindow.source_actor_id)
     }
+    const shape = state.mechanics.shapes?.[command.actor_id] ?? null
+    let wildShapeAction = null
+    if (action.effect?.kind === 'wild_shape') {
+      if (shape?.form?.wild_shape === true) {
+        // Возврат в свой облик — бонусным действием и без траты облика.
+        wildShapeAction = { ...action, resource: null, actionType: 'bonus_action', revert: true }
+      } else {
+        if (shape) throw new RulesValidationError('Друид уже в чужом облике: сначала он должен закончиться', 'WILD_SHAPE_ALREADY_SHAPED')
+        const form = wildShapeFormFor(actor, command.form_id)
+        if (!form) throw new RulesValidationError('Друиду пока некого принять: Дикий облик — со 2-го уровня', 'WILD_SHAPE_NO_FORM')
+        command.form_id = form.id
+        wildShapeAction = { ...action, wild_shape_form: form }
+      }
+    }
+    if (action.effect?.kind === 'wild_shape_heal') {
+      if (shape?.form?.wild_shape !== true) throw new RulesValidationError('Целебный облик — только в диком облике', 'WILD_SHAPE_REQUIRED')
+      const slot = [1, 2, 3, 4, 5].find((level) => resourcePool(state, command.actor_id, `spell_slots_${level}`).current > 0)
+      if (!slot) throw new RulesValidationError('Для целебного облика нужна свободная ячейка заклинаний', 'INSUFFICIENT_RESOURCE')
+      wildShapeAction = { ...action, resource: `spell_slots_${slot}`, heal_slot_level: slot }
+    }
     if (action.requiresCondition && !conditionIdsFor(state, command.actor_id).has(String(action.requiresCondition))) {
       throw new RulesValidationError(action.requiresCondition === 'raging' ? 'Бешенство — только в ярости' : 'Умение сейчас недоступно', 'ACTION_CONDITION_REQUIRED')
     }
@@ -7617,7 +7641,7 @@ export function validateCommand(input, rawState, context = {}) {
     }
     const chosenAction = action.id === 'divine-smite' ? divineSmiteActionFor(state, command, action)
       : action.id === 'lay-on-hands' ? layOnHandsActionFor(state, command, action)
-        : action
+        : wildShapeAction ?? action
     command.combat_action = chosenAction
     if (action.spell?.id === 'silvery-barbs') {
       const beneficiaryId = String(command.beneficiary_id ?? command.beneficiaryId ?? command.actor_id)
@@ -13690,7 +13714,10 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       const target = findActor(state, targetId)
       const authoritative = Boolean(command.server_authoritative || context.serverAuthoritativeCombat || context.isNpcScheduler || isEnemyActor(state, command.actor_id) || isEnemyActor(state, targetId))
       const monkBonusAttack = isMonkBonusAttackContext(context)
-      const selectedProfile = authoritative && command.item_id
+      // В диком облике друид бьёт оружием зверя: присланное оружие из рюкзака
+      // не используется.
+      const wildShaped = state.mechanics.shapes?.[command.actor_id]?.form?.wild_shape === true
+      const selectedProfile = authoritative && command.item_id && !wildShaped
         ? itemAttackProfile(state, actor, command.item_id, { attackMode: command.attack_mode, attackAbility: command.attack_ability, offHand: context?.[OFFHAND_ATTACK_CONTEXT] === true })
         : null
       const profile = monkBonusAttack
@@ -16334,6 +16361,29 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           if (!monkUnarmedBonus && workingState.mechanics.combat.action_economy[command.actor_id]) workingState.mechanics.combat.action_economy[command.actor_id].action = true
         }
         events.push(actionEvent({ hit: landed, attacks, ...(parentPaysAttackEconomy || monkUnarmedBonus ? {} : { economy_consumed_by_attack: true }) }))
+      } else if (action.effect?.kind === 'wild_shape') {
+        if (action.revert) {
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ShapeReverted', { reason: 'dismissed', excess_damage: 0, wild_shape: true }, [command.actor_id]))
+        } else {
+          spendActionResource()
+          const form = clone(action.wild_shape_form)
+          events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ShapeChanged', {
+            spell_id: null,
+            wild_shape: true,
+            form: { ...form, wild_shape: true, footprint: footprintMetadataForSize(form.size) },
+          }, [command.actor_id]))
+        }
+        events.push(actionEvent({ wild_shape: action.revert ? 'reverted' : action.wild_shape_form?.id }))
+      } else if (action.effect?.kind === 'wild_shape_heal') {
+        spendActionResource()
+        const slot = Math.max(1, safeInteger(action.heal_slot_level, 1))
+        const healingRoll = diceService.roll(`${slot}d8`, 'wild_shape_heal', command.actor_id, command.visibility ?? 'public')
+        rolls.push(healingRoll)
+        events.push(eventFrom(command, 'DieRolled', healingRoll, []))
+        const before = actorHp(actor)
+        const after = Math.min(actorMaxHp(actor), before + healingRoll.total)
+        events.push(eventFrom(commandWithRules(command, RULE_IDS.healing), 'HealingApplied', { requested_amount: healingRoll.total, applied_amount: after - before, hp_before: before, hp_after: after }, [command.actor_id]))
+        events.push(actionEvent())
       } else if (action.effect?.kind === 'save' && action.effect.areaUndead === true) {
         // Изгнание нежити: каждая нежить в 30 футах, что видит или слышит
         // жреца, спасается Мудростью; провалившая — изгнана на минуту, а с

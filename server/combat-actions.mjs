@@ -109,7 +109,7 @@ const CLASS_ACTIONS = Object.freeze({
     action('divine-intervention', 'Божественное вмешательство', { minimumLevel: 10, description: 'Просить божество вмешаться; шанс успеха равен уровню жреца в процентах.', effect: { kind: 'percent_check' } }),
   ]),
   druid: Object.freeze([
-    action('wild-shape', 'Дикая форма', { minimumLevel: 2, resource: 'wild_shape', description: 'Принять звериный облик, сохраняя личность и ментальные характеристики.', effect: { kind: 'condition', condition: 'wild-shaped', duration: 'rounds:600' } }),
+    action('wild-shape', 'Дикая форма', { minimumLevel: 2, resource: 'wild_shape', description: 'Действием принять облик зверя (ПО ¼ со 2-го уровня, ½ с 4-го, 1 с 8-го): его хиты, КД, скорость и атака. Повторно — вернуться в свой облик бонусным действием. В облике нельзя колдовать.', effect: { kind: 'wild_shape' } }),
     action('wild-companion', 'Дикий спутник', { minimumLevel: 2, resource: 'wild_shape', description: 'Потратить Дикую форму, чтобы призвать временного духа-спутника.', effect: { kind: 'condition', condition: 'wild-companion', duration: 'rounds:600' } }),
   ]),
   fighter: Object.freeze([
@@ -267,17 +267,25 @@ const SUBCLASS_ACTIONS = Object.freeze({
   [normalizedName('Клятва преданности')]: Object.freeze([
     action('paladin-klyatva-predannosti-bozhestvennyy-kanal', 'Священное оружие', { target: 'self', minimumLevel: 3, resource: 'channel_divinity', description: 'Божественный канал: на минуту оружие светится, считается магическим и прибавляет модификатор Харизмы (не меньше +1) к броскам атаки.', effect: { kind: 'condition', condition: 'sacred-weapon', duration: 'rounds:10' } }),
   ]),
+  [normalizedName('Круг луны')]: Object.freeze([
+    action('wild-shape', 'Дикая форма', { actionType: 'bonus_action', minimumLevel: 2, resource: 'wild_shape', description: 'Боевой дикий облик: бонусным действием принять облик зверя (ПО 1 со 2-го уровня, с 6-го — уровень / 3): его хиты, КД, скорость и атака. Повторно — вернуться в свой облик. В облике нельзя колдовать.', effect: { kind: 'wild_shape' } }),
+    action('druid-krug-luny-boevoy-dikiy-oblik', 'Целебный облик', { actionType: 'bonus_action', minimumLevel: 2, description: 'В диком облике бонусным действием потратить ячейку заклинаний и восстановить 1к8 хитов за каждый её круг.', effect: { kind: 'wild_shape_heal' } }),
+  ]),
   [normalizedName('Путь открытой ладони')]: Object.freeze([
     action('monk-put-otkrytoy-ladoni-tehniki-otkrytoy-ladoni', 'Шквал открытой ладони', { target: 'enemy', actionType: 'bonus_action', range: 5, minimumLevel: 3, resource: 'ki', description: 'Шквал ударов: 1 ци, две безоружные атаки; каждое попадание — спасбросок Ловкости против СЛ ци, иначе цель сбита с ног.', effect: { kind: 'weapon_attack', attacks: 2, unarmed: true, saveAbility: 'dex', saveDcAbility: 'wis', condition: 'prone', conditionDuration: 'none' } }),
   ]),
 })
 
 function curatedActionsFor(actor, classKey, subclass) {
+  // Умение подкласса с тем же id заменяет умение класса (Боевой дикий облик
+  // Круга луны — та же «Дикая форма», только бонусным действием).
+  const subclassActions = SUBCLASS_ACTIONS[normalizedName(subclass)] ?? []
+  const subclassIds = new Set(subclassActions.map((entry) => entry.id))
   const curated = classKey
     ? [
-      ...(CLASS_ACTIONS[classKey] ?? []),
+      ...(CLASS_ACTIONS[classKey] ?? []).filter((entry) => !subclassIds.has(entry.id)),
       ...(classKey === 'fighter' && normalizedName(subclass) === normalizedName('Мастер боевых искусств') ? MANEUVERS : []),
-      ...(SUBCLASS_ACTIONS[normalizedName(subclass)] ?? []),
+      ...subclassActions,
     ]
     : []
   return curated.filter((entry) => isOptionalFeatureSelected(actor, entry.id))
