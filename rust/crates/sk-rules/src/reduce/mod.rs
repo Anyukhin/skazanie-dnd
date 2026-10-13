@@ -6,6 +6,7 @@
 
 mod combat;
 mod conditions;
+mod effects;
 mod labels;
 mod turns;
 mod vitals;
@@ -62,6 +63,30 @@ fn handler(event_type: &str) -> Option<Handler> {
         "RestStarted" => turns::rest_started,
         "HitPointDieSpent" | "HitPointDiceRestored" => turns::hit_point_dice_changed,
         "TimeAdvanced" => turns::time_advanced,
+        // Эффекты боя без внешних модулей.
+        "SpellAreaCreated" => effects::spell_area_created,
+        "SpellAreaTriggered" => effects::spell_area_triggered,
+        "SpellAreaRemoved" => effects::spell_area_removed,
+        "ReactionWindowOpened" => effects::reaction_window_opened,
+        "ReactionWindowClosed" => effects::reaction_window_closed,
+        "ActionReadied" => effects::action_readied,
+        "ReadiedActionExpired" => effects::readied_action_expired,
+        "ReactionDamageReduced" => effects::reaction_damage_reduced,
+        "SpellCountered" => effects::spell_countered,
+        "ShapeReverted" => effects::shape_reverted,
+        "SummonedCreatureDismissed" => effects::summoned_creature_dismissed,
+        "PublicDieRolled" => effects::public_die_rolled,
+        "OpeningStrikeEconomyRestored" => effects::opening_strike_economy_restored,
+        "SpellBonusPreferenceChanged" => effects::spell_bonus_preference_changed,
+        // Жизнь кампании.
+        "CampaignActivated" | "CampaignResumed" => effects::campaign_resumed,
+        "CampaignPaused" => effects::campaign_paused,
+        "CampaignArchived" => effects::campaign_archived,
+        "CampaignCompleted" | "CampaignFailed" => effects::campaign_concluded,
+        "CampaignHouseRuleChanged" => effects::campaign_house_rule_changed,
+        "CampaignRulesetChanged" => effects::campaign_ruleset_changed,
+        "ObjectiveUpdated" => effects::objective_updated,
+        "RulingRecorded" => effects::ruling_recorded,
         _ => return None,
     })
 }
