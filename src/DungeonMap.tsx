@@ -337,7 +337,7 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   onAttack: (actorId: string, enemyId: string, itemId?: string, choice?: WeaponAttackChoice) => Promise<CommandOutcome>
   onAreaAttack: (actorId: string, itemId: string, x: number, y: number, note?: string) => Promise<CommandOutcome>
   onCastSpell: (actorId: string, spellId: string, target: (({ targetId: string } | { targetIds: string[] } | { x: number; y: number } | { x: number; y: number; targetIds: string[] }) & { itemId?: string; spellOption?: string; slotLevel?: number; castingResource?: string; knockOut?: boolean; note?: string })) => Promise<CommandOutcome>
-  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push', fontMode?: 'create' | 'convert' }) => Promise<CommandOutcome>
+  onUseCombatAction: (actorId: string, actionId: string, targetId?: string, itemId?: string, beneficiaryId?: string, note?: string, slotLevel?: number, options?: { shoveMode?: 'push', fontMode?: 'create' | 'convert', formId?: string }) => Promise<CommandOutcome>
   onSetSpellBonusPreference?: (actorId: string, enabled: boolean) => Promise<CommandOutcome>
   onSetReactionMode?: (actorId: string, reactionId: string, mode: ReactionMode, reactionName?: string) => Promise<CommandOutcome>
   onChangeWeapon: (actorId: string, itemId: string) => Promise<CommandOutcome>
@@ -1544,6 +1544,15 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
   ]
   const [fontChoice, setFontChoice] = useState<string | null>(null)
   const fontOption = fontOptions.find((option) => option.key === fontChoice) ?? fontOptions[0]
+  /* Дикий облик: зверя выбирает игрок, как в BG3. По умолчанию — тот же,
+     что взял бы сервер без выбора: выше опасность, затем больше хитов. Уже в
+     облике повторное нажатие — возврат, выбирать некого. */
+  const wildShaped = Boolean(selected && state.mechanics?.shapes?.[selected]?.form?.wild_shape)
+  const wildShapeForms = combatMode === 'action' && selectedCombatAction?.id === 'wild-shape' && !wildShaped
+    ? [...(selectedCombatAction.forms ?? [])].sort((left, right) => right.challenge_rating - left.challenge_rating || right.hp - left.hp || left.id.localeCompare(right.id))
+    : []
+  const [wildShapeChoice, setWildShapeChoice] = useState<string | null>(null)
+  const wildShapeForm = wildShapeForms.find((form) => form.id === wildShapeChoice) ?? wildShapeForms[0]
   const selectedActionResourceReady = selectedCombatAction?.id === 'divine-smite' ? smiteSlotLevels.length > 0
     : selectedCombatAction?.id === 'font-of-magic' ? fontOptions.length > 0
       : !selectedCombatAction?.resource || Number(selectedActionPool?.current ?? 0) >= Number(selectedCombatAction.cost ?? 1)
@@ -1570,7 +1579,8 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
       : selfUseAction
         ? await onUseCombatAction(selected, selfUseAction.id, undefined, selfUseAction.requiresWeapon ? selectedItem?.id : undefined, undefined, note,
           selfUseAction.id === 'font-of-magic' ? fontOption?.level : undefined,
-          selfUseAction.id === 'font-of-magic' && fontOption ? { fontMode: fontOption.mode } : undefined)
+          selfUseAction.id === 'font-of-magic' && fontOption ? { fontMode: fontOption.mode }
+            : selfUseAction.id === 'wild-shape' && wildShapeForm ? { formId: wildShapeForm.id } : undefined)
         : null
     if (outcome?.ok) setCombatMode('weapon')
     return outcome
@@ -4609,6 +4619,12 @@ export function DungeonMap({ state, players, turnActorId, typingActorId, canAct,
                   или «оттолкнуть на 5 фт». Стену и занятую клетку проверяет сервер. */}
               {smiteSelected && smiteSlotLevels.length > 1 && smiteSlotLevels.map((level) => <button key={`smite-${level}`} type="button" className={`hud-reaction hud-toggle-button smite-slot-toggle${smiteSlotLevel === level ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={smiteSlotLevel === level} aria-label={`Кара ячейкой ${level}-го круга: ${Math.min(5, level + 1)}к8 излучением`} onClick={() => setSmiteSlot(level)} title={`Кара ячейкой ${level}-го круга: ${Math.min(5, level + 1)}к8 излучением, по нежити и исчадиям — на 1к8 больше. Ячейка тратится только при попадании.`}><b>{level}</b></button>)}
               {shoveSelected && <button type="button" className={`hud-reaction hud-toggle-button shove-push-toggle${shovePush ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={shovePush} aria-label={`Толчок отталкивает — ${shovePush ? 'включено' : 'выключено, сбивает с ног'}`} onClick={() => setShovePush((current) => !current)} title="Оттолкнуть: при успехе толчка цель отлетает на 5 футов от вас вместо того, чтобы упасть. Стена или другое существо её остановят"><CombatIcon id="shove" kind="action" size={34} compact /></button>}
+            </div>
+          </div>}
+          {wildShapeForms.length > 1 && <div className="hud-toggles" role="group" aria-label="Облик зверя">
+            <span className="hud-side-title">Облик зверя</span>
+            <div className="hud-reaction-grid">
+              {wildShapeForms.map((form) => <button key={form.id} type="button" className={`hud-reaction hud-toggle-button wild-shape-toggle${wildShapeForm?.id === form.id ? ' on' : ''}`} disabled={tacticalBusy} aria-pressed={wildShapeForm?.id === form.id} aria-label={`${form.name}: ${form.hp} хитов, КД ${form.armor}`} onClick={() => setWildShapeChoice(form.id)} title={`${form.name}: ${form.hp} хитов, КД ${form.armor}, опасность ${form.challenge_rating}`}><b>{form.name}</b></button>)}
             </div>
           </div>}
           {fontSelected && fontOptions.length > 1 && <div className="hud-toggles" role="group" aria-label="Источник магии">

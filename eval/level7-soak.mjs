@@ -21,6 +21,8 @@ const THEMES = String(arg('themes', 'undead,beasts,raiders,dragons,cultists')).s
 const DIFFICULTY = arg('difficulty', 'hard')
 const OUT = resolve(arg('out', 'tmp/level7-soak'))
 const LEVEL = Number(arg('level', 7))
+// --only 'paladin+druid vs dragons #1;…' — только бои, чьи метки содержат одну из подстрок.
+const ONLY = String(arg('only', '')).split(';').map((entry) => entry.trim()).filter(Boolean)
 
 // Подкласс, стиль и выборы — так, чтобы в бою жили умения, которые стенд проверяет.
 const BUILDS = {
@@ -57,6 +59,7 @@ for (const classes of PARTIES) {
   for (const theme of THEMES) {
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const label = `${classes.join('+')} vs ${theme} #${seed}`
+      if (ONLY.length && !ONLY.some((part) => label.includes(part))) continue
       let encounter
       try {
         encounter = await generateCombatLabEncounter({ mapId: 'open-courtyard', party, difficulty: DIFFICULTY, seed, theme })

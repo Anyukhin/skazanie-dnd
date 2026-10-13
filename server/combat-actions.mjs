@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { isOptionalFeatureSelected } from './character-progression.mjs'
 import { CLASS_RESOURCES_2024_POLICY_ID, DND_2014_RULESET_ID } from './ruleset-config.mjs'
+import { wildShapeFormsFor } from './wild-shape.mjs'
 
 const catalogPayload = JSON.parse(readFileSync(new URL('../data/dndsu-class-actions-1-12.json', import.meta.url), 'utf8'))
 // Служебные хвосты описаний dnd.su латиницей («лимит: proficiency»,
@@ -410,6 +411,11 @@ export function combatActionsFor(actor) {
       ...clone(entry),
       sourceUrl: entry.sourceUrl ?? CLASS_URL[classKey] ?? 'https://www.dnd.su/articles/actions-in-combat/',
       exploration: explorationUseFor(entry),
+      // Звери Дикого облика, доступные друиду по кругу и уровню: панель даёт
+      // выбрать, Rules Engine сверяет `form_id` тем же списком.
+      ...(entry.effect?.kind === 'wild_shape' ? { forms: wildShapeFormsFor(actor).map((form) => ({
+        id: form.id, name: form.name, challenge_rating: form.challenge_rating, hp: form.hp, armor: form.armor,
+      })) } : {}),
     }))
 }
 

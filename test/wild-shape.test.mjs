@@ -79,3 +79,23 @@ test('Круг земли 7-го уровня: действием — волк (
   assert.equal(shaped.result.events.find((event) => event.event_type === 'ShapeChanged').payload.form.id, 'wolf')
   assert.equal(shaped.state.mechanics.combat.action_economy.druid.action, false)
 })
+
+test('автотактика: друид Круга луны оборачивается бонусным действием, Круга земли — нет', async () => {
+  const { planHeroCombatCommand } = await import('../server/party-tactics.mjs')
+  assert.equal(planHeroCombatCommand(battle('Круг луны'), 'druid').command.action_id, 'wild-shape')
+  assert.notEqual(planHeroCombatCommand(battle('Круг земли'), 'druid').command.action_id, 'wild-shape')
+  // Уже в облике — второй раз не оборачивается.
+  const shaped = act(battle('Круг луны'), shape).state
+  assert.notEqual(planHeroCombatCommand(shaped, 'druid').command.action_id, 'wild-shape')
+})
+
+test('плитка Дикого облика несёт доступных зверей; выбранный form_id исполняется', () => {
+  const state = battle('Круг луны')
+  const forms = combatActionsFor(state.players[0]).find((entry) => entry.id === 'wild-shape').forms
+  assert.ok(forms.some((form) => form.id === 'giant-boar') && forms.some((form) => form.id === 'wolf'))
+  assert.ok(forms.every((form) => form.challenge_rating <= 2))
+  const wolf = act(state, { ...shape, form_id: 'wolf' })
+  assert.equal(wolf.result.events.find((event) => event.event_type === 'ShapeChanged').payload.form.id, 'wolf')
+  const landForms = combatActionsFor(battle('Круг земли').players[0]).find((entry) => entry.id === 'wild-shape').forms
+  assert.ok(landForms.every((form) => form.challenge_rating <= 0.5), 'Круг земли 7-го уровня — ПО ½')
+})

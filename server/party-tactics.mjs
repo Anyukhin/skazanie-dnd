@@ -752,6 +752,23 @@ function addActionCandidates(state, actorIdValue, actor, add) {
       if (target && economy.bonus_action !== false && movementCandidateFor(state, actorIdValue, combatId(target))) add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id }), 120, 'Получить дополнительное перемещение бонусным действием')
       continue
     }
+    // Дикий облик Круга луны — бонусным действием, пока идёт бой, как в BG3:
+    // у зверя свои хиты и атака. Круг земли тратит на облик действие, ему
+    // выгоднее заклинания — автотактика облик ему не предлагает.
+    const shape = state?.mechanics?.shapes?.[String(actorIdValue)] ?? null
+    if (action.effect?.kind === 'wild_shape') {
+      if (!shape && action.actionType === 'bonus_action' && economy.bonus_action !== false && enemies.length) {
+        add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id }), 1_000, 'Принять Дикий облик бонусным действием')
+      }
+      continue
+    }
+    if (action.effect?.kind === 'wild_shape_heal') {
+      const hp = combatHp(actor)
+      if (shape?.form?.wild_shape === true && hp != null && hp / combatMaxHp(actor) <= .5 && economy.bonus_action !== false) {
+        add(commandWithTarget(actorIdValue, { command_type: 'UseCombatAction', action_id: action.id }), 2_000, 'Целебный облик: ячейка в хиты зверя')
+      }
+      continue
+    }
     if (action.effect?.kind === 'heal') {
       const targets = (action.target === 'self' ? [actor] : allies.filter(ally => combatId(ally) !== String(actorIdValue)))
         .filter((ally) => !isDeadHero(state, combatId(ally))
