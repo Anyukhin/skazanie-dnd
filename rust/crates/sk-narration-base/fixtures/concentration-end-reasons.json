@@ -1,0 +1,298 @@
+{
+ "table": [
+  [
+   "replaced",
+   "начато другое заклинание"
+  ],
+  [
+   "voluntary",
+   "по своей воле"
+  ],
+  [
+   "failed-saving-throw",
+   "спасбросок концентрации провален"
+  ],
+  [
+   "incapacitated",
+   "заклинатель выведен из строя"
+  ],
+  [
+   "duration-expired",
+   "время действия истекло"
+  ],
+  [
+   "duration_expired",
+   "время действия истекло"
+  ],
+  [
+   "effect-finished",
+   "эффект исчерпан"
+  ],
+  [
+   "long-rest",
+   "долгий отдых"
+  ],
+  [
+   "long-cast-started",
+   "начато долгое заклинание"
+  ],
+  [
+   "dispelled",
+   "заклинание рассеяно"
+  ],
+  [
+   "readied-released",
+   "заготовленное заклинание выпущено"
+  ],
+  [
+   "readied-expired",
+   "заготовка не дождалась повода"
+  ],
+  [
+   "resistance-used",
+   "бонус спасброска использован"
+  ],
+  [
+   "repeat-save",
+   "цель прошла повторный спасбросок"
+  ],
+  [
+   "turn-start-save",
+   "цель прошла спасбросок в начале хода"
+  ],
+  [
+   "damage-save",
+   "цель прошла спасбросок после урона"
+  ],
+  [
+   "save-success",
+   "цель прошла спасбросок"
+  ],
+  [
+   "action-save",
+   "цель вырвалась, потратив действие"
+  ],
+  [
+   "action-other",
+   "эффект снят действием"
+  ],
+  [
+   "break-free",
+   "цель вырвалась"
+  ],
+  [
+   "steady-nerves",
+   "цель совладала со страхом"
+  ],
+  [
+   "extinguished",
+   "пламя потушено"
+  ],
+  [
+   "sleet-storm",
+   "буря сбила сосредоточенность"
+  ],
+  [
+   "form-destroyed",
+   "принятый облик разрушен"
+  ],
+  [
+   "target-defeated",
+   "цель повержена"
+  ],
+  [
+   "next-weapon-hit-saved",
+   "цель увернулась от эффекта удара"
+  ],
+  [
+   "next-weapon-hit-resolved",
+   "эффект удара исполнен"
+  ],
+  [
+   "duel-violated",
+   "дуэль нарушена"
+  ],
+  [
+   "duelist-too-far",
+   "дуэлянт слишком далеко"
+  ],
+  [
+   "ally-damaged-duel-target",
+   "союзник ранил соперника по дуэли"
+  ]
+ ],
+ "labels": [
+  {
+   "reason": "replaced",
+   "label": "начато другое заклинание"
+  },
+  {
+   "reason": "voluntary",
+   "label": "по своей воле"
+  },
+  {
+   "reason": "failed-saving-throw",
+   "label": "спасбросок концентрации провален"
+  },
+  {
+   "reason": "incapacitated",
+   "label": "заклинатель выведен из строя"
+  },
+  {
+   "reason": "duration-expired",
+   "label": "время действия истекло"
+  },
+  {
+   "reason": "duration_expired",
+   "label": "время действия истекло"
+  },
+  {
+   "reason": "effect-finished",
+   "label": "эффект исчерпан"
+  },
+  {
+   "reason": "long-rest",
+   "label": "долгий отдых"
+  },
+  {
+   "reason": "long-cast-started",
+   "label": "начато долгое заклинание"
+  },
+  {
+   "reason": "dispelled",
+   "label": "заклинание рассеяно"
+  },
+  {
+   "reason": "readied-released",
+   "label": "заготовленное заклинание выпущено"
+  },
+  {
+   "reason": "readied-expired",
+   "label": "заготовка не дождалась повода"
+  },
+  {
+   "reason": "resistance-used",
+   "label": "бонус спасброска использован"
+  },
+  {
+   "reason": "repeat-save",
+   "label": "цель прошла повторный спасбросок"
+  },
+  {
+   "reason": "turn-start-save",
+   "label": "цель прошла спасбросок в начале хода"
+  },
+  {
+   "reason": "damage-save",
+   "label": "цель прошла спасбросок после урона"
+  },
+  {
+   "reason": "save-success",
+   "label": "цель прошла спасбросок"
+  },
+  {
+   "reason": "action-save",
+   "label": "цель вырвалась, потратив действие"
+  },
+  {
+   "reason": "action-other",
+   "label": "эффект снят действием"
+  },
+  {
+   "reason": "break-free",
+   "label": "цель вырвалась"
+  },
+  {
+   "reason": "steady-nerves",
+   "label": "цель совладала со страхом"
+  },
+  {
+   "reason": "extinguished",
+   "label": "пламя потушено"
+  },
+  {
+   "reason": "sleet-storm",
+   "label": "буря сбила сосредоточенность"
+  },
+  {
+   "reason": "form-destroyed",
+   "label": "принятый облик разрушен"
+  },
+  {
+   "reason": "target-defeated",
+   "label": "цель повержена"
+  },
+  {
+   "reason": "next-weapon-hit-saved",
+   "label": "цель увернулась от эффекта удара"
+  },
+  {
+   "reason": "next-weapon-hit-resolved",
+   "label": "эффект удара исполнен"
+  },
+  {
+   "reason": "duel-violated",
+   "label": "дуэль нарушена"
+  },
+  {
+   "reason": "duelist-too-far",
+   "label": "дуэлянт слишком далеко"
+  },
+  {
+   "reason": "ally-damaged-duel-target",
+   "label": "союзник ранил соперника по дуэли"
+  },
+  {
+   "reason": "some-future-reason",
+   "label": "эффект завершён"
+  },
+  {
+   "reason": "",
+   "label": "эффект завершён"
+  },
+  {
+   "reason": null,
+   "label": "эффект завершён"
+  },
+  {
+   "reason": "constructor",
+   "label": "эффект завершён"
+  },
+  {
+   "reason": "toString",
+   "label": "эффект завершён"
+  },
+  {
+   "reason": "__proto__",
+   "label": "эффект завершён"
+  },
+  {
+   "reason": "REPLACED",
+   "label": "эффект завершён"
+  },
+  {
+   "reason": " replaced",
+   "label": "эффект завершён"
+  },
+  {
+   "reason": 7,
+   "label": "эффект завершён"
+  },
+  {
+   "reason": true,
+   "label": "эффект завершён"
+  },
+  {
+   "reason": [
+    "replaced"
+   ],
+   "label": "начато другое заклинание"
+  },
+  {
+   "reason": {
+    "reason": "replaced"
+   },
+   "label": "эффект завершён"
+  }
+ ]
+}
