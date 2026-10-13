@@ -96,7 +96,7 @@ const CLASS_ACTIONS = Object.freeze({
     action('instinctive-pounce', 'Инстинктивный бросок', { actionType: 'free', minimumLevel: 7, description: 'При входе в ярость переместиться на половину скорости.', effect: { kind: 'dash', multiplier: .5 } }),
   ]),
   bard: Object.freeze([
-    action('bardic-inspiration', 'Вдохновение барда', { target: 'ally', actionType: 'bonus_action', range: 60, resource: 'bardic_inspiration', description: 'Союзник получает кость вдохновения для проверки, атаки или спасброска.', effect: { kind: 'condition', condition: 'bardic-inspiration', duration: 'rounds:100' } }),
+    action('bardic-inspiration', 'Вдохновение барда', { target: 'ally', actionType: 'bonus_action', range: 60, resource: 'bardic_inspiration', description: 'Союзник получает кость вдохновения (к6, с 5-го уровня к8, с 10-го к10): она сама прибавляется к его проваленной атаке, проверке или спасброску — как в BG3 — и тратится.', effect: { kind: 'condition', condition: 'bardic-inspiration', duration: 'rounds:100' } }),
     action('countercharm', 'Контрочарование', { minimumLevel: 6, description: 'Вы и союзники получаете преимущество против испуга и очарования.', effect: { kind: 'condition', condition: 'countercharm', duration: 'until-next-turn' } }),
   ]),
   cleric: Object.freeze([

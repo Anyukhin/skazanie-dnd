@@ -3376,6 +3376,20 @@ function weaponFightingStyleBonus(actor, item, mode, properties) {
   return result
 }
 
+/**
+ * Вдохновение барда на существе: кость по уровню барда, который его дал
+ * (к6, с 5-го — к8, с 10-го — к10, с 15-го — к12). `null` — вдохновения нет.
+ * @param {any} state
+ * @param {string} actorIdValue
+ */
+function bardicInspirationFor(state, actorIdValue) {
+  const condition = (state.mechanics?.conditions?.[String(actorIdValue)] ?? []).find((entry) => String(entry?.id ?? entry) === 'bardic-inspiration')
+  if (!condition) return null
+  const bard = findActor(state, String(condition.source_actor ?? ''))
+  const level = safeInteger(bard?.level, 1)
+  return { sides: level >= 15 ? 12 : level >= 10 ? 10 : level >= 5 ? 8 : 6, source_actor: String(condition.source_actor ?? '') }
+}
+
 /** «Дьявольское зрение» колдуна: видит в обычной и магической тьме на 120 футов. @param {any} actor */
 function seesInMagicalDarkness(actor) {
   return Boolean(actor) && characterClassKey(actor) === 'warlock' && normalizedSelectedFeatureIds(actor).includes('devils-sight')
@@ -12825,6 +12839,21 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
   const events = []
   const rolls = []
   const targetId = targetFor(command)
+  // Вдохновение барда тратится один раз, даже если в команде несколько бросков.
+  const inspirationSpent = new Set()
+  /** Кость вдохновения к проваленному броску (BG3): DieRolled и снятие состояния. */
+  const spendBardicInspiration = (sourceState, ownerId, trigger) => {
+    const owner = String(ownerId ?? '')
+    if (inspirationSpent.has(owner)) return 0
+    const inspiration = bardicInspirationFor(sourceState, owner)
+    if (!inspiration) return 0
+    inspirationSpent.add(owner)
+    const boost = diceService.roll(`1d${inspiration.sides}`, 'bardic-inspiration', owner, command.visibility ?? 'public')
+    rolls.push(boost)
+    events.push(eventFrom(command, 'DieRolled', { ...boost, bardic_inspiration: true, trigger }, []))
+    events.push(eventFrom(commandWithRules(command, RULE_IDS.conditions), 'ConditionRemoved', { condition: 'bardic-inspiration', trigger }, [owner]))
+    return boost.total
+  }
   const resistanceCantripUses = new Set()
   const resistanceChoices = resistanceChoicesFromContext(context)
   const resistanceUsedTargets = new Set()
@@ -13171,11 +13200,18 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         options,
       })
     }
+    let result = save
     if (resistance.mode === 'after-use' && resistance.condition) {
       const bonus = consumeResistanceBonus(sourceState, targetIdString, resistance.condition)
-      return { ...save, modifier: safeInteger(save.modifier, 0) + bonus, total: safeInteger(save.total, 0) + bonus, resistance_bonus: bonus }
+      result = { ...save, modifier: safeInteger(save.modifier, 0) + bonus, total: safeInteger(save.total, 0) + bonus, resistance_bonus: bonus }
     }
-    return save
+    // Вдохновение барда к проваленному спасброску — где вызывающий назвал СЛ.
+    const difficulty = Number(options.difficulty)
+    if (Number.isFinite(difficulty) && result.auto_failed !== true && safeInteger(result.total, 0) < difficulty) {
+      const boost = spendBardicInspiration(sourceState, targetIdString, 'saving-throw')
+      if (boost) result = { ...result, total: safeInteger(result.total, 0) + boost, bardic_inspiration: boost }
+    }
+    return result
   }
 
   const areaSaveModifierFor = (sourceState, targetIdValue, { purpose = 'spell:area:saving-throw' } = {}) => {
@@ -13486,8 +13522,16 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
       // спутника, и он считается здесь же — рядом с небом, а не отдельной веткой.
       const beastWatchBoost = beastWatchSwing(state, skill, command.actor_id)?.reason ?? null
       const checkRollOptions = { modifier, difficulty: safeInteger(command.difficulty, 10), purpose: `ability_check:${ability}`, actorId: command.actor_id, advantage: Boolean(command.advantage) || silveryFortune || Boolean(checkBoost) || Boolean(weatherBoost) || Boolean(beastWatchBoost), disadvantage: Boolean(command.disadvantage) || Boolean(checkPenalty) || armorStealthPenalty || Boolean(weatherPenalty), visibility: command.visibility }
-      const roll = checkRollFromVerified(command.verified_roll, checkRollOptions)
+      let roll = checkRollFromVerified(command.verified_roll, checkRollOptions)
         ?? rollD20WithSpeciesLuck(state, diceService, command.actor_id, checkRollOptions, 'rollCheck')
+      // Вдохновение барда к проваленной проверке (BG3).
+      if (roll.success === false) {
+        const boost = spendBardicInspiration(state, command.actor_id, 'ability-check')
+        if (boost) {
+          const total = safeInteger(roll.total, 0) + boost
+          roll = { ...roll, total, success: total >= safeInteger(checkRollOptions.difficulty, 10), bardic_inspiration: boost }
+        }
+      }
       rolls.push(roll)
       events.push(eventFrom(commandWithRules(command, command.advantage || command.disadvantage || checkPenalty || checkBoost || weatherPenalty || weatherBoost || beastWatchBoost ? RULE_IDS.advantage : null), 'AbilityCheckResolved', {
         ability, ...(skill ? { skill } : {}), ...roll,
@@ -13755,9 +13799,15 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
           break
         }
       }
-      const attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage, visibility: command.visibility })
+      let attack = rollD20WithSpeciesLuck(state, diceService, command.actor_id, { modifier, purpose: 'attack', actorId: command.actor_id, advantage, disadvantage, visibility: command.visibility })
       // Чемпион критует на 19–20: такой удар попадает, как и натуральная 20.
       const criticalThreshold = weaponCriticalThreshold(state, actor)
+      // Вдохновение барда само прибавляется к проваленной атаке (BG3);
+      // натуральную единицу оно не спасает.
+      if (attack.kept !== 1 && attack.kept < criticalThreshold && attack.total < armorClass) {
+        const boost = spendBardicInspiration(state, command.actor_id, 'attack')
+        if (boost) attack = { ...attack, total: attack.total + boost, bardic_inspiration: boost }
+      }
       const hit = attack.kept >= criticalThreshold || (attack.kept !== 1 && attack.total >= armorClass)
       // A melee hit on a creature that cannot move or react is a critical hit
       // regardless of the die, so every rider damage roll below scales off
@@ -14713,7 +14763,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
         const ability = action.save.ability
         const save = rollSavingThrow(workingState, targetId, {
           ability, modifier: abilityModifier(target?.abilities?.[ability]),
-          purpose: `monster_area_save:${action.id}:${ability}`, visibility: command.visibility,
+          purpose: `monster_area_save:${action.id}:${ability}`, visibility: command.visibility, difficulty: action.save.dc,
         })
         rolls.push(save)
         const saved = savingThrowSucceeded(save, action.save.dc)
@@ -17446,7 +17496,7 @@ function resolveCommandInternal(input, rawState, { diceService, context = {} } =
               saveModifier -= penalty.total
             }
             const silveryFortune = !autoFailed && targetConditions.has('silvery-fortune')
-            const save = rollSavingThrow(state, resolvedTargetId, { ability: saveAbility, modifier: saveModifier, purpose: `spell_save:${spell.id}:${saveAbility}`, resistanceEligible: !automaticSave && !autoFailed && !carefulProtectedIds.has(resolvedTargetId), advantage: silveryFortune || (spell.saveAdvantageIfHostile === true && state.mechanics.combat.active), disadvantage: metamagic.has('metamagic-heightened'), avoid_or_end_condition: chosenConditions.includes('poisoned') ? 'poisoned' : null, visibility: command.visibility })
+            const save = rollSavingThrow(state, resolvedTargetId, { ability: saveAbility, modifier: saveModifier, purpose: `spell_save:${spell.id}:${saveAbility}`, resistanceEligible: !automaticSave && !autoFailed && !carefulProtectedIds.has(resolvedTargetId), advantage: silveryFortune || (spell.saveAdvantageIfHostile === true && state.mechanics.combat.active), disadvantage: metamagic.has('metamagic-heightened'), avoid_or_end_condition: chosenConditions.includes('poisoned') ? 'poisoned' : null, visibility: command.visibility, difficulty: spellSaveDc })
             if (silveryFortune && !automaticSave && !carefulProtectedIds.has(resolvedTargetId)) events.push(removeSilveryFortuneEvent(command, state, resolvedTargetId))
             // Согласное существо («Увеличение/уменьшение» на союзника) не
             // сопротивляется: кость катится ради протокола, но эффект ложится.
