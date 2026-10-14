@@ -394,7 +394,7 @@ pub fn combat_action_used(state: &mut Value, event: &Event) {
 }
 
 /// `battleLogAreaFromPayload(state, event, payload)`.
-fn battle_log_area_from_payload(state: &Value, event: &Event, payload: &Value) -> Option<Map<String, Value>> {
+pub(crate) fn battle_log_area_from_payload(state: &Value, event: &Event, payload: &Value) -> Option<Map<String, Value>> {
     let area = payload.get("area")?;
     let from = point(area.get("from"))?;
     let to = point(area.get("to"))?;
@@ -419,4 +419,39 @@ fn battle_log_area_from_payload(state: &Value, event: &Event, payload: &Value) -
             .text_if("ability", area.get("save_ability"))
             .build(),
     )
+}
+
+/// `LegendaryActionUsed`: механику несут соседние события (спасброски, урон,
+/// маркеры); здесь — только строка хроники с областью для доски.
+pub fn legendary_action_used(state: &mut Value, event: &Event) {
+    let payload = event.payload.clone();
+    if let Some(entry) = battle_log_area_from_payload(state, event, &payload) {
+        append_battle_log(state, event, entry);
+    }
+}
+
+/// `NpcItemUsed`: трата экономики хода и строка хроники без каталога и
+/// экземпляра — инвентарь живого противника закрыт до обыска тела.
+pub fn npc_item_used(state: &mut Value, event: &Event) {
+    let payload = event.payload.clone();
+    let actor = event.actor_id.clone().unwrap_or_default();
+    if sk_core::js::truthy(payload.get("combat_action")) {
+        spend_combat_economy(state, &actor, &s(payload.get("combat_action")), false, false);
+    }
+    let (scene_turn, round) = super::scene_turn_and_round(state);
+    let target = match payload.get("target_id").filter(|v| !v.is_null()) {
+        Some(value) => s(Some(value)),
+        None => event.actor_id.clone().unwrap_or_else(|| "null".into()),
+    };
+    let entry = Entry::new()
+        .set("sceneTurn", scene_turn)
+        .set("round", round)
+        .set("type", "npc-item")
+        .set("actorId", event.actor_id.clone().map_or(Value::Null, Value::from))
+        .set("actorKind", combat_actor_kind(state, &actor))
+        .set("targetId", target)
+        .set("tactic", s(payload.get("tactic")))
+        .set("label", sk_core::text::head(&s(payload.get("label")), 120))
+        .build();
+    append_battle_log(state, event, entry);
 }

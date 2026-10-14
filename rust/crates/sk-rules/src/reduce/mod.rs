@@ -8,6 +8,7 @@ mod combat;
 mod conditions;
 mod effects;
 mod labels;
+mod memory;
 mod spells;
 mod turns;
 mod vitals;
@@ -83,6 +84,16 @@ fn handler(event_type: &str) -> Option<Handler> {
         "PublicDieRolled" => effects::public_die_rolled,
         "OpeningStrikeEconomyRestored" => effects::opening_strike_economy_restored,
         "SpellBonusPreferenceChanged" => effects::spell_bonus_preference_changed,
+        "ReactionPreferenceChanged" => effects::reaction_preference_changed,
+        "LegendaryActionUsed" => combat::legendary_action_used,
+        "NpcItemUsed" => combat::npc_item_used,
+        // Память мира и поручения.
+        "WorldEntityUpserted" | "WorldFactRecorded" | "WorldFactRevealed" | "KnowledgeRevealed" | "WorldRelationshipRecorded" | "QuestClockAdvanced" | "QuestAssignmentChanged" | "NarrativeThreadUpserted" | "NarrativeThreadClockAdvanced" | "NpcBeliefRecorded" | "RumorRecorded" | "EpistemicClaimTruthResolved" | "NarrativeSummaryRecorded" => memory::world_memory_event,
+        "QuestUpserted" => memory::quest_upserted,
+        "QuestAccepted" => memory::quest_accepted,
+        "QuestResolved" | "QuestInvalidated" => memory::quest_concluded,
+        // Социальные профили NPC.
+        "NpcSocialProfileUpserted" | "NpcConversationRecorded" | "NpcRelationshipAdjusted" | "NpcRelationshipTierChanged" | "NpcPromiseRecorded" | "NpcPromiseResolved" => effects::npc_social_event,
         // Жизнь кампании.
         "CampaignActivated" | "CampaignResumed" => effects::campaign_resumed,
         "CampaignPaused" => effects::campaign_paused,
@@ -128,6 +139,10 @@ fn apply_registries(state: &mut Value, event: &Event) {
     let event_json = serde_json::to_value(event).unwrap_or(Value::Null);
     let law = sk_society::law_and_order::apply_law_event(state.get("law"), &event_json, state);
     state["law"] = law;
+    // Внимание главного противника сценария — после закона, пленных и почты в JS;
+    // те реестры ещё в очереди, а вниманию они не нужны.
+    let attention = sk_attention::scenario_attention::apply_scenario_attention_event(state.get("scenario_attention"), Some(&event_json), state);
+    state["scenario_attention"] = attention;
 }
 
 /// `synchronizeTacticalTurn(state)`.

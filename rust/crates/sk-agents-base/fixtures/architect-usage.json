@@ -1,0 +1,2152 @@
+{
+ "start": 1785704400000,
+ "scenarios": [
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 2,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "BETA",
+     "out": 0,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "BETA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "BETA": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       }
+      },
+      "total_generations": 5,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 2,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 2,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "now",
+     "value": 1785715199999
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "now",
+     "value": 1785715200000
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 0,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-03",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-03\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-03",
+      "generations": 2,
+      "threshold": 2,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-03\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-03",
+      "alert_threshold": 2,
+      "campaigns": {
+       "ALFA": {
+        "generations": 2,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 2,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-03\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 2
+  },
+  {
+   "threshold": 1,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "alfa",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 1,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "alfa",
+     "out": 2,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "beta-1",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "beta-1",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "Кампания 7",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "Кампания 7",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ß-straße",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "ß-straße",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 0,
+      "threshold": 1,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "",
+     "out": 0,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "  ",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 0,
+      "threshold": 1,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "  ",
+     "out": 0,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "123",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "123",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "7",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 1,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "7",
+     "out": 2,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "constructor",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "constructor",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "__proto__",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "__proto__",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "a_b.c",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ABC\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "a_b.c",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ABC\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ﬁle",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ABC\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"FILE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "ﬁle",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ABC\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"FILE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "Ω-9",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ABC\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"FILE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"-9\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "today",
+     "id": "Ω-9",
+     "out": 1,
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ABC\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"FILE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"-9\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 1,
+      "campaigns": {
+       "7": {
+        "generations": 2,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "123": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "ALFA": {
+        "generations": 2,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "BETA-1": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "SS-STRASSE": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "XXXXXXXXXXXXXXXXXXXXXXXX": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "CONSTRUCTOR": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "PROTO": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "ABC": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "FILE": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "-9": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 13,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"BETA-1\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"SS-STRASSE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"XXXXXXXXXXXXXXXXXXXXXXXX\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"CONSTRUCTOR\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"PROTO\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"ABC\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"FILE\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"-9\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 1
+  },
+  {
+   "threshold": 2,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ZED",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ZED\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "123",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZED\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "7",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZED\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZED\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "00",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZED\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"00\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 2,
+      "campaigns": {
+       "7": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "123": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "ZED": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "ALFA": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "00": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       }
+      },
+      "total_generations": 5,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"7\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"123\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZED\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"00\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 2
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{ это не json"
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 0,
+     "file": "{ это не json"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       }
+      },
+      "total_generations": 1,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "﻿{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":2}}}"
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 0,
+     "file": "﻿{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":2}}}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":1,\"day\":\"2026-08-01\",\"campaigns\":{\"ALFA\":{\"generations\":9}}}"
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 0,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-01\",\"campaigns\":{\"ALFA\":{\"generations\":9}}}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {},
+      "total_generations": 0,
+      "total_lab_generations": 0
+     },
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-01\",\"campaigns\":{\"ALFA\":{\"generations\":9}}}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":2,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":2}}}"
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 0,
+     "file": "{\"schema_version\":2,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":2}}}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":\"1\",\"day\":\"2026-08-02\",\"campaigns\":{}}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {},
+      "total_generations": 0,
+      "total_lab_generations": 0
+     },
+     "file": "{\"schema_version\":\"1\",\"day\":\"2026-08-02\",\"campaigns\":{}}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":[]}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {},
+      "total_generations": 0,
+      "total_lab_generations": 0
+     },
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":[]}"
+    },
+    {
+     "op": "record",
+     "id": "A",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"A\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":null}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {},
+      "total_generations": 0,
+      "total_lab_generations": 0
+     },
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":null}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "null"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {},
+      "total_generations": 0,
+      "total_lab_generations": 0
+     },
+     "file": "null"
+    },
+    {
+     "op": "write",
+     "content": "[]"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {},
+      "total_generations": 0,
+      "total_lab_generations": 0
+     },
+     "file": "[]"
+    },
+    {
+     "op": "write",
+     "content": ""
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {},
+      "total_generations": 0,
+      "total_lab_generations": 0
+     },
+     "file": ""
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "42": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "ALFA": {
+        "generations": 5,
+        "lab_generations": -1,
+        "alerted": false
+       },
+       "BETA": {
+        "generations": 0,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "GAMMA": {
+        "generations": 0,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "DELTA": {
+        "generations": 0,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "EPS": {
+        "generations": 2.5,
+        "lab_generations": 1e+21,
+        "alerted": false
+       },
+       "ZETA": {
+        "generations": 2,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 10.5,
+      "total_lab_generations": 1e+21
+     },
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 5,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "today",
+     "id": "BETA",
+     "out": 0,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "today",
+     "id": "GAMMA",
+     "out": 0,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "today",
+     "id": "DELTA",
+     "out": 0,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "today",
+     "id": "EPS",
+     "out": 0,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "today",
+     "id": "ZETA",
+     "out": 2,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "today",
+     "id": "42",
+     "out": 1,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"42\":{\"generations\":1},\"ALFA\":{\"generations\":\"5\",\"lab_generations\":-1,\"alerted\":\"yes\",\"extra\":{\"x\":1}},\"BETA\":null,\"GAMMA\":7,\"DELTA\":[1,2],\"EPS\":{\"generations\":2.5,\"lab_generations\":1e+21},\"ZETA\":{\"generations\":2,\"alerted\":true,\"note\":\"оставить\"}},\"extra_top\":[1,{\"a\":null}]}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 6,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 1\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": null,\n    \"GAMMA\": 7,\n    \"DELTA\": [\n      1,\n      2\n    ],\n    \"EPS\": {\n      \"generations\": 2.5,\n      \"lab_generations\": 1e+21\n    },\n    \"ZETA\": {\n      \"generations\": 2,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    },
+    {
+     "op": "record",
+     "id": "BETA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 1\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"GAMMA\": 7,\n    \"DELTA\": [\n      1,\n      2\n    ],\n    \"EPS\": {\n      \"generations\": 2.5,\n      \"lab_generations\": 1e+21\n    },\n    \"ZETA\": {\n      \"generations\": 2,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    },
+    {
+     "op": "record",
+     "id": "GAMMA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 1\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"GAMMA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": [\n      1,\n      2\n    ],\n    \"EPS\": {\n      \"generations\": 2.5,\n      \"lab_generations\": 1e+21\n    },\n    \"ZETA\": {\n      \"generations\": 2,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    },
+    {
+     "op": "record",
+     "id": "DELTA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 1\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"GAMMA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": {\n      \"0\": 1,\n      \"1\": 2,\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"EPS\": {\n      \"generations\": 2.5,\n      \"lab_generations\": 1e+21\n    },\n    \"ZETA\": {\n      \"generations\": 2,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    },
+    {
+     "op": "record",
+     "id": "EPS",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 1\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"GAMMA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": {\n      \"0\": 1,\n      \"1\": 2,\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"EPS\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZETA\": {\n      \"generations\": 2,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    },
+    {
+     "op": "record",
+     "id": "ZETA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 1\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"GAMMA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": {\n      \"0\": 1,\n      \"1\": 2,\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"EPS\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZETA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    },
+    {
+     "op": "record",
+     "id": "42",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"GAMMA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": {\n      \"0\": 1,\n      \"1\": 2,\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"EPS\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZETA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    },
+    {
+     "op": "record",
+     "id": "NEW",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"GAMMA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": {\n      \"0\": 1,\n      \"1\": 2,\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"EPS\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZETA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    },\n    \"NEW\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "42": {
+        "generations": 2,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "ALFA": {
+        "generations": 6,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "BETA": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "GAMMA": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "DELTA": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "EPS": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "ZETA": {
+        "generations": 3,
+        "lab_generations": 0,
+        "alerted": true
+       },
+       "NEW": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       }
+      },
+      "total_generations": 16,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"42\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ALFA\": {\n      \"generations\": 6,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"extra\": {\n        \"x\": 1\n      }\n    },\n    \"BETA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"GAMMA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": {\n      \"0\": 1,\n      \"1\": 2,\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"EPS\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"ZETA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true,\n      \"note\": \"оставить\"\n    },\n    \"NEW\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  },\n  \"extra_top\": [\n    1,\n    {\n      \"a\": null\n    }\n  ]\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 2,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":0,\"lab_generations\":2,\"alerted\":false}}}"
+    },
+    {
+     "op": "today",
+     "id": "ALFA",
+     "out": 0,
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":0,\"lab_generations\":2,\"alerted\":false}}}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 2,
+      "campaigns": {
+       "ALFA": {
+        "generations": 0,
+        "lab_generations": 2,
+        "alerted": false
+       }
+      },
+      "total_generations": 0,
+      "total_lab_generations": 2
+     },
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":0,\"lab_generations\":2,\"alerted\":false}}}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 2,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 2,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 2,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 2
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":\"много\"},\"BETA\":{\"generations\":\"0x10\"},\"GAMMA\":{\"generations\":true},\"DELTA\":{\"generations\":9007199254740992}}}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 0,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "BETA": {
+        "generations": 16,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "GAMMA": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "DELTA": {
+        "generations": 9007199254740992,
+        "lab_generations": 0,
+        "alerted": false
+       }
+      },
+      "total_generations": 9007199254741008,
+      "total_lab_generations": 0
+     },
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":\"много\"},\"BETA\":{\"generations\":\"0x10\"},\"GAMMA\":{\"generations\":true},\"DELTA\":{\"generations\":9007199254740992}}}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"BETA\": {\n      \"generations\": \"0x10\"\n    },\n    \"GAMMA\": {\n      \"generations\": true\n    },\n    \"DELTA\": {\n      \"generations\": 9007199254740992\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "BETA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 17,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"BETA\": {\n      \"generations\": 17,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"GAMMA\": {\n      \"generations\": true\n    },\n    \"DELTA\": {\n      \"generations\": 9007199254740992\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "GAMMA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"BETA\": {\n      \"generations\": 17,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"GAMMA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": {\n      \"generations\": 9007199254740992\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "DELTA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"BETA\": {\n      \"generations\": 17,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    },\n    \"GAMMA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"DELTA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 3,
+   "steps": [
+    {
+     "op": "write",
+     "content": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":1},\"\\u0000\":{\"generations\":1},\"с кириллицей\":{\"generations\":3,\"alerted\":true}}}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "\u0000": {
+        "generations": 1,
+        "lab_generations": 0,
+        "alerted": false
+       },
+       "с кириллицей": {
+        "generations": 3,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 5,
+      "total_lab_generations": 0
+     },
+     "file": "{\"schema_version\":1,\"day\":\"2026-08-02\",\"campaigns\":{\"ALFA\":{\"generations\":1},\"\\u0000\":{\"generations\":1},\"с кириллицей\":{\"generations\":3,\"alerted\":true}}}"
+    },
+    {
+     "op": "record",
+     "id": "alfa",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    },\n    \"\\u0000\": {\n      \"generations\": 1\n    },\n    \"с кириллицей\": {\n      \"generations\": 3,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "delete"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {},
+      "total_generations": 0,
+      "total_lab_generations": 0
+     },
+     "file": null
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 7,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 7,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 7,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 7,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 7,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 7,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": false
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 7
+  },
+  {
+   "threshold": 0,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": -3,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": "NaN",
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": "много",
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": 1.5,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": "4",
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 4,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 4,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 4,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 4,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 4,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 4
+  },
+  {
+   "threshold": null,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 3,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 3,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 3,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 3
+  },
+  {
+   "threshold": true,
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 1,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 1,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 1,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 1,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 1,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 1
+  },
+  {
+   "threshold": [
+    2
+   ],
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 2,
+      "alert": true
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 2,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 2,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": true
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": true\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 2
+  },
+  {
+   "threshold": "  6  ",
+   "steps": [
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 1,
+      "threshold": 6,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 1,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 2,
+      "threshold": 6,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 2,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 3,
+      "threshold": 6,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 3,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "record",
+     "id": "ALFA",
+     "out": {
+      "day": "2026-08-02",
+      "generations": 4,
+      "threshold": 6,
+      "alert": false
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    },
+    {
+     "op": "report",
+     "out": {
+      "day": "2026-08-02",
+      "alert_threshold": 6,
+      "campaigns": {
+       "ALFA": {
+        "generations": 4,
+        "lab_generations": 0,
+        "alerted": false
+       }
+      },
+      "total_generations": 4,
+      "total_lab_generations": 0
+     },
+     "file": "{\n  \"schema_version\": 1,\n  \"day\": \"2026-08-02\",\n  \"campaigns\": {\n    \"ALFA\": {\n      \"generations\": 4,\n      \"lab_generations\": 0,\n      \"alerted\": false\n    }\n  }\n}"
+    }
+   ],
+   "alertThreshold": 6
+  }
+ ],
+ "alertTexts": [
+  {
+   "generations": 0,
+   "text": "За сегодня создано 0 новых локаций — расход токенов выше обычного. Ограничения нет, это только предупреждение."
+  },
+  {
+   "generations": 1,
+   "text": "За сегодня создано 1 новых локаций — расход токенов выше обычного. Ограничения нет, это только предупреждение."
+  },
+  {
+   "generations": 3,
+   "text": "За сегодня создано 3 новых локаций — расход токенов выше обычного. Ограничения нет, это только предупреждение."
+  },
+  {
+   "generations": 4,
+   "text": "За сегодня создано 4 новых локаций — расход токенов выше обычного. Ограничения нет, это только предупреждение."
+  },
+  {
+   "generations": 21,
+   "text": "За сегодня создано 21 новых локаций — расход токенов выше обычного. Ограничения нет, это только предупреждение."
+  },
+  {
+   "generations": 100,
+   "text": "За сегодня создано 100 новых локаций — расход токенов выше обычного. Ограничения нет, это только предупреждение."
+  }
+ ]
+}
