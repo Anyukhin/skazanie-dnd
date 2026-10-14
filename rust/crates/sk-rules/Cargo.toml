@@ -15,3 +15,4 @@ sk-society = { path = "../sk-society" }
 sk-combat-base = { path = "../sk-combat-base" }
 sk-social = { path = "../sk-social" }
 sk-memory = { path = "../sk-memory" }
+sk-attention = { path = "../sk-attention" }

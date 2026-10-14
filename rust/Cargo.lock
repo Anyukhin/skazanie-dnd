@@ -1715,6 +1715,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sk-attention",
  "sk-combat-base",
  "sk-core",
  "sk-dice",

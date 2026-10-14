@@ -139,6 +139,10 @@ fn apply_registries(state: &mut Value, event: &Event) {
     let event_json = serde_json::to_value(event).unwrap_or(Value::Null);
     let law = sk_society::law_and_order::apply_law_event(state.get("law"), &event_json, state);
     state["law"] = law;
+    // Внимание главного противника сценария — после закона, пленных и почты в JS;
+    // те реестры ещё в очереди, а вниманию они не нужны.
+    let attention = sk_attention::scenario_attention::apply_scenario_attention_event(state.get("scenario_attention"), Some(&event_json), state);
+    state["scenario_attention"] = attention;
 }
 
 /// `synchronizeTacticalTurn(state)`.
