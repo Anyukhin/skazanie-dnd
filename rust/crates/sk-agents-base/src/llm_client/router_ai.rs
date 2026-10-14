@@ -24,7 +24,7 @@ use super::abort::{race, AbortScope};
 use super::sse::{parse_router_ai_event_stream, ChunkSource, StreamOptions};
 use super::{
     coalesce, index0, is_js_object, llm_provider_for, normalize_assistant_message, normalize_request, optional_number_in_range, positive_integer_number, positive_or, prop, provider_request_body, spread_object, strict_json_parse, usable_json_schema, wants_json,
-    with_known_usage, CallOptions, LlmError, LlmFuture, LlmModelClient, StrictJsonOptions, DEFAULT_MAX_RESPONSE_BYTES, DEFAULT_MAX_TOOL_CALLS, DEFAULT_TIMEOUT_MS, ROUTERAI_STREAM_MAX_EVENT_BYTES,
+    with_known_usage, CallHooks, CallScope, CampaignSnapshot, LlmClient, LlmError, LlmErrorExt, LlmFuture, StrictJsonOptions, DEFAULT_MAX_RESPONSE_BYTES, DEFAULT_MAX_TOOL_CALLS, DEFAULT_TIMEOUT_MS, ROUTERAI_STREAM_MAX_EVENT_BYTES,
 };
 
 /// Директива формата для GLM Flash без `response_format`.
@@ -241,13 +241,19 @@ impl RouterAiClient {
     /// Тело запроса к провайдеру — то, что `complete` отправит в
     /// `{baseUrl}/chat/completions` (`JSON.stringify` этого значения), с теми
     /// же отказами до отправки.
-    pub fn request_body(&self, input: &Value, options: &CallOptions) -> Result<Value, LlmError> {
-        self.prepare(input, options).map(|prepared| prepared.wire)
+    /// Контекст кампании — текущий поток-локальный.
+    pub fn request_body(&self, input: &Value, options: &Value, hooks: &CallHooks) -> Result<Value, LlmError> {
+        self.prepare(input, options, hooks).map(|prepared| prepared.wire)
+    }
+
+    /// `timeoutMs` клиента (для лимита модели в каскаде).
+    pub fn timeout_ms(&self) -> i64 {
+        self.timeout_ms
     }
 
     /// Синхронная часть `complete`: всё до первого `await` в JS.
-    pub(super) fn prepare(&self, input: &Value, options: &CallOptions) -> Result<Prepared, LlmError> {
-        let request = normalize_request(input, &options.fields)?;
+    pub(super) fn prepare(&self, input: &Value, options: &Value, hooks: &CallHooks) -> Result<Prepared, LlmError> {
+        let request = normalize_request(input, options)?;
         if self.api_key.is_empty() {
             return Err(LlmError::llm("ROUTERAI_API_KEY не настроен", "LLM_NOT_CONFIGURED"));
         }
@@ -322,7 +328,7 @@ impl RouterAiClient {
             }
             _ => {}
         }
-        let streaming = options.on_delta.is_some();
+        let streaming = hooks.on_delta.is_some();
         if streaming {
             if json {
                 return Err(LlmError::type_error("Streaming JSON responses are not supported"));
@@ -355,7 +361,7 @@ impl RouterAiClient {
             .map_err(|error| LlmError::other("TypeError", "fetch failed").with_cause(LlmError::other("Error", error.without_url().to_string())))
     }
 
-    async fn exchange(&self, prepared: &Prepared, options: &CallOptions, scope: &AbortScope) -> Result<Value, LlmError> {
+    async fn exchange(&self, prepared: &Prepared, hooks: &CallHooks, scope: &AbortScope) -> Result<Value, LlmError> {
         let signal = scope.signal();
         let response = race(self.send(jsx::stringify(&prepared.wire)), Some(&signal)).await?;
         let status = response.status().as_u16();
@@ -368,7 +374,7 @@ impl RouterAiClient {
             // У ответов 204 и 205 тела нет (`response.body === null`).
             let body = if matches!(status, 204 | 205) { None } else { Some(ResponseChunks(response)) };
             let stream_options = StreamOptions {
-                on_delta: options.on_delta.clone(),
+                on_delta: hooks.on_delta.clone(),
                 max_event_bytes: Some(coalesce(request.get("maxEventBytes"), None).cloned().unwrap_or_else(|| Value::from(ROUTERAI_STREAM_MAX_EVENT_BYTES))),
                 max_response_bytes: Some(coalesce(request.get("maxResponseBytes"), None).cloned().unwrap_or_else(|| Value::from(self.max_response_bytes))),
             };
@@ -395,14 +401,14 @@ impl RouterAiClient {
         Ok(Value::Object(message))
     }
 
-    async fn execute(&self, prepared: Prepared, options: CallOptions) -> Result<Value, LlmError> {
-        let scope = AbortScope::new(prepared.timeout_ms as f64, options.signal.as_ref());
-        let outcome = self.exchange(&prepared, &options, &scope).await;
+    async fn execute(&self, prepared: Prepared, hooks: &CallHooks) -> Result<Value, LlmError> {
+        let scope = AbortScope::new(prepared.timeout_ms as f64, hooks.signal.as_ref());
+        let outcome = self.exchange(&prepared, hooks, &scope).await;
         outcome.map_err(|error| {
             if scope.timed_out() {
                 return LlmError::timeout(prepared.timeout_ms as f64);
             }
-            if options.signal.as_ref().is_some_and(|signal| signal.aborted()) {
+            if hooks.signal.as_ref().is_some_and(|signal| signal.aborted()) {
                 return LlmError::llm("LLM-запрос отменён", "LLM_ABORTED").with_cause(error);
             }
             if error.is_llm_error() {
@@ -413,22 +419,32 @@ impl RouterAiClient {
     }
 }
 
-impl LlmModelClient for RouterAiClient {
+impl LlmClient for RouterAiClient {
     fn model(&self) -> Option<String> {
         Some(self.model.clone())
     }
 
-    fn timeout_ms(&self) -> Option<f64> {
-        Some(self.timeout_ms as f64)
+    fn max_tokens(&self) -> Option<Value> {
+        Some(Value::from(self.max_tokens))
     }
 
-    fn max_tokens(&self) -> Option<i64> {
-        Some(self.max_tokens)
+    fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
+        // Контекст кампании снимается при вызове; крючки — из области вызова.
+        let at_call = CampaignSnapshot::capture();
+        Box::pin(async move {
+            let scope = CallScope::resolve(at_call);
+            let prepared = scope.campaign.enter(|| self.prepare(input, options, &scope.hooks))?;
+            self.execute(prepared, &scope.hooks).await
+        })
     }
 
-    fn complete(&self, input: Value, options: CallOptions) -> LlmFuture<'_, Value> {
-        // Синхронная часть — сейчас: контекст кампании читается при вызове.
-        let prepared = self.prepare(&input, &options);
-        Box::pin(async move { self.execute(prepared?, options).await })
+    /// У `RouterAIClient` в JS нет `probe`: проверку моделей ведёт каскад.
+    fn probe(&self) -> LlmFuture<'_, Result<Value, LlmError>> {
+        Box::pin(async { Ok(Value::Array(Vec::new())) })
+    }
+
+    /// У `RouterAIClient` в JS нет `health`: состояние моделей ведёт каскад.
+    fn health(&self) -> Value {
+        Value::Array(Vec::new())
     }
 }

@@ -11,30 +11,38 @@
 //! - [`RouterAiClient`] — OpenAI-совместимый клиент RouterAI/OhMyLama
 //!   (таймауты, отмена, usage), [`FallbackLlmClient`] — каскад запасных
 //!   моделей, [`FakeLlm`] — заглушка для тестов;
-//! - ошибки [`LlmError`] с теми же классами, кодами и текстами, что в JS.
+//! - ошибки — [`LlmError`] из `sk-infra` с теми же классами (`name`), кодами
+//!   и текстами, что в JS; конструкторы и `instanceof` — [`LlmErrorExt`].
 //!
-//! Роли агентов зависят от трейта [`LlmModelClient`], а не от RouterAI.
+//! Все три клиента реализуют контракт [`LlmClient`] из `sk-infra`
+//! (`usage_ledger`), его же оборачивает `MeteredLLMClient`; роли агентов
+//! зависят от контракта, а не от RouterAI.
 //!
 //! Форма данных — как в JS: запрос — JSON (`{ messages, temperature, … }` или
-//! массив сообщений), ответ — JSON-объект `{ role, content, tool_calls, json?,
-//! model, usage, provider, … }`. То, что в JS было функциями внутри запроса
-//! (`signal`, `onDelta`, `validateResponse`), здесь лежит в [`CallOptions`].
+//! массив сообщений), `options` — JSON-объект, ответ — JSON-объект `{ role,
+//! content, tool_calls, json?, model, usage, provider, … }`. То, что в JS было
+//! функциями и сигналом внутри `options` (`signal`, `onDelta`,
+//! `validateResponse`), в JSON не помещается: это [`CallHooks`], их передаёт
+//! расширение [`LlmClientExt`] (`complete_with`, `complete_streaming`).
+//! Крючки и контекст кампании живут в локальной области задачи tokio на время
+//! вызова, поэтому проходят сквозь обёртки вроде `MeteredLLMClient`, которые о
+//! них не знают, — как `options` и `AsyncLocalStorage` в JS.
 //!
-//! Контекст кампании (`campaign-ai-context`) клиент читает в синхронной части
-//! вызова `complete` — до первого опроса future; каскад переносит его в вызовы
-//! запасных моделей. Так поведение совпадает с `AsyncLocalStorage` JS, пока
-//! вызывающий открывает контекст вокруг вызова.
+//! Контекст кампании (`campaign-ai-context`) — поток-локальный стек
+//! `sk-narration-base`: клиент снимает его при вызове `complete`, а если там
+//! пусто — берёт снимок области вызова, сделанный внешним вызовом.
 
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use serde::Serialize;
 use serde_json::{Map, Value};
 use sk_core::indexmap::IndexSet;
 use sk_core::{js, text};
 
 use crate::js_json::{self, Js, JS_STACK_DEPTH};
+
+pub use sk_infra::usage_ledger::{LlmClient, LlmError, LlmFuture};
 
 mod abort;
 mod fake;
@@ -49,7 +57,7 @@ mod tests;
 
 pub use abort::{AbortController, AbortSignal};
 pub use fake::{FakeHandler, FakeLlm, FakeLlmConfig, FakeReply};
-pub use fallback::{FallbackLlmClient, FallbackLlmClientConfig};
+pub use fallback::{FallbackLlmClient, FallbackLlmClientConfig, FallbackMember};
 pub use router_ai::{RouterAiClient, RouterAiClientConfig};
 pub use sse::{parse_router_ai_event_stream, ChunkSource, StreamOptions, StreamResult, VecChunks};
 
@@ -67,160 +75,135 @@ const DANGEROUS_JSON_KEYS: [&str; 3] = ["__proto__", "prototype", "constructor"]
 // Ошибки
 // ---------------------------------------------------------------------------
 
-/// Класс ошибки JS. `instanceof` в JS: `LLMToolCallLimitError` —
-/// подкласс `LLMResponseError`, оба и `LLMTimeoutError` — подклассы `LLMError`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LlmErrorKind {
-    /// `LLMError`.
-    Llm,
-    /// `LLMTimeoutError`.
-    Timeout,
-    /// `LLMResponseError`.
-    Response,
-    /// `LLMToolCallLimitError`.
-    ToolCallLimit,
-    /// `TypeError`: неверный вызов клиента, не ошибка модели.
-    Type,
-    /// `RangeError`.
-    Range,
-    /// Прочие ошибки (`Error`, `AbortError`, сбой сети): имя — в `name`.
-    Other,
-}
+/// Имена классов JS, которые `instanceof LLMError` признаёт своими.
+const LLM_ERROR_NAMES: [&str; 4] = ["LLMError", "LLMTimeoutError", "LLMResponseError", "LLMToolCallLimitError"];
 
-/// Ошибка клиента модели: класс, `name`, `code`, текст и поля `details`
-/// (`timeoutMs`, `status`, `toolName`, `attempts`, …) — как у объекта ошибки JS.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LlmError {
-    pub kind: LlmErrorKind,
-    /// `error.name`.
-    pub name: String,
-    /// `error.code`; у `TypeError`/`RangeError` — `None`.
-    pub code: Option<String>,
-    pub message: String,
-    /// Поля, которые JS кладёт в ошибку `Object.assign(this, details)`, кроме
-    /// `cause`.
-    pub details: Map<String, Value>,
-    /// `error.cause`.
-    pub cause: Option<Box<LlmError>>,
-    /// `error.providerUsage`: известный расход оплаченного, но негодного ответа.
-    pub provider_usage: Option<Value>,
-}
-
-impl std::fmt::Display for LlmError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for LlmError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.cause.as_deref().map(|cause| cause as &(dyn std::error::Error + 'static))
-    }
-}
-
-impl LlmError {
-    fn with_kind(kind: LlmErrorKind, name: &str, message: impl Into<String>, code: Option<&str>) -> Self {
-        LlmError { kind, name: name.to_string(), code: code.map(str::to_string), message: message.into(), details: Map::new(), cause: None, provider_usage: None }
-    }
-
+/// Конструкторы ошибок `server/llm-client.mjs` и проверки `instanceof` для
+/// [`LlmError`] из `sk-infra`. Класс ошибки JS — её `name`; `cause` лежит в
+/// `details.cause` объектом `{ name, code?, message }` (в JS это поле тоже
+/// попадает в ошибку через `Object.assign(this, details)`).
+pub trait LlmErrorExt: Sized {
     /// `new LLMError(message, code)`.
-    pub fn llm(message: impl Into<String>, code: &str) -> Self {
-        Self::with_kind(LlmErrorKind::Llm, "LLMError", message, Some(code))
-    }
-
+    fn llm(message: impl Into<String>, code: &str) -> Self;
     /// `new LLMTimeoutError(timeoutMs)`.
-    pub fn timeout(timeout_ms: f64) -> Self {
-        Self::with_kind(LlmErrorKind::Timeout, "LLMTimeoutError", format!("LLM не ответил за {} мс", js::f64_string(timeout_ms)), Some("LLM_TIMEOUT"))
-            .with_detail("timeoutMs", js::num(timeout_ms))
+    fn timeout(timeout_ms: f64) -> Self;
+    /// `new LLMResponseError(message)` — код `LLM_RESPONSE_INVALID`.
+    fn response(message: impl Into<String>) -> Self;
+    /// `new LLMResponseError(message, code)`.
+    fn response_with_code(message: impl Into<String>, code: &str) -> Self;
+    /// `new LLMToolCallLimitError(actual, maximum)`.
+    fn tool_call_limit(actual: usize, maximum: i64) -> Self;
+    /// `new TypeError(message)`.
+    fn type_error(message: impl Into<String>) -> Self;
+    /// `new RangeError(message)`.
+    fn range_error(message: impl Into<String>) -> Self;
+    /// Ошибка не из иерархии `LLMError` (`Error`, `AbortError`, сбой сети).
+    fn other(name: &str, message: impl Into<String>) -> Self;
+    /// Обычная ошибка JS с полем `code` (`Object.assign(new Error(…), { code })`).
+    fn other_with_code(name: &str, message: impl Into<String>, code: &str) -> Self;
+    /// Поле `details`.
+    fn with_detail(self, key: &str, value: Value) -> Self;
+    /// `details.cause`.
+    fn with_cause(self, cause: LlmError) -> Self;
+    /// `error instanceof LLMError`.
+    fn is_llm_error(&self) -> bool;
+    /// `error instanceof LLMResponseError`.
+    fn is_response_error(&self) -> bool;
+    /// `error instanceof LLMTimeoutError`.
+    fn is_timeout(&self) -> bool;
+    /// `String(error?.code ?? '')`.
+    fn code_str(&self) -> &str;
+    /// `error?.code ?? error?.name`.
+    fn code_or_name(&self) -> String;
+    /// `Number(error.status)` (`NaN`, если поля нет).
+    fn status(&self) -> f64;
+    /// Ошибка как JSON: `{ name, code?, message, …details, providerUsage? }`.
+    fn to_json(&self) -> Value;
+}
+
+fn make_error(name: &str, message: impl Into<String>, code: Option<&str>) -> LlmError {
+    LlmError { name: name.to_string(), code: code.map(str::to_string), message: message.into(), details: Map::new(), provider_usage: None }
+}
+
+impl LlmErrorExt for LlmError {
+    fn llm(message: impl Into<String>, code: &str) -> Self {
+        make_error("LLMError", message, Some(code))
     }
 
-    /// `new LLMResponseError(message)` — код `LLM_RESPONSE_INVALID`.
-    pub fn response(message: impl Into<String>) -> Self {
+    fn timeout(timeout_ms: f64) -> Self {
+        make_error("LLMTimeoutError", format!("LLM не ответил за {} мс", js::f64_string(timeout_ms)), Some("LLM_TIMEOUT")).with_detail("timeoutMs", js::num(timeout_ms))
+    }
+
+    fn response(message: impl Into<String>) -> Self {
         Self::response_with_code(message, "LLM_RESPONSE_INVALID")
     }
 
-    /// `new LLMResponseError(message, code)`.
-    pub fn response_with_code(message: impl Into<String>, code: &str) -> Self {
-        Self::with_kind(LlmErrorKind::Response, "LLMResponseError", message, Some(code))
+    fn response_with_code(message: impl Into<String>, code: &str) -> Self {
+        make_error("LLMResponseError", message, Some(code))
     }
 
-    /// `new LLMToolCallLimitError(actual, maximum)`.
-    pub fn tool_call_limit(actual: usize, maximum: i64) -> Self {
-        Self::with_kind(LlmErrorKind::ToolCallLimit, "LLMToolCallLimitError", format!("Модель запросила {actual} инструментов при лимите {maximum}"), Some("LLM_TOOL_CALL_LIMIT"))
+    fn tool_call_limit(actual: usize, maximum: i64) -> Self {
+        make_error("LLMToolCallLimitError", format!("Модель запросила {actual} инструментов при лимите {maximum}"), Some("LLM_TOOL_CALL_LIMIT"))
             .with_detail("actual", Value::from(actual as u64))
             .with_detail("maximum", Value::from(maximum))
     }
 
-    /// `new TypeError(message)`.
-    pub fn type_error(message: impl Into<String>) -> Self {
-        Self::with_kind(LlmErrorKind::Type, "TypeError", message, None)
+    fn type_error(message: impl Into<String>) -> Self {
+        make_error("TypeError", message, None)
     }
 
-    /// `new RangeError(message)`.
-    pub fn range_error(message: impl Into<String>) -> Self {
-        Self::with_kind(LlmErrorKind::Range, "RangeError", message, None)
+    fn range_error(message: impl Into<String>) -> Self {
+        make_error("RangeError", message, None)
     }
 
-    /// Ошибка не из иерархии `LLMError` (`new Error(message)`, `AbortError`,
-    /// сбой сети) с именем класса `name`.
-    pub fn other(name: &str, message: impl Into<String>) -> Self {
-        Self::with_kind(LlmErrorKind::Other, name, message, None)
+    fn other(name: &str, message: impl Into<String>) -> Self {
+        make_error(name, message, None)
     }
 
-    /// Обычная ошибка JS с полем `code` (`Object.assign(new Error(…), { code })`).
-    pub fn other_with_code(name: &str, message: impl Into<String>, code: &str) -> Self {
-        Self::with_kind(LlmErrorKind::Other, name, message, Some(code))
+    fn other_with_code(name: &str, message: impl Into<String>, code: &str) -> Self {
+        make_error(name, message, Some(code))
     }
 
-    /// Поле `details`.
-    pub fn with_detail(mut self, key: &str, value: Value) -> Self {
+    fn with_detail(mut self, key: &str, value: Value) -> Self {
         self.details.insert(key.to_string(), value);
         self
     }
 
-    /// `details.cause`.
-    pub fn with_cause(mut self, cause: LlmError) -> Self {
-        self.cause = Some(Box::new(cause));
-        self
+    fn with_cause(self, cause: LlmError) -> Self {
+        let mut summary = Map::new();
+        summary.insert("name".into(), Value::String(cause.name.clone()));
+        if let Some(code) = &cause.code {
+            summary.insert("code".into(), Value::String(code.clone()));
+        }
+        summary.insert("message".into(), Value::String(cause.message.clone()));
+        self.with_detail("cause", Value::Object(summary))
     }
 
-    /// `error instanceof LLMError`.
-    pub fn is_llm_error(&self) -> bool {
-        matches!(self.kind, LlmErrorKind::Llm | LlmErrorKind::Timeout | LlmErrorKind::Response | LlmErrorKind::ToolCallLimit)
+    fn is_llm_error(&self) -> bool {
+        LLM_ERROR_NAMES.contains(&self.name.as_str())
     }
 
-    /// `error instanceof LLMResponseError`.
-    pub fn is_response_error(&self) -> bool {
-        matches!(self.kind, LlmErrorKind::Response | LlmErrorKind::ToolCallLimit)
+    fn is_response_error(&self) -> bool {
+        matches!(self.name.as_str(), "LLMResponseError" | "LLMToolCallLimitError")
     }
 
-    /// `error instanceof LLMTimeoutError`.
-    pub fn is_timeout(&self) -> bool {
-        self.kind == LlmErrorKind::Timeout
+    fn is_timeout(&self) -> bool {
+        self.name == "LLMTimeoutError"
     }
 
-    /// Код ошибки или пустая строка (`String(error?.code ?? '')`).
-    pub fn code_str(&self) -> &str {
+    fn code_str(&self) -> &str {
         self.code.as_deref().unwrap_or("")
     }
 
-    /// `error?.code ?? error?.name` — так ошибку называют журнал попыток и учёт.
-    pub fn code_or_name(&self) -> String {
+    fn code_or_name(&self) -> String {
         self.code.clone().unwrap_or_else(|| self.name.clone())
     }
 
-    /// `Number(error.status)`: HTTP-статус отказа провайдера (`NaN`, если нет).
-    pub fn status(&self) -> f64 {
+    fn status(&self) -> f64 {
         js::number(self.details.get("status"))
     }
 
-    /// Поле `details` по имени.
-    pub fn detail(&self, key: &str) -> Option<&Value> {
-        self.details.get(key)
-    }
-
-    /// Ошибка как JSON: `{ name, code?, message, …details, providerUsage? }`.
-    pub fn to_json(&self) -> Value {
+    fn to_json(&self) -> Value {
         let mut map = Map::new();
         map.insert("name".into(), Value::String(self.name.clone()));
         if let Some(code) = &self.code {
@@ -541,8 +524,6 @@ pub use self::strict_json_parse as parse_strict_json;
 // Запрос
 // ---------------------------------------------------------------------------
 
-/// Будущий результат вызова модели.
-pub type LlmFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, LlmError>> + Send + 'a>>;
 /// Будущий результат обработчика (`onDelta`, `validateResponse`, ответ `FakeLLM`).
 pub type HookFuture<T> = Pin<Box<dyn Future<Output = Result<T, LlmError>> + Send + 'static>>;
 
@@ -612,12 +593,10 @@ impl std::fmt::Debug for ResponseValidator {
     }
 }
 
-/// Второй аргумент `complete(input, options)`: поля JSON (`timeoutMs`,
-/// `json`, `model`, …) и то, что в JS было функциями и сигналом.
+/// То, что в JS лежало в `options` функциями и сигналом и в JSON не
+/// помещается. Передаётся через [`LlmClientExt::complete_with`].
 #[derive(Debug, Clone, Default)]
-pub struct CallOptions {
-    /// Поля JSON; при слиянии с запросом перекрывают его (`{ ...input, ...options }`).
-    pub fields: Map<String, Value>,
+pub struct CallHooks {
     /// `signal`: внешняя отмена.
     pub signal: Option<AbortSignal>,
     /// `onDelta`: потоковый ответ.
@@ -626,20 +605,9 @@ pub struct CallOptions {
     pub validate_response: Option<ResponseValidator>,
 }
 
-impl CallOptions {
+impl CallHooks {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Поля из JSON-объекта (иное — пусто).
-    pub fn from_fields(fields: Value) -> Self {
-        CallOptions { fields: fields.as_object().cloned().unwrap_or_default(), ..Self::default() }
-    }
-
-    /// Поле JSON (перекрывает прежнее на его месте).
-    pub fn field(mut self, key: &str, value: impl Into<Value>) -> Self {
-        self.fields.insert(key.to_string(), value.into());
-        self
     }
 
     pub fn signal(mut self, signal: AbortSignal) -> Self {
@@ -658,23 +626,29 @@ impl CallOptions {
     }
 }
 
+/// `options` как объект полей (не объект — пусто).
+pub(crate) fn option_fields(options: &Value) -> Map<String, Value> {
+    options.as_object().cloned().unwrap_or_default()
+}
+
 /// `normalizeRequest(input, options)`: запрос с непустым `messages`, у
 /// каждого сообщения — строковая `role`.
-pub(crate) fn normalize_request(input: &Value, fields: &Map<String, Value>) -> Result<Map<String, Value>, LlmError> {
+pub(crate) fn normalize_request(input: &Value, options: &Value) -> Result<Map<String, Value>, LlmError> {
+    let fields = option_fields(options);
     let mut request = match input {
         Value::Array(messages) => {
-            let mut request = fields.clone();
+            let mut request = fields;
             request.insert("messages".into(), Value::Array(messages.clone()));
             request
         }
         Value::Object(map) => {
             let mut request = map.clone();
             for (key, value) in fields {
-                request.insert(key.clone(), value.clone());
+                request.insert(key, value);
             }
             request
         }
-        _ => fields.clone(),
+        _ => fields,
     };
     let messages = match request.get("messages") {
         Some(Value::Array(messages)) if !messages.is_empty() => messages.clone(),
@@ -918,117 +892,95 @@ pub fn provider_request_body(provider: &str, body: &Value) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// Контракт клиента модели
+// Крючки вызова и расширение контракта
 // ---------------------------------------------------------------------------
 
-/// Состояние модели в каскаде (`health()`), как его видит `/api/admin/usage`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ModelHealth {
-    pub model: String,
-    pub primary: bool,
-    /// `ready`, `unknown`, `cooldown`, `retry-ready`.
-    pub state: String,
-    pub failures: i64,
-    pub last_error_code: Option<String>,
-    #[serde(serialize_with = "sk_narration_base::jsx::serialize_js_number")]
-    pub retry_after_ms: f64,
+/// Область вызова: крючки и снимок контекста кампании. Живёт в локальном
+/// хранилище задачи на время опроса future вызова.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CallScope {
+    pub(crate) hooks: CallHooks,
+    pub(crate) campaign: CampaignSnapshot,
 }
 
-/// Клиент модели, от которого зависят роли агентов (`LLMClient` в JS).
+tokio::task_local! {
+    static CALL_SCOPE: CallScope;
+}
+
+impl CallScope {
+    /// Текущая область (пустая вне вызова).
+    pub(crate) fn current() -> CallScope {
+        CALL_SCOPE.try_with(Clone::clone).unwrap_or_default()
+    }
+
+    /// Выполнить future внутри области.
+    pub(crate) fn run<F: Future>(self, future: F) -> impl Future<Output = F::Output> {
+        CALL_SCOPE.scope(self, future)
+    }
+
+    /// Крючки и контекст для клиента, снявшего контекст `at_call` при вызове
+    /// `complete`: свой контекст важнее снимка внешнего вызова.
+    pub(crate) fn resolve(at_call: CampaignSnapshot) -> CallScope {
+        let mut scope = CallScope::current();
+        if at_call.0.is_some() {
+            scope.campaign = at_call;
+        }
+        scope
+    }
+}
+
+/// Расширение [`LlmClient`]: вызов с [`CallHooks`] — сигналом отмены,
+/// потоковым получателем и проверкой ответа, которых нет в JSON `options`.
+/// Реализовано для любого клиента; крючки доходят до клиента, что делает сам
+/// запрос, сквозь обёртки (`MeteredLLMClient`, каскад).
 ///
-/// `complete` возвращает ответ JSON-объектом той же формы, что в JS. Контекст
-/// кампании реализация читает в синхронной части вызова (до первого опроса
-/// future), как [`RouterAiClient`] и [`FallbackLlmClient`].
-pub trait LlmModelClient: Send + Sync {
-    /// `client.model` (`undefined` — `None`).
-    fn model(&self) -> Option<String> {
-        None
+/// Вызов `complete` без крючков внутри чужой области видит её крючки (так
+/// внутренний клиент обёртки получает крючки внешнего вызова); клиенты этого
+/// крейта для собственных вложенных вызовов всегда открывают свою область.
+pub trait LlmClientExt: LlmClient {
+    /// `complete(input, { ...options, signal, onDelta, validateResponse })`.
+    fn complete_with<'a>(&'a self, input: &'a Value, options: &'a Value, hooks: CallHooks) -> LlmFuture<'a, Result<Value, LlmError>> {
+        let scope = CallScope { hooks, campaign: CampaignSnapshot::capture_or_inherit() };
+        Box::pin(scope.run(self.complete(input, options)))
     }
 
-    /// `client.timeoutMs`: лимит горячего пути модели для каскада.
-    fn timeout_ms(&self) -> Option<f64> {
-        None
+    /// Потоковый ответ: `complete(input, { ...options, onDelta })`.
+    fn complete_streaming<'a>(&'a self, input: &'a Value, options: &'a Value, on_delta: DeltaHandler) -> LlmFuture<'a, Result<Value, LlmError>> {
+        self.complete_with(input, options, CallHooks { on_delta: Some(on_delta), ..CallHooks::default() })
     }
 
-    /// `client.maxTokens`.
-    fn max_tokens(&self) -> Option<i64> {
-        None
-    }
-
-    /// `complete(input, options)`: `input` — `{ messages, … }` или массив
-    /// сообщений.
-    fn complete(&self, input: Value, options: CallOptions) -> LlmFuture<'_, Value>;
-
-    /// `completeJson(input, options)`: `complete` с `json: true`, результат —
-    /// поле `json` (`None`, если клиент его не вернул).
-    fn complete_json(&self, input: Value, options: CallOptions) -> LlmFuture<'_, Option<Value>> {
-        let operation = self.complete(input, options.field("json", true));
-        Box::pin(async move { Ok(operation.await?.get("json").cloned()) })
-    }
-
-    /// Текст ответа (`String(result.content ?? '')`).
-    fn complete_text(&self, input: Value, options: CallOptions) -> LlmFuture<'_, String> {
-        let operation = self.complete(input, options);
-        Box::pin(async move { Ok(js::s(operation.await?.get("content"))) })
-    }
-
-    /// Потоковый ответ: `complete` с `onDelta`.
-    fn complete_streaming(&self, input: Value, options: CallOptions, on_delta: DeltaHandler) -> LlmFuture<'_, Value> {
-        self.complete(input, options.on_delta(on_delta))
-    }
-
-    /// `probe()`: проверка моделей; по умолчанию — текущее состояние.
-    fn probe(&self) -> LlmFuture<'_, Vec<ModelHealth>> {
-        let health = self.health();
-        Box::pin(async move { Ok(health) })
-    }
-
-    /// `health()`.
-    fn health(&self) -> Vec<ModelHealth> {
-        Vec::new()
+    /// `completeJson` с крючками: `result.json` (`null`, если его нет).
+    fn complete_json_with<'a>(&'a self, input: &'a Value, options: &'a Value, hooks: CallHooks) -> LlmFuture<'a, Result<Value, LlmError>> {
+        let scope = CallScope { hooks, campaign: CampaignSnapshot::capture_or_inherit() };
+        Box::pin(scope.run(self.complete_json(input, options)))
     }
 }
 
-impl<T: LlmModelClient + ?Sized> LlmModelClient for Arc<T> {
-    fn model(&self) -> Option<String> {
-        (**self).model()
-    }
-    fn timeout_ms(&self) -> Option<f64> {
-        (**self).timeout_ms()
-    }
-    fn max_tokens(&self) -> Option<i64> {
-        (**self).max_tokens()
-    }
-    fn complete(&self, input: Value, options: CallOptions) -> LlmFuture<'_, Value> {
-        (**self).complete(input, options)
-    }
-    fn complete_json(&self, input: Value, options: CallOptions) -> LlmFuture<'_, Option<Value>> {
-        (**self).complete_json(input, options)
-    }
-    fn complete_text(&self, input: Value, options: CallOptions) -> LlmFuture<'_, String> {
-        (**self).complete_text(input, options)
-    }
-    fn complete_streaming(&self, input: Value, options: CallOptions, on_delta: DeltaHandler) -> LlmFuture<'_, Value> {
-        (**self).complete_streaming(input, options, on_delta)
-    }
-    fn probe(&self) -> LlmFuture<'_, Vec<ModelHealth>> {
-        (**self).probe()
-    }
-    fn health(&self) -> Vec<ModelHealth> {
-        (**self).health()
-    }
-}
+impl<T: LlmClient + ?Sized> LlmClientExt for T {}
 
-/// Снимок контекста кампании для переноса в вызовы, идущие после `await`.
-#[derive(Debug, Clone)]
+/// Снимок контекста кампании (настройки ИИ в форме JSON) для переноса в
+/// вызовы, идущие после `await`.
+#[derive(Debug, Clone, Default)]
 pub(crate) struct CampaignSnapshot(Option<Value>);
 
 impl CampaignSnapshot {
+    /// Поток-локальный контекст в момент вызова.
     pub(crate) fn capture() -> Self {
         CampaignSnapshot(sk_narration_base::campaign_ai_context::current_campaign_ai_settings().and_then(|settings| serde_json::to_value(settings).ok()))
     }
 
-    /// Выполнить синхронную часть вызова внутри снятого контекста.
+    /// Контекст в момент вызова, а если его нет — снимок области, внутри
+    /// которой идёт вызов.
+    pub(crate) fn capture_or_inherit() -> Self {
+        let captured = Self::capture();
+        if captured.0.is_some() {
+            captured
+        } else {
+            CallScope::current().campaign
+        }
+    }
+
+    /// Выполнить синхронную часть внутри снятого контекста.
     pub(crate) fn enter<R>(&self, operation: impl FnOnce() -> R) -> R {
         sk_narration_base::campaign_ai_context::run_with_campaign_ai_settings(self.0.as_ref(), operation)
     }

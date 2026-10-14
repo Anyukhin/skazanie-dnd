@@ -10,6 +10,7 @@ serde.workspace = true
 serde_json.workspace = true
 sk-core.workspace = true
 sk-narration-base = { path = "../sk-narration-base" }
+sk-infra = { path = "../sk-infra" }
 tokio = { version = "1.53.2", features = ["rt", "time", "sync", "macros"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }

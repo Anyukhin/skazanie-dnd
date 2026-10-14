@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, Weak};
 
 use tokio::sync::Notify;
 
-use super::{node_timer_delay, LlmError};
+use super::{node_timer_delay, LlmError, LlmErrorExt};
 
 #[derive(Default)]
 struct SignalInner {

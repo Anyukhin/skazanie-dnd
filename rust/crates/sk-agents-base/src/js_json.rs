@@ -114,7 +114,7 @@ enum Container {
     Array(Vec<Js>),
     Object { entries: IndexMap<String, Js>, key: Option<String> },
     /// Контейнер глубже предела: синтаксис проверяется, значения не хранятся.
-    Phantom { is_array: bool, expect_key: bool },
+    Phantom { is_array: bool },
 }
 
 struct Parser<'a> {
@@ -490,9 +490,17 @@ mod tests {
         let text = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
         let mut node = parse(&text).expect("json");
         let mut level = 1;
-        while let Js::Array(mut items) = node {
-            level += 1;
-            node = if items.is_empty() { break } else { items.remove(0) };
+        loop {
+            match node {
+                Js::Array(mut items) if !items.is_empty() => {
+                    level += 1;
+                    node = items.remove(0);
+                }
+                other => {
+                    node = other;
+                    break;
+                }
+            }
         }
         assert_eq!(node, Js::TooDeep);
         assert_eq!(level, JS_STACK_DEPTH + 1);

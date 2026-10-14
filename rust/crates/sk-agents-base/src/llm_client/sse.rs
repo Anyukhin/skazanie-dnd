@@ -9,7 +9,7 @@ use std::pin::Pin;
 use serde_json::{Map, Value};
 use sk_core::{js, text};
 
-use super::{index0, positive_or, prop, strict_json_parse, utf16_head, DeltaHandler, LlmError, StrictJsonOptions, DEFAULT_MAX_RESPONSE_BYTES, ROUTERAI_STREAM_MAX_EVENT_BYTES};
+use super::{index0, positive_or, prop, strict_json_parse, utf16_head, DeltaHandler, LlmError, LlmErrorExt, StrictJsonOptions, DEFAULT_MAX_RESPONSE_BYTES, ROUTERAI_STREAM_MAX_EVENT_BYTES};
 
 /// Источник кусков тела ответа (`response.body` в JS).
 pub trait ChunkSource: Send {
