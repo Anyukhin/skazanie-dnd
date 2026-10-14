@@ -1287,6 +1287,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-memory"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-society",
+ "thiserror",
+]
+
+[[package]]
 name = "sk-narration-base"
 version = "0.1.0"
 dependencies = [
