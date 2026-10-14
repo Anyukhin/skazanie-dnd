@@ -85,6 +85,7 @@ fn handler(event_type: &str) -> Option<Handler> {
         "SpellBonusPreferenceChanged" => effects::spell_bonus_preference_changed,
         "ReactionPreferenceChanged" => effects::reaction_preference_changed,
         "LegendaryActionUsed" => combat::legendary_action_used,
+        "NpcItemUsed" => combat::npc_item_used,
         // Жизнь кампании.
         "CampaignActivated" | "CampaignResumed" => effects::campaign_resumed,
         "CampaignPaused" => effects::campaign_paused,
