@@ -1126,3 +1126,8 @@ pub(crate) fn catalog_spells() -> &'static [Value] {
 pub(crate) fn catalog_payload() -> &'static Value {
     &PAYLOAD
 }
+
+/// Правки механики как их разобрал бы `JSON.parse`.
+pub(crate) fn override_payload() -> &'static Value {
+    &OVERRIDE_PAYLOAD
+}
