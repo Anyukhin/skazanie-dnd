@@ -25,5 +25,6 @@ pub mod enemy_loadouts;
 pub mod item_appraisal;
 pub mod item_instances;
 pub mod merchant_economy;
+pub mod npc_equipment;
 
 mod support;
