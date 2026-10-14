@@ -295,8 +295,12 @@ pub fn num(value: f64) -> Value {
     if !value.is_finite() {
         return Value::Null;
     }
-    if value.fract() == 0.0 && value.abs() <= 9_007_199_254_740_991.0 {
+    // JSON.stringify печатает целые до 1e21 цифрами: 2^60 — не `1e18`.
+    if value.fract() == 0.0 && value.abs() < 9_223_372_036_854_775_808.0 {
         return Value::from(value as i64);
+    }
+    if value.fract() == 0.0 && value > 0.0 && value < 18_446_744_073_709_551_616.0 {
+        return Value::from(value as u64);
     }
     serde_json::Number::from_f64(value).map(Value::Number).unwrap_or(Value::Null)
 }
