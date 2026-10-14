@@ -100,7 +100,10 @@ pub fn check(source: &str, mut run: impl FnMut(&str, &Args) -> Outcome) -> usize
                     (sk_core::hash::sha256_hex(&actual_text) != hash).then(|| format!("хеш JSON.stringify разошёлся; получено\n    {}", sk_core::text::head(&actual_text, 4_000)))
                 } else {
                     let expected_text = json_text(&case["result"]);
-                    (expected_text != actual_text).then(|| format!("ожидалось\n    {expected_text}\n  получено\n    {actual_text}"))
+                    // Строки совпадают, кроме целых за 2^53: `JSON.stringify` пишет
+                    // кратчайшую запись (`900719925474099100`), а `serde_json` — точные
+                    // цифры того же f64 (`900719925474099072`). Тогда сверка — по значению.
+                    (expected_text != actual_text && !same_json(&case["result"], &actual)).then(|| format!("ожидалось\n    {expected_text}\n  получено\n    {actual_text}"))
                 }
             }
         };
@@ -116,6 +119,16 @@ pub fn check(source: &str, mut run: impl FnMut(&str, &Args) -> Outcome) -> usize
         failures.iter().take(8).cloned().collect::<Vec<_>>().join("\n\n")
     );
     cases.len()
+}
+
+/// Равенство JSON с числами по значению f64; порядок ключей тоже сверяется.
+pub fn same_json(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Number(a), Value::Number(b)) => a.as_f64() == b.as_f64(),
+        (Value::Array(a), Value::Array(b)) => a.len() == b.len() && a.iter().zip(b).all(|(x, y)| same_json(x, y)),
+        (Value::Object(a), Value::Object(b)) => a.len() == b.len() && a.iter().zip(b.iter()).all(|((key_a, x), (key_b, y))| key_a == key_b && same_json(x, y)),
+        _ => left == right,
+    }
 }
 
 /// Значение как итог вызова.
