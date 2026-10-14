@@ -3,20 +3,18 @@
 //! Перенос `server/rules/actors.mjs` и общих помощников `rules-engine.mjs`:
 //! кто есть в сцене, где стоит, жив ли, враг ли, какие на нём состояния.
 
-use std::collections::BTreeSet;
-
+use indexmap::IndexSet;
 use serde_json::{Map, Value};
 
-use crate::js::{is_true, obj, s, safe_int};
+use crate::js::{obj, s, safe_int, truthy};
 use crate::Point;
 
-/// Идентификатор существа: `id`, иначе `actor_id`.
+/// `actorId(actor)`: `String(actor?.id ?? actor?.actor_id ?? '')`.
 pub fn actor_id(actor: &Value) -> String {
-    let id = s(actor.get("id"));
-    if !id.is_empty() {
-        return id;
+    match actor.get("id").filter(|id| !id.is_null()) {
+        Some(id) => s(Some(id)),
+        None => s(actor.get("actor_id")),
     }
-    s(actor.get("actor_id"))
 }
 
 fn list<'a>(state: &'a Value, key: &str) -> &'a [Value] {
@@ -74,9 +72,9 @@ pub fn is_enemy_actor(state: &Value, id: &str) -> bool {
     list(state, "enemies").iter().any(|enemy| actor_id(enemy) == id)
 }
 
-/// `playerActor(state, id)`.
+/// `playerActor(state, id)`: `String(player.id) === String(id ?? '')`.
 pub fn player_actor<'a>(state: &'a Value, id: &str) -> Option<&'a Value> {
-    list(state, "players").iter().find(|player| s(player.get("id")) == id)
+    list(state, "players").iter().find(|player| crate::js::string(player.get("id")) == id)
 }
 
 /// `actorHp(actor)`.
@@ -99,15 +97,13 @@ pub fn is_living_actor(actor: &Value) -> bool {
 pub fn actor_position(state: &Value, id: &str) -> Option<Point> {
     let actor = find_actor(state, id);
     let stored = state.get("mechanics").and_then(|m| m.get("positions")).and_then(|p| p.get(id));
+    // `Number(stored?.x ?? actor?.x)`: `null` в обоих местах — это 0, как в JS.
     let pick = |key: &str| -> Option<i64> {
-        let value = stored.and_then(|p| p.get(key)).filter(|v| !v.is_null()).or_else(|| actor.and_then(|a| a.get(key)).filter(|v| !v.is_null()))?;
-        let number = match value {
-            Value::Number(number) => number.as_f64()?,
-            Value::String(text) => text.trim().parse::<f64>().ok()?,
-            Value::Bool(flag) => f64::from(u8::from(*flag)),
-            _ => return None,
+        let value = match stored.and_then(|p| p.get(key)).filter(|v| !v.is_null()) {
+            Some(value) => Some(value),
+            None => actor.and_then(|a| a.get(key)),
         };
-        (number.fract() == 0.0 && number.abs() <= 9_007_199_254_740_991.0).then_some(number as i64)
+        crate::js::is_safe_integer_number(value).then(|| crate::js::number(value) as i64)
     };
     Some(Point::new(pick("x")?, pick("y")?))
 }
@@ -159,16 +155,16 @@ pub fn conditions_mut<'a>(state: &'a mut Value, id: &str) -> &'a mut Vec<Value> 
     slot.as_array_mut().expect("массив")
 }
 
-/// Id условия: `condition?.id ?? condition`.
+/// Id условия: `String(condition?.id ?? condition)`.
 pub fn condition_id(condition: &Value) -> String {
-    match condition {
-        Value::Object(map) => s(map.get("id")),
-        other => s(Some(other)),
+    match condition.get("id").filter(|id| !id.is_null()) {
+        Some(id) => s(Some(id)),
+        None => crate::js::string(Some(condition)),
     }
 }
 
-/// `conditionIdsFor(state, id)`.
-pub fn condition_ids(state: &Value, id: &str) -> BTreeSet<String> {
+/// `conditionIdsFor(state, id)`: множество в порядке списка, как `new Set`.
+pub fn condition_ids(state: &Value, id: &str) -> IndexSet<String> {
     conditions(state, id).iter().map(condition_id).collect()
 }
 
@@ -188,8 +184,9 @@ pub fn combat_mut(state: &mut Value) -> &mut Value {
     mechanics.get_mut("combat").expect("бой")
 }
 
+/// `state.mechanics.combat.active` по истинности JS.
 pub fn combat_active(state: &Value) -> bool {
-    is_true(combat(state).get("active"))
+    truthy(combat(state).get("active"))
 }
 
 pub fn combat_round(state: &Value) -> i64 {

@@ -13,6 +13,16 @@ pub fn safe_int(value: Option<&Value>, fallback: i64) -> i64 {
     crate::json::int(value, fallback)
 }
 
+/// `String(value)` без `??`: отсутствующее поле — `"undefined"`, `null` —
+/// `"null"`. Нужен там, где JS сравнивает `String(x) === String(y)`.
+pub fn string(value: Option<&Value>) -> String {
+    match value {
+        None => "undefined".into(),
+        Some(Value::Null) => "null".into(),
+        other => s(other),
+    }
+}
+
 /// `String(value ?? '')`.
 pub fn s(value: Option<&Value>) -> String {
     match value {
