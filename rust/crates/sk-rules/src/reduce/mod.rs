@@ -86,6 +86,8 @@ fn handler(event_type: &str) -> Option<Handler> {
         "ReactionPreferenceChanged" => effects::reaction_preference_changed,
         "LegendaryActionUsed" => combat::legendary_action_used,
         "NpcItemUsed" => combat::npc_item_used,
+        // Социальные профили NPC.
+        "NpcSocialProfileUpserted" | "NpcConversationRecorded" | "NpcRelationshipAdjusted" | "NpcRelationshipTierChanged" | "NpcPromiseRecorded" | "NpcPromiseResolved" => effects::npc_social_event,
         // Жизнь кампании.
         "CampaignActivated" | "CampaignResumed" => effects::campaign_resumed,
         "CampaignPaused" => effects::campaign_paused,

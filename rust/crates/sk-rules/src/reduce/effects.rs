@@ -389,3 +389,11 @@ pub fn reaction_preference_changed(state: &mut Value, event: &Event) {
         mechanics.insert("reaction_preferences".into(), Value::Object(preferences));
     }
 }
+
+/// События социальных профилей NPC: `state.social = applyNpcSocialEvent(...)`.
+pub fn npc_social_event(state: &mut Value, event: &Event) {
+    let event_json = serde_json::to_value(event).unwrap_or(Value::Null);
+    let current = state.get("social").cloned().unwrap_or(Value::Null);
+    let next = sk_social::npc_social::apply_npc_social_event(&current, &event_json, state, &json!({}));
+    state["social"] = next;
+}
