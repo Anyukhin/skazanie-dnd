@@ -1604,6 +1604,84 @@ mod tests {
         assert_eq!(load_scenarios(&twice), Err("Сценарий кампании: повтор id astohan-dragon-hunt".into()));
     }
 
+    /// Правка сценария по пути из эталона: замена значения или удаление.
+    fn mutate(original: &Value, path: &[Value], replacement: &Value) -> Value {
+        if path.is_empty() {
+            return replacement.clone();
+        }
+        let mut copy = original.clone();
+        let mut target = &mut copy;
+        for key in &path[..path.len() - 1] {
+            target = match key {
+                Value::Number(index) => &mut target[index.as_u64().unwrap_or(0) as usize],
+                other => &mut target[other.as_str().unwrap_or("")],
+            };
+        }
+        let last = &path[path.len() - 1];
+        let delete = replacement.as_str() == Some("__delete__");
+        match (target, last) {
+            (Value::Array(items), Value::Number(index)) => {
+                let index = index.as_u64().unwrap_or(0) as usize;
+                if delete {
+                    items.remove(index);
+                } else {
+                    items[index] = replacement.clone();
+                }
+            }
+            (Value::Object(map), key) => {
+                let key = key.as_str().unwrap_or("");
+                if delete {
+                    map.shift_remove(key);
+                } else {
+                    map.insert(key.into(), replacement.clone());
+                }
+            }
+            _ => panic!("путь эталона не ведёт к полю"),
+        }
+        copy
+    }
+
+    #[test]
+    fn validation_matches_js() {
+        let data: Value = serde_json::from_str(include_str!("../fixtures/campaign-scenario.json")).expect("эталон");
+        let original = &list_campaign_scenarios()[0];
+        let mut failures = Vec::new();
+        let mut checked = 0;
+        for entry in data["validation"].as_array().expect("проверки формы") {
+            let path = entry["path"].as_array().expect("путь");
+            let scenario = mutate(original, path, &entry["replacement"]);
+            let actual = validate_scenario(&scenario).err().unwrap_or_else(|| "ok".into());
+            let expected = entry["message"].as_str().unwrap_or("");
+            // TypeError JS (не-перечислимое значение) — отказ и в Rust, текст свой.
+            if expected.starts_with("TypeError") {
+                assert_ne!(actual, "ok", "{entry}");
+                continue;
+            }
+            checked += 1;
+            if actual != expected {
+                failures.push(format!("{entry}\n    rust: {actual}"));
+            }
+        }
+        for entry in data["loads"].as_array().expect("каталоги") {
+            let mut raw = entry["raw"].clone();
+            if let Some(list) = raw.get_mut("scenarios").and_then(Value::as_array_mut) {
+                for item in list.iter_mut() {
+                    *item = js::spread(original, item["$scenario"].clone());
+                }
+            }
+            let actual = match load_scenarios(&raw) {
+                Ok(list) => format!("ok:{}", list.len()),
+                Err(error) => error,
+            };
+            checked += 1;
+            if actual != entry["message"].as_str().unwrap_or("") {
+                failures.push(format!("{entry}\n    rust: {actual}"));
+            }
+        }
+        let shown: Vec<&String> = failures.iter().take(30).collect();
+        assert!(failures.is_empty(), "расхождений {} из {checked}:\n{}", failures.len(), shown.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"));
+    }
+
     #[test]
     fn free_world_has_no_scenario() {
         assert!(campaign_scenario(&json!({})).is_none());
