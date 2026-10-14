@@ -98,6 +98,16 @@ pub(crate) fn same_value_zero(left: &Value, right: &Value) -> bool {
     }
 }
 
+/// `a === b` для полей JSON: `undefined` равен только `undefined`, объекты и
+/// массивы — только самим себе.
+pub(crate) fn strict_eq(left: Option<&Value>, right: Option<&Value>) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => same_value_zero(left, right),
+        _ => false,
+    }
+}
+
 /// `list.includes(value)` по SameValueZero.
 pub(crate) fn includes(list: &[Value], value: &Value) -> bool {
     list.iter().any(|item| same_value_zero(item, value))
