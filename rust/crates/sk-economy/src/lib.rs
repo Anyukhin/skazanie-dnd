@@ -21,6 +21,7 @@
 //! байт в байт. Костей эти модули не бросают: торг решает Rules Engine, а
 //! сборка лавки и снаряжение противника выводятся из сида детерминированно.
 
+pub mod enemy_loadouts;
 pub mod item_appraisal;
 pub mod item_instances;
 pub mod merchant_economy;
