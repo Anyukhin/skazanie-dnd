@@ -23,11 +23,17 @@ pub fn nfc(text: &str) -> String {
     text.nfc().collect()
 }
 
-/// Пробельный символ по `String.prototype.trim` (WhiteSpace + LineTerminator,
-/// включая BOM, которого нет в `char::is_whitespace`).
+/// Пробельный символ по `String.prototype.trim` и `\s` (WhiteSpace +
+/// LineTerminator): BOM — да, U+0085 — нет, в отличие от `char::is_whitespace`.
 pub fn is_js_space(ch: char) -> bool {
-    ch.is_whitespace() || ch == '\u{FEFF}'
+    matches!(
+        ch,
+        '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}'
+    )
 }
+
+/// Класс `\s` JS в синтаксисе Rust (без скобок).
+const JS_SPACE_CLASS: &str = r"\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}";
 
 /// `text.trim()`.
 pub fn trim(text: &str) -> &str {
@@ -132,8 +138,10 @@ const ASCII_WORD: &str = "A-Za-z0-9_";
 ///
 /// В JS `\b`, `\B`, `\w`, `\W`, `\d`, `\D` — только ASCII даже с флагом `u`,
 /// а в Rust — Unicode; здесь они раскрываются в ASCII-классы и lookaround.
-/// `\/` и `\-` вне класса становятся обычными символами, `\u{…}` — `\x{…}`.
-/// Флаги: `i`, `m`, `s` — префиксом `(?ims)`; `g`, `u`, `y` значения не имеют.
+/// `\s` — пробелы JS (BOM да, U+0085 нет); `.` без флага `s` не совпадает с
+/// `\r`, U+2028 и U+2029, как в JS. `\/` и `\-` вне класса становятся
+/// обычными символами, `\u{…}` — `\x{…}`. Флаги: `i`, `m`, `s` — префиксом
+/// `(?ims)`; `g`, `u`, `y` значения не имеют.
 pub fn js_regex_source(pattern: &str, flags: &str) -> String {
     let mut out = String::with_capacity(pattern.len() + 16);
     let inline: String = flags.chars().filter(|flag| matches!(flag, 'i' | 'm' | 's')).collect();
@@ -145,6 +153,7 @@ pub fn js_regex_source(pattern: &str, flags: &str) -> String {
     let word_class = format!("[{ASCII_WORD}]");
     let boundary = format!("(?:(?<={word_class})(?!{word_class})|(?<!{word_class})(?={word_class}))");
     let non_boundary = format!("(?:(?<={word_class})(?={word_class})|(?<!{word_class})(?!{word_class}))");
+    let dot_all = flags.contains('s');
     let mut chars = pattern.chars().peekable();
     let mut in_class = false;
     while let Some(ch) = chars.next() {
@@ -161,6 +170,9 @@ pub fn js_regex_source(pattern: &str, flags: &str) -> String {
                     ('D', false) => out.push_str("[^0-9]"),
                     ('w', true) => out.push_str(ASCII_WORD),
                     ('d', true) => out.push_str("0-9"),
+                    ('s', false) => out.push_str(&format!("[{JS_SPACE_CLASS}]")),
+                    ('S', false) => out.push_str(&format!("[^{JS_SPACE_CLASS}]")),
+                    ('s', true) => out.push_str(JS_SPACE_CLASS),
                     ('b', false) => out.push_str(&boundary),
                     ('B', false) => out.push_str(&non_boundary),
                     ('/', _) => out.push('/'),
@@ -192,6 +204,7 @@ pub fn js_regex_source(pattern: &str, flags: &str) -> String {
                 in_class = false;
                 out.push(']');
             }
+            '.' if !in_class && !dot_all => out.push_str(r"[^\n\r\x{2028}\x{2029}]"),
             _ => out.push(ch),
         }
     }
@@ -279,6 +292,14 @@ mod tests {
         assert!(test(re!(r"^[^]$"), "\n"));
         assert_eq!(replace_all(re!(r"\s+", "g"), "a  b", " "), "a b");
         assert_eq!(capture(re!(r"(\d+)\s*фут"), "на 30 футов", 1).as_deref(), Some("30"));
+        // Пробелы и точка — как в JS.
+        assert!(test(re!(r"^\s$"), "\u{FEFF}"));
+        assert!(!test(re!(r"^\s$"), "\u{85}"));
+        assert!(test(re!(r"^[^\s]$"), "\u{85}"));
+        assert!(!test(re!(r"^.$"), "\r"));
+        assert!(test(re!(r"^.$", "s"), "\r"));
+        assert!(test(re!(r"^[.]$"), "."));
+        assert_eq!(trim("\u{85}x\u{FEFF}"), "\u{85}x");
     }
 
     #[test]

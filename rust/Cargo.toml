@@ -10,7 +10,9 @@ publish = false
 # Внешние зависимости — только здесь; крейты подключают их `x.workspace = true`.
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+# float_roundtrip: дроби разбираются без ошибки в последнем бите — как в JS,
+# иначе хеши проекций и снимков расходятся.
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 thiserror = "2"
 sha2 = "0.10"
 hex = "0.4.3"

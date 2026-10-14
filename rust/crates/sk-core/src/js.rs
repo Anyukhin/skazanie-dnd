@@ -35,18 +35,15 @@ pub fn s(value: Option<&Value>) -> String {
     }
 }
 
-/// Число так, как его печатает JS: `3`, а не `3.0`.
+/// Число так, как его печатает JS: `3`, а не `3.0`; `1e+21`, `1e-7`.
 pub fn js_number_string(number: &serde_json::Number) -> String {
     if let Some(int) = number.as_i64() {
         return int.to_string();
     }
-    if let Some(float) = number.as_f64() {
-        if float.fract() == 0.0 && float.abs() < 1e15 {
-            return format!("{}", float as i64);
-        }
-        return float.to_string();
+    if let Some(unsigned) = number.as_u64() {
+        return f64_string(unsigned as f64);
     }
-    number.to_string()
+    number.as_f64().map_or_else(|| number.to_string(), f64_string)
 }
 
 /// `value === true`.
