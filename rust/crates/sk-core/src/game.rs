@@ -110,12 +110,13 @@ pub fn actor_position(state: &Value, id: &str) -> Option<Point> {
 
 /// Призванное существо отряда (`isPartySummon`).
 pub fn is_party_summon(actor: &Value) -> bool {
-    s(actor.get("kind")) == "summon" && s(actor.get("faction")) == "party" && (crate::js::truthy(actor.get("ownerId")) || crate::js::truthy(actor.get("owner_id")))
+    // `actor?.kind === 'summon'` — строго строка, без приведения.
+    actor.get("kind").and_then(Value::as_str) == Some("summon") && actor.get("faction").and_then(Value::as_str) == Some("party") && (crate::js::truthy(actor.get("ownerId")) || crate::js::truthy(actor.get("owner_id")))
 }
 
 /// Враждебный призыв (`isHostileSummon`).
 pub fn is_hostile_summon(actor: &Value) -> bool {
-    s(actor.get("kind")) == "summon" && s(actor.get("faction")) == "hostile" && (crate::js::truthy(actor.get("ownerId")) || crate::js::truthy(actor.get("owner_id")))
+    actor.get("kind").and_then(Value::as_str) == Some("summon") && actor.get("faction").and_then(Value::as_str) == Some("hostile") && (crate::js::truthy(actor.get("ownerId")) || crate::js::truthy(actor.get("owner_id")))
 }
 
 /// `combatActorKind(state, id)`.

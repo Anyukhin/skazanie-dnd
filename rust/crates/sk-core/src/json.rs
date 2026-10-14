@@ -21,7 +21,7 @@ pub fn int(value: Option<&Value>, fallback: i64) -> i64 {
 pub fn string(value: Option<&Value>) -> String {
     match value {
         Some(Value::String(text)) => text.clone(),
-        Some(Value::Number(number)) => number.to_string(),
+        Some(Value::Number(number)) => crate::js::js_number_string(number),
         Some(Value::Bool(flag)) => flag.to_string(),
         _ => String::new(),
     }
@@ -42,7 +42,7 @@ pub fn strings(value: Option<&Value>) -> Vec<String> {
     match value {
         Some(Value::Array(items)) => items.iter().filter_map(|item| match item {
             Value::String(text) => Some(text.clone()),
-            Value::Number(number) => Some(number.to_string()),
+            Value::Number(number) => Some(crate::js::js_number_string(number)),
             _ => None,
         }).collect(),
         _ => Vec::new(),
