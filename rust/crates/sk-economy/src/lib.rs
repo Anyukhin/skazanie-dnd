@@ -26,5 +26,6 @@ pub mod item_appraisal;
 pub mod item_instances;
 pub mod merchant_economy;
 pub mod npc_equipment;
+pub mod shop_assembler;
 
 mod support;
