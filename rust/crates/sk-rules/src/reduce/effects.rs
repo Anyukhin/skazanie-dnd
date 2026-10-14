@@ -354,3 +354,38 @@ pub fn spell_bonus_preference_changed(state: &mut Value, event: &Event) {
         }
     }
 }
+
+/// `ReactionPreferenceChanged`: режим реакции героя; «спрашивать» — значение по
+/// умолчанию и не хранится, пустые записи исчезают.
+pub fn reaction_preference_changed(state: &mut Value, event: &Event) {
+    use sk_combat_base::reaction_preferences::{is_configurable_reaction, is_reaction_mode, REACTION_MODE_SCHEMA_VERSION};
+    let payload = &event.payload;
+    let reaction = s(payload.get("reaction_id"));
+    let target = target_of(event);
+    let valid = payload.get("schema_version").and_then(Value::as_f64) == Some(REACTION_MODE_SCHEMA_VERSION as f64)
+        && !target.is_empty()
+        && is_configurable_reaction(Some(&Value::String(reaction.clone())))
+        && is_reaction_mode(payload.get("mode"));
+    if !valid {
+        return;
+    }
+    let current = mechanics(state).get("reaction_preferences").cloned().unwrap_or(Value::Null);
+    let mut hero = current.get(target.as_str()).and_then(Value::as_object).cloned().unwrap_or_default();
+    if payload.get("mode").and_then(Value::as_str) == Some("ask") {
+        hero.shift_remove(&reaction);
+    } else {
+        hero.insert(reaction, payload["mode"].clone());
+    }
+    let mut preferences = current.as_object().cloned().unwrap_or_default();
+    if hero.is_empty() {
+        preferences.shift_remove(&target);
+    } else {
+        preferences.insert(target, Value::Object(hero));
+    }
+    let mechanics = mechanics_mut(state);
+    if preferences.is_empty() {
+        mechanics.shift_remove("reaction_preferences");
+    } else {
+        mechanics.insert("reaction_preferences".into(), Value::Object(preferences));
+    }
+}

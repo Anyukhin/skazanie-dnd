@@ -394,7 +394,7 @@ pub fn combat_action_used(state: &mut Value, event: &Event) {
 }
 
 /// `battleLogAreaFromPayload(state, event, payload)`.
-fn battle_log_area_from_payload(state: &Value, event: &Event, payload: &Value) -> Option<Map<String, Value>> {
+pub(crate) fn battle_log_area_from_payload(state: &Value, event: &Event, payload: &Value) -> Option<Map<String, Value>> {
     let area = payload.get("area")?;
     let from = point(area.get("from"))?;
     let to = point(area.get("to"))?;
@@ -419,4 +419,13 @@ fn battle_log_area_from_payload(state: &Value, event: &Event, payload: &Value) -
             .text_if("ability", area.get("save_ability"))
             .build(),
     )
+}
+
+/// `LegendaryActionUsed`: механику несут соседние события (спасброски, урон,
+/// маркеры); здесь — только строка хроники с областью для доски.
+pub fn legendary_action_used(state: &mut Value, event: &Event) {
+    let payload = event.payload.clone();
+    if let Some(entry) = battle_log_area_from_payload(state, event, &payload) {
+        append_battle_log(state, event, entry);
+    }
 }
