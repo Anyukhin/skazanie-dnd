@@ -646,8 +646,10 @@ pub fn party_decision_opened_event(interaction: &Value, actor_id: Option<&Value>
     source.insert("policy".into(), decision_policy.clone());
     source.insert("createdAt".into(), json!(created_at));
     source.insert("expiresAt".into(), integer_value(created_at as f64 + ttl as f64));
-    let normalized = normalize_party_decision(&Value::Object(js_order(source)), Some(&decision_policy))?;
+    // Литерал события JS вычисляет `actor_id` раньше `payload`: при двух
+    // ошибках отказ — об инициаторе.
     let actor = if js::truthy(actor_id) { Value::String(id(actor_id, "Инициатор")?) } else { Value::Null };
+    let normalized = normalize_party_decision(&Value::Object(js_order(source)), Some(&decision_policy))?;
     Ok(draft(vec![
         ("event_type", json!("PartyDecisionOpened")),
         ("actor_id", actor),
