@@ -1246,6 +1246,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-economy"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-items",
+ "sk-narration-base",
+ "sk-social",
+ "sk-society",
+ "thiserror",
+]
+
+[[package]]
 name = "sk-geometry"
 version = "0.1.0"
 dependencies = [
