@@ -8,6 +8,8 @@
 //! | `server/wild-shape.mjs` | [`wild_shape`] |
 //! | `server/combat-actions.mjs` | [`combat_actions`] |
 //! | `server/character-build.mjs` | [`character_build`] |
+//! | `server/scene-hazards.mjs` | [`scene_hazards`] |
+//! | `server/scene-hazard-narration.mjs` | [`scene_hazard_narration`] |
 //!
 //! Этап паритета (`rust/PORTING.md`): на границе модулей — `serde_json::Value`
 //! той же формы и с тем же порядком ключей, что у JS; тексты байт в байт.
@@ -19,4 +21,6 @@ pub mod combat_actions;
 pub mod combat_lab_monsters;
 pub mod character_build;
 pub mod combat_spells;
+pub mod scene_hazard_narration;
+pub mod scene_hazards;
 pub mod wild_shape;
