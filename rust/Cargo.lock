@@ -1125,6 +1125,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 
 [[package]]
+name = "sk-combat-base"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-dice",
+ "sk-rulepack",
+]
+
+[[package]]
 name = "sk-core"
 version = "0.1.0"
 dependencies = [
@@ -1183,6 +1194,15 @@ dependencies = [
  "sk-core",
  "sk-dice",
  "thiserror",
+]
+
+[[package]]
+name = "sk-rulepack"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
 ]
 
 [[package]]

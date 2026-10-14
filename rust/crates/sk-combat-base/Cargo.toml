@@ -1,0 +1,18 @@
+[package]
+name = "sk-combat-base"
+description = "Основа боя «Сказания»: легендарные действия, приёмы чудовищ, режимы реакций, сложность встречи 2014, справочник dnd.su 2014"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
+sk-dice.workspace = true
+
+[dev-dependencies]
+sk-rulepack = { path = "../sk-rulepack" }
+# Эталоны JS печатают числа кратчайшей записью; без `float_roundtrip`
+# serde_json читает длинные дроби с ошибкой в последний бит.
+serde_json = { workspace = true, features = ["float_roundtrip"] }
