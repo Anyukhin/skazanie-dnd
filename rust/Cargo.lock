@@ -1193,6 +1193,8 @@ dependencies = [
  "serde_json",
  "sk-core",
  "sk-dice",
+ "sk-geometry",
+ "sk-society",
 ]
 
 [[package]]
