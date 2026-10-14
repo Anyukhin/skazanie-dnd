@@ -1196,6 +1196,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-ruleset"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+]
+
+[[package]]
 name = "sk-scene-base"
 version = "0.1.0"
 dependencies = [

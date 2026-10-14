@@ -1,0 +1,11 @@
+[package]
+name = "sk-ruleset"
+description = "Редакции правил «Сказания»: профиль ruleset, домашние правила, создание героя (классы, черты, виды, предыстории), развитие класса, взлом замков"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sk-core.workspace = true
