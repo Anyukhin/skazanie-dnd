@@ -108,14 +108,14 @@ pub(crate) fn io_message(error: &std::io::Error, path: &std::path::Path) -> Stri
 /// набор (есть U+0085, нет U+FEFF), поэтому класс выписан явно.
 macro_rules! ws {
     () => {
-        r"[\t\n\x0B\x0C\r    -     　﻿]"
+        r"[\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]"
     };
 }
 
 /// Точка JS без флага `s`: любой символ, кроме концов строк.
 macro_rules! dot {
     () => {
-        r"[^\n\r  ]"
+        r"[^\n\r\x{2028}\x{2029}]"
     };
 }
 
