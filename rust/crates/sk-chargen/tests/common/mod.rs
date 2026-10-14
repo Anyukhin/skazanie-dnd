@@ -9,6 +9,8 @@
 
 use serde_json::Value;
 
+pub mod images;
+
 /// Аргумент или результат `undefined` в эталоне.
 pub const UNDEFINED: &str = "\u{0}undefined";
 
