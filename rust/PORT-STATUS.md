@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 15936 из 142937.
+Строк JS в крейтах, которые уже есть: 22273 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -18,18 +18,19 @@
 | 1 | `sk-society` | перенесён | 2517 | `underworld`, `retention-context`, `quest-consequences`, `campaign-stories`, `law-and-order`, `reputation-policy`, `parley`, `post-commit-coordinator`, `world-ontology` |
 | 1 | `sk-scene-base` | перенесён | 2497 | `scene-requirements`, `scene-map-design`, `detail-props`, `asset-registry`, `environment-catalog-revision`, `equipment-visuals`, `actor-appearance`, `talespire-slab` |
 | 1 | `sk-scenario` | перенесён | 2247 | `campaign-scenario`, `party-exit-intent`, `campaign-controls` |
-| 1 | `sk-combat-base` | в очереди | 1041 | `legendary-actions`, `dndsu-2014-content`, `reaction-preferences`, `combat-lab-encounter-math`, `monster-actions` |
-| 1 | `sk-rulepack` | в очереди | 888 | `rule-pack`, `rule-retriever` |
-| 1 | `sk-infra` | в очереди | 1703 | `roll-registry`, `usage-ledger`, `narration-stream`, `backup-service`, `image-generation`, `asset-preparation` |
+| 1 | `sk-combat-base` | перенесён | 1041 | `legendary-actions`, `dndsu-2014-content`, `reaction-preferences`, `combat-lab-encounter-math`, `monster-actions` |
+| 1 | `sk-rulepack` | перенесён | 888 | `rule-pack`, `rule-retriever` |
+| 1 | `sk-infra` | перенесён | 1703 | `roll-registry`, `usage-ledger`, `narration-stream`, `backup-service`, `image-generation`, `asset-preparation` |
 | 2 | `sk-combat-content` | в очереди | 3485 | `combat-spells`, `combat-lab-monsters`, `scene-hazards`, `scene-hazard-narration`, `wild-shape`, `combat-actions`, `character-build`, `spell-override-audit`, `spell-acceptance-audit` |
-| 2 | `sk-items` | в очереди | 2705 | `item-catalog`, `item-dawn-recharge`, `loot-tables`, `pickpocket` |
+| 2 | `sk-items` | перенесён | 2705 | `item-catalog`, `item-dawn-recharge`, `loot-tables`, `pickpocket` |
 | 2 | `sk-social` | в очереди | 1450 | `npc-social`, `npc-social-check` |
 | 2 | `sk-memory` | в очереди | 2411 | `world-memory`, `party-decision` |
 | 2 | `sk-agents-base` | в очереди | 1060 | `llm-client`, `architect-usage` |
-| 3 | `sk-chargen` | в очереди | 2577 | `starter-kit`, `character-creation-phb`, `character-creation-wealth`, `npc-portraits`, `location-illustrations`, `authored-npc` |
+| 3 | `sk-chargen` | в очереди | 2037 | `starter-kit`, `character-creation-wealth`, `npc-portraits`, `location-illustrations` |
+| 3 | `sk-heroes` | в очереди | 540 | `character-creation-phb`, `authored-npc` |
 | 3 | `sk-economy` | в очереди | 3320 | `merchant-economy`, `item-appraisal`, `item-instances`, `merchant-narration`, `shop-assembler`, `scene-commerce`, `enemy-loadouts`, `npc-equipment` |
-| 3 | `sk-scene-interact` | в очереди | 1323 | `scene-interactions`, `improvised-effects`, `scenario-attention` |
-| 4 | `sk-tactical` | в очереди | 3548 | `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
+| 3 | `sk-attention` | в очереди | 782 | `scenario-attention`, `improvised-effects` |
+| 4 | `sk-tactical` | в очереди | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
 | 5 | `sk-map-core` | в очереди | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
 | 5 | `sk-props` | в очереди | 2369 | `prop-placement`, `scene-dressing` |
 | 6 | `sk-buildings` | в очереди | 2239 | `building-generator` |

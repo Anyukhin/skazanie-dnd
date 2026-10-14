@@ -40,7 +40,7 @@ fn valid_hash(hash: &str) -> bool {
 
 /// Положить карту и вернуть ссылку на неё (`MapStore.put`).
 pub fn put(conn: &Connection, map: &Value) -> StoreResult<Value> {
-    let text = serde_json::to_string(map)?;
+    let text = sk_core::js::stringify(map);
     let hash = sk_core::hash::sha256_hex(&text);
     conn.execute("INSERT OR IGNORE INTO map_blobs (hash, body) VALUES (?1, ?2)", params![hash, text])?;
     // Испорченная запись под этим адресом переписывается верной: адрес задаёт
@@ -68,7 +68,7 @@ pub fn get(conn: &Connection, hash: &str) -> StoreResult<BlobRead> {
     let body: Option<String> = conn.query_row("SELECT body FROM map_blobs WHERE hash = ?1", params![hash], |row| row.get(0)).optional()?;
     let Some(body) = body else { return Ok(BlobRead::Missing) };
     let Ok(parsed) = serde_json::from_str::<Value>(&body) else { return Ok(BlobRead::Missing) };
-    let text = serde_json::to_string(&parsed)?;
+    let text = sk_core::js::stringify(&parsed);
     if sk_core::hash::sha256_hex(&text) != hash {
         return Ok(BlobRead::Corrupt);
     }

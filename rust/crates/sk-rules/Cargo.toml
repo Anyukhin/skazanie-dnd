@@ -12,3 +12,6 @@ sk-core.workspace = true
 sk-dice.workspace = true
 sk-geometry = { path = "../sk-geometry" }
 sk-society = { path = "../sk-society" }
+sk-combat-base = { path = "../sk-combat-base" }
+sk-social = { path = "../sk-social" }
+sk-memory = { path = "../sk-memory" }

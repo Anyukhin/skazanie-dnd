@@ -74,7 +74,7 @@ fn import_maps(conn: &Connection, root: &Path) -> StoreResult<usize> {
         for file in sorted_files(&shard.path()) {
             let Ok(text) = fs::read_to_string(&file) else { continue };
             let Ok(parsed) = serde_json::from_str::<Value>(&text) else { continue };
-            let canonical = serde_json::to_string(&parsed)?;
+            let canonical = sk_core::js::stringify(&parsed);
             let hash = sk_core::hash::sha256_hex(&canonical);
             // Файл под чужим адресом не переносится: адрес задаёт содержимое.
             if file.file_stem().is_some_and(|stem| stem.to_string_lossy() == hash) {

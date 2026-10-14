@@ -336,7 +336,7 @@ fn unique_strings(value: Option<&Value>) -> Value {
 }
 
 fn snapshot_checksum(state: &Value) -> String {
-    sk_core::hash::sha256_hex(serde_json::to_string(&sort_object(state)).unwrap_or_default())
+    sk_core::hash::sha256_hex(sk_core::js::stringify(&sort_object(state)))
 }
 
 fn versioned_state(state: Value, version: i64) -> StoreResult<Value> {

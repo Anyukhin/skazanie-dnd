@@ -8,6 +8,7 @@ mod combat;
 mod conditions;
 mod effects;
 mod labels;
+mod memory;
 mod spells;
 mod turns;
 mod vitals;
@@ -83,6 +84,16 @@ fn handler(event_type: &str) -> Option<Handler> {
         "PublicDieRolled" => effects::public_die_rolled,
         "OpeningStrikeEconomyRestored" => effects::opening_strike_economy_restored,
         "SpellBonusPreferenceChanged" => effects::spell_bonus_preference_changed,
+        "ReactionPreferenceChanged" => effects::reaction_preference_changed,
+        "LegendaryActionUsed" => combat::legendary_action_used,
+        "NpcItemUsed" => combat::npc_item_used,
+        // Память мира и поручения.
+        "WorldEntityUpserted" | "WorldFactRecorded" | "WorldFactRevealed" | "KnowledgeRevealed" | "WorldRelationshipRecorded" | "QuestClockAdvanced" | "QuestAssignmentChanged" | "NarrativeThreadUpserted" | "NarrativeThreadClockAdvanced" | "NpcBeliefRecorded" | "RumorRecorded" | "EpistemicClaimTruthResolved" | "NarrativeSummaryRecorded" => memory::world_memory_event,
+        "QuestUpserted" => memory::quest_upserted,
+        "QuestAccepted" => memory::quest_accepted,
+        "QuestResolved" | "QuestInvalidated" => memory::quest_concluded,
+        // Социальные профили NPC.
+        "NpcSocialProfileUpserted" | "NpcConversationRecorded" | "NpcRelationshipAdjusted" | "NpcRelationshipTierChanged" | "NpcPromiseRecorded" | "NpcPromiseResolved" => effects::npc_social_event,
         // Жизнь кампании.
         "CampaignActivated" | "CampaignResumed" => effects::campaign_resumed,
         "CampaignPaused" => effects::campaign_paused,
