@@ -22,6 +22,7 @@
 //! сборка лавки и снаряжение противника выводятся из сида детерминированно.
 
 pub mod item_appraisal;
+pub mod item_instances;
 pub mod merchant_economy;
 
 mod support;
