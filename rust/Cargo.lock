@@ -1327,6 +1327,7 @@ dependencies = [
  "sk-core",
  "sk-dice",
  "sk-geometry",
+ "sk-memory",
  "sk-social",
  "sk-society",
 ]
