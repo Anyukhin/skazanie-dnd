@@ -309,6 +309,8 @@ mod tests {
         // В корневой сортировке ICU «ё» отличается от «е» только вторично.
         assert_eq!(locale_compare("ель", "ёж"), Ordering::Greater);
         assert_eq!(locale_compare("ель", "ёль"), Ordering::Less);
+        // Латиница раньше кириллицы — как Node в Docker (en-US), а не ru-RU.
+        assert_eq!(locale_compare("apple", "яблоко"), Ordering::Less);
     }
 
     #[test]
