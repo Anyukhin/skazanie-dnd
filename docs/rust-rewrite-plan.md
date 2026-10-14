@@ -344,9 +344,42 @@ GCC из пакетов MSYS2 в `~/.cargo/mingw64-root` (подробно — `
 | 13 | Rules Engine: помощники, проверка и исполнение команд по семействам, редьюсер | `rules-engine.mjs` |
 | 14–20 | проекция, тактика, агенты модели, оркестраторы, HTTP (`axum`) | `viewer-projection`, `npc-turn-scheduler`, `narrator`, `game-orchestrator`, `index.mjs` |
 
-Ход редьюсера: на корпусе из 6852 записей с событиями 2549 совпадают с JS
-целиком; остальные ждут реестров-выводов (закон, пленные, звери, почта —
-волны 1–9) и нормализации входа, которая собирается из всех доменов.
+### Состояние на 2026-10-15 (пауза по просьбе владельца)
+
+Ветка `claude/rust-rewrite` (worktree `Dnd-narrator-live`), не запушена.
+Перенесено ~36,8 тыс. строк JS из 142,9 тыс. (`rust/PORT-STATUS.md`;
+частичные `sk-rules` и `sk-server` не считаются). Весь workspace зелёный:
+`cargo test --workspace`.
+
+- **Слиты крейты:** `sk-core`, `sk-dice`, `sk-store` (журнал и аккаунты на
+  SQLite, импорт старого `storage/`), `sk-server` (каркас axum: вход, сессии,
+  админка, раздача клиента), `sk-ruleset`, `sk-geometry`, `sk-narration-base`,
+  `sk-society`, `sk-scene-base`, `sk-scenario`, `sk-combat-base`,
+  `sk-rulepack`, `sk-infra`, `sk-items`, `sk-social`, `sk-memory`,
+  `sk-agents-base` (клиент RouterAI), `sk-chargen`, `sk-attention`,
+  `sk-economy`, `sk-combat-content`. Каждый — с эталонами прогона JS
+  (десятки тысяч случаев на крейт).
+- **Редьюсер** (`sk-rules/src/reduce`): на корпусе из 6852 записей с
+  событиями **4702 совпадают с JS целиком**; подключены реестры закона и
+  внимания противника, память мира, социальные события NPC, отдых.
+  Расхождения — только реестры-выводы ещё не перенесённых модулей (мир за
+  кадром, звери, почта, пленные, летопись поступков, разговоры) и
+  нормализация входа (`group_initiative`, запас врага, ресурсы врагов).
+- **Остановлены на середине** (работа — коммитами в своих worktree, ветки
+  `rs/*`): `rs/tactical` (`Dnd-rs-tactical`: закоммичен `scene-interactions`,
+  `tactical-map` не начат) и `rs/heroes` (`Dnd-rs-heroes`: незакоммиченный
+  черновик `sk-heroes` — PHB-сборка и авторские NPC).
+- **План Rules Engine** — `rust/RULES-ENGINE-PLAN.md` (задачи Р0–Р11).
+- **Правила для исполнителей** — `rust/PORTING.md` (с уроками волн);
+  эталоны — с `rust/fixtures-env.mjs` первой строкой (локаль en-US).
+
+**Следующие шаги.** Довести `rs/tactical` (критический путь: без
+тактической карты стоят генераторы карт, NPC в мире, встречи, погода,
+сценарный рыцарь) и `rs/heroes`; затем волны 5–11 по `PORT-STATUS.md`,
+после них — Rules Engine по `RULES-ENGINE-PLAN.md`, проекция, оркестраторы,
+маршруты сервера. Приём ветки исполнителя: слияние в `claude/rust-rewrite`,
+конфликт `Cargo.lock` — взять свой и `cargo metadata`, затем тесты крейта и
+сверка корпусом (`cargo run -p sk-corpus -- reducer ../tmp/corpus-v1`).
 
 ## 11. Первые шаги
 
