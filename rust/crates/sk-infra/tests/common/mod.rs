@@ -71,3 +71,15 @@ pub fn node_binary() -> Option<std::path::PathBuf> {
     let path = std::path::Path::new(&local).join("OpenAI/Codex/bin/5b9024f90663758b/node.exe");
     path.exists().then_some(path)
 }
+
+/// Равенство JSON с числами по значению: эталон JS пишет `14285714285714287000`,
+/// а Rust держит то же число как f64 — `serde_json` считает их разными.
+pub fn same_json(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    use serde_json::Value;
+    match (left, right) {
+        (Value::Number(a), Value::Number(b)) => a.as_f64() == b.as_f64(),
+        (Value::Array(a), Value::Array(b)) => a.len() == b.len() && a.iter().zip(b).all(|(x, y)| same_json(x, y)),
+        (Value::Object(a), Value::Object(b)) => a.len() == b.len() && a.iter().all(|(key, x)| b.get(key).is_some_and(|y| same_json(x, y))),
+        _ => left == right,
+    }
+}

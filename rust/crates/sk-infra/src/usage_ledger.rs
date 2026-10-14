@@ -542,6 +542,34 @@ pub trait LlmClient: Send + Sync {
     }
 }
 
+/// Общий клиент: один и тот же клиент модели держат несколько владельцев
+/// (каскад, роли), как одну ссылку на объект в JS.
+impl<T: LlmClient + ?Sized> LlmClient for Arc<T> {
+    fn model(&self) -> Option<String> {
+        (**self).model()
+    }
+
+    fn models(&self) -> Option<Value> {
+        (**self).models()
+    }
+
+    fn max_tokens(&self) -> Option<Value> {
+        (**self).max_tokens()
+    }
+
+    fn complete<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
+        (**self).complete(input, options)
+    }
+
+    fn probe(&self) -> LlmFuture<'_, Result<Value, LlmError>> {
+        (**self).probe()
+    }
+
+    fn health(&self) -> Value {
+        (**self).health()
+    }
+}
+
 fn normalize_options(options: &Value) -> Value {
     if options.is_object() {
         options.clone()
