@@ -10,3 +10,5 @@ serde.workspace = true
 serde_json.workspace = true
 sk-core.workspace = true
 sk-dice.workspace = true
+sk-geometry = { path = "../sk-geometry" }
+sk-society = { path = "../sk-society" }

@@ -485,8 +485,8 @@ pub fn to_fixed(value: f64, digits: usize) -> String {
     let text = String::from_utf8(number).unwrap_or_default();
     let split = text.len() - digits;
     let body = if digits == 0 { text } else { format!("{}.{}", &text[..split], &text[split..]) };
-    let is_zero = body.bytes().all(|byte| byte == b'0' || byte == b'.');
-    if negative && !is_zero {
+    // JS: x < 0 — знак «-» и для округлённого нуля: (-0.0001).toFixed(2) === "-0.00".
+    if negative {
         format!("-{body}")
     } else {
         body
@@ -587,7 +587,8 @@ mod more_tests {
         assert_eq!(to_fixed(1.005, 2), "1.00");
         assert_eq!(to_fixed(1.25, 1), "1.3");
         assert_eq!(to_fixed(-1.5, 0), "-2");
-        assert_eq!(to_fixed(-0.0001, 2), "0.00");
+        assert_eq!(to_fixed(-0.0001, 2), "-0.00");
+        assert_eq!(to_fixed(-0.0, 2), "0.00");
         assert_eq!(to_fixed(0.1, 3), "0.100");
         assert_eq!(to_fixed(99.96, 1), "100.0");
     }

@@ -8,6 +8,7 @@ mod combat;
 mod conditions;
 mod effects;
 mod labels;
+mod spells;
 mod turns;
 mod vitals;
 
@@ -63,6 +64,10 @@ fn handler(event_type: &str) -> Option<Handler> {
         "RestStarted" => turns::rest_started,
         "HitPointDieSpent" | "HitPointDiceRestored" => turns::hit_point_dice_changed,
         "TimeAdvanced" => turns::time_advanced,
+        // Заклинание, облик, призыв.
+        "SpellCast" => spells::spell_cast,
+        "ShapeChanged" => spells::shape_changed,
+        "SummonedCreatureCreated" => spells::summoned_creature_created,
         // Эффекты боя без внешних модулей.
         "SpellAreaCreated" => effects::spell_area_created,
         "SpellAreaTriggered" => effects::spell_area_triggered,
@@ -104,8 +109,7 @@ pub fn apply_event(state: &mut Value, event: &Event) {
         apply(state, event);
     }
     crate::scene_maps::remember_current_scene_map(state);
-    // Реестры-выводы из журнала (`applyWorldDeedEvent`, `applyLawEvent`…)
-    // переносятся отдельными модулями; пока они не тронуты.
+    apply_registries(state, event);
     let next_version = event
         .extra
         .get("state_version_after")
@@ -114,6 +118,16 @@ pub fn apply_event(state: &mut Value, event: &Event) {
         .unwrap_or_else(|| sk_core::game::state_version(state) + 1);
     state["state_version"] = Value::from(next_version);
     synchronize_tactical_turn(state);
+}
+
+/// Реестры-выводы из журнала — в порядке JS: летопись поступков, закон,
+/// таверна, благословения, мир за кадром, почта, пленные, внимание
+/// противника, рыцарь, разговоры, звери, автономия. Закон читает уже готовую
+/// летопись; остальные реестры подключаются по мере переноса их модулей.
+fn apply_registries(state: &mut Value, event: &Event) {
+    let event_json = serde_json::to_value(event).unwrap_or(Value::Null);
+    let law = sk_society::law_and_order::apply_law_event(state.get("law"), &event_json, state);
+    state["law"] = law;
 }
 
 /// `synchronizeTacticalTurn(state)`.

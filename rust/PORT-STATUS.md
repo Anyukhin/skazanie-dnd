@@ -5,19 +5,19 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 2173 из 142937.
+Строк JS в крейтах, которые уже есть: 15936 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
 | 0 | `sk-dice` | перенесён | 116 | `dice-service` |
 | 0 | `sk-store` | перенесён | 2057 | `event-store`, `map-store`, `store` |
 | 0 | `sk-server` | начат: вход, сессии, админка, раздача клиента | 70 | `rate-window` |
-| 1 | `sk-ruleset` | в очереди | 2876 | `ruleset-config`, `rules/core`, `rules/actors`, `campaign-ruleset`, `character-progression`, `character-creation-class-options`, `character-creation-feats`, `character-creation-catalog`, `backgrounds`, `lockpicking` |
-| 1 | `sk-geometry` | в очереди | 1531 | `actor-footprint`, `circular-area-geometry`, `scene-graph`, `world-map` |
-| 1 | `sk-narration-base` | в очереди | 2095 | `deterministic-narration`, `combat-phrases`, `concentration-end-reasons`, `narrator-craft-quality`, `projection-integrity`, `prompt-descriptors`, `model-style-profiles`, `campaign-ai-context`, `campaign-inspiration`, `clarification-registry`, `contracts`, `speech-input` |
-| 1 | `sk-society` | в очереди | 2517 | `underworld`, `retention-context`, `quest-consequences`, `campaign-stories`, `law-and-order`, `reputation-policy`, `parley`, `post-commit-coordinator`, `world-ontology` |
-| 1 | `sk-scene-base` | в очереди | 2497 | `scene-requirements`, `scene-map-design`, `detail-props`, `asset-registry`, `environment-catalog-revision`, `equipment-visuals`, `actor-appearance`, `talespire-slab` |
-| 1 | `sk-scenario` | в очереди | 2247 | `campaign-scenario`, `party-exit-intent`, `campaign-controls` |
+| 1 | `sk-ruleset` | перенесён | 2876 | `ruleset-config`, `rules/core`, `rules/actors`, `campaign-ruleset`, `character-progression`, `character-creation-class-options`, `character-creation-feats`, `character-creation-catalog`, `backgrounds`, `lockpicking` |
+| 1 | `sk-geometry` | перенесён | 1531 | `actor-footprint`, `circular-area-geometry`, `scene-graph`, `world-map` |
+| 1 | `sk-narration-base` | перенесён | 2095 | `deterministic-narration`, `combat-phrases`, `concentration-end-reasons`, `narrator-craft-quality`, `projection-integrity`, `prompt-descriptors`, `model-style-profiles`, `campaign-ai-context`, `campaign-inspiration`, `clarification-registry`, `contracts`, `speech-input` |
+| 1 | `sk-society` | перенесён | 2517 | `underworld`, `retention-context`, `quest-consequences`, `campaign-stories`, `law-and-order`, `reputation-policy`, `parley`, `post-commit-coordinator`, `world-ontology` |
+| 1 | `sk-scene-base` | перенесён | 2497 | `scene-requirements`, `scene-map-design`, `detail-props`, `asset-registry`, `environment-catalog-revision`, `equipment-visuals`, `actor-appearance`, `talespire-slab` |
+| 1 | `sk-scenario` | перенесён | 2247 | `campaign-scenario`, `party-exit-intent`, `campaign-controls` |
 | 1 | `sk-combat-base` | в очереди | 1041 | `legendary-actions`, `dndsu-2014-content`, `reaction-preferences`, `combat-lab-encounter-math`, `monster-actions` |
 | 1 | `sk-rulepack` | в очереди | 888 | `rule-pack`, `rule-retriever` |
 | 1 | `sk-infra` | в очереди | 1703 | `roll-registry`, `usage-ledger`, `narration-stream`, `backup-service`, `image-generation`, `asset-preparation` |
