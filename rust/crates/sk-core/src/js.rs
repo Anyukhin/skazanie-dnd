@@ -180,14 +180,14 @@ pub fn path<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a Value> {
 /// Удалить ключ из объекта, если это объект.
 pub fn delete(value: &mut Value, key: &str) {
     if let Some(map) = value.as_object_mut() {
-        map.remove(key);
+        map.shift_remove(key);
     }
 }
 
 /// `Number.isSafeInteger(value)` для JSON.
 pub fn is_safe_integer(value: Option<&Value>) -> bool {
     match value {
-        Some(Value::Number(number)) => number.as_i64().is_some() || number.as_f64().is_some_and(|f| f.fract() == 0.0 && f.abs() <= 9_007_199_254_740_991.0),
+        Some(Value::Number(number)) => number.as_f64().is_some_and(|f| f.fract() == 0.0 && f.abs() <= 9_007_199_254_740_991.0),
         _ => false,
     }
 }

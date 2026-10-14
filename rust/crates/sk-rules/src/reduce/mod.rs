@@ -148,7 +148,7 @@ pub fn strip_derived(state: &mut Value) {
         for player in players {
             if let Some(map) = player.as_object_mut() {
                 for field in ["combatSpells", "combatActions", "characterSheet", "inventoryLoad"] {
-                    map.remove(field);
+                    map.shift_remove(field);
                 }
             }
         }

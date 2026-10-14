@@ -103,13 +103,13 @@ pub fn turn_started(state: &mut Value, event: &Event) {
     {
         let combat = combat_object(state);
         if round > current_round {
-            combat.remove("round_time_pending");
+            combat.shift_remove("round_time_pending");
         }
         combat.insert("round".into(), Value::from(round));
         combat.insert("active_index".into(), Value::from(safe_int(payload.get("active_index"), current_index)));
         combat.insert("turn_started_at".into(), extra(event, "created_at"));
         combat.insert("turn_started_event_id".into(), extra(event, "event_id"));
-        combat.remove("turn_reaction_extensions");
+        combat.shift_remove("turn_reaction_extensions");
     }
     map_conditions(state, |_, condition| {
         let lapses = duration(condition) == Some("until-source-next-turn") && s(condition.get("source_actor")) == target;
@@ -261,7 +261,7 @@ pub fn turn_ended(state: &mut Value, event: &Event) {
         if actor == deadline_owner.unwrap_or_default() {
             combat.insert("turn_started_at".into(), extra(event, "created_at"));
             combat.insert("turn_started_event_id".into(), extra(event, "event_id"));
-            combat.remove("turn_reaction_extensions");
+            combat.shift_remove("turn_reaction_extensions");
         }
     }
     let (scene_turn, _) = scene_turn_and_round(state);

@@ -40,7 +40,7 @@ pub fn with(economy: &Value, patch: Value) -> Value {
 fn remove_keys(economy: &mut Value, keys: &[&str]) {
     if let Some(map) = economy.as_object_mut() {
         for key in keys {
-            map.remove(*key);
+            map.shift_remove(*key);
         }
     }
 }

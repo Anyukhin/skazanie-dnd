@@ -27,7 +27,7 @@ fn temporary_hp_set(state: &mut Value, target: &str, value: i64) {
 
 fn mechanics_map_remove(state: &mut Value, area: &str, key: &str) {
     if let Some(map) = mechanics_mut(state).get_mut(area).and_then(Value::as_object_mut) {
-        map.remove(key);
+        map.shift_remove(key);
     }
 }
 
@@ -220,7 +220,7 @@ fn set_damage_fields(item: &mut Value, applied: i64, damage_type: Option<&str>, 
         Some(kind) => item["damageType"] = Value::String(kind.to_string()),
         None => {
             if let Some(map) = item.as_object_mut() {
-                map.remove("damageType");
+                map.shift_remove("damageType");
             }
         }
     }
@@ -274,7 +274,7 @@ pub fn hit_point_maximum_increased(state: &mut Value, event: &Event) {
     sync_authored_npc_vital(state, &target, payload.get("hp_after"), payload.get("maximum_hp_after"));
     if safe_int(payload.get("hp_after"), 0) > 0 {
         conditions_mut(state, &target).retain(|condition| condition.get("id").map(|id| s(Some(id))).as_deref() != Some("unconscious"));
-        death_saves_mut(state).remove(&target);
+        death_saves_mut(state).shift_remove(&target);
     }
     let entry = Entry::new()
         .set("type", "max-hp-increase")
@@ -332,7 +332,7 @@ pub fn healing_applied(state: &mut Value, event: &Event) {
     append_battle_log(state, event, entry);
     if safe_int(payload.get("hp_after"), 0) > 0 {
         conditions_mut(state, &target).retain(|condition| condition.get("id").map(|id| s(Some(id))).as_deref() != Some("unconscious"));
-        death_saves_mut(state).remove(&target);
+        death_saves_mut(state).shift_remove(&target);
         if resting_reason(state, &target) == "knockout" {
             mechanics_map_remove(state, "resting", &target);
         }
@@ -350,7 +350,7 @@ pub fn creature_knocked_out(state: &mut Value, event: &Event) {
     let mechanics = mechanics_mut(state);
     let resting = mechanics.entry("resting").or_insert_with(sk_core::js::obj);
     resting[target.as_str()] = json!({ "kind": "short", "reason": "knockout", "recovery_minutes_remaining": minutes });
-    death_saves_mut(state).remove(&target);
+    death_saves_mut(state).shift_remove(&target);
 }
 
 pub fn knockout_recovery_progressed(state: &mut Value, event: &Event) {
@@ -447,7 +447,7 @@ pub fn hero_stabilized(state: &mut Value, event: &Event) {
 
 pub fn hero_died(state: &mut Value, event: &Event) {
     let target = target_of(event);
-    death_saves_mut(state).remove(&target);
+    death_saves_mut(state).shift_remove(&target);
     let ended_effect = sk_core::game::mechanics(state).get("concentration").and_then(|c| c.get(target.as_str())).and_then(|entry| entry.get("effect_id")).cloned();
     super::conditions::clear_concentration_effect(state, &target, ended_effect.as_ref(), crate::reduce::conditions::summon_cleanup(payload(event)));
     mechanics_map_remove(state, "temporary_hp", &target);
@@ -514,7 +514,7 @@ pub fn hero_resurrected_or_replaced(state: &mut Value, event: &Event) {
     }
     mechanics_map_remove(state, "concentration", &target);
     mechanics_map_remove(state, "temporary_hp", &target);
-    death_saves_mut(state).remove(&target);
+    death_saves_mut(state).shift_remove(&target);
     if replaced {
         if let Some(pools) = mechanics_mut(state).get_mut("resources").and_then(|r| r.get_mut(target.as_str())).and_then(Value::as_object_mut) {
             for pool in pools.values_mut() {

@@ -79,7 +79,7 @@ impl Command {
     }
 
     pub fn remove(&mut self, key: &str) {
-        self.0.remove(key);
+        self.0.shift_remove(key);
     }
 
     pub fn strings(&self, key: &str) -> Vec<String> {

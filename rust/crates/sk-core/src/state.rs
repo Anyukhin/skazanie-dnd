@@ -369,7 +369,7 @@ impl ActionEconomy {
     }
 
     pub fn remove(&mut self, key: &str) {
-        self.extra.remove(key);
+        self.extra.shift_remove(key);
     }
 
     /// Версия экономики событий (`action_economy_version`).

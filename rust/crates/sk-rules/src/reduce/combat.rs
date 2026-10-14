@@ -237,7 +237,7 @@ fn haste_action_allows(action_id: &str) -> bool {
 fn remove(value: &mut Value, keys: &[&str]) {
     if let Some(map) = value.as_object_mut() {
         for key in keys {
-            map.remove(*key);
+            map.shift_remove(*key);
         }
     }
 }

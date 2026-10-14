@@ -382,10 +382,10 @@ pub(crate) fn remove_summoned_actor(state: &mut Value, id: &str, cleanup: bool) 
         }
     }
     if let Some(positions) = mechanics_mut(state).get_mut("positions").and_then(Value::as_object_mut) {
-        positions.remove(id);
+        positions.shift_remove(id);
     }
     if let Some(economy) = sk_core::game::combat_mut(state).get_mut("action_economy").and_then(Value::as_object_mut) {
-        economy.remove(id);
+        economy.shift_remove(id);
     }
     if !cleanup {
         return;
@@ -399,13 +399,13 @@ pub(crate) fn remove_summoned_actor(state: &mut Value, id: &str, cleanup: bool) 
                 list.retain(|actor| actor_id(actor) != id);
             }
             if let Some(positions) = stash.get_mut("positions").and_then(Value::as_object_mut) {
-                positions.remove(id);
+                positions.shift_remove(id);
             }
         }
     }
     let mechanics = mechanics_mut(state);
     if let Some(all) = mechanics.get_mut("conditions").and_then(Value::as_object_mut) {
-        all.remove(id);
+        all.shift_remove(id);
         for list in all.values_mut() {
             if let Some(items) = list.as_array_mut() {
                 items.retain(|condition| {
@@ -448,14 +448,14 @@ pub(crate) fn restore_shape(state: &mut Value, target: &str, shape: &Value, exce
     }
     let original = shape.get("original").filter(|value| value.is_object()).cloned().unwrap_or_else(sk_core::js::obj);
     if let Some(shapes) = mechanics_mut(state).get_mut("shapes").and_then(Value::as_object_mut) {
-        shapes.remove(target);
+        shapes.shift_remove(target);
     }
     let contract_two = shape.get("shape_contract_version").and_then(Value::as_f64) == Some(2.0);
     replace_actor(state, target, |current| {
         let attack_profile = current.get("attack_profile").cloned();
         if let Some(map) = current.as_object_mut() {
-            map.remove("footprint");
-            map.remove("attack_profile");
+            map.shift_remove("footprint");
+            map.shift_remove("attack_profile");
             if !contract_two && attack_profile.as_ref().is_some_and(|profile| truthy(Some(profile))) {
                 map.insert("attack_profile".into(), attack_profile.clone().unwrap_or(Value::Null));
             }
@@ -482,7 +482,7 @@ pub(crate) fn clear_concentration_effect(state: &mut Value, target: &str, reques
     let current_matches = !explicit || current.is_none() || current.as_deref() == Some(effect.as_str());
     if current_matches {
         if let Some(concentration) = mechanics_mut(state).get_mut("concentration").and_then(Value::as_object_mut) {
-            concentration.remove(target);
+            concentration.shift_remove(target);
         }
     }
     if effect.is_empty() {
@@ -503,7 +503,7 @@ pub(crate) fn clear_concentration_effect(state: &mut Value, target: &str, reques
             let temporary = safe_int(mechanics_map.get("temporary_hp").and_then(|t| t.get(owner.as_str())), 0);
             if temporary <= safe_int(heroism.get("temporary_hp_amount"), 0).max(0) {
                 if let Some(map) = mechanics_map.get_mut("temporary_hp").and_then(Value::as_object_mut) {
-                    map.remove(&owner);
+                    map.shift_remove(&owner);
                 }
             }
         }
