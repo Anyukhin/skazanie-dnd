@@ -98,19 +98,22 @@ fn classic_catalog() -> &'static Value {
 
 const ABILITY_IDS: [&str; 6] = ["str", "dex", "con", "int", "wis", "cha"];
 
-/// Что бросает модуль: неизвестная редакция (`RulesetSelectionError`) или
-/// неверная авторская предыстория (`TypeError` в JS — без кода).
+/// Что бросает модуль: неизвестная редакция (`RulesetSelectionError`),
+/// неверная авторская предыстория (`TypeError`, который модуль бросает сам, —
+/// без кода) или мусор на входе, на котором JS падал `TypeError` рантайма
+/// (поле `null`, распаковка неитерируемого).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackgroundError {
     Ruleset(RulesetSelectionError),
     Type(String),
+    Runtime(String),
 }
 
 impl BackgroundError {
     pub fn message(&self) -> &str {
         match self {
             Self::Ruleset(error) => &error.message,
-            Self::Type(message) => message,
+            Self::Type(message) | Self::Runtime(message) => message,
         }
     }
 }
@@ -119,7 +122,7 @@ impl fmt::Display for BackgroundError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Ruleset(error) => error.fmt(f),
-            Self::Type(message) => f.write_str(message),
+            Self::Type(message) | Self::Runtime(message) => f.write_str(message),
         }
     }
 }
@@ -134,6 +137,12 @@ impl From<RulesetSelectionError> for BackgroundError {
 
 fn type_error(message: &str) -> BackgroundError {
     BackgroundError::Type(message.into())
+}
+
+/// Явный `null` вместо объекта выбора: JS читает его поле и падает
+/// `TypeError` рантайма — здесь тот же отказ, без паники.
+fn null_choice(field: &str) -> BackgroundError {
+    BackgroundError::Runtime(format!("Cannot read properties of null (reading '{field}')"))
 }
 
 /// `resolveBackgroundCustomization(raw)`: проверенная авторская предыстория
@@ -318,12 +327,16 @@ pub fn background_by_id(id: &str, ruleset_id: &str, customization: Option<&Value
 }
 
 /// `resolveBackgroundAbilityChoice(backgroundId, choice = {}, rulesetId)`:
-/// прибавки характеристик от предыстории (в 2014 их нет).
+/// прибавки характеристик от предыстории (в 2014 их нет). Явный `null`
+/// вместо выбора — `BackgroundError::Runtime`, как падение JS.
 pub fn resolve_background_ability_choice(background_id: &str, choice: Option<&Value>, ruleset_id: &str) -> Result<Value, BackgroundError> {
     let catalog = catalog_for(ruleset_id)?;
     let Some(background) = background_by_id(background_id, ruleset_id, None)? else {
         return Ok(json!({ "ok": false, "reason": "Такой предыстории нет в каталоге" }));
     };
+    if matches!(choice, Some(Value::Null)) {
+        return Err(null_choice("abilities"));
+    }
     let modes = ability_modes_for(catalog);
     let picked: Vec<String> = array(prop(choice, "abilities")).iter().map(|value| text::lower(&string_of(Some(value)))).collect();
     let mode_value = prop(choice, "mode");
@@ -377,9 +390,13 @@ pub fn default_background_ability_choice(background_id: &str, ruleset_id: &str) 
 }
 
 /// `resolveBackgroundChoices(backgroundId, choice = {}, rulesetId)`: выбор
-/// инструментов и языков предыстории.
+/// инструментов и языков предыстории. Явный `null` вместо выбора —
+/// `BackgroundError::Runtime`, как падение JS.
 pub fn resolve_background_choices(background_id: &str, choice: Option<&Value>, ruleset_id: &str) -> Result<Value, BackgroundError> {
     let catalog = catalog_for(ruleset_id)?;
+    if matches!(choice, Some(Value::Null)) {
+        return Err(null_choice("customization"));
+    }
     let Some(background) = background_by_id(background_id, ruleset_id, prop(choice, "customization"))? else {
         return Ok(json!({ "ok": false, "reason": "Такой предыстории нет в каталоге" }));
     };
@@ -439,6 +456,15 @@ pub fn default_background_choices(background_id: &str, ruleset_id: &str) -> Resu
     })))
 }
 
+/// `[...value]` для поля героя (после `?? []`): строка распадается на символы,
+/// неитерируемое — `TypeError` рантайма, как в JS.
+fn spread_checked(value: Option<&Value>) -> Result<Vec<Value>, BackgroundError> {
+    match value {
+        None | Some(Value::Array(_)) | Some(Value::String(_)) => Ok(spread_items(value)),
+        Some(other) => Err(BackgroundError::Runtime(format!("{} is not iterable", string_of(Some(other))))),
+    }
+}
+
 /// `withBackgroundBenefits(actor, rulesetId)`: герой с навыками и
 /// преимуществами своей предыстории; без предыстории — без этих полей.
 pub fn with_background_benefits(actor: Option<&Value>, ruleset_id: &str) -> Result<Value, BackgroundError> {
@@ -454,10 +480,10 @@ pub fn with_background_benefits(actor: Option<&Value>, ruleset_id: &str) -> Resu
         return Ok(Value::Object(rest));
     };
     let species_skills = defined(prop(actor, "speciesSkillProficiencies")).or_else(|| path(actor, &["speciesBenefits", "skill_proficiencies"]));
-    let granted: Vec<String> = spread_items(defined(prop(actor, "classSkillProficiencies")))
+    let granted: Vec<String> = spread_checked(defined(prop(actor, "classSkillProficiencies")))?
         .into_iter()
-        .chain(spread_items(defined(species_skills)))
-        .chain(spread_items(defined(prop(actor, "creationSkillProficiencies"))))
+        .chain(spread_checked(defined(species_skills))?)
+        .chain(spread_checked(defined(prop(actor, "creationSkillProficiencies")))?)
         .chain(spread_items(background.get("skillProficiencies")))
         .map(|id| string_of(Some(&id)).replace('-', "_"))
         .collect();
@@ -465,7 +491,7 @@ pub fn with_background_benefits(actor: Option<&Value>, ruleset_id: &str) -> Resu
     let count = if ruleset_id == DND_2014_RULESET_ID { granted.len() - known.len() } else { 0 };
     // При смене классовых выборов старый повтор может исчезнуть: он больше не
     // даёт дополнительное владение. Сам сохранённый выбор остаётся в документе.
-    let replacements: Vec<Value> = unique_values(spread_items(defined(path(actor, &["backgroundChoices", "replacementSkills"]))))
+    let replacements: Vec<Value> = unique_values(spread_checked(defined(path(actor, &["backgroundChoices", "replacementSkills"])))?)
         .into_iter()
         .filter(|id| !id.as_str().is_some_and(|id| known.iter().any(|known| known == id)))
         .take(count)
