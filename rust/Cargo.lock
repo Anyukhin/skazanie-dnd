@@ -1175,6 +1175,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-items"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-dice",
+ "sk-ruleset",
+]
+
+[[package]]
 name = "sk-narration-base"
 version = "0.1.0"
 dependencies = [
