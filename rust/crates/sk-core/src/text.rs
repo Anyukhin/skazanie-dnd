@@ -173,6 +173,10 @@ pub fn js_regex_source(pattern: &str, flags: &str) -> String {
                     ('s', false) => out.push_str(&format!("[{JS_SPACE_CLASS}]")),
                     ('S', false) => out.push_str(&format!("[^{JS_SPACE_CLASS}]")),
                     ('s', true) => out.push_str(JS_SPACE_CLASS),
+                    // Отрицание внутри класса — вложенный класс Rust: [\s\S] — любой символ.
+                    ('S', true) => out.push_str(&format!("[^{JS_SPACE_CLASS}]")),
+                    ('D', true) => out.push_str("[^0-9]"),
+                    ('W', true) => out.push_str(&format!("[^{ASCII_WORD}]")),
                     ('b', false) => out.push_str(&boundary),
                     ('B', false) => out.push_str(&non_boundary),
                     ('/', _) => out.push('/'),
@@ -300,6 +304,10 @@ mod tests {
         assert!(test(re!(r"^.$", "s"), "\r"));
         assert!(test(re!(r"^[.]$"), "."));
         assert_eq!(trim("\u{85}x\u{FEFF}"), "\u{85}x");
+        assert!(test(re!(r"^[\s\S]$"), "\u{85}"));
+        assert!(test(re!(r"^[\d\D]$"), "ж"));
+        assert!(test(re!(r"^[\W]$"), "ж"));
+        assert!(!test(re!(r"^[\W]$"), "a"));
     }
 
     #[test]
