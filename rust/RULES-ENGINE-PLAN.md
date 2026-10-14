@@ -342,3 +342,18 @@ sk-character, sk-items-life); (б) нормализаторы реестров, 
    паритет ветки требует паритета редьюсера по её ранним событиям. Нормализация
    на каждое событие и квадратичный replay — проектор нужен и в Rust. Тексты
    `eventSummary` и отказов — побайтно.
+
+## 5. Замер: идемпотентность нормализации (2026-10-14)
+
+`normalizeCampaignState(s)` против `s` (без производных полей героя) на 3000
+состояний корпуса `tmp/corpus-v1/states`: **2631 неизменны (88 %)**, 369
+меняются. Первые расхождения: `mechanics.combat.turn_started_at` — 245,
+`worldMap.locations[].summary` — 21, `players[].inventory[].origin` — 17,
+`mechanics.combat.group_initiative` — 16, `inventory[].stack_key` — 13,
+порядок ключей `mechanics.resting.<id>` — 8, `enemies[].loadout` — 3,
+`mechanics.resources.<враг или призыв>` — ~25 по одному, единичные
+`social`, `worldMemory.quests`, `players[].subclass`. Значит, Р4 может сдать
+нормализацию слоем «бой, инвентарь, ресурсы врагов и призывов, карта мира» и
+получить паритет почти всего корпуса; нормализаторы реестров — следом.
+Скрипт замера — `normalize-idempotent.mjs` (импортирует `normalizeCampaignState`
+и сравнивает первое расхождение по пути).
