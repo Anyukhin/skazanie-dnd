@@ -87,6 +87,7 @@
 | `Date.now()`, `toISOString()`, `Date.parse()` | `sk_core::clock::now_ms`, `clock::iso`, `clock::parse_iso` |
 | `new Map()` / `new Set()` (порядок вставки) | `indexmap::IndexMap` / `IndexSet` (`sk_core::indexmap`) |
 | `structuredClone(x)` | `x.clone()` |
+| `JSON.stringify(x)` / `JSON.stringify(x, null, 2)` | `js::stringify` / `js::stringify_pretty` (числа и порядок ключей как в JS; хеши по тексту JSON — только ими, `serde_json::to_string` печатает `100.0` и `1e21`) |
 
 Регулярные выражения: `re!` переводит синтаксис JS — `\b`, `\w`, `\d` в JS
 только ASCII даже с флагом `u`, и макрос это сохраняет; `\p{L}`, lookbehind,

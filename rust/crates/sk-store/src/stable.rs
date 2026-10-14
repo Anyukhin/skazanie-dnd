@@ -25,7 +25,7 @@ pub fn sort_object(value: &Value) -> Value {
 
 /// `stableJson(value)`.
 pub fn stable_json(value: &Value) -> String {
-    serde_json::to_string(&sort_object(value)).unwrap_or_default()
+    sk_core::js::stringify(&sort_object(value))
 }
 
 /// `sha256(value)` хранилища: строка хешируется как есть, остальное — по

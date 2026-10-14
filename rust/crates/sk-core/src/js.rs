@@ -621,3 +621,100 @@ mod more_tests {
         assert_eq!(max_of([]), f64::NEG_INFINITY);
     }
 }
+
+/// Число так, как его пишет `JSON.stringify`: целые без `.0`, большие —
+/// кратчайшей записью, `NaN` и бесконечность — `null`.
+fn stringify_number(number: &serde_json::Number, out: &mut String) {
+    if let Some(int) = number.as_i64() {
+        if int.unsigned_abs() <= 9_007_199_254_740_991 {
+            out.push_str(&int.to_string());
+            return;
+        }
+    }
+    match number.as_f64() {
+        Some(value) if value.is_finite() => out.push_str(&f64_string(value)),
+        _ => out.push_str("null"),
+    }
+}
+
+fn stringify_into(value: &Value, indent: &str, depth: usize, out: &mut String) {
+    let newline = |out: &mut String, level: usize| {
+        if !indent.is_empty() {
+            out.push('\n');
+            for _ in 0..level {
+                out.push_str(indent);
+            }
+        }
+    };
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
+        Value::Number(number) => stringify_number(number, out),
+        Value::String(text) => out.push_str(&serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into())),
+        Value::Array(items) => {
+            if items.is_empty() {
+                out.push_str("[]");
+                return;
+            }
+            out.push('[');
+            for (index, item) in items.iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                newline(out, depth + 1);
+                stringify_into(item, indent, depth + 1, out);
+            }
+            newline(out, depth);
+            out.push(']');
+        }
+        Value::Object(map) => {
+            if map.is_empty() {
+                out.push_str("{}");
+                return;
+            }
+            out.push('{');
+            for (index, (key, item)) in entries(map).into_iter().enumerate() {
+                if index > 0 {
+                    out.push(',');
+                }
+                newline(out, depth + 1);
+                out.push_str(&serde_json::to_string(key).unwrap_or_else(|_| "\"\"".into()));
+                out.push(':');
+                if !indent.is_empty() {
+                    out.push(' ');
+                }
+                stringify_into(item, indent, depth + 1, out);
+            }
+            newline(out, depth);
+            out.push('}');
+        }
+    }
+}
+
+/// `JSON.stringify(value)`: числа и порядок ключей (индексы раньше прочих) —
+/// как в JS. Хеши по JSON-тексту (карты, проекции) считать только им.
+pub fn stringify(value: &Value) -> String {
+    let mut out = String::new();
+    stringify_into(value, "", 0, &mut out);
+    out
+}
+
+/// `JSON.stringify(value, null, indent)` — для файлов, которые пишет JS.
+pub fn stringify_pretty(value: &Value, indent: usize) -> String {
+    let mut out = String::new();
+    stringify_into(value, &" ".repeat(indent.min(10)), 0, &mut out);
+    out
+}
+
+#[cfg(test)]
+mod stringify_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn stringify_matches_js() {
+        let value: Value = serde_json::from_str(r#"{"b":100.0,"2":1e21,"a":[1.5e-7,{"x":"т\"е\nст"}],"1":900719925474099072,"e":{},"f":[]}"#).expect("JSON");
+        assert_eq!(stringify(&value), r#"{"1":900719925474099100,"2":1e+21,"b":100,"a":[1.5e-7,{"x":"т\"е\nст"}],"e":{},"f":[]}"#);
+        assert_eq!(stringify_pretty(&json!({ "a": [1, { "b": null }], "c": {} }), 2), "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ],\n  \"c\": {}\n}");
+    }
+}
