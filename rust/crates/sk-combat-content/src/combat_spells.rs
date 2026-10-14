@@ -1117,11 +1117,6 @@ pub fn is_untargetable_summon(actor: Option<&Value>) -> bool {
     is_party_summon(actor) && js::is_true(prop(actor, "untargetable"))
 }
 
-/// Каталог с правками механики (для аудитов и соседей по крейту).
-pub(crate) fn catalog_spells() -> &'static [Value] {
-    &SPELLS
-}
-
 /// Исходный каталог dnd.su без правок.
 pub(crate) fn catalog_payload() -> &'static Value {
     &PAYLOAD

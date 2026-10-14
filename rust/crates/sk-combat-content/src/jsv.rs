@@ -62,10 +62,6 @@ pub(crate) fn is_num(value: Option<&Value>, expected: f64) -> bool {
     matches!(value, Some(Value::Number(number)) if number.as_f64() == Some(expected))
 }
 
-/// Строка, если значение — строка.
-pub(crate) fn as_str(value: Option<&Value>) -> Option<&str> {
-    value.and_then(Value::as_str)
-}
 
 /// `String(value)` без `?? ''`.
 pub(crate) fn string(value: Option<&Value>) -> String {
@@ -169,10 +165,6 @@ pub(crate) fn spread_into(target: &mut Map<String, Value>, source: Option<&Value
     }
 }
 
-/// Объект JSON из пары списков; для краткой записи литералов.
-pub(crate) fn object(map: Map<String, Value>) -> Value {
-    Value::Object(map)
-}
 
 /// `JSON.stringify(value)` байт в байт.
 pub(crate) fn stringify(value: &Value) -> String {
@@ -210,10 +202,6 @@ pub(crate) fn number_or(value: Option<&Value>, fallback: f64) -> f64 {
     }
 }
 
-/// `Math.trunc(value)`; `NaN` и бесконечность — как есть.
-pub(crate) fn trunc(value: f64) -> f64 {
-    value.trunc()
-}
 
 /// `Number.isSafeInteger(value)` для числа.
 pub(crate) fn is_safe_integer(value: f64) -> bool {
