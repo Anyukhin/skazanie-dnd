@@ -1557,6 +1557,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-attention"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-geometry",
+ "sk-items",
+ "sk-ruleset",
+ "sk-scenario",
+]
+
+[[package]]
 name = "sk-chargen"
 version = "0.1.0"
 dependencies = [
