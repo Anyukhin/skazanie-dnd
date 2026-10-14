@@ -1362,6 +1362,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-social"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-dice",
+ "sk-society",
+]
+
+[[package]]
 name = "sk-society"
 version = "0.1.0"
 dependencies = [
