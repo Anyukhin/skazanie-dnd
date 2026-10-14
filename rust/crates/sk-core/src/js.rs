@@ -295,12 +295,19 @@ pub fn num(value: f64) -> Value {
     if !value.is_finite() {
         return Value::Null;
     }
-    // JSON.stringify печатает целые до 1e21 цифрами: 2^60 — не `1e18`.
-    if value.fract() == 0.0 && value.abs() < 9_223_372_036_854_775_808.0 {
+    if value.fract() == 0.0 && value.abs() <= 9_007_199_254_740_991.0 {
         return Value::from(value as i64);
     }
-    if value.fract() == 0.0 && value > 0.0 && value < 18_446_744_073_709_551_616.0 {
-        return Value::from(value as u64);
+    // Большие целые JSON.stringify печатает кратчайшей записью с нулями
+    // (900719925474099072 → 900719925474099100), а не точными цифрами.
+    if value.fract() == 0.0 && value.abs() < 1e21 {
+        let text = f64_string(value);
+        if let Ok(int) = text.parse::<i64>() {
+            return Value::from(int);
+        }
+        if let Ok(unsigned) = text.parse::<u64>() {
+            return Value::from(unsigned);
+        }
     }
     serde_json::Number::from_f64(value).map(Value::Number).unwrap_or(Value::Null)
 }
@@ -424,6 +431,7 @@ mod tests {
         assert_eq!(f64_string(-0.000001), "-0.000001");
         assert_eq!(f64_string(123456.789), "123456.789");
         assert_eq!(num(2.0), json!(2));
+        assert_eq!(num(900_719_925_474_099_072.0).to_string(), "900719925474099100");
         assert_eq!(round(-2.5), -2.0);
         assert_eq!(round(2.5), 3.0);
         assert_eq!(parse_int(" 42px"), 42.0);
