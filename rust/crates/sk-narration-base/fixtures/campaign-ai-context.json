@@ -1,0 +1,1811 @@
+{
+ "narratorStyles": {
+  "neutral": {
+   "id": "neutral",
+   "label": "Нейтральный",
+   "instruction": "Нейтральный литературный русский: ясно, образно и без нарочитой канцелярской или шутливой интонации."
+  },
+  "formal": {
+   "id": "formal",
+   "label": "Официальный",
+   "instruction": "Сдержанный официальный русский: точные формулировки, серьёзный тон и минимум разговорных оборотов."
+  },
+  "ironic": {
+   "id": "ironic",
+   "label": "Ироничный",
+   "instruction": "Лёгкая доброжелательная ирония без пародии, унижения героев и нарушения подтверждённых фактов."
+  }
+ },
+ "improvModes": {
+  "story": {
+   "id": "story",
+   "label": "Сюжет",
+   "description": "свобода в сценах, но главная линия в приоритете"
+  },
+  "chaos": {
+   "id": "chaos",
+   "label": "Хаос",
+   "description": "можно всё, мир подстраивается под выбор отряда"
+  }
+ },
+ "reasoningLevels": {
+  "auto": {
+   "id": "auto",
+   "label": "Авто",
+   "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+  },
+  "thoughtful": {
+   "id": "thoughtful",
+   "label": "Вдумчивее",
+   "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+  },
+  "deep": {
+   "id": "deep",
+   "label": "Глубже",
+   "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+  }
+ },
+ "defaults": {
+  "improv": "story",
+  "reasoning": "auto"
+ },
+ "generation": {
+  "temperature": 0.4,
+  "frequencyPenalty": 0.35,
+  "presencePenalty": 0.2
+ },
+ "normalize": [
+  {
+   "value": "neutral",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": "FORMAL",
+   "style": "formal",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": " ironic ",
+   "style": "ironic",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": "story",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": "CHAOS",
+   "style": "neutral",
+   "improv": "chaos",
+   "reasoning": "auto"
+  },
+  {
+   "value": " chaos\n",
+   "style": "neutral",
+   "improv": "chaos",
+   "reasoning": "auto"
+  },
+  {
+   "value": "auto",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": "Thoughtful",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "thoughtful"
+  },
+  {
+   "value": "DEEP",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "deep"
+  },
+  {
+   "value": "ultra",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": "",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": null,
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": 7,
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": true,
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": [
+    "deep"
+   ],
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "deep"
+  },
+  {
+   "value": {
+    "id": "deep"
+   },
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": "constructor",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": "__proto__",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  },
+  {
+   "value": "İronic",
+   "style": "neutral",
+   "improv": "story",
+   "reasoning": "auto"
+  }
+ ],
+ "outside": {
+  "settings": null,
+  "model": "",
+  "style": "neutral",
+  "improv": "story",
+  "instruction": "",
+  "parameters": {
+   "temperature": 0.4,
+   "frequencyPenalty": 0.35,
+   "presencePenalty": 0.2
+  },
+  "reasoning": [
+   {
+    "model": "openai/gpt-6-luna",
+    "role": "narrator",
+    "value": null
+   },
+   {
+    "model": "openai/gpt-6-luna",
+    "role": "director",
+    "value": null
+   },
+   {
+    "model": "openai/gpt-6-luna",
+    "role": "npc",
+    "value": null
+   },
+   {
+    "model": "openai/gpt-6-luna",
+    "role": "",
+    "value": null
+   },
+   {
+    "model": "openai/gpt-6-luna",
+    "role": null,
+    "value": null
+   },
+   {
+    "model": "z-ai/glm-5.3-flash",
+    "role": "narrator",
+    "value": null
+   },
+   {
+    "model": "z-ai/glm-5.3-flash",
+    "role": "director",
+    "value": null
+   },
+   {
+    "model": "z-ai/glm-5.3-flash",
+    "role": "npc",
+    "value": null
+   },
+   {
+    "model": "z-ai/glm-5.3-flash",
+    "role": "",
+    "value": null
+   },
+   {
+    "model": "z-ai/glm-5.3-flash",
+    "role": null,
+    "value": null
+   },
+   {
+    "model": "",
+    "role": "narrator",
+    "value": null
+   },
+   {
+    "model": "",
+    "role": "director",
+    "value": null
+   },
+   {
+    "model": "",
+    "role": "npc",
+    "value": null
+   },
+   {
+    "model": "",
+    "role": "",
+    "value": null
+   },
+   {
+    "model": "",
+    "role": null,
+    "value": null
+   },
+   {
+    "model": null,
+    "role": "narrator",
+    "value": null
+   },
+   {
+    "model": null,
+    "role": "director",
+    "value": null
+   },
+   {
+    "model": null,
+    "role": "npc",
+    "value": null
+   },
+   {
+    "model": null,
+    "role": "",
+    "value": null
+   },
+   {
+    "model": null,
+    "role": null,
+    "value": null
+   },
+   {
+    "model": " openai/gpt-6-luna",
+    "role": "narrator",
+    "value": null
+   },
+   {
+    "model": " openai/gpt-6-luna",
+    "role": "director",
+    "value": null
+   },
+   {
+    "model": " openai/gpt-6-luna",
+    "role": "npc",
+    "value": null
+   },
+   {
+    "model": " openai/gpt-6-luna",
+    "role": "",
+    "value": null
+   },
+   {
+    "model": " openai/gpt-6-luna",
+    "role": null,
+    "value": null
+   }
+  ]
+ },
+ "contexts": [
+  {
+   "value": null,
+   "inside": {
+    "settings": null,
+    "model": "",
+    "style": "neutral",
+    "improv": "story",
+    "instruction": "",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": "строка",
+   "inside": {
+    "settings": null,
+    "model": "",
+    "style": "neutral",
+    "improv": "story",
+    "instruction": "",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": [],
+   "inside": {
+    "settings": {
+     "model": "",
+     "narratorStyle": "neutral",
+     "improvMode": "story",
+     "reasoningLevel": "auto"
+    },
+    "model": "",
+    "style": "neutral",
+    "improv": "story",
+    "instruction": "Нейтральный литературный русский: ясно, образно и без нарочитой канцелярской или шутливой интонации.",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": {
+    "model": "openai/gpt-6-luna",
+    "reasoningLevel": "deep"
+   },
+   "inside": {
+    "settings": {
+     "model": "openai/gpt-6-luna",
+     "narratorStyle": "neutral",
+     "improvMode": "story",
+     "reasoningLevel": "deep"
+    },
+    "model": "openai/gpt-6-luna",
+    "style": "neutral",
+    "improv": "story",
+    "instruction": "Нейтральный литературный русский: ясно, образно и без нарочитой канцелярской или шутливой интонации.",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": {
+       "effort": "high"
+      }
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": {
+       "effort": "high"
+      }
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": {
+       "effort": "medium"
+      }
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": {
+    "model": " openai/gpt-6-luna ",
+    "reasoningLevel": "THOUGHTFUL",
+    "narratorStyle": "Formal"
+   },
+   "inside": {
+    "settings": {
+     "model": "openai/gpt-6-luna",
+     "narratorStyle": "formal",
+     "improvMode": "story",
+     "reasoningLevel": "thoughtful"
+    },
+    "model": "openai/gpt-6-luna",
+    "style": "formal",
+    "improv": "story",
+    "instruction": "Сдержанный официальный русский: точные формулировки, серьёзный тон и минимум разговорных оборотов.",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": {
+       "effort": "low"
+      }
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": {
+       "effort": "minimal"
+      }
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": {
+    "model": "openai/gpt-6-luna",
+    "reasoningLevel": "auto",
+    "improvMode": "chaos",
+    "narratorStyle": "ironic"
+   },
+   "inside": {
+    "settings": {
+     "model": "openai/gpt-6-luna",
+     "narratorStyle": "ironic",
+     "improvMode": "chaos",
+     "reasoningLevel": "auto"
+    },
+    "model": "openai/gpt-6-luna",
+    "style": "ironic",
+    "improv": "chaos",
+    "instruction": "Лёгкая доброжелательная ирония без пародии, унижения героев и нарушения подтверждённых фактов.",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": {
+    "model": "",
+    "reasoningLevel": "deep"
+   },
+   "inside": {
+    "settings": {
+     "model": "",
+     "narratorStyle": "neutral",
+     "improvMode": "story",
+     "reasoningLevel": "deep"
+    },
+    "model": "",
+    "style": "neutral",
+    "improv": "story",
+    "instruction": "Нейтральный литературный русский: ясно, образно и без нарочитой канцелярской или шутливой интонации.",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": {
+    "model": "z-ai/glm-5.3-flash",
+    "reasoningLevel": "deep",
+    "improvMode": "мусор",
+    "narratorStyle": 5
+   },
+   "inside": {
+    "settings": {
+     "model": "z-ai/glm-5.3-flash",
+     "narratorStyle": "neutral",
+     "improvMode": "story",
+     "reasoningLevel": "deep"
+    },
+    "model": "z-ai/glm-5.3-flash",
+    "style": "neutral",
+    "improv": "story",
+    "instruction": "Нейтральный литературный русский: ясно, образно и без нарочитой канцелярской или шутливой интонации.",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": {
+    "model": 42,
+    "reasoningLevel": null
+   },
+   "inside": {
+    "settings": {
+     "model": "42",
+     "narratorStyle": "neutral",
+     "improvMode": "story",
+     "reasoningLevel": "auto"
+    },
+    "model": "42",
+    "style": "neutral",
+    "improv": "story",
+    "instruction": "Нейтральный литературный русский: ясно, образно и без нарочитой канцелярской или шутливой интонации.",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  },
+  {
+   "value": {},
+   "inside": {
+    "settings": {
+     "model": "",
+     "narratorStyle": "neutral",
+     "improvMode": "story",
+     "reasoningLevel": "auto"
+    },
+    "model": "",
+    "style": "neutral",
+    "improv": "story",
+    "instruction": "Нейтральный литературный русский: ясно, образно и без нарочитой канцелярской или шутливой интонации.",
+    "parameters": {
+     "temperature": 0.4,
+     "frequencyPenalty": 0.35,
+     "presencePenalty": 0.2
+    },
+    "reasoning": [
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "z-ai/glm-5.3-flash",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": "",
+      "role": null,
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": "",
+      "value": null
+     },
+     {
+      "model": null,
+      "role": null,
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "narrator",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "director",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "npc",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": "",
+      "value": null
+     },
+     {
+      "model": " openai/gpt-6-luna",
+      "role": null,
+      "value": null
+     }
+    ]
+   }
+  }
+ ]
+}

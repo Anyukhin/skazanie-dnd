@@ -1,0 +1,3124 @@
+{
+ "modelOptions": {
+  "openai/gpt-6-luna": {
+   "label": "GPT-6 Luna",
+   "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше"
+  },
+  "openai/gpt-6-luna-pro": {
+   "label": "GPT-6 Luna Pro",
+   "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже"
+  },
+  "z-ai/glm-5.3-flash": {
+   "label": "GLM-5.3 Flash",
+   "description": "живой текст, но часто досочиняет детали и не успевает создать мир"
+  },
+  "google/gemini-2.5-flash-lite": {
+   "label": "Gemini 2.5 Flash Lite",
+   "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра"
+  },
+  "deepseek/deepseek-v4-flash": {
+   "label": "DeepSeek V4 Flash",
+   "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа"
+  },
+  "z-ai/glm-5.2": {
+   "label": "GLM-5.2",
+   "description": "прежняя основная модель; дороже и медленнее новых"
+  },
+  "openai/gpt-4.1-nano": {
+   "label": "GPT-4.1 Nano",
+   "description": "последний резерв: очень быстро, но бедный текст"
+  },
+  "meta/muse-spark-1.3": {
+   "label": "Muse Spark 1.3",
+   "description": "экспериментальная модель для ручного выбора"
+  }
+ },
+ "reasoningProfiles": {
+  "openai/gpt-6-luna": {
+   "thoughtful": {
+    "director": {
+     "effort": "low"
+    },
+    "npc": {
+     "effort": "minimal"
+    }
+   },
+   "deep": {
+    "narrator": {
+     "effort": "high"
+    },
+    "director": {
+     "effort": "high"
+    },
+    "npc": {
+     "effort": "medium"
+    }
+   }
+  }
+ },
+ "recommendedModel": "openai/gpt-6-luna",
+ "selectableExtraModels": [
+  "openai/gpt-6-luna",
+  "openai/gpt-6-luna-pro",
+  "meta/muse-spark-1.3"
+ ],
+ "structuredOutputModels": [
+  "openai/gpt-6-luna",
+  "openai/gpt-6-luna-pro",
+  "openai/gpt-5.6-luna",
+  "openai/gpt-4.1-nano",
+  "google/gemini-2.5-flash-lite"
+ ],
+ "cases": [
+  {
+   "model": "openai/gpt-6-luna",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": {
+    "enabled": false
+   },
+   "supportsJsonSchema": true,
+   "option": {
+    "id": "openai/gpt-6-luna",
+    "label": "GPT-6 Luna",
+    "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+    "reasoningLevels": [
+     "auto",
+     "thoughtful",
+     "deep"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "openai/gpt-6-luna",
+    "label": "GPT-6 Luna",
+    "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+    "reasoningLevels": [
+     "auto",
+     "thoughtful",
+     "deep"
+    ],
+    "recommended": true
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": true
+    },
+    {
+     "level": "deep",
+     "allowed": true
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": {
+      "effort": "low"
+     }
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": {
+      "effort": "minimal"
+     }
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": {
+      "effort": "high"
+     }
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": {
+      "effort": "high"
+     }
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": {
+      "effort": "medium"
+     }
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "openai/gpt-6-luna-pro",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": {
+    "enabled": false
+   },
+   "supportsJsonSchema": true,
+   "option": {
+    "id": "openai/gpt-6-luna-pro",
+    "label": "GPT-6 Luna Pro",
+    "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "openai/gpt-6-luna-pro",
+    "label": "GPT-6 Luna Pro",
+    "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "z-ai/glm-5.3-flash",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база\n\nРЕЖИМ ТОЧНОСТИ GLM ДЛЯ РАССКАЗЧИКА:\n- Обычный исход — ровно 1–2 предложения о видимом результате и его пределах.\n  Не описывай процесс, которым герой получил результат. Для обычной проверки\n  вообще не упоминай героя по имени: подлежащим пусть будет известная деталь.\n- AbilityCheckResolved и success=true подтверждают проверку, а не социальный\n  исход. Принятие довода, новые ответы NPC и изменение отношения требуют\n  отдельного события или соответствующего permitted_npc_reactions.\n- open_promises остаются обещаниями. До подтверждённого исполнения сообщай\n  только, кто и что обещал; ни наличие вещи в сцене, ни её получение не следуют\n  из цели героя. recent_interactions явно называй прошлыми разговорами.\n- Используй не более одного memory_focus и только при прямой связи с текущим\n  результатом. Совпадение двух деталей не доказывает причину или виновника.\n- Пустой permitted_npc_reactions означает отсутствие новых действий NPC.\n  mood и sensory_anchors дают статическую атмосферу, не события.\n- Примеры стиля описывают другие сцены: сохраняй только их ритм, не их события.\n  В каждом предложении оставь лишь слова, для которых есть основание во входе.\n- После неудачи назови предел результата, сохранив неизвестное неизвестным.\n  При бедном brief одна короткая точная фраза лучше выдуманного продолжения."
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": {
+    "effort": "low"
+   },
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "z-ai/glm-5.3-flash",
+    "label": "GLM-5.3 Flash",
+    "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "z-ai/glm-5.3-flash",
+    "label": "GLM-5.3 Flash",
+    "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "google/gemini-2.5-flash-lite",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": null,
+   "supportsJsonSchema": true,
+   "option": {
+    "id": "google/gemini-2.5-flash-lite",
+    "label": "Gemini 2.5 Flash Lite",
+    "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "google/gemini-2.5-flash-lite",
+    "label": "Gemini 2.5 Flash Lite",
+    "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "deepseek/deepseek-v4-flash",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": {
+    "enabled": false
+   },
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "deepseek/deepseek-v4-flash",
+    "label": "DeepSeek V4 Flash",
+    "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "deepseek/deepseek-v4-flash",
+    "label": "DeepSeek V4 Flash",
+    "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": {
+    "enabled": false
+   },
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "z-ai/glm-5.2",
+    "label": "GLM-5.2",
+    "description": "прежняя основная модель; дороже и медленнее новых",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "z-ai/glm-5.2",
+    "label": "GLM-5.2",
+    "description": "прежняя основная модель; дороже и медленнее новых",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "openai/gpt-4.1-nano",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": null,
+   "supportsJsonSchema": true,
+   "option": {
+    "id": "openai/gpt-4.1-nano",
+    "label": "GPT-4.1 Nano",
+    "description": "последний резерв: очень быстро, но бедный текст",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "openai/gpt-4.1-nano",
+    "label": "GPT-4.1 Nano",
+    "description": "последний резерв: очень быстро, но бедный текст",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "meta/muse-spark-1.3",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": {
+    "effort": "low"
+   },
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "meta/muse-spark-1.3",
+    "label": "Muse Spark 1.3",
+    "description": "экспериментальная модель для ручного выбора",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "meta/muse-spark-1.3",
+    "label": "Muse Spark 1.3",
+    "description": "экспериментальная модель для ручного выбора",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "openai/gpt-5.6-luna",
+   "addendum": "\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом.",
+   "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом.",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "npc",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "shared",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "director",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": null,
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    }
+   ],
+   "reasoning": {
+    "enabled": false
+   },
+   "supportsJsonSchema": true,
+   "option": {
+    "id": "openai/gpt-5.6-luna",
+    "label": "openai/gpt-5.6-luna",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "openai/gpt-5.6-luna",
+    "label": "openai/gpt-5.6-luna",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "openai/gpt-5.6-luna-pro",
+   "addendum": "\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом.",
+   "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом.",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "npc",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "shared",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "director",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": "",
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    },
+    {
+     "role": null,
+     "prompt": "база\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ К ФОРМЕ ОТВЕТА (обязательные):\n- Реплики и описания пиши развёрнуто: 2–4 полных предложения, не меньше 220\n  символов. Однострочный ответ — ошибка, даже если факт передан верно.\n- Говорящий обязан звучать как живой человек со своим словарём: используй его\n  speech_profile целиком — темп, лексикон и манеру, а не только вводное слово.\n  Добавь деталь от себя в его характере: присказку, отступление, оценку.\n- Не сводись к голому факту. Факт оберни в наблюдение, воспоминание или\n  отношение персонажа к происходящему.\n- Прежде чем отвечать, найди в переданных данных факты прошлых сцен (обещания,\n  прошлые разговоры, памятные детали) и вплети хотя бы один в текст дословно\n  узнаваемым образом."
+    }
+   ],
+   "reasoning": {
+    "enabled": false
+   },
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "openai/gpt-5.6-luna-pro",
+    "label": "openai/gpt-5.6-luna-pro",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "openai/gpt-5.6-luna-pro",
+    "label": "openai/gpt-5.6-luna-pro",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "z-ai/glm-5.2",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": {
+    "enabled": false
+   },
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "z-ai/glm-5.2",
+    "label": "GLM-5.2",
+    "description": "прежняя основная модель; дороже и медленнее новых",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "z-ai/glm-5.2",
+    "label": "GLM-5.2",
+    "description": "прежняя основная модель; дороже и медленнее новых",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "vendor/unknown-model",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": null,
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "vendor/unknown-model",
+    "label": "vendor/unknown-model",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "vendor/unknown-model",
+    "label": "vendor/unknown-model",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": "",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": null,
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "",
+    "label": "",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "",
+    "label": "",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": null,
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": null,
+   "supportsJsonSchema": false
+  },
+  {
+   "model": "OPENAI/GPT-6-LUNA",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": null,
+   "supportsJsonSchema": false,
+   "option": {
+    "id": "OPENAI/GPT-6-LUNA",
+    "label": "OPENAI/GPT-6-LUNA",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": "OPENAI/GPT-6-LUNA",
+    "label": "OPENAI/GPT-6-LUNA",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  },
+  {
+   "model": " openai/gpt-6-luna",
+   "addendum": "",
+   "prompt": "база",
+   "roles": [
+    {
+     "role": "narrator",
+     "prompt": "база"
+    },
+    {
+     "role": "npc",
+     "prompt": "база"
+    },
+    {
+     "role": "shared",
+     "prompt": "база"
+    },
+    {
+     "role": "director",
+     "prompt": "база"
+    },
+    {
+     "role": "",
+     "prompt": "база"
+    },
+    {
+     "role": null,
+     "prompt": "база"
+    }
+   ],
+   "reasoning": null,
+   "supportsJsonSchema": false,
+   "option": {
+    "id": " openai/gpt-6-luna",
+    "label": " openai/gpt-6-luna",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "optionRecommended": {
+    "id": " openai/gpt-6-luna",
+    "label": " openai/gpt-6-luna",
+    "description": "",
+    "reasoningLevels": [
+     "auto"
+    ],
+    "recommended": false
+   },
+   "levels": [
+    {
+     "level": "auto",
+     "allowed": true
+    },
+    {
+     "level": "thoughtful",
+     "allowed": false
+    },
+    {
+     "level": "deep",
+     "allowed": false
+    },
+    {
+     "level": "high",
+     "allowed": false
+    },
+    {
+     "level": "",
+     "allowed": false
+    },
+    {
+     "level": null,
+     "allowed": false
+    }
+   ],
+   "campaign": [
+    {
+     "level": "auto",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "auto",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "thoughtful",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "deep",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "high",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": "",
+     "role": "",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "narrator",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "director",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "npc",
+     "reasoning": null
+    },
+    {
+     "level": null,
+     "role": "",
+     "reasoning": null
+    }
+   ]
+  }
+ ]
+}
