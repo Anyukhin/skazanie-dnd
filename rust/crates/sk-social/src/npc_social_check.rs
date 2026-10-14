@@ -312,3 +312,27 @@ pub fn assert_npc_social_check_fingerprint(event: &Value, policy: &Value) -> Res
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Нормализатор профиля держит свою копию списка навыков (иначе модули
+    /// замкнулись бы в цикл); ручная СЛ принимает ровно те же навыки.
+    #[test]
+    fn manual_dc_accepts_exactly_the_social_check_skills() {
+        assert_eq!(crate::npc_social::SOCIAL_CHECK_SKILLS, NPC_SOCIAL_CHECK_SKILLS);
+        for skill in NPC_SOCIAL_CHECK_SKILLS {
+            let state = json!({ "social": { "npcs": [{ "id": "marta", "name": "Marta", "social_dcs": { skill: 17 } }] } });
+            let message = match skill {
+                "persuasion" => "убеждаю",
+                "deception" => "обманываю",
+                "intimidation" => "угрожаю",
+                _ => "проницательно смотрю",
+            };
+            let policy = build_npc_social_check_policy(&json!({ "state": state, "npcId": "marta", "heroId": "hero", "message": message })).expect("проверка");
+            assert_eq!(policy["skill"], skill);
+            assert_eq!(policy["difficulty"], 17, "{skill}");
+        }
+    }
+}
