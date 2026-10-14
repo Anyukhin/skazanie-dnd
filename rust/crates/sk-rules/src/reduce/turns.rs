@@ -419,3 +419,55 @@ pub fn time_advanced(state: &mut Value, event: &Event) {
         }
     }
 }
+
+/// `RestCompleted`: ресурсы — по правилам восстановления класса; после
+/// продолжительного отдыха — полные хиты, без временных хитов и временных
+/// состояний; отдых снят.
+pub fn rest_completed(state: &mut Value, event: &Event) {
+    use sk_combat_content::combat_actions::{class_resource_options_for, combat_resource_recovery_for, ONE_ON_SHORT_REST};
+    let target = target_of(event);
+    let payload = event.payload.clone();
+    let long = payload.get("kind").and_then(Value::as_str) == Some("long");
+    let actor = find_actor(state, &target).cloned();
+    let recovery = match &actor {
+        Some(actor) => combat_resource_recovery_for(Some(actor), class_resource_options_for(Some(state))),
+        None => sk_core::js::obj(),
+    };
+    let pools = mechanics(state).get("resources").and_then(|all| all.get(target.as_str())).and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut restored = Map::new();
+    for (resource, pool) in sk_core::js::entries(&pools) {
+        let rule = recovery.get(resource.as_str()).and_then(Value::as_str);
+        let maximum = safe_int(pool.get("max"), 0).max(0);
+        let current = safe_int(pool.get("current"), 0).max(0);
+        let next = if long || resource == "pact_slots" || rule == Some("short_or_long") {
+            maximum
+        } else if rule == Some(ONE_ON_SHORT_REST) {
+            maximum.min(current + 1)
+        } else {
+            current
+        };
+        let mut entry = pool.as_object().cloned().unwrap_or_default();
+        entry.insert("current".into(), Value::from(next));
+        restored.insert(resource.clone(), Value::Object(entry));
+    }
+    sk_core::js::object_mut(&mut state["mechanics"], "resources").insert(target.clone(), Value::Object(restored));
+    if long && actor.is_some() {
+        sk_core::game::replace_actor(state, &target, |current| {
+            current["hp"] = Value::from(sk_core::game::actor_max_hp(current));
+        });
+        sk_core::js::object_mut(&mut state["mechanics"], "temporary_hp").insert(target.clone(), Value::from(0));
+        sk_core::game::conditions_mut(state, &target).retain(|condition| {
+            let duration = sk_core::text::lower(sk_core::text::trim(&s(condition.get("duration"))));
+            duration.is_empty() || matches!(duration.as_str(), "permanent" | "until-removed" | "until-dispelled")
+        });
+        if let Some(saves) = state["mechanics"].get_mut("death").and_then(|death| death.get_mut("saving_throws")).and_then(Value::as_object_mut) {
+            saves.shift_remove(&target);
+        }
+    }
+    if payload.get("reason").and_then(Value::as_str) == Some("knockout") {
+        sk_core::game::conditions_mut(state, &target).retain(|condition| condition.get("id").and_then(Value::as_str) != Some("unconscious"));
+    }
+    if let Some(resting) = state["mechanics"].get_mut("resting").and_then(Value::as_object_mut) {
+        resting.shift_remove(&target);
+    }
+}

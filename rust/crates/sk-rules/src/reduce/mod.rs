@@ -63,6 +63,7 @@ fn handler(event_type: &str) -> Option<Handler> {
         "CombatEnded" => turns::combat_ended,
         "EncounterEnded" => turns::encounter_ended,
         "RestStarted" => turns::rest_started,
+        "RestCompleted" => turns::rest_completed,
         "HitPointDieSpent" | "HitPointDiceRestored" => turns::hit_point_dice_changed,
         "TimeAdvanced" => turns::time_advanced,
         // Заклинание, облик, призыв.
