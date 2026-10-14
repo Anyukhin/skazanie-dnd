@@ -275,8 +275,11 @@ fn questions_raise_attention_once_per_visit_only_in_watched_places() {
     let reasons: Vec<&Value> = third["history"].as_array().expect("история").iter().map(|entry| &entry["reason"]).collect();
     assert_eq!(reasons, [&json!("questions"), &json!("questions")]);
 
-    // Журнал JS той же сцены: тот же счёт.
-    assert_eq!(chain("ATT-Q")["final"]["history"][0]["reason"], json!("questions"));
+    // Журнал JS той же сцены: расспрос, затем бой — и незнакомец пришёл и улетел.
+    let journal = chain("ATT-Q");
+    assert_eq!(journal["final"]["history"][0]["reason"], json!("questions"));
+    assert_eq!(journal["final"]["history"][1]["reason"], json!("fight"));
+    assert_eq!(journal["final"]["stranger"]["stage"], json!("revealed"));
 }
 
 #[test]
@@ -332,12 +335,13 @@ fn a_fight_in_a_watched_settlement_adds_two_and_the_stranger_comes_at_three() {
 fn reveal_narration_reports_every_save_from_the_rolls() {
     let reveal = cases("narration")
         .iter()
-        .find(|case| case["expected"].as_str().is_some_and(|text| text.contains("Ирма: спасбросок Ловкости") && text.contains("Олвин: спасбросок")))
+        .find(|case| case["expected"].as_str().is_some_and(|text| text.contains("Ирма: спасбросок Ловкости") && text.contains("32 урона")))
         .expect("выдох в журнале");
     let text = scenario_stranger_narration(reveal.get("events"), &expand(&reveal["state"]));
     assert!(text.contains("Саргат"));
-    assert!(text.contains("Ирма: спасбросок Ловкости ") && text.contains(" против СЛ 17 — "), "{text}");
-    assert!(text.contains(" урона огнём."), "{text}");
+    // 8к6 = 4×8 = 32; у Ирмы d20 = 2 (+1 Ловкости) — провал, у Олвина 19 — успех и половина.
+    assert!(text.contains("Ирма: спасбросок Ловкости 3 против СЛ 17 — провал, 32 урона огнём."), "{text}");
+    assert!(text.contains("Олвин: спасбросок Ловкости 20 против СЛ 17 — успех, 16 урона огнём."), "{text}");
     assert!(text.contains("Не ищите меня"));
 }
 
