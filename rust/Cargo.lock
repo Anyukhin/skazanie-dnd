@@ -1598,6 +1598,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-combat-content"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-combat-base",
+ "sk-core",
+ "sk-dice",
+ "sk-geometry",
+ "sk-narration-base",
+ "sk-ruleset",
+]
+
+[[package]]
 name = "sk-core"
 version = "0.1.0"
 dependencies = [
