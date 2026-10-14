@@ -1,0 +1,24 @@
+[package]
+name = "sk-chargen"
+description = "Снаряжение и облик нового героя и мира «Сказания»: стартовый набор по классу и предыстории (2014 и 2024), стартовое богатство PHB 2014, портреты NPC и иллюстрации локаций из кеша кампании"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+sk-core.workspace = true
+sk-ruleset = { path = "../sk-ruleset" }
+sk-items = { path = "../sk-items" }
+sk-infra = { path = "../sk-infra" }
+sk-narration-base = { path = "../sk-narration-base" }
+# Та же версия, что у sk-infra: асинхронные файлы кеша картинок и общий
+# ожидающий канал одновременных генераций одного портрета.
+tokio = { version = "1.53.2", features = ["fs", "io-util", "sync"] }
+
+[dev-dependencies]
+sk-dice.workspace = true
+tempfile = "3.27.0"
+tokio = { version = "1.53.2", features = ["macros", "rt", "rt-multi-thread", "time"] }
