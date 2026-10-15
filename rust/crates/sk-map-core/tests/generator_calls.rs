@@ -26,6 +26,8 @@ fn run_call(map: &mut TacticalMap, name: &str, input: &Value) -> Value {
     match name {
         "thinWalls" => attempt(thin_walls(map, &thin_walls_options(&input["options"])).map(|report| report.to_json())),
         "applyRoomFloors" => common::room_floors_call(map, input),
+        "raiseDais" => common::raise_dais_call(map, input),
+        "deepestRoom" => common::deepest_room_call(map),
         other => panic!("в эталоне вызов {other}, а он ещё не перенесён"),
     }
 }

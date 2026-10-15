@@ -126,6 +126,24 @@ pub fn option_text<'a>(options: &'a Value, key: &str, fallback: &'a str) -> &'a 
     }
 }
 
+/// Параметры помоста эталона (`null` — по умолчанию).
+pub fn dais_options(value: &Value) -> sk_map_core::scene_features::DaisOptions {
+    let defaults = sk_map_core::scene_features::DaisOptions::default();
+    let int = |key: &str, fallback: i64| value.get(key).map_or(fallback, |number| number.as_i64().expect("целое в параметрах помоста"));
+    sk_map_core::scene_features::DaisOptions { height: int("height", defaults.height), depth: int("depth", defaults.depth) }
+}
+
+/// `raiseDais(map, zoneId, options)` по записи эталона.
+pub fn raise_dais_call(map: &mut TacticalMap, input: &Value) -> Value {
+    let zone_id = input["zoneId"].as_str().expect("id зоны");
+    attempt(sk_map_core::scene_features::raise_dais(map, zone_id, &dais_options(&input["options"])).map(Value::from))
+}
+
+/// `deepestRoom(map)` в форме эталона.
+pub fn deepest_room_call(map: &TacticalMap) -> Value {
+    json!({ "ok": sk_map_core::scene_features::deepest_room(map).map_or(Value::Null, |room| room.to_json()) })
+}
+
 /// `applyRoomFloors(map, options)` по записи эталона: `input.options` —
 /// параметры без предиката, `input.zones` — ответ предиката по каждой зоне.
 pub fn room_floors_call(map: &mut TacticalMap, input: &Value) -> Value {

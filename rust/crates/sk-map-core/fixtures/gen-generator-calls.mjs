@@ -19,7 +19,7 @@ const { MAP_PREVIEW_PRESETS } = await import('../../../../server/map-quality.mjs
 const { sceneMapRequirementsFor, sceneRequirementsFromText } = await import('../../../../server/scene-requirements.mjs')
 
 /** Какие функции уже перенесены и записываются. */
-const RECORD = new Set(['thinWalls', 'applyRoomFloors'])
+const RECORD = new Set(['thinWalls', 'applyRoomFloors', 'raiseDais', 'deepestRoom'])
 
 const inputs = sceneInputs(MAP_PREVIEW_PRESETS, sceneMapRequirementsFor, sceneRequirementsFromText)
 const recording = startRecording(t, RECORD)
