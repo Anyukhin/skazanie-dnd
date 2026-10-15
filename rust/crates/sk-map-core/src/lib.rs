@@ -9,6 +9,7 @@
 //! | `server/map-quality.mjs` | [`map_quality`] |
 //! | `server/authored-location-maps.mjs` | [`authored_location_maps`] |
 //! | `server/combat-lab-maps.mjs` | [`combat_lab_maps`] |
+//! | `server/dynamic-map.mjs` | [`dynamic_map`] (и форма клетки [`dynamic_map::SceneCell`]) |
 //!
 //! Этап паритета (`rust/PORTING.md`): на границе — типизированная
 //! [`sk_tactical::tactical_map::TacticalMap`] и `serde_json::Value` той же
@@ -16,6 +17,7 @@
 
 pub mod authored_location_maps;
 pub mod combat_lab_maps;
+pub mod dynamic_map;
 pub mod map_quality;
 pub mod room_floors;
 pub mod scene_features;
