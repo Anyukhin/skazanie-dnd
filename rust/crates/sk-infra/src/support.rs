@@ -175,45 +175,12 @@ pub(crate) fn utf16_cmp(left: &str, right: &str) -> Ordering {
     left.encode_utf16().cmp(right.encode_utf16())
 }
 
-fn base64_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'A'..=b'Z' => Some(byte - b'A'),
-        b'a'..=b'z' => Some(byte - b'a' + 26),
-        b'0'..=b'9' => Some(byte - b'0' + 52),
-        b'+' | b'-' => Some(62),
-        b'/' | b'_' => Some(63),
-        _ => None,
-    }
-}
 
 /// `Buffer.from(text, 'base64')`: снисходительный разбор Node — посторонние
 /// символы пропускаются, `=` заканчивает данные, принимается и URL-алфавит,
 /// неполная последняя группа даёт столько байтов, сколько успела набрать.
 pub(crate) fn base64_decode_lenient(text: &str) -> Vec<u8> {
-    let mut out = Vec::with_capacity(text.len() / 4 * 3 + 3);
-    let mut group = [0u8; 4];
-    let mut filled = 0;
-    for byte in text.bytes() {
-        if byte == b'=' {
-            break;
-        }
-        let Some(value) = base64_value(byte) else { continue };
-        group[filled] = value;
-        filled += 1;
-        if filled == 4 {
-            out.push((group[0] << 2) | (group[1] >> 4));
-            out.push((group[1] << 4) | (group[2] >> 2));
-            out.push((group[2] << 6) | group[3]);
-            filled = 0;
-        }
-    }
-    if filled >= 2 {
-        out.push((group[0] << 2) | (group[1] >> 4));
-    }
-    if filled >= 3 {
-        out.push((group[1] << 4) | (group[2] >> 2));
-    }
-    out
+    js::buffer_from_base64(text)
 }
 
 /// Стандартный base64 с выравниванием — как `buffer.toString('base64')`.

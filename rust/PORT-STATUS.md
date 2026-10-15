@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 37751 из 142937.
+Строк JS в крейтах, которые уже есть: 41840 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -30,7 +30,7 @@
 | 3 | `sk-heroes` | перенесён | 540 | `character-creation-phb`, `authored-npc` |
 | 3 | `sk-economy` | перенесён | 3320 | `merchant-economy`, `item-appraisal`, `item-instances`, `merchant-narration`, `shop-assembler`, `scene-commerce`, `enemy-loadouts`, `npc-equipment` |
 | 3 | `sk-attention` | перенесён | 782 | `scenario-attention`, `improvised-effects` |
-| 4 | `sk-tactical` | в очереди | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
+| 4 | `sk-tactical` | перенесён | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
 | 5 | `sk-map-core` | в очереди | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
 | 5 | `sk-props` | в очереди | 2369 | `prop-placement`, `scene-dressing` |
 | 6 | `sk-buildings` | в очереди | 2239 | `building-generator` |
