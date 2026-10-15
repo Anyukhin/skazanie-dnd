@@ -209,10 +209,10 @@ pub fn resolve_species_choices(species_option_id: &str, choices: Option<&Value>,
                 }
             }
             if group.get("kind").is_none() && by_id(id).and_then(|fields| fields.get("kind")).is_none() {
-                entry.remove("kind");
+                entry.shift_remove("kind");
             }
             if group.get("id").is_none() && by_id(id).and_then(|fields| fields.get("group_id")).is_none() {
-                entry.remove("group_id");
+                entry.shift_remove("group_id");
             }
             selected_options.push(Value::Object(entry));
         }

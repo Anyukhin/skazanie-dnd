@@ -311,7 +311,7 @@ pub fn background_by_id(id: &str, ruleset_id: &str, customization: Option<&Value
     let name = selected.get("name").filter(|name| js::truthy(Some(name))).or_else(|| merged.get("name")).cloned();
     match name {
         Some(name) => merged.insert("name".into(), name),
-        None => merged.remove("name"),
+        None => merged.shift_remove("name"),
     };
     merged.insert("skillProficiencies".into(), selected.get("skills").cloned().unwrap_or(Value::Null));
     merged.insert("toolProficiencies".into(), json!([]));
@@ -321,7 +321,7 @@ pub fn background_by_id(id: &str, ruleset_id: &str, customization: Option<&Value
     // `variant?.feature ?? featureBackground?.feature`; `undefined` в JSON не попадает.
     match defined(prop(variant, "feature")).or_else(|| prop(feature_background, "feature")) {
         Some(feature) => merged.insert("feature".into(), feature.clone()),
-        None => merged.remove("feature"),
+        None => merged.shift_remove("feature"),
     };
     Ok(Some(Value::Object(merged)))
 }
@@ -475,8 +475,8 @@ pub fn with_background_benefits(actor: Option<&Value>, ruleset_id: &str) -> Resu
         _ => Map::new(),
     };
     let Some(background) = background else {
-        rest.remove("backgroundSkillProficiencies");
-        rest.remove("backgroundBenefits");
+        rest.shift_remove("backgroundSkillProficiencies");
+        rest.shift_remove("backgroundBenefits");
         return Ok(Value::Object(rest));
     };
     let species_skills = defined(prop(actor, "speciesSkillProficiencies")).or_else(|| path(actor, &["speciesBenefits", "skill_proficiencies"]));
