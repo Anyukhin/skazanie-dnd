@@ -118,7 +118,7 @@ pub struct Resolve<'a> {
 
 /// Выборы реакций из контекста: массив `{ [key]: …, use }` или объект
 /// `key → выбор` (`elementalDamageChoices`, `protectiveReactionChoices`).
-fn reaction_choices(raw: Option<&Value>, key_field: &str) -> IndexMap<String, Value> {
+pub fn reaction_choices(raw: Option<&Value>, key_field: &str) -> IndexMap<String, Value> {
     let mut choices = IndexMap::new();
     match raw {
         Some(Value::Array(entries)) => {

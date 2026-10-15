@@ -144,13 +144,21 @@ pub enum PauseKind {
 }
 
 impl PauseKind {
-    /// `error.name`.
+    /// `error.name`. Наследник `ResistanceAfterRollPause` своего имени не
+    /// ставит и носит имя родителя — как в JS.
     pub fn name(self) -> &'static str {
         match self {
-            PauseKind::ResistanceChoice => "ResistanceChoicePause",
-            PauseKind::ResistanceAfterRoll => "ResistanceAfterRollPause",
+            PauseKind::ResistanceChoice | PauseKind::ResistanceAfterRoll => "ResistanceChoicePause",
             PauseKind::ElementalDamageReaction => "ElementalDamageReactionPause",
             PauseKind::ProtectiveReaction => "ProtectiveReactionPause",
+        }
+    }
+
+    /// Имя класса JS (`error.constructor.name`).
+    pub fn class_name(self) -> &'static str {
+        match self {
+            PauseKind::ResistanceAfterRoll => "ResistanceAfterRollPause",
+            other => other.name(),
         }
     }
 
