@@ -1845,6 +1845,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-tactical"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-combat-content",
+ "sk-core",
+ "sk-geometry",
+ "sk-items",
+ "sk-scene-base",
+ "sk-store",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
