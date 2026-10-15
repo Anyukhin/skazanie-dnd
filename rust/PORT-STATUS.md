@@ -31,10 +31,10 @@
 | 3 | `sk-economy` | перенесён | 3320 | `merchant-economy`, `item-appraisal`, `item-instances`, `merchant-narration`, `shop-assembler`, `scene-commerce`, `enemy-loadouts`, `npc-equipment` |
 | 3 | `sk-attention` | перенесён | 782 | `scenario-attention`, `improvised-effects` |
 | 4 | `sk-tactical` | перенесён | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
-| 5 | `sk-map-core` | в очереди | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
+| 5 | `sk-map-core` | начат: тонкие стены и полы комнат (thin-walls, room-floors); остальное — ветка rs/map-core | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
 | 5 | `sk-props` | в очереди | 2369 | `prop-placement`, `scene-dressing` |
 | 6 | `sk-buildings` | в очереди | 2239 | `building-generator` |
-| 6 | `sk-settlements` | в очереди | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
+| 6 | `sk-settlements` | начат: раскладка графа и генератор поселения; scene-program-layout ждёт map-quality и prop-placement | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
 | 6 | `sk-encounters` | в очереди | 1935 | `encounter-assembler`, `agent-context` |
 | 6 | `sk-npc-world` | в очереди | 3446 | `npc-positioning`, `tavern-life`, `blessings`, `beast-taming` |
 | 7 | `sk-world-life` | в очереди | 2777 | `captives`, `courier-letters`, `world-offices` |

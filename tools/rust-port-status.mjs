@@ -65,6 +65,8 @@ const PLAN = [
 const PARTIAL = {
   'sk-rules': 'каркас Р0 (точки входа, ядро, normalizeCommand, кости, паузы), редьюсер: живучесть, состояния, атака, ход и раунд',
   'sk-server': 'вход, сессии, админка, раздача клиента',
+  'sk-map-core': 'тонкие стены и полы комнат (thin-walls, room-floors); остальное — ветка rs/map-core',
+  'sk-settlements': 'раскладка графа и генератор поселения; scene-program-layout ждёт map-quality и prop-placement',
   'sk-character': 'решения по поручениям (quest-decisions)',
 }
 
