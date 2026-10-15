@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 46591 из 142937.
+Строк JS в крейтах, которые уже есть: 49388 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -34,7 +34,7 @@
 | 5 | `sk-map-core` | перенесён | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
 | 5 | `sk-props` | перенесён | 2369 | `prop-placement`, `scene-dressing` |
 | 6 | `sk-buildings` | в очереди | 2239 | `building-generator` |
-| 6 | `sk-settlements` | начат: раскладка графа и генератор поселения; scene-program-layout — в работе | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
+| 6 | `sk-settlements` | перенесён | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
 | 6 | `sk-encounters` | начат: сборщик встреч; agent-context — в работе | 1935 | `encounter-assembler`, `agent-context` |
 | 6 | `sk-npc-world` | в очереди | 3446 | `npc-positioning`, `tavern-life`, `blessings`, `beast-taming` |
 | 7 | `sk-world-life` | в очереди | 2777 | `captives`, `courier-letters`, `world-offices` |
@@ -44,7 +44,7 @@
 | 8 | `sk-world-time` | в очереди | 3775 | `level-generator`, `weather`, `world-deeds`, `world-template-catalog` |
 | 9 | `sk-world-story` | в очереди | 3376 | `autonomous-campaign`, `offscreen-world`, `scenario-knight`, `scene-canon`, `talespire-import` |
 | 9 | `sk-narration` | в очереди | 1488 | `combat-narration`, `scene-narration`, `encounter-narration`, `scene-summary` |
-| 10 | `sk-story` | в очереди | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
+| 10 | `sk-story` | начат: библиотека готовых построек (map-library) | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
 | 11 | `sk-director` | в очереди | 3684 | `adventure-director`, `campaign-lifecycle`, `scene-memory`, `director-scene-transition`, `loot-containers` |
 | 13 | `sk-rules` | начат: каркас Р0 (точки входа, ядро, normalizeCommand, кости, паузы), редьюсер: живучесть, состояния, атака, ход и раунд | 28261 | `rules-engine`, `rules/tactical-geometry` |
 | 14 | `sk-tactics` | в очереди | 3373 | `adjudicator`, `combat-forecast-view`, `party-tactics`, `security`, `cutover-audit`, `combat-lab-setup`, `combat-lab` |
