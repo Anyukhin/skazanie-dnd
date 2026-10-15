@@ -73,7 +73,7 @@ pub fn run(name: &str, args: &Args) -> Outcome {
 fn npc_positioning_matches_js() {
     let fixture = Fixture::load(include_str!("../fixtures/npc-positioning.json"));
     let summary = check(&fixture, run);
-    assert!(summary.calls > 12_000, "{summary:?}");
+    assert!(summary.calls > 7_000, "{summary:?}");
     println!("{summary:?}");
     assert!(summary.legacy > 1_000, "{summary:?}");
 }

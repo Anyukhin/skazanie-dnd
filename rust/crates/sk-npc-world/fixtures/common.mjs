@@ -17,8 +17,15 @@ export const FUNCTION = '\u0000function'
 const RESULT_LIMIT = 1_000
 const COMPACT_KEYS = ['map', 'profiles', 'inventories', 'placements', 'npcs', 'mechanics']
 const COMPACT_MIN = 400
+const LARGE_ARG = 160
 
 export const PROTOTYPE_KEYS = Object.getOwnPropertyNames(Object.prototype)
+
+/** `obj[key] = value` собственным полем — и для ключа `__proto__` (как у `JSON.parse`). */
+export function setOwn(object, key, value) {
+  Object.defineProperty(object, key, { value, enumerable: true, writable: true, configurable: true })
+  return object
+}
 
 const sha256 = (text) => createHash('sha256').update(text).digest('hex')
 const jsonReplacer = (_key, value) => (value instanceof Set ? [...value] : value)
@@ -114,12 +121,17 @@ export function fixtureWriter(module, retentionNow = () => null) {
    */
   function call(name, fn, args, { stateArgs = [], cap = Infinity, retention = retentionNow(), limit } = {}) {
     const plain = args.map(viaJson)
-    const recorded = plain.map((arg, index) => (stateArgs.includes(index) && arg && typeof arg === 'object' ? stateRef(arg) : (arg === undefined ? UNDEFINED : compact(arg))))
-    const key = sha256(JSON.stringify([name, recorded, retention]))
+    // Повтор и предел проверяются до записи в таблицы: отброшенный случай не
+    // оставляет в эталоне ни состояния, ни поддерева.
+    const key = sha256(JSON.stringify([name, plain.map((arg) => (arg === undefined ? UNDEFINED : arg)), retention]))
     if (seen.has(key)) return false
     if ((perFn.get(name) ?? 0) >= cap) return false
     seen.add(key)
     perFn.set(name, (perFn.get(name) ?? 0) + 1)
+    // Состояния и всякий крупный объектный аргумент — ссылкой в таблицу: один
+    // и тот же зверь или срез идёт во многие вызовы.
+    const large = (arg) => arg && typeof arg === 'object' && JSON.stringify(arg).length >= LARGE_ARG
+    const recorded = plain.map((arg, index) => ((stateArgs.includes(index) && arg && typeof arg === 'object') || large(arg) ? stateRef(arg) : (arg === undefined ? UNDEFINED : compact(arg))))
     const entry = { fn: name, args: recorded }
     if (retention && retention !== 'current') entry.retention = retention
     try {

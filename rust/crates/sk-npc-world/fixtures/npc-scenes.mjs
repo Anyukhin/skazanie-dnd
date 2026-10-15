@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { chooser, PROTOTYPE_KEYS } from './common.mjs'
+import { chooser, PROTOTYPE_KEYS, setOwn } from './common.mjs'
 
 export const DEFAULT_CORPUS = 'C:/Users/anton/PycharmProjects/Dnd-narrator-live/tmp/corpus-v1'
 
@@ -31,6 +31,15 @@ export function corpusState(dir, hash) {
   } catch {
     return null
   }
+}
+
+/**
+ * Команда записи корпуса с постоянным `command_id`: без него движок берёт
+ * случайный UUID, и события (а с ними эталон) менялись бы от прогона к прогону.
+ */
+export function corpusCommand(entry) {
+  const command = entry.command && typeof entry.command === 'object' ? entry.command : {}
+  return { ...command, command_id: command.command_id ?? `corpus:${entry.file}:${entry.state.slice(0, 12)}` }
 }
 
 /** Кости по записи корпуса: те же результаты в том же порядке. */
@@ -200,28 +209,29 @@ export function randomNpcWorld(random, { npcs, locationId, width, height, author
   if (chance(0.15)) world.placements.push(pick([{ npc_id: '', location_id: locationId, x: 1, y: 1 }, { npc_id: 'ghost', location_id: '', x: 1, y: 1 }, 'junk', 5, []]))
   for (const id of ids) {
     if (chance(0.45)) {
-      world.vitals[id] = {
+      setOwn(world.vitals, id, {
         hp: pick([0, 1, 2, 3, 4, 7, 11, 18, 600, -5, '5', null, undefined]),
         max_hp: pick([4, 7, 11, 18, 0, 9999, 'x', undefined]),
         alive: pick([true, false, undefined, undefined, 'yes']),
-      }
+      })
     }
-    if (chance(0.35)) world.stances[id] = { stance: pick(STANCE_VALUES), reason: pick(['harmed', '', undefined]), source_event_id: pick(['e1', undefined]), propagation_depth: pick([0, 1, 2, -1, '1']) }
+    if (chance(0.35)) setOwn(world.stances, id, { stance: pick(STANCE_VALUES), reason: pick(['harmed', '', undefined]), source_event_id: pick(['e1', undefined]), propagation_depth: pick([0, 1, 2, -1, '1']) })
     if (chance(0.12)) {
-      world.inventories[id] = Array.from({ length: int(1, 3) }, (_, index) => ({
+      const items = Array.from({ length: int(1, 3) }, (_, index) => ({
         id: `item-${id}-${index % 2}`,
         name: pick(['Слеза', 'Ключ', 'Монета', 'Кинжал']),
         type: pick(['other', 'weapon', 'treasure']),
         quantity: pick([1, 2, 5, '3', 0]),
         ...(chance(0.3) ? { item_instance_id: `inst-${id}-${index}` } : {}),
       }))
-      if (chance(0.2)) world.inventories[id].push(null, 'junk')
+      if (chance(0.2)) items.push(null, 'junk')
+      setOwn(world.inventories, id, items)
     }
   }
-  for (const [id, mechanics] of authored) if (chance(0.8)) world.profiles[id] = mechanics
-  if (chance(0.3) && ids.length) world.profiles[pick(ids)] = chance(0.6) ? mechanicsProfile('generic', { hp: pick([4, 9, 30]), size: pick(['medium', 'large', 'huge']), status: pick(['partial', 'ruling-only', 'verified']) }) : pick([{}, { hp: 'x' }, 'junk'])
-  if (chance(0.1)) world.vitals[pick(['constructor', '__proto__', 'toString'])] = { hp: 2, max_hp: 4 }
-  if (chance(0.08)) world.stances.constructor = { stance: 'hostile' }
+  for (const [id, mechanics] of authored) if (chance(0.8)) setOwn(world.profiles, id, mechanics)
+  if (chance(0.3) && ids.length) setOwn(world.profiles, pick(ids), chance(0.6) ? mechanicsProfile('generic', { hp: pick([4, 9, 30]), size: pick(['medium', 'large', 'huge']), status: pick(['partial', 'ruling-only', 'verified']) }) : pick([{}, { hp: 'x' }, 'junk']))
+  if (chance(0.1)) setOwn(world.vitals, pick(['constructor', '__proto__', 'toString']), { hp: 2, max_hp: 4 })
+  if (chance(0.08)) setOwn(world.stances, pick(['constructor', '__proto__']), { stance: 'hostile' })
   if (chance(0.05)) world.vitals = pick([[{ hp: 1 }], 'ab', 5])
   if (chance(0.04)) world.placements = 'junk'
   return world
