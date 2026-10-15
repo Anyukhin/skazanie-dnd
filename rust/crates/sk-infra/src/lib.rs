@@ -17,6 +17,7 @@
 pub mod asset_preparation;
 pub mod backup_service;
 pub mod image_generation;
+pub mod local_image;
 pub mod narration_stream;
 pub mod roll_registry;
 pub mod usage_ledger;

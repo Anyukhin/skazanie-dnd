@@ -91,6 +91,13 @@ pub type ImageFuture<'a> = Pin<Box<dyn Future<Output = Result<ImageHttpResponse,
 /// HTTP-транспорт генератора (`fetchImpl`).
 pub trait ImageHttpTransport: Send + Sync {
     fn post(&self, request: ImageHttpRequest) -> ImageFuture<'_>;
+
+    /// `GET` (проверка состояния локального сервера картинок). Транспорт без
+    /// него отвечает сбоем сети — состояние читается как `unreachable`.
+    fn get(&self, request: ImageHttpRequest) -> ImageFuture<'_> {
+        let _ = request;
+        Box::pin(async { Err(ImageTransportError { name: "TypeError".into(), message: "GET не поддержан транспортом".into() }) })
+    }
 }
 
 /// Ошибка генератора; тексты — как в JS.
