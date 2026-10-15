@@ -647,13 +647,14 @@ pub(super) fn actor_moved(state: &mut Value, event: &Event) -> Reduced {
     let payload = event.payload.clone();
     let to = payload.get("to").cloned();
     {
+        let key = super::social::target_key(event);
         let positions = js::object_mut(mechanics_value(state), "positions");
         match &to {
             Some(to) => {
-                positions.insert(target.clone(), to.clone());
+                positions.insert(key, to.clone());
             }
             None => {
-                positions.shift_remove(&target);
+                positions.shift_remove(&key);
             }
         }
     }
@@ -701,7 +702,7 @@ pub(super) fn actor_moved(state: &mut Value, event: &Event) -> Reduced {
         .set("sceneTurn", scene_turn)
         .set("round", round)
         .set("type", "move")
-        .opt("actorId", event.actor_id.clone())
+        .set("actorId", super::social::actor_value(event))
         .set("actorKind", kind)
         .opt("from", payload.get("from").cloned())
         .opt("to", to)
@@ -974,7 +975,7 @@ pub(super) fn scene_object_effect_applied(state: &mut Value, event: &Event) -> R
     touch_interaction(state, event, |current| {
         current.insert("used".into(), json!(true));
     });
-    let target = target_of(event);
+    let target = super::social::target_key(event);
     let temporary = js::object_mut(mechanics_value(state), "temporary_hp");
     let before = safe_int(temporary.get(&target), 0).max(0);
     let after = safe_int(event.payload.get("temporary_hp_after"), 0).max(0);

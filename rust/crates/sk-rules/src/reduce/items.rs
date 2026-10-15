@@ -237,7 +237,7 @@ pub(super) fn equipment_changed(state: &mut Value, event: &Event) -> Reduced {
         .set("sceneTurn", scene_turn)
         .set("round", round)
         .set("type", "equipment")
-        .opt("actorId", event.actor_id.clone())
+        .set("actorId", super::social::actor_value(event))
         .set("actorKind", "player")
         .opt("itemId", payload.get("item_id").cloned())
         .opt("itemName", payload.get("item_name").cloned())

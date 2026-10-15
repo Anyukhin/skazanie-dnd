@@ -28,6 +28,26 @@ pub(super) fn event_value(event: &Event) -> Value {
     serde_json::to_value(event).unwrap_or(Value::Null)
 }
 
+/// `event.actor_id` как значение. Событие без действующего лица несёт в
+/// журнале `null` (`eventFrom` берёт `command.actor_id`, а `normalizeCommand`
+/// кладёт туда `null`), поэтому `None` — `null`, а не `undefined`.
+pub(super) fn actor_value(event: &Event) -> Value {
+    event.actor_id.clone().map_or(Value::Null, Value::String)
+}
+
+/// `targets[0] ?? event.actor_id` как значение (`None` — `null`).
+pub(super) fn target_value(event: &Event) -> Value {
+    match crate::core::unique_string_list(&event.target_ids).into_iter().next() {
+        Some(target) => Value::String(target),
+        None => actor_value(event),
+    }
+}
+
+/// Ключ объекта по цели (`obj[target]`): `null` печатается как `"null"`.
+pub(super) fn target_key(event: &Event) -> String {
+    js::string(Some(&target_value(event)))
+}
+
 /// `String(payload.hero_id ?? event.actor_id ?? '')`.
 pub(super) fn hero_or_actor(event: &Event) -> String {
     match event.payload.get("hero_id").filter(|value| !value.is_null()) {
@@ -121,7 +141,7 @@ fn text_if(entry: Entry, key: &str, value: Option<&Value>) -> Entry {
 /// `actorId: event.actor_id, actorKind: combatActorKind(state, event.actor_id)`.
 fn actor_fields(state: &Value, entry: Entry, event: &Event) -> Entry {
     let kind = combat_actor_kind(state, event.actor_id.as_deref().unwrap_or_default());
-    entry.opt("actorId", event.actor_id.clone()).set("actorKind", kind)
+    entry.set("actorId", actor_value(event)).set("actorKind", kind)
 }
 
 /// Раунд по `safeInteger(state.mechanics.combat.round, 0)`.
@@ -271,7 +291,7 @@ pub(super) fn npc_bribe_offered(state: &mut Value, event: &Event) -> Reduced {
     refresh_player_derived_state(state, std::slice::from_ref(&target));
     let entry = Entry::new()
         .set("type", "bribe")
-        .set("actorId", target)
+        .set("actorId", target_value(event))
         .opt("npcId", payload.get("npc_id").cloned())
         .set("amountCp", safe_int(payload.get("amount_cp"), 0))
         .set("insulted", is_true(payload.get("insulted")))
@@ -300,7 +320,7 @@ pub(super) fn npc_pocket_picked(state: &mut Value, event: &Event) -> Reduced {
     let item_name = payload.get("item").and_then(|item| item.get("name")).filter(|value| !value.is_null()).cloned().unwrap_or(Value::Null);
     let entry = Entry::new()
         .set("type", "pickpocket")
-        .set("actorId", target)
+        .set("actorId", target_value(event))
         .opt("npcId", payload.get("npc_id").cloned())
         .set("amountCp", safe_int(payload.get("purse_cp"), 0))
         .set("itemName", item_name)

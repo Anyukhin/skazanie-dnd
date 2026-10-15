@@ -23,7 +23,7 @@ if (!corpus || !output) throw new Error('Укажите каталог корп�
 const limit = Number(limitText ?? 60)
 const E = await loadOpenCopy()
 
-const TYPES = new Set([
+const ALL_TYPES = [
   'CampaignStoryCompleted', 'CampaignArcChainSet', 'CampaignArcCompleted',
   'PartyDecisionOpened', 'PartyVoteCast', 'PartyDecisionAbstained', 'PartyDecisionResolved', 'PartyDecisionExpired', 'PartyDecisionConsumed',
   'SceneAdvanced', 'LocationMapImported', 'MapLevelChanged', 'EncounterCreated', 'CombatStarted', 'ActorMoved', 'AreaRevealed',
@@ -35,8 +35,9 @@ const TYPES = new Set([
   'TruceEstablished', 'TruceBroken', 'GuardEncounterResolved', 'NpcBlessingGranted', 'CourierLetterSent', 'TavernDiceRoundOpened',
   'TavernDiceRoundCancelled', 'TavernDiceRoundResolved', 'TavernDrinkOrdered', 'ParleySettled', 'NpcBribeOffered', 'NpcPocketPicked',
   'CharacterAbilitiesRolled', 'CharacterWealthRolled', 'ExperienceAwarded', 'MilestoneAwarded',
-  ...(process.env.SK_R4A_EXTRA_TYPES ?? '').split(',').filter(Boolean),
-])
+]
+// `SK_R4A_TYPES=A,B` — снять только эти типы (например, с большим пределом).
+const TYPES = new Set(process.env.SK_R4A_TYPES ? process.env.SK_R4A_TYPES.split(',').filter(Boolean) : ALL_TYPES)
 const DERIVED = ['combatSpells', 'combatActions', 'characterSheet', 'inventoryLoad']
 const strip = (state) => {
   const copy = JSON.parse(JSON.stringify(state))
