@@ -94,7 +94,7 @@ const labels = new Set()
 function addCase(label, fn, options, extra = {}) {
   if (labels.has(label)) throw new Error(`повтор метки ${label}`)
   labels.add(label)
-  const input = plain(options) ?? {}
+  const input = options === null ? null : (plain(options) ?? {})
   let result
   try {
     const built = FNS[fn](input)
@@ -173,6 +173,61 @@ addCase('edge/design-string', 'build', { seed: 'design-string', design: 'manor' 
 addCase('edge/design-array', 'build', { seed: 'design-array', design: ['manor'] })
 addCase('edge/levels-object', 'build', { seed: 'levels-object', levels: { length: 0 } })
 addCase('edge/levels-string', 'build', { seed: 'levels-string', levels: '' })
+// Вход не объектом: `null` — TypeError чтения поля, прочее — как пустой объект.
+for (const fn of Object.keys(FNS)) for (const [name, options] of [['null', null], ['number', 5], ['string', 'abc'], ['array', []]]) addCase(`edge/options-${name}/${fn}`, fn, options)
+
+// Редкие ветки, найденные перебором входов: угол среза Г-образного корпуса по
+// сиду, запасной раскрой креста и круга, обрывок комнаты в пять клеток,
+// мебель, отрезающая пол, двор усадьбы.
+const SEARCHED = {
+  'corner-seed-L': [
+    { seed: 't0-17', width: 16, height: 59, design: { building_use: 'dwelling', scheme: 'long-hall', topology: 'river' } },
+    { seed: 't0-120', width: 44, height: 16, design: { building_use: 'dwelling', scheme: 'courtyard', topology: 'river' } },
+    { seed: 't0-129', width: 34, height: 39, design: { building_use: 'barracks' } },
+    { seed: 't1-138', width: 43, height: 30, design: { building_use: 'barracks', scheme: 'long-hall' } },
+    { seed: 't1-173', width: 16, height: 41, design: { building_use: 'manor', shape: 'L', scheme: 'long-hall' } },
+    { seed: 't1-174', width: 56, height: 43, design: { building_use: 'barracks', shape: 'L', scheme: 'long-hall' } },
+    { seed: 't2-79', width: 36, height: 48, design: { building_use: 'barracks', shape: 'L' } },
+    { seed: 't2-172', width: 17, height: 22, design: { building_use: 'barracks', shape: 'L', scheme: 'long-hall' } },
+  ],
+  'fallback-relax': [
+    { seed: 't0-49', width: 16, height: 39, design: { building_use: 'manor', shape: 'cross', topology: 'river' } },
+    { seed: 't0-118', width: 23, height: 32, design: { building_use: 'shop', shape: 'round', scheme: 'courtyard' } },
+    { seed: 't0-152', width: 40, height: 20, design: { building_use: 'smithy', shape: 'round', scheme: 'courtyard' } },
+    { seed: 't1-49', width: 16, height: 17, design: { building_use: 'mill', shape: 'cross', scheme: 'courtyard', topology: 'river' } },
+    { seed: 't1-149', width: 48, height: 18, design: { building_use: 'manor', shape: 'round' } },
+    { seed: 't1-172', width: 54, height: 17, design: { building_use: 'shop', shape: 'round', scheme: 'courtyard' } },
+    { seed: 't2-22', width: 22, height: 36, design: { building_use: 'barracks', shape: 'round', scheme: 'courtyard' } },
+    { seed: 't2-59', width: 16, height: 35, design: { building_use: 'dwelling', shape: 'round', scheme: 'long-hall', topology: 'courtyard' } },
+  ],
+  'fragment-5': [
+    { seed: 't0-100', width: 22, height: 18, design: { building_use: 'mill', shape: 'cross' } },
+    { seed: 't0-106', width: 16, height: 20, design: { building_use: 'shop', shape: 'cross', scheme: 'long-hall' } },
+    { seed: 't1-42', width: 16, height: 24, design: { building_use: 'barracks', shape: 'cross', scheme: 'long-hall', topology: 'river' } },
+    { seed: 't1-652', width: 24, height: 47, design: { building_use: 'dwelling', shape: 'cross', topology: 'river' } },
+    { seed: 't2-188', width: 22, height: 17, design: { building_use: 'manor', shape: 'cross' } },
+    { seed: 't2-272', width: 16, height: 21, design: { building_use: 'dwelling', shape: 'L' } },
+  ],
+  'reach-reject': [
+    { seed: 's23211', width: 25, height: 36, design: { building_use: 'barracks', shape: 'round', scheme: 'courtyard', topology: 'river' } },
+    { seed: 's161', width: 16, height: 60, design: { building_use: 'manor', topology: 'courtyard' } },
+    { seed: 's181', width: 57, height: 55, design: { building_use: 'manor', shape: 'rect', topology: 'courtyard' } },
+    { seed: 's277', width: 27, height: 21, design: { building_use: 'manor', scheme: 'wing', topology: 'courtyard' } },
+    { seed: 's445', width: 37, height: 54, design: { building_use: 'manor', shape: 'L', scheme: 'courtyard' } },
+    { seed: 't0-40', width: 55, height: 36, design: { building_use: 'manor', shape: 'L', scheme: 'long-hall', topology: 'courtyard' } },
+    { seed: 't0-609', width: 56, height: 38, design: { building_use: 'manor', shape: 'L', scheme: 'courtyard' } },
+    { seed: 't1-92', width: 20, height: 31, design: { building_use: 'manor', shape: 'rect', scheme: 'courtyard' } },
+    { seed: 't1-764', width: 60, height: 36, design: { building_use: 'manor', shape: 'rect', scheme: 'courtyard', topology: 'courtyard' } },
+    { seed: 't2-349', width: 41, height: 22, design: { building_use: 'manor', scheme: 'courtyard', topology: 'courtyard' } },
+    { seed: 't2-865', width: 58, height: 20, design: { building_use: 'manor', shape: 'L', scheme: 'wing', topology: 'courtyard' } },
+  ],
+}
+for (const [branch, list] of Object.entries(SEARCHED)) {
+  list.forEach((options, index) => {
+    addCase(`search/${branch}/${index}`, 'build', options)
+    addCase(`search/${branch}/${index}/generate`, 'generate', options)
+  })
+}
 
 // --- конвейер -------------------------------------------------------------------------
 

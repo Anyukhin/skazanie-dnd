@@ -162,6 +162,16 @@ fn field<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
     value.as_object().and_then(|object| object.get(key))
 }
 
+/// Вход `null`: JS читает первое поле (`options.design`, деструктуризация
+/// `seed`) и падает `TypeError`. Прочие не-объекты (число, строка, массив)
+/// именованных полей не дают и читаются как пустой объект.
+fn require_options(options: &Value, first_key: &str) -> Result<()> {
+    if options.is_null() {
+        return Err(BuildingError::type_error(format!("Cannot read properties of null (reading '{first_key}')")));
+    }
+    Ok(())
+}
+
 /// Замысел объектом: `{ ...design }` для чтения именованных полей. Строка,
 /// массив и прочее именованных полей не дают — пустой объект.
 fn design_map(design: &Value) -> Map<String, Value> {
@@ -450,6 +460,7 @@ fn paint_building_stream(map: &mut TacticalMap, building: Rect, entrance_x: i64,
 /// от `seed`. Без `design` — замысел по словам темы. Отказ — исключение JS той
 /// же формы; размер не числом (`NaN`) — отказ, где JS отдал бы пустую карту.
 pub fn generate_building_scene(options: &Value) -> Result<TacticalMap> {
+    require_options(options, "design")?;
     let design = match field(options, "design") {
         Some(design) if !design.is_null() => design_map(design),
         _ => design_map(&default_design_for_theme(field(options, "theme"))),
@@ -861,6 +872,7 @@ pub struct BuildingScene {
 /// фигурный корпус, прямоугольник, без обстановки, безопасная комната.
 /// Первая попытка проходит и проверку играбельности (`auditTacticalMap`).
 pub fn build_building_scene(options: &Value) -> Result<BuildingScene> {
+    require_options(options, "design")?;
     let design = match field(options, "design") {
         Some(design) if !design.is_null() => design_map(design),
         _ => design_map(&default_design_for_theme(field(options, "theme"))),
@@ -967,6 +979,7 @@ pub fn tactical_fitness_warnings(map: &TacticalMap) -> Vec<String> {
 /// `safeRoom({ seed, locationId, theme })`: минимальная безопасная комната
 /// 11×9 — последняя ступень отката.
 pub fn safe_room(options: &Value) -> Result<TacticalMap> {
+    require_options(options, "seed")?;
     let seed = match field(options, "seed") {
         None => "safe".to_string(),
         value => js::string(value),

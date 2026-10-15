@@ -8,7 +8,7 @@ use sk_props::prop_placement::{place_props, ZonePlacementPlan};
 use sk_tactical::tactical_map::{self as tm, CellPatch, MapResult, TacticalMap, TacticalMapError, TacticalMapOptions, TacticalSpawnPoint};
 
 use super::plan::{js_max, js_min};
-use super::{edges_around, field, overlays_of, reachability_issues, tactical_fitness_warnings, text_or_empty, BuildingScene, EdgesAroundOptions, Rect, Result, ARES_FORTRESS_GENERATOR, ARES_FORTRESS_SIZE};
+use super::{edges_around, field, overlays_of, require_options, reachability_issues, tactical_fitness_warnings, text_or_empty, BuildingScene, EdgesAroundOptions, Rect, Result, ARES_FORTRESS_GENERATOR, ARES_FORTRESS_SIZE};
 
 /// `paintFortressRoom(map, rect, zoneId, material)`: периметр — стена, внутри
 /// — пол зоны.
@@ -83,6 +83,7 @@ fn place_ares_fortress_props(seed: &str, map: &mut TacticalMap) -> MapResult<()>
 /// `generateAresFortressScene(options)`: крепость Ареса; размер — не меньше
 /// 36×36, не больше класса `area`.
 pub fn generate_ares_fortress_scene(options: &Value) -> Result<TacticalMap> {
+    require_options(options, "seed")?;
     let get = |key: &str| field(options, key);
     let seed = match get("seed") {
         None => "ares-fortress".to_string(),
