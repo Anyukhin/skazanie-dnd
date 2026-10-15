@@ -24,6 +24,14 @@ fn text(value: &Value) -> String {
     js::stringify(value)
 }
 
+/// Стенограмма случая: своя (`transcript`) или сценария записи (`source`).
+fn case_transcript(case: &Value) -> Vec<Value> {
+    match case.get("transcript") {
+        Some(transcript) => transcript.as_array().cloned().unwrap_or_default(),
+        None => list("recording")[case["source"].as_u64().expect("индекс записи") as usize]["transcript"].as_array().cloned().unwrap_or_default(),
+    }
+}
+
 fn sequence(values: &Value, prefix: &str) -> ServiceDice<DiceService<SequenceRng>> {
     let values: Vec<i64> = values.as_array().expect("значения").iter().map(|value| value.as_i64().expect("целое")).collect();
     ServiceDice::new(DiceService::deterministic(SequenceRng::new(values), prefix))
@@ -67,7 +75,7 @@ fn recording_matches_js_transcript() {
 fn replay_matches_js() {
     for case in list("replay") {
         let mut base = sequence(&case["base_values"], "base");
-        let transcript = case["transcript"].as_array().cloned().unwrap_or_default();
+        let transcript = case_transcript(case);
         let replacements = case.get("replacements").filter(|value| !value.is_null());
         let mut replay = Replay::new(&mut base, transcript, replacements, case["allow"] == json!(true));
         let mut results = Vec::new();
@@ -87,7 +95,7 @@ fn replay_matches_js() {
 fn indomitable_replacement_matches_js() {
     for case in list("indomitable") {
         let mut base = sequence(&case["base_values"], "reroll");
-        let transcript = case["transcript"].as_array().cloned().unwrap_or_default();
+        let transcript = case_transcript(case);
         let bonus = case.get("bonus").filter(|value| !value.is_null());
         match (roll_indomitable_replacement(&mut base, &transcript, case.get("roll_id"), bonus), case.get("error")) {
             (Ok(result), None) => assert_eq!(text(&result), text(&case["result"]), "rollIndomitableReplacement {case}"),

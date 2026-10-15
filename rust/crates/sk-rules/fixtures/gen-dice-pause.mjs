@@ -95,7 +95,8 @@ for (let index = 0; index < 120; index += 1) {
 
 // ---------- повтор ----------
 const replay = []
-for (const source of recording.filter((entry) => entry.transcript.length)) {
+for (const [sourceIndex, source] of recording.entries()) {
+  if (!source.transcript.length) continue
   const okCalls = source.calls.filter((_, index) => source.results[index].result)
   const transcript = source.transcript
   const d20 = transcript.filter((entry) => entry.method !== 'roll')
@@ -121,7 +122,7 @@ for (const source of recording.filter((entry) => entry.transcript.length)) {
       results.push(outcome)
       if (outcome.error) break
     }
-    replay.push({ label: variant.label, transcript, base_values: base.rng.values, replacements: variant.replacements ?? null, allow: variant.allow === true, calls: variant.calls, results })
+    replay.push({ label: variant.label, source: sourceIndex, base_values: base.rng.values, replacements: variant.replacements ?? null, allow: variant.allow === true, calls: variant.calls, results })
   }
 }
 for (const transcript of [[null], [{ method: 'roll' }], [{ method: 'roll', result: null }], [{ method: 'roll', result: 5 }], [{ method: 'rollD20', result: { roll_id: 'r', total: 3 } }]]) {
@@ -132,15 +133,16 @@ for (const transcript of [[null], [{ method: 'roll' }], [{ method: 'roll', resul
 }
 
 const indomitable = []
-for (const source of recording.filter((entry) => entry.transcript.length).slice(0, 60)) {
+for (const [sourceIndex, source] of recording.entries()) {
+  if (!source.transcript.length || indomitable.length >= 180) continue
   const entry = pick(source.transcript)
   for (const rollId of [entry.result.roll_id, 'missing', null]) {
     const base = service(values(), 'reroll')
     const bonus = pick([3, '2', -1, 'x', undefined])
     try {
-      indomitable.push({ transcript: source.transcript, roll_id: rollId, bonus: bonus ?? null, base_values: base.rng.values, result: json(E.rollIndomitableReplacement(base, source.transcript, rollId, bonus)) })
+      indomitable.push({ source: sourceIndex, roll_id: rollId, bonus: bonus ?? null, base_values: base.rng.values, result: json(E.rollIndomitableReplacement(base, source.transcript, rollId, bonus)) })
     } catch (error) {
-      indomitable.push({ transcript: source.transcript, roll_id: rollId, bonus: bonus ?? null, base_values: base.rng.values, error: errorOf(error) })
+      indomitable.push({ source: sourceIndex, roll_id: rollId, bonus: bonus ?? null, base_values: base.rng.values, error: errorOf(error) })
     }
   }
 }

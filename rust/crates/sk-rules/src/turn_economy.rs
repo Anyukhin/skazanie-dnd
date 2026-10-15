@@ -1,13 +1,14 @@
 //! Экономика хода — перенос помощников `rules-engine.mjs` (9336–9509,
-//! 23645–23796, 24114–24198): кадры действия
-//! Атака (обычное, всплеск, ускорение, лишнее), трата действия, перезарядка.
+//! 23645–23796, 24097–24198): кадры действия Атака (обычное, всплеск,
+//! ускорение, лишнее), трата действия, перезарядка, тактический ход.
 //! Форма объекта экономики — как в JS, поэтому функции работают над JSON.
+//! Задача Р0 (сверено с JS эталоном `fixtures/turn-economy.json`).
 
 use serde_json::{json, Map, Value};
 use sk_core::game::{combat_active, combat_mut, find_actor, has_condition};
-use sk_core::js::{s, safe_int, strings_value, unique_strings};
+use sk_core::js::{s, safe_int, strings_value};
 
-use crate::classes::{monster_multiattack_count, monster_trait, weapon_attacks_per_action};
+use crate::core::{monster_trait_for, unique_strings};
 
 pub const ACTION_ECONOMY_EVENT_VERSION: i64 = 2;
 pub const ATTACK_ACTION_KINDS: [&str; 4] = ["normal", "extra", "surge", "haste"];
@@ -80,13 +81,28 @@ pub fn with_loading_weapon_item(economy: &Value, resource: &str, item_id: &Value
     with(economy, json!({ "loading_weapon_item_ids": current }))
 }
 
-/// `loadingResourceFor({ reaction_attack }, {}, payload)`.
+/// `loadingResourceFor({ reaction_attack }, {}, payload)` — форма редьюсера.
 pub fn loading_resource_for(reaction_attack: bool, payload: Option<&Value>) -> &'static str {
     if reaction_attack {
         return "reaction";
     }
-    let declared = s(payload.and_then(|p| p.get("loading_action_type")));
-    LOADING_ACTION_TYPES.iter().copied().find(|kind| *kind == declared).unwrap_or("action")
+    declared_loading_resource(payload.and_then(|p| p.get("loading_action_type")).filter(|value| !value.is_null()))
+}
+
+/// `LOADING_ACTION_TYPES.includes(declared) ? declared : 'action'` (строгое сравнение).
+fn declared_loading_resource(declared: Option<&Value>) -> &'static str {
+    let declared = declared.and_then(Value::as_str);
+    LOADING_ACTION_TYPES.iter().copied().find(|kind| Some(*kind) == declared).unwrap_or("action")
+}
+
+/// `loadingResourceFor(command, context, payload)` — форма разбора команды:
+/// реакция по команде или продолжению, иначе вид из события или маркера контекста.
+pub fn loading_resource_for_command(command: &Value, context: &crate::context::Context, payload: Option<&Value>) -> &'static str {
+    if sk_core::js::is_true(command.get("reaction_attack")) || context.is_true("reactionResolution") {
+        return "reaction";
+    }
+    let from_payload = payload.and_then(|p| p.get("loading_action_type")).filter(|value| !value.is_null());
+    declared_loading_resource(from_payload.or(context.loading_action_type.as_ref()))
 }
 
 /// Кадр действия Атака.
@@ -250,26 +266,48 @@ pub fn spend_combat_economy(state: &mut Value, id: &str, resource: &str, magic: 
     set_economy(state, id, with(&current, json!({ "action": false, "surged_action_only": false })));
 }
 
-/// `allowedWeaponAttacks(state, actor, id)`.
-pub fn allowed_weapon_attacks(state: &Value, actor: &Value, id: &str) -> i64 {
-    let monster = if monster_trait(actor, "multiattack").is_some() { monster_multiattack_count(actor) } else { 1 };
-    monster.max(weapon_attacks_per_action(actor) + i64::from(has_condition(state, id, "hasted")))
+/// `monsterMultiattackActionCounts(multiattack)`: сумма счётчиков действий.
+fn multiattack_action_count(multiattack: &Value) -> i64 {
+    let Some(counts) = multiattack.get("action_counts").filter(|value| sk_core::js::truthy(Some(value))).and_then(Value::as_object) else { return 0 };
+    counts.iter().filter(|(id, _)| !id.is_empty()).map(|(_, count)| safe_int(Some(count), 0).clamp(0, 8)).sum()
 }
 
-/// `weaponAttackLimitForAction(state, actor, id, command)`.
+/// `weaponAttacksPerActionFor(actor)` (`combat-actions.mjs`).
+fn weapon_attacks_per_action(actor: Option<&Value>) -> f64 {
+    sk_combat_content::combat_actions::weapon_attacks_per_action_for(actor)
+}
+
+/// `allowedWeaponAttacks(state, actor, id)`: мультиатака стат-блока или
+/// «Дополнительная атака» героя, с «Ускорением» — на одну больше.
+pub fn allowed_weapon_attacks(state: &Value, actor: Option<&Value>, id: &str) -> i64 {
+    let monster = match monster_trait_for(actor, "multiattack") {
+        Some(multiattack) => {
+            let action_count = multiattack_action_count(multiattack);
+            let own_sequence = multiattack.get("sequence").and_then(Value::as_array).map(Vec::len).unwrap_or(0) as i64;
+            let sequence_count = sk_combat_base::monster_actions::monster_multiattack_sequences(actor).iter().map(|sequence| sequence.len() as i64).chain([own_sequence, 0]).max().unwrap_or(0);
+            let count = if action_count > 0 { action_count } else if sequence_count > 0 { sequence_count } else { safe_int(multiattack.get("attacks"), 1) };
+            count.clamp(1, 8)
+        }
+        None => 1,
+    };
+    let hero = weapon_attacks_per_action(actor) + f64::from(u8::from(has_condition(state, id, "hasted")));
+    (monster as f64).max(hero) as i64
+}
+
+/// `weaponAttackLimitForAction(state, actor, id, command)`: `multiattack` —
+/// `command.monster_ability === 'multiattack'`.
 pub fn weapon_attack_limit_for_action(state: &Value, actor: Option<&Value>, id: &str, multiattack: bool) -> i64 {
-    let Some(actor) = actor else { return 1 };
     if multiattack {
         return allowed_weapon_attacks(state, actor, id);
     }
-    weapon_attacks_per_action(actor).max(1)
+    weapon_attacks_per_action(actor).max(1.0) as i64
 }
 
 /// `applyVersionedAttackEconomy(state, event, payload)`.
 pub fn apply_versioned_attack_economy(state: &mut Value, actor_id: Option<&str>, event_ref: &str, payload: &Value) {
     let reaction_attack = sk_core::js::is_true(payload.get("reaction_attack"));
     let actor_id = actor_id.unwrap_or("");
-    if reaction_attack || s(payload.get("attack_action_resource")) != "action" {
+    if reaction_attack || payload.get("attack_action_resource").and_then(Value::as_str) != Some("action") {
         if sk_core::js::is_true(payload.get("loading_weapon"))
             && !sk_core::js::is_false(payload.get("loading_limit_applies"))
             && sk_core::js::present(payload.get("item_id"))
@@ -353,11 +391,11 @@ pub fn apply_versioned_attack_economy(state: &mut Value, actor_id: Option<&str>,
     if sk_core::js::is_true(payload.get("loading_weapon")) && !sk_core::js::is_false(payload.get("loading_limit_applies")) && sk_core::js::present(payload.get("item_id")) && !(kind != "normal" && used >= limit) {
         economy = with_loading_weapon_item(&economy, loading_resource_for(false, Some(payload)), &payload["item_id"]);
     }
-    let used_action_ids: Vec<Value> = economy.get("multiattack_action_ids").and_then(Value::as_array).map(|ids| ids.iter().map(|id| Value::String(s(Some(id)))).collect()).unwrap_or_default();
+    let used_action_ids: Vec<Value> = economy.get("multiattack_action_ids").and_then(Value::as_array).map(|ids| ids.iter().map(|id| Value::String(sk_core::js::string(Some(id)))).collect()).unwrap_or_default();
     if sk_core::js::truthy(payload.get("action_id")) {
         let first = if sk_core::js::present(economy.get("multiattack_action_id")) { s(economy.get("multiattack_action_id")) } else { s(payload.get("action_id")) };
         economy["multiattack_action_id"] = Value::String(first);
-        if monster_trait(&attacker, "multiattack").is_some() {
+        if monster_trait_for(Some(&attacker), "multiattack").is_some() {
             let mut ids = used_action_ids;
             ids.push(Value::String(s(payload.get("action_id"))));
             economy["multiattack_action_ids"] = Value::Array(ids);
@@ -435,3 +473,33 @@ pub fn spend_versioned_spell_action(state: &mut Value, id: &str) {
 pub fn spend_versioned_action_only(state: &mut Value, id: &str) {
     spend_versioned_action_frame(state, id, false, false);
 }
+
+/// `synchronizeTacticalTurn(state)` (24097–24112).
+pub fn synchronize_tactical_turn(state: &mut Value) {
+    let combat = sk_core::game::combat(state);
+    let initiative = combat.get("initiative").and_then(Value::as_array).cloned().unwrap_or_default();
+    let raw_index = combat.get("active_index").cloned().unwrap_or(Value::Null);
+    let active_index = safe_int(Some(&raw_index), -1);
+    if !sk_core::js::truthy(combat.get("active")) || initiative.is_empty() || active_index < 0 {
+        return;
+    }
+    let active_id = sk_core::js::s(initiative.get(active_index as usize).and_then(|entry| entry.get("actor_id")));
+    if active_id.is_empty() {
+        return;
+    }
+    let round = combat.get("round").cloned();
+    let economy = economy_of(state, &active_id);
+    let scene_turn = crate::core::safe_integer_or(state.get("scene").and_then(|scene| scene.get("turn")), round.as_ref());
+    state["activePlayerId"] = Value::String(active_id.clone());
+    let mut turn = serde_json::Map::new();
+    turn.insert("sceneTurn".into(), scene_turn);
+    turn.insert("actorId".into(), Value::String(active_id));
+    turn.insert("movementSpent".into(), Value::from(safe_int(economy.get("movement_spent"), 0).max(0)));
+    turn.insert("actionUsed".into(), Value::Bool(economy.get("action") == Some(&Value::Bool(false))));
+    if let Some(round) = round {
+        turn.insert("round".into(), round);
+    }
+    turn.insert("activeIndex".into(), raw_index);
+    state["tacticalTurn"] = Value::Object(turn);
+}
+

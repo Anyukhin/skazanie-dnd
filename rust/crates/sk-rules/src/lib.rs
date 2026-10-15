@@ -41,7 +41,6 @@ pub mod lockpick;
 pub mod rest;
 
 // Р3: оружие, классы, предметы NPC, монстры, ход, встреча.
-pub mod classes;
 pub mod combat;
 
 // Р4: нормализация, сцена, общество, replay, память карт.

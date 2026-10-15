@@ -99,37 +99,8 @@ pub fn apply_event_checked(state: &mut Value, event: &Event) -> Reduced {
         .map(|value| safe_int(Some(value), 0))
         .unwrap_or_else(|| sk_core::game::state_version(state) + 1);
     state["state_version"] = Value::from(next_version);
-    synchronize_tactical_turn(state);
+    crate::turn_economy::synchronize_tactical_turn(state);
     branch
-}
-
-/// `synchronizeTacticalTurn(state)` (24097–24112).
-fn synchronize_tactical_turn(state: &mut Value) {
-    let combat = sk_core::game::combat(state);
-    let initiative = combat.get("initiative").and_then(Value::as_array).cloned().unwrap_or_default();
-    let raw_index = combat.get("active_index").cloned().unwrap_or(Value::Null);
-    let active_index = safe_int(Some(&raw_index), -1);
-    if !sk_core::js::truthy(combat.get("active")) || initiative.is_empty() || active_index < 0 {
-        return;
-    }
-    let active_id = sk_core::js::s(initiative.get(active_index as usize).and_then(|entry| entry.get("actor_id")));
-    if active_id.is_empty() {
-        return;
-    }
-    let round = combat.get("round").cloned();
-    let economy = crate::turn_economy::economy_of(state, &active_id);
-    let scene_turn = crate::core::safe_integer_or(state.get("scene").and_then(|scene| scene.get("turn")), round.as_ref());
-    state["activePlayerId"] = Value::String(active_id.clone());
-    let mut turn = serde_json::Map::new();
-    turn.insert("sceneTurn".into(), scene_turn);
-    turn.insert("actorId".into(), Value::String(active_id));
-    turn.insert("movementSpent".into(), Value::from(safe_int(economy.get("movement_spent"), 0).max(0)));
-    turn.insert("actionUsed".into(), Value::Bool(economy.get("action") == Some(&Value::Bool(false))));
-    if let Some(round) = round {
-        turn.insert("round".into(), round);
-    }
-    turn.insert("activeIndex".into(), raw_index);
-    state["tacticalTurn"] = Value::Object(turn);
 }
 
 /// Выбросить производные поля героя — как делает запись корпуса.
@@ -145,11 +116,12 @@ pub fn strip_derived(state: &mut Value) {
     }
 }
 
-/// Общие поля записи боевого журнала: ход сцены и раунд.
-pub(crate) fn scene_turn_and_round(state: &Value) -> (i64, Value) {
-    let round = sk_core::game::combat(state).get("round").cloned().unwrap_or(Value::Null);
-    let scene_turn = safe_int(state.get("scene").and_then(|scene| scene.get("turn")), safe_int(Some(&round), 0));
-    (scene_turn, round)
+/// Общие поля записи боевого журнала: ход сцены
+/// (`safeInteger(state.scene?.turn, combat.round)`) и раунд.
+pub(crate) fn scene_turn_and_round(state: &Value) -> (Value, Value) {
+    let round = sk_core::game::combat(state).get("round").cloned();
+    let scene_turn = crate::core::safe_integer_or(state.get("scene").and_then(|scene| scene.get("turn")), round.as_ref());
+    (scene_turn, round.unwrap_or(Value::Null))
 }
 
 /// Цель события: первая из `target_ids`, иначе действующее лицо
