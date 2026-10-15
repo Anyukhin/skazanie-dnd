@@ -439,6 +439,68 @@ for (const [location, theme] of [['Мост через ущелье', 'доро�
   ['Заброшенный храм', 'храм'], ['Склеп с решёткой', 'склеп'], ['Двор замка', 'крепость'], ['Тронный зал замка', 'замок']]) {
   for (const seed of ['p1', 'p2']) scene(`place/${location}/${seed}`, { location, theme, seed: `${location}:${seed}` })
 }
+// Сцены test/map-quality.test.mjs через конвейер: метки `mq/…` читает
+// перенос этих тестов в Rust (`tests/scene_themes.rs`).
+{
+  const SEEDS = ['q1', 'q2', 'q3', 'q4']
+  const SIZES = [{ width: 16, height: 14 }, { width: 26, height: 26 }, { width: 40, height: 32 }]
+  const presetOf = (id) => MAP_PREVIEW_PRESETS.find((entry) => entry.id === id)
+  for (const preset of MAP_PREVIEW_PRESETS) {
+    for (const size of SIZES) for (const seed of SEEDS) scene(`mq/preset/${preset.id}/${size.width}x${size.height}/${seed}`, { ...preset.input, map: { ...(preset.input.map ?? {}), ...size }, seed: `${preset.id}:${seed}` })
+  }
+  for (const id of ['forest', 'road']) for (const seed of SEEDS) scene(`mq/terrace/${id}/${seed}`, { ...presetOf(id).input, map: { width: 26, height: 26 }, seed: `terrace:${seed}` })
+  for (const size of SIZES.slice(1)) for (const seed of SEEDS) scene(`mq/ruins/${size.width}x${size.height}/${seed}`, { ...presetOf('ruins').input, map: size, seed: `ruins:${seed}` })
+  for (const seed of SEEDS) {
+    scene(`mq/village/${seed}`, { location: 'Деревня Кленовка', theme: 'деревня', settlementType: 'village', seed: `village:${seed}` })
+    scene(`mq/temple/${seed}`, { location: 'Храм Утренней звезды', theme: 'храм', seed: `temple:${seed}` })
+    scene(`mq/mix/${seed}`, { location: 'Деревня Кленовка', theme: 'деревня', settlementType: 'village', seed: `mix:${seed}`, map: { width: 36, height: 32 } })
+    scene(`mq/town/${seed}`, { location: 'Город Вельдбург', theme: 'город', settlementType: 'town', seed: `town:${seed}` })
+  }
+  scene('mq/farm', { location: 'Хутор у леса', theme: 'хутор', settlementType: 'village', seed: 'farm:q1' })
+  for (const [location, theme, extra] of [['Кузница Борга', 'кузница'], ['Казарма городской стражи', 'казарма'], ['Кладбище за часовней', 'кладбище'], ['Подземелье под замком', 'подземелье'],
+    ['Хутор у леса', 'хутор', { settlementType: 'village' }], ['Логово дракона', 'пещера'], ['Лагерь бандитов', 'лесной лагерь'], ['Лесная поляна', 'лес'],
+    ['Мост через ущелье', 'мост'], ['Тракт у старого моста', 'дорога'], ['Пустынный оазис', 'оазис']]) {
+    scene(`mq/place/${location}`, { location, theme, seed: `fidelity:${location}`, ...(extra ?? {}) })
+  }
+  for (const [location, theme] of [['Подземелье под замком', 'подземелье'], ['Фамильный склеп', 'склеп']]) {
+    for (let index = 0; index < 16; index += 1) scene(`mq/loops/${location}/${index}`, { location, theme, seed: `loops:${index}` })
+  }
+  for (const [location, theme] of [['Поляна в Чернолесье', 'лес'], ['Тракт у старого моста', 'дорога']]) scene(`mq/empty-graph/${location}`, { location, theme, seed: 'empty-graph' })
+}
+
+// Сцены test/scene-dressing.test.mjs, собранные `buildThemedScene` прямо.
+{
+  const tavern = { width: 36, height: 30, location: 'Трактир трёх дорог', theme: 'таверна', design: { building_use: 'tavern', architecture: 'wood' } }
+  for (const seed of ['brawl-a', 'brawl-b']) {
+    addScene(`dressing/brawl/${seed}/told`, { ...tavern, seed, description: 'После вчерашней драки трактирщик ещё не прибрался.' })
+    addScene(`dressing/brawl/${seed}/silent`, { ...tavern, seed })
+  }
+  const temple = { width: 36, height: 30, location: 'Храм Утренней звезды', theme: 'храм', design: {} }
+  for (const seed of ['temple-a', 'temple-b']) {
+    addScene(`dressing/temple/${seed}`, { ...temple, seed })
+    addScene(`dressing/temple/${seed}/ruined`, { ...temple, seed, description: 'Заброшенный храм, свод местами обвалился.' })
+  }
+  const village = { width: 44, height: 38, location: 'Деревня Кленовка', theme: 'деревня', design: { topology: 'organic', architecture: 'wood' } }
+  for (const seed of ['village-a', 'village-b']) {
+    addScene(`dressing/village/${seed}`, { ...village, seed })
+    addScene(`dressing/village/${seed}/burned`, { ...village, seed, description: 'На краю деревни — пепелище сгоревшего двора.' })
+  }
+  addScene('dressing/village/winter', { ...village, seed: 'village-a', design: { ...village.design, climate: 'cold' } })
+  const WILD = [
+    ['quiet', { location: 'Поляна в Чернолесье', theme: 'лесная поляна' }],
+    ['camp-lair', { location: 'Поляна в Чернолесье', theme: 'лесная поляна', description: 'Остывшее кострище, вокруг волчьи следы.' }],
+    ['ruins', { location: 'Развалины старой заставы', theme: 'руины у дороги' }],
+    ['graveyard', { location: 'Старое кладбище', theme: 'кладбище' }],
+    ['cave', { location: 'Пещера контрабандистов', theme: 'пещера' }],
+    ['crypt', { location: 'Фамильный склеп', theme: 'склеп', description: 'Сектанты проводили здесь обряд.' }],
+    ['winter', { location: 'Снежный перевал', theme: 'зимний лес', design: { climate: 'cold' }, description: 'Древние руины сторожевой башни.' }],
+    ['desert', { location: 'Красные барханы', theme: 'дорога через пустыню', design: { climate: 'arid' } }],
+  ]
+  for (const [name, scene] of WILD) {
+    for (const seed of ['dress-a', 'dress-b']) addScene(`dressing/wild/${name}/${seed}`, { seed, width: 36, height: 30, location: scene.location, theme: scene.theme, design: scene.design ?? {}, description: scene.description ?? '' })
+  }
+}
+
 // Редкие ветки сборки прямым вызовом: пропасть с мостом, логово с кладом и
 // шахта, лагерь, развалины с воротами на дороге, оазис, болото у реки.
 const TARGETED = [
