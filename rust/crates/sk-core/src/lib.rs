@@ -17,6 +17,7 @@ pub mod js;
 pub mod json;
 pub mod state;
 pub mod text;
+pub mod v8math;
 
 pub use command::Command;
 pub use error::{RuleError, RuleResult};

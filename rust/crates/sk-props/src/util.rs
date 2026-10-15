@@ -41,42 +41,8 @@ pub(crate) fn js_max(a: f64, b: f64) -> f64 {
     }
 }
 
-/// `Math.hypot(a, b)` как в V8 (`MathHypot`, `math.tq`): нормировка на
-/// наибольший модуль и суммирование Кэхэна, затем `sqrt(sum) * max`.
-pub(crate) fn js_hypot(a: f64, b: f64) -> f64 {
-    let mut absolute = [0.0_f64; 2];
-    let mut max = 0.0_f64;
-    let mut one_is_nan = false;
-    for (slot, value) in [a, b].into_iter().enumerate() {
-        if value.is_nan() {
-            one_is_nan = true;
-        } else {
-            absolute[slot] = value.abs();
-            if absolute[slot] > max {
-                max = absolute[slot];
-            }
-        }
-    }
-    if max == f64::INFINITY {
-        return f64::INFINITY;
-    }
-    if one_is_nan {
-        return f64::NAN;
-    }
-    if max == 0.0 {
-        return 0.0;
-    }
-    let mut sum = 0.0_f64;
-    let mut compensation = 0.0_f64;
-    for value in absolute {
-        let normalized = value / max;
-        let summand = normalized * normalized - compensation;
-        let preliminary = sum + summand;
-        compensation = (preliminary - sum) - summand;
-        sum = preliminary;
-    }
-    sum.sqrt() * max
-}
+/// `Math.hypot(a, b)` как в V8 — общий `sk_core::v8math::hypot`.
+pub(crate) use sk_core::v8math::hypot as js_hypot;
 
 /// Целое из `Math.floor(value)`, если оно может быть клеткой: `cellIndex` JS
 /// отвергает не целые (NaN, бесконечность), а за пределами безопасных целых

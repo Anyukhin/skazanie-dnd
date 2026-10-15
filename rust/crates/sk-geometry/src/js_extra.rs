@@ -138,45 +138,9 @@ pub(crate) fn js_min(a: f64, b: f64) -> f64 {
     }
 }
 
-/// `Math.hypot(a, b)` по алгоритму V8 (`builtins/math.tq`): нормировка на
-/// наибольший модуль и сумма Кэхэна. Системный `f64::hypot` может отличаться
-/// в последнем бите, а карта мира сортирует по разности таких расстояний —
-/// равные в JS расстояния должны остаться равными.
-pub(crate) fn js_hypot(a: f64, b: f64) -> f64 {
-    let mut abs_values = [0.0_f64; 2];
-    let mut one_is_nan = false;
-    let mut max = 0.0_f64;
-    for (slot, value) in abs_values.iter_mut().zip([a, b]) {
-        if value.is_nan() {
-            one_is_nan = true;
-        } else {
-            let abs = value.abs();
-            *slot = abs;
-            if abs > max {
-                max = abs;
-            }
-        }
-    }
-    if max == f64::INFINITY {
-        return f64::INFINITY;
-    }
-    if one_is_nan {
-        return f64::NAN;
-    }
-    if max == 0.0 {
-        return 0.0;
-    }
-    let mut sum = 0.0_f64;
-    let mut compensation = 0.0_f64;
-    for abs in abs_values {
-        let normalized = abs / max;
-        let summand = normalized * normalized - compensation;
-        let preliminary = sum + summand;
-        compensation = (preliminary - sum) - summand;
-        sum = preliminary;
-    }
-    sum.sqrt() * max
-}
+/// `Math.hypot(a, b)` по алгоритму V8 — общий `sk_core::v8math::hypot`:
+/// карта мира сортирует по разности таких расстояний.
+pub(crate) use sk_core::v8math::hypot as js_hypot;
 
 #[cfg(test)]
 mod tests {
