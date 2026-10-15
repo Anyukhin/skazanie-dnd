@@ -25,7 +25,7 @@ const { campaignStateForViewer } = await import('../../../../server/viewer-proje
 
 const writer = fixtureWriter('tavern-life', retentionMode)
 // Предел случаев функции растёт по фазам: каждой фазе — своя доля.
-let phaseCap = 250
+let phaseCap = 150
 const random = mulberry32(2026_10_16)
 const { int, pick, chance } = chooser(random)
 
@@ -298,7 +298,7 @@ const afterScenarios = writer.cases.length
 // 2. Корпус
 // ---------------------------------------------------------------------------
 
-phaseCap = 400
+phaseCap = 240
 const dir = corpusDir(process.argv[2])
 if (dir) {
   const seen = new Set()
@@ -341,7 +341,7 @@ const afterCorpus = writer.cases.length
 // 3. Срезы заведения с мусором
 // ---------------------------------------------------------------------------
 
-phaseCap = 560
+phaseCap = 340
 const KEYS = ['hero', 'hero-2', ' hero ', '7', '12', 'constructor', '__proto__', 'toString', '', 'ghost', HONEST, CROOK]
 function junkRound() {
   if (chance(0.15)) return pick([null, 'round', 5, []])

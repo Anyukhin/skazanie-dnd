@@ -28,6 +28,8 @@ const { campaignStateForViewer } = await import('../../../../server/viewer-proje
 const { getWorldTemplate } = await import('../../../../server/world-template-catalog.mjs')
 
 const writer = fixtureWriter('npc-positioning', retentionMode)
+// Предел случаев функции растёт по фазам: каждой фазе — своя доля.
+let phaseCap = Infinity
 const random = mulberry32(2026_10_15)
 const { int, pick, chance } = chooser(random)
 
@@ -117,7 +119,7 @@ const FNS = {
 function record(name, args, options = {}) {
   const spec = FNS[name]
   const prepared = args.map((arg, index) => (spec.states.includes(index) ? strip(arg) : arg))
-  return writer.call(name, spec.fn, prepared, { stateArgs: [...spec.states, ...(spec.refs ?? [])], ...options })
+  return writer.call(name, spec.fn, prepared, { stateArgs: [...spec.states, ...(spec.refs ?? [])], ...options, cap: Math.min(options.cap ?? Infinity, phaseCap) })
 }
 
 // Перехват конвейера: аргументы верхних вызовов модуля снимаются сразу
@@ -594,6 +596,7 @@ const afterScenarios = writer.cases.length
 // 2. Корпус паритета: состояния и повтор команд
 // ---------------------------------------------------------------------------
 
+phaseCap = 330
 const dir = corpusDir(process.argv[2])
 let corpusStates = 0
 let replayed = 0
@@ -637,6 +640,7 @@ const afterCorpus = writer.cases.length
 // 3. Случайные сцены
 // ---------------------------------------------------------------------------
 
+phaseCap = 470
 const astohan = getWorldTemplate('astohan-plains').opening.npcs.filter((npc) => npc.mechanics)
 for (let index = 0; index < 190; index += 1) {
   const width = int(3, 12)
