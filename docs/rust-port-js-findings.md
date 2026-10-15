@@ -75,6 +75,17 @@
   `visibility` команды не проверяется — произвольная строка доходит до
   событий; `eventJournalId` при строковой версии склеивает `"5" + 1` → `"51"`;
   у `ResistanceAfterRollPause` имя `ResistanceChoicePause`.
+- **Редьюсер (Р4а).** `DoorBarricadeCleared` без `restored_state` делает
+  дверь открытой, а её ребро по-прежнему закрывает проход и обзор;
+  `SceneObjectKnowledgeRevealed` без `knowledge_id` добавляет строку
+  `"undefined"`, при `actor_id: null` в `inspection_attempted_by`/`used_by`
+  попадает `"null"`; `ItemUsed` схемы 2 тратит экономику хода без проверки боя
+  и героя (`action_economy["null"]`); `CaptiveTaken` с `captive: null` роняет
+  реестр пленных. Геометрия (Р1): `npcSpellTargetsAt` в конусе и кубе «от
+  себя» берёт всех NPC сцены, а не выбранных; клетка с признаком
+  `constructor`/`toString` даёт половинное укрытие (`TERRAIN_COVER`);
+  «Подойди»/«Убегай» без позиции заклинателя (`null >= null`) отклоняют любой
+  шаг.
 - **Тактическая карта.** Ребро без `x` проходит `canonicalEdge`
   (`undefined === undefined`), сохраняется под ключом `"undefined,2,s"`, а
   при упаковке съезжает в клетку (0, 0); `hazards: "ab"` становится
