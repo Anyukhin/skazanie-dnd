@@ -1,19 +1,20 @@
 //! Бой: атаки, действия, экономика хода в событиях.
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sk_core::game::{actor_position, combat_active, combat_actor_kind, find_actor};
 use sk_core::js::{is_true, present, s, safe_int, truthy};
 use sk_core::Event;
 
 use super::{scene_turn_and_round, target_of};
-use crate::economy::{
+use crate::turn_economy::{
     action_economy, apply_versioned_attack_economy, clear_loading_weapon_resource, current_frame, economy_of, event_version, frames_value, loading_resource_for, pending_frames, set_economy,
     spend_combat_economy, spend_versioned_action_frame, weapon_attack_limit_for_action, with, with_frame, with_loading_weapon_item, Frame, ACTION_ECONOMY_EVENT_VERSION,
 };
 use crate::journal::{append_battle_log, append_map_feedback, Entry};
 
+/// `event.command_id ?? event.event_id ?? 'unknown'` (пустая строка — тоже значение).
 fn event_ref(event: &Event) -> String {
-    event.command_id.clone().filter(|id| !id.is_empty()).or_else(|| event.extra.get("event_id").filter(|v| !v.is_null()).map(|v| s(Some(v)))).unwrap_or_else(|| "unknown".into())
+    event.command_id.clone().or_else(|| event.extra.get("event_id").filter(|v| !v.is_null()).map(|v| sk_core::js::string(Some(v)))).unwrap_or_else(|| "unknown".into())
 }
 
 pub fn sneak_attack_applied(state: &mut Value, event: &Event) {
@@ -22,7 +23,7 @@ pub fn sneak_attack_applied(state: &mut Value, event: &Event) {
     if combat_active(state) {
         if let Some(actor) = event.actor_id.as_deref().filter(|id| !id.is_empty()) {
             let economy = economy_of(state, actor);
-            let key = if present(payload.get("turn_key")) { s(payload.get("turn_key")) } else { crate::economy::combat_turn_key(state, actor).unwrap_or_default() };
+            let key = if present(payload.get("turn_key")) { s(payload.get("turn_key")) } else { crate::turn_economy::combat_turn_key(state, actor).unwrap_or_default() };
             set_economy(state, actor, with(&economy, json!({ "sneak_attack_turn_key": key })));
         }
     }
@@ -45,43 +46,10 @@ pub fn sneak_attack_applied(state: &mut Value, event: &Event) {
     }
 }
 
-/// Точка `{x, y}` из рыхлого значения или `None`.
-fn point(value: Option<&Value>) -> Option<(i64, i64)> {
-    let value = value.filter(|v| v.is_object())?;
-    let coord = |key: &str| -> Option<i64> {
-        let number = match value.get(key)? {
-            Value::Number(number) => number.as_f64()?,
-            Value::String(text) => text.trim().parse::<f64>().ok()?,
-            Value::Null => 0.0,
-            Value::Bool(flag) => f64::from(u8::from(*flag)),
-            _ => return None,
-        };
-        (number.fract() == 0.0 && number.abs() <= 9_007_199_254_740_991.0).then_some(number as i64)
-    };
-    Some((coord("x")?, coord("y")?))
-}
-
 /// `normalizeAttackVisual(payload.attack_visual)` — пока переносится как есть,
 /// если это объект с видом и снарядом.
 fn normalize_attack_visual(value: Option<&Value>) -> Option<Value> {
     value.filter(|v| v.is_object()).cloned()
-}
-
-/// `attackEndpointsFor(trajectory)`: `{ from: {x, y}, to: {x, y} }`.
-fn attack_endpoints(value: Option<&Value>) -> Option<Map<String, Value>> {
-    let list = value?.as_array()?;
-    if list.len() < 2 {
-        return None;
-    }
-    let first = list.first()?.as_object()?;
-    let last = list.last()?.as_object()?;
-    let coord = |object: &Map<String, Value>, key: &str| -> Option<i64> {
-        sk_core::js::is_safe_integer_number(object.get(key)).then(|| sk_core::js::number(object.get(key)) as i64)
-    };
-    let mut map = Map::new();
-    map.insert("from".into(), json!({ "x": coord(first, "x")?, "y": coord(first, "y")? }));
-    map.insert("to".into(), json!({ "x": coord(last, "x")?, "y": coord(last, "y")? }));
-    Some(map)
 }
 
 pub fn attack_resolved(state: &mut Value, event: &Event) {
@@ -108,12 +76,12 @@ pub fn attack_resolved(state: &mut Value, event: &Event) {
                     let used_ids: Vec<Value> = economy.get("multiattack_action_ids").and_then(Value::as_array).map(|ids| ids.iter().map(|id| Value::String(s(Some(id)))).collect()).unwrap_or_default();
                     let mut patch = json!({
                         "attacks_used": safe_int(economy.get("attacks_used"), 0).max(0) + 1,
-                        "attacks_allowed": crate::economy::allowed_weapon_attacks(state, &attacker, &actor_id),
+                        "attacks_allowed": crate::turn_economy::allowed_weapon_attacks(state, Some(&attacker), &actor_id),
                     });
                     if truthy(payload.get("action_id")) {
                         let first = if present(economy.get("multiattack_action_id")) { s(economy.get("multiattack_action_id")) } else { s(payload.get("action_id")) };
                         patch["multiattack_action_id"] = Value::String(first);
-                        if crate::classes::monster_trait(&attacker, "multiattack").is_some() {
+                        if crate::core::monster_trait_for(Some(&attacker), "multiattack").is_some() {
                             let mut ids = used_ids;
                             ids.push(Value::String(s(payload.get("action_id"))));
                             patch["multiattack_action_ids"] = Value::Array(ids);
@@ -134,7 +102,7 @@ pub fn attack_resolved(state: &mut Value, event: &Event) {
         set_economy(state, &actor_id, with(&economy, json!({ "colossus_slayer_turn_key": s(payload.get("colossus_slayer_turn_key")) })));
     }
     let attack_visual = normalize_attack_visual(payload.get("attack_visual"));
-    let endpoints = attack_visual.as_ref().and_then(|_| attack_endpoints(payload.get("trajectory")));
+    let endpoints = attack_visual.as_ref().and_then(|_| crate::journal::attack_endpoints_for(payload.get("trajectory")));
     let (scene_turn, round) = scene_turn_and_round(state);
     let mode = s(payload.get("mode"));
     let dice: Vec<Value> = payload.get("dice").and_then(Value::as_array).map(|dice| dice.iter().map(|die| safe_int(Some(die), 0)).filter(|die| *die > 0).map(Value::from).collect()).unwrap_or_default();
@@ -178,7 +146,7 @@ pub fn attack_resolved(state: &mut Value, event: &Event) {
     if let Some(visual) = attack_visual {
         entry = entry.set("attackVisual", visual);
     }
-    if let Some(endpoints) = endpoints {
+    if let Some(Value::Object(endpoints)) = endpoints {
         for (key, value) in endpoints {
             entry = entry.set(&key, value);
         }
@@ -371,7 +339,7 @@ pub fn combat_action_used(state: &mut Value, event: &Event) {
         let _ = action_economy;
     }
     if is_true(payload.get("monster_action")) || truthy(payload.get("monster_action")) {
-        if let Some(area) = battle_log_area_from_payload(state, event, &payload) {
+        if let Some(area) = crate::journal::battle_log_area_from_payload(state, event, &payload) {
             append_battle_log(state, event, area);
             return;
         }
@@ -393,39 +361,11 @@ pub fn combat_action_used(state: &mut Value, event: &Event) {
     append_battle_log(state, event, entry);
 }
 
-/// `battleLogAreaFromPayload(state, event, payload)`.
-pub(crate) fn battle_log_area_from_payload(state: &Value, event: &Event, payload: &Value) -> Option<Map<String, Value>> {
-    let area = payload.get("area")?;
-    let from = point(area.get("from"))?;
-    let to = point(area.get("to"))?;
-    let shape = s(area.get("shape"));
-    let shape = if matches!(shape.as_str(), "sphere" | "cone" | "line") { shape } else { "sphere".into() };
-    let (scene_turn, round) = scene_turn_and_round(state);
-    let actor_id = event.actor_id.clone().unwrap_or_default();
-    let item_name = if present(payload.get("name")) { s(payload.get("name")) } else { s(payload.get("action_id")) };
-    let targets = Value::Array(area.get("target_ids").and_then(Value::as_array).map(|list| list.iter().map(|id| Value::String(s(Some(id)))).collect()).unwrap_or_default());
-    Some(
-        Entry::new()
-            .set("sceneTurn", scene_turn)
-            .set("round", round)
-            .set("type", "area-attack")
-            .opt("actorId", event.actor_id.clone())
-            .set("actorKind", combat_actor_kind(state, &actor_id))
-            .set("itemName", item_name)
-            .set("from", json!({ "x": from.0, "y": from.1 }))
-            .set("area", json!({ "x": to.0, "y": to.1, "radiusFeet": safe_int(area.get("size_feet"), 5).max(5), "shape": shape }))
-            .set("targetIds", targets)
-            .text_if("damageType", area.get("damage_type"))
-            .text_if("ability", area.get("save_ability"))
-            .build(),
-    )
-}
-
 /// `LegendaryActionUsed`: механику несут соседние события (спасброски, урон,
 /// маркеры); здесь — только строка хроники с областью для доски.
 pub fn legendary_action_used(state: &mut Value, event: &Event) {
     let payload = event.payload.clone();
-    if let Some(entry) = battle_log_area_from_payload(state, event, &payload) {
+    if let Some(entry) = crate::journal::battle_log_area_from_payload(state, event, &payload) {
         append_battle_log(state, event, entry);
     }
 }
