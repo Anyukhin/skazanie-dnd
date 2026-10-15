@@ -5,6 +5,7 @@
 //! | --- | --- |
 //! | `server/graph-layout.mjs` | [`graph_layout`] |
 //! | `server/settlement-generator.mjs` | [`settlement_generator`] |
+//! | `server/scene-program-layout.mjs` | [`scene_program_layout`] |
 //!
 //! Этап паритета (`rust/PORTING.md`): тот же сид даёт ту же карту — байт в
 //! байт строки `JSON.stringify(serializeTacticalMap(map))`; тексты
@@ -13,6 +14,7 @@
 use sk_core::hash;
 
 pub mod graph_layout;
+pub mod scene_program_layout;
 pub mod settlement_generator;
 mod v8_math;
 

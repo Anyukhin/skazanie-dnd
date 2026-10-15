@@ -1868,11 +1868,13 @@ dependencies = [
 name = "sk-settlements"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "serde",
  "serde_json",
  "sk-core",
  "sk-geometry",
  "sk-map-core",
+ "sk-props",
  "sk-scene-base",
  "sk-tactical",
 ]
