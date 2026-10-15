@@ -173,6 +173,41 @@ fn push_npc_spell_proxies(state: &mut Value, input: &Value) -> Step {
     Ok(())
 }
 
+/// `TruceBroken` для команды, которая бьёт через линию перемирия
+/// (13101–13116): `truce` — `truceFor(state)` до команды. Лечение своего под
+/// перемирием — не нарушение.
+pub fn truce_broken_event(state: &Value, command: &Value, target_id: &Value, truce: &Value) -> Option<Value> {
+    if !TRUCE_BREAKING_COMMAND_TYPES.contains(&js::s(command.get("command_type")).as_str()) {
+        return None;
+    }
+    let actor = js::s(command.get("actor_id"));
+    let attacker_is_enemy = sk_core::game::is_enemy_actor(state, &actor);
+    let victim_id = js::s(Some(target_id));
+    let victim_is_enemy = if victim_id.is_empty() { !attacker_is_enemy } else { sk_core::game::is_enemy_actor(state, &victim_id) };
+    if attacker_is_enemy == victim_is_enemy {
+        return None;
+    }
+    let round = sk_core::game::combat(state).get("round").cloned();
+    let mut payload = serde_json::Map::new();
+    payload.insert("broken_by".into(), Value::String(if attacker_is_enemy { "enemies" } else { "party" }.into()));
+    payload.insert("actor_id".into(), Value::String(actor.clone()));
+    payload.insert("target_id".into(), Value::String(victim_id));
+    if let Some(leader) = truce.get("leader_id") {
+        payload.insert("leader_id".into(), leader.clone());
+    }
+    if let Some(name) = truce.get("leader_name") {
+        payload.insert("leader_name".into(), name.clone());
+    }
+    if let Some(round) = round {
+        payload.insert("round".into(), round);
+    }
+    payload.insert("at_minutes".into(), js::num(sk_social::npc_social::campaign_elapsed_minutes(state)));
+    payload.insert("policy_id".into(), Value::String(PARLEY_POLICY_ID.into()));
+    let targets: Vec<Value> = [truce.get("leader_id").cloned().unwrap_or(Value::Null), Value::String(actor)].into_iter().filter(|value| js::truthy(Some(value))).collect();
+    let source = command_with(command, "visibility", Value::String("party".into()));
+    Some(event_from(&source, "TruceBroken", Some(Value::Object(payload)), Some(&Value::Array(targets))))
+}
+
 /// `resolveCommandInternal(input, rawState, { diceService, context })`.
 pub fn resolve_command_internal(input: &Value, raw_state: &Value, dice: &mut dyn RulesDice, context: &Context, uuid: Uuid<'_>) -> Result<Resolved, Halt> {
     let depth = context.resolve_depth().max(0);
@@ -231,36 +266,9 @@ impl Resolve<'_> {
     /// журнал **перед** самим ударом.
     fn append_truce_broken(&mut self) {
         let Some(truce) = self.truce_before_command.clone() else { return };
-        if !TRUCE_BREAKING_COMMAND_TYPES.contains(&self.command_type().as_str()) {
-            return;
+        if let Some(event) = truce_broken_event(&self.state, &self.command, &self.target_id, &truce) {
+            self.events.push(event);
         }
-        let actor = js::s(self.command.get("actor_id"));
-        let attacker_is_enemy = sk_core::game::is_enemy_actor(&self.state, &actor);
-        let victim_id = js::s(Some(&self.target_id));
-        let victim_is_enemy = if victim_id.is_empty() { !attacker_is_enemy } else { sk_core::game::is_enemy_actor(&self.state, &victim_id) };
-        if attacker_is_enemy == victim_is_enemy {
-            return;
-        }
-        let round = sk_core::game::combat(&self.state).get("round").cloned();
-        let mut payload = serde_json::Map::new();
-        payload.insert("broken_by".into(), Value::String(if attacker_is_enemy { "enemies" } else { "party" }.into()));
-        payload.insert("actor_id".into(), Value::String(actor.clone()));
-        payload.insert("target_id".into(), Value::String(victim_id));
-        if let Some(leader) = truce.get("leader_id") {
-            payload.insert("leader_id".into(), leader.clone());
-        }
-        if let Some(name) = truce.get("leader_name") {
-            payload.insert("leader_name".into(), name.clone());
-        }
-        if let Some(round) = round {
-            payload.insert("round".into(), round);
-        }
-        payload.insert("at_minutes".into(), js::num(sk_social::npc_social::campaign_elapsed_minutes(&self.state)));
-        payload.insert("policy_id".into(), Value::String(PARLEY_POLICY_ID.into()));
-        let targets: Vec<Value> = [truce.get("leader_id").cloned().unwrap_or(Value::Null), Value::String(actor)].into_iter().filter(|value| js::truthy(Some(value))).collect();
-        let source = command_with(&self.command, "visibility", Value::String("party".into()));
-        let event = event_from(&source, "TruceBroken", Some(Value::Object(payload)), Some(&Value::Array(targets)));
-        self.events.push(event);
     }
 
     /// `commandWithRules(command, …)` текущей команды.

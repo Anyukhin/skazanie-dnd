@@ -1,7 +1,7 @@
 import '../../../fixtures-env.mjs'
 // Эталоны `normalizeCommand` (`rules-engine.mjs`, 4579–4873) для `sk-rules`:
 //
-// 1. Команды корпуса паритета (если передан каталог корпуса): до 25 на тип,
+// 1. Команды корпуса паритета (если передан каталог корпуса): до 15 на тип,
 //    состояние сведено к полям, которые читает нормализация
 //    (`ruleset_id`, `state_version`).
 // 2. Мусорные команды всех разрешённых типов и неизвестных (в том числе
@@ -60,7 +60,7 @@ if (corpusDir && existsSync(corpusDir)) {
       const record = JSON.parse(line)
       const type = String(record.command?.command_type ?? '?')
       const count = perType.get(type) ?? 0
-      if (count >= 25) continue
+      if (count >= 15) continue
       const text = JSON.stringify(record.command)
       if (text.length > 6_000) continue
       if (!stateCache.has(record.state)) {

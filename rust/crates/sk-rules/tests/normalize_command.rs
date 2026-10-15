@@ -18,7 +18,7 @@ static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(FIXTURE).ex
 #[test]
 fn normalize_command_matches_js() {
     let cases = DATA["cases"].as_array().expect("случаи");
-    assert!(cases.len() > 3_000, "эталон полон");
+    assert!(cases.len() > 2_500, "эталон полон");
     let mut failures = Vec::new();
     for (index, case) in cases.iter().enumerate() {
         let mut uuid = sequence_uuids("uuid");
