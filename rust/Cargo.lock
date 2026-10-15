@@ -1765,6 +1765,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-npc-world"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-economy",
+ "sk-geometry",
+ "sk-heroes",
+ "sk-map-core",
+ "sk-scene-base",
+ "sk-social",
+ "sk-society",
+ "sk-tactical",
+]
+
+[[package]]
 name = "sk-rulepack"
 version = "0.1.0"
 dependencies = [
