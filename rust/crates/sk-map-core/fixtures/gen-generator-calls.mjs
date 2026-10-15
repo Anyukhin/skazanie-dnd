@@ -19,7 +19,7 @@ const { MAP_PREVIEW_PRESETS } = await import('../../../../server/map-quality.mjs
 const { sceneMapRequirementsFor, sceneRequirementsFromText } = await import('../../../../server/scene-requirements.mjs')
 
 /** Какие функции уже перенесены и записываются. */
-const RECORD = new Set(['thinWalls'])
+const RECORD = new Set(['thinWalls', 'applyRoomFloors'])
 
 const inputs = sceneInputs(MAP_PREVIEW_PRESETS, sceneMapRequirementsFor, sceneRequirementsFromText)
 const recording = startRecording(t, RECORD)
@@ -41,12 +41,14 @@ for (const run of runs) {
     chains.push({
       run: run.label,
       before: chain.before,
-      calls: chain.calls.map((call) => ({ fn: call.fn, input: call.input, result: call.result, after: hashText(call.after), agrees: call.agrees })),
+      calls: chain.calls.map((call) => ({ fn: call.fn, input: call.input, result: call.result, after: hashText(call.after), agrees: call.agrees, agreesAfterRead: call.agreesAfterRead })),
     })
   }
 }
 const disagreements = chains.flatMap((chain) => chain.calls.filter((call) => !call.agrees).map((call) => `${chain.run}:${call.fn}`))
 if (disagreements.length) console.log(`  на копии карты иначе, чем в памяти: ${disagreements.length} (${disagreements.slice(0, 5).join(', ')})`)
+const real = chains.flatMap((chain) => chain.calls.filter((call) => !call.agreesAfterRead).map((call) => `${chain.run}:${call.fn}`))
+if (real.length) console.log(`  и после чтения тоже: ${real.length} (${real.slice(0, 5).join(', ')})`)
 
 writeFixture(new URL('./generator-calls.json', import.meta.url), {
   recorded: [...RECORD],

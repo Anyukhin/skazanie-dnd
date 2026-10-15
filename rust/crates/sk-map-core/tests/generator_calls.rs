@@ -25,6 +25,7 @@ fn thin_walls_options(value: &Value) -> ThinWallsOptions {
 fn run_call(map: &mut TacticalMap, name: &str, input: &Value) -> Value {
     match name {
         "thinWalls" => attempt(thin_walls(map, &thin_walls_options(&input["options"])).map(|report| report.to_json())),
+        "applyRoomFloors" => common::room_floors_call(map, input),
         other => panic!("в эталоне вызов {other}, а он ещё не перенесён"),
     }
 }
@@ -42,8 +43,11 @@ fn generator_calls_match_js() {
             if step > 0 {
                 map = round_trip(&map);
             }
-            let result = run_call(&mut map, name, &call["input"]);
             let context = format!("{label} шаг {step} {name}");
+            // Карта генератора в памяти и прочитанная копия расходятся только
+            // порядком ключей зоны (`wall` раньше `floor`), не смыслом.
+            assert_eq!(call["agreesAfterRead"], true, "в JS копия и карта в памяти разошлись: {context}");
+            let result = run_call(&mut map, name, &call["input"]);
             assert_same(&result, &call["result"], &context);
             let after = serialize(&map);
             assert_eq!(hash(&after), call["after"].as_str().unwrap_or(""), "карта после вызова: {context}\n{}", common::head(&stringify(&after)));

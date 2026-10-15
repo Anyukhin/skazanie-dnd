@@ -115,3 +115,36 @@ pub fn round_trip(map: &TacticalMap) -> TacticalMap {
     let text = stringify(&serialize(map));
     restore(&serde_json::from_str(&text).expect("JSON карты"))
 }
+
+/// Строковый параметр JS с умолчанием для `undefined`; `null` и не-строка
+/// ведут себя в модулях карты как пустая строка.
+pub fn option_text<'a>(options: &'a Value, key: &str, fallback: &'a str) -> &'a str {
+    match options.get(key) {
+        None => fallback,
+        Some(Value::String(text)) => text,
+        Some(_) => "",
+    }
+}
+
+/// `applyRoomFloors(map, options)` по записи эталона: `input.options` —
+/// параметры без предиката, `input.zones` — ответ предиката по каждой зоне.
+pub fn room_floors_call(map: &mut TacticalMap, input: &Value) -> Value {
+    use sk_map_core::room_floors::{apply_room_floors, RoomContext, RoomFloor, RoomFloorsOptions};
+    let options = &input["options"];
+    let context = RoomContext { use_: option_text(options, "use", ""), architecture: option_text(options, "architecture", "wood") };
+    let default_floor = options.get("defaultFloor").filter(|value| value.is_object()).map(|value| RoomFloor {
+        material: sk_core::js::s(value.get("material")),
+        floor: value.get("floor").and_then(Value::as_str).map(str::to_string),
+    });
+    let accepted: Option<std::collections::HashMap<String, bool>> = input.get("zones").and_then(Value::as_array).map(|mask| {
+        map.zones.iter().zip(mask).map(|(zone, accept)| (zone.id.clone(), accept == &Value::Bool(true))).collect()
+    });
+    let predicate = |zone: &sk_tactical::tactical_map::TacticalZone| accepted.as_ref().is_some_and(|accepted| accepted.get(&zone.id).copied().unwrap_or(false));
+    let options = RoomFloorsOptions {
+        context,
+        wall: options.get("wall").and_then(Value::as_str),
+        default_floor: default_floor.as_ref(),
+        zones: if accepted.is_some() { Some(&predicate) } else { None },
+    };
+    attempt(apply_room_floors(map, &options).map(Value::from))
+}

@@ -57,6 +57,8 @@ export function startRecording(t, names) {
       const [map, ...rest] = args
       const before = serialize(map)
       const copy = restore(before)
+      // Карта, какой её видит читатель: порядок ключей зоны после чтения свой.
+      const canonicalBefore = serialize(copy)
       const input = inputOf(name, map, rest)
       let expected
       let failure = null
@@ -73,10 +75,20 @@ export function startRecording(t, names) {
       } catch (error) {
         realFailure = error
       }
-      const agrees = serialize(map) === after
-        && JSON.stringify(real ?? null) === JSON.stringify(expected ?? null)
+      const realAfter = serialize(map)
+      const sameResult = JSON.stringify(real ?? null) === JSON.stringify(expected ?? null)
         && String(realFailure?.message ?? '') === String(failure?.message ?? '')
-      calls.push({ name, mapRef: map, before, input, result: failure ? { error: { name: failure.name, code: failure.code ?? null, message: failure.message } } : { ok: expected ?? null }, after, agrees })
+      const canonicalAfter = serialize(restore(after))
+      // `agrees` — карта в памяти и прочитанная копия дали одно и то же;
+      // `agreesAfterRead` — одно и то же после чтения (расходится только
+      // порядок ключей зоны, см. отчёт переноса).
+      const agrees = realAfter === after && sameResult
+      const agreesAfterRead = serialize(restore(realAfter)) === canonicalAfter && sameResult
+      calls.push({
+        name, mapRef: map, before: canonicalBefore, input,
+        result: failure ? { error: { name: failure.name, code: failure.code ?? null, message: failure.message } } : { ok: expected ?? null },
+        after, canonicalAfter, agrees, agreesAfterRead,
+      })
       if (realFailure) throw realFailure
       return real
     } finally {
@@ -116,26 +128,27 @@ function inputOf(name, map, rest) {
 }
 
 /**
- * Вызовы одной карты подряд — цепочка: если карта перед вызовом совпадает с
- * эталоном после предыдущего вызова той же карты, вход не хранится (Rust
- * продолжает своей картой). Иначе — полная сериализация.
+ * Вызовы одной карты подряд — цепочка: если карта перед вызовом (после
+ * чтения) совпадает с эталоном после предыдущего вызова той же карты (тоже
+ * после чтения), вход не хранится — Rust продолжает своей картой, прочитанной
+ * заново. Иначе — полная сериализация.
  */
 export function chainsOf(calls, { keep = () => true } = {}) {
   const chains = []
   const state = new WeakMap()
   for (const call of calls) {
     const previous = state.get(call.mapRef)
-    const entry = { fn: call.name, input: call.input, result: call.result, after: call.after, agrees: call.agrees }
+    const entry = { fn: call.name, input: call.input, result: call.result, after: call.after, agrees: call.agrees, agreesAfterRead: call.agreesAfterRead }
     if (previous && previous.after === call.before) {
       previous.chain.calls.push(entry)
     } else {
       if (!keep(call)) continue
       const chain = { before: JSON.parse(call.before), calls: [entry] }
       chains.push(chain)
-      state.set(call.mapRef, { chain, after: call.after })
+      state.set(call.mapRef, { chain, after: call.canonicalAfter })
       continue
     }
-    previous.after = call.after
+    previous.after = call.canonicalAfter
   }
   return chains
 }
