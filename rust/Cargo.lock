@@ -1828,6 +1828,8 @@ dependencies = [
  "serde_json",
  "sk-core",
  "sk-geometry",
+ "sk-map-core",
+ "sk-scene-base",
  "sk-tactical",
 ]
 

@@ -11,3 +11,5 @@ serde_json.workspace = true
 sk-core.workspace = true
 sk-geometry = { path = "../sk-geometry" }
 sk-tactical = { path = "../sk-tactical" }
+sk-map-core = { path = "../sk-map-core" }
+sk-scene-base = { path = "../sk-scene-base" }

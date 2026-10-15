@@ -19,13 +19,13 @@ use std::collections::HashMap;
 
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexMap;
-use sk_core::{hash, js, re, text, Point};
+use sk_core::{js, re, text, Point};
 use sk_geometry::scene_graph::{progression_waves, reachable_zones, validate_scene_graph, SceneGraph, SceneLink, SceneZone};
 use sk_tactical::tactical_map::{
     self as tm, CellPatch, EdgePatch, MapResult, Overlays, RoomLabel, TacticalMap, TacticalMapError, TacticalMapOptions, TacticalSpawnPoint,
 };
 
-use crate::GeneratorStamp;
+use crate::{random_for, shuffle, GeneratorStamp};
 
 /// `GRAPH_LAYOUT`.
 pub const GRAPH_LAYOUT: GeneratorStamp = GeneratorStamp { id: "graph-layout", version: "2" };
@@ -34,17 +34,6 @@ pub const GRAPH_LAYOUT: GeneratorStamp = GeneratorStamp { id: "graph-layout", ve
 /// подземелье с тем же сидом обязаны выйти прежними, поэтому их поток
 /// случайности по-прежнему от версии 1.
 const SPLIT_RANDOM_SALT: &str = "graph-layout:1";
-
-/// `randomFor(seed)`: LCG от первых четырёх байт SHA-256 сида (ноль — единица).
-pub(crate) fn random_for(seed: &str) -> impl FnMut() -> f64 {
-    let digest = hash::sha256(seed);
-    let base = u32::from_le_bytes([digest[0], digest[1], digest[2], digest[3]]);
-    let mut state = if base == 0 { 1 } else { base };
-    move || {
-        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-        f64::from(state) / 4_294_967_296.0
-    }
-}
 
 // --- прямоугольники -----------------------------------------------------------
 
@@ -373,18 +362,6 @@ fn gap(a: &LeafRect, b: &LeafRect) -> i64 {
 fn near_rect(rect: &LeafRect, x: i64, y: i64) -> bool {
     (x >= rect.min_x && x <= rect.max_x && y >= rect.min_y - 2 && y <= rect.max_y + 2)
         || (y >= rect.min_y && y <= rect.max_y && x >= rect.min_x - 2 && x <= rect.max_x + 2)
-}
-
-/// Перемешивание Фишера — Йетса на детерминированном генераторе (`shuffle`).
-fn shuffle<T: Clone>(items: &[T], random: &mut dyn FnMut() -> f64) -> Vec<T> {
-    let mut result = items.to_vec();
-    let mut index = result.len();
-    while index > 1 {
-        index -= 1;
-        let swap = (random() * (index + 1) as f64).floor() as usize;
-        result.swap(index, swap);
-    }
-    result
 }
 
 /// Ошибка, на которой JS падает `TypeError`: камеры зоны входа нет, а обход
