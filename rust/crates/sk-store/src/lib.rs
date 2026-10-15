@@ -7,6 +7,7 @@
 
 pub mod accounts;
 pub mod error;
+pub mod executor;
 pub mod legacy;
 pub mod maps;
 pub mod stable;

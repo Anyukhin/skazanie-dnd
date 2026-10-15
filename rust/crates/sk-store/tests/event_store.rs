@@ -177,7 +177,7 @@ fn enforces_idempotency_before_optimistic_locking_and_rejects_key_reuse() {
     let mut new_key = base;
     new_key.idempotency_key = "new-request".into();
     let conflict = fixture.store.commit(new_key).expect_err("устаревшая версия");
-    assert_eq!(conflict.code, "VERSION_CONFLICT");
+    assert_eq!(conflict.code, "STATE_VERSION_CONFLICT");
     assert_eq!(conflict.details["actual_state_version"], 1);
     assert_eq!(fixture.store.get_events("locking", 0, None).expect("события").len(), 1);
 }

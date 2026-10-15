@@ -22,23 +22,23 @@ impl StoreError {
     }
 
     pub fn campaign_not_found(campaign_id: &str) -> Self {
-        Self::for_campaign("CAMPAIGN_NOT_FOUND", campaign_id, format!("Campaign {campaign_id} was not found"), json!({}))
+        Self::for_campaign("CAMPAIGN_NOT_FOUND", campaign_id, format!("Campaign {campaign_id} is not initialized"), json!({}))
     }
 
     pub fn already_initialized(campaign_id: &str, state_version: i64) -> Self {
         Self::for_campaign(
             "CAMPAIGN_ALREADY_INITIALIZED",
             campaign_id,
-            format!("Campaign {campaign_id} is already initialized at version {state_version}"),
+            format!("Campaign {campaign_id} is already initialized at state version {state_version}"),
             json!({ "state_version": state_version }),
         )
     }
 
     pub fn version_conflict(campaign_id: &str, expected: i64, actual: i64) -> Self {
         Self::for_campaign(
-            "VERSION_CONFLICT",
+            "STATE_VERSION_CONFLICT",
             campaign_id,
-            format!("Campaign {campaign_id} expected version {expected}, actual version is {actual}"),
+            format!("State version conflict for {campaign_id}: expected {expected}, actual {actual}"),
             json!({ "expected_state_version": expected, "actual_state_version": actual }),
         )
     }
@@ -47,13 +47,13 @@ impl StoreError {
         Self::for_campaign(
             "IDEMPOTENCY_CONFLICT",
             campaign_id,
-            format!("Idempotency key {key} was already used for a different request"),
+            format!("Idempotency key {key} was already used with a different request"),
             json!({ "idempotency_key": key }),
         )
     }
 
     pub fn corrupt(campaign_id: &str, message: impl Into<String>, details: Value) -> Self {
-        Self::for_campaign("CORRUPT_EVENT_LOG", campaign_id, message, details)
+        Self::for_campaign("CORRUPT_EVENT_LOG", campaign_id, format!("Corrupt event log for {campaign_id}: {}", message.into()), details)
     }
 
     /// Журнал непригоден к тихой загрузке (`CAMPAIGN_RECOVERY_REQUIRED`):
@@ -63,7 +63,7 @@ impl StoreError {
         if let Some(map) = details.as_object_mut() {
             map.insert("reason".into(), Value::String(reason.to_string()));
         }
-        Self::for_campaign("CAMPAIGN_RECOVERY_REQUIRED", campaign_id, message, details)
+        Self::for_campaign("CAMPAIGN_RECOVERY_REQUIRED", campaign_id, format!("Campaign {campaign_id} requires recovery ({reason}): {}", message.into()), details)
     }
 
     pub fn invalid(code: &'static str, message: impl Into<String>) -> Self {
@@ -80,7 +80,7 @@ impl From<rusqlite::Error> for StoreError {
     fn from(error: rusqlite::Error) -> Self {
         if let rusqlite::Error::SqliteFailure(failure, _) = &error {
             if failure.code == rusqlite::ErrorCode::DatabaseBusy || failure.code == rusqlite::ErrorCode::DatabaseLocked {
-                return Self::new("STORE_BUSY", format!("Хранилище занято: {error}"));
+                return Self::new("EVENT_STORE_BUSY", format!("Хранилище занято: {error}"));
             }
         }
         Self::new("EVENT_STORE_ERROR", format!("SQLite: {error}"))
