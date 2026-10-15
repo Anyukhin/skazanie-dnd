@@ -1688,7 +1688,9 @@ dependencies = [
  "sk-core",
  "sk-economy",
  "sk-geometry",
+ "sk-map-core",
  "sk-scene-base",
+ "sk-society",
  "sk-tactical",
  "thiserror",
 ]
