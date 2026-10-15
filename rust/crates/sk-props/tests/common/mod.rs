@@ -9,11 +9,13 @@
 
 use std::io::Read;
 
-use serde_json::Value;
-use serde_json::json;
+use serde_json::{json, Value};
 use sk_core::js;
 use sk_props::prop_placement::{
     attach_prop_supports, ensure_prop_access, place_colonnade, place_props, place_required_props, RequiredProps, ZonePlacementPlan, DEFAULT_MAX_PROPS,
+};
+use sk_props::scene_dressing::{
+    mark_low_furniture, place_ruins, place_ruins_field, place_vignettes, roughen_ground, RoughKind, RoughOptions, RuinsFieldOptions, RuinsOptions, VignetteOptions,
 };
 use sk_tactical::tactical_map::{deserialize_tactical_map, serialize_tactical_map, TacticalMap, TacticalMapError};
 
@@ -129,6 +131,60 @@ pub fn run_placement(map: &mut TacticalMap, op: &str, args: &Value) -> Result<Va
         "placeRequiredProps" => {
             let seed = js::s(args[1].get("seed"));
             Ok(json!(place_required_props(map, &required(&args[0]), &seed)?))
+        }
+        other => panic!("неизвестная операция эталона: {other}"),
+    }
+}
+
+/// Строки списка аргумента (`string[]`); `None` — не массив (`null`).
+fn strings(value: Option<&Value>) -> Option<Vec<String>> {
+    value.and_then(Value::as_array).map(|items| items.iter().map(|item| js::s(Some(item))).collect())
+}
+
+/// Вызов функции `scene-dressing` по имени случая; ответ — как в эталоне.
+/// Умолчания — как у деструктуризации JS (только для отсутствующего поля).
+pub fn run_dressing(map: &mut TacticalMap, op: &str, args: &Value) -> Value {
+    let options = &args[0];
+    let seed = js::s(options.get("seed"));
+    let zones = strings(options.get("zones"));
+    match op {
+        "placeVignettes" => {
+            let set = js::s(options.get("set"));
+            let text = js::s(options.get("text"));
+            let vignette = VignetteOptions {
+                seed: &seed,
+                set: &set,
+                zones: zones.as_deref(),
+                limit: options.get("limit").and_then(Value::as_i64).unwrap_or(1),
+                text: &text,
+                hug_walls: options.get("hugWalls").and_then(Value::as_bool).unwrap_or(false),
+            };
+            json!(place_vignettes(map, &vignette))
+        }
+        "roughenGround" => {
+            let kind = RoughKind::parse(options["kind"].as_str().unwrap_or_default()).expect("вид трудной местности");
+            let patches = options.get("patches").and_then(Value::as_u64).unwrap_or(2) as usize;
+            json!(roughen_ground(map, &RoughOptions { seed: &seed, kind, zones: zones.as_deref(), patches }))
+        }
+        "markLowFurniture" => {
+            let ids = strings(Some(options)).unwrap_or_default();
+            let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+            json!(mark_low_furniture(map, &ids))
+        }
+        "placeRuins" => {
+            let zone = options.get("zone").and_then(Value::as_str).unwrap_or("field");
+            let shape = options.get("shape").and_then(Value::as_str);
+            let index = options.get("index").and_then(Value::as_i64).unwrap_or(1);
+            place_ruins(map, &RuinsOptions { seed: &seed, zone, shape, index }).map_or(Value::Null, |ruins| ruins.to_json())
+        }
+        "placeRuinsField" => {
+            let field = RuinsFieldOptions {
+                seed: &seed,
+                zone: options.get("zone").and_then(Value::as_str).unwrap_or("field"),
+                asked: options.get("asked").and_then(Value::as_bool).unwrap_or(false),
+                chance: options.get("chance").and_then(Value::as_f64).unwrap_or(0.4),
+            };
+            json!(place_ruins_field(map, &field))
         }
         other => panic!("неизвестная операция эталона: {other}"),
     }
