@@ -18,6 +18,7 @@ pub mod json;
 pub mod state;
 pub mod text;
 pub mod v8math;
+pub mod v8sort;
 
 pub use command::Command;
 pub use error::{RuleError, RuleResult};

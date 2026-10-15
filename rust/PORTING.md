@@ -125,7 +125,9 @@
 приводить как JS (`Math.floor` → `f64::floor`). Целочисленное деление Rust
 (`7 / 2 == 3`) — частая ошибка переноса.
 
-Порядок: `Array.prototype.sort` устойчив, как `sort_by` в Rust. Сравнитель
+Порядок: `Array.prototype.sort` устойчив, как `sort_by` в Rust. Если сравнитель
+может быть несогласован (дробная разность расстояний, случайный знак) —
+только `sk_core::v8sort::sort_by` (TimSort V8 шаг в шаг, сверен с Node). Сравнитель
 `(a, b) => a - b` → `partial_cmp`/`cmp` по числам; сравнитель с
 `localeCompare` → `text::locale_compare`.
 
