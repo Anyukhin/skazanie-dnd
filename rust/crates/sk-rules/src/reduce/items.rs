@@ -8,7 +8,7 @@
 //! (`applyLootContainerEvent` — `loot-containers`, крейт `sk-director`).
 //!
 //! Здесь же общие помощники предметов для соседних веток: `addInventoryItem`
-//! (23993), `inventoryStackIndex` (5455), `npcLoadoutAfterSpend` (23543) и
+//! (23993; стопка — `society_helpers::inventory_stack_index`), `npcLoadoutAfterSpend` (23543) и
 //! частичная копия `refreshPlayerDerivedState` (23603).
 
 use std::collections::HashSet;
@@ -49,20 +49,11 @@ fn inventory_list(value: Option<&Value>) -> Vec<Value> {
     value.and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
-/// `inventoryStackIndex(inventory, incoming)` (5455): стопка без надетых.
-pub(super) fn inventory_stack_index(inventory: &[Value], incoming: &Value) -> Option<usize> {
-    if !truthy(Some(incoming)) || is_true(incoming.get("equipped")) {
-        return None;
-    }
-    let key = sk_economy::merchant_economy::inventory_stack_key(Some(incoming));
-    inventory.iter().position(|item| !is_true(item.get("equipped")) && sk_economy::merchant_economy::inventory_stack_key(Some(item)) == key)
-}
-
 /// `addInventoryItem(inventory, incoming)` (23993): в стопку того же вида,
 /// иначе новой строкой.
 pub(super) fn add_inventory_item(inventory: Option<&Value>, incoming: &Value) -> Value {
     let current = inventory_list(inventory);
-    let Some(index) = inventory_stack_index(&current, incoming) else {
+    let Some(index) = crate::society_helpers::inventory_stack_index(&current, incoming) else {
         let mut next = current;
         next.push(incoming.clone());
         return Value::Array(next);

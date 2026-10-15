@@ -168,3 +168,77 @@ pub fn accepted_party_placement_entries(state: &Value, raw_entries: Option<&Valu
 pub fn used_cell_points(used: &IndexSet<String>) -> Vec<Value> {
     used.iter().map(|key| key_point(key)).collect()
 }
+
+/// `propMovementPositions(map)` — частная копия (Р1,
+/// `rules/tactical-geometry.mjs`, 313): клетки реквизита с `blocksMove`.
+pub fn prop_movement_positions(map: &TacticalMap) -> IndexSet<String> {
+    let mut blocked = IndexSet::new();
+    for prop in map.props.iter().filter(|prop| prop.blocks_move) {
+        if prop.footprint.is_empty() {
+            let (x, y) = (prop.x.floor(), prop.y.floor());
+            if crate::core::is_safe_integer_f64(x) && crate::core::is_safe_integer_f64(y) {
+                blocked.insert(position_key(x as i64, y as i64));
+            }
+        } else {
+            for cell in &prop.footprint {
+                blocked.insert(position_key(cell.x, cell.y));
+            }
+        }
+    }
+    blocked
+}
+
+/// `sceneAdvancePartyPositions(state, transition)` (12223): отряд встаёт
+/// у входа новой сцены — ближние к входу клетки пола достаются первым в
+/// списке отряда; реквизит карты уже занимает свои клетки.
+pub fn scene_advance_party_positions(state: &Value, transition: &Value) -> Result<Vec<Value>, RuleError> {
+    let party = scene_advance_party_ids(state);
+    let entrance = transition.get("entrance");
+    let entrance_x = js::safe_int(entrance.and_then(|entrance| entrance.get("x")), 0);
+    let entrance_y = js::safe_int(entrance.and_then(|entrance| entrance.get("y")), 0);
+    let scene = transition.get("scene");
+    let raw_cells = scene.and_then(|scene| scene.get("cells")).and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut seen: IndexSet<(i64, i64)> = IndexSet::new();
+    let mut cells: Vec<Value> = Vec::new();
+    for cell in raw_cells {
+        let x = js::number(cell.as_object().and_then(|cell| cell.get("x")));
+        let y = js::number(cell.as_object().and_then(|cell| cell.get("y")));
+        if !crate::core::is_safe_integer_f64(x) || !crate::core::is_safe_integer_f64(y) {
+            continue;
+        }
+        let (x, y) = (x as i64, y as i64);
+        if !seen.insert((x, y)) {
+            continue;
+        }
+        let kind = cell.get("type").filter(|value| js::truthy(Some(value))).map_or_else(|| "floor".to_string(), |value| js::string(Some(value)));
+        if !matches!(sk_core::text::lower(&kind).as_str(), "floor" | "door") {
+            continue;
+        }
+        cells.push(js::spread(&cell, serde_json::json!({ "x": x, "y": y })));
+    }
+    let coordinate = |cell: &Value, key: &str| cell.get(key).and_then(Value::as_i64).unwrap_or(0);
+    cells.sort_by(|left, right| {
+        let distance = |cell: &Value| (coordinate(cell, "x") - entrance_x).abs() + (coordinate(cell, "y") - entrance_y).abs();
+        let feature = |cell: &Value| i64::from(js::truthy(cell.get("feature")));
+        distance(left)
+            .cmp(&distance(right))
+            .then(feature(left).cmp(&feature(right)))
+            .then(coordinate(left, "y").cmp(&coordinate(right, "y")))
+            .then(coordinate(left, "x").cmp(&coordinate(right, "x")))
+    });
+    let map = scene.and_then(|scene| scene.get("map")).filter(|map| js::truthy(Some(map))).and_then(|map| sk_tactical::tactical_map::deserialize_tactical_map(map).ok());
+    let by_key = cells_by_key(&cells);
+    let mut occupied = map.as_ref().map(prop_movement_positions).unwrap_or_default();
+    let mut positions = Vec::new();
+    for id in party {
+        let actor = find_actor(state, &id);
+        let Some(selected) = cells.iter().find(|candidate| party_footprint_fits(actor, candidate, &by_key, map.as_ref(), &occupied)) else {
+            return Err(RuleError::new("SCENE_ENTRANCE_CAPACITY_EXCEEDED", "На входе новой сцены недостаточно площади для отряда"));
+        };
+        for cell in footprint_cells_for(actor, Some(selected)) {
+            occupied.insert(position_key(cell.x, cell.y));
+        }
+        positions.push(serde_json::json!({ "actor_id": id, "x": coordinate(selected, "x"), "y": coordinate(selected, "y") }));
+    }
+    Ok(positions)
+}

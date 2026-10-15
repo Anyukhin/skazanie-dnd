@@ -4,8 +4,7 @@
 //!
 //! Перенесено то, что зовёт редьюсер: `doorEdgeBlocks`, `setSceneDoorState`,
 //! `setSceneObjectPropState`, `doorTraceKey`, `updateSceneObjectInteraction`,
-//! `setScenePropAt`. `sceneObjectState` (2760) читает разбор команды — его
-//! перенесёт задача объектов (Р11).
+//! `setScenePropAt`; для разбора команд (Р9, Р11) — `sceneObjectState`.
 
 use serde_json::{json, Map, Value};
 use sk_core::js;
@@ -132,4 +131,61 @@ pub fn set_scene_prop_at(state: &mut Value, x: Option<&Value>, y: Option<&Value>
     });
     add_prop(&mut map, &prop).map_err(map_error)?;
     write_scene_tactical_map(state, &map).map_err(map_error)
+}
+
+/// `sceneObjectState(state, prop, definition)` (2760): запись взаимодействия
+/// с предметом — сохранённая поверх исходной, которую задают состояние
+/// предмета на карте и определение взаимодействия.
+pub fn scene_object_state(state: &Value, prop: &sk_tactical::tactical_map::TacticalProp, definition: &Value) -> Value {
+    let saved = sk_core::game::mechanics(state).get("scene_interactions").and_then(|all| all.get(prop.id.as_str())).filter(|saved| js::truthy(Some(saved)));
+    let projected = if matches!(prop.state.as_str(), "open" | "taken" | "used") { prop.state.clone() } else { String::new() };
+    let initial = definition.get("initialState").filter(|value| js::truthy(Some(value)));
+    let chosen = if !projected.is_empty() {
+        projected.clone()
+    } else {
+        initial.map_or_else(|| "idle".to_string(), |value| js::string(Some(value)))
+    };
+    let base = json!({
+        "state": head(&chosen, 40),
+        "inspected": false,
+        "inspection_attempted": false,
+        "inspection_attempted_by": [],
+        "opened": projected == "open",
+        "taken": projected == "taken",
+        "used": projected == "used",
+        "used_by": [],
+        "loot_claimed": projected == "taken",
+        "loot_revealed": projected == "open" || projected == "taken",
+        "trap_detected": false,
+        "lockpicked": false,
+        "lockpicked_by": null,
+        "knowledge_ids": [],
+        "last_actor_id": null,
+    });
+    let Some(saved) = saved else { return base };
+    let last_actor = head(&js::s(saved.get("last_actor_id")), 120);
+    let attempted = unique_strings(saved.get("inspection_attempted_by"));
+    let used_by = unique_strings(saved.get("used_by"));
+    let mut record = spread_value(Some(&base));
+    for (key, value) in spread_value(Some(saved)) {
+        record.insert(key, value);
+    }
+    let attempted = if !attempted.is_empty() {
+        attempted
+    } else if js::truthy(saved.get("inspection_attempted")) && !last_actor.is_empty() {
+        vec![last_actor.clone()]
+    } else {
+        Vec::new()
+    };
+    let used_by = if !used_by.is_empty() {
+        used_by
+    } else if definition.get("kind").and_then(Value::as_str) == Some("campfire") && js::truthy(saved.get("used")) && !last_actor.is_empty() {
+        vec![last_actor]
+    } else {
+        Vec::new()
+    };
+    record.insert("inspection_attempted_by".into(), js::strings_value(attempted));
+    record.insert("used_by".into(), js::strings_value(used_by));
+    record.insert("knowledge_ids".into(), js::strings_value(unique_strings(saved.get("knowledge_ids"))));
+    Value::Object(record)
 }

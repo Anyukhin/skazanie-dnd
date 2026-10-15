@@ -484,3 +484,164 @@ pub fn actor_cells_at(state: &Value, id: &str) -> Vec<String> {
     let position = sk_core::game::actor_position(state, id).map(|point| json!({ "x": point.x, "y": point.y }));
     footprint_cells_for(actor, Some(position.as_ref().unwrap_or(&Value::Null))).into_iter().map(|cell| format!("{},{}", cell.x, cell.y)).collect()
 }
+
+// --- переходы и переезд (для разбора команд, Р6) ---------------------------
+
+/// `levelTransitionBackTo(map, fromLevel)` (2482): переход целевого этажа,
+/// который ведёт обратно на покидаемый.
+pub fn level_transition_back_to(map: &TacticalMap, from_level: i64) -> Option<&sk_tactical::tactical_map::TacticalProp> {
+    map.props.iter().find(|prop| prop.transition.as_ref().is_some_and(|transition| transition.to_level == from_level))
+}
+
+/// Клетки площади ключами `x,y`.
+fn cell_keys(actor: Option<&Value>, anchor: &Value) -> Vec<String> {
+    footprint_cells_for(actor, Some(anchor)).into_iter().map(|cell| format!("{},{}", cell.x, cell.y)).collect()
+}
+
+/// Ключ клетки `x,y`.
+fn pair_key(cell: (i64, i64)) -> String {
+    format!("{},{}", cell.0, cell.1)
+}
+
+/// Безопасные целые координаты точки (`Number(position?.x)`).
+fn safe_point(position: &Value) -> Option<(i64, i64)> {
+    let x = js::number(position.as_object().and_then(|point| point.get("x")));
+    let y = js::number(position.as_object().and_then(|point| point.get("y")));
+    (crate::core::is_safe_integer_f64(x) && crate::core::is_safe_integer_f64(y)).then_some((x as i64, y as i64))
+}
+
+/// `levelArrivalPositions(state, map, arrivalProp)` (2550): места отряда на
+/// целевом этаже волной от точки прибытия; клетки жителей стэша этажа заняты.
+pub fn level_arrival_positions(state: &Value, map: &TacticalMap, arrival: Option<&sk_tactical::tactical_map::TacticalProp>) -> Result<Vec<Value>, sk_core::RuleError> {
+    let party = super::placement::scene_advance_party_ids(state);
+    let Some(anchor) = arrival.and_then(|prop| prop.footprint.first()).copied() else {
+        return Err(sk_core::RuleError::new("LEVEL_ARRIVAL_MISSING", "У точки прибытия нет координат на целевом этаже"));
+    };
+    let key = level_key(&scene_location_id(state), map.level_index);
+    let stash = state
+        .get("levelEntities")
+        .filter(|value| js::truthy(Some(value)) && (value.is_object() || value.is_array()))
+        .and_then(|stashes| stashes.get(&key))
+        .filter(|stash| !stash.is_null());
+    let field = |name: &str| stash.and_then(|stash| stash.get(name)).and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut by_id: std::collections::HashMap<String, Value> = std::collections::HashMap::new();
+    for actor in field("enemies").into_iter().chain(field("summons")) {
+        by_id.insert(sk_core::game::actor_id(&actor), actor);
+    }
+    let mut occupied: IndexSet<String> = IndexSet::new();
+    if let Some(Value::Object(positions)) = stash.and_then(|stash| stash.get("positions")) {
+        for (id, position) in js::entries(positions) {
+            let Some((x, y)) = safe_point(position) else { continue };
+            occupied.extend(cell_keys(by_id.get(id.as_str()), &json!({ "x": x, "y": y })));
+        }
+    }
+    for placement in field("npc_placements") {
+        let body = json!({ "footprint": placement.get("footprint").cloned().unwrap_or(Value::Null) });
+        occupied.extend(cell_keys(Some(&body), &placement));
+    }
+    let mut candidates: Vec<(i64, i64)> = sk_tactical::tactical_map::reachable_cells(map, anchor.x, anchor.y, true, None).into_iter().collect();
+    candidates.sort_by(|left, right| {
+        let distance = |cell: &(i64, i64)| (cell.0 - anchor.x).abs() + (cell.1 - anchor.y).abs();
+        distance(left).cmp(&distance(right)).then(left.1.cmp(&right.1)).then(left.0.cmp(&right.0))
+    });
+    let actors: Vec<Option<Value>> = party.iter().map(|id| sk_core::game::find_actor(state, id).cloned()).collect();
+    if !actors.iter().any(|actor| sk_geometry::actor_footprint::footprint_size_for(actor.as_ref()) > 1) {
+        let available: Vec<(i64, i64)> = candidates.iter().copied().filter(|cell| !occupied.contains(&pair_key(*cell))).collect();
+        if available.len() < party.len() {
+            return Err(sk_core::RuleError::new("SCENE_ENTRANCE_CAPACITY_EXCEEDED", "На целевом этаже недостаточно проходимых клеток для отряда"));
+        }
+        return Ok(party.iter().zip(available).map(|(id, cell)| json!({ "actor_id": id, "x": cell.0, "y": cell.1 })).collect());
+    }
+    let mut placements = Vec::new();
+    for (id, actor) in party.iter().zip(&actors) {
+        let selected = candidates.iter().copied().find(|cell| {
+            let anchor = json!({ "x": cell.0, "y": cell.1 });
+            let footprint = footprint_cells_for(actor.as_ref(), Some(&anchor));
+            !footprint.is_empty()
+                && !super::placement::footprint_placement_edges_blocked(Some(map), actor.as_ref(), &anchor)
+                && footprint.iter().all(|cell| sk_tactical::tactical_map::cell_passable(map, cell.x, cell.y) && !occupied.contains(&pair_key((cell.x, cell.y))))
+        });
+        let Some(selected) = selected else {
+            return Err(sk_core::RuleError::new("SCENE_ENTRANCE_CAPACITY_EXCEEDED", "На целевом этаже недостаточно площади для отряда"));
+        };
+        occupied.extend(cell_keys(actor.as_ref(), &json!({ "x": selected.0, "y": selected.1 })));
+        placements.push(json!({ "actor_id": id, "x": selected.0, "y": selected.1 }));
+    }
+    Ok(placements)
+}
+
+/// Кто переезжает при замене карты (`planImportRelocations`).
+struct Mover {
+    kind: &'static str,
+    id: String,
+    x: i64,
+    y: i64,
+    body: Option<Value>,
+    creature: bool,
+}
+
+/// `planImportRelocations(state, map, partyPositions)` (2504): куда встают
+/// все, кроме отряда, когда ведущий заменил карту, — ближайшая к прежним
+/// координатам свободная клетка, где помещается площадь; без места — со
+/// сцены.
+pub fn plan_import_relocations(state: &Value, map: &TacticalMap, party_positions: &[Value]) -> Vec<Value> {
+    let party: IndexSet<String> = super::placement::scene_advance_party_ids(state).into_iter().collect();
+    let mut occupied = super::placement::prop_movement_positions(map);
+    for position in party_positions {
+        let actor = sk_core::game::find_actor(state, &js::string(position.get("actor_id")));
+        occupied.extend(cell_keys(actor, position));
+    }
+    let mut movers = Vec::new();
+    let positions = sk_core::game::mechanics(state).get("positions").and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut entries: Vec<(&String, &Value)> = js::entries(&positions);
+    entries.sort_by(|left, right| locale_compare(left.0, right.0));
+    for (id, position) in entries {
+        if party.contains(id.as_str()) {
+            continue;
+        }
+        let Some((x, y)) = safe_point(position) else { continue };
+        movers.push(Mover { kind: "actor", id: id.clone(), x, y, body: sk_core::game::find_actor(state, id).cloned(), creature: true });
+    }
+    let mut entities = state.get("entities").and_then(Value::as_array).cloned().unwrap_or_default();
+    entities.sort_by(|left, right| locale_compare(&s(left.get("id")), &s(right.get("id"))));
+    for entity in entities {
+        let Some((x, y)) = safe_point(&entity) else { continue };
+        if !js::truthy(entity.get("id")) {
+            continue;
+        }
+        let creature = crate::constants::CREATURE_ENTITY_KINDS.contains(&js::string(entity.get("kind")).as_str());
+        movers.push(Mover { kind: "entity", id: js::string(entity.get("id")), x, y, body: Some(entity), creature });
+    }
+    let mut candidates = Vec::new();
+    for y in 0..map.height {
+        for x in 0..map.width {
+            if sk_tactical::tactical_map::cell_passable(map, x, y) {
+                candidates.push((x, y));
+            }
+        }
+    }
+    let mut relocations = Vec::new();
+    for mover in movers {
+        let from_x = mover.x.min(map.width - 1).max(0);
+        let from_y = mover.y.min(map.height - 1).max(0);
+        let mut ordered = candidates.clone();
+        ordered.sort_by(|left, right| {
+            let distance = |cell: &(i64, i64)| (cell.0 - from_x).abs() + (cell.1 - from_y).abs();
+            distance(left).cmp(&distance(right)).then(left.1.cmp(&right.1)).then(left.0.cmp(&right.0))
+        });
+        let spot = ordered.into_iter().find(|cell| {
+            let anchor = json!({ "x": cell.0, "y": cell.1 });
+            !super::placement::footprint_placement_edges_blocked(Some(map), mover.body.as_ref(), &anchor)
+                && footprint_cells_for(mover.body.as_ref(), Some(&anchor)).iter().all(|cell| sk_tactical::tactical_map::cell_passable(map, cell.x, cell.y) && !occupied.contains(&pair_key((cell.x, cell.y))))
+        });
+        let Some(spot) = spot else {
+            relocations.push(json!({ "kind": mover.kind, "id": mover.id, "removed": true }));
+            continue;
+        };
+        if mover.creature {
+            occupied.extend(cell_keys(mover.body.as_ref(), &json!({ "x": spot.0, "y": spot.1 })));
+        }
+        relocations.push(json!({ "kind": mover.kind, "id": mover.id, "x": spot.0, "y": spot.1 }));
+    }
+    relocations
+}
