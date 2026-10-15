@@ -1781,6 +1781,7 @@ dependencies = [
  "sk-scene-base",
  "sk-social",
  "sk-society",
+ "sk-tactical",
 ]
 
 [[package]]

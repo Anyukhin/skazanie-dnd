@@ -2,5 +2,169 @@
 //!
 //! JS: `server/rules-engine.mjs`, 2911–2957, 12184–12261.
 //!
-//! Заготовка каркаса Р0: модуль объявлен заранее (`lib.rs` и `mod.rs` правит
-//! только Р0); тела пишет задача-владелец.
+//! Подрайон боя (`syncCombatBounds`, `growCombatBounds`) перенесён в
+//! `sk-tactical`; здесь — раскрытие клеток карты (`revealSceneCells`) и
+//! расстановка отряда по заявленным клеткам (`acceptedPartyPlacementEntries`).
+//! Две маленькие функции задачи Р1 — частные копии до её слияния:
+//! `syncSceneCells` (2293) и `footprintPlacementEdgesBlocked`
+//! (`rules/tactical-geometry.mjs`, 274).
+
+use serde_json::Value;
+use sk_core::game::{actor_id, find_actor};
+use sk_core::indexmap::{IndexMap, IndexSet};
+use sk_core::js;
+use sk_core::RuleError;
+use sk_geometry::actor_footprint::{footprint_cells_for, footprint_size_for};
+use sk_tactical::tactical_map::{cell_at, legacy_cells_from_tactical_map, movement_step_blocked, set_cell, CellPatch, TacticalMap, TacticalMapError};
+
+use crate::core::unique_strings;
+
+/// Отказ карты внутри ветки редьюсера — как исключение JS: событие дальше
+/// этой точки не применяется.
+pub fn map_error(error: TacticalMapError) -> RuleError {
+    RuleError::new(&error.code, &error.message)
+}
+
+/// `positionKey(position)`: `${x},${y}`.
+pub fn position_key(x: i64, y: i64) -> String {
+    format!("{x},{y}")
+}
+
+/// Ключ клетки обратно в координаты: `key.split(',').map(Number)`.
+pub fn key_point(key: &str) -> Value {
+    let mut parts = key.split(',');
+    let x = js::parse_number(parts.next().unwrap_or_default());
+    let y = parts.next().map_or(f64::NAN, js::parse_number);
+    let mut point = serde_json::Map::new();
+    point.insert("x".into(), js::num(x));
+    point.insert("y".into(), js::num(y));
+    Value::Object(point)
+}
+
+/// `syncSceneCells(state)` (2293) — частная копия, заменить на `scene_map_sync`
+/// (Р1): `scene.cells` пересобирается из карты сцены.
+pub fn sync_scene_cells(state: &mut Value) {
+    if !js::truthy(state.get("scene")) {
+        return;
+    }
+    let Some(map) = sk_tactical::combat_bounds::scene_tactical_map(state) else { return };
+    if let Some(scene) = state.get_mut("scene").and_then(Value::as_object_mut) {
+        scene.insert("cells".into(), Value::Array(legacy_cells_from_tactical_map(&map)));
+    }
+}
+
+/// `revealSceneCells(state, positions)` (2941): клетки помечаются раскрытыми
+/// в карте; координата вне карты пропускается.
+pub fn reveal_scene_cells(state: &mut Value, positions: &[Value]) -> Result<(), RuleError> {
+    let Some(mut map) = sk_tactical::combat_bounds::ensure_scene_tactical_map(state).map_err(map_error)? else { return Ok(()) };
+    let mut touched = false;
+    for position in positions {
+        let x = js::number(position.as_object().and_then(|point| point.get("x")));
+        let y = js::number(position.as_object().and_then(|point| point.get("y")));
+        if !crate::core::is_safe_integer_f64(x) || !crate::core::is_safe_integer_f64(y) {
+            continue;
+        }
+        if set_cell(&mut map, x as i64, y as i64, &CellPatch { revealed: Some(true), ..CellPatch::default() }).is_ok() {
+            touched = true;
+        }
+    }
+    if touched {
+        sk_tactical::combat_bounds::write_scene_tactical_map(state, &map).map_err(map_error)?;
+    }
+    Ok(())
+}
+
+/// `footprintPlacementEdgesBlocked(map, actor, anchor)` — частная копия
+/// (Р1, `rules/tactical-geometry.mjs`): стена или дверь внутри площади
+/// крупного существа.
+pub fn footprint_placement_edges_blocked(map: Option<&TacticalMap>, actor: Option<&Value>, anchor: &Value) -> bool {
+    let Some(map) = map else { return false };
+    if footprint_size_for(actor) <= 1 {
+        return false;
+    }
+    let cells = footprint_cells_for(actor, Some(anchor));
+    let keys: IndexSet<(i64, i64)> = cells.iter().map(|cell| (cell.x, cell.y)).collect();
+    for cell in &cells {
+        for (dx, dy) in [(1, 0), (0, 1)] {
+            let next = (cell.x + dx, cell.y + dy);
+            if keys.contains(&next) && movement_step_blocked(map, cell.x, cell.y, next.0, next.1).unwrap_or(false) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// `sceneAdvancePartyIds(state)` (12184): отряд по `partyMemberIds`, только
+/// живые карточки героев.
+pub fn scene_advance_party_ids(state: &Value) -> Vec<String> {
+    let players = state.get("players").and_then(Value::as_array).cloned().unwrap_or_default();
+    let player_ids: IndexSet<String> = players.iter().map(actor_id).collect();
+    let requested = match state.get("partyMemberIds") {
+        Some(Value::Array(list)) if !list.is_empty() => unique_strings(Some(&Value::Array(list.clone()))),
+        _ => player_ids.iter().cloned().collect(),
+    };
+    requested.into_iter().filter(|id| player_ids.contains(id)).collect()
+}
+
+/// Клетки сцены по ключу `x,y` (`new Map(cells.map((cell) => [positionKey(cell), cell]))`).
+fn cells_by_key(cells: &[Value]) -> IndexMap<String, Value> {
+    cells.iter().map(|cell| (format!("{},{}", js::string(cell.get("x")), js::string(cell.get("y"))), cell.clone())).collect()
+}
+
+/// `partyFootprintFits(actor, anchor, cellsByKey, map, occupied)` (12190).
+fn party_footprint_fits(actor: Option<&Value>, anchor: &Value, cells: &IndexMap<String, Value>, map: Option<&TacticalMap>, occupied: &IndexSet<String>) -> bool {
+    let footprint = footprint_cells_for(actor, Some(anchor));
+    if footprint.is_empty() || footprint_placement_edges_blocked(map, actor, anchor) {
+        return false;
+    }
+    footprint.iter().all(|cell| {
+        let key = position_key(cell.x, cell.y);
+        let Some(scene_cell) = cells.get(&key) else { return false };
+        let kind = scene_cell.get("type").filter(|value| js::truthy(Some(value))).map_or_else(|| "floor".to_string(), |value| js::string(Some(value)));
+        let walkable = matches!(sk_core::text::lower(&kind).as_str(), "floor" | "door");
+        walkable && map.is_none_or(|map| cell_at(map, cell.x, cell.y).is_some_and(|cell| cell.passable)) && !occupied.contains(&key)
+    })
+}
+
+/// Принятая расстановка: позиции по героям (порядок записи) и занятые
+/// клетки (`usedCells`, начиная с уже занятых).
+pub struct Placement {
+    pub positions: IndexMap<String, (i64, i64)>,
+    pub used_cells: IndexSet<String>,
+}
+
+/// `acceptedPartyPlacementEntries(state, rawEntries, cells, map, { occupiedCells })`
+/// (12203): заявленные клетки героев отряда, которые помещают площадь героя.
+pub fn accepted_party_placement_entries(state: &Value, raw_entries: Option<&Value>, cells: Option<&Value>, map: Option<&TacticalMap>, occupied: &IndexSet<String>) -> Placement {
+    let party: IndexSet<String> = scene_advance_party_ids(state).into_iter().collect();
+    let cells = cells_by_key(cells.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]));
+    let mut used_actors: IndexSet<String> = IndexSet::new();
+    let mut used_cells = occupied.clone();
+    let mut positions = IndexMap::new();
+    for entry in raw_entries.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]) {
+        let id = js::s(entry.get("actor_id"));
+        let x = js::number(entry.get("x"));
+        let y = js::number(entry.get("y"));
+        if !party.contains(&id) || used_actors.contains(&id) || !crate::core::is_safe_integer_f64(x) || !crate::core::is_safe_integer_f64(y) {
+            continue;
+        }
+        let (x, y) = (x as i64, y as i64);
+        let anchor = serde_json::json!({ "x": x, "y": y });
+        let actor = find_actor(state, &id);
+        if !party_footprint_fits(actor, &anchor, &cells, map, &used_cells) {
+            continue;
+        }
+        used_actors.insert(id.clone());
+        for cell in footprint_cells_for(actor, Some(&anchor)) {
+            used_cells.insert(position_key(cell.x, cell.y));
+        }
+        positions.insert(id, (x, y));
+    }
+    Placement { positions, used_cells }
+}
+
+/// Занятые клетки как точки для `revealSceneCells`.
+pub fn used_cell_points(used: &IndexSet<String>) -> Vec<Value> {
+    used.iter().map(|key| key_point(key)).collect()
+}

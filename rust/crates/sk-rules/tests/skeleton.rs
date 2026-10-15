@@ -58,11 +58,11 @@ fn resolve_entry_runs_preparation_then_validation() {
 #[test]
 fn reducer_stubs_report_unported_and_keep_common_steps() {
     let mut state = state();
-    let event: sk_core::Event = serde_json::from_value(json!({ "event_type": "SceneAdvanced", "payload": {}, "command_id": "c" })).expect("событие");
+    let event: sk_core::Event = serde_json::from_value(json!({ "event_type": "MerchantCreated", "payload": {}, "command_id": "c" })).expect("событие");
     let result = sk_rules::reduce::apply_event_checked(&mut state, &event);
-    assert_eq!(result.unwrap_err().message, "reduce:SceneAdvanced");
+    assert_eq!(result.unwrap_err().message, "reduce:MerchantCreated");
     assert_eq!(state["state_version"], 5, "общие шаги идут и для неперенесённой ветки");
-    assert!(!sk_rules::reduce::is_ported("SceneAdvanced"));
+    assert!(!sk_rules::reduce::is_ported("MerchantCreated"));
     assert!(sk_rules::reduce::is_ported("DamageApplied"));
     assert!(sk_rules::reduce::is_ported("DieRolled"), "у события без ветки JS — только общие шаги");
     assert!(!sk_rules::reduce::is_ported("MerchantEconomyClockAdvanced"));
