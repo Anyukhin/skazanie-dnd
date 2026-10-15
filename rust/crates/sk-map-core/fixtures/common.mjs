@@ -1,0 +1,60 @@
+// Общие помощники генераторов эталонов sk-map-core.
+//
+// Крупный выход (сериализованные карты, клетки старой формы) хранится хешем:
+// SHA-256 от `JSON.stringify(value)` — Rust сравнивает тот же хеш от своей
+// строки JSON, то есть вместе с порядком ключей и записью чисел.
+// `undefined` записывается строкой UNDEFINED.
+import { createHash } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
+
+export const UNDEFINED = '\u0000undefined'
+
+export const encode = (value) => (value === undefined ? UNDEFINED : value)
+
+/** SHA-256 строки `JSON.stringify(value)`; `undefined` — UNDEFINED. */
+export function hash(value) {
+  if (value === undefined) return UNDEFINED
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+}
+
+/** SHA-256 готовой строки. */
+export function hashText(text) {
+  return createHash('sha256').update(text).digest('hex')
+}
+
+/** Ошибка в форме эталона: имя, код (если есть) и текст. */
+export function errorOf(error) {
+  return { name: error?.name ?? 'Error', code: error?.code ?? null, message: String(error?.message ?? error) }
+}
+
+/** Вызов с записью исключения вместо результата. */
+export function attempt(fn) {
+  try {
+    return { ok: encode(fn()) }
+  } catch (error) {
+    return { error: errorOf(error) }
+  }
+}
+
+/** Детерминированный ГПСЧ mulberry32. */
+export function mulberry32(seed) {
+  let state = seed >>> 0
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Записать эталон: секции по случаю на строку, чтобы diff читался. */
+export function writeFixture(url, sections) {
+  const lines = Object.entries(sections).map(([key, value]) => (Array.isArray(value)
+    ? `${JSON.stringify(key)}: [\n${value.map((item) => JSON.stringify(item)).join(',\n')}\n]`
+    : `${JSON.stringify(key)}: ${JSON.stringify(value)}`))
+  const text = `{\n${lines.join(',\n')}\n}\n`
+  writeFileSync(url, text)
+  const counts = Object.entries(sections).filter(([, value]) => Array.isArray(value)).map(([key, value]) => `${key} ${value.length}`)
+  console.log(`${url.pathname.split('/').at(-1)}: ${counts.join(', ')} — ${(text.length / 1024).toFixed(0)} КБ`)
+}
