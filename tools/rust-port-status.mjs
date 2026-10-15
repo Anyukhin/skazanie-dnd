@@ -65,7 +65,6 @@ const PLAN = [
 const PARTIAL = {
   'sk-rules': 'каркас Р0 (точки входа, ядро, normalizeCommand, кости, паузы), редьюсер: живучесть, состояния, атака, ход и раунд',
   'sk-server': 'вход, сессии, админка, раздача клиента',
-  'sk-encounters': 'сборщик встреч; agent-context — в работе',
   'sk-story': 'библиотека готовых построек (map-library)',
   'sk-character': 'решения по поручениям (quest-decisions)',
 }
