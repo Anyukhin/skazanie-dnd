@@ -1,0 +1,18 @@
+[package]
+name = "sk-encounters"
+description = "Встречи «Сказания»: сборка противников по сложности и теме, расстановка на карте по эту сторону дверей и окон от отряда, снаряжение и подрайон боя"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+sk-core.workspace = true
+sk-scene-base = { path = "../sk-scene-base" }
+sk-tactical = { path = "../sk-tactical" }
+sk-economy = { path = "../sk-economy" }
+sk-combat-base = { path = "../sk-combat-base" }
+sk-combat-content = { path = "../sk-combat-content" }
+sk-geometry = { path = "../sk-geometry" }
