@@ -17,3 +17,7 @@ sk-social = { path = "../sk-social" }
 sk-memory = { path = "../sk-memory" }
 sk-attention = { path = "../sk-attention" }
 sk-combat-content = { path = "../sk-combat-content" }
+sk-ruleset = { path = "../sk-ruleset" }
+sk-scene-base = { path = "../sk-scene-base" }
+sk-economy = { path = "../sk-economy" }
+sk-items = { path = "../sk-items" }

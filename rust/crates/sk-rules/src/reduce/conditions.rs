@@ -204,8 +204,8 @@ pub fn condition_added(state: &mut Value, event: &Event) {
         });
     }
     if condition == "no-reactions" && sk_core::game::combat_active(state) {
-        let economy = crate::economy::economy_of(state, &target);
-        crate::economy::set_economy(state, &target, crate::economy::with(&economy, json!({ "reaction": false })));
+        let economy = crate::turn_economy::economy_of(state, &target);
+        crate::turn_economy::set_economy(state, &target, crate::turn_economy::with(&economy, json!({ "reaction": false })));
     }
 }
 

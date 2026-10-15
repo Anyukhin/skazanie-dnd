@@ -225,6 +225,12 @@ impl<'a> AuthoritativeExecutor<'a> {
         Self { journal, max_attempts: 3 }
     }
 
+    /// Журнал исполнителя (`executor.eventStore` в JS): чтение по ключу и
+    /// загрузка для модулей, которые сверяют повтор сами.
+    pub fn journal(&self) -> &'a dyn Journal {
+        self.journal
+    }
+
     pub fn with_max_attempts(mut self, attempts: usize) -> Self {
         self.max_attempts = attempts.max(1);
         self

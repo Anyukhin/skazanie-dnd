@@ -2024,16 +2024,6 @@ fn base64_encode(bytes: &[u8]) -> String {
     out
 }
 
-fn base64_value(byte: u8) -> Option<u8> {
-    match byte {
-        b'A'..=b'Z' => Some(byte - b'A'),
-        b'a'..=b'z' => Some(byte - b'a' + 26),
-        b'0'..=b'9' => Some(byte - b'0' + 52),
-        b'+' | b'-' => Some(62),
-        b'/' | b'_' => Some(63),
-        _ => None,
-    }
-}
 
 /// `Buffer.from(text, 'base64')`: снисходительный разбор Node — строка
 /// читается по младшему байту каждой единицы UTF-16 (`н` U+043D — это `=`),
@@ -2041,30 +2031,7 @@ fn base64_value(byte: u8) -> Option<u8> {
 /// URL-алфавит. Проверено на Node 24: `'не base64 !!'` → пусто, `'жAAAA'` →
 /// `[232, 0, 0]`.
 fn base64_decode(text: &str) -> Vec<u8> {
-    let mut out = Vec::with_capacity(text.len() / 4 * 3 + 3);
-    let mut group = [0u8; 4];
-    let mut filled = 0;
-    for byte in text.encode_utf16().map(|unit| (unit & 0xff) as u8) {
-        if byte == b'=' {
-            break;
-        }
-        let Some(value) = base64_value(byte) else { continue };
-        group[filled] = value;
-        filled += 1;
-        if filled == 4 {
-            out.push((group[0] << 2) | (group[1] >> 4));
-            out.push((group[1] << 4) | (group[2] >> 2));
-            out.push((group[2] << 6) | group[3]);
-            filled = 0;
-        }
-    }
-    if filled >= 2 {
-        out.push((group[0] << 2) | (group[1] >> 4));
-    }
-    if filled >= 3 {
-        out.push((group[1] << 4) | (group[2] >> 2));
-    }
-    out
+    js::buffer_from_base64(text)
 }
 
 // --- сериализация ---------------------------------------------------------

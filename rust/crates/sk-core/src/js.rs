@@ -718,3 +718,59 @@ mod stringify_tests {
         assert_eq!(stringify_pretty(&json!({ "a": [1, { "b": null }], "c": {} }), 2), "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ],\n  \"c\": {}\n}");
     }
 }
+
+/// `Buffer.from(text, 'base64')` как у Node: читается младший байт каждой
+/// единицы UTF-16 (кириллическая «н», U+043D, для Node — `=`), посторонние
+/// символы пропускаются, `=` заканчивает данные, принимается и URL-алфавит,
+/// неполная последняя группа даёт столько байтов, сколько успела набрать.
+pub fn buffer_from_base64(text: &str) -> Vec<u8> {
+    let value = |byte: u8| match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' | b'-' => Some(62),
+        b'/' | b'_' => Some(63),
+        _ => None,
+    };
+    let mut out = Vec::with_capacity(text.len() / 4 * 3 + 3);
+    let mut group = [0u8; 4];
+    let mut filled = 0;
+    for byte in text.encode_utf16().map(|unit| (unit & 0xff) as u8) {
+        if byte == b'=' {
+            break;
+        }
+        let Some(decoded) = value(byte) else { continue };
+        group[filled] = decoded;
+        filled += 1;
+        if filled == 4 {
+            out.push((group[0] << 2) | (group[1] >> 4));
+            out.push((group[1] << 4) | (group[2] >> 2));
+            out.push((group[2] << 6) | group[3]);
+            filled = 0;
+        }
+    }
+    if filled >= 2 {
+        out.push((group[0] << 2) | (group[1] >> 4));
+    }
+    if filled >= 3 {
+        out.push((group[1] << 4) | (group[2] >> 2));
+    }
+    out
+}
+
+#[cfg(test)]
+mod base64_tests {
+    use super::buffer_from_base64;
+
+    #[test]
+    fn decodes_like_node_buffer() {
+        // Замер Node 24: `[...Buffer.from(t, 'base64')]`.
+        assert_eq!(buffer_from_base64("aGVsbG8="), b"hello");
+        assert_eq!(buffer_from_base64("aGVs bG8"), b"hello");
+        assert_eq!(buffer_from_base64("aGVsbG8=AAAA"), b"hello");
+        assert_eq!(buffer_from_base64("-_8"), vec![251, 255]);
+        assert_eq!(buffer_from_base64("aнVsbG8"), Vec::<u8>::new());
+        assert_eq!(buffer_from_base64("\u{141}GVs"), vec![0, 101, 108]);
+        assert_eq!(buffer_from_base64("aG=VsbG8"), vec![104]);
+    }
+}

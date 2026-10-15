@@ -35,7 +35,7 @@ fn equipped_armor_categories(actor: &Value) -> Vec<String> {
 pub fn class_speed_bonus_feet(actor: &Value) -> i64 {
     let level = safe_int(actor.get("level"), 1);
     let worn = equipped_armor_categories(actor);
-    match character_class_key(actor) {
+    match character_class_key(actor).as_deref() {
         Some("barbarian") if level >= 5 && !worn.iter().any(|category| category == "heavy") => 10,
         Some("monk") if level >= 2 && !worn.iter().any(|category| matches!(category.as_str(), "light" | "medium" | "heavy" | "shield")) => {
             if level >= 18 {

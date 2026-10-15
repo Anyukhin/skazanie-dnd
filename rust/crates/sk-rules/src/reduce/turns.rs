@@ -8,7 +8,7 @@ use sk_core::Event;
 
 use super::conditions::clear_concentration_effect;
 use super::{scene_turn_and_round, target_of};
-use crate::economy::{action_economy, economy_of, event_version, set_economy, weapon_attack_limit_for_action, with, with_frame, Frame, ACTION_ECONOMY_EVENT_VERSION};
+use crate::turn_economy::{action_economy, economy_of, event_version, set_economy, weapon_attack_limit_for_action, with, with_frame, Frame, ACTION_ECONOMY_EVENT_VERSION};
 use crate::journal::{append_battle_log, Entry};
 use crate::tables::condition_effect;
 use crate::world_clock::{duration_in_minutes, normalized_clock_seconds, normalized_clock_seconds_of, world_time_seconds};

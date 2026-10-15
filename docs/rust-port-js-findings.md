@@ -32,6 +32,8 @@
 | `encounter-assembler` (найдено сценарием внимания) | `CreateEncounter` (`raiders`, `easy`) при повторном визите отряда из двух героев в Редстоуновку — `NO_SAFE_PLACEMENT_CELLS` на всех шести сидах | встреча не собирается |
 | `scene-graph` | `reachableZones`: ключ, найденный в том же обходе после проверки запертой двери, её не открывает | ложный `GOAL_UNREACHABLE` при проверке карты |
 | `backup-service` | путь вида `storage/..имя` считается «снаружи» хранилища | копия пишется внутрь `storage` |
+| `room-floors`, `map-store` | генератор пишет `zone.wall` раньше `zone.floor`, а чтение карты — наоборот: 14 из 56 сгенерированных карт после круга «чтение → запись» дают другой JSON | у одной карты два адреса в `map-store`; хеш с сортировкой ключей этого не видит |
+| `tactical-map` | отказ `setCell` посреди заплатки уже ставит бит существования клетки, но не расширяет охват | после отказа карта не проходит проверку `BOUNDS_MISMATCH` |
 | все модули с `localeCompare()` без локали | порядок зависит от локали процесса: Windows владельца — ru-RU, Docker — en-US | при равной цене выбор легендарного действия, порядок кандидатов встречи, лента розыска, поиск по справочнику **различаются между машиной разработки и боевым сервером** |
 
 ## P2 — мусор старых сохранений и ключи прототипа
@@ -44,6 +46,8 @@
   исходник функции; NPC с id `toString` считается «предзаготовленным» и
   получает портрет без `url`; `IMPROVISED_EFFECTS['constructor']` — функция
   `Object` вместо эффекта (закрыто только проверкой в `action-adjudicator`).
+  `sizeClass: 'constructor'` у тактической карты отключает проверку
+  бюджетов размера.
   Лечение — `Object.hasOwn` или `Map` во всех таблицах.
 - **Падения `TypeError` на не-массивах и `null`** в: брифах сценария (`null` в
   `worldMap.locations`), карте мира (`null` вместо концепта, источника, сцены,
@@ -58,6 +62,23 @@
   `group_initiative`, ресурсы врагов и призывов) — `rust/RULES-ENGINE-PLAN.md`
   §5. `normalizeNpcSocialState` не убирает повторы NPC (это делает только
   `ensure`); `NpcSocialProfileUpserted` вставляет профиль с пустым id.
+- **Rules Engine, разбор команды.** Тип команды — ключ прототипа
+  (`constructor`, `toString`) роняет `normalizeCommand` с `TypeError` вместо
+  `COMMAND_NOT_ALLOWED`; `safeInteger(x, undefined)` даёт 0 — у состояния без
+  `state_version` команда получает `expected_state_version: 0`; `action_ids`
+  окна реакции строкой проверяется поиском подстроки, объектом роняет
+  `TypeError`; повтор целей заклинания `['', 'x']` считается повтором;
+  `visibility` команды не проверяется — произвольная строка доходит до
+  событий; `eventJournalId` при строковой версии склеивает `"5" + 1` → `"51"`;
+  у `ResistanceAfterRollPause` имя `ResistanceChoicePause`.
+- **Тактическая карта.** Ребро без `x` проходит `canonicalEdge`
+  (`undefined === undefined`), сохраняется под ключом `"undefined,2,s"`, а
+  при упаковке съезжает в клетку (0, 0); `hazards: "ab"` становится
+  опасностями клеток 0 и 1; `applyRevealDelta` падает на пустой дельте без
+  `values`.
+- **Base64.** `Buffer.from(text, 'base64')` читает младший байт каждой
+  единицы UTF-16: кириллическая «н» (U+043D) для Node — `=`, разбор
+  обрывается. Rust повторяет (`sk_core::js::buffer_from_base64`).
 - **Строки `"undefined"`/`"null"`**: `String(undefined)` в причине блокировки
   смены редакции и в `tool_proficiencies`; `serverEncounterLoot({ encounterId:
   null })` — id `"null"`; `bossEncounterOutcome` без `encounter_id` — `"undefined"`;

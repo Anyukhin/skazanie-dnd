@@ -381,6 +381,33 @@ GCC из пакетов MSYS2 в `~/.cargo/mingw64-root` (подробно — `
 конфликт `Cargo.lock` — взять свой и `cargo metadata`, затем тесты крейта и
 сверка корпусом (`cargo run -p sk-corpus -- reducer ../tmp/corpus-v1`).
 
+### 2026-10-15, продолжение
+
+- **Слиты** `sk-heroes` (PHB-сборка героя, авторские NPC), исполнитель
+  коммитов в `sk-store` (коды отказов выровнены с JS:
+  `STATE_VERSION_CONFLICT`, по нему сервер отвечает 409) и `sk-tactical`
+  (`scene-interactions`, `tactical-map`, `combat-bounds` вместе с
+  `syncCombatBounds`/`growCombatBounds` из движка, `reveal-delta`,
+  `reveal-transport`): 67 тестов, 112 карт корпуса, 320 случайных программ
+  вызовов API; обход карты 100×100 — 0,66 мс против 3,3 мс у JS.
+- Разбор base64 «как у Node» — один на всех: `sk_core::js::buffer_from_base64`.
+- **Запущены** `rs/map-core` (`map-quality`, `thin-walls`, `room-floors`,
+  `scene-features`, `dynamic-map`, нарисованные и лабораторные карты),
+  `rs/props` (`prop-placement`, `scene-dressing`), `rs/encounters`
+  (`encounter-assembler`, `action-hints`); каркас Rules Engine — `rs/rules-r0`.
+- Бэклог ошибок JS — `docs/rust-port-js-findings.md`.
+- **Слит каркас Rules Engine (Р0):** все модули и точки входа Р1–Р11
+  (68 блоков `validateCommand` в порядке JS, 103 ветки разбора, таблица
+  редьюсера на 190 меток), ядро и таблицы команд, `normalizeCommand`,
+  стенограмма костей побайтно как в JS, паузы (`Halt`), контекст
+  `Resolve`, открытая копия движка для эталонов приватных функций
+  (`sk-rules/fixtures/open-copy.mjs`); ~13 тыс. эталонных случаев.
+  Самодельная таблица атак `classes.rs` расходилась с JS — заменена
+  данными `sk-combat-content`. Сверка корпуса не изменилась (4702).
+- **Запущены** Р1 (геометрия, `rs/rules-r1`) и Р4а (ветки редьюсера сцены,
+  предметов, мира, общества, героя и реестры — `rs/rules-r4a`); Р4б
+  (нормализация) ждёт крейтов 11-го уровня, Р2/Р3 — `sk-npc-world` и
+  остальных зависимостей по §3.5 плана движка.
 ## 11. Первые шаги
 
 1. Ответы на D1–D6.

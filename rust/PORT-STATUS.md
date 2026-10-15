@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 37751 из 142937.
+Строк JS в крейтах, которые уже есть: 41840 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -30,23 +30,23 @@
 | 3 | `sk-heroes` | перенесён | 540 | `character-creation-phb`, `authored-npc` |
 | 3 | `sk-economy` | перенесён | 3320 | `merchant-economy`, `item-appraisal`, `item-instances`, `merchant-narration`, `shop-assembler`, `scene-commerce`, `enemy-loadouts`, `npc-equipment` |
 | 3 | `sk-attention` | перенесён | 782 | `scenario-attention`, `improvised-effects` |
-| 4 | `sk-tactical` | в очереди | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
-| 5 | `sk-map-core` | в очереди | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
+| 4 | `sk-tactical` | перенесён | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
+| 5 | `sk-map-core` | начат: тонкие стены и полы комнат (thin-walls, room-floors); остальное — ветка rs/map-core | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
 | 5 | `sk-props` | в очереди | 2369 | `prop-placement`, `scene-dressing` |
 | 6 | `sk-buildings` | в очереди | 2239 | `building-generator` |
-| 6 | `sk-settlements` | в очереди | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
+| 6 | `sk-settlements` | начат: раскладка графа и генератор поселения; scene-program-layout ждёт map-quality и prop-placement | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
 | 6 | `sk-encounters` | в очереди | 1935 | `encounter-assembler`, `agent-context` |
 | 6 | `sk-npc-world` | в очереди | 3446 | `npc-positioning`, `tavern-life`, `blessings`, `beast-taming` |
 | 7 | `sk-world-life` | в очереди | 2777 | `captives`, `courier-letters`, `world-offices` |
 | 7 | `sk-items-life` | в очереди | 1126 | `item-lifecycle`, `content-integrity` |
 | 7 | `sk-themes` | в очереди | 2568 | `scene-themes` |
-| 8 | `sk-character` | в очереди | 2181 | `character-lifecycle`, `encounter-rewards`, `quest-decisions` |
+| 8 | `sk-character` | начат: решения по поручениям (quest-decisions) | 2181 | `character-lifecycle`, `encounter-rewards`, `quest-decisions` |
 | 8 | `sk-world-time` | в очереди | 3775 | `level-generator`, `weather`, `world-deeds`, `world-template-catalog` |
 | 9 | `sk-world-story` | в очереди | 3376 | `autonomous-campaign`, `offscreen-world`, `scenario-knight`, `scene-canon`, `talespire-import` |
 | 9 | `sk-narration` | в очереди | 1488 | `combat-narration`, `scene-narration`, `encounter-narration`, `scene-summary` |
 | 10 | `sk-story` | в очереди | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
 | 11 | `sk-director` | в очереди | 3684 | `adventure-director`, `campaign-lifecycle`, `scene-memory`, `director-scene-transition`, `loot-containers` |
-| 13 | `sk-rules` | начат: редьюсер: живучесть, состояния, атака, ход и раунд | 28261 | `rules-engine`, `rules/tactical-geometry` |
+| 13 | `sk-rules` | начат: каркас Р0 (точки входа, ядро, normalizeCommand, кости, паузы), редьюсер: живучесть, состояния, атака, ход и раунд | 28261 | `rules-engine`, `rules/tactical-geometry` |
 | 14 | `sk-tactics` | в очереди | 3373 | `adjudicator`, `combat-forecast-view`, `party-tactics`, `security`, `cutover-audit`, `combat-lab-setup`, `combat-lab` |
 | 15 | `sk-projection` | в очереди | 2989 | `viewer-projection`, `trace-store` |
 | 15 | `sk-agents` | в очереди | 11269 | `campaign-bootstrap`, `campaign-recap`, `creative-director`, `hero-hooks`, `lore-author`, `lore-voice`, `npc-controller`, `scene-architect`, `director-agent`, `free-action-adjudication`, `npc-social-controller`, `player-request-router`, `action-adjudicator`, `narrator` |
