@@ -14,3 +14,8 @@ sk-encounters = { path = "../sk-encounters" }
 sk-items = { path = "../sk-items" }
 sk-rulepack = { path = "../sk-rulepack" }
 sk-ruleset = { path = "../sk-ruleset" }
+sk-economy = { path = "../sk-economy" }
+sk-npc-world = { path = "../sk-npc-world" }
+
+[dev-dependencies]
+sk-society = { path = "../sk-society" }
