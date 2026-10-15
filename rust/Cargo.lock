@@ -1913,6 +1913,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-story"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-map-core",
+ "sk-scene-base",
+ "sk-tactical",
+]
+
+[[package]]
 name = "sk-tactical"
 version = "0.1.0"
 dependencies = [

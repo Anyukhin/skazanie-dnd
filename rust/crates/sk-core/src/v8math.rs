@@ -8,13 +8,17 @@
 //! - [`pow`] — `x ** y`: V8 зовёт `pow` платформы; здесь верно округлённая
 //!   степень, совпадающая с Node на машине владельца (подробности — ниже).
 //! - [`hypot`] — `Math.hypot(a, b)` по алгоритму V8 (`MathHypot`, `math.tq`).
+//! - [`log`], [`log2`], [`log10`] — порт fdlibm / FreeBSD msun, которым V8
+//!   считает логарифмы сам (`base::ieee754`).
 //!
 //! Побитная сверка с Node — эталоны крейтов, где результат решает исход:
 //! `sk-props` (`pow`, `sin`, `atan2`, `hypot`), `sk-settlements` и
-//! `sk-map-core` (`sin`), `sk-geometry` (`asin`, `hypot`).
+//! `sk-map-core` (`sin`), `sk-geometry` (`asin`, `hypot`), `sk-story` (`log2`,
+//! `log10`).
 
 pub use asin_fdlibm::asin;
 pub use hypot_v8::hypot;
+pub use log_fdlibm::{log, log10, log2};
 pub use pow_trig::{atan2, pow, sin};
 
 mod pow_trig {
@@ -724,5 +728,233 @@ mod hypot_v8 {
             sum = preliminary;
         }
         sum.sqrt() * max
+    }
+}
+
+mod log_fdlibm {
+    //! `Math.log`, `Math.log2`, `Math.log10` как в V8: перенос fdlibm и FreeBSD
+    //! msun (`e_log.c`, `e_log2.c`, `e_log10.c`, `k_log.h`), которыми V8 считает
+    //! логарифмы сам (`src/base/ieee754.cc`). Подбор библиотечной карты
+    //! (`sk-story`) штрафует расхождение площади `log2` и награждает
+    //! популярность `log10`; очки сравниваются с порогом и между собой, поэтому
+    //! последний бит важен. Побитная сверка с Node — `sk-story/fixtures/math-log.json`.
+
+    const TWO54: f64 = f64::from_bits(0x4350_0000_0000_0000);
+    const LN2_HI: f64 = f64::from_bits(0x3FE6_2E42_FEE0_0000);
+    const LN2_LO: f64 = f64::from_bits(0x3DEA_39EF_3579_3C76);
+    const IVLN2HI: f64 = f64::from_bits(0x3FF7_1547_6520_0000);
+    const IVLN2LO: f64 = f64::from_bits(0x3DE7_05FC_2EEF_A200);
+    const IVLN10: f64 = f64::from_bits(0x3FDB_CB7B_1526_E50E);
+    const LOG10_2HI: f64 = f64::from_bits(0x3FD3_4413_509F_6000);
+    const LOG10_2LO: f64 = f64::from_bits(0x3D59_FEF3_11F1_2B36);
+
+    const LG1: f64 = f64::from_bits(0x3FE5_5555_5555_5593);
+    const LG2: f64 = f64::from_bits(0x3FD9_9999_9997_FA04);
+    const LG3: f64 = f64::from_bits(0x3FD2_4924_9422_9359);
+    const LG4: f64 = f64::from_bits(0x3FCC_71C5_1D8E_78AF);
+    const LG5: f64 = f64::from_bits(0x3FC7_4664_96CB_03DE);
+    const LG6: f64 = f64::from_bits(0x3FC3_9A09_D078_C69F);
+    const LG7: f64 = f64::from_bits(0x3FC2_F112_DF3E_5244);
+
+    fn high(x: f64) -> i32 {
+        (x.to_bits() >> 32) as u32 as i32
+    }
+
+    fn low(x: f64) -> u32 {
+        x.to_bits() as u32
+    }
+
+    fn with_high(x: f64, hi: i32) -> f64 {
+        f64::from_bits((u64::from(hi as u32) << 32) | u64::from(low(x)))
+    }
+
+    fn with_low(x: f64, lo: u32) -> f64 {
+        f64::from_bits((x.to_bits() & 0xFFFF_FFFF_0000_0000) | u64::from(lo))
+    }
+
+    /// `k_log1p(f)` из `k_log.h`.
+    fn k_log1p(f: f64) -> f64 {
+        let s = f / (2.0 + f);
+        let z = s * s;
+        let w = z * z;
+        let t1 = w * (LG2 + w * (LG4 + w * LG6));
+        let t2 = z * (LG1 + w * (LG3 + w * (LG5 + w * LG7)));
+        let r = t2 + t1;
+        let hfsq = 0.5 * f * f;
+        s * (hfsq + r)
+    }
+
+    /// `Math.log(x)` как в V8 (fdlibm `__ieee754_log`).
+    pub fn log(mut x: f64) -> f64 {
+        let mut hx = high(x);
+        let lx = low(x);
+        let mut k: i32 = 0;
+        if hx < 0x0010_0000 {
+            if ((hx & 0x7fff_ffff) as u32 | lx) == 0 {
+                return f64::NEG_INFINITY;
+            }
+            if hx < 0 {
+                return f64::NAN;
+            }
+            k -= 54;
+            x *= TWO54;
+            hx = high(x);
+        }
+        if hx >= 0x7ff0_0000 {
+            return x + x;
+        }
+        k += (hx >> 20) - 1023;
+        hx &= 0x000f_ffff;
+        let i = (hx + 0x95f64) & 0x10_0000;
+        x = with_high(x, hx | (i ^ 0x3ff0_0000));
+        k += i >> 20;
+        let f = x - 1.0;
+        if (0x000f_ffff & (2 + hx)) < 3 {
+            if f == 0.0 {
+                if k == 0 {
+                    return 0.0;
+                }
+                let dk = f64::from(k);
+                return dk * LN2_HI + dk * LN2_LO;
+            }
+            let r = f * f * (0.5 - 0.333_333_333_333_333_33 * f);
+            if k == 0 {
+                return f - r;
+            }
+            let dk = f64::from(k);
+            return dk * LN2_HI - ((r - dk * LN2_LO) - f);
+        }
+        let s = f / (2.0 + f);
+        let dk = f64::from(k);
+        let z = s * s;
+        let mut i = hx - 0x6147a;
+        let w = z * z;
+        let j = 0x6b851 - hx;
+        let t1 = w * (LG2 + w * (LG4 + w * LG6));
+        let t2 = z * (LG1 + w * (LG3 + w * (LG5 + w * LG7)));
+        i |= j;
+        let r = t2 + t1;
+        if i > 0 {
+            let hfsq = 0.5 * f * f;
+            if k == 0 {
+                f - (hfsq - s * (hfsq + r))
+            } else {
+                dk * LN2_HI - ((hfsq - (s * (hfsq + r) + dk * LN2_LO)) - f)
+            }
+        } else if k == 0 {
+            f - s * (f - r)
+        } else {
+            dk * LN2_HI - ((s * (f - r) - dk * LN2_LO) - f)
+        }
+    }
+
+    /// `Math.log2(x)` как в V8 (FreeBSD `e_log2.c`).
+    pub fn log2(mut x: f64) -> f64 {
+        let mut hx = high(x);
+        let lx = low(x);
+        let mut k: i32 = 0;
+        if hx < 0x0010_0000 {
+            if ((hx & 0x7fff_ffff) as u32 | lx) == 0 {
+                return f64::NEG_INFINITY;
+            }
+            if hx < 0 {
+                return f64::NAN;
+            }
+            k -= 54;
+            x *= TWO54;
+            hx = high(x);
+        }
+        if hx >= 0x7ff0_0000 {
+            return x + x;
+        }
+        if hx == 0x3ff0_0000 && lx == 0 {
+            return 0.0;
+        }
+        k += (hx >> 20) - 1023;
+        hx &= 0x000f_ffff;
+        let i = (hx + 0x95f64) & 0x10_0000;
+        x = with_high(x, hx | (i ^ 0x3ff0_0000));
+        k += i >> 20;
+        let y = f64::from(k);
+        let f = x - 1.0;
+        let hfsq = 0.5 * f * f;
+        let r = k_log1p(f);
+        let hi = with_low(f - hfsq, 0);
+        let lo = (f - hi) - hfsq + r;
+        let mut val_hi = hi * IVLN2HI;
+        let mut val_lo = (lo + hi) * IVLN2LO + lo * IVLN2HI;
+        let w = y + val_hi;
+        val_lo += (y - w) + val_hi;
+        val_hi = w;
+        val_lo + val_hi
+    }
+
+    /// `Math.log10(x)` как в V8 (fdlibm `e_log10.c` поверх `log`).
+    pub fn log10(mut x: f64) -> f64 {
+        let mut hx = high(x);
+        let mut lx = low(x);
+        let mut k: i32 = 0;
+        if hx < 0x0010_0000 {
+            if ((hx & 0x7fff_ffff) as u32 | lx) == 0 {
+                return f64::NEG_INFINITY;
+            }
+            if hx < 0 {
+                return f64::NAN;
+            }
+            k -= 54;
+            x *= TWO54;
+            hx = high(x);
+            lx = low(x);
+        }
+        if hx >= 0x7ff0_0000 {
+            return x + x;
+        }
+        if hx == 0x3ff0_0000 && lx == 0 {
+            return 0.0;
+        }
+        k += (hx >> 20) - 1023;
+        let i = ((k as u32) & 0x8000_0000) >> 31;
+        hx = (hx & 0x000f_ffff) | ((0x3ff - i as i32) << 20);
+        let y = f64::from(k + i as i32);
+        x = with_low(with_high(x, hx), lx);
+        let z = y * LOG10_2LO + IVLN10 * log(x);
+        z + y * LOG10_2HI
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{log, log10, log2};
+
+        #[test]
+        fn constants_match_fdlibm_decimals() {
+            assert_eq!(super::LN2_HI, 6.93147180369123816490e-01);
+            assert_eq!(super::LN2_LO, 1.90821492927058770002e-10);
+            assert_eq!(super::IVLN2HI, 1.44269504072144627571e+00);
+            assert_eq!(super::IVLN10, 4.34294481903251816668e-01);
+            assert_eq!(super::LOG10_2HI, 3.01029995663611771306e-01);
+            assert_eq!(super::LG7, 1.479819860511658591e-01);
+        }
+
+        #[test]
+        fn edge_values() {
+            for function in [log as fn(f64) -> f64, log2, log10] {
+                assert_eq!(function(0.0), f64::NEG_INFINITY);
+                assert_eq!(function(-0.0), f64::NEG_INFINITY);
+                assert_eq!(function(1.0), 0.0);
+                assert!(function(-1.0).is_nan());
+                assert!(function(f64::NAN).is_nan());
+                assert_eq!(function(f64::INFINITY), f64::INFINITY);
+            }
+            assert_eq!(log2(8.0), 3.0);
+            assert_eq!(log2(0.25), -2.0);
+            assert_eq!(log2(5e-324), -1074.0);
+            assert_eq!(log10(1000.0), 3.0);
+            assert_eq!(log10(0.01), -2.0);
+            assert_eq!(log(std::f64::consts::E), 1.0);
+            // Значения Node 24 (`Math.log2(3)`, `Math.log10(2)`, `Math.log(10)`).
+            assert_eq!(log2(3.0), 1.584962500721156);
+            assert_eq!(log10(2.0), 0.3010299956639812);
+            assert_eq!(log(10.0), 2.302585092994046);
+        }
     }
 }
