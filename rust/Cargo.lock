@@ -1720,6 +1720,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-map-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-scene-base",
+ "sk-tactical",
+]
+
+[[package]]
 name = "sk-memory"
 version = "0.1.0"
 dependencies = [
