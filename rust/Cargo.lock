@@ -1761,8 +1761,12 @@ dependencies = [
  "sk-combat-content",
  "sk-core",
  "sk-dice",
+ "sk-economy",
  "sk-geometry",
+ "sk-items",
  "sk-memory",
+ "sk-ruleset",
+ "sk-scene-base",
  "sk-social",
  "sk-society",
 ]

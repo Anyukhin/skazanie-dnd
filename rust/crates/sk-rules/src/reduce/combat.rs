@@ -6,7 +6,7 @@ use sk_core::js::{is_true, present, s, safe_int, truthy};
 use sk_core::Event;
 
 use super::{scene_turn_and_round, target_of};
-use crate::economy::{
+use crate::turn_economy::{
     action_economy, apply_versioned_attack_economy, clear_loading_weapon_resource, current_frame, economy_of, event_version, frames_value, loading_resource_for, pending_frames, set_economy,
     spend_combat_economy, spend_versioned_action_frame, weapon_attack_limit_for_action, with, with_frame, with_loading_weapon_item, Frame, ACTION_ECONOMY_EVENT_VERSION,
 };
@@ -22,7 +22,7 @@ pub fn sneak_attack_applied(state: &mut Value, event: &Event) {
     if combat_active(state) {
         if let Some(actor) = event.actor_id.as_deref().filter(|id| !id.is_empty()) {
             let economy = economy_of(state, actor);
-            let key = if present(payload.get("turn_key")) { s(payload.get("turn_key")) } else { crate::economy::combat_turn_key(state, actor).unwrap_or_default() };
+            let key = if present(payload.get("turn_key")) { s(payload.get("turn_key")) } else { crate::turn_economy::combat_turn_key(state, actor).unwrap_or_default() };
             set_economy(state, actor, with(&economy, json!({ "sneak_attack_turn_key": key })));
         }
     }
@@ -108,7 +108,7 @@ pub fn attack_resolved(state: &mut Value, event: &Event) {
                     let used_ids: Vec<Value> = economy.get("multiattack_action_ids").and_then(Value::as_array).map(|ids| ids.iter().map(|id| Value::String(s(Some(id)))).collect()).unwrap_or_default();
                     let mut patch = json!({
                         "attacks_used": safe_int(economy.get("attacks_used"), 0).max(0) + 1,
-                        "attacks_allowed": crate::economy::allowed_weapon_attacks(state, &attacker, &actor_id),
+                        "attacks_allowed": crate::turn_economy::allowed_weapon_attacks(state, &attacker, &actor_id),
                     });
                     if truthy(payload.get("action_id")) {
                         let first = if present(economy.get("multiattack_action_id")) { s(economy.get("multiattack_action_id")) } else { s(payload.get("action_id")) };

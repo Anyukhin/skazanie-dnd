@@ -1,127 +1,97 @@
-//! Редьюсер событий — перенос `applyGameEventCurrent` (`rules-engine.mjs`).
+//! Редьюсер событий — перенос `applyGameEventCurrent` (`rules-engine.mjs`,
+//! 24200–27105). Задача Р0 (диспетчер и общие шаги).
 //!
-//! Событие применяется к состоянию той же JSON-формы, что в JS. После ветки
-//! события идут общие шаги: память карты сцены, реестры-выводы из журнала
-//! (летопись поступков, закон, таверна…), версия состояния и тактический ход.
+//! Событие применяется к состоянию той же JSON-формы, что в JS. Порядок, как в
+//! JS: замена состояния (`LegacyStateImported`, `CampaignRewound`) до
+//! `switch`; ветка события по таблице меток (`table.rs`, 190 меток); общие
+//! шаги — память карты сцены, реестры-выводы из журнала (`registries.rs`),
+//! версия состояния и тактический ход.
+//!
+//! Нормализацию состояния перед веткой (`normalizeCampaignState`) делает
+//! `replay::apply_game_event` (Р4); здесь состояние уже нормализовано.
+//!
+//! Владельцы файлов: перенесённые ранее ветки (`vitals`, `conditions`,
+//! `combat`, `turns`, `spells`, `effects`, `memory`) — Р0; `scene`, `items`,
+//! `world`, `social`, `character`, `registries` — Р4; `merchants` — Р6.
+//! Неперенесённая ветка возвращает `UNPORTED` и состояние не меняет.
 
+mod character;
 mod combat;
 mod conditions;
 mod effects;
-mod labels;
+mod items;
 mod memory;
+mod merchants;
+mod registries;
+mod scene;
+mod social;
 mod spells;
+mod table;
 mod turns;
 mod vitals;
+mod world;
+
+use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use serde_json::Value;
 use sk_core::js::safe_int;
-use sk_core::Event;
+use sk_core::{Event, RuleError};
 
-/// Что делать с событием этого типа.
-type Handler = fn(&mut Value, &Event);
+/// Итог ветки: `UNPORTED`, если ветка ещё не перенесена.
+pub type Reduced = Result<(), RuleError>;
+
+/// Ветка события.
+pub(crate) type Handler = fn(&mut Value, &Event) -> Reduced;
+
+static HANDLERS: LazyLock<HashMap<&'static str, Handler>> = LazyLock::new(|| table::BRANCHES.iter().copied().collect());
 
 fn handler(event_type: &str) -> Option<Handler> {
-    Some(match event_type {
-        // Только журнал: на состояние не влияют.
-        "DieRolled" => noop,
-        // Живучесть.
-        "DamageApplied" => vitals::damage_applied,
-        "HitPointMaximumReduced" => vitals::hit_point_maximum_reduced,
-        "HitPointMaximumIncreased" => vitals::hit_point_maximum_increased,
-        "HitPointMaximumReductionPrevented" => vitals::hit_point_maximum_reduction_prevented,
-        "HealingApplied" => vitals::healing_applied,
-        "CreatureKnockedOut" => vitals::creature_knocked_out,
-        "KnockoutRecoveryProgressed" => vitals::knockout_recovery_progressed,
-        "KnockoutEnded" => vitals::knockout_ended,
-        "DeathSavingThrowRolled" => vitals::death_saving_throw_rolled,
-        "DeathSaveFailureRecorded" => vitals::death_save_failure_recorded,
-        "StableRecoveryScheduled" => vitals::stable_recovery_scheduled,
-        "StableRecoveryProgressed" => vitals::stable_recovery_progressed,
-        "HeroStabilized" => vitals::hero_stabilized,
-        "HeroDied" => vitals::hero_died,
-        "HeroResurrected" | "HeroReplaced" => vitals::hero_resurrected_or_replaced,
-        "TemporaryHitPointsGranted" => vitals::temporary_hit_points_granted,
-        "HitPointsReducedToZero" => vitals::hit_points_reduced_to_zero,
-        "ResourceSpent" | "ResourceRestored" => vitals::resource_changed,
-        // Состояния и концентрация.
-        "ConditionAdded" => conditions::condition_added,
-        "ConditionRemoved" => conditions::condition_removed,
-        "SpellSavingThrowResolved" => conditions::spell_saving_throw_resolved,
-        "ConcentrationSavingThrowResolved" => conditions::concentration_saving_throw_resolved,
-        "ConcentrationStarted" => conditions::concentration_started,
-        "ConcentrationEnded" => conditions::concentration_ended,
-        "EnemyKnowledgeRevealed" => conditions::enemy_knowledge_revealed,
-        // Бой.
-        "SneakAttackApplied" => combat::sneak_attack_applied,
-        "AttackResolved" => combat::attack_resolved,
-        "AreaAttackResolved" => combat::area_attack_resolved,
-        "CombatActionUsed" => combat::combat_action_used,
-        // Ход, раунд, отдых, время.
-        "CombatRoundTimeMarked" => turns::combat_round_time_marked,
-        "TurnStarted" => turns::turn_started,
-        "TurnEnded" => turns::turn_ended,
-        "CombatEnded" => turns::combat_ended,
-        "EncounterEnded" => turns::encounter_ended,
-        "RestStarted" => turns::rest_started,
-        "RestCompleted" => turns::rest_completed,
-        "HitPointDieSpent" | "HitPointDiceRestored" => turns::hit_point_dice_changed,
-        "TimeAdvanced" => turns::time_advanced,
-        // Заклинание, облик, призыв.
-        "SpellCast" => spells::spell_cast,
-        "ShapeChanged" => spells::shape_changed,
-        "SummonedCreatureCreated" => spells::summoned_creature_created,
-        // Эффекты боя без внешних модулей.
-        "SpellAreaCreated" => effects::spell_area_created,
-        "SpellAreaTriggered" => effects::spell_area_triggered,
-        "SpellAreaRemoved" => effects::spell_area_removed,
-        "ReactionWindowOpened" => effects::reaction_window_opened,
-        "ReactionWindowClosed" => effects::reaction_window_closed,
-        "ActionReadied" => effects::action_readied,
-        "ReadiedActionExpired" => effects::readied_action_expired,
-        "ReactionDamageReduced" => effects::reaction_damage_reduced,
-        "SpellCountered" => effects::spell_countered,
-        "ShapeReverted" => effects::shape_reverted,
-        "SummonedCreatureDismissed" => effects::summoned_creature_dismissed,
-        "PublicDieRolled" => effects::public_die_rolled,
-        "OpeningStrikeEconomyRestored" => effects::opening_strike_economy_restored,
-        "SpellBonusPreferenceChanged" => effects::spell_bonus_preference_changed,
-        "ReactionPreferenceChanged" => effects::reaction_preference_changed,
-        "LegendaryActionUsed" => combat::legendary_action_used,
-        "NpcItemUsed" => combat::npc_item_used,
-        // Память мира и поручения.
-        "WorldEntityUpserted" | "WorldFactRecorded" | "WorldFactRevealed" | "KnowledgeRevealed" | "WorldRelationshipRecorded" | "QuestClockAdvanced" | "QuestAssignmentChanged" | "NarrativeThreadUpserted" | "NarrativeThreadClockAdvanced" | "NpcBeliefRecorded" | "RumorRecorded" | "EpistemicClaimTruthResolved" | "NarrativeSummaryRecorded" => memory::world_memory_event,
-        "QuestUpserted" => memory::quest_upserted,
-        "QuestAccepted" => memory::quest_accepted,
-        "QuestResolved" | "QuestInvalidated" => memory::quest_concluded,
-        // Социальные профили NPC.
-        "NpcSocialProfileUpserted" | "NpcConversationRecorded" | "NpcRelationshipAdjusted" | "NpcRelationshipTierChanged" | "NpcPromiseRecorded" | "NpcPromiseResolved" => effects::npc_social_event,
-        // Жизнь кампании.
-        "CampaignActivated" | "CampaignResumed" => effects::campaign_resumed,
-        "CampaignPaused" => effects::campaign_paused,
-        "CampaignArchived" => effects::campaign_archived,
-        "CampaignCompleted" | "CampaignFailed" => effects::campaign_concluded,
-        "CampaignHouseRuleChanged" => effects::campaign_house_rule_changed,
-        "CampaignRulesetChanged" => effects::campaign_ruleset_changed,
-        "ObjectiveUpdated" => effects::objective_updated,
-        "RulingRecorded" => effects::ruling_recorded,
-        _ => return None,
-    })
+    HANDLERS.get(event_type).copied()
 }
 
-fn noop(_: &mut Value, _: &Event) {}
+/// Метки `switch` JS в порядке `case` (190).
+pub fn js_reducer_labels() -> impl Iterator<Item = &'static str> {
+    table::BRANCHES.iter().map(|(label, _)| *label)
+}
 
-/// Перенесено ли событие этого типа.
+/// Типы событий, чьи ветки ещё не перенесены (метки `switch` и замена
+/// состояния до него).
+pub fn unported_event_types() -> impl Iterator<Item = &'static str> {
+    [scene::UNPORTED, items::UNPORTED, world::UNPORTED, social::UNPORTED, character::UNPORTED, merchants::UNPORTED].into_iter().flatten().copied()
+}
+
+/// Шаги реестров после `switch`, которые ещё не перенесены.
+pub fn unported_registries() -> &'static [&'static str] {
+    registries::UNPORTED
+}
+
+/// Перенесено ли событие этого типа. Тип без своей ветки JS применяет только
+/// общими шагами — он перенесён по построению.
 pub fn is_ported(event_type: &str) -> bool {
-    handler(event_type).is_some() || !labels::JS_REDUCER_EVENT_TYPES.contains(&event_type)
+    !unported_event_types().any(|kind| kind == event_type)
 }
 
-/// Применить событие: ветка типа и общие шаги после неё.
+/// Применить событие: ветка типа и общие шаги после неё. Неперенесённая ветка
+/// пропускается (как раньше), общие шаги идут всегда.
 pub fn apply_event(state: &mut Value, event: &Event) {
-    if let Some(apply) = handler(&event.event_type) {
-        apply(state, event);
+    let _ = apply_event_checked(state, event);
+}
+
+/// То же, но сообщает, что ветка события ещё не перенесена (`UNPORTED`).
+/// Ошибки неперенесённых реестров не сообщаются: шаги реестров идут на
+/// каждом событии.
+pub fn apply_event_checked(state: &mut Value, event: &Event) -> Reduced {
+    if let Some(replaced) = world::replace_state(state, event) {
+        return replaced;
     }
+    let branch = match handler(&event.event_type) {
+        Some(apply) => apply(state, event),
+        None => Ok(()),
+    };
     crate::scene_maps::remember_current_scene_map(state);
-    apply_registries(state, event);
+    let event_json = serde_json::to_value(event).unwrap_or(Value::Null);
+    let _ = registries::apply_registries(state, &event_json);
     let next_version = event
         .extra
         .get("state_version_after")
@@ -130,46 +100,38 @@ pub fn apply_event(state: &mut Value, event: &Event) {
         .unwrap_or_else(|| sk_core::game::state_version(state) + 1);
     state["state_version"] = Value::from(next_version);
     synchronize_tactical_turn(state);
+    branch
 }
 
-/// Реестры-выводы из журнала — в порядке JS: летопись поступков, закон,
-/// таверна, благословения, мир за кадром, почта, пленные, внимание
-/// противника, рыцарь, разговоры, звери, автономия. Закон читает уже готовую
-/// летопись; остальные реестры подключаются по мере переноса их модулей.
-fn apply_registries(state: &mut Value, event: &Event) {
-    let event_json = serde_json::to_value(event).unwrap_or(Value::Null);
-    let law = sk_society::law_and_order::apply_law_event(state.get("law"), &event_json, state);
-    state["law"] = law;
-    // Внимание главного противника сценария — после закона, пленных и почты в JS;
-    // те реестры ещё в очереди, а вниманию они не нужны.
-    let attention = sk_attention::scenario_attention::apply_scenario_attention_event(state.get("scenario_attention"), Some(&event_json), state);
-    state["scenario_attention"] = attention;
-}
-
-/// `synchronizeTacticalTurn(state)`.
+/// `synchronizeTacticalTurn(state)` (24097–24112).
 fn synchronize_tactical_turn(state: &mut Value) {
     let combat = sk_core::game::combat(state);
-    let active_index = safe_int(combat.get("active_index"), -1);
     let initiative = combat.get("initiative").and_then(Value::as_array).cloned().unwrap_or_default();
-    if !sk_core::js::is_true(combat.get("active")) || initiative.is_empty() || active_index < 0 {
+    let raw_index = combat.get("active_index").cloned().unwrap_or(Value::Null);
+    let active_index = safe_int(Some(&raw_index), -1);
+    if !sk_core::js::truthy(combat.get("active")) || initiative.is_empty() || active_index < 0 {
         return;
     }
     let active_id = sk_core::js::s(initiative.get(active_index as usize).and_then(|entry| entry.get("actor_id")));
     if active_id.is_empty() {
         return;
     }
-    let round = combat.get("round").cloned().unwrap_or(Value::Null);
-    let economy = crate::economy::economy_of(state, &active_id);
-    let scene_turn = safe_int(state.get("scene").and_then(|scene| scene.get("turn")), safe_int(Some(&round), 0));
+    let round = combat.get("round").cloned();
+    let economy = crate::turn_economy::economy_of(state, &active_id);
+    let scene_turn = crate::core::safe_integer_or(state.get("scene").and_then(|scene| scene.get("turn")), round.as_ref());
     state["activePlayerId"] = Value::String(active_id.clone());
-    state["tacticalTurn"] = serde_json::json!({
-        "sceneTurn": scene_turn,
-        "actorId": active_id,
-        "movementSpent": safe_int(economy.get("movement_spent"), 0).max(0),
-        "actionUsed": economy.get("action") == Some(&Value::Bool(false)),
-        "round": round,
-        "activeIndex": active_index,
-    });
+    let mut turn = serde_json::Map::new();
+    if let Some(scene_turn) = scene_turn {
+        turn.insert("sceneTurn".into(), scene_turn);
+    }
+    turn.insert("actorId".into(), Value::String(active_id));
+    turn.insert("movementSpent".into(), Value::from(safe_int(economy.get("movement_spent"), 0).max(0)));
+    turn.insert("actionUsed".into(), Value::Bool(economy.get("action") == Some(&Value::Bool(false))));
+    if let Some(round) = round {
+        turn.insert("round".into(), round);
+    }
+    turn.insert("activeIndex".into(), raw_index);
+    state["tacticalTurn"] = Value::Object(turn);
 }
 
 /// Выбросить производные поля героя — как делает запись корпуса.
@@ -192,8 +154,44 @@ pub(crate) fn scene_turn_and_round(state: &Value) -> (i64, Value) {
     (scene_turn, round)
 }
 
-/// Цель события: первая из `target_ids`, иначе действующее лицо.
+/// Цель события: первая из `target_ids`, иначе действующее лицо
+/// (`uniqueStrings(event.target_ids)[0] ?? event.actor_id`).
 pub(crate) fn target_of(event: &Event) -> String {
-    let unique = sk_core::js::unique_strings(Some(&Value::Array(event.target_ids.iter().map(|id| Value::String(id.clone())).collect())));
+    let unique = crate::core::unique_string_list(&event.target_ids);
     unique.into_iter().next().unwrap_or_else(|| event.actor_id.clone().unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn table_has_every_js_label_once() {
+        let labels: Vec<&str> = js_reducer_labels().collect();
+        assert_eq!(labels.len(), 190);
+        let unique: std::collections::HashSet<&str> = labels.iter().copied().collect();
+        assert_eq!(unique.len(), labels.len(), "метки не повторяются");
+        assert!(labels.contains(&"MerchantEconomyClockAdvanced"));
+        for kind in unported_event_types() {
+            assert!(labels.contains(&kind) || matches!(kind, "LegacyStateImported" | "CampaignRewound"), "{kind} — метка JS");
+        }
+    }
+
+    #[test]
+    fn stubs_answer_unported_and_ported_branches_do_not() {
+        let state: Value = serde_json::json!({
+            "players": [], "actors": [], "enemies": [], "state_version": 0, "battleLog": [], "mapFeedback": [], "economyLog": [],
+            "scene": { "turn": 0 }, "mechanics": { "combat": { "active": false, "round": 0, "initiative": [], "active_index": -1, "action_economy": {} },
+                "conditions": {}, "resources": {}, "death": { "heroes": {}, "saving_throws": {} }, "concentration": {}, "positions": {} },
+        });
+        let unported: Vec<&str> = unported_event_types().collect();
+        for (label, apply) in table::BRANCHES {
+            let mut copy = state.clone();
+            let event = Event { event_type: label.to_string(), payload: serde_json::json!({}), ..Event::default() };
+            let result = apply(&mut copy, &event);
+            let stub = matches!(&result, Err(error) if error.code == crate::pause::UNPORTED);
+            assert_eq!(stub, unported.contains(label), "{label}: заглушка ⇔ метка в UNPORTED");
+            assert_eq!(is_ported(label), !stub, "{label}");
+        }
+    }
 }

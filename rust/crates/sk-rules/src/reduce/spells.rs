@@ -12,7 +12,7 @@ use sk_geometry::Point;
 use super::conditions::summon_cleanup;
 use super::turns::initiative_group_ids;
 use super::{scene_turn_and_round, target_of};
-use crate::economy::{action_economy, economy_of, event_version, set_economy, spend_combat_economy, spend_versioned_spell_action, ACTION_ECONOMY_EVENT_VERSION};
+use crate::turn_economy::{action_economy, economy_of, event_version, set_economy, spend_combat_economy, spend_versioned_spell_action, ACTION_ECONOMY_EVENT_VERSION};
 use crate::journal::{append_battle_log, Entry};
 
 /// `normalizeActorFootprintFields(actor)`: поле `footprint`, если оно есть, —
