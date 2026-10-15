@@ -1,0 +1,117 @@
+//! Сверка с эталонами JS (`fixtures/*.json`, генераторы `fixtures/gen-*.mjs`).
+//!
+//! Значения сравниваются строкой `JSON.stringify`, то есть вместе с порядком
+//! ключей и записью чисел; крупный выход — SHA-256 той же строки
+//! (`fixtures/common.mjs`).
+
+#![allow(dead_code)] // не каждый тестовый файл зовёт все помощники
+
+use serde_json::{json, Value};
+use sk_tactical::tactical_map::{self as t, MapResult, TacticalMap, TacticalMapError};
+
+/// Аргумент `undefined` в эталоне.
+pub const UNDEFINED: &str = "\u{0}undefined";
+
+/// Разобрать эталон.
+pub fn parse(source: &str) -> Value {
+    serde_json::from_str(source).expect("эталон JSON")
+}
+
+/// Аргумент случая: `None` — `undefined`.
+pub fn arg(value: &Value) -> Option<&Value> {
+    (value.as_str() != Some(UNDEFINED)).then_some(value)
+}
+
+/// Массив эталона.
+pub fn array(value: &Value) -> &[Value] {
+    value.as_array().map(Vec::as_slice).expect("массив в эталоне")
+}
+
+/// `JSON.stringify(value)` байт в байт.
+pub fn stringify(value: &Value) -> String {
+    sk_core::js::stringify(value)
+}
+
+/// SHA-256 `JSON.stringify(value)`.
+pub fn hash(value: &Value) -> String {
+    sk_core::hash::sha256_hex(stringify(value))
+}
+
+/// Значение или UNDEFINED.
+pub fn encode(value: Option<Value>) -> Value {
+    value.unwrap_or_else(|| Value::String(UNDEFINED.into()))
+}
+
+/// Ключи всех объектов — в порядке объекта JS.
+pub fn assert_js_order(value: &Value, context: &str) {
+    match value {
+        Value::Object(map) => {
+            let keys: Vec<&String> = map.keys().collect();
+            let expected = sk_core::js::keys(map);
+            assert_eq!(keys, expected, "порядок ключей не как в JS: {context}");
+            for item in map.values() {
+                assert_js_order(item, context);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                assert_js_order(item, context);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Совпадение строкой JSON и порядок ключей.
+#[track_caller]
+pub fn assert_same(actual: &Value, expected: &Value, context: &str) {
+    assert_js_order(actual, context);
+    let (actual, expected) = (stringify(actual), stringify(expected));
+    if actual != expected {
+        panic!("расхождение с JS: {context}\n  Rust: {}\n  JS:   {}", head(&actual), head(&expected));
+    }
+}
+
+/// Совпадение с эталоном, который хранится целиком или хешем.
+#[track_caller]
+pub fn assert_same_or_hash(actual: &Value, expected: &Value, context: &str) {
+    match expected {
+        Value::String(digest) if digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit()) => {
+            assert_eq!(hash(actual), *digest, "расхождение с JS по хешу: {context}\n  Rust: {}", head(&stringify(actual)));
+        }
+        _ => assert_same(actual, expected, context),
+    }
+}
+
+pub fn head(text: &str) -> String {
+    text.chars().take(4_000).collect()
+}
+
+/// Ошибка карты в форме эталона (`errorOf`).
+pub fn error_json(error: &TacticalMapError) -> Value {
+    json!({ "name": error.name, "code": if error.name == TacticalMapError::NAME { Value::String(error.code.clone()) } else { Value::Null }, "message": error.message })
+}
+
+/// `attempt` генератора: `{ ok }` или `{ error }`.
+pub fn attempt(result: MapResult<Value>) -> Value {
+    match result {
+        Ok(value) => json!({ "ok": value }),
+        Err(error) => json!({ "error": error_json(&error) }),
+    }
+}
+
+/// Карта из сериализованного вида эталона.
+pub fn restore(value: &Value) -> TacticalMap {
+    t::deserialize_tactical_map(value).expect("карта эталона читается")
+}
+
+/// Сериализация карты для сверки.
+pub fn serialize(map: &TacticalMap) -> Value {
+    t::serialize_tactical_map(map).expect("сериализация карты")
+}
+
+/// Как `deserialize(JSON.parse(JSON.stringify(serialize(map))))` в JS.
+pub fn round_trip(map: &TacticalMap) -> TacticalMap {
+    let text = stringify(&serialize(map));
+    restore(&serde_json::from_str(&text).expect("JSON карты"))
+}
