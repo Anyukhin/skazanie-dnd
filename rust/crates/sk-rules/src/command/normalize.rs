@@ -15,7 +15,7 @@ use sk_ruleset::rules_core::DEFAULT_RULESET_ID;
 use super::rules::source_ids_for;
 use super::types::*;
 use crate::context::Uuid;
-use crate::core::{slice_utf16, spread_value, unique_strings};
+use crate::core::{safe_integer_or, slice_utf16, spread_value, unique_strings};
 use crate::pause::{rule, Halt};
 
 type Obj = Map<String, Value>;
@@ -78,11 +78,6 @@ fn default_house_rule(command: &mut Obj, policy: &str) {
     if !js::truthy(command.get("house_rule_id")) {
         set_text(command, "house_rule_id", policy.to_string());
     }
-}
-
-/// `safeInteger(value, fallback)` с сырым запасом: `None` — `undefined`.
-fn safe_integer_or(value: Option<&Value>, fallback: Option<&Value>) -> Option<Value> {
-    crate::core::safe_integer_or(value, fallback)
 }
 
 /// `normalizeLootLines(input)` (`loot-containers.mjs`): до двенадцати строк
@@ -189,7 +184,7 @@ pub fn normalize_command(input: &Value, state: &Value, uuid: Uuid<'_>) -> Result
     }
     let action_id = optional_string(&command, &["action_id", "actionId"], 120);
     set(&mut command, "action_id", action_id);
-    let quantity = safe_integer_or(command.get("quantity"), Some(&Value::from(1))).unwrap_or(Value::from(1));
+    let quantity = safe_integer_or(command.get("quantity"), Some(&Value::from(1)));
     set(&mut command, "quantity", quantity);
     let fingerprint = match command.get("request_fingerprint").filter(|value| !value.is_null()) {
         Some(value) => Value::String(slice_utf16(&js::string(Some(value)), 128)),
@@ -427,12 +422,6 @@ pub fn normalize_command(input: &Value, state: &Value, uuid: Uuid<'_>) -> Result
         default_house_rule(&mut command, BLESSINGS_POLICY_ID);
     }
     let expected = safe_integer_or(first(&command, &["expected_state_version", "expectedStateVersion"]), state.get("state_version"));
-    match expected {
-        Some(value) => set(&mut command, "expected_state_version", value),
-        None => {
-            set(&mut command, "expected_state_version", Value::Null);
-            delete(&mut command, "expected_state_version");
-        }
-    }
+    set(&mut command, "expected_state_version", expected);
     Ok(Value::Object(command))
 }

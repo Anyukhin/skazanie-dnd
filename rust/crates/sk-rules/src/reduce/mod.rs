@@ -121,9 +121,7 @@ fn synchronize_tactical_turn(state: &mut Value) {
     let scene_turn = crate::core::safe_integer_or(state.get("scene").and_then(|scene| scene.get("turn")), round.as_ref());
     state["activePlayerId"] = Value::String(active_id.clone());
     let mut turn = serde_json::Map::new();
-    if let Some(scene_turn) = scene_turn {
-        turn.insert("sceneTurn".into(), scene_turn);
-    }
+    turn.insert("sceneTurn".into(), scene_turn);
     turn.insert("actorId".into(), Value::String(active_id));
     turn.insert("movementSpent".into(), Value::from(safe_int(economy.get("movement_spent"), 0).max(0)));
     turn.insert("actionUsed".into(), Value::Bool(economy.get("action") == Some(&Value::Bool(false))));

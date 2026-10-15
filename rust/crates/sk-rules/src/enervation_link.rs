@@ -88,7 +88,7 @@ pub fn enervation_link_for(state: &Value, caster_id: Option<&Value>) -> Option<E
         snapshot.insert("damageType".into(), Value::String(js::string(field("continuation_damage_type"))));
     }
     if js::present(field("continuation_range")) {
-        insert_defined(&mut snapshot, "range", safe_integer_or(field("continuation_range"), continuation.get("range")));
+        snapshot.insert("range".into(), safe_integer_or(field("continuation_range"), continuation.get("range")));
     }
     if js::present(field("continuation_upcast_dice_per_level")) {
         snapshot.insert("upcastDicePerLevel".into(), Value::from(js::safe_int(field("continuation_upcast_dice_per_level"), 0)));
@@ -96,7 +96,7 @@ pub fn enervation_link_for(state: &Value, caster_id: Option<&Value>) -> Option<E
     if js::present(field("continuation_duration_seconds")) {
         snapshot.insert("durationSeconds".into(), Value::from(js::safe_int(field("continuation_duration_seconds"), 60)));
     }
-    let slot_level = js_max(spell.get("level"), safe_integer_or(field("slot_level"), spell.get("level")).as_ref());
+    let slot_level = js_max(spell.get("level"), Some(&safe_integer_or(field("slot_level"), spell.get("level"))));
     Some(EnervationLink {
         caster_id,
         target_id: target_id.clone(),
@@ -108,18 +108,6 @@ pub fn enervation_link_for(state: &Value, caster_id: Option<&Value>) -> Option<E
     })
 }
 
-fn insert_defined(map: &mut Map<String, Value>, key: &str, value: Option<Value>) {
-    match value {
-        Some(value) => {
-            map.insert(key.into(), value);
-        }
-        None => {
-            map.insert(key.into(), Value::Null);
-            map.shift_remove(key);
-        }
-    }
-}
-
 /// `enervationContinuationActionFor(state, casterId, actionId)`: серверная
 /// запись действия продолжения, пока связь жива.
 pub fn enervation_continuation_action_for(state: &Value, caster_id: Option<&Value>, action_id: Option<&Value>) -> Option<Value> {
@@ -128,7 +116,7 @@ pub fn enervation_continuation_action_for(state: &Value, caster_id: Option<&Valu
     if js::present(action_id) && js::string(action_id) != continuation_action {
         return None;
     }
-    let range = js::max_of([0.0, js::number(safe_integer_or(link.continuation.get("range"), link.spell.get("range")).as_ref())]);
+    let range = js::max_of([0.0, js::number(Some(&safe_integer_or(link.continuation.get("range"), link.spell.get("range"))))]);
     let mut action = Map::new();
     action.insert("id".into(), Value::String(continuation_action));
     action.insert("name".into(), Value::String("Продолжить «Обессиливание»".into()));

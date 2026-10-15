@@ -583,13 +583,14 @@ pub fn casting_time_minutes(casting_time: Option<&Value>) -> f64 {
     (js::parse_number(count) * per_unit).max(0.0)
 }
 
-/// `safeInteger(value, fallback)` с запасом-значением: число, если `value` —
-/// безопасное целое, иначе сам запас как есть (`None` — `undefined`).
-pub fn safe_integer_or(value: Option<&Value>, fallback: Option<&Value>) -> Option<Value> {
+/// `safeInteger(value, fallback = 0)` с запасом-значением: число, если `value`
+/// — безопасное целое, иначе сам запас как есть; запас `undefined` (`None`)
+/// по умолчанию — 0, а `null` остаётся `null`.
+pub fn safe_integer_or(value: Option<&Value>, fallback: Option<&Value>) -> Value {
     let number = js::number(value);
     if is_safe_integer_f64(number) {
-        Some(Value::from(number as i64))
+        Value::from(number as i64)
     } else {
-        fallback.cloned()
+        fallback.cloned().unwrap_or(Value::from(0))
     }
 }
