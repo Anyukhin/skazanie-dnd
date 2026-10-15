@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 58134 из 142937.
+Строк JS в крейтах, которые уже есть: 60702 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -39,7 +39,7 @@
 | 6 | `sk-npc-world` | перенесён | 3446 | `npc-positioning`, `tavern-life`, `blessings`, `beast-taming` |
 | 7 | `sk-world-life` | в очереди | 2777 | `captives`, `courier-letters`, `world-offices` |
 | 7 | `sk-items-life` | перенесён | 1126 | `item-lifecycle`, `content-integrity` |
-| 7 | `sk-themes` | в очереди | 2568 | `scene-themes` |
+| 7 | `sk-themes` | перенесён | 2568 | `scene-themes` |
 | 8 | `sk-character` | начат: решения по поручениям (quest-decisions) | 2181 | `character-lifecycle`, `encounter-rewards`, `quest-decisions` |
 | 8 | `sk-world-time` | в очереди | 3775 | `level-generator`, `weather`, `world-deeds`, `world-template-catalog` |
 | 9 | `sk-world-story` | в очереди | 3376 | `autonomous-campaign`, `offscreen-world`, `scenario-knight`, `scene-canon`, `talespire-import` |
