@@ -15,7 +15,7 @@ import { startCapture } from './hook.mjs'
 // - срезы заведения с мусором старых сохранений: ключи прототипа как id героя
 //   и соседа, переполненные посетители и кассы, легаси-раунд.
 import { fixtureWriter, mulberry32, chooser, viaJson, setOwn } from './common.mjs'
-import { corpusDir, corpusRecords, corpusState, replayDice } from './npc-scenes.mjs'
+import { corpusCommand, corpusDir, corpusRecords, corpusState, replayDice } from './npc-scenes.mjs'
 
 const tavern = await import('../../../../server/tavern-life.mjs')
 const rules = await import('../../../../server/rules-engine.mjs')
@@ -169,11 +169,12 @@ function campaign({ scene = {}, currency = { copper: 0, silver: 0, gold: 1, plat
   })
 }
 
+let rollId = 0
 function run(state, commands, diceValues = []) {
   return rules.resolveCommands(
     commands.map((command, index) => ({ campaign_id: state.sessionCode, command_id: `cmd-${int(1, 1e6)}-${index + 1}`, ...command })),
     state,
-    { diceService: new DiceService({ rng: new SequenceDiceRng(diceValues) }), context: { allowedActorIds: commands.map((command) => String(command.actor_id ?? 'hero')) } },
+    { diceService: new DiceService({ rng: new SequenceDiceRng(diceValues), idFactory: () => `tavern-roll-${++rollId}`, now: () => '2026-08-20T10:00:00.000Z' }), context: { allowedActorIds: commands.map((command) => String(command.actor_id ?? 'hero')) } },
   )
 }
 const attempt = (fn) => {
@@ -322,7 +323,7 @@ if (dir) {
     if (tavernCommand && replayed < 400) {
       replayed += 1
       try {
-        rules.resolveCommand(entry.command, state, { diceService: replayDice(entry.dice), context: entry.context ?? {} })
+        rules.resolveCommand(corpusCommand(entry), state, { diceService: replayDice(entry.dice), context: entry.context ?? {} })
         const after = (entry.outcome?.events ?? []).reduce(rules.applyGameEvent, rules.normalizeCampaignState(state))
         const viewer = after.players?.[0]?.id
         if (viewer) campaignStateForViewer(after, { role: 'player', playerId: viewer, heroIds: [viewer] }, viewer)

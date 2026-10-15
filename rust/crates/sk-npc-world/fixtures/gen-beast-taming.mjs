@@ -14,7 +14,7 @@ import { startCapture } from './hook.mjs'
 // - реестры и звери с мусором: ключи прототипа как стат-блок и id, сорок
 //   первая запись, строки вместо чисел в счётчиках сырого среза.
 import { fixtureWriter, mulberry32, chooser, viaJson, setOwn } from './common.mjs'
-import { corpusDir, corpusRecords, corpusState, replayDice } from './npc-scenes.mjs'
+import { corpusCommand, corpusDir, corpusRecords, corpusState, replayDice } from './npc-scenes.mjs'
 
 const beasts = await import('../../../../server/beast-taming.mjs')
 const rules = await import('../../../../server/rules-engine.mjs')
@@ -189,8 +189,9 @@ function campaign({ minutes = 0, enemies = [wolf()], conditions = {}, combatActi
     mechanics: { world_time: { elapsed_minutes: minutes }, combat: combatActive ? { active: true, round: 2, initiative: [{ actor_id: 'hero', total: 15 }], active_index: 0, action_economy: {} } : { active: false }, conditions, resting },
   })
 }
+let rollId = 0
 function run(state, command, rng = []) {
-  return rules.resolveCommands([{ command_id: `cmd-beast-${int(1, 1e6)}`, campaign_id: state.sessionCode, actor_id: 'hero', ...command }], state, { diceService: new DiceService({ rng: new SequenceDiceRng(rng) }), context: { allowedActorIds: ['hero'] } })
+  return rules.resolveCommands([{ command_id: `cmd-beast-${int(1, 1e6)}`, campaign_id: state.sessionCode, actor_id: 'hero', ...command }], state, { diceService: new DiceService({ rng: new SequenceDiceRng(rng), idFactory: () => `beast-roll-${++rollId}`, now: () => '2026-08-20T10:00:00.000Z' }), context: { allowedActorIds: ['hero'] } })
 }
 const attempt = (fn) => {
   try {
@@ -287,7 +288,7 @@ if (dir) {
     if (relevant && replayed < 300) {
       replayed += 1
       try {
-        rules.resolveCommand(entry.command, state, { diceService: replayDice(entry.dice), context: entry.context ?? {} })
+        rules.resolveCommand(corpusCommand(entry), state, { diceService: replayDice(entry.dice), context: entry.context ?? {} })
         const after = (entry.outcome?.events ?? []).reduce(rules.applyGameEvent, rules.normalizeCampaignState(state))
         const viewer = after.players?.[0]?.id
         if (viewer) campaignStateForViewer(after, { role: 'player', playerId: viewer, heroIds: [viewer] }, viewer)

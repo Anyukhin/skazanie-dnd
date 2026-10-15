@@ -17,7 +17,7 @@ import { startCapture } from './hook.mjs'
 // Состояния урезаются до полей, которые читает модуль, и JS исполняется
 // заново на урезанном входе — Rust получает ровно его.
 import { fixtureWriter, mulberry32, chooser, viaJson, PROTOTYPE_KEYS } from './common.mjs'
-import { corpusDir, corpusRecords, corpusState, mechanicsProfile, randomMap, randomNpc, randomNpcWorld, replayDice, ASSETS } from './npc-scenes.mjs'
+import { corpusCommand, corpusDir, corpusRecords, corpusState, mechanicsProfile, randomMap, randomNpc, randomNpcWorld, replayDice, ASSETS } from './npc-scenes.mjs'
 
 const p = await import('../../../../server/npc-positioning.mjs')
 const t = await import('../../../../server/tactical-map.mjs')
@@ -28,6 +28,10 @@ const { campaignStateForViewer } = await import('../../../../server/viewer-proje
 const { getWorldTemplate } = await import('../../../../server/world-template-catalog.mjs')
 
 const writer = fixtureWriter('npc-positioning', retentionMode)
+// Команда без `command_id` получает от движка случайный UUID; генератору
+// нужен постоянный — иначе эталон менялся бы от прогона к прогону.
+let commandSeq = 0
+const resolveCommand = (command, state, options) => rules.resolveCommand(command && typeof command === 'object' && !command.command_id ? { ...command, command_id: `gen-cmd-${++commandSeq}` } : command, state, options)
 // Предел случаев функции растёт по фазам: каждой фазе — своя доля.
 let phaseCap = Infinity
 const random = mulberry32(2026_10_15)
@@ -303,7 +307,7 @@ function npcState({ npcs = DEFAULT_NPCS, combat = false, map = openMap() } = {})
 }
 
 function applyCommand(state, command, context = { isDirector: true }) {
-  const result = rules.resolveCommand(command, state, { diceService: dice([]), context })
+  const result = resolveCommand(command, state, { diceService: dice([]), context })
   return { result, state: result.events.reduce(rules.applyGameEvent, state) }
 }
 
@@ -379,11 +383,11 @@ const hostileCorridor = structuredClone(corridor)
 hostileCorridor.npc_world.stances.marta.stance = 'hostile'
 label('corridor-hostile', hostileCorridor)
 attempt(() => rules.shortestTacticalPath(hostileCorridor, 'hero', { x: 3, y: 0 }))
-attempt(() => rules.resolveCommand({ command_type: 'MoveActor', command_id: 'corridor-move', actor_id: 'hero', to: { x: 3, y: 0 }, server_authoritative: true }, corridor, { diceService: dice([]), context: { serverAuthoritativeCombat: true, allowedActorIds: ['hero'] } }))
+attempt(() => resolveCommand({ command_type: 'MoveActor', command_id: 'corridor-move', actor_id: 'hero', to: { x: 3, y: 0 }, server_authoritative: true }, corridor, { diceService: dice([]), context: { serverAuthoritativeCombat: true, allowedActorIds: ['hero'] } }))
 
 // PlaceNpc / MoveNpc / HarmNpc, отказы и replay.
-attempt(() => rules.resolveCommand({ command_type: 'PlaceNpc', npc_id: 'marta', to: { x: 6, y: 2 } }, base, { diceService: dice([]), context: {} }))
-attempt(() => rules.resolveCommand({ command_type: 'PlaceNpc', npc_id: 'marta', to: { x: 7, y: 2 } }, base, { diceService: dice([]), context: { isDirector: true } }))
+attempt(() => resolveCommand({ command_type: 'PlaceNpc', npc_id: 'marta', to: { x: 6, y: 2 } }, base, { diceService: dice([]), context: {} }))
+attempt(() => resolveCommand({ command_type: 'PlaceNpc', npc_id: 'marta', to: { x: 7, y: 2 } }, base, { diceService: dice([]), context: { isDirector: true } }))
 const placed = attempt(() => applyCommand(base, { command_type: 'PlaceNpc', command_id: 'place-marta', npc_id: 'marta', to: { x: 6, y: 2 } }))
 if (placed) {
   label('placed-marta', placed.state)
@@ -393,7 +397,7 @@ if (placed) {
     const absent = structuredClone(moved.state)
     absent.social.npcs = absent.social.npcs.map((npc) => (npc.id === 'marta' ? { ...npc, location: 'Дорога' } : npc))
     label('absent-marta', absent)
-    attempt(() => rules.resolveCommand({ command_type: 'HarmNpc', npc_id: 'marta', amount: 1 }, absent, { diceService: dice([]), context: { isAdmin: true, serverAuthoritativeCombat: true } }))
+    attempt(() => resolveCommand({ command_type: 'HarmNpc', npc_id: 'marta', amount: 1 }, absent, { diceService: dice([]), context: { isAdmin: true, serverAuthoritativeCombat: true } }))
   }
   const harmed = attempt(() => applyCommand(placed.state, { command_type: 'HarmNpc', command_id: 'harm-idempotent', npc_id: 'marta', amount: 1, damage_type: 'bludgeoning' }, { isAdmin: true, serverAuthoritativeCombat: true }))
   if (harmed) label('harmed-marta', harmed.state)
@@ -433,7 +437,7 @@ if (placed) {
 }
 
 // AdvanceScene с NPC новой локации.
-attempt(() => rules.resolveCommand({ command_type: 'AdvanceScene', command_id: 'advance-with-npc', scene_args: {
+attempt(() => resolveCommand({ command_type: 'AdvanceScene', command_id: 'advance-with-npc', scene_args: {
   title: 'Лунная гавань', location: 'Лунная гавань', location_id: 'moon-harbor', mood: 'Холодные фонари над водой', objective: 'Найти капитана', transition: 'Отряд идёт к гавани.',
   arrival: 'В тумане проступают причалы.', hook: 'Жрец ждёт у святилища.', theme: 'harbor', danger: 'низкая', scene_kind: 'settlement', settlement_type: 'town', seed: 'moon-harbor:npc-placement',
   map: { layout: 'streets', width: 9, height: 9, openness: 0.7, water: 0.1, featureCount: 5 } } },
@@ -445,20 +449,20 @@ npcState({ npcs: [{ id: 'harbor-priest', name: 'Отец Рем', role: 'жре�
   state = attempt(() => applyCommand(state, { command_type: 'PlaceNpc', command_id: 'place-victim', npc_id: 'marta', to: { x: 2, y: 1 } }).state) ?? state
   state = attempt(() => applyCommand(state, { command_type: 'PlaceNpc', command_id: 'place-witness', npc_id: 'bor', to: { x: 4, y: 1 } }).state) ?? state
   label('area-victim', state)
-  const area = attempt(() => rules.resolveCommand({ command_type: 'MakeAreaAttack', command_id: 'area-collateral', actor_id: 'hero', item_id: 'bomb', to: { x: 2, y: 1 }, server_authoritative: true }, state,
+  const area = attempt(() => resolveCommand({ command_type: 'MakeAreaAttack', command_id: 'area-collateral', actor_id: 'hero', item_id: 'bomb', to: { x: 2, y: 1 }, server_authoritative: true }, state,
     { diceService: dice([4, 4, 2]), context: { serverAuthoritativeCombat: true, allowedActorIds: ['hero'] } }))
   if (area) attempt(() => area.events.reduce(rules.applyGameEvent, state))
   const observer = attempt(() => applyCommand(npcState(), { command_type: 'PlaceNpc', command_id: 'place-observer', npc_id: 'marta', to: { x: 2, y: 1 } }).state)
   if (observer) {
     label('observer', observer)
-    attempt(() => rules.resolveCommand({ command_type: 'StartCombat', command_id: 'combat-with-observer', server_authoritative: true }, observer, { diceService: dice([10, 10]), context: { isAdmin: true, serverAuthoritativeCombat: true } }))
+    attempt(() => resolveCommand({ command_type: 'StartCombat', command_id: 'combat-with-observer', server_authoritative: true }, observer, { diceService: dice([10, 10]), context: { isAdmin: true, serverAuthoritativeCombat: true } }))
   }
   let miss = attempt(() => applyCommand(npcState({ combat: true }), { command_type: 'PlaceNpc', command_id: 'place-miss-target', npc_id: 'marta', to: { x: 6, y: 2 } }).state)
   if (miss) {
     miss.players[0] = { ...miss.players[0], x: 5, y: 1 }
     miss.mechanics.positions.hero = { x: 5, y: 1 }
     label('near-miss', miss)
-    attempt(() => rules.resolveCommand({ command_type: 'MakeAttack', command_id: 'near-miss', actor_id: 'hero', target_id: 'bandit', attack_modifier: 4, damage_expression: '1d6', damage_type: 'piercing' }, miss,
+    attempt(() => resolveCommand({ command_type: 'MakeAttack', command_id: 'near-miss', actor_id: 'hero', target_id: 'bandit', attack_modifier: 4, damage_expression: '1d6', damage_type: 'piercing' }, miss,
       { diceService: dice([9, 3]), context: { allowedActorIds: ['hero'] } }))
   }
 }
@@ -485,7 +489,7 @@ npcState({ npcs: [{ id: 'harbor-priest', name: 'Отец Рем', role: 'жре�
 // Собеседник по ходу кампании.
 for (const [id, location] of [['iara', 'Рынок'], ['dalny', 'Другая деревня']]) {
   const state = npcState({ npcs: [] })
-  const resolved = attempt(() => rules.resolveCommand({ command_type: 'UpsertNpcSocialProfile', command_id: `npc-${id}`, npc: { id, name: id === 'iara' ? 'Иара Вейр' : 'Дальний', role: 'хранительница архива', location, public_summary: 'Хранит записи.', voice: 'Тихо.', visibility: 'party', available: true } },
+  const resolved = attempt(() => resolveCommand({ command_type: 'UpsertNpcSocialProfile', command_id: `npc-${id}`, npc: { id, name: id === 'iara' ? 'Иара Вейр' : 'Дальний', role: 'хранительница архива', location, public_summary: 'Хранит записи.', voice: 'Тихо.', visibility: 'party', available: true } },
     state, { diceService: dice([]), context: { isAdmin: true, isDirector: true } }))
   if (resolved) attempt(() => p.sceneNpcsForViewer(rules.replayEvents(state, resolved.events)))
 }
@@ -621,7 +625,7 @@ if (dir) {
     if (replayed < 900) {
       replayed += 1
       try {
-        const result = rules.resolveCommand(entry.command, state, { diceService: replayDice(entry.dice), context: entry.context ?? {} })
+        const result = resolveCommand(corpusCommand(entry), state, { diceService: replayDice(entry.dice), context: entry.context ?? {} })
         const after = (entry.outcome?.events ?? result.events ?? []).reduce(rules.applyGameEvent, rules.normalizeCampaignState(state))
         const viewer = after.players?.[0]?.id
         if (viewer) campaignStateForViewer(after, { role: 'player', playerId: viewer }, viewer)

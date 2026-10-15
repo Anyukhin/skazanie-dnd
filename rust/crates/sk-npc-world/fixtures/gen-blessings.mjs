@@ -13,7 +13,7 @@ import { startCapture } from './hook.mjs'
 // - реестры с мусором старых сохранений и ключами прототипа как id героя,
 //   роли служителей и не-служителей, сиды знамений.
 import { fixtureWriter, mulberry32, chooser, viaJson, setOwn } from './common.mjs'
-import { corpusDir, corpusRecords, corpusState, replayDice, ROLES } from './npc-scenes.mjs'
+import { corpusCommand, corpusDir, corpusRecords, corpusState, replayDice, ROLES } from './npc-scenes.mjs'
 
 const blessings = await import('../../../../server/blessings.mjs')
 const rules = await import('../../../../server/rules-engine.mjs')
@@ -216,7 +216,7 @@ if (dir) {
     if (replayed < 300 && (relevant || chance(0.05))) {
       replayed += 1
       try {
-        rules.resolveCommand(entry.command, state, { diceService: replayDice(entry.dice), context: entry.context ?? {} })
+        rules.resolveCommand(corpusCommand(entry), state, { diceService: replayDice(entry.dice), context: entry.context ?? {} })
         const after = (entry.outcome?.events ?? []).reduce(rules.applyGameEvent, rules.normalizeCampaignState(state))
         const viewer = after.players?.[0]?.id
         if (viewer) campaignStateForViewer(after, { role: 'player', playerId: viewer, heroIds: [viewer] }, viewer)

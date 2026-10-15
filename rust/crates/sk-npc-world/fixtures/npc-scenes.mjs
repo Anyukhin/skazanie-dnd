@@ -33,6 +33,15 @@ export function corpusState(dir, hash) {
   }
 }
 
+/**
+ * Команда записи корпуса с постоянным `command_id`: без него движок берёт
+ * случайный UUID, и события (а с ними эталон) менялись бы от прогона к прогону.
+ */
+export function corpusCommand(entry) {
+  const command = entry.command && typeof entry.command === 'object' ? entry.command : {}
+  return { ...command, command_id: command.command_id ?? `corpus:${entry.file}:${entry.state.slice(0, 12)}` }
+}
+
 /** Кости по записи корпуса: те же результаты в том же порядке. */
 export function replayDice(dice) {
   const queue = Array.isArray(dice) ? dice.slice() : []
