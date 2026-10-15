@@ -60,7 +60,7 @@ function out(value) {
   if (value === undefined) return U
   if (value instanceof Set) value = [...value].sort()
   const text = JSON.stringify(value)
-  return text.length > 320 ? `sha256:${sha(value)}` : JSON.parse(text)
+  return text.length > 160 ? `sha256:${sha(value)}` : JSON.parse(text)
 }
 function attempt(fn) {
   try {
@@ -608,7 +608,7 @@ for (const [stateIndex, state] of built.entries()) {
     }))
   }
   const raised = (state.scene?.cells ?? []).filter((cell) => Number(cell.elevation ?? 0) !== 0)
-  for (let n = Math.min(4, raised.length); n > 0; n -= 1) {
+  for (let n = Math.min(2, raised.length); n > 0; n -= 1) {
     const high = pick(raised)
     const low = integerPoint(state)
     const from = { x: Number(high.x), y: Number(high.y) }
@@ -619,7 +619,7 @@ for (const [stateIndex, state] of built.entries()) {
   for (const id of ids.slice(0, 3)) {
     const at = E.actorPosition(state, id)
     if (!at) continue
-    for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) {
+    for (const [dx, dy] of [pick([[1, 0], [-1, 0]]), pick([[0, 1], [0, -1]])]) {
       const span = 1 + int(3)
       const to = { x: at.x + dx * span, y: at.y + dy * span }
       const running = chance(0.3)
@@ -724,6 +724,7 @@ for (const stateIndex of syncStates) {
 }
 
 const statesOut = states.map((spec) => ({ base: spec.base, map: spec.map, ...(spec.mapValue ? { map_value: spec.mapValue } : {}), patches: spec.patches, ...(spec.cells === false ? { cells: false } : {}), ...(spec.corpus ? { corpus: spec.corpus } : {}) }))
+const functions = [...new Set(cases.map((entry) => entry.f))]
 const counts = {}
 for (const entry of cases) counts[entry.f] = (counts[entry.f] ?? 0) + 1
 const body = [
@@ -732,7 +733,8 @@ const body = [
   `"maps": [\n${maps.map((map) => JSON.stringify(map)).join(',\n')}\n],`,
   `"spells": [\n${spells.map((spell) => JSON.stringify(spell)).join(',\n')}\n],`,
   `"states": [\n${statesOut.map((spec) => JSON.stringify(spec)).join(',\n')}\n],`,
-  `"cases": [\n${cases.map((entry) => JSON.stringify(entry)).join(',\n')}\n]`,
+  `"functions": ${JSON.stringify(functions)},`,
+  `"cases": [\n${cases.map((entry) => JSON.stringify([functions.indexOf(entry.f), entry.s, entry.a, entry.o])).join(',\n')}\n]`,
   '}',
 ].join('\n')
 writeFileSync(new URL('./geometry.json', import.meta.url), `${body}\n`)

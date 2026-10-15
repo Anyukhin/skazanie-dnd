@@ -94,7 +94,7 @@ fn text(value: &Value) -> String {
 /// Выход так, как его пишет генератор.
 fn out(value: Value) -> Value {
     let text = js::stringify(&value);
-    if text.encode_utf16().count() > 320 {
+    if text.encode_utf16().count() > 160 {
         Value::String(format!("sha256:{}", sk_core::hash::sha256_hex(text)))
     } else {
         value
@@ -158,11 +158,11 @@ fn npc_target(target: &npc::NpcTarget) -> Value {
 
 /// Сверка одного вызова; `None` — вызов не сверяется (ошибка JS не правила).
 fn evaluate(case: &Value) -> Option<Value> {
-    let f = case["f"].as_str().expect("имя функции");
-    let a = array(&case["a"]);
+    let f = DATA["functions"][case[0].as_u64().expect("номер функции") as usize].as_str().expect("имя функции");
+    let a = array(&case[2]);
     let null = Value::Null;
     let arg = |index: usize| a.get(index).unwrap_or(&null);
-    let state_index = case["s"].as_i64().unwrap_or(-1);
+    let state_index = case[1].as_i64().unwrap_or(-1);
     let empty = json!({});
     let state: &Value = if state_index >= 0 { &STATES[state_index as usize] } else { &empty };
     let map = geo::scene_tactical_map(state);
@@ -414,8 +414,9 @@ fn geometry_matches_js() {
     let mut checked: BTreeMap<String, usize> = BTreeMap::new();
     let mut skipped = 0usize;
     for case in array(&DATA["cases"]) {
-        let f = case["f"].as_str().unwrap_or_default().to_string();
-        if case["o"].get("fault").is_some() {
+        let f = DATA["functions"][case[0].as_u64().unwrap_or(0) as usize].as_str().unwrap_or_default().to_string();
+        let expected = &case[3];
+        if expected.get("fault").is_some() {
             skipped += 1;
             continue;
         }
@@ -424,10 +425,10 @@ fn geometry_matches_js() {
             continue;
         };
         *checked.entry(f.clone()).or_default() += 1;
-        if actual != case["o"] {
+        if actual != *expected {
             let entry = failures.entry(f.clone()).or_insert((0, String::new()));
             if entry.0 == 0 {
-                entry.1 = format!("s={} a={} JS={} Rust={}", case["s"], js::stringify(&case["a"]), js::stringify(&case["o"]), js::stringify(&actual));
+                entry.1 = format!("s={} a={} JS={} Rust={}", case[1], js::stringify(&case[2]), js::stringify(expected), js::stringify(&actual));
             }
             entry.0 += 1;
         }
