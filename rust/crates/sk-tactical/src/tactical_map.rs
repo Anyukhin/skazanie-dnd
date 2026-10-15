@@ -2035,13 +2035,16 @@ fn base64_value(byte: u8) -> Option<u8> {
     }
 }
 
-/// `Buffer.from(text, 'base64')`: снисходительный разбор Node — посторонние
-/// символы пропускаются, `=` заканчивает данные, принимается и URL-алфавит.
+/// `Buffer.from(text, 'base64')`: снисходительный разбор Node — строка
+/// читается по младшему байту каждой единицы UTF-16 (`н` U+043D — это `=`),
+/// посторонние символы пропускаются, `=` заканчивает данные, принимается и
+/// URL-алфавит. Проверено на Node 24: `'не base64 !!'` → пусто, `'жAAAA'` →
+/// `[232, 0, 0]`.
 fn base64_decode(text: &str) -> Vec<u8> {
     let mut out = Vec::with_capacity(text.len() / 4 * 3 + 3);
     let mut group = [0u8; 4];
     let mut filled = 0;
-    for byte in text.bytes() {
+    for byte in text.encode_utf16().map(|unit| (unit & 0xff) as u8) {
         if byte == b'=' {
             break;
         }
@@ -2937,7 +2940,7 @@ pub fn legacy_cells_from_tactical_map(map: &TacticalMap) -> Vec<Value> {
             } else {
                 "floor"
             };
-            let mut legacy = Map::new();
+            let mut legacy = Map::with_capacity(12);
             legacy.insert("x".into(), Value::from(x));
             legacy.insert("y".into(), Value::from(y));
             legacy.insert("type".into(), Value::String(kind.into()));
@@ -3163,4 +3166,20 @@ pub fn orient_tactical_map(map: TacticalMap, side: &str) -> MapResult<TacticalMa
     }
     next.legacy_shape = map.legacy_shape.clone();
     Ok(next)
+}
+
+// --- клетки сцены для хранилища -------------------------------------------
+
+/// Клетки сцены из карты для хранилища (`sk_store::MapCells`): то же
+/// преобразование, что `internalizeMaps` в `server/map-store.mjs` —
+/// `legacyCellsFromTacticalMap(deserializeTacticalMap(map))`; отказ разбора —
+/// `None` (хранилище кладёт пустой массив, как JS в `catch`).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TacticalMapCells;
+
+impl sk_store::MapCells for TacticalMapCells {
+    fn cells_from_map(&self, map: &Value) -> Option<Value> {
+        let map = deserialize_tactical_map(map).ok()?;
+        Some(Value::Array(legacy_cells_from_tactical_map(&map)))
+    }
 }

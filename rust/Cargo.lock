@@ -1813,6 +1813,7 @@ dependencies = [
  "sk-geometry",
  "sk-items",
  "sk-scene-base",
+ "sk-store",
 ]
 
 [[package]]

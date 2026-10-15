@@ -13,3 +13,4 @@ sk-scene-base = { path = "../sk-scene-base" }
 sk-items = { path = "../sk-items" }
 sk-combat-content = { path = "../sk-combat-content" }
 sk-geometry = { path = "../sk-geometry" }
+sk-store = { path = "../sk-store" }
