@@ -28,6 +28,8 @@ fn run_call(map: &mut TacticalMap, name: &str, input: &Value) -> Value {
         "applyRoomFloors" => common::room_floors_call(map, input),
         "raiseDais" => common::raise_dais_call(map, input),
         "deepestRoom" => common::deepest_room_call(map),
+        "auditTacticalMap" => common::audit_call(map),
+        "programReport" => common::program_report_call(map, input),
         other => panic!("в эталоне вызов {other}, а он ещё не перенесён"),
     }
 }
@@ -37,6 +39,7 @@ fn generator_calls_match_js() {
     let chains = array(&FIXTURE["chains"]);
     assert!(chains.len() > 100, "мало цепочек: {}", chains.len());
     let mut calls = 0;
+    let mut audits = 0;
     for (index, chain) in chains.iter().enumerate() {
         let label = format!("{} #{index}", chain["run"].as_str().unwrap_or(""));
         let mut map = restore(&chain["before"]);
@@ -49,6 +52,11 @@ fn generator_calls_match_js() {
             // Карта генератора в памяти и прочитанная копия расходятся только
             // порядком ключей зоны (`wall` раньше `floor`), не смыслом.
             assert_eq!(call["agreesAfterRead"], true, "в JS копия и карта в памяти разошлись: {context}");
+            if let Some(audit) = call.get("extra").and_then(|extra| extra.get("audit")) {
+                let actual = sk_map_core::map_quality::audit_tactical_map(&map).to_json();
+                assert_same(&actual, audit, &format!("{context}: аудит той же карты"));
+                audits += 1;
+            }
             let result = run_call(&mut map, name, &call["input"]);
             assert_same(&result, &call["result"], &context);
             let after = serialize(&map);
@@ -57,4 +65,5 @@ fn generator_calls_match_js() {
         }
     }
     assert!(calls >= chains.len());
+    assert!(audits > 50, "аудитов готовых карт только {audits}");
 }

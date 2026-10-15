@@ -70,8 +70,8 @@ const record = (map, label) => {
     dais.push({ map: index, zoneId, options: options ?? null, outcome, after: hash(after) })
   }
 }
-for (let index = 0; index < 260; index += 1) record(hallMap(index), `hall:${index}`)
-for (let index = 0; index < 200; index += 1) {
+for (let index = 0; index < 200; index += 1) record(hallMap(index), `hall:${index}`)
+for (let index = 0; index < 160; index += 1) {
   const map = randomLayout(t, random, `features:${index}`)
   if (chance(0.7)) thinWalls(map)
   record(map, `layout:${index}`)

@@ -15,14 +15,16 @@ import { sceneInputs } from './scenes.mjs'
 
 const t = await import('../../../../server/tactical-map.mjs')
 const { generateSceneGeometry } = await import('../../../../server/adventure-director.mjs')
-const { MAP_PREVIEW_PRESETS } = await import('../../../../server/map-quality.mjs')
+const { MAP_PREVIEW_PRESETS, auditTacticalMap } = await import('../../../../server/map-quality.mjs')
 const { sceneMapRequirementsFor, sceneRequirementsFromText } = await import('../../../../server/scene-requirements.mjs')
 
 /** Какие функции уже перенесены и записываются. */
-const RECORD = new Set(['thinWalls', 'applyRoomFloors', 'raiseDais', 'deepestRoom'])
+const RECORD = new Set(['thinWalls', 'applyRoomFloors', 'raiseDais', 'deepestRoom', 'auditTacticalMap', 'programReport'])
 
 const inputs = sceneInputs(MAP_PREVIEW_PRESETS, sceneMapRequirementsFor, sceneRequirementsFromText)
-const recording = startRecording(t, RECORD)
+// Карта, на которой проверяют программу сцены, — почти готовая карта
+// генератора: с неё же снимается и аудит.
+const recording = startRecording(t, RECORD, { programReport: (map) => ({ audit: auditTacticalMap(map) }) })
 const runs = []
 for (const { label, input } of inputs) {
   const start = recording.calls.length
@@ -35,13 +37,21 @@ for (const { label, input } of inputs) {
 }
 recording.stop()
 
+// Бюджет эталона: карты аудита и проверки программы крупные (с предметами),
+// поэтому из них берётся каждая третья и каждая четвёртая.
+const SAMPLE = { auditTacticalMap: 3, programReport: 4 }
+const seen = {}
+const keep = (call) => {
+  seen[call.name] = (seen[call.name] ?? 0) + 1
+  return (seen[call.name] - 1) % (SAMPLE[call.name] ?? 1) === 0
+}
 const chains = []
 for (const run of runs) {
-  for (const chain of chainsOf(run.calls)) {
+  for (const chain of chainsOf(run.calls, { keep })) {
     chains.push({
       run: run.label,
       before: chain.before,
-      calls: chain.calls.map((call) => ({ fn: call.fn, input: call.input, result: call.result, after: hashText(call.after), agrees: call.agrees, agreesAfterRead: call.agreesAfterRead })),
+      calls: chain.calls.map((call) => ({ fn: call.fn, input: call.input, result: call.result, after: hashText(call.after), agrees: call.agrees, agreesAfterRead: call.agreesAfterRead, ...(call.extra === undefined ? {} : { extra: call.extra }) })),
     })
   }
 }

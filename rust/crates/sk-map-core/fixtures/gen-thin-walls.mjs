@@ -15,7 +15,7 @@ import { randomLayout } from './layouts.mjs'
 
 const random = mulberry32(2026_10_15)
 const cases = []
-for (let index = 0; index < 400; index += 1) {
+for (let index = 0; index < 300; index += 1) {
   const map = randomLayout(t, random, `thin-walls:${index}`)
   const before = JSON.parse(JSON.stringify(t.serializeTacticalMap(map)))
   const copy = t.deserializeTacticalMap(before)

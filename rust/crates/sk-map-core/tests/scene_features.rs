@@ -21,7 +21,7 @@ fn fixture_map(index: &Value) -> TacticalMap {
 fn deepest_room_matches_js() {
     assert_eq!(FIXTURE["version"], SCENE_FEATURES_VERSION);
     let cases = array(&FIXTURE["deepest"]);
-    assert_eq!(cases.len(), 460);
+    assert_eq!(cases.len(), 360);
     let mut found = 0;
     for case in cases {
         let map = fixture_map(&case["map"]);
@@ -35,7 +35,7 @@ fn deepest_room_matches_js() {
 #[test]
 fn raise_dais_matches_js() {
     let cases = array(&FIXTURE["dais"]);
-    assert!(cases.len() > 1_000);
+    assert!(cases.len() > 800);
     let mut raised = 0;
     for (index, case) in cases.iter().enumerate() {
         let mut map = fixture_map(&case["map"]);

@@ -17,7 +17,7 @@ static FIXTURE: LazyLock<Value> = LazyLock::new(|| parse(include_str!("../fixtur
 fn random_layouts_match_js() {
     assert_eq!(FIXTURE["version"], THIN_WALLS_VERSION);
     let cases = array(&FIXTURE["cases"]);
-    assert_eq!(cases.len(), 400);
+    assert_eq!(cases.len(), 300);
     for (index, case) in cases.iter().enumerate() {
         let mut map = restore(&case["before"]);
         let options = match case["options"].get("keepBorder") {

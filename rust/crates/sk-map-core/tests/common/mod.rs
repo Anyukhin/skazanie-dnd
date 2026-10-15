@@ -126,6 +126,27 @@ pub fn option_text<'a>(options: &'a Value, key: &str, fallback: &'a str) -> &'a 
     }
 }
 
+/// Параметры `programReport` эталона: `{ minSize, openScene }` или `null`.
+pub fn program_options(value: &Value) -> sk_map_core::map_quality::ProgramOptions {
+    use sk_map_core::map_quality::{MinSize, ProgramOptions};
+    let min_size = value.get("minSize").filter(|size| size.is_object()).map(|size| MinSize {
+        width: size["width"].as_i64().expect("ширина мерки"),
+        height: size["height"].as_i64().expect("высота мерки"),
+    });
+    ProgramOptions { min_size, open_scene: sk_core::js::truthy(value.get("openScene")) }
+}
+
+/// `programReport(map, program, options)` в форме эталона.
+pub fn program_report_call(map: &TacticalMap, input: &Value) -> Value {
+    let report = sk_map_core::map_quality::program_report(map, &input["program"], &program_options(&input["options"]));
+    json!({ "ok": report.to_json() })
+}
+
+/// `auditTacticalMap(map)` в форме эталона.
+pub fn audit_call(map: &TacticalMap) -> Value {
+    json!({ "ok": sk_map_core::map_quality::audit_tactical_map(map).to_json() })
+}
+
 /// Параметры помоста эталона (`null` — по умолчанию).
 pub fn dais_options(value: &Value) -> sk_map_core::scene_features::DaisOptions {
     let defaults = sk_map_core::scene_features::DaisOptions::default();

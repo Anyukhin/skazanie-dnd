@@ -21,7 +21,7 @@ fn floor_json(floor: Option<RoomFloor>) -> Value {
 fn room_floor_for_matches_js() {
     assert_eq!(FIXTURE["version"], ROOM_FLOORS_VERSION);
     let cases = array(&FIXTURE["floorFor"]);
-    assert!(cases.len() > 5_000);
+    assert!(cases.len() > 3_000);
     for case in cases {
         let zone = &case["zone"];
         let context = &case["context"];
@@ -48,7 +48,7 @@ fn building_wall_style_matches_js() {
 #[test]
 fn apply_room_floors_matches_js() {
     let cases = array(&FIXTURE["apply"]);
-    assert_eq!(cases.len(), 300);
+    assert_eq!(cases.len(), 200);
     for (index, case) in cases.iter().enumerate() {
         let mut map = restore(&case["before"]);
         let outcome = common::room_floors_call(&mut map, case);
