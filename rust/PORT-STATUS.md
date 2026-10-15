@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 41840 из 142937.
+Строк JS в крейтах, которые уже есть: 46591 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -31,11 +31,11 @@
 | 3 | `sk-economy` | перенесён | 3320 | `merchant-economy`, `item-appraisal`, `item-instances`, `merchant-narration`, `shop-assembler`, `scene-commerce`, `enemy-loadouts`, `npc-equipment` |
 | 3 | `sk-attention` | перенесён | 782 | `scenario-attention`, `improvised-effects` |
 | 4 | `sk-tactical` | перенесён | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
-| 5 | `sk-map-core` | начат: тонкие стены и полы комнат (thin-walls, room-floors); остальное — ветка rs/map-core | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
-| 5 | `sk-props` | в очереди | 2369 | `prop-placement`, `scene-dressing` |
+| 5 | `sk-map-core` | перенесён | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
+| 5 | `sk-props` | перенесён | 2369 | `prop-placement`, `scene-dressing` |
 | 6 | `sk-buildings` | в очереди | 2239 | `building-generator` |
-| 6 | `sk-settlements` | начат: раскладка графа и генератор поселения; scene-program-layout ждёт map-quality и prop-placement | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
-| 6 | `sk-encounters` | в очереди | 1935 | `encounter-assembler`, `agent-context` |
+| 6 | `sk-settlements` | начат: раскладка графа и генератор поселения; scene-program-layout — в работе | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
+| 6 | `sk-encounters` | начат: сборщик встреч; agent-context — в работе | 1935 | `encounter-assembler`, `agent-context` |
 | 6 | `sk-npc-world` | в очереди | 3446 | `npc-positioning`, `tavern-life`, `blessings`, `beast-taming` |
 | 7 | `sk-world-life` | в очереди | 2777 | `captives`, `courier-letters`, `world-offices` |
 | 7 | `sk-items-life` | в очереди | 1126 | `item-lifecycle`, `content-integrity` |
