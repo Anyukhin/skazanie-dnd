@@ -40,7 +40,7 @@
 | 7 | `sk-world-life` | в очереди | 2777 | `captives`, `courier-letters`, `world-offices` |
 | 7 | `sk-items-life` | в очереди | 1126 | `item-lifecycle`, `content-integrity` |
 | 7 | `sk-themes` | в очереди | 2568 | `scene-themes` |
-| 8 | `sk-character` | в очереди | 2181 | `character-lifecycle`, `encounter-rewards`, `quest-decisions` |
+| 8 | `sk-character` | начат: решения по поручениям (quest-decisions) | 2181 | `character-lifecycle`, `encounter-rewards`, `quest-decisions` |
 | 8 | `sk-world-time` | в очереди | 3775 | `level-generator`, `weather`, `world-deeds`, `world-template-catalog` |
 | 9 | `sk-world-story` | в очереди | 3376 | `autonomous-campaign`, `offscreen-world`, `scenario-knight`, `scene-canon`, `talespire-import` |
 | 9 | `sk-narration` | в очереди | 1488 | `combat-narration`, `scene-narration`, `encounter-narration`, `scene-summary` |

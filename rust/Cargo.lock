@@ -1570,6 +1570,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-character"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sk-core",
+ "sk-memory",
+ "sk-society",
+ "sk-store",
+ "thiserror",
+]
+
+[[package]]
 name = "sk-chargen"
 version = "0.1.0"
 dependencies = [
