@@ -14,3 +14,8 @@ sk-items = { path = "../sk-items" }
 sk-combat-content = { path = "../sk-combat-content" }
 sk-geometry = { path = "../sk-geometry" }
 sk-store = { path = "../sk-store" }
+# Подсказки «что можно сделать» (`action_hints`): кошелёк, намерение уйти,
+# порог подкупа.
+sk-economy = { path = "../sk-economy" }
+sk-scenario = { path = "../sk-scenario" }
+sk-society = { path = "../sk-society" }

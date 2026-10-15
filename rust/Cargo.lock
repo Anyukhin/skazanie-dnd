@@ -1868,9 +1868,12 @@ dependencies = [
  "serde_json",
  "sk-combat-content",
  "sk-core",
+ "sk-economy",
  "sk-geometry",
  "sk-items",
+ "sk-scenario",
  "sk-scene-base",
+ "sk-society",
  "sk-store",
 ]
 
