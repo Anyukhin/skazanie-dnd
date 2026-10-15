@@ -1750,6 +1750,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-items-life"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-combat-content",
+ "sk-core",
+ "sk-encounters",
+ "sk-items",
+ "sk-rulepack",
+ "sk-ruleset",
+]
+
+[[package]]
 name = "sk-map-core"
 version = "0.1.0"
 dependencies = [
