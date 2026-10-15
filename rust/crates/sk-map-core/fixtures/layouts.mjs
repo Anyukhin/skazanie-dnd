@@ -4,6 +4,46 @@
 // Это вход проходов `thinWalls`, `applyRoomFloors`, `raiseDais`,
 // `deepestRoom` и аудита в краевых случаях, до которых генераторы не доходят.
 
+const PROP_ASSETS = ['barrel', 'crate', 'chair', 'table', 'urn', 'wardrobe', 'pillar', 'tree_oak', 'tree_pine', 'bush', 'shrub', 'chest', 'market_awning', 'well', 'campfire', 'altar', 'statue', 'bench', 'rug', 'brazier', 'haystack', 'bookshelf', 'grave', 'path_stone']
+
+/**
+ * Предметы на случайных клетках: одиночные и кучками, на опоре стены и на
+ * столе, переходы, след в одну-две клетки и без следа (запасная клетка
+ * `Math.floor(x)`), иногда за краем карты.
+ *
+ * @param {typeof import('../../../../server/tactical-map.mjs')} t
+ * @param {any} map
+ * @param {() => number} random
+ */
+export function sprinkleProps(t, map, random) {
+  const int = (n) => Math.floor(random() * n)
+  const pick = (items) => items[int(items.length)]
+  const chance = (p) => random() < p
+  const count = int(Math.max(2, Math.floor(map.width * map.height / 6)))
+  for (let index = 0; index < count; index += 1) {
+    const asset = pick(PROP_ASSETS)
+    const x = chance(0.04) ? pick([-1, map.width, map.width + 2]) : int(map.width)
+    const y = chance(0.04) ? pick([-1, map.height]) : int(map.height)
+    const run = chance(0.15) ? 2 + int(3) : 1
+    for (let step = 0; step < run; step += 1) {
+      const px = x + (chance(0.5) ? step : 0)
+      const py = y + (px === x ? step : 0)
+      const footprint = chance(0.1) ? [] : chance(0.15) ? [{ x: px, y: py }, { x: px + 1, y: py }] : [{ x: px, y: py }]
+      const prop = {
+        id: `prop-${index}-${step}`, assetId: asset, x: px + (chance(0.3) ? 0.25 : 0.5), y: py + 0.5,
+        footprint, blocksMove: chance(0.6), blocksSight: chance(0.25), cover: pick(['none', 'none', 'half', 'three_quarters']),
+      }
+      if (chance(0.06)) prop.mount = pick([{ kind: 'wall', side: pick(['n', 'e', 's', 'w']) }, { kind: 'surface', propId: 'prop-0-0' }])
+      if (chance(0.04)) {
+        prop.assetId = pick(['stairs_up', 'stairs_down', 'trapdoor'])
+        prop.transition = { toLevel: prop.assetId === 'stairs_up' ? 1 : -1, label: 'Этаж' }
+      }
+      if (chance(0.02)) delete prop.x
+      t.addProp(map, prop)
+    }
+  }
+}
+
 const LABELS = ['Общий зал', 'Кухня', 'Кладовая', 'Спальня', 'Камеры', 'Погреб', 'Мастерская', 'Алтарная', 'Неф', 'Салон', 'Кабинет', 'Конюшня', 'Склад', 'Горница', 'Казарма', 'Кузня', 'Зал', '']
 const MATERIALS = ['stone', 'wood', 'earth', 'grass', 'sand', 'marble', 'metal', 'ice']
 

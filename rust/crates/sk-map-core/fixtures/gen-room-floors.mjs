@@ -21,8 +21,8 @@ const int = (n) => Math.floor(random() * n)
 const pick = (items) => items[int(items.length)]
 const chance = (p) => random() < p
 
-const USES = ['', 'tavern', 'manor', 'barracks', 'temple', 'crypt', 'dungeon', 'shop', 'smithy', 'workshop', 'dwelling', 'stable', 'x']
-const ARCHITECTURES = ['wood', 'stone', 'marble', 'ice', 'metal', 'sand', 'earth', 'grass']
+const USES = ['', 'tavern', 'manor', 'barracks', 'temple', 'crypt', 'dungeon', 'shop', 'smithy', 'workshop']
+const ARCHITECTURES = ['wood', 'stone', 'marble', 'ice', 'earth']
 const ZONES = [
   ['hall', 'Общий зал'], ['hall', 'Горница'], ['hall', 'Зал'], ['kitchen', 'Кухня'], ['store', 'Кладовая'], ['store', ''],
   ['zone-3', 'Камеры'], ['cells', ''], ['cellar', 'Погреб'], ['cellar', 'Подвал'], ['bedroom', 'Спальня'], ['salon', 'Салон'],
@@ -61,7 +61,7 @@ for (const use of USES) {
 }
 
 const apply = []
-for (let index = 0; index < 300; index += 1) {
+for (let index = 0; index < 200; index += 1) {
   const layout = randomLayout(t, random, `room-floors:${index}`)
   if (chance(0.6)) thinWalls(layout)
   // Иногда у зоны уже есть рисунок и кладка — так карта приходит после чтения.

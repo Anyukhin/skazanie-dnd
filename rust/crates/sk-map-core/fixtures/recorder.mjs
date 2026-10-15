@@ -42,10 +42,14 @@ globalThis.__mapCoreWrap = (name, fn) => function recorded(...args) {
  * эту карту), и на настоящей карте генератора (её результат уходит дальше).
  * Совпадение двух исполнений — `agrees`.
  *
+ * `extras[name]` — что ещё снять с той же прочитанной карты перед вызовом
+ * (например, аудит карты, на которой проверяют программу сцены).
+ *
  * @param {typeof import('../../../../server/tactical-map.mjs')} t
  * @param {Set<string>} names
+ * @param {Record<string, (map: any) => unknown>} [extras]
  */
-export function startRecording(t, names) {
+export function startRecording(t, names, extras = {}) {
   const calls = []
   let depth = 0
   const serialize = (map) => JSON.stringify(t.serializeTacticalMap(map))
@@ -60,6 +64,7 @@ export function startRecording(t, names) {
       // Карта, какой её видит читатель: порядок ключей зоны после чтения свой.
       const canonicalBefore = serialize(copy)
       const input = inputOf(name, map, rest)
+      const extra = extras[name] ? extras[name](restore(before)) : undefined
       let expected
       let failure = null
       try {
@@ -87,7 +92,7 @@ export function startRecording(t, names) {
       calls.push({
         name, mapRef: map, before: canonicalBefore, input,
         result: failure ? { error: { name: failure.name, code: failure.code ?? null, message: failure.message } } : { ok: expected ?? null },
-        after, canonicalAfter, agrees, agreesAfterRead,
+        after, canonicalAfter, agrees, agreesAfterRead, ...(extra === undefined ? {} : { extra }),
       })
       if (realFailure) throw realFailure
       return real
@@ -138,7 +143,7 @@ export function chainsOf(calls, { keep = () => true } = {}) {
   const state = new WeakMap()
   for (const call of calls) {
     const previous = state.get(call.mapRef)
-    const entry = { fn: call.name, input: call.input, result: call.result, after: call.after, agrees: call.agrees, agreesAfterRead: call.agreesAfterRead }
+    const entry = { fn: call.name, input: call.input, result: call.result, after: call.after, agrees: call.agrees, agreesAfterRead: call.agreesAfterRead, ...(call.extra === undefined ? {} : { extra: call.extra }) }
     if (previous && previous.after === call.before) {
       previous.chain.calls.push(entry)
     } else {
