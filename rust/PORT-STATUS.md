@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 52449 из 142937.
+Строк JS в крейтах, которые уже есть: 54688 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -33,7 +33,7 @@
 | 4 | `sk-tactical` | перенесён | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
 | 5 | `sk-map-core` | перенесён | 2382 | `map-quality`, `thin-walls`, `room-floors`, `scene-features`, `dynamic-map`, `authored-location-maps`, `combat-lab-maps` |
 | 5 | `sk-props` | перенесён | 2369 | `prop-placement`, `scene-dressing` |
-| 6 | `sk-buildings` | в очереди | 2239 | `building-generator` |
+| 6 | `sk-buildings` | перенесён | 2239 | `building-generator` |
 | 6 | `sk-settlements` | перенесён | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
 | 6 | `sk-encounters` | перенесён | 1935 | `encounter-assembler`, `agent-context` |
 | 6 | `sk-npc-world` | начат: посты NPC на карте (npc-positioning); таверна, благословения, звери — ветка rs/npc-world | 3446 | `npc-positioning`, `tavern-life`, `blessings`, `beast-taming` |
