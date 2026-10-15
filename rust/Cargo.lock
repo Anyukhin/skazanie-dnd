@@ -1750,6 +1750,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-items-life"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-combat-content",
+ "sk-core",
+ "sk-economy",
+ "sk-encounters",
+ "sk-items",
+ "sk-npc-world",
+ "sk-rulepack",
+ "sk-ruleset",
+ "sk-society",
+]
+
+[[package]]
 name = "sk-map-core"
 version = "0.1.0"
 dependencies = [
@@ -1780,6 +1797,23 @@ dependencies = [
  "sk-core",
  "sk-dice",
  "thiserror",
+]
+
+[[package]]
+name = "sk-npc-world"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-economy",
+ "sk-geometry",
+ "sk-heroes",
+ "sk-map-core",
+ "sk-scene-base",
+ "sk-social",
+ "sk-society",
+ "sk-tactical",
 ]
 
 [[package]]
