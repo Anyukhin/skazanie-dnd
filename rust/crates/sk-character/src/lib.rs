@@ -4,8 +4,9 @@
 //! | JS | Rust |
 //! | --- | --- |
 //! | `server/quest-decisions.mjs` | [`quest_decisions`] |
+//! | `server/character-lifecycle.mjs` | [`character_lifecycle`] |
 //!
-//! `character-lifecycle` и `encounter-rewards` войдут сюда же, когда будут
-//! перенесены их зависимости (`rust/PORT-STATUS.md`).
+//! `encounter-rewards` войдёт сюда же отдельным модулем.
 
+pub mod character_lifecycle;
 pub mod quest_decisions;
