@@ -12,7 +12,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 /** Волна → крейт → модули (путь от `server/` без `.mjs`). */
 const PLAN = [
   [0, 'sk-dice', ['dice-service']],
-  [0, 'sk-store', ['event-store', 'map-store', 'store']],
+  [0, 'sk-store', ['event-store', 'map-store', 'store', 'authoritative-executor']],
   [0, 'sk-server', ['rate-window']],
   [1, 'sk-ruleset', ['ruleset-config', 'rules/core', 'rules/actors', 'campaign-ruleset', 'character-progression', 'character-creation-class-options', 'character-creation-feats', 'character-creation-catalog', 'backgrounds', 'lockpicking']],
   [1, 'sk-geometry', ['actor-footprint', 'circular-area-geometry', 'scene-graph', 'world-map']],
@@ -40,7 +40,7 @@ const PLAN = [
   [6, 'sk-encounters', ['encounter-assembler', 'agent-context']],
   [6, 'sk-npc-world', ['npc-positioning', 'tavern-life', 'blessings', 'beast-taming']],
   [7, 'sk-world-life', ['captives', 'courier-letters', 'world-offices']],
-  [7, 'sk-items-life', ['item-lifecycle', 'content-integrity', 'authoritative-executor']],
+  [7, 'sk-items-life', ['item-lifecycle', 'content-integrity']],
   [7, 'sk-themes', ['scene-themes']],
   [8, 'sk-character', ['character-lifecycle', 'encounter-rewards', 'quest-decisions']],
   [8, 'sk-world-time', ['level-generator', 'weather', 'world-deeds', 'world-template-catalog']],

@@ -5,12 +5,12 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 36818 из 142937.
+Строк JS в крейтах, которые уже есть: 37751 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
 | 0 | `sk-dice` | перенесён | 116 | `dice-service` |
-| 0 | `sk-store` | перенесён | 2057 | `event-store`, `map-store`, `store` |
+| 0 | `sk-store` | перенесён | 2450 | `event-store`, `map-store`, `store`, `authoritative-executor` |
 | 0 | `sk-server` | начат: вход, сессии, админка, раздача клиента | 70 | `rate-window` |
 | 1 | `sk-ruleset` | перенесён | 2876 | `ruleset-config`, `rules/core`, `rules/actors`, `campaign-ruleset`, `character-progression`, `character-creation-class-options`, `character-creation-feats`, `character-creation-catalog`, `backgrounds`, `lockpicking` |
 | 1 | `sk-geometry` | перенесён | 1531 | `actor-footprint`, `circular-area-geometry`, `scene-graph`, `world-map` |
@@ -27,7 +27,7 @@
 | 2 | `sk-memory` | перенесён | 2411 | `world-memory`, `party-decision` |
 | 2 | `sk-agents-base` | перенесён | 1060 | `llm-client`, `architect-usage` |
 | 3 | `sk-chargen` | перенесён | 2037 | `starter-kit`, `character-creation-wealth`, `npc-portraits`, `location-illustrations` |
-| 3 | `sk-heroes` | в очереди | 540 | `character-creation-phb`, `authored-npc` |
+| 3 | `sk-heroes` | перенесён | 540 | `character-creation-phb`, `authored-npc` |
 | 3 | `sk-economy` | перенесён | 3320 | `merchant-economy`, `item-appraisal`, `item-instances`, `merchant-narration`, `shop-assembler`, `scene-commerce`, `enemy-loadouts`, `npc-equipment` |
 | 3 | `sk-attention` | перенесён | 782 | `scenario-attention`, `improvised-effects` |
 | 4 | `sk-tactical` | в очереди | 4089 | `scene-interactions`, `tactical-map`, `combat-bounds`, `reveal-delta`, `reveal-transport`, `action-hints` |
@@ -38,7 +38,7 @@
 | 6 | `sk-encounters` | в очереди | 1935 | `encounter-assembler`, `agent-context` |
 | 6 | `sk-npc-world` | в очереди | 3446 | `npc-positioning`, `tavern-life`, `blessings`, `beast-taming` |
 | 7 | `sk-world-life` | в очереди | 2777 | `captives`, `courier-letters`, `world-offices` |
-| 7 | `sk-items-life` | в очереди | 1519 | `item-lifecycle`, `content-integrity`, `authoritative-executor` |
+| 7 | `sk-items-life` | в очереди | 1126 | `item-lifecycle`, `content-integrity` |
 | 7 | `sk-themes` | в очереди | 2568 | `scene-themes` |
 | 8 | `sk-character` | в очереди | 2181 | `character-lifecycle`, `encounter-rewards`, `quest-decisions` |
 | 8 | `sk-world-time` | в очереди | 3775 | `level-generator`, `weather`, `world-deeds`, `world-template-catalog` |
