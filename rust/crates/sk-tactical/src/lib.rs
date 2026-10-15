@@ -5,9 +5,11 @@
 //! | --- | --- |
 //! | `server/scene-interactions.mjs` | [`scene_interactions`] |
 //! | `server/tactical-map.mjs` | [`tactical_map`] |
+//! | `server/combat-bounds.mjs` | [`combat_bounds`] (и `syncCombatBounds`, `growCombatBounds` движка) |
 //!
 //! Этап паритета (`rust/PORTING.md`): на границе модулей — `serde_json::Value`
 //! той же формы и с тем же порядком ключей, что у JS; тексты байт в байт.
 
+pub mod combat_bounds;
 pub mod scene_interactions;
 pub mod tactical_map;
