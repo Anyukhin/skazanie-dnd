@@ -1678,6 +1678,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-encounters"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-combat-base",
+ "sk-combat-content",
+ "sk-core",
+ "sk-economy",
+ "sk-geometry",
+ "sk-scene-base",
+ "sk-tactical",
+ "thiserror",
+]
+
+[[package]]
 name = "sk-geometry"
 version = "0.1.0"
 dependencies = [
@@ -1892,9 +1908,12 @@ dependencies = [
  "serde_json",
  "sk-combat-content",
  "sk-core",
+ "sk-economy",
  "sk-geometry",
  "sk-items",
+ "sk-scenario",
  "sk-scene-base",
+ "sk-society",
  "sk-store",
 ]
 
