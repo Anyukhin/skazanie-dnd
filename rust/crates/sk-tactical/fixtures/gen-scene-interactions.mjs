@@ -6,10 +6,41 @@ import '../../../fixtures-env.mjs'
 // Каталог по каждому синониму (с путями, расширениями, регистром и мусором),
 // metadata пропа и выбор точек интереса на случайных наборах, определения
 // объектов, находки, разбор свободного текста, ближайшая команда, расстояние
-// и рассказ о взаимодействии.
+// и рассказ о взаимодействии; нормализация памяти сцены о тронутых объектах
+// (`normalizeSceneInteractions` движка).
 import * as m from '../../../../server/scene-interactions.mjs'
 import { sceneHazardAssetIds } from '../../../../server/scene-hazards.mjs'
+import { normalizeCampaignState } from '../../../../server/rules-engine.mjs'
 import { attempt, encode, mulberry32, writeFixture } from './common.mjs'
+
+// Копия `normalizeSceneInteractions` и `uniqueStrings` из rules-engine.mjs (не
+// экспортируются); копия сверяется с `normalizeCampaignState` ниже.
+function uniqueStrings(value) {
+  return [...new Set(Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [])]
+}
+function normalizeSceneInteractions(input) {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input : {}
+  return Object.fromEntries(Object.entries(source).slice(0, 2_000).flatMap(([propId, value]) => {
+    if (!propId || !value || typeof value !== 'object' || Array.isArray(value)) return []
+    return [[String(propId).slice(0, 120), {
+      state: String(value.state ?? 'idle').slice(0, 40),
+      inspected: value.inspected === true,
+      inspection_attempted: value.inspection_attempted === true || value.inspected === true,
+      inspection_attempted_by: uniqueStrings(value.inspection_attempted_by).slice(0, 120),
+      opened: value.opened === true,
+      taken: value.taken === true,
+      used: value.used === true,
+      used_by: uniqueStrings(value.used_by).slice(0, 120),
+      loot_claimed: value.loot_claimed === true,
+      loot_revealed: value.loot_revealed === true,
+      trap_detected: value.trap_detected === true,
+      lockpicked: value.lockpicked === true,
+      lockpicked_by: value.lockpicked_by == null ? null : String(value.lockpicked_by).slice(0, 120),
+      knowledge_ids: uniqueStrings(value.knowledge_ids).slice(0, 24),
+      last_actor_id: value.last_actor_id == null ? null : String(value.last_actor_id).slice(0, 120),
+    }]]
+  }))
+}
 
 const random = mulberry32(2026_10_15)
 const pick = (items) => items[Math.floor(random() * items.length)]
@@ -166,7 +197,27 @@ for (let index = 0; index < 400; index += 1) {
   narration.push({ events: encode(argument), text: m.sceneInteractionNarration(argument) })
 }
 
+const entryPool = [
+  { state: 'open', opened: true, used_by: ['hero', ' hero ', '', null, 5, 'mage'], knowledge_ids: ['k1', 'k1', 'k2'] },
+  { inspected: true, inspection_attempted_by: 'hero', lockpicked: true, lockpicked_by: 7, last_actor_id: '  hero  ' },
+  { state: null, taken: 'yes', loot_claimed: true, trap_detected: true, last_actor_id: null },
+  { state: 'x'.repeat(60), used: true, knowledge_ids: Array.from({ length: 30 }, (_, index) => 'k' + index) },
+  {}, null, [], 'x', 5,
+]
+const keyPool = ['prop-1', 'prop-2', '', '10', '2', 'p'.repeat(130), 'p'.repeat(125), '__proto__', 'constructor', 'chest-a']
+const normalize = []
+for (let index = 0; index < 200; index += 1) {
+  const input = chance(0.05) ? pick([null, undefined, [], 'x']) : Object.fromEntries(Array.from({ length: Math.floor(random() * 6) }, () => [pick(keyPool), pick(entryPool)]))
+  normalize.push({ input: encode(input), result: normalizeSceneInteractions(input) })
+}
+for (const sample of normalize.slice(0, 40)) {
+  const input = sample.input === encode(undefined) ? undefined : sample.input
+  const checked = normalizeCampaignState({ sessionCode: 'N', players: [], mechanics: { scene_interactions: input } }).mechanics.scene_interactions
+  if (JSON.stringify(checked) !== JSON.stringify(sample.result)) throw new Error('копия normalizeSceneInteractions разошлась с движком')
+}
+
 writeFixture(new URL('./scene-interactions.json', import.meta.url), {
+  normalize,
   policyId: m.SCENE_INTERACTION_POLICY_ID,
   assetIds: m.sceneInteractionAssetIds(),
   fallbackAssets: m.sceneInteractionFallbackAssets(),

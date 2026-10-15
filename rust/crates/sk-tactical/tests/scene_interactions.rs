@@ -148,3 +148,10 @@ fn text_picks_nearest_barrel() {
         assert_eq!(command["intent"], intent);
     }
 }
+
+#[test]
+fn scene_interaction_memory_normalizes_like_engine() {
+    for case in array(&FIXTURE["normalize"]) {
+        assert_same(&m::normalize_scene_interactions(arg(&case["input"])), &case["result"], &stringify(&case["input"]));
+    }
+}

@@ -7,7 +7,9 @@
 //! Всё выводится из сида карты и полей пропа (SHA-256 строки), поэтому replay
 //! и повторная генерация дают те же точки интереса. Пропы на входе — рыхлый
 //! JSON той же формы, что в JS (`prop.id`, `prop.assetId`, `prop.footprint`);
-//! тактическая карта зовёт те же функции через [`PropRef`].
+//! тактическая карта зовёт те же функции через [`PropRef`]. Здесь же —
+//! [`normalize_scene_interactions`]: нормализация памяти сцены о тронутых
+//! объектах (`normalizeSceneInteractions` из `rules-engine.mjs`).
 
 use serde_json::{Map, Value};
 use sk_combat_content::scene_hazards::{ignite_definition_for, scene_hazard_verbs_for, topple_definition_for};
@@ -775,6 +777,67 @@ pub fn scene_interaction_narration(events: Option<&Value>) -> String {
         return if js::is_false(payload(inspected, "success")) { "Осмотр не дал уверенного ответа.".into() } else { "Объект осмотрен.".into() };
     }
     "Взаимодействие с объектом завершено.".into()
+}
+
+/// `uniqueStrings(value)` движка: `String(item).trim()` без пустых и повторов
+/// (`null` здесь — строка `"null"`, в отличие от `js::unique_strings`).
+fn engine_unique_strings(value: Option<&Value>) -> Vec<Value> {
+    let mut seen: IndexSet<String> = IndexSet::new();
+    if let Some(Value::Array(items)) = value {
+        for item in items {
+            let text = text::trim(&js::string(Some(item))).to_string();
+            if !text.is_empty() {
+                seen.insert(text);
+            }
+        }
+    }
+    seen.into_iter().map(Value::String).collect()
+}
+
+fn engine_text(value: Option<&Value>, maximum: usize) -> Value {
+    match value {
+        None | Some(Value::Null) => Value::Null,
+        Some(value) => Value::String(text::head(&js::s(Some(value)), maximum)),
+    }
+}
+
+/// `normalizeSceneInteractions(input)` из `rules-engine.mjs`: память сцены о
+/// тронутых объектах (`mechanics.scene_interactions`) — не больше 2000
+/// записей, поля приведены, ключ — id пропа до 120 знаков.
+pub fn normalize_scene_interactions(input: Option<&Value>) -> Value {
+    let Some(Value::Object(source)) = input else { return Value::Object(Map::new()) };
+    let mut result = Map::new();
+    for (prop_id, value) in js::entries(source).into_iter().take(2_000) {
+        let Value::Object(value) = value else { continue };
+        if prop_id.is_empty() {
+            continue;
+        }
+        let get = |key: &str| value.get(key);
+        let flag = |key: &str| Value::Bool(js::is_true(get(key)));
+        let limited = |items: Vec<Value>, limit: usize| Value::Array(items.into_iter().take(limit).collect());
+        let mut entry = Map::new();
+        let state = match get("state") {
+            None | Some(Value::Null) => "idle".to_string(),
+            Some(state) => js::s(Some(state)),
+        };
+        entry.insert("state".into(), Value::String(text::head(&state, 40)));
+        entry.insert("inspected".into(), flag("inspected"));
+        entry.insert("inspection_attempted".into(), Value::Bool(js::is_true(get("inspection_attempted")) || js::is_true(get("inspected"))));
+        entry.insert("inspection_attempted_by".into(), limited(engine_unique_strings(get("inspection_attempted_by")), 120));
+        entry.insert("opened".into(), flag("opened"));
+        entry.insert("taken".into(), flag("taken"));
+        entry.insert("used".into(), flag("used"));
+        entry.insert("used_by".into(), limited(engine_unique_strings(get("used_by")), 120));
+        entry.insert("loot_claimed".into(), flag("loot_claimed"));
+        entry.insert("loot_revealed".into(), flag("loot_revealed"));
+        entry.insert("trap_detected".into(), flag("trap_detected"));
+        entry.insert("lockpicked".into(), flag("lockpicked"));
+        entry.insert("lockpicked_by".into(), engine_text(get("lockpicked_by"), 120));
+        entry.insert("knowledge_ids".into(), limited(engine_unique_strings(get("knowledge_ids")), 24));
+        entry.insert("last_actor_id".into(), engine_text(get("last_actor_id"), 120));
+        result.insert(text::head(prop_id, 120), Value::Object(entry));
+    }
+    Value::Object(result)
 }
 
 #[cfg(test)]
