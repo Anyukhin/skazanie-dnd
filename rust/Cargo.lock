@@ -1676,6 +1676,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-heroes"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sk-chargen",
+ "sk-combat-base",
+ "sk-combat-content",
+ "sk-core",
+ "sk-geometry",
+ "sk-ruleset",
+]
+
+[[package]]
 name = "sk-infra"
 version = "0.1.0"
 dependencies = [
