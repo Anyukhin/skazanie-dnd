@@ -8,7 +8,7 @@ use sk_props::prop_placement::{place_props, ZonePlacementPlan};
 use sk_tactical::tactical_map::{self as tm, CellPatch, MapResult, TacticalMap, TacticalMapError, TacticalMapOptions, TacticalSpawnPoint};
 
 use super::plan::{js_max, js_min};
-use super::{edges_around, field, overlays_of, require_options, reachability_issues, tactical_fitness_warnings, text_or_empty, BuildingScene, EdgesAroundOptions, Rect, Result, ARES_FORTRESS_GENERATOR, ARES_FORTRESS_SIZE};
+use super::{edges_around, field, overlays_of, require_options, size_limits, reachability_issues, tactical_fitness_warnings, text_or_empty, BuildingScene, EdgesAroundOptions, Rect, Result, ARES_FORTRESS_GENERATOR, ARES_FORTRESS_SIZE};
 
 /// `paintFortressRoom(map, rect, zoneId, material)`: периметр — стена, внутри
 /// — пол зоны.
@@ -94,7 +94,7 @@ pub fn generate_ares_fortress_scene(options: &Value) -> Result<TacticalMap> {
     let location_id = text_or_empty(get("locationId"), "");
     let theme = text_or_empty(get("theme"), "authored-palace");
     let with_props = get("withProps").is_none_or(|value| js::truthy(Some(value)));
-    let area = tm::size_class("area").expect("класс area объявлен");
+    let area = size_limits("area");
     let safe_width = js_max(36.0, js_min(area.max_width as f64, js::round(width)));
     let safe_height = js_max(36.0, js_min(area.max_height as f64, js::round(height)));
     // Размер не числом: JS строит карту 1×N или N×1 и падает на первой клетке

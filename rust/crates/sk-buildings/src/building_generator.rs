@@ -162,6 +162,11 @@ fn field<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
     value.as_object().and_then(|object| object.get(key))
 }
 
+/// Пределы класса размера карты (`SIZE_CLASSES[name]`); классы постоянны.
+fn size_limits(name: &str) -> tm::SizeClass {
+    tm::size_class(name).unwrap_or(tm::SIZE_CLASSES[1].1)
+}
+
 /// Вход `null`: JS читает первое поле (`options.design`, деструктуризация
 /// `seed`) и падает `TypeError`. Прочие не-объекты (число, строка, массив)
 /// именованных полей не дают и читаются как пустой объект.
@@ -485,6 +490,8 @@ fn generate_designed_building_scene(options: &Value, design: &Map<String, Value>
         }
     };
     let (estimate_width, estimate_height) = building_footprint_for(&seed, use_, None, estimate_side("width", REFERENCE_SIZE.width), estimate_side("height", REFERENCE_SIZE.height), 0.0, "");
+    // Корпус оценки — `{ minX: 0, maxX: width - 1 }`, ширина — `maxX - minX + 1`
+    // в дробях JS: размер оценки бывает дробным и бесконечным.
     let shape = building_shape_for(design, &seed, use_, estimate_width - 1.0 - 0.0 + 1.0, estimate_height - 1.0 - 0.0 + 1.0);
     if shape != "rect" {
         for scheme in [None, Some("long-hall"), Some("wing")] {
@@ -539,7 +546,7 @@ fn designed_building_attempt(options: &Value, design: &Map<String, Value>) -> Re
         (false, true) => 12,
         (false, false) => 8,
     };
-    let area = tm::size_class("area").expect("класс area объявлен");
+    let area = size_limits("area");
     let safe_width = js_max(minimum_size, js_min(area.max_width as f64, js::round(width)));
     let safe_height = js_max(minimum_size, js_min(area.max_height as f64, js::round(height)));
     if safe_width.is_nan() || safe_height.is_nan() {
@@ -589,7 +596,7 @@ fn designed_building_attempt(options: &Value, design: &Map<String, Value>) -> Re
         _ => "none",
     };
     let wall_material = if ["stone", "marble", "metal", "ice"].contains(&normalized.architecture) { normalized.architecture } else { "stone" };
-    let arena = tm::size_class("arena").expect("класс arena объявлен");
+    let arena = size_limits("arena");
     let mut map = tm::create_tactical_map(&TacticalMapOptions {
         width: safe_width,
         height: safe_height,
