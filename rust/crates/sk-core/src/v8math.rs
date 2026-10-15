@@ -3,7 +3,7 @@
 //! glibc в Docker) расходится с V8 в последнем бите, а округление до клетки
 //! или сравнение превращает этот бит в другую карту.
 //!
-//! - [`sin`], [`atan2`] — порт fdlibm, которым V8 считает сам
+//! - [`sin`], [`cos`], [`atan2`] — порт fdlibm, которым V8 считает сам
 //!   (`base::ieee754`); [`asin`] — `__ieee754_asin` оттуда же.
 //! - [`pow`] — `x ** y`: V8 зовёт `pow` платформы; здесь верно округлённая
 //!   степень, совпадающая с Node на машине владельца (подробности — ниже).
@@ -19,7 +19,7 @@
 pub use asin_fdlibm::asin;
 pub use hypot_v8::hypot;
 pub use log_fdlibm::{log, log10, log2};
-pub use pow_trig::{atan2, pow, sin};
+pub use pow_trig::{atan2, cos, pow, sin};
 
 mod pow_trig {
     //! Математика JS, от которой зависит клетка или выбор предмета: системная
@@ -385,6 +385,25 @@ mod pow_trig {
         }
     }
 
+    /// `Math.cos(x)` как в V8 (fdlibm `s_cos.c`): те же ядра и та же
+    /// редукция аргумента, что у [`sin`], со сдвигом четверти на единицу.
+    pub fn cos(x: f64) -> f64 {
+        let ix = high_word(x) & 0x7fff_ffff;
+        if ix <= 0x3fe9_21fb {
+            return kernel_cos(x, 0.0);
+        }
+        if ix >= 0x7ff0_0000 {
+            return x - x;
+        }
+        let Some((n, y0, y1)) = rem_pio2(x) else { return x.cos() };
+        match n & 3 {
+            0 => kernel_cos(y0, y1),
+            1 => -kernel_sin(y0, y1, true),
+            2 => -kernel_cos(y0, y1),
+            _ => kernel_sin(y0, y1, true),
+        }
+    }
+
     /// `atan(x)` (fdlibm `s_atan.c`, как у V8).
     fn atan(x: f64) -> f64 {
         const ATANHI: [f64; 4] = [
@@ -549,6 +568,21 @@ mod pow_trig {
             assert_eq!(atan2(0.0, 0.0), 0.0);
             assert_eq!(atan2(1.0, 1.0), std::f64::consts::FRAC_PI_4);
             assert!(atan2(f64::NAN, 1.0).is_nan());
+        }
+
+        #[test]
+        fn cos_follows_fdlibm_special_cases() {
+            assert_eq!(cos(0.0), 1.0);
+            assert_eq!(cos(-0.0), 1.0);
+            assert!(cos(f64::INFINITY).is_nan());
+            assert!(cos(f64::NEG_INFINITY).is_nan());
+            assert!(cos(f64::NAN).is_nan());
+            assert_eq!(cos(std::f64::consts::PI), -1.0);
+            assert!(cos(1e7).abs() <= 1.0);
+            // Значения V8 (Node 24): `Math.cos(1)`, `Math.cos(2.5)`, `Math.cos(100)`.
+            assert_eq!(cos(1.0).to_bits(), 0x3FE1_4A28_0FB5_068C);
+            assert_eq!(cos(2.5).to_bits(), 0xBFE9_A2F7_EF85_8B7D);
+            assert_eq!(cos(100.0).to_bits(), 0x3FEB_981D_BF66_5FDF);
         }
 
         #[test]
