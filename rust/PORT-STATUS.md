@@ -46,7 +46,7 @@
 | 9 | `sk-narration` | в очереди | 1488 | `combat-narration`, `scene-narration`, `encounter-narration`, `scene-summary` |
 | 10 | `sk-story` | в очереди | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
 | 11 | `sk-director` | в очереди | 3684 | `adventure-director`, `campaign-lifecycle`, `scene-memory`, `director-scene-transition`, `loot-containers` |
-| 13 | `sk-rules` | начат: редьюсер: живучесть, состояния, атака, ход и раунд | 28261 | `rules-engine`, `rules/tactical-geometry` |
+| 13 | `sk-rules` | начат: каркас Р0 (точки входа, ядро, normalizeCommand, кости, паузы), редьюсер: живучесть, состояния, атака, ход и раунд | 28261 | `rules-engine`, `rules/tactical-geometry` |
 | 14 | `sk-tactics` | в очереди | 3373 | `adjudicator`, `combat-forecast-view`, `party-tactics`, `security`, `cutover-audit`, `combat-lab-setup`, `combat-lab` |
 | 15 | `sk-projection` | в очереди | 2989 | `viewer-projection`, `trace-store` |
 | 15 | `sk-agents` | в очереди | 11269 | `campaign-bootstrap`, `campaign-recap`, `creative-director`, `hero-hooks`, `lore-author`, `lore-voice`, `npc-controller`, `scene-architect`, `director-agent`, `free-action-adjudication`, `npc-social-controller`, `player-request-router`, `action-adjudicator`, `narrator` |

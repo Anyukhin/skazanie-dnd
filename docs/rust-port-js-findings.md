@@ -62,6 +62,15 @@
   `group_initiative`, ресурсы врагов и призывов) — `rust/RULES-ENGINE-PLAN.md`
   §5. `normalizeNpcSocialState` не убирает повторы NPC (это делает только
   `ensure`); `NpcSocialProfileUpserted` вставляет профиль с пустым id.
+- **Rules Engine, разбор команды.** Тип команды — ключ прототипа
+  (`constructor`, `toString`) роняет `normalizeCommand` с `TypeError` вместо
+  `COMMAND_NOT_ALLOWED`; `safeInteger(x, undefined)` даёт 0 — у состояния без
+  `state_version` команда получает `expected_state_version: 0`; `action_ids`
+  окна реакции строкой проверяется поиском подстроки, объектом роняет
+  `TypeError`; повтор целей заклинания `['', 'x']` считается повтором;
+  `visibility` команды не проверяется — произвольная строка доходит до
+  событий; `eventJournalId` при строковой версии склеивает `"5" + 1` → `"51"`;
+  у `ResistanceAfterRollPause` имя `ResistanceChoicePause`.
 - **Тактическая карта.** Ребро без `x` проходит `canonicalEdge`
   (`undefined === undefined`), сохраняется под ключом `"undefined,2,s"`, а
   при упаковке съезжает в клетку (0, 0); `hazards: "ab"` становится
