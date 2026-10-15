@@ -20,6 +20,12 @@ const COMPACT_MIN = 400
 
 export const PROTOTYPE_KEYS = Object.getOwnPropertyNames(Object.prototype)
 
+/** `obj[key] = value` собственным полем — и для ключа `__proto__` (как у `JSON.parse`). */
+export function setOwn(object, key, value) {
+  Object.defineProperty(object, key, { value, enumerable: true, writable: true, configurable: true })
+  return object
+}
+
 const sha256 = (text) => createHash('sha256').update(text).digest('hex')
 const jsonReplacer = (_key, value) => (value instanceof Set ? [...value] : value)
 
