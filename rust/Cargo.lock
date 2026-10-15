@@ -1775,12 +1775,14 @@ dependencies = [
  "sk-dice",
  "sk-economy",
  "sk-geometry",
+ "sk-heroes",
  "sk-items",
  "sk-memory",
  "sk-ruleset",
  "sk-scene-base",
  "sk-social",
  "sk-society",
+ "sk-tactical",
 ]
 
 [[package]]
