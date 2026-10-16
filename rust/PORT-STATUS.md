@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 62883 из 142937.
+Строк JS в крейтах, которые уже есть: 65660 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -37,7 +37,7 @@
 | 6 | `sk-settlements` | перенесён | 2797 | `settlement-generator`, `graph-layout`, `scene-program-layout` |
 | 6 | `sk-encounters` | перенесён | 1935 | `encounter-assembler`, `agent-context` |
 | 6 | `sk-npc-world` | перенесён | 3446 | `npc-positioning`, `tavern-life`, `blessings`, `beast-taming` |
-| 7 | `sk-world-life` | в очереди | 2777 | `captives`, `courier-letters`, `world-offices` |
+| 7 | `sk-world-life` | перенесён | 2777 | `captives`, `courier-letters`, `world-offices` |
 | 7 | `sk-items-life` | перенесён | 1126 | `item-lifecycle`, `content-integrity` |
 | 7 | `sk-themes` | перенесён | 2568 | `scene-themes` |
 | 8 | `sk-character` | перенесён | 2181 | `character-lifecycle`, `encounter-rewards`, `quest-decisions` |
