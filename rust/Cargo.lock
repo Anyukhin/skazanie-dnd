@@ -1814,6 +1814,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-narration"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "sk-combat-content",
+ "sk-core",
+ "sk-economy",
+ "sk-narration-base",
+ "sk-npc-world",
+ "sk-tactical",
+ "sk-world-time",
+]
+
+[[package]]
 name = "sk-narration-base"
 version = "0.1.0"
 dependencies = [
@@ -2064,10 +2080,14 @@ dependencies = [
  "flate2",
  "serde",
  "serde_json",
+ "sk-character",
  "sk-core",
+ "sk-encounters",
  "sk-geometry",
+ "sk-items",
  "sk-npc-world",
  "sk-scenario",
+ "sk-society",
  "sk-tactical",
  "sk-world-time",
 ]
@@ -2082,10 +2102,14 @@ dependencies = [
  "sk-buildings",
  "sk-core",
  "sk-geometry",
+ "sk-heroes",
  "sk-map-core",
+ "sk-npc-world",
  "sk-props",
+ "sk-society",
  "sk-tactical",
  "sk-themes",
+ "sk-world-life",
 ]
 
 [[package]]
