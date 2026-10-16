@@ -250,7 +250,7 @@ const builders = {
 
 const DERIVED = ['combatSpells', 'combatActions', 'characterSheet', 'inventoryLoad']
 // `law` перенесён, но читает летопись `world_deeds`, которой ещё нет в Rust.
-const REGISTRIES = ['law', 'world_deeds', 'tavern', 'blessings', 'offscreen_world', 'courier_letters', 'captives', 'scenario_knight', 'dialogues', 'beasts', 'autonomy']
+const REGISTRIES = ['law', 'world_deeds', 'offscreen_world', 'courier_letters', 'captives', 'scenario_knight', 'dialogues', 'autonomy']
 function comparable(state) {
   const copy = JSON.parse(JSON.stringify(state))
   for (const player of copy.players ?? []) for (const field of DERIVED) delete player[field]

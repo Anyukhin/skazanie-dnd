@@ -18,7 +18,7 @@ use std::io::{BufRead, BufReader};
 use serde_json::Value;
 
 /// Реестры после `switch`, которых ещё нет в Rust.
-const UNPORTED_REGISTRIES: [&str; 10] = ["world_deeds", "tavern", "blessings", "offscreen_world", "courier_letters", "captives", "scenario_knight", "dialogues", "beasts", "autonomy"];
+const UNPORTED_REGISTRIES: [&str; 7] = ["world_deeds", "offscreen_world", "courier_letters", "captives", "scenario_knight", "dialogues", "autonomy"];
 
 fn without_registries(state: &mut Value) {
     if let Some(map) = state.as_object_mut() {
@@ -26,6 +26,13 @@ fn without_registries(state: &mut Value) {
             map.shift_remove(key);
         }
     }
+}
+
+/// Закон (`law`) перенесён, но читает готовую летопись поступков
+/// (`world_deeds`), которой в Rust ещё нет: если событие записало поступок,
+/// закон сравнивать не с чем, и он исключается вместе с летописью.
+fn law_reads_new_deed(pre: &Value, post: &Value) -> bool {
+    pre.get("world_deeds") != post.get("world_deeds")
 }
 
 /// Первое расхождение (порядок ключей не важен, `null` ≡ отсутствие).
@@ -82,6 +89,7 @@ fn reducer_branches_match_js_event_by_event() {
     let mut equal: BTreeMap<String, usize> = BTreeMap::new();
     let mut different: BTreeMap<String, usize> = BTreeMap::new();
     let mut order_only: BTreeMap<String, usize> = BTreeMap::new();
+    let mut law_skipped: BTreeMap<String, usize> = BTreeMap::new();
     let mut examples: Vec<String> = Vec::new();
     for line in BufReader::new(file).lines() {
         let line = line.expect("строка");
@@ -103,6 +111,14 @@ fn reducer_branches_match_js_event_by_event() {
         sk_rules::reduce::strip_derived(&mut state);
         without_registries(&mut state);
         let mut expected = case["post"].clone();
+        if law_reads_new_deed(&case["pre"], &expected) {
+            *law_skipped.entry(kind.clone()).or_default() += 1;
+            for side in [&mut state, &mut expected] {
+                if let Some(map) = side.as_object_mut() {
+                    map.shift_remove("law");
+                }
+            }
+        }
         without_registries(&mut expected);
         match first_difference(&expected, &state, &mut Vec::new()) {
             None => {
@@ -121,6 +137,7 @@ fn reducer_branches_match_js_event_by_event() {
     }
     eprintln!("совпало: {equal:?}");
     eprintln!("порядок ключей другой (при равном содержимом): {order_only:?}");
+    eprintln!("закон не сравнивался (событие записало поступок): {law_skipped:?}");
     eprintln!("расходится: {different:?}");
     for example in &examples {
         eprintln!("  {example}");
