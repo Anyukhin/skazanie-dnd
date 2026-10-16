@@ -1689,6 +1689,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-director"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "sk-buildings",
+ "sk-core",
+ "sk-geometry",
+ "sk-map-core",
+ "sk-memory",
+ "sk-scenario",
+ "sk-scene-base",
+ "sk-settlements",
+ "sk-society",
+ "sk-story",
+ "sk-tactical",
+ "sk-themes",
+ "sk-world-time",
+]
+
+[[package]]
 name = "sk-economy"
 version = "0.1.0"
 dependencies = [
