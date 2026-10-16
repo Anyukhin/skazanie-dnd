@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 74299 из 142937.
+Строк JS в крейтах, которые уже есть: 77328 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -45,7 +45,7 @@
 | 9 | `sk-world-story` | перенесён | 1998 | `autonomous-campaign`, `offscreen-world`, `scenario-knight`, `scene-canon` |
 | 9 | `sk-talespire` | перенесён | 1378 | `talespire-import` |
 | 9 | `sk-narration` | перенесён | 1488 | `combat-narration`, `scene-narration`, `encounter-narration`, `scene-summary` |
-| 10 | `sk-story` | начат: библиотека готовых построек (map-library) | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
+| 10 | `sk-story` | перенесён | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
 | 11 | `sk-director` | в очереди | 3684 | `adventure-director`, `campaign-lifecycle`, `scene-memory`, `director-scene-transition`, `loot-containers` |
 | 13 | `sk-rules` | начат: Р0 (каркас), Р1 (геометрия), Р4а (ветки редьюсера); корпус редьюсера 5597/6852 | 28261 | `rules-engine`, `rules/tactical-geometry` |
 | 14 | `sk-tactics` | в очереди | 3373 | `adjudicator`, `combat-forecast-view`, `party-tactics`, `security`, `cutover-audit`, `combat-lab-setup`, `combat-lab` |
