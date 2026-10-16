@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 70923 из 142937.
+Строк JS в крейтах, которые уже есть: 74299 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -42,8 +42,8 @@
 | 7 | `sk-themes` | перенесён | 2568 | `scene-themes` |
 | 8 | `sk-character` | перенесён | 2181 | `character-lifecycle`, `encounter-rewards`, `quest-decisions` |
 | 8 | `sk-world-time` | перенесён | 3775 | `level-generator`, `weather`, `world-deeds`, `world-template-catalog` |
-| 9 | `sk-world-story` | перенесён | 1994 | `autonomous-campaign`, `offscreen-world`, `scenario-knight`, `scene-canon` |
-| 9 | `sk-talespire` | перенесён | 1377 | `talespire-import` (отдельный крейт: зовёт `sk-rules`, а `sk-rules` зависит от `sk-world-story`) |
+| 9 | `sk-world-story` | перенесён | 1998 | `autonomous-campaign`, `offscreen-world`, `scenario-knight`, `scene-canon` |
+| 9 | `sk-talespire` | перенесён | 1378 | `talespire-import` |
 | 9 | `sk-narration` | перенесён | 1488 | `combat-narration`, `scene-narration`, `encounter-narration`, `scene-summary` |
 | 10 | `sk-story` | начат: библиотека готовых построек (map-library) | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
 | 11 | `sk-director` | в очереди | 3684 | `adventure-director`, `campaign-lifecycle`, `scene-memory`, `director-scene-transition`, `loot-containers` |

@@ -44,7 +44,8 @@ const PLAN = [
   [7, 'sk-themes', ['scene-themes']],
   [8, 'sk-character', ['character-lifecycle', 'encounter-rewards', 'quest-decisions']],
   [8, 'sk-world-time', ['level-generator', 'weather', 'world-deeds', 'world-template-catalog']],
-  [9, 'sk-world-story', ['autonomous-campaign', 'offscreen-world', 'scenario-knight', 'scene-canon', 'talespire-import']],
+  [9, 'sk-world-story', ['autonomous-campaign', 'offscreen-world', 'scenario-knight', 'scene-canon']],
+  [9, 'sk-talespire', ['talespire-import']],
   [9, 'sk-narration', ['combat-narration', 'scene-narration', 'encounter-narration', 'scene-summary']],
   [10, 'sk-story', ['campaign-dialogues', 'campaign-loop-policy', 'intent-parser', 'llm-json-schemas', 'map-library']],
   [11, 'sk-director', ['adventure-director', 'campaign-lifecycle', 'scene-memory', 'director-scene-transition', 'loot-containers']],
@@ -65,7 +66,6 @@ const PLAN = [
 const PARTIAL = {
   'sk-rules': 'Р0 (каркас), Р1 (геометрия), Р4а (ветки редьюсера); корпус редьюсера 5597/6852',
   'sk-server': 'вход, сессии, админка, раздача клиента',
-  'sk-world-story': 'контракт Режиссёра (autonomous-campaign); рыцарь, канон сцены, мир за кадром — в работе',
   'sk-story': 'библиотека готовых построек (map-library)',
 }
 
