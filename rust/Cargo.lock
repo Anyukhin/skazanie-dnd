@@ -2026,6 +2026,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-world-life"
+version = "0.1.0"
+dependencies = [
+ "icu_collator",
+ "icu_locale_core",
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-geometry",
+ "sk-npc-world",
+ "sk-social",
+ "sk-society",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
