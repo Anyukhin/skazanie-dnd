@@ -10,6 +10,9 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use sk_core::Event;
 
+pub mod resolve;
+pub use resolve::{check_resolve, ResolveReport};
+
 /// Одна запись корпуса.
 #[derive(Debug, Clone)]
 pub struct Record {
@@ -273,7 +276,7 @@ pub fn check_reducer(corpus: &Corpus, filter: Option<&str>) -> std::io::Result<R
     Ok(report)
 }
 
-fn truncate(text: &str, limit: usize) -> String {
+pub(crate) fn truncate(text: &str, limit: usize) -> String {
     if text.chars().count() <= limit {
         text.to_string()
     } else {

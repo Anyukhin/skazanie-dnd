@@ -41,7 +41,7 @@ mod society;
 pub mod spell;
 mod stranger;
 mod trade;
-mod vitals;
+pub mod vitals;
 pub mod world_time;
 
 pub use dispatch::RESOLVE_LABELS;
