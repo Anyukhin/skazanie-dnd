@@ -46,7 +46,7 @@
 | 9 | `sk-talespire` | перенесён | 1378 | `talespire-import` |
 | 9 | `sk-narration` | перенесён | 1488 | `combat-narration`, `scene-narration`, `encounter-narration`, `scene-summary` |
 | 10 | `sk-story` | перенесён | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
-| 11 | `sk-director` | в очереди | 3684 | `adventure-director`, `campaign-lifecycle`, `scene-memory`, `director-scene-transition`, `loot-containers` |
+| 11 | `sk-director` | начат: слой локаций (adventure-director), жизненный цикл кампании, память сцены; переход сцены Режиссёра и контейнеры добычи — впереди | 3684 | `adventure-director`, `campaign-lifecycle`, `scene-memory`, `director-scene-transition`, `loot-containers` |
 | 13 | `sk-rules` | начат: Р0 (каркас), Р1 (геометрия), Р4а (ветки редьюсера); корпус редьюсера 5597/6852 | 28261 | `rules-engine`, `rules/tactical-geometry` |
 | 14 | `sk-tactics` | в очереди | 3373 | `adjudicator`, `combat-forecast-view`, `party-tactics`, `security`, `cutover-audit`, `combat-lab-setup`, `combat-lab` |
 | 15 | `sk-projection` | в очереди | 2989 | `viewer-projection`, `trace-store` |
