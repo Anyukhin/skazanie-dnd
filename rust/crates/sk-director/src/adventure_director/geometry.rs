@@ -650,3 +650,35 @@ pub fn generate_scene_cells_with(input: &Value, library: Option<&MapLibrary>) ->
 pub fn generate_scene_map(spec: Option<&Value>) -> DirectorResult<Vec<Value>> {
     Ok(generate_dynamic_scene_map(spec)?.iter().map(|cell| cell.to_json()).collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cell(x: i64, feature: &str) -> Value {
+        json!({ "x": x, "y": 0, "type": "floor", "revealed": false, "feature": feature })
+    }
+
+    /// Два предмета словаря уже есть — визуальный реквизит не трогается.
+    #[test]
+    fn two_supported_features_are_enough() {
+        let assets = scene_interaction_fallback_assets();
+        let mut cells = vec![cell(0, &assets[0]), cell(1, &assets[1]), cell(2, "tree"), cell(3, "stairs_down")];
+        let before = cells.clone();
+        ensure_scene_interaction_features(&mut cells, &json!("seed"), &[]);
+        assert_eq!(cells, before);
+    }
+
+    /// Один предмет словаря — один визуальный заменяется тематическим;
+    /// лестница и враг остаются.
+    #[test]
+    fn one_supported_feature_gets_a_partner() {
+        let assets = scene_interaction_fallback_assets();
+        let mut cells = vec![cell(0, &assets[0]), cell(1, "tree"), cell(2, "stairs_down"), cell(3, "enemy"), cell(4, "bush")];
+        ensure_scene_interaction_features(&mut cells, &json!(7), &[json!(assets[1]), json!(assets[1]), json!("tree")]);
+        let replaced: Vec<&Value> = cells.iter().filter(|cell| cell["feature"] == json!(assets[1])).collect();
+        assert_eq!(replaced.len(), 1, "{cells:?}");
+        assert_eq!(cells[2]["feature"], "stairs_down");
+        assert_eq!(cells[3]["feature"], "enemy");
+    }
+}
