@@ -1985,6 +1985,8 @@ dependencies = [
 name = "sk-world-life"
 version = "0.1.0"
 dependencies = [
+ "icu_collator",
+ "icu_locale_core",
  "serde",
  "serde_json",
  "sk-core",

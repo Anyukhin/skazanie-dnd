@@ -11,3 +11,4 @@
 pub(crate) mod common;
 
 pub mod captives;
+pub mod courier_letters;

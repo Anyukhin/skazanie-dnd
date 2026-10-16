@@ -13,3 +13,6 @@ sk-geometry = { path = "../sk-geometry" }
 sk-society = { path = "../sk-society" }
 sk-social = { path = "../sk-social" }
 sk-npc-world = { path = "../sk-npc-world" }
+icu_collator.workspace = true
+# Локаль `ru` для явного `localeCompare(…, 'ru')`; та же версия, что уже в Cargo.lock.
+icu_locale_core = "2.3.0"
