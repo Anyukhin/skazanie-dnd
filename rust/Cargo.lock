@@ -2041,6 +2041,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-world-story"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sk-character",
+ "sk-core",
+ "sk-encounters",
+ "sk-items",
+ "sk-society",
+]
+
+[[package]]
 name = "sk-world-time"
 version = "0.1.0"
 dependencies = [
@@ -2050,10 +2063,14 @@ dependencies = [
  "sk-buildings",
  "sk-core",
  "sk-geometry",
+ "sk-heroes",
  "sk-map-core",
+ "sk-npc-world",
  "sk-props",
+ "sk-society",
  "sk-tactical",
  "sk-themes",
+ "sk-world-life",
 ]
 
 [[package]]
