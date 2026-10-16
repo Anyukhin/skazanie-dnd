@@ -29,6 +29,12 @@ export const TARGETS = {
 }
 
 registerHooks({
+  // `dotenv` (его зовёт `server/store.mjs`) в worktree без node_modules —
+  // пустая заглушка: эталон окружения не читает.
+  resolve(specifier, context, nextResolve) {
+    if (specifier === 'dotenv' || specifier === 'dotenv/config') return { url: 'data:text/javascript,export default { config() { return {} } }; export const config = () => ({})', shortCircuit: true }
+    return nextResolve(specifier, context)
+  },
   load(url, context, nextLoad) {
     const result = nextLoad(url, context)
     const target = Object.keys(TARGETS).find((suffix) => url.endsWith(`/${suffix}`))

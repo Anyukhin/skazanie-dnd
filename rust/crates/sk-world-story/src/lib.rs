@@ -4,6 +4,8 @@
 //! - [`autonomous_campaign`] — `server/autonomous-campaign.mjs`: контракт
 //!   намерения Режиссёра (`DIRECTOR_INTENT_TYPES`), состояние `autonomy` и
 //!   его редьюсер, запасная зацепка.
+//! - [`offscreen_world`] — `server/offscreen-world.mjs`: «Пока вас не было…» —
+//!   ход мира на существенном скачке времени.
 //! - [`scenario_knight`] — `server/scenario-knight.mjs`: проклятый рыцарь,
 //!   приходящий только в своё окно ночи, и его загадка.
 //! - [`scene_canon`] — `server/scene-canon.mjs`: физический канон сцены (час,
@@ -14,6 +16,7 @@
 //! зависит от этого крейта.
 
 pub mod autonomous_campaign;
+pub mod offscreen_world;
 pub mod scenario_knight;
 pub mod scene_canon;
 

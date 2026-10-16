@@ -157,7 +157,9 @@ export function fixtureWriter(module, compactKeys = ['campaignConcept', 'worldMa
         `"states": [\n${states.map((state) => JSON.stringify(state)).join(',\n')}\n]`,
         `"cases": [\n${cases.map((entry) => JSON.stringify(entry)).join(',\n')}\n]`,
       ]
-      writeFileSync(url, `{\n${lines.join(',\n')}\n}\n`)
+      const body = `{\n${lines.join(',\n')}\n}\n`
+      // Эталон в git — gzip: бюджет крейта ~10 МБ (rust/PORTING.md §6).
+      writeFileSync(url, url.pathname.endsWith('.gz') ? gzipSync(body, { level: 9 }) : body)
       const size = lines.reduce((total, line) => total + line.length, 0)
       console.log(`${url.pathname.split('/').at(-1)}: поддеревьев ${values.length}, состояний ${states.length}, случаев ${cases.length}, ${(size / 1024 / 1024).toFixed(2)} МБ`)
       console.log([...perFn.entries()].map(([name, count]) => `${name} ${count}`).join(', '))
