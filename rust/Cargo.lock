@@ -1999,12 +1999,22 @@ dependencies = [
 name = "sk-story"
 version = "0.1.0"
 dependencies = [
+ "flate2",
+ "icu_collator",
+ "icu_locale_core",
  "serde",
  "serde_json",
+ "sk-attention",
  "sk-core",
+ "sk-encounters",
  "sk-map-core",
+ "sk-memory",
+ "sk-scenario",
  "sk-scene-base",
+ "sk-social",
+ "sk-society",
  "sk-tactical",
+ "sk-world-story",
 ]
 
 [[package]]
