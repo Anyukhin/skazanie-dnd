@@ -12,3 +12,16 @@ sk-core.workspace = true
 sk-scene-base = { path = "../sk-scene-base" }
 sk-map-core = { path = "../sk-map-core" }
 sk-tactical = { path = "../sk-tactical" }
+sk-world-story = { path = "../sk-world-story" }
+sk-memory = { path = "../sk-memory" }
+sk-society = { path = "../sk-society" }
+sk-scenario = { path = "../sk-scenario" }
+sk-attention = { path = "../sk-attention" }
+sk-social = { path = "../sk-social" }
+sk-encounters = { path = "../sk-encounters" }
+icu_collator.workspace = true
+# Локаль `ru` для явного `localeCompare(…, 'ru')`; та же версия, что уже в Cargo.lock.
+icu_locale_core = "2.3.0"
+
+[dev-dependencies]
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
