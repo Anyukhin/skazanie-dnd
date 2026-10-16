@@ -3,6 +3,7 @@
 //! | JS | модуль |
 //! | --- | --- |
 //! | `combat-narration.mjs` | [`combat_narration`] |
+//! | `scene-narration.mjs` | [`scene_narration`] |
 //!
 //! Правила переноса — `rust/PORTING.md`. Приведения JS, которых нет в
 //! `sk_core` (обрезка по единицам UTF-16, `TABLE[key]` с ключами прототипа,
@@ -10,3 +11,4 @@
 
 pub mod combat_narration;
 pub mod jsv;
+pub mod scene_narration;

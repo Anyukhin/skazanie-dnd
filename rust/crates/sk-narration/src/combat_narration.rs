@@ -31,7 +31,7 @@ use sk_npc_world::blessings::BLESSING_CONDITION;
 use sk_world_time::weather::{elapsed_minutes_of, time_of_day_of, world_clock_narration, TIME_OF_DAY_CHANGED_EVENT, UNDERGROUND_SCENE_THEMES, WORLD_CLOCK_EVENT_TYPES};
 
 use crate::jsv::{
-    array_or_empty, coalesce, get, index0, is_str, mappable, max, n, nn, num_or, num_or0, own_lookup, path, slice_utf16, str_or_empty, table_lookup,
+    array_or_empty, clean_text, coalesce, get, index0, is_str, mappable, max, n, nn, num_or, num_or0, own_lookup, path, slice_utf16, str_or_empty, table_lookup,
     text_or, text_or2, JsResult, JsTypeError,
 };
 
@@ -264,16 +264,11 @@ fn coins_label_ru(value: f64) -> String {
     join_ru(&parts)
 }
 
-/// `String(x ?? '').replace(/\s+/gu, ' ').trim().slice(0, max)`.
-fn squashed(value: Option<&Value>, maximum: usize) -> String {
-    slice_utf16(&text::squash_spaces(&js::s(value)), maximum)
-}
-
 /// «Короткий лук», «Кинжал» (2 шт.) — одноимённые экземпляры склеиваются.
 fn reward_items_list(items: Option<&Value>) -> Vec<String> {
     let mut counts: IndexMap<String, f64> = IndexMap::new();
     for item in array_or_empty(items) {
-        let name = squashed(get(Some(item), "name"), 80);
+        let name = clean_text(get(Some(item), "name"), 80);
         if name.is_empty() {
             continue;
         }
@@ -739,7 +734,7 @@ fn scene_prop_phrase(state: &Value, prop_id: Option<&Value>) -> Option<PropPhras
 }
 
 fn loot_names(loot: Option<&Value>) -> Vec<String> {
-    array_or_empty(loot).iter().map(|item| lower_first(&squashed(get(Some(item), "name"), 120))).filter(|name| !name.is_empty()).collect()
+    array_or_empty(loot).iter().map(|item| lower_first(&clean_text(get(Some(item), "name"), 120))).filter(|name| !name.is_empty()).collect()
 }
 
 fn event_type(event: &Value) -> Option<&str> {
@@ -849,7 +844,7 @@ pub fn encounter_intro(event: &Value, state: &Value) -> String {
         _ => &empty,
     };
     let names: Vec<String> =
-        array_or_empty(get(Some(encounter), "enemies")).iter().map(|enemy| squashed(get(Some(enemy), "name"), 120)).filter(|name| !name.is_empty()).take(12).collect();
+        array_or_empty(get(Some(encounter), "enemies")).iter().map(|enemy| clean_text(get(Some(enemy), "name"), 120)).filter(|name| !name.is_empty()).take(12).collect();
     encounter_intro_phrase(&mut Phrasebook::new(), &names, encounter_setting(state, Some(encounter)), Some(event))
 }
 

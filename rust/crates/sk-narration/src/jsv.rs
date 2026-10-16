@@ -44,6 +44,13 @@ pub fn slice_utf16(source: &str, max: usize) -> String {
     result
 }
 
+/// `String(x ?? '').replace(/s+/gu, ' ').trim().slice(0, max)` — в том числе
+/// `cleanNarrationText` из `server/deterministic-narration.mjs` (перенос в
+/// `sk_narration_base` режет по символам, а не по единицам UTF-16).
+pub fn clean_text(value: Option<&Value>, maximum: usize) -> String {
+    slice_utf16(&sk_core::text::squash_spaces(&js::s(value)), maximum)
+}
+
 /// `value?.[key]` / `value.key` для поля с буквальным именем: поля есть только
 /// у объекта JSON (у строки, числа и массива таких полей нет).
 pub fn get<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
