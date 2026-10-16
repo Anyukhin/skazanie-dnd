@@ -637,10 +637,14 @@ addTransition('turn/fraction', { title: 'Тракт' }, { scene: { title: 'Ск�
 {
   const title = 'Таверна «Кабан»'
   const mood = 'Неизведанное место, полное новых возможностей'
-  const prefix = ` ${title} ${mood} `.length
+  // Описание места на карте мира — цель по умолчанию (`reconcileWorldMap`).
+  const prefix = `Исследовать новую локацию и найти путь дальше ${title} ${mood} `.length
   const cue = 'отряд у входа'
-  const arrival = `${'я'.repeat(2000 - prefix - cue.length - 1)}.${cue}`
-  addTransition('description/long', { title, location: title, theme: 'таверна', arrival }, { scene: { title: 'Склеп' }, campaignConcept: { worldSummary: 'м'.repeat(2390) + ' край', premise: 'Печать пропала.' } })
+  // Длина приставки зависит от описания места на карте мира — перебор вокруг границы.
+  for (const shift of [-1, 0, 1]) {
+    const arrival = `${'я'.repeat(2000 - prefix - cue.length - 1 + shift)}.${cue}`
+    addTransition(`description/long${shift}`, { title, location: title, theme: 'таверна', arrival }, { scene: { title: 'Склеп' }, campaignConcept: { worldSummary: 'м'.repeat(2390 + shift) + ' край', premise: 'Печать пропала.' } })
+  }
 }
 addTransition('test/huge-fields', { title: 'я'.repeat(1000), location: 'я'.repeat(1000), objective: 'я'.repeat(1000), transition: 'я'.repeat(1000), arrival: 'я'.repeat(1000) }, { scene: {} })
 addTransition('objective/null', { title: 'Тракт' }, { scene: { objective: null, title: 'Склеп' } })
