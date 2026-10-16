@@ -2,7 +2,7 @@
 //! `fixtures/gen-geometry.mjs`): тактическая геометрия, площадь и помещение,
 //! вынужденное перемещение, местность и цена шага, прыжок, скорость и
 //! проекция движения, области и цели заклинаний, синхронизация карты и
-//! клеток, частная копия `npc-positioning`.
+//! клеток, мир NPC (`npc-positioning`, теперь — крейт `sk-npc-world`).
 //!
 //! Состояние эталона собирается так же, как в генераторе: база, карта и
 //! производные клетки `legacyCellsFromTacticalMap` с правками. Выход —
@@ -18,6 +18,7 @@ use sk_geometry::Point;
 use sk_rules::areas::shape as area;
 use sk_rules::context::Context;
 use sk_rules::geometry::{footprint, forced, movement, terrain};
+use sk_rules::tactical_geometry::npc_positioning::NpcTargetGeometry;
 use sk_rules::tactical_geometry::{self as geo, npc_positioning as npc, KeySet, PathOptions, Scene};
 use sk_rules::{scene_map_sync as sync, speed, targets};
 use sk_tactical::tactical_map as tmap;

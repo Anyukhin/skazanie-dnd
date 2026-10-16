@@ -9,37 +9,23 @@
 //! замене карты (`planImportRelocations`) читают разбор команды — их
 //! перенесёт задача сцены (Р6).
 //!
-//! Частные копии чужих модулей, которых ещё нет в Rust (заменить, когда
-//! появятся крейты):
-//! - `levelLabelFor` (`level-generator.mjs`, `sk-world-time`);
-//! - нормализация мира NPC `normalizeNpcWorldState` и занятость клеток
-//!   мирными NPC `sceneNpcOccupiedCells` (`npc-positioning.mjs`,
-//!   `sk-npc-world`). Посты (`placements`) нормализуются как в JS; прочие
-//!   поля мира NPC (`vitals`, `stances`, `inventories`, `profiles`) состояние
-//!   уже принесло нормализованными (`normalizeCampaignState` перед веткой) —
-//!   для них нормализация тождественна, как и в `sync_npc_world_vital` Р0.
+//! Частная копия чужого модуля, которого ещё нет в Rust (заменить, когда
+//! появится крейт): `levelLabelFor` (`level-generator.mjs`, `sk-world-time`).
+//! Мир NPC — крейт `sk-npc-world` (`normalizeNpcWorldState`,
+//! `sceneNpcOccupiedCells`).
 
 use serde_json::{json, Map, Value};
 use sk_core::game::{is_party_summon, mechanics_mut};
 use sk_core::indexmap::IndexSet;
 use sk_core::js::{self, s};
-use sk_core::text::{capitalize, head, locale_compare, lower, nfkc, squash_spaces};
-use sk_geometry::actor_footprint::{footprint_cells_for, normalize_footprint_metadata};
+use sk_core::text::{capitalize, head, locale_compare, squash_spaces};
+use sk_geometry::actor_footprint::footprint_cells_for;
 use sk_tactical::tactical_map::{attach_level_transitions, deserialize_tactical_map, tactical_map_from_legacy_cells, LegacyMapOptions, TacticalMap};
 
 use crate::scene_maps::{level_key, scene_location_id, scene_map_record};
 
 /// `MAX_LEVEL_STASHES`: сколько стэшей неактивных этажей держит состояние.
 pub const MAX_LEVEL_STASHES: usize = 32;
-
-/// `NPC_WORLD_POLICY_ID` (`npc-positioning.mjs`).
-pub const NPC_WORLD_POLICY_ID: &str = "skazanie:npc-world-v1";
-
-/// `MAX_PLACEMENTS` (`npc-positioning.mjs`).
-const MAX_PLACEMENTS: usize = 5_000;
-
-/// `MAX_VISIBLE_NPCS` (`npc-positioning.mjs`).
-const MAX_VISIBLE_NPCS: usize = 100;
 
 /// `declaredSceneLevels(state)` (2424).
 pub fn declared_scene_levels(state: &Value) -> Vec<Value> {
@@ -139,180 +125,29 @@ pub fn remembered_level_map(state: &Value, location_id: &str, level: i64) -> sk_
     Ok(Some(rebuilt))
 }
 
-// --- мир NPC: посты и занятость (частная копия `npc-positioning.mjs`) -------
+// --- мир NPC: посты и занятость (крейт `sk-npc-world`) ----------------------
 
-/// `text(value, maximum)` (`npc-positioning.mjs`).
-fn npc_text(value: Option<&Value>, maximum: usize) -> String {
-    head(&squash_spaces(&nfkc(&s(value))), maximum)
+/// `normalizeNpcWorldState(state.npc_world)`.
+pub fn normalized_npc_world(state: &Value) -> Value {
+    sk_npc_world::npc_positioning::normalize_npc_world_state(state.get("npc_world"), &js::obj())
 }
 
-/// `integer(value, NaN)` → безопасное целое или `None`.
-fn npc_integer(value: Option<&Value>) -> Option<i64> {
-    let number = js::number(value);
-    crate::core::is_safe_integer_f64(number).then_some(number as i64)
+/// `world.placements` нормализованного мира NPC.
+pub fn npc_world_placements(world: &Value) -> Vec<Value> {
+    world.get("placements").and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
-/// `safePlacement(value)` (`npc-positioning.mjs`, 50).
-fn safe_placement(value: &Value) -> Option<Value> {
-    let npc_id = npc_text(value.get("npc_id"), 120);
-    let location_id = npc_text(value.get("location_id"), 180);
-    let x = npc_integer(value.get("x"));
-    let y = npc_integer(value.get("y"));
-    let (Some(x), Some(y)) = (x, y) else { return None };
-    if npc_id.is_empty() || location_id.is_empty() {
-        return None;
-    }
-    let mut placement = Map::new();
-    placement.insert("npc_id".into(), Value::String(npc_id));
-    placement.insert("location_id".into(), Value::String(location_id));
-    placement.insert("x".into(), Value::from(x));
-    placement.insert("y".into(), Value::from(y));
-    if let Some(footprint) = normalize_footprint_metadata(value.get("footprint")) {
-        placement.insert("footprint".into(), footprint.to_value());
-    }
-    placement.insert("anchor_prop_id".into(), Value::String(npc_text(value.get("anchor_prop_id"), 120)));
-    let reason = npc_text(value.get("placement_reason"), 80);
-    placement.insert("placement_reason".into(), Value::String(if reason.is_empty() { "deterministic-post".into() } else { reason }));
-    placement.insert("policy_id".into(), Value::String(NPC_WORLD_POLICY_ID.into()));
-    placement.insert("source_event_id".into(), Value::String(npc_text(value.get("source_event_id"), 120)));
-    Some(Value::Object(placement))
+/// `{ ...world, placements }` — без повторной нормализации.
+pub fn npc_world_with_placements(world: &Value, placements: Vec<Value>) -> Value {
+    let mut next = crate::core::spread_value(Some(world));
+    next.insert("placements".into(), Value::Array(placements));
+    Value::Object(next)
 }
 
-/// Посты мира NPC так, как их нормализует `normalizeNpcWorldState`: без
-/// мусора и повторов «место + NPC»; в режиме legacy — последние 5000.
-fn normalize_npc_placements(list: &[Value]) -> Vec<Value> {
-    let mut seen: IndexSet<String> = IndexSet::new();
-    let mut placements = Vec::new();
-    for raw in list {
-        let Some(placement) = safe_placement(raw) else { continue };
-        let key = format!("{}\0{}", s(placement.get("location_id")), s(placement.get("npc_id")));
-        if !seen.insert(key) {
-            continue;
-        }
-        placements.push(placement);
-    }
-    if sk_society::retention_context::retention_mode() == "legacy" && placements.len() > MAX_PLACEMENTS {
-        let skip = placements.len() - MAX_PLACEMENTS;
-        placements.drain(..skip);
-    }
-    placements
-}
-
-/// `normalizeNpcWorldState(value)` с заменёнными постами: шесть полей в
-/// порядке JS; посты нормализуются, остальное — как пришло (нормализовано
-/// до ветки).
-pub fn npc_world_with_placements(world: Option<&Value>, placements: &[Value]) -> Value {
-    let source = world.filter(|world| world.is_object());
-    let field = |key: &str| source.and_then(|world| world.get(key)).filter(|value| value.is_object()).cloned().unwrap_or_else(js::obj);
-    json!({
-        "schema_version": 3,
-        "placements": normalize_npc_placements(placements),
-        "vitals": field("vitals"),
-        "stances": field("stances"),
-        "inventories": field("inventories"),
-        "profiles": field("profiles"),
-    })
-}
-
-/// Посты мира NPC из состояния (`normalizeNpcWorldState(state.npc_world).placements`).
-pub fn npc_placements(state: &Value) -> Vec<Value> {
-    let list = state.get("npc_world").filter(|world| world.is_object()).and_then(|world| world.get("placements")).and_then(Value::as_array).cloned().unwrap_or_default();
-    normalize_npc_placements(&list)
-}
-
-/// `sceneLocationId(state)` из `npc-positioning.mjs` (не путать с
-/// `adventure-director`).
-fn npc_scene_location_id(state: &Value) -> String {
-    let scene = state.get("scene");
-    let field = |key: &str| scene.and_then(|scene| scene.get(key)).filter(|value| !value.is_null());
-    let explicit = npc_text(field("location_id").or_else(|| field("locationId")), 180);
-    if !explicit.is_empty() {
-        return explicit;
-    }
-    let from_map = npc_text(scene.and_then(|scene| scene.get("map")).and_then(|map| map.get("locationId")), 180);
-    if !from_map.is_empty() {
-        return from_map;
-    }
-    npc_text(field("location").or_else(|| field("title")), 180)
-}
-
-/// `comparable(value)` (`npc-positioning.mjs`).
-fn comparable(value: Option<&Value>) -> String {
-    lower(&npc_text(value, 180))
-}
-
-/// `npcAtCurrentLocation(npc, state)`.
-fn npc_at_current_location(npc: &Value, state: &Value) -> bool {
-    if js::is_false(npc.get("available")) {
-        return false;
-    }
-    let scene = state.get("scene");
-    let current_id = comparable(Some(&Value::String(npc_scene_location_id(state))));
-    let current_name = comparable(scene.and_then(|scene| scene.get("location").filter(|value| !value.is_null()).or_else(|| scene.get("title"))));
-    let location_id = comparable(npc.get("location_id").filter(|value| !value.is_null()).or_else(|| npc.get("locationId")));
-    let location = comparable(npc.get("location"));
-    if !location_id.is_empty() && !current_id.is_empty() {
-        return location_id == current_id;
-    }
-    if location.is_empty() {
-        return false;
-    }
-    location == current_id || location == current_name
-}
-
-/// `presentSceneNpcs(state)`: живые социальные NPC текущего места по id.
-fn present_scene_npcs(state: &Value) -> Vec<Value> {
-    let vitals = state.get("npc_world").and_then(|world| world.get("vitals")).filter(|value| value.is_object()).cloned().unwrap_or_else(js::obj);
-    let npcs = state.get("social").and_then(|social| social.get("npcs")).and_then(Value::as_array).cloned().unwrap_or_default();
-    let mut present: Vec<Value> = npcs
-        .into_iter()
-        .filter(|npc| js::truthy(npc.get("id")) && js::truthy(npc.get("name")) && npc_at_current_location(npc, state))
-        .filter(|npc| {
-            let vital = vitals.get(js::string(npc.get("id")));
-            let alive = !js::is_false(vital.and_then(|vital| vital.get("alive")));
-            let hp = vital.and_then(|vital| vital.get("hp")).filter(|value| !value.is_null()).map_or(1.0, |value| js::number(Some(value)));
-            alive && hp > 0.0
-        })
-        .collect();
-    present.sort_by(|left, right| locale_compare(&js::string(left.get("id")), &js::string(right.get("id"))));
-    present.truncate(MAX_VISIBLE_NPCS);
-    present
-}
-
-/// `keyOf(position)`: `${Number(x)},${Number(y)}`.
-fn key_of(position: &Value) -> String {
-    format!("{},{}", js::f64_string(js::number(position.get("x"))), js::f64_string(js::number(position.get("y"))))
-}
-
-/// `sceneNpcOccupiedCells(state)` (`npc-positioning.mjs`, 610): клетки постов
+/// `sceneNpcOccupiedCells(state)` (`npc-positioning.mjs`): клетки постов
 /// присутствующих NPC, а без постов — `scene_npcs` проекции.
 pub fn scene_npc_occupied_cells(state: &Value) -> IndexSet<String> {
-    let location = npc_scene_location_id(state);
-    let placements = npc_placements(state);
-    let mut placed: Vec<(String, Value)> = present_scene_npcs(state)
-        .into_iter()
-        .filter_map(|npc| {
-            let id = js::string(npc.get("id"));
-            let placement = placements.iter().find(|placement| s(placement.get("npc_id")) == id && s(placement.get("location_id")) == location)?.clone();
-            Some((id, placement))
-        })
-        .collect();
-    placed.sort_by(|left, right| locale_compare(&left.0, &right.0));
-    if !placed.is_empty() {
-        let mut cells = IndexSet::new();
-        for (_, placement) in &placed {
-            let body = json!({ "footprint": placement.get("footprint").cloned().unwrap_or(Value::Null) });
-            for cell in footprint_cells_for(Some(&body), Some(placement)) {
-                cells.insert(format!("{},{}", cell.x, cell.y));
-            }
-        }
-        return cells;
-    }
-    state
-        .get("scene_npcs")
-        .and_then(Value::as_array)
-        .map(|npcs| npcs.iter().filter(|npc| !js::is_false(npc.get("alive"))).map(key_of).collect())
-        .unwrap_or_default()
+    sk_npc_world::npc_positioning::scene_npc_occupied_cells(state)
 }
 
 // --- стэш этажа ------------------------------------------------------------
@@ -345,7 +180,8 @@ pub fn stash_level_entities(state: &mut Value, key: &str) {
     }
     let party = party_ids(state);
     let location = scene_location_id(state);
-    let placements = npc_placements(state);
+    let world = normalized_npc_world(state);
+    let placements = npc_world_placements(&world);
     let actors = state.get("actors").and_then(Value::as_array).cloned().unwrap_or_default();
     let summons: Vec<Value> = actors.iter().filter(|actor| is_party_summon(actor)).cloned().collect();
     let positions = positions_where(state, |id| !party.contains(id));
@@ -398,7 +234,7 @@ pub fn stash_level_entities(state: &mut Value, key: &str) {
     mechanics.insert("scene_interactions".into(), js::obj());
     mechanics.insert("encounter".into(), Value::Null);
     let elsewhere: Vec<Value> = placements.into_iter().filter(|placement| s(placement.get("location_id")) != location).collect();
-    let world = npc_world_with_placements(state.get("npc_world"), &elsewhere);
+    let world = npc_world_with_placements(&world, elsewhere);
     state["npc_world"] = world;
 }
 
@@ -427,11 +263,12 @@ pub fn restore_level_entities(state: &mut Value, key: &str) {
     mechanics.insert("scene_interactions".into(), interactions);
     mechanics.insert("encounter".into(), encounter);
     mechanics.insert("positions".into(), Value::Object(positions));
-    let mut placements = npc_placements(state);
+    let world = normalized_npc_world(state);
+    let mut placements = npc_world_placements(&world);
     if let Some(Value::Array(stashed)) = field("npc_placements") {
         placements.extend(stashed);
     }
-    let world = npc_world_with_placements(state.get("npc_world"), &placements);
+    let world = sk_npc_world::npc_positioning::normalize_npc_world_state(Some(&npc_world_with_placements(&world, placements)), &js::obj());
     state["npc_world"] = world;
     if stash.is_none() {
         return;

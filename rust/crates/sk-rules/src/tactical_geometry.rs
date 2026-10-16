@@ -14,8 +14,8 @@
 //! разбирают её один раз на вызов через [`Scene`] — на неизменном состоянии
 //! это то же, что попадание в кэш.
 //!
-//! Шесть функций `server/npc-positioning.mjs`, без которых геометрия не
-//! считается, — частная копия в [`npc_positioning`].
+//! Мир NPC (`server/npc-positioning.mjs`, крейт `sk-npc-world`) геометрия
+//! читает через переходник [`npc_positioning`].
 
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};

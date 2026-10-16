@@ -4,10 +4,9 @@
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Ветки этого файла меняют только своё: кошелёк, карточку существа, бой
-//! перемирия и журналы. Реестры пленных, зверей, таверны, благословений и
-//! почты выводятся из журнала после `switch` (`registries.rs`) — их шаги ещё
-//! не перенесены (нет крейтов `sk-world-life`, `sk-npc-world`). Мир NPC
-//! (`applyNpcWorldEvent`, `npc-positioning`) тоже не перенесён.
+//! перемирия, журналы и мир NPC (`applyNpcWorldEvent` — крейт
+//! `sk-npc-world`). Реестры пленных, зверей, таверны, благословений и почты
+//! выводятся из журнала после `switch` (`registries.rs`).
 
 use serde_json::{json, Value};
 use sk_core::game::{actor_id, combat, combat_mut, conditions_mut, mechanics_mut, replace_actor};
@@ -18,10 +17,9 @@ use super::items::{add_inventory_item, refresh_player_derived_state};
 use super::{target_of, Reduced};
 use crate::core::{combat_actor_kind, restart_turn_clock, safe_integer_or};
 use crate::journal::{append_battle_log, append_economy_log, Entry};
-use crate::pause::unported;
 
 /// Метки событий этого файла, чьи ветки ещё не перенесены.
-pub(super) const UNPORTED: &[&str] = &["NpcPlaced", "NpcMoved", "NpcHarmed", "NpcDied", "NpcStanceChanged"];
+pub(super) const UNPORTED: &[&str] = &[];
 
 /// Событие целиком в форме JS — для помощников других крейтов.
 pub(super) fn event_value(event: &Event) -> Value {
@@ -288,7 +286,7 @@ pub(super) fn npc_bribe_offered(state: &mut Value, event: &Event) -> Reduced {
             map.insert("currency".into(), currency.clone());
         }
     });
-    refresh_player_derived_state(state, std::slice::from_ref(&target));
+    refresh_player_derived_state(state, std::slice::from_ref(&target))?;
     let entry = Entry::new()
         .set("type", "bribe")
         .set("actorId", target_value(event))
@@ -316,7 +314,7 @@ pub(super) fn npc_pocket_picked(state: &mut Value, event: &Event) -> Reduced {
             }
         }
     });
-    refresh_player_derived_state(state, std::slice::from_ref(&target));
+    refresh_player_derived_state(state, std::slice::from_ref(&target))?;
     let item_name = payload.get("item").and_then(|item| item.get("name")).filter(|value| !value.is_null()).cloned().unwrap_or(Value::Null);
     let entry = Entry::new()
         .set("type", "pickpocket")
@@ -330,7 +328,32 @@ pub(super) fn npc_pocket_picked(state: &mut Value, event: &Event) -> Reduced {
     Ok(())
 }
 
+/// `applyNpcWorldEvent(state.npc_world, event)` (`npc-positioning.mjs`,
+/// крейт `sk-npc-world`): мир NPC после события. Режим хранения — из
+/// `with_retention_mode`, как у JS без `options`.
+pub(super) fn apply_npc_world(state: &Value, event: &Event) -> Value {
+    sk_npc_world::npc_positioning::apply_npc_world_event(state.get("npc_world"), &event_value(event), &js::obj())
+}
+
 /// `NpcPlaced`, `NpcMoved`, `NpcHarmed`, `NpcDied`, `NpcStanceChanged` (27044–27051).
-pub(super) fn npc_world_event(_state: &mut Value, _event: &Event) -> Reduced {
-    Err(unported("reduce:NpcPlaced"))
+pub(super) fn npc_world_event(state: &mut Value, event: &Event) -> Reduced {
+    state["npc_world"] = apply_npc_world(state, event);
+    let payload = &event.payload;
+    let npc_id = s(payload.get("npc_id"));
+    if event.event_type == "NpcHarmed" && payload.as_object().is_some_and(|map| map.contains_key("temporary_hp_after")) && !npc_id.is_empty() {
+        let temporary = safe_int(payload.get("temporary_hp_after"), 0).max(0);
+        // `state.mechanics.temporary_hp[id] = …`: у `undefined`/`null` и у
+        // примитива (модуль JS в строгом режиме) — `TypeError`; свойство
+        // массива в JSON не видно. Число в `__proto__` объекта JS молча
+        // пропускает.
+        match mechanics_mut(state).get_mut("temporary_hp") {
+            Some(Value::Object(_)) if npc_id == "__proto__" => {}
+            Some(Value::Object(map)) => {
+                map.insert(npc_id, Value::from(temporary));
+            }
+            Some(Value::Array(_)) => {}
+            _ => return Err(super::world::type_error("Cannot set properties of mechanics.temporary_hp")),
+        }
+    }
+    Ok(())
 }

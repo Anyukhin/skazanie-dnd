@@ -23,3 +23,5 @@ sk-economy = { path = "../sk-economy" }
 sk-items = { path = "../sk-items" }
 sk-tactical = { path = "../sk-tactical" }
 sk-heroes = { path = "../sk-heroes" }
+sk-npc-world = { path = "../sk-npc-world" }
+sk-items-life = { path = "../sk-items-life" }

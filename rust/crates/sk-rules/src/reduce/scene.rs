@@ -26,7 +26,7 @@ use super::{scene_turn_and_round, target_of, Reduced};
 use crate::constants::CREATURE_ENTITY_KINDS;
 use crate::core::{battle_log_move_path, combat_actor_kind, plain_object, spread_value, unique_strings};
 use crate::journal::{append_battle_log, Entry};
-use crate::scene::levels::{npc_placements, npc_world_with_placements, remember_known_level, remembered_level_map, restore_level_entities, restore_scene_level_transitions, scene_level_label, scene_npc_occupied_cells, stash_level_entities};
+use crate::scene::levels::{normalized_npc_world, npc_world_placements, npc_world_with_placements, remember_known_level, remembered_level_map, restore_level_entities, restore_scene_level_transitions, scene_level_label, scene_npc_occupied_cells, stash_level_entities};
 use crate::scene::objects::{door_edge_blocks, door_trace_key, patch_scene_door, set_scene_door_state, set_scene_object_prop_state, set_scene_prop_at, update_scene_object_interaction};
 use crate::scene::placement::{accepted_party_placement_entries, map_error, position_key, reveal_scene_cells, sync_scene_cells, used_cell_points, Placement};
 use crate::scene_maps::{level_key, normalize_location_maps, remember_scene_map, scene_level_index, scene_location_id};
@@ -358,8 +358,9 @@ pub(super) fn location_map_imported(state: &mut Value, event: &Event) -> Reduced
     }
     write_scene_tactical_map(state, &ground).map_err(map_error)?;
     if !preserve {
-        let elsewhere: Vec<Value> = npc_placements(state).into_iter().filter(|placement| s(placement.get("location_id")) != location_id).collect();
-        let world = npc_world_with_placements(state.get("npc_world"), &elsewhere);
+        let world = normalized_npc_world(state);
+        let elsewhere: Vec<Value> = npc_world_placements(&world).into_iter().filter(|placement| s(placement.get("location_id")) != location_id).collect();
+        let world = npc_world_with_placements(&world, elsewhere);
         state["npc_world"] = world;
     }
     let mut relocated: IndexSet<String> = IndexSet::new();

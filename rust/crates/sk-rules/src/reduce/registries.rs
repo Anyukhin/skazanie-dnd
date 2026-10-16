@@ -4,9 +4,9 @@
 //! Порядок — контракт replay: летопись поступков, закон (читает готовую
 //! летопись), таверна, благословения, мир за кадром, почта, пленные (после
 //! летописи), внимание противника, рыцарь, разговоры, звери, автономия.
-//! Закон и внимание перенесены (крейты `sk-society`, `sk-attention`);
-//! остальные шаги — заглушки, пока нет их модулей. Перенося шаг, уберите его
-//! имя из [`UNPORTED`].
+//! Закон, внимание, таверна, благословения и звери перенесены (крейты
+//! `sk-society`, `sk-attention`, `sk-npc-world`); остальные шаги — заглушки,
+//! пока нет их модулей. Перенося шаг, уберите его имя из [`UNPORTED`].
 
 use serde_json::Value;
 
@@ -16,28 +16,33 @@ use crate::pause::unported;
 /// Шаги реестров, которые ещё не перенесены.
 pub(super) const UNPORTED: &[&str] = &[
     "world_deeds",
-    "tavern",
-    "blessings",
     "offscreen_world",
     "courier_letters",
     "captives",
     "scenario_knight",
     "dialogues",
-    "beasts",
     "autonomy",
 ];
 
-/// Все шаги по порядку; ошибка шага не мешает следующим (заглушка не меняет
-/// состояния). Возвращает первый неперенесённый шаг.
+/// Все шаги по порядку. Заглушка (`UNPORTED`) не меняет состояния и не мешает
+/// следующим шагам; отказ перенесённого шага (там, где JS бросает) обрывает
+/// цепочку, как исключение обрывает `applyGameEvent`.
+///
+/// `Ok` — все перенесённые шаги прошли; `Err(UNPORTED)` — первый
+/// неперенесённый шаг; иное `Err` — отказ шага, дальше событие не идёт.
 pub(super) fn apply_registries(state: &mut Value, event: &Value) -> Reduced {
     let steps: [fn(&mut Value, &Value) -> Reduced; 12] =
         [world_deeds, law, tavern, blessings, offscreen_world, courier_letters, captives, scenario_attention, scenario_knight, dialogues, beasts, autonomy];
     let mut first = Ok(());
     for step in steps {
-        if let Err(error) = step(state, event) {
-            if first.is_ok() {
-                first = Err(error);
+        match step(state, event) {
+            Ok(()) => {}
+            Err(error) if error.code == crate::pause::UNPORTED => {
+                if first.is_ok() {
+                    first = Err(error);
+                }
             }
+            Err(error) => return Err(error),
         }
     }
     first
@@ -56,13 +61,17 @@ fn law(state: &mut Value, event: &Value) -> Reduced {
 }
 
 /// `state.tavern = applyTavernEvent(state.tavern, event, state)` (27076).
-fn tavern(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:tavern"))
+fn tavern(state: &mut Value, event: &Value) -> Reduced {
+    let tavern = sk_npc_world::tavern_life::apply_tavern_event(state.get("tavern"), event, state);
+    state["tavern"] = tavern;
+    Ok(())
 }
 
 /// `state.blessings = applyBlessingEvent(state.blessings, event, state)` (27079).
-fn blessings(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:blessings"))
+fn blessings(state: &mut Value, event: &Value) -> Reduced {
+    let blessings = sk_npc_world::blessings::apply_blessing_event(state.get("blessings"), event, state);
+    state["blessings"] = blessings;
+    Ok(())
 }
 
 /// `state.offscreen_world = applyOffscreenWorldEvent(state.offscreen_world, event)` (27083).
@@ -98,8 +107,19 @@ fn dialogues(_state: &mut Value, _event: &Value) -> Reduced {
 }
 
 /// `state.beasts = applyBeastEvent(state.beasts, event, state)` (27098).
-fn beasts(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:beasts"))
+///
+/// `BeastEncountered` с `payload.beast: null` в JS роняет редьюсер
+/// (`safeBeast(null)` читает `null.id`, значение по умолчанию работает только
+/// для `undefined`); крейт такую запись молча пропускает, поэтому отказ
+/// повторён здесь.
+fn beasts(state: &mut Value, event: &Value) -> Reduced {
+    let payload = event.get("payload").filter(|payload| !payload.is_null());
+    if event.get("event_type").and_then(Value::as_str) == Some("BeastEncountered") && payload.and_then(|payload| payload.get("beast")).is_some_and(Value::is_null) {
+        return Err(super::world::type_error("Cannot read properties of null (reading 'id')"));
+    }
+    let beasts = sk_npc_world::beast_taming::apply_beast_event(state.get("beasts"), event, state);
+    state["beasts"] = beasts;
+    Ok(())
 }
 
 /// `state.autonomy = applyAutonomyEvent(state.autonomy, event)` (27099).

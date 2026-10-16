@@ -4,8 +4,10 @@
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Не перенесены: жизненный цикл предметов (`applyItemLifecycleEventToPlayers`
-//! — `item-lifecycle`, крейт `sk-items-life`) и контейнеры добычи
-//! (`applyLootContainerEvent` — `loot-containers`, крейт `sk-director`).
+//! — крейт `sk-items-life` уже есть, но ветки зовут полный
+//! `refreshPlayerDerivedState`, которому нужен вывод листа героя из
+//! `sk-character`), выдача вещи (`ItemGranted`, та же причина) и контейнеры
+//! добычи (`applyLootContainerEvent` — `loot-containers`, крейт `sk-director`).
 //!
 //! Здесь же общие помощники предметов для соседних веток: `addInventoryItem`
 //! (23993; стопка — `society_helpers::inventory_stack_index`), `npcLoadoutAfterSpend` (23543) и
@@ -16,7 +18,6 @@ use std::collections::HashSet;
 use serde_json::{json, Map, Value};
 use sk_core::game::{actor_id, combat_active, find_actor, replace_actor};
 use sk_core::js::{self, is_true, s, safe_int, truthy};
-use sk_core::text::{head, nfkc, squash_spaces};
 use sk_core::Event;
 
 use super::social::{event_value, set_hero_currency};
@@ -38,9 +39,6 @@ pub(super) const UNPORTED: &[&str] = &[
     "LootContainerCreated",
     "LootContainerTaken",
 ];
-
-/// `MAX_ATTUNED_ITEMS` (`item-lifecycle.mjs`).
-const MAX_ATTUNED_ITEMS: i64 = 3;
 
 // --- общие помощники предметов --------------------------------------------
 
@@ -74,39 +72,6 @@ pub(super) fn add_inventory_item(inventory: Option<&Value>, incoming: &Value) ->
     )
 }
 
-/// `integer(value, fallback)` из `item-lifecycle.mjs`.
-fn lifecycle_integer(value: Option<&Value>, fallback: i64) -> i64 {
-    safe_int(value, fallback)
-}
-
-/// `Math.round(x * 100) / 100`.
-fn round_cents(value: f64) -> f64 {
-    js::round(value * 100.0) / 100.0
-}
-
-/// `inventoryLoadFor(actor)` (`item-lifecycle.mjs`, 147) — частная копия;
-/// заменить на `sk-items-life`, когда крейт появится.
-pub(super) fn inventory_load_for(actor: &Value) -> Value {
-    let items = inventory_list(actor.get("inventory"));
-    let total = items.iter().fold(0.0, |total, item| {
-        let weight = js::number(item.get("weight"));
-        let weight = if weight.is_nan() { 0.0 } else { weight.max(0.0) };
-        total + weight * lifecycle_integer(item.get("quantity"), 1).max(0) as f64
-    });
-    let weight = round_cents(total);
-    let capacity = (lifecycle_integer(actor.get("abilities").and_then(|abilities| abilities.get("str")), 10).max(0) * 15) as f64;
-    let owner = actor_id(actor);
-    let attuned = items.iter().filter(|item| item.get("attuned_to").and_then(Value::as_str) == Some(owner.as_str())).count();
-    json!({
-        "weight": js::num(weight),
-        "capacity": js::num(capacity),
-        "encumbered": capacity > 0.0 && weight > capacity,
-        "remaining": js::num(round_cents(capacity - weight).max(0.0)),
-        "attuned": attuned,
-        "attunement_limit": MAX_ATTUNED_ITEMS,
-    })
-}
-
 /// `refreshPlayerDerivedState(state, actorIds)` (23603) — **частичная** копия.
 ///
 /// Лист героя (`deriveCharacterSheet`, `character-lifecycle` — крейт
@@ -115,7 +80,11 @@ pub(super) fn inventory_load_for(actor: &Value) -> Value {
 /// `armor`, `speed`, `proficiency` переписываются из прежнего листа, если он
 /// есть. Заклинания и боевые действия пересчитываются, как в JS. Заменить на
 /// полную версию, когда появятся `sk-character` (Р4б).
-pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[String]) {
+///
+/// Груз — `inventoryLoadFor` крейта `sk-items-life`. Его `TypeError` на
+/// мусорном инвентаре (не массив) обрывает событие, как в JS: `state.players`
+/// остаётся прежним.
+pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[String]) -> Reduced {
     let requested: HashSet<&str> = actor_ids.iter().map(String::as_str).collect();
     let options = match state.get("ruleset_id") {
         Some(ruleset) => json!({ "rulesetId": ruleset }),
@@ -123,7 +92,7 @@ pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[Strin
     };
     let Some(players) = state.get("players").and_then(Value::as_array).cloned() else {
         state["players"] = json!([]);
-        return;
+        return Ok(());
     };
     let mut next = Vec::with_capacity(players.len());
     for actor in players {
@@ -138,7 +107,7 @@ pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[Strin
         if let Some(continuation) = crate::enervation_link::enervation_continuation_action_for(state, Some(&Value::String(id.clone())), None) {
             actions.push(continuation);
         }
-        let load = inventory_load_for(&actor);
+        let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor)).map_err(|error| super::world::type_error(error.message()))?;
         let Value::Object(mut map) = actor else {
             next.push(actor);
             continue;
@@ -155,6 +124,7 @@ pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[Strin
         next.push(Value::Object(map));
     }
     state["players"] = Value::Array(next);
+    Ok(())
 }
 
 /// `npcLoadoutAfterSpend(loadout, payload)` (23543): остаток берётся из
@@ -303,7 +273,7 @@ pub(super) fn item_consumed(state: &mut Value, event: &Event) -> Reduced {
             map.insert("inventory".into(), Value::Array(inventory));
         }
     });
-    refresh_player_derived_state(state, &[target]);
+    refresh_player_derived_state(state, &[target])?;
     Ok(())
 }
 
@@ -335,7 +305,7 @@ pub(super) fn ammunition_spent(state: &mut Value, event: &Event) -> Reduced {
             map.insert("inventory".into(), Value::Array(inventory));
         }
     });
-    refresh_player_derived_state(state, &[owner]);
+    refresh_player_derived_state(state, &[owner])?;
     Ok(())
 }
 
@@ -361,33 +331,6 @@ pub(super) fn scenario_purse_granted(state: &mut Value, event: &Event) -> Reduce
     Ok(())
 }
 
-/// `text(value, maximum)` из `npc-positioning.mjs`: NFKC, пробелы схлопнуты.
-fn npc_text(value: Option<&Value>, maximum: usize) -> String {
-    head(&squash_spaces(&nfkc(&s(value))), maximum)
-}
-
-/// Ветка `ItemGranted` из `applyNpcWorldEvent` (`npc-positioning.mjs`,
-/// 1085–1096) — частная копия: вещь уходит из инвентаря NPC, который её
-/// отдал. Мир NPC уже нормализован (`normalizeCampaignState` перед веткой), и
-/// итоговая нормализация меняет здесь только одно — владелец с опустевшим
-/// инвентарём исчезает. Заменить на `sk-npc-world::apply_npc_world_event`.
-fn npc_world_item_granted(state: &mut Value, payload: &Value) {
-    let owner = npc_text(payload.get("source_npc_id"), 120);
-    let item = payload.get("item");
-    let keys: HashSet<String> =
-        [item.and_then(|item| item.get("item_instance_id")), item.and_then(|item| item.get("id"))].into_iter().map(|value| npc_text(value, 160)).filter(|key| !key.is_empty()).collect();
-    let Some(inventories) = state.get_mut("npc_world").and_then(|world| world.get_mut("inventories")).and_then(Value::as_object_mut) else { return };
-    let inventory = inventories.get(&owner).and_then(Value::as_array).cloned().unwrap_or_default();
-    let found = inventory.iter().position(|entry| [entry.get("item_instance_id"), entry.get("id")].into_iter().any(|value| keys.contains(&npc_text(value, 160))));
-    let Some(index) = found else { return };
-    let remaining: Vec<Value> = inventory.into_iter().enumerate().filter(|(position, _)| *position != index).map(|(_, entry)| entry).collect();
-    if remaining.is_empty() {
-        inventories.shift_remove(&owner);
-    } else {
-        inventories.insert(owner, Value::Array(remaining));
-    }
-}
-
 /// Перенесён ли полный вывод листа героя (`deriveCharacterSheet`,
 /// `sk-character`). Пока нет — выдача вещи (`ItemGranted` схемы 2) не
 /// включена: надетая магическая вещь меняет КД (кольцо защиты), а частичный
@@ -410,11 +353,10 @@ pub(super) fn item_granted(state: &mut Value, event: &Event) -> Reduced {
         }
     });
     if event.event_schema_version.is_some_and(|version| version >= 2) {
-        refresh_player_derived_state(state, std::slice::from_ref(&target));
+        refresh_player_derived_state(state, std::slice::from_ref(&target))?;
     }
     if truthy(event.payload.get("source_npc_id")) {
-        let payload = event.payload.clone();
-        npc_world_item_granted(state, &payload);
+        state["npc_world"] = super::social::apply_npc_world(state, event);
     }
     Ok(())
 }
