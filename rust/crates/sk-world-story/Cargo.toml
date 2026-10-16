@@ -1,6 +1,6 @@
 [package]
 name = "sk-world-story"
-description = "Сюжет мира «Сказания»: контракт намерения Режиссёра, состояние автономного цикла и его редьюсер"
+description = "Сюжет мира «Сказания»: контракт намерения Режиссёра и автономный цикл, мир за кадром, проклятый рыцарь сценария и канон сцены"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true
@@ -12,8 +12,16 @@ sk-core.workspace = true
 sk-encounters = { path = "../sk-encounters" }
 sk-items = { path = "../sk-items" }
 sk-character = { path = "../sk-character" }
-
+sk-scenario = { path = "../sk-scenario" }
+sk-world-time = { path = "../sk-world-time" }
+sk-geometry = { path = "../sk-geometry" }
+sk-npc-world = { path = "../sk-npc-world" }
+sk-tactical = { path = "../sk-tactical" }
+fancy-regex.workspace = true
 
 [dev-dependencies]
 # Режим удержания в сверке с эталоном (`tests/common`).
 sk-society = { path = "../sk-society" }
+# Эталоны рыцаря, канона и мира за кадром хранятся в gzip; версия и
+# возможности — как у sk-world-time, нового в Cargo.lock нет.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
