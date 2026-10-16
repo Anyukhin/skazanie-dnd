@@ -6,6 +6,7 @@
 //! | JS | Rust |
 //! | --- | --- |
 //! | `server/campaign-dialogues.mjs` | [`campaign_dialogues`] |
+//! | `server/intent-parser.mjs` | [`intent_parser`] |
 //! | `server/map-library.mjs` | [`map_library`] |
 //!
 //! Этап паритета (`rust/PORTING.md`): на границе — `serde_json::Value` той же
@@ -13,5 +14,6 @@
 //! Rust читал библиотеку, записанную JS, и наоборот.
 
 pub mod campaign_dialogues;
+pub mod intent_parser;
 pub mod map_library;
 mod support;

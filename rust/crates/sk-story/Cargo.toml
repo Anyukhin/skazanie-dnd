@@ -14,8 +14,12 @@ sk-map-core = { path = "../sk-map-core" }
 sk-tactical = { path = "../sk-tactical" }
 sk-scenario = { path = "../sk-scenario" }
 sk-world-story = { path = "../sk-world-story" }
+sk-social = { path = "../sk-social" }
+sk-combat-content = { path = "../sk-combat-content" }
+sk-attention = { path = "../sk-attention" }
+sk-items = { path = "../sk-items" }
 
 [dev-dependencies]
-# Эталоны диалогов хранятся в gzip; версия и возможности —
+# Эталоны диалогов и разбора намерения хранятся в gzip; версия и возможности —
 # как у sk-world-story, нового в Cargo.lock нет.
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }

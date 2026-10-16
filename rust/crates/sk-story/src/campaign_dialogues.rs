@@ -940,4 +940,13 @@ mod tests {
         let again = apply_dialogue_event(Some(&state), Some(&event));
         assert_eq!(again, state);
     }
+
+    #[test]
+    fn blank_topic_matches_secret_without_topic_like_js() {
+        // Замечено в JS: тема из одних пробелов истинна, а после `clean` пуста —
+        // и совпадает с тайной исходной ситуации без темы.
+        let state = json!({ "worldMemory": { "facts": [{ "id": "f1", "predicate": "gm_secret", "object": "{}" }] } });
+        assert_eq!(dialogue_reveal_fact_id(&state, Some(&json!({ "reveal_topic": "   " }))), "f1");
+    }
 }
+
