@@ -2009,6 +2009,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-talespire"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-geometry",
+ "sk-map-core",
+ "sk-rules",
+ "sk-scene-base",
+ "sk-tactical",
+ "sk-world-time",
+]
+
+[[package]]
 name = "sk-themes"
 version = "0.1.0"
 dependencies = [
@@ -2038,6 +2054,22 @@ dependencies = [
  "sk-npc-world",
  "sk-social",
  "sk-society",
+]
+
+[[package]]
+name = "sk-world-story"
+version = "0.1.0"
+dependencies = [
+ "fancy-regex",
+ "flate2",
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-geometry",
+ "sk-npc-world",
+ "sk-scenario",
+ "sk-tactical",
+ "sk-world-time",
 ]
 
 [[package]]
