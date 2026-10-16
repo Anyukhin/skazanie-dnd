@@ -472,6 +472,8 @@ for (let index = 0; index < 160; index += 1) {
   if (chance(0.15)) input.danger = pick(['низкая', 'высокая', null])
   addGeometry(`random/${index}`, chance(0.2) ? 'cells' : 'geometry', input)
 }
+// Граница водоёма: доля воды 0.35 — уже водоём, 0.34 — ещё нет.
+for (const water of [0.34, 0.35, '0.35', 0.36]) addGeometry(`random/water-${water}`, 'geometry', { location: 'Безымянная низина', theme: 'новая местность', seed: 'water-edge', useLibrary: false, map: { layout: 'open', pattern: 'natural', water } })
 for (const [index, input] of [null, 5, 'x', [], {}, { map: null }, { map: [1] }, { seed: null, location: null, theme: null }].entries()) {
   addGeometry(`junk/explicit-${index}`, index % 2 ? 'cells' : 'geometry', input)
 }
@@ -514,7 +516,7 @@ function templeMap({ seed = 'library:tt-stave-temple:0', benches = 5, touch = fa
 }
 const floors = []
 for (const [label, options, theme] of [
-  ['nave', {}, 'temple'], ['nave/word', {}, '  Храм у моря '], ['nave/crypt-theme', {}, 'склеп'], ['nave/empty-theme', {}, ''], ['few-benches', { benches: 3 }, 'temple'],
+  ['nave', {}, 'temple'], ['nave/word', {}, '  Храм у моря '], ['nave/crypt-theme', {}, 'склеп'], ['nave/empty-theme', {}, ''], ['few-benches', { benches: 3 }, 'temple'], ['four-benches', { benches: 4 }, 'temple'],
   ['touches-border', { touch: true }, 'temple'], ['duplicate-zone', { duplicate: true }, 'temple'], ['prayer', { asset: 'prayer_bench' }, 'temple'], ['mixed', { asset: 'mixed', benches: 6 }, 'монастырь'],
   ['other-seed', { seed: 'library:tt-house:0' }, 'temple'], ['tables', { asset: 'table' }, 'temple'], ['святилище', {}, 'Святилище'],
 ]) {
@@ -628,6 +630,18 @@ for (const input of [
   { location: 'Маяк у залива', theme: 'залив', scene_kind: 'wilderness', transition: 'Отряд идёт к маяку и входит в дверь.' },
   { location: 'Таверна у озера', theme: 'берег озера', map: { layout: 'open', water: 0.5 } },
 ]) addTransition(`missing/${input.location}`, { title: input.location, objective: 'Осмотреться', ...input }, { scene: { title: 'Дорога' } })
+addTransition('turn/negative', { title: 'Тракт' }, { scene: { title: 'Склеп', turn: -5 } })
+addTransition('turn/fraction', { title: 'Тракт' }, { scene: { title: 'Склеп', turn: '2.5' } })
+// Описание сцены режется до 2000 единиц: «отряд у входа» ровно на границе
+// решает, начнётся ли таверна снаружи.
+{
+  const title = 'Таверна «Кабан»'
+  const mood = 'Неизведанное место, полное новых возможностей'
+  const prefix = ` ${title} ${mood} `.length
+  const cue = 'отряд у входа'
+  const arrival = `${'я'.repeat(2000 - prefix - cue.length - 1)}.${cue}`
+  addTransition('description/long', { title, location: title, theme: 'таверна', arrival }, { scene: { title: 'Склеп' }, campaignConcept: { worldSummary: 'м'.repeat(2390) + ' край', premise: 'Печать пропала.' } })
+}
 addTransition('test/huge-fields', { title: 'я'.repeat(1000), location: 'я'.repeat(1000), objective: 'я'.repeat(1000), transition: 'я'.repeat(1000), arrival: 'я'.repeat(1000) }, { scene: {} })
 addTransition('objective/null', { title: 'Тракт' }, { scene: { objective: null, title: 'Склеп' } })
 addTransition('objective/number', { title: 'Тракт' }, { scene: { objective: 7 } })

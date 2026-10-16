@@ -442,6 +442,20 @@ mod tests {
         );
     }
 
+    /// Не больше ста записей в порядке `Object.entries`: ключи-индексы первыми.
+    #[test]
+    fn location_maps_keep_first_hundred_entries() {
+        let mut maps = Map::new();
+        for index in 0..101 {
+            maps.insert(format!("place-{index}"), json!({ "cells": [{ "x": 0, "y": 0 }] }));
+        }
+        maps.insert("7".into(), json!({ "cells": [{ "x": 1, "y": 1 }] }));
+        let normalized = normalize_location_maps(Some(&Value::Object(maps)));
+        assert_eq!(normalized.len(), 100);
+        assert!(normalized.contains_key("7"), "ключ-индекс идёт первым");
+        assert!(normalized.contains_key("place-98") && !normalized.contains_key("place-99"));
+    }
+
     #[test]
     fn remember_and_read_location_map() {
         let mut state = json!({ "scene": { "location_id": "hall", "level": { "index": 1 }, "cells": [{ "x": 0, "y": 0 }], "map": { "seed": "s" } } });

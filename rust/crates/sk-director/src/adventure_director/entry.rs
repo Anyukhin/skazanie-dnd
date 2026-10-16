@@ -239,6 +239,54 @@ mod tests {
         assert_eq!(side("olsh", "olsh"), "");
     }
 
+    /// Равные смещения по осям — вход сбоку (запад/восток), как `>=` в JS.
+    #[test]
+    fn diagonal_tie_prefers_horizontal_side() {
+        let world = json!({ "locations": [{ "id": "a", "x": 0, "y": 0 }, { "id": "b", "x": 10, "y": 10 }, { "id": "c", "x": -10, "y": 10 }] });
+        assert_eq!(entry_side_toward(Some(&world), Some(&json!("a")), Some(&json!("b"))), "east");
+        assert_eq!(entry_side_toward(Some(&world), Some(&json!("a")), Some(&json!("c"))), "west");
+    }
+
+    /// Западный край 30 клеток высотой: трава у середины против дороги вдали.
+    fn edge_map(road_at: Option<(i64, i64)>) -> TacticalMap {
+        use sk_tactical::tactical_map::{add_spawn_point, add_zone, create_tactical_map, set_cell, CellPatch, TacticalMapOptions};
+        let mut map = create_tactical_map(&TacticalMapOptions { width: 6, height: 30, location_id: "edge", seed: "edge", ..Default::default() }).expect("карта");
+        add_zone(&mut map, &json!({ "id": "field", "kind": "exterior", "material": "grass" })).expect("поле");
+        add_zone(&mut map, &json!({ "id": "road", "kind": "exterior", "material": "earth" })).expect("дорога");
+        for y in 0..30 {
+            for x in 0..6 {
+                let zone = if road_at == Some((x, y)) { "road" } else { "field" };
+                set_cell(&mut map, x, y, &CellPatch { passable: Some(true), zone: Some(zone), ..Default::default() }).expect("клетка");
+            }
+        }
+        add_spawn_point(&mut map, &json!({ "id": "party", "x": 3, "y": 15, "role": "party" })).expect("вход");
+        map
+    }
+
+    /// Дорога у края важнее травы у середины, даже далеко от середины.
+    #[test]
+    fn road_beats_grass_far_from_middle() {
+        assert_eq!(entrance_on_side(&edge_map(Some((0, 28))), "west"), Some((0, 28)));
+        // Дорога на шаг вглубь всё равно лучше травы у самого края.
+        assert_eq!(entrance_on_side(&edge_map(Some((1, 27))), "west"), Some((1, 27)));
+        // Без дороги — середина края (14.5: первая из двух равных — 14).
+        assert_eq!(entrance_on_side(&edge_map(None), "west"), Some((0, 14)));
+    }
+
+    /// Глубина весит 100 очков: клетка у края далеко от середины лучше
+    /// клетки на шаг вглубь у середины.
+    #[test]
+    fn edge_depth_outweighs_distance_from_middle() {
+        use sk_tactical::tactical_map::{set_cell, CellPatch};
+        let mut map = edge_map(None);
+        for y in 0..30 {
+            if y != 1 {
+                set_cell(&mut map, 0, y, &CellPatch { passable: Some(false), ..Default::default() }).expect("стена");
+            }
+        }
+        assert_eq!(entrance_on_side(&map, "west"), Some((0, 1)));
+    }
+
     /// `test/scene-entry-road.test.mjs`: «первая сцена: вход со стороны ближайшего места, связанного дорогой».
     #[test]
     fn opening_side_prefers_road() {
