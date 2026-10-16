@@ -35,6 +35,10 @@ const ALL_TYPES = [
   'TruceEstablished', 'TruceBroken', 'GuardEncounterResolved', 'NpcBlessingGranted', 'CourierLetterSent', 'TavernDiceRoundOpened',
   'TavernDiceRoundCancelled', 'TavernDiceRoundResolved', 'TavernDrinkOrdered', 'ParleySettled', 'NpcBribeOffered', 'NpcPocketPicked',
   'CharacterAbilitiesRolled', 'CharacterWealthRolled', 'ExperienceAwarded', 'MilestoneAwarded',
+  // Р4в: мир NPC.
+  'NpcPlaced', 'NpcMoved', 'NpcHarmed', 'NpcDied', 'NpcStanceChanged',
+  // Р4в: события реестров таверны, благословений и зверей (своих веток нет).
+  'TavernPatronEjected', 'ShrinePrayerResolved', 'BeastEncountered', 'BeastSoothingResolved', 'BeastFed', 'BeastBit', 'BeastMoved', 'BeastScaredThreat',
 ]
 // `SK_R4A_TYPES=A,B` — снять только эти типы (например, с большим пределом).
 const TYPES = new Set(process.env.SK_R4A_TYPES ? process.env.SK_R4A_TYPES.split(',').filter(Boolean) : ALL_TYPES)

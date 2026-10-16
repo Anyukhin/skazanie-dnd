@@ -25,7 +25,7 @@ use sk_geometry::{GridCell, Point};
 
 use crate::core::{coalesce, target_for, unique_strings};
 use crate::geometry::footprint::actor_footprint_visible_in;
-use crate::tactical_geometry::npc_positioning::{placed_scene_npc_targets, NpcTarget};
+use crate::tactical_geometry::npc_positioning::{placed_scene_npc_targets, NpcTarget, NpcTargetGeometry};
 use crate::tactical_geometry::{
     actor_footprint_cells_at, actor_point, falsy, footprint_cells, grid_point, has_length, is_safe, is_transparent_cell, is_walkable_cell, js_max, key_of, line_cells,
     point_json, sight_edge_blocked, sign, truthy_point, KeySet, Scene,

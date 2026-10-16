@@ -80,7 +80,8 @@ pub fn apply_event(state: &mut Value, event: &Event) {
 
 /// То же, но сообщает, что ветка события ещё не перенесена (`UNPORTED`).
 /// Ошибки неперенесённых реестров не сообщаются: шаги реестров идут на
-/// каждом событии.
+/// каждом событии. Отказ перенесённого реестра (где JS бросает) сообщается и
+/// обрывает общие шаги после него.
 pub fn apply_event_checked(state: &mut Value, event: &Event) -> Reduced {
     if let Some(replaced) = world::replace_state(state, event) {
         return replaced;
@@ -91,7 +92,13 @@ pub fn apply_event_checked(state: &mut Value, event: &Event) -> Reduced {
     };
     crate::scene_maps::remember_current_scene_map(state);
     let event_json = serde_json::to_value(event).unwrap_or(Value::Null);
-    let _ = registries::apply_registries(state, &event_json);
+    if let Err(error) = registries::apply_registries(state, &event_json) {
+        // Отказ перенесённого реестра — там, где JS бросает: событие дальше
+        // не идёт (версия состояния и ход не трогаются).
+        if error.code != crate::pause::UNPORTED && branch.is_ok() {
+            return Err(error);
+        }
+    }
     let next_version = event
         .extra
         .get("state_version_after")
