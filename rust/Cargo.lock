@@ -1999,12 +1999,15 @@ dependencies = [
 name = "sk-story"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "serde",
  "serde_json",
  "sk-core",
  "sk-map-core",
+ "sk-scenario",
  "sk-scene-base",
  "sk-tactical",
+ "sk-world-story",
 ]
 
 [[package]]

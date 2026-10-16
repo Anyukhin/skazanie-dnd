@@ -12,3 +12,10 @@ sk-core.workspace = true
 sk-scene-base = { path = "../sk-scene-base" }
 sk-map-core = { path = "../sk-map-core" }
 sk-tactical = { path = "../sk-tactical" }
+sk-scenario = { path = "../sk-scenario" }
+sk-world-story = { path = "../sk-world-story" }
+
+[dev-dependencies]
+# Эталоны диалогов хранятся в gzip; версия и возможности —
+# как у sk-world-story, нового в Cargo.lock нет.
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
