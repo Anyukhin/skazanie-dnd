@@ -171,7 +171,7 @@ fn path<'a>(value: Option<&'a Value>, keys: &[&str]) -> Option<&'a Value> {
 
 /// `text.slice(0, max)` по единицам UTF-16, как в JS. Половину суррогатной
 /// пары строка Rust удержать не может — такой символ отбрасывается целиком.
-fn slice_utf16(source: &str, max: usize) -> String {
+pub(crate) fn slice_utf16(source: &str, max: usize) -> String {
     let mut units = 0;
     let mut result = String::new();
     for ch in source.chars() {
@@ -196,7 +196,7 @@ fn digest(parts: &[String]) -> String {
 
 /// Ключи `Object.prototype`, которые `obj[key]` находит у любого объекта, и их
 /// `String(...)`: функции печатаются исходником `[native code]`.
-fn object_prototype_text(key: &str) -> Option<&'static str> {
+pub(crate) fn object_prototype_text(key: &str) -> Option<&'static str> {
     Some(match key {
         "constructor" => "function Object() { [native code] }",
         "__defineGetter__" => "function __defineGetter__() { [native code] }",

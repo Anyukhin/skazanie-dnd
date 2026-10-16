@@ -12,6 +12,9 @@ sk-core.workspace = true
 sk-themes = { path = "../sk-themes" }
 sk-tactical = { path = "../sk-tactical" }
 sk-geometry = { path = "../sk-geometry" }
+sk-buildings = { path = "../sk-buildings" }
+sk-props = { path = "../sk-props" }
+sk-map-core = { path = "../sk-map-core" }
 
 [dev-dependencies]
 # Эталоны хранятся в gzip; версия и возможности — как у sk-props и sk-themes,
