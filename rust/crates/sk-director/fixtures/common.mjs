@@ -57,6 +57,36 @@ export function argsFrom(entry) {
   return args
 }
 
+/**
+ * Перехват вызовов модулей из тестов JS (`capture-modules.mjs`) в отдельном
+ * процессе: `targets` — `{ '/server/x.mjs': ['fn'] }`, итог — записи
+ * `{ fn, test, args, undef? }`.
+ */
+export async function captureTests(tests, targets, { limit = 400 } = {}) {
+  const { execFileSync } = await import('node:child_process')
+  const { mkdtempSync, readFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const root = new URL('../../../../', import.meta.url)
+  const dir = mkdtempSync(join(tmpdir(), 'sk-director-capture-'))
+  const file = join(dir, 'capture.jsonl')
+  try {
+    execFileSync(process.execPath, [
+      '--import', new URL('./capture-modules.mjs', import.meta.url).href,
+      '--test', '--test-isolation=none', '--test-reporter=dot',
+      ...tests.map((name) => new URL(`test/${name}.test.mjs`, root).pathname.replace(/^\/([A-Za-z]:)/u, '$1')),
+    ], {
+      cwd: new URL('.', root),
+      env: { ...process.env, SK_CAPTURE: file, SK_CAPTURE_TARGETS: JSON.stringify(targets), SK_CAPTURE_LIMIT: String(limit) },
+      stdio: ['ignore', 'ignore', 'inherit'],
+      maxBuffer: 1 << 30,
+    })
+    return readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 /** Записать эталон: секции по случаю на строку, чтобы diff читался. */
 export function writeFixture(url, sections, { gzip = false } = {}) {
   const lines = Object.entries(sections).map(([key, value]) => (Array.isArray(value)

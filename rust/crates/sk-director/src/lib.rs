@@ -16,3 +16,4 @@
 //! формы, что у JS; карты — `TacticalMap` соседних крейтов.
 
 pub mod adventure_director;
+pub mod campaign_lifecycle;

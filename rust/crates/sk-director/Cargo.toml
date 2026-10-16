@@ -18,6 +18,9 @@ sk-world-time = { path = "../sk-world-time" }
 sk-scene-base = { path = "../sk-scene-base" }
 sk-settlements = { path = "../sk-settlements" }
 sk-themes = { path = "../sk-themes" }
+sk-memory = { path = "../sk-memory" }
+sk-scenario = { path = "../sk-scenario" }
+sk-society = { path = "../sk-society" }
 
 [dev-dependencies]
 # Эталоны (состояния корпуса, карты) хранятся в gzip; версия и возможности —
