@@ -16,6 +16,19 @@ export const TARGETS = {
     'worldHopDistances', 'rumorClaimId', 'rumorWording', 'rumorSpreadTargets', 'planWorldRumorTick',
     'rumorReputationDelta', 'planWorldRumorReputation',
   ],
+  'server/world-template-catalog.mjs': ['listWorldTemplates', 'getWorldTemplate', 'worldTemplateOpening', 'worldTemplateConcept'],
+}
+
+/**
+ * Правки исходника до обёрток: внутренняя `loadCatalog` каталога миров
+ * экспортируется и читает текст каталога из `globalThis.__worldCatalogText`,
+ * если он задан, — так генератор проверяет тот же код на изменённых данных.
+ */
+const TRANSFORMS = {
+  'server/world-template-catalog.mjs': [
+    ['function loadCatalog() {', 'export function loadCatalog() {'],
+    ["JSON.parse(readFileSync(DATA_FILE, 'utf8'))", "JSON.parse(globalThis.__worldCatalogText ?? readFileSync(DATA_FILE, 'utf8'))"],
+  ],
 }
 
 registerHooks({
@@ -23,7 +36,11 @@ registerHooks({
     const result = nextLoad(url, context)
     const target = Object.keys(TARGETS).find((suffix) => url.endsWith(`/${suffix}`))
     if (!target) return result
-    const source = typeof result.source === 'string' ? result.source : Buffer.from(result.source).toString('utf8')
+    let source = typeof result.source === 'string' ? result.source : Buffer.from(result.source).toString('utf8')
+    for (const [from, to] of TRANSFORMS[target] ?? []) {
+      if (!source.includes(from)) throw new Error(`hook: в ${target} нет «${from}»`)
+      source = source.replace(from, to)
+    }
     const wraps = TARGETS[target].map((name) => `${name} = globalThis.__worldTimeWrap(${JSON.stringify(target)}, ${JSON.stringify(name)}, ${name})`).join('\n')
     return { ...result, source: `${source}\n;${wraps}\n` }
   },

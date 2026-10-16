@@ -12,3 +12,5 @@ sk-core.workspace = true
 sk-society = { path = "../sk-society" }
 sk-npc-world = { path = "../sk-npc-world" }
 sk-world-life = { path = "../sk-world-life" }
+sk-heroes = { path = "../sk-heroes" }
+sk-themes = { path = "../sk-themes" }

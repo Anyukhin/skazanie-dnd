@@ -2047,8 +2047,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sk-core",
+ "sk-heroes",
  "sk-npc-world",
  "sk-society",
+ "sk-themes",
  "sk-world-life",
 ]
 
