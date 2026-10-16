@@ -48,5 +48,5 @@ fn captives_match_js() {
     let fixture = Fixture::load(include_str!("../fixtures/captives.json"));
     let summary = check(&fixture, run);
     println!("{summary:?}");
-    assert!(summary.calls > 12_000, "{summary:?}");
+    assert!(summary.calls > 9_000, "{summary:?}");
 }

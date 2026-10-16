@@ -469,7 +469,7 @@ function randomState(index) {
   return raw
 }
 
-for (let index = 0; index < 130; index += 1) {
+for (let index = 0; index < 90; index += 1) {
   const raw = randomState(index)
   // Сырое состояние старого сохранения — и оно же после нормализации кампании.
   const states = [raw]

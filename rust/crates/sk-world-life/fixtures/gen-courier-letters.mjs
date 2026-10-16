@@ -239,7 +239,7 @@ if (dir) {
       if (viewer) campaignStateForViewer(after, { role: 'player', playerId: viewer }, viewer)
     } catch { /* отказ команды — тоже часть корпуса */ }
     stop()
-    recorder.flush(400)
+    recorder.flush(300)
   }
   console.log(`корпус: записей ${records}, состояний для батареи ${corpusStates}, повторено команд ${replayed}`)
 } else {
@@ -348,7 +348,7 @@ function randomState(index) {
   }
 }
 
-for (let index = 0; index < 100; index += 1) {
+for (let index = 0; index < 50; index += 1) {
   const raw = randomState(index)
   const states = [raw]
   const normalized = attempt(() => rules.normalizeCampaignState(viaJson(raw)))

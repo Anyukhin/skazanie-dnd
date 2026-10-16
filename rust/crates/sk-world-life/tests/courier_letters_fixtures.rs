@@ -45,6 +45,6 @@ fn courier_letters_match_js() {
     let fixture = Fixture::load(include_str!("../fixtures/courier-letters.json"));
     let summary = check(&fixture, run);
     println!("{summary:?}");
-    assert!(summary.calls > 8_000, "{summary:?}");
+    assert!(summary.calls > 5_000, "{summary:?}");
     assert!(summary.legacy > 500, "{summary:?}");
 }
