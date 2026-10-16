@@ -2018,12 +2018,22 @@ dependencies = [
 name = "sk-story"
 version = "0.1.0"
 dependencies = [
+ "flate2",
+ "icu_collator",
+ "icu_locale_core",
  "serde",
  "serde_json",
+ "sk-attention",
  "sk-core",
+ "sk-encounters",
  "sk-map-core",
+ "sk-memory",
+ "sk-scenario",
  "sk-scene-base",
+ "sk-social",
+ "sk-society",
  "sk-tactical",
+ "sk-world-story",
 ]
 
 [[package]]
@@ -2041,6 +2051,22 @@ dependencies = [
  "sk-scene-base",
  "sk-society",
  "sk-store",
+]
+
+[[package]]
+name = "sk-talespire"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "sk-core",
+ "sk-geometry",
+ "sk-map-core",
+ "sk-rules",
+ "sk-scene-base",
+ "sk-tactical",
+ "sk-world-time",
 ]
 
 [[package]]
@@ -2079,13 +2105,20 @@ dependencies = [
 name = "sk-world-story"
 version = "0.1.0"
 dependencies = [
+ "fancy-regex",
+ "flate2",
  "serde",
  "serde_json",
  "sk-character",
  "sk-core",
  "sk-encounters",
+ "sk-geometry",
  "sk-items",
+ "sk-npc-world",
+ "sk-scenario",
  "sk-society",
+ "sk-tactical",
+ "sk-world-time",
 ]
 
 [[package]]
