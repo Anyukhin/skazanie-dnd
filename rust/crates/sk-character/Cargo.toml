@@ -18,3 +18,8 @@ sk-items = { path = "../sk-items" }
 sk-items-life = { path = "../sk-items-life" }
 sk-chargen = { path = "../sk-chargen" }
 sk-heroes = { path = "../sk-heroes" }
+sk-dice = { path = "../sk-dice" }
+sk-encounters = { path = "../sk-encounters" }
+sk-npc-world = { path = "../sk-npc-world" }
+sk-economy = { path = "../sk-economy" }
+sk-combat-base = { path = "../sk-combat-base" }
