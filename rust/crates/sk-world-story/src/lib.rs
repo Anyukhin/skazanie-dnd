@@ -3,7 +3,10 @@
 //!
 //! - [`scenario_knight`] — `server/scenario-knight.mjs`: проклятый рыцарь,
 //!   приходящий только в своё окно ночи, и его загадка.
+//! - [`scene_canon`] — `server/scene-canon.mjs`: физический канон сцены (час,
+//!   погода, свет, крыша, сырость, кто виден) и проверка противоречий текста.
 
 pub mod scenario_knight;
+pub mod scene_canon;
 
 pub(crate) mod support;
