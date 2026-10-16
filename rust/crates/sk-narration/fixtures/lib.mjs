@@ -146,7 +146,7 @@ export function* corpusRecords(dir) {
         continue
       }
       if (!record?.outcome?.ok || !Array.isArray(record.outcome.events)) continue
-      yield { file, row, before: record.state, after: after.get(`${file}#${row}`) ?? null, events: record.outcome.events }
+      yield { file, row, before: record.state, after: after.get(`${file}#${row}`) ?? null, events: record.outcome.events, command: record.command }
     }
   }
 }
