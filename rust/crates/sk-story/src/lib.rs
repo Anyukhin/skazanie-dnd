@@ -6,6 +6,7 @@
 //! | JS | Rust |
 //! | --- | --- |
 //! | `server/campaign-loop-policy.mjs` | [`campaign_loop_policy`] |
+//! | `server/llm-json-schemas.mjs` | [`llm_json_schemas`] |
 //! | `server/map-library.mjs` | [`map_library`] |
 //!
 //! Этап паритета (`rust/PORTING.md`): на границе — `serde_json::Value` той же
@@ -13,4 +14,5 @@
 //! Rust читал библиотеку, записанную JS, и наоборот.
 
 pub mod campaign_loop_policy;
+pub mod llm_json_schemas;
 pub mod map_library;
