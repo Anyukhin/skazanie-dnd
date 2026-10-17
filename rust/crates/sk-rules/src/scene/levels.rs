@@ -22,7 +22,7 @@ use sk_core::text::{capitalize, head, locale_compare, squash_spaces};
 use sk_geometry::actor_footprint::footprint_cells_for;
 use sk_tactical::tactical_map::{attach_level_transitions, deserialize_tactical_map, tactical_map_from_legacy_cells, LegacyMapOptions, TacticalMap};
 
-use crate::scene_maps::{level_key, scene_location_id, scene_map_record};
+use sk_director::adventure_director::{level_key, scene_location_id, scene_map_for_location, scene_tactical_map_for_location};
 
 /// `MAX_LEVEL_STASHES`: сколько стэшей неактивных этажей держит состояние.
 pub const MAX_LEVEL_STASHES: usize = 32;
@@ -85,32 +85,11 @@ pub fn scene_level_label(state: &Value, level: i64, transition_label: &str) -> S
     head(&label, 120)
 }
 
-/// `sceneTacticalMapForLocation(locationMaps, key)` (`adventure-director.mjs`):
-/// законсервированная карта этажа без нормализации клеток.
-fn scene_tactical_map_for_location(location_maps: Option<&Value>, key: &str) -> Option<Value> {
-    let id = crate::scene_maps::text(Some(&Value::String(key.to_string())), 120, "");
-    if id.is_empty() {
-        return None;
-    }
-    let record = location_maps.and_then(|maps| maps.get(&id))?.as_object()?;
-    record.get("map").filter(|map| map.is_object()).cloned()
-}
-
-/// `sceneMapForLocation(locationMaps, key)` (`adventure-director.mjs`).
-fn scene_map_for_location(location_maps: Option<&Value>, key: &str) -> Option<Vec<Value>> {
-    let id = crate::scene_maps::text(Some(&Value::String(key.to_string())), 120, "");
-    if id.is_empty() {
-        return None;
-    }
-    let record = scene_map_record(location_maps.and_then(|maps| maps.get(&id))?, None)?;
-    record.get("cells").and_then(Value::as_array).cloned()
-}
-
 /// `rememberedLevelMap(state, locationId, level)` (2463): записи с L3 несут
 /// карту; по старым клеткам восстанавливается только этаж входа.
 pub fn remembered_level_map(state: &Value, location_id: &str, level: i64) -> sk_tactical::tactical_map::MapResult<Option<TacticalMap>> {
     let key = level_key(location_id, level);
-    if let Some(serialized) = scene_tactical_map_for_location(state.get("locationMaps"), &key) {
+    if let Some(serialized) = scene_tactical_map_for_location(state.get("locationMaps"), Some(&Value::String(key.clone()))) {
         if let Ok(map) = deserialize_tactical_map(&serialized) {
             return Ok(Some(map));
         }
@@ -118,7 +97,7 @@ pub fn remembered_level_map(state: &Value, location_id: &str, level: i64) -> sk_
     if level != 0 {
         return Ok(None);
     }
-    let Some(cells) = scene_map_for_location(state.get("locationMaps"), &key).filter(|cells| !cells.is_empty()) else { return Ok(None) };
+    let Some(cells) = scene_map_for_location(state.get("locationMaps"), Some(&Value::String(key.clone()))).filter(|cells| !cells.is_empty()) else { return Ok(None) };
     let seed = s(state.get("worldMap").and_then(|world| world.get("seed")));
     let mut rebuilt = tactical_map_from_legacy_cells(&cells, &LegacyMapOptions { location_id, seed: &seed, ..LegacyMapOptions::default() })?;
     attach_level_transitions(&mut rebuilt, Some(&Value::Array(declared_scene_levels(state))));
