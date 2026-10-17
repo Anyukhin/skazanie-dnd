@@ -13,9 +13,8 @@ use serde_json::Value;
 const FIXTURE: &str = include_str!("../fixtures/reduce-r4a.json");
 static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(FIXTURE).expect("эталон — JSON"));
 
-/// Реестры после `switch`, которых ещё нет в Rust (таверна, благословения и
-/// звери перенесены задачей Р4в и сравниваются).
-/// `law` перенесён, но читает летопись `world_deeds`, которой ещё нет.
+/// Реестры, которых нет в эталоне Р4а (тогда не перенесённые; сверка всех
+/// реестров — `reduce_r4d.rs` и `reduce_r4a_corpus.rs`).
 const UNPORTED_REGISTRIES: [&str; 8] = ["law", "world_deeds", "offscreen_world", "courier_letters", "captives", "scenario_knight", "dialogues", "autonomy"];
 
 fn comparable(mut state: Value) -> Value {

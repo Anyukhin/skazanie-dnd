@@ -1,4 +1,4 @@
-//! Ветки редьюсера Р4а против JS по одному событию корпуса (задача Р4а).
+//! Ветки редьюсера против JS по одному событию корпуса (задачи Р4а, Р4в-2).
 //!
 //! Случаи снимает `fixtures/gen-reduce-r4a-corpus.mjs` из корпуса паритета:
 //! нормализованное JS-состояние перед событием и состояние после
@@ -9,30 +9,26 @@
 //! SK_R4A_CASES=…/r4a-cases.jsonl cargo test -p sk-rules --test reduce_r4a_corpus -- --ignored --nocapture
 //! ```
 //!
-//! Реестры-выводы, которые ещё не перенесены (`registries.rs`), из сравнения
-//! исключены: их расхождение — не ошибка ветки.
+//! Реестры-выводы, которые ещё не перенесены (`reduce::unported_registries`),
+//! из сравнения исключены: их расхождение — не ошибка ветки.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 
 use serde_json::Value;
 
-/// Реестры после `switch`, которых ещё нет в Rust.
-const UNPORTED_REGISTRIES: [&str; 7] = ["world_deeds", "offscreen_world", "courier_letters", "captives", "scenario_knight", "dialogues", "autonomy"];
-
 fn without_registries(state: &mut Value) {
     if let Some(map) = state.as_object_mut() {
-        for key in UNPORTED_REGISTRIES {
-            map.shift_remove(key);
+        for key in sk_rules::reduce::unported_registries() {
+            map.shift_remove(*key);
         }
     }
 }
 
-/// Закон (`law`) перенесён, но читает готовую летопись поступков
-/// (`world_deeds`), которой в Rust ещё нет: если событие записало поступок,
-/// закон сравнивать не с чем, и он исключается вместе с летописью.
+/// Закон (`law`) читает готовую летопись поступков (`world_deeds`): пока
+/// летопись не перенесена, закон после нового поступка сравнивать не с чем.
 fn law_reads_new_deed(pre: &Value, post: &Value) -> bool {
-    pre.get("world_deeds") != post.get("world_deeds")
+    sk_rules::reduce::unported_registries().contains(&"world_deeds") && pre.get("world_deeds") != post.get("world_deeds")
 }
 
 /// Первое расхождение (порядок ключей не важен, `null` ≡ отсутствие).

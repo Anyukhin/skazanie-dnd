@@ -39,9 +39,17 @@ const ALL_TYPES = [
   'NpcPlaced', 'NpcMoved', 'NpcHarmed', 'NpcDied', 'NpcStanceChanged',
   // Р4в: события реестров таверны, благословений и зверей (своих веток нет).
   'TavernPatronEjected', 'ShrinePrayerResolved', 'BeastEncountered', 'BeastSoothingResolved', 'BeastFed', 'BeastBit', 'BeastMoved', 'BeastScaredThreat',
+  // Р4в-2: жизнь вещи, герой, награды, контейнеры добычи, должности.
+  'ItemEquipped', 'ItemUnequipped', 'ItemTransferred', 'ItemAttunementChanged', 'ItemChargesSpent', 'ItemDestroyed', 'MagicItemActivationChanged',
+  'SpellSelectionsUpdated', 'CharacterChoicesUpdated', 'CharacterLeveledUp', 'CharacterImported', 'EncounterRewardsDistributed',
+  'LootContainerCreated', 'LootContainerTaken', 'OfficeVacated', 'OfficeHolderInstalled', 'OfficeSuccessionSkipped',
 ]
-// `SK_R4A_TYPES=A,B` — снять только эти типы (например, с большим пределом).
-const TYPES = new Set(process.env.SK_R4A_TYPES ? process.env.SK_R4A_TYPES.split(',').filter(Boolean) : ALL_TYPES)
+// `SK_R4A_TYPES=A,B` — снять только эти типы (например, с большим пределом);
+// `SK_R4A_TYPES=all` — все типы корпуса (реестры-выводы читают и события без
+// своей ветки: доставку письма, свидетелей, разговоры).
+const ANY_TYPE = process.env.SK_R4A_TYPES === 'all'
+const TYPES = new Set(process.env.SK_R4A_TYPES && !ANY_TYPE ? process.env.SK_R4A_TYPES.split(',').filter(Boolean) : ALL_TYPES)
+const wanted = (type) => ANY_TYPE || TYPES.has(type)
 const DERIVED = ['combatSpells', 'combatActions', 'characterSheet', 'inventoryLoad']
 const strip = (state) => {
   const copy = JSON.parse(JSON.stringify(state))
@@ -65,7 +73,7 @@ for (const file of readdirSync(corpus).filter((name) => name.startsWith('corpus-
     const entry = JSON.parse(line)
     if (!entry.outcome?.ok) continue
     const events = entry.outcome.events ?? []
-    if (!events.some((event) => TYPES.has(event.event_type) && (taken.get(event.event_type) ?? 0) < limit)) continue
+    if (!events.some((event) => wanted(event.event_type) && (taken.get(event.event_type) ?? 0) < limit)) continue
     let state
     try {
       state = E.normalizeCampaignState(JSON.parse(readFileSync(join(corpus, 'states', `${entry.state}.json`), 'utf8')))
@@ -75,7 +83,7 @@ for (const file of readdirSync(corpus).filter((name) => name.startsWith('corpus-
     for (const [index, event] of events.entries()) {
       let next
       try {
-        if (TYPES.has(event.event_type) && (taken.get(event.event_type) ?? 0) < limit) {
+        if (wanted(event.event_type) && (taken.get(event.event_type) ?? 0) < limit) {
           const mode = modeFor(event)
           const pre = E.withRetentionMode(mode, () => E.normalizeCampaignState(state))
           const again = E.withRetentionMode(mode, () => E.normalizeCampaignState(pre))
