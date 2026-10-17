@@ -21,6 +21,10 @@ sk-themes = { path = "../sk-themes" }
 sk-memory = { path = "../sk-memory" }
 sk-scenario = { path = "../sk-scenario" }
 sk-society = { path = "../sk-society" }
+sk-economy = { path = "../sk-economy" }
+sk-items = { path = "../sk-items" }
+sk-items-life = { path = "../sk-items-life" }
+sk-social = { path = "../sk-social" }
 
 [dev-dependencies]
 # Эталоны (состояния корпуса, карты) хранятся в gzip; версия и возможности —
