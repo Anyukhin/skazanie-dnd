@@ -31,3 +31,7 @@ sk-character = { path = "../sk-character" }
 sk-director = { path = "../sk-director" }
 sk-world-life = { path = "../sk-world-life" }
 sk-story = { path = "../sk-story" }
+sk-encounters = { path = "../sk-encounters" }
+
+[dev-dependencies]
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
