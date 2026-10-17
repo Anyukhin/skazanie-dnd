@@ -27,3 +27,8 @@ sk-npc-world = { path = "../sk-npc-world" }
 sk-items-life = { path = "../sk-items-life" }
 sk-world-time = { path = "../sk-world-time" }
 sk-world-story = { path = "../sk-world-story" }
+sk-director = { path = "../sk-director" }
+sk-encounters = { path = "../sk-encounters" }
+
+[dev-dependencies]
+flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
