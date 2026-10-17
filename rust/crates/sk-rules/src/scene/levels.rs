@@ -9,8 +9,8 @@
 //! замене карты (`planImportRelocations`) читают разбор команды — их
 //! перенесёт задача сцены (Р6).
 //!
-//! Частная копия чужого модуля, которого ещё нет в Rust (заменить, когда
-//! появится крейт): `levelLabelFor` (`level-generator.mjs`, `sk-world-time`).
+//! Подпись этажа — `levelLabelFor` крейта `sk-world-time`, память мест —
+//! `sk-director` (через `scene_maps`).
 //! Мир NPC — крейт `sk-npc-world` (`normalizeNpcWorldState`,
 //! `sceneNpcOccupiedCells`).
 
@@ -18,11 +18,11 @@ use serde_json::{json, Map, Value};
 use sk_core::game::{is_party_summon, mechanics_mut};
 use sk_core::indexmap::IndexSet;
 use sk_core::js::{self, s};
-use sk_core::text::{capitalize, head, locale_compare, squash_spaces};
+use sk_core::text::{head, locale_compare, squash_spaces};
 use sk_geometry::actor_footprint::footprint_cells_for;
 use sk_tactical::tactical_map::{attach_level_transitions, deserialize_tactical_map, tactical_map_from_legacy_cells, LegacyMapOptions, TacticalMap};
 
-use crate::scene_maps::{level_key, scene_location_id, scene_map_record};
+use crate::scene_maps::{level_key, scene_location_id, scene_map_for_location, scene_tactical_map_for_location};
 
 /// `MAX_LEVEL_STASHES`: сколько стэшей неактивных этажей держит состояние.
 pub const MAX_LEVEL_STASHES: usize = 32;
@@ -42,29 +42,9 @@ pub fn restore_scene_level_transitions(state: &Value, map: &mut TacticalMap) -> 
     !attach_level_transitions(map, Some(&Value::Array(levels))).is_empty()
 }
 
-/// `cleanText(value, maximum)` (`level-generator.mjs`): только строки.
-fn clean_text(value: &str, maximum: usize) -> String {
-    head(&squash_spaces(value), maximum)
-}
-
-/// `levelLabelFor(offset, hint)` (`level-generator.mjs`, 120) — частная копия.
-pub fn level_label_for(offset: i64, hint: &str) -> String {
-    let fallback = match offset {
-        0 => "Первый этаж".to_string(),
-        1 => "Второй этаж".to_string(),
-        2 => "Третий этаж".to_string(),
-        3 => "Четвёртый этаж".to_string(),
-        -1 => "Подвал".to_string(),
-        -2 => "Нижний подвал".to_string(),
-        -3 => "Глубокий подвал".to_string(),
-        index if index > 0 => format!("Этаж {}", index + 1),
-        index => format!("Ярус {index}"),
-    };
-    let text = clean_text(hint, 60);
-    if offset >= 0 || text.is_empty() {
-        return fallback;
-    }
-    capitalize(&text)
+/// `levelLabelFor(offset, hint)` (`level-generator.mjs`, крейт `sk-world-time`).
+pub fn level_label_for(offset: i64, hint: Option<&Value>) -> String {
+    sk_world_time::level_generator::level_label_for(offset, hint)
 }
 
 /// `sceneLevelLabel(state, level, transitionLabel)` (2451): слова перехода,
@@ -81,30 +61,10 @@ pub fn scene_level_label(state: &Value, level: i64, transition_label: &str) -> S
         }
     };
     let label = squash_spaces(&chosen);
-    let label = if label.is_empty() { level_label_for(level, &s(declared.and_then(|entry| entry.get("hint")))) } else { label };
+    let label = if label.is_empty() { level_label_for(level, declared.and_then(|entry| entry.get("hint"))) } else { label };
     head(&label, 120)
 }
 
-/// `sceneTacticalMapForLocation(locationMaps, key)` (`adventure-director.mjs`):
-/// законсервированная карта этажа без нормализации клеток.
-fn scene_tactical_map_for_location(location_maps: Option<&Value>, key: &str) -> Option<Value> {
-    let id = crate::scene_maps::text(Some(&Value::String(key.to_string())), 120, "");
-    if id.is_empty() {
-        return None;
-    }
-    let record = location_maps.and_then(|maps| maps.get(&id))?.as_object()?;
-    record.get("map").filter(|map| map.is_object()).cloned()
-}
-
-/// `sceneMapForLocation(locationMaps, key)` (`adventure-director.mjs`).
-fn scene_map_for_location(location_maps: Option<&Value>, key: &str) -> Option<Vec<Value>> {
-    let id = crate::scene_maps::text(Some(&Value::String(key.to_string())), 120, "");
-    if id.is_empty() {
-        return None;
-    }
-    let record = scene_map_record(location_maps.and_then(|maps| maps.get(&id))?, None)?;
-    record.get("cells").and_then(Value::as_array).cloned()
-}
 
 /// `rememberedLevelMap(state, locationId, level)` (2463): записи с L3 несут
 /// карту; по старым клеткам восстанавливается только этаж входа.

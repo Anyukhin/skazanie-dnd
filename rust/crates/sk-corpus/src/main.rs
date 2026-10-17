@@ -1,4 +1,5 @@
 //! `cargo run -p sk-corpus -- reducer <каталог корпуса> [тип команды]`
+//! `cargo run -p sk-corpus -- normalize <каталог корпуса> [предел]`
 //! `cargo run -p sk-corpus -- resolve <каталог корпуса> <тип команды>[,<тип>…]`
 
 fn main() {
@@ -11,6 +12,36 @@ fn main() {
         "reducer" => {
             let report = sk_corpus::check_reducer(&corpus, filter).expect("сверка редьюсера");
             print!("{}", report.render());
+            // Список совпавших записей — чтобы сверить «не хуже» между прогонами.
+            if let Ok(path) = std::env::var("SK_CORPUS_EQUAL") {
+                std::fs::write(&path, report.equal_records.join("\n")).expect("список совпавших записей пишется");
+            }
+        }
+        "normalize" => {
+            let limit = filter.and_then(|text| text.parse::<usize>().ok());
+            let report = sk_corpus::check_normalize(&corpus, limit).expect("сверка нормализации");
+            print!("{}", report.render());
+        }
+        "replay-dump" => {
+            // Отладка: состояние после событий записи `<файл>:<строка>` — в файл.
+            let (Some(target), Some(output)) = (filter, args.get(4)) else {
+                eprintln!("укажите запись и файл: replay-dump <каталог> <файл:строка> <выход.json>");
+                std::process::exit(2);
+            };
+            let records = corpus.records().expect("записи корпуса");
+            let Some(record) = records.iter().find(|record| format!("{}:{}", record.file, record.row) == target) else {
+                eprintln!("нет записи {target}");
+                std::process::exit(2);
+            };
+            let before = corpus.state(&record.state).expect("состояние «до»");
+            let events: Vec<serde_json::Value> = record.outcome.get("events").and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
+            match sk_rules::replay::replay_events(&before, &events) {
+                Ok(mut state) => {
+                    sk_rules::reduce::strip_derived(&mut state);
+                    std::fs::write(output, sk_core::js::stringify_pretty(&state, 1)).expect("запись");
+                }
+                Err(error) => eprintln!("ошибка: {error}"),
+            }
         }
         "resolve" => {
             let Some(kinds) = filter else {
@@ -23,7 +54,7 @@ fn main() {
             }
         }
         other => {
-            eprintln!("неизвестный режим {other}; есть: reducer, resolve");
+            eprintln!("неизвестный режим {other}; есть: reducer, normalize, resolve");
             std::process::exit(2);
         }
     }

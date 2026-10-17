@@ -26,8 +26,11 @@ fn code(result: Result<Value, Halt>) -> String {
 }
 
 #[test]
-fn normalization_is_a_stub_until_r4() {
-    assert!(normalize_campaign_state(&state()).unwrap_err().is_unported());
+fn normalization_is_ported_and_assumption_stays_identity() {
+    let normalized = normalize_campaign_state(&state()).expect("нормализация перенесена (Р4б)");
+    assert_eq!(normalized["engine_mode"], json!("enforce"));
+    assert_eq!(normalized["state_version"], json!(4));
+    assert_eq!(normalized["players"][0]["maxHp"], json!(1));
     assert_eq!(assume_normalized(|| normalize_campaign_state(&state()).expect("тождественно")), state());
 }
 
@@ -43,7 +46,7 @@ fn common_blocks_refuse_before_any_stub() {
         Err(Halt::Rule(error)) => assert_eq!((error.code.as_str(), error.message.as_str()), ("UNPORTED", format!("validate:{}", first_stub.name).as_str())),
         other => panic!("ожидалась заглушка блока 8: {other:?}"),
     }
-    assert!(validate_command(&json!({ "command_type": "DeclareAction" }), &state(), &context, &mut uuid).unwrap_err().is_unported(), "без Р4 нормализация — заглушка");
+    assert!(validate_command(&json!({ "command_type": "DeclareAction" }), &state(), &context, &mut uuid).unwrap_err().is_unported(), "блок проверки — заглушка");
 }
 
 #[test]
