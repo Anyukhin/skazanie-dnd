@@ -1,56 +1,37 @@
 //! Реестры-выводы из журнала — шаги после `switch` в `applyGameEventCurrent`
-//! (`rules-engine.mjs`, 27068–27099). Задача Р4.
+//! (`rules-engine.mjs`, 27058–27103). Задача Р4.
 //!
 //! Порядок — контракт replay: летопись поступков, закон (читает готовую
 //! летопись), таверна, благословения, мир за кадром, почта, пленные (после
 //! летописи), внимание противника, рыцарь, разговоры, звери, автономия.
-//! Закон, внимание, таверна, благословения и звери перенесены (крейты
-//! `sk-society`, `sk-attention`, `sk-npc-world`); остальные шаги — заглушки,
-//! пока нет их модулей. Перенося шаг, уберите его имя из [`UNPORTED`].
+//! Модули: летопись — `sk-world-time`; закон — `sk-society`; таверна,
+//! благословения, звери — `sk-npc-world`; почта, пленные — `sk-world-life`;
+//! мир за кадром, рыцарь, автономия — `sk-world-story`; внимание —
+//! `sk-attention`; разговоры — `sk-story`. Перенесены все шаги.
 
 use serde_json::Value;
 
 use super::Reduced;
-use crate::pause::unported;
 
 /// Шаги реестров, которые ещё не перенесены.
-pub(super) const UNPORTED: &[&str] = &[
-    "world_deeds",
-    "offscreen_world",
-    "courier_letters",
-    "captives",
-    "scenario_knight",
-    "dialogues",
-    "autonomy",
-];
+pub(super) const UNPORTED: &[&str] = &[];
 
-/// Все шаги по порядку. Заглушка (`UNPORTED`) не меняет состояния и не мешает
-/// следующим шагам; отказ перенесённого шага (там, где JS бросает) обрывает
-/// цепочку, как исключение обрывает `applyGameEvent`.
-///
-/// `Ok` — все перенесённые шаги прошли; `Err(UNPORTED)` — первый
-/// неперенесённый шаг; иное `Err` — отказ шага, дальше событие не идёт.
+/// Все шаги по порядку. Отказ шага (там, где JS бросает) обрывает цепочку,
+/// как исключение обрывает `applyGameEvent`.
 pub(super) fn apply_registries(state: &mut Value, event: &Value) -> Reduced {
     let steps: [fn(&mut Value, &Value) -> Reduced; 12] =
         [world_deeds, law, tavern, blessings, offscreen_world, courier_letters, captives, scenario_attention, scenario_knight, dialogues, beasts, autonomy];
-    let mut first = Ok(());
     for step in steps {
-        match step(state, event) {
-            Ok(()) => {}
-            Err(error) if error.code == crate::pause::UNPORTED => {
-                if first.is_ok() {
-                    first = Err(error);
-                }
-            }
-            Err(error) => return Err(error),
-        }
+        step(state, event)?;
     }
-    first
+    Ok(())
 }
 
 /// `state.world_deeds = applyWorldDeedEvent(state.world_deeds, event, state)` (27068).
-fn world_deeds(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:world_deeds"))
+fn world_deeds(state: &mut Value, event: &Value) -> Reduced {
+    let deeds = sk_world_time::world_deeds::apply_world_deed_event(state.get("world_deeds"), event, state);
+    state["world_deeds"] = deeds;
+    Ok(())
 }
 
 /// `state.law = applyLawEvent(state.law, event, state)` (27073).
@@ -75,18 +56,22 @@ fn blessings(state: &mut Value, event: &Value) -> Reduced {
 }
 
 /// `state.offscreen_world = applyOffscreenWorldEvent(state.offscreen_world, event)` (27083).
-fn offscreen_world(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:offscreen_world"))
+fn offscreen_world(state: &mut Value, event: &Value) -> Reduced {
+    state["offscreen_world"] = sk_world_story::offscreen_world::apply_offscreen_world_event(state.get("offscreen_world"), Some(event));
+    Ok(())
 }
 
 /// `state.courier_letters = applyCourierLetterEvent(state.courier_letters, event)` (27087).
-fn courier_letters(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:courier_letters"))
+fn courier_letters(state: &mut Value, event: &Value) -> Reduced {
+    state["courier_letters"] = sk_world_life::courier_letters::apply_courier_letter_event(state.get("courier_letters"), event);
+    Ok(())
 }
 
 /// `state.captives = applyCaptiveEvent(state.captives, event, state)` (27088).
-fn captives(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:captives"))
+fn captives(state: &mut Value, event: &Value) -> Reduced {
+    let captives = sk_world_life::captives::apply_captive_event(state.get("captives"), event, state);
+    state["captives"] = captives;
+    Ok(())
 }
 
 /// `state.scenario_attention = applyScenarioAttentionEvent(…)` (27091).
@@ -97,13 +82,16 @@ fn scenario_attention(state: &mut Value, event: &Value) -> Reduced {
 }
 
 /// `state.scenario_knight = applyScenarioKnightEvent(…)` (27092).
-fn scenario_knight(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:scenario_knight"))
+fn scenario_knight(state: &mut Value, event: &Value) -> Reduced {
+    let knight = sk_world_story::scenario_knight::apply_scenario_knight_event(state.get("scenario_knight"), Some(event), state);
+    state["scenario_knight"] = knight.to_json();
+    Ok(())
 }
 
 /// `state.dialogues = applyDialogueEvent(state.dialogues, event)` (27094).
-fn dialogues(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:dialogues"))
+fn dialogues(state: &mut Value, event: &Value) -> Reduced {
+    state["dialogues"] = sk_story::campaign_dialogues::apply_dialogue_event(state.get("dialogues"), Some(event));
+    Ok(())
 }
 
 /// `state.beasts = applyBeastEvent(state.beasts, event, state)` (27098).
@@ -123,6 +111,7 @@ fn beasts(state: &mut Value, event: &Value) -> Reduced {
 }
 
 /// `state.autonomy = applyAutonomyEvent(state.autonomy, event)` (27099).
-fn autonomy(_state: &mut Value, _event: &Value) -> Reduced {
-    Err(unported("registry:autonomy"))
+fn autonomy(state: &mut Value, event: &Value) -> Reduced {
+    state["autonomy"] = sk_world_story::autonomous_campaign::apply_autonomy_event(state.get("autonomy"), event);
+    Ok(())
 }

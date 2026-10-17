@@ -27,3 +27,7 @@ sk-npc-world = { path = "../sk-npc-world" }
 sk-items-life = { path = "../sk-items-life" }
 sk-world-time = { path = "../sk-world-time" }
 sk-world-story = { path = "../sk-world-story" }
+sk-character = { path = "../sk-character" }
+sk-director = { path = "../sk-director" }
+sk-world-life = { path = "../sk-world-life" }
+sk-story = { path = "../sk-story" }

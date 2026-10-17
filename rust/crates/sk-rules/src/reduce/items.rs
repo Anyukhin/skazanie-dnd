@@ -3,42 +3,29 @@
 //! JS: `server/rules-engine.mjs`, 25390–25395, 25402–25421, 25422–25424, 25425–25440, 25441–25444, 25449–25468, 25486–25491, 26144–26154, 26803–26808, 26923–26956. Таблица меток — `reduce/table.rs`
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
-//! Не перенесены: жизненный цикл предметов (`applyItemLifecycleEventToPlayers`
-//! — крейт `sk-items-life` уже есть, но ветки зовут полный
-//! `refreshPlayerDerivedState`, которому нужен вывод листа героя из
-//! `sk-character`), выдача вещи (`ItemGranted`, та же причина) и контейнеры
-//! добычи (`applyLootContainerEvent` — `loot-containers`, крейт `sk-director`).
+//! Жизнь вещи — `applyItemLifecycleEventToPlayers` (`sk-items-life`),
+//! контейнеры добычи — `applyLootContainerEvent` (`sk-director`), лист героя
+//! в `refreshPlayerDerivedState` — `deriveCharacterSheet` (`sk-character`).
 //!
 //! Здесь же общие помощники предметов для соседних веток: `addInventoryItem`
 //! (23993; стопка — `society_helpers::inventory_stack_index`), `npcLoadoutAfterSpend` (23543) и
-//! частичная копия `refreshPlayerDerivedState` (23603).
+//! `refreshPlayerDerivedState` (23603).
 
 use std::collections::HashSet;
 
 use serde_json::{json, Map, Value};
 use sk_core::game::{actor_id, combat_active, find_actor, replace_actor};
 use sk_core::js::{self, is_true, s, safe_int, truthy};
-use sk_core::Event;
+use sk_core::{Event, RuleError};
 
-use super::social::{event_value, set_hero_currency};
+use super::social::{actor_value, event_value, set_hero_currency};
+use super::world::type_error;
 use super::{scene_turn_and_round, target_of, Reduced};
 use crate::journal::{append_battle_log, Entry};
-use crate::pause::unported;
 use crate::turn_economy::{economy_of, event_version, set_economy, spend_combat_economy, spend_versioned_action_frame, spend_versioned_attack_replacement, with, ACTION_ECONOMY_EVENT_VERSION};
 
 /// Метки событий этого файла, чьи ветки ещё не перенесены.
-pub(super) const UNPORTED: &[&str] = &[
-    "ItemEquipped",
-    "ItemUnequipped",
-    "ItemTransferred",
-    "ItemAttunementChanged",
-    "ItemChargesSpent",
-    "ItemDestroyed",
-    "MagicItemActivationChanged",
-    "ItemGranted",
-    "LootContainerCreated",
-    "LootContainerTaken",
-];
+pub(super) const UNPORTED: &[&str] = &[];
 
 // --- общие помощники предметов --------------------------------------------
 
@@ -72,27 +59,63 @@ pub(super) fn add_inventory_item(inventory: Option<&Value>, incoming: &Value) ->
     )
 }
 
-/// `refreshPlayerDerivedState(state, actorIds)` (23603) — **частичная** копия.
-///
-/// Лист героя (`deriveCharacterSheet`, `character-lifecycle` — крейт
-/// `sk-character`) ещё не перенесён, поэтому лист не выводится заново, а
-/// берётся прежний — ровно так JS ведёт себя, когда вывод листа бросает:
-/// `armor`, `speed`, `proficiency` переписываются из прежнего листа, если он
-/// есть. Заклинания и боевые действия пересчитываются, как в JS. Заменить на
-/// полную версию, когда появятся `sk-character` (Р4б).
+/// `{ rulesetId: state.ruleset_id }` — опции `combatSpellsFor`.
+pub(super) fn ruleset_options(state: &Value) -> Value {
+    match state.get("ruleset_id") {
+        Some(ruleset) => json!({ "rulesetId": ruleset }),
+        None => json!({}),
+    }
+}
+
+/// `classResourceOptionsFor(state)` объектом JS (`{ classResources2024 }`).
+pub(super) fn class_resource_options(state: &Value) -> Value {
+    sk_combat_content::combat_actions::class_resource_options_for(Some(state)).to_value()
+}
+
+/// Отказ `character-lifecycle` (`TypeError` или отказ модуля) — отказ
+/// редьюсера: событие дальше не идёт, как исключение в JS.
+pub(super) fn lifecycle_error(error: sk_character::character_lifecycle::CharacterLifecycleError) -> RuleError {
+    module_error(error.code, error.message)
+}
+
+/// `sheet.<field>.value`: у отсутствующего или `null` поля JS бросает
+/// `TypeError`; у примитива `.value` — `undefined` (`None`, ключ в JSON не
+/// попадает).
+pub(super) fn sheet_value(sheet: &Value, field: &str) -> Result<Option<Value>, RuleError> {
+    match sheet.get(field) {
+        None | Some(Value::Null) => Err(type_error(&format!("Cannot read properties of {} (reading 'value')", if sheet.get(field).is_some() { "null" } else { "undefined" }))),
+        Some(inner) => Ok(inner.get("value").cloned()),
+    }
+}
+
+/// `{ ...actor, key: value }`, где `value` может быть `undefined`: такой ключ
+/// JSON не печатает, поэтому он убирается.
+pub(super) fn put_defined(map: &mut Map<String, Value>, key: &str, value: Option<Value>) {
+    match value {
+        Some(value) => {
+            map.insert(key.into(), value);
+        }
+        None => {
+            map.shift_remove(key);
+        }
+    }
+}
+
+/// `refreshPlayerDerivedState(state, actorIds)` (23603): лист героя
+/// выводится заново (`deriveCharacterSheet`; отказ вывода — прежний лист,
+/// как `try {} catch {}` в JS), затем заклинания, боевые действия и груз.
 ///
 /// Груз — `inventoryLoadFor` крейта `sk-items-life`. Его `TypeError` на
 /// мусорном инвентаре (не массив) обрывает событие, как в JS: `state.players`
-/// остаётся прежним.
+/// остаётся прежним. Так же обрывает лист без `armor_class` или `speed`.
 pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[String]) -> Reduced {
     let requested: HashSet<&str> = actor_ids.iter().map(String::as_str).collect();
-    let options = match state.get("ruleset_id") {
-        Some(ruleset) => json!({ "rulesetId": ruleset }),
-        None => json!({}),
-    };
-    let Some(players) = state.get("players").and_then(Value::as_array).cloned() else {
-        state["players"] = json!([]);
-        return Ok(());
+    let options = ruleset_options(state);
+    let sheet_options = class_resource_options(state);
+    let players = match state.get("players") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Array(players)) => players.clone(),
+        Some(_) => return Err(type_error("(state.players ?? []).map is not a function")),
     };
     let mut next = Vec::with_capacity(players.len());
     for actor in players {
@@ -101,22 +124,25 @@ pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[Strin
             next.push(actor);
             continue;
         }
-        let sheet = actor.get("characterSheet").filter(|sheet| !sheet.is_null()).cloned().unwrap_or(Value::Null);
+        if actor.is_null() {
+            return Err(type_error("Cannot read properties of null (reading 'characterSheet')"));
+        }
+        let sheet = match sk_character::character_lifecycle::derive_character_sheet(Some(&actor), Some(&sheet_options)) {
+            Ok(sheet) => sheet,
+            Err(_) => actor.get("characterSheet").filter(|sheet| !sheet.is_null()).cloned().unwrap_or(Value::Null),
+        };
+        let mut map = actor.as_object().cloned().unwrap_or_default();
+        if truthy(Some(&sheet)) {
+            put_defined(&mut map, "armor", sheet_value(&sheet, "armor_class")?);
+            put_defined(&mut map, "speed", sheet_value(&sheet, "speed")?);
+            put_defined(&mut map, "proficiency", sheet.get("proficiency_bonus").cloned());
+        }
         let spells = sk_combat_content::combat_spells::combat_spells_for(Some(&actor), Some(&options));
         let mut actions = sk_combat_content::combat_actions::combat_actions_for(Some(&actor));
         if let Some(continuation) = crate::enervation_link::enervation_continuation_action_for(state, Some(&Value::String(id.clone())), None) {
             actions.push(continuation);
         }
-        let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor)).map_err(|error| super::world::type_error(error.message()))?;
-        let Value::Object(mut map) = actor else {
-            next.push(actor);
-            continue;
-        };
-        if truthy(Some(&sheet)) {
-            map.insert("armor".into(), sheet.get("armor_class").and_then(|armor| armor.get("value")).cloned().unwrap_or(Value::Null));
-            map.insert("speed".into(), sheet.get("speed").and_then(|speed| speed.get("value")).cloned().unwrap_or(Value::Null));
-            map.insert("proficiency".into(), sheet.get("proficiency_bonus").cloned().unwrap_or(Value::Null));
-        }
+        let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor)).map_err(|error| type_error(error.message()))?;
         map.insert("characterSheet".into(), sheet);
         map.insert("combatSpells".into(), Value::Array(spells));
         map.insert("combatActions".into(), Value::Array(actions));
@@ -208,8 +234,32 @@ pub(super) fn equipment_changed(state: &mut Value, event: &Event) -> Reduced {
 }
 
 /// `ItemEquipped`, `ItemUnequipped`, `ItemTransferred`, `ItemAttunementChanged`, `ItemChargesSpent`, `ItemDestroyed`, `MagicItemActivationChanged` (25402–25421).
-pub(super) fn item_lifecycle_event(_state: &mut Value, _event: &Event) -> Reduced {
-    Err(unported("reduce:ItemEquipped"))
+pub(super) fn item_lifecycle_event(state: &mut Value, event: &Event) -> Reduced {
+    let event_json = event_value(event);
+    let players = sk_items_life::item_lifecycle::apply_item_lifecycle_event_to_players(state.get("players"), &event_json)
+        .map_err(|error| module_error(error.code().map(str::to_string), error.message().to_string()))?;
+    state["players"] = players;
+    let payload = &event.payload;
+    if event.event_type == "ItemTransferred" && payload.get("recipient_kind").and_then(Value::as_str) == Some("npc") {
+        state["npc_world"] = super::social::apply_npc_world(state, event);
+    }
+    refresh_player_derived_state(state, &crate::core::unique_string_list(&event.target_ids))?;
+    let combat_action = payload.get("combat_action");
+    if event.event_type == "MagicItemActivationChanged" && truthy(combat_action) {
+        spend_combat_economy(state, event.actor_id.as_deref().unwrap_or_default(), &js::string(combat_action), false, false);
+    }
+    let equip = matches!(event.event_type.as_str(), "ItemEquipped" | "ItemUnequipped");
+    let action = s(combat_action);
+    if equip && matches!(action.as_str(), "object_interaction" | "action") && combat_active(state) {
+        if combat_action.and_then(Value::as_str) == Some("object_interaction") {
+            let key = unchecked_actor_key(event);
+            let economy = economy_of(state, &key);
+            set_economy(state, &key, with(&economy, json!({ "object_interaction": false })));
+        } else {
+            spend_combat_economy(state, event.actor_id.as_deref().unwrap_or_default(), "action", false, false);
+        }
+    }
+    Ok(())
 }
 
 /// `ItemDawnRechargeResolved` (25422–25424).
@@ -331,18 +381,8 @@ pub(super) fn scenario_purse_granted(state: &mut Value, event: &Event) -> Reduce
     Ok(())
 }
 
-/// Перенесён ли полный вывод листа героя (`deriveCharacterSheet`,
-/// `sk-character`). Пока нет — выдача вещи (`ItemGranted` схемы 2) не
-/// включена: надетая магическая вещь меняет КД (кольцо защиты), а частичный
-/// `refreshPlayerDerivedState` лист не выводит. Тело ветки готово и
-/// сверено с корпусом, кроме этого случая.
-const CHARACTER_SHEET_PORTED: bool = false;
-
 /// `ItemGranted` (26803–26808).
 pub(super) fn item_granted(state: &mut Value, event: &Event) -> Reduced {
-    if !CHARACTER_SHEET_PORTED {
-        return Err(unported("reduce:ItemGranted"));
-    }
     let target = target_of(event);
     let item = event.payload.get("item").cloned().unwrap_or(Value::Null);
     replace_actor(state, &target, |actor| {
@@ -362,6 +402,60 @@ pub(super) fn item_granted(state: &mut Value, event: &Event) -> Reduced {
 }
 
 /// `LootContainerCreated`, `LootContainerTaken` (26923–26956).
-pub(super) fn loot_container_event(_state: &mut Value, _event: &Event) -> Reduced {
-    Err(unported("reduce:LootContainerCreated"))
+pub(super) fn loot_container_event(state: &mut Value, event: &Event) -> Reduced {
+    let recipient_ids = sk_director::loot_containers::apply_loot_container_event(state, &event_value(event)).map_err(|error| module_error(error.code, error.message))?;
+    let payload = &event.payload;
+    let created = event.event_type == "LootContainerCreated";
+    if !created && truthy(payload.get("combat_action")) {
+        spend_combat_economy(state, event.actor_id.as_deref().unwrap_or_default(), &js::string(payload.get("combat_action")), false, false);
+    }
+    if !recipient_ids.is_empty() {
+        refresh_player_derived_state(state, &recipient_ids)?;
+    }
+    let entry = if created {
+        let container = payload.get("container");
+        let field = |key: &str| container.and_then(|container| container.get(key));
+        Entry::new()
+            .set("type", "loot-container")
+            .set("containerId", s(field("id")))
+            .set("containerKind", s(field("kind")))
+            .set("containerName", s(field("name")))
+            .opt("itemCount", js_length(field("items")))
+    } else {
+        let actor = event.actor_id.clone().unwrap_or_default();
+        Entry::new()
+            .set("type", "loot-taken")
+            .set("actorId", actor_value(event))
+            .set("actorKind", crate::core::combat_actor_kind(state, &actor))
+            .set("containerId", s(payload.get("container_id")))
+            .set("containerName", s(payload.get("container_name")))
+            .set("recipientId", s(payload.get("recipient_id")))
+            .opt("itemCount", js_length(payload.get("items")))
+            .set("remainingCount", safe_int(payload.get("remaining_count"), 0).max(0))
+            .set("statusAfter", s(payload.get("status_after")))
+    };
+    append_battle_log(state, event, entry.build());
+    Ok(())
+}
+
+/// Отказ модуля ниже (`{ code, message }`): с кодом — отказ правила, без
+/// кода — `TypeError`.
+pub(super) fn module_error(code: Option<String>, message: String) -> RuleError {
+    match code {
+        Some(code) => RuleError::new(code, message),
+        None => type_error(&message),
+    }
+}
+
+/// `(value ?? []).length`: у массива — длина, у строки — число единиц
+/// UTF-16, у объекта — его поле `length`, у числа и логического —
+/// `undefined` (`None`).
+fn js_length(value: Option<&Value>) -> Option<Value> {
+    match value {
+        None | Some(Value::Null) => Some(Value::from(0)),
+        Some(Value::Array(items)) => Some(Value::from(items.len())),
+        Some(Value::String(text)) => Some(Value::from(text.encode_utf16().count())),
+        Some(Value::Object(map)) => map.get("length").cloned(),
+        Some(_) => None,
+    }
 }
