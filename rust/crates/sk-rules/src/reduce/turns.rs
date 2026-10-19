@@ -2,7 +2,7 @@
 //! отдых, кости хитов, течение времени мира — ветки `applyGameEventCurrent`.
 
 use serde_json::{json, Map, Value};
-use sk_core::game::{combat, combat_mut, combat_round, condition_ids, find_actor, is_enemy_actor, mechanics, mechanics_mut};
+use sk_core::game::{combat, combat_mut, combat_round, condition_ids, find_actor, mechanics, mechanics_mut};
 use sk_core::js::{is_true, number, present, s, safe_int, truthy};
 use sk_core::Event;
 
@@ -34,34 +34,8 @@ fn combat_object(state: &mut Value) -> &mut Map<String, Value> {
     combat.as_object_mut().expect("бой")
 }
 
-/// `initiativeGroupIds(state)`: участники групповой фазы, на которой стоит
-/// указатель инициативы.
-pub(crate) fn initiative_group_ids(state: &Value) -> Vec<String> {
-    let combat = combat(state);
-    let order = combat.get("initiative").and_then(Value::as_array).cloned().unwrap_or_default();
-    if !truthy(combat.get("group_initiative")) || order.is_empty() {
-        return Vec::new();
-    }
-    let index = safe_int(combat.get("active_index"), -1);
-    if index < 0 || index as usize >= order.len() {
-        return Vec::new();
-    }
-    let index = index as usize;
-    let side_of = |entry: &Value| is_enemy_actor(state, &s(entry.get("actor_id")));
-    let side = side_of(&order[index]);
-    let mut group = vec![s(order[index].get("actor_id"))];
-    let mut step = index;
-    while step > 0 && side_of(&order[step - 1]) == side {
-        step -= 1;
-        group.insert(0, s(order[step].get("actor_id")));
-    }
-    let mut step = index + 1;
-    while step < order.len() && side_of(&order[step]) == side {
-        group.push(s(order[step].get("actor_id")));
-        step += 1;
-    }
-    group
-}
+/// `initiativeGroupIds(state)` — `combat::turn` (Р3).
+pub(crate) use crate::combat::turn::initiative_group_ids;
 
 /// Каждому списку состояний — своё преобразование (`flatMap` по всем существам).
 fn map_conditions(state: &mut Value, mut transform: impl FnMut(&str, &Value) -> Vec<Value>) {

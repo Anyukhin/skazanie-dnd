@@ -1927,6 +1927,7 @@ dependencies = [
  "sk-memory",
  "sk-npc-world",
  "sk-ruleset",
+ "sk-scenario",
  "sk-scene-base",
  "sk-social",
  "sk-society",

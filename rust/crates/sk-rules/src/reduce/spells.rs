@@ -10,7 +10,6 @@ use sk_geometry::circular_area_geometry::{grid_origin_for_target_cell, CIRCULAR_
 use sk_geometry::Point;
 
 use super::conditions::summon_cleanup;
-use super::turns::initiative_group_ids;
 use super::{scene_turn_and_round, target_of};
 use crate::turn_economy::{action_economy, economy_of, event_version, set_economy, spend_combat_economy, spend_versioned_spell_action, ACTION_ECONOMY_EVENT_VERSION};
 use crate::journal::{append_battle_log, Entry};
@@ -27,20 +26,9 @@ pub(crate) fn normalize_actor_footprint_fields(actor: Value) -> Value {
     Value::Object(map)
 }
 
-/// `isOwnCombatTurn(state, id)`.
+/// `isOwnCombatTurn(state, event.actor_id)` — `combat::turn` (Р3).
 pub(crate) fn is_own_combat_turn(state: &Value, id: Option<&str>) -> bool {
-    let Some(id) = id else { return false };
-    let combat = combat(state);
-    if !truthy(combat.get("active")) {
-        return false;
-    }
-    let completed = combat.get("turn_completed").and_then(Value::as_array).is_some_and(|list| list.iter().any(|entry| entry.as_str() == Some(id)));
-    if completed {
-        return false;
-    }
-    let index = safe_int(combat.get("active_index"), -1);
-    let active = if index >= 0 { combat.get("initiative").and_then(Value::as_array).and_then(|list| list.get(index as usize)).and_then(|entry| entry.get("actor_id")) } else { None };
-    sk_core::js::string(active) == id || initiative_group_ids(state).iter().any(|member| member == id)
+    crate::combat::turn::is_own_combat_turn(state, id.map(|id| Value::String(id.to_string())).as_ref())
 }
 
 fn safe_point(value: Option<&Value>) -> Option<Value> {

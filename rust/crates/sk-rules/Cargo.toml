@@ -29,8 +29,9 @@ sk-world-time = { path = "../sk-world-time" }
 sk-world-story = { path = "../sk-world-story" }
 sk-character = { path = "../sk-character" }
 sk-director = { path = "../sk-director" }
-sk-world-life = { path = "../sk-world-life" }
+sk-scenario = { path = "../sk-scenario" }
 sk-story = { path = "../sk-story" }
+sk-world-life = { path = "../sk-world-life" }
 sk-encounters = { path = "../sk-encounters" }
 
 [dev-dependencies]

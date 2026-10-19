@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use sk_core::Event;
 
+pub mod normalize;
 pub mod resolve;
+pub use normalize::{check_normalize, NormalizeReport};
 pub use resolve::{check_resolve, ResolveReport};
 
 /// Одна запись корпуса.
@@ -151,6 +153,8 @@ pub fn first_difference(expected: &Value, actual: &Value, path: &mut Vec<String>
 pub struct ReducerReport {
     pub total: usize,
     pub equal: usize,
+    /// Совпавшие записи (`файл:строка`) — сверка «не хуже» между прогонами.
+    pub equal_records: Vec<String>,
     pub different: usize,
     pub not_ported: usize,
     pub no_oracle: usize,
@@ -217,6 +221,7 @@ fn path_bucket(path: &str) -> String {
 /// Сверка редьюсера: события записи применяются Rust-редьюсером к состоянию «до».
 pub fn check_reducer(corpus: &Corpus, filter: Option<&str>) -> std::io::Result<ReducerReport> {
     let mut report = ReducerReport::default();
+    let raw_reducer = std::env::var("SK_CORPUS_RAW_REDUCER").is_ok_and(|value| value == "1");
     for record in corpus.records()? {
         if !record.ok() {
             continue;
@@ -246,14 +251,42 @@ pub fn check_reducer(corpus: &Corpus, filter: Option<&str>) -> std::io::Result<R
             report.no_oracle += 1;
             continue;
         };
-        let mut state = corpus.state(&record.state)?;
-        for event in &events {
-            sk_rules::reduce::apply_event(&mut state, event);
-        }
+        // Как `tools/corpus-after-states.mjs`: состояние «до» нормализуется,
+        // затем каждое событие идёт через `applyGameEvent` (режим retention,
+        // нормализация перед веткой, редьюсер).
+        let before = corpus.state(&record.state)?;
+        let raw_events: Vec<Value> = record.outcome.get("events").and_then(Value::as_array).cloned().unwrap_or_default();
+        // `SK_CORPUS_RAW_REDUCER=1` — прежняя сверка до Р4б: события подряд без
+        // нормализации (для сравнения «до/после» по записям).
+        let replayed = if raw_reducer {
+            let mut state = before.clone();
+            for event in &events {
+                sk_rules::reduce::apply_event(&mut state, event);
+            }
+            Ok(state)
+        } else {
+            sk_rules::normalize::normalize_campaign_state(&before).and_then(|mut state| {
+                for event in &raw_events {
+                    state = sk_rules::replay::apply_game_event(&state, event)?;
+                }
+                Ok(state)
+            })
+        };
+        let mut state = match replayed {
+            Ok(state) => state,
+            Err(error) => {
+                report.different += 1;
+                *report.difference_paths.entry(format!("ошибка: {}", truncate(&error.to_string(), 80))).or_default() += 1;
+                continue;
+            }
+        };
         sk_rules::reduce::strip_derived(&mut state);
         let mut path = Vec::new();
         match first_difference(&expected, &state, &mut path) {
-            None => report.equal += 1,
+            None => {
+                report.equal += 1;
+                report.equal_records.push(format!("{}:{}", record.file, record.row));
+            }
             Some((at, left, right)) => {
                 report.different += 1;
                 *report.difference_paths.entry(path_bucket(&at)).or_default() += 1;

@@ -34,30 +34,8 @@ fn inventory_list(value: Option<&Value>) -> Vec<Value> {
     value.and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
-/// `addInventoryItem(inventory, incoming)` (23993): в стопку того же вида,
-/// иначе новой строкой.
-pub(super) fn add_inventory_item(inventory: Option<&Value>, incoming: &Value) -> Value {
-    let current = inventory_list(inventory);
-    let Some(index) = crate::society_helpers::inventory_stack_index(&current, incoming) else {
-        let mut next = current;
-        next.push(incoming.clone());
-        return Value::Array(next);
-    };
-    let maximum = sk_economy::merchant_economy::MAX_STOCK_QUANTITY;
-    Value::Array(
-        current
-            .into_iter()
-            .enumerate()
-            .map(|(position, item)| {
-                if position != index {
-                    return item;
-                }
-                let quantity = (safe_int(item.get("quantity"), 1) + safe_int(incoming.get("quantity"), 1)).min(maximum);
-                js::spread(&item, json!({ "quantity": quantity }))
-            })
-            .collect(),
-    )
-}
+/// `addInventoryItem(inventory, incoming)` (23993) — `society_helpers`.
+pub(super) use crate::society_helpers::add_inventory_item;
 
 /// `{ rulesetId: state.ruleset_id }` — опции `combatSpellsFor`.
 pub(super) fn ruleset_options(state: &Value) -> Value {

@@ -5,17 +5,16 @@
 //! Подрайон боя (`syncCombatBounds`, `growCombatBounds`) перенесён в
 //! `sk-tactical`; здесь — раскрытие клеток карты (`revealSceneCells`) и
 //! расстановка отряда по заявленным клеткам (`acceptedPartyPlacementEntries`).
-//! Две маленькие функции задачи Р1 — частные копии до её слияния:
-//! `syncSceneCells` (2293) и `footprintPlacementEdgesBlocked`
-//! (`rules/tactical-geometry.mjs`, 274).
+//! `syncSceneCells` (2293) и `footprintPlacementEdgesBlocked` — из Р1
+//! (`scene_map_sync`, `tactical_geometry`).
 
 use serde_json::Value;
 use sk_core::game::{actor_id, find_actor};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::js;
 use sk_core::RuleError;
-use sk_geometry::actor_footprint::{footprint_cells_for, footprint_size_for};
-use sk_tactical::tactical_map::{cell_at, legacy_cells_from_tactical_map, movement_step_blocked, set_cell, CellPatch, TacticalMap, TacticalMapError};
+use sk_geometry::actor_footprint::footprint_cells_for;
+use sk_tactical::tactical_map::{cell_at, set_cell, CellPatch, TacticalMap, TacticalMapError};
 
 use crate::core::unique_strings;
 
@@ -41,16 +40,10 @@ pub fn key_point(key: &str) -> Value {
     Value::Object(point)
 }
 
-/// `syncSceneCells(state)` (2293) — частная копия, заменить на `scene_map_sync`
-/// (Р1): `scene.cells` пересобирается из карты сцены.
+/// `syncSceneCells(state)` (2293): `scene.cells` пересобирается из карты
+/// сцены (`scene_map_sync`, Р1).
 pub fn sync_scene_cells(state: &mut Value) {
-    if !js::truthy(state.get("scene")) {
-        return;
-    }
-    let Some(map) = sk_tactical::combat_bounds::scene_tactical_map(state) else { return };
-    if let Some(scene) = state.get_mut("scene").and_then(Value::as_object_mut) {
-        scene.insert("cells".into(), Value::Array(legacy_cells_from_tactical_map(&map)));
-    }
+    crate::scene_map_sync::sync_scene_cells(state, None);
 }
 
 /// `revealSceneCells(state, positions)` (2941): клетки помечаются раскрытыми
@@ -74,25 +67,11 @@ pub fn reveal_scene_cells(state: &mut Value, positions: &[Value]) -> Result<(), 
     Ok(())
 }
 
-/// `footprintPlacementEdgesBlocked(map, actor, anchor)` — частная копия
-/// (Р1, `rules/tactical-geometry.mjs`): стена или дверь внутри площади
-/// крупного существа.
+/// `footprintPlacementEdgesBlocked(map, actor, anchor)` (`tactical_geometry`,
+/// Р1) для якоря-JSON: стена или дверь внутри площади крупного существа.
 pub fn footprint_placement_edges_blocked(map: Option<&TacticalMap>, actor: Option<&Value>, anchor: &Value) -> bool {
-    let Some(map) = map else { return false };
-    if footprint_size_for(actor) <= 1 {
-        return false;
-    }
-    let cells = footprint_cells_for(actor, Some(anchor));
-    let keys: IndexSet<(i64, i64)> = cells.iter().map(|cell| (cell.x, cell.y)).collect();
-    for cell in &cells {
-        for (dx, dy) in [(1, 0), (0, 1)] {
-            let next = (cell.x + dx, cell.y + dy);
-            if keys.contains(&next) && movement_step_blocked(map, cell.x, cell.y, next.0, next.1).unwrap_or(false) {
-                return true;
-            }
-        }
-    }
-    false
+    let point = sk_geometry::Point::new(js::number(anchor.get("x")), js::number(anchor.get("y")));
+    crate::tactical_geometry::footprint_placement_edges_blocked(map, actor, Some(point))
 }
 
 /// `sceneAdvancePartyIds(state)` (12184): отряд по `partyMemberIds`, только
@@ -169,8 +148,10 @@ pub fn used_cell_points(used: &IndexSet<String>) -> Vec<Value> {
     used.iter().map(|key| key_point(key)).collect()
 }
 
-/// `propMovementPositions(map)` — частная копия (Р1,
-/// `rules/tactical-geometry.mjs`, 313): клетки реквизита с `blocksMove`.
+/// `propMovementPositions(map)` (`rules/tactical-geometry.mjs`, 313): клетки
+/// реквизита с `blocksMove` строковыми ключами в порядке реквизита (у
+/// `tactical_geometry::prop_movement_positions` Р1 — неупорядоченное множество
+/// числовых ключей).
 pub fn prop_movement_positions(map: &TacticalMap) -> IndexSet<String> {
     let mut blocked = IndexSet::new();
     for prop in map.props.iter().filter(|prop| prop.blocks_move) {
