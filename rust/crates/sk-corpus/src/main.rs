@@ -1,6 +1,7 @@
 //! `cargo run -p sk-corpus -- reducer <каталог корпуса> [тип команды]`
 //! `cargo run -p sk-corpus -- normalize <каталог корпуса> [предел]`
 //! `cargo run -p sk-corpus -- resolve <каталог корпуса> <тип команды>[,<тип>…]`
+//! `cargo run -p sk-corpus -- summary <каталог корпуса> <файл сводок JS>`
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -53,8 +54,18 @@ fn main() {
                 println!("{}", report.render(kind));
             }
         }
+        "summary" => {
+            // Сводки событий (`eventSummary`) против файла сводок JS
+            // (`sk-rules/fixtures/gen-summary-corpus.mjs`).
+            let Some(file) = filter else {
+                eprintln!("укажите файл сводок JS: summary <каталог> <файл.jsonl>");
+                std::process::exit(2);
+            };
+            let report = sk_corpus::check_summary(&corpus, file).expect("сверка сводок");
+            print!("{}", report.render());
+        }
         other => {
-            eprintln!("неизвестный режим {other}; есть: reducer, normalize, resolve");
+            eprintln!("неизвестный режим {other}; есть: reducer, normalize, resolve, summary");
             std::process::exit(2);
         }
     }
