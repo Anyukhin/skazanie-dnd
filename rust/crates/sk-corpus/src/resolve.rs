@@ -183,6 +183,13 @@ pub fn check_resolve(corpus: &Corpus, kind: &str) -> std::io::Result<ResolveRepo
             *report.skipped_blocks.entry(name.to_string()).or_default() += 1;
         }
         let place = format!("{}:{}", record.file, record.row);
+        // `SK_CORPUS_DUMP=<файл>:<строка>`: события или отказ Rust этой записи целиком.
+        if std::env::var("SK_CORPUS_DUMP").is_ok_and(|wanted| wanted == place) {
+            match &result {
+                Ok(resolved) => eprintln!("{place}: Rust {}", js::stringify(&Value::Array(resolved.events.clone()))),
+                Err(halt) => eprintln!("{place}: Rust {}", halt_text(halt)),
+            }
+        }
         let rust_args: Vec<String> = recording.transcript.iter().map(|entry| js::stringify(entry.get("args").unwrap_or(&Value::Null))).collect();
         let js_args: Vec<String> = transcript.iter().take(rust_args.len()).map(|entry| js::stringify(entry.get("args").unwrap_or(&Value::Null))).collect();
         if record.ok() && rust_args != js_args {

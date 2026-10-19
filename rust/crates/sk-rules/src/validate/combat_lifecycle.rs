@@ -11,6 +11,7 @@ use sk_core::js;
 use super::Validation;
 use crate::combat::encounter::{assemble_encounter_for_command, validate_attack_npc_command};
 use crate::command::types::ENCOUNTER_LIFECYCLE_COMMAND_TYPES;
+use crate::npc_item_events::party_member_ids;
 use crate::pause::{rule, Step};
 use crate::targets::is_unstable_dying_hero;
 
@@ -20,15 +21,6 @@ fn command_type(v: &Validation<'_>) -> String {
 
 fn array_of(value: Option<&Value>) -> &[Value] {
     value.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
-}
-
-/// `new Set(state.partyMemberIds?.length ? state.partyMemberIds.map(String) : state.players.map(actorId))`.
-pub(crate) fn party_member_ids(state: &Value) -> IndexSet<String> {
-    let members = array_of(state.get("partyMemberIds"));
-    if !members.is_empty() {
-        return members.iter().map(|id| js::string(Some(id))).collect();
-    }
-    array_of(state.get("players")).iter().map(game::actor_id).collect()
 }
 
 /// Блок 47 (6900–6902): нападение на NPC.
