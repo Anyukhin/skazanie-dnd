@@ -13,7 +13,7 @@ use sk_rules::normalize::{scene, summons};
 use sk_rules::pause::Halt;
 use sk_rules::society_helpers as society;
 
-static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(include_str!("../fixtures/helpers-r4b.json")).expect("эталон"));
+static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/helpers-r4b.json")).expect("эталон читается")).expect("эталон"));
 
 /// Аргумент эталона: `{ "$undefined": true }` — `undefined`.
 fn arg(case: &Value, index: usize) -> Option<&Value> {

@@ -12,7 +12,7 @@ use serde_json::Value;
 use sk_core::{hash, js};
 use sk_rules::normalize::normalize_campaign_state;
 
-static SYNTHETIC: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(include_str!("../fixtures/normalize-synthetic.json")).expect("эталон"));
+static SYNTHETIC: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/normalize-synthetic.json")).expect("эталон читается")).expect("эталон"));
 
 fn digest(value: &Value) -> String {
     hash::sha256_hex(js::stringify(value))
@@ -62,7 +62,7 @@ fn input_is_not_mutated_and_derived_fields_keep_their_place() {
 #[ignore = "читает состояния корпуса из SK_CORPUS"]
 fn corpus_states_match_js() {
     let Ok(root) = std::env::var("SK_CORPUS") else { return };
-    let oracle: Value = serde_json::from_str(include_str!("../fixtures/normalize-corpus.json")).expect("эталон");
+    let oracle: Value = serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/normalize-corpus.json")).expect("эталон читается")).expect("эталон");
     let mut checked = 0;
     let mut failures = Vec::new();
     for case in oracle["cases"].as_array().expect("случаи") {

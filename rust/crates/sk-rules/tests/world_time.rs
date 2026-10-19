@@ -18,7 +18,7 @@ use sk_dice::{DiceService, SequenceRng};
 use sk_rules::dice_record::ServiceDice;
 use sk_rules::resolve::world_time::{world_time_consequences, TimeAdvanceOptions};
 
-static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(include_str!("../fixtures/world-time.json")).expect("эталон"));
+static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/world-time.json")).expect("эталон читается")).expect("эталон"));
 
 fn options(raw: &Value) -> TimeAdvanceOptions {
     TimeAdvanceOptions {
