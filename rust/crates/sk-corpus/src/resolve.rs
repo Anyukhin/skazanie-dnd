@@ -1,4 +1,7 @@
-//! Сверка веток разбора с корпусом JS: `sk-corpus resolve <каталог> <тип>`.
+//! Сверка разбора с корпусом JS: `sk-corpus resolve <каталог> <тип>`.
+//!
+//! По умолчанию — полный путь `resolveCommand` (обёртки и хвост, Р5) с мягкой
+//! проверкой; `SK_CORPUS_BRANCH_ONLY=1` — только ветка без хвоста (ниже).
 //!
 //! Запись корпуса хранит нормализованное JS-состояние до команды, вход
 //! команды, контекст, стенограмму костей и исход (`events` или код отказа).
@@ -152,7 +155,21 @@ pub fn check_resolve(corpus: &Corpus, kind: &str) -> std::io::Result<ResolveRepo
         // Нормализация перенесена (Р4б): разбор нормализует состояние сам, как
         // `resolveCommandInternal`. `SK_CORPUS_ASSUME_NORMALIZED=1` — прежний
         // режим (состояние корпуса считается уже нормализованным).
+        let branch_only = std::env::var("SK_CORPUS_BRANCH_ONLY").is_ok_and(|value| value == "1");
         let mut run = || {
+            if !branch_only {
+                // Полный путь `resolveCommand` (Р5): обёртки, удар-открытие,
+                // хвост последствий и режимы реакций; блоки-заглушки проверки
+                // пропускает мягкая проверка. `SK_CORPUS_BRANCH_ONLY=1` —
+                // прежний режим (ветка без хвоста).
+                let mut known = command_id.clone();
+                let mut fallback = sequence_uuids("corpus-uuid");
+                let mut uuid = move || known.take().unwrap_or_else(&mut fallback);
+                sk_rules::resolve::api::take_skipped_blocks();
+                let result = sk_rules::resolve::api::with_lenient_validation(|| sk_rules::resolve::api::resolve_command(&record.command, &state, &mut recording, &context, &mut uuid));
+                skipped.extend(sk_rules::resolve::api::take_skipped_blocks());
+                return result;
+            }
             // JS: `resolveCommandInternal` нормализует состояние, `validateCommand`
             // — ещё раз (нормализация не всегда идемпотентна).
             let validated_state = if assume { state.clone() } else { sk_rules::normalize::normalize_campaign_state(&sk_rules::normalize::normalize_campaign_state(&state)?)? };

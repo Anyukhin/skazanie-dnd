@@ -208,23 +208,44 @@ fn modifier_suffix(modifier: i64) -> String {
     }
 }
 
+/// `safeInteger(value, spell.level)` и `spell.level` числами JS (`NaN`, если
+/// у карточки нет круга).
+fn slot_and_level(slot_level: Option<&Value>, spell: &Value) -> (f64, f64) {
+    let level = js::number(spell.get("level"));
+    let slot = if js::is_safe_integer_number(slot_level) { js::number(slot_level) } else { level };
+    (slot, level)
+}
+
+/// `Math.max(a, b)` с `NaN`, как в JS.
+fn js_max(left: f64, right: f64) -> f64 {
+    if left.is_nan() || right.is_nan() {
+        f64::NAN
+    } else {
+        left.max(right)
+    }
+}
+
+/// `scaledSpellDice(spell, actor, slotLevel)` строкой выражения (`None` — урона нет).
+pub fn scaled_spell_dice_text(spell: Option<&Value>, actor: Option<&Value>, slot_level: Option<&Value>) -> Option<String> {
+    scaled_spell_dice(spell, actor, slot_level).map(|value| js::string(Some(&value)))
+}
+
 /// `scaledSpellDice(spell, actor, slotLevel)`: кость урона с ростом заговора,
 /// усилением ячейкой и «Мучительным взрывом». Непарсящееся выражение
-/// возвращается как есть.
-pub fn scaled_spell_dice(spell: Option<&Value>, actor: Option<&Value>, slot_level: Option<&Value>) -> Option<String> {
+/// возвращается как есть — и строкой, и числом, как в JS.
+pub fn scaled_spell_dice(spell: Option<&Value>, actor: Option<&Value>, slot_level: Option<&Value>) -> Option<Value> {
     let spell = spell?;
     let damage = spell.get("damage").filter(|value| js::truthy(Some(value)))?;
-    let Ok(parsed) = sk_dice::parse_dice_expression(&js::string(Some(damage))) else { return Some(js::string(Some(damage))) };
-    let mut count = i64::from(parsed.count);
-    let level = spell_level(spell);
-    let slot = level_or_spell(slot_level, spell);
+    let Ok(parsed) = sk_dice::parse_dice_expression(&js::string(Some(damage))) else { return Some(damage.clone()) };
+    let mut count = f64::from(parsed.count);
+    let (slot, level) = slot_and_level(slot_level, spell);
     if spell.get("level").and_then(Value::as_f64) == Some(0.0) && !js::is_true(spell.get("beamScaling")) && !js::is_false(spell.get("cantripDamageScaling")) {
         let caster_level = crate::core::coalesce(&[at(spell.get("monsterSpell"), "casterLevel"), at(actor, "level")]);
         let caster_level = js::safe_int(caster_level, 1).max(1);
-        count += i64::from(caster_level >= 5);
-        count += i64::from(caster_level >= 11);
+        count += f64::from(u8::from(caster_level >= 5));
+        count += f64::from(u8::from(caster_level >= 11));
     } else if js::truthy(spell.get("upcastDicePerLevel")) && slot > level {
-        count += js::safe_int(spell.get("upcastDicePerLevel"), 0) * (slot - level);
+        count += js::safe_int(spell.get("upcastDicePerLevel"), 0) as f64 * (slot - level);
     }
     let agonizing = if spell.get("id").and_then(Value::as_str) == Some("eldritch-blast")
         && actor.is_some_and(|actor| js::truthy(Some(actor)))
@@ -236,7 +257,7 @@ pub fn scaled_spell_dice(spell: Option<&Value>, actor: Option<&Value>, slot_leve
         0
     };
     let modifier = parsed.modifier + agonizing;
-    Some(format!("{count}d{}{}", parsed.sides, modifier_suffix(modifier)))
+    Some(Value::String(format!("{}d{}{}", js::f64_string(count), parsed.sides, modifier_suffix(modifier))))
 }
 
 /// `scaledDiceExpression(expression, extraLevels = 0, dicePerLevel = 0, maximumDice = 100)`.
@@ -397,9 +418,11 @@ pub fn has_multiple_beams(spell: Option<&Value>) -> bool {
 }
 
 /// `spellProjectileCount(spell, slotLevel)`: снаряды «Волшебной стрелы».
-pub fn spell_projectile_count(spell: &Value, slot_level: Option<&Value>) -> i64 {
-    let level = spell_level(spell);
-    1.max(js::safe_int(spell.get("projectileCount"), 3) + (level_or_spell(slot_level, spell) - level).max(0) * js::safe_int(spell.get("upcastProjectilesPerLevel"), 1).max(0))
+/// Число JS: у карточки без круга — `NaN`.
+pub fn spell_projectile_count(spell: &Value, slot_level: Option<&Value>) -> f64 {
+    let (slot, level) = slot_and_level(slot_level, spell);
+    let extra = js_max(0.0, slot - level);
+    js_max(1.0, js::safe_int(spell.get("projectileCount"), 3) as f64 + extra * js::safe_int(spell.get("upcastProjectilesPerLevel"), 1).max(0) as f64)
 }
 
 /// `spellDamageEstimate(actor, spell, slotLevel = spell?.level)`: средний урон
@@ -411,9 +434,9 @@ pub fn spell_damage_estimate(actor: Option<&Value>, spell: Option<&Value>, slot_
         return 0.0;
     }
     let projectiles = js::truthy(spell.get("projectileCount"));
-    let expression = if projectiles { Some(js::string(spell.get("damage"))) } else { scaled_spell_dice(Some(spell), actor, slot_level) };
+    let expression = if projectiles { Some(js::string(spell.get("damage"))) } else { scaled_spell_dice_text(Some(spell), actor, slot_level) };
     let Ok(dice) = sk_dice::parse_dice_expression(&expression.unwrap_or_default()) else { return 0.0 };
-    let count = if projectiles { spell_projectile_count(spell, slot_level) } else { beam_count_for(actor, Some(spell), slot_level) };
+    let count = if projectiles { spell_projectile_count(spell, slot_level) } else { beam_count_for(actor, Some(spell), slot_level) as f64 };
     let modifier = if js::truthy(spell.get("addAbilityModifier")) { spell_attack_damage_modifier(spell, actor) } else { 0 };
-    (f64::from(dice.count) * (f64::from(dice.sides) + 1.0) / 2.0 + dice.modifier as f64 + modifier as f64).max(0.0) * count as f64
+    js_max(0.0, f64::from(dice.count) * (f64::from(dice.sides) + 1.0) / 2.0 + dice.modifier as f64 + modifier as f64) * count
 }

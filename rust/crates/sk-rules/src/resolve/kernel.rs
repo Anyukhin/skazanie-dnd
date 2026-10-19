@@ -512,7 +512,7 @@ impl Resolve<'_> {
         let missile_roll = self.roll_dice(Value::String(expression), &format!("spell_damage:{}", js::string(spell.get("id"))), source_command.get("actor_id").cloned().unwrap_or(Value::Null), visibility)?;
         self.rolls.push(missile_roll.clone());
         let mut roll_payload = spread_value(Some(&missile_roll));
-        roll_payload.insert("projectile_count".into(), Value::from(projectiles));
+        roll_payload.insert("projectile_count".into(), js::num(projectiles));
         self.events.push(event_from(source_command, "DieRolled", Some(Value::Object(roll_payload)), Some(&json!([]))));
         let per_projectile = js::number(missile_roll.get("total"));
         let mut metadata = Map::new();
@@ -533,9 +533,9 @@ impl Resolve<'_> {
                 payload.insert("spell_id".into(), id.clone());
             }
             payload.insert("damage_type".into(), damage_type.clone());
-            payload.insert("projectile_count".into(), Value::from(projectiles));
+            payload.insert("projectile_count".into(), js::num(projectiles));
             payload.insert("damage_per_projectile".into(), missile_roll.get("total").cloned().unwrap_or(Value::Null));
-            payload.insert("prevented_raw_amount".into(), js::num(per_projectile * projectiles as f64));
+            payload.insert("prevented_raw_amount".into(), js::num(per_projectile * projectiles));
             payload.insert("automatic_hit".into(), Value::Bool(true));
             payload.insert("item_immunity_sources".into(), Value::Array(immunity_sources));
             payload.extend(metadata);
@@ -581,7 +581,7 @@ impl Resolve<'_> {
                 return Err(Halt::pause(pause));
             }
         }
-        let missile_damage = js::num(per_projectile * projectiles as f64);
+        let missile_damage = js::num(per_projectile * projectiles);
         let mut payload = self.resolve_damage_payload(&state, &target_id, missile_damage, damage_type, None, None)?;
         if shielded {
             let mut map = spread_value(Some(&payload));
@@ -596,7 +596,7 @@ impl Resolve<'_> {
         if let Some(id) = spell.get("id") {
             applied.insert("spell_id".into(), id.clone());
         }
-        applied.insert("projectile_count".into(), Value::from(projectiles));
+        applied.insert("projectile_count".into(), js::num(projectiles));
         applied.insert("damage_per_projectile".into(), missile_roll.get("total").cloned().unwrap_or(Value::Null));
         applied.insert("blocked_by_shield".into(), Value::Bool(shielded));
         applied.insert("automatic_hit".into(), Value::Bool(true));

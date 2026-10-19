@@ -40,11 +40,16 @@ fn common_blocks_refuse_before_any_stub() {
     let mut uuid = sequence_uuids("u");
     assert_eq!(code(validate_normalized(&json!({ "command_type": "Teleport", "expected_state_version": 4 }), &state(), &context, &mut uuid)), "COMMAND_NOT_ALLOWED");
     assert_eq!(code(validate_normalized(&json!({ "command_type": "DeclareAction", "actor_id": "hero", "expected_state_version": 3 }), &state(), &context, &mut uuid)), "STATE_VERSION_CONFLICT");
-    let first_stub = BLOCKS.iter().find(|block| block.index == 8).expect("блок 8");
+    // Первая заглушка — какой-то блок после общих (блок 8 перенесён в Р5);
+    // номер не закрепляется, чтобы перенос следующих блоков тест не ломал.
     let result = validate_normalized(&json!({ "command_type": "DeclareAction", "actor_id": "hero", "expected_state_version": 4 }), &state(), &context, &mut uuid);
     match result {
-        Err(Halt::Rule(error)) => assert_eq!((error.code.as_str(), error.message.as_str()), ("UNPORTED", format!("validate:{}", first_stub.name).as_str())),
-        other => panic!("ожидалась заглушка блока 8: {other:?}"),
+        Err(Halt::Rule(error)) => {
+            assert_eq!(error.code, "UNPORTED");
+            let stub = BLOCKS.iter().find(|block| format!("validate:{}", block.name) == error.message).expect("заглушка — блок проверки");
+            assert!(stub.index > 8, "общие блоки и блок 8 перенесены: {}", stub.name);
+        }
+        other => panic!("ожидалась заглушка блока проверки: {other:?}"),
     }
     assert!(validate_command(&json!({ "command_type": "DeclareAction" }), &state(), &context, &mut uuid).unwrap_err().is_unported(), "блок проверки — заглушка");
 }
