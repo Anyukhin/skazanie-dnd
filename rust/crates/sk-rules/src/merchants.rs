@@ -480,3 +480,39 @@ pub fn remove_item_appraisal(state: &mut Value, actor_id: Option<&Value>, item_i
     registry.insert(owner, Value::Object(next));
     mechanics.insert("item_appraisals".into(), Value::Object(registry));
 }
+
+// ---------------------------------------------------------------------------
+// Импорт слэба TaleSpire (`ImportLocationMap`, 22310)
+// ---------------------------------------------------------------------------
+//
+// `talespire-import` перенесён в `sk-talespire`, а тот зависит от `sk-rules`
+// (тактическая геометрия): прямой вызов замкнул бы граф крейтов. Поэтому
+// импортёр внедряется: сервер (и сверка корпуса) регистрирует
+// `sk_talespire::talespire_import::import_talespire_slab` один раз при старте.
+// Модуль `merchants` — единственный публичный модуль задачи Р6, поэтому точка
+// регистрации лежит здесь, хотя к торговле не относится.
+
+/// Отказ импортёра: имя класса JS, код и текст.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaleSpireFailure {
+    pub name: String,
+    pub code: String,
+    pub message: String,
+}
+
+/// `importTaleSpireSlab(slab, { locationId, theme })`: слэб (`None` — не
+/// строка), id локации, тема. Итог — JSON импорта (`{ source, stats,
+/// warnings, levels, … }`).
+pub type TaleSpireImporter = fn(Option<&str>, &str, &str) -> Result<Value, TaleSpireFailure>;
+
+static TALESPIRE_IMPORTER: std::sync::OnceLock<TaleSpireImporter> = std::sync::OnceLock::new();
+
+/// Зарегистрировать импортёр TaleSpire (повторная регистрация не меняет первую).
+pub fn install_talespire_importer(importer: TaleSpireImporter) {
+    let _ = TALESPIRE_IMPORTER.set(importer);
+}
+
+/// Зарегистрированный импортёр.
+pub fn talespire_importer() -> Option<TaleSpireImporter> {
+    TALESPIRE_IMPORTER.get().copied()
+}

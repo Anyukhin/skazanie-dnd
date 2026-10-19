@@ -1675,6 +1675,7 @@ dependencies = [
  "sk-core",
  "sk-dice",
  "sk-rules",
+ "sk-talespire",
 ]
 
 [[package]]
@@ -1913,6 +1914,7 @@ dependencies = [
  "serde_json",
  "sk-attention",
  "sk-character",
+ "sk-chargen",
  "sk-combat-base",
  "sk-combat-content",
  "sk-core",

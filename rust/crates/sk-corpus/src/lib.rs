@@ -13,7 +13,7 @@ use sk_core::Event;
 pub mod normalize;
 pub mod resolve;
 pub use normalize::{check_normalize, NormalizeReport};
-pub use resolve::{check_resolve, ResolveReport};
+pub use resolve::{check_resolve, check_resolve_many, ResolveReport};
 
 /// Одна запись корпуса.
 #[derive(Debug, Clone)]

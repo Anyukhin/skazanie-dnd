@@ -132,17 +132,97 @@ fn event_difference(expected: &[Value], actual: &[Value]) -> String {
     }
 }
 
+/// Ключи контекста, которых запись корпуса не хранит (`rules-corpus.mjs`,
+/// `CONTEXT_KEYS`): флаг владельческого маршрута импорта карты и флаг
+/// социального контроллера, итог социальной проверки (`socialCheckOutcome`).
+/// Восстанавливаются по исходу JS: если JS не отказал «нет полномочий», флаг
+/// у вызова был; принятая проверка разговора и есть итог сервера.
+fn recorded_context(kind: &str, context: &Value, command: &Value, outcome: &Value) -> Value {
+    let mut context = context.clone();
+    let code = outcome.get("code").and_then(Value::as_str);
+    let flag = match kind {
+        "ImportLocationMap" | "RebuildLocationMap" if code != Some("MAP_IMPORT_FORBIDDEN") => Some("mapImportAuthorized"),
+        "RecordNpcSocialTurn" | "ResolveNpcPromise" if code != Some("NPC_SOCIAL_FORBIDDEN") => Some("isSocialController"),
+        _ => None,
+    };
+    if let (Some(flag), Some(map)) = (flag, context.as_object_mut()) {
+        map.entry(flag.to_string()).or_insert(Value::Bool(true));
+    }
+    let accepted = outcome.get("ok").and_then(Value::as_bool) == Some(true);
+    let check = command.get("conversation").and_then(|conversation| conversation.get("check")).filter(|check| check.is_object());
+    if let (true, "RecordNpcSocialTurn", Some(check), Some(map)) = (accepted, kind, check, context.as_object_mut()) {
+        map.entry("socialCheckOutcome".to_string()).or_insert_with(|| check.clone());
+    }
+    context
+}
+
+/// `randomUUID()` разбора: UUID v4 из событий исхода JS в порядке появления
+/// (кроме `command_id`) — так ветка с перепродажей или выдачей предмета
+/// получает тот же id, что и JS.
+fn outcome_uuids(outcome: &Value, command_id: Option<&str>) -> Vec<String> {
+    fn is_hex(byte: u8) -> bool {
+        byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+    }
+    fn scan(text: &str, found: &mut Vec<String>) {
+        let bytes = text.as_bytes();
+        let mut index = 0;
+        while index + 36 <= bytes.len() {
+            let candidate = &bytes[index..index + 36];
+            let shape = candidate.iter().enumerate().all(|(at, byte)| if [8, 13, 18, 23].contains(&at) { *byte == b'-' } else { is_hex(*byte) });
+            if shape && candidate[14] == b'4' {
+                let uuid = String::from_utf8_lossy(candidate).to_string();
+                if !found.contains(&uuid) {
+                    found.push(uuid);
+                }
+                index += 36;
+            } else {
+                index += 1;
+            }
+        }
+    }
+    fn walk(value: &Value, found: &mut Vec<String>) {
+        match value {
+            Value::String(text) => scan(text, found),
+            Value::Array(items) => items.iter().for_each(|item| walk(item, found)),
+            Value::Object(map) => map.iter().filter(|(key, _)| key.as_str() != "command_id").for_each(|(_, item)| walk(item, found)),
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    if let Some(events) = outcome.get("events") {
+        walk(events, &mut found);
+    }
+    found.retain(|uuid| command_id.is_none_or(|id| !id.contains(uuid.as_str())));
+    found
+}
+
+/// `importTaleSpireSlab(slab, { locationId, theme })` для движка.
+fn import_talespire(slab: Option<&str>, location_id: &str, theme: &str) -> Result<Value, sk_rules::merchants::TaleSpireFailure> {
+    let options = sk_talespire::talespire_import::ImportOptions { location_id: location_id.to_string(), theme: theme.to_string(), ..Default::default() };
+    sk_talespire::talespire_import::import_talespire_slab(slab, &options).map_err(|error| sk_rules::merchants::TaleSpireFailure { name: error.name, code: error.code, message: error.message })
+}
+
 /// Сверка разбора команд одного типа.
 pub fn check_resolve(corpus: &Corpus, kind: &str) -> std::io::Result<ResolveReport> {
-    let mut report = ResolveReport::default();
+    let mut reports = check_resolve_many(corpus, &[kind])?;
+    Ok(reports.pop().map(|(_, report)| report).unwrap_or_default())
+}
+
+/// Сверка разбора нескольких типов команд за один проход по корпусу.
+pub fn check_resolve_many(corpus: &Corpus, kinds: &[&str]) -> std::io::Result<Vec<(String, ResolveReport)>> {
+    sk_rules::merchants::install_talespire_importer(import_talespire);
+    let mut reports: Vec<(String, ResolveReport)> = kinds.iter().map(|kind| (kind.to_string(), ResolveReport::default())).collect();
     let assume = std::env::var("SK_CORPUS_ASSUME_NORMALIZED").is_ok_and(|value| value == "1");
     for record in corpus.records()? {
-        if record.command_type() != kind {
+        let Some(index) = reports.iter().position(|(kind, _)| record.command_type() == kind.as_str()) else {
             continue;
-        }
+        };
+        let kind = reports[index].0.clone();
+        let kind = kind.as_str();
+        let report = &mut reports[index].1;
         report.total += 1;
         let state = corpus.state(&record.state)?;
-        let context = Context::from_json(&record.context);
+        let context = Context::from_json(&recorded_context(kind, &record.context, &record.command, &record.outcome));
         let transcript = record.dice.as_array().cloned().unwrap_or_default();
         let mut base = sk_rules::dice_record::dry_run_dice();
         let mut replay = sk_rules::dice_record::Replay::new(&mut base, transcript.clone(), None, false);
@@ -157,7 +237,9 @@ pub fn check_resolve(corpus: &Corpus, kind: &str) -> std::io::Result<ResolveRepo
             // — ещё раз (нормализация не всегда идемпотентна).
             let validated_state = if assume { state.clone() } else { sk_rules::normalize::normalize_campaign_state(&sk_rules::normalize::normalize_campaign_state(&state)?)? };
             let command = validate_ported(&record.command, &validated_state, &context, command_id.clone(), &mut skipped)?;
-            let mut uuid = sequence_uuids("corpus-uuid");
+            let mut recorded = outcome_uuids(&record.outcome, command_id.as_deref()).into_iter();
+            let mut fallback = sequence_uuids("corpus-uuid");
+            let mut uuid = move || recorded.next().unwrap_or_else(&mut fallback);
             sk_rules::resolve::vitals::resolve_branch_without_tail(command, &state, &mut recording, &context, &mut uuid)
         };
         let result = if assume { sk_rules::normalize::assume_normalized(run) } else { run() };
@@ -222,5 +304,5 @@ pub fn check_resolve(corpus: &Corpus, kind: &str) -> std::io::Result<ResolveRepo
             report.examples.push(example);
         }
     }
-    Ok(report)
+    Ok(reports)
 }
