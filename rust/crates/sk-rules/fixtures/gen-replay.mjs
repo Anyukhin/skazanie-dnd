@@ -24,8 +24,9 @@ const [corpus] = process.argv.slice(2)
 if (!corpus) throw new Error('Укажите каталог корпуса')
 const E = await loadOpenCopy()
 const DERIVED = ['combatSpells', 'combatActions', 'characterSheet', 'inventoryLoad']
-// Закон (`law`) перенесён, но читает летопись `world_deeds`, которой в Rust ещё нет.
-const REGISTRIES = ['world_deeds', 'offscreen_world', 'courier_letters', 'captives', 'scenario_knight', 'dialogues', 'autonomy', 'law']
+// Реестры-выводы, ещё не перенесённые в Rust (исключаются из сравнения). Все
+// перенесены задачей Р4в-2.
+const REGISTRIES = []
 const strip = (state) => {
   const copy = JSON.parse(JSON.stringify(state))
   for (const player of Array.isArray(copy.players) ? copy.players : []) for (const field of DERIVED) delete player?.[field]

@@ -15,7 +15,7 @@ use sk_core::{hash, js};
 use sk_rules::pause::Halt;
 use sk_rules::replay::{apply_game_event, replay_events, CommandProjector};
 
-static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(include_str!("../fixtures/replay.json")).expect("эталон"));
+static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/replay.json")).expect("эталон читается")).expect("эталон"));
 
 fn digest(state: &Value) -> String {
     let mut copy = state.clone();
