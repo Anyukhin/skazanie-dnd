@@ -22,7 +22,7 @@ use sk_core::text::{head, locale_compare, squash_spaces};
 use sk_geometry::actor_footprint::footprint_cells_for;
 use sk_tactical::tactical_map::{attach_level_transitions, deserialize_tactical_map, tactical_map_from_legacy_cells, LegacyMapOptions, TacticalMap};
 
-use crate::scene_maps::{level_key, scene_location_id, scene_map_for_location, scene_tactical_map_for_location};
+use sk_director::adventure_director::{level_key, scene_location_id, scene_map_for_location, scene_tactical_map_for_location};
 
 /// `MAX_LEVEL_STASHES`: сколько стэшей неактивных этажей держит состояние.
 pub const MAX_LEVEL_STASHES: usize = 32;
@@ -68,12 +68,11 @@ pub fn scene_level_label(state: &Value, level: i64, transition_label: &str) -> S
     head(&label, 120)
 }
 
-
 /// `rememberedLevelMap(state, locationId, level)` (2463): записи с L3 несут
 /// карту; по старым клеткам восстанавливается только этаж входа.
 pub fn remembered_level_map(state: &Value, location_id: &str, level: i64) -> sk_tactical::tactical_map::MapResult<Option<TacticalMap>> {
     let key = level_key(location_id, level);
-    if let Some(serialized) = scene_tactical_map_for_location(state.get("locationMaps"), &key) {
+    if let Some(serialized) = scene_tactical_map_for_location(state.get("locationMaps"), Some(&Value::String(key.clone()))) {
         if let Ok(map) = deserialize_tactical_map(&serialized) {
             return Ok(Some(map));
         }
@@ -81,7 +80,7 @@ pub fn remembered_level_map(state: &Value, location_id: &str, level: i64) -> sk_
     if level != 0 {
         return Ok(None);
     }
-    let Some(cells) = scene_map_for_location(state.get("locationMaps"), &key).filter(|cells| !cells.is_empty()) else { return Ok(None) };
+    let Some(cells) = scene_map_for_location(state.get("locationMaps"), Some(&Value::String(key.clone()))).filter(|cells| !cells.is_empty()) else { return Ok(None) };
     let seed = s(state.get("worldMap").and_then(|world| world.get("seed")));
     let mut rebuilt = tactical_map_from_legacy_cells(&cells, &LegacyMapOptions { location_id, seed: &seed, ..LegacyMapOptions::default() })?;
     attach_level_transitions(&mut rebuilt, Some(&Value::Array(declared_scene_levels(state))));

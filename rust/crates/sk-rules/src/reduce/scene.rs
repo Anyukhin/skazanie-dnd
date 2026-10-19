@@ -6,14 +6,14 @@
 //! Помощники сцены — `scene/{placement,objects,levels}.rs`; карта сцены в
 //! состоянии и подрайон боя — `sk-tactical`. Отказ карты (`TacticalMapError`)
 //! обрывает ветку, как исключение JS обрывает `applyGameEvent`.
-//! `publicAdventureMemory` (`adventure-director.mjs`, крейт `sk-director`) —
-//! частная копия ниже.
+//! Память карт мест и публичная память приключения — `adventure-director`
+//! (крейт `sk-director`).
 
 use serde_json::{json, Map, Value};
 use sk_core::game::{actor_id, combat_active, find_actor, is_party_summon, mechanics, mechanics_mut, replace_actor};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::js::{self, is_true, s, safe_int, truthy};
-use sk_core::text::{head, squash_spaces};
+use sk_core::text::head;
 use sk_core::Event;
 use sk_geometry::actor_footprint::footprint_cells_for;
 use sk_tactical::combat_bounds::{ensure_scene_tactical_map, grow_combat_bounds, scene_tactical_map, sync_combat_bounds, write_scene_tactical_map};
@@ -29,7 +29,7 @@ use crate::journal::{append_battle_log, Entry};
 use crate::scene::levels::{normalized_npc_world, npc_world_placements, npc_world_with_placements, remember_known_level, remembered_level_map, restore_level_entities, restore_scene_level_transitions, scene_level_label, scene_npc_occupied_cells, stash_level_entities};
 use crate::scene::objects::{door_edge_blocks, door_trace_key, patch_scene_door, set_scene_door_state, set_scene_object_prop_state, set_scene_prop_at, update_scene_object_interaction};
 use crate::scene::placement::{accepted_party_placement_entries, map_error, position_key, reveal_scene_cells, sync_scene_cells, used_cell_points, Placement};
-use crate::scene_maps::{level_key, normalize_location_maps, remember_scene_map, scene_level_index, scene_location_id};
+use sk_director::adventure_director::{level_key, normalize_location_maps, public_adventure_memory, remember_scene_map, scene_level_index, scene_location_id};
 use crate::turn_economy::{action_economy, economy_of, set_economy, spend_combat_economy};
 
 /// Метки событий этого файла, чьи ветки ещё не перенесены.
@@ -88,10 +88,7 @@ fn default_combat() -> Value {
     })
 }
 
-// --- память приключения (частная копия `adventure-director.mjs`) ------------
-
-/// `OBJECTIVE_STATUSES` (`adventure-director.mjs`).
-const OBJECTIVE_STATUSES: [&str; 4] = ["completed", "unresolved", "abandoned", "continued"];
+// --- память приключения: публичная часть — `sk-director`, частная — здесь --
 
 /// Поля приключения, которые видит только ведущий (`privateAdventureBuckets`, 1256).
 const PRIVATE_ADVENTURE_FIELDS: [&str; 18] = [
@@ -127,93 +124,6 @@ fn private_adventure_buckets(value: Option<&Value>) -> Map<String, Value> {
     buckets
 }
 
-/// `text(value, maximum, fallback)` (`adventure-director.mjs`): пробелы JS
-/// схлопнуты, края обрезаны.
-fn adventure_text(value: &str, maximum: usize, fallback: &str) -> String {
-    let normalized = squash_spaces(value);
-    head(if normalized.is_empty() { fallback } else { &normalized }, maximum)
-}
-
-/// `publicText(value, maximum, fallback)`: только строки.
-fn public_text(value: Option<&Value>, maximum: usize, fallback: &str) -> String {
-    match value {
-        Some(Value::String(text)) => adventure_text(text, maximum, fallback),
-        _ => fallback.to_string(),
-    }
-}
-
-/// `integer(value, fallback, minimum, maximum)`.
-fn bounded_integer(value: Option<&Value>, fallback: i64, minimum: i64, maximum: i64) -> i64 {
-    let number = js::number(value);
-    if crate::core::is_safe_integer_f64(number) {
-        (number as i64).clamp(minimum, maximum)
-    } else {
-        fallback
-    }
-}
-
-/// `publicTextList(value, maximum, limit)`.
-fn public_text_list(value: Option<&Value>, maximum: usize, limit: usize) -> Value {
-    let mut unique: IndexSet<String> = IndexSet::new();
-    for item in value.and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]) {
-        if let Value::String(text) = item {
-            let text = adventure_text(text, maximum, "");
-            if !text.is_empty() {
-                unique.insert(text);
-            }
-        }
-    }
-    let skip = unique.len().saturating_sub(limit);
-    js::strings_value(unique.into_iter().skip(skip))
-}
-
-/// `publicHistoryEntry(value)`.
-fn public_history_entry(value: &Value) -> Option<Value> {
-    let source = value.as_object()?;
-    let field = |key: &str| source.get(key);
-    let mut entry = Map::new();
-    entry.insert("chapter".into(), Value::from(bounded_integer(field("chapter"), 1, 1, 999)));
-    entry.insert("title".into(), Value::String(public_text(field("title"), 80, "Предыдущая сцена")));
-    entry.insert("location".into(), Value::String(public_text(field("location"), 120, "")));
-    let location_id = public_text(field("location_id").filter(|value| !value.is_null()).or_else(|| field("locationId")), 120, "");
-    if !location_id.is_empty() {
-        entry.insert("location_id".into(), Value::String(location_id));
-    }
-    entry.insert("objective".into(), Value::String(public_text(field("objective"), 160, "")));
-    entry.insert("outcome".into(), Value::String(public_text(field("outcome"), 240, "")));
-    if let Some(Value::String(status)) = field("status") {
-        if OBJECTIVE_STATUSES.contains(&status.as_str()) {
-            entry.insert("status".into(), Value::String(status.clone()));
-        }
-    }
-    Some(Value::Object(entry))
-}
-
-/// `publicAdventureMemory(value)` (`adventure-director.mjs`, 824) — частная
-/// копия; заменить на `sk-director`.
-pub(crate) fn public_adventure_memory(value: Option<&Value>) -> Map<String, Value> {
-    let empty = Map::new();
-    let source = value.and_then(Value::as_object).unwrap_or(&empty);
-    let field = |key: &str| source.get(key);
-    let mut memory = Map::new();
-    memory.insert("chapter".into(), Value::from(bounded_integer(field("chapter"), 1, 1, 999)));
-    let hook = public_text(field("currentHook"), 240, "");
-    if !hook.is_empty() {
-        memory.insert("currentHook".into(), Value::String(hook));
-    }
-    let transition = public_text(field("lastTransition"), 500, "");
-    if !transition.is_empty() {
-        memory.insert("lastTransition".into(), Value::String(transition));
-    }
-    memory.insert("unresolvedThreads".into(), public_text_list(field("unresolvedThreads"), 240, 20));
-    memory.insert("visitedLocations".into(), public_text_list(field("visitedLocations"), 120, 50));
-    memory.insert("visitedLocationIds".into(), public_text_list(field("visitedLocationIds"), 120, 50));
-    let history: Vec<Value> = field("history").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]).iter().filter_map(public_history_entry).collect();
-    let skip = history.len().saturating_sub(20);
-    memory.insert("history".into(), Value::Array(history.into_iter().skip(skip).collect()));
-    memory
-}
-
 // --- смена сцены, импорт карты, этажи --------------------------------------
 
 /// `SceneAdvanced` (24439–24509).
@@ -222,9 +132,9 @@ pub(super) fn scene_advanced(state: &mut Value, event: &Event) -> Reduced {
     let previous_level = scene_level_index(state);
     if previous_level != 0 {
         let key = level_key(&scene_location_id(state), previous_level);
-        let cells = state.get("scene").and_then(|scene| scene.get("cells")).cloned().unwrap_or(Value::Null);
+        let cells = state.get("scene").and_then(|scene| scene.get("cells")).cloned();
         let map = state.get("scene").and_then(|scene| scene.get("map")).cloned();
-        remember_scene_map(state, &key, &cells, map.as_ref());
+        remember_scene_map(state, Some(&Value::String(key.clone())), cells.as_ref(), map.as_ref());
         stash_level_entities(state, &key);
     }
     let scene = payload.get("scene").filter(|scene| plain_object(Some(scene))).cloned().unwrap_or_else(js::obj);
@@ -252,7 +162,7 @@ pub(super) fn scene_advanced(state: &mut Value, event: &Event) -> Reduced {
             let Ok(level_map) = deserialize_tactical_map(raw) else { continue };
             let Ok(serialized) = serialize_tactical_map(&level_map) else { continue };
             let cells = Value::Array(legacy_cells_from_tactical_map(&level_map));
-            remember_scene_map(state, &level_key(&library_location, index), &cells, Some(&serialized));
+            remember_scene_map(state, Some(&Value::String(level_key(&library_location, index))), Some(&cells), Some(&serialized));
         }
     }
     let adventure_source = match payload.get("adventure").filter(|adventure| plain_object(Some(adventure))) {
@@ -339,7 +249,7 @@ pub(super) fn location_map_imported(state: &mut Value, event: &Event) -> Reduced
     ordered.sort_by_key(|(index, _)| *index);
     for (index, map) in &ordered {
         let serialized = serialize_tactical_map(map).map_err(map_error)?;
-        remember_scene_map(state, &level_key(&location_id, *index), &Value::Array(legacy_cells_from_tactical_map(map)), Some(&serialized));
+        remember_scene_map(state, Some(&Value::String(level_key(&location_id, *index))), Some(&Value::Array(legacy_cells_from_tactical_map(map))), Some(&serialized));
     }
     let scene_ok = state.get("scene").is_some_and(|scene| scene.is_object() || scene.is_array());
     if !is_true(payload.get("applied_to_scene")) || scene_location_id(state) != location_id || !scene_ok {
@@ -476,9 +386,9 @@ pub(super) fn map_level_changed(state: &mut Value, event: &Event) -> Reduced {
         }
     }
     let from_key = level_key(&location_id, from_level);
-    let cells = state.get("scene").and_then(|scene| scene.get("cells")).cloned().unwrap_or(Value::Null);
+    let cells = state.get("scene").and_then(|scene| scene.get("cells")).cloned();
     let map = state.get("scene").and_then(|scene| scene.get("map")).cloned();
-    remember_scene_map(state, &from_key, &cells, map.as_ref());
+    remember_scene_map(state, Some(&Value::String(from_key.clone())), cells.as_ref(), map.as_ref());
     stash_level_entities(state, &from_key);
     let requested_label = head(&s(payload.get("level_label")), 120);
     let label = if requested_label.is_empty() { scene_level_label(state, to_level, "") } else { requested_label };

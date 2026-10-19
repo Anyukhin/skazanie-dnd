@@ -4,7 +4,7 @@
 //! (Р0). Перенося ветку, уберите её метки из [`UNPORTED`] этого файла.
 //!
 //! Не перенесены: замена состояния (нужна нормализация `normalizeCampaignState`
-//! — задача Р4б) и должности (`applyWorldOfficeEvent` — `world-offices`,
+//! — задача Р4б). Должности — `applyWorldOfficeEvent` (`world-offices`,
 //! крейт `sk-world-life`).
 
 use serde_json::{json, Map, Value};
@@ -20,9 +20,6 @@ use crate::pause::unported;
 pub(super) const UNPORTED: &[&str] = &[
     "LegacyStateImported",
     "CampaignRewound",
-    "OfficeVacated",
-    "OfficeHolderInstalled",
-    "OfficeSuccessionSkipped",
 ];
 
 /// `MAX_CAMPAIGN_ARCS` (`campaign-loop-policy.mjs`): сколько закрытых арок
@@ -381,8 +378,10 @@ pub(super) fn party_decision_consumed(state: &mut Value, event: &Event) -> Reduc
 }
 
 /// `OfficeVacated`, `OfficeHolderInstalled`, `OfficeSuccessionSkipped` (27037–27039).
-pub(super) fn world_office_event(_state: &mut Value, _event: &Event) -> Reduced {
-    Err(unported("reduce:OfficeVacated"))
+pub(super) fn world_office_event(state: &mut Value, event: &Event) -> Reduced {
+    let event_json = super::social::event_value(event);
+    state["world_offices"] = sk_world_life::world_offices::apply_world_office_event(state.get("world_offices"), &event_json, &js::obj());
+    Ok(())
 }
 
 /// Замена состояния до `switch` (24201–24211): `LegacyStateImported` и

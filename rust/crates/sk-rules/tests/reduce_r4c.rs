@@ -15,7 +15,8 @@ use serde_json::Value;
 const FIXTURE: &str = include_str!("../fixtures/reduce-r4c.json");
 static DATA: LazyLock<Value> = LazyLock::new(|| serde_json::from_str(FIXTURE).expect("эталон — JSON"));
 
-/// Реестры, которые не сравниваются: закон и ещё не перенесённые.
+/// Реестры, которых нет в эталоне Р4в (тогда не перенесённые; сверка всех
+/// реестров — `reduce_r4d.rs` и `reduce_r4a_corpus.rs`).
 const SKIPPED: [&str; 8] = ["law", "world_deeds", "offscreen_world", "courier_letters", "captives", "scenario_knight", "dialogues", "autonomy"];
 
 fn comparable(mut state: Value) -> Value {
