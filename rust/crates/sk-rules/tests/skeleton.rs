@@ -64,15 +64,18 @@ fn resolve_entry_runs_preparation_then_validation() {
 }
 
 #[test]
-fn reducer_stubs_report_unported_and_keep_common_steps() {
+fn reducer_branch_refusal_keeps_common_steps() {
+    // Все ветки `switch` перенесены (последними — торговцы, Р6): пустой
+    // payload `MerchantCreated` отвергает нормализатор торговца, а общие шаги
+    // редьюсера идут, как и прежде шли для заглушки.
     let mut state = state();
     let event: sk_core::Event = serde_json::from_value(json!({ "event_type": "MerchantCreated", "payload": {}, "command_id": "c" })).expect("событие");
     let result = sk_rules::reduce::apply_event_checked(&mut state, &event);
-    assert_eq!(result.unwrap_err().message, "reduce:MerchantCreated");
-    assert_eq!(state["state_version"], 5, "общие шаги идут и для неперенесённой ветки");
-    assert!(!sk_rules::reduce::is_ported("MerchantCreated"));
+    assert_eq!(result.unwrap_err().code, "INVALID_MERCHANT_ID");
+    assert_eq!(state["state_version"], 5, "общие шаги идут и после отказа ветки");
+    assert!(sk_rules::reduce::is_ported("MerchantCreated"));
     assert!(sk_rules::reduce::is_ported("DamageApplied"));
     assert!(sk_rules::reduce::is_ported("DieRolled"), "у события без ветки JS — только общие шаги");
-    assert!(!sk_rules::reduce::is_ported("MerchantEconomyClockAdvanced"));
+    assert!(sk_rules::reduce::is_ported("MerchantEconomyClockAdvanced"));
     assert!(!sk_rules::reduce::is_ported("LegacyStateImported"));
 }

@@ -1675,6 +1675,7 @@ dependencies = [
  "sk-core",
  "sk-dice",
  "sk-rules",
+ "sk-talespire",
 ]
 
 [[package]]

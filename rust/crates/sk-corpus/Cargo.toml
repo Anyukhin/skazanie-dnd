@@ -11,3 +11,5 @@ serde_json.workspace = true
 sk-core.workspace = true
 sk-dice.workspace = true
 sk-rules.workspace = true
+# Импорт слэба для `ImportLocationMap`: `sk-rules` не может зависеть от него сам (цикл).
+sk-talespire = { path = "../sk-talespire" }

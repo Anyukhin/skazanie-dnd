@@ -49,9 +49,9 @@ fn main() {
                 eprintln!("укажите тип команды: resolve <каталог> <тип>[,<тип>…]");
                 std::process::exit(2);
             };
-            for kind in kinds.split(',').filter(|kind| !kind.is_empty()) {
-                let report = sk_corpus::check_resolve(&corpus, kind).expect("сверка разбора");
-                println!("{}", report.render(kind));
+            let kinds: Vec<&str> = kinds.split(',').filter(|kind| !kind.is_empty()).collect();
+            for (kind, report) in sk_corpus::check_resolve_many(&corpus, &kinds).expect("сверка разбора") {
+                println!("{}", report.render(&kind));
             }
         }
         "summary" => {

@@ -14,7 +14,7 @@ pub mod normalize;
 pub mod resolve;
 pub mod summary;
 pub use normalize::{check_normalize, NormalizeReport};
-pub use resolve::{check_resolve, ResolveReport};
+pub use resolve::{check_resolve, check_resolve_many, ResolveReport};
 pub use summary::{check_summary, SummaryReport};
 
 /// Одна запись корпуса.

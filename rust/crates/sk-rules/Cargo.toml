@@ -33,6 +33,7 @@ sk-scenario = { path = "../sk-scenario" }
 sk-story = { path = "../sk-story" }
 sk-world-life = { path = "../sk-world-life" }
 sk-encounters = { path = "../sk-encounters" }
+# Р5, Р6: стартовое богатство PHB (`RollCharacterWealth`).
 sk-chargen = { path = "../sk-chargen" }
 sk-narration = { path = "../sk-narration" }
 
