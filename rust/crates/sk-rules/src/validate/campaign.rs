@@ -53,8 +53,23 @@ pub(crate) fn director_halt(error: sk_director::adventure_director::DirectorErro
     }
 }
 
+/// `sk-memory` передаёт `TypeError` JS отказом с этим кодом.
+const WORLD_MEMORY_TYPE_ERROR: &str = "WORLD_MEMORY_TYPE_ERROR";
+
+/// Отказ `validateWorldMemoryCommand`: свой класс — отказ правила, `TypeError`
+/// JS (поле у `null`) — ошибка как есть.
+fn world_memory_halt(error: sk_memory::world_memory::WorldMemoryValidationError) -> Halt {
+    if error.code == WORLD_MEMORY_TYPE_ERROR {
+        return Fault::type_error(error.message).into();
+    }
+    rule(error.message, &error.code)
+}
+
 /// Ошибка `questDecisionEvents`: класс модуля, не `RulesValidationError`.
 pub(crate) fn quest_decision_halt(error: sk_memory::party_decision::QuestDecisionError) -> Halt {
+    if error.code() == WORLD_MEMORY_TYPE_ERROR {
+        return Fault::type_error(error.message()).into();
+    }
     let name = match &error {
         sk_memory::party_decision::QuestDecisionError::Party(_) => "PartyDecisionError",
         sk_memory::party_decision::QuestDecisionError::WorldMemory(_) => "WorldMemoryValidationError",
@@ -67,7 +82,7 @@ pub fn check_world_memory(v: &mut Validation<'_>) -> Step {
     if !WORLD_MEMORY_COMMAND_TYPES.contains(&command_type(v).as_str()) {
         return Ok(());
     }
-    let result = sk_memory::world_memory::validate_world_memory_command(&v.command, v.state, &v.context.json()).map_err(|error| rule(error.message, &error.code))?;
+    let result = sk_memory::world_memory::validate_world_memory_command(&v.command, v.state, &v.context.json()).map_err(world_memory_halt)?;
     assign(&mut v.command, result);
     Ok(())
 }

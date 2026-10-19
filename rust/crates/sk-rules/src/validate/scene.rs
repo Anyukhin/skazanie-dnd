@@ -93,6 +93,17 @@ pub fn check_advance_scene(v: &mut Validation<'_>) -> Step {
     if sk_society::law_and_order::guard_encounter_is_here(v.state, None) {
         return Err(rule("Стража стоит перед отрядом: пока ей не ответили, отряд никуда не уходит", "GUARD_ENCOUNTER_BLOCKS_SCENE"));
     }
+    // `normalizeCommand` JS (4649–4651) держит место `scene_args` и
+    // `party_decision` даже без значения (`command.x = command.x ?? alias`
+    // кладёт `undefined`), а каркас Rust такой ключ удаляет. От места зависит
+    // порядок ключей проверенной команды: восстанавливаем его до присваиваний.
+    if let Some(map) = v.command.as_object_mut() {
+        for key in ["scene_args", "party_decision"] {
+            if !map.contains_key(key) {
+                map.insert(key.into(), Value::Null);
+            }
+        }
+    }
     let args = normalize_scene_advance_args(v.command.get("scene_args")).map_err(Halt::Rule)?;
     let args = sk_scenario::campaign_scenario::scenario_scene_args(v.state, &args);
     set_field(&mut v.command, "scene_args", args);

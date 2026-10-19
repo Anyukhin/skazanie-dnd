@@ -22,6 +22,10 @@ fn director_halt(error: sk_director::adventure_director::DirectorError) -> Halt 
 
 /// Ошибка `questDecisionEvents`: класс модуля, не `RulesValidationError`.
 fn quest_decision_halt(error: sk_memory::party_decision::QuestDecisionError) -> Halt {
+    // `sk-memory` передаёт `TypeError` JS отказом с этим кодом.
+    if error.code() == "WORLD_MEMORY_TYPE_ERROR" {
+        return Fault::type_error(error.message()).into();
+    }
     let name = match &error {
         sk_memory::party_decision::QuestDecisionError::Party(_) => "PartyDecisionError",
         sk_memory::party_decision::QuestDecisionError::WorldMemory(_) => "WorldMemoryValidationError",
