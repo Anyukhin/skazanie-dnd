@@ -135,6 +135,7 @@ fn event_difference(expected: &[Value], actual: &[Value]) -> String {
 /// Сверка разбора команд одного типа.
 pub fn check_resolve(corpus: &Corpus, kind: &str) -> std::io::Result<ResolveReport> {
     let mut report = ResolveReport::default();
+    let assume = std::env::var("SK_CORPUS_ASSUME_NORMALIZED").is_ok_and(|value| value == "1");
     for record in corpus.records()? {
         if record.command_type() != kind {
             continue;
@@ -148,11 +149,18 @@ pub fn check_resolve(corpus: &Corpus, kind: &str) -> std::io::Result<ResolveRepo
         let mut recording = sk_rules::dice_record::Recording::new(&mut replay);
         let mut skipped = Vec::new();
         let command_id = record.outcome.get("events").and_then(Value::as_array).and_then(|events| events.first()).and_then(|event| event.get("command_id")).map(|id| js::string(Some(id)));
-        let result = sk_rules::normalize::assume_normalized(|| {
-            let command = validate_ported(&record.command, &state, &context, command_id, &mut skipped)?;
+        // Нормализация перенесена (Р4б): разбор нормализует состояние сам, как
+        // `resolveCommandInternal`. `SK_CORPUS_ASSUME_NORMALIZED=1` — прежний
+        // режим (состояние корпуса считается уже нормализованным).
+        let mut run = || {
+            // JS: `resolveCommandInternal` нормализует состояние, `validateCommand`
+            // — ещё раз (нормализация не всегда идемпотентна).
+            let validated_state = if assume { state.clone() } else { sk_rules::normalize::normalize_campaign_state(&sk_rules::normalize::normalize_campaign_state(&state)?)? };
+            let command = validate_ported(&record.command, &validated_state, &context, command_id.clone(), &mut skipped)?;
             let mut uuid = sequence_uuids("corpus-uuid");
             sk_rules::resolve::vitals::resolve_branch_without_tail(command, &state, &mut recording, &context, &mut uuid)
-        });
+        };
+        let result = if assume { sk_rules::normalize::assume_normalized(run) } else { run() };
         let any_skipped = !skipped.is_empty();
         for name in skipped {
             *report.skipped_blocks.entry(name.to_string()).or_default() += 1;

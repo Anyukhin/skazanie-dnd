@@ -27,6 +27,9 @@ use crate::scene_maps::{level_key, scene_location_id, scene_map_for_location, sc
 /// `MAX_LEVEL_STASHES`: сколько стэшей неактивных этажей держит состояние.
 pub const MAX_LEVEL_STASHES: usize = 32;
 
+/// `LOCATION_MAP_IMPORT_SCHEMA_VERSION` (2490): версия схемы `LocationMapImported`.
+pub const LOCATION_MAP_IMPORT_SCHEMA_VERSION: i64 = 1;
+
 /// `declaredSceneLevels(state)` (2424).
 pub fn declared_scene_levels(state: &Value) -> Vec<Value> {
     state.get("scene").and_then(|scene| scene.get("levels")).and_then(Value::as_array).cloned().unwrap_or_default()
