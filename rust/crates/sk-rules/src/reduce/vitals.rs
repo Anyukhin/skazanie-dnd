@@ -2,7 +2,7 @@
 //! гибель и воскрешение, временные хиты, ресурсы.
 
 use serde_json::{json, Map, Value};
-use sk_core::game::{actor_hp, actor_max_hp, actor_position, combat_active, combat_actor_kind, condition_id, conditions, conditions_mut, find_actor, has_condition, is_enemy_actor, is_living_actor, mechanics_mut, player_actor, replace_actor};
+use sk_core::game::{actor_hp, actor_max_hp, actor_position, combat_active, combat_actor_kind, condition_id, conditions, conditions_mut, find_actor, has_condition, is_enemy_actor, mechanics_mut, player_actor, replace_actor};
 use sk_core::js::{is_true, s, safe_int, slice, truthy, unique_strings};
 use sk_core::Event;
 
@@ -49,56 +49,9 @@ fn resting_reason(state: &Value, target: &str) -> String {
     s(sk_core::game::mechanics(state).get("resting").and_then(|r| r.get(target)).and_then(|rest| rest.get("reason")))
 }
 
-/// `syncNpcWorldVital(state, npcId, { hp, maxHp, fallback })` — живучесть
-/// именного NPC в `state.npc_world.vitals`.
-pub(crate) fn sync_npc_world_vital(state: &mut Value, npc_id: &str, hp: Option<&Value>, max_hp: Option<&Value>, fallback: Option<(i64, i64, bool)>) {
-    if npc_id.is_empty() {
-        return;
-    }
-    let world = sk_core::js::object_mut(state, "npc_world");
-    let vitals = world.entry("vitals").or_insert_with(sk_core::js::obj);
-    let before = vitals.get(npc_id).cloned();
-    let (before_hp, before_max) = match (&before, fallback) {
-        (Some(record), _) => (safe_int(record.get("hp"), 0), safe_int(record.get("max_hp"), 1)),
-        (None, Some((hp, max, _))) => (hp, max),
-        (None, None) => (0, 1),
-    };
-    let maximum = safe_int(max_hp, before_max).max(1);
-    let current = safe_int(hp, before_hp).max(0).min(maximum);
-    if let Some(map) = vitals.as_object_mut() {
-        map.insert(npc_id.to_string(), json!({ "hp": current, "max_hp": maximum, "alive": current > 0 }));
-    }
-}
-
-/// `syncAuthoredNpcVital`: противник, порождённый именным NPC.
-fn sync_authored_npc_vital(state: &mut Value, target: &str, hp: Option<&Value>, max_hp: Option<&Value>) {
-    let Some(enemy) = state.get("enemies").and_then(Value::as_array).and_then(|list| list.iter().find(|enemy| sk_core::game::actor_id(enemy) == target)).cloned() else { return };
-    let npc_id = s(enemy.get("origin").and_then(|origin| origin.get("npc_id")));
-    if npc_id.is_empty() {
-        return;
-    }
-    let fallback = (actor_hp(&enemy), actor_max_hp(&enemy), is_living_actor(&enemy));
-    sync_npc_world_vital(state, &npc_id, hp, max_hp, Some(fallback));
-}
-
-/// `syncSocialNpcVital` — только если событие явно про социального NPC.
-fn sync_social_npc_vital(state: &mut Value, target: &str, hp: Option<&Value>, max_hp: Option<&Value>, npc_id: Option<&Value>) {
-    if s(npc_id) != target || target.is_empty() {
-        return;
-    }
-    let known = state.get("social").and_then(|social| social.get("npcs")).and_then(Value::as_array).is_some_and(|npcs| npcs.iter().any(|npc| s(npc.get("id")) == target));
-    if !known {
-        return;
-    }
-    let before = state.get("npc_world").and_then(|world| world.get("vitals")).and_then(|vitals| vitals.get(target)).cloned();
-    if let Some(record) = &before {
-        if record.get("alive") == Some(&Value::Bool(false)) || safe_int(record.get("hp"), 0) <= 0 {
-            return;
-        }
-    }
-    let fallback = before.as_ref().map(|record| (safe_int(record.get("hp"), 0), safe_int(record.get("max_hp"), 1), true));
-    sync_npc_world_vital(state, target, hp, max_hp, fallback);
-}
+// Живучесть именных NPC (`syncNpcWorldVital`, `syncAuthoredNpcVital`,
+// `syncSocialNpcVital`) — `combat::monsters` (Р3).
+use crate::combat::monsters::{sync_authored_npc_vital, sync_social_npc_vital};
 
 pub fn damage_applied(state: &mut Value, event: &Event) {
     let target = target_of(event);

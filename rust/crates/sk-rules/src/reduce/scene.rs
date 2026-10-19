@@ -90,39 +90,8 @@ fn default_combat() -> Value {
 
 // --- память приключения: публичная часть — `sk-director`, частная — здесь --
 
-/// Поля приключения, которые видит только ведущий (`privateAdventureBuckets`, 1256).
-const PRIVATE_ADVENTURE_FIELDS: [&str; 18] = [
-    "hidden_information",
-    "hiddenInformation",
-    "gm_only",
-    "gmOnly",
-    "gm_notes",
-    "gmNotes",
-    "npc_private",
-    "npcPrivate",
-    "private_notes",
-    "privateNotes",
-    "specific_player",
-    "specificPlayer",
-    "party",
-    "secret",
-    "secrets",
-    "unrevealed",
-    "true_state",
-    "trueState",
-];
-
-/// `privateAdventureBuckets(value)` (1256).
-fn private_adventure_buckets(value: Option<&Value>) -> Map<String, Value> {
-    let Some(Value::Object(source)) = value else { return Map::new() };
-    let mut buckets = Map::new();
-    for key in PRIVATE_ADVENTURE_FIELDS {
-        if let Some(field) = source.get(key) {
-            buckets.insert(key.into(), field.clone());
-        }
-    }
-    buckets
-}
+/// `privateAdventureBuckets(value)` (1256) — `normalize::scene`.
+use crate::normalize::scene::private_adventure_buckets;
 
 // --- смена сцены, импорт карты, этажи --------------------------------------
 
@@ -431,18 +400,8 @@ pub(super) fn map_level_changed(state: &mut Value, event: &Event) -> Reduced {
 
 // --- встреча, бой, перемещение ---------------------------------------------
 
-/// `encounterWithoutLoadouts(encounter)` (1903): состав встречи без инвентарей.
-fn encounter_without_loadouts(encounter: &Value) -> Value {
-    let mut copy = encounter.clone();
-    if let Some(Value::Array(enemies)) = copy.get_mut("enemies") {
-        for enemy in enemies.iter_mut() {
-            if let Some(map) = enemy.as_object_mut() {
-                map.shift_remove("loadout");
-            }
-        }
-    }
-    copy
-}
+/// `encounterWithoutLoadouts(encounter)` (1903) — `normalize::campaign`.
+use crate::normalize::campaign::encounter_without_loadouts;
 
 /// `EncounterCreated` (26059–26089).
 pub(super) fn encounter_created(state: &mut Value, event: &Event) -> Reduced {

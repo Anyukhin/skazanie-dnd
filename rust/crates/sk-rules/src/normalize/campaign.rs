@@ -4,8 +4,9 @@
 //! JS: `server/rules-engine.mjs`, 1663–2219 (`inferredItemCombat`,
 //! `normalizeInventory`, `normalizeEnemyKnowledge`, `normalizeProgression`,
 //! `normalizeSceneInteractions`, `defaultMechanics`, `encounterWithoutLoadouts`,
-//! `withoutDerivedPlayerFields`, `normalizeCampaignState`) и 23603
-//! (`refreshPlayerDerivedState`).
+//! `withoutDerivedPlayerFields`, `normalizeCampaignState`). Пересчёт
+//! производных полей после события (`refreshPlayerDerivedState`, 23603) —
+//! `reduce/items.rs`.
 //!
 //! Порядок ключей — как у JS: поле, которое уже было в объекте, остаётся на
 //! своём месте (`IndexMap::insert`), новое встаёт в конец, удаление —
@@ -876,44 +877,3 @@ fn adventure(state: &Value) -> Value {
     adventure.insert("visitedLocations".into(), js::strings_value(visited));
     Value::Object(adventure)
 }
-
-/// `refreshPlayerDerivedState(state, actorIds)` (23603): лист героя,
-/// заклинания, боевые действия и груз пересчитываются; `armor`, `speed`,
-/// `proficiency` — из нового листа. Отказ листа оставляет прежний лист;
-/// `TypeError` груза обрывает событие, как в JS (`state.players` не меняется).
-pub fn refresh_player_derived_state(state: &mut Value, actor_ids: &[String]) -> Result<(), Halt> {
-    let requested: std::collections::HashSet<&str> = actor_ids.iter().map(String::as_str).collect();
-    let players: Vec<Value> = state.get("players").and_then(Value::as_array).cloned().unwrap_or_default();
-    let options = sk_combat_content::combat_actions::class_resource_options_for(Some(state)).to_value();
-    let spell_options = json!({ "rulesetId": state.get("ruleset_id").cloned().unwrap_or(Value::Null) });
-    let mut next = Vec::with_capacity(players.len());
-    for actor in players {
-        let id = actor_id(&actor);
-        if !requested.is_empty() && !requested.contains(id.as_str()) {
-            next.push(actor);
-            continue;
-        }
-        let previous = nullish(actor.get("characterSheet"), None).cloned().unwrap_or(Value::Null);
-        let sheet = sk_character::character_lifecycle::derive_character_sheet(Some(&actor), Some(&options)).unwrap_or(previous);
-        let spells = sk_combat_content::combat_spells::combat_spells_for(Some(&actor), Some(&spell_options));
-        let mut actions = sk_combat_content::combat_actions::combat_actions_for(Some(&actor));
-        if let Some(continuation) = crate::enervation_link::enervation_continuation_action_for(state, Some(&Value::String(id.clone())), None) {
-            actions.push(continuation);
-        }
-        let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor)).map_err(|failure| type_error(failure.message()))?;
-        let mut fields = spread_of(Some(&actor));
-        if truthy(Some(&sheet)) {
-            fields.insert("armor".into(), sheet.get("armor_class").and_then(|armor| armor.get("value")).cloned().unwrap_or(Value::Null));
-            fields.insert("speed".into(), sheet.get("speed").and_then(|speed| speed.get("value")).cloned().unwrap_or(Value::Null));
-            fields.insert("proficiency".into(), sheet.get("proficiency_bonus").cloned().unwrap_or(Value::Null));
-        }
-        fields.insert("characterSheet".into(), sheet);
-        fields.insert("combatSpells".into(), Value::Array(spells));
-        fields.insert("combatActions".into(), Value::Array(actions));
-        fields.insert("inventoryLoad".into(), load);
-        next.push(Value::Object(fields));
-    }
-    state["players"] = Value::Array(next);
-    Ok(())
-}
-
