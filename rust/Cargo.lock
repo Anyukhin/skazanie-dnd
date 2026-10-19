@@ -1925,6 +1925,7 @@ dependencies = [
  "sk-items",
  "sk-items-life",
  "sk-memory",
+ "sk-narration",
  "sk-npc-world",
  "sk-ruleset",
  "sk-scenario",
