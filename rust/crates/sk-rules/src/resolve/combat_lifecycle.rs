@@ -165,6 +165,11 @@ fn initiative_entry(r: &mut Resolve<'_>, state: &Value, id: &str) -> Result<Valu
         .collect();
     let feral_instinct = !game::is_enemy_actor(state, id) && crate::tables::character_class_key(&actor).as_deref() == Some("barbarian") && js::safe_int(actor.get("level"), 1) >= 7;
     let advantage = !item_sources.is_empty() || feral_instinct;
+    // `Number(initiative_bonus)` бывает NaN: JS отдаёт его костям, и `rollD20`
+    // отказывает до броска. В JSON NaN не записать — отказ тот же, здесь.
+    if !modifier.is_finite() {
+        return Err(Fault::new("DiceExpressionError", "Некорректный модификатор d20").into());
+    }
     let request = json!({ "modifier": js::num(modifier), "purpose": "initiative", "actorId": id, "advantage": advantage, "visibility": "public" });
     let roll = {
         use crate::dice_record::RulesDice;
