@@ -975,13 +975,18 @@ fn opportunity_attack(r: &mut Resolve<'_>, a: &Act) -> Step {
 }
 
 /// `READIED_TRIGGERS[trigger]`: у ключей `Object.prototype` JS находит
-/// функцию (в JSON её нет) или сам прототип (`{}`).
-fn readied_trigger_label(trigger: &str) -> Option<Option<Value>> {
+/// сам прототип (`{}`) или функцию — тогда `ActionReadied` несёт функцию, и
+/// первое же `structuredClone` события падает `DataCloneError` (`Err`).
+fn readied_trigger_label(trigger: &str) -> Option<Result<Value, Halt>> {
     if let Some((_, label)) = READIED_TRIGGERS.iter().find(|(key, _)| *key == trigger) {
-        return Some(Some(Value::String((*label).into())));
+        return Some(Ok(Value::String((*label).into())));
     }
     if OBJECT_PROTOTYPE_KEYS.contains(&trigger) {
-        return Some(if trigger == "__proto__" { Some(js::obj()) } else { None });
+        if trigger == "__proto__" {
+            return Some(Ok(js::obj()));
+        }
+        let name = if trigger == "constructor" { "Object".to_string() } else { trigger.to_string() };
+        return Some(Err(Fault::new("DataCloneError", format!("function {name}() {{ [native code] }} could not be cloned.")).into()));
     }
     None
 }
@@ -1048,7 +1053,7 @@ fn ready_action(r: &mut Resolve<'_>, a: &Act) -> Step {
         r.events.push(event_from(&a.rules(&[rule_ids::CONCENTRATION]), "ConcentrationStarted", Some(json!({ "effect_id": effect_id })), Some(&a.actor_targets())));
         let payload = object(vec![
             ("trigger", Some(Value::String(trigger.clone()))),
-            ("trigger_label", label.clone()),
+            ("trigger_label", Some(label?)),
             ("readied_action_id", Some(Value::String("readied-spell".into()))),
             ("spell_id", spell.get("id").cloned()),
             ("spell_name", spell.get("name").cloned()),
@@ -1070,7 +1075,7 @@ fn ready_action(r: &mut Resolve<'_>, a: &Act) -> Step {
     }
     let payload = object(vec![
         ("trigger", Some(Value::String(trigger.clone()))),
-        ("trigger_label", label),
+        ("trigger_label", Some(label?)),
         ("readied_action_id", Some(Value::String("readied-attack".into()))),
         ("item_id", Some(coalesce(&[a.command.get("item_id")]).cloned().unwrap_or(Value::Null))),
         ("round", Some(round)),
