@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 81012 из 142937.
+Строк JS в крейтах, которые уже есть: 109273 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -47,7 +47,7 @@
 | 9 | `sk-narration` | перенесён | 1488 | `combat-narration`, `scene-narration`, `encounter-narration`, `scene-summary` |
 | 10 | `sk-story` | перенесён | 3029 | `campaign-dialogues`, `campaign-loop-policy`, `intent-parser`, `llm-json-schemas`, `map-library` |
 | 11 | `sk-director` | перенесён | 3684 | `adventure-director`, `campaign-lifecycle`, `scene-memory`, `director-scene-transition`, `loot-containers` |
-| 13 | `sk-rules` | начат: Р0–Р4б слиты (каркас, геометрия, состояния и урон, оружие и ход, нормализация, replay, редьюсер кроме торговцев); корпус редьюсера 6806/6852; в работе Р5–Р7 | 28261 | `rules-engine`, `rules/tactical-geometry` |
+| 13 | `sk-rules` | перенесён | 28261 | `rules-engine`, `rules/tactical-geometry` |
 | 14 | `sk-tactics` | в очереди | 3373 | `adjudicator`, `combat-forecast-view`, `party-tactics`, `security`, `cutover-audit`, `combat-lab-setup`, `combat-lab` |
 | 15 | `sk-projection` | в очереди | 2989 | `viewer-projection`, `trace-store` |
 | 15 | `sk-agents` | в очереди | 11269 | `campaign-bootstrap`, `campaign-recap`, `creative-director`, `hero-hooks`, `lore-author`, `lore-voice`, `npc-controller`, `scene-architect`, `director-agent`, `free-action-adjudication`, `npc-social-controller`, `player-request-router`, `action-adjudicator`, `narrator` |

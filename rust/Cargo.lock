@@ -2075,6 +2075,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "sk-tactics"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "sk-chargen",
+ "sk-combat-base",
+ "sk-combat-content",
+ "sk-core",
+ "sk-dice",
+ "sk-economy",
+ "sk-geometry",
+ "sk-map-core",
+ "sk-narration-base",
+ "sk-rules",
+ "sk-ruleset",
+ "sk-store",
+ "sk-story",
+ "sk-tactical",
+ "sk-world-story",
+ "sk-world-time",
+]
+
+[[package]]
 name = "sk-talespire"
 version = "0.1.0"
 dependencies = [
