@@ -9,7 +9,7 @@ use sk_rules::context::{sequence_uuids, Context};
 use sk_rules::dice_record::ServiceDice;
 use sk_rules::normalize::{assume_normalized, normalize_campaign_state};
 use sk_rules::pause::Halt;
-use sk_rules::validate::{validate_command, validate_normalized, BLOCKS};
+use sk_rules::validate::{validate_command, validate_normalized};
 
 fn state() -> Value {
     json!({
@@ -40,18 +40,12 @@ fn common_blocks_refuse_before_any_stub() {
     let mut uuid = sequence_uuids("u");
     assert_eq!(code(validate_normalized(&json!({ "command_type": "Teleport", "expected_state_version": 4 }), &state(), &context, &mut uuid)), "COMMAND_NOT_ALLOWED");
     assert_eq!(code(validate_normalized(&json!({ "command_type": "DeclareAction", "actor_id": "hero", "expected_state_version": 3 }), &state(), &context, &mut uuid)), "STATE_VERSION_CONFLICT");
-    // Первая заглушка — какой-то блок после общих (блок 8 перенесён в Р5);
-    // номер не закрепляется, чтобы перенос следующих блоков тест не ломал.
+    // Волна 3 (Р8–Р11) перенесла последние блоки: заглушек в проверке нет,
+    // команда проходит все блоки без `UNPORTED`.
     let result = validate_normalized(&json!({ "command_type": "DeclareAction", "actor_id": "hero", "expected_state_version": 4 }), &state(), &context, &mut uuid);
-    match result {
-        Err(Halt::Rule(error)) => {
-            assert_eq!(error.code, "UNPORTED");
-            let stub = BLOCKS.iter().find(|block| format!("validate:{}", block.name) == error.message).expect("заглушка — блок проверки");
-            assert!(stub.index > 8, "общие блоки и блок 8 перенесены: {}", stub.name);
-        }
-        other => panic!("ожидалась заглушка блока проверки: {other:?}"),
-    }
-    assert!(validate_command(&json!({ "command_type": "DeclareAction" }), &state(), &context, &mut uuid).unwrap_err().is_unported(), "блок проверки — заглушка");
+    assert!(!matches!(&result, Err(halt) if halt.is_unported()), "блок проверки — заглушка: {result:?}");
+    let raw = validate_command(&json!({ "command_type": "DeclareAction" }), &state(), &context, &mut uuid);
+    assert!(!matches!(&raw, Err(halt) if halt.is_unported()), "блок проверки — заглушка: {raw:?}");
 }
 
 #[test]
