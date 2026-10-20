@@ -242,9 +242,13 @@ pub fn check_resolve_many(corpus: &Corpus, kinds: &[&str]) -> std::io::Result<Ve
                 // хвост последствий и режимы реакций; блоки-заглушки проверки
                 // пропускает мягкая проверка. `SK_CORPUS_BRANCH_ONLY=1` —
                 // прежний режим (ветка без хвоста).
-                let mut known = command_id.clone();
+                // Сначала `command_id` для `normalizeCommand`, затем
+                // `randomUUID()` разбора — UUID из событий исхода JS (Р6).
+                let input_has_id = record.command.get("command_id").is_some_and(|id| !id.is_null() && id.as_str() != Some(""));
+                let mut known = if input_has_id { None } else { command_id.clone() };
+                let mut recorded = outcome_uuids(&record.outcome, command_id.as_deref()).into_iter();
                 let mut fallback = sequence_uuids("corpus-uuid");
-                let mut uuid = move || known.take().unwrap_or_else(&mut fallback);
+                let mut uuid = move || known.take().or_else(|| recorded.next()).unwrap_or_else(&mut fallback);
                 sk_rules::resolve::api::take_skipped_blocks();
                 let result = sk_rules::resolve::api::with_lenient_validation(|| sk_rules::resolve::api::resolve_command(&record.command, &state, &mut recording, &context, &mut uuid));
                 skipped.extend(sk_rules::resolve::api::take_skipped_blocks());
