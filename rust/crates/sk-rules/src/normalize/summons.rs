@@ -61,7 +61,8 @@ fn expires_at(summon: &Value) -> Option<f64> {
     if !has_summon_lifecycle_version(summon) {
         return None;
     }
-    let raw = nullish(summon.get("expires_at_seconds"), summon.get("expiresAtSeconds"))?;
+    // `rawExpiresAt == null`: оба поля `null` — срока нет (а не `Number(null) === 0`).
+    let raw = nullish(summon.get("expires_at_seconds"), summon.get("expiresAtSeconds")).filter(|raw| !raw.is_null())?;
     let value = js::number(Some(raw));
     value.is_finite().then_some(value)
 }
