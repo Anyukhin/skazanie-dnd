@@ -213,6 +213,12 @@ fn resolve_branches_match_js() {
     let mut waiting = 0;
     let mut checked = 0;
     for case in cases {
+        // Ветка незнакомца — Р11 (`resolve/stranger.rs`, эталоны `r11.json.gz`).
+        // Генератор Р6 исполнял в JS только ветки Р6, у незнакомца там нет
+        // `case`, и эталон записал «ok без событий»; Р6 сверяет лишь блок 24.
+        if js::s(case["command"].get("command_type")) == "StageScenarioStranger" {
+            continue;
+        }
         let raw = state_of(case);
         let context = Context::from_json(&case["context"]);
         let values: Vec<i64> = case["v"].as_array().expect("кости").iter().filter_map(Value::as_i64).collect();
