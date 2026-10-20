@@ -17,7 +17,7 @@
 use serde_json::Value;
 use sk_core::js;
 use sk_core::Event;
-use sk_society::retention_context::{retention_context_active, retention_mode, with_retention_mode, RETENTION_REDUCER_VERSION};
+pub use sk_society::retention_context::{retention_context_active, retention_mode, with_retention_mode, RETENTION_REDUCER_VERSION};
 
 use crate::normalize::normalize_campaign_state;
 use crate::pause::{Fault, Halt};
