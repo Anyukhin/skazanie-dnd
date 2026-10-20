@@ -159,6 +159,17 @@ fn recorded_context(kind: &str, context: &Value, command: &Value, outcome: &Valu
     context
 }
 
+/// `command_id` самой команды по первому событию исхода. Первое событие может
+/// принадлежать вложенной команде (`<id>:opening-combat`, `<id>:attack:1`,
+/// `<id>:opportunity:<кто>`); id, выданный `randomUUID`, — префикс-UUID.
+fn top_command_id(id: &str) -> String {
+    let bytes = id.as_bytes();
+    let uuid_prefix = bytes.len() > 37
+        && bytes[36] == b':'
+        && bytes[..36].iter().enumerate().all(|(index, byte)| if matches!(index, 8 | 13 | 18 | 23) { *byte == b'-' } else { byte.is_ascii_hexdigit() });
+    if uuid_prefix { id[..36].to_string() } else { id.to_string() }
+}
+
 /// `randomUUID()` разбора: UUID v4 из событий исхода JS в порядке появления
 /// (кроме `command_id`) — так ветка с перепродажей или выдачей предмета
 /// получает тот же id, что и JS.
@@ -231,7 +242,7 @@ pub fn check_resolve_many(corpus: &Corpus, kinds: &[&str]) -> std::io::Result<Ve
         let mut replay = sk_rules::dice_record::Replay::new(&mut base, transcript.clone(), None, false);
         let mut recording = sk_rules::dice_record::Recording::new(&mut replay);
         let mut skipped = Vec::new();
-        let command_id = record.outcome.get("events").and_then(Value::as_array).and_then(|events| events.first()).and_then(|event| event.get("command_id")).map(|id| js::string(Some(id)));
+        let command_id = record.outcome.get("events").and_then(Value::as_array).and_then(|events| events.first()).and_then(|event| event.get("command_id")).map(|id| js::string(Some(id))).map(|id| top_command_id(&id));
         // Нормализация перенесена (Р4б): разбор нормализует состояние сам, как
         // `resolveCommandInternal`. `SK_CORPUS_ASSUME_NORMALIZED=1` — прежний
         // режим (состояние корпуса считается уже нормализованным).

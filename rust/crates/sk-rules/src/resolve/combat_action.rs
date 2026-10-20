@@ -444,7 +444,7 @@ fn run(r: &mut Resolve<'_>, a: &Act) -> Step {
             let mut extra = a.window_id_field();
             extra.push(("economy_consumed_by_attack", Value::Bool(false)));
             r.events.push(a.action_event(extra));
-            return release_attack(r, a, None, Vec::new(), |context| context.set("reactionResolution", Value::Bool(true)));
+            return release_attack(r, a, None, vec![("reaction_attack", Value::Bool(true))], |context| context.set("reactionResolution", Value::Bool(true)));
         }
         "opportunity-attack" if has_window => return opportunity_attack(r, a),
         "ready-action" => return ready_action(r, a),
