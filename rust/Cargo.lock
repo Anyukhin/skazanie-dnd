@@ -1541,6 +1541,46 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
+name = "sk-agents"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "sk-agents-base",
+ "sk-attention",
+ "sk-character",
+ "sk-chargen",
+ "sk-combat-content",
+ "sk-core",
+ "sk-director",
+ "sk-economy",
+ "sk-encounters",
+ "sk-geometry",
+ "sk-items",
+ "sk-map-core",
+ "sk-memory",
+ "sk-narration",
+ "sk-narration-base",
+ "sk-npc-world",
+ "sk-projection",
+ "sk-rules",
+ "sk-ruleset",
+ "sk-scenario",
+ "sk-scene-base",
+ "sk-social",
+ "sk-society",
+ "sk-store",
+ "sk-story",
+ "sk-tactical",
+ "sk-tactics",
+ "sk-themes",
+ "sk-world-life",
+ "sk-world-story",
+ "sk-world-time",
+]
+
+[[package]]
 name = "sk-agents-base"
 version = "0.1.0"
 dependencies = [
@@ -1882,6 +1922,37 @@ dependencies = [
  "sk-social",
  "sk-society",
  "sk-tactical",
+]
+
+[[package]]
+name = "sk-projection"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "serde",
+ "serde_json",
+ "sk-attention",
+ "sk-chargen",
+ "sk-combat-content",
+ "sk-core",
+ "sk-director",
+ "sk-economy",
+ "sk-encounters",
+ "sk-geometry",
+ "sk-items",
+ "sk-memory",
+ "sk-npc-world",
+ "sk-rules",
+ "sk-ruleset",
+ "sk-scene-base",
+ "sk-social",
+ "sk-society",
+ "sk-story",
+ "sk-tactical",
+ "sk-tactics",
+ "sk-world-life",
+ "sk-world-story",
+ "sk-world-time",
 ]
 
 [[package]]
