@@ -369,7 +369,11 @@ impl EventStore {
     fn with_connection(conn: Connection, reducer: Arc<dyn Reducer>, options: StoreOptions) -> StoreResult<Self> {
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        // FULL, а не NORMAL: в WAL с NORMAL последний коммит может откатиться
+        // после сбоя питания или краха ОС, и сторож хвоста журнала этого не
+        // увидит. JS делает fsync перед rename (`event-store.mjs`), целостность
+        // данных — первый приоритет (`AGENTS.md` §9).
+        conn.pragma_update(None, "synchronous", "FULL")?;
         conn.execute_batch(SCHEMA)?;
         Ok(Self { inner: Mutex::new(Inner { conn, head_cache: IndexMap::new() }), reducer, cells: Arc::new(NoMapCells), options })
     }
