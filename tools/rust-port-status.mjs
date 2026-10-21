@@ -66,6 +66,8 @@ const PLAN = [
 const PARTIAL = {
   'sk-projection': 'каркас; в работе П1 (viewer-projection, trace-store)',
   'sk-agents': 'каркас и таблицы подписей рассказчика; в работе А1, А2, затем А3–А5',
+  'sk-turns': 'каркас; ждёт npc-controller (А2)',
+  'sk-orchestrator': 'каркас; ждёт проекцию, агентов и ходы NPC',
   'sk-server': 'вход, сессии, админка, раздача клиента',
 }
 

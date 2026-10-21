@@ -51,8 +51,8 @@
 | 14 | `sk-tactics` | перенесён | 3373 | `adjudicator`, `combat-forecast-view`, `party-tactics`, `security`, `cutover-audit`, `combat-lab-setup`, `combat-lab` |
 | 15 | `sk-projection` | начат: каркас; в работе П1 (viewer-projection, trace-store) | 2989 | `viewer-projection`, `trace-store` |
 | 15 | `sk-agents` | начат: каркас и таблицы подписей рассказчика; в работе А1, А2, затем А3–А5 | 11269 | `campaign-bootstrap`, `campaign-recap`, `creative-director`, `hero-hooks`, `lore-author`, `lore-voice`, `npc-controller`, `scene-architect`, `director-agent`, `free-action-adjudication`, `npc-social-controller`, `player-request-router`, `action-adjudicator`, `narrator` |
-| 16 | `sk-turns` | в очереди | 2297 | `npc-turn-scheduler`, `combat-turn-coordinator` |
-| 18 | `sk-orchestrator` | в очереди | 6443 | `autonomous-orchestrator`, `game-orchestrator` |
+| 16 | `sk-turns` | начат: каркас; ждёт npc-controller (А2) | 2297 | `npc-turn-scheduler`, `combat-turn-coordinator` |
+| 18 | `sk-orchestrator` | начат: каркас; ждёт проекцию, агентов и ходы NPC | 6443 | `autonomous-orchestrator`, `game-orchestrator` |
 | 20 | `sk-server` | начат: вход, сессии, админка, раздача клиента | 6799 | `index`, `routes/map-import-routes`, `routes/combat-lab-routes` |
 
 Не переносятся: `rules-corpus` — запись корпуса паритета — инструмент JS; `dev` — запуск JS-разработки; `autonomy-eval` — стенд оценки JS; `migrations/001-event-engine` — до-событийные комнаты; Rust импортирует событийное хранилище; `migrations/run` — запуск миграций JS.
