@@ -5,7 +5,7 @@
 «Перенесён» значит, что крейт есть в `rust/crates` (готовность модулей внутри
 крейта — его тесты и отчёт исполнителя).
 
-Строк JS в крейтах, которые уже есть: 115635 из 142937.
+Строк JS в крейтах, которые уже есть: 126904 из 142937.
 
 | Волна | Крейт | Статус | Строк JS | Модули `server/` |
 | --- | --- | --- | --- | --- |
@@ -50,7 +50,7 @@
 | 13 | `sk-rules` | перенесён | 28261 | `rules-engine`, `rules/tactical-geometry` |
 | 14 | `sk-tactics` | перенесён | 3373 | `adjudicator`, `combat-forecast-view`, `party-tactics`, `security`, `cutover-audit`, `combat-lab-setup`, `combat-lab` |
 | 15 | `sk-projection` | перенесён | 2989 | `viewer-projection`, `trace-store` |
-| 15 | `sk-agents` | начат: слиты А1 (создание кампании, рекап, критический момент, лор) и А2 (Режиссёр, архитектор сцены, мораль NPC, зацепки, маршрутизатор); в работе А3–А5 | 11269 | `campaign-bootstrap`, `campaign-recap`, `creative-director`, `hero-hooks`, `lore-author`, `lore-voice`, `npc-controller`, `scene-architect`, `director-agent`, `free-action-adjudication`, `npc-social-controller`, `player-request-router`, `action-adjudicator`, `narrator` |
+| 15 | `sk-agents` | перенесён | 11269 | `campaign-bootstrap`, `campaign-recap`, `creative-director`, `hero-hooks`, `lore-author`, `lore-voice`, `npc-controller`, `scene-architect`, `director-agent`, `free-action-adjudication`, `npc-social-controller`, `player-request-router`, `action-adjudicator`, `narrator` |
 | 16 | `sk-turns` | начат: каркас; в работе Н1 | 2297 | `npc-turn-scheduler`, `combat-turn-coordinator` |
 | 18 | `sk-orchestrator` | начат: каркас; ждёт проекцию, агентов и ходы NPC | 6443 | `autonomous-orchestrator`, `game-orchestrator` |
 | 20 | `sk-server` | начат: вход, сессии, админка, раздача клиента | 6799 | `index`, `routes/map-import-routes`, `routes/combat-lab-routes` |
