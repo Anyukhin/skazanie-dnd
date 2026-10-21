@@ -898,8 +898,8 @@ pub fn provider_request_body(provider: &str, body: &Value) -> Value {
 /// Область вызова: крючки и снимок контекста кампании. Живёт в локальном
 /// хранилище задачи на время опроса future вызова.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct CallScope {
-    pub(crate) hooks: CallHooks,
+pub struct CallScope {
+    pub hooks: CallHooks,
     pub(crate) campaign: CampaignSnapshot,
 }
 
@@ -909,7 +909,7 @@ tokio::task_local! {
 
 impl CallScope {
     /// Текущая область (пустая вне вызова).
-    pub(crate) fn current() -> CallScope {
+    pub fn current() -> CallScope {
         CALL_SCOPE.try_with(Clone::clone).unwrap_or_default()
     }
 
