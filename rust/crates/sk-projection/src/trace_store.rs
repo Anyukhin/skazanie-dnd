@@ -132,7 +132,11 @@ fn or_default(value: Option<&Value>, fallback: Value) -> Value {
 /// `atomicJson(file, value)`: запись во временный файл и переименование.
 fn atomic_json(file: &Path, value: &Value) -> TraceStoreResult<()> {
     let temporary = PathBuf::from(format!("{}.{}.tmp", file.display(), hash::uuid_v4()));
-    fs::write(&temporary, js::stringify_pretty(value, 2))?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    io::Write::write_all(&mut options.open(&temporary)?, js::stringify_pretty(value, 2).as_bytes())?;
     fs::rename(&temporary, file)?;
     Ok(())
 }
