@@ -210,7 +210,7 @@ static RU_COLLATOR: LazyLock<CollatorBorrowed<'static>> = LazyLock::new(|| {
     Collator::try_new(CollatorPreferences::from(&locale), CollatorOptions::default()).expect("сопоставитель строк ICU для ru")
 });
 
-fn locale_compare_ru(a: &str, b: &str) -> Ordering {
+pub fn locale_compare_ru(a: &str, b: &str) -> Ordering {
     RU_COLLATOR.compare(a, b)
 }
 
