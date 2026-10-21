@@ -568,6 +568,16 @@ impl<T: LlmClient + ?Sized> LlmClient for Arc<T> {
     fn health(&self) -> Value {
         (**self).health()
     }
+
+    // Переопределения внутреннего клиента (учёт расхода, заглушка с
+    // собственным `completeJson`) не должны теряться за общей ссылкой.
+    fn complete_json<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
+        (**self).complete_json(input, options)
+    }
+
+    fn complete_text<'a>(&'a self, input: &'a Value, options: &'a Value) -> LlmFuture<'a, Result<String, LlmError>> {
+        (**self).complete_text(input, options)
+    }
 }
 
 fn normalize_options(options: &Value) -> Value {
