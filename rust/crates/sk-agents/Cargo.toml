@@ -10,6 +10,7 @@ serde.workspace = true
 serde_json.workspace = true
 sk-core.workspace = true
 sk-rules.workspace = true
+sk-dice.workspace = true
 sk-agents-base = { path = "../sk-agents-base" }
 sk-attention = { path = "../sk-attention" }
 sk-character = { path = "../sk-character" }
@@ -41,4 +42,6 @@ sk-world-story = { path = "../sk-world-story" }
 sk-world-time = { path = "../sk-world-time" }
 
 [dev-dependencies]
+# Заглушка модели `FakeLlm` (sk-agents-base) работает на рантайме tokio.
+tokio = { version = "1.53.2", features = ["rt", "rt-multi-thread", "time", "sync", "macros", "test-util"] }
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
