@@ -225,7 +225,7 @@ pub fn spell_saving_throw_resolved(state: &mut Value, event: &Event) {
         .set("sceneTurn", scene_turn)
         .set("round", round)
         .set("type", "spell-save")
-        .opt("actorId", event.actor_id.clone())
+        .set("actorId", event.actor_id.clone().map_or(Value::Null, Value::from))
         .set("actorKind", combat_actor_kind(state, &actor))
         .set("targetId", target)
         .text_if("spellId", payload.get("spell_id"))
