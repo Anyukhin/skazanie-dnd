@@ -7,7 +7,10 @@
 //! - [`cookie`], [`session_cookie`] — 482–496;
 //! - [`origin_allowed`], [`apply_security_headers`] — 2254–2268;
 //! - [`header_text`] — `req.headers[name]`: Node читает байты заголовка как
-//!   latin1, повторы склеивает через `, `.
+//!   latin1, а повторы обрабатывает по `matchKnownFields`
+//!   (`lib/_http_incoming.js`): у одиночных полей (`host`, `content-type`,
+//!   `user-agent`, `if-modified-since`…) остаётся первое значение, `cookie`
+//!   склеивается через `; `, прочие — через `, `.
 
 use axum::body::{Body, Bytes};
 use axum::http::{header, HeaderMap, HeaderValue, Response, StatusCode};
@@ -111,7 +114,11 @@ impl RequestBody {
 /// (`raw += chunk`), и символ на стыке кусков у него становится двумя U+FFFD;
 /// здесь тело декодируется целиком. Одиночный суррогат `\ud800` JS принимает
 /// в строку, Rust хранить не может — он становится U+FFFD. Число вне `f64`
-/// (`1e400`) JS читает как `Infinity`, здесь это `INVALID_JSON`.
+/// (`1e400`) JS читает как `Infinity`, здесь это `INVALID_JSON`. Вложенность:
+/// у `JSON.parse` предела нет, у `serde_json` — 128 уровней; глубже —
+/// `INVALID_JSON`. Предел не снимается: `unbounded_depth` без роста стека
+/// роняет процесс переполнением стека, которое не ловится, а клиент игры
+/// таких тел не шлёт.
 pub fn parse_body(bytes: &[u8]) -> Result<Value, BodyError> {
     let text = String::from_utf8_lossy(bytes);
     if text.encode_utf16().count() > MAX_BODY_UTF16_UNITS {
@@ -200,9 +207,47 @@ fn replace_lone_surrogates(text: &str) -> String {
     out
 }
 
-/// `req.headers[name]`: байты как latin1, повторы через `, `; нет — `""`.
+/// Поля, у которых Node при повторе оставляет первое значение
+/// (`matchKnownFields`, ветка «drop duplicates»).
+const SINGLE_FIELDS: [&str; 18] = [
+    "age",
+    "authorization",
+    "content-length",
+    "content-type",
+    "etag",
+    "expires",
+    "from",
+    "host",
+    "if-modified-since",
+    "if-unmodified-since",
+    "last-modified",
+    "location",
+    "max-forwards",
+    "proxy-authorization",
+    "referer",
+    "retry-after",
+    "server",
+    "user-agent",
+];
+
+fn latin1(value: &HeaderValue) -> String {
+    value.as_bytes().iter().map(|&byte| byte as char).collect()
+}
+
+/// `req.headers[name]` (`name` — в нижнем регистре): байты как latin1,
+/// повторы — по правилам Node; нет — `""`.
 pub fn header_text(headers: &HeaderMap, name: &str) -> String {
-    headers.get_all(name).iter().map(|value| value.as_bytes().iter().map(|&byte| byte as char).collect::<String>()).collect::<Vec<_>>().join(", ")
+    let mut values = headers.get_all(name).iter();
+    if SINGLE_FIELDS.contains(&name) {
+        return values.next().map(latin1).unwrap_or_default();
+    }
+    let separator = match name {
+        "cookie" => "; ",
+        // Массив `set-cookie` через `String(array)`.
+        "set-cookie" => ",",
+        _ => ", ",
+    };
+    values.map(latin1).collect::<Vec<_>>().join(separator)
 }
 
 /// Есть ли заголовок (`req.headers[name] !== undefined`).
@@ -223,7 +268,7 @@ fn percent_encode(text: &str) -> String {
 /// пара с тем же именем перекрывает раннюю. Node склеивает несколько
 /// заголовков `Cookie` через `; `.
 pub fn cookie(headers: &HeaderMap, name: &str) -> Option<String> {
-    let raw = headers.get_all(header::COOKIE).iter().map(|value| value.as_bytes().iter().map(|&byte| byte as char).collect::<String>()).collect::<Vec<_>>().join("; ");
+    let raw = header_text(headers, "cookie");
     let mut found = None;
     for part in raw.split(';') {
         let Some(index) = part.find('=') else { continue };
@@ -309,6 +354,39 @@ mod tests {
         let surrogates = r#"{"a":"\ud800","b":"\ud83d\ude00","c":"\\ud800","d":"\udc00x"}"#;
         assert_eq!(parse_body(surrogates.as_bytes()), Ok(json!({ "a": "\u{FFFD}", "b": "\u{1F600}", "c": "\\ud800", "d": "\u{FFFD}x" })));
         assert_eq!(parse_body(br#"{"a":1e400}"#), Err(INVALID_JSON), "отклонение: JS читает Infinity");
+    }
+
+    #[test]
+    fn nesting_deeper_than_serde_limit_is_invalid_json() {
+        let nested = |depth: usize| format!("{{\"a\":{}{}}}", "[".repeat(depth), "]".repeat(depth));
+        assert!(parse_body(nested(100).as_bytes()).is_ok());
+        assert_eq!(parse_body(nested(200).as_bytes()), Err(INVALID_JSON), "отклонение: JSON.parse принимает");
+    }
+
+    #[test]
+    fn repeated_headers_follow_node() {
+        let mut headers = HeaderMap::new();
+        headers.append("host", HeaderValue::from_static("a:1"));
+        headers.append("host", HeaderValue::from_static("b:2"));
+        headers.append("if-none-match", HeaderValue::from_static("W/\"1\""));
+        headers.append("if-none-match", HeaderValue::from_static("W/\"2\""));
+        headers.append("x-forwarded-proto", HeaderValue::from_static("http"));
+        headers.append("x-forwarded-proto", HeaderValue::from_static("https"));
+        headers.append("cookie", HeaderValue::from_static("a=1"));
+        headers.append("cookie", HeaderValue::from_static("b=2"));
+        headers.append("user-agent", HeaderValue::from_bytes(b"\xe9t\xe9").unwrap_or(HeaderValue::from_static("x")));
+        headers.append("user-agent", HeaderValue::from_static("second"));
+        assert_eq!(header_text(&headers, "host"), "a:1", "одиночное поле — первое значение");
+        assert_eq!(header_text(&headers, "if-none-match"), "W/\"1\", W/\"2\"");
+        assert_eq!(header_text(&headers, "x-forwarded-proto"), "http, https");
+        assert_eq!(header_text(&headers, "cookie"), "a=1; b=2");
+        assert_eq!(header_text(&headers, "user-agent"), "\u{e9}t\u{e9}", "latin1");
+        assert_eq!(header_text(&headers, "referer"), "");
+        let mut origin = HeaderMap::new();
+        origin.append("host", HeaderValue::from_static("localhost:8787"));
+        origin.append("host", HeaderValue::from_static("localhost:8787"));
+        origin.insert("origin", HeaderValue::from_static("http://localhost:8787"));
+        assert!(origin_allowed(&origin), "два Host — сравнивается первый, как в Node");
     }
 
     #[test]

@@ -4,8 +4,11 @@
 //! (2299–2324), голосующие и герои отряда (2478–2562), проекция зрителя
 //! (2545–2546).
 //!
-//! Функции над [`Accounts`] синхронные (SQLite): из обработчика их зовут
-//! внутри [`crate::core::blocking`], из ядра — внутри задания. Ошибка
+//! Функции над [`Accounts`] синхронные (SQLite под одним замком, который
+//! держат и HTTP-потоки): их зовут только внутри [`crate::core::blocking`] —
+//! и из обработчика, и из задания ядра. Синхронно с потока ядра — нельзя:
+//! вход другого игрока (scrypt) или запись сессии остановили бы ядро на
+//! замке (рецензия С0, CORE-02). Ошибка
 //! хранилища, которую JS не ловит (`normalizeCampaignId` бросает на
 //! недопустимом коде), возвращается как [`Failure`].
 
@@ -19,8 +22,8 @@ use crate::error::{ApiError, ApiResult, Failure};
 use crate::room::Room;
 use crate::streams::Presence;
 
-/// `String(x || '')`: ложное значение — пустая строка.
-fn string_or_empty(value: Option<&Value>) -> String {
+/// `String(x || '')`: ложное значение (`0`, `false`, `''`, `null`) — пустая строка.
+pub fn string_or_empty(value: Option<&Value>) -> String {
     if js::truthy(value) {
         js::string(value)
     } else {
@@ -149,8 +152,9 @@ pub fn access_denied_before_reconcile(accounts: &Accounts, user: Option<&Value>,
     check().unwrap_or(false)
 }
 
-/// `connectedHeroIdsForCampaign(campaignId)` (2478–2482).
-pub fn connected_hero_ids_for_campaign(presence: &dyn Presence, campaign_id: &str) -> IndexSet<String> {
+/// `connectedHeroIdsForCampaign(campaignId)` (2478–2482); только на потоке
+/// ядра (`&*core.streams`).
+pub fn connected_hero_ids_for_campaign<P: Presence + ?Sized>(presence: &P, campaign_id: &str) -> IndexSet<String> {
     presence.connected_hero_ids(campaign_id)
 }
 

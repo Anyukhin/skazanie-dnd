@@ -36,8 +36,10 @@ pub fn routes() -> Vec<Route> {
     ]
 }
 
+/// `String(body.x || '')` — так поля тела читает JS-хранилище
+/// (`store.mjs:110, 112, 121, 139, 146`): `0` и `false` дают пустую строку.
 fn text(body: &Value, key: &str) -> String {
-    sk_core::js::s(body.get(key))
+    crate::access::string_or_empty(body.get(key))
 }
 
 fn with_cookie(mut response: Response<Body>, cookie: HeaderValue) -> Response<Body> {
@@ -64,10 +66,16 @@ fn me(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     })
 }
 
-/// Тело `setup-admin`/`register` внутри `try`: любая ошибка — 400 без кода
-/// с её текстом (`error.message`; запасной текст JS — только для бросков не-`Error`).
-async fn create_account(ctx: &mut RouteCtx, admin: bool) -> Result<(Value, String), String> {
-    let body = ctx.json_body().await.map_err(|error| error.message.to_string())?;
+/// Тело `setup-admin`/`register` внутри `try`: ошибка тела и хранилища — 400
+/// без кода с её текстом (`error.message`; запасной текст JS — только для
+/// бросков не-`Error`). Паника и отмена блокирующего вызова — не ошибка
+/// хранилища: она идёт через `?` на границу (500 `INTERNAL_ERROR`, текст —
+/// только в лог).
+async fn create_account(ctx: &mut RouteCtx, admin: bool) -> Result<Result<(Value, String), String>, ApiError> {
+    let body = match ctx.json_body().await {
+        Ok(body) => body,
+        Err(error) => return Ok(Err(error.message.to_string())),
+    };
     let accounts = accounts(ctx);
     let expected = ctx.state.config.admin_setup_token.clone();
     let created = blocking(move || {
@@ -79,9 +87,8 @@ async fn create_account(ctx: &mut RouteCtx, admin: bool) -> Result<(Value, Strin
         let token = accounts.create_session(&text(&user, "id"))?;
         Ok::<_, sk_store::accounts::AccountError>((user, token))
     })
-    .await
-    .map_err(|error| error.to_string())?;
-    created.map_err(|error| error.message)
+    .await?;
+    Ok(created.map_err(|error| error.message))
 }
 
 /// `POST /api/auth/setup-admin` (3974–3983).
@@ -90,7 +97,7 @@ fn setup_admin(ctx: &mut RouteCtx) -> RouteFuture<'_> {
         if ctx.state.limits.rate_limited(ctx.peer) {
             return Err(too_many());
         }
-        match create_account(ctx, true).await {
+        match create_account(ctx, true).await? {
             Ok((user, token)) => Ok(with_cookie(json(StatusCode::CREATED, &json!({ "user": user, "setupRequired": false })), session_cookie(&ctx.headers, &token, false, ctx.state.config.cookie_secure))),
             Err(message) => Err(ApiError::new(StatusCode::BAD_REQUEST, message)),
         }
@@ -103,7 +110,7 @@ fn register(ctx: &mut RouteCtx) -> RouteFuture<'_> {
         if ctx.state.limits.rate_limited(ctx.peer) {
             return Err(too_many());
         }
-        match create_account(ctx, false).await {
+        match create_account(ctx, false).await? {
             Ok((user, token)) => Ok(with_cookie(json(StatusCode::CREATED, &json!({ "user": user })), session_cookie(&ctx.headers, &token, false, ctx.state.config.cookie_secure))),
             Err(message) => Err(ApiError::new(StatusCode::BAD_REQUEST, message)),
         }
@@ -139,7 +146,7 @@ fn logout(ctx: &mut RouteCtx) -> RouteFuture<'_> {
             blocking(move || store.delete_session(&deleted)).await??;
         }
         let session_key = if token.is_empty() { String::new() } else { Accounts::session_key_for_token(&token) };
-        ctx.state.streams.revoke_for_session(&session_key);
+        crate::streams::revoke_for_session(&ctx.state, session_key).await?;
         Ok(with_cookie(json(StatusCode::OK, &json!({ "ok": true })), session_cookie(&ctx.headers, "", true, ctx.state.config.cookie_secure)))
     })
 }
@@ -174,18 +181,19 @@ fn admin_update_user(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
         require_admin(ctx).await?;
         let id = ctx.param(0).to_string();
-        let attempt: Result<Value, String> = async {
-            let body = ctx.json_body().await.map_err(|error| error.message.to_string())?;
-            let accounts = accounts(ctx);
-            let patch = access_patch(&body);
-            blocking(move || accounts.update_user_access(&id, patch)).await.map_err(|error| error.to_string())?.map_err(|error| error.message)
-        }
-        .await;
-        let updated = match attempt {
-            Ok(updated) => updated,
-            Err(message) => return Err(ApiError::new(StatusCode::BAD_REQUEST, message)),
+        // Ошибка тела и хранилища — 400 без кода (`try` маршрута); паника
+        // блокирующего вызова — через `?` на границу, 500.
+        let body = match ctx.json_body().await {
+            Ok(body) => body,
+            Err(error) => return Err(ApiError::new(StatusCode::BAD_REQUEST, error.message)),
         };
-        ctx.state.streams.refresh_for_user(&sk_core::js::s(updated.get("id")));
+        let accounts = accounts(ctx);
+        let patch = access_patch(&body);
+        let updated = match blocking(move || accounts.update_user_access(&id, patch)).await? {
+            Ok(updated) => updated,
+            Err(error) => return Err(ApiError::new(StatusCode::BAD_REQUEST, error.message)),
+        };
+        crate::streams::refresh_for_user(&ctx.state, sk_core::js::s(updated.get("id"))).await?;
         Ok(json(StatusCode::OK, &json!({ "user": updated })))
     })
 }

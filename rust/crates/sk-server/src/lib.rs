@@ -5,6 +5,7 @@
 //! - [`dispatch`] — упорядоченная таблица маршрутов в порядке JS поверх
 //!   одного обработчика axum; [`routes`] — модули маршрутов по задачам;
 //! - [`core`] — игровое ядро в одном потоке (`LocalSet`), задания по каналу;
+//! - [`serve`] — цикл соединений (общий для `main.rs` и тестов);
 //! - [`state`] — общее состояние HTTP-слоя, [`config`] — настройки процесса;
 //! - [`boundary`], [`error`] — последняя граница и форма отказов;
 //! - [`http`], [`url`] — тело, cookie, заголовки, разбор адреса как в JS;
@@ -16,6 +17,11 @@
 //! Контракт для клиента тот же: пути, JSON-ответы, cookie сессии
 //! `skazanie_session`, коды отказов; неизвестный `/api/*` — 404 `API endpoint
 //! не найден`, остальное — собранный клиент из `dist/`.
+
+// Займ `RefCell` или замок через `await` в ядре — паника `BorrowMutError`
+// или взаимная блокировка соседнего задания (см. `core`); компилятор такого
+// не ловит, сторожит clippy.
+#![deny(clippy::await_holding_refcell_ref, clippy::await_holding_lock)]
 
 pub mod access;
 pub mod ai_context;
@@ -39,6 +45,7 @@ pub mod projection;
 pub mod rate_window;
 pub mod room;
 pub mod routes;
+pub mod serve;
 pub mod startup;
 pub mod state;
 pub mod static_files;

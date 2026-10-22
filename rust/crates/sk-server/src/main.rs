@@ -12,27 +12,43 @@
 //! 5. через 250 мс — фоновые толчки боя и часов (С17).
 //!
 //! Сигналы. JS на SIGINT/SIGTERM делает `process.exit(130/143)` без плавной
-//! остановки. Здесь: приём соединений прекращается, текущие запросы
-//! дожидаются до 5 с, ядро останавливается, отметка снимается, код выхода
-//! тот же. **Отклонение для Windows:** SIGTERM там нет; `Ctrl+C` даёт 130, а
-//! закрытие консоли и выключение системы (`ctrl_close`, `ctrl_shutdown`) —
-//! 143, как SIGTERM.
+//! остановки. Здесь порядок такой (рецензия С0, CORE-06):
 //!
-//! Тайм-ауты соединения (6485–6488): `headersTimeout` 66 с — предел чтения
-//! заголовков (у hyper он же ограничивает простой соединения keep-alive,
-//! поэтому отдельного `keepAliveTimeout` 65 с нет — простаивающее соединение
-//! закрывается через 66 с). HTTP/2 не поддерживается, как и в JS.
+//! 1. сигнал — приём соединений прекращается (С9: живые потоки закрываются
+//!    кадром здесь, до ожидания — иначе они занимают весь предел);
+//! 2. текущие запросы дожидаются: 5 с на `Ctrl+C`/SIGINT, 1 с на SIGTERM и
+//!    закрытие консоли;
+//! 3. рантайм HTTP останавливается с пределом — недоделанные соединения
+//!    отменяются и больше ничего не пишут в аккаунты и учёт расхода;
+//! 4. ядро: задачи в работе — до 2 с, блокирующие — до 1 с
+//!    (`core::DRAIN_LIMIT`, `core::BLOCKING_LIMIT`);
+//! 5. только теперь снимается отметка писателя storage, код выхода тот же.
+//!
+//! **Отклонение для Windows:** SIGTERM там нет; `Ctrl+C` даёт 130, а закрытие
+//! консоли и выключение системы (`ctrl_close`, `ctrl_shutdown`) — 143, как
+//! SIGTERM. На закрытие консоли Windows даёт процессу около 5 с: путь 143
+//! укладывается в ≈4,5 с (1 + 0,5 + 2 + 1), отметка снимается в пределе.
+//!
+//! Цикл соединений (тайм-ауты 6485–6488, `ConnectInfo`, ошибки `accept`) —
+//! в библиотеке, [`sk_server::serve`]: тем же путём идут тесты.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use hyper_util::rt::{TokioIo, TokioTimer};
 use sk_agents_base::llm_client::{RouterAiClient, RouterAiClientConfig};
 use sk_infra::usage_ledger::DurableUsageLedger;
 use sk_server::state::{LlmClients, Metered};
-use sk_server::{app, AppState, Config, Injected};
-use tower::ServiceExt;
+use sk_server::{AppState, Config, Injected};
+
+/// Сколько ждать текущие запросы при остановке.
+fn grace_for(code: &i32) -> Duration {
+    if *code == 130 {
+        Duration::from_secs(5)
+    } else {
+        Duration::from_secs(1)
+    }
+}
 
 /// `.env` по правилам пакета `dotenv`: `KEY=VALUE`, необязательный `export`,
 /// комментарии `#`, значения в кавычках (`\n` раскрывается в двойных).
@@ -171,13 +187,15 @@ fn main() {
         }
     };
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap_or_else(|error| fail(format!("Не удалось запустить рантайм: {error}")));
-    let code = runtime.block_on(serve(state.clone(), address, banner));
+    let code = runtime.block_on(run(state.clone(), address, banner));
+    runtime.shutdown_timeout(Duration::from_millis(500));
     state.core.shutdown();
+    drop(state);
     writer.release();
     std::process::exit(code);
 }
 
-async fn serve(state: Arc<AppState>, address: String, banner: String) -> i32 {
+async fn run(state: Arc<AppState>, address: String, banner: String) -> i32 {
     // `void llmClient.probe()` при наличии ключа (309).
     if state.config.model_configured() {
         if let Some(llm) = state.models.llm.clone() {
@@ -209,33 +227,6 @@ async fn serve(state: Arc<AppState>, address: String, banner: String) -> i32 {
             let _ = state.core.call(|core| Box::pin(async move { sk_server::room::list_room_codes(&core).map(|codes| codes.len()) })).await;
         });
     }
-    let router = app(state);
-    let graceful = hyper_util::server::graceful::GracefulShutdown::new();
-    let signal = shutdown_signal();
-    tokio::pin!(signal);
-    let code = loop {
-        tokio::select! {
-            accepted = listener.accept() => {
-                let Ok((stream, peer)) = accepted else { continue };
-                let router = router.clone();
-                let service = hyper::service::service_fn(move |mut request: hyper::Request<hyper::body::Incoming>| {
-                    request.extensions_mut().insert(axum::extract::ConnectInfo(peer));
-                    router.clone().oneshot(request.map(axum::body::Body::new))
-                });
-                let connection = hyper::server::conn::http1::Builder::new()
-                    .timer(TokioTimer::new())
-                    .header_read_timeout(Duration::from_secs(66))
-                    .keep_alive(true)
-                    .serve_connection(TokioIo::new(stream), service);
-                let watched = graceful.watch(connection);
-                tokio::spawn(async move {
-                    let _ = watched.await;
-                });
-            }
-            code = &mut signal => break code,
-        }
-    };
-    drop(listener);
-    let _ = tokio::time::timeout(Duration::from_secs(5), graceful.shutdown()).await;
-    code
+    // С9: закрыть живые потоки кадром — сразу после сигнала, до ожидания соединений.
+    sk_server::serve::serve(listener, state, shutdown_signal(), grace_for).await
 }

@@ -138,28 +138,31 @@ mod tests {
         assert_eq!(required_key_sliced(&json!({ "idempotency_key": "  " }), &headers(None)).err().map(|error| error.body["error"].clone()), Some(json!("Нужен idempotency_key")));
     }
 
-    /// Один ключ на разных маршрутах — разные намерения: повтор не отдаёт
-    /// чужой коммит, а отвечает 409 (`/commands`, `merchants/:id/commands`,
-    /// `encounters/assemble`, `rooms/:id/dice`).
+    /// Инвариант AGENTS §5: под тем же ключом другая цель, тип команды,
+    /// актор **или** endpoint — 409. Каждое поле меняется по одному при
+    /// прочих равных: выпадение любого поля из отпечатка роняет тест.
     #[test]
     fn same_key_on_another_endpoint_conflicts() {
-        let endpoints = [
-            intent_fingerprint("commands", "MoveActor", "hero-1", &json!({ "x": 1 })),
-            intent_fingerprint("merchant_commands", "BuyItem", "hero-1", &json!({ "merchant_id": "m" })),
-            intent_fingerprint("encounters_assemble", "CreateEncounter", "", &json!({ "difficulty": "medium" })),
-            intent_fingerprint("public_die", "RollPublicDie", "hero-1", &json!({ "sides": 20 })),
+        let base = ("commands", "MoveActor", "hero-1", json!({ "x": 1 }));
+        let fingerprint = |(endpoint, command_type, actor_id, target): &(&str, &str, &str, Value)| intent_fingerprint(endpoint, command_type, actor_id, target);
+        let stored = fingerprint(&base);
+        let variants = [
+            ("endpoint", ("merchant_commands", base.1, base.2, base.3.clone())),
+            ("тип команды", (base.0, "AttackActor", base.2, base.3.clone())),
+            ("актор", (base.0, base.1, "hero-2", base.3.clone())),
+            ("цель", (base.0, base.1, base.2, json!({ "x": 2 }))),
         ];
-        for (stored_index, stored) in endpoints.iter().enumerate() {
-            for (requested_index, requested) in endpoints.iter().enumerate() {
-                let outcome = replay_or_conflict(Some(stored.clone()), |_| Ok(()), |committed| committed == requested, "Этот idempotency_key уже использован для другого запроса");
-                if stored_index == requested_index {
-                    assert_eq!(outcome.ok().flatten().as_ref(), Some(stored), "тот же маршрут — прежний коммит");
-                } else {
-                    let error = outcome.err().map(|error| (error.status, error.body["code"].clone()));
-                    assert_eq!(error, Some((StatusCode::CONFLICT, json!("IDEMPOTENCY_CONFLICT"))));
-                }
-            }
+        for (field, variant) in &variants {
+            let requested = fingerprint(variant);
+            assert_ne!(requested, stored, "{field} входит в отпечаток");
+            let outcome = replay_or_conflict(Some(stored.clone()), |_| Ok(()), |committed| *committed == requested, "Этот idempotency_key уже использован для другого запроса");
+            let error = outcome.err().map(|error| (error.status, error.body["code"].clone()));
+            assert_eq!(error, Some((StatusCode::CONFLICT, json!("IDEMPOTENCY_CONFLICT"))), "другой {field} — 409");
         }
+        let same = fingerprint(&base.clone());
+        let replay = replay_or_conflict(Some(stored.clone()), |_| Ok(()), |committed| *committed == same, "x");
+        assert_eq!(replay.ok().flatten().as_ref(), Some(&stored), "то же намерение — прежний коммит");
+        let endpoints = [stored.clone()];
         let forbidden = replay_or_conflict(Some(endpoints[0].clone()), |_| Err(ApiError::new(StatusCode::FORBIDDEN, "чужой")), |_| false, "x");
         assert_eq!(forbidden.err().map(|error| error.status), Some(StatusCode::FORBIDDEN), "права проверяются раньше отпечатка");
         assert_eq!(replay_or_conflict::<String>(None, |_| Ok(()), |_| true, "x").ok(), Some(None));

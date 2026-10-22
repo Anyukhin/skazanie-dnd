@@ -3,8 +3,8 @@
 //!
 //! Разделение по решению ведущего №1: в [`AppState`] — то, что безопасно
 //! делить между потоками axum (настройки, аккаунты, учёт расхода, клиенты
-//! модели, окна запросов, реестр потоков, таблица маршрутов); всё игровое
-//! (журнал, кости, реестр бросков, позже — комната, координаторы,
+//! модели, окна запросов, таблица маршрутов); всё игровое (журнал, кости,
+//! реестр бросков, реестр живых потоков, позже — комната, координаторы,
 //! оркестраторы) — в [`crate::core::GameCore`] за [`CoreHandle`].
 //!
 //! Клиенты модели собираются только в `main.rs` и в тестовом наборе
@@ -31,7 +31,7 @@ use crate::config::Config;
 use crate::core::{CoreHandle, GameCore};
 use crate::dispatch::Route;
 use crate::limits::Limits;
-use crate::streams::{NoStreams, StreamRegistry};
+use crate::streams::{NoStreams, StreamFactory, StreamRegistry};
 
 /// Общие кости: один `DiceService` на ядро, реестр бросков и движок, как
 /// единственный `diceService` JS.
@@ -122,8 +122,9 @@ pub struct Injected {
     pub llm: Option<LlmFactory>,
     /// Часы окон запросов и реестра бросков; `None` — системные.
     pub clock: Option<Clock>,
-    /// Реестр живых потоков (С9); `None` — заглушка С0.
-    pub streams: Option<Arc<dyn StreamRegistry>>,
+    /// Сборщик реестра живых потоков (С9), вызывается на потоке ядра;
+    /// `None` — заглушка С0.
+    pub streams: Option<StreamFactory>,
     /// Дополнительные маршруты (тесты границы); встают в таблицу по номеру строки.
     pub extra_routes: Vec<Route>,
 }
@@ -147,8 +148,6 @@ pub struct AppState {
     pub models: LlmClients,
     /// `loginAttempts` и `costlyRequests` (2894–2903).
     pub limits: Limits,
-    /// Живые потоки кампаний (`campaignStreams`); в С0 — заглушка.
-    pub streams: Arc<dyn StreamRegistry>,
     /// Упорядоченная таблица маршрутов (`routes::table`).
     pub routes: Vec<Route>,
 }
@@ -173,17 +172,9 @@ impl AppState {
             None => LlmClients::default(),
         };
         let dice = SharedDice::new(injected.dice.unwrap_or_else(|| Box::new(sk_dice::DiceService::system())));
-        let core = start_core(database, storage.join("engine").join("roll-registry.json"), dice, clock.clone())?;
-        Ok(Self {
-            config,
-            accounts: Arc::new(accounts),
-            core,
-            ledger,
-            models,
-            limits: Limits::new(clock),
-            streams: injected.streams.unwrap_or_else(|| Arc::new(NoStreams)),
-            routes: crate::routes::table(injected.extra_routes),
-        })
+        let streams: StreamFactory = injected.streams.unwrap_or_else(|| Box::new(|| Box::new(NoStreams) as Box<dyn StreamRegistry>));
+        let core = start_core(database, storage.join("engine").join("roll-registry.json"), dice, clock.clone(), streams)?;
+        Ok(Self { config, accounts: Arc::new(accounts), core, ledger, models, limits: Limits::new(clock), routes: crate::routes::table(injected.extra_routes) })
     }
 
     /// Клиент для ролей агентов: `apiKey ? llmClient : null` (310, 397–399…).
@@ -205,17 +196,16 @@ impl AppState {
     }
 }
 
-impl Drop for AppState {
-    fn drop(&mut self) {
-        self.core.shutdown();
-    }
-}
+// `Drop` у `AppState` нет: последний `Arc` может уйти на потоке tokio или в
+// блокирующем потоке ядра, где ждать поток ядра нельзя (рецензия С0,
+// CORE-07). Уничтожение `CoreHandle` только закрывает приём заданий, а
+// дожидается ядра явно `main` и тестовый набор (`core.shutdown()`).
 
-fn start_core(database: PathBuf, roll_file: PathBuf, dice: SharedDice, clock: Clock) -> Result<CoreHandle, String> {
+fn start_core(database: PathBuf, roll_file: PathBuf, dice: SharedDice, clock: Clock, streams: StreamFactory) -> Result<CoreHandle, String> {
     CoreHandle::start("skazanie-core", move || {
         let events = sk_tactics::cutover_audit::open_game_store(&database, Arc::new(sk_tactics::cutover_audit::GameReducer::new()))?;
         let options = RollRegistryOptions { storage_file: Some(roll_file), now: clock, ..RollRegistryOptions::default() };
         let rolls = RollRegistry::new(Box::new(dice.clone()), options).map_err(|error| error.to_string())?;
-        Ok(GameCore { events: Arc::new(events), rolls: std::cell::RefCell::new(rolls), dice })
+        Ok(GameCore { events: Arc::new(events), rolls: std::cell::RefCell::new(rolls), dice, streams: streams() })
     })
 }

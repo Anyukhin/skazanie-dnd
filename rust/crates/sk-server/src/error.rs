@@ -12,6 +12,12 @@ use serde_json::{Map, Value};
 
 use crate::http::{json, BodyError};
 
+/// Коды гонки журнала, на которые маршруты команд отвечают 409: общая часть
+/// списков JS (`index.mjs:4369, 4420, 4800`). Маршрут дописывает свои
+/// (`PARTY_DECISION_CONFLICT`, `CAMPAIGN_RULESET_LOCKED`…) к этому набору
+/// или берёт его как есть — но не набирает заново.
+pub const STATE_CONFLICT_CODES: [&str; 2] = ["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT"];
+
 /// Готовый отказ маршрута.
 #[derive(Debug, Clone)]
 pub struct ApiError {
@@ -214,7 +220,7 @@ mod tests {
     #[test]
     fn failure_status_by_code() {
         let conflict = Failure::new("гонка", Some("STATE_VERSION_CONFLICT"));
-        let error = conflict.respond_by(&[(&["STATE_VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT"], StatusCode::CONFLICT), (&["ROLL_FORBIDDEN"], StatusCode::FORBIDDEN)], StatusCode::BAD_REQUEST);
+        let error = conflict.respond_by(&[(&STATE_CONFLICT_CODES, StatusCode::CONFLICT), (&["ROLL_FORBIDDEN"], StatusCode::FORBIDDEN)], StatusCode::BAD_REQUEST);
         assert_eq!(error.status, StatusCode::CONFLICT);
         assert_eq!(Value::Object(error.body), json!({ "error": "гонка", "code": "STATE_VERSION_CONFLICT" }));
         let plain = Failure::new("нет", None).respond(StatusCode::BAD_REQUEST);

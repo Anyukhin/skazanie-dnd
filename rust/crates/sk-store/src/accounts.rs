@@ -158,6 +158,18 @@ fn normalize_hero_ids(hero_ids: &[String]) -> Vec<String> {
     result
 }
 
+/// `/^\S+@\S+\.\S+$/.test(email)` (`store.mjs:111`): пробелов (`\s` JS,
+/// с BOM) нет нигде, есть `@` не первым символом, а после него — точка не
+/// сразу за `@` и не последним символом.
+fn email_shaped(email: &str) -> bool {
+    let chars: Vec<char> = email.chars().collect();
+    if chars.iter().any(|ch| sk_core::text::is_js_space(*ch)) {
+        return false;
+    }
+    let Some(at) = chars.iter().enumerate().skip(1).find(|(_, ch)| **ch == '@').map(|(index, _)| index) else { return false };
+    chars.len() >= 2 && (at + 2..chars.len().saturating_sub(1)).any(|index| chars[index] == '.')
+}
+
 /// `normalizeCampaignId(campaignId)`.
 pub fn normalize_campaign_id(campaign_id: &str) -> AccountResult<String> {
     let normalized = campaign_id.to_uppercase();
@@ -288,13 +300,11 @@ impl Accounts {
 
     fn build_user(&self, email: &str, password: &str, name: &str, role: &str) -> AccountResult<Value> {
         let normalized = sk_core::text::lower(sk_core::text::trim(email));
-        let shaped = normalized
-            .split_once('@')
-            .is_some_and(|(local, domain)| !local.is_empty() && !local.contains(char::is_whitespace) && domain.split_once('.').is_some_and(|(left, right)| !left.is_empty() && !right.is_empty()) && !domain.contains(char::is_whitespace));
-        if !shaped {
+        if !email_shaped(&normalized) {
             return Err(AccountError::new("Укажите корректную почту"));
         }
-        if password.chars().count() < 10 {
+        // `String(password || '').length < 10` — длина в единицах UTF-16.
+        if password.encode_utf16().count() < 10 {
             return Err(AccountError::new("Пароль должен содержать не менее 10 символов"));
         }
         let salt = random_salt();
@@ -345,15 +355,17 @@ impl Accounts {
         self.build_user(email, password, name, "admin")
     }
 
-    /// `verifyUser(email, password)`.
+    /// `verifyUser(email, password)`. Как в JS (`await scrypt`), хеш
+    /// считается **без** замка базы: вход одного игрока не останавливает
+    /// чтение сессий и настроек другими запросами.
     pub fn verify_user(&self, email: &str, password: &str) -> AccountResult<Option<Value>> {
         let normalized = sk_core::text::lower(sk_core::text::trim(email));
-        let conn = self.lock();
-        let Some(user) = Self::user_by(&conn, "email", &normalized)? else { return Ok(None) };
+        let Some(user) = Self::user_by(&self.lock(), "email", &normalized)? else { return Ok(None) };
         let salt = sk_core::js::s(user.get("passwordSalt"));
         let expected = decode_hex(&sk_core::js::s(user.get("passwordHash")));
         let actual = scrypt_hash(password, &salt);
         if constant_time_eq(&actual, &expected) {
+            let conn = self.lock();
             Ok(Some(self.public(&conn, &user)?))
         } else {
             Ok(None)

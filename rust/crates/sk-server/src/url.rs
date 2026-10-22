@@ -78,6 +78,85 @@ fn strip_input(input: &str) -> String {
     trimmed.chars().filter(|ch| !matches!(ch, '\t' | '\n' | '\r')).collect()
 }
 
+/// Процентное декодирование байтов хоста (битые `%xx` остаются как есть),
+/// затем UTF-8 с заменой — шаг «percent-decode» парсера хоста WHATWG.
+fn percent_decode_lossy(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        let decoded = (bytes[index] == b'%')
+            .then(|| bytes.get(index + 1..index + 3))
+            .flatten()
+            .and_then(|hex| Some((hex[0] as char).to_digit(16)? * 16 + (hex[1] as char).to_digit(16)?));
+        match decoded {
+            Some(byte) => {
+                out.push(byte as u8);
+                index += 3;
+            }
+            None => {
+                out.push(bytes[index]);
+                index += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Число части IPv4 WHATWG: десятичное, `0x…` — шестнадцатеричное, ведущий
+/// `0` — восьмеричное; `None` — не число.
+fn ipv4_number(part: &str) -> Option<u64> {
+    let (digits, radix) = if let Some(hex) = part.strip_prefix("0x").or_else(|| part.strip_prefix("0X")) {
+        (hex, 16)
+    } else if part.len() > 1 && part.starts_with('0') {
+        (&part[1..], 8)
+    } else {
+        (part, 10)
+    };
+    if digits.is_empty() {
+        return Some(0);
+    }
+    if !digits.chars().all(|ch| ch.is_digit(radix)) {
+        return None;
+    }
+    // Длинные числа заведомо вне диапазона: не переполнять u64.
+    Some(u64::from_str_radix(digits, radix).unwrap_or(u64::MAX))
+}
+
+/// «ends in a number» WHATWG: последняя метка (без завершающей точки) —
+/// число, значит хост — IPv4.
+fn ends_in_number(host: &str) -> bool {
+    let mut labels: Vec<&str> = host.split('.').collect();
+    if labels.last() == Some(&"") {
+        if labels.len() == 1 {
+            return false;
+        }
+        labels.pop();
+    }
+    let Some(last) = labels.last() else { return false };
+    (!last.is_empty() && last.bytes().all(|byte| byte.is_ascii_digit())) || ipv4_number(last).is_some()
+}
+
+/// Разбор IPv4 WHATWG: `true` — исправен, `false` — `new URL` бросает.
+fn ipv4_valid(host: &str) -> bool {
+    let mut parts: Vec<&str> = host.split('.').collect();
+    if parts.last() == Some(&"") && parts.len() > 1 {
+        parts.pop();
+    }
+    if parts.len() > 4 || parts.iter().any(|part| part.is_empty()) {
+        return false;
+    }
+    let Some(numbers) = parts.iter().map(|part| ipv4_number(part)).collect::<Option<Vec<u64>>>() else { return false };
+    let (last, head) = match numbers.split_last() {
+        Some(split) => split,
+        None => return false,
+    };
+    if head.iter().any(|number| *number > 255) {
+        return false;
+    }
+    *last < 256u64.pow((5 - numbers.len()) as u32)
+}
+
 /// Хост и порт из полномочия (`user@host:port`); `None` — `new URL` бросил бы.
 fn parse_authority(authority: &str, special: Option<Option<u16>>) -> Option<String> {
     let host_port = authority.rsplit_once('@').map_or(authority, |(_, rest)| rest);
@@ -112,21 +191,38 @@ fn parse_authority(authority: &str, special: Option<Option<u16>>) -> Option<Stri
     if special.is_some() && host.is_empty() {
         return None;
     }
-    let forbidden = |ch: char| matches!(ch, ' ' | '#' | '%' | '/' | ':' | '<' | '>' | '?' | '@' | '\\' | '^' | '|') || ch < ' ' || ch == '\u{7f}';
+    // Запрещённые символы хоста (forbidden host code point); у специальных
+    // схем к ним добавляется `%` — уже после процентного декодирования
+    // (forbidden domain code point).
+    let forbidden = |ch: char, domain: bool| matches!(ch, ' ' | '#' | '/' | ':' | '<' | '>' | '?' | '@' | '[' | '\\' | ']' | '^' | '|') || ch < ' ' || (domain && (ch == '%' || ch == '\u{7f}'));
     let bare = host.strip_prefix('[').and_then(|host| host.strip_suffix(']'));
-    match bare {
+    let host = match bare {
         Some(inner) => {
             if inner.is_empty() || !inner.chars().all(|ch| ch.is_ascii_hexdigit() || ch == ':' || ch == '.') {
                 return None;
             }
+            host.to_lowercase()
         }
-        None => {
-            if host.contains(['[', ']']) || host.chars().any(forbidden) {
+        None if special.is_some() => {
+            // Хост специальной схемы: проценты декодируются, затем
+            // проверяются запрещённые символы, затем IPv4, если последняя
+            // метка числовая (`//%41/` — хост `a`, `//1.2.3.999/` — отказ).
+            let decoded = percent_decode_lossy(host).to_lowercase();
+            if decoded.is_empty() || decoded.chars().any(|ch| forbidden(ch, true)) {
                 return None;
             }
+            if ends_in_number(&decoded) && !ipv4_valid(&decoded) {
+                return None;
+            }
+            decoded
         }
-    }
-    let host = if special.is_some() { host.to_lowercase() } else { host.to_string() };
+        None => {
+            if host.chars().any(|ch| forbidden(ch, false)) {
+                return None;
+            }
+            host.to_string()
+        }
+    };
     let default_port = special.flatten();
     Some(match port {
         Some(port) if Some(port) != default_port => format!("{host}:{port}"),
@@ -338,6 +434,16 @@ mod tests {
             ("/%", Some("/%")),
             ("/a%2", Some("/a%2")),
             ("//host:080/x", Some("/x")),
+            ("//%41/api/health", Some("/api/health")),
+            ("//1.2.3.999/x", None),
+            ("//1.2.3.4/x", Some("/x")),
+            ("//0x7f.1/x", Some("/x")),
+            ("//1.2.3.4.5/x", None),
+            ("//4294967296/x", None),
+            ("//a.0x/x", None),
+            ("//a.09/x", None),
+            ("//%25/x", None),
+            ("//h%2fx/p", None),
             ("", Some("/")),
         ];
         for (input, expected) in cases {

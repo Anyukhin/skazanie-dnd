@@ -96,14 +96,33 @@ fn merchant_id_guard(ctx: &mut RouteCtx) -> PassFuture<'_> {
 mod tests {
     use super::*;
 
+    /// Эталон Г для порядка проверок: номер строки каждого маршрута сверяется
+    /// с самим `server/index.mjs` — на этой строке или соседней (JS разбирает
+    /// регулярку строкой раньше проверки) стоят путь маршрута и, у маршрута
+    /// с одним методом, проверка `req.method === '…'`. Опечатка в номере
+    /// или сдвиг JS роняют тест: порядок таблицы держится на этих номерах.
     #[test]
-    fn table_is_sorted_by_js_line() {
+    fn route_lines_point_at_js_checks() {
+        use crate::dispatch::Pattern;
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../server/index.mjs");
+        let text = std::fs::read_to_string(&source).unwrap_or_else(|error| panic!("{}: {error}", source.display()));
+        let lines: Vec<&str> = text.lines().collect();
         let routes = table(Vec::new());
-        assert!(routes.windows(2).all(|pair| pair[0].line <= pair[1].line));
-        let lines: Vec<u32> = routes.iter().map(|route| route.line).collect();
-        let health = lines.iter().position(|line| *line == 3940);
-        let login = lines.iter().position(|line| *line == 3993);
-        assert!(health < login, "health раньше входа, как в JS");
+        assert!(routes.windows(2).all(|pair| pair[0].line <= pair[1].line), "таблица по возрастанию строки");
+        for route in &routes {
+            let at = |line: u32| lines.get(line as usize - 1).copied().unwrap_or("");
+            let window = [at(route.line - 1), at(route.line), at(route.line + 1)];
+            let here = window[1];
+            let marker = match route.matcher.pattern {
+                Pattern::Exact(path) | Pattern::Prefix(path) => format!("'{path}"),
+                Pattern::Template(template) => template[..template.find(['{', '[', '(']).unwrap_or(template.len())].replace('/', r"\/"),
+            };
+            assert!(window.iter().any(|line| line.contains(&marker)), "строка {}: нет {marker:?}\n{here}", route.line);
+            if let Methods::One(method) = &route.methods {
+                let check = format!("req.method === '{method}'");
+                assert!(window.iter().any(|line| line.contains(&check)), "строка {}: нет проверки метода {method}\n{here}", route.line);
+            }
+        }
     }
 
     #[test]

@@ -4,9 +4,12 @@
 //! - [`TestServer`] — настоящий сервер на случайном порту `127.0.0.1` и во
 //!   временном каталоге; окружение процесса не читается (`Config::for_tests`),
 //!   ключа модели нет, клиент модели — [`ForbiddenLlm`] через учёт расхода,
-//!   кости детерминированы (`FixedRng`);
+//!   кости детерминированы (`FixedRng`). Соединения обслуживает тот же цикл,
+//!   что и боевой сервер (`sk_server::serve`), на своём потоке и рантайме;
+//!   уничтожение останавливает его, ядро и только затем удаляет каталог;
 //! - [`Client`] — сырой HTTP/1.1 с cookie: адрес уходит как есть (`..`,
-//!   `//`, `%E0`), без нормализации клиентской библиотекой;
+//!   `//`, `%E0`), без нормализации клиентской библиотекой; ответ ждётся не
+//!   дольше [`CLIENT_TIMEOUT`];
 //! - [`RecordingStreams`] — заглушка реестра потоков, которая запоминает
 //!   вызовы отзыва и обновления.
 
@@ -23,7 +26,7 @@ use sk_infra::usage_ledger::{LlmClient, LlmError, LlmFuture};
 use sk_server::dispatch::Route;
 use sk_server::state::{LlmClients, Metered};
 use sk_server::streams::{Presence, StreamRegistry};
-use sk_server::{app, AppState, Config, Injected};
+use sk_server::{AppState, Config, Injected};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// Клиент модели, который не отвечает никогда: тесты С0 модель не зовут.
@@ -84,19 +87,28 @@ impl Default for Options {
     }
 }
 
-/// Тестовый сервер.
+/// Предел ожидания ответа клиентом: зависание сервера — падение теста.
+pub const CLIENT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Содержимое `secret.txt` рядом с `dist/`: его не должна отдать раздача клиента.
+pub const SECRET: &str = "секрет-вне-dist";
+
+/// Тестовый сервер. Порядок полей важен: каталог уничтожается последним,
+/// после ядра и состояния (на Windows открытая база не даёт его удалить).
 pub struct TestServer {
-    pub dir: tempfile::TempDir,
     pub state: Arc<AppState>,
     pub streams: Arc<RecordingStreams>,
     pub addr: SocketAddr,
-    task: tokio::task::JoinHandle<()>,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    pub dir: tempfile::TempDir,
 }
 
 pub fn write_dist(dir: &Path) {
     std::fs::create_dir_all(dir.join("dist").join("assets")).expect("dist");
     std::fs::write(dir.join("dist").join("index.html"), "<!doctype html><title>Сказание</title>").expect("index");
     std::fs::write(dir.join("dist").join("assets").join("main-abcdef12.js"), "console.log(1)").expect("чанк");
+    std::fs::write(dir.join("secret.txt"), SECRET).expect("секрет");
 }
 
 impl TestServer {
@@ -112,21 +124,32 @@ impl TestServer {
         let mut config = Config::for_tests(dir.path());
         config.admin_setup_token = options.admin_setup_token;
         let streams = Arc::new(RecordingStreams::default());
+        let recorder = streams.clone();
         let injected = Injected {
             dice: Some(Box::new(sk_dice::DiceService::deterministic(sk_dice::FixedRng(10), "roll"))),
             llm: Some(Box::new(|ledger| Ok(LlmClients { llm: Some(Metered::wrap(ForbiddenLlm, ledger)), lore: Some(Metered::wrap(ForbiddenLlm, ledger)) }))),
             clock: None,
-            streams: Some(streams.clone()),
+            streams: Some(Box::new(move || Box::new(recorder) as Box<dyn StreamRegistry>)),
             extra_routes: options.extra_routes,
         };
         let state = Arc::new(AppState::open(config, injected).expect("состояние сервера"));
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("порт");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("порт");
+        listener.set_nonblocking(true).expect("неблокирующий порт");
         let addr = listener.local_addr().expect("адрес");
-        let service = app(state.clone()).into_make_service_with_connect_info::<SocketAddr>();
-        let task = tokio::spawn(async move {
-            let _ = axum::serve(listener, service).await;
-        });
-        Self { dir, state, streams, addr, task }
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        let served = state.clone();
+        let thread = std::thread::Builder::new()
+            .name("test-http".into())
+            .spawn(move || {
+                let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build().expect("рантайм HTTP");
+                runtime.block_on(async move {
+                    let listener = tokio::net::TcpListener::from_std(listener).expect("порт в рантайме");
+                    sk_server::serve::serve(listener, served, async move { stopped.await.ok() }, |_| std::time::Duration::from_secs(1)).await;
+                });
+                runtime.shutdown_timeout(std::time::Duration::from_secs(1));
+            })
+            .expect("поток HTTP");
+        Self { state, streams, addr, stop: Some(stop), thread: Some(thread), dir }
     }
 
     pub fn client(&self) -> Client {
@@ -140,7 +163,15 @@ impl TestServer {
 
 impl Drop for TestServer {
     fn drop(&mut self) {
-        self.task.abort();
+        // Порядок остановки как в `main.rs`: приём и соединения, затем ядро;
+        // поля (`state`, затем `dir`) уничтожаются уже после.
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        self.state.core.shutdown();
     }
 }
 
@@ -217,6 +248,8 @@ fn decode_chunked(mut raw: &[u8]) -> Vec<u8> {
 
 impl Client {
     pub async fn send(&mut self, request: Req<'_>) -> TestResponse {
+        let target = request.target.to_string();
+        let method = request.method.to_string();
         let mut stream = tokio::net::TcpStream::connect(self.addr).await.expect("соединение");
         let mut head = format!("{} {} HTTP/1.1\r\nhost: {}\r\nconnection: close\r\n", request.method, request.target, self.addr);
         if !self.cookies.is_empty() {
@@ -234,7 +267,8 @@ impl Client {
         stream.write_all(head.as_bytes()).await.expect("запись");
         stream.write_all(&body).await.expect("тело");
         let mut raw = Vec::new();
-        let _ = stream.read_to_end(&mut raw).await;
+        let read = tokio::time::timeout(CLIENT_TIMEOUT, stream.read_to_end(&mut raw)).await;
+        assert!(read.is_ok(), "сервер не ответил за {CLIENT_TIMEOUT:?}: {method} {target}");
         let split = raw.windows(4).position(|window| window == b"\r\n\r\n").unwrap_or(raw.len());
         let head = String::from_utf8_lossy(&raw[..split]).into_owned();
         let mut lines = head.split("\r\n");

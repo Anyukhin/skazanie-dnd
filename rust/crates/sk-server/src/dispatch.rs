@@ -20,6 +20,21 @@
 //! 6477–6480): разбор `pathname` (ошибка разбора — 500 до всего остального),
 //! настройки ИИ кампании из пути на всё время запроса, граница ошибок
 //! ([`crate::boundary`]) и заголовки безопасности.
+//!
+//! Что делает разборщик HTTP до сервера, и где Rust расходится с Node:
+//!
+//! - **метод**: llhttp пропускает только свой список методов в верхнем
+//!   регистре, на прочие (`FOO`, `post`, `patch`) отвечает голым `400 Bad
+//!   Request` без вызова обработчика; hyper принимает любой токен, поэтому
+//!   [`handle`] первым делом отвечает так же ([`llhttp_method`]). `CONNECT`
+//!   Node без слушателя `connect` закрывает без ответа — здесь 400;
+//! - **фрагмент** `#…` в цели запроса Node оставляет в `req.url`
+//!   (`GET /api/health#x` — 404 API, `/assets/a.js#x` — `index.html`), а
+//!   крейт `http` отрезает его ещё при разборе (`uri/path.rs`), и вернуть
+//!   его нельзя. **Отклонение:** здесь фрагмента нет — `/api/health#x`
+//!   отвечает как `/api/health`, а статика отдаёт сам файл. Браузеры
+//!   фрагмент не шлют, так что расходится только ручной запрос; закреплено
+//!   тестом `fragment_is_dropped_by_http_parser`.
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -170,7 +185,11 @@ enum Token<'t> {
     Literal(&'t str),
     Class(&'t str),
     Alternatives(Vec<&'t str>),
+    /// `(?:литерал)?` — в параметры не попадает.
     Optional(&'t str),
+    /// `(литерал)?` — захватывающая группа: в параметры кладётся литерал
+    /// или пустая строка (`match[n]` — `undefined`).
+    OptionalCapture(&'t str),
 }
 
 fn tokens(template: &str) -> Vec<Token<'_>> {
@@ -186,8 +205,12 @@ fn tokens(template: &str) -> Vec<Token<'_>> {
             let end = inner.find(']').unwrap_or(inner.len());
             out.push(Token::Optional(&inner[..end]));
             rest = inner.get(end + 1..).unwrap_or("");
+        } else if let Some(inner) = rest.strip_prefix('(') {
+            let end = inner.find(')').unwrap_or(inner.len());
+            out.push(Token::OptionalCapture(&inner[..end]));
+            rest = inner.get(end + 1..).unwrap_or("");
         } else {
-            let end = rest.find(['{', '[']).unwrap_or(rest.len());
+            let end = rest.find(['{', '[', '(']).unwrap_or(rest.len());
             out.push(Token::Literal(&rest[..end]));
             rest = &rest[end..];
         }
@@ -214,6 +237,22 @@ fn match_tokens(tokens: &[Token<'_>], subject: &str, ignore_case: bool, captures
                 captures.truncate(mark);
             }
             match_tokens(rest, subject, ignore_case, captures)
+        }
+        Token::OptionalCapture(literal) => {
+            let mark = captures.len();
+            if let Some(tail) = literal_prefix(subject, literal, ignore_case) {
+                captures.push(subject[..literal.len()].to_string());
+                if match_tokens(rest, tail, ignore_case, captures) {
+                    return true;
+                }
+                captures.truncate(mark);
+            }
+            captures.push(String::new());
+            if match_tokens(rest, subject, ignore_case, captures) {
+                return true;
+            }
+            captures.truncate(mark);
+            false
         }
         Token::Alternatives(options) => options.iter().any(|option| {
             let mark = captures.len();
@@ -251,7 +290,9 @@ fn match_tokens(tokens: &[Token<'_>], subject: &str, ignore_case: bool, captures
 /// Совпадение шаблона целиком (`^…$`). Синтаксис: литералы; `{id}`, `{seg}`,
 /// `{decision}`, `{turn}`, `{hex}`, `{ruleset}` — классы регулярок JS с `+`;
 /// `{a|b}` — выбор `(a|b)`; `[/commands]` — необязательный литерал
-/// `(?:\/commands)?`. Классы и выбор попадают в параметры по порядку.
+/// `(?:\/commands)?`; `(/report)` — необязательная **захватывающая** группа
+/// `(\/report)?` (параметр — литерал или пустая строка). Классы, выбор и
+/// захватывающие группы попадают в параметры по порядку.
 pub fn template_match(template: &str, subject: &str, ignore_case: bool) -> Option<Vec<String>> {
     let tokens = tokens(template);
     let mut captures = Vec::new();
@@ -346,8 +387,33 @@ pub async fn entry(State(state): State<Shared>, request: Request) -> Response<Bo
     handle(state, request).await
 }
 
+/// Методы, которые пропускает llhttp (Node 24, `http.METHODS` без `CONNECT`
+/// и `PRI`): только верхний регистр.
+const LLHTTP_METHODS: [&str; 34] = [
+    "DELETE", "GET", "HEAD", "POST", "PUT", "OPTIONS", "TRACE", "COPY", "LOCK", "MKCOL", "MOVE", "PROPFIND", "PROPPATCH", "SEARCH", "UNLOCK", "BIND", "REBIND", "UNBIND",
+    "ACL", "REPORT", "MKACTIVITY", "CHECKOUT", "MERGE", "M-SEARCH", "NOTIFY", "SUBSCRIBE", "UNSUBSCRIBE", "PATCH", "PURGE", "MKCALENDAR", "LINK", "UNLINK", "SOURCE",
+    "QUERY",
+];
+
+/// Пропустил бы метод разборщик Node.
+pub fn llhttp_method(method: &Method) -> bool {
+    LLHTTP_METHODS.contains(&method.as_str())
+}
+
+/// Ответ llhttp на неизвестный метод (`HPE_INVALID_METHOD`): голый 400 и
+/// закрытие соединения — без JSON и заголовков безопасности.
+fn bad_request() -> Response<Body> {
+    let mut response = Response::new(Body::empty());
+    *response.status_mut() = StatusCode::BAD_REQUEST;
+    response.headers_mut().insert(axum::http::header::CONNECTION, axum::http::HeaderValue::from_static("close"));
+    response
+}
+
 /// `handleHttpRequest(req, res)` с границей `failUnhandledRequest`.
 pub async fn handle(state: Shared, request: Request) -> Response<Body> {
+    if !llhttp_method(request.method()) {
+        return bad_request();
+    }
     let peer = request.extensions().get::<ConnectInfo<SocketAddr>>().map(|info| info.0);
     let (parts, body) = request.into_parts();
     let raw_url = raw_target(&parts.uri);
@@ -435,9 +501,26 @@ mod tests {
         assert_eq!(caps("/api/campaigns/{id}/merchants/{seg}[/commands]", "/api/campaigns/X/merchants/m1/commands"), Some(vec!["X".into(), "m1".into()]));
         assert_eq!(caps("/api/campaigns/{id}/merchants/{seg}[/commands]", "/api/campaigns/X/merchants/commands"), Some(vec!["X".into(), "commands".into()]));
         assert_eq!(caps("/api/admin/combat-lab/runs/{seg}[/report]", "/api/admin/combat-lab/runs/r1/report"), Some(vec!["r1".into()]));
+        // `(\/report)?` стенда (`combat-lab-routes.mjs:59`): `match[2]` отличает
+        // отчёт прогона `r1` от прогона с id `report`.
+        let lab = "/api/admin/combat-lab/runs/{seg}(/report)";
+        assert_eq!(caps(lab, "/api/admin/combat-lab/runs/r1/report"), Some(vec!["r1".into(), "/report".into()]));
+        assert_eq!(caps(lab, "/api/admin/combat-lab/runs/report"), Some(vec!["report".into(), String::new()]));
+        assert_eq!(caps(lab, "/api/admin/combat-lab/runs/r1"), Some(vec!["r1".into(), String::new()]));
+        assert_eq!(caps(lab, "/api/admin/combat-lab/runs/r1/reports"), None);
         assert_eq!(template_match("/api/admin/users/{hex}", "/api/admin/users/ABCDEF-12", true), Some(vec!["ABCDEF-12".into()]), "флаг i");
         assert_eq!(template_match("/api/admin/users/{hex}", "/api/admin/users/ABCDEF-12", false), None);
         assert_eq!(caps("/api/rulesets/{ruleset}/character-creation", "/api/rulesets/srd_5_2_1/character-creation"), Some(vec!["srd_5_2_1".into()]));
+    }
+
+    #[test]
+    fn methods_like_llhttp() {
+        for method in ["GET", "POST", "PATCH", "M-SEARCH", "QUERY", "PURGE"] {
+            assert!(llhttp_method(&Method::from_bytes(method.as_bytes()).unwrap_or(Method::GET)), "{method}");
+        }
+        for method in ["post", "patch", "FOO", "CONNECT", "PRI"] {
+            assert!(!llhttp_method(&Method::from_bytes(method.as_bytes()).unwrap_or(Method::CONNECT)), "{method}");
+        }
     }
 
     #[test]

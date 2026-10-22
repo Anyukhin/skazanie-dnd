@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use serde_json::Value;
 
-use crate::core::GameCore;
+use crate::core::{CoreError, GameCore, LocalFuture};
 use crate::error::Failure;
 use crate::room::Room;
 
@@ -50,18 +50,32 @@ pub async fn reconcile_campaign_projection(core: Rc<GameCore>, campaign_id: &str
 
 /// `reconcileAllCampaignProjections()` (3574–3594): сверка при старте; сбой
 /// одной кампании не мешает остальным.
+///
+/// **Открытый долг С1** (рецензия С0, F10): заглушка всегда `Ok`, поэтому
+/// ветка ошибки в `main.rs` и инвариант «отказ одной кампании не роняет
+/// сервер» при старте не сторожены. Критерий С1 — Rust-тест: одна кампания с
+/// испорченным хвостом журнала или seed-снимком логирует отказ, остальные
+/// сверяются, сервер слушает; запрос к испорченной — `CAMPAIGN_RECOVERY_REQUIRED`,
+/// к соседней — 200. В С0 сторожится только HTTP-граница
+/// (`broken_campaign_settings_fail_only_that_campaign`).
 pub async fn reconcile_all_campaign_projections(_core: Rc<GameCore>) -> Result<(), Failure> {
     Ok(())
 }
 
 /// Хук «проекция записана» — бывший `onRoomSaved` (`store.mjs:438–470`).
 /// Подписчики: рассылка (С9), координатор боя и часы мира (С17), зацепки
-/// героев (С17). Вызывается **после** снятия замков потоков.
-pub type ProjectionSavedHook = fn(&Rc<GameCore>, &str, &Room);
+/// героев (С17). Хук — фоновая задача ядра: он получает свои копии и
+/// исполняется **после** текущего отрезка коммитящего задания, как
+/// `queueMicrotask` (`index.mjs:2783, 2829–2835, 2881, 4268`).
+pub type ProjectionSavedHook = fn(Rc<GameCore>, String, Room) -> LocalFuture<()>;
 
-/// Оповестить подписчиков о записанной проекции. До С1 подписчиков нет.
-pub fn on_projection_saved(core: &Rc<GameCore>, campaign_id: &str, room: &Room, hooks: &[ProjectionSavedHook]) {
+/// Оповестить подписчиков о записанной проекции: каждый хук ставится
+/// [`crate::core::spawn_in_context`] (учёт, настройки ИИ кампании
+/// постановщика) и синхронно ничего не делает — займы `RefCell`
+/// вызывающего не пересекаются с хуками. До С1 подписчиков нет.
+pub fn on_projection_saved(core: &Rc<GameCore>, campaign_id: &str, room: &Room, hooks: &[ProjectionSavedHook]) -> Result<(), CoreError> {
     for hook in hooks {
-        hook(core, campaign_id, room);
+        crate::core::spawn_in_context(hook(core.clone(), campaign_id.to_string(), room.clone()))?;
     }
+    Ok(())
 }
