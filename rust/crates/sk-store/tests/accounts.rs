@@ -42,6 +42,21 @@ fn legacy_user_logs_in_with_the_node_scrypt_password() {
     assert_eq!(settings, CampaignAiSettings { model: "luna".into(), narrator_style: "noir".into(), improv_mode: "story".into(), reasoning_level: "auto".into() });
 }
 
+/// Эталон — `buildUser` JS (`store.mjs:110–112`): почта —
+/// `/^\S+@\S+\.\S+$/`, длина пароля — в единицах UTF-16.
+#[test]
+fn email_and_password_checks_like_js() {
+    let accounts = Accounts::in_memory().expect("аккаунты");
+    let five_emoji = "😀".repeat(5);
+    assert!(accounts.register_user("emoji@mail.ru", &five_emoji, "").is_ok(), "пять эмодзи — десять единиц UTF-16");
+    assert_eq!(accounts.register_user("emoji2@mail.ru", &"😀".repeat(4), "").expect_err("коротко").message, "Пароль должен содержать не менее 10 символов");
+    assert!(accounts.register_user("a@.b.c", "длинный-пароль", "").is_ok(), "`\\S+` после @ — это «.b»");
+    for email in ["a@b\u{feff}.ru", "@a.ru", "a@b.", "a@.ru", "a@b", "a b@c.ru"] {
+        assert_eq!(accounts.register_user(email, "длинный-пароль", "").expect_err(email).message, "Укажите корректную почту", "{email:?}");
+    }
+    assert!(accounts.register_user("@x@y.ru", "длинный-пароль", "").is_ok(), "`\\S+` до @ может содержать @");
+}
+
 #[test]
 fn registration_sessions_and_access() {
     let now = Arc::new(AtomicI64::new(1_000));

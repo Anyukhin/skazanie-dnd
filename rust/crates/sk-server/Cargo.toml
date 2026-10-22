@@ -9,14 +9,46 @@ publish.workspace = true
 name = "skazanie-server"
 path = "src/main.rs"
 
+# Зависимости волны маршрутов (С0, решение владельца в `rust/SERVER-PLAN.md`):
+# все крейты движка подключены сразу, чтобы исполнители С1–С18 не правили этот
+# файл. Внешние — точными версиями из `Cargo.lock` (корневой `Cargo.toml` не
+# трогаем). `dotenvy` в офлайн-кэше нет: `.env` читает свой разборщик в
+# `main.rs`, новой зависимости не нужно.
 [dependencies]
 axum = "0.8.9"
+futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
+hyper = { version = "1.12.0", features = ["server", "http1"] }
+hyper-util = { version = "0.1.21", features = ["server", "server-graceful", "service", "tokio", "http1"] }
+indexmap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sk-core.workspace = true
-sk-store = { path = "../sk-store" }
+sha2.workspace = true
 tokio = { version = "1.53.2", features = ["full"] }
+tower = { version = "0.5.3", features = ["util"] }
+uuid.workspace = true
+
+sk-core.workspace = true
+sk-dice.workspace = true
+sk-rules.workspace = true
+sk-agents = { path = "../sk-agents" }
+sk-agents-base = { path = "../sk-agents-base" }
+sk-character = { path = "../sk-character" }
+sk-chargen = { path = "../sk-chargen" }
+sk-director = { path = "../sk-director" }
+sk-economy = { path = "../sk-economy" }
+sk-encounters = { path = "../sk-encounters" }
+sk-infra = { path = "../sk-infra" }
+sk-narration = { path = "../sk-narration" }
+sk-narration-base = { path = "../sk-narration-base" }
+sk-projection = { path = "../sk-projection" }
+sk-rulepack = { path = "../sk-rulepack" }
+sk-ruleset = { path = "../sk-ruleset" }
+sk-society = { path = "../sk-society" }
+sk-store = { path = "../sk-store" }
+sk-story = { path = "../sk-story" }
+sk-tactical = { path = "../sk-tactical" }
+sk-tactics = { path = "../sk-tactics" }
+sk-turns = { path = "../sk-turns" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
-tower = { version = "0.5.3", features = ["util"] }
