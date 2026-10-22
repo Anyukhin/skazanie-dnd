@@ -648,7 +648,7 @@ enum ReadFailure {
 /// `ActionAdjudicator`.
 #[derive(Clone)]
 pub struct ActionAdjudicator {
-    llm_client: Option<Arc<dyn LlmClient>>,
+    pub llm_client: Option<Arc<dyn LlmClient>>,
     /// `timeoutMs` как передан (JS отдаёт его клиенту без приведения).
     timeout_ms: Value,
     system_prompt: String,
