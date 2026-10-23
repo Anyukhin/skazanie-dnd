@@ -146,3 +146,5 @@ test/destructive-wave-api.test.mjs    # «Разрушительная волн�
 test/dialogue-api.test.mjs              # обсуждение и вопрос вне своего хода; переход по голосованию через /autonomy/advance
 test/hit-dice-api.test.mjs              # кости хитов через /commands; повтор /autonomy/advance показывает чужие кости хитов только проекцией зрителя
 test/mvp-player-cycle-api.test.mjs      # обычные игроки: шаги Режиссёра, полный бой, награды стадией завершения, три сцены
+# Ведущий (2026-10-24): после С18.3 + С18.4 целиком зелёный против Rust.
+test/director-player-entry-api.test.mjs
