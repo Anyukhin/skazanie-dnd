@@ -151,6 +151,18 @@ state_version_after, events }`. `readJournal` повреждённой камп�
 требует остановленного сервера. В режиме `rust` помощники зовут подкоманду
 `skazanie-server journal` (контракт описан в шапке `test/kit/journal.mjs`).
 
+### Сессия глазами теста
+
+Истечение сессии события не присылает, а хранит сессии сервер по-разному
+(`auth.json` у JS, SQLite у Rust). Помощник `test/kit/sessions.mjs`:
+
+```js
+await expireSession(server, cookie)   // cookie `skazanie_session=…`: срок этой сессии — миг назад
+```
+
+В режиме `rust` он зовёт подкоманду `skazanie-server session --expire`
+(токен — через stdin; контракт в шапке `test/kit/sessions.mjs`).
+
 ### Контрактный режим: тот же тест против Rust-сервера
 
 `SKAZANIE_SERVER_IMPL` выбирает реализацию сервера: `js` (по умолчанию,
@@ -166,13 +178,13 @@ state_version_after, events }`. `readJournal` повреждённой камп�
 `test/contract-rust.list`, когда их маршруты перенесены в `sk-server`:
 
 ```bash
-(cd rust && cargo build --release -p sk-server --features test-hooks)   # крючки и подкоманда journal
+(cd rust && cargo build --release -p sk-server --features test-hooks)   # крючки, подкоманды journal и session
 SKAZANIE_RUST_SERVER_BIN=rust/target/release/skazanie-server pnpm test:contract:rust
 pnpm test:contract:js      # тот же список против JS-эталона — обязан оставаться зелёным
 ```
 
 Бинарь без фичи `test-hooks` с заданными `dice`/`faults` не стартует, а
-`journal` у него нет: боевая сборка крючков не содержит.
+`journal` и `session` у него нет: боевая сборка крючков не содержит.
 
 ### Перевод прежнего HTTP-теста на кит
 
@@ -199,7 +211,7 @@ pnpm test:contract:js      # тот же список против JS-этало
 Контрактом пока не становятся проверки, привязанные к файловому хранилищу JS:
 `storage/rooms/*.json` и `metadata.json` кампании
 (`projection-postcommit-error-api`, `reconcile-access-perf-api`), правка
-`auth.json` (`stream-live-access-api`, `reconcile-access-perf-api`),
+`auth.json` мимо `expireSession` (членство в `reconcile-access-perf-api`),
 `storage/turn-traces/*` (`command-retry-intent-api`), `auditLegacyCutover`
 (`soak-crash-recovery-api`, `restore-rehearsal-api`) и CLI хранилища
 (`storage-backup-cli`). Запуск и HTTP в них идут через набор, а такие проверки
