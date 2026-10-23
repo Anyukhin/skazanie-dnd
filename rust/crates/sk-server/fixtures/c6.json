@@ -1,0 +1,4554 @@
+{
+  "format": "skazanie.golden/1",
+  "scenario": "кампании: список, герои, создание мастером и импортом, приглашения, вход, рекап",
+  "exchanges": [
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/heroes",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "ANON-1"
+      },
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/campaigns/ANON-1/invites",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/campaigns/ANON-1/join",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/campaigns/ANON-1/recap",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/auth/setup-admin",
+      "headers": {},
+      "body": {
+        "email": "gm@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Ведущий",
+        "setupToken": "setup-code"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "setupRequired": false
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "anya@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Аня"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "boris@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Борис"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "vera@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Вера"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "campaigns": []
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/heroes",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Требуются права администратора"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/heroes",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "heroes": []
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns?x=1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "campaigns": []
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "ab"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Код кампании должен содержать 3–24 латинских символа, цифры или дефис"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "bad code!"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Код кампании должен содержать 3–24 латинских символа, цифры или дефис"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Число мест героев должно быть от 1 до 5"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 0
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Число мест героев должно быть от 1 до 5"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 6
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Число мест героев должно быть от 1 до 5"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": "два"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Число мест героев должно быть от 1 до 5"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 2
+        },
+        "state": {
+          "players": []
+        }
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Обычный игрок создаёт кампанию только через проверенный мастер создания"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 2,
+          "ruleset_version": null
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Версию и состав rule packs определяет сервер",
+        "code": "RULESET_FIELDS_SERVER_OWNED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 2,
+          "enabledRulePacks": []
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Версию и состав rule packs определяет сервер",
+        "code": "RULESET_FIELDS_SERVER_OWNED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 2,
+          "worldMap": {}
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Версию и содержимое авторского мира определяет сервер",
+        "code": "WORLD_TEMPLATE_FIELDS_SERVER_OWNED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "players": [
+            {},
+            {},
+            {},
+            {},
+            {},
+            {}
+          ]
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Число мест героев должно быть от 1 до 5"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 1,
+          "rulesetId": "nope"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный ruleset «nope»",
+        "code": "RULESET_INVALID"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 1,
+          "campaignMode": "sandbox"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Выберите режим «Приключение» или «Постоянный мир»",
+        "code": "INVALID_CAMPAIGN_MODE"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 1,
+          "worldTemplateId": "invented-world"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный шаблон мира «invented-world»",
+        "code": "WORLD_TEMPLATE_INVALID"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 1,
+          "players": [
+            {
+              "id": "bad id!"
+            }
+          ]
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "character slot id должен быть непустым идентификатором",
+        "code": "INVALID_IDENTIFIER"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": [],
+      "status": 400,
+      "body_norm": {
+        "error": "Тело запроса должно быть JSON-объектом",
+        "code": "INVALID_JSON_BODY"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "tale-1",
+        "name": "Сказ о мосте",
+        "bootstrap": {
+          "partyName": "Двое",
+          "slotCount": 2,
+          "rulesetId": "srd_5_2_1",
+          "world": {
+            "premise": "Мост через реку сожгли",
+            "startingLocation": "Переправа"
+          }
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:cce933156d1c36cc84f91801aa74f0d29ce64f7f2a974f3a7d8e77f14b1fbe0d:598522>",
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "TALE-1",
+              "role": "owner",
+              "heroIds": [
+                "hero-slot-1"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-1",
+        "bootstrap": {
+          "slotCount": 1
+        }
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Кампания с таким кодом уже существует"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TIDE-1",
+        "name": "",
+        "bootstrap": {
+          "partyName": "",
+          "slotCount": 1,
+          "rulesetId": "srd_5_2_1",
+          "worldTemplateId": "league-nine-tides",
+          "world": {}
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:db500a61fb8e9963ac0f3a57d17add0aefd6adae570b82f98178c91bd99e21f5:124174>",
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "TIDE-1",
+              "role": "owner",
+              "heroIds": [
+                "hero-slot-1"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "IMPORT-1",
+        "name": "Импорт",
+        "state": {
+          "sessionCode": "IMPORT-1",
+          "campaign": "Импорт IMPORT-1",
+          "partyName": "Двое из ларца",
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "id": "hero-ada",
+              "character": "Ada",
+              "name": "Ada",
+              "hp": 8,
+              "maxHp": 8,
+              "x": 1,
+              "y": 0,
+              "characterSetupRequired": false
+            }
+          ],
+          "messages": [],
+          "campaignConcept": {
+            "era": "Средневековье",
+            "genre": "Фэнтези"
+          },
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          },
+          "enabled_house_rules": [
+            "flanking",
+            7
+          ]
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": {
+          "sessionCode": "IMPORT-1",
+          "campaign": "Импорт IMPORT-1",
+          "partyName": "Двое из ларца",
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0,
+              "level": 1,
+              "experience": 0,
+              "proficiency": 2,
+              "currency": {
+                "copper": 0,
+                "silver": 0,
+                "gold": 0,
+                "platinum": 0
+              },
+              "inventory": [],
+              "combatSpells": [],
+              "combatActions": [
+                {
+                  "id": "stand-up",
+                  "name": "Встать",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "free",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».",
+                  "effect": {
+                    "kind": "stand_up"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "break-free",
+                  "name": "Высвободиться",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.",
+                  "effect": {
+                    "kind": "break_free"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "steady-nerves",
+                  "name": "Совладать с собой",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).",
+                  "effect": {
+                    "kind": "steady_nerves"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-self",
+                  "name": "Потушить пламя",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить с себя пламя — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-ally",
+                  "name": "Потушить союзника",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить пламя с существа в пределах 5 футов — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "expeditious-retreat-dash",
+                  "name": "Стремительный рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "bonus_action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Пока активно «Поспешное отступление», совершить Рывок бонусным действием.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dash",
+                  "name": "Рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Дополнительное перемещение, равное скорости, до конца хода.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "disengage",
+                  "name": "Отход",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Перемещение не провоцирует атак по возможности до конца хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "disengaged",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dodge",
+                  "name": "Уклонение",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Атаки по вам совершаются с помехой до начала следующего хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "dodging",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "hide",
+                  "name": "Засада",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "dex",
+                    "skill": "stealth"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "help",
+                  "name": "Помощь",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Союзник получает преимущество на следующую атаку.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "helped",
+                    "duration": "until-used"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "stabilize",
+                  "name": "Стабилизировать",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.",
+                  "effect": {
+                    "kind": "stabilize",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "first-aid",
+                  "name": "Первая помощь",
+                  "category": "common",
+                  "target": "creature",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.",
+                  "effect": {
+                    "kind": "first_aid",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "grapple",
+                  "name": "Захват",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "grappled"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "shove",
+                  "name": "Толчок",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Силы; при успехе цель сбита с ног.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "prone"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "ready",
+                  "name": "Подготовка",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Подготовить действие и сохранить реакцию для указанного условия.",
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "readied",
+                    "duration": "until-next-turn"
+                  },
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "search",
+                  "name": "Поиск",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "wis",
+                    "skill": "perception"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "use-object",
+                  "name": "Использовать предмет",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Взаимодействовать с немагическим предметом в бою.",
+                  "effect": {
+                    "kind": "special"
+                  },
+                  "mechanicsSupport": "ruling-only",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "ready-action",
+                  "name": "Готовность",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить действие, чтобы заготовить атаку оружием или заклинание и выпустить его реакцией, когда сработает выбранный триггер.",
+                  "effect": {
+                    "kind": "ready_action",
+                    "triggers": [
+                      "enemy-approaches",
+                      "enemy-casts-spell"
+                    ]
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Заготавливается атака оружием или заклинание с временем накладывания «действие»: ячейка тратится сразу, магия держится концентрацией. Триггеров два и оба распознаёт сервер — враг подошёл вплотную или начал творить заклинание; произвольное «воспринимаемое обстоятельство» из редакции не исполняется.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                }
+              ],
+              "inventoryLoad": {
+                "weight": 0,
+                "capacity": 150,
+                "encumbered": false,
+                "remaining": 150,
+                "attuned": 0,
+                "attunement_limit": 3
+              },
+              "characterSheet": null
+            },
+            {
+              "id": "hero-ada",
+              "character": "Ada",
+              "name": "Ada",
+              "hp": 8,
+              "maxHp": 8,
+              "x": 1,
+              "y": 0,
+              "characterSetupRequired": false,
+              "level": 1,
+              "experience": 0,
+              "proficiency": 2,
+              "currency": {
+                "copper": 0,
+                "silver": 0,
+                "gold": 0,
+                "platinum": 0
+              },
+              "inventory": [],
+              "combatSpells": [],
+              "combatActions": [
+                {
+                  "id": "stand-up",
+                  "name": "Встать",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "free",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».",
+                  "effect": {
+                    "kind": "stand_up"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "break-free",
+                  "name": "Высвободиться",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.",
+                  "effect": {
+                    "kind": "break_free"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "steady-nerves",
+                  "name": "Совладать с собой",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).",
+                  "effect": {
+                    "kind": "steady_nerves"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-self",
+                  "name": "Потушить пламя",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить с себя пламя — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-ally",
+                  "name": "Потушить союзника",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить пламя с существа в пределах 5 футов — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "expeditious-retreat-dash",
+                  "name": "Стремительный рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "bonus_action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Пока активно «Поспешное отступление», совершить Рывок бонусным действием.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dash",
+                  "name": "Рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Дополнительное перемещение, равное скорости, до конца хода.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "disengage",
+                  "name": "Отход",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Перемещение не провоцирует атак по возможности до конца хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "disengaged",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dodge",
+                  "name": "Уклонение",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Атаки по вам совершаются с помехой до начала следующего хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "dodging",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "hide",
+                  "name": "Засада",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "dex",
+                    "skill": "stealth"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "help",
+                  "name": "Помощь",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Союзник получает преимущество на следующую атаку.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "helped",
+                    "duration": "until-used"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "stabilize",
+                  "name": "Стабилизировать",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.",
+                  "effect": {
+                    "kind": "stabilize",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "first-aid",
+                  "name": "Первая помощь",
+                  "category": "common",
+                  "target": "creature",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.",
+                  "effect": {
+                    "kind": "first_aid",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "grapple",
+                  "name": "Захват",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "grappled"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "shove",
+                  "name": "Толчок",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Силы; при успехе цель сбита с ног.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "prone"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "ready",
+                  "name": "Подготовка",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Подготовить действие и сохранить реакцию для указанного условия.",
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "readied",
+                    "duration": "until-next-turn"
+                  },
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "search",
+                  "name": "Поиск",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "wis",
+                    "skill": "perception"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "use-object",
+                  "name": "Использовать предмет",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Взаимодействовать с немагическим предметом в бою.",
+                  "effect": {
+                    "kind": "special"
+                  },
+                  "mechanicsSupport": "ruling-only",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "ready-action",
+                  "name": "Готовность",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить действие, чтобы заготовить атаку оружием или заклинание и выпустить его реакцией, когда сработает выбранный триггер.",
+                  "effect": {
+                    "kind": "ready_action",
+                    "triggers": [
+                      "enemy-approaches",
+                      "enemy-casts-spell"
+                    ]
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Заготавливается атака оружием или заклинание с временем накладывания «действие»: ячейка тратится сразу, магия держится концентрацией. Триггеров два и оба распознаёт сервер — враг подошёл вплотную или начал творить заклинание; произвольное «воспринимаемое обстоятельство» из редакции не исполняется.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                }
+              ],
+              "inventoryLoad": {
+                "weight": 0,
+                "capacity": 150,
+                "encumbered": false,
+                "remaining": 150,
+                "attuned": 0,
+                "attunement_limit": 3
+              },
+              "characterSheet": null
+            }
+          ],
+          "messages": [],
+          "campaignConcept": {
+            "era": "Средневековье",
+            "genre": "Фэнтези"
+          },
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          },
+          "enabled_house_rules": [
+            "flanking",
+            "7",
+            "skazanie:class-resources-2024-v1",
+            "house:bg3-opening-strike",
+            "house:bg3-spell-hands"
+          ],
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "ruleset_selection_locked": true,
+          "worldMemory": {
+            "schema_version": 2,
+            "entities": [
+              {
+                "id": "location:a73abc57455f59af5fbe738b",
+                "kind": "location",
+                "name": "Таверна",
+                "summary": "",
+                "aliases": [],
+                "visibility": "party",
+                "tags": [
+                  "visited"
+                ]
+              }
+            ],
+            "facts": [],
+            "relationships": [],
+            "quests": [],
+            "threads": [],
+            "epistemic_claims": [],
+            "summaries": [],
+            "knowledge": {},
+            "knowledge_revealed": [],
+            "knowledge_ledger": []
+          },
+          "character_start_level": 1,
+          "state_version": 0,
+          "engine_mode": "enforce",
+          "ruleset_locked_at": null,
+          "mechanics": {
+            "schema_version": 1,
+            "temporary_hp": {},
+            "resources": {
+              "hero-ivan": {},
+              "hero-ada": {}
+            },
+            "hit_point_dice": {},
+            "resting": {},
+            "conditions": {},
+            "defenses": {},
+            "concentration": {},
+            "positions": {
+              "hero-ivan": {
+                "x": 0,
+                "y": 0
+              },
+              "hero-ada": {
+                "x": 1,
+                "y": 0
+              }
+            },
+            "item_appraisals": {},
+            "scene_interactions": {},
+            "encounter": null,
+            "active_effects": [],
+            "progression": {
+              "milestones": [],
+              "milestones_since_level": 0,
+              "milestones_per_level": 3,
+              "level_up_available": false
+            },
+            "shapes": {},
+            "death": {
+              "campaign_status": "active",
+              "heroes": {},
+              "saving_throws": {}
+            },
+            "campaign_lifecycle": {
+              "schema_version": 1,
+              "status": "active",
+              "reason": null,
+              "paused_at": null,
+              "concluded_at": null,
+              "archived_at": null,
+              "epilogue": null,
+              "epilogue_fact_keys": [],
+              "changed_by": null
+            },
+            "combat": {
+              "active": false,
+              "round": 0,
+              "initiative": [],
+              "active_index": -1,
+              "action_economy": {},
+              "reaction_window": null,
+              "readied": {},
+              "group_initiative": false,
+              "turn_completed": [],
+              "truce": null,
+              "parley_attempts": 0
+            },
+            "enemy_knowledge": {
+              "party": {}
+            },
+            "world_time": {
+              "amount": 0,
+              "unit": "minute",
+              "elapsed_minutes": 0
+            }
+          },
+          "actors": [],
+          "partyMemberIds": [
+            "hero-ivan",
+            "hero-ada"
+          ],
+          "enemies": [],
+          "merchants": [],
+          "mapFeedback": [],
+          "battleLog": [],
+          "economyLog": [],
+          "adventure": {
+            "chapter": 1,
+            "history": [],
+            "visitedLocations": [
+              "Таверна"
+            ]
+          },
+          "locationMaps": {},
+          "worldMap": {
+            "version": 1,
+            "seed": "b3059ca711f9a3bf2086e933",
+            "name": "Карта мира «Импорт IMPORT-1»",
+            "width": 1000,
+            "height": 640,
+            "currentLocationId": "location-1-таверна",
+            "regions": [
+              {
+                "id": "region-1",
+                "name": "Забытые Леса",
+                "biome": "forest",
+                "x": 245,
+                "y": 201,
+                "radius": 205
+              },
+              {
+                "id": "region-2",
+                "name": "Туманные Кряжи",
+                "biome": "mountains",
+                "x": 741,
+                "y": 160,
+                "radius": 205
+              },
+              {
+                "id": "region-3",
+                "name": "Серебряные Долины",
+                "biome": "plains",
+                "x": 530,
+                "y": 322,
+                "radius": 245
+              },
+              {
+                "id": "region-4",
+                "name": "Северные Топи",
+                "biome": "marsh",
+                "x": 214,
+                "y": 496,
+                "radius": 205
+              },
+              {
+                "id": "region-5",
+                "name": "Сумеречные Фьорды",
+                "biome": "coast",
+                "x": 781,
+                "y": 475,
+                "radius": 205
+              }
+            ],
+            "locations": [
+              {
+                "id": "location-1-таверна",
+                "name": "Таверна",
+                "kind": "town",
+                "x": 521,
+                "y": 359,
+                "regionId": "region-3",
+                "summary": "Здесь начинается история отряда.",
+                "known": true,
+                "visited": true
+              },
+              {
+                "id": "location-2-керхольм",
+                "name": "Керхольм",
+                "kind": "village",
+                "x": 277,
+                "y": 275,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Забытые Леса».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-3-мормар",
+                "name": "Мормар",
+                "kind": "city",
+                "x": 715,
+                "y": 281,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Туманные Кряжи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-4-керская-чаща",
+                "name": "Керская чаща",
+                "kind": "wilds",
+                "x": 181,
+                "y": 466,
+                "regionId": "region-4",
+                "summary": "Известное место региона «Северные Топи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-5-рунская-твердыня",
+                "name": "Рунская твердыня",
+                "kind": "fortress",
+                "x": 854,
+                "y": 435,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Сумеречные Фьорды».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-6-керская-башня",
+                "name": "Керская башня",
+                "kind": "ruin",
+                "x": 420,
+                "y": 143,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Забытые Леса».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-7-элмар",
+                "name": "Элмар",
+                "kind": "port",
+                "x": 636,
+                "y": 496,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Сумеречные Фьорды».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-8-морские-руины",
+                "name": "Морские руины",
+                "kind": "dungeon",
+                "x": 865,
+                "y": 116,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Туманные Кряжи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-9-таргард",
+                "name": "Таргард",
+                "kind": "landmark",
+                "x": 152,
+                "y": 126,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Забытые Леса».",
+                "known": true,
+                "visited": false
+              }
+            ],
+            "routes": [
+              {
+                "id": "route-1-cbe382b1",
+                "from": "location-9-таргард",
+                "to": "location-4-керская-чаща",
+                "kind": "road",
+                "distance": 7,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-2-d57fce7c",
+                "from": "location-4-керская-чаща",
+                "to": "location-2-керхольм",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-3-6cee5aec",
+                "from": "location-2-керхольм",
+                "to": "location-6-керская-башня",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-4-f9a9c87d",
+                "from": "location-6-керская-башня",
+                "to": "location-1-таверна",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-5-6b443136",
+                "from": "location-1-таверна",
+                "to": "location-7-элмар",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-6-0e204daa",
+                "from": "location-7-элмар",
+                "to": "location-3-мормар",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-7-dbd11499",
+                "from": "location-3-мормар",
+                "to": "location-5-рунская-твердыня",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-8-d144e6be",
+                "from": "location-5-рунская-твердыня",
+                "to": "location-8-морские-руины",
+                "kind": "road",
+                "distance": 7,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-10-cf981b4e",
+                "from": "location-2-керхольм",
+                "to": "location-9-таргард",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-16-8d1f26af",
+                "from": "location-8-морские-руины",
+                "to": "location-3-мормар",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              }
+            ]
+          },
+          "social": {
+            "schema_version": 4,
+            "npcs": [],
+            "relationships": {},
+            "relationship_tiers": {},
+            "conversations": [],
+            "promises": []
+          },
+          "npc_world": {
+            "schema_version": 3,
+            "placements": [],
+            "vitals": {},
+            "stances": {},
+            "inventories": {},
+            "profiles": {}
+          },
+          "world_deeds": {
+            "schema_version": 1,
+            "deeds": []
+          },
+          "offscreen_world": {
+            "schema_version": 1,
+            "steps": [],
+            "watch": []
+          },
+          "courier_letters": {
+            "schema_version": 1,
+            "letters": []
+          },
+          "captives": {
+            "schema_version": 1,
+            "captives": []
+          },
+          "scenario_attention": {
+            "schema_version": 1,
+            "value": 0,
+            "visit": 0,
+            "counted": [],
+            "history": [],
+            "stranger": {
+              "stage": "none",
+              "location_id": "",
+              "party_acted": false
+            },
+            "treaty": {
+              "concluded": false,
+              "concluded_by": "",
+              "attempts": []
+            },
+            "purse_paid": [],
+            "armory_taken": [],
+            "informants": {},
+            "informant_turn_failed": []
+          },
+          "scenario_knight": {
+            "schema_version": 1,
+            "head_returned": false,
+            "head_returned_by": "",
+            "released": false,
+            "released_by": "",
+            "attempts": [],
+            "dread_resisted": []
+          },
+          "dialogues": {},
+          "loot_containers": {
+            "schema_version": 1,
+            "containers": []
+          },
+          "beasts": {
+            "schema_version": 1,
+            "beasts": []
+          },
+          "law": {
+            "schema_version": 1,
+            "crimes": [],
+            "cleared": {},
+            "encounter": null
+          },
+          "tavern": {
+            "schema_version": 3,
+            "patrons": {},
+            "gamblers": {}
+          },
+          "blessings": {
+            "schema_version": 1,
+            "heroes": {}
+          },
+          "autonomy": {
+            "schema_version": 3,
+            "director_history": [],
+            "director_outcomes": [],
+            "hooks": [],
+            "transitions": [],
+            "encounter_outcomes": [],
+            "scene_resolutions": [],
+            "reputations": {},
+            "witness_graph": [],
+            "pacing": {
+              "beat": 0,
+              "phase": "breather",
+              "tension": 0,
+              "last_intent_type": ""
+            },
+            "travel_history": [],
+            "downtime_history": [],
+            "random_encounters": [],
+            "applied_consequences": [],
+            "admin_interventions": 0
+          },
+          "partyDecisionPolicy": {
+            "schemaVersion": 1,
+            "policyVersion": "skazanie:party-decision-policy:v1",
+            "voterScope": "account",
+            "decisionTtlMs": 120000,
+            "quorumMode": "majority_of_active_voters",
+            "disconnectAction": "abstain",
+            "expiryResolution": "plurality_first_option",
+            "visibility": "party"
+          },
+          "state_projector_version": 19,
+          "isNarrating": false
+        },
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "IMPORT-2",
+        "state": {
+          "sessionCode": "IMPORT-2",
+          "campaign": "Импорт IMPORT-2",
+          "partyName": "Двое из ларца",
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "id": "hero-ada",
+              "character": "Ada",
+              "name": "Ada",
+              "hp": 8,
+              "maxHp": 8,
+              "x": 1,
+              "y": 0,
+              "characterSetupRequired": false
+            }
+          ],
+          "messages": [],
+          "campaignConcept": {
+            "era": "Средневековье",
+            "genre": "Фэнтези"
+          },
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          },
+          "ruleset_version": "9.9"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Версию ruleset определяет сервер",
+        "code": "RULESET_FIELDS_SERVER_OWNED"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "IMPORT-2",
+        "state": {
+          "sessionCode": "IMPORT-2",
+          "campaign": "Импорт IMPORT-2",
+          "partyName": "Двое из ларца",
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "id": "hero-ada",
+              "character": "Ada",
+              "name": "Ada",
+              "hp": 8,
+              "maxHp": 8,
+              "x": 1,
+              "y": 0,
+              "characterSetupRequired": false
+            }
+          ],
+          "messages": [],
+          "campaignConcept": {
+            "era": "Средневековье",
+            "genre": "Фэнтези"
+          },
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          },
+          "enabled_rule_packs": [
+            "other"
+          ]
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Состав rule packs определяет сервер",
+        "code": "RULESET_FIELDS_SERVER_OWNED"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "IMPORT-2",
+        "state": {
+          "sessionCode": "IMPORT-2",
+          "campaign": "Импорт IMPORT-2",
+          "partyName": "Двое из ларца",
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "id": "hero-ada",
+              "character": "Ada",
+              "name": "Ada",
+              "hp": 8,
+              "maxHp": 8,
+              "x": 1,
+              "y": 0,
+              "characterSetupRequired": false
+            }
+          ],
+          "messages": [],
+          "campaignConcept": {
+            "era": "Средневековье",
+            "genre": "Фэнтези"
+          },
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          },
+          "ruleset_id": "nope"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный ruleset «nope»",
+        "code": "RULESET_INVALID"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "IMPORT-2",
+        "state": {
+          "sessionCode": "IMPORT-2",
+          "campaign": "Импорт IMPORT-2",
+          "partyName": "Двое из ларца",
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "id": "hero-ada",
+              "character": "Ada",
+              "name": "Ada",
+              "hp": 8,
+              "maxHp": 8,
+              "x": 1,
+              "y": 0,
+              "characterSetupRequired": false
+            }
+          ],
+          "messages": [],
+          "campaignConcept": {
+            "campaign_mode": "sandbox"
+          },
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          }
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Выберите режим «Приключение» или «Постоянный мир»",
+        "code": "INVALID_CAMPAIGN_MODE"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "IMPORT-3",
+        "state": {
+          "sessionCode": "IMPORT-3",
+          "campaign": "Импорт IMPORT-3",
+          "partyName": "Двое из ларца",
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0
+            },
+            {
+              "id": "hero-ada",
+              "character": "Ada",
+              "name": "Ada",
+              "hp": 8,
+              "maxHp": 8,
+              "x": 1,
+              "y": 0,
+              "characterSetupRequired": false
+            }
+          ],
+          "messages": [],
+          "campaignConcept": {
+            "era": "Средневековье",
+            "genre": "Фэнтези"
+          },
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          },
+          "ruleset_id": "dnd_5e_2014"
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": {
+          "sessionCode": "IMPORT-3",
+          "campaign": "Импорт IMPORT-3",
+          "partyName": "Двое из ларца",
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0,
+              "level": 1,
+              "experience": 0,
+              "proficiency": 2,
+              "currency": {
+                "copper": 0,
+                "silver": 0,
+                "gold": 0,
+                "platinum": 0
+              },
+              "inventory": [],
+              "combatSpells": [],
+              "combatActions": [
+                {
+                  "id": "stand-up",
+                  "name": "Встать",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "free",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».",
+                  "effect": {
+                    "kind": "stand_up"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "break-free",
+                  "name": "Высвободиться",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.",
+                  "effect": {
+                    "kind": "break_free"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "steady-nerves",
+                  "name": "Совладать с собой",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).",
+                  "effect": {
+                    "kind": "steady_nerves"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-self",
+                  "name": "Потушить пламя",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить с себя пламя — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-ally",
+                  "name": "Потушить союзника",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить пламя с существа в пределах 5 футов — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "expeditious-retreat-dash",
+                  "name": "Стремительный рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "bonus_action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Пока активно «Поспешное отступление», совершить Рывок бонусным действием.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dash",
+                  "name": "Рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Дополнительное перемещение, равное скорости, до конца хода.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "disengage",
+                  "name": "Отход",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Перемещение не провоцирует атак по возможности до конца хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "disengaged",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dodge",
+                  "name": "Уклонение",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Атаки по вам совершаются с помехой до начала следующего хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "dodging",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "hide",
+                  "name": "Засада",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "dex",
+                    "skill": "stealth"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "help",
+                  "name": "Помощь",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Союзник получает преимущество на следующую атаку.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "helped",
+                    "duration": "until-used"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "stabilize",
+                  "name": "Стабилизировать",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.",
+                  "effect": {
+                    "kind": "stabilize",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "first-aid",
+                  "name": "Первая помощь",
+                  "category": "common",
+                  "target": "creature",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.",
+                  "effect": {
+                    "kind": "first_aid",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "grapple",
+                  "name": "Захват",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "grappled"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "shove",
+                  "name": "Толчок",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Силы; при успехе цель сбита с ног.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "prone"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "ready",
+                  "name": "Подготовка",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Подготовить действие и сохранить реакцию для указанного условия.",
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "readied",
+                    "duration": "until-next-turn"
+                  },
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "search",
+                  "name": "Поиск",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "wis",
+                    "skill": "perception"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "use-object",
+                  "name": "Использовать предмет",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Взаимодействовать с немагическим предметом в бою.",
+                  "effect": {
+                    "kind": "special"
+                  },
+                  "mechanicsSupport": "ruling-only",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "ready-action",
+                  "name": "Готовность",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить действие, чтобы заготовить атаку оружием или заклинание и выпустить его реакцией, когда сработает выбранный триггер.",
+                  "effect": {
+                    "kind": "ready_action",
+                    "triggers": [
+                      "enemy-approaches",
+                      "enemy-casts-spell"
+                    ]
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Заготавливается атака оружием или заклинание с временем накладывания «действие»: ячейка тратится сразу, магия держится концентрацией. Триггеров два и оба распознаёт сервер — враг подошёл вплотную или начал творить заклинание; произвольное «воспринимаемое обстоятельство» из редакции не исполняется.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                }
+              ],
+              "inventoryLoad": {
+                "weight": 0,
+                "capacity": 150,
+                "encumbered": false,
+                "remaining": 150,
+                "attuned": 0,
+                "attunement_limit": 3
+              },
+              "characterSheet": null
+            },
+            {
+              "id": "hero-ada",
+              "character": "Ada",
+              "name": "Ada",
+              "hp": 8,
+              "maxHp": 8,
+              "x": 1,
+              "y": 0,
+              "characterSetupRequired": false,
+              "level": 1,
+              "experience": 0,
+              "proficiency": 2,
+              "currency": {
+                "copper": 0,
+                "silver": 0,
+                "gold": 0,
+                "platinum": 0
+              },
+              "inventory": [],
+              "combatSpells": [],
+              "combatActions": [
+                {
+                  "id": "stand-up",
+                  "name": "Встать",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "free",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».",
+                  "effect": {
+                    "kind": "stand_up"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "break-free",
+                  "name": "Высвободиться",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.",
+                  "effect": {
+                    "kind": "break_free"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "steady-nerves",
+                  "name": "Совладать с собой",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).",
+                  "effect": {
+                    "kind": "steady_nerves"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-self",
+                  "name": "Потушить пламя",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить с себя пламя — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-ally",
+                  "name": "Потушить союзника",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить пламя с существа в пределах 5 футов — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "expeditious-retreat-dash",
+                  "name": "Стремительный рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "bonus_action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Пока активно «Поспешное отступление», совершить Рывок бонусным действием.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dash",
+                  "name": "Рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Дополнительное перемещение, равное скорости, до конца хода.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "disengage",
+                  "name": "Отход",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Перемещение не провоцирует атак по возможности до конца хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "disengaged",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dodge",
+                  "name": "Уклонение",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Атаки по вам совершаются с помехой до начала следующего хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "dodging",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "hide",
+                  "name": "Засада",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "dex",
+                    "skill": "stealth"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "help",
+                  "name": "Помощь",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Союзник получает преимущество на следующую атаку.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "helped",
+                    "duration": "until-used"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "stabilize",
+                  "name": "Стабилизировать",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.",
+                  "effect": {
+                    "kind": "stabilize",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "first-aid",
+                  "name": "Первая помощь",
+                  "category": "common",
+                  "target": "creature",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.",
+                  "effect": {
+                    "kind": "first_aid",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "grapple",
+                  "name": "Захват",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "grappled"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "shove",
+                  "name": "Толчок",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Силы; при успехе цель сбита с ног.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "prone"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "ready",
+                  "name": "Подготовка",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Подготовить действие и сохранить реакцию для указанного условия.",
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "readied",
+                    "duration": "until-next-turn"
+                  },
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "search",
+                  "name": "Поиск",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "wis",
+                    "skill": "perception"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "use-object",
+                  "name": "Использовать предмет",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Взаимодействовать с немагическим предметом в бою.",
+                  "effect": {
+                    "kind": "special"
+                  },
+                  "mechanicsSupport": "ruling-only",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "ready-action",
+                  "name": "Готовность",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить действие, чтобы заготовить атаку оружием или заклинание и выпустить его реакцией, когда сработает выбранный триггер.",
+                  "effect": {
+                    "kind": "ready_action",
+                    "triggers": [
+                      "enemy-approaches",
+                      "enemy-casts-spell"
+                    ]
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Заготавливается атака оружием или заклинание с временем накладывания «действие»: ячейка тратится сразу, магия держится концентрацией. Триггеров два и оба распознаёт сервер — враг подошёл вплотную или начал творить заклинание; произвольное «воспринимаемое обстоятельство» из редакции не исполняется.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                }
+              ],
+              "inventoryLoad": {
+                "weight": 0,
+                "capacity": 150,
+                "encumbered": false,
+                "remaining": 150,
+                "attuned": 0,
+                "attunement_limit": 3
+              },
+              "characterSheet": null
+            }
+          ],
+          "messages": [],
+          "campaignConcept": {
+            "era": "Средневековье",
+            "genre": "Фэнтези"
+          },
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          },
+          "ruleset_id": "dnd_5e_2014",
+          "ruleset_version": "2014.1.0",
+          "enabled_rule_packs": [
+            "dnd_5e_2014"
+          ],
+          "enabled_house_rules": [
+            "skazanie:2014-preview-legacy-catalogs-v1",
+            "house:bg3-opening-strike",
+            "house:bg3-spell-hands"
+          ],
+          "ruleset_selection_locked": true,
+          "worldMemory": {
+            "schema_version": 2,
+            "entities": [
+              {
+                "id": "location:a73abc57455f59af5fbe738b",
+                "kind": "location",
+                "name": "Таверна",
+                "summary": "",
+                "aliases": [],
+                "visibility": "party",
+                "tags": [
+                  "visited"
+                ]
+              }
+            ],
+            "facts": [],
+            "relationships": [],
+            "quests": [],
+            "threads": [],
+            "epistemic_claims": [],
+            "summaries": [],
+            "knowledge": {},
+            "knowledge_revealed": [],
+            "knowledge_ledger": []
+          },
+          "character_start_level": 1,
+          "state_version": 0,
+          "engine_mode": "enforce",
+          "ruleset_locked_at": null,
+          "mechanics": {
+            "schema_version": 1,
+            "temporary_hp": {},
+            "resources": {
+              "hero-ivan": {},
+              "hero-ada": {}
+            },
+            "hit_point_dice": {},
+            "resting": {},
+            "conditions": {},
+            "defenses": {},
+            "concentration": {},
+            "positions": {
+              "hero-ivan": {
+                "x": 0,
+                "y": 0
+              },
+              "hero-ada": {
+                "x": 1,
+                "y": 0
+              }
+            },
+            "item_appraisals": {},
+            "scene_interactions": {},
+            "encounter": null,
+            "active_effects": [],
+            "progression": {
+              "milestones": [],
+              "milestones_since_level": 0,
+              "milestones_per_level": 3,
+              "level_up_available": false
+            },
+            "shapes": {},
+            "death": {
+              "campaign_status": "active",
+              "heroes": {},
+              "saving_throws": {}
+            },
+            "campaign_lifecycle": {
+              "schema_version": 1,
+              "status": "active",
+              "reason": null,
+              "paused_at": null,
+              "concluded_at": null,
+              "archived_at": null,
+              "epilogue": null,
+              "epilogue_fact_keys": [],
+              "changed_by": null
+            },
+            "combat": {
+              "active": false,
+              "round": 0,
+              "initiative": [],
+              "active_index": -1,
+              "action_economy": {},
+              "reaction_window": null,
+              "readied": {},
+              "group_initiative": false,
+              "turn_completed": [],
+              "truce": null,
+              "parley_attempts": 0
+            },
+            "enemy_knowledge": {
+              "party": {}
+            },
+            "world_time": {
+              "amount": 0,
+              "unit": "minute",
+              "elapsed_minutes": 0
+            }
+          },
+          "actors": [],
+          "partyMemberIds": [
+            "hero-ivan",
+            "hero-ada"
+          ],
+          "enemies": [],
+          "merchants": [],
+          "mapFeedback": [],
+          "battleLog": [],
+          "economyLog": [],
+          "adventure": {
+            "chapter": 1,
+            "history": [],
+            "visitedLocations": [
+              "Таверна"
+            ]
+          },
+          "locationMaps": {},
+          "worldMap": {
+            "version": 1,
+            "seed": "fdcc097306b1055157b47d44",
+            "name": "Карта мира «Импорт IMPORT-3»",
+            "width": 1000,
+            "height": 640,
+            "currentLocationId": "location-1-таверна",
+            "regions": [
+              {
+                "id": "region-1",
+                "name": "Зелёные Леса",
+                "biome": "forest",
+                "x": 224,
+                "y": 194,
+                "radius": 205
+              },
+              {
+                "id": "region-2",
+                "name": "Серебряные Высоты",
+                "biome": "mountains",
+                "x": 754,
+                "y": 172,
+                "radius": 205
+              },
+              {
+                "id": "region-3",
+                "name": "Северные Земли",
+                "biome": "plains",
+                "x": 531,
+                "y": 318,
+                "radius": 245
+              },
+              {
+                "id": "region-4",
+                "name": "Серебряные Плавни",
+                "biome": "marsh",
+                "x": 242,
+                "y": 492,
+                "radius": 205
+              },
+              {
+                "id": "region-5",
+                "name": "Серебряные Берега",
+                "biome": "coast",
+                "x": 794,
+                "y": 504,
+                "radius": 205
+              }
+            ],
+            "locations": [
+              {
+                "id": "location-1-таверна",
+                "name": "Таверна",
+                "kind": "town",
+                "x": 527,
+                "y": 363,
+                "regionId": "region-3",
+                "summary": "Здесь начинается история отряда.",
+                "known": true,
+                "visited": true
+              },
+              {
+                "id": "location-2-эствуд",
+                "name": "Эствуд",
+                "kind": "village",
+                "x": 305,
+                "y": 274,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Зелёные Леса».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-3-элвуд",
+                "name": "Элвуд",
+                "kind": "city",
+                "x": 708,
+                "y": 267,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Серебряные Высоты».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-4-тарские-топи",
+                "name": "Тарские топи",
+                "kind": "wilds",
+                "x": 168,
+                "y": 451,
+                "regionId": "region-4",
+                "summary": "Известное место региона «Серебряные Плавни».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-5-морская-цитадель",
+                "name": "Морская цитадель",
+                "kind": "fortress",
+                "x": 860,
+                "y": 429,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Серебряные Берега».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-6-элская-башня",
+                "name": "Элская башня",
+                "kind": "ruin",
+                "x": 402,
+                "y": 106,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Зелёные Леса».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-7-тарвуд",
+                "name": "Тарвуд",
+                "kind": "port",
+                "x": 627,
+                "y": 507,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Серебряные Берега».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-8-вальский-склеп",
+                "name": "Вальский склеп",
+                "kind": "dungeon",
+                "x": 816,
+                "y": 149,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Серебряные Высоты».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-9-дормир",
+                "name": "Дормир",
+                "kind": "landmark",
+                "x": 137,
+                "y": 156,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Зелёные Леса».",
+                "known": true,
+                "visited": false
+              }
+            ],
+            "routes": [
+              {
+                "id": "route-1-a9132b6d",
+                "from": "location-9-дормир",
+                "to": "location-4-тарские-топи",
+                "kind": "road",
+                "distance": 6,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-2-1f0085c5",
+                "from": "location-4-тарские-топи",
+                "to": "location-2-эствуд",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-3-ec9dae71",
+                "from": "location-2-эствуд",
+                "to": "location-6-элская-башня",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-4-ad2d51d9",
+                "from": "location-6-элская-башня",
+                "to": "location-1-таверна",
+                "kind": "road",
+                "distance": 6,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-5-af1c84a1",
+                "from": "location-1-таверна",
+                "to": "location-7-тарвуд",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-6-6ba834a7",
+                "from": "location-7-тарвуд",
+                "to": "location-3-элвуд",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-7-9457441a",
+                "from": "location-3-элвуд",
+                "to": "location-8-вальский-склеп",
+                "kind": "road",
+                "distance": 3,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-8-b7167df4",
+                "from": "location-8-вальский-склеп",
+                "to": "location-5-морская-цитадель",
+                "kind": "road",
+                "distance": 6,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-13-83c357bb",
+                "from": "location-5-морская-цитадель",
+                "to": "location-3-элвуд",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-17-becda760",
+                "from": "location-9-дормир",
+                "to": "location-2-эствуд",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              }
+            ]
+          },
+          "social": {
+            "schema_version": 4,
+            "npcs": [],
+            "relationships": {},
+            "relationship_tiers": {},
+            "conversations": [],
+            "promises": []
+          },
+          "npc_world": {
+            "schema_version": 3,
+            "placements": [],
+            "vitals": {},
+            "stances": {},
+            "inventories": {},
+            "profiles": {}
+          },
+          "world_deeds": {
+            "schema_version": 1,
+            "deeds": []
+          },
+          "offscreen_world": {
+            "schema_version": 1,
+            "steps": [],
+            "watch": []
+          },
+          "courier_letters": {
+            "schema_version": 1,
+            "letters": []
+          },
+          "captives": {
+            "schema_version": 1,
+            "captives": []
+          },
+          "scenario_attention": {
+            "schema_version": 1,
+            "value": 0,
+            "visit": 0,
+            "counted": [],
+            "history": [],
+            "stranger": {
+              "stage": "none",
+              "location_id": "",
+              "party_acted": false
+            },
+            "treaty": {
+              "concluded": false,
+              "concluded_by": "",
+              "attempts": []
+            },
+            "purse_paid": [],
+            "armory_taken": [],
+            "informants": {},
+            "informant_turn_failed": []
+          },
+          "scenario_knight": {
+            "schema_version": 1,
+            "head_returned": false,
+            "head_returned_by": "",
+            "released": false,
+            "released_by": "",
+            "attempts": [],
+            "dread_resisted": []
+          },
+          "dialogues": {},
+          "loot_containers": {
+            "schema_version": 1,
+            "containers": []
+          },
+          "beasts": {
+            "schema_version": 1,
+            "beasts": []
+          },
+          "law": {
+            "schema_version": 1,
+            "crimes": [],
+            "cleared": {},
+            "encounter": null
+          },
+          "tavern": {
+            "schema_version": 3,
+            "patrons": {},
+            "gamblers": {}
+          },
+          "blessings": {
+            "schema_version": 1,
+            "heroes": {}
+          },
+          "autonomy": {
+            "schema_version": 3,
+            "director_history": [],
+            "director_outcomes": [],
+            "hooks": [],
+            "transitions": [],
+            "encounter_outcomes": [],
+            "scene_resolutions": [],
+            "reputations": {},
+            "witness_graph": [],
+            "pacing": {
+              "beat": 0,
+              "phase": "breather",
+              "tension": 0,
+              "last_intent_type": ""
+            },
+            "travel_history": [],
+            "downtime_history": [],
+            "random_encounters": [],
+            "applied_consequences": [],
+            "admin_interventions": 0
+          },
+          "partyDecisionPolicy": {
+            "schemaVersion": 1,
+            "policyVersion": "skazanie:party-decision-policy:v1",
+            "voterScope": "account",
+            "decisionTtlMs": 120000,
+            "quorumMode": "majority_of_active_voters",
+            "disconnectAction": "abstain",
+            "expiryResolution": "plurality_first_option",
+            "visibility": "party"
+          },
+          "state_projector_version": 19,
+          "isNarrating": false
+        },
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "EMPTY-1",
+        "name": "Пустая"
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": {
+          "sessionCode": "EMPTY-1",
+          "campaign": "Пустая",
+          "players": [],
+          "messages": [],
+          "activePlayerId": "",
+          "isNarrating": false,
+          "pendingCheck": null,
+          "scene": {
+            "title": "Начало",
+            "location": "",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "enabled_house_rules": [
+            "skazanie:class-resources-2024-v1",
+            "house:bg3-opening-strike",
+            "house:bg3-spell-hands"
+          ],
+          "ruleset_selection_locked": true,
+          "worldMemory": {
+            "schema_version": 2,
+            "entities": [
+              {
+                "id": "location:855c61fbdfb23eb0d97271dd",
+                "kind": "location",
+                "name": "Начало",
+                "summary": "",
+                "aliases": [],
+                "visibility": "party",
+                "tags": [
+                  "visited"
+                ]
+              }
+            ],
+            "facts": [],
+            "relationships": [],
+            "quests": [],
+            "threads": [],
+            "epistemic_claims": [],
+            "summaries": [],
+            "knowledge": {},
+            "knowledge_revealed": [],
+            "knowledge_ledger": []
+          },
+          "character_start_level": 1,
+          "state_version": 0,
+          "engine_mode": "enforce",
+          "ruleset_locked_at": null,
+          "mechanics": {
+            "schema_version": 1,
+            "temporary_hp": {},
+            "resources": {},
+            "hit_point_dice": {},
+            "resting": {},
+            "conditions": {},
+            "defenses": {},
+            "concentration": {},
+            "positions": {},
+            "item_appraisals": {},
+            "scene_interactions": {},
+            "encounter": null,
+            "active_effects": [],
+            "progression": {
+              "milestones": [],
+              "milestones_since_level": 0,
+              "milestones_per_level": 3,
+              "level_up_available": false
+            },
+            "shapes": {},
+            "death": {
+              "campaign_status": "active",
+              "heroes": {},
+              "saving_throws": {}
+            },
+            "campaign_lifecycle": {
+              "schema_version": 1,
+              "status": "active",
+              "reason": null,
+              "paused_at": null,
+              "concluded_at": null,
+              "archived_at": null,
+              "epilogue": null,
+              "epilogue_fact_keys": [],
+              "changed_by": null
+            },
+            "combat": {
+              "active": false,
+              "round": 0,
+              "initiative": [],
+              "active_index": -1,
+              "action_economy": {},
+              "reaction_window": null,
+              "readied": {},
+              "group_initiative": false,
+              "turn_completed": [],
+              "truce": null,
+              "parley_attempts": 0
+            },
+            "enemy_knowledge": {
+              "party": {}
+            },
+            "world_time": {
+              "amount": 0,
+              "unit": "minute",
+              "elapsed_minutes": 0
+            }
+          },
+          "actors": [],
+          "partyName": "Отряд героев",
+          "partyMemberIds": [],
+          "enemies": [],
+          "merchants": [],
+          "mapFeedback": [],
+          "battleLog": [],
+          "economyLog": [],
+          "adventure": {
+            "chapter": 1,
+            "history": [],
+            "visitedLocations": []
+          },
+          "locationMaps": {},
+          "worldMap": {
+            "version": 1,
+            "seed": "9eb4a39126ee145ce3563b8e",
+            "name": "Карта мира «Пустая»",
+            "width": 1000,
+            "height": 640,
+            "currentLocationId": "location-1-эстмар",
+            "regions": [
+              {
+                "id": "region-1",
+                "name": "Сумеречные Леса",
+                "biome": "forest",
+                "x": 244,
+                "y": 195,
+                "radius": 205
+              },
+              {
+                "id": "region-2",
+                "name": "Зелёные Высоты",
+                "biome": "mountains",
+                "x": 750,
+                "y": 136,
+                "radius": 205
+              },
+              {
+                "id": "region-3",
+                "name": "Забытые Земли",
+                "biome": "plains",
+                "x": 501,
+                "y": 323,
+                "radius": 245
+              },
+              {
+                "id": "region-4",
+                "name": "Северные Топи",
+                "biome": "marsh",
+                "x": 206,
+                "y": 511,
+                "radius": 205
+              },
+              {
+                "id": "region-5",
+                "name": "Сумеречные Фьорды",
+                "biome": "coast",
+                "x": 787,
+                "y": 476,
+                "radius": 205
+              }
+            ],
+            "locations": [
+              {
+                "id": "location-1-эстмар",
+                "name": "Эстмар",
+                "kind": "town",
+                "x": 494,
+                "y": 379,
+                "regionId": "region-3",
+                "summary": "Здесь начинается история отряда.",
+                "known": true,
+                "visited": true
+              },
+              {
+                "id": "location-2-дорфорд",
+                "name": "Дорфорд",
+                "kind": "village",
+                "x": 303,
+                "y": 267,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Сумеречные Леса».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-3-тармир",
+                "name": "Тармир",
+                "kind": "city",
+                "x": 691,
+                "y": 280,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Зелёные Высоты».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-4-норские-равнины",
+                "name": "Норские равнины",
+                "kind": "wilds",
+                "x": 148,
+                "y": 432,
+                "regionId": "region-4",
+                "summary": "Известное место региона «Северные Топи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-5-рунский-дозор",
+                "name": "Рунский дозор",
+                "kind": "fortress",
+                "x": 847,
+                "y": 459,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Сумеречные Фьорды».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-6-элский-склеп",
+                "name": "Элский склеп",
+                "kind": "ruin",
+                "x": 439,
+                "y": 126,
+                "regionId": "region-3",
+                "summary": "Известное место региона «Забытые Земли».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-7-дормир",
+                "name": "Дормир",
+                "kind": "port",
+                "x": 649,
+                "y": 510,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Сумеречные Фьорды».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-8-элский-курган",
+                "name": "Элский курган",
+                "kind": "dungeon",
+                "x": 849,
+                "y": 130,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Зелёные Высоты».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-9-айрхольм",
+                "name": "Айрхольм",
+                "kind": "landmark",
+                "x": 122,
+                "y": 157,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Сумеречные Леса».",
+                "known": true,
+                "visited": false
+              }
+            ],
+            "routes": [
+              {
+                "id": "route-1-8d474c25",
+                "from": "location-9-айрхольм",
+                "to": "location-4-норские-равнины",
+                "kind": "road",
+                "distance": 6,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-2-bd11972e",
+                "from": "location-4-норские-равнины",
+                "to": "location-2-дорфорд",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-3-32ac46ab",
+                "from": "location-2-дорфорд",
+                "to": "location-6-элский-склеп",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-4-e6684599",
+                "from": "location-6-элский-склеп",
+                "to": "location-1-эстмар",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-5-7e82f86d",
+                "from": "location-1-эстмар",
+                "to": "location-7-дормир",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-6-0d7b6ca3",
+                "from": "location-7-дормир",
+                "to": "location-3-тармир",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-7-b789d460",
+                "from": "location-3-тармир",
+                "to": "location-5-рунский-дозор",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-8-afc501da",
+                "from": "location-5-рунский-дозор",
+                "to": "location-8-элский-курган",
+                "kind": "road",
+                "distance": 7,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-11-5939ee53",
+                "from": "location-3-тармир",
+                "to": "location-8-элский-курган",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-13-1e39fee9",
+                "from": "location-5-рунский-дозор",
+                "to": "location-7-дормир",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-17-7596d3e4",
+                "from": "location-9-айрхольм",
+                "to": "location-2-дорфорд",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              }
+            ]
+          },
+          "social": {
+            "schema_version": 4,
+            "npcs": [],
+            "relationships": {},
+            "relationship_tiers": {},
+            "conversations": [],
+            "promises": []
+          },
+          "npc_world": {
+            "schema_version": 3,
+            "placements": [],
+            "vitals": {},
+            "stances": {},
+            "inventories": {},
+            "profiles": {}
+          },
+          "world_deeds": {
+            "schema_version": 1,
+            "deeds": []
+          },
+          "offscreen_world": {
+            "schema_version": 1,
+            "steps": [],
+            "watch": []
+          },
+          "courier_letters": {
+            "schema_version": 1,
+            "letters": []
+          },
+          "captives": {
+            "schema_version": 1,
+            "captives": []
+          },
+          "scenario_attention": {
+            "schema_version": 1,
+            "value": 0,
+            "visit": 0,
+            "counted": [],
+            "history": [],
+            "stranger": {
+              "stage": "none",
+              "location_id": "",
+              "party_acted": false
+            },
+            "treaty": {
+              "concluded": false,
+              "concluded_by": "",
+              "attempts": []
+            },
+            "purse_paid": [],
+            "armory_taken": [],
+            "informants": {},
+            "informant_turn_failed": []
+          },
+          "scenario_knight": {
+            "schema_version": 1,
+            "head_returned": false,
+            "head_returned_by": "",
+            "released": false,
+            "released_by": "",
+            "attempts": [],
+            "dread_resisted": []
+          },
+          "dialogues": {},
+          "loot_containers": {
+            "schema_version": 1,
+            "containers": []
+          },
+          "beasts": {
+            "schema_version": 1,
+            "beasts": []
+          },
+          "law": {
+            "schema_version": 1,
+            "crimes": [],
+            "cleared": {},
+            "encounter": null
+          },
+          "tavern": {
+            "schema_version": 3,
+            "patrons": {},
+            "gamblers": {}
+          },
+          "blessings": {
+            "schema_version": 1,
+            "heroes": {}
+          },
+          "autonomy": {
+            "schema_version": 3,
+            "director_history": [],
+            "director_outcomes": [],
+            "hooks": [],
+            "transitions": [],
+            "encounter_outcomes": [],
+            "scene_resolutions": [],
+            "reputations": {},
+            "witness_graph": [],
+            "pacing": {
+              "beat": 0,
+              "phase": "breather",
+              "tension": 0,
+              "last_intent_type": ""
+            },
+            "travel_history": [],
+            "downtime_history": [],
+            "random_encounters": [],
+            "applied_consequences": [],
+            "admin_interventions": 0
+          },
+          "partyDecisionPolicy": {
+            "schemaVersion": 1,
+            "policyVersion": "skazanie:party-decision-policy:v1",
+            "voterScope": "account",
+            "decisionTtlMs": 120000,
+            "quorumMode": "majority_of_active_voters",
+            "disconnectAction": "abstain",
+            "expiryResolution": "plurality_first_option",
+            "visibility": "party"
+          },
+          "state_projector_version": 19
+        },
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "SEATS-1",
+        "bootstrap": {
+          "partyName": "Места",
+          "slotCount": 3,
+          "world": {}
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:78dda9cec48f013fb139bcf1eca61f22f20c2c7c7023e535116e41fe51ace60d:179597>",
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "SEATS-1",
+              "role": "owner",
+              "heroIds": [
+                "hero-slot-1"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/invites",
+      "headers": {},
+      "body": {},
+      "status": 403,
+      "body_norm": {
+        "error": "Создавать приглашения может только владелец кампании"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/NOPE-1/invites",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-slot-1"
+        ]
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Приглашение содержит недоступного или уже назначенного героя"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-nope"
+        ]
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Приглашение содержит недоступного или уже назначенного героя"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/tale-1/invites",
+      "headers": {},
+      "body": {
+        "expires_in_ms": 120000
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "TALE-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-slot-2"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/IMPORT-1/invites",
+      "headers": {},
+      "body": {},
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "IMPORT-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-ivan"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/IMPORT-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-ada"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "IMPORT-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-ada"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/EMPTY-1/invites",
+      "headers": {},
+      "body": {},
+      "status": 409,
+      "body_norm": {
+        "error": "В кампании не осталось свободных героев"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/join",
+      "headers": {},
+      "body": {},
+      "status": 400,
+      "body_norm": {
+        "error": "Для входа нужна действующая ссылка-приглашение"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/join",
+      "headers": {},
+      "body": {
+        "inviteToken": "не-тот-токен"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Приглашение недействительно"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/NOPE-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "x"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:46>"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Приглашение недействительно"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/tale-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:45>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "TALE-1",
+        "hero_ids": [
+          "hero-slot-2"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "TALE-1",
+              "role": "player",
+              "heroIds": [
+                "hero-slot-2"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:45>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "TALE-1",
+        "hero_ids": [
+          "hero-slot-2"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "TALE-1",
+              "role": "player",
+              "heroIds": [
+                "hero-slot-2"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": true
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:45>"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "В кампании не осталось свободных героев"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/campaigns/IMPORT-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:46>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "IMPORT-1",
+        "hero_ids": [
+          "hero-ivan"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "TIDE-1",
+              "role": "owner",
+              "heroIds": [
+                "hero-slot-1"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "IMPORT-1",
+              "role": "player",
+              "heroIds": [
+                "hero-ivan"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/invites",
+      "headers": {},
+      "body": {},
+      "status": 409,
+      "body_norm": {
+        "error": "В кампании не осталось свободных героев"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "campaigns": [
+          {
+            "code": "TALE-1",
+            "name": "Сказ о мосте",
+            "partyName": "Двое",
+            "memberCount": 2,
+            "playerCount": 2,
+            "setting": "",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "owner",
+            "updatedAt": "<time>"
+          }
+        ]
+      }
+    },
+    {
+      "as": "guest",
+      "method": "GET",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "campaigns": [
+          {
+            "code": "TALE-1",
+            "name": "Сказ о мосте",
+            "partyName": "Двое",
+            "memberCount": 2,
+            "playerCount": 2,
+            "setting": "",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "player",
+            "updatedAt": "<time>"
+          }
+        ]
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "campaigns": [
+          {
+            "code": "IMPORT-1",
+            "name": "Импорт IMPORT-1",
+            "partyName": "Двое из ларца",
+            "memberCount": 2,
+            "playerCount": 2,
+            "setting": "Средневековье · Фэнтези",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "player",
+            "updatedAt": "<time>"
+          },
+          {
+            "code": "TIDE-1",
+            "name": "Лига Девяти Отливов",
+            "partyName": "Новый отряд",
+            "memberCount": 1,
+            "playerCount": 1,
+            "setting": "Позднее средневековье, четыре века после Великого Нырка · морское фэнтези, торговая интрига, исследование руин",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "owner",
+            "updatedAt": "<time>"
+          }
+        ]
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "campaigns": [
+          {
+            "code": "SEATS-1",
+            "name": "Хроники: Горная крепость над перевалом",
+            "partyName": "Места",
+            "memberCount": 3,
+            "playerCount": 3,
+            "setting": "",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "admin",
+            "updatedAt": "<time>"
+          },
+          {
+            "code": "EMPTY-1",
+            "name": "Пустая",
+            "partyName": "Отряд героев",
+            "memberCount": 0,
+            "playerCount": 0,
+            "setting": "",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "admin",
+            "updatedAt": "<time>"
+          },
+          {
+            "code": "IMPORT-3",
+            "name": "Импорт IMPORT-3",
+            "partyName": "Двое из ларца",
+            "memberCount": 2,
+            "playerCount": 2,
+            "setting": "Средневековье · Фэнтези",
+            "lifecycleStatus": "active",
+            "rulesetId": "dnd_5e_2014",
+            "rulesetVersion": "2014.1.0",
+            "membershipRole": "admin",
+            "updatedAt": "<time>"
+          },
+          {
+            "code": "IMPORT-1",
+            "name": "Импорт IMPORT-1",
+            "partyName": "Двое из ларца",
+            "memberCount": 2,
+            "playerCount": 2,
+            "setting": "Средневековье · Фэнтези",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "admin",
+            "updatedAt": "<time>"
+          },
+          {
+            "code": "TIDE-1",
+            "name": "Лига Девяти Отливов",
+            "partyName": "Новый отряд",
+            "memberCount": 1,
+            "playerCount": 1,
+            "setting": "Позднее средневековье, четыре века после Великого Нырка · морское фэнтези, торговая интрига, исследование руин",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "admin",
+            "updatedAt": "<time>"
+          },
+          {
+            "code": "TALE-1",
+            "name": "Сказ о мосте",
+            "partyName": "Двое",
+            "memberCount": 2,
+            "playerCount": 2,
+            "setting": "",
+            "lifecycleStatus": "active",
+            "rulesetId": "srd_5_2_1",
+            "rulesetVersion": "5.2.1",
+            "membershipRole": "admin",
+            "updatedAt": "<time>"
+          }
+        ]
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/heroes",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "heroes": "<sha256:06242096bb1ed00574acca34e089a14e2a9056539eac9de6a62b67b40ee3bda2:57911>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/tale-1/recap",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "recap": null,
+        "reason": "no_gap"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-1/recap",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "recap": null,
+        "reason": "no_gap"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-1/recap",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/IMPORT-1/recap",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "recap": null,
+        "reason": "no_gap"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-1/recap",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-1/recap",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    }
+  ]
+}
