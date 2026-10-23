@@ -113,6 +113,19 @@ pub(crate) fn save_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value,
     // Признак загрузки принадлежит запросу браузера, а не кампании (JS 457–458).
     let persistent = js::spread(state, json!({ "isNarrating": false }));
     let body = overlay_for(core, &key, &persistent)?;
+    // Сбой подтверждения из данных (`DND_COMMIT_FAULTS`, С2): подтверждение не
+    // идёт в транзакцию, комната пишется — как отказ обещания в JS.
+    let mut faulted = None;
+    let ack = match ack {
+        Some(ack) => match crate::test_hooks::acknowledge_fault(&ack.campaign_id, ack.projected_version) {
+            Ok(()) => Some(ack),
+            Err(error) => {
+                faulted = Some(error);
+                None
+            }
+        },
+        None => None,
+    };
     let saved = core.events.save_room_overlay(RoomOverlayWrite { room_id: &key, expected_version: base_version, body: &body, ack })?;
     match saved {
         RoomOverlaySave::Conflict { .. } => {
@@ -125,7 +138,7 @@ pub(crate) fn save_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value,
             // (JS 464–467); вне потока ядра хуки не ставятся.
             let hooks = core.room_hooks.borrow().clone();
             let _ = crate::projection::on_projection_saved(core, &key, &room, &hooks);
-            Ok((SavedRoom { conflict: false, room }, ack))
+            Ok((SavedRoom { conflict: false, room }, faulted.map(Err).or(ack)))
         }
     }
 }

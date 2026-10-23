@@ -15,7 +15,7 @@ use sk_store::LoadOptions;
 
 use crate::core::GameCore;
 use crate::error::Failure;
-use crate::projection::{executor_failure, persist_authoritative_projection, reconcile_all_campaign_projections, PersistOptions};
+use crate::projection::{executor_failure, persist_authoritative_projection, reconcile_all_campaign_projections, HookedJournal, PersistOptions};
 
 /// Резерв броска, взятый `consume` до commit (`rollReservation` в маршрутах).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,7 +73,8 @@ fn enable_default_house_rule(core: &Rc<GameCore>, campaign_id: &str, house_rule_
     // Метаданные события правила собраны им же: ошибка разбора здесь — пустые
     // метаданные (в JS — `TypeError` того же невозможного события).
     let metadata = |events: &[Value], _state: &Value, _loaded: &sk_store::Loaded| -> Value { sk_ruleset::campaign_ruleset::campaign_house_rule_metadata(events.first()).unwrap_or_else(|_| json!({})) };
-    let executor = AuthoritativeExecutor::new(&*core.events);
+    let journal = HookedJournal(&core.events);
+    let executor = AuthoritativeExecutor::new(&journal);
     let request = DerivedRequest {
         campaign_id,
         idempotency_key: &key,

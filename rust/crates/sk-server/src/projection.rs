@@ -44,6 +44,25 @@ pub struct PersistOptions {
     pub await_projection: bool,
 }
 
+/// Журнал для `AuthoritativeExecutor` ядра: коммит — через
+/// [`crate::test_hooks::commit`] (сбои `DND_COMMIT_FAULTS`, С2), чтение —
+/// напрямую. Все исполнители сервера строятся над ним, а не над `EventStore`.
+pub struct HookedJournal<'a>(pub &'a sk_store::EventStore);
+
+impl sk_store::executor::Journal for HookedJournal<'_> {
+    fn load(&self, campaign_id: &str) -> sk_store::StoreResult<sk_store::Loaded> {
+        self.0.load(campaign_id, &LoadOptions::default())
+    }
+
+    fn commit(&self, request: sk_store::CommitRequest) -> sk_store::StoreResult<sk_store::CommitResult> {
+        crate::test_hooks::commit(self.0, request)
+    }
+
+    fn get_by_idempotency_key(&self, campaign_id: &str, key: &str) -> sk_store::StoreResult<Option<sk_store::CommitResult>> {
+        self.0.get_by_idempotency_key(campaign_id, key)
+    }
+}
+
 pub(crate) fn executor_failure(error: ExecutorError) -> Failure {
     match error {
         ExecutorError::Store(error) => Failure::from(error),
@@ -86,7 +105,7 @@ fn version_of(state: Option<&Value>, fallback: f64) -> f64 {
 /// Подтверждение проекции вне записи комнаты: с `await_projection` ошибка
 /// возвращается, иначе проглатывается (`void promise.catch(() => {})`).
 fn acknowledge(core: &GameCore, campaign_id: &str, version: i64, hash: &str, options: PersistOptions) -> Result<(), Failure> {
-    let outcome = core.events.acknowledge_projection(campaign_id, version, Some(hash));
+    let outcome = crate::test_hooks::acknowledge_projection(&core.events, campaign_id, version, Some(hash));
     match outcome {
         Err(error) if options.await_projection => Err(error.into()),
         _ => Ok(()),
@@ -266,8 +285,8 @@ fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Resul
         expire_party_decision_if_needed(core, campaign_id, now_ms)?;
         authoritative = load()?;
     }
-    let journal: &dyn sk_store::executor::Journal = &*core.events;
-    let quest = with_rules_plan(core, |resolve| sk_character::quest_decisions::finish_quest_decision(&AuthoritativeExecutor::new(journal), campaign_id, Some(&authoritative.state), resolve));
+    let journal = HookedJournal(&core.events);
+    let quest = with_rules_plan(core, |resolve| sk_character::quest_decisions::finish_quest_decision(&AuthoritativeExecutor::new(&journal), campaign_id, Some(&authoritative.state), resolve));
     if quest.map_err(|error| Failure::new(error.message().to_string(), Some(error.code())))?.is_some() {
         authoritative = load()?;
     }
@@ -281,7 +300,7 @@ fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Resul
     let comparison = compare_projection(&authoritative.state, room_state);
     if projected_version >= authoritative.state_version as f64 && comparison.matched {
         if pending.is_some() {
-            core.events.acknowledge_projection(campaign_id, authoritative.state_version, Some(&comparison.projected_hash))?;
+            crate::test_hooks::acknowledge_projection(&core.events, campaign_id, authoritative.state_version, Some(&comparison.projected_hash))?;
         }
         return Ok(Some(room));
     }
@@ -356,7 +375,8 @@ pub async fn persist_interaction_projection(core: Rc<GameCore>, accounts: Arc<Ac
         decision_options.insert("policy".into(), policy.clone());
     }
     let opened = sk_memory::party_decision::party_decision_opened_event(interaction, None, &Value::Object(decision_options)).map_err(party_failure)?;
-    let executor = AuthoritativeExecutor::new(&*core.events);
+    let journal = HookedJournal(&core.events);
+    let executor = AuthoritativeExecutor::new(&journal);
     let committed = executor.commit_derived(DerivedRequest::events(campaign_id, &idempotency_key, Producer::PartyDecision, vec![opened])).map_err(executor_failure)?;
     let Some(committed) = committed else { return Ok(None) };
     persist_authoritative_projection(&core, campaign_id, &committed.commit.state, &committed.commit.events, None, PersistOptions::default())
@@ -382,7 +402,8 @@ pub fn expire_party_decision_if_needed(core: &GameCore, campaign_id: &str, now_m
 }
 
 fn commit_derived_with(core: &GameCore, campaign_id: &str, key: &str, producer: Producer, derive: &DeriveEvents<'_>) -> Result<Option<Executed>, Failure> {
-    let executor = AuthoritativeExecutor::new(&*core.events);
+    let journal = HookedJournal(&core.events);
+    let executor = AuthoritativeExecutor::new(&journal);
     let request = DerivedRequest { campaign_id, idempotency_key: key, events: None, derive_events: Some(derive), producer: Some(producer), derived_from: Vec::new(), metadata: Value::Null, derive_metadata: None };
     executor.commit_derived(request).map_err(executor_failure)
 }

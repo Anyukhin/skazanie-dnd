@@ -161,6 +161,14 @@ pub fn acknowledge_projection(events: &EventStore, campaign_id: &str, projected_
     imp::acknowledge_projection(events, campaign_id, projected_version, projection_hash)
 }
 
+/// Сбой подтверждения проекции **без** самого подтверждения — для
+/// подтверждения в транзакции записи комнаты (С1, `room::save_room_with_ack`):
+/// `Err` — сработал сбой этой кампании и версии (подтверждение не пишется,
+/// комната пишется, как в JS). Зовётся на потоке ядра.
+pub fn acknowledge_fault(campaign_id: &str, projected_version: i64) -> StoreResult<()> {
+    imp::acknowledge_fault(campaign_id, projected_version)
+}
+
 pub use imp::CommitFaults;
 #[cfg(feature = "test-hooks")]
 pub use imp::{CommitFaultMode, DicePicker, RulesDice};
@@ -188,6 +196,11 @@ mod imp {
     #[inline]
     pub fn acknowledge_projection(events: &EventStore, campaign_id: &str, projected_version: i64, projection_hash: Option<&str>) -> StoreResult<Value> {
         events.acknowledge_projection(campaign_id, projected_version, projection_hash)
+    }
+
+    #[inline]
+    pub fn acknowledge_fault(_campaign_id: &str, _projected_version: i64) -> StoreResult<()> {
+        Ok(())
     }
 }
 
@@ -529,10 +542,15 @@ mod imp {
     }
 
     pub fn acknowledge_projection(events: &EventStore, campaign_id: &str, projected_version: i64, projection_hash: Option<&str>) -> StoreResult<Value> {
+        acknowledge_fault(campaign_id, projected_version)?;
+        events.acknowledge_projection(campaign_id, projected_version, projection_hash)
+    }
+
+    pub fn acknowledge_fault(campaign_id: &str, projected_version: i64) -> StoreResult<()> {
         if take_ack_fault(campaign_id, projected_version) {
             return Err(StoreError::new("EVENT_STORE_ERROR", "synthetic projection acknowledgement failure"));
         }
-        events.acknowledge_projection(campaign_id, projected_version, projection_hash)
+        Ok(())
     }
 }
 
