@@ -100,3 +100,9 @@ test/stream-viewer-isolation-api.test.mjs  # поток не выдаёт чуж
 test/summon-expiry-api.test.mjs            # истечение призыва
 test/thrown-flask-http.test.mjs            # бросок флакона: эффект, права, повтор, replay
 test/wand-of-magic-missiles-api.test.mjs   # жезл «Волшебных стрел»: заряды и повтор
+
+# С15 (2026-10-23): диалог героя и объяснение хода. dialogue-api проходит все шаги
+# /dialogue, но подтест перехода идёт в /autonomy/advance (С18.4) — вне списка до неё;
+# authoritative-combat-api упирается в turn_clock (С17) раньше своего /explanation.
+test/turn-explanation-api.test.mjs  # разбор хода: id и latest, проекция команды врага, права, кампании нет
+test/api-integration.test.mjs       # совместимый API: команда, /why и turns/:id/explanation
