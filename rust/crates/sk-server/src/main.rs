@@ -165,11 +165,20 @@ fn fail(message: String) -> ! {
 }
 
 fn main() {
+    // Служебная подкоманда набора тестов (`test/kit/journal.mjs`): до `.env`
+    // и без отметки писателя storage.
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("journal") {
+        std::process::exit(sk_server::test_hooks::journal_cli::main(&args[1..]));
+    }
     let cwd = std::env::current_dir().unwrap_or_default();
     load_dotenv(&cwd.join(".env"));
     let root = std::env::args().nth(1).map(PathBuf::from).unwrap_or_else(|| cwd.clone());
     let config = Config::from_env(&root);
     let port = listen_port(config.port).unwrap_or_else(|error| fail(error));
+    // Кости и сбои из данных (`DND_TEST_DICE_RULES`, `DND_COMMIT_FAULTS`):
+    // вне `NODE_ENV=test` и хранилища `skazanie-*` во временном каталоге — отказ старта.
+    let hooks = sk_server::test_hooks::from_env(&config.storage_dir).unwrap_or_else(|error| fail(error));
     if let Err(error) = std::fs::create_dir_all(&config.storage_dir) {
         fail(format!("Не удалось создать каталог хранилища: {error}"));
     }
@@ -178,7 +187,7 @@ fn main() {
     let address = format!("{}:{port}", config.host);
     let banner = if config.model_configured() { format!("{} + {} fallback models", config.model, config.fallback_models.len()) } else { "демо-режим".to_string() };
     let factory_config = config.clone();
-    let injected = Injected { llm: Some(Box::new(move |ledger| build_models(&factory_config, ledger))), ..Injected::default() };
+    let injected = Injected { dice: hooks.dice, llm: Some(Box::new(move |ledger| build_models(&factory_config, ledger))), ..Injected::default() };
     let state = match AppState::open(config, injected) {
         Ok(state) => Arc::new(state),
         Err(error) => {
@@ -187,7 +196,7 @@ fn main() {
         }
     };
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap_or_else(|error| fail(format!("Не удалось запустить рантайм: {error}")));
-    let code = runtime.block_on(run(state.clone(), address, banner));
+    let code = runtime.block_on(run(state.clone(), address, banner, hooks.faults));
     runtime.shutdown_timeout(Duration::from_millis(500));
     state.core.shutdown();
     drop(state);
@@ -195,7 +204,14 @@ fn main() {
     std::process::exit(code);
 }
 
-async fn run(state: Arc<AppState>, address: String, banner: String) -> i32 {
+async fn run(state: Arc<AppState>, address: String, banner: String, faults: Option<sk_server::test_hooks::CommitFaults>) -> i32 {
+    // Сбои журнала — в ядро до первого коммита (сверка при старте уже коммитит).
+    if faults.is_some() {
+        if let Err(error) = sk_server::test_hooks::install(&state.core, faults).await {
+            eprintln!("[Сказание] Тестовые сбои журнала не установлены: {error}");
+            return 1;
+        }
+    }
     // `void llmClient.probe()` при наличии ключа (309).
     if state.config.model_configured() {
         if let Some(llm) = state.models.llm.clone() {

@@ -12,7 +12,10 @@
 //! - [`access`], [`idempotency`], [`limits`] — общие помощники маршрутов;
 //! - [`ai_context`] — настройки ИИ кампании на время запроса;
 //! - [`room`], [`journal`], [`projection`], [`streams`] — заглушки С1/С9 с
-//!   зафиксированными сигнатурами.
+//!   зафиксированными сигнатурами;
+//! - [`test_hooks`] — кости и сбои журнала из данных (фича `test-hooks`) и
+//!   подкоманда `journal` для набора тестов JS; коммит и подтверждение
+//!   проекции — только через него.
 //!
 //! Контракт для клиента тот же: пути, JSON-ответы, cookie сессии
 //! `skazanie_session`, коды отказов; неизвестный `/api/*` — 404 `API endpoint
@@ -50,6 +53,7 @@ pub mod startup;
 pub mod state;
 pub mod static_files;
 pub mod streams;
+pub mod test_hooks;
 pub mod url;
 
 pub use config::Config;

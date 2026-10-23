@@ -14,7 +14,16 @@ path = "src/main.rs"
 # файл. Внешние — точными версиями из `Cargo.lock` (корневой `Cargo.toml` не
 # трогаем). `dotenvy` в офлайн-кэше нет: `.env` читает свой разборщик в
 # `main.rs`, новой зависимости не нужно.
+# `test-hooks` — тестовые крючки из данных (`src/test_hooks.rs`): кости
+# `DND_TEST_DICE_RULES`, сбои журнала `DND_COMMIT_FAULTS`, подкоманда
+# `journal`. Бинарь для контрактных тестов JS:
+# `cargo build --release -p sk-server --features test-hooks`. Тесты крейта
+# получают фичу через dev-зависимость на себя (ниже); боевая сборка — без неё.
+[features]
+test-hooks = ["dep:regex"]
+
 [dependencies]
+regex = { workspace = true, optional = true }
 axum = "0.8.9"
 futures-util = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
 hyper = { version = "1.12.0", features = ["server", "http1"] }
@@ -57,3 +66,5 @@ sk-turns = { path = "../sk-turns" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+sk-server = { path = ".", features = ["test-hooks"] }
+regex.workspace = true

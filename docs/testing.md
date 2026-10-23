@@ -166,9 +166,13 @@ state_version_after, events }`. `readJournal` повреждённой камп�
 `test/contract-rust.list`, когда их маршруты перенесены в `sk-server`:
 
 ```bash
+(cd rust && cargo build --release -p sk-server --features test-hooks)   # крючки и подкоманда journal
 SKAZANIE_RUST_SERVER_BIN=rust/target/release/skazanie-server pnpm test:contract:rust
 pnpm test:contract:js      # тот же список против JS-эталона — обязан оставаться зелёным
 ```
+
+Бинарь без фичи `test-hooks` с заданными `dice`/`faults` не стартует, а
+`journal` у него нет: боевая сборка крючков не содержит.
 
 ### Перевод прежнего HTTP-теста на кит
 
