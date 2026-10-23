@@ -118,3 +118,7 @@ test/table-of-five-api.test.mjs
 # authoritative-combat-api упирается в turn_clock (С17) раньше своего /explanation.
 test/turn-explanation-api.test.mjs  # разбор хода: id и latest, проекция команды врага, права, кампании нет
 test/api-integration.test.mjs       # совместимый API: команда, /why и turns/:id/explanation
+
+# С14 (2026-10-23): торговцы — управление, сборка и витрина. merchant-api проходит
+# lifecycle, сборку и GET витрины, но торгует через POST merchants/:id/commands (С18.2) — вне списка до неё.
+test/merchant-lifecycle-api.test.mjs  # lifecycle-команды ведущего: права, ключ, повтор и конфликт, устаревшая версия, сборка магазина, restart, лимит 60

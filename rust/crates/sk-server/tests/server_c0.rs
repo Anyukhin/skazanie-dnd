@@ -404,8 +404,12 @@ async fn merchant_id_is_decoded_before_method_check() {
         assert_eq!(response.status, 400, "{method}");
         assert_eq!(response.json(), json!({ "error": "Некорректный id торговца", "code": "INVALID_MERCHANT_ID" }), "{method}");
     }
+    // Исправный id идёт дальше по таблице — к витрине торговца (С14), которая
+    // без входа отвечает 401, как `requireUser` JS.
     let fine = client.get("/api/campaigns/ABC/merchants/m%201").await;
-    assert_eq!(fine.status, 404, "исправный id идёт дальше по таблице");
+    assert_eq!(fine.status, 401, "исправный id идёт дальше по таблице");
+    let tail = client.get("/api/campaigns/ABC/merchants/m%201/commands").await;
+    assert_eq!(tail.status, 404, "GET с хвостом /commands — мимо витрины");
 }
 
 #[tokio::test]

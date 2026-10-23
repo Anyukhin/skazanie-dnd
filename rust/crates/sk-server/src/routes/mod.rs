@@ -76,7 +76,8 @@ pub const MERCHANT_PATH: &str = "/api/campaigns/{id}/merchants/{seg}[/commands]"
 
 /// `decodeURIComponent(merchantMatch[2]).slice(0, 120)` (5452); `None` — `URIError`.
 pub fn merchant_route_id(raw: &str) -> Option<String> {
-    crate::url::decode_uri_component(raw).map(|id| sk_core::text::slice(&id, 0, Some(120)))
+    // Срез — по единицам UTF-16, как `slice` JS (правка С14).
+    crate::url::decode_uri_component(raw).map(|id| crate::merchant_guard::slice_utf16(&id, 120))
 }
 
 /// Разбор id торговца **до проверки метода** (5449–5454): битый процентный
@@ -111,7 +112,12 @@ mod tests {
         assert!(routes.windows(2).all(|pair| pair[0].line <= pair[1].line), "таблица по возрастанию строки");
         for route in &routes {
             let at = |line: u32| lines.get(line as usize - 1).copied().unwrap_or("");
-            let window = [at(route.line - 1), at(route.line), at(route.line + 1)];
+            let mut window = vec![at(route.line - 1), at(route.line), at(route.line + 1)];
+            // Обработчики торговца (С14 — 5455, С18.2 — 5472) проверяют общую
+            // регулярку `merchantMatch` строки 5449 (правка С14).
+            if matches!(route.line, 5455 | 5472) {
+                window.push(at(5449));
+            }
             let here = window[1];
             // Модули, вынесенные из `index.mjs` (combat-lab 3958, map-import
             // 3959): на строке — подключение, регулярка — в своём файле (С13).
