@@ -30,16 +30,11 @@
 //!
 //! Отклонения и долги:
 //!
-//! - **`combatTurnCoordinator.hold` — заглушка.** Координатора автохода
-//!   (`CombatTurnCoordinator`, сборка 432–467) в ядре ещё нет (С17): нечего
-//!   придерживать, ход врага по часам не идёт. С17 подключает удержание здесь
-//!   (`hold` до шага «реплика в летописи», снятие в `finally`).
-//! - **`settleCombatContinuation` (3352–3363)** перенесена здесь минимально
-//!   ([`settle_combat_continuation`]): одна стадия `combat-continuation`
-//!   координатора последствий — те же условия (`applies`: бой активен и нет
-//!   перемирия; ключ — позиция боя) и тот же журнал отказа, но без
-//!   `PostCommitCoordinator`, которого в ядре нет (С17 заменит вызовом
-//!   координатора).
+//! - **`combatTurnCoordinator.hold`** (5761–5763) — координатор хода боя ядра
+//!   (С17, [`crate::clocks::hold_combat`]): удержание до шага «реплика в
+//!   летописи», снятие там же или в `finally` (уничтожение `Pending`).
+//! - **`settleCombatContinuation` (3352–3363)** — стадия `combat-continuation`
+//!   координатора последствий ядра (С17, [`crate::clocks::settle_combat_continuation`]).
 //! - `assertMerchantIdempotency`/`assertMerchantResultFingerprint` (1023,
 //!   1241) — здесь, пока `merchant_guard.rs` (С14) пуст.
 
@@ -54,7 +49,6 @@ use sk_core::js;
 use sk_orchestrator::autonomous_orchestrator::OrchestratorError;
 use sk_orchestrator::game_orchestrator::HandleInput;
 use sk_store::LoadOptions;
-use sk_turns::npc_turn_scheduler::{run_npc_turn_scheduler, NpcController, SchedulerOptions};
 
 use crate::access::{campaign_hero_values, can_access_room, require_user, string_or_empty};
 use crate::command_fingerprints::{
@@ -177,33 +171,6 @@ fn assert_merchant_result_fingerprint(result: &Value, command: &Value) -> Result
     Ok(())
 }
 
-// --- продолжение боя (3352–3363) ---------------------------------------------
-
-/// `settleCombatContinuation(campaignId, { advanceNpc })`: стадия
-/// `combat-continuation` координатора последствий — ходы NPC до хода героя.
-/// Стадия не применима (боя нет, перемирие, нет позиции) или упала —
-/// `{ turns: [], events: [] }`; упавшая пишет в журнал процесса, как
-/// `onError` координатора (375–377).
-async fn settle_combat_continuation(core: &GameCore, set: &Orchestration, campaign_id: &str, advance_npc: bool) -> Result<Vec<Value>, Failure> {
-    let loaded = core.events.load(campaign_id, &LoadOptions::default())?;
-    let state = &loaded.state;
-    let active = js::truthy(get(get(get(Some(state), "mechanics"), "combat"), "active"));
-    if !active || sk_society::parley::truce_holds(state) || sk_society::post_commit_coordinator::combat_position_key(state).is_none() {
-        return Ok(Vec::new());
-    }
-    let controller: &dyn NpcController = &set.npc_controller;
-    let mut options = SchedulerOptions::new(campaign_id, set.journal.as_ref(), set.rules.as_ref());
-    options.npc_controller = Some(controller);
-    options.advance_npc = advance_npc;
-    match run_npc_turn_scheduler(options).await {
-        Ok(result) => Ok(result.turns),
-        Err(error) => {
-            eprintln!("[Сказание] Стадия combat-continuation после коммита не выполнена: {error}");
-            Ok(Vec::new())
-        }
-    }
-}
-
 // --- маршрут -----------------------------------------------------------------
 
 /// Что узнано на стороне HTTP до задания ядра.
@@ -248,6 +215,8 @@ struct Pending {
     loot_actor_id: String,
     loot_container_id: String,
     reservation: Option<RollReservation>,
+    /// `releaseCombatHold` (С17): отпускается уничтожением — в `finally`.
+    hold: Option<crate::clocks::CombatHold>,
 }
 
 fn campaign_commands(ctx: &mut RouteCtx) -> RouteFuture<'_> {
@@ -310,7 +279,8 @@ async fn run(core: Rc<GameCore>, state: Arc<AppState>, admitted: Admitted) -> Re
     let campaign_id = admitted.campaign_id.clone();
     let user = admitted.user.clone();
     let outcome = execute(&core, &state, &admitted, &mut pending).await;
-    // `finally`: удержание автохода снимается всегда (С17; сейчас удерживать нечего).
+    // `finally`: удержание автохода снимается всегда — уничтожением `pending`
+    // (в `catch_reply` или по выходу отсюда).
     match outcome {
         Ok(reply) => Ok(reply),
         Err(Stop::Reply(status, body)) => Ok((status, body)),
@@ -658,8 +628,12 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
     } else if js::truthy(body.get("roll")) {
         return Err(policy_error("Принимается только серверный roll_id", "UNVERIFIED_ROLL").into());
     }
-    // `combatTurnCoordinator.hold(campaignId)` (5761–5763) — у ядра нет
-    // координатора автохода (С17), удерживать нечего.
+    // Пока ход в бою идёт к летописи — строка хода, затем критическая реплика
+    // рассказчика, — координатор не начинает следующий автоход (5756–5763).
+    let combat_before = js::truthy(get(get(get(Some(&before), "mechanics"), "combat"), "active"));
+    if combat_before || types_any(PLAYER_COMBAT_COMMANDS) {
+        pending.hold = crate::clocks::hold_combat(core, campaign_id);
+    }
     let message = {
         let text = body.get("message");
         if js::truthy(text) {
@@ -717,13 +691,13 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         assert_npc_combat_result_fingerprint(&result, npc_combat)?;
     }
     if js::truthy(result.get("authoritative_state")) {
-        settle_after_commit(core, &set, campaign_id, &mut result, &types, resolves_reaction).await?;
+        settle_after_commit(core, campaign_id, &mut result, &types, resolves_reaction).await?;
     }
-    respond(core, &set, admitted, &actor, command_actor.as_ref(), &types, &merchant_commands, result).await
+    respond(core, &set, admitted, &actor, command_actor.as_ref(), &types, &merchant_commands, pending.hold.take(), result).await
 }
 
 /// Продолжение боя и свежая голова журнала (5780–5806).
-async fn settle_after_commit(core: &Rc<GameCore>, set: &Orchestration, campaign_id: &str, result: &mut Value, types: &IndexSet<String>, resolves_reaction: bool) -> Result<(), Stop> {
+async fn settle_after_commit(core: &Rc<GameCore>, campaign_id: &str, result: &mut Value, types: &IndexSet<String>, resolves_reaction: bool) -> Result<(), Stop> {
     let authoritative = result.get("authoritative_state").cloned().unwrap_or(Value::Null);
     let original = nullish(result.get("state_version"), get(Some(&authoritative), "state_version")).cloned().unwrap_or(Value::from(0));
     let original_version = js::number(Some(&original));
@@ -739,7 +713,7 @@ async fn settle_after_commit(core: &Rc<GameCore>, set: &Orchestration, campaign_
             || has_type("EndTurn")
             || resolves_reaction
             || mechanics.iter().any(|event| get(Some(event), "event_type").and_then(Value::as_str) == Some("CombatStarted"));
-        settle_combat_continuation(core, set, campaign_id, advance_npc).await?
+        crate::clocks::settle_combat_continuation(core, campaign_id, advance_npc).await?.turns
     } else {
         Vec::new()
     };
@@ -762,7 +736,17 @@ async fn settle_after_commit(core: &Rc<GameCore>, set: &Orchestration, campaign_
 
 /// Летопись хода, критический момент и ответ зрителю (5807–5919).
 #[allow(clippy::too_many_arguments)]
-async fn respond(core: &Rc<GameCore>, set: &Orchestration, admitted: &Admitted, actor: &str, command_actor: Option<&Value>, types: &IndexSet<String>, merchant_commands: &[Value], mut result: Value) -> Result<(StatusCode, Value), Stop> {
+async fn respond(
+    core: &Rc<GameCore>,
+    set: &Orchestration,
+    admitted: &Admitted,
+    actor: &str,
+    command_actor: Option<&Value>,
+    types: &IndexSet<String>,
+    merchant_commands: &[Value],
+    combat_hold: Option<crate::clocks::CombatHold>,
+    mut result: Value,
+) -> Result<(StatusCode, Value), Stop> {
     let campaign_id = admitted.campaign_id.as_str();
     let user = &admitted.user;
     let idempotency_key = admitted.idempotency_key.as_str();
@@ -912,8 +896,8 @@ async fn respond(core: &Rc<GameCore>, set: &Orchestration, admitted: &Admitted, 
             }
         }
     }
-    // Реплика уже в летописи: координатор может играть следующий ход
-    // (`releaseCombatHold`, С17).
+    // Реплика уже в летописи: координатор может играть следующий ход.
+    drop(combat_hold);
     let narrator_spoke = critical_trigger.is_some() && !narrator_text.is_empty();
     let narration = if narrator_spoke { narrator_text.clone() } else { js::s(get(turn_entry.as_ref(), "text")) };
     if !narration.is_empty() {

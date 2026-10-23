@@ -3,8 +3,8 @@
 //! включение домашних правил «по умолчанию» через 250 мс после старта, снятие
 //! резерва броска упавшего запроса (`finishFailedRollReservation`).
 //!
-//! Толчки координатора боя и часов мира (6497–6498) — С17, здесь только
-//! точка подключения ([`startup_jobs`]).
+//! Толчки координатора боя и часов мира (6497–6498) — С17
+//! ([`crate::clocks::startup_nudges`] из [`startup_jobs`]).
 
 use std::rc::Rc;
 
@@ -33,8 +33,9 @@ pub fn prepare(core: &Rc<GameCore>) -> Result<Vec<(String, Failure)>, Failure> {
     Ok(failures)
 }
 
-/// Через 250 мс после `listen` (6493–6503): домашние правила «по умолчанию»
-/// для каждой комнаты. Толчки боя и часов — С17.
+/// Через 250 мс после `listen` (6493–6503): толчки координатора боя и часов
+/// мира (С17, [`crate::clocks::startup_nudges`]), затем домашние правила
+/// «по умолчанию» для каждой комнаты.
 pub fn startup_jobs(core: &Rc<GameCore>) {
     let codes = match crate::room::list_room_codes(core) {
         Ok(codes) => codes,
@@ -43,6 +44,7 @@ pub fn startup_jobs(core: &Rc<GameCore>) {
             return;
         }
     };
+    crate::clocks::startup_nudges(core, &codes);
     for campaign_id in codes {
         enable_default_house_rules(core, &campaign_id);
     }

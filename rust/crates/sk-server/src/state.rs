@@ -220,6 +220,10 @@ fn start_core(database: PathBuf, roll_file: PathBuf, dice: SharedDice, clock: Cl
         let core = GameCore { events: Arc::new(events), rolls: std::cell::RefCell::new(rolls), dice, streams: streams()?, room_hooks: std::cell::RefCell::default() };
         // С9: рассылка комнаты на каждую запись проекции (`onRoomSaved`, 2829–2835).
         crate::streams::install(&core);
+        // С17 (правка общего файла): толчки боя и часов мира, затем зацепки
+        // героев — тем же порядком подписки, что `onRoomSaved` в JS (2829, 2876).
+        crate::clocks::install(&core);
+        crate::hero_hooks::install(&core);
         Ok(core)
     })
 }
