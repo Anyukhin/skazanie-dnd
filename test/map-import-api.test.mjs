@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import { SLAB_MAX_INSTANCES } from '../server/talespire-slab.mjs'
 import { ASSETS, HOUSE_SLAB, encodeSlabV1, encodeSlabV1Raw, encodeSlabV2, housePlacements } from './talespire-fixtures.mjs'
@@ -18,43 +14,7 @@ import { deserializeTacticalMap } from '../server/tactical-map.mjs'
  * обходной путь через `/commands` получают отказ.
  */
 
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'map-import-setup',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 160; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch { /* сервер ещё поднимается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
+const SETUP_TOKEN = 'map-import-setup'
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -83,17 +43,9 @@ async function rawRequest(baseUrl, path, { method = 'POST', cookie = '', raw }) 
 }
 
 test('тело не объект — 400, а сервер жив для следующего запроса (аудит PR #131, MAP-BOUNDARY-03)', { timeout: runnerTimeout(90_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-import-body-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: SETUP_TOKEN, storagePrefix: 'skazanie-map-import-body-' })
+  const logs = server.output
+  const { baseUrl } = server
 
   // Обычный аккаунт — ведущий своей кампании, глобальных прав у него нет.
   const owner = await request(baseUrl, '/api/auth/register', { method: 'POST', body: { name: 'Owner', email: 'map-body@test.local', password: 'secure-owner-password' } })
@@ -108,9 +60,9 @@ test('тело не объект — 400, а сервер жив для след
   const path = '/api/campaigns/MAPNUL/map-import'
   for (const raw of ['null', '[]', '[{"mode":"preview"}]', '42', '"slab"', 'true']) {
     const rejected = await rawRequest(baseUrl, path, { cookie: ownerCookie, raw })
-    assert.equal(rejected.status, 400, `${raw}: ${rejected.text}\n${logs}`)
+    assert.equal(rejected.status, 400, `${raw}: ${rejected.text}\n${logs()}`)
     assert.equal(rejected.body.code, 'INVALID_JSON_BODY', raw)
-    assert.equal(child.exitCode, null, `сервер упал на теле ${raw}\n${logs}`)
+    assert.equal(server.running(), true, `сервер упал на теле ${raw}\n${logs()}`)
   }
 
   // Тот же узкий фикс закрывает и маршруты, где тело читают без try: вход без
@@ -130,7 +82,7 @@ test('тело не объект — 400, а сервер жив для след
   assert.equal(unexpected.status, 500, unexpected.text)
   assert.equal(unexpected.body.code, 'INTERNAL_ERROR')
   assert.doesNotMatch(unexpected.text, /toString|primitive|at /u, 'наружу не уходят подробности ошибки')
-  assert.equal(child.exitCode, null, `сервер упал\n${logs}`)
+  assert.equal(server.running(), true, `сервер упал\n${logs()}`)
 
   // Сервер продолжает обслуживать: здоровье, комната и настоящий предпросмотр.
   assert.equal((await request(baseUrl, '/api/health')).status, 200)
@@ -142,17 +94,8 @@ test('тело не объект — 400, а сервер жив для след
 })
 
 test('импорт карты по HTTP: предпросмотр, применение, повтор ключа и права', { timeout: runnerTimeout(90_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-map-import-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: SETUP_TOKEN, storagePrefix: 'skazanie-map-import-' })
+  const { baseUrl } = server
 
   const owner = await request(baseUrl, '/api/auth/register', { method: 'POST', body: { name: 'Owner', email: 'map-owner@test.local', password: 'secure-owner-password' } })
   const guest = await request(baseUrl, '/api/auth/register', { method: 'POST', body: { name: 'Guest', email: 'map-guest@test.local', password: 'secure-guest-password' } })

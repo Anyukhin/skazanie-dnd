@@ -1,65 +1,14 @@
-import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
-import { MapStore } from '../server/map-store.mjs'
-import {
-  GAME_STATE_PROJECTOR_VERSION,
-  applyGameEvent,
-  normalizeCampaignState,
-  resolveCommand,
-} from '../server/rules-engine.mjs'
+import { resolveCommand } from '../server/rules-engine.mjs'
+import { appendJournal, readJournal, startTestServer } from './kit/index.mjs'
 
 const WAND_ID = 'srd_5_2_1:wand-of-magic-missiles'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'wand-api-setup',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    child.once('exit', resolve)
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, {
   method = 'GET',
@@ -172,18 +121,8 @@ function itemFingerprint(chargesToSpend) {
 }
 
 test('HTTP жезла защищает поля и charges_to_spend idempotency, включая retry после уничтожения', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-wand-api-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-wand-api-', setupToken: 'wand-api-setup' })
+  let baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -194,7 +133,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
       setupToken: 'wand-api-setup',
     },
   })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
+  assert.equal(admin.status, 201, `${admin.text}\n${server.output()}`)
   const cookie = admin.response.headers.get('set-cookie')?.split(';')[0]
 
   for (const [code, charges] of [['WAND-API', 7], ['WAND-DESTROY', 1]]) {
@@ -203,7 +142,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
       cookie,
       body: { code, name: 'Проверка жезла', state: campaign(code, charges) },
     })
-    assert.equal(created.status, 201, `${created.text}\n${logs}`)
+    assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
   }
 
   for (const forged of [
@@ -217,7 +156,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
       key: `forged-${Object.keys(forged)[0]}`,
       body: commandBody(`forged-${Object.keys(forged)[0]}`, 1, forged),
     })
-    assert.equal(rejected.status, 400, `${rejected.text}\n${logs}`)
+    assert.equal(rejected.status, 400, `${rejected.text}\n${server.output()}`)
     assert.equal(rejected.body.code, 'ITEM_COMMAND_UNKNOWN_FIELD')
   }
 
@@ -228,7 +167,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
     key,
     body: commandBody(key, 1),
   })
-  assert.equal(first.status, 200, `${first.text}\n${logs}`)
+  assert.equal(first.status, 200, `${first.text}\n${server.output()}`)
   assert.ok(first.body.mechanics.some((event) => event.event_type === 'SpellCast'
     && event.payload.source?.kind === 'magic-item'))
   assert.equal(first.body.mechanics.some((event) => event.event_type === 'ResourceSpent'), false)
@@ -243,7 +182,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
     key,
     body: commandBody(key, 1),
   })
-  assert.equal(duplicate.status, 200, `${duplicate.text}\n${logs}`)
+  assert.equal(duplicate.status, 200, `${duplicate.text}\n${server.output()}`)
   assert.equal(duplicate.body.idempotent_replay, true)
 
   const conflictingSpend = await request(baseUrl, '/api/campaigns/WAND-API/commands', {
@@ -252,20 +191,12 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
     key,
     body: commandBody(key, 2),
   })
-  assert.equal(conflictingSpend.status, 409, `${conflictingSpend.text}\n${logs}`)
+  assert.equal(conflictingSpend.status, 409, `${conflictingSpend.text}\n${server.output()}`)
   assert.equal(conflictingSpend.body.code, 'IDEMPOTENCY_CONFLICT')
 
-  await stopServer(child)
-  child = null
+  await server.stop()
 
-  const eventStore = new FileEventStore({
-    rootDir: join(storage, 'engine'),
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-    snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-    mapStore: new MapStore({ rootDir: join(storage, 'engine') }),
-  })
-  const before = await eventStore.load('WAND-DESTROY')
+  const before = await readJournal(server, 'WAND-DESTROY')
   const destroyKey = 'wand-destroyed-retry'
   const fingerprint = itemFingerprint(1)
   const resolved = resolveCommand({
@@ -289,8 +220,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
     }),
     context: { isAdmin: true, serverAuthoritativeCombat: true },
   })
-  const committed = await eventStore.commit({
-    campaign_id: 'WAND-DESTROY',
+  const committed = await appendJournal(server, 'WAND-DESTROY', {
     expected_state_version: before.state_version,
     idempotency_key: destroyKey,
     command_id: destroyKey,
@@ -299,10 +229,8 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
   assert.equal(committed.state.players[0].inventory.some((item) => item.id === 'wand'), false)
   assert.ok(committed.events.some((event) => event.event_type === 'ItemDestroyed'))
 
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.start()
+  baseUrl = server.baseUrl
 
   const replayAfterDestruction = await request(baseUrl, '/api/campaigns/WAND-DESTROY/commands', {
     method: 'POST',
@@ -310,7 +238,7 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
     key: destroyKey,
     body: commandBody(destroyKey, 1),
   })
-  assert.equal(replayAfterDestruction.status, 200, `${replayAfterDestruction.text}\n${logs}`)
+  assert.equal(replayAfterDestruction.status, 200, `${replayAfterDestruction.text}\n${server.output()}`)
   assert.equal(replayAfterDestruction.body.idempotent_replay, true)
   assert.equal(replayAfterDestruction.body.authoritative_state.players[0].inventory.some((item) => item.id === 'wand'), false)
 
@@ -320,6 +248,6 @@ test('HTTP жезла защищает поля и charges_to_spend idempotency,
     key: destroyKey,
     body: commandBody(destroyKey, 2),
   })
-  assert.equal(conflictAfterDestruction.status, 409, `${conflictAfterDestruction.text}\n${logs}`)
+  assert.equal(conflictAfterDestruction.status, 409, `${conflictAfterDestruction.text}\n${server.output()}`)
   assert.equal(conflictAfterDestruction.body.code, 'IDEMPOTENCY_CONFLICT')
 })

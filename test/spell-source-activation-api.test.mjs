@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 function initialState({ combatActive = false, withConcentration = false } = {}) {
@@ -62,48 +58,20 @@ function assertStatus(result, status = 200) {
 }
 
 async function harness(t, code, state) {
-  const storage = mkdtempSync(join(tmpdir(), `skazanie-${code.toLowerCase()}-`))
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  let child = null
-  let logs = ''
+  const server = await startTestServer(t, { storagePrefix: `skazanie-${code.toLowerCase()}-`, setupToken: `${code}-setup` })
+  // Каждый restart() берёт новый порт: адрес читается при каждом запросе.
   const request = async (path, { cookie = '', method = 'GET', body } = {}) => {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await fetch(`${server.baseUrl}${path}`, {
       method, signal: AbortSignal.timeout(30_000),
       headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
     return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }
   }
-  const launch = async () => {
-    child = spawn(process.execPath, ['server/index.mjs'], {
-      cwd: process.cwd(), env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-        ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: `${code}-setup`, COOKIE_SECURE: 'false', NODE_ENV: 'test', GAME_ENGINE_MODE: 'enforce' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    child.stdout.on('data', (chunk) => { logs = (logs + chunk).slice(-4_000) })
-    child.stderr.on('data', (chunk) => { logs = (logs + chunk).slice(-4_000) })
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (child.exitCode != null || child.signalCode != null) throw new Error(`сервер завершился: ${logs}`)
-      try { if ((await fetch(`${baseUrl}/api/health`)).ok) return } catch { /* listener ещё запускается */ }
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    throw new Error(`сервер не запустился: ${logs}`)
-  }
-  const stop = async () => {
-    if (!child || child.exitCode != null || child.signalCode != null) return
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error(`тестовый сервер не завершился: ${logs}`)), 5_000)
-      child.once('exit', () => { clearTimeout(timeout); resolve() })
-      child.kill()
-    })
-  }
   const command = (cookie, idempotencyKey, commandBody) => request(`/api/campaigns/${code}/commands`, {
     method: 'POST', cookie, body: { idempotency_key: idempotencyKey, command: commandBody },
   })
   const room = (cookie) => request(`/api/rooms/${code}`, { cookie })
-  t.after(async () => { await stop(); rmSync(storage, { recursive: true, force: true }) })
-  await launch()
   const setupResponse = await request('/api/auth/setup-admin', { method: 'POST', body: {
     name: `${code} admin`, email: `${code.toLowerCase()}-admin@example.test`, password: `${code}-admin-password`, setupToken: `${code}-setup`,
   } })
@@ -121,7 +89,7 @@ async function harness(t, code, state) {
   assertStatus(await request(`/api/admin/users/${owner.id}`, { method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero-slot-1', 'hero-slot-2'] } }))
   return {
     request, command, room, ownerCookie, adminCookie,
-    restart: async () => { await stop(); await launch() },
+    restart: () => server.restart(),
   }
 }
 

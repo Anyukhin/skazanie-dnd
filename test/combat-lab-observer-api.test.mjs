@@ -1,58 +1,11 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { buildCombatLabState } from '../server/combat-lab-setup.mjs'
 
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-function startServer({ port, storage, setupToken, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ROUTERAI_BASE_URL: '',
-      ADMIN_SETUP_TOKEN: setupToken,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Сервер стенда не остановился')), 5_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Сервер стенда завершился\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Сервер стенда не стал доступен\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -81,19 +34,9 @@ async function waitForRun(baseUrl, adminCookie, id, predicate) {
 }
 
 test('админ наблюдает асинхронный боевой стенд через HTTP', { timeout: runnerTimeout(90_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-combat-lab-observer-'))
   const setupToken = 'combat-lab-observer-setup-token'
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-combat-lab-observer-', setupToken })
+  const baseUrl = server.baseUrl
 
   const unauthenticated = await request(baseUrl, '/api/admin/combat-lab/scenarios')
   assert.equal(unauthenticated.status, 401, unauthenticated.text)

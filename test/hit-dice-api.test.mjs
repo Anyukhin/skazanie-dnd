@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import { worldClockEventDrafts } from '../server/weather.mjs'
 
@@ -20,41 +16,6 @@ const OFFSCREEN_STEP_EVENT_TYPES = new Set([
   // мира правит помимо памяти мира.
   'NpcSocialProfileUpserted',
 ])
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'hit-dice-api-setup',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -114,15 +75,10 @@ function assertRestNarration(result, pattern) {
 }
 
 test('HTTP-отдых санитизирует поля, защищает героя и идемпотентно тратит кости хитов', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-hit-dice-api-'))
-  let logs = ''
-  let child = null
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-hit-dice-api-', setupToken: 'hit-dice-api-setup' })
+  const logs = server.output
+  // restart() берёт новый порт: адрес перечитывается из server.baseUrl.
+  let baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'GM', email: 'gm@hit-dice.test', password: 'secure-admin-password', setupToken: 'hit-dice-api-setup',
@@ -133,9 +89,9 @@ test('HTTP-отдых санитизирует поля, защищает гер
   const foreign = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
     name: 'Foreign', email: 'foreign@hit-dice.test', password: 'secure-foreign-password',
   } })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
-  assert.equal(owner.status, 201, `${owner.text}\n${logs}`)
-  assert.equal(foreign.status, 201, `${foreign.text}\n${logs}`)
+  assert.equal(admin.status, 201, `${admin.text}\n${logs()}`)
+  assert.equal(owner.status, 201, `${owner.text}\n${logs()}`)
+  assert.equal(foreign.status, 201, `${foreign.text}\n${logs()}`)
   const adminCookie = cookie(admin)
   const ownerCookie = cookie(owner)
   const foreignCookie = cookie(foreign)
@@ -146,16 +102,16 @@ test('HTTP-отдых санитизирует поля, защищает гер
   const ownership = await request(baseUrl, `/api/admin/users/${ownerUser.id}`, {
     method: 'PATCH', cookie: adminCookie, body: { heroIds: ['fighter'] },
   })
-  assert.equal(ownership.status, 200, `${ownership.text}\n${logs}`)
+  assert.equal(ownership.status, 200, `${ownership.text}\n${logs()}`)
   const foreignOwnership = await request(baseUrl, `/api/admin/users/${foreignUser.id}`, {
     method: 'PATCH', cookie: adminCookie, body: { heroIds: ['wizard'] },
   })
-  assert.equal(foreignOwnership.status, 200, `${foreignOwnership.text}\n${logs}`)
+  assert.equal(foreignOwnership.status, 200, `${foreignOwnership.text}\n${logs()}`)
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie,
     body: { code: 'HIT-DICE-API', name: 'Кости хитов', state: initialState() },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${logs()}`)
 
   const autonomyIntentMarker = await request(baseUrl, '/api/campaigns/HIT-DICE-API/commands', {
     method: 'POST', cookie: adminCookie, key: 'hit-dice-autonomy-privacy:intent',
@@ -165,12 +121,12 @@ test('HTTP-отдых санитизирует поля, защищает гер
       message: 'Служебный маркер идемпотентности',
     },
   })
-  assert.equal(autonomyIntentMarker.status, 200, `${autonomyIntentMarker.text}\n${logs}`)
+  assert.equal(autonomyIntentMarker.status, 200, `${autonomyIntentMarker.text}\n${logs()}`)
   const foreignAutonomyReplay = await request(baseUrl, '/api/campaigns/HIT-DICE-API/autonomy/advance', {
     method: 'POST', cookie: foreignCookie, key: 'hit-dice-autonomy-privacy',
     body: { idempotency_key: 'hit-dice-autonomy-privacy' },
   })
-  assert.equal(foreignAutonomyReplay.status, 200, `${foreignAutonomyReplay.text}\n${logs}`)
+  assert.equal(foreignAutonomyReplay.status, 200, `${foreignAutonomyReplay.text}\n${logs()}`)
   assert.equal(foreignAutonomyReplay.body.duplicate, true)
   assert.equal(foreignAutonomyReplay.body.state.mechanics.hit_point_dice.fighter, undefined)
   assert.equal(foreignAutonomyReplay.body.state.mechanics.hit_point_dice.wizard.die_size, 6)
@@ -187,7 +143,7 @@ test('HTTP-отдых санитизирует поля, защищает гер
     method: 'POST', cookie: adminCookie,
     body: { code: 'HIT-DICE-KNOCKOUT', name: 'Нокаут', state: knockoutState },
   })
-  assert.equal(knockoutCreated.status, 201, `${knockoutCreated.text}\n${logs}`)
+  assert.equal(knockoutCreated.status, 201, `${knockoutCreated.text}\n${logs()}`)
   const forgedKnockoutCompletion = await request(baseUrl, '/api/campaigns/HIT-DICE-KNOCKOUT/commands', {
     method: 'POST', cookie: ownerCookie, key: 'knockout-complete-forged',
     body: {
@@ -222,7 +178,7 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(arbitraryTime.body.code, 'PLAYER_COMMAND_FORBIDDEN')
 
   const start = await restCommand(baseUrl, ownerCookie, 'rest-start-short', { command_type: 'StartRest', actor_id: 'fighter' })
-  assert.equal(start.status, 200, `${start.text}\n${logs}`)
+  assert.equal(start.status, 200, `${start.text}\n${logs()}`)
   assert.deepEqual(start.body.mechanics.map((event) => event.event_type), ['RestStarted', 'TimeAdvanced'])
   assert.equal(start.body.authoritative_state.mechanics.world_time.elapsed_minutes, 60)
   assert.equal(start.body.authoritative_state.players.find((hero) => hero.id === 'fighter').hp, 1)
@@ -240,7 +196,7 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(semanticCollision.body.code, 'IDEMPOTENCY_CONFLICT')
 
   const spent = await restCommand(baseUrl, ownerCookie, 'rest-spend-one', { command_type: 'SpendHitPointDie', actor_id: 'fighter' })
-  assert.equal(spent.status, 200, `${spent.text}\n${logs}`)
+  assert.equal(spent.status, 200, `${spent.text}\n${logs()}`)
   assert.equal(spent.body.authoritative_state.mechanics.hit_point_dice.fighter.spent, 1)
   assert.ok(spent.body.authoritative_state.players.find((hero) => hero.id === 'fighter').hp > 1)
   const spentRetry = await restCommand(baseUrl, ownerCookie, 'rest-spend-one', { command_type: 'SpendHitPointDie', actor_id: 'fighter' })
@@ -255,7 +211,7 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(race.filter((result) => result.status === 200).length, 1, race.map((result) => result.text).join('\n'))
 
   const completed = await restCommand(baseUrl, ownerCookie, 'rest-complete-short', { command_type: 'CompleteRest', actor_id: 'fighter' })
-  assert.equal(completed.status, 200, `${completed.text}\n${logs}`)
+  assert.equal(completed.status, 200, `${completed.text}\n${logs()}`)
   assert.equal(completed.body.authoritative_state.mechanics.resting.fighter, undefined)
   assert.equal(completed.body.authoritative_state.mechanics.hit_point_dice.fighter.spent, 2)
   const spentAfterCompletionRetry = await restCommand(baseUrl, ownerCookie, 'rest-spend-one', { command_type: 'SpendHitPointDie', actor_id: 'fighter' })
@@ -268,7 +224,7 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(completedRetry.body.state_version, completed.body.state_version)
 
   const longRest = await restCommand(baseUrl, ownerCookie, 'rest-start-long', { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' })
-  assert.equal(longRest.status, 200, `${longRest.text}\n${logs}`)
+  assert.equal(longRest.status, 200, `${longRest.text}\n${logs()}`)
   assertRestNarration(longRest, /Бран завершает продолжительный отдых/u)
   // Восемь часов сна всегда пересекают границу времени суток, и мировые часы
   // пишут об этом своё событие (`server/weather.mjs`). В списке оно остаётся на
@@ -301,20 +257,16 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(longRest.body.authoritative_state.mechanics.hit_point_dice.fighter.spent, 0)
   assert.equal(longRest.body.authoritative_state.players.find((hero) => hero.id === 'fighter').hp, 30)
 
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
 
   const reopened = await request(baseUrl, '/api/rooms/HIT-DICE-API', { cookie: ownerCookie })
-  assert.equal(reopened.status, 200, `${reopened.text}\n${logs}`)
+  assert.equal(reopened.status, 200, `${reopened.text}\n${logs()}`)
   assert.equal(reopened.body.state.mechanics.world_time.elapsed_minutes, 540)
   assert.equal(reopened.body.state.mechanics.hit_point_dice.fighter.spent, 0)
   assert.equal(reopened.body.state.mechanics.hit_point_dice.wizard, undefined)
   const durableRetry = await restCommand(baseUrl, ownerCookie, 'rest-start-long', { command_type: 'StartRest', actor_id: 'fighter', kind: 'long' })
-  assert.equal(durableRetry.status, 200, `${durableRetry.text}\n${logs}`)
+  assert.equal(durableRetry.status, 200, `${durableRetry.text}\n${logs()}`)
   assert.equal(durableRetry.body.idempotent_replay, true)
   assert.equal(durableRetry.body.authoritative_state.mechanics.world_time.elapsed_minutes, 540)
   assert.equal(durableRetry.body.narration, longRest.body.narration, 'replay после restart обязан вернуть ту же запись летописи')
@@ -322,7 +274,7 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.ok((reopened.body.state.messages ?? []).some((message) => /Бран завершает продолжительный отдых/u.test(String(message?.text ?? ''))))
 
   const secondShort = await restCommand(baseUrl, ownerCookie, 'rest-start-short-two', { command_type: 'StartRest', actor_id: 'fighter', kind: 'short' })
-  assert.equal(secondShort.status, 200, `${secondShort.text}\n${logs}`)
+  assert.equal(secondShort.status, 200, `${secondShort.text}\n${logs()}`)
   assert.equal(secondShort.body.authoritative_state.mechanics.world_time.elapsed_minutes, 600)
   const reusedSpendKey = await restCommand(baseUrl, ownerCookie, 'rest-spend-one', { command_type: 'SpendHitPointDie', actor_id: 'fighter' })
   assert.equal(reusedSpendKey.status, 409, reusedSpendKey.text)
@@ -331,6 +283,6 @@ test('HTTP-отдых санитизирует поля, защищает гер
   assert.equal(reusedCompleteKey.status, 409, reusedCompleteKey.text)
   assert.equal(reusedCompleteKey.body.code, 'IDEMPOTENCY_CONFLICT')
   const secondCompleted = await restCommand(baseUrl, ownerCookie, 'rest-complete-short-two', { command_type: 'CompleteRest', actor_id: 'fighter' })
-  assert.equal(secondCompleted.status, 200, `${secondCompleted.text}\n${logs}`)
+  assert.equal(secondCompleted.status, 200, `${secondCompleted.text}\n${logs()}`)
   assert.equal(secondCompleted.body.authoritative_state.mechanics.resting.fighter, undefined)
 })

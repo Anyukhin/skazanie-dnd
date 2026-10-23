@@ -7,8 +7,7 @@
 // того же героя, той же проверки и ещё не потреблённая, — а повтор с тем же
 // ключом по-прежнему возвращает прежний commit.
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -18,7 +17,8 @@ import { FileEventStore } from '../server/event-store.mjs'
 import { GameOrchestrator } from '../server/game-orchestrator.mjs'
 import { RollRegistry } from '../server/roll-registry.mjs'
 import { RulesEngine, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
+import { readJournal } from './kit/journal.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const SESSION = 'ROLL-BINDING'
@@ -51,47 +51,6 @@ function fixtureState() {
   }
 }
 
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    const timer = setTimeout(resolve, 5_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${logs()}`)
-}
-
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
@@ -107,32 +66,21 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}
   return { status: response.status, body: parsed, text, cookie: response.headers.get('set-cookie')?.split(';')[0] ?? '' }
 }
 
-/** Все `AbilityCheckResolved` из файлов журнала событий кампании. */
-function committedAbilityChecks(storage) {
-  const campaignsRoot = join(storage, 'engine', 'campaigns')
-  return readdirSync(campaignsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .flatMap((entry) => {
-      const eventsDir = join(campaignsRoot, entry.name, 'events')
-      return readdirSync(eventsDir).filter((name) => name.endsWith('.json'))
-        .map((name) => JSON.parse(readFileSync(join(eventsDir, name), 'utf8')))
-    })
+/**
+ * Все `AbilityCheckResolved` из журнала событий кампании. Кампания на сервере
+ * теста одна — прежний обход всех каталогов `engine/campaigns` читал её же.
+ */
+async function committedAbilityChecks(server, campaignCode) {
+  const { commits } = await readJournal(server, campaignCode)
+  return commits
     .flatMap((commit) => (commit.events ?? []).map((event) => ({ ...event, idempotency_key: commit.idempotency_key })))
     .filter((event) => event.event_type === 'AbilityCheckResolved')
 }
 
 test('обычная проверка по HTTP исполняет только кость своей карточки', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-roll-binding-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: SETUP_TOKEN, storagePrefix: 'skazanie-roll-binding-' })
+  const logs = server.output
+  const baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -143,7 +91,7 @@ test('обычная проверка по HTTP исполняет только 
     method: 'POST', cookie: admin.cookie,
     body: { code: SESSION, name: 'Привязка броска', state: fixtureState() },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${logs()}`)
   const player = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
     body: { name: 'Игрок стенда', email: 'roll-binding-player@example.test', password: 'RollBindingPlayer-2026!' },
@@ -167,7 +115,7 @@ test('обычная проверка по HTTP исполняет только 
 
   // Первая фаза: карточка обычной проверки, без commit.
   const offer = await narrate('binding-offer', { manual_roll: true })
-  assert.equal(offer.status, 200, `${offer.text}\n${logs}`)
+  assert.equal(offer.status, 200, `${offer.text}\n${logs()}`)
   assert.ok(offer.body.check?.check_id, `нет карточки проверки: ${offer.text}`)
   assert.deepEqual(offer.body.mechanics ?? [], [])
   const checkId = offer.body.check.check_id
@@ -184,7 +132,7 @@ test('обычная проверка по HTTP исполняет только 
   // Кость, выданная под другую карточку того же героя, эту проверку не
   // исполняет и при отказе не сгорает.
   const otherOffer = await narrate('binding-other-offer', { manual_roll: true }, OTHER_ACTION)
-  assert.equal(otherOffer.status, 200, `${otherOffer.text}\n${logs}`)
+  assert.equal(otherOffer.status, 200, `${otherOffer.text}\n${logs()}`)
   assert.ok(otherOffer.body.check?.check_id)
   assert.notEqual(otherOffer.body.check.check_id, checkId)
   const otherRoll = await roll({ checkId: otherOffer.body.check.check_id })
@@ -196,13 +144,13 @@ test('обычная проверка по HTTP исполняет только 
   // Своя кость: повтор выдачи после потери ответа возвращает ту же кость, а не
   // новую попытку.
   const rolled = await roll({ checkId })
-  assert.equal(rolled.status, 200, `${rolled.text}\n${logs}`)
+  assert.equal(rolled.status, 200, `${rolled.text}\n${logs()}`)
   assert.equal((await roll({ checkId })).body.roll_id, rolled.body.roll_id)
   assert.equal(rolled.body.difficulty, offer.body.check.difficulty)
   assert.equal(rolled.body.modifier, offer.body.check.modifier)
 
   const resolved = await narrate('binding-resolve', { roll: { roll_id: rolled.body.roll_id } })
-  assert.equal(resolved.status, 200, `${resolved.text}\n${logs}`)
+  assert.equal(resolved.status, 200, `${resolved.text}\n${logs()}`)
   const ability = (resolved.body.mechanics ?? []).find((event) => event.event_type === 'AbilityCheckResolved')
   assert.ok(ability, `проверка не исполнилась: ${resolved.text}`)
   assert.equal(ability.payload.roll_id, rolled.body.roll_id)
@@ -218,7 +166,7 @@ test('обычная проверка по HTTP исполняет только 
   assert.equal(reused.body.code, 'ROLL_ALREADY_USED')
 
   // В журнале ровно одна проверка — от своей карточки и своего ключа.
-  const checks = committedAbilityChecks(storage)
+  const checks = await committedAbilityChecks(server, SESSION)
   assert.equal(checks.length, 1, JSON.stringify(checks))
   assert.equal(checks[0].idempotency_key, 'binding-resolve')
   assert.equal(checks[0].payload.roll_id, rolled.body.roll_id)

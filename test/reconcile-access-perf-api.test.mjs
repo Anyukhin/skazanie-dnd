@@ -1,46 +1,16 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 // Сверка проекции (`reconcileCampaignProjection`) читает журнал, истекает
 // голосования и может перезаписать комнату. Чужой аккаунт не должен её
 // запускать: окончательный отказ — до сверки, с тем же 403, что и раньше.
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'reconcile-access-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 160; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${logs()}`)
-}
+//
+// Запуск — через кит, но `auth.json` и `rooms/*.json` тест правит и читает
+// напрямую: это раскладка хранилища JS, контрактом файл пока не становится.
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -101,16 +71,9 @@ function driftRoom(storage, code) {
 }
 
 test('чужой аккаунт получает прежний 403 и не запускает сверку проекции', { timeout: runnerTimeout(90_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-reconcile-access-'))
-  let logs = ''
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const child = startServer(port, storage, (chunk) => { logs += chunk })
-  t.after(async () => {
-    if (child.exitCode == null) await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-    rmSync(storage, { recursive: true, force: true })
-  })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: 'reconcile-access-setup', storagePrefix: 'skazanie-reconcile-access-' })
+  const storage = server.storageDir
+  const baseUrl = server.baseUrl
 
   const admin = await login(baseUrl, '/api/auth/setup-admin', {
     name: 'Ведущий', email: 'reconcile-admin@test.local', password: 'reconcile-admin-password', setupToken: 'reconcile-access-setup',

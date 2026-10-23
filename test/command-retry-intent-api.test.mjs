@@ -1,9 +1,7 @@
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
 
@@ -22,46 +20,6 @@ import { narrationRequestFingerprint, structuredCommandsFingerprint } from '../s
 
 const SETUP_TOKEN = 'command-retry-intent-setup'
 const CAMPAIGN = 'RETRY-INTENT'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    child.once('exit', resolve)
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* сервер ещё поднимается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -122,40 +80,32 @@ function brief(result) {
 }
 
 test('повтор ключа: то же намерение — replay, другая цель, тип, endpoint или актор — 409', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-command-retry-intent-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
-  })
-
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-command-retry-intent-', setupToken: SETUP_TOKEN })
+  const baseUrl = server.baseUrl
+  // Трассы ходов (`turn-traces`) — файлы JS-хранилища; помощника кита для них нет.
+  const storage = server.storageDir
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'GM', email: 'gm@retry-intent.test', password: 'retry-intent-admin-password', setupToken: SETUP_TOKEN },
   })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
+  assert.equal(admin.status, 201, `${admin.text}\n${server.output()}`)
   const adminCookie = sessionCookie(admin)
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie, body: { code: CAMPAIGN, name: CAMPAIGN, state: initialState },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
   const player = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
     body: { name: 'Player', email: 'player@retry-intent.test', password: 'retry-intent-player-password' },
   })
-  assert.equal(player.status, 201, `${player.text}\n${logs}`)
+  assert.equal(player.status, 201, `${player.text}\n${server.output()}`)
   const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
   const playerUser = users.body.users.find((candidate) => candidate.email === 'player@retry-intent.test')
   const assigned = await request(baseUrl, `/api/admin/users/${playerUser.id}`, {
     method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero-a', 'hero-b'] },
   })
-  assert.equal(assigned.status, 200, `${assigned.text}\n${logs}`)
+  assert.equal(assigned.status, 200, `${assigned.text}\n${server.output()}`)
   const cookie = sessionCookie(player)
 
   const command = (key, message, value) => request(baseUrl, `/api/campaigns/${CAMPAIGN}/commands`, {
@@ -168,7 +118,7 @@ test('повтор ключа: то же намерение — replay, друг
   // Тот же ключ и та же команда — прежний commit, без второго броска. Свежее
   // `expected_state_version` смысла заявки не меняет.
   const first = await command('same-key', 'same message', identify('goblin-a'))
-  assert.equal(first.status, 200, `${first.text}\n${logs}`)
+  assert.equal(first.status, 200, `${first.text}\n${server.output()}`)
   assert.ok(rollIds(first).length, 'первая проверка бросает кость')
   const replay = await command('same-key', 'same message', { ...identify('goblin-a'), expected_state_version: 999 })
   assert.equal(replay.status, 200, brief(replay))
@@ -187,7 +137,7 @@ test('повтор ключа: то же намерение — replay, друг
 
   // CMD-02: `/commands`, затем `/api/narrate` с тем же ключом и той же фразой.
   const structured = await command('cross-endpoint-key', 'Атакую goblin-c', identify('goblin-c'))
-  assert.equal(structured.status, 200, `${structured.text}\n${logs}`)
+  assert.equal(structured.status, 200, `${structured.text}\n${server.output()}`)
   const prose = await narrate('cross-endpoint-key', 'Атакую goblin-c')
   assert.equal(prose.status, 409, brief(prose))
   assert.equal(prose.body.code, 'IDEMPOTENCY_CONFLICT', brief(prose))
@@ -195,7 +145,7 @@ test('повтор ключа: то же намерение — replay, друг
   // CMD-02 в обратную сторону: ход фразой, затем `/commands` с тем же ключом и
   // той же фразой. Повтор самой фразы остаётся повтором.
   const look = await narrate('reverse-endpoint-key', 'Осматриваю комнату')
-  assert.equal(look.status, 200, `${look.text}\n${logs}`)
+  assert.equal(look.status, 200, `${look.text}\n${server.output()}`)
   assert.ok(rollIds(look).length, 'фраза записала проверку')
   const lookReplay = await narrate('reverse-endpoint-key', 'Осматриваю комнату')
   assert.equal(lookReplay.status, 200, brief(lookReplay))
@@ -207,7 +157,7 @@ test('повтор ключа: то же намерение — replay, друг
 
   // CMD-03, положительный контроль: смена актора под тем же ключом.
   const actorFirst = await command('cross-actor-key', 'actor message', identify('goblin-d'))
-  assert.equal(actorFirst.status, 200, `${actorFirst.text}\n${logs}`)
+  assert.equal(actorFirst.status, 200, `${actorFirst.text}\n${server.output()}`)
   const actorChanged = await command('cross-actor-key', 'actor message', identify('goblin-d', 'hero-b'))
   assert.equal(actorChanged.status, 409, brief(actorChanged))
   assert.equal(actorChanged.body.code, 'IDEMPOTENCY_CONFLICT', brief(actorChanged))
@@ -221,7 +171,7 @@ test('повтор ключа: то же намерение — replay, друг
     writeFileSync(traceFile(turnId), JSON.stringify({ ...trace, request_fingerprint: fingerprint }), 'utf8')
   }
   const legacy = await command('legacy-key', 'legacy message', identify('goblin-e'))
-  assert.equal(legacy.status, 200, `${legacy.text}\n${logs}`)
+  assert.equal(legacy.status, 200, `${legacy.text}\n${server.output()}`)
   assert.ok(legacy.body.turn_id)
   rewriteTrace(legacy.body.turn_id, narrationRequestFingerprint({ campaignId: CAMPAIGN, playerId: 'hero-a', message: 'legacy message' }))
   const legacyReplay = await command('legacy-key', 'legacy message', identify('goblin-e'))
@@ -230,7 +180,7 @@ test('повтор ключа: то же намерение — replay, друг
   assert.deepEqual(rollIds(legacyReplay), rollIds(legacy))
 
   const ancient = await command('ancient-key', 'ancient message', identify('goblin-f'))
-  assert.equal(ancient.status, 200, `${ancient.text}\n${logs}`)
+  assert.equal(ancient.status, 200, `${ancient.text}\n${server.output()}`)
   rewriteTrace(ancient.body.turn_id, null)
   const ancientReplay = await command('ancient-key', 'ancient message', identify('goblin-f'))
   assert.equal(ancientReplay.status, 200, brief(ancientReplay))

@@ -1,76 +1,12 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer as createHttpServer } from 'node:http'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
+import { startFakeProvider } from './kit/llm.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const SSE_PAYLOAD_KEYS = ['message_id', 'phase', 'replace', 'replayed', 'text']
-
-async function listen(server) {
-  await new Promise((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  return server.address().port
-}
-
-async function closeServer(server) {
-  if (!server.listening) return
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
-}
-
-function startGameServer({ port, storage, routerBaseUrl, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: 'narration-stream-test-key',
-      ROUTERAI_BASE_URL: routerBaseUrl,
-      DND_AI_MODEL: 'fake-stream-model',
-      DND_AI_FALLBACK_MODELS: 'fake-stream-model',
-      DND_AI_MODEL_TIMEOUT_MS: '5000',
-      ADMIN_SETUP_TOKEN: 'narration-stream-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopGameServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error('Game server did not stop')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timeout)
-      resolve()
-    })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* Сервер запускается. */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -224,9 +160,6 @@ function finishStream(res, text = '') {
 }
 
 test('HTTP/SSE повествование изолировано, восстанавливается и завершается канонически', { timeout: runnerTimeout(90_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-narration-stream-api-'))
-  let logs = ''
-  let child = null
   const aborters = []
   let streamCalls = 0
   let releaseFirst
@@ -238,72 +171,64 @@ test('HTTP/SSE повествование изолировано, восстан
   const disconnectedGate = new Promise((resolve) => { releaseDisconnected = resolve })
   const disconnectedRequest = new Promise((resolve) => { disconnectedStarted = resolve })
 
-  const fakeRouter = createHttpServer((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/api/v1/chat/completions') {
-      res.writeHead(404, JSON_HEADERS)
-      res.end(JSON.stringify({ error: 'Not found' }))
-      return
-    }
-    let raw = ''
-    req.setEncoding('utf8')
-    req.on('data', (chunk) => { raw += chunk })
-    req.once('end', async () => {
-      const input = JSON.parse(raw)
-      if (!input.stream) {
-        res.writeHead(200, JSON_HEADERS)
-        res.end(JSON.stringify({
-          model: 'fake-stream-model',
-          choices: [{ message: { role: 'assistant', content: '{"ok":true}' } }],
-        }))
-        return
-      }
-      streamCalls += 1
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache',
-      })
-      if (streamCalls === 1) {
-        writeDelta(res, 'Подтверждённый удар достигает цели.')
-        firstStarted()
-        await firstGate
-        finishStream(res, ' Схватка продолжается.')
-        return
-      }
-      if (streamCalls === 2) {
-        writeDelta(res, 'На миг всё стихает.')
-        setTimeout(() => res.destroy(), 80)
-        return
-      }
-      if (streamCalls === 3) {
-        finishStream(res, 'Герой получает 999 HP.')
-        return
-      }
-      writeDelta(res, 'Подтверждённый удар достигает цели.')
-      disconnectedStarted()
-      await disconnectedGate
-      finishStream(res, ' Схватка продолжается.')
-    })
-  })
-
-  t.after(async () => {
+  // Первым: отпустить задержанные ответы и закрыть потоки раньше остановки серверов.
+  t.after(() => {
     releaseFirst()
     releaseDisconnected()
     for (const controller of aborters) controller.abort()
-    await stopGameServer(child)
-    await closeServer(fakeRouter)
-    rmSync(storage, { recursive: true, force: true })
   })
 
-  const routerPort = await listen(fakeRouter)
-  const gamePort = await freePort()
-  const baseUrl = `http://127.0.0.1:${gamePort}`
-  child = startGameServer({
-    port: gamePort,
-    storage,
-    routerBaseUrl: `http://127.0.0.1:${routerPort}/api/v1`,
-    appendLog: (chunk) => { logs += chunk },
+  // Прочие пути провайдера — 404 (обработчик возвращает undefined); поток SSE
+  // обработчик пишет в `res` сам.
+  const provider = await startFakeProvider(t, async (incoming, res) => {
+    if (incoming.method !== 'POST' || incoming.url !== '/api/v1/chat/completions') return undefined
+    const input = JSON.parse(incoming.text)
+    if (!input.stream) {
+      return {
+        model: 'fake-stream-model',
+        choices: [{ message: { role: 'assistant', content: '{"ok":true}' } }],
+      }
+    }
+    streamCalls += 1
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    })
+    if (streamCalls === 1) {
+      writeDelta(res, 'Подтверждённый удар достигает цели.')
+      firstStarted()
+      await firstGate
+      finishStream(res, ' Схватка продолжается.')
+      return undefined
+    }
+    if (streamCalls === 2) {
+      writeDelta(res, 'На миг всё стихает.')
+      setTimeout(() => res.destroy(), 80)
+      return undefined
+    }
+    if (streamCalls === 3) {
+      finishStream(res, 'Герой получает 999 HP.')
+      return undefined
+    }
+    writeDelta(res, 'Подтверждённый удар достигает цели.')
+    disconnectedStarted()
+    await disconnectedGate
+    finishStream(res, ' Схватка продолжается.')
+    return undefined
   })
-  await waitForHealth(baseUrl, child, () => logs)
+
+  const server = await startTestServer(t, {
+    setupToken: 'narration-stream-setup',
+    storagePrefix: 'skazanie-narration-stream-api-',
+    env: {
+      ...provider.env,
+      DND_AI_MODEL: 'fake-stream-model',
+      DND_AI_FALLBACK_MODELS: 'fake-stream-model',
+      DND_AI_MODEL_TIMEOUT_MS: '5000',
+    },
+  })
+  const { baseUrl } = server
+  const logs = server.output
 
   const owner = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -399,8 +324,8 @@ test('HTTP/SSE повествование изолировано, восстан
 
   releaseFirst()
   const [first, replay] = await Promise.all([firstResponse, replayResponse])
-  assert.equal(first.status, 200, `${first.text}\n${logs}`)
-  assert.equal(replay.status, 200, `${replay.text}\n${logs}`)
+  assert.equal(first.status, 200, `${first.text}\n${logs()}`)
+  assert.equal(replay.status, 200, `${replay.text}\n${logs()}`)
   assert.equal(first.body.narration, replay.body.narration)
   assert.equal(first.body.narration_message_id, duplicateMessageId)
   assert.deepEqual(
@@ -438,7 +363,7 @@ test('HTTP/SSE повествование изолировано, восстан
   assert.equal(replacementChunk.payload.text, 'На миг всё стихает.')
   const replacementFinal = await nextNarration(ownerStream, replacementId, 'replaced')
   const replacementResult = await replacementResponse
-  assert.equal(replacementResult.status, 200, `${replacementResult.text}\n${logs}`)
+  assert.equal(replacementResult.status, 200, `${replacementResult.text}\n${logs()}`)
   assert.equal(replacementFinal.payload.text, replacementResult.body.narration)
   assert.notEqual(replacementFinal.payload.text, replacementChunk.payload.text)
   assertPublicNarrationPayload(replacementFinal.payload)
@@ -453,7 +378,7 @@ test('HTTP/SSE повествование изолировано, восстан
   await nextNarration(ownerStream, safetyId, 'start')
   const safetyFinal = await nextNarration(ownerStream, safetyId, 'complete')
   const safetyResult = await safetyResponse
-  assert.equal(safetyResult.status, 200, `${safetyResult.text}\n${logs}`)
+  assert.equal(safetyResult.status, 200, `${safetyResult.text}\n${logs()}`)
   assert.equal(safetyFinal.payload.text, safetyResult.body.narration)
   assert.equal(JSON.stringify(safetyFinal.payload).includes('999'), false)
   assertPublicNarrationPayload(safetyFinal.payload)

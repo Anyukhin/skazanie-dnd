@@ -1,48 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'director-player-entry-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 160; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -101,13 +60,9 @@ async function register(baseUrl, name, email) {
 }
 
 test('обычный игрок запускает Director, resume по interaction_id переживает restart и guards не меняют состояние', { timeout: runnerTimeout(90_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-director-player-entry-'))
-  let logs = ''
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  let child = startServer(port, storage, (chunk) => { logs += chunk })
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-director-player-entry-', setupToken: 'director-player-entry-setup' })
+  // restart() берёт новый порт: адрес перечитывается из server.baseUrl.
+  let baseUrl = server.baseUrl
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -214,12 +169,8 @@ test('обычный игрок запускает Director, resume по interac
     assert.equal(vote.status, 200, vote.text)
   }
 
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
 
   const resumedTransition = await request(baseUrl, '/api/campaigns/DIRECTOR-ENTRY/autonomy/advance', {
     method: 'POST', cookie: ownerCookie,

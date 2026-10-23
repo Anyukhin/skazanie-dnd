@@ -1,59 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-function startServer({ port, storage, setupToken, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: setupToken,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Тестовый сервер не остановился')), 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился с кодом ${child.exitCode}\n${log().slice(-2000)}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response.json()
-    } catch { /* Сервер ещё запускается. */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не ответил\n${log().slice(-2000)}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -151,20 +102,11 @@ function initialState() {
 }
 
 test('HTTP UseCombatAction сохраняет выбранного получателя Искусной остроты', { timeout: runnerTimeout(30_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-spell-reaction-http-'))
   const setupToken = 'spell-reaction-http-setup-token'
-  let logs = ''
-  let child = null
-  const log = () => logs
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer({ port, storage, setupToken, appendLog: (chunk) => { logs += chunk } })
-  await waitForHealth(baseUrl, child, log)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-spell-reaction-http-', setupToken })
+  const log = () => server.output()
+  // Сервер не перезапускается: адрес постоянен до конца теста.
+  const { baseUrl } = server
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Администратор реакций', email: 'admin@spell-reaction-http.test', password: 'spell-reaction-http-admin-password', setupToken,

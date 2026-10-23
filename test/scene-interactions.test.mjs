@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
 import { FileEventStore } from '../server/event-store.mjs'
 import {
@@ -30,30 +29,6 @@ import {
   createTacticalMap,
   serializeTacticalMap,
 } from '../server/tactical-map.mjs'
-
-async function waitForServer(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Сервер завершился раньше времени\n${log()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch {}
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Сервер не запустился\n${log()}`)
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    const timer = setTimeout(resolve, 5_000)
-    child.once('exit', () => {
-      clearTimeout(timer)
-      resolve()
-    })
-    child.kill()
-  })
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -499,32 +474,9 @@ test('FileEventStore не дублирует loot по тому же key и по
 })
 
 test('HTTP sanitizer сохраняет владельца героя и не принимает force от кнопки игрока', { timeout: 20_000 }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-scene-http-'))
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  let logs = ''
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'scene-http-setup-token',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => { logs += String(chunk) })
-  child.stderr.on('data', (chunk) => { logs += String(chunk) })
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-  await waitForServer(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-scene-http-', setupToken: 'scene-http-setup-token' })
+  // Сервер не перезапускается: адрес постоянен до конца теста.
+  const { baseUrl } = server
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -535,7 +487,7 @@ test('HTTP sanitizer сохраняет владельца героя и не п
       setupToken: 'scene-http-setup-token',
     },
   })
-  assert.equal(setup.status, 201, `${setup.text}\n${logs}`)
+  assert.equal(setup.status, 201, `${setup.text}\n${server.output()}`)
   const registered = await request(baseUrl, '/api/auth/register', {
     method: 'POST',
     body: {
@@ -544,7 +496,7 @@ test('HTTP sanitizer сохраняет владельца героя и не п
       password: 'secure-scene-player-password',
     },
   })
-  assert.equal(registered.status, 201, `${registered.text}\n${logs}`)
+  assert.equal(registered.status, 201, `${registered.text}\n${server.output()}`)
 
   const seed = containerSeed({ locked: false, trapped: false })
   const initial = sceneState({ seed })
@@ -555,7 +507,7 @@ test('HTTP sanitizer сохраняет владельца героя и не п
     cookie: setup.cookie,
     body: { code: initial.sessionCode, name: initial.campaign, state: initial },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
   const users = await request(baseUrl, '/api/admin/users', { cookie: setup.cookie })
   const player = users.body.users.find((candidate) => candidate.email === 'player@scene-http.test')
   assert.ok(player)
@@ -580,7 +532,7 @@ test('HTTP sanitizer сохраняет владельца героя и не п
       },
     },
   })
-  assert.equal(forgedForce.status, 200, `${forgedForce.text}\n${logs}`)
+  assert.equal(forgedForce.status, 200, `${forgedForce.text}\n${server.output()}`)
   const operated = forgedForce.body.mechanics.find((event) => event.event_type === 'SceneObjectOperated')
   assert.equal(operated.payload.approach, 'hand')
   // Плейтест 2026-10-10: осмотр бочки вне боя подписывался «Система боя» и

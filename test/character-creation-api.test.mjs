@@ -1,48 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'character-creation-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test server exited\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response.json()
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -108,18 +67,12 @@ async function command(baseUrl, cookieValue, actorId, document, key, campaignCod
 }
 
 test('каждый игрок заполняет свой серверный слот через replayable ImportCharacter', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-character-creation-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  const health = await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-character-creation-', setupToken: 'character-creation-setup' })
+  // Адрес меняется после каждого restart(): переменная обновляется ниже.
+  let baseUrl = server.baseUrl
+  const healthResponse = await fetch(`${baseUrl}/api/health`)
+  assert.equal(healthResponse.status, 200)
+  const health = await healthResponse.json()
   assert.equal(health.characterCreation.ability_policy.policy_id, 'skazanie.character-abilities.standard-array')
   assert.equal(health.characterCreation.classes.length, 12)
   assert.ok(health.characterCreation.classes.find((entry) => entry.id === 'wizard').spell_selection.spells.length > 0)
@@ -198,9 +151,8 @@ test('каждый игрок заполняет свой серверный с�
   const rolledAgain = await request(baseUrl, '/api/campaigns/PHB-ROLLS/commands', { method: 'POST', cookie: ownerCookie, key: rollBody.idempotency_key, body: rollBody })
   assert.equal(rolledAgain.status, 200, rolledAgain.text)
   assert.deepEqual(rolledAgain.body.authoritative_state.players[0].characterCreationRolls.abilities, savedRoll)
-  await stopServer(child)
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
   const resumedRolls = await request(baseUrl, '/api/rooms/PHB-ROLLS', { cookie: ownerCookie })
   assert.equal(resumedRolls.status, 200, resumedRolls.text)
   assert.deepEqual(resumedRolls.body.state.players[0].characterCreationRolls.abilities, savedRoll)
@@ -275,9 +227,8 @@ test('каждый игрок заполняет свой серверный с�
   const duplicateFeat = await featCommand(chooseFeat, 'feat-choice')
   assert.equal(duplicateFeat.status, 200, duplicateFeat.text)
   assert.equal(duplicateFeat.body.state_version, chosen.body.state_version)
-  await stopServer(child)
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
   const restoredFeat = await request(baseUrl, '/api/rooms/FEAT-LEVEL', { cookie: ownerCookie })
   assert.deepEqual(restoredFeat.body.state.players[0].levelFeats, chosenHero.levelFeats)
   assert.equal(restoredFeat.body.state.players[0].maxHp, chosenHero.maxHp)
@@ -350,9 +301,8 @@ test('каждый игрок заполняет свой серверный с�
   const guestImported = await command(baseUrl, guestCookie, 'slot-2', importDocument({ character: 'Мира' }), 'guest-character')
   assert.equal(guestImported.status, 200, guestImported.text)
 
-  await stopServer(child)
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
   const replayed = await request(baseUrl, '/api/rooms/CREATE-HERO', { cookie: ownerCookie })
   assert.equal(replayed.status, 200, replayed.text)
   const replayedOwner = replayed.body.state.players.find((hero) => hero.id === 'slot-1')

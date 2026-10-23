@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import { ITEM_CATALOG } from '../server/item-catalog.mjs'
 
@@ -22,49 +18,26 @@ function cookie(result) {
   return result.response.headers.get('set-cookie')?.split(';')[0]
 }
 
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 40))
-  }
-  throw new Error(`Server did not start\n${logs()}`)
-}
-
 test('non-admin room and Director response cannot expose private world memory', { timeout: runnerTimeout(30_000) }, async (t) => {
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-viewer-api-'))
-  let logs = ''
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'viewer-api-token', COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => { logs += String(chunk) })
-  child.stderr.on('data', (chunk) => { logs += String(chunk) })
-  t.after(() => { if (child.exitCode == null) child.kill(); rmSync(storage, { recursive: true, force: true }) })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-viewer-api-', setupToken: 'viewer-api-token' })
+  const baseUrl = server.baseUrl
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST', body: { name: 'GM', email: 'gm@viewer.test', password: 'viewer-admin-password', setupToken: 'viewer-api-token' },
   })
-  assert.equal(setup.status, 201, logs)
+  assert.equal(setup.status, 201, server.output())
   const adminCookie = cookie(setup)
   const registration = await request(baseUrl, '/api/auth/register', {
     method: 'POST', body: { name: 'Player', email: 'player@viewer.test', password: 'viewer-player-password' },
   })
-  assert.equal(registration.status, 201, logs)
+  assert.equal(registration.status, 201, server.output())
   const playerCookie = cookie(registration)
   const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
   const playerUser = users.body.users.find((candidate) => candidate.email === 'player@viewer.test')
   const access = await request(baseUrl, `/api/admin/users/${playerUser.id}`, {
     method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero'] },
   })
-  assert.equal(access.status, 200, logs)
+  assert.equal(access.status, 200, server.output())
 
   const privateMarker = 'GM_PRIVATE_DRAGON_COUNCIL'
   const initialState = {
@@ -93,10 +66,10 @@ test('non-admin room and Director response cannot expose private world memory', 
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie, body: { code: 'VIEWER-API', state: initialState },
   })
-  assert.equal(created.status, 201, logs)
+  assert.equal(created.status, 201, server.output())
 
   const playerRoom = await request(baseUrl, '/api/rooms/VIEWER-API', { cookie: playerCookie })
-  assert.equal(playerRoom.status, 200, logs)
+  assert.equal(playerRoom.status, 200, server.output())
   assert.doesNotMatch(JSON.stringify(playerRoom.body), new RegExp(privateMarker, 'u'))
   assert.equal(playerRoom.body.state.scene.cells[0].feature, undefined)
   assert.equal(playerRoom.body.state.merchants[0].bargains, undefined)
@@ -109,7 +82,7 @@ test('non-admin room and Director response cannot expose private world memory', 
     method: 'POST', cookie: playerCookie,
     body: { campaignId: 'VIEWER-API', idempotency_key: 'viewer-city-transition', action: '[РЕШЕНИЕ ГРУППЫ] Уходим из склепа и идём в большой город Норвин' },
   })
-  assert.equal(transitioned.status, 200, `${JSON.stringify(transitioned.body)}\n${logs}`)
+  assert.equal(transitioned.status, 200, `${JSON.stringify(transitioned.body)}\n${server.output()}`)
   assert.doesNotMatch(JSON.stringify(transitioned.body), new RegExp(privateMarker, 'u'))
   assert.ok(transitioned.body.authoritative_state, JSON.stringify(transitioned.body))
   assert.equal(transitioned.body.authoritative_state.scene.location, 'Большой город Норвин')
@@ -124,7 +97,7 @@ test('non-admin room and Director response cannot expose private world memory', 
     method: 'POST', cookie: playerCookie,
     body: { campaignId: 'VIEWER-API', idempotency_key: 'viewer-social-turn', action: socialAction },
   })
-  assert.equal(spoken.status, 200, JSON.stringify(spoken.body) + '\n' + logs)
+  assert.equal(spoken.status, 200, JSON.stringify(spoken.body) + '\n' + server.output())
   assert.equal(spoken.body.mechanics.some((event) => event.event_type === 'NpcConversationRecorded'), true)
   assert.equal(spoken.body.authoritative_state.social.conversations.length, 1)
 
@@ -132,7 +105,7 @@ test('non-admin room and Director response cannot expose private world memory', 
     method: 'POST', cookie: playerCookie,
     body: { campaignId: 'VIEWER-API', idempotency_key: 'viewer-social-turn', action: socialAction },
   })
-  assert.equal(replayedSocial.status, 200, logs)
+  assert.equal(replayedSocial.status, 200, server.output())
   assert.equal(replayedSocial.body.idempotent_replay, true)
   assert.equal(replayedSocial.body.narration, spoken.body.narration)
 
@@ -141,7 +114,7 @@ test('non-admin room and Director response cannot expose private world memory', 
     method: 'POST', cookie: playerCookie,
     body: { campaignId: 'VIEWER-API', idempotency_key: 'viewer-social-check', action: checkedAction },
   })
-  assert.equal(checkedSocial.status, 200, JSON.stringify(checkedSocial.body) + '\n' + logs)
+  assert.equal(checkedSocial.status, 200, JSON.stringify(checkedSocial.body) + '\n' + server.output())
   const playerCheck = checkedSocial.body.mechanics.find((event) => event.event_type === 'AbilityCheckResolved')
   assert.ok(playerCheck, JSON.stringify(checkedSocial.body.mechanics))
   assert.equal(playerCheck.payload.difficulty, undefined)
@@ -156,11 +129,11 @@ test('non-admin room and Director response cannot expose private world memory', 
     method: 'PUT', cookie: playerCookie,
     body: { state: forgedSocialState, baseVersion: checkedSocial.body.room_version },
   })
-  assert.equal(roomPut.status, 410, JSON.stringify(roomPut.body) + '\n' + logs)
+  assert.equal(roomPut.status, 410, JSON.stringify(roomPut.body) + '\n' + server.output())
   assert.equal(roomPut.body.code, 'ROOM_MUTATION_RETIRED')
 
   const adminRoom = await request(baseUrl, '/api/rooms/VIEWER-API', { cookie: adminCookie })
-  assert.equal(adminRoom.status, 200, logs)
+  assert.equal(adminRoom.status, 200, server.output())
   assert.equal(adminRoom.body.state.adventure.gm_only.villain, privateMarker)
   assert.equal(adminRoom.body.state.social.conversations.length, 2)
   assert.doesNotMatch(JSON.stringify(adminRoom.body.state.social), /FORGED_SOCIAL_SECRET/u)

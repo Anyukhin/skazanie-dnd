@@ -1,62 +1,11 @@
-import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { FileEventStore } from '../server/event-store.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
-import { MapStore } from '../server/map-store.mjs'
-import {
-  GAME_STATE_PROJECTOR_VERSION,
-  applyGameEvent,
-  normalizeCampaignState,
-} from '../server/rules-engine.mjs'
+import { readJournal, startTestServer } from './kit/index.mjs'
 
 const ACID = 'srd_5_2_1:acid'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'thrown-flask-http-setup',
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    child.once('exit', resolve)
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, {
   method = 'GET',
@@ -157,18 +106,8 @@ function flaskCommand(key, targetId = 'foe') {
 }
 
 test('HTTP UseItem флакона кислоты сохраняет SRD-эффект, права, идемпотентность и FileEventStore replay', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-thrown-flask-http-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
-  })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-thrown-flask-http-', setupToken: 'thrown-flask-http-setup' })
+  let baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -182,9 +121,9 @@ test('HTTP UseItem флакона кислоты сохраняет SRD-эффе
     method: 'POST',
     body: { name: 'Foreign', email: 'foreign@thrown-flask.test', password: 'secure-foreign-password' },
   })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
-  assert.equal(owner.status, 201, `${owner.text}\n${logs}`)
-  assert.equal(foreign.status, 201, `${foreign.text}\n${logs}`)
+  assert.equal(admin.status, 201, `${admin.text}\n${server.output()}`)
+  assert.equal(owner.status, 201, `${owner.text}\n${server.output()}`)
+  assert.equal(foreign.status, 201, `${foreign.text}\n${server.output()}`)
   const adminCookie = sessionCookie(admin)
   const ownerCookie = sessionCookie(owner)
   const foreignCookie = sessionCookie(foreign)
@@ -196,14 +135,14 @@ test('HTTP UseItem флакона кислоты сохраняет SRD-эффе
     cookie: adminCookie,
     body: { heroIds: ['hero'] },
   })
-  assert.equal(ownership.status, 200, `${ownership.text}\n${logs}`)
+  assert.equal(ownership.status, 200, `${ownership.text}\n${server.output()}`)
 
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST',
     cookie: adminCookie,
     body: { code: 'THROWN-FLASK-HTTP', name: 'Метание кислоты', state: initialState() },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${server.output()}`)
 
   const unauthorized = await request(baseUrl, '/api/campaigns/THROWN-FLASK-HTTP/commands', {
     method: 'POST',
@@ -211,14 +150,14 @@ test('HTTP UseItem флакона кислоты сохраняет SRD-эффе
     key: 'acid-forbidden',
     body: flaskCommand('acid-forbidden'),
   })
-  assert.equal(unauthorized.status, 403, `${unauthorized.text}\n${logs}`)
+  assert.equal(unauthorized.status, 403, `${unauthorized.text}\n${server.output()}`)
 
   const key = 'acid-throw-once'
   const command = flaskCommand(key)
   const first = await request(baseUrl, '/api/campaigns/THROWN-FLASK-HTTP/commands', {
     method: 'POST', cookie: ownerCookie, key, body: command,
   })
-  assert.equal(first.status, 200, `${first.text}\n${logs}`)
+  assert.equal(first.status, 200, `${first.text}\n${server.output()}`)
   assert.ok(first.body.mechanics.some((event) => event.event_type === 'ItemUsed'))
   const save = first.body.mechanics.find((event) => event.event_type === 'SavingThrowResolved')
   const damage = first.body.mechanics.find((event) => event.event_type === 'DamageApplied')
@@ -237,7 +176,7 @@ test('HTTP UseItem флакона кислоты сохраняет SRD-эффе
   const duplicate = await request(baseUrl, '/api/campaigns/THROWN-FLASK-HTTP/commands', {
     method: 'POST', cookie: ownerCookie, key, body: command,
   })
-  assert.equal(duplicate.status, 200, `${duplicate.text}\n${logs}`)
+  assert.equal(duplicate.status, 200, `${duplicate.text}\n${server.output()}`)
   assert.equal(duplicate.body.idempotent_replay, true)
   assert.equal(duplicate.body.authoritative_state.enemies.find((enemy) => enemy.id === 'foe').healthStatus, firstEnemyStatus)
   assert.equal(duplicate.body.authoritative_state.players.find((player) => player.id === 'hero').inventory.some((item) => item.id === 'acid'), false)
@@ -245,36 +184,26 @@ test('HTTP UseItem флакона кислоты сохраняет SRD-эффе
   const conflict = await request(baseUrl, '/api/campaigns/THROWN-FLASK-HTTP/commands', {
     method: 'POST', cookie: ownerCookie, key, body: flaskCommand(key, 'hero'),
   })
-  assert.equal(conflict.status, 409, `${conflict.text}\n${logs}`)
+  assert.equal(conflict.status, 409, `${conflict.text}\n${server.output()}`)
   assert.equal(conflict.body.code, 'IDEMPOTENCY_CONFLICT')
 
-  await stopServer(child)
-  child = null
+  await server.stop()
 
-  const eventStore = new FileEventStore({
-    rootDir: join(storage, 'engine'),
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-    snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-    mapStore: new MapStore({ rootDir: join(storage, 'engine') }),
-  })
-  const durable = await eventStore.load('THROWN-FLASK-HTTP')
+  const durable = await readJournal(server, 'THROWN-FLASK-HTTP')
   const durableEnemyHp = durable.state.enemies.find((enemy) => enemy.id === 'foe').hp
   assert.ok(durableEnemyHp < 30)
   assert.equal(durable.state.players.find((player) => player.id === 'hero').inventory.some((item) => item.id === 'acid'), false)
-  const storedEvents = await eventStore.getEvents('THROWN-FLASK-HTTP')
+  const storedEvents = durable.events
   assert.equal(storedEvents.filter((event) => event.event_type === 'ItemUsed').length, 1)
   assert.equal(storedEvents.filter((event) => event.event_type === 'DamageApplied').length, 1)
 
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.start()
+  baseUrl = server.baseUrl
 
   const afterRestart = await request(baseUrl, '/api/campaigns/THROWN-FLASK-HTTP/commands', {
     method: 'POST', cookie: ownerCookie, key, body: command,
   })
-  assert.equal(afterRestart.status, 200, `${afterRestart.text}\n${logs}`)
+  assert.equal(afterRestart.status, 200, `${afterRestart.text}\n${server.output()}`)
   assert.equal(afterRestart.body.idempotent_replay, true)
   assert.equal(afterRestart.body.authoritative_state.enemies.find((enemy) => enemy.id === 'foe').healthStatus, firstEnemyStatus)
   assert.equal(afterRestart.body.authoritative_state.players.find((player) => player.id === 'hero').inventory.some((item) => item.id === 'acid'), false)

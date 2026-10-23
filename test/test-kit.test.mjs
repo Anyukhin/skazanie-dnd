@@ -1,6 +1,7 @@
 // Самопроверка общего тестового набора `test/kit/`. Если набор сломается,
 // здесь это видно раньше, чем в десятках тестов, которые на него опираются.
 import assert from 'node:assert/strict'
+import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
 import { RouterAIClient } from '../server/llm-client.mjs'
@@ -30,7 +31,15 @@ import {
   setupAdmin,
   startFakeProvider,
   startTestServer,
+  appendJournal,
+  corruptCampaign,
+  hookEnv,
+  readJournal,
+  serverImpl,
+  stopChild,
 } from './kit/index.mjs'
+import { DICE_ENV, FAULTS_ENV, createDicePicker, parseDiceSpec, parseFaultsSpec } from './kit/hooks-format.mjs'
+import { contractFiles } from './kit/run-contract.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const hero = (id, x) => ({
@@ -52,6 +61,31 @@ const campaignState = (code) => ({
 })
 
 // Сетевая часть isolatedServerEnv проверяется в test/test-network-isolation.test.mjs.
+// Процесс-двойник: на SIGTERM либо выходит, либо «зависает» до SIGKILL.
+const fakeChild = ({ obeysTerm }) => {
+  const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null, signals: [] })
+  child.kill = (signal = 'SIGTERM') => {
+    child.signals.push(signal)
+    if (signal === 'SIGKILL' || obeysTerm) setImmediate(() => { child.signalCode = signal; child.emit('exit', null, signal) })
+    return true
+  }
+  return child
+}
+
+test('остановка: зависшее завершение по SIGTERM добивается SIGKILL и проваливает тест', async () => {
+  const obedient = fakeChild({ obeysTerm: true })
+  await stopChild(obedient, { timeoutMs: 1_000 })
+  assert.deepEqual(obedient.signals, ['SIGTERM'])
+
+  const hung = fakeChild({ obeysTerm: false })
+  await assert.rejects(stopChild(hung, { timeoutMs: 30, output: () => 'хвост вывода' }), /не завершился по SIGTERM за 30 мс[\s\S]*хвост вывода/)
+  assert.deepEqual(hung.signals, ['SIGTERM', 'SIGKILL'])
+
+  const cleanup = fakeChild({ obeysTerm: false })
+  await stopChild(cleanup, { timeoutMs: 30, strict: false })
+  assert.deepEqual(cleanup.signals, ['SIGTERM', 'SIGKILL'])
+})
+
 test('env сервера: стандартный блок, хранилище и порт только от набора, undefined снимает переменную', () => {
   const base = { port: 1, storageDir: 'storage-dir', setupToken: 'token' }
   const env = isolatedServerEnv({ ...base, env: { DND_COMBAT_TURN_TIMEOUT_MS: '3600000', DND_AI_MODEL: undefined } })
@@ -172,4 +206,105 @@ test('модель: локальный провайдер говорит про�
   const health = expectStatus(await createClient(server).get('/api/health'))
   assert.equal(health.configured, true, 'сервер видит ключ заглушки')
   assert.equal(health.model, 'kit/model')
+})
+
+test('крючки как данные: правила костей, сбои, отказ на неизвестных полях и несовместимых с Rust шаблонах', () => {
+  const spec = parseDiceSpec(JSON.stringify({
+    format: 'skazanie.test-dice/1',
+    rules: [
+      { actor: '^hero-1$', purpose: '^attack$', sides: 20, values: [4, 19], value: 'max' },
+      { actor: '^hero-', value: 'min' },
+      { actor: '^$', sides: 6, value: 9 },
+    ],
+  }))
+  const pick = createDicePicker(spec)
+  const d20 = { actorId: 'hero-1', purpose: 'attack', minimum: 1, maximum: 20 }
+  assert.deepEqual([pick(d20), pick(d20), pick(d20)], [4, 19, 20], 'очередь values, затем value')
+  assert.equal(pick({ actorId: 'hero-1', purpose: 'damage', minimum: 1, maximum: 8 }), 1, 'первое подходящее правило')
+  assert.equal(pick({ actorId: null, purpose: 'x', minimum: 1, maximum: 6 }), 6, 'value прижимается к грани; пустой актор — ^$')
+  assert.equal(pick({ actorId: 'goblin', purpose: 'attack', minimum: 1, maximum: 20 }), null, 'без правила — настоящая кость')
+  const strict = createDicePicker(parseDiceSpec({ format: 'skazanie.test-dice/1', unmatched: 'error', rules: [{ actor: '^a$', values: [7] }] }))
+  assert.throws(() => strict({ actorId: 'b', minimum: 1, maximum: 20 }), /нет правила/u)
+  assert.equal(strict({ actorId: 'a', minimum: 1, maximum: 20 }), 7)
+  assert.throws(() => strict({ actorId: 'a', minimum: 1, maximum: 20 }), /исчерпана/u)
+  assert.throws(() => createDicePicker(parseDiceSpec({ format: 'skazanie.test-dice/1', rules: [{ values: [9] }] }))({ minimum: 1, maximum: 6 }), /диапазон/u)
+
+  assert.throws(() => parseDiceSpec({ format: 'skazanie.test-dice/1', rules: [{ actor: '^(?!x)', value: 1 }] }), /Rust regex/u)
+  assert.throws(() => parseDiceSpec({ format: 'skazanie.test-dice/1', rules: [{ value: 1, sidez: 6 }] }), /неизвестное поле sidez/u)
+  assert.throws(() => parseDiceSpec({ format: 'skazanie.test-dice/2', rules: [{ value: 1 }] }), /format/u)
+  assert.throws(() => parseDiceSpec({ format: 'skazanie.test-dice/1', rules: [] }), /непустой/u)
+
+  const faults = parseFaultsSpec({ format: 'skazanie.test-faults/1', commit: [{ idempotency_key: 'k', mode: 'exit-after' }] })
+  assert.deepEqual(faults.projection_ack, [], 'пустые разделы нормализуются')
+  assert.throws(() => parseFaultsSpec({ format: 'skazanie.test-faults/1', commit: [{ idempotency_key: 'k', mode: 'explode' }] }), /mode/u)
+  assert.throws(() => parseFaultsSpec({ format: 'skazanie.test-faults/1', projection_ack: [{ campaign: 'A', version: -1 }] }), /version/u)
+
+  // Объект без format дополняется, путь читается от корня репозитория.
+  const env = hookEnv({ dice: { rules: [{ value: 'max' }] }, faults: { commit: [{ idempotency_key: 'k', mode: 'throw' }] } })
+  assert.equal(JSON.parse(env[DICE_ENV]).format, 'skazanie.test-dice/1')
+  assert.equal(JSON.parse(env[FAULTS_ENV]).commit[0].mode, 'throw')
+  assert.equal(JSON.parse(hookEnv({ dice: 'test/fixtures/mvp-player-cycle.dice.json' })[DICE_ENV]).rules.length, 6)
+  assert.deepEqual(hookEnv({}), {})
+})
+
+test('контрактный список: пути test/*.test.mjs, комментарии, без повторов; режим по умолчанию — js', () => {
+  assert.deepEqual(contractFiles('# шапка\n\ntest/a.test.mjs  # почему\r\ntest/b.test.mjs\n'), ['test/a.test.mjs', 'test/b.test.mjs'])
+  assert.throws(() => contractFiles('test/kit/http.mjs'), /ожидается/u)
+  assert.throws(() => contractFiles('test/a.test.mjs\ntest/a.test.mjs'), /дважды/u)
+  if (!process.env.SKAZANIE_SERVER_IMPL) assert.equal(serverImpl(), 'js')
+})
+
+test('HTTP: кости и сбои данными доходят до сервера, журнал читается и портится через набор', { timeout: runnerTimeout(60_000) }, async (t) => {
+  await assert.rejects(startTestServer(t, { env: { [DICE_ENV]: '{}' } }), /опциями dice\/faults/u)
+  const server = await startTestServer(t, {
+    dice: { rules: [{ actor: '^hero-1$', purpose: '^free_roll$', values: [2, 5], value: 'max' }] },
+    faults: { commit: [{ idempotency_key: 'kit-fault-throw', mode: 'throw' }] },
+  })
+  const admin = await setupAdmin(server)
+  await createCampaign(admin.client, { code: 'KIT-HOOKS', state: { ...campaignState('KIT-HOOKS'), mechanics: { world_time: { elapsed_minutes: 0 } } } })
+  const player = await addPlayer(server, admin.client, 'KIT-HOOKS', { heroIds: ['hero-1'] })
+  const rolls = []
+  for (let index = 0; index < 3; index += 1) {
+    const rolled = expectStatus(await player.client.post('/api/rooms/KIT-HOOKS/dice', { playerId: 'hero-1', sides: 6 }))
+    rolls.push(rolled.roll.value)
+  }
+  assert.deepEqual(rolls, [2, 5, 6], 'сервер бросил по правилам из данных')
+
+  const advance = { command_type: 'AdvanceTime', actor_id: 'hero-1', amount: 10, unit: 'minute' }
+  const failed = await sendCommand(admin.client, 'KIT-HOOKS', 'kit-fault-throw', advance)
+  assert.ok(failed.status >= 400, `сбой commit из данных сработал: ${failed.status} ${failed.text}`)
+  const committed = await sendCommand(admin.client, 'KIT-HOOKS', 'kit-advance', advance)
+  expectStatus(committed)
+
+  // Журнал читается и при живом сервере.
+  const live = await readJournal(server, 'KIT-HOOKS')
+  assert.equal(live.campaign_id, 'KIT-HOOKS')
+  assert.equal(live.state_version, live.current_state_version)
+  assert.equal(live.state.mechanics.world_time.elapsed_minutes, 10)
+  assert.equal(live.commits.some((commit) => commit.idempotency_key === 'kit-fault-throw'), false, 'отказ commit не оставил записи')
+  const advanced = live.commits.find((commit) => commit.idempotency_key === 'kit-advance')
+  assert.ok(advanced?.events.some((event) => event.event_type === 'TimeAdvanced'))
+  assert.equal(live.events.length, live.commits.reduce((sum, commit) => sum + commit.events.length, 0))
+  const before = await readJournal(server, 'KIT-HOOKS', { atVersion: advanced.state_version_before, useSnapshots: false })
+  assert.equal(before.state.mechanics.world_time.elapsed_minutes, 0, 'atVersion — состояние до коммита')
+
+  await assert.rejects(corruptCampaign(server, 'KIT-HOOKS', 'tail'), /server\.stop\(\)/u)
+  await server.stop()
+  const appended = await appendJournal(server, 'KIT-HOOKS', {
+    idempotency_key: 'kit-append',
+    events: [{ event_type: 'TimeAdvanced', actor_id: null, target_ids: [], payload: { elapsed_minutes: 5 } }],
+  })
+  assert.equal(appended.state_version, live.current_state_version + 1)
+  const offline = await readJournal(server, 'KIT-HOOKS')
+  assert.equal(offline.state.mechanics.world_time.elapsed_minutes, 15)
+  assert.ok(offline.pending_projection, 'коммит мимо сервера оставляет проекцию позади журнала')
+
+  assert.equal(await corruptCampaign(server, 'KIT-HOOKS', 'tail'), 'EVENT_LOG_TAIL_MISSING')
+  await assert.rejects(readJournal(server, 'KIT-HOOKS'), /CAMPAIGN_RECOVERY_REQUIRED|requires recovery/u)
+  await assert.rejects(corruptCampaign(server, 'KIT-HOOKS', /** @type {any} */ ('head')), /tail или seed/u)
+  await assert.rejects(readJournal(server, 'KIT-NONE'), /Нет журнала|KIT-NONE/u)
+
+  // Сбои из данных живут один процесс: после start без них тот же ключ проходит.
+  await server.start({ faults: null })
+  assert.equal(server.running(), true)
 })

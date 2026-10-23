@@ -1,47 +1,8 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { materializeCatalogItem } from '../server/item-catalog.mjs'
-
-const repoRoot = fileURLToPath(new URL('..', import.meta.url))
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'loading-attacks-http-review-setup',
-      GAME_ENGINE_MODE: 'enforce', COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -95,17 +56,9 @@ function attack(key, itemId, spoof = {}) {
 }
 
 test('HTTP обычный игрок: sanitizer отбрасывает spoof, A→B→A получает loading отказ', { timeout: 60_000 }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-loading-http-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
-  })
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-loading-http-', setupToken: 'loading-attacks-http-review-setup' })
+  const logs = server.output
+  const baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Loading admin', email: 'loading-admin-http-review@test.invalid', password: 'secure-admin-password', setupToken: 'loading-attacks-http-review-setup',
@@ -113,8 +66,8 @@ test('HTTP обычный игрок: sanitizer отбрасывает spoof, A�
   const owner = await request(baseUrl, '/api/auth/register', { method: 'POST', body: {
     name: 'Loading owner', email: 'loading-owner-http-review@test.invalid', password: 'secure-owner-password',
   } })
-  assert.equal(admin.status, 201, `${admin.text}\n${logs}`)
-  assert.equal(owner.status, 201, `${owner.text}\n${logs}`)
+  assert.equal(admin.status, 201, `${admin.text}\n${logs()}`)
+  assert.equal(owner.status, 201, `${owner.text}\n${logs()}`)
   const adminCookie = cookieOf(admin)
   const ownerCookie = cookieOf(owner)
   const users = await request(baseUrl, '/api/admin/users', { cookie: adminCookie })
@@ -123,18 +76,18 @@ test('HTTP обычный игрок: sanitizer отбрасывает spoof, A�
   const ownership = await request(baseUrl, `/api/admin/users/${ownerUser.id}`, {
     method: 'PATCH', cookie: adminCookie, body: { heroIds: ['hero'] },
   })
-  assert.equal(ownership.status, 200, `${ownership.text}\n${logs}`)
+  assert.equal(ownership.status, 200, `${ownership.text}\n${logs()}`)
   const code = 'LOADING-HTTP-REVIEW'
   const created = await request(baseUrl, '/api/campaigns', {
     method: 'POST', cookie: adminCookie, body: { code, name: 'HTTP loading review', state: initialState(code) },
   })
-  assert.equal(created.status, 201, `${created.text}\n${logs}`)
+  assert.equal(created.status, 201, `${created.text}\n${logs()}`)
 
   const first = await request(baseUrl, `/api/campaigns/${code}/commands`, {
     method: 'POST', cookie: ownerCookie, key: 'loading-http-a',
     body: attack('loading-http-a', 'crossbow-a', { reaction_attack: true, loading_action_type: 'reaction' }),
   })
-  assert.equal(first.status, 200, `${first.text}\n${logs}`)
+  assert.equal(first.status, 200, `${first.text}\n${logs()}`)
   const firstAttack = first.body.mechanics.find((event) => event.event_type === 'AttackResolved')
   assert.equal(firstAttack.payload.reaction_attack, false)
   assert.equal(firstAttack.payload.loading_action_type, 'action')
@@ -144,13 +97,13 @@ test('HTTP обычный игрок: sanitizer отбрасывает spoof, A�
   const second = await request(baseUrl, `/api/campaigns/${code}/commands`, {
     method: 'POST', cookie: ownerCookie, key: 'loading-http-b', body: attack('loading-http-b', 'crossbow-b'),
   })
-  assert.equal(second.status, 200, `${second.text}\n${logs}`)
+  assert.equal(second.status, 200, `${second.text}\n${logs()}`)
   const beforeThird = await request(baseUrl, `/api/rooms/${code}`, { cookie: adminCookie })
   const third = await request(baseUrl, `/api/campaigns/${code}/commands`, {
     method: 'POST', cookie: ownerCookie, key: 'loading-http-a-again',
     body: attack('loading-http-a-again', 'crossbow-a', { reaction_attack: true, loading_action_type: 'reaction' }),
   })
-  assert.equal(third.status, 400, `${third.text}\n${logs}`)
+  assert.equal(third.status, 400, `${third.text}\n${logs()}`)
   assert.equal(third.body.code, 'LOADING_WEAPON_LIMIT')
   const afterThird = await request(baseUrl, `/api/rooms/${code}`, { cookie: adminCookie })
   assert.equal(afterThird.body.state.state_version, beforeThird.body.state.state_version)
