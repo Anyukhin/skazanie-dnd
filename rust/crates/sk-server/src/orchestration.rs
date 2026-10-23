@@ -20,10 +20,8 @@
 //! (`new RulesEngine({ diceService })`, 320). Модель — только клиенты
 //! [`crate::state::Metered`] из `AppState` (`apiKey ? llmClient : null`).
 //!
-//! Чего здесь нет (задачи С17): `CombatTurnCoordinator` (автоход по часам,
-//! `hold`) и `PostCommitCoordinator` целиком — продолжение боя после хода
-//! маршрут `/commands` зовёт напрямую (`routes::commands`,
-//! `settle_combat_continuation`).
+//! Чего здесь нет: `CombatTurnCoordinator` (автоход по часам, `hold`) и
+//! координатор последствий — в [`crate::clocks`] (С17), над этим же набором.
 
 use std::cell::{OnceCell, RefCell};
 use std::path::Path;
