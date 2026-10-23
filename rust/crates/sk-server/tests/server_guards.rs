@@ -92,7 +92,9 @@ fn app_state_holds_models_only_as_metered() {
 #[test]
 fn journal_writes_go_through_test_hooks() {
     let direct = Regex::new(r"\b(events|store|event_store|journal)\s*\.\s*(commit|acknowledge_projection)\s*\(").unwrap();
-    let found = offences(&direct, &["test_hooks.rs", "test_hooks/journal_cli.rs"]);
+    // С5: прогон боевого стенда пишет в своё хранилище в памяти (в JS — свой
+    // `FileEventStore` во временном каталоге), а не в журнал кампаний сервера.
+    let found = offences(&direct, &["test_hooks.rs", "test_hooks/journal_cli.rs", "routes/combat_lab/runner.rs"]);
     assert!(
         found.is_empty(),
         "коммит и подтверждение проекции — только через sk_server::test_hooks::{{commit, acknowledge_projection}}, иначе сбои DND_COMMIT_FAULTS не сработают:\n{}",
