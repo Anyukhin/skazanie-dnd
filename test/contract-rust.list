@@ -45,3 +45,7 @@ test/house-rule-default-api.test.mjs        # домашние правила п
 # С8 (2026-10-23): откат ведущего и жизненный цикл кампании.
 test/campaign-controls-api.test.mjs    # /controls и /lifecycle: права владельца, ключ, event_id, повтор и конфликт, сводка финала, replay после restart
 test/ruleset-selection-api.test.mjs    # редакция до первого игрового события; пауза через /lifecycle закрывает смену (С7 + С8)
+
+# С11 (2026-10-23): решения отряда и задания. quest-abandonment-api проходит quests и votes,
+# но дальше идёт в /api/narrate (С18.5) — вне списка до неё.
+test/party-decision-roll-api.test.mjs  # общий бросок: серверная кость, права, повтор по ключу, закрытое решение, replay

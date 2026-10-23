@@ -190,10 +190,17 @@ fn js_ordered(entries: Vec<(String, Value)>) -> Map<String, Value> {
 /// `partyVoterSnapshot(campaignId, state, eligibleHeroIds)` (2488–2508):
 /// `{ voterByHeroId, eligibleVoterIds }`.
 pub fn party_voter_snapshot(accounts: &Accounts, campaign_id: &str, state: &Value, eligible_hero_ids: &[String]) -> Result<Value, Failure> {
-    let hero_scope = state.get("partyDecisionPolicy").and_then(|policy| policy.get("voterScope")).and_then(Value::as_str) == Some("hero");
     let memberships = accounts.list_campaign_memberships(campaign_id)?;
+    Ok(party_voter_snapshot_with(&memberships, campaign_id, state, eligible_hero_ids))
+}
+
+/// [`party_voter_snapshot`] по уже прочитанным членствам кампании
+/// (`listCampaignMemberships`): для сборщика событий в ядре, где аккаунты
+/// синхронно не читаются (С11, решение по заданию).
+pub fn party_voter_snapshot_with(memberships: &[Value], campaign_id: &str, state: &Value, eligible_hero_ids: &[String]) -> Value {
+    let hero_scope = state.get("partyDecisionPolicy").and_then(|policy| policy.get("voterScope")).and_then(Value::as_str) == Some("hero");
     let mut owner_by_hero: indexmap::IndexMap<String, String> = indexmap::IndexMap::new();
-    for membership in &memberships {
+    for membership in memberships {
         for hero_id in array(membership.get("heroIds")) {
             owner_by_hero.entry(js::string(Some(hero_id))).or_insert_with(|| js::string(membership.get("userId")));
         }
@@ -220,7 +227,7 @@ pub fn party_voter_snapshot(accounts: &Accounts, campaign_id: &str, state: &Valu
     let mut snapshot = Map::new();
     snapshot.insert("voterByHeroId".into(), Value::Object(voter_by_hero));
     snapshot.insert("eligibleVoterIds".into(), Value::Array(voters.into_iter().map(Value::String).collect()));
-    Ok(Value::Object(snapshot))
+    Value::Object(snapshot)
 }
 
 /// `campaignVoterCount(campaignId, state)` (2532–2534).

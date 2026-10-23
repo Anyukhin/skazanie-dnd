@@ -1,0 +1,3086 @@
+{
+  "format": "skazanie.golden/1",
+  "scenario": "решения отряда и задания: отказ и принятие задания, голоса с кворумом по присутствию, гонка повтора, истечение, общий бросок",
+  "exchanges": [
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/x/votes",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/x/roll",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/auth/setup-admin",
+      "headers": {},
+      "body": {
+        "email": "gm@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Ведущий",
+        "setupToken": "setup-code"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "setupRequired": false
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "anya@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Аня"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "boris@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Борис"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "vera@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Вера"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "PARTY-1",
+        "name": "Совет отряда",
+        "state": {
+          "sessionCode": "PARTY-1",
+          "campaign": "Совет отряда",
+          "partyName": "Двое у ворот",
+          "partyMemberIds": [
+            "hero-one",
+            "hero-two"
+          ],
+          "activePlayerId": "hero-one",
+          "messages": [],
+          "players": [
+            {
+              "id": "hero-one",
+              "name": "Агата",
+              "character": "Агата",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": []
+            },
+            {
+              "id": "hero-two",
+              "name": "Гелла",
+              "character": "Гелла",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": []
+            }
+          ],
+          "scene": {
+            "title": "Старые ворота",
+            "location": "Старые ворота",
+            "mood": "",
+            "objective": "Решить, куда идти",
+            "turn": 1,
+            "cells": []
+          },
+          "adventure": {
+            "chapter": 1,
+            "currentHook": "Решить, куда идти",
+            "visitedLocations": [
+              "Старые ворота"
+            ],
+            "history": []
+          },
+          "mechanics": {
+            "combat": {
+              "active": false
+            }
+          },
+          "worldMemory": {
+            "quests": [
+              {
+                "id": "quest:road",
+                "title": "Расчистить дорогу",
+                "summary": "Расчистить дорогу",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Расчистить дорогу"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:well",
+                "title": "Очистить колодец",
+                "summary": "Очистить колодец",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Очистить колодец"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:offer",
+                "title": "Сопроводить обоз",
+                "summary": "Сопроводить обоз",
+                "status": "offered",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Сопроводить обоз"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:secret",
+                "title": "Тайное поручение",
+                "summary": "Тайное поручение",
+                "status": "active",
+                "visibility": "gm_only",
+                "entity_ids": [],
+                "objectives": [
+                  "Тайное поручение"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              }
+            ]
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:3e15c96af9d081dbd1dc6d924c31f0c1b565def09da5ca30a331aecd6366768e:26685>",
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "PARTY-2",
+        "name": "Короткий срок",
+        "state": {
+          "sessionCode": "PARTY-2",
+          "campaign": "Совет отряда",
+          "partyName": "Двое у ворот",
+          "partyMemberIds": [
+            "hero-one",
+            "hero-two"
+          ],
+          "activePlayerId": "hero-one",
+          "messages": [],
+          "players": [
+            {
+              "id": "hero-one",
+              "name": "Агата",
+              "character": "Агата",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": []
+            },
+            {
+              "id": "hero-two",
+              "name": "Гелла",
+              "character": "Гелла",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": []
+            }
+          ],
+          "scene": {
+            "title": "Старые ворота",
+            "location": "Старые ворота",
+            "mood": "",
+            "objective": "Решить, куда идти",
+            "turn": 1,
+            "cells": []
+          },
+          "adventure": {
+            "chapter": 1,
+            "currentHook": "Решить, куда идти",
+            "visitedLocations": [
+              "Старые ворота"
+            ],
+            "history": []
+          },
+          "mechanics": {
+            "combat": {
+              "active": false
+            }
+          },
+          "worldMemory": {
+            "quests": [
+              {
+                "id": "quest:road",
+                "title": "Расчистить дорогу",
+                "summary": "Расчистить дорогу",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Расчистить дорогу"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:well",
+                "title": "Очистить колодец",
+                "summary": "Очистить колодец",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Очистить колодец"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:offer",
+                "title": "Сопроводить обоз",
+                "summary": "Сопроводить обоз",
+                "status": "offered",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Сопроводить обоз"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:secret",
+                "title": "Тайное поручение",
+                "summary": "Тайное поручение",
+                "status": "active",
+                "visibility": "gm_only",
+                "entity_ids": [],
+                "objectives": [
+                  "Тайное поручение"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              }
+            ]
+          },
+          "partyDecisionPolicy": {
+            "decisionTtlMs": 1000
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:56963ed6ed0e73cfaf24e5a4b418718b373b2d82ae3185a9d0f4bf816c87a6c1:26529>",
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "PARTY-3",
+        "name": "Общий бросок",
+        "state": {
+          "sessionCode": "PARTY-3",
+          "campaign": "Совет отряда",
+          "partyName": "Двое у ворот",
+          "partyMemberIds": [
+            "hero-one",
+            "hero-two"
+          ],
+          "activePlayerId": "hero-one",
+          "messages": [],
+          "players": [
+            {
+              "id": "hero-one",
+              "name": "Агата",
+              "character": "Агата",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": []
+            },
+            {
+              "id": "hero-two",
+              "name": "Гелла",
+              "character": "Гелла",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": []
+            }
+          ],
+          "scene": {
+            "title": "Старые ворота",
+            "location": "Старые ворота",
+            "mood": "",
+            "objective": "Решить, куда идти",
+            "turn": 1,
+            "cells": []
+          },
+          "adventure": {
+            "chapter": 1,
+            "currentHook": "Решить, куда идти",
+            "visitedLocations": [
+              "Старые ворота"
+            ],
+            "history": []
+          },
+          "mechanics": {
+            "combat": {
+              "active": false
+            }
+          },
+          "worldMemory": {
+            "quests": [
+              {
+                "id": "quest:road",
+                "title": "Расчистить дорогу",
+                "summary": "Расчистить дорогу",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Расчистить дорогу"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:well",
+                "title": "Очистить колодец",
+                "summary": "Очистить колодец",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Очистить колодец"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:offer",
+                "title": "Сопроводить обоз",
+                "summary": "Сопроводить обоз",
+                "status": "offered",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Сопроводить обоз"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:secret",
+                "title": "Тайное поручение",
+                "summary": "Тайное поручение",
+                "status": "active",
+                "visibility": "gm_only",
+                "entity_ids": [],
+                "objectives": [
+                  "Тайное поручение"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              }
+            ]
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:f1bc8081c00d22836a8a9ba8a2946d051db3b2adaa9087c14bbc8081c14482f5:26555>",
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "PARTY-4",
+        "name": "Один в сети",
+        "state": {
+          "sessionCode": "PARTY-4",
+          "campaign": "Совет отряда",
+          "partyName": "Двое у ворот",
+          "partyMemberIds": [
+            "hero-one",
+            "hero-two"
+          ],
+          "activePlayerId": "hero-one",
+          "messages": [],
+          "players": [
+            {
+              "id": "hero-one",
+              "name": "Агата",
+              "character": "Агата",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": []
+            },
+            {
+              "id": "hero-two",
+              "name": "Гелла",
+              "character": "Гелла",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": []
+            }
+          ],
+          "scene": {
+            "title": "Старые ворота",
+            "location": "Старые ворота",
+            "mood": "",
+            "objective": "Решить, куда идти",
+            "turn": 1,
+            "cells": []
+          },
+          "adventure": {
+            "chapter": 1,
+            "currentHook": "Решить, куда идти",
+            "visitedLocations": [
+              "Старые ворота"
+            ],
+            "history": []
+          },
+          "mechanics": {
+            "combat": {
+              "active": false
+            }
+          },
+          "worldMemory": {
+            "quests": [
+              {
+                "id": "quest:road",
+                "title": "Расчистить дорогу",
+                "summary": "Расчистить дорогу",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Расчистить дорогу"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:well",
+                "title": "Очистить колодец",
+                "summary": "Очистить колодец",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Очистить колодец"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:offer",
+                "title": "Сопроводить обоз",
+                "summary": "Сопроводить обоз",
+                "status": "offered",
+                "visibility": "party",
+                "entity_ids": [],
+                "objectives": [
+                  "Сопроводить обоз"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              },
+              {
+                "id": "quest:secret",
+                "title": "Тайное поручение",
+                "summary": "Тайное поручение",
+                "status": "active",
+                "visibility": "gm_only",
+                "entity_ids": [],
+                "objectives": [
+                  "Тайное поручение"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Срок"
+                }
+              }
+            ]
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:81fe7a9fd874a828981e29f8d3b2d0f274ab4b34e38495003d90d0d9920cac74:26543>",
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-one"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "PARTY-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:11>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "PARTY-1",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "PARTY-1",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-two"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "PARTY-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:13>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "PARTY-1",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "PARTY-1",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-2/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-one"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "PARTY-2",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-2/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:15>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "PARTY-2",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "PARTY-1",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-2",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-2/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-two"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "PARTY-2",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-2/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:17>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "PARTY-2",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "PARTY-1",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-2",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-one"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "PARTY-3",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:19>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "PARTY-3",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "PARTY-1",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-2",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-3",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-two"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "PARTY-3",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:21>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "PARTY-3",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "PARTY-1",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-2",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-3",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-4/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-one"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "PARTY-4",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-4/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:23>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "PARTY-4",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "PARTY-1",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-2",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-3",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-4",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-4/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-two"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "PARTY-4",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-4/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:25>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "PARTY-4",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "PARTY-1",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-2",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-3",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            },
+            {
+              "campaignId": "PARTY-4",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "JOURNAL",
+      "path": "PARTY-3",
+      "headers": {},
+      "body": {
+        "idempotency_key": "golden-open-roll",
+        "interaction": {
+          "id": "roll-gate-1",
+          "type": "roll",
+          "title": "Прорваться через ворота?",
+          "description": "Один общий бросок решает, успеет ли отряд.",
+          "difficulty": 12,
+          "options": [
+            {
+              "id": "through",
+              "label": "Прорваться"
+            },
+            {
+              "id": "retreat",
+              "label": "Отступить"
+            }
+          ]
+        },
+        "actor_id": "hero-one",
+        "eligibleHeroIds": [
+          "hero-one",
+          "hero-two"
+        ]
+      },
+      "status": 0,
+      "body_norm": null
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:road",
+        "idempotency_key": "q-out"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:road",
+        "idempotency_key": "q-foreign"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Этот герой не принадлежит вашему аккаунту",
+        "code": "ACTOR_FORBIDDEN"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:road"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужны герой, задание и ключ запроса",
+        "code": "INVALID_QUEST_REQUEST"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:secret",
+        "idempotency_key": "q-secret"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Задание недоступно отряду",
+        "code": "WORLD_QUEST_NOT_FOUND"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:offer",
+        "idempotency_key": "q-offer"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Это задание нельзя сейчас изменить",
+        "code": "WORLD_QUEST_CLOSED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:nope",
+        "idempotency_key": "q-nope"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Задание недоступно отряду",
+        "code": "WORLD_QUEST_NOT_FOUND"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": [],
+      "status": 400,
+      "body_norm": {
+        "error": "Тело запроса должно быть JSON-объектом",
+        "code": "INVALID_JSON_BODY"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/NOPE-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:road",
+        "idempotency_key": "q-missing"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/NOPE-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:road",
+        "idempotency_key": "q-missing"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/drop",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/party-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:road",
+        "idempotency_key": "q-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 2,
+        "updatedAt": "<time>",
+        "state": "<sha256:715f756401e9d92f3e9cecefe98ac19ef7d2d7fb3488e0bc7c1073204a569cac:29150>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon?from=golden",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:road",
+        "idempotency_key": "q-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 2,
+        "updatedAt": "<time>",
+        "state": "<sha256:715f756401e9d92f3e9cecefe98ac19ef7d2d7fb3488e0bc7c1073204a569cac:29150>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:well",
+        "idempotency_key": "q-1"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Ключ уже использован для другого запроса",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/accept",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:road",
+        "idempotency_key": "q-1"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Ключ уже использован для другого запроса",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "quest_id": "quest:well",
+        "idempotency_key": "q-2"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Сначала завершите текущее решение отряда",
+        "code": "PARTY_DECISION_CONFLICT"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/accept",
+      "headers": {
+        "X-Idempotency-Key": "q-3"
+      },
+      "body": {
+        "actor_id": "hero-two",
+        "quest_id": "quest:offer"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Сначала завершите текущее решение отряда",
+        "code": "PARTY_DECISION_CONFLICT"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "abandon"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "abandon",
+        "idempotency_key": "v-foreign"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Этот герой не принадлежит вашему аккаунту",
+        "code": "ACTOR_FORBIDDEN"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/stale-decision/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "abandon",
+        "idempotency_key": "v-stale"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Групповое решение устарело",
+        "code": "PARTY_DECISION_CONFLICT"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "maybe",
+        "idempotency_key": "v-bad-option"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Вариант решения не найден",
+        "code": "PARTY_OPTION_NOT_FOUND"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "abandon",
+        "idempotency_key": "q-1"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Ключ уже использован для другого голоса",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/bad%20id!/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "abandon"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/roll",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "idempotency_key": "r-on-vote"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Общий бросок уже завершён или сейчас не требуется",
+        "code": "PARTY_DECISION_CLOSED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "STREAM",
+      "path": "/api/campaigns/PARTY-1/stream",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null
+    },
+    {
+      "as": "guest",
+      "method": "STREAM",
+      "path": "/api/campaigns/PARTY-1/stream",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null
+    },
+    {
+      "as": "outsider",
+      "method": "STREAM",
+      "path": "/api/campaigns/PARTY-1/stream",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": null
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/PARTY-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 2,
+        "state": "<sha256:606125b6f44ad1ca0410c23397e2191fb7139a2453674c1275485af3d2a7795c:29169>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PARALLEL",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": [
+        {
+          "actor_id": "hero-one",
+          "option_id": "abandon",
+          "idempotency_key": "v-1"
+        },
+        {
+          "actor_id": "hero-one",
+          "option_id": "abandon",
+          "idempotency_key": "v-1"
+        }
+      ],
+      "status": 0,
+      "body_norm": [
+        {
+          "status": 200,
+          "body_norm": {
+            "version": 3,
+            "updatedAt": "<time>",
+            "state": "<sha256:406ef482684abaaec4c24322444277e08d51cf9a1b0526863d6321b6ddea2737:29189>",
+            "mechanics": [
+              {
+                "event_type": "PartyVoteCast",
+                "actor_id": "hero-one",
+                "visibility": "party",
+                "target_ids": [
+                  "hero-one",
+                  "hero-two"
+                ],
+                "source_rule_ids": [],
+                "payload": {
+                  "eligible_hero_ids": [
+                    "hero-one",
+                    "hero-two"
+                  ],
+                  "eligible_voter_ids": [
+                    "<voter:owner>",
+                    "<voter:guest>"
+                  ],
+                  "active_voter_ids": [
+                    "<voter:owner>",
+                    "<voter:guest>"
+                  ],
+                  "required_votes": 2,
+                  "interaction_id": "quest-9e4598b2643de2faa9768913",
+                  "hero_id": "hero-one",
+                  "voter_id": "<voter:owner>",
+                  "option_id": "abandon",
+                  "votes": {
+                    "hero-one": "abandon"
+                  }
+                },
+                "campaign_id": "PARTY-1",
+                "event_id": "<uuid>",
+                "command_id": "v-1",
+                "idempotency_key": "v-1",
+                "reducer_version": 15,
+                "ruling_id": null,
+                "state_version_before": 1,
+                "state_version_after": 2,
+                "created_at": "<time>"
+              }
+            ],
+            "state_version": 2
+          }
+        },
+        {
+          "status": 200,
+          "body_norm": {
+            "version": 3,
+            "updatedAt": "<time>",
+            "state": "<sha256:406ef482684abaaec4c24322444277e08d51cf9a1b0526863d6321b6ddea2737:29189>",
+            "mechanics": [
+              {
+                "event_type": "PartyVoteCast",
+                "actor_id": "hero-one",
+                "visibility": "party",
+                "target_ids": [
+                  "hero-one",
+                  "hero-two"
+                ],
+                "source_rule_ids": [],
+                "payload": {
+                  "eligible_hero_ids": [
+                    "hero-one",
+                    "hero-two"
+                  ],
+                  "eligible_voter_ids": [
+                    "<voter:owner>",
+                    "<voter:guest>"
+                  ],
+                  "active_voter_ids": [
+                    "<voter:owner>",
+                    "<voter:guest>"
+                  ],
+                  "required_votes": 2,
+                  "interaction_id": "quest-9e4598b2643de2faa9768913",
+                  "hero_id": "hero-one",
+                  "voter_id": "<voter:owner>",
+                  "option_id": "abandon",
+                  "votes": {
+                    "hero-one": "abandon"
+                  }
+                },
+                "campaign_id": "PARTY-1",
+                "event_id": "<uuid>",
+                "command_id": "v-1",
+                "idempotency_key": "v-1",
+                "reducer_version": 15,
+                "ruling_id": null,
+                "state_version_before": 1,
+                "state_version_after": 2,
+                "created_at": "<time>"
+              }
+            ],
+            "state_version": 2
+          }
+        }
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "keep",
+        "idempotency_key": "v-1"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Ключ уже использован для другого голоса",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "option_id": "abandon",
+        "idempotency_key": "v-1"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Ключ уже использован для другого голоса",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "abstain": true,
+        "idempotency_key": "v-1"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Ключ уже использован для другого голоса",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "option_id": "abandon",
+        "idempotency_key": "v-2"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 5,
+        "updatedAt": "<time>",
+        "state": "<sha256:c608e2ca9cec46da9237aad0f855d4b33ea52015557365691b8e9778dfd8487c:28407>",
+        "mechanics": [
+          {
+            "event_type": "PartyVoteCast",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "required_votes": 2,
+              "interaction_id": "quest-9e4598b2643de2faa9768913",
+              "hero_id": "hero-two",
+              "voter_id": "<voter:guest>",
+              "option_id": "abandon",
+              "votes": {
+                "hero-one": "abandon",
+                "hero-two": "abandon"
+              }
+            },
+            "campaign_id": "PARTY-1",
+            "event_id": "<uuid>",
+            "command_id": "v-2",
+            "idempotency_key": "v-2",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 2,
+            "state_version_after": 3,
+            "created_at": "<time>"
+          },
+          {
+            "event_type": "PartyDecisionResolved",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "required_votes": 2,
+              "interaction_id": "quest-9e4598b2643de2faa9768913",
+              "resolved_option_id": "abandon",
+              "votes": {
+                "hero-one": "abandon",
+                "hero-two": "abandon"
+              },
+              "abstained_voter_ids": [],
+              "resolution_reason": "quorum"
+            },
+            "campaign_id": "PARTY-1",
+            "event_id": "<uuid>",
+            "command_id": "v-2",
+            "idempotency_key": "v-2",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 3,
+            "state_version_after": 4,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 4
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-9e4598b2643de2faa9768913/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "option_id": "abandon",
+        "idempotency_key": "v-2"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 5,
+        "updatedAt": "<time>",
+        "state": "<sha256:c608e2ca9cec46da9237aad0f855d4b33ea52015557365691b8e9778dfd8487c:28407>",
+        "mechanics": [
+          {
+            "event_type": "PartyVoteCast",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "required_votes": 2,
+              "interaction_id": "quest-9e4598b2643de2faa9768913",
+              "hero_id": "hero-two",
+              "voter_id": "<voter:guest>",
+              "option_id": "abandon",
+              "votes": {
+                "hero-one": "abandon",
+                "hero-two": "abandon"
+              }
+            },
+            "campaign_id": "PARTY-1",
+            "event_id": "<uuid>",
+            "command_id": "v-2",
+            "idempotency_key": "v-2",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 2,
+            "state_version_after": 3,
+            "created_at": "<time>"
+          },
+          {
+            "event_type": "PartyDecisionResolved",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "required_votes": 2,
+              "interaction_id": "quest-9e4598b2643de2faa9768913",
+              "resolved_option_id": "abandon",
+              "votes": {
+                "hero-one": "abandon",
+                "hero-two": "abandon"
+              },
+              "abstained_voter_ids": [],
+              "resolution_reason": "quorum"
+            },
+            "campaign_id": "PARTY-1",
+            "event_id": "<uuid>",
+            "command_id": "v-2",
+            "idempotency_key": "v-2",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 3,
+            "state_version_after": 4,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 4
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/PARTY-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 5,
+        "state": "<sha256:493c02c54c433fc7bf986a1be3b428954ba5281a5f32cca1db6712e5115ebfd2:28407>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/quests/accept",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:offer",
+        "idempotency_key": "q-4"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 6,
+        "updatedAt": "<time>",
+        "state": "<sha256:2814ce371174be99095f3100b8f000d8dbf4141da430aca3e7fcb28b6aee2d44:29430>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-fccbaf9c2e1bc423100f9884/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "abstain": true,
+        "idempotency_key": "v-3"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 7,
+        "updatedAt": "<time>",
+        "state": "<sha256:fa15b0a0ff882801a5424fd135a1800d8ef057014de330b284c922351bc79e4a:29455>",
+        "mechanics": [
+          {
+            "event_type": "PartyDecisionAbstained",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>"
+              ],
+              "required_votes": 1,
+              "interaction_id": "quest-fccbaf9c2e1bc423100f9884",
+              "hero_id": "hero-two",
+              "voter_id": "<voter:guest>",
+              "reason": "explicit",
+              "abstained_voter_ids": [
+                "<voter:guest>"
+              ],
+              "abstentions": {
+                "<voter:guest>": "explicit"
+              },
+              "votes": {}
+            },
+            "campaign_id": "PARTY-1",
+            "event_id": "<uuid>",
+            "command_id": "v-3",
+            "idempotency_key": "v-3",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 7,
+            "state_version_after": 8,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 8
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-fccbaf9c2e1bc423100f9884/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "abstain": true,
+        "idempotency_key": "v-3"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 7,
+        "updatedAt": "<time>",
+        "state": "<sha256:fa15b0a0ff882801a5424fd135a1800d8ef057014de330b284c922351bc79e4a:29455>",
+        "mechanics": [
+          {
+            "event_type": "PartyDecisionAbstained",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>"
+              ],
+              "required_votes": 1,
+              "interaction_id": "quest-fccbaf9c2e1bc423100f9884",
+              "hero_id": "hero-two",
+              "voter_id": "<voter:guest>",
+              "reason": "explicit",
+              "abstained_voter_ids": [
+                "<voter:guest>"
+              ],
+              "abstentions": {
+                "<voter:guest>": "explicit"
+              },
+              "votes": {}
+            },
+            "campaign_id": "PARTY-1",
+            "event_id": "<uuid>",
+            "command_id": "v-3",
+            "idempotency_key": "v-3",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 7,
+            "state_version_after": 8,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 8
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-fccbaf9c2e1bc423100f9884/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "option_id": "accept",
+        "idempotency_key": "v-4"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Этот участник уже воздержался",
+        "code": "PARTY_DECISION_ABSTAINED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-1/party-decisions/quest-fccbaf9c2e1bc423100f9884/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "accept",
+        "idempotency_key": "v-5"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 9,
+        "updatedAt": "<time>",
+        "state": "<sha256:ed463784df688f0a7fd3c311d46024cf1cc7f0de486d9672b364eb89e6a1ecf7:28574>",
+        "mechanics": [
+          {
+            "event_type": "PartyVoteCast",
+            "actor_id": "hero-one",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>"
+              ],
+              "required_votes": 1,
+              "interaction_id": "quest-fccbaf9c2e1bc423100f9884",
+              "hero_id": "hero-one",
+              "voter_id": "<voter:owner>",
+              "option_id": "accept",
+              "votes": {
+                "hero-one": "accept"
+              }
+            },
+            "campaign_id": "PARTY-1",
+            "event_id": "<uuid>",
+            "command_id": "v-5",
+            "idempotency_key": "v-5",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 8,
+            "state_version_after": 9,
+            "created_at": "<time>"
+          },
+          {
+            "event_type": "PartyDecisionResolved",
+            "actor_id": "hero-one",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>"
+              ],
+              "required_votes": 1,
+              "interaction_id": "quest-fccbaf9c2e1bc423100f9884",
+              "resolved_option_id": "accept",
+              "votes": {
+                "hero-one": "accept"
+              },
+              "abstained_voter_ids": [
+                "<voter:guest>"
+              ],
+              "resolution_reason": "quorum"
+            },
+            "campaign_id": "PARTY-1",
+            "event_id": "<uuid>",
+            "command_id": "v-5",
+            "idempotency_key": "v-5",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 9,
+            "state_version_after": 10,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 10
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/PARTY-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 9,
+        "state": "<sha256:ed463784df688f0a7fd3c311d46024cf1cc7f0de486d9672b364eb89e6a1ecf7:28574>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "STREAM",
+      "path": "/api/campaigns/PARTY-4/stream",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-4/quests/abandon",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:well",
+        "idempotency_key": "q-5"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 2,
+        "updatedAt": "<time>",
+        "state": "<sha256:2dbd8a9a83ccae58ab242a2d5ad09e4380a0be63a1cdd8635ac8827fe17909de:29019>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-4/party-decisions/quest-x/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "keep",
+        "idempotency_key": "v-solo-stale"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Групповое решение устарело",
+        "code": "PARTY_DECISION_CONFLICT"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-4/party-decisions/quest-5b6013c3c80dfc68045a352a/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "abandon",
+        "idempotency_key": "v-solo"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 3,
+        "updatedAt": "<time>",
+        "state": "<sha256:dd7e1115d6ff19f7f55ad8016ab9dbbcb2c9ce370feacaf56042989fe40f5910:29039>",
+        "mechanics": [
+          {
+            "event_type": "PartyVoteCast",
+            "actor_id": "hero-one",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "active_voter_ids": [
+                "<voter:owner>",
+                "<voter:guest>"
+              ],
+              "required_votes": 2,
+              "interaction_id": "quest-5b6013c3c80dfc68045a352a",
+              "hero_id": "hero-one",
+              "voter_id": "<voter:owner>",
+              "option_id": "abandon",
+              "votes": {
+                "hero-one": "abandon"
+              }
+            },
+            "campaign_id": "PARTY-4",
+            "event_id": "<uuid>",
+            "command_id": "v-solo",
+            "idempotency_key": "v-solo",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 2
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/PARTY-4",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 3,
+        "state": "<sha256:dd7e1115d6ff19f7f55ad8016ab9dbbcb2c9ce370feacaf56042989fe40f5910:29039>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "CLOSE",
+      "path": "",
+      "headers": {},
+      "body": null,
+      "status": 0,
+      "body_norm": null
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-2/quests/accept",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "quest_id": "quest:offer",
+        "idempotency_key": "q-6"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 2,
+        "updatedAt": "<time>",
+        "state": "<sha256:41adec028e42c8cbef5f46e191cf67ea74b547ea99434bfe58f1ff11f39ec6c7:29157>"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "SLEEP",
+      "path": "",
+      "headers": {},
+      "body": {
+        "ms": 1600
+      },
+      "status": 0,
+      "body_norm": null
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-2/party-decisions/quest-25011a500fff7cdef7de2b31/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "option_id": "accept",
+        "idempotency_key": "v-6"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Групповое решение должно быть объектом",
+        "code": "INVALID_PARTY_DECISION"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/PARTY-2",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 3,
+        "state": "<sha256:d4bcf0c4b8289a80c3fbeefcc7540dd0e7b63ee8dc818cd3e77cb8f8d48bcf98:28136>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-1/roll",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "idempotency_key": "r-out"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-1/roll",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "idempotency_key": "r-foreign"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Этот герой не принадлежит вашему аккаунту",
+        "code": "ACTOR_FORBIDDEN"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-1/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "option_id": "through",
+        "idempotency_key": "v-roll"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Общий бросок не принимает голоса",
+        "code": "PARTY_DECISION_CLOSED"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-1/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "abstain": true,
+        "idempotency_key": "v-roll-abstain"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Общий бросок не принимает abstain",
+        "code": "PARTY_DECISION_CLOSED"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-0/roll",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "idempotency_key": "r-stale"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Групповое решение устарело",
+        "code": "PARTY_DECISION_CONFLICT"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-1/roll",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "idempotency_key": "r-1",
+        "total": 1
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 3,
+        "updatedAt": "<time>",
+        "state": "<sha256:76d4decd3b1f2acb09ba8eb1bf412ae66607ce97cf3282b4fba38c502cede0ac:29366>",
+        "mechanics": [
+          {
+            "event_type": "DieRolled",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "roll_id": "<uuid>",
+              "expression": "1d20",
+              "dice": [
+                14
+              ],
+              "modifier": 0,
+              "total": 14,
+              "purpose": "party_decision"
+            },
+            "campaign_id": "PARTY-3",
+            "event_id": "<uuid>",
+            "command_id": "r-1",
+            "idempotency_key": "r-1",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          },
+          {
+            "event_type": "PartyDecisionResolved",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "hero:hero-one",
+                "hero:hero-two"
+              ],
+              "active_voter_ids": [
+                "hero:hero-one",
+                "hero:hero-two"
+              ],
+              "required_votes": 1,
+              "interaction_id": "roll-gate-1",
+              "resolved_option_id": "through",
+              "votes": {},
+              "abstained_voter_ids": [],
+              "resolution_reason": "roll",
+              "difficulty": 12,
+              "success": true,
+              "roll": {
+                "id": "<uuid>",
+                "roll_id": "<uuid>",
+                "kind": "party",
+                "expression": "1d20",
+                "sides": 20,
+                "value": 14,
+                "total": 14,
+                "playerId": "hero-two",
+                "playerName": "Гелла",
+                "rolledAt": "<time>",
+                "purpose": "party_decision"
+              }
+            },
+            "campaign_id": "PARTY-3",
+            "event_id": "<uuid>",
+            "command_id": "r-1",
+            "idempotency_key": "r-1",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 2,
+            "state_version_after": 3,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 3,
+        "roll": {
+          "id": "<uuid>",
+          "roll_id": "<uuid>",
+          "kind": "party",
+          "expression": "1d20",
+          "sides": 20,
+          "value": 14,
+          "total": 14,
+          "playerId": "hero-two",
+          "playerName": "Гелла",
+          "rolledAt": "<time>",
+          "purpose": "party_decision"
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-1/roll",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "idempotency_key": "r-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 3,
+        "updatedAt": "<time>",
+        "state": "<sha256:76d4decd3b1f2acb09ba8eb1bf412ae66607ce97cf3282b4fba38c502cede0ac:29366>",
+        "mechanics": [
+          {
+            "event_type": "DieRolled",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "roll_id": "<uuid>",
+              "expression": "1d20",
+              "dice": [
+                14
+              ],
+              "modifier": 0,
+              "total": 14,
+              "purpose": "party_decision"
+            },
+            "campaign_id": "PARTY-3",
+            "event_id": "<uuid>",
+            "command_id": "r-1",
+            "idempotency_key": "r-1",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          },
+          {
+            "event_type": "PartyDecisionResolved",
+            "actor_id": "hero-two",
+            "visibility": "party",
+            "target_ids": [
+              "hero-one",
+              "hero-two"
+            ],
+            "source_rule_ids": [],
+            "payload": {
+              "eligible_hero_ids": [
+                "hero-one",
+                "hero-two"
+              ],
+              "eligible_voter_ids": [
+                "hero:hero-one",
+                "hero:hero-two"
+              ],
+              "active_voter_ids": [
+                "hero:hero-one",
+                "hero:hero-two"
+              ],
+              "required_votes": 1,
+              "interaction_id": "roll-gate-1",
+              "resolved_option_id": "through",
+              "votes": {},
+              "abstained_voter_ids": [],
+              "resolution_reason": "roll",
+              "difficulty": 12,
+              "success": true,
+              "roll": {
+                "id": "<uuid>",
+                "roll_id": "<uuid>",
+                "kind": "party",
+                "expression": "1d20",
+                "sides": 20,
+                "value": 14,
+                "total": 14,
+                "playerId": "hero-two",
+                "playerName": "Гелла",
+                "rolledAt": "<time>",
+                "purpose": "party_decision"
+              }
+            },
+            "campaign_id": "PARTY-3",
+            "event_id": "<uuid>",
+            "command_id": "r-1",
+            "idempotency_key": "r-1",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 2,
+            "state_version_after": 3,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 3,
+        "roll": {
+          "id": "<uuid>",
+          "roll_id": "<uuid>",
+          "kind": "party",
+          "expression": "1d20",
+          "sides": 20,
+          "value": 14,
+          "total": 14,
+          "playerId": "hero-two",
+          "playerName": "Гелла",
+          "rolledAt": "<time>",
+          "purpose": "party_decision"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-1/roll",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "idempotency_key": "r-2"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Общий бросок уже завершён или сейчас не требуется",
+        "code": "PARTY_DECISION_CLOSED"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/PARTY-3/party-decisions/roll-gate-1/roll",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "idempotency_key": "golden-open-roll"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 3,
+        "updatedAt": "<time>",
+        "state": "<sha256:f044f8d6dc48f5fdc430dafbf105f22374119be4f51e6445b1aec341e1805ea8:30677>",
+        "mechanics": [
+          {
+            "event_type": "PartyDecisionOpened",
+            "actor_id": "hero-one",
+            "visibility": "party",
+            "target_ids": [],
+            "source_rule_ids": [],
+            "payload": {
+              "interaction": {
+                "id": "roll-gate-1",
+                "type": "roll",
+                "title": "Прорваться через ворота?",
+                "description": "Один общий бросок решает, успеет ли отряд.",
+                "options": [
+                  {
+                    "id": "through",
+                    "label": "Прорваться"
+                  },
+                  {
+                    "id": "retreat",
+                    "label": "Отступить"
+                  }
+                ],
+                "votes": {},
+                "status": "open",
+                "eligibleActorIds": [
+                  "hero-one",
+                  "hero-two"
+                ],
+                "eligibleVoterIds": [
+                  "hero:hero-one",
+                  "hero:hero-two"
+                ],
+                "voterByActorId": {
+                  "hero-one": "hero:hero-one",
+                  "hero-two": "hero:hero-two"
+                },
+                "activeVoterIds": [
+                  "hero:hero-one",
+                  "hero:hero-two"
+                ],
+                "abstainedVoterIds": [],
+                "abstentions": {},
+                "requiredVotes": 2,
+                "voterScope": "account",
+                "policy": {
+                  "schemaVersion": 1,
+                  "policyVersion": "skazanie:party-decision-policy:v1",
+                  "voterScope": "account",
+                  "decisionTtlMs": 120000,
+                  "quorumMode": "majority_of_active_voters",
+                  "disconnectAction": "abstain",
+                  "expiryResolution": "plurality_first_option",
+                  "visibility": "party"
+                },
+                "policyVersion": "skazanie:party-decision-policy:v1",
+                "difficulty": 12,
+                "resolutionPrompt": "",
+                "createdAt": "<time>",
+                "expiresAt": "<time>"
+              }
+            },
+            "event_id": "<uuid>",
+            "campaign_id": "PARTY-3",
+            "command_id": "<uuid>",
+            "idempotency_key": "golden-open-roll",
+            "reducer_version": 15,
+            "ruling_id": null,
+            "state_version_before": 0,
+            "state_version_after": 1,
+            "created_at": "<time>"
+          }
+        ],
+        "state_version": 1
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/PARTY-3",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 3,
+        "state": "<sha256:aa93b8b494d2cad11713bb0162594912513f79ca87d7caafa7a076d77ca4afb6:29366>",
+        "updatedAt": "<time>"
+      }
+    }
+  ]
+}
