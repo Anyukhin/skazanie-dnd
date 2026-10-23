@@ -1,0 +1,1058 @@
+{
+  "format": "skazanie.golden/1",
+  "scenario": "диалог героя (уточнение и карточка проверки, сброс) и объяснение хода: права, проекция, 404",
+  "exchanges": [
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "DELETE",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/turns/latest/explanation",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/auth/setup-admin",
+      "headers": {},
+      "body": {
+        "email": "gm@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Ведущий",
+        "setupToken": "setup-code"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "setupRequired": false
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "anya@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Аня"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "vera@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Вера"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "STEP-1",
+        "name": "Маяк",
+        "state": {
+          "state_version": 0,
+          "sessionCode": "STEP-1",
+          "campaign": "Маяк",
+          "activePlayerId": "hero-slot-1",
+          "partyMemberIds": [
+            "hero-slot-1",
+            "hero-2"
+          ],
+          "isNarrating": false,
+          "pendingCheck": null,
+          "suggestions": [],
+          "messages": [],
+          "players": [
+            {
+              "id": "hero-slot-1",
+              "character": "Мирель",
+              "name": "Мирель",
+              "className": "wizard",
+              "hp": 8,
+              "maxHp": 8,
+              "armor": 12,
+              "proficiency": 2,
+              "x": 0,
+              "y": 0,
+              "abilities": {
+                "str": 8,
+                "dex": 14,
+                "con": 12,
+                "int": 16,
+                "wis": 12,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true
+            },
+            {
+              "id": "hero-2",
+              "character": "Борин",
+              "name": "Борин",
+              "className": "wizard",
+              "hp": 8,
+              "maxHp": 8,
+              "armor": 12,
+              "proficiency": 2,
+              "x": 1,
+              "y": 0,
+              "abilities": {
+                "str": 8,
+                "dex": 14,
+                "con": 12,
+                "int": 16,
+                "wis": 12,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true
+            }
+          ],
+          "enemies": [
+            {
+              "id": "wolf",
+              "name": "Волк",
+              "hp": 11,
+              "maxHp": 11,
+              "armor": 13,
+              "alive": true,
+              "x": 2,
+              "y": 0
+            }
+          ],
+          "scene": {
+            "title": "Маяк",
+            "location": "Маяк",
+            "mood": "Ночь",
+            "objective": "Узнать, что горит в фонаре",
+            "turn": 0,
+            "cells": []
+          },
+          "mechanics": {
+            "world_time": {
+              "elapsed_minutes": 0
+            }
+          },
+          "social": {
+            "npcs": [],
+            "relationships": {},
+            "conversations": [],
+            "promises": []
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "engine_mode": "enforce"
+        }
+      },
+      "status": 201,
+      "body_norm": "<skip>"
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/STEP-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-slot-1"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "STEP-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-slot-1"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/STEP-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:7>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "STEP-1",
+        "hero_ids": [
+          "hero-slot-1"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "STEP-1",
+              "role": "player",
+              "heroIds": [
+                "hero-slot-1"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "hero-slot-1",
+        "clarification": null,
+        "check": null
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/step-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "hero-slot-1",
+        "clarification": null,
+        "check": null
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue?actor_id=hero-slot-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "hero-slot-1",
+        "clarification": null,
+        "check": null
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue?actor_id=hero-2",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Этот герой не принадлежит вашему аккаунту"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue?actor_id=",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Этот герой не принадлежит вашему аккаунту"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "DELETE",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {},
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "",
+        "clarification": null,
+        "check": null
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue?actor_id=hero-2",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "hero-2",
+        "clarification": null,
+        "check": null
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "player",
+      "method": "PUT",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "STEP-1",
+        "actor_id": "hero-slot-1",
+        "action": "Мирель подходит к двери маяка, прислушивается, а потом осторожно поднимается по винтовой лестнице наверх, к фонарю — посмотреть, что там горит по ночам.",
+        "idempotency_key": "plan",
+        "request_kind": "action",
+        "manual_roll": true
+      },
+      "status": 200,
+      "body_norm": "<skip>"
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "hero-slot-1",
+        "clarification": {
+          "id": "clarification:<uuid>",
+          "campaign_id": "STEP-1",
+          "actor_id": "hero-slot-1",
+          "state_version": 0,
+          "action": "Мирель подходит к двери маяка, прислушивается, а потом осторожно поднимается по винтовой лестнице наверх, к фонарю — посмотреть, что там горит по ночам.",
+          "question": "Сначала: «Мирель подходит к двери маяка, прислушивается».",
+          "confirmation_required": true
+        },
+        "check": {
+          "check_id": "<uuid>",
+          "label": "Мудрость (Восприятие)",
+          "modifier": 3,
+          "difficulty": 15,
+          "sides": 20,
+          "ability": "wis",
+          "skill": "perception",
+          "advantage": false,
+          "disadvantage": false,
+          "action": "Мирель подходит к двери маяка, прислушивается",
+          "clarification_id": "clarification:<uuid>"
+        }
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue?actor_id=hero-2",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Этот герой не принадлежит вашему аккаунту"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue?actor_id=hero-slot-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "hero-slot-1",
+        "clarification": {
+          "id": "clarification:<uuid>",
+          "campaign_id": "STEP-1",
+          "actor_id": "hero-slot-1",
+          "state_version": 0,
+          "action": "Мирель подходит к двери маяка, прислушивается, а потом осторожно поднимается по винтовой лестнице наверх, к фонарю — посмотреть, что там горит по ночам.",
+          "question": "Сначала: «Мирель подходит к двери маяка, прислушивается».",
+          "confirmation_required": true
+        },
+        "check": {
+          "check_id": "<uuid>",
+          "label": "Мудрость (Восприятие)",
+          "modifier": 3,
+          "difficulty": 15,
+          "sides": 20,
+          "ability": "wis",
+          "skill": "perception",
+          "advantage": false,
+          "disadvantage": false,
+          "action": "Мирель подходит к двери маяка, прислушивается",
+          "clarification_id": "clarification:<uuid>"
+        }
+      }
+    },
+    {
+      "as": "player",
+      "method": "DELETE",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {
+        "clarification_id": "нет-такого"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Уточнение не найдено или истекло. Отправьте действие заново.",
+        "code": "CLARIFICATION_NOT_FOUND"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "DELETE",
+      "path": "/api/campaigns/STEP-1/dialogue?actor_id=hero-2",
+      "headers": {},
+      "body": {
+        "clarification_id": "<clarification:23>"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Уточнение не принадлежит этому герою или кампании.",
+        "code": "CLARIFICATION_FORBIDDEN"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "hero-slot-1",
+        "clarification": {
+          "id": "clarification:<uuid>",
+          "campaign_id": "STEP-1",
+          "actor_id": "hero-slot-1",
+          "state_version": 0,
+          "action": "Мирель подходит к двери маяка, прислушивается, а потом осторожно поднимается по винтовой лестнице наверх, к фонарю — посмотреть, что там горит по ночам.",
+          "question": "Сначала: «Мирель подходит к двери маяка, прислушивается».",
+          "confirmation_required": true
+        },
+        "check": {
+          "check_id": "<uuid>",
+          "label": "Мудрость (Восприятие)",
+          "modifier": 3,
+          "difficulty": 15,
+          "sides": 20,
+          "ability": "wis",
+          "skill": "perception",
+          "advantage": false,
+          "disadvantage": false,
+          "action": "Мирель подходит к двери маяка, прислушивается",
+          "clarification_id": "clarification:<uuid>"
+        }
+      }
+    },
+    {
+      "as": "player",
+      "method": "DELETE",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {
+        "clarification_id": "<clarification:23>"
+      },
+      "status": 200,
+      "body_norm": {
+        "cleared": true
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "actor_id": "hero-slot-1",
+        "clarification": null,
+        "check": {
+          "check_id": "<uuid>",
+          "label": "Мудрость (Восприятие)",
+          "modifier": 3,
+          "difficulty": 15,
+          "sides": 20,
+          "ability": "wis",
+          "skill": "perception",
+          "advantage": false,
+          "disadvantage": false,
+          "action": "Мирель подходит к двери маяка, прислушивается"
+        }
+      }
+    },
+    {
+      "as": "player",
+      "method": "DELETE",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {
+        "clarification_id": "<clarification:23>"
+      },
+      "status": 200,
+      "body_norm": {
+        "cleared": true
+      }
+    },
+    {
+      "as": "player",
+      "method": "DELETE",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {},
+      "status": 200,
+      "body_norm": {
+        "cleared": true
+      }
+    },
+    {
+      "as": "player",
+      "method": "DELETE",
+      "path": "/api/campaigns/STEP-1/dialogue",
+      "headers": {},
+      "body": {
+        "clarification_id": ""
+      },
+      "status": 200,
+      "body_norm": {
+        "cleared": true
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/turns/latest/explanation",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Трассировка хода не найдена"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/STEP-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "why-1",
+        "message": "Рублю волка",
+        "command": {
+          "command_type": "ApplyDamage",
+          "actor_id": "hero-slot-1",
+          "target_id": "wolf",
+          "amount": 3,
+          "damage_type": "slashing"
+        }
+      },
+      "status": 200,
+      "body_norm": "<skip>"
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/STEP-1/commands",
+      "headers": {},
+      "body": {
+        "idempotency_key": "why-2",
+        "command": {
+          "command_type": "ApplyDamage",
+          "actor_id": "wolf",
+          "target_id": "hero-slot-1",
+          "amount": 2,
+          "damage_type": "piercing"
+        }
+      },
+      "status": 200,
+      "body_norm": "<skip>"
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/turns/latest/explanation",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "turn_id": "turn-2c5c3d13fc51ad060bdc728e0d3521ff",
+        "schema_version": "turn-trace/v2",
+        "proposal_id": null,
+        "engine_mode": "enforce",
+        "rules_used": [
+          "srd_5_2_1:combat:damage"
+        ],
+        "commands": [
+          {
+            "type": "ApplyDamage",
+            "actor_id": "wolf",
+            "target_id": "hero-slot-1"
+          }
+        ],
+        "rolls": [],
+        "events": [
+          {
+            "campaign_id": "STEP-1",
+            "command_id": "why-2",
+            "event_type": "DamageApplied",
+            "actor_id": "wolf",
+            "target_ids": [
+              "hero-slot-1"
+            ],
+            "payload": {
+              "damage_type": "piercing",
+              "raw_amount": 2,
+              "applied_amount": 2,
+              "immune": false,
+              "resistant": false,
+              "vulnerable": false,
+              "temporary_hp_before": 0,
+              "temporary_hp_after": 0,
+              "temporary_hp_absorbed": 0,
+              "hp_before": 8,
+              "hp_after": 6
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:damage"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "visibility": "public",
+            "event_id": "<uuid>",
+            "idempotency_key": "why-2",
+            "reducer_version": 15,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          }
+        ],
+        "ruling": null,
+        "state_version_before": 1,
+        "state_version_after": 2,
+        "verification": {
+          "valid": true,
+          "violations": [],
+          "narration": "Мирель получает урон."
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/turns/latest/explanation",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "turn_id": "turn-2c5c3d13fc51ad060bdc728e0d3521ff",
+        "schema_version": "turn-trace/v2",
+        "proposal_id": null,
+        "engine_mode": "enforce",
+        "rules_used": [
+          "srd_5_2_1:combat:damage"
+        ],
+        "commands": [
+          {
+            "command_type": "ApplyDamage",
+            "actor_id": "wolf",
+            "target_id": "hero-slot-1",
+            "amount": 2,
+            "damage_type": "piercing",
+            "campaign_id": "STEP-1",
+            "command_id": "why-2:1",
+            "expected_state_version": 1,
+            "ruleset_id": "srd_5_2_1",
+            "target_ids": [
+              "hero-slot-1"
+            ],
+            "source_rule_ids": [
+              "srd_5_2_1:combat:damage"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "merchant_id": null,
+            "stock_id": null,
+            "item_id": null,
+            "action_id": null,
+            "quantity": 1,
+            "request_fingerprint": null
+          }
+        ],
+        "rolls": [],
+        "events": [
+          {
+            "campaign_id": "STEP-1",
+            "command_id": "why-2",
+            "event_type": "DamageApplied",
+            "actor_id": "wolf",
+            "target_ids": [
+              "hero-slot-1"
+            ],
+            "payload": {
+              "damage_type": "piercing",
+              "raw_amount": 2,
+              "applied_amount": 2,
+              "immune": false,
+              "resistant": false,
+              "vulnerable": false,
+              "temporary_hp_before": 0,
+              "temporary_hp_after": 0,
+              "temporary_hp_absorbed": 0,
+              "hp_before": 8,
+              "hp_after": 6
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:damage"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "visibility": "public",
+            "event_id": "<uuid>",
+            "idempotency_key": "why-2",
+            "reducer_version": 15,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          }
+        ],
+        "ruling": null,
+        "state_version_before": 1,
+        "state_version_after": 2,
+        "verification": {
+          "valid": true,
+          "violations": [],
+          "narration": "Мирель получает урон."
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/turns/latest/explanation",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/turns/no-such-turn/explanation",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Трассировка хода не найдена"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-1/turns/latest/explanation",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Трассировка хода не найдена"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-1/turns/latest/explanation",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "player",
+      "method": "POST",
+      "path": "/api/campaigns/STEP-1/turns/latest/explanation",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/turns/turn-2c5c3d13fc51ad060bdc728e0d3521ff/explanation",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "turn_id": "turn-2c5c3d13fc51ad060bdc728e0d3521ff",
+        "schema_version": "turn-trace/v2",
+        "proposal_id": null,
+        "engine_mode": "enforce",
+        "rules_used": [
+          "srd_5_2_1:combat:damage"
+        ],
+        "commands": [
+          {
+            "type": "ApplyDamage",
+            "actor_id": "wolf",
+            "target_id": "hero-slot-1"
+          }
+        ],
+        "rolls": [],
+        "events": [
+          {
+            "campaign_id": "STEP-1",
+            "command_id": "why-2",
+            "event_type": "DamageApplied",
+            "actor_id": "wolf",
+            "target_ids": [
+              "hero-slot-1"
+            ],
+            "payload": {
+              "damage_type": "piercing",
+              "raw_amount": 2,
+              "applied_amount": 2,
+              "immune": false,
+              "resistant": false,
+              "vulnerable": false,
+              "temporary_hp_before": 0,
+              "temporary_hp_after": 0,
+              "temporary_hp_absorbed": 0,
+              "hp_before": 8,
+              "hp_after": 6
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:damage"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "visibility": "public",
+            "event_id": "<uuid>",
+            "idempotency_key": "why-2",
+            "reducer_version": 15,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          }
+        ],
+        "ruling": null,
+        "state_version_before": 1,
+        "state_version_after": 2,
+        "verification": {
+          "valid": true,
+          "violations": [],
+          "narration": "Мирель получает урон."
+        }
+      }
+    },
+    {
+      "as": "player",
+      "method": "GET",
+      "path": "/api/campaigns/STEP-1/turns/turn-2c5c3d13fc51ad060bdc728e0d3521ff/explanation?x=1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "turn_id": "turn-2c5c3d13fc51ad060bdc728e0d3521ff",
+        "schema_version": "turn-trace/v2",
+        "proposal_id": null,
+        "engine_mode": "enforce",
+        "rules_used": [
+          "srd_5_2_1:combat:damage"
+        ],
+        "commands": [
+          {
+            "type": "ApplyDamage",
+            "actor_id": "wolf",
+            "target_id": "hero-slot-1"
+          }
+        ],
+        "rolls": [],
+        "events": [
+          {
+            "campaign_id": "STEP-1",
+            "command_id": "why-2",
+            "event_type": "DamageApplied",
+            "actor_id": "wolf",
+            "target_ids": [
+              "hero-slot-1"
+            ],
+            "payload": {
+              "damage_type": "piercing",
+              "raw_amount": 2,
+              "applied_amount": 2,
+              "immune": false,
+              "resistant": false,
+              "vulnerable": false,
+              "temporary_hp_before": 0,
+              "temporary_hp_after": 0,
+              "temporary_hp_absorbed": 0,
+              "hp_before": 8,
+              "hp_after": 6
+            },
+            "source_rule_ids": [
+              "srd_5_2_1:combat:damage"
+            ],
+            "house_rule_id": null,
+            "ruling_id": null,
+            "visibility": "public",
+            "event_id": "<uuid>",
+            "idempotency_key": "why-2",
+            "reducer_version": 15,
+            "state_version_before": 1,
+            "state_version_after": 2,
+            "created_at": "<time>"
+          }
+        ],
+        "ruling": null,
+        "state_version_before": 1,
+        "state_version_after": 2,
+        "verification": {
+          "valid": true,
+          "violations": [],
+          "narration": "Мирель получает урон."
+        }
+      }
+    }
+  ]
+}
