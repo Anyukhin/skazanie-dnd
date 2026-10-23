@@ -54,6 +54,10 @@ sk-social = { path = "../sk-social" }
 sk-world-life = { path = "../sk-world-life" }
 sk-world-story = { path = "../sk-world-story" }
 sk-chargen = { path = "../sk-chargen" }
+# С5: арены боевого стенда (`materializeCatalogItem`) и имена заклинаний в
+# кадрах наблюдателя (`canonicalCombatSpellFor`).
+sk-combat-content = { path = "../sk-combat-content" }
+sk-items = { path = "../sk-items" }
 sk-director = { path = "../sk-director" }
 sk-economy = { path = "../sk-economy" }
 sk-encounters = { path = "../sk-encounters" }
