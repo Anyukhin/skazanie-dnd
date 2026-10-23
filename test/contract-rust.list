@@ -48,4 +48,20 @@ test/ruleset-selection-api.test.mjs    # редакция до первого и
 
 # С11 (2026-10-23): решения отряда и задания. quest-abandonment-api проходит quests и votes,
 # но дальше идёт в /api/narrate (С18.5) — вне списка до неё.
-test/party-decision-roll-api.test.mjs  # общий бросок: серверная кость, права, повтор по ключу, закрытое решение, replay
+test/party-decision-roll-api.test.mjs  #общий бросок: серверная кость, права, повтор по ключу, закрытое решение, replay
+
+# С18.5 (2026-10-23): POST /api/narrate, переходы сцены Режиссёра, соло-выход, живой поток рассказа.
+# Остальные файлы группы (api-integration, command-retry-intent-api, director-shop-api, law-api,
+# merchant-api, npc-world-consequences-api, parley-api, persistent-campaign-api, table-of-five-api,
+# tavern-api, world-data-flow-api, mvp-player-cycle-api) упираются в /commands (С18.1), dialogue-api —
+# в /autonomy/advance (С18.4); narrate-retry-recovery и tactical-command-recovery — клиентские, без сервера.
+test/narration-stream-api.test.mjs       # SSE рассказа: изоляция, replay при переподключении, канонический финал
+test/narrate-room-version-race.test.mjs  # room_version ответа перечитывается после хода; PUT комнаты — 410
+test/party-interaction-api.test.mjs      # карточка голосования Режиссёра, голос вне своего хода
+test/solo-party-exit-api.test.mjs        # соло-стол уходит без карточки, ID карты до Архитектора, отказ от задания
+test/quest-abandonment-api.test.mjs      # отказ от задания голосованием и переход сцены, replay/restart
+test/viewer-projection-api.test.mjs      # ответ хода и комната не раскрывают закрытую память мира
+test/roll-binding.test.mjs               # проверку исполняет только кость своей карточки
+test/roll-reservation-api.test.mjs       # резерв броска: несостоявшийся commit возвращает кость
+test/nonstandard-action-api.test.mjs     # свободный трюк: check → roll → commit и replay после restart
+test/action-sequence-roll-api.test.mjs   # план из шагов: бросок первого шага по HTTP
