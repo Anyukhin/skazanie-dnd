@@ -40,6 +40,11 @@ fn transient(error: &std::io::Error) -> bool {
 /// текущих соединений не дольше `grace(&причина)` и вернуть причину.
 pub async fn serve<T>(listener: tokio::net::TcpListener, state: Shared, shutdown: impl Future<Output = T>, grace: impl FnOnce(&T) -> Duration) -> T {
     let streams = state.clone();
+    // С17 (правка общего файла): фоновым задачам ядра (координатор боя,
+    // зацепки героев) нужен `AppState` — до первого соединения.
+    if let Err(error) = crate::clocks::bind_app(&state).await {
+        eprintln!("[Сказание] Ядро не получило состояние сервера: {error}");
+    }
     let router = crate::app(state);
     let graceful = hyper_util::server::graceful::GracefulShutdown::new();
     tokio::pin!(shutdown);

@@ -110,20 +110,24 @@ async fn mode_and_model_go_to_chronicle_not_journal_and_survive_restart() {
 }
 
 /// Домашнее правило посреди боя — 409 `HOUSE_RULE_DURING_COMBAT`, журнал не
-/// меняется. Бой — импортом с `mechanics.combat.active`: координатора боя
-/// (С17), который в JS тут же закрыл бы пустую схватку, здесь ещё нет.
+/// меняется. Бой — настоящий, через «Начать бой»: пустую схватку импортом с
+/// `mechanics.combat.active` координатор хода боя (С17) тут же закрывает, как
+/// и в JS (правка С17).
 #[tokio::test]
 async fn house_rule_during_combat_is_conflict() {
     let server = TestServer::start().await;
     let mut admin = server.client();
     admin.setup_admin().await;
     let state = json!({
-        "sessionCode": "C7-FIGHT", "campaign": "Бой", "partyMemberIds": ["hero"],
-        "players": [{ "id": "hero", "character": "Иван", "name": "Иван", "hp": 10, "maxHp": 10, "x": 0, "y": 0 }],
+        "sessionCode": "C7-FIGHT", "campaign": "Бой", "partyMemberIds": ["hero"], "activePlayerId": "hero",
+        "players": [{ "id": "hero", "character": "Иван", "name": "Иван", "hp": 30, "maxHp": 30, "armor": 16, "x": 0, "y": 0,
+            "abilities": { "str": 16, "dex": 12, "con": 14, "int": 10, "wis": 10, "cha": 10 }, "inventory": [] }],
+        "enemies": [{ "id": "wolf", "name": "Волк", "hp": 11, "maxHp": 11, "armor": 13, "alive": true, "x": 2, "y": 0 }],
         "messages": [], "scene": { "title": "Начало", "location": "", "mood": "", "objective": "", "turn": 0, "cells": [] },
-        "mechanics": { "combat": { "active": true } },
     });
     admin.post("/api/campaigns", &json!({ "code": "C7-FIGHT", "state": state })).await.expect(201);
+    let started = admin.post("/api/campaigns/C7-FIGHT/commands", &json!({ "idempotency_key": "start", "command": { "command_type": "StartCombat", "actor_id": "hero" } })).await.expect(200);
+    assert_eq!(started["authoritative_state"]["mechanics"]["combat"]["active"], true);
     let (before, _) = journal_and_notes(&server, "C7-FIGHT").await;
     let refused = admin.patch("/api/campaigns/C7-FIGHT/settings", &json!({ "houseRules": { "house:bg3-opening-strike": false }, "idempotency_key": "fight" })).await.expect(409);
     assert_eq!(refused, json!({ "error": "Домашние правила боя не меняют посреди боя", "code": "HOUSE_RULE_DURING_COMBAT" }));
