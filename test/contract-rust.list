@@ -124,3 +124,10 @@ test/api-integration.test.mjs       # совместимый API: команда
 # С18.2 (2026-10-24): торговля игрока перенесена — merchant-api зелёный против Rust до шага
 # POST /system-tick (строка 430 теста, С17); в список — после С17.
 test/merchant-lifecycle-api.test.mjs  # lifecycle-команды ведущего: права, ключ, повтор и конфликт, устаревшая версия, сборка магазина, restart, лимит 60
+
+# С18.3 (2026-10-24): сборка встречи POST encounters/assemble. shillelagh-api проходит
+# сборку, но запускает сервер с preload (кости) — вне списка до перевода на dice;
+# director-player-entry-api упирается в /autonomy (С18.4).
+test/encounter-api.test.mjs           # права, белый список полей, устаревшая версия, ходы врагов до героя, проекция игроку, restart, повтор и конфликт ключа
+test/longstrider-api.test.mjs         # «Скороход»: развитие, сборка встречи, бой и движение через /commands, restart
+test/destructive-wave-api.test.mjs    # «Разрушительная волна»: жрец бури 9-го уровня, сборка встречи и удар по площади
