@@ -690,6 +690,9 @@ fn narration_quest_clock(clock: Option<&Value>) -> Option<Value> {
 pub fn narration_story_context(state: &Value, viewer: &Value, events: &[Value]) -> OrchestratorResult<Value> {
     let state = quest_state_for_viewer(state, &json!({ "isPartyMember": true }));
     let state = &state;
+    if state.get("players").is_some_and(|players| !players.is_null() && !players.is_array()) {
+        return Err(type_error("(state.players ?? []).slice(...).map is not a function"));
+    }
     let memory = nullish(state.get("worldMemory"), None);
     let active_quests: Vec<Value> = last_n(&list(get(memory, "quests")).iter().filter(|quest| is_str(get(Some(quest), "status"), "active") && party_visible_record(Some(quest))).cloned().collect::<Vec<_>>(), NARRATION_STORY_LIMITS.quests)
         .iter()
@@ -2429,6 +2432,37 @@ struct TraceInput {
     ruling: Option<Value>,
     recovery: Option<Value>,
     created_at: Option<Value>,
+    /// Общие ссылки объекта трассы JS (см. [`mark_shared_references`]).
+    aliases: TraceAliases,
+}
+
+/// Как `validated_commands` трассы связаны с `plan.proposed_commands` в JS.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum CommandsAlias {
+    /// Разные объекты.
+    #[default]
+    None,
+    /// Тот же массив.
+    Whole,
+    /// Новый массив из тех же команд (повтор хода).
+    Elements,
+    /// Копии движка `{ ...command }`: вложенные поля — те же объекты.
+    Engine,
+}
+
+/// Какие части трассы JS ссылаются на одни и те же объекты.
+#[derive(Clone, Debug, Default)]
+struct TraceAliases {
+    commands: CommandsAlias,
+    /// `ruling` трассы — тот же объект, что `plan.ruling_draft`.
+    ruling: bool,
+    /// `RecordRuling` собран оркестратором из черновика: `ruling_draft` — тот
+    /// же объект, что `ruling` команды, а `supporting_rule_ids` — `plan.rule_ids`.
+    ruling_from_draft: bool,
+    /// Черновик О1 и `ruling` его команд — `{ ...ruling }`: вложенное общее.
+    ruling_spread: bool,
+    /// События, чей `payload` — тот же объект, что бросок в `rolls`.
+    rolled_payloads: Vec<usize>,
 }
 
 /// `GameOrchestrator`.
@@ -3126,6 +3160,7 @@ impl GameOrchestrator {
             retrieved_rules: Some(retrieved_rules.clone()),
             plan: trace_plan,
             engine_result: Some(json!({ "commands": nullish(free_action.get("commands"), None).cloned().unwrap_or_else(|| json!([])), "events": committed_events.clone(), "rolls": rolls })),
+            aliases: TraceAliases { commands: if nullish(free_action.get("commands"), None).is_some() { CommandsAlias::Whole } else { CommandsAlias::None }, ruling: true, ruling_spread: true, ..TraceAliases::default() },
             state_before: authoritative_state.get("state_version").cloned(),
             state_after: state.get("state_version").cloned(),
             verification: Some(verification.clone()),
@@ -4293,6 +4328,7 @@ impl GameOrchestrator {
         let mut preceding_events: Vec<Value> = Vec::new();
         let mut preceding_rolls: Vec<Value> = Vec::new();
         let mut preceding_commands: Vec<Value> = Vec::new();
+        let mut rolled_payloads: Vec<usize> = Vec::new();
         if let Some(npc_id) = &social_request {
             let hero = list(authoritative_state.get("players")).iter().find(|hero| js::s(get(Some(hero), "id")) == player_id);
             let bribe_reference = currency_to_copper(get(hero, "currency"));
@@ -4327,6 +4363,7 @@ impl GameOrchestrator {
                 preceding_events = list(commit.get("events")).to_vec();
                 if preceding_rolls.is_empty() {
                     preceding_rolls = vec![check_event.get("payload").cloned().unwrap_or(Value::Null)];
+                    rolled_payloads = list(commit.get("events")).iter().position(|event| is_str(event.get("event_type"), "AbilityCheckResolved") && js::truthy(at(Some(event), &["payload", "social_check"]))).into_iter().collect();
                 }
                 social_base_state = self.load_state(&campaign_id)?.0;
             }
@@ -4364,6 +4401,7 @@ impl GameOrchestrator {
         }
 
         let mut replayed_commit = duplicate.is_some();
+        let mut ruling_from_draft = false;
         let (mut committed, mut engine_result) = match &duplicate {
             Some(duplicate) => {
                 let events = list(duplicate.get("events")).to_vec();
@@ -4373,6 +4411,7 @@ impl GameOrchestrator {
             }
             None => {
                 if js::truthy(plan.get("ruling_required")) && len_of(plan.get("proposed_commands")) == 0 {
+                    ruling_from_draft = true;
                     let mut ruling = json!({ "id": (self.id_factory)(), "campaign_id": campaign_id });
                     if let Some(Value::Object(draft)) = plan.get("ruling_draft") {
                         for (key, value) in draft {
@@ -4568,7 +4607,22 @@ impl GameOrchestrator {
         let mut trace_engine = engine_result.clone();
         set(&mut trace_engine, "events", Value::Array(committed_events.clone()));
         let trace_narration = with(&narration, json!({ "visibility": if private_social { "specific_player" } else { "party" } }));
+        let aliases = TraceAliases {
+            commands: if duplicate.is_some() { CommandsAlias::Elements } else { CommandsAlias::Engine },
+            ruling: true,
+            ruling_from_draft,
+            rolled_payloads: {
+                let mut indices = rolled_payloads.clone();
+                if let Some(duplicate) = &duplicate {
+                    let offset = preceding_events.len();
+                    indices.extend(list(duplicate.get("events")).iter().enumerate().filter(|(_, event)| is_str(event.get("event_type"), "DieRolled")).map(|(index, _)| offset + index));
+                }
+                indices
+            },
+            ..TraceAliases::default()
+        };
         let turn_trace = TraceInput {
+            aliases,
             turn_id: turn_id.clone(),
             campaign_id: campaign_id.clone(),
             idempotency_key: Some(idempotency_key.clone()),
@@ -4792,6 +4846,7 @@ impl GameOrchestrator {
             ("narration_result", Some(narration_result)),
             ("ruling", Some(trace.ruling.clone().unwrap_or(Value::Null))),
         ]);
+        mark_shared_references(&mut input, &trace);
         if let Some(recovery) = trace.recovery.filter(|value| js::truthy(Some(value))) {
             set(&mut input, "recovery", recovery);
         }
@@ -4898,4 +4953,121 @@ struct HandleContext {
 fn joined_step(step: &str, narration: Option<&Value>) -> String {
     let parts: Vec<String> = [text::trim(step).to_string(), text::trim(&js::s(narration)).to_string()].into_iter().filter(|part| !part.is_empty()).collect();
     text::head(&parts.join(" — "), 600)
+}
+
+// --- общие ссылки трассы -----------------------------------------------------------------------
+
+fn is_reference(value: &Value) -> bool {
+    value.is_object() || value.is_array()
+}
+
+fn circular() -> Value {
+    str_value("[CIRCULAR]")
+}
+
+/// Замечено в JS: `redactTrace` из `security.mjs` помнит каждый уже
+/// пройденный объект и заменяет любую повторную ссылку на `"[CIRCULAR]"` —
+/// не только цикл. Трасса JS собирается из общих объектов (план и
+/// подтверждённые команды, черновик решения и команда `RecordRuling`,
+/// `intent.missing_information`, контексты агентов), и в файл трассы (а
+/// значит, в `/why`) уходят пометки вместо данных. В `serde_json::Value`
+/// ссылок нет, поэтому общие места объекта трассы, которые создаёт этот
+/// модуль, помечаются здесь явно — в порядке обхода JS (ключи `save`
+/// хранилища трасс: контексты, намерение, план, команды, броски, события,
+/// решение).
+fn mark_shared_references(input: &mut Value, trace: &TraceInput) {
+    let mut aliases = trace.aliases.clone();
+    if trace.engine_result.is_none() {
+        // `engineResult = {}`: `validated_commands` — сам `plan.proposed_commands`.
+        aliases.commands = CommandsAlias::Whole;
+    }
+    let original_plan = input.get("adjudication_plan").cloned().unwrap_or(Value::Null);
+    let intent_missing = at(Some(input), &["intent", "missing_information"]).cloned();
+    if let Some(plan) = input.get_mut("adjudication_plan").filter(|plan| plan.is_object()) {
+        // Контексты агентов плана уже пройдены в `agent_contexts` трассы.
+        if let Some(contexts) = plan.get_mut("agent_contexts").and_then(Value::as_array_mut) {
+            for context in contexts.iter_mut().filter(|context| is_reference(context)) {
+                *context = circular();
+            }
+        }
+        // `missing_information` плана уточнения — массив самого намерения.
+        if let (Some(missing), Some(intent_missing)) = (plan.get_mut("missing_information"), &intent_missing) {
+            if is_reference(missing) && missing == intent_missing {
+                *missing = circular();
+            }
+        }
+        let rule_ids = plan.get("rule_ids").cloned();
+        if aliases.ruling_from_draft {
+            if let Some(ruling) = plan.get_mut("proposed_commands").and_then(Value::as_array_mut).and_then(|commands| commands.first_mut()).and_then(|command| command.get_mut("ruling")) {
+                if let (Some(supporting), Some(rule_ids)) = (ruling.get_mut("supporting_rule_ids"), &rule_ids) {
+                    if is_reference(supporting) && supporting == rule_ids {
+                        *supporting = circular();
+                    }
+                }
+            }
+            if let Some(draft) = plan.get_mut("ruling_draft").filter(|draft| is_reference(draft)) {
+                *draft = circular();
+            }
+        }
+        if aliases.ruling_spread {
+            let rulings: Vec<Value> = list(original_plan.get("proposed_commands")).iter().filter_map(|command| command.get("ruling").filter(|ruling| ruling.is_object()).cloned()).collect();
+            if let Some(Value::Object(draft)) = plan.get_mut("ruling_draft") {
+                for (key, value) in draft.iter_mut() {
+                    if is_reference(value) && rulings.iter().any(|ruling| ruling.get(key) == Some(&*value)) {
+                        *value = circular();
+                    }
+                }
+            }
+        }
+        // Манёвр: `proposal.to` — тот же объект, что `to` команды шага.
+        if js::truthy(original_plan.get("maneuver")) {
+            let targets: Vec<Value> = list(original_plan.get("proposed_commands")).iter().filter_map(|command| command.get("to").filter(|to| is_reference(to)).cloned()).collect();
+            if let Some(to) = plan.get_mut("proposal").and_then(|proposal| proposal.get_mut("to")) {
+                if is_reference(to) && targets.iter().any(|target| target == to) {
+                    *to = circular();
+                }
+            }
+        }
+    }
+    let plan_commands = list(original_plan.get("proposed_commands")).to_vec();
+    if let Some(validated) = input.get_mut("validated_commands") {
+        match aliases.commands {
+            CommandsAlias::None => {}
+            CommandsAlias::Whole => {
+                if is_reference(validated) {
+                    *validated = circular();
+                }
+            }
+            CommandsAlias::Elements => {
+                for command in validated.as_array_mut().into_iter().flatten().filter(|command| is_reference(command)) {
+                    *command = circular();
+                }
+            }
+            CommandsAlias::Engine => {
+                for command in validated.as_array_mut().into_iter().flatten() {
+                    let id = command.get("command_id").cloned();
+                    let Some(source) = plan_commands.iter().find(|candidate| id.is_some() && candidate.get("command_id") == id.as_ref()) else { continue };
+                    if let Value::Object(fields) = command {
+                        for (key, value) in fields.iter_mut() {
+                            if key != "target_ids" && key != "source_rule_ids" && is_reference(value) && source.get(key) == Some(&*value) {
+                                *value = circular();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(events) = input.get_mut("events").and_then(Value::as_array_mut) {
+        for index in &aliases.rolled_payloads {
+            if let Some(payload) = events.get_mut(*index).and_then(|event| event.get_mut("payload")).filter(|payload| is_reference(payload)) {
+                *payload = circular();
+            }
+        }
+    }
+    if aliases.ruling || aliases.ruling_from_draft {
+        if let Some(ruling) = input.get_mut("ruling").filter(|ruling| is_reference(ruling)) {
+            *ruling = circular();
+        }
+    }
 }

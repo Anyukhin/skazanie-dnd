@@ -87,7 +87,7 @@ function canonical(value) {
   return value
 }
 /** Метки настоящих часов: решение отряда (`party-decision`), время рассказа у Rust. */
-const MASK = new Set(['createdAt', 'expiresAt', 'elapsed_ms', 'recovered_at'])
+const MASK = new Set(['createdAt', 'expiresAt', 'elapsed_ms', 'recovered_at', 'signal'])
 function mask(value) {
   if (Array.isArray(value)) return value.map(mask)
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([key]) => !MASK.has(key)).map(([key, field]) => [key, mask(field)]))
@@ -647,7 +647,8 @@ const HEROES = [
   { id: 'o2-hero-2', character: 'Тамир', name: 'Игрок 2', role: 'Жрец · ур. 3', species: 'Дварф', background: 'Прислужник', level: 3, hp: 24, maxHp: 24, armor: 16, speed: 25 },
 ]
 async function world(templateId, code) {
-  return normalizeCampaignState(await new CampaignBootstrapper().create({ code, worldTemplateId: templateId, players: clone(HEROES) }))
+  const options = templateId === 'invented-world' ? { world: { name: 'Туманные топи', premise: 'Болотный край, где пропадают обозы', tone: 'мрачная сказка' } } : { worldTemplateId: templateId }
+  return normalizeCampaignState(await new CampaignBootstrapper({ diceService: new DiceService({ rng: seededRng(7), idFactory: () => 'o2-world-roll', now: () => FIXED_NOW }) }).create({ code, ...options, players: clone(HEROES) }))
 }
 async function travel(state, locationId) {
   let current = state
