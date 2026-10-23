@@ -33,3 +33,7 @@ test/heroes-api.test.mjs          # GET /api/heroes: права, герои вс
 # campaign-improv-mode и house-rule-default-api проходят все шаги /settings (с рестартом и
 # правилами по умолчанию при старте), но проверяют летопись и state_version через
 # GET /api/rooms (С10); ruleset-selection-api дальше идёт в /lifecycle (С8) — вне списка до них.
+# С10 (2026-10-23): комната, общий кубик, выдача кости. narrate-room-version-race (PUT 410
+# уже проходит), viewer-projection-api и roll-binding упираются в /api/narrate — вне списка до С18.
+test/free-dice-api.test.mjs           # общий кубик: права, закрытый набор граней, проекция комнаты и SSE второму игроку
+test/recovery-required-api.test.mjs   # испорченная кампания: GET /api/rooms отказывает, сервер и соседняя кампания живы
