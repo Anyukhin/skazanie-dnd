@@ -18,3 +18,7 @@
 # С2 (2026-10-23): в Rust пока только вход, сессии и health — зелёные файлы целиком.
 test/test-network-isolation.test.mjs  # запуск бинаря только набором и с изолированным окружением
 test/storage-backup-cli.test.mjs      # отметка писателя storage у живого сервера (sk_infra::backup_service), остальное — CLI без сервера
+
+# С4 (2026-10-23): служебные маршруты и справочники.
+test/ruleset-activation-guard.test.mjs  # отказ старта с DND_DEFAULT_RULESET_ID=dnd_5e_2014
+test/speech-input-api.test.mjs          # speech status и transcribe: права, WAV, 503/502, окно попыток
