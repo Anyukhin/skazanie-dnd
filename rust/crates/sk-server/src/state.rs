@@ -182,6 +182,8 @@ impl AppState {
         };
         let dice = SharedDice::new(injected.dice.unwrap_or_else(|| Box::new(sk_dice::DiceService::system())));
         let streams: StreamFactory = injected.streams.unwrap_or_else(|| crate::streams::live_factory(database.clone(), clock.clone(), LiveOptions::default()));
+        // С13: импортёр TaleSpire для движка и библиотека карт (`index.mjs:352–356`).
+        crate::routes::map_import::install(&config);
         let core = start_core(database, storage.join("engine").join("roll-registry.json"), dice, clock.clone(), streams)?;
         Ok(Self { config, accounts: Arc::new(accounts), core, ledger, architect_usage, rules, models, limits: Limits::new(clock), routes: crate::routes::table(injected.extra_routes) })
     }

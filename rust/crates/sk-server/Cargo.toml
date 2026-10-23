@@ -51,6 +51,10 @@ sk-chargen = { path = "../sk-chargen" }
 sk-director = { path = "../sk-director" }
 sk-economy = { path = "../sk-economy" }
 sk-encounters = { path = "../sk-encounters" }
+# С13: место на карте мира (`worldLocationById`) и импорт слэба TaleSpire
+# (`importTaleSpireSlab` — предпросмотр и импортёр движка).
+sk-geometry = { path = "../sk-geometry" }
+sk-talespire = { path = "../sk-talespire" }
 sk-infra = { path = "../sk-infra" }
 sk-narration = { path = "../sk-narration" }
 sk-narration-base = { path = "../sk-narration-base" }

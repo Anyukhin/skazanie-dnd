@@ -243,8 +243,9 @@ pub fn persist_authoritative_projection(
 }
 
 /// Разбор плана Rules Engine для исполнителя (`authoritativeExecutor` JS
-/// держит `rulesEngine` с общим `diceService`).
-fn with_rules_plan<T>(core: &GameCore, operation: impl FnOnce(&sk_store::executor::ResolvePlan<'_>) -> T) -> T {
+/// держит `rulesEngine` с общим `diceService`). `pub(crate)` — С13: команды
+/// карты (`routes::map_import`) идут через тот же исполнитель.
+pub(crate) fn with_rules_plan<T>(core: &GameCore, operation: impl FnOnce(&sk_store::executor::ResolvePlan<'_>) -> T) -> T {
     let engine = std::cell::RefCell::new(sk_rules::resolve::api::RulesEngine::new(Box::new(sk_rules::dice_record::ServiceDice::new(core.dice.clone()))));
     let resolve = |commands: &[Value], state: &Value, context: &Value| -> Result<Value, sk_core::RuleError> {
         let plan = json!({ "proposed_commands": commands });
