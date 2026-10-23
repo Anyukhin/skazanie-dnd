@@ -65,3 +65,6 @@ test/roll-binding.test.mjs               # проверку исполняет �
 test/roll-reservation-api.test.mjs       # резерв броска: несостоявшийся commit возвращает кость
 test/nonstandard-action-api.test.mjs     # свободный трюк: check → roll → commit и replay после restart
 test/action-sequence-roll-api.test.mjs   # план из шагов: бросок первого шага по HTTP
+
+# С13 (2026-10-23): импорт и перестройка карт.
+test/map-import-api.test.mjs  # тело не объект и граница 500; предпросмотр, применение, перестройка, повтор и конфликт ключа, права, обход через /commands (404 до С18 — тоже отказ)
