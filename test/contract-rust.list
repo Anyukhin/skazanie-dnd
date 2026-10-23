@@ -100,3 +100,7 @@ test/stream-viewer-isolation-api.test.mjs  # поток не выдаёт чуж
 test/summon-expiry-api.test.mjs            # истечение призыва
 test/thrown-flask-http.test.mjs            # бросок флакона: эффект, права, повтор, replay
 test/wand-of-magic-missiles-api.test.mjs   # жезл «Волшебных стрел»: заряды и повтор
+
+# С14 (2026-10-23): торговцы — управление, сборка и витрина. merchant-api проходит
+# lifecycle, сборку и GET витрины, но торгует через POST merchants/:id/commands (С18.2) — вне списка до неё.
+test/merchant-lifecycle-api.test.mjs  # lifecycle-команды ведущего: права, ключ, повтор и конфликт, устаревшая версия, сборка магазина, restart, лимит 60
