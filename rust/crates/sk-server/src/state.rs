@@ -156,6 +156,9 @@ pub struct AppState {
     pub limits: Limits,
     /// Упорядоченная таблица маршрутов (`routes::table`).
     pub routes: Vec<Route>,
+    /// С12 (правка общего файла): портреты NPC, иллюстрации мест и картинки
+    /// предметов — все через учёт расхода (`index.mjs:253–269, 2971–2974`).
+    pub images: crate::routes::assets::Images,
 }
 
 pub type Shared = Arc<AppState>;
@@ -185,7 +188,8 @@ impl AppState {
         // С13: импортёр TaleSpire для движка и библиотека карт (`index.mjs:352–356`).
         crate::routes::map_import::install(&config);
         let core = start_core(database, storage.join("engine").join("roll-registry.json"), dice, clock.clone(), streams)?;
-        Ok(Self { config, accounts: Arc::new(accounts), core, ledger, architect_usage, rules, models, limits: Limits::new(clock), routes: crate::routes::table(injected.extra_routes) })
+        let images = build_images(&config, &ledger)?;
+        Ok(Self { config, accounts: Arc::new(accounts), core, ledger, architect_usage, rules, models, limits: Limits::new(clock), routes: crate::routes::table(injected.extra_routes), images })
     }
 
     /// Клиент для ролей агентов: `apiKey ? llmClient : null` (310, 397–399…).
@@ -211,6 +215,41 @@ impl AppState {
 // блокирующем потоке ядра, где ждать поток ядра нельзя (рецензия С0,
 // CORE-07). Уничтожение `CoreHandle` только закрывает приём заданий, а
 // дожидается ядра явно `main` и тестовый набор (`core.shutdown()`).
+
+/// С12 (правка общего файла): генераторы картинок собираются только здесь
+/// (AGENTS §4) и только с учётом расхода: сервисам портретов и иллюстраций
+/// отдаётся ledger, генераторы предметов закрыты в `ItemImages`, который
+/// резервирует расход до запроса. Транспорт — `fetch` поверх `reqwest`;
+/// без ключа сервисы не настроены и в сеть не ходят.
+fn build_images(config: &Config, ledger: &Arc<DurableUsageLedger>) -> Result<crate::routes::assets::Images, String> {
+    use sk_chargen::location_illustrations::{LocationIllustrationService, LocationIllustrationServiceOptions};
+    use sk_chargen::npc_portraits::{ImageGeneratorSource, ImageUsageLedger, NpcPortraitService, NpcPortraitServiceOptions};
+    use sk_infra::image_generation::{create_router_image_generator, ImageHttpTransport, RouterImageGeneratorOptions};
+    let transport: Arc<dyn ImageHttpTransport> = Arc::new(sk_agents_base::llm_client::RouterImageTransport::new().map_err(|error| error.to_string())?);
+    let usage: Arc<dyn ImageUsageLedger> = ledger.clone();
+    let portraits = NpcPortraitService::new(NpcPortraitServiceOptions {
+        storage_dir: config.storage_dir.clone(),
+        image_model: config.image_model.clone(),
+        api_key: config.api_key.clone(),
+        base_url: config.base_url.clone(),
+        generator: ImageGeneratorSource::Transport(transport.clone()),
+        usage_ledger: Some(usage.clone()),
+    });
+    let illustrations = LocationIllustrationService::new(LocationIllustrationServiceOptions {
+        storage_dir: config.storage_dir.clone(),
+        image_model: config.image_model.clone(),
+        api_key: config.api_key.clone(),
+        base_url: config.base_url.clone(),
+        generator: ImageGeneratorSource::Transport(transport.clone()),
+        usage_ledger: Some(usage),
+    });
+    let item_generator = |aspect_ratio: &str| {
+        let options = RouterImageGeneratorOptions { base_url: config.base_url.clone(), api_key: config.api_key.clone(), aspect_ratio: aspect_ratio.into(), ..RouterImageGeneratorOptions::default() };
+        create_router_image_generator(options, transport.clone()).map_err(|error| error.to_string())
+    };
+    let items = crate::routes::assets::ItemImages::new(item_generator("1:1")?, item_generator("16:9")?, ledger.clone(), config.image_model.clone(), config.storage_dir.join("generated").join("items"));
+    Ok(crate::routes::assets::Images { portraits, illustrations, items })
+}
 
 fn start_core(database: PathBuf, roll_file: PathBuf, dice: SharedDice, clock: Clock, streams: StreamFactory) -> Result<CoreHandle, String> {
     CoreHandle::start("skazanie-core", move || {

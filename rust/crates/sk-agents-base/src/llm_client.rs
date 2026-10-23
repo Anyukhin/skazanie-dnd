@@ -47,6 +47,8 @@ pub use sk_infra::usage_ledger::{LlmClient, LlmError, LlmFuture};
 mod abort;
 mod fake;
 mod fallback;
+// С12: транспорт генератора картинок (`fetch` для `/images`).
+mod image_http;
 mod router_ai;
 mod sse;
 
@@ -58,6 +60,7 @@ mod tests;
 pub use abort::{AbortController, AbortSignal};
 pub use fake::{FakeHandler, FakeLlm, FakeLlmConfig, FakeReply};
 pub use fallback::{FallbackLlmClient, FallbackLlmClientConfig, FallbackMember};
+pub use image_http::RouterImageTransport;
 pub use router_ai::{RouterAiClient, RouterAiClientConfig};
 pub use sse::{parse_router_ai_event_stream, ChunkSource, StreamOptions, StreamResult, VecChunks};
 

@@ -105,7 +105,8 @@ pub(super) struct Prepared {
     streaming: bool,
 }
 
-fn build_http_client() -> Result<reqwest::Client, LlmError> {
+// С12: виден транспорту картинок (`image_http.rs`) — тот же TLS.
+pub(super) fn build_http_client() -> Result<reqwest::Client, LlmError> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let builder = rustls::ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()
