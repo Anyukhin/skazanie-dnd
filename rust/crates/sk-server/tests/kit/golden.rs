@@ -186,7 +186,8 @@ pub async fn replay(server: &TestServer, exchanges: &[Exchange]) -> Vec<Mismatch
         if response.status != exchange.status {
             mismatches.push(Mismatch { index, request: label.clone(), what: format!("статус {} вместо {}: {}", response.status, exchange.status, response.text().chars().take(300).collect::<String>()) });
         }
-        let body = if response.body.is_empty() { Value::Null } else { serde_json::from_slice(&response.body).unwrap_or_else(|_| Value::String(response.text())) };
+        // Как `createClient` JS: не-JSON и пустое тело — `null`.
+        let body = serde_json::from_slice(&response.body).unwrap_or(Value::Null);
         let actual = normalize(&body);
         if actual != exchange.body_norm {
             mismatches.push(Mismatch { index, request: label.clone(), what: format!("тело\n  Rust: {actual}\n  JS:   {}", exchange.body_norm) });
