@@ -14,8 +14,9 @@
 //!   [`ACCEPT_BACKOFF`], как `axum::serve`;
 //! - остановка: приём прекращается, текущие соединения дожидаются до
 //!   предела, который выбирает вызывающий по причине остановки. Долгие тела
-//!   (живой поток С9) сами не кончаются: С9 закрывает их кадром до этого
-//!   ожидания — точка подключения отмечена в `main.rs`.
+//!   (живой поток С9) сами не кончаются: их тела заканчиваются
+//!   ([`crate::streams::close_all`]) до этого ожидания — и у `main.rs`, и у
+//!   тестового набора.
 
 use std::future::Future;
 use std::time::Duration;
@@ -38,6 +39,7 @@ fn transient(error: &std::io::Error) -> bool {
 /// Принимать соединения, пока не завершится `shutdown`; затем дождаться
 /// текущих соединений не дольше `grace(&причина)` и вернуть причину.
 pub async fn serve<T>(listener: tokio::net::TcpListener, state: Shared, shutdown: impl Future<Output = T>, grace: impl FnOnce(&T) -> Duration) -> T {
+    let streams = state.clone();
     let router = crate::app(state);
     let graceful = hyper_util::server::graceful::GracefulShutdown::new();
     tokio::pin!(shutdown);
@@ -70,6 +72,7 @@ pub async fn serve<T>(listener: tokio::net::TcpListener, state: Shared, shutdown
         }
     };
     drop(listener);
+    crate::streams::close_all(&streams).await;
     let _ = tokio::time::timeout(grace(&outcome), graceful.shutdown()).await;
     outcome
 }

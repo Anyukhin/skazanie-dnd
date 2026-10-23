@@ -33,7 +33,7 @@ use crate::core::{CoreHandle, GameCore};
 use crate::dispatch::Route;
 use crate::limits::Limits;
 use crate::routes::catalog::RuleCatalog;
-use crate::streams::{NoStreams, StreamFactory, StreamRegistry};
+use crate::streams::{LiveOptions, StreamFactory};
 
 /// Общие кости: один `DiceService` на ядро, реестр бросков и движок, как
 /// единственный `diceService` JS.
@@ -124,8 +124,8 @@ pub struct Injected {
     pub llm: Option<LlmFactory>,
     /// Часы окон запросов и реестра бросков; `None` — системные.
     pub clock: Option<Clock>,
-    /// Сборщик реестра живых потоков (С9), вызывается на потоке ядра;
-    /// `None` — заглушка С0.
+    /// Сборщик реестра живых потоков, вызывается на потоке ядра; `None` —
+    /// настоящий реестр С9 (`streams::LiveStreams`) над базой хранилища.
     pub streams: Option<StreamFactory>,
     /// Дополнительные маршруты (тесты границы); встают в таблицу по номеру строки.
     pub extra_routes: Vec<Route>,
@@ -181,7 +181,7 @@ impl AppState {
             None => LlmClients::default(),
         };
         let dice = SharedDice::new(injected.dice.unwrap_or_else(|| Box::new(sk_dice::DiceService::system())));
-        let streams: StreamFactory = injected.streams.unwrap_or_else(|| Box::new(|| Box::new(NoStreams) as Box<dyn StreamRegistry>));
+        let streams: StreamFactory = injected.streams.unwrap_or_else(|| crate::streams::live_factory(database.clone(), clock.clone(), LiveOptions::default()));
         let core = start_core(database, storage.join("engine").join("roll-registry.json"), dice, clock.clone(), streams)?;
         Ok(Self { config, accounts: Arc::new(accounts), core, ledger, architect_usage, rules, models, limits: Limits::new(clock), routes: crate::routes::table(injected.extra_routes) })
     }
@@ -215,6 +215,9 @@ fn start_core(database: PathBuf, roll_file: PathBuf, dice: SharedDice, clock: Cl
         let events = sk_tactics::cutover_audit::open_game_store(&database, Arc::new(sk_tactics::cutover_audit::GameReducer::new()))?;
         let options = RollRegistryOptions { storage_file: Some(roll_file), now: clock, ..RollRegistryOptions::default() };
         let rolls = RollRegistry::new(Box::new(dice.clone()), options).map_err(|error| error.to_string())?;
-        Ok(GameCore { events: Arc::new(events), rolls: std::cell::RefCell::new(rolls), dice, streams: streams(), room_hooks: std::cell::RefCell::default() })
+        let core = GameCore { events: Arc::new(events), rolls: std::cell::RefCell::new(rolls), dice, streams: streams()?, room_hooks: std::cell::RefCell::default() };
+        // С9: рассылка комнаты на каждую запись проекции (`onRoomSaved`, 2829–2835).
+        crate::streams::install(&core);
+        Ok(core)
     })
 }

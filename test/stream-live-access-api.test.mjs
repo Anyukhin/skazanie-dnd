@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { startTestServer } from './kit/http.mjs'
+import { expireSession } from './kit/sessions.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -137,20 +137,6 @@ async function expectRevoked(stream, reason, maxVersion) {
   assert.ok(rooms.every((version) => version <= maxVersion), `отозванный поток получил комнату новее ${maxVersion}: ${rooms}`)
 }
 
-/** Истекает ровно одна сессия — по хешу её токена, как и хранит её сервер. */
-function expireSession(storage, cookie) {
-  const token = decodeURIComponent(cookie.slice(cookie.indexOf('=') + 1))
-  const tokenHash = createHash('sha256').update(token).digest('hex')
-  const file = join(storage, 'auth.json')
-  const auth = JSON.parse(readFileSync(file, 'utf8'))
-  const session = auth.sessions.find((candidate) => candidate.tokenHash === tokenHash)
-  assert.ok(session, 'сессия для истечения не найдена')
-  session.expiresAt = Date.now() - 1
-  const temporary = `${file}.${process.pid}.tmp`
-  writeFileSync(temporary, JSON.stringify(auth, null, 2), 'utf8')
-  renameSync(temporary, file)
-}
-
 async function bootServer(t, prefix) {
   // Потоки обрываются раньше остановки сервера: этот t.after стоит до запуска.
   const aborts = []
@@ -165,7 +151,6 @@ async function bootServer(t, prefix) {
     setupToken: 'live-access-setup',
     env: { DOTENV_CONFIG_PATH: emptyEnv },
   })
-  const storage = server.storageDir
   const baseUrl = server.baseUrl
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -174,7 +159,7 @@ async function bootServer(t, prefix) {
   assert.equal(admin.status, 201, admin.text)
   const adminCookie = sessionCookie(admin)
   return {
-    storage,
+    kit: server,
     baseUrl,
     adminCookie,
     async stream(campaignId, cookie) {
@@ -254,7 +239,8 @@ test('logout и истечение сессии закрывают поток т
   // Истечение второго входа: события об этом нет, поток закрывает ближайшая
   // рассылка — и она же уже не считает героя в сети.
   const beforeExpiry = await server.version('LIVSES')
-  expireSession(server.storage, firstSecondLogin)
+  // Истекает ровно одна сессия — по хешу её токена, как и хранит её сервер.
+  await expireSession(server.kit, firstSecondLogin)
   assert.equal((await request(server.baseUrl, '/api/auth/me', { cookie: firstSecondLogin })).body.user, null)
   await server.commit('LIVSES', 'hero-2', 'live-after-expiry')
   await expectRevoked(firstB, 'session_ended', beforeExpiry)

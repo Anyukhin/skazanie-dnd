@@ -95,11 +95,13 @@ pub struct Options {
     /// Последняя правка настроек перед `AppState::open` (переменные
     /// сервера, которые JS-тест передал бы через `env`).
     pub configure: Option<Box<dyn FnOnce(&mut Config)>>,
+    /// Настоящий реестр живых потоков (С9) вместо [`RecordingStreams`].
+    pub live_streams: Option<sk_server::streams::LiveOptions>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { dist: true, admin_setup_token: "setup-code".into(), extra_routes: Vec::new(), dice: None, model: Model::Forbidden, faults: None, configure: None }
+        Self { dist: true, admin_setup_token: "setup-code".into(), extra_routes: Vec::new(), dice: None, model: Model::Forbidden, faults: None, configure: None, live_streams: None }
     }
 }
 
@@ -192,7 +194,10 @@ impl TestServer {
             dice: Some(options.dice.unwrap_or_else(|| dice::fixed(10))),
             llm: Some(llm),
             clock: None,
-            streams: Some(Box::new(move || Box::new(recorder) as Box<dyn StreamRegistry>)),
+            streams: Some(match options.live_streams {
+                Some(live) => sk_server::streams::live_factory(config.storage_dir.join("skazanie.sqlite"), Arc::new(sk_core::clock::now_ms), live),
+                None => Box::new(move || Ok(Box::new(recorder) as Box<dyn StreamRegistry>)),
+            }),
             extra_routes: options.extra_routes,
         };
         let state = Arc::new(AppState::open(config, injected).expect("состояние сервера"));

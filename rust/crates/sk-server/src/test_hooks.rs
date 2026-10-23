@@ -33,7 +33,8 @@
 //! процесса JS, — тесты в одном процессе не мешают друг другу.
 //!
 //! Служебная подкоманда `skazanie-server journal …` (журнал глазами теста,
-//! `test/kit/journal.mjs`) — [`journal_cli`], тоже только с фичей.
+//! `test/kit/journal.mjs`) — [`journal_cli`], тоже только с фичей; истечение
+//! сессии `skazanie-server session …` (`test/kit/sessions.mjs`) — [`session_cli`].
 
 use std::path::Path;
 
@@ -44,6 +45,7 @@ use sk_store::{CommitRequest, CommitResult, EventStore, StoreResult};
 use crate::core::{CoreError, CoreHandle};
 
 pub mod journal_cli;
+pub mod session_cli;
 
 /// Переменная правил костей.
 pub const DICE_ENV: &str = "DND_TEST_DICE_RULES";
