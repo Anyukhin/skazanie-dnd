@@ -1,0 +1,5507 @@
+{
+  "format": "skazanie.golden/1",
+  "scenario": "настройки ИИ, редакция и домашние правила: чтение, права, проверки, смена, повтор, бой, летопись",
+  "exchanges": [
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/auth/setup-admin",
+      "headers": {},
+      "body": {
+        "email": "gm@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Ведущий",
+        "setupToken": "setup-code"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "setupRequired": false
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "anya@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Аня"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "boris@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Борис"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "vera@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Вера"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "TALE-7",
+        "name": "Сказ",
+        "bootstrap": {
+          "partyName": "Двое",
+          "slotCount": 2,
+          "rulesetId": "srd_5_2_1",
+          "world": {
+            "premise": "Мост",
+            "startingLocation": "Переправа"
+          }
+        }
+      },
+      "status": 201,
+      "body_norm": "<c6>"
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-7/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-slot-2"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "TALE-7",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-slot-2"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/TALE-7/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:7>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "TALE-7",
+        "hero_ids": [
+          "hero-slot-2"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "TALE-7",
+              "role": "player",
+              "heroIds": [
+                "hero-slot-2"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "IMPORT-7",
+        "state": {
+          "sessionCode": "IMPORT-7",
+          "campaign": "Импорт IMPORT-7",
+          "partyName": "Двое",
+          "partyMemberIds": [
+            "hero-ivan"
+          ],
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "messages": [],
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          }
+        }
+      },
+      "status": 201,
+      "body_norm": "<c6>"
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "HR-MULTI",
+        "state": {
+          "sessionCode": "HR-MULTI",
+          "campaign": "Импорт HR-MULTI",
+          "partyName": "Двое",
+          "partyMemberIds": [
+            "hero-ivan"
+          ],
+          "players": [
+            {
+              "id": "hero-ivan",
+              "character": "Иван",
+              "name": "Иван",
+              "hp": 10,
+              "maxHp": 10,
+              "x": 0,
+              "y": 0
+            }
+          ],
+          "messages": [],
+          "scene": {
+            "title": "Начало",
+            "location": "Таверна",
+            "mood": "",
+            "objective": "",
+            "turn": 0,
+            "cells": []
+          }
+        }
+      },
+      "status": 201,
+      "body_norm": "<c6>"
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/tale-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": false,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/NOPE-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-7/settings?x=1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/IMPORT-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована при импорте состояния без журнала событий",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PUT",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "DELETE",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/TALE_7/settings",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "improvMode": "chaos"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Настройки ИИ может менять только владелец кампании"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "improvMode": "chaos"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Настройки ИИ может менять только владелец кампании"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/NOPE-7/settings",
+      "headers": {},
+      "body": {
+        "improvMode": "chaos"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/IMPORT-7/settings",
+      "headers": {},
+      "body": {
+        "improvMode": "chaos"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Настройки ИИ может менять только владелец кампании"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": [],
+      "status": 400,
+      "body_norm": {
+        "error": "Тело запроса должно быть JSON-объектом",
+        "code": "INVALID_JSON_BODY"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "model": "vendor/unknown"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Эта модель не входит в серверный список разрешённых моделей",
+        "code": "AI_MODEL_NOT_ALLOWED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "model": null
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Эта модель не входит в серверный список разрешённых моделей",
+        "code": "AI_MODEL_NOT_ALLOWED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "narratorStyle": "grim"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный стиль рассказчика",
+        "code": "NARRATOR_STYLE_NOT_ALLOWED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "improvMode": "wild"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный режим импровизации",
+        "code": "IMPROV_MODE_INVALID"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "reasoningLevel": "ultra"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный уровень рассуждений",
+        "code": "REASONING_LEVEL_INVALID"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "model": "google/gemini-2.5-flash-lite",
+        "reasoningLevel": "deep"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Выбранная модель не поддерживает этот уровень рассуждений",
+        "code": "REASONING_LEVEL_NOT_SUPPORTED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {},
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "model": " openai/gpt-6-luna ",
+        "reasoningLevel": " DEEP ",
+        "narratorStyle": "FORMAL",
+        "improvMode": "Chaos"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "formal",
+          "improvMode": "chaos",
+          "reasoningLevel": "deep"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "improvMode": "chaos"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "formal",
+          "improvMode": "chaos",
+          "reasoningLevel": "deep"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "model": "google/gemini-2.5-flash-lite"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "chaos",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "improvMode": "story",
+        "reasoningLevel": "auto"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": false,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "rulesetId": "dnd_5e_2014"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Для смены редакции нужен idempotency_key",
+        "code": "IDEMPOTENCY_KEY_REQUIRED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "rulesetId": "nope",
+        "idempotency_key": "rs-nope"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный ruleset «nope»",
+        "code": "RULESET_INVALID"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "rulesetId": null,
+        "idempotency_key": "rs-null"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный ruleset «undefined»",
+        "code": "RULESET_INVALID"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "rulesetId": "dnd_5e_2014",
+        "idempotency_key": "rs-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "dnd_5e_2014",
+            "version": "2014.1.0",
+            "label": "D&D 5e 2014",
+            "mechanicsStatus": "partial",
+            "availability": "preview"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "rulesetId": "dnd_5e_2014",
+        "idempotency_key": "rs-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "dnd_5e_2014",
+            "version": "2014.1.0",
+            "label": "D&D 5e 2014",
+            "mechanicsStatus": "partial",
+            "availability": "preview"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "ruleset_id": "srd_5_2_1",
+        "idempotency_key": "rs-1"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Этот idempotency_key уже использован для другой редакции",
+        "code": "IDEMPOTENCY_CONFLICT"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {
+        "x-idempotency-key": "rs-2"
+      },
+      "body": {
+        "ruleset_id": " srd_5_2_1 "
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "rulesetId": "dnd_5e_2014",
+        "idempotency_key": "rs-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": true,
+          "locked": false,
+          "lockReason": null,
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "PATCH",
+      "path": "/api/campaigns/IMPORT-7/settings",
+      "headers": {},
+      "body": {
+        "rulesetId": "dnd_5e_2014",
+        "idempotency_key": "rs-import"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Редакцию можно менять только до первого игрового события; создайте новую кампанию для другой редакции",
+        "code": "CAMPAIGN_RULESET_LOCKED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:nope": true
+        },
+        "idempotency_key": "hr-0"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Это домашнее правило нельзя переключить в идущей кампании",
+        "code": "HOUSE_RULE_NOT_TOGGLEABLE"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": "нет"
+        },
+        "idempotency_key": "hr-0"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нужно явное включено или выключено",
+        "code": "HOUSE_RULE_VALUE_INVALID"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": false
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Для смены домашнего правила нужен idempotency_key",
+        "code": "IDEMPOTENCY_KEY_REQUIRED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": false
+        },
+        "idempotency_key": "hr-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована событием CampaignHouseRuleChanged",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": false
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": false
+        },
+        "idempotency_key": "hr-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована событием CampaignHouseRuleChanged",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": false
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": true
+        },
+        "idempotency_key": "hr-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована событием CampaignHouseRuleChanged",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": false
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": false
+        },
+        "idempotency_key": "hr-2"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована событием CampaignHouseRuleChanged",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": false
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": [
+          "house:bg3-opening-strike"
+        ],
+        "idempotency_key": "hr-3"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована событием CampaignHouseRuleChanged",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": false
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": true
+        },
+        "idempotency_key": "hr-4",
+        "improvMode": "chaos"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "chaos",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована событием CampaignHouseRuleChanged",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "PATCH",
+      "path": "/api/campaigns/IMPORT-7/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-spell-hands": false
+        },
+        "idempotency_key": "hr-import"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована при импорте состояния без журнала событий",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "PATCH",
+      "path": "/api/campaigns/HR-MULTI/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": false,
+          "house:bg3-spell-hands": false
+        },
+        "idempotency_key": "hr-multi"
+      },
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована при импорте состояния без журнала событий",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": false
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "PATCH",
+      "path": "/api/campaigns/HR-MULTI/settings",
+      "headers": {},
+      "body": {
+        "houseRules": {
+          "house:bg3-opening-strike": true,
+          "house:nope": true
+        },
+        "idempotency_key": "hr-multi-2"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Это домашнее правило нельзя переключить в идущей кампании",
+        "code": "HOUSE_RULE_NOT_TOGGLEABLE"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/campaigns/HR-MULTI/settings",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "openai/gpt-6-luna",
+          "narratorStyle": "neutral",
+          "improvMode": "story",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована при импорте состояния без журнала событий",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/campaigns/TALE-7/settings",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "settings": {
+          "model": "google/gemini-2.5-flash-lite",
+          "narratorStyle": "formal",
+          "improvMode": "chaos",
+          "reasoningLevel": "auto"
+        },
+        "availableModels": [
+          "openai/gpt-6-luna",
+          "google/gemini-2.5-flash-lite",
+          "z-ai/glm-5.3-flash",
+          "deepseek/deepseek-v4-flash",
+          "openai/gpt-4.1-nano",
+          "openai/gpt-6-luna-pro",
+          "meta/muse-spark-1.3"
+        ],
+        "modelOptions": [
+          {
+            "id": "openai/gpt-6-luna",
+            "label": "GPT-6 Luna",
+            "description": "точнее всех с фактами, быстро решает в бою и дешевле всех; текст суше",
+            "reasoningLevels": [
+              "auto",
+              "thoughtful",
+              "deep"
+            ],
+            "recommended": true
+          },
+          {
+            "id": "google/gemini-2.5-flash-lite",
+            "label": "Gemini 2.5 Flash Lite",
+            "description": "быстро создаёт мир и аккуратна в тексте, но хуже держит решения Режиссёра",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "z-ai/glm-5.3-flash",
+            "label": "GLM-5.3 Flash",
+            "description": "живой текст, но часто досочиняет детали и не успевает создать мир",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "deepseek/deepseek-v4-flash",
+            "label": "DeepSeek V4 Flash",
+            "description": "дёшево, но досочиняет и изредка выдаёт служебный текст вместо ответа",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-4.1-nano",
+            "label": "GPT-4.1 Nano",
+            "description": "последний резерв: очень быстро, но бедный текст",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "openai/gpt-6-luna-pro",
+            "label": "GPT-6 Luna Pro",
+            "description": "чуть богаче новый мир, но каждый ход на секунду медленнее и в 3–5 раз дороже",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          },
+          {
+            "id": "meta/muse-spark-1.3",
+            "label": "Muse Spark 1.3",
+            "description": "экспериментальная модель для ручного выбора",
+            "reasoningLevels": [
+              "auto"
+            ],
+            "recommended": false
+          }
+        ],
+        "reasoningLevels": [
+          {
+            "id": "auto",
+            "label": "Авто",
+            "description": "без размышлений: быстрее всего и, по замеру, без выдуманных фактов"
+          },
+          {
+            "id": "thoughtful",
+            "label": "Вдумчивее",
+            "description": "Режиссёр и NPC коротко размышляют; ответ на секунду-две дольше, точнее по замеру не стало"
+          },
+          {
+            "id": "deep",
+            "label": "Глубже",
+            "description": "рассказчик и Режиссёр думают дольше всех; реплика NPC — до 8 секунд"
+          }
+        ],
+        "narratorStyles": [
+          {
+            "id": "neutral",
+            "label": "Нейтральный"
+          },
+          {
+            "id": "formal",
+            "label": "Официальный"
+          },
+          {
+            "id": "ironic",
+            "label": "Ироничный"
+          }
+        ],
+        "improvModes": [
+          {
+            "id": "story",
+            "label": "Сюжет",
+            "description": "свобода в сценах, но главная линия в приоритете"
+          },
+          {
+            "id": "chaos",
+            "label": "Хаос",
+            "description": "можно всё, мир подстраивается под выбор отряда"
+          }
+        ],
+        "architectGenerationsToday": 0,
+        "architectAlertThreshold": 3,
+        "canManage": true,
+        "ruleset": {
+          "current": {
+            "id": "srd_5_2_1",
+            "version": "5.2.1",
+            "label": "D&D 2024",
+            "mechanicsStatus": "partial",
+            "availability": "active"
+          },
+          "available": [
+            {
+              "id": "dnd_5e_2014",
+              "version": "2014.1.0",
+              "editionFamily": "5e_2014",
+              "label": "D&D 5e 2014",
+              "description": "Правила 2014 года, как в «Книге игрока». Часть механик ещё в работе.",
+              "mechanicsStatus": "partial",
+              "availability": "preview",
+              "limitations": [
+                "Снаряжение и монстры пока общие с правилами 2024 года.",
+                "Часть различий между редакциями ещё не перенесена: такие правила работают по-2024."
+              ]
+            },
+            {
+              "id": "srd_5_2_1",
+              "version": "5.2.1",
+              "editionFamily": "5e_2024",
+              "label": "D&D 2024",
+              "description": "Правила 2024 года — поддерживаются лучше всего.",
+              "mechanicsStatus": "partial",
+              "availability": "active",
+              "limitations": [
+                "Часть классовых умений, заклинаний и существ пока объявляется словами."
+              ]
+            }
+          ],
+          "canChange": false,
+          "locked": true,
+          "lockReason": "Редакция зафиксирована событием CampaignHouseRuleChanged",
+          "houseRules": [
+            {
+              "id": "house:bg3-opening-strike",
+              "label": "Нападение как в BG3",
+              "description": "Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым",
+              "enabled": true
+            },
+            {
+              "id": "house:bg3-spell-hands",
+              "label": "Заклинания как в BG3",
+              "description": "Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»",
+              "enabled": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "journals": {
+    "TALE-7": [
+      {
+        "id": "improv-mode-TALE-7",
+        "text": "Режим импровизации изменён: Хаос — можно всё, мир подстраивается под выбор отряда."
+      },
+      {
+        "id": "ai-model-TALE-7",
+        "text": "Ведущий ИИ: GPT-6 Luna, рассуждения — глубже."
+      },
+      {
+        "id": "ai-model-TALE-7",
+        "text": "Ведущий ИИ: Gemini 2.5 Flash Lite, рассуждения — авто."
+      },
+      {
+        "id": "improv-mode-TALE-7",
+        "text": "Режим импровизации изменён: Сюжет — свобода в сценах, но главная линия в приоритете."
+      },
+      {
+        "id": "house-rule-TALE-7",
+        "text": "Домашнее правило «Нападение как в BG3» выключено. Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым."
+      },
+      {
+        "id": "house-rule-TALE-7",
+        "text": "Домашнее правило «Нападение как в BG3» включено. Удар из исследования проходит сразу, до инициативы, а ход нападающего в первом раунде остаётся целым. Выключено — по редакции: сначала инициатива, и удар исполняется, только если нападающий ходит первым."
+      },
+      {
+        "id": "improv-mode-TALE-7",
+        "text": "Режим импровизации изменён: Хаос — можно всё, мир подстраивается под выбор отряда."
+      }
+    ],
+    "IMPORT-7": [
+      {
+        "id": "house-rule-IMPORT-7",
+        "text": "Домашнее правило «Заклинания как в BG3» выключено. Жесты и материальный компонент заклинания не требуют свободной руки: оружие и щит в руках колдовать не мешают. Выключено — по редакции: нужна свободная рука, кроме черты «Боевой заклинатель»."
+      }
+    ]
+  }
+}
