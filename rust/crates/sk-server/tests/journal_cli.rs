@@ -91,3 +91,47 @@ fn seed_corruption_names_seed_snapshot_missing() {
     let broken = read(&storage, temp.path()).unwrap_err();
     assert!(broken.contains("CAMPAIGN_RECOVERY_REQUIRED") && broken.contains("SEED_SNAPSHOT_MISSING"), "{broken}");
 }
+
+/// Граница процесса: аргументы, stdin, stdout и коды выхода бинаря — как их
+/// читает `runRustTool` набора JS.
+#[test]
+fn binary_subcommand_speaks_json_over_stdio() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let temp = tempfile::tempdir().expect("временный каталог");
+    let storage = storage(temp.path());
+    let binary = env!("CARGO_BIN_EXE_skazanie-server");
+    let journal = |extra: &[&str], stdin: Option<&str>| {
+        let mut command = Command::new(binary);
+        command.arg("journal").arg("--storage").arg(&storage).arg("--campaign").arg(CODE).args(extra);
+        // Временный каталог процесса — родитель хранилища, как у набора JS.
+        command.env("NODE_ENV", "test").env("TMP", temp.path()).env("TEMP", temp.path()).env("TMPDIR", temp.path());
+        command.stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = command.spawn().expect("бинарь");
+        if let Some(input) = stdin {
+            child.stdin.take().expect("stdin").write_all(input.as_bytes()).expect("запись stdin");
+        }
+        let output = child.wait_with_output().expect("вывод");
+        (output.status.code(), String::from_utf8_lossy(&output.stdout).into_owned(), String::from_utf8_lossy(&output.stderr).into_owned())
+    };
+
+    let (code, stdout, stderr) = journal(&[], None);
+    assert_eq!(code, Some(0), "{stderr}");
+    let read: Value = serde_json::from_str(stdout.trim()).expect("stdout — JSON");
+    assert_eq!(read["state_version"], 2);
+    let (code, stdout, stderr) = journal(&["--at-version", "1", "--no-snapshots"], None);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(serde_json::from_str::<Value>(stdout.trim()).unwrap()["state"]["mechanics"]["world_time"]["elapsed_minutes"], 10);
+    let (code, stdout, stderr) = journal(&["--append"], Some(&json!({ "idempotency_key": "bin-append", "events": [time_event(1)] }).to_string()));
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(serde_json::from_str::<Value>(stdout.trim()).unwrap()["state_version"], 3);
+    let (code, stdout, stderr) = journal(&["--corrupt", "tail"], None);
+    assert_eq!((code, stdout.trim()), (Some(0), ""), "{stderr}");
+    let (code, _, stderr) = journal(&[], None);
+    assert_eq!(code, Some(1));
+    assert!(stderr.contains("CAMPAIGN_RECOVERY_REQUIRED"), "{stderr}");
+    let (code, _, stderr) = journal(&["--corrupt", "head"], None);
+    assert_eq!(code, Some(2));
+    assert!(stderr.contains("tail или seed"), "{stderr}");
+}
