@@ -159,7 +159,8 @@ impl Memberships for KnownMemberships {
 /// Стадия не применима (боя нет, перемирие, нет позиции) или упала —
 /// `{ turns: [], events: [] }`; упавшая пишет в журнал процесса, как
 /// `onError` координатора (375–377).
-async fn settle_combat_continuation(core: &GameCore, set: &Orchestration, campaign_id: &str, advance_npc: bool) -> Result<Vec<Value>, Failure> {
+/// `pub(crate)` — С18.3: сборка встречи (`routes::encounters`) зовёт ту же стадию.
+pub(crate) async fn settle_combat_continuation(core: &GameCore, set: &Orchestration, campaign_id: &str, advance_npc: bool) -> Result<Vec<Value>, Failure> {
     let loaded = core.events.load(campaign_id, &LoadOptions::default())?;
     let state = &loaded.state;
     let active = js::truthy(get(get(get(Some(state), "mechanics"), "combat"), "active"));
