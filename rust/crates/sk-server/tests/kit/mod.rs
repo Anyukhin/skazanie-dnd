@@ -1,54 +1,48 @@
-//! Минимальный тестовый набор С0 (полный делает С2, по образцу
-//! `test/kit/http.mjs`):
+//! Тестовый набор sk-server (С2) — по образцу `test/kit/` JS
+//! (`http.mjs:334–426`, `llm.mjs:151–291`):
 //!
 //! - [`TestServer`] — настоящий сервер на случайном порту `127.0.0.1` и во
-//!   временном каталоге; окружение процесса не читается (`Config::for_tests`),
-//!   ключа модели нет, клиент модели — [`ForbiddenLlm`] через учёт расхода,
-//!   кости детерминированы (`FixedRng`). Соединения обслуживает тот же цикл,
-//!   что и боевой сервер (`sk_server::serve`), на своём потоке и рантайме;
-//!   уничтожение останавливает его, ядро и только затем удаляет каталог;
-//! - [`Client`] — сырой HTTP/1.1 с cookie: адрес уходит как есть (`..`,
-//!   `//`, `%E0`), без нормализации клиентской библиотекой; ответ ждётся не
-//!   дольше [`CLIENT_TIMEOUT`];
-//! - [`RecordingStreams`] — заглушка реестра потоков, которая запоминает
-//!   вызовы отзыва и обновления.
+//!   временном каталоге. Окружение процесса не читается (`Config::for_tests`):
+//!   ключа модели нет, адрес модели локальный; клиент модели по умолчанию —
+//!   [`llm::ForbiddenLlm`] через учёт расхода; кости детерминированы
+//!   ([`dice`]). Соединения обслуживает тот же цикл, что у боевого сервера
+//!   (`sk_server::serve`), на своём потоке; уничтожение останавливает его,
+//!   ядро и только затем удаляет каталог;
+//! - [`client`] — сырой HTTP/1.1-клиент с cookie;
+//! - [`dice`] — кости: фиксированные, очередь, правила `skazanie.test-dice/1`;
+//! - [`llm`] — заглушки модели (`forbiddenLlm`, `scriptedLlm`);
+//! - [`fake_provider`] — локальный провайдер RouterAI (`startFakeProvider`);
+//! - [`golden`] — эталоны «Г», снятые с JS-сервера;
+//! - [`RecordingStreams`] — заглушка реестра потоков, запоминает вызовы.
+//!
+//! Сбои журнала (`skazanie.test-faults/1`) ставятся опцией [`Options::faults`]
+//! в ядро этого сервера; выходы `exit-*` в процессе теста не применимы — их
+//! проверяют контрактные тесты JS против бинаря.
 
 #![allow(dead_code)] // набор общий для нескольких файлов тестов
 
-use std::collections::BTreeMap;
+pub mod client;
+pub mod dice;
+pub mod fake_provider;
+pub mod golden;
+pub mod llm;
+
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use serde_json::{json, Value};
+use sk_agents_base::llm_client::{RouterAiClient, RouterAiClientConfig};
 use sk_core::indexmap::IndexSet;
-use sk_infra::usage_ledger::{LlmClient, LlmError, LlmFuture};
+use sk_dice::Dice;
 use sk_server::dispatch::Route;
 use sk_server::state::{LlmClients, Metered};
 use sk_server::streams::{Presence, StreamRegistry};
+use sk_server::test_hooks::CommitFaults;
 use sk_server::{AppState, Config, Injected};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-/// Клиент модели, который не отвечает никогда: тесты С0 модель не зовут.
-pub struct ForbiddenLlm;
-
-impl LlmClient for ForbiddenLlm {
-    fn model(&self) -> Option<String> {
-        Some("test/forbidden".into())
-    }
-
-    fn complete<'a>(&'a self, _input: &'a Value, _options: &'a Value) -> LlmFuture<'a, Result<Value, LlmError>> {
-        Box::pin(async { Err(LlmError::new("LLM_FORBIDDEN", "Тест не должен звать модель")) })
-    }
-
-    fn probe(&self) -> LlmFuture<'_, Result<Value, LlmError>> {
-        Box::pin(async { Err(LlmError::new("LLM_FORBIDDEN", "Тест не должен звать модель")) })
-    }
-
-    fn health(&self) -> Value {
-        json!([])
-    }
-}
+#[allow(unused_imports)] // не каждый файл тестов берёт всё
+pub use client::{Client, Req, TestResponse, CLIENT_TIMEOUT};
+pub use llm::ForbiddenLlm;
 
 /// Реестр потоков, который запоминает вызовы.
 #[derive(Default)]
@@ -73,22 +67,58 @@ impl StreamRegistry for RecordingStreams {
     }
 }
 
+/// Какой клиент модели получает сервер (всегда через учёт расхода).
+pub enum Model {
+    /// Обращение к модели — ошибка (`forbiddenLlm`), по умолчанию.
+    Forbidden,
+    /// Ответы по сценарию; тест держит ссылку и видит вызовы.
+    Scripted(Arc<llm::ScriptedLlm>),
+    /// Настоящий `RouterAiClient` против локальной заглушки провайдера:
+    /// сервер видит ключ (`configured: true`), запросы уходят только на
+    /// `127.0.0.1`.
+    Provider { base_url: String, model: String },
+    /// Без клиентов вовсе (демо-режим).
+    None,
+}
+
 /// Настройки запуска.
 pub struct Options {
     /// Создать `dist/` с `index.html` и чанком.
     pub dist: bool,
     pub admin_setup_token: String,
     pub extra_routes: Vec<Route>,
+    /// Кости; `None` — каждая грань 10 (`dice::fixed(10)`).
+    pub dice: Option<Box<dyn Dice + Send>>,
+    pub model: Model,
+    /// Сбои журнала этого сервера (`skazanie.test-faults/1`).
+    pub faults: Option<CommitFaults>,
+    /// Последняя правка настроек перед `AppState::open` (переменные
+    /// сервера, которые JS-тест передал бы через `env`).
+    pub configure: Option<Box<dyn FnOnce(&mut Config)>>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { dist: true, admin_setup_token: "setup-code".into(), extra_routes: Vec::new() }
+        Self { dist: true, admin_setup_token: "setup-code".into(), extra_routes: Vec::new(), dice: None, model: Model::Forbidden, faults: None, configure: None }
     }
 }
 
-/// Предел ожидания ответа клиентом: зависание сервера — падение теста.
-pub const CLIENT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+impl Options {
+    /// Сервер с клиентом модели против заглушки провайдера.
+    pub fn provider(provider: &fake_provider::FakeProvider, model: &str) -> Self {
+        Self { model: Model::Provider { base_url: provider.base_url(), model: model.into() }, ..Self::default() }
+    }
+
+    /// Сбои из JSON (`format` можно опустить).
+    pub fn with_faults(mut self, spec: serde_json::Value) -> Self {
+        let mut spec = spec;
+        if let Some(map) = spec.as_object_mut() {
+            map.entry("format").or_insert_with(|| serde_json::Value::from(sk_server::test_hooks::FAULTS_FORMAT));
+        }
+        self.faults = Some(CommitFaults::parse(&spec.to_string()).unwrap_or_else(|error| panic!("сбои: {error}")));
+        self
+    }
+}
 
 /// Содержимое `secret.txt` рядом с `dist/`: его не должна отдать раздача клиента.
 pub const SECRET: &str = "секрет-вне-dist";
@@ -111,6 +141,35 @@ pub fn write_dist(dir: &Path) {
     std::fs::write(dir.join("secret.txt"), SECRET).expect("секрет");
 }
 
+/// Клиенты модели по выбору теста — единственное место набора, где
+/// собирается `RouterAiClient` (сторож — `tests/model_clients_guard.rs`).
+fn model_clients(model: Model, config: &mut Config) -> sk_server::state::LlmFactory {
+    match model {
+        Model::Forbidden => Box::new(|ledger| Ok(LlmClients { llm: Some(Metered::wrap(ForbiddenLlm, ledger)), lore: Some(Metered::wrap(ForbiddenLlm, ledger)) })),
+        Model::Scripted(llm) => Box::new(move |ledger| Ok(LlmClients { llm: Some(Metered::wrap(llm.clone(), ledger)), lore: Some(Metered::wrap(llm, ledger)) })),
+        Model::None => Box::new(|_| Ok(LlmClients::default())),
+        Model::Provider { base_url, model } => {
+            assert!(fake_provider::is_local_provider_url(&base_url), "тестовый сервер не ходит во внешнюю сеть: {base_url}");
+            config.api_key = fake_provider::FAKE_PROVIDER_KEY.into();
+            config.base_url = base_url.clone();
+            config.model = model.clone();
+            config.fallback_models.clear();
+            Box::new(move |ledger| {
+                let client = RouterAiClient::new(RouterAiClientConfig {
+                    api_key: Some(fake_provider::FAKE_PROVIDER_KEY.into()),
+                    base_url: Some(base_url),
+                    model: Some(model),
+                    timeout_ms: Some(5_000.0),
+                    ..RouterAiClientConfig::default()
+                })
+                .map_err(|error| error.to_string())?;
+                let metered = Metered::wrap(client, ledger);
+                Ok(LlmClients { llm: Some(metered.clone()), lore: Some(metered) })
+            })
+        }
+    }
+}
+
 impl TestServer {
     pub async fn start() -> Self {
         Self::start_with(Options::default()).await
@@ -123,16 +182,23 @@ impl TestServer {
         }
         let mut config = Config::for_tests(dir.path());
         config.admin_setup_token = options.admin_setup_token;
+        let llm = model_clients(options.model, &mut config);
+        if let Some(configure) = options.configure {
+            configure(&mut config);
+        }
         let streams = Arc::new(RecordingStreams::default());
         let recorder = streams.clone();
         let injected = Injected {
-            dice: Some(Box::new(sk_dice::DiceService::deterministic(sk_dice::FixedRng(10), "roll"))),
-            llm: Some(Box::new(|ledger| Ok(LlmClients { llm: Some(Metered::wrap(ForbiddenLlm, ledger)), lore: Some(Metered::wrap(ForbiddenLlm, ledger)) }))),
+            dice: Some(options.dice.unwrap_or_else(|| dice::fixed(10))),
+            llm: Some(llm),
             clock: None,
             streams: Some(Box::new(move || Box::new(recorder) as Box<dyn StreamRegistry>)),
             extra_routes: options.extra_routes,
         };
         let state = Arc::new(AppState::open(config, injected).expect("состояние сервера"));
+        if options.faults.is_some() {
+            sk_server::test_hooks::install(&state.core, options.faults).await.expect("сбои журнала в ядро");
+        }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("порт");
         listener.set_nonblocking(true).expect("неблокирующий порт");
         let addr = listener.local_addr().expect("адрес");
@@ -153,7 +219,7 @@ impl TestServer {
     }
 
     pub fn client(&self) -> Client {
-        Client { addr: self.addr, cookies: BTreeMap::new() }
+        Client::new(self.addr)
     }
 
     pub fn storage(&self) -> PathBuf {
@@ -172,150 +238,5 @@ impl Drop for TestServer {
             let _ = thread.join();
         }
         self.state.core.shutdown();
-    }
-}
-
-/// Ответ сервера.
-#[derive(Debug, Clone)]
-pub struct TestResponse {
-    pub status: u16,
-    pub headers: Vec<(String, String)>,
-    pub body: Vec<u8>,
-}
-
-impl TestResponse {
-    pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.iter().find(|(key, _)| key.eq_ignore_ascii_case(name)).map(|(_, value)| value.as_str())
-    }
-
-    pub fn text(&self) -> String {
-        String::from_utf8_lossy(&self.body).into_owned()
-    }
-
-    pub fn json(&self) -> Value {
-        serde_json::from_slice(&self.body).unwrap_or_else(|_| Value::String(self.text()))
-    }
-}
-
-/// Запрос для [`Client::send`].
-pub struct Req<'a> {
-    pub method: &'a str,
-    pub target: &'a str,
-    pub body: Option<Vec<u8>>,
-    pub headers: Vec<(&'a str, String)>,
-}
-
-impl<'a> Req<'a> {
-    pub fn new(method: &'a str, target: &'a str) -> Self {
-        Self { method, target, body: None, headers: Vec::new() }
-    }
-
-    pub fn body(mut self, body: impl Into<Vec<u8>>) -> Self {
-        self.body = Some(body.into());
-        self
-    }
-
-    pub fn json(self, value: &Value) -> Self {
-        self.body(value.to_string()).header("content-type", "application/json")
-    }
-
-    pub fn header(mut self, name: &'a str, value: impl Into<String>) -> Self {
-        self.headers.push((name, value.into()));
-        self
-    }
-}
-
-/// Сырой клиент HTTP/1.1 с cookie.
-pub struct Client {
-    pub addr: SocketAddr,
-    pub cookies: BTreeMap<String, String>,
-}
-
-fn decode_chunked(mut raw: &[u8]) -> Vec<u8> {
-    let mut out = Vec::new();
-    loop {
-        let Some(line_end) = raw.windows(2).position(|pair| pair == b"\r\n") else { break };
-        let size = usize::from_str_radix(String::from_utf8_lossy(&raw[..line_end]).trim(), 16).unwrap_or(0);
-        raw = &raw[line_end + 2..];
-        if size == 0 || raw.len() < size {
-            break;
-        }
-        out.extend_from_slice(&raw[..size]);
-        raw = raw.get(size + 2..).unwrap_or(&[]);
-    }
-    out
-}
-
-impl Client {
-    pub async fn send(&mut self, request: Req<'_>) -> TestResponse {
-        let target = request.target.to_string();
-        let method = request.method.to_string();
-        let mut stream = tokio::net::TcpStream::connect(self.addr).await.expect("соединение");
-        let mut head = format!("{} {} HTTP/1.1\r\nhost: {}\r\nconnection: close\r\n", request.method, request.target, self.addr);
-        if !self.cookies.is_empty() {
-            let cookie = self.cookies.iter().map(|(key, value)| format!("{key}={value}")).collect::<Vec<_>>().join("; ");
-            head.push_str(&format!("cookie: {cookie}\r\n"));
-        }
-        for (name, value) in &request.headers {
-            head.push_str(&format!("{name}: {value}\r\n"));
-        }
-        let body = request.body.unwrap_or_default();
-        if !body.is_empty() || matches!(request.method, "POST" | "PUT" | "PATCH" | "DELETE") {
-            head.push_str(&format!("content-length: {}\r\n", body.len()));
-        }
-        head.push_str("\r\n");
-        stream.write_all(head.as_bytes()).await.expect("запись");
-        stream.write_all(&body).await.expect("тело");
-        let mut raw = Vec::new();
-        let read = tokio::time::timeout(CLIENT_TIMEOUT, stream.read_to_end(&mut raw)).await;
-        assert!(read.is_ok(), "сервер не ответил за {CLIENT_TIMEOUT:?}: {method} {target}");
-        let split = raw.windows(4).position(|window| window == b"\r\n\r\n").unwrap_or(raw.len());
-        let head = String::from_utf8_lossy(&raw[..split]).into_owned();
-        let mut lines = head.split("\r\n");
-        let status = lines.next().and_then(|line| line.split_whitespace().nth(1)).and_then(|code| code.parse().ok()).unwrap_or(0);
-        let headers: Vec<(String, String)> = lines.filter_map(|line| line.split_once(':').map(|(key, value)| (key.trim().to_lowercase(), value.trim().to_string()))).collect();
-        let mut body = raw.get(split + 4..).unwrap_or(&[]).to_vec();
-        if headers.iter().any(|(key, value)| key == "transfer-encoding" && value.contains("chunked")) {
-            body = decode_chunked(&body);
-        }
-        for (key, value) in &headers {
-            if key == "set-cookie" {
-                let pair = value.split(';').next().unwrap_or("");
-                if let Some((name, cookie)) = pair.split_once('=') {
-                    if value.contains("Max-Age=0") {
-                        self.cookies.remove(name);
-                    } else {
-                        self.cookies.insert(name.to_string(), cookie.to_string());
-                    }
-                }
-            }
-        }
-        TestResponse { status, headers, body }
-    }
-
-    pub async fn get(&mut self, target: &str) -> TestResponse {
-        self.send(Req::new("GET", target)).await
-    }
-
-    pub async fn post(&mut self, target: &str, body: &Value) -> TestResponse {
-        self.send(Req::new("POST", target).json(body)).await
-    }
-
-    pub async fn post_raw(&mut self, target: &str, body: impl Into<Vec<u8>>) -> TestResponse {
-        self.send(Req::new("POST", target).body(body).header("content-type", "application/json")).await
-    }
-
-    /// Администратор через `setup-admin` (код `setup-code`).
-    pub async fn setup_admin(&mut self) -> Value {
-        let response = self.post("/api/auth/setup-admin", &json!({ "email": "gm@mail.ru", "password": "длинный-пароль", "name": "Ведущий", "setupToken": "setup-code" })).await;
-        assert_eq!(response.status, 201, "{}", response.text());
-        response.json()["user"].clone()
-    }
-
-    /// Игрок через `register`.
-    pub async fn register(&mut self, email: &str) -> Value {
-        let response = self.post("/api/auth/register", &json!({ "email": email, "password": "длинный-пароль", "name": "Аня" })).await;
-        assert_eq!(response.status, 201, "{}", response.text());
-        response.json()["user"].clone()
     }
 }
