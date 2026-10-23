@@ -112,3 +112,9 @@ test/persistent-campaign-api.test.mjs
 test/npc-world-consequences-api.test.mjs
 test/world-data-flow-api.test.mjs
 test/table-of-five-api.test.mjs
+
+# С15 (2026-10-23): диалог героя и объяснение хода. dialogue-api проходит все шаги
+# /dialogue, но подтест перехода идёт в /autonomy/advance (С18.4) — вне списка до неё;
+# authoritative-combat-api упирается в turn_clock (С17) раньше своего /explanation.
+test/turn-explanation-api.test.mjs  # разбор хода: id и latest, проекция команды врага, права, кампании нет
+test/api-integration.test.mjs       # совместимый API: команда, /why и turns/:id/explanation
