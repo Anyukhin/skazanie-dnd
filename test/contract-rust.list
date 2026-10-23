@@ -122,3 +122,11 @@ test/api-integration.test.mjs       # совместимый API: команда
 # С14 (2026-10-23): торговцы — управление, сборка и витрина. merchant-api проходит
 # lifecycle, сборку и GET витрины, но торгует через POST merchants/:id/commands (С18.2) — вне списка до неё.
 test/merchant-lifecycle-api.test.mjs  # lifecycle-команды ведущего: права, ключ, повтор и конфликт, устаревшая версия, сборка магазина, restart, лимит 60
+
+# С17 (2026-10-24): системный такт, мировые часы, зацепки героев, координатор хода боя.
+# mvp-player-cycle-api зовёт system-tick, но идёт через /autonomy/advance (С18.4) — вне списка до неё.
+test/authoritative-combat-api.test.mjs   # turn_clock комнаты от координатора хода боя, бой через /commands, restart
+test/captives-api.test.mjs               # голод пленного: серверные часы без system-tick, сутки одним коммитом
+test/world-rumor-clock-api.test.mjs      # часы молвы идут сами: слух и репутация после создания кампании
+test/hero-hooks-api.test.mjs             # зацепки героя на хуке проекции: одно плетение, переживает restart
+test/reaction-preferences-api.test.mjs   # режим реакции своего героя, повтор и restart (DND_COMBAT_TURN_TIMEOUT_MS)
