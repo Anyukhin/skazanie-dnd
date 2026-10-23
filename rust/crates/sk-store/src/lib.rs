@@ -17,6 +17,6 @@ pub use error::{StoreError, StoreResult};
 pub use legacy::{import_file_store, ImportReport, ImportedCampaign};
 pub use maps::{MapCells, NoMapCells};
 pub use store::{
-    CommitRequest, CommitResult, EventStore, InitializeRequest, LegacyImportRequest, LoadOptions, Loaded, PendingProjection, Reducer, RetentionMode, StoreOptions,
-    VersionOnlyReducer, STORE_SCHEMA_VERSION,
+    CommitRequest, CommitResult, EventStore, InitializeRequest, LegacyImportRequest, LoadOptions, Loaded, PendingProjection, Reducer, RetentionMode, RoomOverlay, RoomOverlaySave,
+    RoomOverlayWrite, RoomProjectionAck, StoreOptions, VersionOnlyReducer, STORE_SCHEMA_VERSION,
 };

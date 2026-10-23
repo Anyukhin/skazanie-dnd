@@ -1,15 +1,42 @@
-//! Комната кампании — **заглушка С0**, реализация — С1.
+//! Комната кампании — перенос `getRoom`, `saveRoom`, `listRoomCodes` и
+//! `onRoomSaved` (`server/store.mjs:394–398, 438–477`).
 //!
-//! Решение ведущего №2: комната — проекция журнала плюс накладка (летопись не
-//! больше 400 записей, поля только комнаты, `room.version` — счётчик накладки
-//! в одной транзакции SQLite с подтверждением проекции). Форма та же, что у
-//! `getRoom(code)` JS (`server/store.mjs:444–450`):
-//! `{ version, state, updatedAt }`.
+//! Решение ведущего №2: комната — **проекция журнала плюс накладка** в той же
+//! SQLite (`sk_store::RoomOverlay`). Файла с полным состоянием, как в JS, нет:
+//! накладка хранит отсылку к версии журнала (`base`) и только то, чем
+//! записанное состояние комнаты отличается от состояния журнала на этой
+//! версии:
+//!
+//! - `fields` — поля верхнего уровня, которых нет в журнале или которые
+//!   отличаются (летопись `messages`, `isNarrating`, `state_projector_version`
+//!   и всё, что маршрут положил в комнату сверх журнала);
+//! - `removed` — поля журнала, которых в комнате нет;
+//! - `online` — присутствие героев (`players[].online`), если в остальном
+//!   герои комнаты совпадают с героями журнала; иначе `players` целиком в
+//!   `fields`.
+//!
+//! Чтение — состояние журнала на `base` (голова берётся из кэша хранилища) с
+//! наложенными отличиями, то есть ровно то состояние, которое записал
+//! `save_room` (порядок ключей верхнего уровня — журнала, а не JS; сравнение
+//! `Value` и хеш проекции от порядка не зависят). Комната без журнала (импорт,
+//! тесты) хранит состояние целиком в `fields` (`base: null`).
+//!
+//! `room.version` — счётчик строки накладки: запись идёт сравнением с обменом
+//! (`saveRoom(code, state, baseVersion)` → `{ conflict, room }`), а
+//! подтверждение проекции можно передать в ту же транзакцию (см.
+//! [`crate::projection`]).
 
-use serde_json::{json, Value};
+use std::rc::Rc;
+
+use serde_json::{json, Map, Value};
+use sk_core::js;
+use sk_store::{LoadOptions, RoomOverlaySave, RoomOverlayWrite, RoomProjectionAck, StoreResult};
 
 use crate::core::GameCore;
 use crate::error::Failure;
+
+/// Версия формы тела накладки.
+const OVERLAY_SCHEMA: i64 = 1;
 
 /// `getRoom(code)`.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,14 +63,221 @@ impl Room {
     }
 }
 
-/// `getRoom(code)`. С1: состояние из журнала плюс накладка.
-pub fn get_room(_core: &GameCore, campaign_id: &str) -> Result<Room, Failure> {
-    // До С1 комнат нет: любая кампания выглядит несозданной, как пустой
-    // файл комнаты в JS.
-    Ok(Room::empty(campaign_id))
+/// `saveRoom(...)` → `{ conflict, room }`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SavedRoom {
+    pub conflict: bool,
+    pub room: Room,
 }
 
-/// `listRoomCodes()` (`store.mjs:472–476`). С1: кампании журнала.
-pub fn list_room_codes(_core: &GameCore) -> Result<Vec<String>, Failure> {
-    Ok(Vec::new())
+/// `roomFile(code)` (`store.mjs:394–398`): верхний регистр, только
+/// `[A-Z0-9-]`, не длиннее 24; пустой — `Error('Некорректный код комнаты')`.
+pub fn room_key(code: &str) -> Result<String, Failure> {
+    let key: String = code.to_uppercase().chars().filter(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || *ch == '-').take(24).collect();
+    if key.is_empty() {
+        return Err(Failure::new("Некорректный код комнаты", None));
+    }
+    Ok(key)
+}
+
+/// `getRoom(code)`: накладка поверх журнала; комнаты нет — пустая.
+pub fn get_room(core: &GameCore, campaign_id: &str) -> Result<Room, Failure> {
+    let key = room_key(campaign_id)?;
+    let Some(overlay) = core.events.room_overlay(&key)? else { return Ok(Room::empty(&key)) };
+    let state = compose(core, &overlay.body)?;
+    Ok(Room { code: key, version: overlay.version, state: Some(state), updated_at: Some(overlay.updated_at) })
+}
+
+/// `listRoomCodes()` (`store.mjs:472–476`): коды комнат (`/^[A-Z0-9-]+$/`).
+pub fn list_room_codes(core: &GameCore) -> Result<Vec<String>, Failure> {
+    let codes = core.events.room_overlay_ids()?;
+    Ok(codes.into_iter().filter(|code| !code.is_empty() && code.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '-')).collect())
+}
+
+/// `saveRoom(code, state, baseVersion)` (`store.mjs:452–470`).
+pub fn save_room(core: &Rc<GameCore>, code: &str, state: &Value, base_version: i64) -> Result<SavedRoom, Failure> {
+    Ok(save_room_with_ack(core, code, state, base_version, None)?.0)
+}
+
+/// `saveRoom` с подтверждением проекции в той же транзакции; второе значение —
+/// итог подтверждения (если запись состоялась и оно было запрошено).
+pub(crate) fn save_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value, base_version: i64, ack: Option<RoomProjectionAck>) -> Result<(SavedRoom, Option<StoreResult<Value>>), Failure> {
+    if !state.is_object() {
+        return Err(Failure::new("Состояние комнаты должно быть объектом", Some("TYPE_ERROR")));
+    }
+    let key = room_key(code)?;
+    let current = get_room(core, &key)?;
+    if base_version != current.version {
+        return Ok((SavedRoom { conflict: true, room: current }, None));
+    }
+    // Признак загрузки принадлежит запросу браузера, а не кампании (JS 457–458).
+    let persistent = js::spread(state, json!({ "isNarrating": false }));
+    let body = overlay_for(core, &key, &persistent)?;
+    // Сбой подтверждения из данных (`DND_COMMIT_FAULTS`, С2): подтверждение не
+    // идёт в транзакцию, комната пишется — как отказ обещания в JS.
+    let mut faulted = None;
+    let ack = match ack {
+        Some(ack) => match crate::test_hooks::acknowledge_fault(&ack.campaign_id, ack.projected_version) {
+            Ok(()) => Some(ack),
+            Err(error) => {
+                faulted = Some(error);
+                None
+            }
+        },
+        None => None,
+    };
+    let saved = core.events.save_room_overlay(RoomOverlayWrite { room_id: &key, expected_version: base_version, body: &body, ack })?;
+    match saved {
+        RoomOverlaySave::Conflict { .. } => {
+            let room = get_room(core, &key)?;
+            Ok((SavedRoom { conflict: true, room }, None))
+        }
+        RoomOverlaySave::Saved { overlay, ack } => {
+            let room = Room { code: key.clone(), version: overlay.version, state: Some(persistent), updated_at: Some(overlay.updated_at) };
+            // Слушатели — по возможности, сохранённая комната от них не зависит
+            // (JS 464–467); вне потока ядра хуки не ставятся.
+            let hooks = core.room_hooks.borrow().clone();
+            let _ = crate::projection::on_projection_saved(core, &key, &room, &hooks);
+            Ok((SavedRoom { conflict: false, room }, faulted.map(Err).or(ack)))
+        }
+    }
+}
+
+// --- накладка ---------------------------------------------------------------
+
+/// Состояние журнала, к которому привязывается запись: версия комнаты, если
+/// она есть в журнале, иначе голова; журнала нет или он не читается — `None`
+/// (комната хранится целиком).
+fn base_for(core: &GameCore, campaign_id: &str, state: &Value) -> Option<(i64, Value)> {
+    let head = core.events.load(campaign_id, &LoadOptions::default()).ok()?;
+    let wanted = state.get("state_version").filter(|value| js::is_safe_integer(Some(value))).and_then(Value::as_i64);
+    match wanted {
+        Some(version) if (0..head.state_version).contains(&version) => {
+            let loaded = core.events.load(campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() }).ok()?;
+            Some((version, loaded.state))
+        }
+        _ => Some((head.state_version, head.state)),
+    }
+}
+
+/// Тело накладки: отличия записанного состояния от журнала.
+fn overlay_for(core: &GameCore, key: &str, state: &Value) -> Result<Value, Failure> {
+    let empty = Map::new();
+    let next = state.as_object().unwrap_or(&empty);
+    let base = base_for(core, key, state);
+    let base_map = base.as_ref().and_then(|(_, state)| state.as_object()).unwrap_or(&empty);
+    let mut fields = Map::new();
+    let mut online: Option<Map<String, Value>> = None;
+    for (field, value) in next {
+        if base_map.get(field) == Some(value) {
+            continue;
+        }
+        if field == "players" {
+            if let Some(map) = online_overlay(base_map.get("players"), value) {
+                online = Some(map);
+                continue;
+            }
+        }
+        fields.insert(field.clone(), value.clone());
+    }
+    let removed: Vec<Value> = base_map.keys().filter(|field| !next.contains_key(*field)).map(|field| Value::String(field.clone())).collect();
+    let mut body = Map::new();
+    body.insert("schema".into(), Value::from(OVERLAY_SCHEMA));
+    body.insert("base".into(), base.as_ref().map_or(Value::Null, |(version, _)| json!({ "campaign_id": key, "state_version": version })));
+    body.insert("removed".into(), Value::Array(removed));
+    if let Some(online) = online {
+        body.insert("online".into(), Value::Object(online));
+    }
+    body.insert("fields".into(), Value::Object(fields));
+    Ok(Value::Object(body))
+}
+
+/// Герои комнаты = герои журнала плюс `online`: карта присутствия по id или
+/// `None`, если отличаются не только присутствием.
+fn online_overlay(base: Option<&Value>, next: &Value) -> Option<Map<String, Value>> {
+    let (Some(Value::Array(base)), Value::Array(next_players)) = (base, next) else { return None };
+    if base.len() != next_players.len() {
+        return None;
+    }
+    let mut online = Map::new();
+    for (before, after) in base.iter().zip(next_players) {
+        let (Value::Object(before), Value::Object(after)) = (before, after) else { return None };
+        if before.get("online") == after.get("online") {
+            continue;
+        }
+        let value = after.get("online")?;
+        online.insert(js::string(after.get("id")), value.clone());
+    }
+    let composed = with_online(base, &online);
+    (composed == *next_players).then_some(online)
+}
+
+/// `{ ...player, online }` для героев из карты присутствия.
+fn with_online(players: &[Value], online: &Map<String, Value>) -> Vec<Value> {
+    players
+        .iter()
+        .map(|player| match (player, online.get(&js::string(player.get("id")))) {
+            (Value::Object(map), Some(value)) => {
+                let mut map = map.clone();
+                map.insert("online".into(), value.clone());
+                Value::Object(map)
+            }
+            _ => player.clone(),
+        })
+        .collect()
+}
+
+/// Состояние комнаты из журнала и накладки.
+fn compose(core: &GameCore, body: &Value) -> Result<Value, Failure> {
+    let mut state = match body.get("base") {
+        Some(Value::Object(base)) => {
+            let campaign_id = js::s(base.get("campaign_id"));
+            let version = js::safe_int(base.get("state_version"), 0);
+            core.events.load(&campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() })?.state
+        }
+        _ => Value::Object(Map::new()),
+    };
+    let Value::Object(map) = &mut state else {
+        return Err(Failure::new("Хранилище повреждено и не будет перезаписано автоматически: состояние журнала комнаты — не объект", Some("STORAGE_CORRUPTION")));
+    };
+    for field in body.get("removed").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]) {
+        map.shift_remove(&js::s(Some(field)));
+    }
+    if let Some(Value::Object(online)) = body.get("online") {
+        if let Some(Value::Array(players)) = map.get("players") {
+            let players = with_online(players, online);
+            map.insert("players".into(), Value::Array(players));
+        }
+    }
+    if let Some(Value::Object(fields)) = body.get("fields") {
+        for (field, value) in fields {
+            map.insert(field.clone(), value.clone());
+        }
+    }
+    Ok(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn room_key_matches_js_room_file() {
+        assert_eq!(room_key("abc-1").ok().as_deref(), Some("ABC-1"));
+        assert_eq!(room_key(" a_b.c ").ok().as_deref(), Some("ABC"));
+        assert_eq!(room_key("ıx").ok().as_deref(), Some("IX"), "toUpperCase до фильтра, как в JS");
+        assert_eq!(room_key("abcdefghijklmnopqrstuvwxyz").ok().as_deref(), Some("ABCDEFGHIJKLMNOPQRSTUVWX"));
+        assert_eq!(room_key("___").err().map(|failure| failure.message), Some("Некорректный код комнаты".to_string()));
+    }
+
+    #[test]
+    fn online_overlay_only_when_heroes_match() {
+        let base = json!([{ "id": "a", "hp": 3 }, { "id": "b", "online": false }]);
+        let next = json!([{ "id": "a", "hp": 3, "online": true }, { "id": "b", "online": false }]);
+        assert_eq!(online_overlay(Some(&base), &next), Some(json!({ "a": true }).as_object().cloned().unwrap_or_default()));
+        let changed = json!([{ "id": "a", "hp": 4, "online": true }, { "id": "b", "online": false }]);
+        assert_eq!(online_overlay(Some(&base), &changed), None);
+        let dropped = json!([{ "id": "a", "hp": 3 }, { "id": "b" }]);
+        assert_eq!(online_overlay(Some(&base), &dropped), None, "снятый online картой не выразить");
+    }
 }
