@@ -74,7 +74,7 @@ pub async fn serve_generated(generated_dir: &Path, tail: &str) -> ApiResult {
 /// прототипа (`NPC_PORTRAIT_CHARACTER_ASSETS[id]` для id `toString`,
 /// `constructor`…) — функция, и Node пишет её текст `function toString() {
 /// [native code] }`; `__proto__` — `Object.prototype`, `[object Object]`.
-fn location_text(url: Option<&Value>, npc_id: &str) -> String {
+pub(crate) fn location_text(url: Option<&Value>, npc_id: &str) -> String {
     match url {
         Some(Value::String(text)) => text.clone(),
         Some(other) => sk_core::js::s(Some(other)),

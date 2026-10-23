@@ -150,7 +150,7 @@ async fn raw_routes_with_query_are_404() {
         ("PATCH", "/api/admin/users/abc-1", true),
         ("POST", "/api/rooms/ABC/dice", false),
         ("POST", "/api/roll", false),
-        ("POST", "/api/items/generate-image", false),
+        ("POST", "/api/items/generate-image", true),
         ("POST", "/api/narrate", false),
     ];
     for (method, path, implemented) in raw {

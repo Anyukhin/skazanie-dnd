@@ -299,13 +299,30 @@ fn asset_preparation(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     })
 }
 
+/// У NPC с id свойства прототипа (`toString`, `constructor`…) JS кладёт в
+/// `portrait_url` функцию `NPC_PORTRAIT_CHARACTER_ASSETS[id]`, и список
+/// подготовки (`String(profile.portrait_url).trim()`) считает портрет готовым.
+/// Профиль Rust функцию в JSON не держит (поле пропадает, как в
+/// `JSON.stringify`), поэтому для списка подставляется её текст —
+/// `static_npc_portrait` без адреса и есть этот случай (замечено в JS).
+fn with_prototype_portrait(mut profile: Value) -> Value {
+    let missing = profile.get("portrait_url").is_none() && sk_chargen::npc_portraits::static_npc_portrait(&profile, "prepared_asset").url.is_none();
+    if missing {
+        let text = crate::files::location_text(None, &js::s(profile.get("id")));
+        if let Some(map) = profile.as_object_mut() {
+            map.insert("portrait_url".into(), Value::String(text));
+        }
+    }
+    profile
+}
+
 /// Тело `try` подготовки (4110–4170); `Err` — 502 `ASSET_PREPARATION_FAILED`.
 async fn prepare_assets(ctx: &mut RouteCtx, state: &AppState, user: &Value, campaign_id: &str, room: &Room) -> Result<ApiResult, Failure> {
     let image_failure = |error: sk_chargen::npc_portraits::ImageServiceError| Failure::new(error.to_string(), error.code());
     let authoritative = authoritative_state(state, campaign_id, room).await?;
     let viewer = json!({ "role": "admin", "id": user.get("id").cloned().unwrap_or(Value::Null) });
     let projected = viewer_state_for(&authoritative, &viewer, Some(&Value::String(String::new())))?.unwrap_or(Value::Null);
-    let profiles: Vec<Value> = projected.pointer("/social/npcs").and_then(Value::as_array).map_or(&[][..], Vec::as_slice).iter().filter_map(|npc| public_npc_portrait_profile(Some(npc))).collect();
+    let profiles: Vec<Value> = projected.pointer("/social/npcs").and_then(Value::as_array).map_or(&[][..], Vec::as_slice).iter().filter_map(|npc| public_npc_portrait_profile(Some(npc))).map(with_prototype_portrait).collect();
     let images = &state.images;
     let npcs = npc_portrait_inventory(&images.portraits, campaign_id, &projected, |state, profile| npc_portrait_significance(state, profile).significant, &profiles).await.map_err(image_failure)?;
     let known_locations = visible_campaign_locations(&projected);
