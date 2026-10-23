@@ -47,7 +47,9 @@ use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 use sk_core::indexmap::IndexSet;
 use sk_core::js;
-use sk_infra::narration_stream::{campaign_stream_frame_key, CampaignStreamOutbox, FrameRender, NarrationConnection, OutboxCloseReason, RenderError, SseSocket, SseSocketReader};
+use sk_infra::narration_stream::{
+    campaign_stream_frame_key, CampaignNarrationStream, CampaignStreamOutbox, FrameRender, NarrationConnection, NarrationStreamOptions, OutboxCloseReason, RenderError, SseSocket, SseSocketReader, StreamTimers, TimerCallback, TimerId,
+};
 use sk_store::accounts::Accounts;
 
 use crate::core::{CoreError, GameCore};
@@ -1009,9 +1011,10 @@ impl LiveStreams {
             return Ok(());
         }
         *connection.heartbeat.borrow_mut() = Some(spawn_heartbeat(core, &connection, self.options.heartbeat));
-        // С18.5: `campaignNarrationStream.replay(campaignId, connection)` —
-        // последний снимок каждого незавершённого текста
-        // ([`LiveStreams::write_event`] по [`StreamHandle`]).
+        // При переподключении достаточно последнего полного снимка каждого
+        // незавершённого текста; сырьевые дельты и механика здесь не хранятся
+        // (`campaignNarrationStream.replay`, 4279; С18.5).
+        narration(core).replay(campaign_id, &StreamHandle { link: link.clone() }).map_err(|error| Failure::new(error.message, Some(error.code)))?;
         broadcast_campaign_room(core, campaign_id, None)
     }
 }
@@ -1030,6 +1033,106 @@ fn spawn_heartbeat(core: &Rc<GameCore>, connection: &Rc<Connection>, period: Dur
             let Some(live) = core.streams.live() else { break };
             live.heartbeat(&connection);
         }
+    })
+}
+
+// --- поток рассказа ядра (С18.5) -------------------------------------------
+
+/// `campaignNarrationStream` (`index.mjs:284–290`): снимки текста рассказа,
+/// пока его пишет модель.
+pub type NarrationHub = CampaignNarrationStream<StreamHandle>;
+
+/// Таймер снимка, сработавший в рантайме ядра: id и обратный вызов.
+type FiredTimer = (u64, TimerCallback);
+
+thread_local! {
+    /// Поток рассказа этого ядра: живёт на потоке ядра, как и реестр потоков.
+    static NARRATION: RefCell<Option<NarrationHub>> = const { RefCell::new(None) };
+    /// Ядро для `connectionsFor` и `write` потока рассказа: замыкания
+    /// `CampaignNarrationStream` обязаны быть `Send + Sync`, поэтому ядро они
+    /// берут отсюда, а не захватывают.
+    static NARRATION_CORE: RefCell<Weak<GameCore>> = RefCell::new(Weak::new());
+}
+
+fn with_narration_core<R>(operation: impl FnOnce(&GameCore) -> R) -> Option<R> {
+    let core = NARRATION_CORE.with(|slot| slot.borrow().upgrade())?;
+    Some(operation(&core))
+}
+
+/// Таймеры снимков (`setTimeout` потока рассказа): сон — задача рантайма
+/// ядра, а обратный вызов исполняется в `LocalSet` ядра (через канал),
+/// потому что рассылка может закрыть соединение, а закрытие ставит фоновую
+/// задачу ядра (`spawn_local`). Отменённый таймер не срабатывает, даже если
+/// его сон уже кончился.
+struct CoreTimers {
+    handle: tokio::runtime::Handle,
+    next: AtomicU64,
+    armed: Arc<Mutex<HashMap<u64, Option<tokio::task::AbortHandle>>>>,
+    fire: tokio::sync::mpsc::UnboundedSender<FiredTimer>,
+}
+
+impl StreamTimers for CoreTimers {
+    fn set_timer(&self, delay: Duration, callback: TimerCallback) -> TimerId {
+        let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
+        lock(&self.armed).insert(id, None);
+        let fire = self.fire.clone();
+        let task = self.handle.spawn(async move {
+            tokio::time::sleep(delay).await;
+            let _ = fire.send((id, callback));
+        });
+        if let Some(slot) = lock(&self.armed).get_mut(&id) {
+            *slot = Some(task.abort_handle());
+        }
+        TimerId(id)
+    }
+
+    fn clear_timer(&self, timer: TimerId) {
+        if let Some(Some(task)) = lock(&self.armed).remove(&timer.0) {
+            task.abort();
+        }
+    }
+}
+
+fn build_narration() -> NarrationHub {
+    let (fire, mut fired) = tokio::sync::mpsc::unbounded_channel::<FiredTimer>();
+    let armed: Arc<Mutex<HashMap<u64, Option<tokio::task::AbortHandle>>>> = Arc::default();
+    let timers = CoreTimers { handle: tokio::runtime::Handle::current(), next: AtomicU64::new(0), armed: armed.clone(), fire };
+    // Задача вне учёта ядра: остановка её просто отменяет вместе с `LocalSet`.
+    tokio::task::spawn_local(async move {
+        while let Some((id, callback)) = fired.recv().await {
+            if lock(&armed).remove(&id).is_some() {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(callback));
+            }
+        }
+    });
+    CampaignNarrationStream::new(NarrationStreamOptions {
+        // `connectionsFor` (285–288): лёгкая сверка, затем открытые соединения.
+        connections_for: Box::new(|campaign_id| with_narration_core(|core| core.streams.live().map(|live| live.narration_connections(campaign_id)).unwrap_or_default()).unwrap_or_default()),
+        // `write` (289): кадр через очередь соединения (`writeCampaignStream`).
+        write: Box::new(|handle, event, payload| {
+            with_narration_core(|core| {
+                if let Some(live) = core.streams.live() {
+                    if let Err(error) = live.write_event(handle, event, payload) {
+                        eprintln!("[Сказание] Кадр рассказа не собран: {error}");
+                    }
+                }
+            });
+        }),
+        coalesce_ms: None,
+        max_active: None,
+        timers: Arc::new(timers),
+        now: Arc::new(sk_core::clock::now_ms),
+    })
+}
+
+/// Поток рассказа ядра; вызывается только из задания ядра (в `LocalSet`):
+/// первый вызов собирает поток и его таймеры, каждый — привязывает ядро для
+/// рассылки.
+pub fn narration(core: &Rc<GameCore>) -> NarrationHub {
+    NARRATION_CORE.with(|slot| *slot.borrow_mut() = Rc::downgrade(core));
+    NARRATION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        slot.get_or_insert_with(build_narration).clone()
     })
 }
 
