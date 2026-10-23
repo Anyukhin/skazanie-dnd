@@ -14,8 +14,8 @@
 //! Сигналы. JS на SIGINT/SIGTERM делает `process.exit(130/143)` без плавной
 //! остановки. Здесь порядок такой (рецензия С0, CORE-06):
 //!
-//! 1. сигнал — приём соединений прекращается (С9: живые потоки закрываются
-//!    кадром здесь, до ожидания — иначе они занимают весь предел);
+//! 1. сигнал — приём соединений прекращается (С9: тела живых потоков
+//!    заканчиваются здесь, до ожидания — иначе они занимают весь предел);
 //! 2. текущие запросы дожидаются: 5 с на `Ctrl+C`/SIGINT, 1 с на SIGTERM и
 //!    закрытие консоли;
 //! 3. рантайм HTTP останавливается с пределом — недоделанные соединения
@@ -165,11 +165,15 @@ fn fail(message: String) -> ! {
 }
 
 fn main() {
-    // Служебная подкоманда набора тестов (`test/kit/journal.mjs`): до `.env`
+    // Служебные подкоманды набора тестов (`test/kit/journal.mjs`,
+    // `test/kit/sessions.mjs`): до `.env`
     // и без отметки писателя storage.
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("journal") {
         std::process::exit(sk_server::test_hooks::journal_cli::main(&args[1..]));
+    }
+    if args.first().map(String::as_str) == Some("session") {
+        std::process::exit(sk_server::test_hooks::session_cli::main(&args[1..]));
     }
     let cwd = std::env::current_dir().unwrap_or_default();
     load_dotenv(&cwd.join(".env"));
@@ -243,6 +247,7 @@ async fn run(state: Arc<AppState>, address: String, banner: String, faults: Opti
             let _ = state.core.call(|core| Box::pin(async move { sk_server::startup::startup_jobs(&core) })).await;
         });
     }
-    // С9: закрыть живые потоки кадром — сразу после сигнала, до ожидания соединений.
+    // С9: живые потоки заканчиваются сразу после сигнала, до ожидания
+    // соединений (`serve` → `streams::close_all`).
     sk_server::serve::serve(listener, state, shutdown_signal(), grace_for).await
 }
