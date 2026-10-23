@@ -133,3 +133,9 @@ test/world-rumor-clock-api.test.mjs      # часы молвы идут сами
 test/hero-hooks-api.test.mjs             # зацепки героя на хуке проекции: одно плетение, переживает restart
 test/reaction-preferences-api.test.mjs   # режим реакции своего героя, повтор и restart (DND_COMBAT_TURN_TIMEOUT_MS)
 test/merchant-api.test.mjs               # торговля игрока и POST /system-tick с часами лавки (С14 + С18.2 + С17)
+# С18.3 (2026-10-24): сборка встречи POST encounters/assemble. shillelagh-api проходит
+# сборку, но запускает сервер с preload (кости) — вне списка до перевода на dice;
+# director-player-entry-api упирается в /autonomy (С18.4).
+test/encounter-api.test.mjs           # права, белый список полей, устаревшая версия, ходы врагов до героя, проекция игроку, restart, повтор и конфликт ключа
+test/longstrider-api.test.mjs         # «Скороход»: развитие, сборка встречи, бой и движение через /commands, restart
+test/destructive-wave-api.test.mjs    # «Разрушительная волна»: жрец бури 9-го уровня, сборка встречи и удар по площади
