@@ -37,3 +37,7 @@ test/heroes-api.test.mjs          # GET /api/heroes: права, герои вс
 # уже проходит), viewer-projection-api и roll-binding упираются в /api/narrate — вне списка до С18.
 test/free-dice-api.test.mjs           # общий кубик: права, закрытый набор граней, проекция комнаты и SSE второму игроку
 test/recovery-required-api.test.mjs   # испорченная кампания: GET /api/rooms отказывает, сервер и соседняя кампания живы
+
+# С11 (2026-10-23): решения отряда и задания. quest-abandonment-api проходит quests и votes,
+# но дальше идёт в /api/narrate (С18.5) — вне списка до неё.
+test/party-decision-roll-api.test.mjs  # общий бросок: серверная кость, права, повтор по ключу, закрытое решение, replay
