@@ -37,3 +37,7 @@ test/heroes-api.test.mjs          # GET /api/heroes: права, герои вс
 # уже проходит), viewer-projection-api и roll-binding упираются в /api/narrate — вне списка до С18.
 test/free-dice-api.test.mjs           # общий кубик: права, закрытый набор граней, проекция комнаты и SSE второму игроку
 test/recovery-required-api.test.mjs   # испорченная кампания: GET /api/rooms отказывает, сервер и соседняя кампания живы
+# С7+С10 (2026-10-23): с GET /api/rooms тесты настроек проходят целиком против Rust.
+test/campaign-reasoning-settings.test.mjs   # уровень рассуждений: права, сохранение, перезапуск
+test/campaign-improv-mode.test.mjs          # режим импровизации: строка летописи без события
+test/house-rule-default-api.test.mjs        # домашние правила по умолчанию при старте
