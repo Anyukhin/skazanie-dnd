@@ -1,0 +1,1173 @@
+{
+  "format": "skazanie.golden/1",
+  "scenario": "комната: проекция зрителя и хеш карты, пустая комната, отказы, снятый PUT, общий кубик, выдача кости",
+  "exchanges": [
+    {
+      "as": "anon",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": null,
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "PUT",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {},
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/auth/setup-admin",
+      "headers": {},
+      "body": {
+        "email": "gm@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Ведущий",
+        "setupToken": "setup-code"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "setupRequired": false
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "anya@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Аня"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "boris@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Борис"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "vera@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Вера"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "ROOM-1",
+        "name": "Две грани",
+        "state": {
+          "sessionCode": "ROOM-1",
+          "campaign": "Две грани",
+          "partyName": "Проверка броска",
+          "partyMemberIds": [
+            "hero-one",
+            "hero-two"
+          ],
+          "activePlayerId": "hero-one",
+          "messages": [],
+          "players": [
+            {
+              "id": "hero-one",
+              "name": "Агата",
+              "character": "Агата",
+              "hp": 20,
+              "maxHp": 20,
+              "armor": 14,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 16,
+                "dex": 12,
+                "con": 14,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "x": 1,
+              "y": 1
+            },
+            {
+              "id": "hero-two",
+              "name": "Гелла",
+              "character": "",
+              "hp": 18,
+              "maxHp": 18,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 10,
+                "dex": 16,
+                "con": 12,
+                "int": 12,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "x": 3,
+              "y": 1
+            }
+          ],
+          "scene": {
+            "title": "Зал двух граней",
+            "location": "Зал двух граней",
+            "mood": "",
+            "objective": "Проверить общий кубик",
+            "turn": 0,
+            "cells": [
+              {
+                "x": 0,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 0,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 1,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 2,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 0,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 1,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 2,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 3,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 4,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              },
+              {
+                "x": 5,
+                "y": 3,
+                "type": "floor",
+                "passable": true,
+                "revealed": true
+              }
+            ]
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:32ad6cc0a9b0b2c57db68658b8f84fc4fc15758d45ca679d74f7e1603469f098:29294>",
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ROOM-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-one"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "ROOM-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/ROOM-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-two"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "ROOM-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/ROOM-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:9>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "ROOM-1",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "ROOM-1",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/ROOM-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:10>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "ROOM-1",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "ROOM-1",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:30101d0e63598b2f2203504d663e78db45fc049256ddadcfce8765cf23920d34:29302>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1?map_hash=<map_hash:13>",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:7df1d3429834d3a08f6b84c267a230cd4063c8d71d23230e20a175df59e6add5:28732>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1?map_hash=chuzhoy-hash",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:30101d0e63598b2f2203504d663e78db45fc049256ddadcfce8765cf23920d34:29302>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/room-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:30101d0e63598b2f2203504d663e78db45fc049256ddadcfce8765cf23920d34:29302>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:b0ec2a7bdbb86d2f935c34162125e3123585c7a035ff97e06f97cc642fa91918:29302>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 1,
+        "state": "<sha256:69645b574dc2f31fa4f4ba2ef256c3337aa11aa33a96d23146c4b6d7d52a388a:32002>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой комнате"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/rooms/NOPE-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 0,
+        "state": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/NOPE-1",
+      "headers": {},
+      "body": null,
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой комнате"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/BAD_ID",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1/",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "DELETE",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PATCH",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PUT",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": {
+        "state": {},
+        "baseVersion": 1
+      },
+      "status": 410,
+      "body_norm": {
+        "error": "Полная запись room state удалена. Используйте типизированные campaign commands",
+        "code": "ROOM_MUTATION_RETIRED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PUT",
+      "path": "/api/rooms/ROOM-1?x=1",
+      "headers": {},
+      "body": {},
+      "status": 410,
+      "body_norm": {
+        "error": "Полная запись room state удалена. Используйте типизированные campaign commands",
+        "code": "ROOM_MUTATION_RETIRED"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "PUT",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": {},
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "PUT",
+      "path": "/api/rooms/NOPE-1",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена",
+        "code": "CAMPAIGN_NOT_FOUND"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "PUT",
+      "path": "/api/rooms/NOPE-1",
+      "headers": {},
+      "body": {},
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена",
+        "code": "CAMPAIGN_NOT_FOUND"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-one",
+        "sides": 6
+      },
+      "status": 200,
+      "body_norm": {
+        "roll": {
+          "id": "<uuid>",
+          "kind": "free",
+          "sides": 6,
+          "value": 2,
+          "playerId": "hero-one",
+          "playerName": "Агата",
+          "rolledAt": "<time>"
+        },
+        "version": 2,
+        "state": "<sha256:6e864e32f3279b9809bf546e030fb281fae552f989643e7edfbd65f95d3562ec:29321>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 2,
+        "state": "<sha256:774d957d6b3841ae5fc4853c1fa3335fe443ed20b2201d81c8a60bae07708a01:29454>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice?x=1",
+      "headers": {},
+      "body": {
+        "playerId": "hero-one",
+        "sides": 6
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-two",
+        "sides": 20
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Бросок доступен только владельцу героя"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "sides": 20
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Бросок доступен только владельцу героя"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-one"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Бросок доступен только владельцу героя"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-two",
+        "sides": 7
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Такой кости нет: доступны d4, d6, d8, d10, d12, d20 и d100"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-two",
+        "sides": "много"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Такой кости нет: доступны d4, d6, d8, d10, d12, d20 и d100"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-two",
+        "sides": "8"
+      },
+      "status": 200,
+      "body_norm": {
+        "roll": {
+          "id": "<uuid>",
+          "kind": "free",
+          "sides": 8,
+          "value": 2,
+          "playerId": "hero-two",
+          "playerName": "Гелла",
+          "rolledAt": "<time>"
+        },
+        "version": 3,
+        "state": "<sha256:3ee1f5bb768edee9249400c203248de37d3b04051d3e60fcf69e058c769d7f70:29321>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-two",
+        "sides": null
+      },
+      "status": 200,
+      "body_norm": {
+        "roll": {
+          "id": "<uuid>",
+          "kind": "free",
+          "sides": 20,
+          "value": 2,
+          "playerId": "hero-two",
+          "playerName": "Гелла",
+          "rolledAt": "<time>"
+        },
+        "version": 4,
+        "state": "<sha256:93f763a90b7f11d64305c893e983a4fe05939c20d1f6e1cff7d7c5d35291217a:29322>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/rooms/room-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-two",
+        "sides": [
+          100
+        ]
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Campaign room-1 is not initialized"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": [],
+      "status": 400,
+      "body_norm": {
+        "error": "Тело запроса должно быть JSON-объектом"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/rooms/ROOM-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "ghost",
+        "sides": 4
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "Герой не найден в этой комнате"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/rooms/NOPE-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-one",
+        "sides": 4
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Комната ещё не готова — повторите бросок через секунду"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/rooms/NOPE-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-one",
+        "sides": 4
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Бросок доступен только владельцу героя"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/ROOM-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 4,
+        "state": "<sha256:02aba98a4c3d81ff35ace86c0af1cd4269be56831e66ab2e96220b45d0bc82cd:29455>",
+        "updatedAt": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "ROOM-1",
+        "playerId": "hero-one"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Механический бросок выдаётся только для объявленной проверки",
+        "code": "CHECK_REQUIRED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaign_id": "ROOM-1",
+        "playerId": "hero-one",
+        "checkId": "nope"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Проверка не найдена или истекла",
+        "code": "CHECK_NOT_FOUND"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "ROOM-1",
+        "playerId": "hero-one",
+        "check_id": "nope-2"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Проверка не найдена или истекла",
+        "code": "CHECK_NOT_FOUND"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "playerId": "hero-one"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Бросок доступен только владельцу героя"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "ROOM-1",
+        "playerId": "hero-two"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Бросок доступен только владельцу героя"
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "ROOM-1",
+        "playerId": "hero-one"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Бросок доступен только владельцу героя"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "NOPE-1",
+        "playerId": "hero-one"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "___",
+        "playerId": "hero-one"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Некорректный код комнаты"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "ROOM-1"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Механический бросок выдаётся только для объявленной проверки",
+        "code": "CHECK_REQUIRED"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": [],
+      "status": 400,
+      "body_norm": {
+        "error": "Тело запроса должно быть JSON-объектом",
+        "code": "INVALID_JSON_BODY"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll?x=1",
+      "headers": {},
+      "body": {
+        "campaignId": "ROOM-1",
+        "playerId": "hero-one"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/roll",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    }
+  ]
+}
