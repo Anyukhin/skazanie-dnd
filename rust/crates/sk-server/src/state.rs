@@ -206,6 +206,6 @@ fn start_core(database: PathBuf, roll_file: PathBuf, dice: SharedDice, clock: Cl
         let events = sk_tactics::cutover_audit::open_game_store(&database, Arc::new(sk_tactics::cutover_audit::GameReducer::new()))?;
         let options = RollRegistryOptions { storage_file: Some(roll_file), now: clock, ..RollRegistryOptions::default() };
         let rolls = RollRegistry::new(Box::new(dice.clone()), options).map_err(|error| error.to_string())?;
-        Ok(GameCore { events: Arc::new(events), rolls: std::cell::RefCell::new(rolls), dice, streams: streams() })
+        Ok(GameCore { events: Arc::new(events), rolls: std::cell::RefCell::new(rolls), dice, streams: streams(), room_hooks: std::cell::RefCell::default() })
     })
 }

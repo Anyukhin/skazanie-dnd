@@ -303,7 +303,16 @@ CREATE TABLE IF NOT EXISTS map_blobs (
     hash TEXT PRIMARY KEY,
     body TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS room_overlays (
+    room_id TEXT PRIMARY KEY,
+    version INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 ";
+
+mod rooms;
+pub use rooms::{RoomOverlay, RoomOverlaySave, RoomOverlayWrite, RoomProjectionAck};
 
 fn safe_id(value: &str, label: &str) -> StoreResult<String> {
     let result = sk_core::text::trim(value).to_string();
@@ -1140,19 +1149,25 @@ impl EventStore {
     /// `acknowledgeProjection`: проекция дошла до версии.
     pub fn acknowledge_projection(&self, campaign_id: &str, projected_version: i64, projection_hash: Option<&str>) -> StoreResult<Value> {
         let campaign_id = safe_id(campaign_id, "campaign_id")?;
-        let requested = safe_version(projected_version, "projected_version")?;
         let inner = self.lock();
-        let (head, _) = Self::head(&inner.conn, &campaign_id)?;
-        Self::check_head_evidence(&inner.conn, &campaign_id, head)?;
+        self.acknowledge_in(&inner.conn, &campaign_id, projected_version, projection_hash)
+    }
+
+    /// Тело `acknowledgeProjection` над уже взятым соединением (и транзакцией
+    /// записи накладки комнаты, `rooms.rs`).
+    fn acknowledge_in(&self, conn: &Connection, campaign_id: &str, projected_version: i64, projection_hash: Option<&str>) -> StoreResult<Value> {
+        let requested = safe_version(projected_version, "projected_version")?;
+        let (head, _) = Self::head(conn, campaign_id)?;
+        Self::check_head_evidence(conn, campaign_id, head)?;
         if requested > head {
-            return Err(StoreError::version_conflict(&campaign_id, requested, head));
+            return Err(StoreError::version_conflict(campaign_id, requested, head));
         }
-        let metadata = Self::read_metadata(&inner.conn, &campaign_id, head)?;
+        let metadata = Self::read_metadata(conn, campaign_id, head)?;
         let checkpoint = int_field(&metadata, "projection_checkpoint_version").max(requested);
         let hash = projection_hash.map(Value::from).or_else(|| metadata.get("projection_checkpoint_hash").cloned()).unwrap_or(Value::Null);
         self.write_metadata(
-            &inner.conn,
-            &campaign_id,
+            conn,
+            campaign_id,
             Some(&metadata),
             &json!({ "projection_checkpoint_version": checkpoint, "projection_checkpoint_at": self.now_iso(), "projection_checkpoint_hash": hash }),
             head,

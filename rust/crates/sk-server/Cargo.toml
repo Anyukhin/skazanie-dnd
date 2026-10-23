@@ -33,6 +33,11 @@ sk-rules.workspace = true
 sk-agents = { path = "../sk-agents" }
 sk-agents-base = { path = "../sk-agents-base" }
 sk-character = { path = "../sk-character" }
+# С1: карточки летописи из событий (`journalCandidatesFor`) и решения отряда.
+sk-memory = { path = "../sk-memory" }
+sk-npc-world = { path = "../sk-npc-world" }
+sk-world-life = { path = "../sk-world-life" }
+sk-world-story = { path = "../sk-world-story" }
 sk-chargen = { path = "../sk-chargen" }
 sk-director = { path = "../sk-director" }
 sk-economy = { path = "../sk-economy" }

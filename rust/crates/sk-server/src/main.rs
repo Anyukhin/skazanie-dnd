@@ -206,7 +206,7 @@ async fn run(state: Arc<AppState>, address: String, banner: String) -> i32 {
     }
     // С1: `reconcileAllCampaignProjections()` и `releaseOrphanRollReservations()`
     // (6481–6482) до `listen`.
-    let reconciled = state.core.call(|core| Box::pin(async move { sk_server::projection::reconcile_all_campaign_projections(core).await })).await;
+    let reconciled = state.core.call(|core| Box::pin(async move { sk_server::startup::prepare(&core).map(|_failures| ()) })).await;
     if let Ok(Err(error)) | Err(error) = reconciled.map_err(sk_server::error::Failure::from) {
         eprintln!("[Сказание] Сверка проекций при старте не выполнена: {error}");
     }
@@ -224,7 +224,7 @@ async fn run(state: Arc<AppState>, address: String, banner: String) -> i32 {
         let state = state.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(250)).await;
-            let _ = state.core.call(|core| Box::pin(async move { sk_server::room::list_room_codes(&core).map(|codes| codes.len()) })).await;
+            let _ = state.core.call(|core| Box::pin(async move { sk_server::startup::startup_jobs(&core) })).await;
         });
     }
     // С9: закрыть живые потоки кадром — сразу после сигнала, до ожидания соединений.

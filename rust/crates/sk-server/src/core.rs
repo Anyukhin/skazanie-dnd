@@ -101,6 +101,10 @@ pub struct GameCore {
     /// Живые потоки кампаний (`campaignStreams`); в С0 — заглушка. Только на
     /// потоке ядра: рассылка, отзыв и присутствие — без замков.
     pub streams: Box<dyn crate::streams::StreamRegistry>,
+    /// Подписчики «проекция записана» (`onRoomSaved`, `store.mjs:438–442`):
+    /// рассылка (С9), координатор боя и часы мира (С17). Вызываются после
+    /// каждой записи комнаты (С1, `room::save_room`).
+    pub room_hooks: RefCell<Vec<crate::projection::ProjectionSavedHook>>,
 }
 
 // --- учёт задач ядра -------------------------------------------------------
