@@ -36,7 +36,7 @@
 //! - **`settleCombatContinuation` (3352–3363)** — стадия `combat-continuation`
 //!   координатора последствий ядра (С17, [`crate::clocks::settle_combat_continuation`]).
 //! - `assertMerchantIdempotency`/`assertMerchantResultFingerprint` (1023,
-//!   1241) — здесь, пока `merchant_guard.rs` (С14) пуст.
+//!   1241) — в `merchant_guard.rs` (С14).
 
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -53,7 +53,7 @@ use sk_store::LoadOptions;
 use crate::access::{campaign_hero_values, can_access_room, require_user, string_or_empty};
 use crate::command_fingerprints::{
     assert_character_build_result_fingerprint, assert_item_idempotency, assert_item_result_fingerprint, assert_loot_idempotency, assert_loot_result_fingerprint, assert_make_attack_idempotency, assert_make_attack_result_fingerprint, assert_npc_combat_idempotency,
-    assert_npc_combat_result_fingerprint, assert_rest_idempotency, assert_rest_result_fingerprint, merchant_command_fingerprint, AuthorizeDuplicate,
+    assert_npc_combat_result_fingerprint, assert_rest_idempotency, assert_rest_result_fingerprint, AuthorizeDuplicate,
 };
 use crate::command_guard::{
     assert_player_combat_actor_permission, combat_actor_for, command_type, expand_player_rest_command, loot_taken_record_for, normalize_make_attack_command, policy_error, sanitize_merchant_command, sanitize_player_beast_command, sanitize_player_blessing_command,
@@ -68,6 +68,7 @@ use crate::error::{ApiError, Failure};
 use crate::http::json;
 use crate::idempotency::key_or_uuid;
 use crate::journal::{append_room_journal, combat_message_id, merchant_message_id, narration_message_id, player_message_id, player_note_author, player_note_from, recent_narrator_texts};
+use crate::merchant_guard::{assert_merchant_idempotency, assert_merchant_result_fingerprint};
 use crate::orchestration::{orchestration, Orchestration};
 use crate::projection::{latest_campaign_state, persist_authoritative_projection, PersistOptions};
 use crate::room::{get_room, Room};
@@ -143,32 +144,6 @@ impl Memberships for KnownMemberships {
         let wanted = campaign_id.to_uppercase();
         Ok(self.0.iter().find(|(code, _)| *code == wanted).is_some_and(|(_, known)| *known))
     }
-}
-
-// --- торговля (1023–1030, 1241–1246) -----------------------------------------
-
-/// Отпечатки торговых событий: `new Set(events.map(e => e.payload?.request_fingerprint).filter(Boolean).map(String))`.
-fn merchant_fingerprints(events: Option<&Value>) -> IndexSet<String> {
-    array(events).iter().map(|event| get(get(Some(event), "payload"), "request_fingerprint")).filter(|value| js::truthy(*value)).map(js::string).collect()
-}
-
-/// `assertMerchantIdempotency(campaignId, key, command)` (1023–1030).
-fn assert_merchant_idempotency(core: &GameCore, campaign_id: &str, idempotency_key: &str, command: &Value) -> Result<(), Failure> {
-    let Some(duplicate) = core.events.get_by_idempotency_key(campaign_id, idempotency_key)? else { return Ok(()) };
-    let fingerprints = merchant_fingerprints(Some(&Value::Array(duplicate.events)));
-    if fingerprints.len() != 1 || !fingerprints.contains(&merchant_command_fingerprint(command)) {
-        return Err(policy_error("Этот ключ идемпотентности уже использован для другой торговой операции", "IDEMPOTENCY_CONFLICT"));
-    }
-    Ok(())
-}
-
-/// `assertMerchantResultFingerprint(result, command)` (1241–1246).
-fn assert_merchant_result_fingerprint(result: &Value, command: &Value) -> Result<(), Failure> {
-    let fingerprints = merchant_fingerprints(get(Some(result), "mechanics"));
-    if fingerprints.len() != 1 || !fingerprints.contains(&merchant_command_fingerprint(command)) {
-        return Err(policy_error("Конкурирующая операция использовала тот же ключ идемпотентности", "IDEMPOTENCY_CONFLICT"));
-    }
-    Ok(())
 }
 
 // --- маршрут -----------------------------------------------------------------
@@ -575,7 +550,7 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         if commands.len() != 1 {
             return Err(policy_error("Торговая операция должна быть отдельной атомарной командой", "PLAYER_COMMAND_FORBIDDEN").into());
         }
-        assert_merchant_idempotency(core, campaign_id, idempotency_key, merchant)?;
+        assert_merchant_idempotency(core.events.as_ref(), campaign_id, idempotency_key, merchant)?;
     }
     if !character_commands.is_empty() && character_commands.len() != commands.len() {
         return Err(policy_error("Изменения развития персонажа нельзя смешивать с игровым ходом", "PLAYER_COMMAND_FORBIDDEN").into());
