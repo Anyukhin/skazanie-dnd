@@ -145,7 +145,9 @@ impl From<Failure> for ApiError {
 impl From<sk_store::StoreError> for Failure {
     fn from(error: sk_store::StoreError) -> Self {
         let details = if error.details.as_object().is_some_and(|map| !map.is_empty()) { Some(error.details.clone()) } else { None };
-        Self { message: error.message, code: Some(error.code.to_string()), details }
+        // Пустой код — ошибка без `code` в JS (`new Error`): поля нет.
+        let code = (!error.code.is_empty()).then(|| error.code.to_string());
+        Self { message: error.message, code, details }
     }
 }
 

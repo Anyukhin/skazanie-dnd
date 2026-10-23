@@ -512,6 +512,11 @@ mod imp {
         Ok(Hooks { dice, faults })
     }
 
+    /// Синтетический сбой набора JS — `new Error(...)` без `code`
+    /// (`test/kit/server-hooks.mjs`): пустой код, который `Failure` не
+    /// печатает, а маршруты считают необработанной ошибкой (С18.1).
+    const SYNTHETIC_FAULT_CODE: &str = "";
+
     thread_local! {
         /// Сбои этого ядра: поток ядра у каждого `AppState` свой.
         static FAULTS: RefCell<Option<CommitFaults>> = const { RefCell::new(None) };
@@ -532,7 +537,7 @@ mod imp {
     pub fn commit(events: &EventStore, request: CommitRequest) -> StoreResult<CommitResult> {
         match take_commit_fault(&request.idempotency_key) {
             None => events.commit(request),
-            Some(CommitFaultMode::Throw) => Err(StoreError::new("EVENT_STORE_ERROR", "synthetic commit failure before journal write")),
+            Some(CommitFaultMode::Throw) => Err(StoreError::new(SYNTHETIC_FAULT_CODE, "synthetic commit failure before journal write")),
             Some(CommitFaultMode::ExitBefore) => std::process::exit(EXIT_BEFORE_CODE),
             Some(CommitFaultMode::ExitAfter) => {
                 // Как `await originalCommit(...)`: отказ записи — обычная
@@ -550,7 +555,7 @@ mod imp {
 
     pub fn acknowledge_fault(campaign_id: &str, projected_version: i64) -> StoreResult<()> {
         if take_ack_fault(campaign_id, projected_version) {
-            return Err(StoreError::new("EVENT_STORE_ERROR", "synthetic projection acknowledgement failure"));
+            return Err(StoreError::new(SYNTHETIC_FAULT_CODE, "synthetic projection acknowledgement failure"));
         }
         Ok(())
     }
