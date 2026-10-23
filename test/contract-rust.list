@@ -33,3 +33,7 @@ test/heroes-api.test.mjs          # GET /api/heroes: права, герои вс
 # campaign-improv-mode и house-rule-default-api проходят все шаги /settings (с рестартом и
 # правилами по умолчанию при старте), но проверяют летопись и state_version через
 # GET /api/rooms (С10); ruleset-selection-api дальше идёт в /lifecycle (С8) — вне списка до них.
+
+# С8 (2026-10-23): откат ведущего и жизненный цикл кампании.
+test/campaign-controls-api.test.mjs    # /controls и /lifecycle: права владельца, ключ, event_id, повтор и конфликт, сводка финала, replay после restart
+test/ruleset-selection-api.test.mjs    # редакция до первого игрового события; пауза через /lifecycle закрывает смену (С7 + С8)
