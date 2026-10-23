@@ -23,6 +23,7 @@ pub use sk_scene_base::talespire_slab::SLAB_MAX_TEXT_LENGTH;
 pub use sk_social::npc_social::NPC_SOCIAL_COMMAND_TYPES;
 pub use sk_society::law_and_order::{GUARD_ESCAPE_SKILLS, LAW_COMMAND_TYPES, LAW_POLICY_ID};
 pub use sk_society::parley::{PARLEY_COMMAND_TYPES, PARLEY_POLICY_ID, PARLEY_SKILLS, TRUCE_BREAKING_COMMAND_TYPES};
+pub use sk_world_life::courier_letters::{courier_addressee_for, courier_letter_promise_from, courier_tone_for, COURIER_LETTER_ADDRESSEE_KINDS};
 
 /// `npc-positioning.mjs`: `NPC_WORLD_COMMAND_TYPES`.
 pub const NPC_WORLD_COMMAND_TYPES: [&str; 3] = ["PlaceNpc", "MoveNpc", "HarmNpc"];
