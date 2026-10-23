@@ -184,6 +184,12 @@ fn main() {
     }
     // Аудит PR #131, RCV-05: отметка писателя — до первой записи в storage.
     let mut writer = sk_infra::backup_service::claim_storage_writer(&config.storage_dir, Default::default()).unwrap_or_else(|error| fail(format!("Не удалось отметить писателя storage: {error}")));
+    // Редакция по умолчанию (`index.mjs:313, 317–319`): неизвестная или не
+    // допустимая для процесса — отказ старта её собственным текстом.
+    if let Err(error) = sk_server::routes::catalog::check_process_default(&config.default_ruleset_id) {
+        writer.release();
+        fail(error);
+    }
     let address = format!("{}:{port}", config.host);
     let banner = if config.model_configured() { format!("{} + {} fallback models", config.model, config.fallback_models.len()) } else { "демо-режим".to_string() };
     let factory_config = config.clone();

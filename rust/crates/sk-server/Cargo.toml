@@ -58,6 +58,8 @@ sk-story = { path = "../sk-story" }
 sk-tactical = { path = "../sk-tactical" }
 sk-tactics = { path = "../sk-tactics" }
 sk-turns = { path = "../sk-turns" }
+# С4: каталог шаблонов мира (`/api/world-templates`).
+sk-world-time = { path = "../sk-world-time" }
 
 [dev-dependencies]
 tempfile = "3.27.0"

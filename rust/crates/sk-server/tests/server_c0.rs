@@ -138,9 +138,9 @@ async fn raw_routes_with_query_are_404() {
     admin.setup_admin().await;
     let raw: [(&str, &str, bool); 15] = [
         ("GET", "/api/health", true),
-        ("GET", "/api/admin/usage", false),
-        ("GET", "/api/speech/status", false),
-        ("POST", "/api/speech/transcribe", false),
+        ("GET", "/api/admin/usage", true),
+        ("GET", "/api/speech/status", true),
+        ("POST", "/api/speech/transcribe", true),
         ("GET", "/api/auth/me", true),
         ("POST", "/api/auth/setup-admin", true),
         ("POST", "/api/auth/register", true),
