@@ -45,6 +45,10 @@ sk-character = { path = "../sk-character" }
 # С1: карточки летописи из событий (`journalCandidatesFor`) и решения отряда.
 sk-memory = { path = "../sk-memory" }
 sk-npc-world = { path = "../sk-npc-world" }
+# С18.5: `gameOrchestrator` и `autonomousCampaign` в ядре (`src/orchestration.rs`).
+sk-orchestrator = { path = "../sk-orchestrator" }
+# С18.5: собеседник рассказа (`explicitNarrationNpcId`, `index.mjs:2326–2359`).
+sk-social = { path = "../sk-social" }
 sk-world-life = { path = "../sk-world-life" }
 sk-world-story = { path = "../sk-world-story" }
 sk-chargen = { path = "../sk-chargen" }
