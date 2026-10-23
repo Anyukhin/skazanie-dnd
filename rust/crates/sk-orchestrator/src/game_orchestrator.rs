@@ -4007,6 +4007,9 @@ impl GameOrchestrator {
         let mut plan = if has_commands {
             let commands = input.field("commands").cloned().unwrap_or(Value::Null);
             let Value::Array(items) = &commands else { return Err(type_error("input.commands.flatMap is not a function")) };
+            if items.iter().any(Value::is_null) {
+                return Err(type_error("Cannot read properties of null (reading 'source_rule_ids')"));
+            }
             let rule_ids = unique_values(flat_field(items, "source_rule_ids"));
             json!({ "rule_ids": rule_ids, "proposed_commands": commands, "roll_requests": [], "ruling_required": false, "ruling_draft": null, "narration_constraints": [], "confidence": 1 })
         } else if js::truthy(intent.get("requires_clarification")) {
