@@ -376,6 +376,19 @@ pub fn search_param(raw: &str, name: &str) -> Option<String> {
     })
 }
 
+/// `url.searchParams.getAll(name)`: все значения по порядку.
+pub fn search_params_all(raw: &str, name: &str) -> Vec<String> {
+    let Some(query) = query(raw) else { return Vec::new() };
+    query
+        .split('&')
+        .filter(|pair| !pair.is_empty())
+        .filter_map(|pair| {
+            let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+            (form_decode(key) == name).then(|| form_decode(value))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -481,5 +494,7 @@ mod tests {
         assert_eq!(search_param("/x?flag", "flag").as_deref(), Some(""));
         assert_eq!(search_param("/x", "flag"), None);
         assert_eq!(search_param("/x?bad=%zz", "bad").as_deref(), Some("%zz"));
+        assert_eq!(search_params_all("/x?q=a&q=&r=1&q=%D0%B1+в", "q"), ["a", "", "б в"]);
+        assert!(search_params_all("/x", "q").is_empty());
     }
 }

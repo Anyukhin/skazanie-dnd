@@ -13,14 +13,15 @@
 //! `MeteredLLMClient`, поэтому каждый вызов модели проходит учёт расхода.
 //!
 //! Что добавят следующие задачи (поля — через ведущего): генераторы картинок
-//! и сервисы портретов/иллюстраций (С12), пакеты правил, поиск и профили
-//! редакций (С4), журнал трасс (С15), реестр уточнений и оркестраторы (О1/О2),
-//! `PostCommitCoordinator` и координатор боя в ядре (С17), прогоны боевого
-//! стенда (С5), учёт Архитектора (С4/С7).
+//! и сервисы портретов/иллюстраций (С12), журнал трасс (С15), реестр уточнений
+//! и оркестраторы (О1/О2), `PostCommitCoordinator` и координатор боя в ядре
+//! (С17), прогоны боевого стенда (С5). Пакеты правил, поиск, профили редакций
+//! и учёт Архитектора добавил С4.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use sk_agents_base::architect_usage::ArchitectUsageStore;
 use sk_agents_base::llm_client::{FallbackLlmClient, FallbackLlmClientConfig, FallbackMember};
 use sk_dice::{D20Request, Dice, DiceError, Roll, Visibility};
 use sk_infra::roll_registry::{RollRegistry, RollRegistryOptions};
@@ -31,6 +32,7 @@ use crate::config::Config;
 use crate::core::{CoreHandle, GameCore};
 use crate::dispatch::Route;
 use crate::limits::Limits;
+use crate::routes::catalog::RuleCatalog;
 use crate::streams::{NoStreams, StreamFactory, StreamRegistry};
 
 /// Общие кости: один `DiceService` на ядро, реестр бросков и движок, как
@@ -144,6 +146,10 @@ pub struct AppState {
     pub core: CoreHandle,
     /// `DurableUsageLedger` (`index.mjs:243–246`).
     pub ledger: Arc<DurableUsageLedger>,
+    /// `ArchitectUsageStore` (`index.mjs:249–252`).
+    pub architect_usage: Arc<ArchitectUsageStore>,
+    /// Пакеты правил, поиск и профили редакций (`index.mjs:312–324`).
+    pub rules: RuleCatalog,
     /// Клиенты модели (всегда через учёт расхода).
     pub models: LlmClients,
     /// `loginAttempts` и `costlyRequests` (2894–2903).
@@ -167,6 +173,9 @@ impl AppState {
         let mut ledger_options = UsageLedgerOptions::new(storage.join("engine").join("llm-usage.json"));
         ledger_options.daily_token_limit = Some(config.ai_daily_token_limit);
         let ledger = Arc::new(DurableUsageLedger::new(ledger_options).map_err(|error| error.to_string())?);
+        let architect_threshold = sk_core::js::num(config.architect_alert_threshold);
+        let architect_usage = Arc::new(ArchitectUsageStore::new(storage.join("engine").join("architect-usage.json"), Some(&architect_threshold), Some(clock.clone()))?);
+        let rules = RuleCatalog::load(&config.default_ruleset_id, &crate::routes::catalog::rule_packs_root())?;
         let models = match injected.llm {
             Some(factory) => factory(&ledger)?,
             None => LlmClients::default(),
@@ -174,7 +183,7 @@ impl AppState {
         let dice = SharedDice::new(injected.dice.unwrap_or_else(|| Box::new(sk_dice::DiceService::system())));
         let streams: StreamFactory = injected.streams.unwrap_or_else(|| Box::new(|| Box::new(NoStreams) as Box<dyn StreamRegistry>));
         let core = start_core(database, storage.join("engine").join("roll-registry.json"), dice, clock.clone(), streams)?;
-        Ok(Self { config, accounts: Arc::new(accounts), core, ledger, models, limits: Limits::new(clock), routes: crate::routes::table(injected.extra_routes) })
+        Ok(Self { config, accounts: Arc::new(accounts), core, ledger, architect_usage, rules, models, limits: Limits::new(clock), routes: crate::routes::table(injected.extra_routes) })
     }
 
     /// Клиент для ролей агентов: `apiKey ? llmClient : null` (310, 397–399…).
