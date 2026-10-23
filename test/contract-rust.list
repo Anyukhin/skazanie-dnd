@@ -41,3 +41,7 @@ test/recovery-required-api.test.mjs   # испорченная кампания:
 test/campaign-reasoning-settings.test.mjs   # уровень рассуждений: права, сохранение, перезапуск
 test/campaign-improv-mode.test.mjs          # режим импровизации: строка летописи без события
 test/house-rule-default-api.test.mjs        # домашние правила по умолчанию при старте
+
+# С8 (2026-10-23): откат ведущего и жизненный цикл кампании.
+test/campaign-controls-api.test.mjs    # /controls и /lifecycle: права владельца, ключ, event_id, повтор и конфликт, сводка финала, replay после restart
+test/ruleset-selection-api.test.mjs    # редакция до первого игрового события; пауза через /lifecycle закрывает смену (С7 + С8)
