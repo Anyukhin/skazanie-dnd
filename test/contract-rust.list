@@ -148,3 +148,7 @@ test/hit-dice-api.test.mjs              # кости хитов через /comm
 test/mvp-player-cycle-api.test.mjs      # обычные игроки: шаги Режиссёра, полный бой, награды стадией завершения, три сцены
 # Ведущий (2026-10-24): после С18.3 + С18.4 целиком зелёный против Rust.
 test/director-player-entry-api.test.mjs
+
+# С5 (2026-10-24): боевой стенд администратора /api/admin/combat-lab/* — прогон боя
+# (runCombatScenario) в Rust; combat-lab-api уже в списке (С18.1, бой поверх кампании).
+test/combat-lab-observer-api.test.mjs  # права, справочники, оценка и генерация, асинхронный прогон, кадры, отмена, отчёт
