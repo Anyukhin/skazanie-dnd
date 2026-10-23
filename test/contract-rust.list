@@ -133,3 +133,10 @@ test/world-rumor-clock-api.test.mjs      # часы молвы идут сами
 test/hero-hooks-api.test.mjs             # зацепки героя на хуке проекции: одно плетение, переживает restart
 test/reaction-preferences-api.test.mjs   # режим реакции своего героя, повтор и restart (DND_COMBAT_TURN_TIMEOUT_MS)
 test/merchant-api.test.mjs               # торговля игрока и POST /system-tick с часами лавки (С14 + С18.2 + С17)
+
+# С18.4 (2026-10-24): автономия кампании — autonomy/intents и autonomy/advance, стадия
+# encounter-completion координатора последствий. director-player-entry-api проходит все шаги
+# автономии (включая resume после restart), но дальше идёт в encounters/assemble (С18.3) — вне списка до неё.
+test/dialogue-api.test.mjs              # обсуждение и вопрос вне своего хода; переход по голосованию через /autonomy/advance
+test/hit-dice-api.test.mjs              # кости хитов через /commands; повтор /autonomy/advance показывает чужие кости хитов только проекцией зрителя
+test/mvp-player-cycle-api.test.mjs      # обычные игроки: шаги Режиссёра, полный бой, награды стадией завершения, три сцены
