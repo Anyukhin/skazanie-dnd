@@ -139,3 +139,10 @@ test/merchant-api.test.mjs               # торговля игрока и POST
 test/encounter-api.test.mjs           # права, белый список полей, устаревшая версия, ходы врагов до героя, проекция игроку, restart, повтор и конфликт ключа
 test/longstrider-api.test.mjs         # «Скороход»: развитие, сборка встречи, бой и движение через /commands, restart
 test/destructive-wave-api.test.mjs    # «Разрушительная волна»: жрец бури 9-го уровня, сборка встречи и удар по площади
+
+# С18.4 (2026-10-24): автономия кампании — autonomy/intents и autonomy/advance, стадия
+# encounter-completion координатора последствий. director-player-entry-api проходит все шаги
+# автономии (включая resume после restart), но дальше идёт в encounters/assemble (С18.3) — вне списка до неё.
+test/dialogue-api.test.mjs              # обсуждение и вопрос вне своего хода; переход по голосованию через /autonomy/advance
+test/hit-dice-api.test.mjs              # кости хитов через /commands; повтор /autonomy/advance показывает чужие кости хитов только проекцией зрителя
+test/mvp-player-cycle-api.test.mjs      # обычные игроки: шаги Режиссёра, полный бой, награды стадией завершения, три сцены

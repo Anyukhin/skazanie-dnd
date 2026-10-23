@@ -41,6 +41,8 @@ sk-dice.workspace = true
 sk-rules.workspace = true
 sk-agents = { path = "../sk-agents" }
 sk-agents-base = { path = "../sk-agents-base" }
+# С18.4: сцена незнакомца сценария в строке Режиссёра (`scenarioStrangerNarration`).
+sk-attention = { path = "../sk-attention" }
 sk-character = { path = "../sk-character" }
 # С1: карточки летописи из событий (`journalCandidatesFor`) и решения отряда.
 sk-memory = { path = "../sk-memory" }

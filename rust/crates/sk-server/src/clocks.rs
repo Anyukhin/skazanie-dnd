@@ -41,10 +41,9 @@
 //!   — исключение внутри `settle` с повтором; здесь хозяин координатора не
 //!   может вернуть ошибку (трейт `CoordinatorHost`), поэтому сбой пишется в
 //!   лог тем же текстом `onError`, а повтора нет.
-//! - Стадия `encounter-completion` (`completeEncounter`, О1) не подключена —
-//!   это С18.4: прогон её отвергает и в лог пишет, а одноразовую память не
-//!   помечает. Прочие стадии без зависимости у JS (`?.()`) — пустой результат,
-//!   как там.
+//! - Стадия `encounter-completion` (`completeEncounter`, О1) — в
+//!   `routes/autonomy.rs` (С18.4). Прочие стадии без зависимости у JS
+//!   (`?.()`) — пустой результат, как там.
 
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -494,9 +493,8 @@ async fn run_stage(core: &Rc<GameCore>, name: &str, context: &StageContext<'_>) 
             let room = persist_authoritative_projection(core, &context.campaign_id, context.state, context.events, journal_message, PersistOptions::default()).map_err(|error| error.to_string())?;
             Ok(Some(room.map_or(Value::Null, |room| room.to_json())))
         }
-        // `completeEncounter` (О1) подключит С18.4: до тех пор стадия не
-        // засчитывается.
-        "encounter-completion" => Err("Стадия encounter-completion не подключена (С18.4)".to_string()),
+        // С18.4: `completeEncounter` (377–387) — в `routes/autonomy.rs`.
+        "encounter-completion" => crate::routes::autonomy::complete_encounter_stage(core, &context.campaign_id, context.stage_key.as_deref().unwrap_or("")).await,
         // У JS этих зависимостей нет: `context.deps.x?.(context)` — `undefined`.
         _ => Ok(None),
     }
