@@ -11,7 +11,7 @@
 | --- | --- | --- | --- | --- |
 | 0 | `sk-dice` | перенесён | 116 | `dice-service` |
 | 0 | `sk-store` | перенесён | 2450 | `event-store`, `map-store`, `store`, `authoritative-executor` |
-| 0 | `sk-server` | начат: каркас С0 (диспетчер в порядке JS, однопоточное ядро, вход/сессии/админка, раздача клиента); JS-кит С3; в работе С1, С2 | 70 | `rate-window` |
+| 0 | `sk-server` | начат: все маршруты С0–С18 перенесены, контрактный список 160/160 в режимах rust и js; остался финальный этап С19 (пути данных, перенос старого storage, аргументы бинаря, Docker) | 70 | `rate-window` |
 | 1 | `sk-ruleset` | перенесён | 2876 | `ruleset-config`, `rules/core`, `rules/actors`, `campaign-ruleset`, `character-progression`, `character-creation-class-options`, `character-creation-feats`, `character-creation-catalog`, `backgrounds`, `lockpicking` |
 | 1 | `sk-geometry` | перенесён | 1531 | `actor-footprint`, `circular-area-geometry`, `scene-graph`, `world-map` |
 | 1 | `sk-narration-base` | перенесён | 2095 | `deterministic-narration`, `combat-phrases`, `concentration-end-reasons`, `narrator-craft-quality`, `projection-integrity`, `prompt-descriptors`, `model-style-profiles`, `campaign-ai-context`, `campaign-inspiration`, `clarification-registry`, `contracts`, `speech-input` |
@@ -53,6 +53,6 @@
 | 15 | `sk-agents` | перенесён | 11269 | `campaign-bootstrap`, `campaign-recap`, `creative-director`, `hero-hooks`, `lore-author`, `lore-voice`, `npc-controller`, `scene-architect`, `director-agent`, `free-action-adjudication`, `npc-social-controller`, `player-request-router`, `action-adjudicator`, `narrator` |
 | 16 | `sk-turns` | перенесён | 2297 | `npc-turn-scheduler`, `combat-turn-coordinator` |
 | 18 | `sk-orchestrator` | перенесён | 6443 | `autonomous-orchestrator`, `game-orchestrator` |
-| 20 | `sk-server` | начат: каркас С0 (диспетчер в порядке JS, однопоточное ядро, вход/сессии/админка, раздача клиента); JS-кит С3; в работе С1, С2 | 6799 | `index`, `routes/map-import-routes`, `routes/combat-lab-routes` |
+| 20 | `sk-server` | начат: все маршруты С0–С18 перенесены, контрактный список 160/160 в режимах rust и js; остался финальный этап С19 (пути данных, перенос старого storage, аргументы бинаря, Docker) | 6799 | `index`, `routes/map-import-routes`, `routes/combat-lab-routes` |
 
 Не переносятся: `rules-corpus` — запись корпуса паритета — инструмент JS; `dev` — запуск JS-разработки; `autonomy-eval` — стенд оценки JS; `migrations/001-event-engine` — до-событийные комнаты; Rust импортирует событийное хранилище; `migrations/run` — запуск миграций JS.
