@@ -100,3 +100,15 @@ test/stream-viewer-isolation-api.test.mjs  # поток не выдаёт чуж
 test/summon-expiry-api.test.mjs            # истечение призыва
 test/thrown-flask-http.test.mjs            # бросок флакона: эффект, права, повтор, replay
 test/wand-of-magic-missiles-api.test.mjs   # жезл «Волшебных стрел»: заряды и повтор
+# Ведущий (2026-10-23): после С18.1 + С18.5 целиком зелёные против Rust. С19: проверить, что
+# command-retry-intent-api (читает turn-traces) и persistent-campaign-api (пишет журнал мимо
+# executor) в режиме rust не проверяют пустоту.
+test/command-retry-intent-api.test.mjs
+test/director-shop-api.test.mjs
+test/law-api.test.mjs
+test/parley-api.test.mjs
+test/tavern-api.test.mjs
+test/persistent-campaign-api.test.mjs
+test/npc-world-consequences-api.test.mjs
+test/world-data-flow-api.test.mjs
+test/table-of-five-api.test.mjs
