@@ -518,7 +518,7 @@ function captureTests() {
         ...TESTS.map((name) => new URL(`test/${name}.test.mjs`, root).pathname.replace(/^\/([A-Za-z]:)/u, '$1')),
       ], {
         cwd: new URL('.', root),
-        env: { ...process.env, ROUTERAI_API_KEY: '', SK_CAPTURE: file, SK_CAPTURE_LIMIT: process.env.SK_O2_CAPTURE_LIMIT ?? '220' },
+        env: { ...process.env, ROUTERAI_API_KEY: '', SK_CAPTURE: file, SK_CAPTURE_LIMIT: process.env.SK_O2_CAPTURE_LIMIT ?? '300' },
         stdio: ['ignore', 'ignore', 'inherit'],
         maxBuffer: 1 << 30,
       })
@@ -590,7 +590,7 @@ console.log(`тесты: ${pure.length} вызовов чистых функци
 // --- 2. корпус ----------------------------------------------------------------------------
 
 const corpusStates = []
-const STATE_LIMIT = Number(process.env.SK_O2_STATES ?? 70)
+const STATE_LIMIT = Number(process.env.SK_O2_STATES ?? 120)
 if (!existsSync(corpusDir)) throw new Error(`нет корпуса в ${corpusDir}`)
 const stateDir = join(corpusDir, 'states')
 const names = readdirSync(stateDir).sort()
