@@ -113,6 +113,12 @@ mod tests {
             let at = |line: u32| lines.get(line as usize - 1).copied().unwrap_or("");
             let window = [at(route.line - 1), at(route.line), at(route.line + 1)];
             let here = window[1];
+            // Модули, вынесенные из `index.mjs` (combat-lab 3958, map-import
+            // 3959): на строке — подключение, регулярка — в своём файле (С13).
+            if matches!(route.line, 3958 | 3959) {
+                assert!(here.contains("Route(req, res, requestPath)"), "строка {}: нет подключения модуля\n{here}", route.line);
+                continue;
+            }
             let marker = match route.matcher.pattern {
                 Pattern::Exact(path) | Pattern::Prefix(path) => format!("'{path}"),
                 Pattern::Template(template) => template[..template.find(['{', '[', '(']).unwrap_or(template.len())].replace('/', r"\/"),
