@@ -1,0 +1,5311 @@
+{
+  "format": "skazanie.golden/1",
+  "scenario": "рассказ хода без модели: отказы до хода, свободная реплика и повтор, вопрос и обсуждение, бросок с карточкой, конфликт версии, голосование и переход сцены, соло-выход, живой поток рассказа",
+  "exchanges": [
+    {
+      "as": "anon",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Иду"
+      },
+      "status": 401,
+      "body_norm": {
+        "error": "Нужно войти в аккаунт"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/auth/setup-admin",
+      "headers": {},
+      "body": {
+        "email": "gm@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Ведущий",
+        "setupToken": "setup-code"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "setupRequired": false
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "anya@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Аня"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "boris@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Борис"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "headers": {},
+      "body": {
+        "email": "vera@mail.ru",
+        "password": "длинный-пароль",
+        "name": "Вера"
+      },
+      "status": 201,
+      "body_norm": {
+        "user": {
+          "id": "<uuid>",
+          "email": "vera@mail.ru",
+          "name": "Вера",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": null,
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate?x=1",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Иду"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "API endpoint не найден"
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "NARR-1",
+        "name": "Рассказ хода",
+        "state": {
+          "sessionCode": "NARR-1",
+          "campaign": "Рассказ хода",
+          "partyName": "Отряд у ворот",
+          "partyMemberIds": [
+            "hero-one",
+            "hero-two"
+          ],
+          "activePlayerId": "hero-one",
+          "isNarrating": false,
+          "pendingCheck": null,
+          "agentInteraction": null,
+          "suggestions": [],
+          "messages": [],
+          "players": [
+            {
+              "id": "hero-one",
+              "name": "Агата",
+              "character": "Агата",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true
+            },
+            {
+              "id": "hero-two",
+              "name": "Гелла",
+              "character": "Гелла",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true
+            }
+          ],
+          "enemies": [],
+          "scene": {
+            "title": "Старые ворота",
+            "location": "Старые ворота",
+            "mood": "",
+            "objective": "Решить, куда идти",
+            "turn": 1,
+            "cells": []
+          },
+          "adventure": {
+            "chapter": 1,
+            "currentHook": "Решить, куда идти",
+            "visitedLocations": [
+              "Старые ворота"
+            ],
+            "history": []
+          },
+          "mechanics": {
+            "combat": {
+              "active": false
+            },
+            "world_time": {
+              "elapsed_minutes": 0
+            }
+          },
+          "social": {
+            "npcs": [],
+            "relationships": {},
+            "conversations": [],
+            "promises": []
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": {
+          "sessionCode": "NARR-1",
+          "campaign": "Рассказ хода",
+          "partyName": "Отряд у ворот",
+          "partyMemberIds": [
+            "hero-one",
+            "hero-two"
+          ],
+          "activePlayerId": "hero-one",
+          "isNarrating": false,
+          "pendingCheck": null,
+          "agentInteraction": null,
+          "suggestions": [],
+          "messages": [],
+          "players": [
+            {
+              "id": "hero-one",
+              "name": "Агата",
+              "character": "Агата",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true,
+              "level": 1,
+              "experience": 0,
+              "currency": {
+                "copper": 0,
+                "silver": 0,
+                "gold": 0,
+                "platinum": 0
+              },
+              "combatSpells": [],
+              "combatActions": [
+                {
+                  "id": "stand-up",
+                  "name": "Встать",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "free",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».",
+                  "effect": {
+                    "kind": "stand_up"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "break-free",
+                  "name": "Высвободиться",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.",
+                  "effect": {
+                    "kind": "break_free"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "steady-nerves",
+                  "name": "Совладать с собой",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).",
+                  "effect": {
+                    "kind": "steady_nerves"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-self",
+                  "name": "Потушить пламя",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить с себя пламя — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-ally",
+                  "name": "Потушить союзника",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить пламя с существа в пределах 5 футов — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "expeditious-retreat-dash",
+                  "name": "Стремительный рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "bonus_action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Пока активно «Поспешное отступление», совершить Рывок бонусным действием.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dash",
+                  "name": "Рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Дополнительное перемещение, равное скорости, до конца хода.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "disengage",
+                  "name": "Отход",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Перемещение не провоцирует атак по возможности до конца хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "disengaged",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dodge",
+                  "name": "Уклонение",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Атаки по вам совершаются с помехой до начала следующего хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "dodging",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "hide",
+                  "name": "Засада",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "dex",
+                    "skill": "stealth"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "help",
+                  "name": "Помощь",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Союзник получает преимущество на следующую атаку.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "helped",
+                    "duration": "until-used"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "stabilize",
+                  "name": "Стабилизировать",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.",
+                  "effect": {
+                    "kind": "stabilize",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "first-aid",
+                  "name": "Первая помощь",
+                  "category": "common",
+                  "target": "creature",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.",
+                  "effect": {
+                    "kind": "first_aid",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "grapple",
+                  "name": "Захват",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "grappled"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "shove",
+                  "name": "Толчок",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Силы; при успехе цель сбита с ног.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "prone"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "ready",
+                  "name": "Подготовка",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Подготовить действие и сохранить реакцию для указанного условия.",
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "readied",
+                    "duration": "until-next-turn"
+                  },
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "search",
+                  "name": "Поиск",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "wis",
+                    "skill": "perception"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "use-object",
+                  "name": "Использовать предмет",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Взаимодействовать с немагическим предметом в бою.",
+                  "effect": {
+                    "kind": "special"
+                  },
+                  "mechanicsSupport": "ruling-only",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "ready-action",
+                  "name": "Готовность",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить действие, чтобы заготовить атаку оружием или заклинание и выпустить его реакцией, когда сработает выбранный триггер.",
+                  "effect": {
+                    "kind": "ready_action",
+                    "triggers": [
+                      "enemy-approaches",
+                      "enemy-casts-spell"
+                    ]
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Заготавливается атака оружием или заклинание с временем накладывания «действие»: ячейка тратится сразу, магия держится концентрацией. Триггеров два и оба распознаёт сервер — враг подошёл вплотную или начал творить заклинание; произвольное «воспринимаемое обстоятельство» из редакции не исполняется.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                }
+              ],
+              "inventoryLoad": {
+                "weight": 0,
+                "capacity": 180,
+                "encumbered": false,
+                "remaining": 180,
+                "attuned": 0,
+                "attunement_limit": 3
+              },
+              "characterSheet": null
+            },
+            {
+              "id": "hero-two",
+              "name": "Гелла",
+              "character": "Гелла",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true,
+              "level": 1,
+              "experience": 0,
+              "currency": {
+                "copper": 0,
+                "silver": 0,
+                "gold": 0,
+                "platinum": 0
+              },
+              "combatSpells": [],
+              "combatActions": [
+                {
+                  "id": "stand-up",
+                  "name": "Встать",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "free",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».",
+                  "effect": {
+                    "kind": "stand_up"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "break-free",
+                  "name": "Высвободиться",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.",
+                  "effect": {
+                    "kind": "break_free"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "steady-nerves",
+                  "name": "Совладать с собой",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).",
+                  "effect": {
+                    "kind": "steady_nerves"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-self",
+                  "name": "Потушить пламя",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить с себя пламя — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-ally",
+                  "name": "Потушить союзника",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить пламя с существа в пределах 5 футов — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "expeditious-retreat-dash",
+                  "name": "Стремительный рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "bonus_action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Пока активно «Поспешное отступление», совершить Рывок бонусным действием.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dash",
+                  "name": "Рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Дополнительное перемещение, равное скорости, до конца хода.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "disengage",
+                  "name": "Отход",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Перемещение не провоцирует атак по возможности до конца хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "disengaged",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dodge",
+                  "name": "Уклонение",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Атаки по вам совершаются с помехой до начала следующего хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "dodging",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "hide",
+                  "name": "Засада",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "dex",
+                    "skill": "stealth"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "help",
+                  "name": "Помощь",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Союзник получает преимущество на следующую атаку.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "helped",
+                    "duration": "until-used"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "stabilize",
+                  "name": "Стабилизировать",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.",
+                  "effect": {
+                    "kind": "stabilize",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "first-aid",
+                  "name": "Первая помощь",
+                  "category": "common",
+                  "target": "creature",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.",
+                  "effect": {
+                    "kind": "first_aid",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "grapple",
+                  "name": "Захват",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "grappled"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "shove",
+                  "name": "Толчок",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Силы; при успехе цель сбита с ног.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "prone"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "ready",
+                  "name": "Подготовка",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Подготовить действие и сохранить реакцию для указанного условия.",
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "readied",
+                    "duration": "until-next-turn"
+                  },
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "search",
+                  "name": "Поиск",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "wis",
+                    "skill": "perception"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "use-object",
+                  "name": "Использовать предмет",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Взаимодействовать с немагическим предметом в бою.",
+                  "effect": {
+                    "kind": "special"
+                  },
+                  "mechanicsSupport": "ruling-only",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "ready-action",
+                  "name": "Готовность",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить действие, чтобы заготовить атаку оружием или заклинание и выпустить его реакцией, когда сработает выбранный триггер.",
+                  "effect": {
+                    "kind": "ready_action",
+                    "triggers": [
+                      "enemy-approaches",
+                      "enemy-casts-spell"
+                    ]
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Заготавливается атака оружием или заклинание с временем накладывания «действие»: ячейка тратится сразу, магия держится концентрацией. Триггеров два и оба распознаёт сервер — враг подошёл вплотную или начал творить заклинание; произвольное «воспринимаемое обстоятельство» из редакции не исполняется.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                }
+              ],
+              "inventoryLoad": {
+                "weight": 0,
+                "capacity": 180,
+                "encumbered": false,
+                "remaining": 180,
+                "attuned": 0,
+                "attunement_limit": 3
+              },
+              "characterSheet": null
+            }
+          ],
+          "enemies": [],
+          "scene": {
+            "title": "Старые ворота",
+            "location": "Старые ворота",
+            "mood": "",
+            "objective": "Решить, куда идти",
+            "turn": 1,
+            "cells": []
+          },
+          "adventure": {
+            "chapter": 1,
+            "currentHook": "Решить, куда идти",
+            "visitedLocations": [
+              "Старые ворота"
+            ],
+            "history": []
+          },
+          "mechanics": {
+            "schema_version": 1,
+            "temporary_hp": {},
+            "resources": {
+              "hero-one": {},
+              "hero-two": {}
+            },
+            "hit_point_dice": {},
+            "resting": {},
+            "conditions": {},
+            "defenses": {},
+            "concentration": {},
+            "positions": {},
+            "item_appraisals": {},
+            "scene_interactions": {},
+            "encounter": null,
+            "active_effects": [],
+            "progression": {
+              "milestones": [],
+              "milestones_since_level": 0,
+              "milestones_per_level": 3,
+              "level_up_available": false
+            },
+            "shapes": {},
+            "death": {
+              "campaign_status": "active",
+              "heroes": {},
+              "saving_throws": {}
+            },
+            "campaign_lifecycle": {
+              "schema_version": 1,
+              "status": "active",
+              "reason": null,
+              "paused_at": null,
+              "concluded_at": null,
+              "archived_at": null,
+              "epilogue": null,
+              "epilogue_fact_keys": [],
+              "changed_by": null
+            },
+            "combat": {
+              "active": false,
+              "round": 0,
+              "initiative": [],
+              "active_index": -1,
+              "action_economy": {},
+              "reaction_window": null,
+              "readied": {},
+              "group_initiative": false,
+              "turn_completed": [],
+              "truce": null,
+              "parley_attempts": 0
+            },
+            "world_time": {
+              "amount": 0,
+              "unit": "minute",
+              "elapsed_minutes": 0
+            },
+            "enemy_knowledge": {
+              "party": {}
+            }
+          },
+          "social": {
+            "schema_version": 4,
+            "npcs": [],
+            "relationships": {},
+            "relationship_tiers": {},
+            "conversations": [],
+            "promises": []
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0,
+          "enabled_house_rules": [
+            "skazanie:class-resources-2024-v1",
+            "house:bg3-opening-strike",
+            "house:bg3-spell-hands"
+          ],
+          "ruleset_selection_locked": true,
+          "worldMemory": {
+            "schema_version": 2,
+            "entities": [
+              {
+                "id": "location:3a13172d5a2b5fa8120cb58f",
+                "kind": "location",
+                "name": "Старые ворота",
+                "summary": "",
+                "aliases": [],
+                "visibility": "party",
+                "tags": [
+                  "visited"
+                ]
+              }
+            ],
+            "facts": [],
+            "relationships": [],
+            "quests": [
+              {
+                "id": "quest:chapter:1",
+                "title": "Решить, куда идти",
+                "summary": "Решить, куда идти",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [
+                  "location:3a13172d5a2b5fa8120cb58f"
+                ],
+                "objectives": [
+                  "Решить, куда идти"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Цель сцены",
+                  "triggered": false
+                },
+                "recorded_at_minutes": 0
+              }
+            ],
+            "threads": [],
+            "epistemic_claims": [],
+            "summaries": [],
+            "knowledge": {},
+            "knowledge_revealed": [],
+            "knowledge_ledger": []
+          },
+          "character_start_level": 1,
+          "engine_mode": "enforce",
+          "ruleset_locked_at": null,
+          "actors": [],
+          "merchants": [],
+          "mapFeedback": [],
+          "battleLog": [],
+          "economyLog": [],
+          "locationMaps": {},
+          "worldMap": {
+            "version": 1,
+            "seed": "8d8dc650f352e69361769dde",
+            "name": "Карта мира «Рассказ хода»",
+            "width": 1000,
+            "height": 640,
+            "currentLocationId": "location-1-старые-ворота",
+            "regions": [
+              {
+                "id": "region-1",
+                "name": "Серебряные Пущи",
+                "biome": "forest",
+                "x": 217,
+                "y": 193,
+                "radius": 205
+              },
+              {
+                "id": "region-2",
+                "name": "Зелёные Пределы",
+                "biome": "mountains",
+                "x": 738,
+                "y": 170,
+                "radius": 205
+              },
+              {
+                "id": "region-3",
+                "name": "Сумеречные Долины",
+                "biome": "plains",
+                "x": 517,
+                "y": 335,
+                "radius": 245
+              },
+              {
+                "id": "region-4",
+                "name": "Пепельные Плавни",
+                "biome": "marsh",
+                "x": 210,
+                "y": 489,
+                "radius": 205
+              },
+              {
+                "id": "region-5",
+                "name": "Зелёные Фьорды",
+                "biome": "coast",
+                "x": 774,
+                "y": 475,
+                "radius": 205
+              }
+            ],
+            "locations": [
+              {
+                "id": "location-1-старые-ворота",
+                "name": "Старые ворота",
+                "kind": "town",
+                "x": 488,
+                "y": 381,
+                "regionId": "region-3",
+                "summary": "Решить, куда идти",
+                "known": true,
+                "visited": true
+              },
+              {
+                "id": "location-2-доргард",
+                "name": "Доргард",
+                "kind": "village",
+                "x": 306,
+                "y": 293,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Серебряные Пущи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-3-дорхольм",
+                "name": "Дорхольм",
+                "kind": "city",
+                "x": 688,
+                "y": 273,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Зелёные Пределы».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-4-керские-топи",
+                "name": "Керские топи",
+                "kind": "wilds",
+                "x": 163,
+                "y": 461,
+                "regionId": "region-4",
+                "summary": "Известное место региона «Пепельные Плавни».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-5-айрский-дозор",
+                "name": "Айрский дозор",
+                "kind": "fortress",
+                "x": 801,
+                "y": 433,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Зелёные Фьорды».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-6-тарский-склеп",
+                "name": "Тарский склеп",
+                "kind": "ruin",
+                "x": 426,
+                "y": 145,
+                "regionId": "region-3",
+                "summary": "Известное место региона «Сумеречные Долины».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-7-айргард",
+                "name": "Айргард",
+                "kind": "port",
+                "x": 604,
+                "y": 529,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Зелёные Фьорды».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-8-вальский-склеп",
+                "name": "Вальский склеп",
+                "kind": "dungeon",
+                "x": 838,
+                "y": 112,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Зелёные Пределы».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-9-тармар",
+                "name": "Тармар",
+                "kind": "landmark",
+                "x": 134,
+                "y": 136,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Серебряные Пущи».",
+                "known": true,
+                "visited": false
+              }
+            ],
+            "routes": [
+              {
+                "id": "route-1-4a5cb723",
+                "from": "location-9-тармар",
+                "to": "location-4-керские-топи",
+                "kind": "road",
+                "distance": 7,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-2-0846da44",
+                "from": "location-4-керские-топи",
+                "to": "location-2-доргард",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-3-a838d027",
+                "from": "location-2-доргард",
+                "to": "location-6-тарский-склеп",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-4-fc3bf971",
+                "from": "location-6-тарский-склеп",
+                "to": "location-1-старые-ворота",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-5-35a54f8a",
+                "from": "location-1-старые-ворота",
+                "to": "location-7-айргард",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-6-ba5fe5df",
+                "from": "location-7-айргард",
+                "to": "location-3-дорхольм",
+                "kind": "road",
+                "distance": 6,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-7-0e61b416",
+                "from": "location-3-дорхольм",
+                "to": "location-5-айрский-дозор",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-8-0e88d301",
+                "from": "location-5-айрский-дозор",
+                "to": "location-8-вальский-склеп",
+                "kind": "road",
+                "distance": 7,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-16-02e9e284",
+                "from": "location-8-вальский-склеп",
+                "to": "location-3-дорхольм",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-17-e16196a6",
+                "from": "location-9-тармар",
+                "to": "location-2-доргард",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              }
+            ]
+          },
+          "npc_world": {
+            "schema_version": 3,
+            "placements": [],
+            "vitals": {},
+            "stances": {},
+            "inventories": {},
+            "profiles": {}
+          },
+          "world_deeds": {
+            "schema_version": 1,
+            "deeds": []
+          },
+          "offscreen_world": {
+            "schema_version": 1,
+            "steps": [],
+            "watch": []
+          },
+          "courier_letters": {
+            "schema_version": 1,
+            "letters": []
+          },
+          "captives": {
+            "schema_version": 1,
+            "captives": []
+          },
+          "scenario_attention": {
+            "schema_version": 1,
+            "value": 0,
+            "visit": 0,
+            "counted": [],
+            "history": [],
+            "stranger": {
+              "stage": "none",
+              "location_id": "",
+              "party_acted": false
+            },
+            "treaty": {
+              "concluded": false,
+              "concluded_by": "",
+              "attempts": []
+            },
+            "purse_paid": [],
+            "armory_taken": [],
+            "informants": {},
+            "informant_turn_failed": []
+          },
+          "scenario_knight": {
+            "schema_version": 1,
+            "head_returned": false,
+            "head_returned_by": "",
+            "released": false,
+            "released_by": "",
+            "attempts": [],
+            "dread_resisted": []
+          },
+          "dialogues": {},
+          "loot_containers": {
+            "schema_version": 1,
+            "containers": []
+          },
+          "beasts": {
+            "schema_version": 1,
+            "beasts": []
+          },
+          "law": {
+            "schema_version": 1,
+            "crimes": [],
+            "cleared": {},
+            "encounter": null
+          },
+          "tavern": {
+            "schema_version": 3,
+            "patrons": {},
+            "gamblers": {}
+          },
+          "blessings": {
+            "schema_version": 1,
+            "heroes": {}
+          },
+          "autonomy": {
+            "schema_version": 3,
+            "director_history": [],
+            "director_outcomes": [],
+            "hooks": [],
+            "transitions": [],
+            "encounter_outcomes": [],
+            "scene_resolutions": [],
+            "reputations": {},
+            "witness_graph": [],
+            "pacing": {
+              "beat": 0,
+              "phase": "breather",
+              "tension": 0,
+              "last_intent_type": ""
+            },
+            "travel_history": [],
+            "downtime_history": [],
+            "random_encounters": [],
+            "applied_consequences": [],
+            "admin_interventions": 0
+          },
+          "partyDecisionPolicy": {
+            "schemaVersion": 1,
+            "policyVersion": "skazanie:party-decision-policy:v1",
+            "voterScope": "account",
+            "decisionTtlMs": 120000,
+            "quorumMode": "majority_of_active_voters",
+            "disconnectAction": "abstain",
+            "expiryResolution": "plurality_first_option",
+            "visibility": "party"
+          },
+          "state_projector_version": 19
+        },
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns",
+      "headers": {},
+      "body": {
+        "code": "NARR-2",
+        "name": "Соло",
+        "state": {
+          "sessionCode": "NARR-2",
+          "campaign": "Рассказ хода",
+          "partyName": "Отряд у ворот",
+          "partyMemberIds": [
+            "lira"
+          ],
+          "activePlayerId": "lira",
+          "isNarrating": false,
+          "pendingCheck": null,
+          "agentInteraction": null,
+          "suggestions": [],
+          "messages": [],
+          "players": [
+            {
+              "id": "lira",
+              "name": "Лира",
+              "character": "Лира",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true
+            }
+          ],
+          "enemies": [],
+          "scene": {
+            "title": "Нижний зал",
+            "location": "Нижний зал",
+            "mood": "",
+            "objective": "Решить, куда идти",
+            "turn": 1,
+            "cells": []
+          },
+          "adventure": {
+            "chapter": 1,
+            "currentHook": "Решить, куда идти",
+            "visitedLocations": [
+              "Нижний зал"
+            ],
+            "history": []
+          },
+          "mechanics": {
+            "combat": {
+              "active": false
+            },
+            "world_time": {
+              "elapsed_minutes": 0
+            }
+          },
+          "social": {
+            "npcs": [],
+            "relationships": {},
+            "conversations": [],
+            "promises": []
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0
+        }
+      },
+      "status": 201,
+      "body_norm": {
+        "version": 1,
+        "state": {
+          "sessionCode": "NARR-2",
+          "campaign": "Рассказ хода",
+          "partyName": "Отряд у ворот",
+          "partyMemberIds": [
+            "lira"
+          ],
+          "activePlayerId": "lira",
+          "isNarrating": false,
+          "pendingCheck": null,
+          "agentInteraction": null,
+          "suggestions": [],
+          "messages": [],
+          "players": [
+            {
+              "id": "lira",
+              "name": "Лира",
+              "character": "Лира",
+              "hp": 14,
+              "maxHp": 14,
+              "armor": 13,
+              "speed": 30,
+              "proficiency": 2,
+              "abilities": {
+                "str": 12,
+                "dex": 12,
+                "con": 12,
+                "int": 10,
+                "wis": 10,
+                "cha": 10
+              },
+              "inventory": [],
+              "online": true,
+              "level": 1,
+              "experience": 0,
+              "currency": {
+                "copper": 0,
+                "silver": 0,
+                "gold": 0,
+                "platinum": 0
+              },
+              "combatSpells": [],
+              "combatActions": [
+                {
+                  "id": "stand-up",
+                  "name": "Встать",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "free",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить половину скорости текущего хода и прекратить состояние «сбит с ног».",
+                  "effect": {
+                    "kind": "stand_up"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "break-free",
+                  "name": "Высвободиться",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Силы против Сл удерживающего эффекта и прекратить опутывание.",
+                  "effect": {
+                    "kind": "break_free"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "steady-nerves",
+                  "name": "Совладать с собой",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием совершить проверку Мудрости против Сл «Гневной кары» и прекратить испуг либо спасбросок против заклинания, которое позволяет вырваться действием («Неудержимая пляска Отто»).",
+                  "effect": {
+                    "kind": "steady_nerves"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-self",
+                  "name": "Потушить пламя",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить с себя пламя — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "extinguish-ally",
+                  "name": "Потушить союзника",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Действием сбить пламя с существа в пределах 5 футов — «Пылающей кары» или алхимического огня.",
+                  "effect": {
+                    "kind": "extinguish_flames"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "expeditious-retreat-dash",
+                  "name": "Стремительный рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "bonus_action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Пока активно «Поспешное отступление», совершить Рывок бонусным действием.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dash",
+                  "name": "Рывок",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Дополнительное перемещение, равное скорости, до конца хода.",
+                  "effect": {
+                    "kind": "dash"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "disengage",
+                  "name": "Отход",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Перемещение не провоцирует атак по возможности до конца хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "disengaged",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "dodge",
+                  "name": "Уклонение",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Атаки по вам совершаются с помехой до начала следующего хода.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "dodging",
+                    "duration": "until-next-turn"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "hide",
+                  "name": "Засада",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Ловкости (Скрытность), чтобы получить преимущество из укрытия.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "dex",
+                    "skill": "stealth"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "help",
+                  "name": "Помощь",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Союзник получает преимущество на следующую атаку.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "helped",
+                    "duration": "until-used"
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер исполняет только формализованную часть способности; остальные свойства пока представлены маркером.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "stabilize",
+                  "name": "Стабилизировать",
+                  "category": "common",
+                  "target": "ally",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы стабилизировать союзника с 0 ОЗ.",
+                  "effect": {
+                    "kind": "stabilize",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "first-aid",
+                  "name": "Первая помощь",
+                  "category": "common",
+                  "target": "creature",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Медицина) СЛ 10, чтобы привести нокаутированное существо в сознание.",
+                  "effect": {
+                    "kind": "first_aid",
+                    "ability": "wis",
+                    "skill": "medicine",
+                    "difficulty": 10
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "grapple",
+                  "name": "Захват",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Атлетики против Атлетики или Акробатики; при успехе цель схвачена.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "grappled"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "shove",
+                  "name": "Толчок",
+                  "category": "common",
+                  "target": "enemy",
+                  "actionType": "action",
+                  "range": 5,
+                  "minimumLevel": 1,
+                  "description": "Состязание Силы; при успехе цель сбита с ног.",
+                  "effect": {
+                    "kind": "contest",
+                    "condition": "prone"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "opens-combat"
+                },
+                {
+                  "id": "ready",
+                  "name": "Подготовка",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Подготовить действие и сохранить реакцию для указанного условия.",
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Сервер фиксирует подготовку до следующего хода; настройка условия и автоматический запуск реакции пока не реализованы.",
+                  "effect": {
+                    "kind": "condition",
+                    "condition": "readied",
+                    "duration": "until-next-turn"
+                  },
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "search",
+                  "name": "Поиск",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Проверка Мудрости (Восприятие) для обнаружения скрытых целей и деталей.",
+                  "effect": {
+                    "kind": "check",
+                    "ability": "wis",
+                    "skill": "perception"
+                  },
+                  "mechanicsSupport": "verified",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "allowed"
+                },
+                {
+                  "id": "use-object",
+                  "name": "Использовать предмет",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Взаимодействовать с немагическим предметом в бою.",
+                  "effect": {
+                    "kind": "special"
+                  },
+                  "mechanicsSupport": "ruling-only",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                },
+                {
+                  "id": "ready-action",
+                  "name": "Готовность",
+                  "category": "common",
+                  "target": "self",
+                  "actionType": "action",
+                  "range": 0,
+                  "minimumLevel": 1,
+                  "description": "Потратить действие, чтобы заготовить атаку оружием или заклинание и выпустить его реакцией, когда сработает выбранный триггер.",
+                  "effect": {
+                    "kind": "ready_action",
+                    "triggers": [
+                      "enemy-approaches",
+                      "enemy-casts-spell"
+                    ]
+                  },
+                  "mechanicsSupport": "partial",
+                  "supportNote": "Заготавливается атака оружием или заклинание с временем накладывания «действие»: ячейка тратится сразу, магия держится концентрацией. Триггеров два и оба распознаёт сервер — враг подошёл вплотную или начал творить заклинание; произвольное «воспринимаемое обстоятельство» из редакции не исполняется.",
+                  "sourceUrl": "https://www.dnd.su/articles/actions-in-combat/",
+                  "exploration": "combat-only"
+                }
+              ],
+              "inventoryLoad": {
+                "weight": 0,
+                "capacity": 180,
+                "encumbered": false,
+                "remaining": 180,
+                "attuned": 0,
+                "attunement_limit": 3
+              },
+              "characterSheet": null
+            }
+          ],
+          "enemies": [],
+          "scene": {
+            "title": "Нижний зал",
+            "location": "Нижний зал",
+            "mood": "",
+            "objective": "Решить, куда идти",
+            "turn": 1,
+            "cells": []
+          },
+          "adventure": {
+            "chapter": 1,
+            "currentHook": "Решить, куда идти",
+            "visitedLocations": [
+              "Нижний зал"
+            ],
+            "history": []
+          },
+          "mechanics": {
+            "schema_version": 1,
+            "temporary_hp": {},
+            "resources": {
+              "lira": {}
+            },
+            "hit_point_dice": {},
+            "resting": {},
+            "conditions": {},
+            "defenses": {},
+            "concentration": {},
+            "positions": {},
+            "item_appraisals": {},
+            "scene_interactions": {},
+            "encounter": null,
+            "active_effects": [],
+            "progression": {
+              "milestones": [],
+              "milestones_since_level": 0,
+              "milestones_per_level": 3,
+              "level_up_available": false
+            },
+            "shapes": {},
+            "death": {
+              "campaign_status": "active",
+              "heroes": {},
+              "saving_throws": {}
+            },
+            "campaign_lifecycle": {
+              "schema_version": 1,
+              "status": "active",
+              "reason": null,
+              "paused_at": null,
+              "concluded_at": null,
+              "archived_at": null,
+              "epilogue": null,
+              "epilogue_fact_keys": [],
+              "changed_by": null
+            },
+            "combat": {
+              "active": false,
+              "round": 0,
+              "initiative": [],
+              "active_index": -1,
+              "action_economy": {},
+              "reaction_window": null,
+              "readied": {},
+              "group_initiative": false,
+              "turn_completed": [],
+              "truce": null,
+              "parley_attempts": 0
+            },
+            "world_time": {
+              "amount": 0,
+              "unit": "minute",
+              "elapsed_minutes": 0
+            },
+            "enemy_knowledge": {
+              "party": {}
+            }
+          },
+          "social": {
+            "schema_version": 4,
+            "npcs": [],
+            "relationships": {},
+            "relationship_tiers": {},
+            "conversations": [],
+            "promises": []
+          },
+          "ruleset_id": "srd_5_2_1",
+          "ruleset_version": "5.2.1",
+          "enabled_rule_packs": [
+            "srd_5_2_1"
+          ],
+          "state_version": 0,
+          "enabled_house_rules": [
+            "skazanie:class-resources-2024-v1",
+            "house:bg3-opening-strike",
+            "house:bg3-spell-hands"
+          ],
+          "ruleset_selection_locked": true,
+          "worldMemory": {
+            "schema_version": 2,
+            "entities": [
+              {
+                "id": "location:2f6c4e649ee24c363f573ec3",
+                "kind": "location",
+                "name": "Нижний зал",
+                "summary": "",
+                "aliases": [],
+                "visibility": "party",
+                "tags": [
+                  "visited"
+                ]
+              }
+            ],
+            "facts": [],
+            "relationships": [],
+            "quests": [
+              {
+                "id": "quest:chapter:1",
+                "title": "Решить, куда идти",
+                "summary": "Решить, куда идти",
+                "status": "active",
+                "visibility": "party",
+                "entity_ids": [
+                  "location:2f6c4e649ee24c363f573ec3"
+                ],
+                "objectives": [
+                  "Решить, куда идти"
+                ],
+                "clock": {
+                  "current": 0,
+                  "max": 4,
+                  "label": "Цель сцены",
+                  "triggered": false
+                },
+                "recorded_at_minutes": 0
+              }
+            ],
+            "threads": [],
+            "epistemic_claims": [],
+            "summaries": [],
+            "knowledge": {},
+            "knowledge_revealed": [],
+            "knowledge_ledger": []
+          },
+          "character_start_level": 1,
+          "engine_mode": "enforce",
+          "ruleset_locked_at": null,
+          "actors": [],
+          "merchants": [],
+          "mapFeedback": [],
+          "battleLog": [],
+          "economyLog": [],
+          "locationMaps": {},
+          "worldMap": {
+            "version": 1,
+            "seed": "9aba6d7d1129e3e3024dc5ea",
+            "name": "Карта мира «Рассказ хода»",
+            "width": 1000,
+            "height": 640,
+            "currentLocationId": "location-1-нижний-зал",
+            "regions": [
+              {
+                "id": "region-1",
+                "name": "Багряные Чащи",
+                "biome": "forest",
+                "x": 208,
+                "y": 176,
+                "radius": 205
+              },
+              {
+                "id": "region-2",
+                "name": "Зелёные Кряжи",
+                "biome": "mountains",
+                "x": 775,
+                "y": 135,
+                "radius": 205
+              },
+              {
+                "id": "region-3",
+                "name": "Пепельные Земли",
+                "biome": "plains",
+                "x": 492,
+                "y": 328,
+                "radius": 245
+              },
+              {
+                "id": "region-4",
+                "name": "Зелёные Плавни",
+                "biome": "marsh",
+                "x": 218,
+                "y": 488,
+                "radius": 205
+              },
+              {
+                "id": "region-5",
+                "name": "Забытые Фьорды",
+                "biome": "coast",
+                "x": 789,
+                "y": 466,
+                "radius": 205
+              }
+            ],
+            "locations": [
+              {
+                "id": "location-1-нижний-зал",
+                "name": "Нижний зал",
+                "kind": "town",
+                "x": 514,
+                "y": 369,
+                "regionId": "region-3",
+                "summary": "Решить, куда идти",
+                "known": true,
+                "visited": true
+              },
+              {
+                "id": "location-2-дорфорд",
+                "name": "Дорфорд",
+                "kind": "village",
+                "x": 281,
+                "y": 267,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Багряные Чащи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-3-элмир",
+                "name": "Элмир",
+                "kind": "city",
+                "x": 701,
+                "y": 247,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Зелёные Кряжи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-4-дорская-пустошь",
+                "name": "Дорская пустошь",
+                "kind": "wilds",
+                "x": 178,
+                "y": 459,
+                "regionId": "region-4",
+                "summary": "Известное место региона «Зелёные Плавни».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-5-сильская-твердыня",
+                "name": "Сильская твердыня",
+                "kind": "fortress",
+                "x": 857,
+                "y": 453,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Забытые Фьорды».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-6-элский-курган",
+                "name": "Элский курган",
+                "kind": "ruin",
+                "x": 406,
+                "y": 142,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Багряные Чащи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-7-керхольм",
+                "name": "Керхольм",
+                "kind": "port",
+                "x": 652,
+                "y": 513,
+                "regionId": "region-5",
+                "summary": "Известное место региона «Забытые Фьорды».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-8-морский-склеп",
+                "name": "Морский склеп",
+                "kind": "dungeon",
+                "x": 821,
+                "y": 125,
+                "regionId": "region-2",
+                "summary": "Известное место региона «Зелёные Кряжи».",
+                "known": true,
+                "visited": false
+              },
+              {
+                "id": "location-9-норфорд",
+                "name": "Норфорд",
+                "kind": "landmark",
+                "x": 145,
+                "y": 131,
+                "regionId": "region-1",
+                "summary": "Известное место региона «Багряные Чащи».",
+                "known": true,
+                "visited": false
+              }
+            ],
+            "routes": [
+              {
+                "id": "route-1-d8cb551a",
+                "from": "location-9-норфорд",
+                "to": "location-4-дорская-пустошь",
+                "kind": "road",
+                "distance": 7,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-2-2d7cc3bf",
+                "from": "location-4-дорская-пустошь",
+                "to": "location-2-дорфорд",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-3-5527a161",
+                "from": "location-2-дорфорд",
+                "to": "location-6-элский-курган",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-4-5e9d68dd",
+                "from": "location-6-элский-курган",
+                "to": "location-1-нижний-зал",
+                "kind": "road",
+                "distance": 5,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-5-0bd71e36",
+                "from": "location-1-нижний-зал",
+                "to": "location-7-керхольм",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-6-0b371124",
+                "from": "location-7-керхольм",
+                "to": "location-3-элмир",
+                "kind": "road",
+                "distance": 6,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-7-d364ab38",
+                "from": "location-3-элмир",
+                "to": "location-8-морский-склеп",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-8-1e7d7e44",
+                "from": "location-8-морский-склеп",
+                "to": "location-5-сильская-твердыня",
+                "kind": "road",
+                "distance": 7,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-13-39e153fc",
+                "from": "location-5-сильская-твердыня",
+                "to": "location-7-керхольм",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              },
+              {
+                "id": "route-17-eed5af9e",
+                "from": "location-9-норфорд",
+                "to": "location-2-дорфорд",
+                "kind": "road",
+                "distance": 4,
+                "danger": "низкая",
+                "discovered": true
+              }
+            ]
+          },
+          "npc_world": {
+            "schema_version": 3,
+            "placements": [],
+            "vitals": {},
+            "stances": {},
+            "inventories": {},
+            "profiles": {}
+          },
+          "world_deeds": {
+            "schema_version": 1,
+            "deeds": []
+          },
+          "offscreen_world": {
+            "schema_version": 1,
+            "steps": [],
+            "watch": []
+          },
+          "courier_letters": {
+            "schema_version": 1,
+            "letters": []
+          },
+          "captives": {
+            "schema_version": 1,
+            "captives": []
+          },
+          "scenario_attention": {
+            "schema_version": 1,
+            "value": 0,
+            "visit": 0,
+            "counted": [],
+            "history": [],
+            "stranger": {
+              "stage": "none",
+              "location_id": "",
+              "party_acted": false
+            },
+            "treaty": {
+              "concluded": false,
+              "concluded_by": "",
+              "attempts": []
+            },
+            "purse_paid": [],
+            "armory_taken": [],
+            "informants": {},
+            "informant_turn_failed": []
+          },
+          "scenario_knight": {
+            "schema_version": 1,
+            "head_returned": false,
+            "head_returned_by": "",
+            "released": false,
+            "released_by": "",
+            "attempts": [],
+            "dread_resisted": []
+          },
+          "dialogues": {},
+          "loot_containers": {
+            "schema_version": 1,
+            "containers": []
+          },
+          "beasts": {
+            "schema_version": 1,
+            "beasts": []
+          },
+          "law": {
+            "schema_version": 1,
+            "crimes": [],
+            "cleared": {},
+            "encounter": null
+          },
+          "tavern": {
+            "schema_version": 3,
+            "patrons": {},
+            "gamblers": {}
+          },
+          "blessings": {
+            "schema_version": 1,
+            "heroes": {}
+          },
+          "autonomy": {
+            "schema_version": 3,
+            "director_history": [],
+            "director_outcomes": [],
+            "hooks": [],
+            "transitions": [],
+            "encounter_outcomes": [],
+            "scene_resolutions": [],
+            "reputations": {},
+            "witness_graph": [],
+            "pacing": {
+              "beat": 0,
+              "phase": "breather",
+              "tension": 0,
+              "last_intent_type": ""
+            },
+            "travel_history": [],
+            "downtime_history": [],
+            "random_encounters": [],
+            "applied_consequences": [],
+            "admin_interventions": 0
+          },
+          "partyDecisionPolicy": {
+            "schemaVersion": 1,
+            "policyVersion": "skazanie:party-decision-policy:v1",
+            "voterScope": "account",
+            "decisionTtlMs": 120000,
+            "quorumMode": "majority_of_active_voters",
+            "disconnectAction": "abstain",
+            "expiryResolution": "plurality_first_option",
+            "visibility": "party"
+          },
+          "state_projector_version": 19
+        },
+        "updatedAt": "<time>",
+        "user": {
+          "id": "<uuid>",
+          "email": "gm@mail.ru",
+          "name": "Ведущий",
+          "heroIds": [],
+          "campaignMemberships": [],
+          "role": "admin",
+          "engineMode": null,
+          "createdAt": "<time>"
+        }
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/NARR-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-one"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "NARR-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/NARR-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:9>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "NARR-1",
+        "hero_ids": [
+          "hero-one"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "anya@mail.ru",
+          "name": "Аня",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "NARR-1",
+              "role": "player",
+              "heroIds": [
+                "hero-one"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/campaigns/NARR-1/invites",
+      "headers": {},
+      "body": {
+        "hero_ids": [
+          "hero-two"
+        ]
+      },
+      "status": 201,
+      "body_norm": {
+        "campaign_id": "NARR-1",
+        "token": "<token>",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "expires_at": "<time>"
+      }
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/NARR-1/join",
+      "headers": {},
+      "body": {
+        "invite_token": "<invite:11>"
+      },
+      "status": 200,
+      "body_norm": {
+        "code": "NARR-1",
+        "hero_ids": [
+          "hero-two"
+        ],
+        "user": {
+          "id": "<uuid>",
+          "email": "boris@mail.ru",
+          "name": "Борис",
+          "heroIds": [],
+          "campaignMemberships": [
+            {
+              "campaignId": "NARR-1",
+              "role": "player",
+              "heroIds": [
+                "hero-two"
+              ],
+              "joinedAt": "<time>"
+            }
+          ],
+          "role": "player",
+          "engineMode": null,
+          "createdAt": "<time>"
+        },
+        "duplicate": false
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": [],
+      "status": 400,
+      "body_norm": {
+        "error": "Тело запроса должно быть JSON-объектом",
+        "code": "INVALID_JSON_BODY"
+      }
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Иду",
+        "request_kind": "chat"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Неизвестный тип реплики",
+        "code": "REQUEST_KIND_INVALID"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Что там?",
+        "request_kind": "question",
+        "roll": {
+          "roll_id": "x"
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Вопрос и обсуждение не могут подтверждать или изменять игровые действия",
+        "code": "NON_ACTION_EXECUTION_FORBIDDEN"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Иду",
+        "state": {}
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Legacy payload удалён: состояние, игрок и режим определяются сервером",
+        "code": "LEGACY_PAYLOAD_RETIRED"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Иду",
+        "engineMode": "trust"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Legacy payload удалён: состояние, игрок и режим определяются сервером",
+        "code": "LEGACY_PAYLOAD_RETIRED"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Иду",
+        "roll": {
+          "roll_id": "x",
+          "total": 20
+        }
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Разрешена только ссылка на серверный roll_id",
+        "code": "UNVERIFIED_ROLL"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Иду",
+        "roll": 5
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Разрешена только ссылка на серверный roll_id",
+        "code": "UNVERIFIED_ROLL"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Иду",
+        "roll": {}
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Enforce-режим принимает только серверный roll_id",
+        "code": "UNVERIFIED_ROLL"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Иду",
+        "roll": {
+          "roll_id": "nope"
+        },
+        "idempotency_key": "r-nope"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Бросок не найден или истёк",
+        "code": "ROLL_NOT_FOUND"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "action": "Иду"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Нет доступа к этой кампании"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "outsider",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NOPE-1",
+        "action": "Иду"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NOPE-1",
+        "action": "Иду"
+      },
+      "status": 404,
+      "body_norm": {
+        "error": "Кампания не найдена"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Иду"
+      },
+      "status": 403,
+      "body_norm": {
+        "error": "Этот герой не принадлежит вашему аккаунту"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaign_id": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Говорю",
+        "npc_id": "bad id"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "npc_id должен содержать от 1 до 120 безопасных символов",
+        "code": "NPC_ID_INVALID"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Говорю",
+        "npc_id": 7
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "npc_id должен быть строковым идентификатором",
+        "code": "NPC_ID_INVALID"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Говорю",
+        "npc_id": "ghost"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Выбранный собеседник не виден этому игроку",
+        "code": "NPC_NOT_VISIBLE"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "[РЕШЕНИЕ ГРУППЫ] Уйти",
+        "idempotency_key": "pd-none"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Нет завершённого решения группы для перехода сцены",
+        "code": "PARTY_DECISION_REQUIRED"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "STREAM",
+      "path": "/api/campaigns/NARR-1/stream",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null
+    },
+    {
+      "as": "guest",
+      "method": "STREAM",
+      "path": "/api/campaigns/NARR-1/stream",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": null
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Осматриваю старые ворота",
+        "idempotency_key": "n-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Проверка «Восприятие» завершилась неудачей. Старые ворота. Голоса из соседних дворов.",
+        "provider": "deterministic",
+        "model": "orchestrated",
+        "narration_message_id": "narration-51aeea8ffa05d2620d35",
+        "idempotent_replay": false,
+        "room_version": 3,
+        "state_version": 2,
+        "engine_mode": "enforce",
+        "effects.roll": {
+          "roll_id": "<uuid>",
+          "actor_id": "hero-one",
+          "value": 12,
+          "modifier": 2,
+          "total": 14,
+          "label": "Проверка Мудрости",
+          "visibility": "public",
+          "success": false
+        },
+        "mechanics[].event_type": [
+          "AbilityCheckResolved",
+          "TimeAdvanced"
+        ]
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "EVENTS",
+      "path": "",
+      "headers": {},
+      "body": null,
+      "status": 0,
+      "body_norm": [
+        {
+          "event": "narration.start",
+          "payload": {
+            "message_id": "narration-51aeea8ffa05d2620d35",
+            "text": "",
+            "phase": "start",
+            "replace": true,
+            "replayed": false
+          }
+        },
+        {
+          "event": "narration.complete",
+          "payload": {
+            "message_id": "narration-51aeea8ffa05d2620d35",
+            "text": "Проверка «Восприятие» завершилась неудачей. Старые ворота. Голоса из соседних дворов.",
+            "phase": "complete",
+            "replace": true,
+            "replayed": false
+          }
+        }
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Осматриваю старые ворота",
+        "idempotency_key": "n-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Проверка «Восприятие» завершилась неудачей. Старые ворота. Голоса из соседних дворов.",
+        "provider": "deterministic",
+        "model": "orchestrated",
+        "narration_message_id": "narration-51aeea8ffa05d2620d35",
+        "idempotent_replay": true,
+        "room_version": 3,
+        "state_version": 2,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "mechanics[].event_type": [
+          "AbilityCheckResolved",
+          "TimeAdvanced"
+        ]
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "EVENTS",
+      "path": "",
+      "headers": {},
+      "body": null,
+      "status": 0,
+      "body_norm": [
+        {
+          "event": "narration.complete",
+          "payload": {
+            "message_id": "narration-51aeea8ffa05d2620d35",
+            "text": "Проверка «Восприятие» завершилась неудачей. Старые ворота. Голоса из соседних дворов.",
+            "phase": "complete",
+            "replace": true,
+            "replayed": true
+          }
+        }
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Что мы знаем о воротах?",
+        "request_kind": "question",
+        "idempotency_key": "q-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "question",
+        "narration": "Известно немногое: Решить, куда идти. Прямого ответа пока нет — стоит осмотреться или поискать того, кто видел.",
+        "provider": "AgentWorldkeeper",
+        "model": "campaign-memory",
+        "narration_message_id": "narration-489f2ed0b56a2c073240",
+        "turn_consumed": false,
+        "action_kind": "question",
+        "idempotent_replay": false,
+        "room_version": 4,
+        "state_version": 2,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "mechanics[].event_type": []
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "EVENTS",
+      "path": "",
+      "headers": {},
+      "body": null,
+      "status": 0,
+      "body_norm": []
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-two",
+        "action": "Может, обойдём стороной?",
+        "request_kind": "discussion",
+        "idempotency_key": "d-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "discussion",
+        "narration": "",
+        "provider": "deterministic-dialogue",
+        "model": "server-policy",
+        "turn_consumed": false,
+        "action_kind": "discussion",
+        "idempotent_replay": false,
+        "room_version": 5,
+        "state_version": 2,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "mechanics[].event_type": []
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "/why",
+        "idempotency_key": "why-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Игра прочла действие как: Мудрость (Восприятие) против СЛ 15. Проверка Мудрости: выпало 12 + 2 (модификатор), итого 14 против СЛ 15 — провал. В итоге: Проверка wis: 14 против СЛ 15; Проходит 30 мин.. Основание: закреплённые правила игры, результат рассчитан сервером.",
+        "provider": "RulesEngine",
+        "model": "deterministic",
+        "narration_message_id": "narration-92bb24ce01089af89cc5",
+        "turn_consumed": false,
+        "room_version": 6,
+        "state_version": 2,
+        "engine_mode": "enforce",
+        "effects.roll": null
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Балансирую на узкой опоре",
+        "manual_roll": true,
+        "idempotency_key": "s-4"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Это бросок: Ловкость (Акробатика), СЛ 20. Трюк удаётся; герой остаётся на месте. Не выйдет — герой пострадает: 1d4 дробящего урона. Бросаете или попробуете иначе?",
+        "provider": "deterministic-free-action",
+        "model": "server-policy",
+        "turn_consumed": false,
+        "action_kind": "free",
+        "free_action_outcome": "check_required",
+        "room_version": 7,
+        "state_version": 2,
+        "engine_mode": "enforce",
+        "check.skill": "acrobatics",
+        "check.ability": "dex",
+        "check.difficulty": 20,
+        "check.modifier": 3,
+        "check.label": "Ловкость (Акробатика)",
+        "effects.roll": null,
+        "mechanics[].event_type": []
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "playerId": "hero-one",
+        "checkId": "<ref:40:check.check_id>"
+      },
+      "status": 200,
+      "body_norm": {
+        "value": 12,
+        "total": 15,
+        "difficulty": 20,
+        "success": false
+      },
+      "pick": [
+        "value",
+        "total",
+        "difficulty",
+        "success"
+      ]
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/rooms/NARR-1/dice",
+      "headers": {},
+      "body": {
+        "playerId": "hero-one",
+        "sides": 6,
+        "idempotency_key": "die-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 8,
+        "roll.value": 4,
+        "roll.sides": 6
+      },
+      "pick": [
+        "version",
+        "roll.value",
+        "roll.sides"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Балансирую на узкой опоре",
+        "roll": {
+          "roll_id": "<ref:41:roll_id>"
+        },
+        "idempotency_key": "s-5"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Обстановка изменилась после предложения. Отправьте действие ещё раз: ведущий заново проверит цену и последствия.",
+        "code": "STATE_VERSION_CONFLICT"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Балансирую на узкой опоре",
+        "manual_roll": true,
+        "idempotency_key": "s-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Это бросок: Ловкость (Акробатика), СЛ 20. Трюк удаётся; герой остаётся на месте. Не выйдет — герой пострадает: 1d4 дробящего урона. Бросаете или попробуете иначе?",
+        "provider": "deterministic-free-action",
+        "model": "server-policy",
+        "turn_consumed": false,
+        "action_kind": "free",
+        "free_action_outcome": "check_required",
+        "room_version": 9,
+        "state_version": 3,
+        "engine_mode": "enforce",
+        "check.skill": "acrobatics",
+        "check.ability": "dex",
+        "check.difficulty": 20,
+        "check.modifier": 3,
+        "check.label": "Ловкость (Акробатика)",
+        "effects.roll": null,
+        "mechanics[].event_type": []
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/roll",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "playerId": "hero-one",
+        "checkId": "<ref:44:check.check_id>"
+      },
+      "status": 200,
+      "body_norm": {
+        "roll_id": "<uuid>",
+        "value": 12,
+        "total": 15,
+        "difficulty": 20,
+        "success": false
+      },
+      "pick": [
+        "roll_id",
+        "value",
+        "total",
+        "difficulty",
+        "success"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Балансирую на узкой опоре",
+        "roll": {
+          "roll_id": "<ref:45:roll_id>"
+        },
+        "idempotency_key": "s-2"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Трюк сорвался. Дробящий удар: Агата получает 4 урона; ОЗ 14 → 10.",
+        "provider": "deterministic-free-action",
+        "model": "server-policy",
+        "narration_message_id": "narration-450222bcc3475b01aa69",
+        "turn_consumed": false,
+        "action_kind": "free",
+        "free_action_outcome": "check_failure",
+        "idempotent_replay": false,
+        "room_version": 11,
+        "state_version": 8,
+        "engine_mode": "enforce",
+        "effects.roll": {
+          "roll_id": "<uuid>",
+          "actor_id": "hero-one",
+          "value": 12,
+          "modifier": 3,
+          "total": 15,
+          "label": "Проверка Ловкости",
+          "visibility": "public",
+          "success": false
+        },
+        "mechanics[].event_type": [
+          "ActionDeclared",
+          "AbilityCheckResolved",
+          "RulingRecorded",
+          "DieRolled",
+          "DamageApplied"
+        ]
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "EVENTS",
+      "path": "",
+      "headers": {},
+      "body": null,
+      "status": 0,
+      "body_norm": [
+        {
+          "event": "narration.complete",
+          "payload": {
+            "message_id": "narration-450222bcc3475b01aa69",
+            "text": "Трюк сорвался. Дробящий удар: Агата получает 4 урона; ОЗ 14 → 10.",
+            "phase": "complete",
+            "replace": true,
+            "replayed": false
+          }
+        }
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Балансирую на узкой опоре",
+        "roll": {
+          "roll_id": "<ref:45:roll_id>"
+        },
+        "idempotency_key": "s-2"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Трюк сорвался. Дробящий удар: Агата получает 4 урона; ОЗ 14 → 10.",
+        "provider": "deterministic-free-action",
+        "model": "server-policy",
+        "narration_message_id": "narration-450222bcc3475b01aa69",
+        "turn_consumed": false,
+        "action_kind": "free",
+        "free_action_outcome": "check_failure",
+        "idempotent_replay": true,
+        "room_version": 11,
+        "state_version": 8,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "mechanics[].event_type": [
+          "ActionDeclared",
+          "AbilityCheckResolved",
+          "RulingRecorded",
+          "DieRolled",
+          "DamageApplied"
+        ]
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Балансирую на узкой опоре",
+        "roll": {
+          "roll_id": "<ref:45:roll_id>"
+        },
+        "idempotency_key": "s-3"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Бросок уже использован",
+        "code": "ROLL_ALREADY_USED"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-two",
+        "action": "Балансирую на узкой опоре",
+        "roll": {
+          "roll_id": "<ref:45:roll_id>"
+        },
+        "idempotency_key": "s-foreign"
+      },
+      "status": 400,
+      "body_norm": {
+        "error": "Бросок принадлежит другому ходу или персонажу",
+        "code": "ROLL_FORBIDDEN"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "Предлагаю покинуть локацию «Старые ворота»",
+        "idempotency_key": "t-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Агата зовёт уходить.",
+        "provider": "AgentDirector",
+        "model": "deterministic-policy",
+        "narration_message_id": "narration-46e9bc3476c92ea24fb1",
+        "turn_consumed": false,
+        "action_kind": "free",
+        "room_version": 13,
+        "state_version": 8,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "effects.interaction.type": "vote",
+        "effects.interaction.title": "Покинуть «Старые ворота»?",
+        "effects.interaction.description": "Агата зовёт уходить.",
+        "effects.interaction.options": [
+          {
+            "id": "option-1",
+            "label": "Покинуть «Старые ворота»"
+          },
+          {
+            "id": "option-2",
+            "label": "Уходим отсюда и бросаем задание «Решить, куда идти»"
+          },
+          {
+            "id": "option-3",
+            "label": "Остаться и исследовать дальше"
+          }
+        ],
+        "effects.interaction.status": "open",
+        "mechanics[].event_type": []
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/campaigns/NARR-1/party-decisions/<ref:51:effects.interaction.id>/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-one",
+        "option_id": "option-1",
+        "idempotency_key": "v-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 14,
+        "state.agentInteraction.status": "open"
+      },
+      "pick": [
+        "version",
+        "state.agentInteraction.status",
+        "state.agentInteraction.resolvedOptionId"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "POST",
+      "path": "/api/campaigns/NARR-1/party-decisions/<ref:51:effects.interaction.id>/votes",
+      "headers": {},
+      "body": {
+        "actor_id": "hero-two",
+        "option_id": "option-1",
+        "idempotency_key": "v-2"
+      },
+      "status": 200,
+      "body_norm": {
+        "version": 15,
+        "state.agentInteraction.status": "resolved",
+        "state.agentInteraction.resolvedOptionId": "option-1"
+      },
+      "pick": [
+        "version",
+        "state.agentInteraction.status",
+        "state.agentInteraction.resolvedOptionId"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "[РЕШЕНИЕ ГРУППЫ] <ref:51:effects.interaction.options.0.label>",
+        "idempotency_key": "t-2"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Отряд оставляет «Старые ворота» позади и пускается в путь — к «Айргард».\n\nДорога выводит героев к воротам. За ними открываются улицы локации «Айргард» — с площадями, переулками и местами, где можно искать сведения. Дорога заняла около двух часов; день в разгаре.\n\n<merchant> раскладывает товар: в локации «Айргард» можно торговать.",
+        "provider": "deterministic-scene",
+        "model": "orchestrated",
+        "narration_message_id": "narration-b1ad9ff6eb8dad4aa419",
+        "turn_consumed": true,
+        "action_kind": "world",
+        "idempotent_replay": false,
+        "room_version": 17,
+        "state_version": 23,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "effects.scene.scene.location": "Айргард",
+        "effects.scene.adventure.chapter": 2,
+        "director_transition.fingerprint": "b3a39ec2030c21d3ad8b5aa120b71b4a0497bfdbef40c9ef4749463d19ee1f73",
+        "director_transition.shop_action": "create",
+        "director_transition.shop_outcome": "created",
+        "director_transition.abandoned_quest_id": null,
+        "mechanics[].event_type": [
+          "TimeAdvanced",
+          "PartyDecisionConsumed",
+          "SceneAdvanced",
+          "WorldEntityUpserted",
+          "QuestUpserted",
+          "QuestUpserted",
+          "WorldFactRecorded",
+          "WorldFactRecorded",
+          "NarrativeSummaryRecorded",
+          "MerchantCreated",
+          "NpcPlaced"
+        ],
+        "agent_trace[].agent": [
+          "AgentDirector",
+          "scene_architect",
+          "WorldEngine",
+          "ShopAssembler"
+        ]
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "EVENTS",
+      "path": "",
+      "headers": {},
+      "body": null,
+      "status": 0,
+      "body_norm": [
+        {
+          "event": "narration.complete",
+          "payload": {
+            "message_id": "narration-450222bcc3475b01aa69",
+            "text": "Трюк сорвался. Дробящий удар: Агата получает 4 урона; ОЗ 14 → 10.",
+            "phase": "complete",
+            "replace": true,
+            "replayed": true
+          }
+        },
+        {
+          "event": "narration.complete",
+          "payload": {
+            "message_id": "narration-46e9bc3476c92ea24fb1",
+            "text": "Агата зовёт уходить.",
+            "phase": "complete",
+            "replace": true,
+            "replayed": false
+          }
+        },
+        {
+          "event": "narration.complete",
+          "payload": {
+            "message_id": "narration-b1ad9ff6eb8dad4aa419",
+            "text": "Отряд оставляет «Старые ворота» позади и пускается в путь — к «Айргард».\n\nДорога выводит героев к воротам. За ними открываются улицы локации «Айргард» — с площадями, переулками и местами, где можно искать сведения. Дорога заняла около двух часов; день в разгаре.\n\n<merchant> раскладывает товар: в локации «Айргард» можно торговать.",
+            "phase": "complete",
+            "replace": true,
+            "replayed": false
+          }
+        }
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "[РЕШЕНИЕ ГРУППЫ] <ref:51:effects.interaction.options.0.label>",
+        "idempotency_key": "t-2"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Отряд оставляет «Старые ворота» позади и пускается в путь — к «Айргард».\n\nДорога выводит героев к воротам. За ними открываются улицы локации «Айргард» — с площадями, переулками и местами, где можно искать сведения. Дорога заняла около двух часов; день в разгаре.\n\n<merchant> раскладывает товар: в локации «Айргард» можно торговать.",
+        "provider": "deterministic-scene",
+        "model": "event-replay",
+        "narration_message_id": "narration-b1ad9ff6eb8dad4aa419",
+        "turn_consumed": true,
+        "action_kind": "world",
+        "idempotent_replay": true,
+        "room_version": 17,
+        "state_version": 23,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "effects.scene.scene.location": "Айргард",
+        "effects.scene.adventure.chapter": 2,
+        "director_transition.fingerprint": "b3a39ec2030c21d3ad8b5aa120b71b4a0497bfdbef40c9ef4749463d19ee1f73",
+        "director_transition.shop_action": "create",
+        "director_transition.shop_outcome": "created",
+        "director_transition.replayed": true,
+        "mechanics[].event_type": [
+          "TimeAdvanced",
+          "PartyDecisionConsumed",
+          "SceneAdvanced",
+          "WorldEntityUpserted",
+          "QuestUpserted",
+          "QuestUpserted",
+          "WorldFactRecorded",
+          "WorldFactRecorded",
+          "NarrativeSummaryRecorded",
+          "MerchantCreated",
+          "NpcPlaced"
+        ],
+        "agent_trace[].agent": [
+          "AgentDirector",
+          "EventReplay",
+          "WorldEngine",
+          "ShopAssembler"
+        ]
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "[РЕШЕНИЕ ГРУППЫ] Остаться у ворот",
+        "idempotency_key": "t-2"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Этот ключ идемпотентности уже использован для другого перехода сцены",
+        "code": "IDEMPOTENCY_CONFLICT"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-1",
+        "actor_id": "hero-one",
+        "action": "[РЕШЕНИЕ ГРУППЫ] <ref:51:effects.interaction.options.0.label>",
+        "idempotency_key": "t-3"
+      },
+      "status": 409,
+      "body_norm": {
+        "error": "Это решение группы уже было исполнено переходом сцены",
+        "code": "PARTY_DECISION_ALREADY_CONSUMED"
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-2",
+        "action": "Предлагаю покинуть локацию «Нижний зал»",
+        "idempotency_key": "solo-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Отряд оставляет «Нижний зал» позади и пускается в путь — к «Керхольм».\n\nДорога выводит героев к воротам. За ними открываются улицы локации «Керхольм» — с площадями, переулками и местами, где можно искать сведения. Дорога заняла около двух часов; день в разгаре.\n\n<merchant> раскладывает товар: в локации «Керхольм» можно торговать.",
+        "provider": "deterministic-scene",
+        "model": "orchestrated",
+        "narration_message_id": "narration-c4a83453c141e6fbfd58",
+        "turn_consumed": true,
+        "action_kind": "world",
+        "idempotent_replay": false,
+        "room_version": 3,
+        "state_version": 15,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "effects.scene.scene.location": "Керхольм",
+        "effects.scene.adventure.chapter": 2,
+        "director_transition.fingerprint": "3100e3b2eed4df778278bfd9df76a845abafd3c920e5d6cf8f893b8bb83daa67",
+        "director_transition.shop_action": "create",
+        "director_transition.shop_outcome": "created",
+        "director_transition.abandoned_quest_id": null,
+        "mechanics[].event_type": [
+          "TimeAdvanced",
+          "PartyDecisionConsumed",
+          "SceneAdvanced",
+          "WeatherChanged",
+          "WorldEntityUpserted",
+          "QuestUpserted",
+          "QuestUpserted",
+          "WorldFactRecorded",
+          "WorldFactRecorded",
+          "NarrativeSummaryRecorded",
+          "MerchantCreated",
+          "NpcPlaced"
+        ],
+        "agent_trace[].agent": [
+          "AgentDirector",
+          "scene_architect",
+          "WorldEngine",
+          "ShopAssembler"
+        ]
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "admin",
+      "method": "POST",
+      "path": "/api/narrate",
+      "headers": {},
+      "body": {
+        "campaignId": "NARR-2",
+        "action": "Предлагаю покинуть локацию «Нижний зал»",
+        "idempotency_key": "solo-1"
+      },
+      "status": 200,
+      "body_norm": {
+        "request_kind": "action",
+        "narration": "Отряд оставляет «Нижний зал» позади и пускается в путь — к «Керхольм».\n\nДорога выводит героев к воротам. За ними открываются улицы локации «Керхольм» — с площадями, переулками и местами, где можно искать сведения. Дорога заняла около двух часов; день в разгаре.\n\n<merchant> раскладывает товар: в локации «Керхольм» можно торговать.",
+        "provider": "deterministic-scene",
+        "model": "event-replay",
+        "narration_message_id": "narration-c4a83453c141e6fbfd58",
+        "turn_consumed": true,
+        "action_kind": "world",
+        "idempotent_replay": true,
+        "room_version": 3,
+        "state_version": 15,
+        "engine_mode": "enforce",
+        "effects.roll": null,
+        "effects.scene.scene.location": "Керхольм",
+        "effects.scene.adventure.chapter": 2,
+        "director_transition.fingerprint": "3100e3b2eed4df778278bfd9df76a845abafd3c920e5d6cf8f893b8bb83daa67",
+        "director_transition.shop_action": "create",
+        "director_transition.shop_outcome": "created",
+        "director_transition.replayed": true,
+        "mechanics[].event_type": [
+          "TimeAdvanced",
+          "PartyDecisionConsumed",
+          "SceneAdvanced",
+          "WeatherChanged",
+          "WorldEntityUpserted",
+          "QuestUpserted",
+          "QuestUpserted",
+          "WorldFactRecorded",
+          "WorldFactRecorded",
+          "NarrativeSummaryRecorded",
+          "MerchantCreated",
+          "NpcPlaced"
+        ],
+        "agent_trace[].agent": [
+          "AgentDirector",
+          "EventReplay",
+          "WorldEngine",
+          "ShopAssembler"
+        ]
+      },
+      "pick": [
+        "error",
+        "code",
+        "request_kind",
+        "narration",
+        "provider",
+        "model",
+        "narration_message_id",
+        "turn_consumed",
+        "action_kind",
+        "free_action_outcome",
+        "idempotent_replay",
+        "room_version",
+        "state_version",
+        "engine_mode",
+        "check.skill",
+        "check.ability",
+        "check.difficulty",
+        "check.modifier",
+        "check.label",
+        "effects.roll",
+        "effects.interaction.type",
+        "effects.interaction.title",
+        "effects.interaction.description",
+        "effects.interaction.options",
+        "effects.interaction.status",
+        "effects.scene.scene.location",
+        "effects.scene.adventure.chapter",
+        "director_transition.fingerprint",
+        "director_transition.shop_action",
+        "director_transition.shop_outcome",
+        "director_transition.abandoned_quest_id",
+        "director_transition.replayed",
+        "mechanics[].event_type",
+        "agent_trace[].agent"
+      ]
+    },
+    {
+      "as": "owner",
+      "method": "GET",
+      "path": "/api/rooms/NARR-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 17,
+        "state.state_version": 23,
+        "state.scene.location": "Айргард",
+        "state.agentInteraction": null,
+        "state.messages[].id": [
+          "player-51aeea8ffa05d2620d35",
+          "narration-51aeea8ffa05d2620d35",
+          "player-8a3e90ba8a519e1e3e3d",
+          "narration-489f2ed0b56a2c073240",
+          "player-0741a320e613baac937e",
+          "narration-92bb24ce01089af89cc5",
+          "player-f6346a2aee43a99428a4",
+          "player-6a840baf5d8c3ff24168",
+          "narration-450222bcc3475b01aa69",
+          "player-46e9bc3476c92ea24fb1",
+          "narration-46e9bc3476c92ea24fb1",
+          "player-b1ad9ff6eb8dad4aa419",
+          "narration-b1ad9ff6eb8dad4aa419"
+        ],
+        "state.messages[].speaker": [
+          "player",
+          "narrator",
+          "player",
+          "narrator",
+          "player",
+          "system",
+          "player",
+          "player",
+          "narrator",
+          "player",
+          "narrator",
+          "player",
+          "narrator"
+        ],
+        "state.messages[].author": [
+          "Агата",
+          "Рассказчик",
+          "Агата",
+          "Ведущий · ответ",
+          "Гелла",
+          "Разбор правил",
+          "Агата",
+          "Агата",
+          "Рассказчик",
+          "Агата",
+          "Рассказчик",
+          "Агата",
+          "Рассказчик"
+        ],
+        "state.messages[].text": [
+          "Осматриваю старые ворота",
+          "Проверка «Восприятие» завершилась неудачей. Старые ворота. Голоса из соседних дворов.",
+          "Что мы знаем о воротах?",
+          "Известно немногое: Решить, куда идти. Прямого ответа пока нет — стоит осмотреться или поискать того, кто видел.",
+          "Может, обойдём стороной?",
+          "Игра прочла действие как: Мудрость (Восприятие) против СЛ 15. Проверка Мудрости: выпало 12 + 2 (модификатор), итого 14 против СЛ 15 — провал. В итоге: Проверка wis: 14 против СЛ 15; Проходит 30 мин.. Основание: закреплённые правила игры, результат рассчитан сервером.",
+          "Балансирую на узкой опоре",
+          "Балансирую на узкой опоре",
+          "Трюк сорвался. Дробящий удар: Агата получает 4 урона; ОЗ 14 → 10.",
+          "Предлагаю покинуть локацию «Старые ворота»",
+          "Агата зовёт уходить.",
+          "[РЕШЕНИЕ ГРУППЫ] Покинуть «Старые ворота»",
+          "Отряд оставляет «Старые ворота» позади и пускается в путь — к «Айргард».\n\nДорога выводит героев к воротам. За ними открываются улицы локации «Айргард» — с площадями, переулками и местами, где можно искать сведения. Дорога заняла около двух часов; день в разгаре.\n\n<merchant> раскладывает товар: в локации «Айргард» можно торговать."
+        ],
+        "state.messages[].knowledge_gate": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "pick": [
+        "version",
+        "state.state_version",
+        "state.scene.location",
+        "state.agentInteraction",
+        "state.messages[].id",
+        "state.messages[].speaker",
+        "state.messages[].author",
+        "state.messages[].text",
+        "state.messages[].knowledge_gate"
+      ]
+    },
+    {
+      "as": "guest",
+      "method": "GET",
+      "path": "/api/rooms/NARR-1",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 17,
+        "state.state_version": 23,
+        "state.scene.location": "Айргард",
+        "state.agentInteraction": null,
+        "state.messages[].id": [
+          "player-51aeea8ffa05d2620d35",
+          "narration-51aeea8ffa05d2620d35",
+          "player-8a3e90ba8a519e1e3e3d",
+          "player-0741a320e613baac937e",
+          "player-f6346a2aee43a99428a4",
+          "player-6a840baf5d8c3ff24168",
+          "narration-450222bcc3475b01aa69",
+          "player-46e9bc3476c92ea24fb1",
+          "narration-46e9bc3476c92ea24fb1",
+          "player-b1ad9ff6eb8dad4aa419",
+          "narration-b1ad9ff6eb8dad4aa419"
+        ],
+        "state.messages[].speaker": [
+          "player",
+          "narrator",
+          "player",
+          "player",
+          "player",
+          "player",
+          "narrator",
+          "player",
+          "narrator",
+          "player",
+          "narrator"
+        ],
+        "state.messages[].author": [
+          "Агата",
+          "Рассказчик",
+          "Агата",
+          "Гелла",
+          "Агата",
+          "Агата",
+          "Рассказчик",
+          "Агата",
+          "Рассказчик",
+          "Агата",
+          "Рассказчик"
+        ],
+        "state.messages[].text": [
+          "Осматриваю старые ворота",
+          "Проверка «Восприятие» завершилась неудачей. Старые ворота. Голоса из соседних дворов.",
+          "Что мы знаем о воротах?",
+          "Может, обойдём стороной?",
+          "Балансирую на узкой опоре",
+          "Балансирую на узкой опоре",
+          "Трюк сорвался. Дробящий удар: Агата получает 4 урона; ОЗ 14 → 10.",
+          "Предлагаю покинуть локацию «Старые ворота»",
+          "Агата зовёт уходить.",
+          "[РЕШЕНИЕ ГРУППЫ] Покинуть «Старые ворота»",
+          "Отряд оставляет «Старые ворота» позади и пускается в путь — к «Айргард».\n\nДорога выводит героев к воротам. За ними открываются улицы локации «Айргард» — с площадями, переулками и местами, где можно искать сведения. Дорога заняла около двух часов; день в разгаре.\n\n<merchant> раскладывает товар: в локации «Айргард» можно торговать."
+        ],
+        "state.messages[].knowledge_gate": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "pick": [
+        "version",
+        "state.state_version",
+        "state.scene.location",
+        "state.agentInteraction",
+        "state.messages[].id",
+        "state.messages[].speaker",
+        "state.messages[].author",
+        "state.messages[].text",
+        "state.messages[].knowledge_gate"
+      ]
+    },
+    {
+      "as": "admin",
+      "method": "GET",
+      "path": "/api/rooms/NARR-2",
+      "headers": {},
+      "body": null,
+      "status": 200,
+      "body_norm": {
+        "version": 3,
+        "state.state_version": 15,
+        "state.scene.location": "Керхольм",
+        "state.agentInteraction": null,
+        "state.messages[].id": [
+          "player-c4a83453c141e6fbfd58",
+          "narration-c4a83453c141e6fbfd58"
+        ],
+        "state.messages[].speaker": [
+          "player",
+          "narrator"
+        ],
+        "state.messages[].author": [
+          "Лира",
+          "Рассказчик"
+        ],
+        "state.messages[].text": [
+          "Предлагаю покинуть локацию «Нижний зал»",
+          "Отряд оставляет «Нижний зал» позади и пускается в путь — к «Керхольм».\n\nДорога выводит героев к воротам. За ними открываются улицы локации «Керхольм» — с площадями, переулками и местами, где можно искать сведения. Дорога заняла около двух часов; день в разгаре.\n\n<merchant> раскладывает товар: в локации «Керхольм» можно торговать."
+        ],
+        "state.messages[].knowledge_gate": [
+          null,
+          null
+        ]
+      },
+      "pick": [
+        "version",
+        "state.state_version",
+        "state.scene.location",
+        "state.agentInteraction",
+        "state.messages[].id",
+        "state.messages[].speaker",
+        "state.messages[].author",
+        "state.messages[].text",
+        "state.messages[].knowledge_gate"
+      ]
+    }
+  ]
+}

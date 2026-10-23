@@ -44,6 +44,7 @@ pub mod idempotency;
 pub mod journal;
 pub mod limits;
 pub mod merchant_guard;
+pub mod orchestration;
 pub mod projection;
 pub mod rate_window;
 pub mod room;
