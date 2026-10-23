@@ -132,3 +132,4 @@ test/captives-api.test.mjs               # голод пленного: серв
 test/world-rumor-clock-api.test.mjs      # часы молвы идут сами: слух и репутация после создания кампании
 test/hero-hooks-api.test.mjs             # зацепки героя на хуке проекции: одно плетение, переживает restart
 test/reaction-preferences-api.test.mjs   # режим реакции своего героя, повтор и restart (DND_COMBAT_TURN_TIMEOUT_MS)
+test/merchant-api.test.mjs               # торговля игрока и POST /system-tick с часами лавки (С14 + С18.2 + С17)
