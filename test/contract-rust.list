@@ -152,3 +152,8 @@ test/director-player-entry-api.test.mjs
 # С5 (2026-10-24): боевой стенд администратора /api/admin/combat-lab/* — прогон боя
 # (runCombatScenario) в Rust; combat-lab-api уже в списке (С18.1, бой поверх кампании).
 test/combat-lab-observer-api.test.mjs  # права, справочники, оценка и генерация, асинхронный прогон, кадры, отмена, отчёт
+# С12 (2026-10-24): ассеты и картинки — портрет NPC, иллюстрация места, подготовка ассетов,
+# /generated/items и generate-image; поставщик — startFakeProvider на 127.0.0.1.
+test/item-images-api.test.mjs           # картинка предмета через учёт расхода: completed/failed, 429 LLM_QUOTA_EXCEEDED до провайдера
+test/npc-portraits-api.test.mjs         # права и видимость, 302 заглушки, кеш с ETag и 304, лимит генераций, restart
+test/location-illustrations-api.test.mjs # подготовка при выключенном флаге, рантайм только из кеша, перегенерация меняет ETag
