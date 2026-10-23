@@ -65,6 +65,8 @@ sk-story = { path = "../sk-story" }
 sk-tactical = { path = "../sk-tactical" }
 sk-tactics = { path = "../sk-tactics" }
 sk-turns = { path = "../sk-turns" }
+# С18.1: `GameOrchestrator` (О2) и автономный цикл (О1) для `/commands`.
+sk-orchestrator = { path = "../sk-orchestrator" }
 # С4: каталог шаблонов мира (`/api/world-templates`).
 sk-world-time = { path = "../sk-world-time" }
 

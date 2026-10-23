@@ -2107,6 +2107,7 @@ dependencies = [
  "sk-narration",
  "sk-narration-base",
  "sk-npc-world",
+ "sk-orchestrator",
  "sk-projection",
  "sk-rulepack",
  "sk-rules",
