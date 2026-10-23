@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -18,33 +14,6 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
  * Тест поднимает настоящий сервер, подключает двух игроков к SSE, раскрывает
  * факт **одному** и сверяет оба потока.
  */
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'isolation-setup', GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -108,22 +77,16 @@ function hero(id, name) {
 const SECRET = 'ТАЙНА-ТОЛЬКО-ДЛЯ-ПЕРВОГО-ГЕРОЯ'
 
 test('живой поток отдаёт каждому игроку только его знание', { timeout: runnerTimeout(90_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-stream-isolation-'))
-  let logs = ''
-  let child = null
   const ownerAbort = new AbortController()
   const guestAbort = new AbortController()
-  t.after(async () => {
+  // Потоки обрываются раньше остановки сервера: этот t.after стоит до запуска.
+  t.after(() => {
     ownerAbort.abort()
     guestAbort.abort()
-    if (child && child.exitCode == null) await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-    rmSync(storage, { recursive: true, force: true })
   })
 
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-stream-isolation-', setupToken: 'isolation-setup' })
+  const baseUrl = server.baseUrl
 
   // Владелец — администратор: мировая память правится только административным
   // контуром, а игроку доступен лишь безопасный боевой набор команд.

@@ -1,57 +1,11 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const SETUP_TOKEN = 'chain-lightning-api-setup-token'
-
-function startServer({ port, storage, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Test server did not stop')), 5_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test server exited with ${child.exitCode}\n${log()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response.json()
-    } catch { /* listener is still starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test server did not become healthy\n${log()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -169,19 +123,11 @@ async function acquireWizard11(baseUrl, code, cookie, catalog, log) {
 }
 
 test('Chain Lightning HTTP path acquires a wizard legally, casts, denies bad secondary and replays after restart', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-chain-lightning-api-'))
   const setupToken = SETUP_TOKEN
-  let logs = ''
-  let child = null
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  const log = () => logs
-  const launch = async () => {
-    child = startServer({ port, storage, appendLog: (chunk) => { logs += chunk } })
-    await waitForHealth(baseUrl, child, log)
-  }
-  t.after(async () => { await stopServer(child); rmSync(storage, { recursive: true, force: true }) })
-  await launch()
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-chain-lightning-api-', setupToken })
+  const log = server.output
+  // Адрес меняется после restart(): переменная обновляется ниже.
+  let baseUrl = server.baseUrl
   const setup = await request(baseUrl, '/api/auth/setup-admin', { method: 'POST', body: {
     name: 'Chain HTTP admin', email: 'chain-http-admin@example.test', password: 'chain-http-admin-password', setupToken,
   } })
@@ -230,11 +176,8 @@ test('Chain Lightning HTTP path acquires a wizard legally, casts, denies bad sec
   assert.equal(replay.body.idempotent_replay, true)
   const firstVersion = cast.body.authoritative_state.state_version
   assert.equal(replay.body.authoritative_state.state_version, firstVersion)
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  await launch()
+  await server.restart()
+  baseUrl = server.baseUrl
   const afterRestart = await request(baseUrl, `/api/rooms/${code}`, { cookie: ownerCookie })
   assertStatus(afterRestart, 200, log)
   assert.equal(afterRestart.body.state.state_version, firstVersion)

@@ -1,61 +1,11 @@
-import { freePort } from './free-port.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { FileEventStore } from '../server/event-store.mjs'
-import { MapStore } from '../server/map-store.mjs'
-import {
-  GAME_STATE_PROJECTOR_VERSION,
-  applyGameEvent,
-  normalizeCampaignState,
-} from '../server/rules-engine.mjs'
+import { startTestServer } from './kit/http.mjs'
+import { appendJournal, readJournal } from './kit/journal.mjs'
 
 const SETUP_TOKEN = 'make-attack-idempotency-setup'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-      GAME_ENGINE_MODE: 'enforce',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    child.once('exit', resolve)
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -207,18 +157,10 @@ async function createCampaign(baseUrl, adminCookie, code, options) {
 }
 
 test('семантическая идемпотентность MakeAttack сохраняет смертельные повторы, кратность массива и нормализацию администратора', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-make-attack-idempotency-'))
-  let logs = ''
-  let child = null
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
-  })
-
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: SETUP_TOKEN, storagePrefix: 'skazanie-make-attack-idempotency-' })
+  // Вывод сервера накапливается по всем запускам; `${logs}` читает его в момент сообщения.
+  const logs = { toString: () => server.output() }
+  let baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -303,22 +245,14 @@ test('семантическая идемпотентность MakeAttack со�
   await createCampaign(baseUrl, adminCookie, adminCampaign, { enemyHp: 1_000 })
   // Переключаем ход непосредственно через append-only Event Store, не вызывая
   // room-save: иначе координатор немедленно исполнит ход NPC раньше HTTP-запроса.
-  const adminStore = new FileEventStore({
-    rootDir: join(storage, 'engine'),
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-    snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-    mapStore: new MapStore({ rootDir: join(storage, 'engine') }),
-  })
-  const adminBeforeTurn = await adminStore.load(adminCampaign)
-  await adminStore.commit({
-    campaign_id: adminCampaign,
+  const adminBeforeTurn = await readJournal(server, adminCampaign)
+  await appendJournal(server, adminCampaign, {
     expected_state_version: adminBeforeTurn.state_version,
     idempotency_key: 'admin-enemy-turn',
     command_id: 'admin-enemy-turn',
     events: [{ event_type: 'TurnStarted', payload: { round: 1, active_index: 1 }, target_ids: ['enemy'] }],
   })
-  const adminEnemyTurn = await adminStore.load(adminCampaign)
+  const adminEnemyTurn = await readJournal(server, adminCampaign)
   assert.equal(adminEnemyTurn.state.mechanics.combat.initiative[adminEnemyTurn.state.mechanics.combat.active_index].actor_id, 'enemy')
   const adminKey = 'admin-fingerprint'
   const adminCommand = attack({
@@ -351,25 +285,16 @@ test('семантическая идемпотентность MakeAttack со�
   const afterAdminCollision = await request(baseUrl, `/api/rooms/${adminCampaign}`, { cookie: adminCookie })
   assert.equal(afterAdminCollision.body.state.state_version, beforeAdminCollision.body.state.state_version)
 
-  await stopServer(child)
-  child = null
-  const durableStore = new FileEventStore({
-    rootDir: join(storage, 'engine'),
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-    snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-    mapStore: new MapStore({ rootDir: join(storage, 'engine') }),
-  })
-  const lethalEvents = await durableStore.getEvents(lethal.campaignId)
+  await server.stop()
+  const lethalEvents = (await readJournal(server, lethal.campaignId)).events
   assert.equal(lethalEvents.filter((event) => event.event_type === 'AttackResolved').length, 1)
   assert.equal(lethalEvents.filter((event) => event.event_type === 'DamageApplied').length, 1)
-  const durableAdminAttacks = (await durableStore.getEvents(adminCampaign))
+  const durableAdminAttacks = (await readJournal(server, adminCampaign)).events
     .filter((event) => event.event_type === 'AttackResolved' && event.actor_id === 'enemy')
   assert.equal(durableAdminAttacks.length, 1)
   assert.notEqual(durableAdminAttacks[0].payload.request_fingerprint, 'client-controlled-fingerprint')
-  const beforeSceneAdvance = await durableStore.load(lethal.campaignId)
-  await durableStore.commit({
-    campaign_id: lethal.campaignId,
+  const beforeSceneAdvance = await readJournal(server, lethal.campaignId)
+  await appendJournal(server, lethal.campaignId, {
     expected_state_version: beforeSceneAdvance.state_version,
     idempotency_key: 'scene-after-lethal-attack',
     command_id: 'scene-after-lethal-attack',
@@ -386,12 +311,11 @@ test('семантическая идемпотентность MakeAttack со�
       },
     }],
   })
-  const afterSceneAdvance = await durableStore.load(lethal.campaignId)
+  const afterSceneAdvance = await readJournal(server, lethal.campaignId)
   assert.equal(afterSceneAdvance.state.enemies.length, 0, 'SceneAdvanced должен удалить прежнюю цель')
-  const summonBeforeScene = await durableStore.load(summonCampaign)
+  const summonBeforeScene = await readJournal(server, summonCampaign)
   assert.ok(summonBeforeScene.state.actors.some((actor) => actor.id === 'summon'))
-  await durableStore.commit({
-    campaign_id: summonCampaign,
+  await appendJournal(server, summonCampaign, {
     expected_state_version: summonBeforeScene.state_version,
     idempotency_key: 'scene-after-summon-attack',
     command_id: 'scene-after-summon-attack',
@@ -408,19 +332,17 @@ test('семантическая идемпотентность MakeAttack со�
       },
     }],
   })
-  const summonAfterScene = await durableStore.load(summonCampaign)
+  const summonAfterScene = await readJournal(server, summonCampaign)
   assert.equal(summonAfterScene.state.actors.some((actor) => actor.id === 'summon'), false)
 
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.start()
+  baseUrl = server.baseUrl
   const afterRestart = await sendCommands(baseUrl, playerCookie, lethal.campaignId, lethal.key, [lethal.command])
   assert.equal(afterRestart.status, 200, `${afterRestart.text}\n${logs}`)
   assert.equal(afterRestart.body.idempotent_replay, true)
   assert.equal(afterRestart.body.authoritative_state.state_version, afterSceneAdvance.state_version)
   assert.equal(afterRestart.body.authoritative_state.enemies.length, 0)
-  const afterReplayEvents = await durableStore.getEvents(lethal.campaignId)
+  const afterReplayEvents = (await readJournal(server, lethal.campaignId)).events
   assert.equal(afterReplayEvents.filter((event) => event.event_type === 'AttackResolved').length, 1)
 
   const foreignSummonRetry = await sendCommands(baseUrl, foreignCookie, summonCampaign, summonKey, [summonCommand])
@@ -435,6 +357,6 @@ test('семантическая идемпотентность MakeAttack со�
   const absentSummonNewCommand = await sendCommands(baseUrl, playerCookie, summonCampaign, 'summon-new-command', [summonCommand])
   assert.equal(absentSummonNewCommand.status, 403, `${absentSummonNewCommand.text}\n${logs}`)
   assert.equal(absentSummonNewCommand.body.code, 'ACTOR_FORBIDDEN')
-  const summonEventsAfterRetries = await durableStore.getEvents(summonCampaign)
+  const summonEventsAfterRetries = (await readJournal(server, summonCampaign)).events
   assert.equal(summonEventsAfterRetries.filter((event) => event.event_type === 'AttackResolved' && event.actor_id === 'summon').length, 1)
 })

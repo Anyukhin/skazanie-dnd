@@ -1,55 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
-import { FileEventStore } from '../server/event-store.mjs'
+import { startTestServer } from './kit/http.mjs'
+import { appendJournal, readJournal } from './kit/journal.mjs'
 import { resolvePartyVote } from '../server/party-decision.mjs'
-import { GAME_STATE_PROJECTOR_VERSION, applyGameEvent, normalizeCampaignState } from '../server/rules-engine.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-function startServer(port, storage, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'quest-abandonment-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve) => {
-    child.once('exit', resolve)
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Тестовый сервер не запустился\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body, key = '' } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -130,29 +85,20 @@ function questFrom(state, id) {
   return state.worldMemory?.quests?.find((entry) => entry.id === id)
 }
 
-async function waitForRoom(baseUrl, cookie, child, logs, predicate) {
+async function waitForRoom(server, cookie, predicate) {
+  const logs = server.output
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const room = await request(baseUrl, '/api/rooms/QUEST-ABANDON', { cookie })
+    const room = await request(server.baseUrl, '/api/rooms/QUEST-ABANDON', { cookie })
     if (room.status === 200 && predicate(room.body?.state)) return room
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs()}`)
+    if (!server.running()) throw new Error(`Тестовый сервер завершился\n${logs()}`)
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   throw new Error(`Состояние кампании не достигло ожидаемого результата\n${logs()}`)
 }
 
 test('отказ от выбранного задания остаётся в сцене, голосуется всей группой и переживает replay/restart', { timeout: runnerTimeout(60_000) }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-quest-abandonment-'))
-  let logs = ''
-  let child = null
-  let port = await freePort()
-  let baseUrl = `http://127.0.0.1:${port}`
-  t.after(async () => {
-    await stopServer(child)
-    rmSync(storage, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
-  })
-
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  const server = await startTestServer(t, { setupToken: 'quest-abandonment-setup', storagePrefix: 'skazanie-quest-abandonment-' })
+  let baseUrl = server.baseUrl
 
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
@@ -264,7 +210,7 @@ test('отказ от выбранного задания остаётся в с
   })
   assert.equal(secondVote.status, 200, secondVote.text)
 
-  const finished = await waitForRoom(baseUrl, adminCookie, child, () => logs, (state) => (
+  const finished = await waitForRoom(server, adminCookie, (state) => (
     state?.agentInteraction == null && questFrom(state, 'quest:second')?.status === 'abandoned'
   ))
   const after = finished.body.state
@@ -283,12 +229,8 @@ test('отказ от выбранного задания остаётся в с
   assert.doesNotMatch(String(hint.body?.narration ?? ''), /Доставить вторую реликвию/u)
   assert.match(String(hint.body?.narration ?? ''), /текущая задача|занятие|новая цель/iu)
 
-  await stopServer(child)
-  child = null
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.restart()
+  baseUrl = server.baseUrl
   const restarted = stateFrom(await request(baseUrl, '/api/rooms/QUEST-ABANDON', { cookie: adminCookie }))
   assert.equal(restarted.agentInteraction, null)
   assert.equal(questFrom(restarted, 'quest:second')?.status, 'abandoned')
@@ -314,15 +256,8 @@ test('отказ от выбранного задания остаётся в с
   assert.equal(crashFirstVote.status, 200, crashFirstVote.text)
   assert.equal(stateFrom(crashFirstVote).agentInteraction.status, 'open')
 
-  await stopServer(child)
-  child = null
-  const eventStore = new FileEventStore({
-    rootDir: join(storage, 'engine'),
-    reducer: applyGameEvent,
-    normalizeState: normalizeCampaignState,
-    snapshotProjectorVersion: GAME_STATE_PROJECTOR_VERSION,
-  })
-  const beforeCrashFinish = await eventStore.load('QUEST-ABANDON')
+  await server.stop()
+  const beforeCrashFinish = await readJournal(server, 'QUEST-ABANDON')
   const crashResolution = resolvePartyVote(beforeCrashFinish.state, {
     interactionId: crashInteraction.id,
     heroId: 'hero-b',
@@ -330,17 +265,14 @@ test('отказ от выбранного задания остаётся в с
     eligibleHeroIds: ['hero-a', 'hero-b'],
   })
   assert.deepEqual(crashResolution.events.map((event) => event.event_type), ['PartyVoteCast', 'PartyDecisionResolved'])
-  await eventStore.commit({
-    campaign_id: 'QUEST-ABANDON',
+  await appendJournal(server, 'QUEST-ABANDON', {
     expected_state_version: beforeCrashFinish.state_version,
     idempotency_key: 'crash-vote-b',
     events: crashResolution.events,
   })
 
-  port = await freePort()
-  baseUrl = `http://127.0.0.1:${port}`
-  child = startServer(port, storage, (chunk) => { logs += chunk })
-  await waitForHealth(baseUrl, child, () => logs)
+  await server.start()
+  baseUrl = server.baseUrl
   const recoveredAfterCrash = stateFrom(await request(baseUrl, '/api/rooms/QUEST-ABANDON', { cookie: adminCookie }))
   assert.equal(recoveredAfterCrash.agentInteraction, null)
   assert.equal(questFrom(recoveredAfterCrash, 'quest:first')?.status, 'abandoned')

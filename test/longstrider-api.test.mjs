@@ -1,11 +1,7 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { movementCostOfPath, shortestTacticalPath } from '../server/rules-engine.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
@@ -57,49 +53,18 @@ function combatMovementTargetForFortyFeet(state, actorId, origin) {
 }
 
 async function harness(t) {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-longstrider-api-'))
-  let child = null
-  let baseUrl = ''
-  let logs = ''
   let lastRequest = null
   const slowRequests = []
-  const stop = async () => {
-    if (!child || child.exitCode != null || child.signalCode != null) return
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Тестовый сервер не завершился')), 5_000)
-      child.once('exit', () => { clearTimeout(timeout); resolve() })
-      child.kill()
-    })
-  }
-  t.after(async () => {
-    t.diagnostic(JSON.stringify({ lastRequest, slowRequests }))
-    await stop()
-    rmSync(storage, { recursive: true, force: true })
-  })
-  const start = async () => {
-    const port = await freePort()
-    baseUrl = `http://127.0.0.1:${port}`
-    child = spawn(process.execPath, ['server/index.mjs'], {
-      cwd: process.cwd(), env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port),
-        DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: SETUP_TOKEN,
-        COOKIE_SECURE: 'false', NODE_ENV: 'test', GAME_ENGINE_MODE: 'enforce' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    child.stdout.on('data', (chunk) => { logs = (logs + chunk).slice(-3_000) })
-    child.stderr.on('data', (chunk) => { logs = (logs + chunk).slice(-3_000) })
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (child.exitCode != null || child.signalCode != null) throw new Error(`Сервер: exit=${child.exitCode}, signal=${child.signalCode}\n${logs}`)
-      try { if ((await fetch(`${baseUrl}/api/health`)).ok) return } catch { /* запуск слушателя */ }
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    throw new Error(`Сервер не запустился: exit=${child.exitCode}, signal=${child.signalCode}\n${logs}`)
-  }
+  t.after(() => { t.diagnostic(JSON.stringify({ lastRequest, slowRequests })) })
+  const server = await startTestServer(t, { setupToken: SETUP_TOKEN, storagePrefix: 'skazanie-longstrider-api-' })
+  // Свой запрос с трассой медленных шагов; адрес — server.baseUrl при каждом
+  // вызове: после restart() порт новый.
   const request = async (path, { cookie = '', method = 'GET', body } = {}) => {
     const started = performance.now()
     const label = `${method} ${path} ${(body?.commands ?? [body?.command]).filter(Boolean).map((entry) => entry.command_type).join(',')}`.trim()
     lastRequest = label
     try {
-      const response = await fetch(`${baseUrl}${path}`, { method, signal: AbortSignal.timeout(30_000),
+      const response = await fetch(`${server.baseUrl}${path}`, { method, signal: AbortSignal.timeout(30_000),
         headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       })
@@ -112,8 +77,7 @@ async function harness(t) {
   const command = (cookie, idempotency_key, command) => request(`/api/campaigns/${CAMPAIGN}/commands`, {
     method: 'POST', cookie, body: { idempotency_key, command },
   })
-  await start()
-  return { request, command, restart: async () => { await stop(); await start() } }
+  return { request, command, restart: () => server.restart() }
 }
 
 function expect(result, status = 200) {

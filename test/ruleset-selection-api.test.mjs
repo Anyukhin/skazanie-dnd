@@ -1,20 +1,8 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
 
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
-
-async function waitForHealth(baseUrl, child) {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился с кодом ${child.exitCode}`)
-    try { if ((await fetch(`${baseUrl}/api/health`)).ok) return } catch { /* starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error('Тестовый сервер не запустился')
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -27,29 +15,15 @@ async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}
 }
 
 test('владелец выбирает 2014/2024 при создании и меняет редакцию только до первого игрового события', { timeout: runnerTimeout(30_000) }, async (t) => {
-  const port = 20_000 + Math.floor(Math.random() * 10_000)
-  const baseUrl = `http://127.0.0.1:${port}`
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-ruleset-api-'))
-  let logs = ''
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'ruleset-setup-token', COOKIE_SECURE: 'false',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => { logs += chunk })
-  child.stderr.on('data', (chunk) => { logs += chunk })
-  t.after(() => { if (child.exitCode == null) child.kill() })
-  await waitForHealth(baseUrl, child)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-ruleset-api-', setupToken: 'ruleset-setup-token' })
+  // Сервер не перезапускается: адрес постоянен до конца теста.
+  const { baseUrl } = server
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'Owner', email: 'ruleset@example.test', password: 'very-secure-password', setupToken: 'ruleset-setup-token' },
   })
-  assert.equal(setup.status, 201, `${setup.text}\n${logs}`)
+  assert.equal(setup.status, 201, `${setup.text}\n${server.output()}`)
   const rawSetup = await fetch(`${baseUrl}/api/auth/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: 'ruleset@example.test', password: 'very-secure-password' }),
@@ -70,7 +44,7 @@ test('владелец выбирает 2014/2024 при создании и м�
     method: 'POST', cookie,
     body: { code: 'RULES-2014', name: 'Классика', bootstrap: { partyName: 'Отряд', slotCount: 2, world: {}, rulesetId: 'dnd_5e_2014' } },
   })
-  assert.equal(classic.status, 201, `${classic.text}\n${logs}`)
+  assert.equal(classic.status, 201, `${classic.text}\n${server.output()}`)
   assert.equal(classic.body.state.ruleset_id, 'dnd_5e_2014')
   assert.equal(classic.body.state.ruleset_version, '2014.1.0')
   assert.deepEqual(classic.body.state.enabled_rule_packs, ['dnd_5e_2014'])

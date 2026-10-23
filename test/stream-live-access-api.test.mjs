@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 /**
@@ -20,33 +19,6 @@ import { runnerTimeout } from './shared-runner-timeout.mjs'
  * - после смены героев поток отдаёт ту же проекцию, что свежий GET;
  * - потеря доступа к кампании закрывает поток.
  */
-
-function startServer(port, storage, emptyEnv, appendLog) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-      DOTENV_CONFIG_PATH: emptyEnv, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'live-access-setup',
-      COOKIE_SECURE: 'false', NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function waitForHealth(baseUrl, child, logs) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Server exited\n${logs()}`)
-    try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return
-    } catch { /* сервер ещё стартует */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Server did not become healthy\n${logs()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie = '', body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -180,20 +152,21 @@ function expireSession(storage, cookie) {
 }
 
 async function bootServer(t, prefix) {
-  const storage = mkdtempSync(join(tmpdir(), prefix))
-  const emptyEnv = join(storage, '.env.empty')
-  writeFileSync(emptyEnv, '', 'utf8')
-  let logs = ''
+  // Потоки обрываются раньше остановки сервера: этот t.after стоит до запуска.
   const aborts = []
-  const port = await freePort()
-  const baseUrl = `http://127.0.0.1:${port}`
-  const child = startServer(port, storage, emptyEnv, (chunk) => { logs += chunk })
-  t.after(async () => {
-    for (const controller of aborts) controller.abort()
-    if (child.exitCode == null) await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-    rmSync(storage, { recursive: true, force: true })
+  t.after(() => { for (const controller of aborts) controller.abort() })
+  // Пустой .env — в своём каталоге: хранилище создаёт набор, до старта его нет.
+  const envDir = mkdtempSync(join(tmpdir(), `${prefix}env-`))
+  t.after(() => rmSync(envDir, { recursive: true, force: true }))
+  const emptyEnv = join(envDir, '.env.empty')
+  writeFileSync(emptyEnv, '', 'utf8')
+  const server = await startTestServer(t, {
+    storagePrefix: prefix,
+    setupToken: 'live-access-setup',
+    env: { DOTENV_CONFIG_PATH: emptyEnv },
   })
-  await waitForHealth(baseUrl, child, () => logs)
+  const storage = server.storageDir
+  const baseUrl = server.baseUrl
   const admin = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',
     body: { name: 'Ведущий', email: 'live-admin@test.local', password: 'secure-live-admin-password', setupToken: 'live-access-setup' },

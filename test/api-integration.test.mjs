@@ -1,38 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { spawn } from 'node:child_process'
 import test from 'node:test'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
-async function waitForHealth(baseUrl, child) {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился с кодом ${child.exitCode}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return response
-    } catch { /* сервер ещё запускается */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error('Тестовый сервер не запустился')
-}
-
 test('совместимый API создаёт кампанию, исполняет enforce-команду, ищет правила и объясняет /why', { timeout: runnerTimeout(20_000) }, async (t) => {
-  const port = 20_000 + Math.floor(Math.random() * 10_000)
-  const baseUrl = `http://127.0.0.1:${port}`
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-api-'))
-  let logs = ''
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage, ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'integration-setup-token', GAME_ENGINE_MODE: 'enforce', COOKIE_SECURE: 'false' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => { logs += chunk })
-  child.stderr.on('data', (chunk) => { logs += chunk })
-  t.after(() => { if (child.exitCode == null) child.kill() })
+  // Кит дожидается health сам; ответ health проверяется отдельным запросом.
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-api-', setupToken: 'integration-setup-token' })
+  const baseUrl = server.baseUrl
 
-  const health = await waitForHealth(baseUrl, child)
+  const health = await fetch(`${baseUrl}/api/health`)
+  assert.equal(health.status, 200)
   assert.equal(health.headers.get('x-content-type-options'), 'nosniff')
   const healthBody = await health.json()
   assert.equal(healthBody.rulesetId, 'srd_5_2_1')
@@ -49,7 +26,7 @@ test('совместимый API создаёт кампанию, исполня
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'Admin', email: 'admin@example.test', password: 'very-secure-password', setupToken: 'integration-setup-token' }),
   })
-  assert.equal(setup.status, 201, logs)
+  assert.equal(setup.status, 201, server.output())
   const cookie = setup.headers.get('set-cookie')?.split(';')[0]
   assert.ok(cookie)
   const headers = { 'Content-Type': 'application/json', Cookie: cookie }

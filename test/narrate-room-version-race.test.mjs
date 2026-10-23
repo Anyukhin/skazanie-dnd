@@ -1,70 +1,9 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { createServer as createHttpServer } from 'node:http'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
+import { startFakeProvider } from './kit/llm.mjs'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
-
-async function listen(server) {
-  await new Promise((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  const address = server.address()
-  if (!address || typeof address === 'string') throw new Error('Fake RouterAI did not expose a TCP port')
-  return address.port
-}
-
-async function closeServer(server) {
-  if (!server.listening) return
-  await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
-}
-
-function startGameServer({ port, storage, routerBaseUrl, setupToken, appendLog }) {
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: 'room-version-race-test-key',
-      ROUTERAI_BASE_URL: routerBaseUrl,
-      ADMIN_SETUP_TOKEN: setupToken,
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => appendLog(String(chunk)))
-  child.stderr.on('data', (chunk) => appendLog(String(chunk)))
-  return child
-}
-
-async function stopGameServer(child) {
-  if (!child || child.exitCode != null) return
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Test game server did not stop')), 5_000)
-    child.once('exit', () => { clearTimeout(timer); resolve() })
-    child.kill()
-  })
-}
-
-async function waitForHealth(baseUrl, child, log) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Test game server exited with ${child.exitCode}\n${log()}`)
-    try {
-      const response = await fetch(`${baseUrl}/api/health`)
-      if (response.ok) return
-    } catch { /* server is still starting */ }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  throw new Error(`Test game server did not become healthy\n${log()}`)
-}
 
 async function request(baseUrl, path, { method = 'GET', cookie, body } = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -88,62 +27,43 @@ function assertStatus(result, status, log) {
 }
 
 test('/api/narrate keeps its event projection authoritative while broad room PUT is retired', { timeout: 20_000 }, async (t) => {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-narrate-version-race-'))
   const setupToken = 'narrate-version-race-setup-token'
-  let logs = ''
-  let child = null
   let releaseProvider
   let providerStarted
   const providerGate = new Promise((resolve) => { releaseProvider = resolve })
   const providerRequest = new Promise((resolve) => { providerStarted = resolve })
 
-  const fakeRouter = createHttpServer((req, res) => {
-    if (req.method !== 'POST' || req.url !== '/api/v1/chat/completions') {
-      res.writeHead(404, JSON_HEADERS)
-      res.end(JSON.stringify({ error: 'Not found' }))
-      return
+  // Первым: отпустить задержанный ответ провайдера раньше остановки серверов.
+  t.after(() => { releaseProvider() })
+
+  // Прочие пути провайдера — 404 (обработчик возвращает undefined).
+  const provider = await startFakeProvider(t, async (incoming) => {
+    if (incoming.method !== 'POST' || incoming.url !== '/api/v1/chat/completions') return undefined
+    providerStarted()
+    await providerGate
+    return {
+      model: 'fake-room-version-model',
+      choices: [{
+        message: {
+          role: 'assistant',
+          content: JSON.stringify({
+            narration: 'Бранн внимательно осматривает место встречи, отмечая следы недавнего присутствия.',
+            suggestions: ['Проверить следы у входа'],
+            turn_consumed: true,
+            action_kind: 'substantive',
+          }),
+        },
+      }],
     }
-    req.resume()
-    req.once('end', async () => {
-      providerStarted()
-      await providerGate
-      res.writeHead(200, JSON_HEADERS)
-      res.end(JSON.stringify({
-        model: 'fake-room-version-model',
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: JSON.stringify({
-              narration: 'Бранн внимательно осматривает место встречи, отмечая следы недавнего присутствия.',
-              suggestions: ['Проверить следы у входа'],
-              turn_consumed: true,
-              action_kind: 'substantive',
-            }),
-          },
-        }],
-      }))
-    })
   })
 
-  t.after(async () => {
-    releaseProvider()
-    await stopGameServer(child)
-    await closeServer(fakeRouter)
-    rmSync(storage, { recursive: true, force: true })
-  })
-
-  const routerPort = await listen(fakeRouter)
-  const gamePort = await freePort()
-  const baseUrl = `http://127.0.0.1:${gamePort}`
-  const log = () => logs
-  child = startGameServer({
-    port: gamePort,
-    storage,
-    routerBaseUrl: `http://127.0.0.1:${routerPort}/api/v1`,
+  const server = await startTestServer(t, {
     setupToken,
-    appendLog: (chunk) => { logs += chunk },
+    storagePrefix: 'skazanie-narrate-version-race-',
+    env: provider.env,
   })
-  await waitForHealth(baseUrl, child, log)
+  const { baseUrl } = server
+  const log = server.output
 
   const setup = await request(baseUrl, '/api/auth/setup-admin', {
     method: 'POST',

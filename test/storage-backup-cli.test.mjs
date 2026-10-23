@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -7,7 +7,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import { STORAGE_WRITER_MARKER } from '../server/backup-service.mjs'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 
 const CLI = fileURLToPath(new URL('../tools/storage-backup.mjs', import.meta.url))
@@ -107,38 +107,18 @@ test('живой сервер на storage: create отказывает, --allow
 test('настоящий сервер занимает storage, пока работает, и освобождает после остановки', { timeout: runnerTimeout(60_000) }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'skazanie-backup-cli-server-'))
   const storage = join(root, 'storage')
-  let logs = ''
-  let child = null
+  /** @type {import('./kit/http.mjs').TestServer | null} */
+  let server = null
+  // Хранилище — свой каталог рядом с файлами копий: кит его не создаёт и не
+  // удаляет, поэтому сервер останавливается здесь же, до удаления каталога.
   t.after(async () => {
-    if (child && child.exitCode == null && child.signalCode == null) {
-      await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
-    }
+    await server?.stop()
     rmSync(root, { recursive: true, force: true })
   })
-  const port = await freePort()
-  child = spawn(process.execPath, ['server/index.mjs'], {
-    cwd: process.cwd(),
-    env: {
-      ...process.env,
-      AGENT_HOST: '127.0.0.1',
-      AGENT_PORT: String(port),
-      DND_STORAGE_DIR: storage,
-      ROUTERAI_API_KEY: '',
-      ADMIN_SETUP_TOKEN: 'backup-cli-server-setup',
-      COOKIE_SECURE: 'false',
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  child.stdout.on('data', (chunk) => { logs += String(chunk) })
-  child.stderr.on('data', (chunk) => { logs += String(chunk) })
-  let healthy = false
-  for (let attempt = 0; attempt < 200 && !healthy; attempt += 1) {
-    if (child.exitCode != null) throw new Error(`Тестовый сервер завершился\n${logs}`)
-    try { healthy = (await fetch(`http://127.0.0.1:${port}/api/health`)).ok } catch { /* сервер ещё запускается */ }
-    if (!healthy) await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  assert.ok(healthy, `Тестовый сервер не запустился\n${logs}`)
+  server = await startTestServer(t, { storageDir: storage, setupToken: 'backup-cli-server-setup' })
+  // Кит дожидается health сам; проверка оставлена явной, как была.
+  const healthy = (await fetch(`${server.baseUrl}/api/health`)).ok
+  assert.ok(healthy, `Тестовый сервер не запустился\n${server.output()}`)
 
   const busy = runCli(['create', storage, join(root, 'busy.skzbackup')], { cwd: root, key: SECRET })
   assert.equal(busy.status, 1, busy.stdout)
@@ -147,7 +127,7 @@ test('настоящий сервер занимает storage, пока раб�
 
   // Штатная остановка снимает отметку; принудительная (Windows) оставляет
   // отметку мёртвого процесса, и она распознаётся устаревшей.
-  await new Promise((resolve) => { child.once('exit', resolve); child.kill() })
+  await server.stop()
   const idle = runCli(['create', storage, join(root, 'idle.skzbackup')], { cwd: root, key: SECRET })
   assert.equal(idle.status, 0, idle.stderr)
   assert.ok(['absent', 'stale'].includes(JSON.parse(idle.stdout).writer.state), idle.stdout)

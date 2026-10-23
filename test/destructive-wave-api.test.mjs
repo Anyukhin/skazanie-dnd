@@ -1,47 +1,14 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
-import { freePort } from './free-port.mjs'
+import { startTestServer } from './kit/http.mjs'
 
 const CAMPAIGN = 'TEMPEST-WAVE-HTTP'
 const SETUP_TOKEN = 'tempest-wave-http-admin'
 
 async function harness(t) {
-  const storage = mkdtempSync(join(tmpdir(), 'skazanie-tempest-wave-api-'))
-  let child = null
-  let baseUrl = ''
-  let logs = ''
-  const stop = async () => {
-    if (!child || child.exitCode != null || child.signalCode != null) return
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('server did not stop: ' + logs)), 5_000)
-      child.once('exit', () => { clearTimeout(timeout); resolve() })
-      child.kill()
-    })
-  }
-  const start = async () => {
-    const port = await freePort()
-    baseUrl = 'http://127.0.0.1:' + port
-    child = spawn(process.execPath, ['server/index.mjs'], {
-      cwd: process.cwd(),
-      env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: storage,
-        ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: SETUP_TOKEN, COOKIE_SECURE: 'false', NODE_ENV: 'test', GAME_ENGINE_MODE: 'enforce' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    child.stdout.on('data', (chunk) => { logs = (logs + chunk).slice(-4_000) })
-    child.stderr.on('data', (chunk) => { logs = (logs + chunk).slice(-4_000) })
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (child.exitCode != null || child.signalCode != null) throw new Error('server exited: ' + logs)
-      try { if ((await fetch(baseUrl + '/api/health')).ok) return } catch {}
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-    throw new Error('server did not start: ' + logs)
-  }
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-tempest-wave-api-', setupToken: SETUP_TOKEN })
   const request = async (path, { cookie = '', method = 'GET', body } = {}) => {
-    const response = await fetch(baseUrl + path, {
+    const response = await fetch(server.baseUrl + path, {
       method, signal: AbortSignal.timeout(30_000),
       headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { Cookie: cookie } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -52,8 +19,6 @@ async function harness(t) {
   const command = (cookie, key, commandBody) => request('/api/campaigns/' + CAMPAIGN + '/commands', {
     method: 'POST', cookie, body: { idempotency_key: key, command: commandBody },
   })
-  await start()
-  t.after(async () => { await stop(); rmSync(storage, { recursive: true, force: true }) })
   return { request, command }
 }
 

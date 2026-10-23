@@ -1,36 +1,14 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
-import { createServer } from 'node:net'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import test from 'node:test'
+import { startTestServer } from './kit/http.mjs'
 import { runnerTimeout } from './shared-runner-timeout.mjs'
 import { buildCampaignArcPlan } from '../server/campaign-loop-policy.mjs'
 
 test('два игрока обсуждают и спрашивают вне своего хода без бросков, перехода и изменения механики', { timeout: runnerTimeout(30_000) }, async (t) => {
-  const probe = createServer()
-  await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve))
-  const port = probe.address().port
-  await new Promise((resolve) => probe.close(resolve))
-  const base = `http://127.0.0.1:${port}`
-  const child = spawn(process.execPath, ['server/index.mjs'], {
-    env: { ...process.env, AGENT_HOST: '127.0.0.1', AGENT_PORT: String(port), DND_STORAGE_DIR: mkdtempSync(join(tmpdir(), 'skazanie-dialogue-api-')), ROUTERAI_API_KEY: '', ADMIN_SETUP_TOKEN: 'dialogue-test-setup', COOKIE_SECURE: 'false', NODE_ENV: 'test' },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  let logs = ''
-  child.stdout.on('data', (chunk) => { logs += String(chunk) })
-  child.stderr.on('data', (chunk) => { logs += String(chunk) })
-  t.after(() => { if (child.exitCode == null) child.kill() })
-  let ready = false
-  for (let i = 0; i < 100; i += 1) {
-    try { if ((await fetch(`${base}/api/health`)).ok) { ready = true; break } } catch { /* Сервер ещё запускается. */ }
-    if (child.exitCode != null) break
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  assert.ok(ready, logs)
+  const server = await startTestServer(t, { storagePrefix: 'skazanie-dialogue-api-', setupToken: 'dialogue-test-setup' })
+  assert.ok(server.running(), server.output())
   const request = async (path, cookie, body, method = body ? 'POST' : 'GET') => {
-    const response = await fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
+    const response = await fetch(`${server.baseUrl}${path}`, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
     return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }
   }
   const admin = await request('/api/auth/setup-admin', null, { name: 'Ведущий', email: 'gm@dialogue.test', password: 'dialogue-test-password', setupToken: 'dialogue-test-setup' })
