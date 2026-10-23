@@ -2111,6 +2111,7 @@ dependencies = [
  "sk-rulepack",
  "sk-rules",
  "sk-ruleset",
+ "sk-scenario",
  "sk-server",
  "sk-society",
  "sk-store",
