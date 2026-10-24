@@ -217,6 +217,7 @@ pnpm backup           # зашифрованная копия storage в ./backu
 | Все броски серверные, один бросок не применяется дважды; механическая проверка принимает только кость своей карточки | `test/dice-service.test.mjs`, `test/roll-registry.test.mjs`, `test/roll-binding.test.mjs` |
 | Клиентские поля недоверенные (путь, дальность, цель) | `test/tactical-command-guard.test.mjs` |
 | Права, членство и владелец героя проверяются сервером | `test/security.test.mjs` |
+| Готового героя игрок не переписывает импортом; новый герой создаётся только с полным набором выборов первого уровня, в 2014 — с `phbCreation` | `test/character-lifecycle-engine.test.mjs`, `test/character-creation-2014.test.mjs` |
 | Игрок видит только разрешённое, в том числе в уже открытом живом потоке после logout, истечения сессии и смены доступа; прогноз удара не выдаёт закрытую КД процентом попадания | `test/viewer-projection.test.mjs`, `test/viewer-projection-api.test.mjs`, `test/stream-live-access-api.test.mjs`, `test/combat-forecast-disclosure.test.mjs` |
 | Рассказчик не создаёт событий и не объявляет смерть | `test/narrator.test.mjs` |
 | NPC знает только своё, публичное и увиденное им самим; повтор своей реплики вырезается сервером; отказ ведёт к зацепке, а не в тупик | `test/npc-knowledge-leads.test.mjs` |

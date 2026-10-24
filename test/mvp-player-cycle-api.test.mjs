@@ -532,7 +532,16 @@ async function runMvpScenario(t) {
 
   mvpStage('character import and choices')
   const importDocument = characterDocument('Герой 1', 225)
-  const importedCharacter = await playerCommand(baseUrl, ownerCookie, 'character-import-1', {
+  // Готового героя игрок своим документом не переписывает: иначе он сам
+  // назначал бы себе класс, опыт и уровень. Лист целиком заменяет ведущий.
+  const playerReimport = await playerCommand(baseUrl, ownerCookie, 'character-import-player', {
+    command_type: 'ImportCharacter', actor_id: 'mvp-hero-1', document: importDocument,
+  })
+  assert.equal(playerReimport.status, 400, playerReimport.text)
+  assert.equal(playerReimport.body.code, 'CHARACTER_ALREADY_CREATED')
+  const adminLogin = await request(baseUrl, '/api/auth/login', { method: 'POST', body: { email: 'setup@mvp.test', password: 'secure-setup-password' } })
+  const adminCookie = cookie(adminLogin)
+  const importedCharacter = await playerCommand(baseUrl, adminCookie, 'character-import-1', {
     command_type: 'ImportCharacter', actor_id: 'mvp-hero-1', document: importDocument,
   })
   assert.equal(importedCharacter.status, 200, importedCharacter.text)
@@ -541,7 +550,7 @@ async function runMvpScenario(t) {
   assert.equal(importedHero.experience, 225)
   assert.equal(importedHero.proficiency, 2)
   assert.equal(importedHero.inventory.find((item) => item.id === 'mvp-hero-1-starter-kit2024-1').equipped, true)
-  const forgedImport = await playerCommand(baseUrl, ownerCookie, 'character-import-forged', {
+  const forgedImport = await playerCommand(baseUrl, adminCookie, 'character-import-forged', {
     command_type: 'ImportCharacter', actor_id: 'mvp-hero-1',
     document: { ...importDocument, character: { ...importDocument.character, hp: 999, gold: 999 } },
   })

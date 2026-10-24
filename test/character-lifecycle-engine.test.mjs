@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { DiceService, SequenceDiceRng } from '../server/dice-service.mjs'
+import { createCharacterSlot } from '../server/character-lifecycle.mjs'
 import { normalizeCampaignState, replayEvents, resolveCommands } from '../server/rules-engine.mjs'
 
 const diceService = new DiceService({ rng: new SequenceDiceRng([]) })
@@ -105,11 +106,13 @@ test('versioned ImportCharacter cannot forge inventory, money, HP, AC or profici
       notes: 'Проверено сервером',
     },
   }
+  // Готового героя лист целиком заменяет только ведущий.
+  const admin = { isAdmin: true, allowedActorIds: ['wizard'] }
   const result = resolveCommands([{
     command_type: 'ImportCharacter',
     actor_id: 'wizard',
     document,
-  }], initial, { diceService, context: { allowedActorIds: ['wizard'] } })
+  }], initial, { diceService, context: admin })
 
   assert.deepEqual(result.events.map((event) => event.event_type), ['CharacterImported'])
   assert.equal(result.state.players[0].inventory[0].id, 'kept')
@@ -122,5 +125,104 @@ test('versioned ImportCharacter cannot forge inventory, money, HP, AC or profici
     command_type: 'ImportCharacter',
     actor_id: 'wizard',
     document: { ...document, character: { ...document.character, hp: 999, inventory: [] } },
-  }], initial, { diceService, context: { allowedActorIds: ['wizard'] } }), (error) => error.code === 'IMPORT_UNKNOWN_FIELD')
+  }], initial, { diceService, context: admin }), (error) => error.code === 'IMPORT_UNKNOWN_FIELD')
+})
+
+test('игрок не переписывает импортом готового героя: ни уровень, ни опыт, ни хиты, ни класс', () => {
+  const initial = campaign(wizard({ level: 1, experience: 0, hitPointIncreases: [] }))
+  const document = {
+    schema: 'skazanie.character',
+    schema_version: 1,
+    character: {
+      character: 'Мира',
+      characterClass: 'fighter',
+      species: 'Человек',
+      level: 12,
+      experience: 100_000,
+      abilities: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.standard-array',
+        policyVersion: 1,
+        method: 'standard_array',
+        baseScores: { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 },
+        originBonusProfileId: 'none',
+        originBonuses: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 },
+        speciesOptionId: 'human',
+      },
+      baseSpeed: 30,
+      hitPointIncreases: Array(11).fill(10),
+      classSkillProficiencies: ['athletics', 'perception'],
+      selectedFeatureIds: ['fighting-style-defense'],
+      knownSpellIds: [],
+      preparedSpellIds: [],
+    },
+  }
+  assert.throws(() => resolveCommands([{ command_type: 'ImportCharacter', actor_id: 'wizard', document }], initial, {
+    diceService, context: { allowedActorIds: ['wizard'] },
+  }), (error) => error.code === 'CHARACTER_ALREADY_CREATED')
+  // Чужой герой отказывает раньше, и текст говорит об импорте, а не об уровне.
+  assert.throws(() => resolveCommands([{ command_type: 'ImportCharacter', actor_id: 'wizard', document }], initial, {
+    diceService, context: { allowedActorIds: ['someone-else'] },
+  }), (error) => error.code === 'ACTOR_FORBIDDEN' && /Импортировать лист/u.test(error.message))
+})
+
+function slotCampaign(extra = {}) {
+  return normalizeCampaignState({
+    sessionCode: 'CHAR-SLOT', ruleset_id: 'srd_5_2_1', partyMemberIds: ['hero-slot-1'],
+    players: [createCharacterSlot({ id: 'hero-slot-1' })], ...extra,
+  })
+}
+
+function slotDocument(overrides = {}) {
+  const baseScores = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+  return {
+    schema: 'skazanie.character',
+    schema_version: 1,
+    character: {
+      character: 'Бранн', characterClass: 'fighter', species: 'Человек', level: 1, experience: 0,
+      abilities: baseScores,
+      abilityGeneration: {
+        policyId: 'skazanie.character-abilities.standard-array', policyVersion: 1, method: 'standard_array', baseScores,
+        originBonusProfileId: 'none', originBonuses: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }, speciesOptionId: 'human',
+      },
+      baseSpeed: 30, hitPointIncreases: [],
+      classSkillProficiencies: ['athletics', 'perception'], selectedFeatureIds: ['fighting-style-defense'],
+      knownSpellIds: [], preparedSpellIds: [],
+      ...overrides,
+    },
+  }
+}
+
+const importInto = (state, document) => resolveCommands([{ command_type: 'ImportCharacter', actor_id: 'hero-slot-1', document }], state, {
+  diceService, context: { allowedActorIds: ['hero-slot-1'] },
+})
+
+test('новый герой без обязательных выборов первого уровня не создаётся', () => {
+  assert.equal(importInto(slotCampaign(), slotDocument()).state.players[0].characterSetupRequired, false)
+  for (const [label, overrides, reason] of [
+    ['без навыков', { classSkillProficiencies: [] }, /классовые навыки/u],
+    ['без боевого стиля', { selectedFeatureIds: [] }, /выберите 1/u],
+    ['волшебник без заклинаний', { characterClass: 'wizard', classSkillProficiencies: ['arcana', 'history'], selectedFeatureIds: [] }, /заговоры/u],
+  ]) {
+    assert.throws(() => importInto(slotCampaign(), slotDocument(overrides)), (error) => error.code === 'IMPORT_CHOICES_INCOMPLETE' && reason.test(error.message), label)
+  }
+  // При стартовом уровне выше первого выборы досдаются командами подготовки:
+  // импорт оставляет героя в подготовке, а LevelUp не пустит дальше без них.
+  const staged = importInto(slotCampaign({ character_start_level: 3 }), slotDocument({ classSkillProficiencies: [] }))
+  assert.equal(staged.state.players[0].characterSetupRequired, true)
+  assert.throws(() => resolveCommands([{ command_type: 'LevelUp', actor_id: 'hero-slot-1', expected_level: 1 }], staged.state, {
+    diceService, context: { allowedActorIds: ['hero-slot-1'] },
+  }), (error) => error.code === 'CHARACTER_CREATION_CHOICES_REQUIRED')
+})
+
+test('2024: без предыстории прибавок к характеристикам нет', () => {
+  const baseScores = { str: 15, dex: 14, con: 13, int: 12, wis: 10, cha: 8 }
+  const forged = slotDocument({
+    abilities: { ...baseScores, str: 17, con: 14 },
+    abilityGeneration: {
+      policyId: 'skazanie.character-abilities.standard-array', policyVersion: 1, method: 'standard_array', baseScores,
+      originBonusProfileId: 'two_one', originBonuses: { str: 2, dex: 0, con: 1, int: 0, wis: 0, cha: 0 }, speciesOptionId: 'human',
+    },
+  })
+  assert.throws(() => importInto(slotCampaign(), forged), (error) => error.code === 'IMPORT_BACKGROUND_REQUIRED')
 })
