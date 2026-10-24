@@ -771,7 +771,13 @@ pub fn normalize_campaign_state(input: &Value) -> Result<Value, Halt> {
     state["adventure"] = adventure(&state);
     state["locationMaps"] = Value::Object(sk_director::adventure_director::normalize_location_maps(state.get("locationMaps")));
     let world_map = sk_geometry::world_map::ensure_campaign_world_map(&state).map_err(|message| type_error(message))?;
-    state["worldMap"] = sk_scenario::campaign_scenario::apply_scenario_map_reveals(&state, &world_map);
+    // `applyScenarioMapReveals(state, worldMap)` читает состояние с новой
+    // картой (`{ ...state, worldMap }`): карта ставится на место сразу, без
+    // копии всего состояния.
+    state["worldMap"] = world_map;
+    if let Some(revealed) = sk_scenario::campaign_scenario::scenario_map_reveals_in_state(&state) {
+        state["worldMap"] = revealed;
+    }
     let scene_map = crate::scene_map_sync::reconcile_scene_tactical_map(&mut state).map_err(|failure| error(failure.to_string()))?;
     if let Some(map) = scene_map {
         crate::scene_map_sync::sync_scene_cells(&mut state, Some(&map));
