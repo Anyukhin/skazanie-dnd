@@ -87,6 +87,17 @@ pub fn normalize_actor_footprint_fields(actor: &Value) -> Value {
     Value::Object(result)
 }
 
+/// [`normalize_actor_footprint_fields`] для своего значения: поля не копируются.
+pub fn normalize_actor_footprint_fields_owned(actor: Value) -> Value {
+    let Value::Object(mut fields) = actor else { return actor };
+    if !fields.contains_key("footprint") {
+        return Value::Object(fields);
+    }
+    let footprint = normalize_footprint_metadata(fields.get("footprint")).unwrap_or_else(|| footprint_metadata_for_size(Some(&Value::from(1))));
+    fields.insert("footprint".into(), metadata_json(footprint));
+    Value::Object(fields)
+}
+
 /// `stampActorFootprint(actor, authoritativeSize)`: площадь server-owned
 /// порождения из каталога или профиля; поле клиента не источник.
 pub fn stamp_actor_footprint(actor: &Value, authoritative_size: Option<&Value>) -> Value {

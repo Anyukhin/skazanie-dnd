@@ -608,7 +608,10 @@ fn normalize_player(state: &Value, player: &Value) -> Result<Value, Halt> {
         None | Some(Value::Null) => "actor".to_string(),
         some => js::s(some),
     };
-    let mut actor = normalized.as_object().cloned().unwrap_or_default();
+    let mut actor = match normalized {
+        Value::Object(fields) => fields,
+        _ => Map::new(),
+    };
     actor.insert("level".into(), Value::from(level));
     actor.insert("experience".into(), Value::from(safe_int(player.get("experience"), 0).max(0)));
     actor.insert("proficiency".into(), Value::from(proficiency));
@@ -622,10 +625,10 @@ fn normalize_player(state: &Value, player: &Value) -> Result<Value, Halt> {
     let options = sk_combat_content::combat_actions::class_resource_options_for(Some(state)).to_value();
     let sheet = sk_character::character_lifecycle::derive_character_sheet(Some(&actor), Some(&options)).unwrap_or(Value::Null);
     let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor)).map_err(|failure| type_error(failure.message()))?;
-    let mut with_load = actor.as_object().cloned().unwrap_or_default();
+    let Value::Object(mut with_load) = actor else { unreachable!("герой нормализации — объект") };
     with_load.insert("inventoryLoad".into(), load);
     with_load.insert("characterSheet".into(), sheet);
-    Ok(crate::geometry::footprint::normalize_actor_footprint_fields(&Value::Object(with_load)))
+    Ok(crate::geometry::footprint::normalize_actor_footprint_fields_owned(Value::Object(with_load)))
 }
 
 /// Общие поля прочих существ и противников (`hp`, `maxHp`, `alive`).
@@ -705,7 +708,7 @@ pub fn normalize_campaign_state(input: &Value) -> Result<Value, Halt> {
                 let id = js::s(nullish(actor.get("id"), actor.get("actor_id")));
                 fields.insert("id".into(), Value::String(id));
                 vital_fields(actor, &mut fields);
-                let normalized_actor = crate::geometry::footprint::normalize_actor_footprint_fields(&Value::Object(fields));
+                let normalized_actor = crate::geometry::footprint::normalize_actor_footprint_fields_owned(Value::Object(fields));
                 if truthy(normalized_actor.get("id")) {
                     normalized.push(normalized_actor);
                 }
@@ -742,7 +745,7 @@ pub fn normalize_campaign_state(input: &Value) -> Result<Value, Halt> {
                 let mut fields = spread_of(Some(enemy));
                 vital_fields(enemy, &mut fields);
                 fields.insert("loadout".into(), sk_economy::enemy_loadouts::normalize_enemy_loadout(enemy.get("loadout")));
-                normalized.push(crate::geometry::footprint::normalize_actor_footprint_fields(&Value::Object(fields)));
+                normalized.push(crate::geometry::footprint::normalize_actor_footprint_fields_owned(Value::Object(fields)));
             }
             normalized
         }

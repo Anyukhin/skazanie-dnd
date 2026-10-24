@@ -367,6 +367,18 @@ fn spread_of(value: Option<&Value>) -> Map<String, Value> {
     }
 }
 
+/// Производные поля героя, которые лист не читает.
+const DERIVED_ACTOR_FIELDS: [&str; 4] = ["combatSpells", "combatActions", "characterSheet", "inventoryLoad"];
+
+/// [`spread_of`] героя без копий производных полей: ключ остаётся на своём
+/// месте со значением `null`.
+fn spread_without_derived(value: Option<&Value>) -> Map<String, Value> {
+    match value {
+        Some(Value::Object(map)) => map.iter().map(|(key, item)| (key.clone(), if DERIVED_ACTOR_FIELDS.contains(&key.as_str()) { Value::Null } else { item.clone() })).collect(),
+        other => spread_of(other),
+    }
+}
+
 /// `value === expected` для строки.
 fn is_str(value: Option<&Value>, expected: &str) -> bool {
     value.and_then(Value::as_str) == Some(expected)
@@ -1227,12 +1239,22 @@ struct Canonical {
     unset: Vec<&'static str>,
 }
 
+/// Прочитать поля героя как `Value::Object` без копии: объект на время вызова
+/// переезжает в `Value` и возвращается обратно.
+fn with_value<T>(fields: &mut Map<String, Value>, read: impl FnOnce(&Value) -> T) -> T {
+    let actor = Value::Object(std::mem::take(fields));
+    let result = read(&actor);
+    if let Value::Object(map) = actor {
+        *fields = map;
+    }
+    result
+}
+
 /// `canonicalCharacterChoices(actor, options)`.
 fn canonical_character_choices(actor: Map<String, Value>) -> Canonical {
     let mut candidate = actor;
     let mut unset = Vec::new();
-    let as_value = |candidate: &Map<String, Value>| Value::Object(candidate.clone());
-    let subclass = normalized_combat_subclass_for(Some(&as_value(&candidate)));
+    let subclass = with_value(&mut candidate, |actor| normalized_combat_subclass_for(Some(actor)));
     if candidate.contains_key("subclass") {
         match subclass {
             Some(subclass) => {
@@ -1245,14 +1267,14 @@ fn canonical_character_choices(actor: Map<String, Value>) -> Canonical {
         }
     }
     if candidate.contains_key("classSkillProficiencies") {
-        let skills = normalized_class_skill_proficiencies(Some(&as_value(&candidate)));
+        let skills = with_value(&mut candidate, |actor| normalized_class_skill_proficiencies(Some(actor)));
         candidate.insert("classSkillProficiencies".into(), strings(&skills));
     }
     if candidate.contains_key("selectedFeatureIds") {
-        let features = normalized_selected_feature_ids(Some(&as_value(&candidate)));
+        let features = with_value(&mut candidate, |actor| normalized_selected_feature_ids(Some(actor)));
         candidate.insert("selectedFeatureIds".into(), strings(&features));
     }
-    let spells = normalized_spell_selections_for(Some(&as_value(&candidate)));
+    let spells = with_value(&mut candidate, |actor| normalized_spell_selections_for(Some(actor)));
     for key in ["knownSpellIds", "preparedSpellIds"] {
         if candidate.contains_key(key) {
             candidate.insert(key.into(), spells.get(key).cloned().unwrap_or_else(|| json!([])));
@@ -1287,7 +1309,11 @@ pub fn derive_character_sheet(actor: Option<&Value>, options: Option<&Value>) ->
     let experience = integer(prop(actor, "experience"), "experience", 0, MAX_EXPERIENCE, Some(&json!(0)))?;
     let abilities = normalized_abilities(prop(actor, "abilities"))?;
     let proficiency_bonus = 2 + (level - 1).div_euclid(4);
-    let mut base = spread_of(actor);
+    // Лист не читает производных полей героя (`combatSpells`, `combatActions`,
+    // `characterSheet`, `inventoryLoad`; JS их тоже не трогает), а копия
+    // карточек заклинаний — самая дорогая часть `{ ...actor }`: ключи остаются
+    // на месте, значения — `null`.
+    let mut base = spread_without_derived(actor);
     base.insert("characterClass".into(), Value::String(character_class.clone()));
     base.insert("level".into(), int(level));
     base.insert("abilities".into(), abilities.to_value());

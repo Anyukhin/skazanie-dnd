@@ -109,18 +109,25 @@ pub(super) fn refresh_player_derived_state(state: &mut Value, actor_ids: &[Strin
             Ok(sheet) => sheet,
             Err(_) => actor.get("characterSheet").filter(|sheet| !sheet.is_null()).cloned().unwrap_or(Value::Null),
         };
-        let mut map = actor.as_object().cloned().unwrap_or_default();
-        if truthy(Some(&sheet)) {
-            put_defined(&mut map, "armor", sheet_value(&sheet, "armor_class")?);
-            put_defined(&mut map, "speed", sheet_value(&sheet, "speed")?);
-            put_defined(&mut map, "proficiency", sheet.get("proficiency_bonus").cloned());
-        }
+        // Заклинания, действия и груз читают прежнего героя (до полей листа),
+        // поэтому считаются до того, как он переедет в новый объект; порядок
+        // отказов прежний: сначала поля листа, затем груз.
         let spells = sk_combat_content::combat_spells::combat_spells_for(Some(&actor), Some(&options));
         let mut actions = sk_combat_content::combat_actions::combat_actions_for(Some(&actor));
         if let Some(continuation) = crate::enervation_link::enervation_continuation_action_for(state, Some(&Value::String(id.clone())), None) {
             actions.push(continuation);
         }
-        let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor)).map_err(|error| type_error(error.message()))?;
+        let load = sk_items_life::item_lifecycle::inventory_load_for(Some(&actor));
+        let mut map = match actor {
+            Value::Object(fields) => fields,
+            _ => Map::new(),
+        };
+        if truthy(Some(&sheet)) {
+            put_defined(&mut map, "armor", sheet_value(&sheet, "armor_class")?);
+            put_defined(&mut map, "speed", sheet_value(&sheet, "speed")?);
+            put_defined(&mut map, "proficiency", sheet.get("proficiency_bonus").cloned());
+        }
+        let load = load.map_err(|error| type_error(error.message()))?;
         map.insert("characterSheet".into(), sheet);
         map.insert("combatSpells".into(), Value::Array(spells));
         map.insert("combatActions".into(), Value::Array(actions));
