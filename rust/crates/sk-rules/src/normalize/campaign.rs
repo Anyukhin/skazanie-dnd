@@ -807,9 +807,12 @@ pub fn normalize_campaign_state_owned(input: Value) -> Result<Value, Halt> {
     if let Some(revealed) = sk_scenario::campaign_scenario::scenario_map_reveals_in_state(&state) {
         state["worldMap"] = revealed;
     }
-    let scene_map = crate::scene_map_sync::reconcile_scene_tactical_map(&mut state).map_err(|failure| error(failure.to_string()))?;
-    if let Some(map) = scene_map {
-        crate::scene_map_sync::sync_scene_cells(&mut state, Some(&map));
+    let scene_map = crate::scene_map_sync::reconcile_scene_tactical_map_cells(&mut state).map_err(|failure| error(failure.to_string()))?;
+    match scene_map {
+        // Клетки уже выведены из этой же карты при согласовании.
+        Some((_, Some(cells))) => crate::scene_map_sync::set_scene_cells(&mut state, cells),
+        Some((map, None)) => crate::scene_map_sync::sync_scene_cells(&mut state, Some(&map)),
+        None => {}
     }
     // Память мест с нормализации выше не менялась (карта мира и сцена её не
     // трогают): если вход уже был нормализован, повторная нормализация

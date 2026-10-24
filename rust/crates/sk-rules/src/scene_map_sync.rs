@@ -38,8 +38,17 @@ pub fn sync_scene_cells(state: &mut Value, map: Option<&TacticalMap>) {
     if !js::truthy(state.get("scene")) {
         return;
     }
+    set_scene_cells(state, tmap::legacy_cells_from_tactical_map(source));
+}
+
+/// Запись готовой производной `scene.cells` (то, что пишет
+/// [`sync_scene_cells`], когда клетки уже выведены из той же карты).
+pub fn set_scene_cells(state: &mut Value, cells: Vec<Value>) {
+    if !js::truthy(state.get("scene")) {
+        return;
+    }
     if let Some(scene) = state.get_mut("scene").and_then(Value::as_object_mut) {
-        scene.insert("cells".into(), Value::Array(tmap::legacy_cells_from_tactical_map(source)));
+        scene.insert("cells".into(), Value::Array(cells));
     }
 }
 
@@ -78,24 +87,54 @@ pub fn rebuild_scene_tactical_map(state: &mut Value) -> MapResult<Option<Tactica
 /// предметы — раскрытие, проходимость и материал накладываются на карту;
 /// иная форма — полная пересборка.
 pub fn reconcile_scene_tactical_map(state: &mut Value) -> MapResult<Option<TacticalMap>> {
+    Ok(reconcile_scene_tactical_map_cells(state)?.map(|(map, _)| map))
+}
+
+/// [`reconcile_scene_tactical_map`] вместе с уже выведенными из итоговой
+/// карты клетками (`legacyCellsFromTacticalMap(map)`), если карта осталась
+/// прежней: `syncSceneCells` после согласования пишет ровно их, и второй
+/// вывод не нужен. Клетки сцены читаются по ссылке, без копии.
+pub fn reconcile_scene_tactical_map_cells(state: &mut Value) -> MapResult<Option<(TacticalMap, Option<Vec<Value>>)>> {
+    enum Next {
+        Keep(Option<Vec<Value>>),
+        Merged(Value),
+        Rebuild,
+    }
     if !scene_object(state) {
         return Ok(None);
     }
-    let Some(mut map) = scene_tactical_map(state) else { return rebuild_scene_tactical_map(state) };
-    let cells: Vec<Value> = state["scene"].get("cells").and_then(Value::as_array).cloned().unwrap_or_default();
-    let derived = if cells.is_empty() { Vec::new() } else { tmap::legacy_cells_from_tactical_map(&map) };
-    if !cells.is_empty() && legacy_cells_diverged(&cells, &derived) {
-        if same_legacy_grid(&cells, &derived) {
-            merge_legacy_cells(&mut map, &cells)?;
-            let serialized = tmap::serialize_tactical_map(&map)?;
+    let Some(mut map) = scene_tactical_map(state) else { return Ok(rebuild_scene_tactical_map(state)?.map(|map| (map, None))) };
+    let next = {
+        let cells: &[Value] = state["scene"].get("cells").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]);
+        if cells.is_empty() {
+            Next::Keep(None)
+        } else {
+            let derived = tmap::legacy_cells_from_tactical_map(&map);
+            if !legacy_cells_diverged(cells, &derived) {
+                Next::Keep(Some(derived))
+            } else if same_legacy_grid(cells, &derived) {
+                merge_legacy_cells(&mut map, cells)?;
+                Next::Merged(tmap::serialize_tactical_map(&map)?)
+            } else {
+                Next::Rebuild
+            }
+        }
+    };
+    match next {
+        Next::Keep(derived) => Ok(Some((map, derived))),
+        Next::Merged(serialized) => {
             if let Some(scene) = state.get_mut("scene").and_then(Value::as_object_mut) {
                 scene.insert("map".into(), serialized);
             }
-        } else if let Some(rebuilt) = rebuild_scene_tactical_map(state)? {
-            map = rebuilt;
+            Ok(Some((map, None)))
+        }
+        Next::Rebuild => {
+            if let Some(rebuilt) = rebuild_scene_tactical_map(state)? {
+                map = rebuilt;
+            }
+            Ok(Some((map, None)))
         }
     }
-    Ok(Some(map))
 }
 
 /// Строгое равенство JS для значений JSON: примитивы по значению, объекты и
@@ -160,8 +199,17 @@ pub fn legacy_cells_diverged(actual: &[Value], derived: &[Value]) -> bool {
         if js::number(left.get("x")) != js::number(right.get("x")) || js::number(left.get("y")) != js::number(right.get("y")) {
             return true;
         }
-        let kind = js::s(Some(left.get("type").filter(|kind| !kind.is_null()).unwrap_or(&Value::String("floor".into()))));
-        if !strict_equal(&Value::String(kind), or_null(right.get("type"))) {
+        // `String(x) === y` без копии строки, когда `x` уже строка.
+        let same_text = |left: &Value, right: &Value| match left {
+            Value::String(text) => right.as_str() == Some(text.as_str()),
+            other => strict_equal(&Value::String(js::string(Some(other))), right),
+        };
+        let right_kind = or_null(right.get("type"));
+        let kind_equal = match left.get("type") {
+            None | Some(Value::Null) => right_kind.as_str() == Some("floor"),
+            Some(kind) => same_text(kind, right_kind),
+        };
+        if !kind_equal {
             return true;
         }
         if Value::Bool(js::is_true(left.get("revealed"))) != *or_null(right.get("revealed")) {
@@ -170,6 +218,6 @@ pub fn legacy_cells_diverged(actual: &[Value], derived: &[Value]) -> bool {
         if !strict_equal(or_null(left.get("feature")), or_null(right.get("feature"))) {
             return true;
         }
-        left.get("material").is_some_and(|material| !material.is_null() && !strict_equal(&Value::String(js::string(Some(material))), or_null(right.get("material"))))
+        left.get("material").is_some_and(|material| !material.is_null() && !same_text(material, or_null(right.get("material"))))
     })
 }
