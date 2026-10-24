@@ -280,7 +280,9 @@ fn head_loads_without_replay_but_stays_exact() {
     assert_eq!(replayed.state, second.state);
     fixture.reducer.calls.store(0, Ordering::SeqCst);
     assert_eq!(fixture.store.load("head", &LoadOptions { at_version: Some(2), ..Default::default() }).expect("v2").state["hp"], 13);
-    assert_eq!(fixture.reducer.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(fixture.reducer.calls.load(Ordering::SeqCst), 0, "прежняя голова v2 — из кэша версий, без replay (Ск2)");
+    assert_eq!(fixture.reopen().load("head", &LoadOptions { at_version: Some(2), ..Default::default() }).expect("v2 с нуля").state["hp"], 13);
+    assert_eq!(fixture.reducer.calls.load(Ordering::SeqCst), 2, "свежий процесс переигрывает v2 от исходного снимка");
 
     // Коммит другого процесса меняет голову: кэш промахивается и видит его.
     let other = fixture.reopen();
@@ -288,6 +290,46 @@ fn head_loads_without_replay_but_stays_exact() {
     let fresh = fixture.store.load("head", &LoadOptions::default()).expect("свежая голова");
     assert_eq!(fresh.state_version, 4);
     assert_eq!(fresh.state["hp"], 6);
+}
+
+/// Кэш версий ниже головы (Ск2): прежние головы и переигранные версии
+/// отдаются без replay, совпадают с переигрыванием свежего процесса во всём,
+/// кроме счётчика `events_applied` прежних голов, и не переживают подмену
+/// коммита своей версии.
+#[test]
+fn versions_below_head_come_from_cache_and_match_replay() {
+    let fixture = Fixture::new(0);
+    init(&fixture.store, "versions", json!({ "hp": 50 }));
+    for index in 0..6 {
+        fixture
+            .store
+            .commit(request("versions", index, &format!("hit-{index}"), vec![json!({ "event_type": "DamageApplied", "payload": { "amount": index + 1 } })]))
+            .expect("удар");
+    }
+    let fresh = fixture.reopen();
+    let at = |store: &EventStore, version: i64| store.load("versions", &LoadOptions { at_version: Some(version), ..Default::default() }).expect("версия");
+    fixture.reducer.calls.store(0, Ordering::SeqCst);
+    let cached: Vec<_> = [5, 4, 3].into_iter().map(|version| at(&fixture.store, version)).collect();
+    assert_eq!(fixture.reducer.calls.load(Ordering::SeqCst), 0, "три прежние головы — из кэша, без replay");
+    for loaded in &cached {
+        let replayed = at(&fresh, loaded.state_version);
+        assert_eq!((loaded.state_version, loaded.current_state_version, &loaded.state, loaded.reducer_version), (replayed.state_version, replayed.current_state_version, &replayed.state, replayed.reducer_version));
+        assert_eq!(loaded.metadata, replayed.metadata);
+    }
+    fixture.reducer.calls.store(0, Ordering::SeqCst);
+    let _ = at(&fixture.store, 2);
+    assert!(fixture.reducer.calls.load(Ordering::SeqCst) > 0, "версия глубже кэша переигрывается");
+    fixture.reducer.calls.store(0, Ordering::SeqCst);
+    let again = at(&fixture.store, 2);
+    assert_eq!(fixture.reducer.calls.load(Ordering::SeqCst), 0, "переигранная версия запоминается");
+    assert_eq!(again.state, at(&fresh, 2).state);
+
+    // Коммит версии 5 подменён снаружи (другой commit_id): кэш его не отдаёт.
+    fixture.reducer.calls.store(0, Ordering::SeqCst);
+    fresh.with_connection_mut(|conn| Ok(conn.execute("UPDATE commits SET commit_id = 'swapped' WHERE campaign_id = 'versions' AND version_after = 5", [])?)).expect("подмена");
+    let after = at(&fixture.store, 5);
+    assert!(fixture.reducer.calls.load(Ordering::SeqCst) > 0, "подменённая версия переигрывается заново");
+    assert_eq!(after.state, at(&fresh, 5).state);
 }
 
 #[test]

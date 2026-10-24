@@ -263,7 +263,27 @@ struct HeadEntry {
     reducer_version: i64,
     events_applied: usize,
     state: Value,
+    /// Недавние версии ниже головы (новые первыми, не больше
+    /// [`RECENT_VERSIONS`]): прежние головы и загрузки `atVersion`. Комната
+    /// сервера (`sk-server::room`) привязана к версии журнала, которую голова
+    /// уже обогнала, — без них каждое её чтение после коммита было переигрыванием
+    /// событий от снимка (Ск2).
+    previous: Vec<VersionEntry>,
 }
+
+/// Состояние журнала на версии ниже головы. Годится, пока коммит, которым
+/// кончается эта версия, — тот же (`commit_id`): строки журнала неизменны, а
+/// подмена или удаление строки инструментом меняет `commit_id` или убирает её.
+struct VersionEntry {
+    version: i64,
+    commit_id: String,
+    reducer_version: i64,
+    events_applied: usize,
+    state: Value,
+}
+
+/// Сколько версий ниже головы держит кэш одной кампании.
+const RECENT_VERSIONS: usize = 3;
 
 struct Inner {
     conn: Connection,
@@ -697,12 +717,45 @@ impl EventStore {
         Err(StoreError::recovery_required(campaign_id, reason, message, json!({ "state_version": target })))
     }
 
-    fn remember_head(&self, inner: &mut Inner, campaign_id: &str, entry: HeadEntry) {
-        inner.head_cache.shift_remove(campaign_id);
+    fn remember_head(&self, inner: &mut Inner, campaign_id: &str, mut entry: HeadEntry) {
+        // Прежняя голова и её недавние версии ниже новой головы остаются в
+        // кэше версий; годность каждой проверяется при чтении (`commit_id`).
+        if let Some(old) = inner.head_cache.shift_remove(campaign_id) {
+            let HeadEntry { last_commit_id, version, reducer_version, events_applied, state, previous } = old;
+            let mut kept = Vec::with_capacity(RECENT_VERSIONS);
+            if version < entry.version {
+                kept.push(VersionEntry { version, commit_id: last_commit_id, reducer_version, events_applied, state });
+            }
+            kept.extend(previous.into_iter().filter(|recent| recent.version < entry.version && recent.version != version));
+            kept.truncate(RECENT_VERSIONS);
+            entry.previous = kept;
+        }
         inner.head_cache.insert(campaign_id.to_string(), entry);
         while inner.head_cache.len() > self.options.head_cache_limit.max(1) {
             inner.head_cache.shift_remove_index(0);
         }
+    }
+
+    /// `commit_id` коммита, которым кончается версия `version` (или `None`,
+    /// если версия — середина коммита или её нет).
+    fn commit_id_at(conn: &Connection, campaign_id: &str, version: i64) -> StoreResult<Option<String>> {
+        let mut statement = conn.prepare_cached("SELECT commit_id FROM commits WHERE campaign_id = ?1 AND version_after = ?2")?;
+        Ok(statement.query_row(params![campaign_id, version], |row| row.get(0)).optional()?)
+    }
+
+    /// Запомнить переигранную версию ниже головы — только при закэшированной
+    /// голове кампании и только на границе коммита.
+    fn remember_version(&self, inner: &mut Inner, campaign_id: &str, version: i64, reducer_version: i64, events_applied: usize, state: &Value) -> StoreResult<()> {
+        if !inner.head_cache.contains_key(campaign_id) {
+            return Ok(());
+        }
+        let Some(commit_id) = Self::commit_id_at(&inner.conn, campaign_id, version)? else { return Ok(()) };
+        if let Some(entry) = inner.head_cache.get_mut(campaign_id) {
+            entry.previous.retain(|recent| recent.version != version);
+            entry.previous.insert(0, VersionEntry { version, commit_id, reducer_version, events_applied, state: state.clone() });
+            entry.previous.truncate(RECENT_VERSIONS);
+        }
+        Ok(())
     }
 
     fn load_inner(&self, inner: &mut Inner, campaign_id: &str, options: &LoadOptions) -> StoreResult<Loaded> {
@@ -744,6 +797,28 @@ impl EventStore {
                 }
             }
         }
+        // Версия ниже головы из кэша версий: то же состояние, что дало бы
+        // переигрывание, если коммит этой версии в журнале тот же.
+        let version_load = !head_load && target < current_version && use_snapshots && forced.is_none() && !options.from_initial;
+        let target_commit_id = if version_load && inner.head_cache.get(campaign_id).is_some_and(|entry| entry.previous.iter().any(|recent| recent.version == target)) {
+            Self::commit_id_at(&inner.conn, campaign_id, target)?
+        } else {
+            None
+        };
+        if let (Some(commit_id), Some(entry)) = (target_commit_id.as_ref(), inner.head_cache.get(campaign_id)) {
+            if let Some(recent) = entry.previous.iter().find(|recent| recent.version == target && &recent.commit_id == commit_id) {
+                let _span = crate::perf::span("store.load.version_hit");
+                return Ok(Loaded {
+                    campaign_id: campaign_id.to_string(),
+                    state_version: target,
+                    current_state_version: current_version,
+                    state: recent.state.clone(),
+                    reducer_version: recent.reducer_version,
+                    metadata: Self::read_metadata(&inner.conn, campaign_id, current_version)?,
+                    events_applied: recent.events_applied,
+                });
+            }
+        }
         let _replay = crate::perf::span(if head_load { "store.load.head_replay" } else { "store.load.at_version_replay" });
         let snapshot = if options.from_initial { None } else { self.read_snapshot(&inner.conn, campaign_id, target, use_snapshots)? };
         let (mut state, from_version, selected_reducer_version) = match snapshot {
@@ -780,9 +855,11 @@ impl EventStore {
                 self.remember_head(
                     inner,
                     campaign_id,
-                    HeadEntry { last_commit_id, version: current_version, reducer_version: final_reducer_version, events_applied: events.len(), state: state.clone() },
+                    HeadEntry { last_commit_id, version: current_version, reducer_version: final_reducer_version, events_applied: events.len(), state: state.clone(), previous: Vec::new() },
                 );
             }
+        } else if version_load {
+            self.remember_version(inner, campaign_id, target, final_reducer_version, events.len(), &state)?;
         }
         Ok(Loaded {
             campaign_id: campaign_id.to_string(),
@@ -1050,6 +1127,7 @@ impl EventStore {
                 reducer_version: last_reducer_version,
                 events_applied: if snapshot_due { 0 } else { current.events_applied + events.len() },
                 state: next_state.clone(),
+                previous: Vec::new(),
             },
         );
         Ok(CommitResult {
