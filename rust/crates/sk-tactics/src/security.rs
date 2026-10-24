@@ -34,6 +34,7 @@
 //! глагола», «24 знака до совпадения», `slice(0, 80)`); здесь — так же,
 //! через [`units_back`] и [`head16`].
 
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use serde_json::{json, Map, Value};
@@ -330,28 +331,30 @@ fn bucket_visible(key: &str, context: &ViewerContext) -> bool {
     }
 }
 
-/// `selectVisibilityBucket(key, value, viewer)`: `None` — `OMIT`.
-fn select_visibility_bucket(key: &str, value: &Value, context: &ViewerContext) -> Option<Value> {
+/// `selectVisibilityBucket(key, value, viewer)`: `None` — `OMIT`. Выбранное
+/// значение — заём входа, копия — только у собранного списка `party`: проекция
+/// копирует узел один раз, а не на каждом уровне вложенности (Ск2).
+fn select_visibility_bucket<'a>(key: &str, value: &'a Value, context: &ViewerContext) -> Option<Cow<'a, Value>> {
     let bucket = value.as_object();
     if matches!(key, "specific_player" | "specificPlayer") && !context.is_gm {
         if let Some(bucket) = bucket {
-            return bucket.get(&context.player_id).cloned();
+            return bucket.get(&context.player_id).map(Cow::Borrowed);
         }
     }
     if matches!(key, "npc_private" | "npcPrivate") && !context.is_gm {
         if let Some(bucket) = bucket {
-            return bucket.get(&context.npc_id).cloned();
+            return bucket.get(&context.npc_id).map(Cow::Borrowed);
         }
     }
     if key == "party" {
         if let Some(bucket) = bucket {
-            let selected: Vec<Value> = context.party_ids.iter().filter_map(|id| bucket.get(id).cloned()).collect();
+            let selected: Vec<&Value> = context.party_ids.iter().filter_map(|id| bucket.get(id)).collect();
             if !selected.is_empty() {
-                return Some(if selected.len() == 1 { selected.into_iter().next().unwrap_or(Value::Null) } else { Value::Array(selected) });
+                return Some(if selected.len() == 1 { Cow::Borrowed(selected[0]) } else { Cow::Owned(Value::Array(selected.into_iter().cloned().collect())) });
             }
         }
     }
-    Some(value.clone())
+    Some(Cow::Borrowed(value))
 }
 
 /// `projectNode(value, viewer, options, seen)`: `None` — `OMIT`.
@@ -393,6 +396,21 @@ pub fn project_visible_state(state: Option<&Value>, viewer: Option<&Value>, opti
     let state = state?;
     let for_narrator = js::truthy(prop(options, "forNarrator"));
     Some(project_node(state, &viewer_context(viewer), for_narrator).unwrap_or(Value::Null))
+}
+
+/// Останется ли значение в выводе [`project_visible_state`] (`project_node`
+/// не вернёт `OMIT`): решают только поля самой записи, не её содержимое.
+/// Проекция зрителя (`sk-projection`) по нему пропускает обход состояния,
+/// которое всё равно заменит своей проекцией (Ск2).
+pub fn survives_projection(value: &Value, viewer: Option<&Value>, options: Option<&Value>) -> bool {
+    if !(value.is_object() || value.is_array()) {
+        return true;
+    }
+    let for_narrator = js::truthy(prop(options, "forNarrator"));
+    if for_narrator && matches!(text::lower(&record_visibility(Some(value))).as_str(), "gm_only" | "npc_private") {
+        return false;
+    }
+    is_visible_in(Some(value), &viewer_context(viewer))
 }
 
 /// `projectStateForViewer` — то же, что [`project_visible_state`].

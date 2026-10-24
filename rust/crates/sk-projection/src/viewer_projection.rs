@@ -1932,7 +1932,13 @@ fn actor_key(actor: &Value) -> R<String> {
 fn admin_room(state: &Value, actor: &Value) -> R<Value> {
     let actor_s = js::s(Some(actor));
     let source = Some(state);
-    let mut room = spread_any(source);
+    // Эти поля ниже заменяются всегда: на их месте — `null` до замены (ключ
+    // сохраняет позицию), сцена и герои не копируются впустую (Ск2).
+    const REPLACED: [&str; 4] = ["scene", "players", "mechanics", "merchants"];
+    let mut room: Map<String, Value> = match state {
+        Value::Object(map) => map.iter().map(|(key, value)| (key.clone(), if REPLACED.contains(&key.as_str()) { Value::Null } else { value.clone() })).collect(),
+        _ => spread_any(source),
+    };
     if js::truthy(get(source, "world_offices")) {
         room.insert("world_offices".into(), Value::Array(sk_world_life::world_offices::offices_for_viewer(source, &json!({ "isAdmin": true }))));
     }
@@ -2034,10 +2040,20 @@ fn player_room(raw_state: &Value, user: Option<&Value>, actor: &Value) -> R<Valu
     let state = &quest_state;
     let source = Some(state);
     let viewer = viewer_for(source, user, actor);
-    let mut projectable = spread_any(source);
-    for key in ["locationMaps", "scene", "worldMemory", "social"] {
-        projectable.shift_remove(key);
-    }
+    // `{ locationMaps, scene, worldMemory, social, ...projectable }`: копируются
+    // только оставшиеся поля — карты и сцена (большая часть состояния) не
+    // копируются ради того, чтобы тут же их выбросить (Ск2).
+    const SET_ASIDE: [&str; 4] = ["locationMaps", "scene", "worldMemory", "social"];
+    let projectable: Map<String, Value> = match source {
+        Some(Value::Object(map)) => map.iter().filter(|(key, _)| !SET_ASIDE.contains(&key.as_str())).map(|(key, value)| (key.clone(), value.clone())).collect(),
+        other => {
+            let mut projectable = spread_any(other);
+            for key in SET_ASIDE {
+                projectable.shift_remove(key);
+            }
+            projectable
+        }
+    };
     let visible = match project(&Value::Object(projectable), &viewer) {
         Some(value @ Value::Object(_)) => value,
         Some(Value::Null) | None => Value::Object(Map::new()),
@@ -2889,8 +2905,17 @@ pub fn turn_result_for_viewer(result: Option<&Value>, user: Option<&Value>, acto
     let Some(source) = result.filter(|value| objectish(Some(value))) else { return Ok(result.cloned()) };
     let source_ref = Some(source);
     let authoritative = get(source_ref, "authoritative_state");
+    // `authoritative_state` в выводе всегда заменяет своя проекция (для
+    // `Some(state)` `campaign_state_for_viewer` всегда `Some`), поэтому
+    // само полное состояние не копируется и не обходится проекцией: на его
+    // месте — пустая заглушка того же вида, а остаётся ли ключ в проекции,
+    // решает `survives_projection` по полям самой записи (Ск2).
+    let replaced = js::truthy(authoritative) && authoritative.is_some_and(Value::is_object);
     if is_admin(user) {
-        let mut out = spread_any(source_ref);
+        let mut out: Map<String, Value> = match source {
+            Value::Object(map) if replaced => map.iter().map(|(key, value)| (key.clone(), if key == "authoritative_state" { Value::Null } else { value.clone() })).collect(),
+            _ => spread_any(source_ref),
+        };
         if js::truthy(authoritative) {
             if let Some(state) = campaign_state_for_viewer(authoritative, user, actor_id)? {
                 out.insert("authoritative_state".into(), state);
@@ -2900,7 +2925,19 @@ pub fn turn_result_for_viewer(result: Option<&Value>, user: Option<&Value>, acto
     }
     let actor = actor_arg(actor_id);
     let viewer = viewer_for(authoritative, user, &actor);
-    let visible = match project(source, &viewer) {
+    let stubbed = match (source, authoritative) {
+        (Value::Object(map), Some(state)) if replaced => {
+            let keep = sk_tactics::security::survives_projection(state, Some(&viewer), Some(&for_narrator()));
+            Some(Value::Object(
+                map.iter()
+                    .filter(|(key, _)| keep || key.as_str() != "authoritative_state")
+                    .map(|(key, value)| (key.clone(), if key == "authoritative_state" { Value::Object(Map::new()) } else { value.clone() }))
+                    .collect(),
+            ))
+        }
+        _ => None,
+    };
+    let visible = match project(stubbed.as_ref().unwrap_or(source), &viewer) {
         Some(value) if !value.is_null() => value,
         _ => Value::Object(Map::new()),
     };
