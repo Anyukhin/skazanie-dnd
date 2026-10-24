@@ -1145,7 +1145,28 @@ pub fn apply_scenario_map_reveals(state: &Value, world_map: &Value) -> Value {
         return world_map.clone();
     }
     let composite = js::spread(state, json!({ "worldMap": world_map.clone() }));
-    let facts = condition_facts(&composite, scenario);
+    map_reveals_for(&composite, scenario, reveals, world_map).unwrap_or_else(|| world_map.clone())
+}
+
+/// [`apply_scenario_map_reveals`] для состояния, в котором `worldMap` уже
+/// стоит на месте (нормализация): без копии состояния ради одной карты.
+/// `None` — карта не меняется.
+pub fn scenario_map_reveals_in_state(state: &Value) -> Option<Value> {
+    let scenario = campaign_scenario(state)?;
+    let Some(Value::Array(reveals)) = scenario.get("map_reveals") else {
+        return None;
+    };
+    let world_map = state.get("worldMap")?;
+    if !matches!(world_map, Value::Object(_) | Value::Array(_)) {
+        return None;
+    }
+    map_reveals_for(state, scenario, reveals, world_map)
+}
+
+/// Тело открытия карты: `state` — состояние с картой `world_map` на месте
+/// (сценарий и счёт внимания карту не читают). `None` — без изменений.
+fn map_reveals_for(state: &Value, scenario: &Value, reveals: &[Value], world_map: &Value) -> Option<Value> {
+    let facts = condition_facts(state, scenario);
     let mut places: Vec<&Value> = Vec::new();
     let mut roads: IndexSet<String> = IndexSet::new();
     for reveal in reveals {
@@ -1169,7 +1190,7 @@ pub fn apply_scenario_map_reveals(state: &Value, world_map: &Value) -> Value {
         roads.shift_remove(&collapsed);
     }
     if places.is_empty() && roads.is_empty() && collapsed.is_empty() {
-        return world_map.clone();
+        return None;
     }
     let is_place = |location: &Value| places.iter().any(|place| strict_eq(Some(place), location.get("id")));
     let locations = array(world_map.get("locations"));
@@ -1179,7 +1200,7 @@ pub fn apply_scenario_map_reveals(state: &Value, world_map: &Value) -> Value {
         || routes.iter().any(|route| roads.contains(&key_of(route)) && js::is_false(route.get("discovered")))
         || routes.iter().any(|route| !collapsed.is_empty() && key_of(route) == collapsed && !js::is_false(route.get("discovered")));
     if !needs_change {
-        return world_map.clone();
+        return None;
     }
     let new_locations: Vec<Value> = locations
         .iter()
@@ -1208,7 +1229,7 @@ pub fn apply_scenario_map_reveals(state: &Value, world_map: &Value) -> Value {
     let mut result = spread_copy(Some(world_map));
     result.insert("locations".into(), Value::Array(new_locations));
     result.insert("routes".into(), Value::Array(new_routes));
-    Value::Object(result)
+    Some(Value::Object(result))
 }
 
 /// Готов ли главный противник к отряду: счёт внимания дошёл до `ready_at`.

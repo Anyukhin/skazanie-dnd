@@ -29,6 +29,14 @@ pub fn normalize_campaign_state(raw: &Value) -> Result<Value, Halt> {
     campaign::normalize_campaign_state(raw)
 }
 
+/// [`normalize_campaign_state`] для своего значения: без копии входа.
+pub fn normalize_campaign_state_owned(raw: Value) -> Result<Value, Halt> {
+    if ASSUME_NORMALIZED.with(Cell::get) {
+        return Ok(raw);
+    }
+    campaign::normalize_campaign_state_owned(raw)
+}
+
 /// Выполнить `operation`, считая каждое входное состояние уже нормализованным
 /// (только для тестов и сверки, пока Р4 не перенесла нормализацию).
 pub fn assume_normalized<T>(operation: impl FnOnce() -> T) -> T {

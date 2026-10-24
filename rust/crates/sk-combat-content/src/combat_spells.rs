@@ -437,16 +437,32 @@ fn slot_resource_for_profile(profile: CasterProfile, spell: &Value) -> Value {
 /// (`null` в JS); `Some(Value::Null)` — `NaN` из мусорного уровня.
 pub fn fixed_spell_slot_level_for(actor: Option<&Value>, spell: Option<&Value>) -> Option<Value> {
     let spell = spell.filter(|spell| js::truthy(Some(spell)))?;
-    let level = spell.get("level");
+    let slot = SlotFields { level: spell.get("level"), slot_resource: spell.get("slotResource"), innate_cast_level: spell.get("innateCastLevel") };
+    fixed_slot_level(actor, &slot, None)
+}
+
+/// Поля заклинания, которые читает [`fixed_spell_slot_level_for`]: каталожная
+/// карточка с подменённым `slotResource` (и `innateCastLevel`) без копии всей
+/// карточки.
+struct SlotFields<'a> {
+    level: Option<&'a Value>,
+    slot_resource: Option<&'a Value>,
+    innate_cast_level: Option<&'a Value>,
+}
+
+/// Тело [`fixed_spell_slot_level_for`]. `profile` — уже посчитанный
+/// `casterProfile(actor)` (`Some`), иначе считается здесь.
+fn fixed_slot_level(actor: Option<&Value>, spell: &SlotFields, profile: Option<Option<CasterProfile>>) -> Option<Value> {
+    let level = spell.level;
     if is_num(level, 0.0) {
         return None;
     }
-    let resource = js::s(spell.get("slotResource"));
+    let resource = js::s(spell.slot_resource);
     if resource == "mystic_arcanum_6" {
         return Some(Value::from(6));
     }
     if resource == "pact_slots" {
-        if caster_profile(actor).is_some_and(|profile| profile.progression == Progression::Pact) {
+        if profile.unwrap_or_else(|| caster_profile(actor)).is_some_and(|profile| profile.progression == Progression::Pact) {
             return match table_at(&WARLOCK_PACT, bounded_level(actor)).flatten() {
                 Some((_, slot)) => Some(Value::from(slot)),
                 None => level.cloned(),
@@ -456,7 +472,7 @@ pub fn fixed_spell_slot_level_for(actor: Option<&Value>, spell: Option<&Value>) 
     }
     if resource.starts_with("species_spell_") {
         let base = js::number(level);
-        let cast = js::number(spell.get("innateCastLevel"));
+        let cast = js::number(spell.innate_cast_level);
         let cast = if cast == 0.0 || cast.is_nan() { base } else { cast };
         return Some(num(jsv::max2(base, cast)));
     }
@@ -701,9 +717,8 @@ pub fn combat_spells_for(actor: Option<&Value>, options: Option<&Value>) -> Vec<
                 }
             };
             let slot_resource = slot_resource_for_profile(profile, spell);
-            let mut slot_profile = spell.as_object().cloned().unwrap_or_default();
-            slot_profile.insert("slotResource".into(), slot_resource.clone());
-            let slot_level = fixed_spell_slot_level_for(actor, Some(&Value::Object(slot_profile))).or_else(|| spell_level.cloned());
+            let slot_fields = SlotFields { level: spell_level, slot_resource: Some(&slot_resource), innate_cast_level: spell.get("innateCastLevel") };
+            let slot_level = fixed_slot_level(actor, &slot_fields, Some(Some(profile))).or_else(|| spell_level.cloned());
             let mut card = ruleset_template(index, &ruleset_id).as_object().cloned().unwrap_or_default();
             // «Мистическое копьё» колдуна: Мистический заряд бьёт на 300 футов.
             if id == "eldritch-blast" && invocations.iter().any(|entry| entry == "eldritch-spear") {
@@ -734,10 +749,9 @@ pub fn combat_spells_for(actor: Option<&Value>, options: Option<&Value>) -> Vec<
         let base_level = js::number(spell.get("level"));
         let innate_cast_level = jsv::max2(base_level, jsv::number_or(prop(entry, "cast_level"), base_level));
         let slot_resource = if limited { Value::from(format!("species_spell_{}", js::s(spell.get("id")))) } else { Value::Null };
-        let mut slot_profile = spell.as_object().cloned().unwrap_or_default();
-        slot_profile.insert("slotResource".into(), slot_resource.clone());
-        slot_profile.insert("innateCastLevel".into(), num(innate_cast_level));
-        let slot_level = fixed_spell_slot_level_for(actor, Some(&Value::Object(slot_profile))).or_else(|| spell.get("level").cloned());
+        let innate_cast_value = num(innate_cast_level);
+        let slot_fields = SlotFields { level: spell.get("level"), slot_resource: Some(&slot_resource), innate_cast_level: Some(&innate_cast_value) };
+        let slot_level = fixed_slot_level(actor, &slot_fields, Some(profile)).or_else(|| spell.get("level").cloned());
         let mut card = ruleset_template(index, &ruleset_id).as_object().cloned().unwrap_or_default();
         card.insert("prepared".into(), Value::Bool(true));
         card.insert("innateSpell".into(), Value::Bool(true));
@@ -994,9 +1008,9 @@ pub fn monster_combat_spell_for(actor: Option<&Value>, spell_id: Option<&Value>,
     card.insert("slotResource".into(), slot_resource.clone().map_or(Value::Null, Value::from));
     let slot_level = match &entry.shared_slot {
         Some((level, resource)) => {
-            let mut slot_profile = spell.as_object().cloned().unwrap_or_default();
-            slot_profile.insert("slotResource".into(), Value::from(resource.clone()));
-            Some(fixed_spell_slot_level_for(actor, Some(&Value::Object(slot_profile))).unwrap_or_else(|| Value::from(*level)))
+            let resource_value = Value::from(resource.clone());
+            let slot_fields = SlotFields { level: spell.get("level"), slot_resource: Some(&resource_value), innate_cast_level: spell.get("innateCastLevel") };
+            Some(fixed_slot_level(actor, &slot_fields, None).unwrap_or_else(|| Value::from(*level)))
         }
         None => spell.get("level").cloned(),
     };
