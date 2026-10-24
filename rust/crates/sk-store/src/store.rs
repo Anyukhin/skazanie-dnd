@@ -285,6 +285,24 @@ struct VersionEntry {
 /// Сколько версий ниже головы держит кэш одной кампании.
 const RECENT_VERSIONS: usize = 3;
 
+/// Разобранный запрос загрузки (`load_plan`).
+struct LoadPlan {
+    current_version: i64,
+    last_commit_id: Option<String>,
+    target: i64,
+    forced: Option<i64>,
+    use_snapshots: bool,
+    head_load: bool,
+    version_load: bool,
+}
+
+/// Где в кэше лежит загружаемое состояние.
+#[derive(Clone, Copy)]
+enum CacheHit {
+    Head,
+    Version(usize),
+}
+
 struct Inner {
     conn: Connection,
     head_cache: IndexMap<String, HeadEntry>,
@@ -759,9 +777,26 @@ impl EventStore {
     }
 
     fn load_inner(&self, inner: &mut Inner, campaign_id: &str, options: &LoadOptions) -> StoreResult<Loaded> {
-        let (current_version, last_commit_id) = Self::head(&inner.conn, campaign_id)?;
-        Self::check_head_evidence(&inner.conn, campaign_id, current_version)?;
-        if !Self::exists(&inner.conn, campaign_id)? {
+        let plan = Self::load_plan(&inner.conn, campaign_id, options)?;
+        match Self::cache_hit(inner, campaign_id, &plan)? {
+            Some(hit) => {
+                let metadata = Self::read_metadata(&inner.conn, campaign_id, plan.current_version)?;
+                let (state, reducer_version, events_applied) = match Self::cached(inner, campaign_id, hit) {
+                    Some(entry) => (entry.0.clone(), entry.1, entry.2),
+                    None => return self.replay(inner, campaign_id, options, &plan),
+                };
+                Ok(Loaded { campaign_id: campaign_id.to_string(), state_version: plan.target, current_state_version: plan.current_version, state, reducer_version, metadata, events_applied })
+            }
+            None => self.replay(inner, campaign_id, options, &plan),
+        }
+    }
+
+    /// Проверки загрузки и выбор цели (общие для [`Self::load_inner`] и
+    /// [`EventStore::inspect`]).
+    fn load_plan(conn: &Connection, campaign_id: &str, options: &LoadOptions) -> StoreResult<LoadPlan> {
+        let (current_version, last_commit_id) = Self::head(conn, campaign_id)?;
+        Self::check_head_evidence(conn, campaign_id, current_version)?;
+        if !Self::exists(conn, campaign_id)? {
             return Err(StoreError::campaign_not_found(campaign_id));
         }
         let target = match options.at_version {
@@ -777,48 +812,53 @@ impl EventStore {
         };
         let use_snapshots = options.use_snapshots.unwrap_or(true);
         let head_load = target == current_version && use_snapshots && forced.is_none() && !options.from_initial;
-        if head_load {
-            if let (Some(last_commit_id), Some(entry)) = (last_commit_id.as_ref(), inner.head_cache.get(campaign_id)) {
-                if &entry.last_commit_id == last_commit_id && entry.version == current_version {
+        let version_load = !head_load && target < current_version && use_snapshots && forced.is_none() && !options.from_initial;
+        Ok(LoadPlan { current_version, last_commit_id, target, forced, use_snapshots, head_load, version_load })
+    }
+
+    /// Годная запись кэша для плана: голова (с отметкой «недавно использована»)
+    /// или версия ниже головы с тем же `commit_id`.
+    fn cache_hit(inner: &mut Inner, campaign_id: &str, plan: &LoadPlan) -> StoreResult<Option<CacheHit>> {
+        if plan.head_load {
+            if let (Some(last_commit_id), Some(entry)) = (plan.last_commit_id.as_ref(), inner.head_cache.get(campaign_id)) {
+                if &entry.last_commit_id == last_commit_id && entry.version == plan.current_version {
                     let _span = crate::perf::span("store.load.cache_hit");
-                    let loaded = Loaded {
-                        campaign_id: campaign_id.to_string(),
-                        state_version: target,
-                        current_state_version: current_version,
-                        state: entry.state.clone(),
-                        reducer_version: entry.reducer_version,
-                        metadata: Self::read_metadata(&inner.conn, campaign_id, current_version)?,
-                        events_applied: entry.events_applied,
-                    };
                     if let Some(entry) = inner.head_cache.shift_remove(campaign_id) {
                         inner.head_cache.insert(campaign_id.to_string(), entry);
                     }
-                    return Ok(loaded);
+                    return Ok(Some(CacheHit::Head));
                 }
             }
+            return Ok(None);
         }
         // Версия ниже головы из кэша версий: то же состояние, что дало бы
         // переигрывание, если коммит этой версии в журнале тот же.
-        let version_load = !head_load && target < current_version && use_snapshots && forced.is_none() && !options.from_initial;
-        let target_commit_id = if version_load && inner.head_cache.get(campaign_id).is_some_and(|entry| entry.previous.iter().any(|recent| recent.version == target)) {
-            Self::commit_id_at(&inner.conn, campaign_id, target)?
-        } else {
-            None
-        };
-        if let (Some(commit_id), Some(entry)) = (target_commit_id.as_ref(), inner.head_cache.get(campaign_id)) {
-            if let Some(recent) = entry.previous.iter().find(|recent| recent.version == target && &recent.commit_id == commit_id) {
-                let _span = crate::perf::span("store.load.version_hit");
-                return Ok(Loaded {
-                    campaign_id: campaign_id.to_string(),
-                    state_version: target,
-                    current_state_version: current_version,
-                    state: recent.state.clone(),
-                    reducer_version: recent.reducer_version,
-                    metadata: Self::read_metadata(&inner.conn, campaign_id, current_version)?,
-                    events_applied: recent.events_applied,
-                });
-            }
+        let target = plan.target;
+        let candidate = plan.version_load && inner.head_cache.get(campaign_id).is_some_and(|entry| entry.previous.iter().any(|recent| recent.version == target));
+        if !candidate {
+            return Ok(None);
         }
+        let Some(commit_id) = Self::commit_id_at(&inner.conn, campaign_id, target)? else { return Ok(None) };
+        let index = inner.head_cache.get(campaign_id).and_then(|entry| entry.previous.iter().position(|recent| recent.version == target && recent.commit_id == commit_id));
+        Ok(index.map(|index| {
+            let _span = crate::perf::span("store.load.version_hit");
+            CacheHit::Version(index)
+        }))
+    }
+
+    /// Состояние, версия редьюсера и `events_applied` записи кэша.
+    fn cached<'a>(inner: &'a Inner, campaign_id: &str, hit: CacheHit) -> Option<(&'a Value, i64, usize)> {
+        let entry = inner.head_cache.get(campaign_id)?;
+        match hit {
+            CacheHit::Head => Some((&entry.state, entry.reducer_version, entry.events_applied)),
+            CacheHit::Version(index) => entry.previous.get(index).map(|recent| (&recent.state, recent.reducer_version, recent.events_applied)),
+        }
+    }
+
+    /// Переигрывание от снимка (промах кэша).
+    fn replay(&self, inner: &mut Inner, campaign_id: &str, options: &LoadOptions, plan: &LoadPlan) -> StoreResult<Loaded> {
+        let LoadPlan { current_version, ref last_commit_id, target, forced, use_snapshots, head_load, version_load } = *plan;
+        let last_commit_id = last_commit_id.clone();
         let _replay = crate::perf::span(if head_load { "store.load.head_replay" } else { "store.load.at_version_replay" });
         let snapshot = if options.from_initial { None } else { self.read_snapshot(&inner.conn, campaign_id, target, use_snapshots)? };
         let (mut state, from_version, selected_reducer_version) = match snapshot {
@@ -1078,7 +1118,7 @@ impl EventStore {
         if expected != actual {
             return Err(StoreError::version_conflict(&campaign_id, expected, actual));
         }
-        let current = self.load_inner(&mut inner, &campaign_id, &LoadOptions::default())?;
+        let mut current = self.load_inner(&mut inner, &campaign_id, &LoadOptions::default())?;
         let timestamp = self.now_iso();
         let command_id = match &request.command_id {
             Some(id) => safe_id(id, "command_id")?,
@@ -1090,7 +1130,8 @@ impl EventStore {
             .enumerate()
             .map(|(index, event)| self.normalize_event(event, &campaign_id, &command_id, &key, actual + index as i64, &timestamp))
             .collect::<StoreResult<Vec<_>>>()?;
-        let next_state = self.apply_events(current.state.clone(), &events, None)?;
+        // Состояние головы дальше не нужно — без второй копии (Ск2).
+        let next_state = self.apply_events(std::mem::take(&mut current.state), &events, None)?;
         let next_version = actual + events.len() as i64;
         let commit_id = self.new_id("commit_id")?;
         let commit = json!({
@@ -1141,6 +1182,24 @@ impl EventStore {
             idempotency_key: key,
             command_id,
         })
+    }
+
+    /// [`Self::load`] без копии состояния (Ск2): `operation` получает состояние
+    /// по ссылке (и его версию, `Loaded::state_version`) — из кэша головы или
+    /// версий, при промахе — переигранное. Те же проверки и отказы, что у
+    /// `load` (включая чтение метаданных).
+    pub fn inspect<T>(&self, campaign_id: &str, options: &LoadOptions, operation: impl FnOnce(&Value, i64) -> T) -> StoreResult<T> {
+        let campaign_id = safe_id(campaign_id, "campaign_id")?;
+        let mut inner = self.lock();
+        let plan = Self::load_plan(&inner.conn, &campaign_id, options)?;
+        if let Some(hit) = Self::cache_hit(&mut inner, &campaign_id, &plan)? {
+            Self::read_metadata(&inner.conn, &campaign_id, plan.current_version)?;
+            if let Some((state, _, _)) = Self::cached(&inner, &campaign_id, hit) {
+                return Ok(operation(state, plan.target));
+            }
+        }
+        let loaded = self.replay(&mut inner, &campaign_id, options, &plan)?;
+        Ok(operation(&loaded.state, loaded.state_version))
     }
 
     /// `load(campaignId, options)`.

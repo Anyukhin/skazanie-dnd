@@ -151,25 +151,36 @@ pub(crate) fn save_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value,
 
 /// Состояние журнала, к которому привязывается запись: версия комнаты, если
 /// она есть в журнале, иначе голова; журнала нет или он не читается — `None`
-/// (комната хранится целиком).
-fn base_for(core: &GameCore, campaign_id: &str, state: &Value) -> Option<(i64, Value)> {
-    let head = core.events.load(campaign_id, &LoadOptions::default()).ok()?;
+/// (комната хранится целиком). Состояние читается по ссылке из кэша журнала
+/// (`EventStore::inspect`), без копии (Ск2).
+fn with_base<T>(core: &GameCore, campaign_id: &str, state: &Value, operation: impl FnOnce(Option<(i64, &Value)>) -> T) -> T {
+    let mut operation = Some(operation);
+    let mut run = |base: Option<(i64, &Value)>| operation.take().map(|operation| operation(base));
     let wanted = state.get("state_version").filter(|value| js::is_safe_integer(Some(value))).and_then(Value::as_i64);
-    match wanted {
-        Some(version) if (0..head.state_version).contains(&version) => {
-            let loaded = core.events.load(campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() }).ok()?;
-            Some((version, loaded.state))
-        }
-        _ => Some((head.state_version, head.state)),
-    }
+    let head = core.events.inspect(campaign_id, &LoadOptions::default(), |head, head_version| match wanted {
+        Some(version) if (0..head_version).contains(&version) => Err(version),
+        _ => Ok(run(Some((head_version, head)))),
+    });
+    let done = match head {
+        Err(_) => run(None),
+        Ok(Ok(done)) => done,
+        Ok(Err(version)) => match core.events.inspect(campaign_id, &LoadOptions { at_version: Some(version), ..LoadOptions::default() }, |loaded, _| run(Some((version, loaded)))) {
+            Ok(done) => done,
+            Err(_) => run(None),
+        },
+    };
+    done.or_else(|| run(None)).expect("операция над основой накладки исполняется ровно один раз")
 }
 
 /// Тело накладки: отличия записанного состояния от журнала.
 fn overlay_for(core: &GameCore, key: &str, state: &Value) -> Result<Value, Failure> {
+    with_base(core, key, state, |base| overlay_body(key, state, base))
+}
+
+fn overlay_body(key: &str, state: &Value, base: Option<(i64, &Value)>) -> Result<Value, Failure> {
     let empty = Map::new();
     let next = state.as_object().unwrap_or(&empty);
-    let base = base_for(core, key, state);
-    let base_map = base.as_ref().and_then(|(_, state)| state.as_object()).unwrap_or(&empty);
+    let base_map = base.and_then(|(_, state)| state.as_object()).unwrap_or(&empty);
     let mut fields = Map::new();
     let mut online: Option<Map<String, Value>> = None;
     for (field, value) in next {
@@ -187,7 +198,7 @@ fn overlay_for(core: &GameCore, key: &str, state: &Value) -> Result<Value, Failu
     let removed: Vec<Value> = base_map.keys().filter(|field| !next.contains_key(*field)).map(|field| Value::String(field.clone())).collect();
     let mut body = Map::new();
     body.insert("schema".into(), Value::from(OVERLAY_SCHEMA));
-    body.insert("base".into(), base.as_ref().map_or(Value::Null, |(version, _)| json!({ "campaign_id": key, "state_version": version })));
+    body.insert("base".into(), base.map_or(Value::Null, |(version, _)| json!({ "campaign_id": key, "state_version": version })));
     body.insert("removed".into(), Value::Array(removed));
     if let Some(online) = online {
         body.insert("online".into(), Value::Object(online));
