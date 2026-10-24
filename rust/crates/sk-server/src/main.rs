@@ -36,6 +36,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Распределитель памяти бинаря — mimalloc (Ск2, зависимость разрешена
+/// владельцем): горячий путь собирает и копирует большие `serde_json::Value`
+/// (состояние кампании ≈0,6 МБ JSON, десятки тысяч узлов), и системный
+/// распределитель Windows на мелких выделениях — заметная доля хода. Тесты
+/// крейта идут на системном: поведение от распределителя не зависит.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use sk_agents_base::llm_client::{RouterAiClient, RouterAiClientConfig};
 use sk_infra::usage_ledger::DurableUsageLedger;
 use sk_server::state::{LlmClients, Metered};
