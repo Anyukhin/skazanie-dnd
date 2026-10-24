@@ -15,10 +15,17 @@ import test from 'node:test'
 
 import {
   CREATION_DRAFT_VERSION,
+  abilityPreview,
+  addStartingPurchase,
   clearCreationDraft,
+  creationChecklist,
   creationDraftKey,
+  firstIncompleteStepIndex,
   goldLabel,
+  isRolledAssignment,
   mergeCreationDraft,
+  pointBuySpent,
+  pointBuyStep,
   purchaseShortfallCp,
   readCreationDraft,
   sessionDraftStorage,
@@ -183,19 +190,138 @@ test('мастер хранит черновик под ключом кампа�
   // Обещание «вернуться позже» звучит, только когда черновику есть где лежать.
   assert.match(wizard, /draftPersists\s*\n?\s*\? 'Пока герой не создан, ходить он не может\. Мастер можно закрыть и вернуться позже: выбор сохранится в этой вкладке до создания героя\.'/u)
   assert.doesNotMatch(wizard, /'Пока герой не создан, ходить он не может\. Мастер можно закрыть и вернуться позже\.'/u)
-  // Escape по-прежнему закрывает мастер одним обработчиком: первый Escape в
-  // открытом списке select гасит сам браузер, и это поведение не трогаем.
-  assert.match(wizard, /event\.key === 'Escape' && !busy\) onClose\(\)/u)
+  // Escape закрывает мастер одним обработчиком, но в поле ввода только снимает
+  // фокус: прежде Escape посреди предыстории закрывал весь мастер.
+  assert.match(wizard, /if \(event\.key !== 'Escape' \|\| busy\) return/u)
+  assert.match(wizard, /target instanceof HTMLInputElement \|\| target instanceof HTMLTextAreaElement \|\| target instanceof HTMLSelectElement\) \{\s*target\.blur\(\)\s*return\s*\}\s*onClose\(\)/u)
 })
 
 test('«Добавить покупку» гаснет сверх остатка и называет нехватку', () => {
   assert.match(wizard, /purchaseShortfallCp\(\{ remainingCp: purchaseBudget\.remainingCp, priceCp: purchaseCandidatePriceCp, quantity: draft\.purchaseQuantity \}\)/u)
   assert.match(wizard, /draft\.purchaseQuantity < 1 \|\| purchaseShortfall > 0\}/u)
-  assert.match(wizard, /if \(purchaseShortfall > 0\) return; patch\('purchases'/u)
+  assert.match(wizard, /if \(purchaseShortfall > 0\) return; patch\('purchases', addStartingPurchase\(draft\.purchases, draft\.purchaseId, draft\.purchaseQuantity\)\)/u)
   assert.match(wizard, /Не хватает \{goldLabel\(purchaseShortfall\)\}/u)
   assert.match(wizard, /корзина дороже бюджета на \{goldLabel\(purchaseBudget\.overBudgetCp\)\}/u)
   // Отрицательного остатка мастер больше не пишет.
   assert.doesNotMatch(wizard, /осталось \{\(wealthRoll\.total_gp \* 100 - purchaseTotal\) \/ 100\} зм/u)
   // Последняя защита на месте: шаг не пропускает корзину дороже бюджета.
   assert.match(wizard, /purchaseTotal > wealthRoll\.total_gp \* 100/u)
+})
+
+// Ревью создания героя 2026-10-24: ошибки мастера, найденные в браузере и по коду.
+
+test('одинаковая покупка прибавляется к своей строке', () => {
+  const once = addStartingPurchase([], 'srd_5_2_1:dagger', 1)
+  assert.deepEqual(addStartingPurchase(once, 'srd_5_2_1:dagger', 2), [{ id: 'srd_5_2_1:dagger', quantity: 3 }])
+  assert.deepEqual(addStartingPurchase(once, 'srd_5_2_1:rope', 1), [{ id: 'srd_5_2_1:dagger', quantity: 1 }, { id: 'srd_5_2_1:rope', quantity: 1 }])
+  assert.deepEqual(once, [{ id: 'srd_5_2_1:dagger', quantity: 1 }], 'корзина не меняется на месте')
+})
+
+test('восстановленная расстановка бросков 4к6 не сбрасывается в порядок бросков', () => {
+  const scores = [12, 15, 9, 14, 11, 13]
+  assert.equal(isRolledAssignment({ str: 15, dex: 14, con: 13, int: 12, wis: 11, cha: 9 }, scores), true)
+  assert.equal(isRolledAssignment({ str: 15, dex: 14, con: 13, int: 12, wis: 11, cha: 10 }, scores), false)
+  assert.equal(isRolledAssignment({ str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }, scores), false)
+  assert.match(wizard, /setDraft\(\(current\) => isRolledAssignment\(current\.abilities, abilityRoll\.scores\)\s*\? current/u)
+})
+
+test('создание героя проверяет все шаги и ведёт к первому незавершённому', () => {
+  const issues = { class: '', race: '', proficiencies: 'Выберите 4 классовых навыка.', magic: 'Выберите 2 заговора.', identity: '' }
+  assert.equal(firstIncompleteStepIndex(Object.keys(issues), (step) => issues[step]), 2)
+  assert.equal(firstIncompleteStepIndex(['class', 'identity'], () => ''), -1)
+  // Кнопка «Создать героя» не шлёт документ, пока хоть один шаг не завершён,
+  // а переводит на этот шаг; галочка в навигации — только до него.
+  assert.match(wizard, /const submit = async \(\) => \{\s*const incomplete = steps\[firstIncompleteIndex\]\s*if \(incomplete\) \{\s*setStep\(incomplete\.id\)/u)
+  assert.match(wizard, /const verified = firstIncompleteIndex < 0 \|\| index < firstIncompleteIndex/u)
+})
+
+test('заклинания расширенного списка покровителя колдуна выбираются', () => {
+  // Расширенный список приходит из каталога PHB, а не из списка класса:
+  // поиск только в `spellRules.spells` молча отбрасывал щелчок.
+  assert.match(wizard, /const spell = \[\.\.\.cantrips, \.\.\.leveledSpells\]\.find\(\(entry\) => entry\.id === id\)/u)
+  assert.doesNotMatch(wizard, /const spell = spellRules\.spells\.find\(\(entry\) => entry\.id === id\)/u)
+})
+
+test('богатство, брошенное за другой класс, не запирает шаг снаряжения', () => {
+  assert.match(wizard, /wealthRollForOtherClass = Boolean\(wealthRoll && wealthRoll\.class_id !== draft\.classId\)/u)
+  assert.match(wizard, /draft\.equipmentMode === 'wealth' && wealthRollForOtherClass\) return wealthRollMismatchMessage/u)
+  assert.match(wizard, /onClick=\{\(\) => patch\('equipmentMode', 'standard'\)\}>Взять наборы класса и предыстории/u)
+})
+
+test('случайный герой сразу открывает все шаги и ведёт к «Личности»', () => {
+  assert.match(wizard, /character: pick\(RANDOM_NAMES\) \?\? 'Безымянный герой',\s*\}\)\)[\s\S]{0,240}setStep\('identity'\)\s*setFurthestStep\('identity'\)/u)
+})
+
+test('мелочи мастера: имя первым, мастерство после навыков, сокращения и aria-pressed', () => {
+  const identity = wizard.slice(wizard.indexOf("currentStep === 'identity' && <div"))
+  assert.ok(identity.indexOf('aria-label="Имя героя"') < identity.indexOf('Мировоззрение'), 'имя — первое поле личности')
+  const choices = wizard.slice(wizard.indexOf("currentStep === 'proficiencies' && <div"))
+  assert.ok(choices.indexOf('Классовые навыки') < choices.indexOf('<PhbCharacterOptions'), 'классовые выборы PHB — после навыков')
+  assert.match(wizard, /wis: 'Мдр'/u)
+  assert.match(wizard, /key=\{skill\.id\} type="button" aria-pressed=\{draft\.classSkillIds\.includes\(skill\.id\)\}/u)
+  assert.match(wizard, /recommendedStandardArray\(current\.classId, catalog\.ability_policy\.standard_array\)/u)
+})
+
+test('импорт листа в редакторе виден игроку только у неготового героя', () => {
+  assert.match(app, /onImport=\{isAdmin \|\| state\.players\.find\(\(player\) => player\.id === editingPlayerId\)\?\.characterSetupRequired/u)
+})
+
+// Шаг характеристик (−/+, бюджет, предпросмотр) и итоговый шаг — перенос с холста дизайна.
+
+const POINT_BUY_COSTS = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 }
+
+test('покупка за очки: шаг −/+ укладывается в 8–15 и бюджет 27', () => {
+  const scores = { str: 15, dex: 14, con: 14, int: 8, wis: 10, cha: 8 }
+  assert.equal(pointBuySpent(scores, POINT_BUY_COSTS), 25)
+  assert.deepEqual(pointBuyStep({ scores, ability: 'wis', delta: 1, costs: POINT_BUY_COSTS }), { ok: true, score: 11, cost: 1 })
+  // 14 → 15 стоит два очка, осталось ровно два — можно.
+  assert.deepEqual(pointBuyStep({ scores, ability: 'dex', delta: 1, costs: POINT_BUY_COSTS }), { ok: true, score: 15, cost: 2 })
+  const tight = { ...scores, wis: 11 }
+  const refused = pointBuyStep({ scores: tight, ability: 'dex', delta: 1, costs: POINT_BUY_COSTS })
+  assert.equal(refused.ok, false)
+  assert.match(refused.reason, /Нужно 2 оч\., осталось 1/u)
+  assert.equal(pointBuyStep({ scores, ability: 'str', delta: 1, costs: POINT_BUY_COSTS }).ok, false, 'выше 15 до прибавок нельзя')
+  assert.equal(pointBuyStep({ scores, ability: 'int', delta: -1, costs: POINT_BUY_COSTS }).ok, false, 'ниже 8 нельзя')
+  assert.deepEqual(pointBuyStep({ scores, ability: 'str', delta: -1, costs: POINT_BUY_COSTS }), { ok: true, score: 14, cost: -2 })
+})
+
+test('предпросмотр 1 уровня считает хиты, инициативу, атаку, спасброски и СЛ заклинаний', () => {
+  const fighter = abilityPreview({
+    abilities: { str: 15, dex: 16, con: 14, int: 8, wis: 11, cha: 8 },
+    hitDie: 10, savingThrows: ['str', 'con'], primaryAbility: 'str',
+  })
+  assert.equal(fighter.hitPoints, 12)
+  assert.equal(fighter.initiative, 3)
+  assert.deepEqual(fighter.attack, { ability: 'str', bonus: 4 })
+  assert.deepEqual(fighter.savingThrows, [{ ability: 'str', bonus: 4 }, { ability: 'con', bonus: 4 }])
+  assert.equal(fighter.spell, null)
+  const wizard = abilityPreview({ abilities: { str: 8, dex: 14, con: 8, int: 16, wis: 12, cha: 10 }, hitDie: 6, spellcastingAbility: 'int' })
+  assert.equal(wizard.hitPoints, 5)
+  assert.deepEqual(wizard.spell, { ability: 'int', saveDc: 13, attack: 5 })
+  assert.equal(abilityPreview({ abilities: { con: 3 }, hitDie: 6 }).hitPoints, 2, 'не ниже 1 и с модификатором −4')
+  assert.equal(abilityPreview({ abilities: {} }).hitPoints, null, 'без кости хитов не выдумывает число')
+})
+
+test('итоговый шаг показывает каждый шаг с отметкой и тем, чего не хватает', () => {
+  const issues = { class: '', proficiencies: 'Выберите 2 классовых навыка.', identity: 'Назовите персонажа.' }
+  assert.deepEqual(creationChecklist([
+    { id: 'class', title: 'Класс' }, { id: 'proficiencies', title: 'Владения' }, { id: 'identity', title: 'Итог' },
+  ], (step) => issues[step]), [
+    { id: 'class', title: 'Класс', done: true, message: '' },
+    { id: 'proficiencies', title: 'Владения', done: false, message: 'Выберите 2 классовых навыка.' },
+    { id: 'identity', title: 'Итог', done: false, message: 'Назовите персонажа.' },
+  ])
+})
+
+test('мастер подключает −/+, бюджет, предпросмотр и список «перед созданием»', () => {
+  assert.match(wizard, /pointBuyStep\(\{ scores: draft\.abilities, ability, delta, costs: pointBuyCosts, budget: pointBuyBudget \}\)/u)
+  assert.match(wizard, /aria-label=\{`Увеличить: \$\{abilityLabels\[ability\]\}`\} title=\{up\.ok \? undefined : up\.reason\} disabled=\{!up\.ok\}/u)
+  assert.match(wizard, /className="creation-point-cells" role="img"/u)
+  assert.match(wizard, /hitDie: classOption\?\.hit_die \?\? null, savingThrows: classOption\?\.saving_throws \?\? \[\]/u)
+  assert.match(wizard, /creationChecklist\(steps, \(stepId\) => validateStepFor\(stepId as CreationStepId\)\)/u)
+  assert.match(wizard, /\{ id: 'identity' as const, title: 'Итог', description: 'Имя и проверка' \}/u)
+  // Порядок итогового шага: список недостающего, имя, затем лист героя.
+  const identity = wizard.slice(wizard.indexOf("currentStep === 'identity' && <div"))
+  assert.ok(identity.indexOf('creation-review-checklist') < identity.indexOf('creation-identity-name'))
+  assert.ok(identity.indexOf('creation-identity-name') < identity.indexOf('creation-review-sheet'))
 })

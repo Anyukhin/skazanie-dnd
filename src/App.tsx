@@ -2022,7 +2022,9 @@ function GameApp({ account, onAccountRefresh, onLogout }: { account: Account; on
         requestLevelUp={editorRequestLevelUp}
         onClose={() => { setEditingPlayerId(null); setEditorInitialTab('sheet'); setEditorRequestLevelUp(false); setHeroWizardDismissed(true) }}
         onSave={(patch) => updatePlayer(editingPlayerId, patch)}
-        onImport={(source) => importCharacter(editingPlayerId, source)}
+        onImport={isAdmin || state.players.find((player) => player.id === editingPlayerId)?.characterSetupRequired
+          ? (source) => importCharacter(editingPlayerId, source)
+          : undefined}
         onLevelUp={() => {
           const player = state.players.find((candidate) => candidate.id === editingPlayerId)
           return player ? levelUpCharacter(player.id, player.level) : Promise.resolve({ ok: false, error: 'Герой не найден' })
