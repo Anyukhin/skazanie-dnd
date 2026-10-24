@@ -77,7 +77,7 @@ function recordedStream() {
     [{
       command_type: 'RecordWorldFact',
       fact: {
-        id: 'fact-wolf', subject_id: 'trakt', predicate: 'событие',
+        id: 'fact-wolf', subject_id: 'trakt', predicate: 'lore',
         object: 'Волк ранен', summary: 'Волк ранен на тракте', visibility: 'party',
       },
     }],

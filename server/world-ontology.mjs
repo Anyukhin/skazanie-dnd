@@ -12,11 +12,13 @@
  * читался `questProgressEvidenceFor`, но не создавался никем, и поручение не
  * могло продвинуться уликой.
  *
- * Этот модуль — реестр такого словаря и статический сканер исходников. Он
- * детерминирован, ничего не импортирует и не читает файлов: тексты ему передают
- * тест (`test/world-ontology.test.mjs`) и аудит
- * (`eval/ontology-audit-2026-10-01.mjs`). В рантайме сервера он ничего не
- * исполняет и не ограничивает — это сторож соответствия, а не валидатор команд.
+ * Этот модуль — реестр такого словаря, статический сканер исходников и
+ * проверка записи. Он детерминирован, ничего не импортирует и не читает файлов.
+ * Сканеру тексты передают тест (`test/world-ontology.test.mjs`) и аудит
+ * (`eval/ontology-audit-2026-10-01.mjs`); проверку записи `ontologyViolation`
+ * вызывает `validateWorldMemoryCommand` для каждой команды факта, убеждения и
+ * слуха. Редьюсер её не вызывает: уже записанные события читаются при replay
+ * как есть, даже если их предиката в словаре больше нет.
  */
 
 /**
@@ -29,6 +31,7 @@
  *   producers: string[],
  *   consumers: string[],
  *   external_producers?: string[],
+ *   generic_readers_only?: boolean,
  *   visibility: 'public'|'party'|'gm_only'|'mixed',
  *   description_ru: string,
  * }} PredicateEntry
@@ -60,17 +63,24 @@ export const PREDICATES = Object.freeze({
     description_ru: 'NPC погиб. Делает поручение невозможным, убирает NPC из сцен, попадает в список известных мёртвых Рассказчика.',
   }),
   discovery: Object.freeze({
-    record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: '«clue»',
+    record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'item', 'event', 'concept'], object: '«clue»',
     producers: ['world-memory'], consumers: ['campaign-scenario', 'game-orchestrator', 'narrator', 'npc-social', 'npc-social-controller', 'player-request-router', 'rules-engine', 'scenario-knight', 'world-memory'],
     visibility: 'party',
     description_ru: 'Находка свободного действия: открытая заготовка ведущего, знающий собеседник или улика по теме активного поручения. Рассказчик обязан её назвать; для часов поручения — доказательство; для сценария — найденная улика узла сюжета (по `supersedes_fact_id`). NPC знает находку, только если видел её сам (граница знания `npcKnownFactIds`); находку о себе самом NPC не знает. Собеседнику уходят и последние находки отряда (`table_knows`) — чтобы он не пересказывал их как новость.',
   }),
   quest_progress: Object.freeze({
-    record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'concept'], object: 'что именно продвинуло дело',
+    record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'item', 'event', 'concept'], object: 'что именно продвинуло дело',
     producers: [], consumers: ['world-memory'],
     external_producers: ['admin_command'],
     visibility: 'party',
     description_ru: 'Продвижение поручения, записанное ведущим через административную команду `RecordWorldFact`. Ни один модуль сервера его не пишет.',
+  }),
+  lore: Object.freeze({
+    record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'item', 'event', 'concept'], object: 'что правда о сущности',
+    producers: [], consumers: [],
+    external_producers: ['admin_command'], generic_readers_only: true,
+    visibility: 'mixed',
+    description_ru: 'Правда о мире, записанная ведущим через `RecordWorldFact`: «брод закрыт после паводка». Механика его не читает — только общие читатели (Рассказчик, Хранитель знаний, поиск по памяти). Предикат для записей, у которых нет механического смысла; механический факт пишется своим предикатом.',
   }),
   scene_change: Object.freeze({
     record: 'fact', subject_kinds: ['location'], object: 'перечень сменившихся обстоятельств сцены',
@@ -79,7 +89,7 @@ export const PREDICATES = Object.freeze({
     description_ru: 'Режиссёр сменил сцену; сводка сцены берёт отсюда переход.',
   }),
   quest_outcome: Object.freeze({
-    record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'event'], object: 'исход поручения (completed/failed/…)',
+    record: 'fact', subject_kinds: ['npc', 'faction', 'location', 'item', 'event', 'concept'], object: 'исход поручения (completed/failed/…)',
     producers: ['autonomous-orchestrator'], consumers: [],
     visibility: 'mixed',
     description_ru: 'Итог поручения, закрытого Режиссёром. Подлежащее — первая сущность поручения, иначе текущая сцена или сущность-развязка. Читается только общими читателями.',
@@ -254,7 +264,53 @@ export const GENERIC_PREDICATE_CONSUMERS = Object.freeze({
  * ведущий. Список закрыт — тест сравнивает его целиком, поэтому новая «дыра»
  * не пройдёт молча, даже если её объявить внешней.
  */
-export const EXTERNAL_ONLY_PREDICATES = Object.freeze(['quest_progress'])
+export const EXTERNAL_ONLY_PREDICATES = Object.freeze(['lore', 'quest_progress'])
+
+/**
+ * Статья словаря для предиката записи: точное имя или семейство `prefix:` с
+ * непустым суффиксом (`party_deed:theft` → `party_deed:`). Имя семейства без
+ * суффикса само по себе предикатом не является.
+ *
+ * @param {unknown} predicate
+ * @returns {Readonly<PredicateEntry>|null}
+ */
+export function predicateEntryFor(predicate) {
+  const name = String(predicate ?? '')
+  const exact = Object.hasOwn(PREDICATES, name) ? PREDICATES[name] : null
+  if (exact && !exact.family) return exact
+  const colon = name.indexOf(':')
+  if (colon < 1 || colon === name.length - 1) return null
+  const family = PREDICATES[name.slice(0, colon + 1)]
+  return family?.family ? family : null
+}
+
+/**
+ * Проверка одной записи памяти по словарю: предикат известен, вид записи (факт
+ * или утверждение NPC) совпадает со статьёй, подлежащее — сущность допустимого
+ * вида. Для утверждения подлежащее — держатель слуха или убеждения.
+ *
+ * @param {{ record: OntologyRecord, predicate: string, subjectKind?: string }} write
+ * @returns {{ code: string, message: string }|null} нарушение или `null`
+ */
+export function ontologyViolation({ record, predicate, subjectKind = '' }) {
+  const entry = predicateEntryFor(predicate)
+  if (!entry) {
+    return { code: 'WORLD_PREDICATE_UNKNOWN', message: `Предиката «${predicate}» нет в онтологии мира` }
+  }
+  if (entry.record !== record) {
+    return {
+      code: 'WORLD_PREDICATE_RECORD_MISMATCH',
+      message: entry.record === 'claim' ? `«${predicate}» — утверждение NPC, а не факт` : `«${predicate}» — факт мира, а не утверждение NPC`,
+    }
+  }
+  if (!entry.subject_kinds.includes(subjectKind)) {
+    return {
+      code: 'WORLD_PREDICATE_SUBJECT_KIND_INVALID',
+      message: `«${predicate}» записывается о сущности вида ${entry.subject_kinds.join(', ')}, а не ${subjectKind || 'без вида'}`,
+    }
+  }
+  return null
+}
 
 /**
  * Модули, где слова `predicate`/`relation` означают другое (фильтр трасс,
