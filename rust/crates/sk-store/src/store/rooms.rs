@@ -80,6 +80,7 @@ fn read_overlay(conn: &rusqlite::Connection, room_id: &str) -> StoreResult<Optio
 impl EventStore {
     /// Накладка комнаты или `None` (комнаты нет).
     pub fn room_overlay(&self, room_id: &str) -> StoreResult<Option<RoomOverlay>> {
+        let _span = crate::perf::span("store.room_overlay.read");
         let room_id = safe_id(room_id, "room_id")?;
         let inner = self.lock();
         read_overlay(&inner.conn, &room_id)
@@ -96,6 +97,7 @@ impl EventStore {
     /// Записать накладку с проверкой версии; подтверждение проекции — в той же
     /// транзакции (см. шапку модуля).
     pub fn save_room_overlay(&self, request: RoomOverlayWrite<'_>) -> StoreResult<RoomOverlaySave> {
+        let _span = crate::perf::span("store.room_overlay.save");
         let room_id = safe_id(request.room_id, "room_id")?;
         let expected = safe_version(request.expected_version, "expected_version")?;
         let body = serde_json::to_string(request.body)?;

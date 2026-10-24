@@ -87,6 +87,7 @@ fn normalize(state: &Value) -> Result<Value, Failure> {
 /// журнала, а при любом сбое загрузки или нормализации — нормализованное
 /// запасное.
 pub fn latest_campaign_state(core: &GameCore, campaign_id: &str, fallback_state: Option<&Value>) -> Result<Value, Failure> {
+    let _span = sk_store::perf::span("latest_campaign_state");
     let loaded = core.events.load(campaign_id, &LoadOptions::default()).map_err(Failure::from).and_then(|loaded| normalize(&loaded.state));
     match loaded {
         Ok(state) => Ok(state),
@@ -195,8 +196,12 @@ pub fn persist_authoritative_projection(
         return Ok(None);
     }
     let proposed_version = proposed as i64;
+    let _span = sk_store::perf::span("persist");
     for _attempt in 0..3 {
-        let room = get_room(core, campaign_id)?;
+        let room = {
+            let _span = sk_store::perf::span("persist.get_room");
+            get_room(core, campaign_id)?
+        };
         let Some(room_state) = room.state.as_ref() else { return Ok(None) };
         let current = version_of(Some(room_state), 0.0);
         if proposed < current {
@@ -216,12 +221,21 @@ pub fn persist_authoritative_projection(
                 return Ok(Some(room));
             }
         }
-        let next = projected_room_state(room_state, engine_state, events, journal_message, options)?;
+        let next = {
+            let _span = sk_store::perf::span("persist.projected_room_state");
+            projected_room_state(room_state, engine_state, events, journal_message, options)?
+        };
         // Сверка — два sha256 по всему каноническому состоянию: считаем её один
         // раз; `isNarrating` в каноническую проекцию не входит.
-        let comparison = compare_projection(engine_state, &next);
+        let comparison = {
+            let _span = sk_store::perf::span("persist.compare_projection");
+            compare_projection(engine_state, &next)
+        };
         let ack = comparison.matched.then(|| RoomProjectionAck { campaign_id: campaign_id.to_string(), projected_version: proposed_version, projection_hash: Some(comparison.projected_hash.clone()) });
-        let (saved, acknowledged) = crate::room::save_room_with_ack(core, campaign_id, &next, room.version, ack)?;
+        let (saved, acknowledged) = {
+            let _span = sk_store::perf::span("persist.save_room");
+            crate::room::save_room_with_ack(core, campaign_id, &next, room.version, ack)?
+        };
         if !saved.conflict {
             if let Some(Err(error)) = acknowledged {
                 if options.await_projection {
@@ -280,6 +294,7 @@ fn expiry_pending(state: &Value, now_ms: i64) -> Result<bool, Failure> {
 }
 
 fn reconcile_inner(core: &Rc<GameCore>, campaign_id: &str, now_ms: i64) -> Result<Option<Room>, Failure> {
+    let _span = sk_store::perf::span("reconcile");
     let load = || core.events.load(campaign_id, &LoadOptions::default()).map_err(Failure::from);
     let mut authoritative = load()?;
     if expiry_pending(&authoritative.state, now_ms)? {
@@ -460,7 +475,11 @@ pub fn subscribe_projection_saved(core: &GameCore, hook: ProjectionSavedHook) {
 /// ([`crate::room::save_room`]) со списком из [`subscribe_projection_saved`].
 pub fn on_projection_saved(core: &Rc<GameCore>, campaign_id: &str, room: &Room, hooks: &[ProjectionSavedHook]) -> Result<(), CoreError> {
     for hook in hooks {
-        crate::core::spawn_in_context(hook(core.clone(), campaign_id.to_string(), room.clone()))?;
+        let future = hook(core.clone(), campaign_id.to_string(), room.clone());
+        crate::core::spawn_in_context(async move {
+            let _span = sk_store::perf::span("hook.projection_saved");
+            future.await
+        })?;
     }
     Ok(())
 }

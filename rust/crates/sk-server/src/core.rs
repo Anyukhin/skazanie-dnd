@@ -312,7 +312,9 @@ impl<C: 'static> LocalExecutor<C> {
     {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<R, CoreError>>();
         let settings = crate::ai_context::capture();
+        let queued = std::time::Instant::now();
         self.send(Box::new(move |state| {
+            sk_store::perf::record("core.queue_wait", queued.elapsed());
             let mut reply = Reply { sender: Some(reply_tx) };
             Box::pin(crate::ai_context::with_campaign_ai(settings, async move {
                 let outcome = CatchUnwind::new(async move { job(state).await }).await;
@@ -374,6 +376,7 @@ where
     F: FnOnce() -> R + Send + 'static,
 {
     let settings = crate::ai_context::capture();
+    let _span = sk_store::perf::span("blocking");
     match tokio::task::spawn_blocking(move || crate::ai_context::run_sync(settings, operation)).await {
         Ok(value) => Ok(value),
         Err(error) if error.is_panic() => Err(CoreError::Panicked),

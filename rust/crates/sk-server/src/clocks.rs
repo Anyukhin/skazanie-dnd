@@ -384,12 +384,16 @@ async fn drive_world_clocks(core: &Rc<GameCore>, campaign_id: &str, job: &ClockJ
     let mut rumor_commits = 0usize;
     while job.pending.get() {
         job.pending.set(false);
+        let economy_span = sk_store::perf::span("clock.economy");
         let economy = run_merchant_economy_clock(core, campaign_id)?;
+        drop(economy_span);
         if !economy.events.is_empty() {
             persist_clock(core, campaign_id, &economy).await?;
         }
         // Обе калитки читают комнату: без работы пленных хватает одного чтения.
+        let gate_span = sk_store::perf::span("clock.gates");
         let mut gate_room = get_room(core, campaign_id)?;
+        drop(gate_span);
         if captive_clock_has_work(&gate_room) {
             let captives = run_captive_clock(core, campaign_id)?;
             if !captives.events.is_empty() {
@@ -404,7 +408,9 @@ async fn drive_world_clocks(core: &Rc<GameCore>, campaign_id: &str, job: &ClockJ
         if rumor_commits >= WORLD_RUMOR_BURST_LIMIT {
             continue;
         }
+        let rumor_span = sk_store::perf::span("clock.rumor");
         let rumor = run_world_rumor_clock(core, campaign_id)?;
+        drop(rumor_span);
         if rumor.events.is_empty() {
             continue;
         }
@@ -806,7 +812,10 @@ pub fn nudge_combat(core: &Rc<GameCore>, campaign_id: &str) {
     if runtime.coordinator.queued() == 0 {
         return;
     }
-    let _ = spawn_in_context(async move { runtime.coordinator.run_queued().await });
+    let _ = spawn_in_context(async move {
+        let _span = sk_store::perf::span("combat.run_queued");
+        runtime.coordinator.run_queued().await
+    });
 }
 
 /// `combatTurnCoordinator.clockFor(campaignId)` — источник `turn_clock`

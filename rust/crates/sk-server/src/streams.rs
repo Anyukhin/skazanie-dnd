@@ -867,6 +867,7 @@ pub fn broadcast_campaign_room(core: &Rc<GameCore>, campaign_id: &str, supplied:
         None => crate::room::get_room(core, &normalized)?,
     };
     let Some(raw) = room.state.as_ref() else { return Ok(()) };
+    let _span = sk_store::perf::span("broadcast.prepare");
     let normalized_state = sk_rules::normalize::normalize_campaign_state(raw)?;
     // Внутри — сверка сессий и прав: отозванные соединения закрываются до
     // цикла, остальные получают актуальные права.
@@ -878,6 +879,7 @@ pub fn broadcast_campaign_room(core: &Rc<GameCore>, campaign_id: &str, supplied:
         let version = room.version;
         let updated_at = room.updated_at.clone();
         let render: FrameRender = Box::new(move || {
+            let _span = sk_store::perf::span("broadcast.render");
             let mut view = lock(&view);
             let actor = Value::String(view.actor_id.clone());
             let projected = crate::access::viewer_state_for(&state, &view.user, Some(&actor)).map_err(|error| render_error(error.message))?.unwrap_or(Value::Null);

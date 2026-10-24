@@ -300,7 +300,9 @@ async fn narrate_body(ctx: &mut RouteCtx, user: Value) -> Result<axum::response:
     }
     let idempotency_key = narrate_key_or_uuid(&body, &ctx.headers);
     let turn = Turn { app: state.clone(), user, body, action, request_kind, conversation_only, campaign_id, room, state: trusted, player_id, explicit_npc_id, idempotency_key };
+    let run_span = sk_store::perf::span("narrate.run_turn");
     let answered = state.core.call(move |core| Box::pin(async move { run_turn(core, turn).await })).await?;
+    drop(run_span);
     Ok(json(StatusCode::OK, &answered?))
 }
 

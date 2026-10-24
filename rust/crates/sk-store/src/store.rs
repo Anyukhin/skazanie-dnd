@@ -424,6 +424,7 @@ impl EventStore {
     }
 
     fn normalize_state(&self, state: Value, version: i64, reducer_version: i64) -> StoreResult<Value> {
+        let _span = crate::perf::span("store.normalize");
         if !state.is_object() {
             return Err(StoreError::invalid("INVALID_CAMPAIGN_STATE", "Campaign state must be a JSON object"));
         }
@@ -452,6 +453,7 @@ impl EventStore {
     }
 
     fn apply_events(&self, state: Value, events: &[Value], forced: Option<i64>) -> StoreResult<Value> {
+        let _span = crate::perf::span("store.apply_events");
         if events.is_empty() {
             return Ok(state);
         }
@@ -725,6 +727,7 @@ impl EventStore {
         if head_load {
             if let (Some(last_commit_id), Some(entry)) = (last_commit_id.as_ref(), inner.head_cache.get(campaign_id)) {
                 if &entry.last_commit_id == last_commit_id && entry.version == current_version {
+                    let _span = crate::perf::span("store.load.cache_hit");
                     let loaded = Loaded {
                         campaign_id: campaign_id.to_string(),
                         state_version: target,
@@ -741,6 +744,7 @@ impl EventStore {
                 }
             }
         }
+        let _replay = crate::perf::span(if head_load { "store.load.head_replay" } else { "store.load.at_version_replay" });
         let snapshot = if options.from_initial { None } else { self.read_snapshot(&inner.conn, campaign_id, target, use_snapshots)? };
         let (mut state, from_version, selected_reducer_version) = match snapshot {
             Some(snapshot) => {
@@ -967,6 +971,7 @@ impl EventStore {
 
     /// `commit`: пакет событий одной команды.
     pub fn commit(&self, request: CommitRequest) -> StoreResult<CommitResult> {
+        let _span = crate::perf::span("store.commit");
         let campaign_id = safe_id(&request.campaign_id, "campaign_id")?;
         let expected = safe_version(request.expected_state_version, "expected_state_version")?;
         let key = safe_id(&request.idempotency_key, "idempotency_key")?;
@@ -1026,6 +1031,7 @@ impl EventStore {
             "projection_outbox": { "schema_version": 1, "target": "compatibility-room", "state_version_after": next_version },
         });
         let snapshot_due = request.force_snapshot || (self.options.snapshot_every > 0 && (current.events_applied + events.len()) as i64 >= self.options.snapshot_every);
+        let write = crate::perf::span("store.commit.sql");
         let transaction = inner.conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         Self::insert_commit(&transaction, &campaign_id, &commit)?;
         let last_reducer_version = events.last().map_or(0, |event| int_field(event, "reducer_version"));
@@ -1034,6 +1040,7 @@ impl EventStore {
         }
         let metadata = self.write_metadata(&transaction, &campaign_id, Some(&current.metadata), &request.metadata, next_version)?;
         transaction.commit()?;
+        drop(write);
         self.remember_head(
             &mut inner,
             &campaign_id,
@@ -1060,6 +1067,7 @@ impl EventStore {
 
     /// `load(campaignId, options)`.
     pub fn load(&self, campaign_id: &str, options: &LoadOptions) -> StoreResult<Loaded> {
+        let _span = crate::perf::span("store.load");
         let campaign_id = safe_id(campaign_id, "campaign_id")?;
         let mut inner = self.lock();
         self.load_inner(&mut inner, &campaign_id, options)
@@ -1067,6 +1075,7 @@ impl EventStore {
 
     /// `getByIdempotencyKey`: прежний коммит по ключу или `None`.
     pub fn get_by_idempotency_key(&self, campaign_id: &str, idempotency_key: &str) -> StoreResult<Option<CommitResult>> {
+        let _span = crate::perf::span("store.get_by_idempotency_key");
         let campaign_id = safe_id(campaign_id, "campaign_id")?;
         let mut inner = self.lock();
         if !Self::exists(&inner.conn, &campaign_id)? {
@@ -1083,6 +1092,7 @@ impl EventStore {
 
     /// `getEvents`: события после `after_version` до `up_to_version` включительно.
     pub fn get_events(&self, campaign_id: &str, after_version: i64, up_to_version: Option<i64>) -> StoreResult<Vec<Value>> {
+        let _span = crate::perf::span("store.get_events");
         let campaign_id = safe_id(campaign_id, "campaign_id")?;
         let inner = self.lock();
         if !Self::exists(&inner.conn, &campaign_id)? {
@@ -1126,6 +1136,7 @@ impl EventStore {
 
     /// `pendingProjection`: события после отметки проекции или `None`.
     pub fn pending_projection(&self, campaign_id: &str, with_state: bool) -> StoreResult<Option<PendingProjection>> {
+        let _span = crate::perf::span("store.pending_projection");
         let campaign_id = safe_id(campaign_id, "campaign_id")?;
         let mut inner = self.lock();
         if !Self::exists(&inner.conn, &campaign_id)? {
@@ -1148,6 +1159,7 @@ impl EventStore {
 
     /// `acknowledgeProjection`: проекция дошла до версии.
     pub fn acknowledge_projection(&self, campaign_id: &str, projected_version: i64, projection_hash: Option<&str>) -> StoreResult<Value> {
+        let _span = crate::perf::span("store.acknowledge_projection");
         let campaign_id = safe_id(campaign_id, "campaign_id")?;
         let inner = self.lock();
         self.acknowledge_in(&inner.conn, &campaign_id, projected_version, projection_hash)

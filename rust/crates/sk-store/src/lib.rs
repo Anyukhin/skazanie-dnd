@@ -10,6 +10,7 @@ pub mod error;
 pub mod executor;
 pub mod legacy;
 pub mod maps;
+pub mod perf;
 pub mod stable;
 pub mod store;
 

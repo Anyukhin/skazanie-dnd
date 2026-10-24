@@ -196,8 +196,11 @@ struct Pending {
 
 fn campaign_commands(ctx: &mut RouteCtx) -> RouteFuture<'_> {
     Box::pin(async move {
+        let user_span = sk_store::perf::span("require_user");
         let user = require_user(ctx).await?;
+        drop(user_span);
         let campaign_id = ctx.param(0).to_string();
+        let admit_span = sk_store::perf::span("cmd.admit");
         let admitted = match admit(ctx, &campaign_id, user.clone()).await {
             Ok(admitted) => admitted,
             Err(Stop::Reply(status, body)) => return Ok(json(status, &body)),
@@ -207,8 +210,13 @@ fn campaign_commands(ctx: &mut RouteCtx) -> RouteFuture<'_> {
                 return Ok(json(status, &body));
             }
         };
+        drop(admit_span);
         let state = ctx.state.clone();
-        let (status, body) = ctx.state.core.call(move |core| Box::pin(async move { run(core, state, admitted).await })).await.map_err(ApiError::from)??;
+        let (status, body) = {
+            let _span = sk_store::perf::span("cmd.core_run");
+            ctx.state.core.call(move |core| Box::pin(async move { run(core, state, admitted).await })).await.map_err(ApiError::from)??
+        };
+        let _span = sk_store::perf::span("http.json_response");
         Ok(json(status, &body))
     })
 }
@@ -218,20 +226,28 @@ fn campaign_commands(ctx: &mut RouteCtx) -> RouteFuture<'_> {
 async fn admit(ctx: &mut RouteCtx, campaign_id: &str, user: Value) -> Result<Admitted, Stop> {
     let state = ctx.state.clone();
     let code = campaign_id.to_string();
+    let room_span = sk_store::perf::span("admit.get_room");
     let room = state.core.call(move |core| Box::pin(async move { get_room(&core, &code) })).await??;
+    drop(room_span);
     if room.state.is_none() {
         return Err(Stop::Reply(StatusCode::NOT_FOUND, json!({ "error": "Кампания не найдена" })));
     }
     let accounts = state.accounts.clone();
     let (checked_user, checked_room) = (user.clone(), room.clone());
-    if !blocking(move || can_access_room(&accounts, Some(&checked_user), &checked_room)).await?? {
+    let access_span = sk_store::perf::span("admit.can_access_room");
+    let can_access = blocking(move || can_access_room(&accounts, Some(&checked_user), &checked_room)).await??;
+    drop(access_span);
+    if !can_access {
         return Err(Stop::Reply(StatusCode::FORBIDDEN, json!({ "error": "Нет доступа к этой кампании" })));
     }
+    let body_span = sk_store::perf::span("admit.json_body");
     let body = ctx.json_body().await.map_err(|error| Failure::new(error.message, Some(error.code)))?;
+    drop(body_span);
     let idempotency_key = key_or_uuid(&body, &ctx.headers);
     let session_code = string_or_empty(room.state.as_ref().and_then(|state| state.get("sessionCode")));
     let accounts = state.accounts.clone();
     let (checked_user, code) = (user.clone(), campaign_id.to_string());
+    let _members_span = sk_store::perf::span("admit.memberships");
     let (memberships, hero_ids) = blocking(move || -> Result<(KnownMemberships, Vec<Value>), Failure> {
         let mut known = Vec::new();
         for candidate in [code.clone(), session_code] {
@@ -630,7 +646,10 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         "manualRoll": manual_roll,
         "verifiedRoll": verified_roll,
     });
-    let mut result = set.game.handle(HandleInput::new(input)).await.map_err(orchestrator_failure)?;
+    let mut result = {
+        let _span = sk_store::perf::span("cmd.orchestrator");
+        set.game.handle(HandleInput::new(input)).await.map_err(orchestrator_failure)?
+    };
     // Ход исполнен: бросок остаётся потреблённым.
     if let Some(reservation) = &pending.reservation {
         let options = json!({ "idempotencyKey": idempotency_key, "committed": true });
@@ -666,8 +685,10 @@ async fn execute(core: &Rc<GameCore>, state: &Arc<AppState>, admitted: &Admitted
         assert_npc_combat_result_fingerprint(&result, npc_combat)?;
     }
     if js::truthy(result.get("authoritative_state")) {
+        let _span = sk_store::perf::span("cmd.settle_after_commit");
         settle_after_commit(core, campaign_id, &mut result, &types, resolves_reaction).await?;
     }
+    let _span = sk_store::perf::span("cmd.respond");
     respond(core, &set, admitted, &actor, command_actor.as_ref(), &types, &merchant_commands, pending.hold.take(), result).await
 }
 
@@ -917,6 +938,7 @@ async fn respond(
         }
         map.insert("room_version".into(), Value::from(latest_room.as_ref().map_or(admitted.room.version, |room| room.version)));
     }
+    let _span = sk_store::perf::span("cmd.turn_result_for_viewer");
     let reply = sk_projection::viewer_projection::turn_result_for_viewer(Some(&result), Some(user), Some(&actor_value)).map_err(Failure::from)?;
     Ok((StatusCode::OK, reply.unwrap_or(Value::Null)))
 }

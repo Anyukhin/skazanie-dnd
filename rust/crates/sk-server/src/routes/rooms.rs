@@ -156,8 +156,14 @@ async fn read_room(ctx: &mut RouteCtx) -> ApiResult {
         .core
         .call(move |core| {
             Box::pin(async move {
-                let present = crate::streams::state_with_live_presence(&core, &normalize(&room_state)?, &code)?;
+                let normalize_span = sk_store::perf::span("rooms.normalize");
+                let normalized = normalize(&room_state)?;
+                drop(normalize_span);
+                let present = crate::streams::state_with_live_presence(&core, &normalized, &code)?;
+                let viewer_span = sk_store::perf::span("rooms.viewer_state_for");
                 let projected = viewer_state_for(&present, &user, Some(&Value::String(actor_id)))?.unwrap_or(Value::Null);
+                drop(viewer_span);
+                let _compact = sk_store::perf::span("rooms.compact");
                 let (compacted, _hash) = sk_tactical::reveal_transport::compact_state_for_transport(&projected, &client_map_hash);
                 Ok::<Value, Failure>(room_with_state(&room, compacted.unwrap_or(projected)))
             })

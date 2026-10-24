@@ -83,6 +83,7 @@ pub fn room_key(code: &str) -> Result<String, Failure> {
 /// `getRoom(code)`: накладка поверх журнала; комнаты нет — пустая.
 pub fn get_room(core: &GameCore, campaign_id: &str) -> Result<Room, Failure> {
     let key = room_key(campaign_id)?;
+    let _span = sk_store::perf::span("room.get_room");
     let Some(overlay) = core.events.room_overlay(&key)? else { return Ok(Room::empty(&key)) };
     let state = compose(core, &overlay.body)?;
     Ok(Room { code: key, version: overlay.version, state: Some(state), updated_at: Some(overlay.updated_at) })
@@ -112,7 +113,10 @@ pub(crate) fn save_room_with_ack(core: &Rc<GameCore>, code: &str, state: &Value,
     }
     // Признак загрузки принадлежит запросу браузера, а не кампании (JS 457–458).
     let persistent = js::spread(state, json!({ "isNarrating": false }));
-    let body = overlay_for(core, &key, &persistent)?;
+    let body = {
+        let _span = sk_store::perf::span("room.overlay_for");
+        overlay_for(core, &key, &persistent)?
+    };
     // Сбой подтверждения из данных (`DND_COMMIT_FAULTS`, С2): подтверждение не
     // идёт в транзакцию, комната пишется — как отказ обещания в JS.
     let mut faulted = None;
