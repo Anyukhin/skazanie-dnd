@@ -332,6 +332,19 @@ pub fn without_derived_player_fields(players: &Value) -> Value {
     )
 }
 
+/// [`without_derived_player_fields`] на месте.
+fn strip_derived_player_fields(players: &mut [Value]) {
+    for player in players {
+        if let Value::Object(fields) = player {
+            for field in DERIVED_PLAYER_FIELDS {
+                if let Some(slot) = fields.get_mut(field) {
+                    *slot = Value::Null;
+                }
+            }
+        }
+    }
+}
+
 /// Поле `state.mechanics?.<key>`.
 fn raw_mechanics<'a>(source: &'a Value, key: &str) -> Option<&'a Value> {
     source.get("mechanics").and_then(|mechanics| mechanics.get(key))
@@ -646,19 +659,32 @@ fn null_read(field: &str) -> Halt {
 /// `normalizeCampaignState(rawState)` (1936–2219): копия состояния со всеми
 /// умолчаниями и производными полями. Вход не меняется.
 pub fn normalize_campaign_state(input: &Value) -> Result<Value, Halt> {
-    let empty = Value::Object(Map::new());
-    let source = if is_object_like(Some(input)) { input } else { &empty };
-    let Value::Object(source_fields) = source else {
-        // Массив вместо состояния: JS кладёт поля на сам массив, и
-        // `JSON.stringify` их не печатает. Такое состояние не играбельно.
-        return Err(type_error("normalizeCampaignState: состояние — массив"));
+    if input.is_array() {
+        return Err(array_state());
+    }
+    normalize_campaign_state_owned(input.clone())
+}
+
+/// Массив вместо состояния: JS кладёт поля на сам массив, и
+/// `JSON.stringify` их не печатает. Такое состояние не играбельно.
+fn array_state() -> Halt {
+    type_error("normalizeCampaignState: состояние — массив")
+}
+
+/// [`normalize_campaign_state`] для своего значения: поля, которые
+/// нормализация всё равно заменяет целиком (память мест, производные поля
+/// героев), не копируются, а переносятся. Результат тот же.
+pub fn normalize_campaign_state_owned(input: Value) -> Result<Value, Halt> {
+    let mut fields = match input {
+        Value::Object(fields) => fields,
+        Value::Array(_) => return Err(array_state()),
+        _ => Map::new(),
     };
-    let mut fields = source_fields.clone();
     // `worldMemory: undefined` — ключ остаётся на своём месте (или встаёт в
-    // конец), значение пересоздаёт память ниже.
-    fields.insert("worldMemory".into(), Value::Null);
-    if let Some(players) = source_fields.get("players") {
-        fields.insert("players".into(), without_derived_player_fields(players));
+    // конец), значение пересоздаёт память ниже из прежнего.
+    let raw_memory = fields.insert("worldMemory".into(), Value::Null);
+    if let Some(Value::Array(players)) = fields.get_mut("players") {
+        strip_derived_player_fields(players);
     }
     let mut state = Value::Object(fields);
     let start_level = safe_int(nullish(state.get("character_start_level"), state.get("characterStartLevel")), 1).clamp(1, MAX_CHARACTER_LEVEL).max(1);
@@ -769,7 +795,10 @@ pub fn normalize_campaign_state(input: &Value) -> Result<Value, Halt> {
         state[key] = Value::Array(list);
     }
     state["adventure"] = adventure(&state);
-    state["locationMaps"] = Value::Object(sk_director::adventure_director::normalize_location_maps(state.get("locationMaps")));
+    // Память мест заменяется целиком: прежний индекс вынимается без копии.
+    let raw_maps = state.get_mut("locationMaps").map(std::mem::take).unwrap_or(Value::Null);
+    let (location_maps, maps_were_normalized) = sk_director::adventure_director::normalize_location_maps_checked(raw_maps);
+    state["locationMaps"] = Value::Object(location_maps);
     let world_map = sk_geometry::world_map::ensure_campaign_world_map(&state).map_err(|message| type_error(message))?;
     // `applyScenarioMapReveals(state, worldMap)` читает состояние с новой
     // картой (`{ ...state, worldMap }`): карта ставится на место сразу, без
@@ -782,8 +811,15 @@ pub fn normalize_campaign_state(input: &Value) -> Result<Value, Halt> {
     if let Some(map) = scene_map {
         crate::scene_map_sync::sync_scene_cells(&mut state, Some(&map));
     }
-    sk_director::adventure_director::remember_current_scene_map(&mut state);
-    let memory = sk_director::scene_memory::ensure_scene_world_memory(source.get("worldMemory"), &state).map_err(|failure| Halt::Fault(Fault::new(failure.name.clone(), failure.message.clone())))?;
+    // Память мест с нормализации выше не менялась (карта мира и сцена её не
+    // трогают): если вход уже был нормализован, повторная нормализация
+    // индекса при записи сцены вернула бы его же.
+    if maps_were_normalized {
+        sk_director::adventure_director::remember_current_scene_map_normalized(&mut state);
+    } else {
+        sk_director::adventure_director::remember_current_scene_map(&mut state);
+    }
+    let memory = sk_director::scene_memory::ensure_scene_world_memory(raw_memory.as_ref(), &state).map_err(|failure| Halt::Fault(Fault::new(failure.name.clone(), failure.message.clone())))?;
     state["worldMemory"] = memory;
     if sk_society::campaign_stories::campaign_mode_for(&state) == "persistent" {
         match state.get("campaignConcept") {

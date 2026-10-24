@@ -37,7 +37,7 @@ pub use geometry::{
     LibraryLevel, SceneGeometry,
 };
 pub use memory::{
-    known_world_kind, level_key, level_key_js, level_seed, level_seed_js, library_scene_fields, normalize_location_maps, public_adventure_memory, remember_current_scene_map,
+    known_world_kind, level_key, level_key_js, level_seed, level_seed_js, library_scene_fields, normalize_location_maps, normalize_location_maps_checked, normalize_location_maps_owned, public_adventure_memory, remember_current_scene_map, remember_current_scene_map_normalized,
     remember_scene_map, scene_level_index, scene_location_id, scene_map_for_location, scene_tactical_map_for_location, stable_location_map_seed, OBJECTIVE_STATUSES,
 };
 pub use transition::{create_scene_transition, create_scene_transition_with};

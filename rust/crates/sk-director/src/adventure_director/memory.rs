@@ -2,10 +2,12 @@
 //! приключения и поля библиотечной сцены — части
 //! `server/adventure-director.mjs` без генерации карт.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use serde_json::{Map, Value};
-use sk_core::{js, re, text as jstext};
+use sk_core::{js, text as jstext};
 use sk_geometry::world_map::world_location_by_id;
 use sk_tactical::tactical_map::SIZE_CLASSES;
 
@@ -35,6 +37,12 @@ fn safe_integer(value: Option<&Value>) -> Option<i64> {
 /// запись `{ cells }`. Повторы координат, мусор и поля вне словаря
 /// отбрасываются; секреты клеток в запись не попадают.
 pub(crate) fn normalized_scene_cells(value: Option<&Value>) -> Vec<Value> {
+    kept_scene_cells(value).map(|(x, y, fields)| normalized_cell(&fields, x, y)).collect()
+}
+
+/// Исходные клетки, которые нормализация оставляет: объекты с целыми
+/// координатами, без повторов, не больше `region.maxCells` исходных.
+fn kept_scene_cells(value: Option<&Value>) -> impl Iterator<Item = (i64, i64, RawCellFields<'_>)> {
     let source: &[Value] = match value {
         Some(Value::Array(items)) => items,
         Some(Value::Object(map)) => match map.get("cells") {
@@ -43,65 +51,245 @@ pub(crate) fn normalized_scene_cells(value: Option<&Value>) -> Vec<Value> {
         },
         _ => &[],
     };
-    let mut seen = HashSet::new();
-    let mut result = Vec::new();
-    for raw in source.iter().take(region_max_cells()) {
-        let Value::Object(raw) = raw else { continue };
-        let (Some(x), Some(y)) = (safe_integer(raw.get("x")), safe_integer(raw.get("y"))) else { continue };
-        if !seen.insert((x, y)) {
-            continue;
+    let mut seen = CellSet::default();
+    source.iter().take(region_max_cells()).filter_map(move |raw| {
+        let Value::Object(raw) = raw else { return None };
+        // Поля клетки — одним проходом, а не поиском по ключу на каждое поле.
+        let mut fields = RawCellFields::default();
+        for (key, value) in raw {
+            fields.set(key, value);
         }
-        let mut cell = Map::new();
-        cell.insert("x".into(), Value::from(x));
-        cell.insert("y".into(), Value::from(y));
-        let kind = js::string(raw.get("type"));
-        cell.insert("type".into(), Value::String(if MAP_CELL_TYPES.contains(&kind.as_str()) { kind } else { "floor".into() }));
-        cell.insert("revealed".into(), Value::Bool(js::is_true(raw.get("revealed"))));
-        if let Some(Value::String(feature)) = raw.get("feature") {
+        let (Some(x), Some(y)) = (safe_integer(fields.x), safe_integer(fields.y)) else { return None };
+        seen.insert((x, y)).then_some((x, y, fields))
+    })
+}
+
+/// Значение поля нормализованной клетки.
+enum CellValue<'a> {
+    Int(i64),
+    Bool(bool),
+    Text(Cow<'a, str>),
+}
+
+impl CellValue<'_> {
+    fn into_value(self) -> Value {
+        match self {
+            CellValue::Int(value) => Value::from(value),
+            CellValue::Bool(value) => Value::Bool(value),
+            CellValue::Text(text) => Value::String(text.into_owned()),
+        }
+    }
+
+    /// То же значение JSON, что дал бы [`CellValue::into_value`].
+    fn matches(&self, value: &Value) -> bool {
+        match (self, value) {
+            (CellValue::Int(expected), Value::Number(number)) => !number.is_f64() && number.as_i64() == Some(*expected),
+            (CellValue::Bool(expected), Value::Bool(actual)) => expected == actual,
+            (CellValue::Text(expected), Value::String(actual)) => expected.as_ref() == actual.as_str(),
+            _ => false,
+        }
+    }
+}
+
+/// Поля нормализованной клетки в порядке записи; `None` — поля нет.
+type NormalizedCellFields<'a> = [(&'static str, Option<CellValue<'a>>); 13];
+
+/// Нормализация одной клетки (`normalizedSceneCells`, тело цикла).
+fn normalized_cell_fields<'a>(fields: &RawCellFields<'a>, x: i64, y: i64) -> NormalizedCellFields<'a> {
+    let text_of = |value: Option<&'a Value>, allowed: &[&str]| -> Option<CellValue<'a>> {
+        let Some(Value::String(text)) = value else { return None };
+        allowed.contains(&text.as_str()).then(|| CellValue::Text(Cow::Borrowed(text.as_str())))
+    };
+    let feature = match fields.feature {
+        Some(Value::String(feature)) => {
             let trimmed = jstext::trim(feature);
-            if !trimmed.is_empty() {
-                cell.insert("feature".into(), Value::String(head16(trimmed, 40)));
+            if trimmed.is_empty() {
+                None
+            } else if trimmed.encode_utf16().count() <= 40 {
+                Some(CellValue::Text(Cow::Borrowed(trimmed)))
+            } else {
+                Some(CellValue::Text(Cow::Owned(head16(trimmed, 40))))
             }
         }
-        let material = js::string(raw.get("material"));
-        if MAP_MATERIALS.contains(&material.as_str()) {
-            cell.insert("material".into(), Value::String(material));
-        }
-        if let Some(variant) = safe_integer(raw.get("variant")) {
-            cell.insert("variant".into(), Value::from(variant.clamp(0, 5)));
-        }
-        let pattern = js::string(raw.get("pattern"));
-        if MAP_PATTERNS.contains(&pattern.as_str()) {
-            cell.insert("pattern".into(), Value::String(pattern));
-        }
-        if let Some(Value::String(mask)) = raw.get("edge_mask") {
-            if jstext::test(re!(r"^[nesw]{0,4}$", "u"), mask) {
-                cell.insert("edge_mask".into(), Value::String(mask.clone()));
-            }
-        }
+        _ => None,
+    };
+    let mask = match fields.edge_mask {
+        // `/^[nesw]{0,4}$/u.test(mask)` без движка регулярных выражений.
+        Some(Value::String(mask)) if is_edge_mask(mask) => Some(CellValue::Text(Cow::Borrowed(mask.as_str()))),
+        _ => None,
+    };
+    [
+        ("x", Some(CellValue::Int(x))),
+        ("y", Some(CellValue::Int(y))),
+        ("type", Some(CellValue::Text(listed_text(fields.kind, &MAP_CELL_TYPES).unwrap_or(Cow::Borrowed("floor"))))),
+        ("revealed", Some(CellValue::Bool(js::is_true(fields.revealed)))),
+        ("feature", feature),
+        ("material", listed_text(fields.material, &MAP_MATERIALS).map(CellValue::Text)),
+        ("variant", safe_integer(fields.variant).map(|variant| CellValue::Int(variant.clamp(0, 5)))),
+        ("pattern", listed_text(fields.pattern, &MAP_PATTERNS).map(CellValue::Text)),
+        ("edge_mask", mask),
         // Тонкие стены, окна и сторона двери (`legacyCellsFromTacticalMap`):
         // без них запомненная локация вернулась бы домом без перегородок.
-        for field in ["walls", "windows"] {
-            if let Some(Value::String(sides)) = raw.get(field) {
-                if matches!(sides.as_str(), "e" | "s" | "es") {
-                    cell.insert(field.into(), Value::String(sides.clone()));
-                }
-            }
-        }
-        if let Some(Value::String(door)) = raw.get("door_dir") {
-            if door == "e" || door == "s" {
-                cell.insert("door_dir".into(), Value::String(door.clone()));
-            }
-        }
+        ("walls", text_of(fields.walls, &["e", "s", "es"])),
+        ("windows", text_of(fields.windows, &["e", "s", "es"])),
+        ("door_dir", text_of(fields.door_dir, &["e", "s"])),
         // Высота помоста и холмов: без неё вернувшийся отряд стоял бы на ровном полу.
-        if let Some(elevation) = safe_integer(raw.get("elevation")) {
-            if elevation != 0 {
-                cell.insert("elevation".into(), Value::from(elevation.clamp(-100, 100)));
-            }
+        ("elevation", safe_integer(fields.elevation).filter(|elevation| *elevation != 0).map(|elevation| CellValue::Int(elevation.clamp(-100, 100)))),
+    ]
+}
+
+fn normalized_cell(fields: &RawCellFields, x: i64, y: i64) -> Value {
+    let normalized = normalized_cell_fields(fields, x, y);
+    let mut cell = Map::with_capacity(normalized.iter().filter(|(_, value)| value.is_some()).count());
+    for (key, value) in normalized {
+        if let Some(value) = value {
+            cell.insert(key.into(), value.into_value());
         }
-        result.push(Value::Object(cell));
     }
-    result
+    Value::Object(cell)
+}
+
+/// Клетка `cell` — ровно та, что дала бы нормализация (поля, порядок, значения).
+fn cell_matches(cell: &Value, expected: &NormalizedCellFields) -> bool {
+    let Value::Object(cell) = cell else { return false };
+    let mut actual = cell.iter();
+    for (key, value) in expected {
+        let Some(value) = value else { continue };
+        match actual.next() {
+            Some((name, got)) if name == key && value.matches(got) => {}
+            _ => return false,
+        }
+    }
+    actual.next().is_none()
+}
+
+/// Равенство JSON с порядком ключей и видом чисел — то, что одинаково
+/// печатается (`PartialEq` у `Map` порядок не учитывает).
+fn same_json(left: &Value, right: &Value) -> bool {
+    match (left, right) {
+        (Value::Object(left), Value::Object(right)) => left.len() == right.len() && left.iter().zip(right).all(|((left_key, left), (right_key, right))| left_key == right_key && same_json(left, right)),
+        (Value::Array(left), Value::Array(right)) => left.len() == right.len() && left.iter().zip(right).all(|(left, right)| same_json(left, right)),
+        (Value::Number(left), Value::Number(right)) if left.is_f64() && right.is_f64() => left.as_f64().map(f64::to_bits) == right.as_f64().map(f64::to_bits),
+        _ => left == right,
+    }
+}
+
+/// Запись `existing` совпадает с `sceneMapRecord(cells, map)`: та же версия,
+/// те же нормализованные клетки и та же карта. Проверка без сборки записи.
+fn scene_map_record_matches(existing: &Value, cells: Option<&Value>, map: Option<&Value>) -> bool {
+    let Value::Object(record) = existing else { return false };
+    let mut fields = record.iter();
+    match fields.next() {
+        Some((key, Value::Number(version))) if key == "version" && !version.is_f64() && version.as_i64() == Some(1) => {}
+        _ => return false,
+    }
+    let Some((key, Value::Array(stored))) = fields.next() else { return false };
+    if key != "cells" || stored.is_empty() {
+        return false;
+    }
+    let mut stored = stored.iter();
+    for (x, y, raw) in kept_scene_cells(cells) {
+        match stored.next() {
+            Some(cell) if cell_matches(cell, &normalized_cell_fields(&raw, x, y)) => {}
+            _ => return false,
+        }
+    }
+    if stored.next().is_some() {
+        return false;
+    }
+    let source = match map {
+        None => match cells {
+            Some(Value::Object(record)) => record.get("map"),
+            _ => None,
+        },
+        some => some,
+    };
+    match source {
+        Some(source @ Value::Object(_)) => matches!(fields.next(), Some((key, stored)) if key == "map" && same_json(stored, source)) && fields.next().is_none(),
+        _ => fields.next().is_none(),
+    }
+}
+
+/// Поля исходной клетки, которые читает [`normalized_scene_cells`]
+/// (`raw.get(key)` для каждого).
+#[derive(Default)]
+struct RawCellFields<'a> {
+    x: Option<&'a Value>,
+    y: Option<&'a Value>,
+    kind: Option<&'a Value>,
+    revealed: Option<&'a Value>,
+    feature: Option<&'a Value>,
+    material: Option<&'a Value>,
+    variant: Option<&'a Value>,
+    pattern: Option<&'a Value>,
+    edge_mask: Option<&'a Value>,
+    walls: Option<&'a Value>,
+    windows: Option<&'a Value>,
+    door_dir: Option<&'a Value>,
+    elevation: Option<&'a Value>,
+}
+
+impl<'a> RawCellFields<'a> {
+    fn set(&mut self, key: &str, value: &'a Value) {
+        let slot = match key {
+            "x" => &mut self.x,
+            "y" => &mut self.y,
+            "type" => &mut self.kind,
+            "revealed" => &mut self.revealed,
+            "feature" => &mut self.feature,
+            "material" => &mut self.material,
+            "variant" => &mut self.variant,
+            "pattern" => &mut self.pattern,
+            "edge_mask" => &mut self.edge_mask,
+            "walls" => &mut self.walls,
+            "windows" => &mut self.windows,
+            "door_dir" => &mut self.door_dir,
+            "elevation" => &mut self.elevation,
+            _ => return,
+        };
+        *slot = Some(value);
+    }
+}
+
+/// `String(value)`, если оно из списка `allowed`, иначе `None`. Строка
+/// берётся без копии; иные значения приводятся как в JS
+/// (`String(['wall'])` — тоже `wall`).
+fn listed_text<'a>(value: Option<&'a Value>, allowed: &[&str]) -> Option<Cow<'a, str>> {
+    match value {
+        Some(Value::String(text)) => allowed.contains(&text.as_str()).then_some(Cow::Borrowed(text.as_str())),
+        other => {
+            let text = js::string(other);
+            allowed.contains(&text.as_str()).then_some(Cow::Owned(text))
+        }
+    }
+}
+
+/// Множество координат клеток с дешёвым хешем: ключи — пары целых, защита от
+/// подобранных коллизий здесь не нужна.
+type CellSet = HashSet<(i64, i64), BuildHasherDefault<CellHasher>>;
+
+#[derive(Default)]
+struct CellHasher(u64);
+
+impl Hasher for CellHasher {
+    fn finish(&self) -> u64 {
+        // Старшие, хорошо перемешанные биты — и в младшие (по ним выбирается корзина).
+        self.0 ^ (self.0 >> 32)
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.write_u64(u64::from(*byte));
+        }
+    }
+
+    fn write_i64(&mut self, value: i64) {
+        self.write_u64(value as u64);
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = (self.0.rotate_left(5) ^ value).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
+    }
 }
 
 /// `sceneMapRecord(value, map)`: запись запомненной локации `{ version: 1,
@@ -145,6 +333,113 @@ pub fn normalize_location_maps(value: Option<&Value>) -> Map<String, Value> {
         }
     }
     result
+}
+
+/// Число, которое нормализация клетки (`safe_integer` → `Value::from(i64)`)
+/// записала бы тем же значением JSON: целое без дробной записи в пределах
+/// безопасных целых JS.
+fn exact_integer(value: &Value) -> Option<i64> {
+    let Value::Number(number) = value else { return None };
+    if number.is_f64() {
+        return None;
+    }
+    number.as_i64().filter(|value| value.unsigned_abs() <= 9_007_199_254_740_991)
+}
+
+/// `/^[nesw]{0,4}$/u`: до четырёх букв сторон света и ничего больше.
+fn is_edge_mask(mask: &str) -> bool {
+    mask.len() <= 4 && mask.bytes().all(|side| matches!(side, b'n' | b'e' | b's' | b'w'))
+}
+
+/// Необязательные поля клетки в порядке [`normalized_scene_cells`].
+const OPTIONAL_CELL_FIELDS: [&str; 9] = ["feature", "material", "variant", "pattern", "edge_mask", "walls", "windows", "door_dir", "elevation"];
+
+/// Клетка уже в виде [`normalized_scene_cells`]: нормализация вернула бы её
+/// без изменений (те же поля в том же порядке и те же значения). Проверка
+/// строже нормализации: сомнительное значение — «нет», и тогда клетка
+/// нормализуется как обычно.
+fn is_normalized_scene_cell(raw: &Value, seen: &mut CellSet) -> bool {
+    let Value::Object(cell) = raw else { return false };
+    let mut fields = cell.iter();
+    let mut next = |key: &str| fields.next().filter(|(name, _)| name.as_str() == key).map(|(_, value)| value);
+    let (Some(x), Some(y)) = (next("x").and_then(exact_integer), next("y").and_then(exact_integer)) else { return false };
+    if !matches!(next("type"), Some(Value::String(kind)) if MAP_CELL_TYPES.contains(&kind.as_str())) {
+        return false;
+    }
+    if !matches!(next("revealed"), Some(Value::Bool(_))) {
+        return false;
+    }
+    let mut cursor = 0;
+    for (name, value) in fields {
+        let Some(offset) = OPTIONAL_CELL_FIELDS[cursor..].iter().position(|field| field == name) else { return false };
+        let field = OPTIONAL_CELL_FIELDS[cursor + offset];
+        cursor += offset + 1;
+        let valid = match (field, value) {
+            ("feature", Value::String(feature)) => !feature.is_empty() && jstext::trim(feature) == feature.as_str() && feature.encode_utf16().count() <= 40,
+            ("material", Value::String(material)) => MAP_MATERIALS.contains(&material.as_str()),
+            ("variant", variant) => exact_integer(variant).is_some_and(|variant| (0..=5).contains(&variant)),
+            ("pattern", Value::String(pattern)) => MAP_PATTERNS.contains(&pattern.as_str()),
+            ("edge_mask", Value::String(mask)) => is_edge_mask(mask),
+            ("walls" | "windows", Value::String(sides)) => matches!(sides.as_str(), "e" | "s" | "es"),
+            ("door_dir", Value::String(door)) => door == "e" || door == "s",
+            ("elevation", elevation) => exact_integer(elevation).is_some_and(|elevation| elevation != 0 && (-100..=100).contains(&elevation)),
+            _ => false,
+        };
+        if !valid {
+            return false;
+        }
+    }
+    seen.insert((x, y))
+}
+
+/// Запись места уже в виде `sceneMapRecord(record)`: `{ version: 1, cells,
+/// map? }` с нормализованными клетками без повторов.
+fn is_normalized_scene_map_record(raw: &Value) -> bool {
+    let Value::Object(record) = raw else { return false };
+    let mut fields = record.iter();
+    if !matches!(fields.next(), Some((key, version)) if key == "version" && exact_integer(version) == Some(1)) {
+        return false;
+    }
+    let Some((key, Value::Array(cells))) = fields.next() else { return false };
+    if key != "cells" || cells.is_empty() || cells.len() > region_max_cells() {
+        return false;
+    }
+    match fields.next() {
+        None => {}
+        Some((key, Value::Object(_))) if key == "map" => {
+            if fields.next().is_some() {
+                return false;
+            }
+        }
+        Some(_) => return false,
+    }
+    let mut seen = CellSet::with_capacity_and_hasher(cells.len(), Default::default());
+    cells.iter().all(|cell| is_normalized_scene_cell(cell, &mut seen))
+}
+
+/// Ключ места, который `normalizeLocationMaps` оставил бы тем же и на том же
+/// месте (не индекс массива — их `Object.entries` выводит первыми).
+fn is_normalized_location_key(key: &str) -> bool {
+    !key.is_empty() && !js::is_array_index_key(key) && text(Some(&Value::String(key.to_string())), 120, "") == key
+}
+
+/// [`normalize_location_maps`] для своего значения. Уже нормализованный
+/// индекс (так он лежит в состоянии после нормализации) возвращается как
+/// есть, без пересборки клеток; иной — нормализуется обычным путём.
+/// Результат совпадает с `normalize_location_maps(Some(&value))`.
+pub fn normalize_location_maps_owned(value: Value) -> Map<String, Value> {
+    normalize_location_maps_checked(value).0
+}
+
+/// [`normalize_location_maps_owned`] и признак «вход уже был нормализован»
+/// (результат совпал со входом). Тогда и повторная нормализация результата —
+/// он сам: [`remember_current_scene_map_normalized`] её пропускает.
+pub fn normalize_location_maps_checked(value: Value) -> (Map<String, Value>, bool) {
+    let Value::Object(entries) = value else { return (Map::new(), false) };
+    if entries.len() <= 100 && entries.iter().all(|(key, record)| is_normalized_location_key(key) && is_normalized_scene_map_record(record)) {
+        return (entries, true);
+    }
+    (normalize_location_maps(Some(&Value::Object(entries))), false)
 }
 
 /// `sceneMapForLocation(locationMaps, locationId)`: клетки запомненного места
@@ -211,12 +506,23 @@ pub fn scene_location_id(state: &Value) -> String {
 pub fn remember_scene_map(state: &mut Value, location_id: Option<&Value>, cells: Option<&Value>, map: Option<&Value>) {
     let id = public_text(location_id, 120, "");
     let record = scene_map_record(cells, map);
+    store_scene_map_record(state, id, record, false);
+}
+
+/// Хвост `rememberSceneMap`: запись `record` под ключом `id` в заново
+/// нормализованный `state.locationMaps`. Индекс вынимается из состояния и
+/// нормализуется без копии ([`normalize_location_maps_owned`]): он всё равно
+/// заменяется целиком.
+fn store_scene_map_record(state: &mut Value, id: String, record: Option<Value>, maps_normalized: bool) {
     let (false, Some(record)) = (id.is_empty(), record) else { return };
-    let mut maps = normalize_location_maps(state.get("locationMaps"));
+    let Value::Object(fields) = state else { return };
+    let current = fields.get_mut("locationMaps").map(std::mem::take).unwrap_or(Value::Null);
+    let mut maps = match current {
+        Value::Object(entries) if maps_normalized => entries,
+        other => normalize_location_maps_owned(other),
+    };
     maps.insert(id, record);
-    if let Value::Object(state) = state {
-        state.insert("locationMaps".into(), Value::Object(maps));
-    }
+    fields.insert("locationMaps".into(), Value::Object(maps));
 }
 
 /// `sceneLevelIndex(state)`: номер активного этажа; сцена без поля `level` —
@@ -229,14 +535,47 @@ pub fn scene_level_index(state: &Value) -> i64 {
 /// `rememberCurrentSceneMap(state)`: текущая карта сцены — в память места под
 /// ключом места и этажа.
 pub fn remember_current_scene_map(state: &mut Value) {
+    remember_current_scene_map_with(state, false);
+}
+
+/// [`remember_current_scene_map`] сразу после нормализации памяти мест, когда
+/// [`normalize_location_maps_checked`] сказал, что индекс уже был
+/// нормализован и с тех пор не менялся: повторная нормализация индекса
+/// вернула бы его же, и её можно не проверять.
+pub fn remember_current_scene_map_normalized(state: &mut Value) {
+    remember_current_scene_map_with(state, true);
+}
+
+fn remember_current_scene_map_with(state: &mut Value, maps_normalized: bool) {
     let scene = prop(Some(state), "scene");
     let cells = match prop(scene, "cells") {
-        Some(cells @ Value::Array(items)) if !items.is_empty() => cells.clone(),
+        Some(cells @ Value::Array(items)) if !items.is_empty() => cells,
         _ => return,
     };
-    let map = prop(scene, "map").cloned();
     let key = level_key(&scene_location_id(state), scene_level_index(state));
-    remember_scene_map(state, Some(&Value::String(key)), Some(&cells), map.as_ref());
+    let id = public_text(Some(&Value::String(key)), 120, "");
+    // Без клеток запись пуста (`sceneMapRecord` — `null`): индекс не трогается.
+    if id.is_empty() || kept_scene_cells(Some(cells)).next().is_none() {
+        return;
+    }
+    let Value::Object(fields) = state else { return };
+    let current = fields.get_mut("locationMaps").map(std::mem::take).unwrap_or(Value::Null);
+    let mut maps = match current {
+        Value::Object(entries) if maps_normalized => entries,
+        other => normalize_location_maps_owned(other),
+    };
+    // Запись собирается из клеток и карты сцены по ссылке — без их копии. Та
+    // же самая запись под этим ключом (сцена с прошлого раза не менялась)
+    // остаётся на месте: замена её равной ничего бы не изменила.
+    let scene = fields.get("scene");
+    let (cells, map) = (prop(scene, "cells"), prop(scene, "map"));
+    let unchanged = maps.get(&id).is_some_and(|existing| scene_map_record_matches(existing, cells, map));
+    if !unchanged {
+        if let Some(record) = scene_map_record(cells, map) {
+            maps.insert(id, record);
+        }
+    }
+    fields.insert("locationMaps".into(), Value::Object(maps));
 }
 
 /// `levelKey(locationId, level)` для рыхлых аргументов: `None` — аргумент не

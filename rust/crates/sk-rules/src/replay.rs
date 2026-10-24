@@ -19,7 +19,7 @@ use sk_core::js;
 use sk_core::Event;
 pub use sk_society::retention_context::{retention_context_active, retention_mode, with_retention_mode, RETENTION_REDUCER_VERSION};
 
-use crate::normalize::normalize_campaign_state;
+use crate::normalize::{normalize_campaign_state, normalize_campaign_state_owned};
 use crate::pause::{Fault, Halt};
 
 fn coded(message: String, code: &str) -> Halt {
@@ -77,6 +77,38 @@ fn event_mode(marker: f64, event: &Value) -> &'static str {
 
 /// `applyGameEvent(rawState, event)`: событие в явном retention-контексте.
 pub fn apply_game_event(raw_state: &Value, event: &Value) -> Result<Value, Halt> {
+    apply_game_event_from(StateArg::Borrowed(raw_state), event)
+}
+
+/// [`apply_game_event`] для своего состояния: прежнее состояние не
+/// копируется перед нормализацией. Результат тот же.
+pub fn apply_game_event_owned(raw_state: Value, event: &Value) -> Result<Value, Halt> {
+    apply_game_event_from(StateArg::Owned(raw_state), event)
+}
+
+/// Состояние до события: по ссылке (копируется при нормализации) или своё.
+enum StateArg<'a> {
+    Borrowed(&'a Value),
+    Owned(Value),
+}
+
+impl StateArg<'_> {
+    fn get(&self) -> &Value {
+        match self {
+            StateArg::Borrowed(state) => state,
+            StateArg::Owned(state) => state,
+        }
+    }
+
+    fn normalized(self) -> Result<Value, Halt> {
+        match self {
+            StateArg::Borrowed(state) => normalize_campaign_state(state),
+            StateArg::Owned(state) => normalize_campaign_state_owned(state),
+        }
+    }
+}
+
+fn apply_game_event_from(raw_state: StateArg, event: &Value) -> Result<Value, Halt> {
     let raw_marker = event.get("reducer_version");
     let marker = if js::present(raw_marker) { js::number(raw_marker) } else { 0.0 };
     let safe = marker.is_finite() && marker.fract() == 0.0 && marker.abs() <= 9_007_199_254_740_991.0;
@@ -92,7 +124,7 @@ pub fn apply_game_event(raw_state: &Value, event: &Value) -> Result<Value, Halt>
 
 /// `applyGameEventCurrent(rawState, event)`: замена состояния (24201–24211)
 /// или нормализация и ветка редьюсера.
-fn apply_game_event_current(raw_state: &Value, event: &Value) -> Result<Value, Halt> {
+fn apply_game_event_current(raw_state: StateArg, event: &Value) -> Result<Value, Halt> {
     let kind = event.get("event_type").and_then(Value::as_str);
     let replacement = event.get("payload").and_then(|payload| payload.get("state")).filter(|state| js::truthy(Some(state)) && (state.is_object() || state.is_array()));
     if let (Some(kind @ ("LegacyStateImported" | "CampaignRewound")), Some(replacement)) = (kind, replacement) {
@@ -102,14 +134,14 @@ fn apply_game_event_current(raw_state: &Value, event: &Value) -> Result<Value, H
             Some(version) => version,
             None if kind == "LegacyStateImported" => Value::from(1),
             None => {
-                let current = raw_state.get("state_version").filter(|value| js::is_safe_integer(Some(value))).map(|value| js::safe_int(Some(value), 0)).unwrap_or(0);
+                let current = raw_state.get().get("state_version").filter(|value| js::is_safe_integer(Some(value))).map(|value| js::safe_int(Some(value), 0)).unwrap_or(0);
                 Value::from(current + 1)
             }
         };
         imported["state_version"] = version;
         return Ok(imported);
     }
-    let mut state = normalize_campaign_state(raw_state)?;
+    let mut state = raw_state.normalized()?;
     let envelope = event_envelope(event);
     crate::reduce::apply_event_checked(&mut state, &envelope)?;
     Ok(state)
@@ -138,7 +170,7 @@ pub fn replay_events(initial_state: &Value, events: &[Value]) -> Result<Value, H
     let mode = replay_mode_for(events);
     let mut state = in_mode(mode, || normalize_campaign_state(initial_state))?;
     for event in events {
-        state = apply_game_event(&state, event)?;
+        state = apply_game_event_owned(state, event)?;
     }
     Ok(state)
 }
