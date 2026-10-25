@@ -177,7 +177,7 @@ fn fail(message: String) -> ! {
 
 fn main() {
     // Служебные подкоманды набора тестов (`test/kit/journal.mjs`,
-    // `test/kit/sessions.mjs`): до `.env`
+    // `test/kit/sessions.mjs`, `test/kit/rooms.mjs`): до `.env`
     // и без отметки писателя storage.
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("journal") {
@@ -185,6 +185,9 @@ fn main() {
     }
     if args.first().map(String::as_str) == Some("session") {
         std::process::exit(sk_server::test_hooks::session_cli::main(&args[1..]));
+    }
+    if let Some(name @ ("room" | "audit")) = args.first().map(String::as_str) {
+        std::process::exit(sk_server::test_hooks::room_cli::main(name, &args[1..]));
     }
     let cwd = std::env::current_dir().unwrap_or_default();
     load_dotenv(&cwd.join(".env"));
