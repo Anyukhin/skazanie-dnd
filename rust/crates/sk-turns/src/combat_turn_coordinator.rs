@@ -26,13 +26,13 @@ use serde_json::{json, Map, Value};
 use sk_core::indexmap::{IndexMap, IndexSet};
 use sk_core::{clock, game, hash, js, text};
 use sk_rules::combat::turn::initiative_group_ids;
-use sk_rules::normalize::normalize_campaign_state;
+use sk_rules::normalize::{normalize_campaign_state, normalize_campaign_state_cow};
 use sk_rules::pause::{Fault, Halt};
 use sk_society::parley::truce_holds;
 use sk_store::executor::Executed;
 use sk_store::Loaded;
 
-use crate::npc_turn_scheduler::{execute_plan, run_npc_turn_scheduler, NpcController, NpcRulesEngine, NpcTurnJournal, SchedulerError, SchedulerOptions, SchedulerResult};
+use crate::npc_turn_scheduler::{execute_plan, run_npc_turn_scheduler_marked, NpcController, NpcRulesEngine, NpcTurnJournal, SchedulerError, SchedulerOptions, SchedulerResult};
 
 pub const DEFAULT_TURN_TIMEOUT_MS: i64 = 120_000;
 /// Ход героя, которого не занял ни один участник кампании.
@@ -128,7 +128,7 @@ fn combat_of(state: &Value) -> Option<&Value> {
 
 /// `activeTurnActorIds(rawState)`: кто ещё не завершил ход текущей фазы.
 pub fn active_turn_actor_ids(raw_state: &Value) -> Result<Vec<String>, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     Ok(active_ids_normalized(&state))
 }
 
@@ -157,24 +157,31 @@ fn active_ids_normalized(state: &Value) -> Vec<String> {
     ids.into_iter().filter(|id| !id.is_empty() && !completed.contains(id)).collect()
 }
 
-/// `timedTurnActorIds(state)`: владельцы часов.
-fn timed_turn_actor_ids(state: &Value) -> Result<Vec<String>, Halt> {
-    let ids = active_turn_actor_ids(state)?;
+/// `timedTurnActorIds(state)`: владельцы часов. Вход уже нормализован
+/// (`activeTurnActorIds` JS нормализует его повторно; нормализация идемпотентна
+/// — на корпусе 10336/10336 состояний, Ск3 — поэтому второй проход опущен).
+fn timed_turn_actor_ids(state: &Value) -> Vec<String> {
+    let ids = active_ids_normalized(state);
     if ids.is_empty() {
-        return Ok(ids);
+        return ids;
     }
     let combat = combat_of(state);
     if js::truthy(get(get(combat, "reaction_window"), "actor_id")) || js::is_true(get(combat, "group_initiative")) {
-        return Ok(ids.into_iter().take(1).collect());
+        return ids.into_iter().take(1).collect();
     }
-    Ok(ids)
+    ids
 }
 
 /// `turnActivityKey(rawState)`: отпечаток экономики хода владельцев часов.
 pub fn turn_activity_key(raw_state: &Value) -> Result<String, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
-    let economy = get(combat_of(&state), "action_economy");
-    let rows: Vec<Value> = timed_turn_actor_ids(&state)?
+    let state = normalize_campaign_state_cow(raw_state)?;
+    Ok(activity_key_normalized(&state))
+}
+
+/// [`turn_activity_key`] по уже нормализованному состоянию.
+fn activity_key_normalized(state: &Value) -> String {
+    let economy = get(combat_of(state), "action_economy");
+    let rows: Vec<Value> = timed_turn_actor_ids(state)
         .into_iter()
         .map(|actor_id| {
             let entry = get(economy, &actor_id);
@@ -182,7 +189,7 @@ pub fn turn_activity_key(raw_state: &Value) -> Result<String, Halt> {
             json!([actor_id, field("action"), field("bonus_action"), field("movement_spent"), field("attacks_used"), field("object_interaction"), field("extra_actions")])
         })
         .collect();
-    Ok(js::stringify(&Value::Array(rows)))
+    js::stringify(&Value::Array(rows))
 }
 
 /// Параметры `combatTurnClock`.
@@ -234,16 +241,21 @@ fn iso(ms: f64) -> Result<String, Halt> {
 
 /// `combatTurnClock(rawState, events, { timeoutMs, now, previousClock, activityAt })`.
 pub fn combat_turn_clock(raw_state: &Value, events: &[Value], options: &ClockOptions) -> Result<Option<Value>, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
-    let combat = combat_of(&state);
+    let state = normalize_campaign_state_cow(raw_state)?;
+    clock_normalized(&state, events, options)
+}
+
+/// [`combat_turn_clock`] по уже нормализованному состоянию.
+fn clock_normalized(state: &Value, events: &[Value], options: &ClockOptions) -> Result<Option<Value>, Halt> {
+    let combat = combat_of(state);
     if !js::truthy(get(combat, "active")) {
         return Ok(None);
     }
-    if truce_holds(&state) {
+    if truce_holds(state) {
         return Ok(None);
     }
-    let actor_ids = timed_turn_actor_ids(&state)?;
-    if actor_ids.is_empty() || actor_ids.iter().all(|id| game::is_enemy_actor(&state, id)) {
+    let actor_ids = timed_turn_actor_ids(state);
+    if actor_ids.is_empty() || actor_ids.iter().all(|id| game::is_enemy_actor(state, id)) {
         return Ok(None);
     }
     let window = get(combat, "reaction_window");
@@ -311,17 +323,28 @@ pub fn combat_turn_clock(raw_state: &Value, events: &[Value], options: &ClockOpt
 /// текущий ход.
 pub fn combat_turn_clock_for_state(raw_state: &Value, clock: Option<&Value>) -> Result<Option<Value>, Halt> {
     let Some(clock) = clock.filter(|clock| js::truthy(Some(clock))) else { return Ok(None) };
-    let state = normalize_campaign_state(raw_state)?;
-    let combat = combat_of(&state);
+    let state = normalize_campaign_state_cow(raw_state)?;
+    Ok(clock_for_normalized_state(&state, clock))
+}
+
+/// [`combat_turn_clock_for_state`] по уже нормализованному состоянию (Ск3:
+/// рассылка комнаты нормализует состояние сама и не платит за второй проход).
+pub fn combat_turn_clock_for_normalized_state(state: &Value, clock: Option<&Value>) -> Option<Value> {
+    let clock = clock.filter(|clock| js::truthy(Some(clock)))?;
+    clock_for_normalized_state(state, clock)
+}
+
+fn clock_for_normalized_state(state: &Value, clock: &Value) -> Option<Value> {
+    let combat = combat_of(state);
     if !js::truthy(get(combat, "active")) || js::number(get(Some(clock), "round")) != number_or(get(combat, "round"), 1.0) || js::number(get(Some(clock), "active_index")) != number_or(get(combat, "active_index"), 0.0) {
-        return Ok(None);
+        return None;
     }
-    let expected = timed_turn_actor_ids(&state)?;
+    let expected = timed_turn_actor_ids(state);
     let actual: Vec<String> = list(get(Some(clock), "actor_ids")).iter().map(|id| js::string(Some(id))).collect();
     if expected != actual {
-        return Ok(None);
+        return None;
     }
-    Ok(Some(clock.clone()))
+    Some(clock.clone())
 }
 
 /// Итог авто-пропуска: коммит исполнителя или ничего (некого пропускать).
@@ -696,26 +719,40 @@ impl<'a> CombatTurnCoordinator<'a> {
             if let Some(Some(timer)) = timer {
                 self.host.clear_timer(timer);
             }
-            let npc = match self.host.run_npc_turns(id) {
-                Some(future) => future.await?,
+            let sched_span = sk_store::perf::span("combat.scheduler");
+            let (npc, npc_normalized) = match self.host.run_npc_turns(id) {
+                Some(future) => (future.await?, false),
                 None => {
                     let mut options = SchedulerOptions::new(id, self.journal, self.rules_engine);
                     options.npc_controller = self.npc_controller;
                     options.advance_npc = true;
-                    run_npc_turn_scheduler(options).await?
+                    run_npc_turn_scheduler_marked(options).await?
                 }
             };
+            drop(sched_span);
+            let load_span = sk_store::perf::span("combat.load");
             let mut loaded = self.journal.load(id)?;
+            drop(load_span);
             if !npc.events.is_empty() {
                 self.host.on_committed(id, &loaded.state, &npc.events, Some(&npc.turns));
             }
-            let turn_actor_ids = active_turn_actor_ids(&loaded.state)?;
+            let clock_span = sk_store::perf::span("combat.clock");
+            // Одна нормализация на оборот (Ск3): JS нормализует то же состояние
+            // в `activeTurnActorIds`, `combatTurnClock` и `turnActivityKey`
+            // заново; нормализация идемпотентна, итог тот же. Версию, которую
+            // планировщик уже нормализовал, второй раз не нормализуем.
+            let normalized = if npc_normalized && npc.state_version == loaded.state_version {
+                npc.state
+            } else {
+                normalize_campaign_state(&loaded.state)?
+            };
+            let turn_actor_ids = active_ids_normalized(&normalized);
             let unclaimed = !turn_actor_ids.is_empty() && self.host.is_seat_unclaimed(id, &loaded.state, &turn_actor_ids);
             let timeout = if unclaimed { self.unclaimed_timeout_ms } else { self.timeout_ms };
             let previous = self.existing(id, |entry| entry.clock.clone()).flatten();
             let base_options = ClockOptions { timeout_ms: Value::from(timeout), now: self.host.now(), previous_clock: previous.clone(), activity_at: None };
-            let base_clock = combat_turn_clock(&loaded.state, &[], &base_options)?;
-            let activity_key = turn_activity_key(&loaded.state)?;
+            let base_clock = clock_normalized(&normalized, &[], &base_options)?;
+            let activity_key = activity_key_normalized(&normalized);
             let same_turn = match (&base_clock, &previous) {
                 (Some(base), Some(previous)) => previous.get("turn_id") == base.get("turn_id"),
                 _ => false,
@@ -730,11 +767,14 @@ impl<'a> CombatTurnCoordinator<'a> {
             };
             self.existing(id, |entry| entry.activity_key = Some(activity_key));
             let clock = match activity_at.filter(|value| js::truthy(Some(value))) {
-                Some(activity) => combat_turn_clock(&loaded.state, &[], &ClockOptions { timeout_ms: Value::from(timeout), now: self.host.now(), previous_clock: previous, activity_at: Some(activity) })?,
+                Some(activity) => clock_normalized(&normalized, &[], &ClockOptions { timeout_ms: Value::from(timeout), now: self.host.now(), previous_clock: previous, activity_at: Some(activity) })?,
                 None => base_clock,
             };
             self.existing(id, |entry| entry.clock = clock.clone());
+            drop(clock_span);
+            let changed_span = sk_store::perf::span("combat.on_clock_changed");
             self.host.on_clock_changed(id, clock.as_ref());
+            drop(changed_span);
             let Some(clock) = clock else {
                 self.existing(id, |entry| entry.retry_attempt = 0);
                 continue;

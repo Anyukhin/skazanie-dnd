@@ -35,7 +35,9 @@ use sk_rules::context::Context;
 use sk_rules::core::incapacitating_condition_for;
 use sk_rules::geometry::movement::movement_for_actor;
 use sk_rules::geometry::terrain::movement_step_cost_for;
-use sk_rules::normalize::normalize_campaign_state;
+use std::borrow::Cow;
+
+use sk_rules::normalize::{normalize_campaign_state, normalize_campaign_state_cow};
 use sk_rules::pause::{Fault, Halt};
 use sk_rules::preview_attack::preview_monster_action;
 use sk_rules::resolve::api::RulesEngine;
@@ -1680,7 +1682,7 @@ fn monster_spell_plan_for(state: &Value, enemy: &Value, candidate: Option<&Candi
 /// `planLegendaryAction(rawState, bossId)`: легендарное действие после чужого
 /// хода или `None`.
 pub fn plan_legendary_action(raw_state: &Value, boss_id: &str) -> Result<Option<Value>, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     let boss = game::find_actor(&state, boss_id);
     let profile = legendary_profile_for(boss);
     let combat = path(Some(&state), &["mechanics", "combat"]);
@@ -1818,7 +1820,7 @@ fn npc_command_valid(state: &Value, command: &Value) -> Result<bool, Halt> {
 
 /// `planNpcTurn(rawState, enemyId)`: команды хода существа.
 pub fn plan_npc_turn(raw_state: &Value, enemy_id: &str) -> Result<Vec<Value>, Halt> {
-    let state = normalize_campaign_state(raw_state)?;
+    let state = normalize_campaign_state_cow(raw_state)?;
     let state = &state;
     let end = || end_turn(enemy_id);
     let Some(enemy) = game::find_actor(state, enemy_id).filter(|enemy| game::is_enemy_actor(state, enemy_id) && is_combat_capable(state, enemy)) else {
@@ -2325,6 +2327,14 @@ fn insert_present(map: &mut Map<String, Value>, key: &str, value: Option<&Value>
 /// `runNpcTurnScheduler({ campaignId, eventStore, rulesEngine, npcController,
 /// advanceNpc, maxTurns })`: двигает только серверных участников.
 pub async fn run_npc_turn_scheduler(options: SchedulerOptions<'_>) -> Result<SchedulerResult, SchedulerError> {
+    Ok(run_npc_turn_scheduler_marked(options).await?.0)
+}
+
+/// [`run_npc_turn_scheduler`] с отметкой, нормализовано ли `state` итога (Ск3):
+/// ранние выходы без боя, с окном реакции и перемирием отдают нормализованное
+/// состояние, остальные — сырое из журнала. Координатору хода отметка
+/// позволяет не нормализовать ту же версию второй раз.
+pub(crate) async fn run_npc_turn_scheduler_marked(options: SchedulerOptions<'_>) -> Result<(SchedulerResult, bool), SchedulerError> {
     if !(1..=256).contains(&options.max_turns) {
         return Err(SchedulerError::Range("maxTurns must be between 1 and 256".into()));
     }
@@ -2332,9 +2342,10 @@ pub async fn run_npc_turn_scheduler(options: SchedulerOptions<'_>) -> Result<Sch
     let mut loaded = options.journal.load(campaign_id)?;
     let mut turns: Vec<Value> = Vec::new();
     let mut events: Vec<Value> = Vec::new();
-    let done = |state: Value, version: i64, turns: Vec<Value>, events: Vec<Value>| Ok(SchedulerResult { state, state_version: version, turns, events });
+    let done = |state: Value, version: i64, turns: Vec<Value>, events: Vec<Value>| Ok((SchedulerResult { state, state_version: version, turns, events }, false));
+    let done_normalized = |state: Value, version: i64, turns: Vec<Value>, events: Vec<Value>| Ok((SchedulerResult { state, state_version: version, turns, events }, true));
     for _ in 0..options.max_turns {
-        let state = normalize_campaign_state(&loaded.state)?;
+        let state = normalize_campaign_state_cow(&loaded.state)?;
         let combat = path(Some(&state), &["mechanics", "combat"]).cloned().unwrap_or(Value::Null);
         let combat = Some(&combat);
         if !js::truthy(get(combat, "active")) {
@@ -2358,11 +2369,21 @@ pub async fn run_npc_turn_scheduler(options: SchedulerOptions<'_>) -> Result<Sch
                 continue;
             }
             let version = loaded.state_version;
-            return done(state, version, turns, events);
+            // Заимствованное — это `loaded.state` (уже нормализованное): его и отдать без копии.
+            let state = match state {
+                Cow::Owned(state) => Some(state),
+                Cow::Borrowed(_) => None,
+            };
+            return done_normalized(state.unwrap_or_else(|| std::mem::take(&mut loaded.state)), version, turns, events);
         }
         if js::truthy(get(combat, "reaction_window")) || truce_holds(&state) {
             let version = loaded.state_version;
-            return done(state, version, turns, events);
+            // Заимствованное — это `loaded.state` (уже нормализованное): его и отдать без копии.
+            let state = match state {
+                Cow::Owned(state) => Some(state),
+                Cow::Borrowed(_) => None,
+            };
+            return done_normalized(state.unwrap_or_else(|| std::mem::take(&mut loaded.state)), version, turns, events);
         }
         let completed: IndexSet<String> = list(get(combat, "turn_completed")).iter().map(|id| js::string(Some(id))).collect();
         let current_id = match initiative_group_ids(&state).into_iter().find(|id| !completed.contains(id)) {
