@@ -627,7 +627,8 @@ mod more_tests {
 fn stringify_number(number: &serde_json::Number, out: &mut String) {
     if let Some(int) = number.as_i64() {
         if int.unsigned_abs() <= 9_007_199_254_740_991 {
-            out.push_str(&int.to_string());
+            use std::fmt::Write;
+            let _ = write!(out, "{int}");
             return;
         }
     }
@@ -650,7 +651,7 @@ fn stringify_into(value: &Value, indent: &str, depth: usize, out: &mut String) {
         Value::Null => out.push_str("null"),
         Value::Bool(flag) => out.push_str(if *flag { "true" } else { "false" }),
         Value::Number(number) => stringify_number(number, out),
-        Value::String(text) => out.push_str(&serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into())),
+        Value::String(text) => push_json_string(text, out),
         Value::Array(items) => {
             if items.is_empty() {
                 out.push_str("[]");
@@ -673,22 +674,67 @@ fn stringify_into(value: &Value, indent: &str, depth: usize, out: &mut String) {
                 return;
             }
             out.push('{');
-            for (index, (key, item)) in entries(map).into_iter().enumerate() {
+            let entry = |index: usize, key: &str, item: &Value, out: &mut String| {
                 if index > 0 {
                     out.push(',');
                 }
                 newline(out, depth + 1);
-                out.push_str(&serde_json::to_string(key).unwrap_or_else(|_| "\"\"".into()));
+                push_json_string(key, out);
                 out.push(':');
                 if !indent.is_empty() {
                     out.push(' ');
                 }
                 stringify_into(item, indent, depth + 1, out);
+            };
+            // Ключей-индексов почти никогда нет: тогда порядок `Object.entries`
+            // — порядок вставки, и список пар не собирается.
+            if map.keys().any(|key| is_array_index_key(key)) {
+                for (index, (key, item)) in entries(map).into_iter().enumerate() {
+                    entry(index, key, item, out);
+                }
+            } else {
+                for (index, (key, item)) in map.iter().enumerate() {
+                    entry(index, key, item, out);
+                }
             }
             newline(out, depth);
             out.push('}');
         }
     }
+}
+
+/// Строка в JSON-кавычках, как `serde_json::to_string(text)` (и `JSON.stringify`
+/// для строки без одиночных суррогатов): `"` и `\` экранируются, управляющие
+/// символы — `\b \t \n \f \r` или `\u00xx`, остальное как есть. Пишется
+/// прямо в `out`, без промежуточной строки на каждое значение и ключ.
+fn push_json_string(text: &str, out: &mut String) {
+    out.push('"');
+    let mut start = 0;
+    for (index, byte) in text.bytes().enumerate() {
+        let escape: &str = match byte {
+            b'"' => "\\\"",
+            b'\\' => "\\\\",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            b'\t' => "\\t",
+            0x08 => "\\b",
+            0x0c => "\\f",
+            0x00..=0x1f => "",
+            _ => continue,
+        };
+        out.push_str(&text[start..index]);
+        if escape.is_empty() {
+            const HEX: &[u8; 16] = b"0123456789abcdef";
+            out.push_str("\\u00");
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 0x0f) as usize] as char);
+        } else {
+            out.push_str(escape);
+        }
+        start = index + 1;
+    }
+    out.push_str(&text[start..]);
+    out.push('"');
 }
 
 /// `JSON.stringify(value)`: числа и порядок ключей (индексы раньше прочих) —
@@ -716,6 +762,17 @@ mod stringify_tests {
         let value: Value = serde_json::from_str(r#"{"b":100.0,"2":1e21,"a":[1.5e-7,{"x":"т\"е\nст"}],"1":900719925474099072,"e":{},"f":[]}"#).expect("JSON");
         assert_eq!(stringify(&value), r#"{"1":900719925474099100,"2":1e+21,"b":100,"a":[1.5e-7,{"x":"т\"е\nст"}],"e":{},"f":[]}"#);
         assert_eq!(stringify_pretty(&json!({ "a": [1, { "b": null }], "c": {} }), 2), "{\n  \"a\": [\n    1,\n    {\n      \"b\": null\n    }\n  ],\n  \"c\": {}\n}");
+    }
+
+    /// Строки и ключи пишутся без `serde_json::to_string` (Ск3) — экранирование то же.
+    #[test]
+    fn stringify_escapes_strings_like_serde_json() {
+        let tricky: String = (0u8..0x80).map(char::from).chain("тест \u{2028}\u{2029}😀\u{7f}".chars()).collect();
+        for text in [tricky.as_str(), "", "\"", "\\", "a\"b\\c\u{1}\u{1f}"] {
+            assert_eq!(stringify(&Value::String(text.into())), serde_json::to_string(text).expect("строка"));
+            let object = json!({ text: 1, "k": [text] });
+            assert_eq!(stringify(&object), serde_json::to_string(&object).expect("объект"));
+        }
     }
 }
 
