@@ -21,9 +21,12 @@ use kit::{Client, TestServer};
 use serde_json::{json, Value};
 
 /// Медиана хода исследования (`MoveActor`), мс, release, машина разработчика.
-const MOVE_BUDGET_MS: f64 = 1_500.0;
-/// Медиана `GET /api/rooms/:id`, мс.
-const ROOM_BUDGET_MS: f64 = 250.0;
+/// Ск3 (одна нормализация на оборот координатора, память итогов
+/// нормализации, `js::stringify` без выделений на значение): замер
+/// 327–329 мс, порог — с полуторным запасом.
+const MOVE_BUDGET_MS: f64 = 500.0;
+/// Медиана `GET /api/rooms/:id`, мс (замер Ск3 — 52 мс).
+const ROOM_BUDGET_MS: f64 = 90.0;
 /// Запас общего раннера.
 const SHARED_RUNNER_TOLERANCE: f64 = 4.0;
 const RUNS: usize = 9;
