@@ -28,11 +28,11 @@ test('Rules Engine bridges relationships, threads, beliefs, rumors and summaries
     } },
     { command_type: 'RecordNpcBelief', claim: {
       id: 'belief:vela-thief', holder_entity_id: 'npc:vela', subject_entity_id: 'faction:watch',
-      predicate: 'suspects', claim: 'Vela suspects a Watch officer.', summary: 'Vela suspects an officer.',
+      claim: 'Vela suspects a Watch officer.', summary: 'Vela suspects an officer.',
       visibility: 'gm_only', source_event_ids: ['event:suspicion'],
     } },
     { command_type: 'RecordRumor', claim: {
-      id: 'rumor:market-key', holder_entity_id: 'npc:vela', predicate: 'heard',
+      id: 'rumor:market-key', holder_entity_id: 'npc:vela',
       claim: 'The key was sold in the market.', summary: 'A market rumor.', visibility: 'party',
       source_event_ids: ['event:gossip'],
     } },

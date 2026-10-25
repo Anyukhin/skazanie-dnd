@@ -144,7 +144,7 @@ test('живой поток отдаёт каждому игроку тольк�
   const fact = await admin('isolation-fact', {
     command_type: 'RecordWorldFact', actor_id: 'hero-1',
     fact: {
-      id: 'fact:vault-secret', subject_id: 'location:vault', predicate: 'hides',
+      id: 'fact:vault-secret', subject_id: 'location:vault', predicate: 'lore',
       object: SECRET, summary: SECRET, visibility: 'gm_only', source_event_ids: ['event:isolation'],
     },
   })
